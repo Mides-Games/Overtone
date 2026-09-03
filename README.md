@@ -1,4 +1,4 @@
-# osu! Timing Analyzer v2
+# osu! Timing Analyzer v2.2
 
 Local desktop app that extracts BPMs and offsets from audio, built for creating osu! red timing points. English is the default UI language (Español available in the dropdown). It will not promise impossible accuracy — music without clear percussion, rubato, swing and soft-transient production still needs manual review — but normal micro-fluctuations will not become BPM changes.
 
@@ -23,6 +23,8 @@ python timing_analyzer.py "C:\path\song.wav" --delta 1.5 --persistence 12 --stat
 - `--click click.wav` writes a metronome aligned to the red lines — **listen to it against the song** before mapping.
 - `--stats` prints global BPM, stability, meter guess and every section.
 - `--subdivision 2` forces the pulse octave (fixes half-time locks, e.g. 112 read instead of 225). Default `auto`.
+- `--inject map.osu` writes red lines straight into the beatmap (`--no-backup` skips the `.bak`).
+- `--no-refine` skips transient re-anchoring (diagnostic aid).
 
 GUI presets (detection card): **⚡ Variable** = 1.5 / 12 / 75 (default — songs that change often), **🛡 Steady** = 2.0 / 20 / 85 (constant-tempo songs, fewer false red lines).
 
@@ -44,11 +46,12 @@ Headline extras per analysis: **global BPM** (tempogram-guided, octave-aware), *
 
 That is a *half-time lock*: the tracker settled on every-other beat. Two knock-on effects explain the rest — 225 vs 222.2 differ by only ~1.4 BPM at half speed (112.5 vs 111.1), which falls below `--delta` and collapses into one "constant" section, and integer-frame timing (±1 frame ≈ ±2 % at 225 BPM) blurs the two apart.
 
-What changed in v2.1:
+What changed in v2.1–v2.2:
 
 - The octave resolver now **disfavours out-of-range base pulses**: 112 (outside 120–300) only needs moderate in-between attack evidence to double to 224, while an in-range pulse still needs strong evidence.
 - Beat times are **sub-frame** (parabolic transient correction, no integer rounding), so 225 vs 222.2 no longer flip-flops on frame quantization.
 - Leading silence is trimmed so the first red line sits on the first attack, not at 0 ms.
+- v2.2 adds the **manual editor**, **.osu injection** and **per-section pulse hints** (see App features).
 
 If auto still locks half on your track (sparse drums, no off-beat content to anchor the doubling):
 
@@ -84,11 +87,11 @@ If auto still locks half on your track (sparse drums, no off-beat content to anc
 python -m unittest test_timing_analyzer -v
 ```
 
-Covers segmentation, octave logic, grid snapping, English default, synthetic 128 BPM detection (±3 %), a 120→140 change, and click-track export.
+Covers segmentation (incl. backtracking, outlier tolerance), octave logic, gap-filling, grid snapping, manual editing, .osu injection (CRLF-safe, idempotent), English default, synthetic 128 BPM detection (±3 %), a 120→140 change, variable-tempo 225→222.2 detection, and click-track export.
 
 ## Resumen en español
 
-La interfaz usa inglés por defecto; elige **Español** en el desplegable. El flujo recomendado: analiza → revisa la curva → exporta el click track → escúchalo contra la canción → pega los puntos rojos en `[TimingPoints]` → verifica offsets en el editor de osu!.
+La interfaz usa inglés por defecto; elige **Español** en el desplegable. El flujo recomendado: analiza → revisa la curva → ajusta puntos a mano (④ Edit) → exporta el click track → escúchalo contra la canción → **Inject .osu…** directo al mapa (o pega los puntos en `[TimingPoints]`) → verifica offsets en el editor de osu!.
 
 ## License
 

@@ -41,7 +41,7 @@ import soundfile as sf
 from scipy import signal
 from scipy.ndimage import median_filter
 
-APP_VERSION = "2.1"
+APP_VERSION = "2.2"
 DEFAULT_LANGUAGE = "English"  # English is the default UI language.
 CONFIG_PATH = Path.home() / ".timing_analyzer.json"
 TARGET_SR = 44100
@@ -1606,17 +1606,21 @@ class TimingAnalyzerApp:
         self._save_prefs()
         pulse_map = {"×1": 1, "×2": 2, "×4": 4}
         force = pulse_map.get(self.pulse.get(), 0)
+        # Capture Tk state here: worker threads must not touch Tk variables.
+        path = self.file.get()
+        refine = bool(self.refine_beats.get())
+        prefer = bool(self.prefer_map_bpm.get())
         threading.Thread(target=self._worker,
-                         args=(delta, persistence, self.prefer_map_bpm.get(), confidence,
-                               force, bool(self.refine_beats.get())),
+                         args=(path, delta, persistence, prefer, confidence,
+                               force, refine),
                          daemon=True).start()
         self.root.after(100, self._poll)
 
-    def _worker(self, delta: float, persistence: int, prefer_map_bpm: bool,
+    def _worker(self, path: str, delta: float, persistence: int, prefer_map_bpm: bool,
                 confidence: float, force_subdivision: int = 0,
                 refine_beats: bool = True) -> None:
         try:
-            result = analyze_audio(self.file.get(), delta, persistence, prefer_map_bpm,
+            result = analyze_audio(path, delta, persistence, prefer_map_bpm,
                                    confidence, lambda x: self.events.put(("status", x)),
                                    force_subdivision, refine_beats)
             self.events.put(("done", result))
@@ -2011,17 +2015,25 @@ def main() -> None:
         TimingAnalyzerApp().start()
         return
     force = int(args.subdivision) if args.subdivision in ("1", "2", "4") else 0
-    analysis = analyze_audio(args.audio, args.delta, args.persistence, not args.no_map_preference,
-                             args.min_confidence / 100, print, force,
-                             refine_beats=not args.no_refine)
+    try:
+        analysis = analyze_audio(args.audio, args.delta, args.persistence, not args.no_map_preference,
+                                 args.min_confidence / 100, print, force,
+                                 refine_beats=not args.no_refine)
+    except (ValueError, RuntimeError, OSError) as exc:
+        print(f"Error: {exc}")
+        raise SystemExit(1)
     if args.stats:
         print(analysis_summary(analysis))
         print()
     print(osu_timing_text(analysis))
-    if args.csv:
-        export_csv(analysis, args.csv)
-    if args.click:
-        export_click_track(analysis, args.click)
+    try:
+        if args.csv:
+            export_csv(analysis, args.csv)
+        if args.click:
+            export_click_track(analysis, args.click)
+    except OSError as exc:
+        print(f"Error writing output: {exc}")
+        raise SystemExit(1)
     if args.inject:
         try:
             summary = inject_osu_timing_points(args.inject, analysis, backup=not args.no_backup)

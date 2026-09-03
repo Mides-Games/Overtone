@@ -130,6 +130,19 @@ class SegmentationTests(unittest.TestCase):
 
 
 class RobustnessTests(unittest.TestCase):
+    def test_invalid_parameters_rejected_before_io(self):
+        with self.assertRaises(ValueError):
+            analyze_audio("whatever.wav", min_delta=-1.0)
+        with self.assertRaises(ValueError):
+            analyze_audio("whatever.wav", persistence=1)
+        with self.assertRaises(ValueError):
+            analyze_audio("whatever.wav", min_confidence=1.5)
+
+    def test_undecodable_file_raises_runtime_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(RuntimeError):
+                analyze_audio(str(Path(tmp) / "missing.wav"))
+
     def test_single_bad_interval_does_not_drag_local_bpm(self):
         beats = np.arange(20) * 0.5
         beats[10:] += 0.25  # one doubled gap (missed beat)

@@ -2,4 +2,4 @@ numpy>=1.26
 scipy>=1.11
 librosa>=0.10.2
 soundfile>=0.12
-matplotlib>=3.8
+soxr>=0.3

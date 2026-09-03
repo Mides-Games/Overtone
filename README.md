@@ -1,34 +1,92 @@
-# osu! Timing Analyzer
+# osu! Timing Analyzer v2
 
-Aplicación local para obtener BPMs y offsets de un audio, pensada para crear puntos rojos de osu!. No promete una exactitud imposible: audio sin percusión clara, rubato, swing y producción con transitorios suaves requieren revisión manual. Sí evita que microfluctuaciones normales se conviertan en cambios de BPM.
+Local desktop app that extracts BPMs and offsets from audio, built for creating osu! red timing points. English is the default UI language (Español available in the dropdown). It will not promise impossible accuracy — music without clear percussion, rubato, swing and soft-transient production still needs manual review — but normal micro-fluctuations will not become BPM changes.
 
-## Instalación y uso
+![stack](https://img.shields.io/badge/python-3.10%2B-blue) ![license](https://img.shields.io/badge/license-MIT-green)
+
+## Install & run
 
 ```powershell
 python -m pip install -r requirements.txt
 python timing_analyzer.py
 ```
 
-Puedes analizar también desde la terminal:
+CLI analysis:
 
 ```powershell
-python timing_analyzer.py "C:\ruta\cancion.wav" --delta 1.5 --persistence 8 --csv timing.csv
+python timing_analyzer.py "C:\path\song.wav" --delta 1.5 --persistence 12 --stats --csv timing.csv --click click.wav
 ```
 
-`--delta 1.5` es la separación mínima entre el tempo actual y uno nuevo. Por lo tanto, 225 a 225.2 BPM permanece en el mismo punto; un cambio estable de 225 a 227 se añade. La interfaz exige por defecto 20 beats consecutivos y 90 % de confianza antes de exportar un timing point. Esto reduce falsos positivos; baja esos valores solo al revisar cambios cortos manualmente.
+- `--delta 1.5` is the minimum gap between the current tempo and a new one: 225 → 225.2 stays on one point, a sustained 225 → 227 is added.
+- `--persistence 12` demands that many steady beats before a change is exported (kills false positives; raise to 20+ for constant-tempo songs, lower to 8 only when hunting very short sections manually).
+- `--min-confidence 75` filters shaky sections.
+- `--click click.wav` writes a metronome aligned to the red lines — **listen to it against the song** before mapping.
+- `--stats` prints global BPM, stability, meter guess and every section.
+- `--subdivision 2` forces the pulse octave (fixes half-time locks, e.g. 112 read instead of 225). Default `auto`.
 
-El programa resuelve también half-time/double-time: prueba una, dos y cuatro subdivisiones contra los transitorios reales del audio. Por defecto, cuando las evidencias son cercanas, prefiere el rango común de mapas de osu! (120–300 BPM); no es un multiplicador fijo. Desmarca **Preferir BPM de mapa** —o usa `--no-map-preference`— para canciones que realmente son lentas.
+GUI presets (detection card): **⚡ Variable** = 1.5 / 12 / 75 (default — songs that change often), **🛡 Steady** = 2.0 / 20 / 85 (constant-tempo songs, fewer false red lines).
 
-La interfaz permite:
+For MP3/M4A/AAC install FFmpeg and make sure it is on `PATH`. WAV/FLAC/OGG usually open directly via SoundFile.
 
-- Ver cada offset y BPM detectado.
-- Exportar la tabla a CSV.
-- Copiar timing points rojos directamente en el formato de `[TimingPoints]` de un archivo `.osu`.
+## How the detection works (v2 engine)
 
-Para máxima compatibilidad con MP3, M4A, AAC y otros formatos comprimidos, instala FFmpeg y asegúrate de que esté disponible en `PATH`. WAV, FLAC y OGG suelen funcionar directamente mediante SoundFile.
+1. Mono 44.1 kHz load with peak normalization (SoundFile fast path, librosa fallback).
+2. Normalized onset-strength envelope (`librosa.onset.onset_strength`, STFT-flux fallback).
+3. **Hybrid beat tracking**: `beat_track` (tight DP) + PLP + peak-picking fallback compete; the most clock-regular candidate wins, then every beat is re-anchored to its nearest transient with parabolic **sub-frame** correction (no integer rounding — at 225 BPM one frame already spans ~2 % of tempo).
+4. **Gap filling**: isolated dropped beats are interpolated when both sides agree on the tempo; long silences and abrupt jumps are never paved over.
+5. **Local tempo** = median of neighbouring beat intervals (7-beat window) with MAD outlier rejection (a single missed beat cannot drag the curve).
+6. **Half/double-time** is resolved with onset evidence at subdivided grid positions plus tempogram hypotheses — never blind ×2. An out-of-range pulse (e.g. 112) doubles on moderate evidence; an in-range one needs strong evidence.
+7. **Segmentation** requires a `min_delta` gap sustained for `persistence` beats with one-outlier tolerance; confirmed starts **backtrack** to the midpoint crossing so red lines land on the change, not a dozen beats late. Confidence blends steadiness with section length.
 
-## Método y precisión
+Headline extras per analysis: **global BPM** (tempogram-guided, octave-aware), **stability score**, **meter guess** (4/4 vs 3/4 vs 6/8) and **pulse subdivision** (×1/×2/×4).
 
-El análisis usa audio mono a 44.1 kHz y ventanas de 256 muestras (≈5.8 ms), detección de transitorios y seguimiento dinámico de beats. El BPM local se calcula con la mediana de varios intervalos, no con un único intervalo; luego se segmenta solo al detectar un cambio sostenido. Los offsets se expresan en milisegundos desde el inicio del audio.
+## Troubleshooting: reads exactly HALF the BPM (e.g. 112 instead of 225)
 
-Antes de mapear, comprueba en el editor que el primer beat y cada transición importante caigan sobre los transitorios. En temas con cambios graduales de tempo, puede ser apropiado bajar la persistencia o añadir puntos manuales.
+That is a *half-time lock*: the tracker settled on every-other beat. Two knock-on effects explain the rest — 225 vs 222.2 differ by only ~1.4 BPM at half speed (112.5 vs 111.1), which falls below `--delta` and collapses into one "constant" section, and integer-frame timing (±1 frame ≈ ±2 % at 225 BPM) blurs the two apart.
+
+What changed in v2.1:
+
+- The octave resolver now **disfavours out-of-range base pulses**: 112 (outside 120–300) only needs moderate in-between attack evidence to double to 224, while an in-range pulse still needs strong evidence.
+- Beat times are **sub-frame** (parabolic transient correction, no integer rounding), so 225 vs 222.2 no longer flip-flops on frame quantization.
+- Leading silence is trimmed so the first red line sits on the first attack, not at 0 ms.
+
+If auto still locks half on your track (sparse drums, no off-beat content to anchor the doubling):
+
+1. GUI: set **Pulse → ×2** and Analyze, or press the **×2** button after analyzing (instant, no re-tracking).
+2. CLI: `python timing_analyzer.py song.mp3 --subdivision 2 --stats`.
+3. Always export the click track and listen: a correct map clicks *with* the song; a halved one clicks every other beat.
+
+## Known limits (honest audit)
+
+- **Rubato / live drums / heavy swing**: no fixed grid exists; expect extra sections and fix by hand.
+- **Half-time *feel* sections** (same grid, half energy): BPM correctly stays put — map the feel, not a new red line.
+- **Sparse/breakdown bars**: the grid is interpolated through short gaps; breaks longer than ~8 beats restart the grid, so check the first offset after each break.
+- **Songs that truly change pulse per section** (e.g. 128 verse → 140 half-time chorus): the pulse decision is global; fix that chorus with Pulse ×2/÷2 or `--subdivision`.
+- **Compressed formats** (MP3/M4A/AAC) need FFmpeg on `PATH`; without it only WAV/FLAC/OGG decode.
+
+## App features
+
+- Stat cards: global BPM, sections (+ meter), beats, stability.
+- Sortable results table (`# / offset / BPM / beat length / confidence`); click a row to highlight its section on the trace.
+- Tempo-trace canvas: onset bed + tempo curve + section shading + red-line markers.
+- One-click **Export CSV**, **Copy .osu** (`[TimingPoints]`-ready), **Click track…** (verification metronome), **Details…** (text report).
+- **Tap tempo** card for a manual cross-check.
+- Progress bar, background-thread analysis (UI never freezes), prefs + language persisted to `~/.timing_analyzer.json`.
+- Shortcuts: `Ctrl+O` open, `Ctrl+C` copy points, `F5` analyze.
+- Always verify the first beat and every transition in the osu! editor. For gradual tempo drifts, lower persistence or add manual points.
+
+## Tests
+
+```powershell
+python -m unittest test_timing_analyzer -v
+```
+
+Covers segmentation, octave logic, grid snapping, English default, synthetic 128 BPM detection (±3 %), a 120→140 change, and click-track export.
+
+## Resumen en español
+
+La interfaz usa inglés por defecto; elige **Español** en el desplegable. El flujo recomendado: analiza → revisa la curva → exporta el click track → escúchalo contra la canción → pega los puntos rojos en `[TimingPoints]` → verifica offsets en el editor de osu!.
+
+## License
+
+MIT — do what you want, credit appreciated.

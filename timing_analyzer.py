@@ -814,7 +814,213 @@ def analysis_summary(analysis: Analysis) -> str:
     ]
     for i, p in enumerate(snap_timing_points(analysis.points), 1):
         lines.append(f"{i:>3}  {p.offset_ms:10.1f}  {p.bpm:10.2f}  {60000 / p.bpm:9.2f}  {p.confidence:6.0%}")
+    suggestions = suggest_section_pulse(analysis)
+    if suggestions:
+        lines.append("")
+        lines.append("Pulse suggestions (select the section, then 2× § / ÷2 §):")
+        for idx, factor, ratio in suggestions:
+            lines.append(f"  §{idx + 1}: try ×{factor} (off-beat support {ratio:.0%})")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Manual timing-point editing (pure helpers — GUI calls these)
+# ---------------------------------------------------------------------------
+
+def _nearest_beat_index(beats: np.ndarray, offset_ms: float) -> int:
+    if len(beats) == 0:
+        return 0
+    return int(np.argmin(np.abs(beats * 1000.0 - offset_ms)))
+
+
+def add_timing_point(points: list[TimingPoint], beats: np.ndarray,
+                     offset_ms: float, bpm: float) -> list[TimingPoint]:
+    """Insert a hand-placed point, keeping the list sorted by offset.
+
+    Hand-placed points carry confidence 1.0: the mapper — not the detector —
+    vouches for them. Raises ``ValueError`` on non-positive BPM.
+    """
+    if not np.isfinite(offset_ms) or not np.isfinite(bpm) or bpm <= 0:
+        raise ValueError("Offset must be finite and BPM positive.")
+    merged = list(points) + [TimingPoint(float(offset_ms), float(bpm), 1.0,
+                                         _nearest_beat_index(beats, offset_ms))]
+    merged.sort(key=lambda p: p.offset_ms)
+    return merged
+
+
+def update_timing_point(points: list[TimingPoint], beats: np.ndarray, index: int,
+                        offset_ms: float, bpm: float) -> list[TimingPoint]:
+    """Replace one point's offset/BPM (confidence preserved), re-sorted."""
+    if not 0 <= index < len(points):
+        raise ValueError("No timing point at that index.")
+    if not np.isfinite(offset_ms) or not np.isfinite(bpm) or bpm <= 0:
+        raise ValueError("Offset must be finite and BPM positive.")
+    old = points[index]
+    merged = list(points)
+    merged[index] = TimingPoint(float(offset_ms), float(bpm), old.confidence,
+                                _nearest_beat_index(beats, offset_ms))
+    merged.sort(key=lambda p: p.offset_ms)
+    return merged
+
+
+def delete_timing_point(points: list[TimingPoint], index: int) -> list[TimingPoint]:
+    """Remove one point. The first point (section 1) cannot be deleted."""
+    if not 0 <= index < len(points):
+        raise ValueError("No timing point at that index.")
+    if index == 0:
+        raise ValueError("The first timing point anchors the map and cannot be deleted.")
+    return [p for n, p in enumerate(points) if n != index]
+
+
+def nudge_timing_point(points: list[TimingPoint], beats: np.ndarray, index: int,
+                       delta_ms: float) -> list[TimingPoint]:
+    """Shift one point's offset, clamped at 0 ms, beat index refreshed."""
+    if not 0 <= index < len(points):
+        raise ValueError("No timing point at that index.")
+    old = points[index]
+    offset = max(0.0, old.offset_ms + delta_ms)
+    merged = list(points)
+    merged[index] = TimingPoint(offset, old.bpm, old.confidence,
+                                _nearest_beat_index(beats, offset))
+    merged.sort(key=lambda p: p.offset_ms)
+    return merged
+
+
+def rescale_section(points: list[TimingPoint], index: int, factor: float) -> list[TimingPoint]:
+    """Multiply one section's BPM (per-section ×2/÷2 fix). Offset untouched."""
+    if not 0 <= index < len(points):
+        raise ValueError("No timing point at that index.")
+    if factor not in (0.5, 2.0):
+        raise ValueError("Section factor must be 2 or 1/2.")
+    old = points[index]
+    bpm = old.bpm * factor
+    if not 30 <= bpm <= 600:
+        raise ValueError(f"Resulting BPM {bpm:.1f} is outside 30–600.")
+    merged = list(points)
+    merged[index] = TimingPoint(old.offset_ms, bpm, old.confidence, old.beat_index)
+    return merged
+
+
+# ---------------------------------------------------------------------------
+# Per-section pulse suggestions
+# ---------------------------------------------------------------------------
+
+def suggest_section_pulse(analysis: Analysis,
+                          low_bpm: float = 120.0,
+                          min_ratio: float = 0.55) -> list[tuple[int, int, float]]:
+    """Flag sections that look like half-time tracker locks.
+
+    Returns [(point_index, suggested_factor, support_ratio)]. Only *suggests*:
+    a 112 BPM half-time *feel* section with busy hats is musically correct at
+    112, so doubling stays a one-click manual decision (GUI "2× §"), never
+    automatic. Sections already in map range are never flagged.
+    """
+    suggestions: list[tuple[int, int, float]] = []
+    if analysis.base_frames is None or len(analysis.onset) < 8:
+        return suggestions
+    snapped = snap_timing_points(analysis.points)
+    frame_rate = analysis.sample_rate / analysis.hop_length
+    section_frames = np.rint(np.asarray(analysis.base_frames, dtype=float))
+    section_frames = section_frames[(section_frames >= 0) & (section_frames < len(analysis.onset))]
+    for idx, point in enumerate(snapped):
+        if point.bpm >= low_bpm:
+            continue
+        doubled = point.bpm * 2
+        if not 120 <= doubled <= 400:
+            continue
+        start_s = point.offset_ms / 1000.0
+        end_s = snapped[idx + 1].offset_ms / 1000.0 if idx + 1 < len(snapped) else analysis.duration
+        mask = (analysis.beats >= start_s) & (analysis.beats < end_s)
+        grid = np.rint(analysis.beats[mask] * frame_rate).astype(int)
+        grid = grid[(grid >= 0) & (grid < len(analysis.onset))]
+        if len(grid) < 4:
+            continue
+        base_support = max(_subdivision_support(analysis.onset, grid, 1), 1e-9)
+        ratio = _subdivision_support(analysis.onset, grid, 2) / base_support
+        if ratio >= min_ratio:
+            suggestions.append((idx, 2, float(ratio)))
+    return suggestions
+
+
+# ---------------------------------------------------------------------------
+# .osu injection
+# ---------------------------------------------------------------------------
+
+def inject_osu_timing_points(osu_path: str | os.PathLike[str],
+                             analysis: Analysis,
+                             backup: bool = True,
+                             dry_run: bool = False) -> dict:
+    """Replace the red (uninherited) lines of an .osu with this analysis.
+
+    Green lines, metadata, hit objects — everything else — are preserved
+    byte-for-byte, including the file's CRLF/LF style. A ``.bak`` copy is
+    written first unless ``backup`` is False. With ``dry_run`` nothing is
+    written (used for the GUI confirmation dialog). Returns a summary dict
+    with ``reds_replaced``, ``reds_added``, ``greens_kept`` and an
+    ``audio_mismatch`` warning when the .osu's AudioFilename differs from the
+    analyzed file.
+    """
+    raw = Path(osu_path).read_bytes()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"Could not decode {osu_path} as UTF-8.") from exc
+    newline = "\r\n" if b"\r\n" in raw else "\n"
+    lines = text.splitlines()
+
+    header_idx = next((n for n, line in enumerate(lines)
+                       if line.strip() == "[TimingPoints]"), None)
+    if header_idx is None:
+        raise ValueError("No [TimingPoints] section found in this .osu file.")
+    end_idx = len(lines)
+    for n in range(header_idx + 1, len(lines)):
+        if lines[n].startswith("[") and lines[n].strip().endswith("]"):
+            end_idx = n
+            break
+    body = lines[header_idx + 1:end_idx]
+
+    def is_red(line: str) -> bool:
+        fields = line.split(",")
+        return len(fields) >= 8 and fields[6].strip() == "1"
+
+    greens = [line for line in body if line.strip() and not is_red(line.strip())]
+    old_reds = sum(1 for line in body if line.strip() and is_red(line.strip()))
+    new_reds = [row for row in osu_timing_text(analysis).splitlines()
+                if row and not row.startswith("//")]
+
+    if old_reds:
+        # Replace in place: new reds take the position of the first old red,
+        # remaining old reds are dropped, greens keep their exact lines.
+        out_body: list[str] = []
+        replaced = False
+        for line in body:
+            if line.strip() and is_red(line.strip()):
+                if not replaced:
+                    out_body.extend(new_reds)
+                    replaced = True
+            else:
+                out_body.append(line)
+    else:
+        out_body = list(body) + new_reds
+
+    if backup and not dry_run:
+        Path(str(osu_path) + ".bak").write_bytes(raw)
+    # Bytes, not write_text: on Windows, text mode would translate our
+    # existing "\r\n" into "\r\r\n".
+    if not dry_run:
+        Path(osu_path).write_bytes((newline.join(lines[:header_idx + 1] + out_body + lines[end_idx:]) + newline).encode("utf-8"))
+
+    audio_name = ""
+    for line in lines:
+        if line.startswith("AudioFilename:"):
+            audio_name = line.split(":", 1)[1].strip()
+            break
+    analysed_name = Path(analysis.source).name
+    return {"reds_replaced": old_reds, "reds_added": len(new_reds),
+            "greens_kept": len([l for l in greens if l.strip()]),
+            "backup": bool(backup),
+            "audio_mismatch": bool(audio_name and audio_name.lower() != analysed_name.lower()),
+            "osu_audio": audio_name, "analysed_audio": analysed_name}
 
 
 # ---------------------------------------------------------------------------
@@ -854,6 +1060,8 @@ class TimingAnalyzerApp:
             "results": "③  Results", "global": "GLOBAL", "sections": "SECTIONS",
             "beats": "BEATS", "stability": "STABLE", "meter": "METER",
             "export_csv": "Export CSV", "copy": "Copy .osu", "click": "Click track…",
+            "csv": "Export CSV",
+            "inject": "Inject .osu…",
             "details": "Details…", "offset": "Offset (ms)", "beatlen": "Beat (ms)",
             "confidence": "Confidence", "overview": "TEMPO TRACE — click a row to highlight its section",
             "hint": "Tip: presets below set the trade-off. Variable catches short sections (songs that change often); Steady ignores wobble. If the BPM reads HALF (e.g. 112 instead of 225), hit ×2. Export the click track and listen for drift before mapping.",
@@ -868,6 +1076,19 @@ class TimingAnalyzerApp:
             "click_saved": "Click track saved: {path}",
             "copied": "Red timing points copied — paste into [TimingPoints] in your .osu.",
             "normal": "normal", "confirmed": "×{factor} (confirmed subdivision)",
+            "edit": "④  Edit timing points", "apply": "Apply", "add": "Add",
+            "delete": "Delete", "sec_double": "2× §", "sec_halve": "÷2 §",
+            "no_selection": "Select a table row first.",
+            "bad_numbers": "Offset and BPM must be numbers, BPM above 0.",
+            "first_locked": "§1 anchors the map and cannot be deleted.",
+            "edited": "§{n} updated: {bpm} BPM @ {ms} ms.",
+            "added_point": "Point added: {bpm} BPM @ {ms} ms.",
+            "deleted_point": "§{n} deleted.",
+            "section_rescaled": "§{n} now {bpm} BPM.",
+            "suggest": "§{n} reads {bpm} BPM but off-beats suggest ×2 — press 2× § to fix.",
+            "inject_confirm": "Replace {reds} red line(s), keep {greens} green line(s) in\n{file}?\nA .bak backup will be created.{warn}",
+            "inject_warn": "\nWARNING: .osu audio is '{osu}', you analyzed '{src}'.",
+            "injected": "Injected {added} red lines ({replaced} replaced, {greens} greens kept). Backup saved.",
             "all_audio": "Audio files", "all": "All files",
             "language": "Language", "file": "Audio file",
             "trace_empty": "Analyze an audio file to preview its tempo trace",
@@ -888,6 +1109,7 @@ class TimingAnalyzerApp:
             "results": "③  Resultados", "global": "GLOBAL", "sections": "SECCIONES",
             "beats": "BEATS", "stability": "ESTABLE", "meter": "COMPÁS",
             "export_csv": "Exportar CSV", "copy": "Copiar .osu", "click": "Click track…",
+            "csv": "Exportar CSV", "inject": "Inyectar .osu…",
             "details": "Detalles…", "offset": "Offset (ms)", "beatlen": "Beat (ms)",
             "confidence": "Confianza", "overview": "CURVA DE TEMPO — clic en una fila para resaltar su sección",
             "hint": "Consejo: los presets fijan el equilibrio. Variable detecta secciones cortas (temas que cambian seguido); Steady ignora fluctuaciones. Si el BPM sale a la MITAD (p. ej. 112 en vez de 225), pulsa ×2. Exporta el click track y escucha derivas antes de mapear.",
@@ -902,6 +1124,19 @@ class TimingAnalyzerApp:
             "click_saved": "Click track guardado: {path}",
             "copied": "Puntos rojos copiados — pégalos en [TimingPoints] de tu .osu.",
             "normal": "normal", "confirmed": "×{factor} (subdivisión confirmada)",
+            "edit": "④  Editar timing points", "apply": "Aplicar", "add": "Añadir",
+            "delete": "Borrar", "sec_double": "2× §", "sec_halve": "÷2 §",
+            "no_selection": "Selecciona primero una fila de la tabla.",
+            "bad_numbers": "Offset y BPM deben ser números, BPM mayor que 0.",
+            "first_locked": "§1 ancla el mapa y no se puede borrar.",
+            "edited": "§{n} actualizado: {bpm} BPM @ {ms} ms.",
+            "added_point": "Punto añadido: {bpm} BPM @ {ms} ms.",
+            "deleted_point": "§{n} borrado.",
+            "section_rescaled": "§{n} ahora {bpm} BPM.",
+            "suggest": "§{n} marca {bpm} BPM pero los contratiempos sugieren ×2 — pulsa 2× § para corregirlo.",
+            "inject_confirm": "¿Reemplazar {reds} línea(s) roja(s), mantener {greens} verde(s) en\n{file}?\nSe creará backup .bak.{warn}",
+            "inject_warn": "\nAVISO: el audio del .osu es '{osu}', analizaste '{src}'.",
+            "injected": "Inyectadas {added} líneas rojas ({replaced} reemplazadas, {greens} verdes intactas). Backup guardado.",
             "all_audio": "Archivos de audio", "all": "Todos los archivos",
             "language": "Idioma", "file": "Archivo de audio",
             "trace_empty": "Analiza un audio para ver su curva de tempo",
@@ -961,6 +1196,7 @@ class TimingAnalyzerApp:
         self.widgets: dict[str, object] = {}
         self.taps: list[float] = []
         self.selected_section: int | None = None
+        self.suggestions: dict[int, tuple[int, float]] = {}
         self._busy = False
         self._theme()
         self._build()
@@ -1143,6 +1379,8 @@ class TimingAnalyzerApp:
         btns.pack(side="right")
         self.widgets["details"] = ttk.Button(btns, command=self.show_details, style="Ghost.TButton")
         self.widgets["details"].pack(side="right", padx=(8, 0))
+        self.widgets["inject"] = ttk.Button(btns, command=self.inject_osu, style="Ghost.TButton")
+        self.widgets["inject"].pack(side="right", padx=(8, 0))
         self.widgets["double"] = ttk.Button(btns, command=lambda: self._rescale_pulse(2),
                                             style="Ghost.TButton", text="×2")
         self.widgets["double"].pack(side="right", padx=(8, 0))
@@ -1189,6 +1427,40 @@ class TimingAnalyzerApp:
         scroll.pack(side="right", fill="y")
         self.table.configure(yscrollcommand=scroll.set)
 
+        # --- Manual editor ------------------------------------------------
+        editor = ttk.Frame(center, padding=(14, 10), style="Card.TFrame")
+        editor.pack(fill="x", pady=(10, 0))
+        self.widgets["edit"] = ttk.Label(editor, style="CardHead.TLabel")
+        self.widgets["edit"].pack(anchor="w", pady=(0, 8))
+        row1 = ttk.Frame(editor, style="Card.TFrame")
+        row1.pack(fill="x")
+        ttk.Label(row1, text="ms", style="Muted.TLabel").pack(side="left", padx=(0, 4))
+        self.edit_offset = ttk.Entry(row1, width=12)
+        self.edit_offset.pack(side="left", padx=(0, 10))
+        ttk.Label(row1, text="BPM", style="Muted.TLabel").pack(side="left", padx=(0, 4))
+        self.edit_bpm = ttk.Entry(row1, width=10)
+        self.edit_bpm.pack(side="left", padx=(0, 10))
+        self.widgets["apply"] = ttk.Button(row1, command=self.edit_apply, style="Ghost.TButton")
+        self.widgets["apply"].pack(side="left", padx=(0, 6))
+        self.widgets["add"] = ttk.Button(row1, command=self.edit_add, style="Ghost.TButton")
+        self.widgets["add"].pack(side="left", padx=(0, 6))
+        self.widgets["delete"] = ttk.Button(row1, command=self.edit_delete, style="Ghost.TButton")
+        self.widgets["delete"].pack(side="left", padx=(0, 6))
+        row2 = ttk.Frame(editor, style="Card.TFrame")
+        row2.pack(fill="x", pady=(8, 0))
+        for label, ms in (("−5", -5.0), ("−1", -1.0), ("+1", 1.0), ("+5", 5.0)):
+            ttk.Button(row2, text=label, command=lambda v=ms: self.edit_nudge(v),
+                       style="Ghost.TButton", width=4).pack(side="left", padx=(0, 6))
+        self.widgets["sec_double"] = ttk.Button(row2, command=lambda: self.edit_rescale(2.0),
+                                                style="Ghost.TButton", text="2× §")
+        self.widgets["sec_double"].pack(side="left", padx=(12, 6))
+        self.widgets["sec_halve"] = ttk.Button(row2, command=lambda: self.edit_rescale(0.5),
+                                               style="Ghost.TButton", text="÷2 §")
+        self.widgets["sec_halve"].pack(side="left")
+        self.suggest_var = self.tk.StringVar()
+        ttk.Label(editor, textvariable=self.suggest_var, style="Muted.TLabel",
+                  wraplength=640).pack(anchor="w", pady=(6, 0))
+
         self.preview = tk.Canvas(center, height=132, bg="#131926", highlightthickness=1,
                                  highlightbackground=self.C["border"])
         self.preview.pack(fill="x", pady=(10, 0))
@@ -1208,6 +1480,7 @@ class TimingAnalyzerApp:
         self.menu_export.add_command(label=self.tr("csv"), command=self.save_csv)
         self.menu_export.add_command(label=self.tr("copy"), command=self.copy_osu)
         self.menu_export.add_command(label=self.tr("click"), command=self.save_click)
+        self.menu_export.add_command(label=self.tr("inject"), command=self.inject_osu)
         self.menu_help.delete(0, "end")
         self.menu_help.add_command(label=self.tr("about"), command=self._about)
         self.root.bind("<Control-o>", lambda _e: self.choose())
@@ -1220,7 +1493,8 @@ class TimingAnalyzerApp:
         for key in ("subtitle", "source", "detection", "delta", "persistence", "quality",
                     "pulse", "preference", "refine", "preset_variable", "preset_steady",
                     "analyze", "tap", "tap_hint", "results",
-                    "csv", "copy", "click", "details", "hint", "overview", "browse"):
+                    "csv", "copy", "click", "inject", "details", "edit", "apply", "add",
+                    "delete", "hint", "overview", "browse"):
             widget = self.widgets.get(key)
             if widget is not None:
                 try:
@@ -1423,6 +1697,10 @@ class TimingAnalyzerApp:
         mode = self.tr("normal") if analysis.subdivision == 1 else self.tr("confirmed", factor=analysis.subdivision)
         self.status.set(self.tr("done", points=len(analysis.points), beats=len(analysis.beats),
                                 mode=mode, bpm=f"{analysis.global_bpm:.1f}"))
+        if analysis.points:
+            first = analysis.points[0]
+            self._set_editor(f"{first.offset_ms:.1f}", f"{first.bpm:.2f}")
+        self._refresh_suggestion()
         self._draw_preview()
 
     def _on_row(self) -> None:
@@ -1434,7 +1712,145 @@ class TimingAnalyzerApp:
                 self.selected_section = self.table.index(selection[0])
             except Exception:
                 self.selected_section = None
+        if (self.selected_section is not None and self.analysis
+                and 0 <= self.selected_section < len(self.analysis.points)):
+            point = self.analysis.points[self.selected_section]
+            self._set_editor(f"{point.offset_ms:.1f}", f"{point.bpm:.2f}")
+        self._refresh_suggestion()
         self._draw_preview()
+
+    # -- manual editor ---------------------------------------------------
+    def _set_editor(self, offset: str, bpm: str) -> None:
+        self.edit_offset.delete(0, "end")
+        self.edit_offset.insert(0, offset)
+        self.edit_bpm.delete(0, "end")
+        self.edit_bpm.insert(0, bpm)
+
+    def _editor_values(self) -> tuple[float, float]:
+        try:
+            return float(self.edit_offset.get()), float(self.edit_bpm.get())
+        except ValueError as exc:
+            raise ValueError(self.tr("bad_numbers")) from exc
+
+    def _after_edit(self, message: str) -> None:
+        assert self.analysis is not None
+        self.selected_section = None
+        self._render_results()
+        self.status.set(message)
+
+    def edit_apply(self) -> None:
+        if not self.analysis or self.selected_section is None:
+            self.status.set(self.tr("no_selection"))
+            return
+        try:
+            offset, bpm = self._editor_values()
+            self.analysis.points = update_timing_point(
+                self.analysis.points, self.analysis.beats, self.selected_section, offset, bpm)
+        except ValueError as exc:
+            self.status.set(self.tr("error", value=str(exc)))
+            return
+        point = min(self.analysis.points, key=lambda p: abs(p.offset_ms - offset))
+        self._after_edit(self.tr("edited", n=self.analysis.points.index(point) + 1,
+                                 bpm=f"{point.bpm:.2f}", ms=f"{point.offset_ms:.1f}"))
+
+    def edit_add(self) -> None:
+        if not self.analysis:
+            self.status.set(self.tr("first"))
+            return
+        try:
+            offset, bpm = self._editor_values()
+            self.analysis.points = add_timing_point(
+                self.analysis.points, self.analysis.beats, offset, bpm)
+        except ValueError as exc:
+            self.status.set(self.tr("error", value=str(exc)))
+            return
+        self._after_edit(self.tr("added_point", bpm=f"{bpm:.2f}", ms=f"{offset:.1f}"))
+
+    def edit_delete(self) -> None:
+        if not self.analysis or self.selected_section is None:
+            self.status.set(self.tr("no_selection"))
+            return
+        try:
+            n = self.selected_section + 1
+            self.analysis.points = delete_timing_point(self.analysis.points, self.selected_section)
+        except ValueError as exc:
+            self.status.set(self.tr("error", value=str(exc)))
+            return
+        self._after_edit(self.tr("deleted_point", n=n))
+
+    def edit_nudge(self, delta_ms: float) -> None:
+        if not self.analysis or self.selected_section is None:
+            self.status.set(self.tr("no_selection"))
+            return
+        try:
+            before = self.analysis.points[self.selected_section].offset_ms
+            self.analysis.points = nudge_timing_point(
+                self.analysis.points, self.analysis.beats, self.selected_section, delta_ms)
+        except ValueError as exc:
+            self.status.set(self.tr("error", value=str(exc)))
+            return
+        point = min(self.analysis.points, key=lambda p: abs(p.offset_ms - (before + delta_ms)))
+        self._after_edit(self.tr("edited", n=self.analysis.points.index(point) + 1,
+                                 bpm=f"{point.bpm:.2f}", ms=f"{point.offset_ms:.1f}"))
+
+    def edit_rescale(self, factor: float) -> None:
+        if not self.analysis or self.selected_section is None:
+            self.status.set(self.tr("no_selection"))
+            return
+        try:
+            self.analysis.points = rescale_section(
+                self.analysis.points, self.selected_section, factor)
+        except ValueError as exc:
+            self.status.set(self.tr("error", value=str(exc)))
+            return
+        point = self.analysis.points[self.selected_section]
+        self._set_editor(f"{point.offset_ms:.1f}", f"{point.bpm:.2f}")
+        self._after_edit(self.tr("section_rescaled", n=self.selected_section + 1,
+                                 bpm=f"{point.bpm:.2f}"))
+
+    def _refresh_suggestion(self) -> None:
+        try:
+            suggestions = {idx: (factor, ratio) for idx, factor, ratio
+                           in suggest_section_pulse(self.analysis)} if self.analysis else {}
+        except Exception:
+            suggestions = {}
+        self.suggestions = suggestions
+        if self.selected_section in suggestions:
+            factor, ratio = suggestions[self.selected_section]
+            point = self.analysis.points[self.selected_section] if self.analysis else None
+            bpm = f"{point.bpm:.1f}" if point else "?"
+            self.suggest_var.set(self.tr("suggest", n=self.selected_section + 1, bpm=bpm))
+        else:
+            self.suggest_var.set("")
+
+    def inject_osu(self) -> None:
+        if not self.analysis:
+            self.status.set(self.tr("first"))
+            return
+        from tkinter import filedialog, messagebox
+        target = filedialog.askopenfilename(filetypes=[("osu! beatmap", "*.osu")])
+        if not target:
+            return
+        try:
+            summary = inject_osu_timing_points(target, self.analysis, dry_run=True)
+        except (ValueError, OSError) as exc:
+            self.status.set(self.tr("error", value=str(exc)))
+            return
+        warn = ""
+        if summary["audio_mismatch"]:
+            warn = self.tr("inject_warn", osu=summary["osu_audio"], src=summary["analysed_audio"])
+        if not messagebox.askyesno(self.tr("inject"),
+                                   self.tr("inject_confirm", reds=summary["reds_replaced"],
+                                           greens=summary["greens_kept"],
+                                           file=Path(target).name, warn=warn)):
+            return
+        try:
+            done = inject_osu_timing_points(target, self.analysis, backup=True)
+        except (ValueError, OSError) as exc:
+            self.status.set(self.tr("error", value=str(exc)))
+            return
+        self.status.set(self.tr("injected", added=done["reds_added"],
+                                replaced=done["reds_replaced"], greens=done["greens_kept"]))
 
     def save_csv(self) -> None:
         if not self.analysis:
@@ -1587,6 +2003,8 @@ def main() -> None:
     parser.add_argument("--subdivision", choices=("auto", "1", "2", "4"), default="auto",
                         help="Force pulse octave: 2 fixes half-time locks (e.g. 112 read instead of 225). Default: auto.")
     parser.add_argument("--no-refine", action="store_true", help="Skip transient re-anchoring (diagnose snapping drift)")
+    parser.add_argument("--inject", metavar="MAP.OSU", help="Inject red lines into an .osu [TimingPoints] (backup .bak, greens kept)")
+    parser.add_argument("--no-backup", action="store_true", help="Skip the .bak backup when injecting")
     parser.add_argument("--no-map-preference", action="store_true", help="Do not prefer 120-300 mapping BPM when resolving half-time")
     args = parser.parse_args()
     if not args.audio:
@@ -1604,6 +2022,15 @@ def main() -> None:
         export_csv(analysis, args.csv)
     if args.click:
         export_click_track(analysis, args.click)
+    if args.inject:
+        try:
+            summary = inject_osu_timing_points(args.inject, analysis, backup=not args.no_backup)
+        except (ValueError, OSError) as exc:
+            print(f"Error injecting into {args.inject}: {exc}")
+            raise SystemExit(1)
+        print(f"Injected {summary['reds_added']} red lines "
+              f"({summary['reds_replaced']} replaced, {summary['greens_kept']} greens kept)"
+              + (" [audio mismatch!]" if summary["audio_mismatch"] else ""))
 
 
 if __name__ == "__main__":

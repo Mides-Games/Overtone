@@ -68,6 +68,9 @@ If auto still locks half on your track (sparse drums, no off-beat content to anc
 
 - Stat cards: global BPM, sections (+ meter), beats, stability.
 - Sortable results table (`# / offset / BPM / beat length / confidence`); click a row to highlight its section on the trace.
+- **④ Edit timing points**: select a row to load offset/BPM, then Apply, Add, Delete (§1 is protected), nudge ±1/±5 ms, or **2× § / ÷2 §** per-section octave fix. Hand-added points carry 100 % confidence (you vouch for them).
+- **Inject .osu…**: writes the red lines straight into a beatmap's `[TimingPoints]` — greens and everything else preserved byte-for-byte (CRLF-safe), `.bak` backup first, audio-filename mismatch warning, confirmation dialog. CLI: `--inject map.osu`.
+- **Per-section pulse hints**: sections reading below 120 BPM with strong off-beat support are flagged in Details… (`§N: try ×2`) and under the editor — doubling stays one manual click, never automatic (a 112 half-time *feel* is often correct).
 - Tempo-trace canvas: onset bed + tempo curve + section shading + red-line markers.
 - One-click **Export CSV**, **Copy .osu** (`[TimingPoints]`-ready), **Click track…** (verification metronome), **Details…** (text report).
 - **Tap tempo** card for a manual cross-check.

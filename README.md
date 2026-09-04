@@ -20,10 +20,17 @@ Measured on a 24-track synthetic benchmark with exact ground truth (odd tempos l
 
 | | v2 | v3 |
 |---|---|---|
-| median BPM error | 0.18 BPM | **0.0000 BPM** |
-| median offset error | 8.2 ms | **0.14 ms** |
+| median BPM error | 0.1965 BPM | **0.0000 BPM** |
+| median offset error | 8.37 ms | **0.16 ms** |
 | sections within 0.05 BPM **and** 5 ms | 0 / 24 | **24 / 24** |
-| time for a 60 s track | ~6 s | **~0.8 s** |
+| time for a 60 s track | ~5 s | **~0.7 s** |
+
+Reproduce both columns yourself — the v2 engine is still in the box:
+
+```powershell
+python bench/benchmark.py                    # v3, the right-hand column
+python bench/benchmark.py --engine legacy    # v2, the left-hand column
+```
 
 Where it still cannot be exact — and no tool can — is stated under [Honest limits](#honest-limits).
 The full engineering log, including the approaches that were tried and dropped, is in [timeline.md](timeline.md).
@@ -105,7 +112,13 @@ BPM and offset are now essentially exact. What no detector can settle for you is
 python -m unittest test_timing_analyzer -v
 ```
 
-55 tests covering: least-squares grid fitting (including a regression test for the coherence phase sign, which once put the seed grid in anti-phase), sample-resolution attack re-timing, robust phase re-centering against ghost notes, boundary placement at the grid crossing, exact and reversible octave forcing, two-section detection to 0.02 BPM and 4 ms, the legacy engine and its fallback, .osu injection (CRLF-safe, idempotent, legacy two-field lines, backup preservation), whole-millisecond offset export, corrupt-config tolerance, and the v2 segmentation/gap-filling helpers that remain in the fallback path.
+```powershell
+python bench/benchmark.py
+```
+
+The benchmark renders its own audio into `bench/audio/` (git-ignored, ~250 MB) and reuses it; `--regen` re-renders, `--only NAME` runs one case, `--list` prints them all. Exit code is non-zero if any section misses tolerance, so it can gate CI. It scores **precision**, not the octave — see the module docstring for why that distinction is deliberate.
+
+55 unit tests covering: least-squares grid fitting (including a regression test for the coherence phase sign, which once put the seed grid in anti-phase), sample-resolution attack re-timing, robust phase re-centering against ghost notes, boundary placement at the grid crossing, exact and reversible octave forcing, two-section detection to 0.02 BPM and 4 ms, the legacy engine and its fallback, .osu injection (CRLF-safe, idempotent, legacy two-field lines, backup preservation), whole-millisecond offset export, corrupt-config tolerance, and the v2 segmentation/gap-filling helpers that remain in the fallback path.
 
 ## Resumen en español
 

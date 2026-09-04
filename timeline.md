@@ -68,6 +68,11 @@ is seeded correctly and applied to the right span of audio.
   `force_subdivision` is now a float (`0.25 … 4`, so ÷2 finally exists in the GUI
   and CLI); `osu_timing_text(analysis, decimals=0)`; new `GridSection` dataclass and
   `Analysis.sections / attack_times / attack_weights / engine / fit_residual_ms`.
+- **The benchmark harness is in the repo** (`bench/benchmark.py`): 24 synthesized
+  tracks with exact ground truth plus four no-answer inputs, scoring every section
+  rather than only the first, seeded per track so a subset run reproduces a full
+  one byte-for-byte. `--engine legacy` reproduces the v2 column of the table below
+  from the same code, which is the only way the comparison means anything.
 - Docs: README rewritten around the measured numbers and an explicit
   "Honest limits" section. Tests 35 → 55.
 
@@ -139,12 +144,15 @@ is seeded correctly and applied to the right span of audio.
 breakdown bars, a 6-minute track, and 2–4 tempo changes per song), scoring **every**
 section rather than only the first:
 
-| | v2.2 | v3.0 |
+| | v2 engine | v3 engine |
 |---|---|---|
-| median BPM error | 0.18 BPM | **0.0000 BPM** |
-| median offset error | 8.2 ms | **0.14 ms** |
+| median BPM error | 0.1965 BPM | **0.0000 BPM** |
+| median offset error | 8.37 ms | **0.16 ms** |
 | sections within 0.05 BPM **and** 5 ms | 0 / 24 | **24 / 24** |
-| wall time, 60 s track | ~6 s | **~0.8 s** |
+| wall time, 60 s track | ~5 s | **~0.7 s** |
+
+Both columns come from the same harness, now committed as `bench/benchmark.py`:
+`python bench/benchmark.py` and `python bench/benchmark.py --engine legacy`.
 
 The speedup is incidental: the old tempogram ran at hop 128 and cost ~10 s of the
 ~11 s total. It only ever fed an octave *hint*, which needs no such resolution, so
@@ -173,9 +181,6 @@ legacy tracker, pure silence raises a clear `ValueError`, white noise does not h
 
 ### Open items
 
-- The benchmark harness that produced the numbers above lives outside the repo, so
-  the README's table is not currently reproducible by a reader. Folding a trimmed
-  version into the test suite (or a `bench/` directory) is the obvious next step.
 - **The octave remains a judgement call, and always will be.** A 92 BPM song with
   eighth-note hats is a valid 184 BPM map; 225 BPM streams read as 112.5 to any
   estimator carrying a perceptual prior. `Prefer map BPM (120–300)` breaks the tie
@@ -187,6 +192,11 @@ legacy tracker, pure silence raises a clear `ValueError`, white noise does not h
 - Swing and shuffle produce exact BPM and offset but a large grid residual, because
   the off-beats genuinely do not sit on a subdivision. That number is honest, but the
   confidence score currently reads it as instability.
+- **The benchmark is entirely synthetic.** That is what makes sub-millisecond ground
+  truth possible, but synthesized drums are cleaner than recorded ones and the
+  numbers above should be read as an upper bound, not a promise about real masters.
+  A small set of real tracks hand-timed in the osu! editor would be the honest
+  complement — expensive to build, and worth it.
 
 ---
 

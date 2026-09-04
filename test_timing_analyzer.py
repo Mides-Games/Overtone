@@ -1,7 +1,9 @@
-"""Tests for osu! Timing Analyzer v2.
+"""Tests for osu! Timing Analyzer v3.
 
-Fast unit tests run without audio; end-to-end tests synthesize click tracks
-so no fixture files are needed.
+Fast unit tests run without audio; end-to-end tests synthesize click and drum
+tracks with known ground truth, so no fixture files are needed. The v2
+segmentation and gap-filling helpers are still covered — they remain in the
+fallback path used for rubato and non-percussive audio.
 """
 import tempfile
 import unittest
@@ -11,13 +13,21 @@ import numpy as np
 
 from timing_analyzer import (
     DEFAULT_LANGUAGE,
+    GridSection,
     TimingAnalyzerApp,
     TimingPoint,
     _choose_subdivision,
     _fill_missed_beats,
+    _atomic_grid_candidates,
+    _expand_fit,
     _global_tempo_guides,
+    _is_red_line,
+    _recentre_phase,
+    _refine_grid,
+    _retime_onsets,
     _robust_local_bpms,
     _segment_tempi,
+    _tune_boundary,
     add_timing_point,
     analysis_summary,
     analyze_audio,
@@ -399,6 +409,302 @@ class OsuInjectTests(unittest.TestCase):
                                                backup=False)
             self.assertEqual(summary["reds_replaced"], 0)
             self.assertTrue(summary["audio_mismatch"])
+
+
+# ---------------------------------------------------------------------------
+# v3 precision engine
+# ---------------------------------------------------------------------------
+
+def _drum_track(path: Path, sections, duration: float = 24.0, sr: int = 44100,
+                hats: bool = True, seed: int = 7) -> list[tuple[float, float]]:
+    """Kick/snare/hat pattern with a known grid. Returns [(start_s, bpm)]."""
+    import soundfile as sf
+    rng = np.random.default_rng(seed)
+
+    def kick():
+        n = int(0.18 * sr)
+        t = np.arange(n) / sr
+        sweep = 2 * np.pi * np.cumsum(120 * np.exp(-t / 0.03) + 45) / sr
+        return (np.sin(sweep) * np.exp(-t / 0.055)
+                + rng.standard_normal(n) * np.exp(-t / 0.0025) * 0.35).astype(np.float32)
+
+    def snare():
+        n = int(0.16 * sr)
+        t = np.arange(n) / sr
+        return ((rng.standard_normal(n) * np.exp(-t / 0.045)) * 0.7
+                + np.sin(2 * np.pi * 190 * t) * np.exp(-t / 0.03) * 0.5).astype(np.float32) * 0.7
+
+    def hat():
+        n = int(0.05 * sr)
+        t = np.arange(n) / sr
+        return (rng.standard_normal(n) * np.exp(-t / 0.008)).astype(np.float32) * 0.28
+
+    KICK, SNARE, HAT = kick(), snare(), hat()
+    buffer = np.zeros(int(duration * sr) + sr, dtype=np.float32)
+
+    def place(sample, at, gain=1.0):
+        i = int(round(at))
+        end = min(len(buffer), i + len(sample))
+        if 0 <= i < end:
+            buffer[i:end] += sample[:end - i] * gain
+
+    truth, t, beat, si = [], sections[0][0], 0, 0
+    truth.append((t, sections[0][1]))
+    while t < duration:
+        while si + 1 < len(sections) and t >= sections[si + 1][0] - 1e-9:
+            si += 1
+            truth.append((t, sections[si][1]))
+            beat = 0
+        step = 60.0 / sections[si][1]
+        place(KICK if beat % 4 in (0, 2) else SNARE, t * sr, 1.0 if beat % 4 == 0 else 0.85)
+        if hats:
+            place(HAT, t * sr, 0.7)
+            place(HAT, (t + step / 2) * sr, 0.5)
+        t += step
+        beat += 1
+    peak = float(np.max(np.abs(buffer)))
+    sf.write(str(path), (buffer[:int(duration * sr)] / max(peak, 1e-9) * 0.9), sr)
+    return truth
+
+
+def _offset_error_ms(offset_ms: float, true_start_s: float, bpm: float) -> float:
+    """Distance from a detected offset to the nearest true beat, in ms."""
+    step = 60.0 / bpm
+    d = (offset_ms / 1000.0 - true_start_s) / step
+    return abs(d - round(d)) * step * 1000.0
+
+
+class PrecisionEngineTests(unittest.TestCase):
+    def test_odd_tempo_is_exact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "odd.wav"
+            truth = _drum_track(path, [(0.6173, 174.37)], duration=26.0)
+            analysis = analyze_audio(path)
+        self.assertEqual(analysis.engine, "precision")
+        self.assertEqual(len(analysis.points), 1)
+        self.assertAlmostEqual(analysis.points[0].bpm, 174.37, delta=0.02)
+        self.assertLess(_offset_error_ms(analysis.points[0].offset_ms, truth[0][0], 174.37), 3.0)
+
+    def test_two_sections_are_both_exact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "two.wav"
+            truth = _drum_track(path, [(0.41, 150.0), (16.0, 162.0)], duration=34.0)
+            analysis = analyze_audio(path)
+        points = snap_timing_points(analysis.points)
+        self.assertEqual(len(points), 2)
+        self.assertAlmostEqual(points[0].bpm, 150.0, delta=0.02)
+        self.assertAlmostEqual(points[1].bpm, 162.0, delta=0.02)
+        for point, (start, bpm) in zip(points, truth):
+            self.assertLess(_offset_error_ms(point.offset_ms, start, bpm), 4.0)
+        # The second red line must land on the beat where the tempo changed.
+        self.assertLess(abs(points[1].offset_ms / 1000.0 - truth[1][0]), 0.5)
+
+    def test_forced_octave_is_exact_and_reversible(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "oct.wav"
+            _drum_track(path, [(0.5, 160.0)], duration=24.0)
+            base = analyze_audio(path)
+            halved = analyze_audio(path, force_subdivision=0.5)
+        self.assertAlmostEqual(halved.points[0].bpm, base.points[0].bpm / 2, delta=0.01)
+        back = rebuild_with_subdivision(halved, 1.0)
+        self.assertAlmostEqual(back.points[0].bpm, base.points[0].bpm, delta=0.01)
+        with self.assertRaises(ValueError):
+            analyze_audio(path, force_subdivision=3)
+
+    def test_legacy_engine_still_available(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "legacy.wav"
+            _drum_track(path, [(0.5, 150.0)], duration=24.0)
+            analysis = analyze_audio(path, engine="legacy")
+        self.assertEqual(analysis.engine, "legacy")
+        self.assertAlmostEqual(analysis.global_bpm, 150.0, delta=150.0 * 0.03)
+        with self.assertRaises(ValueError):
+            analyze_audio(path, engine="nonsense")
+
+    def test_precision_engine_refuses_ungriddable_audio(self):
+        import soundfile as sf
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pad.wav"
+            sr = 44100
+            t = np.arange(sr * 8) / sr
+            drone = (np.sin(2 * np.pi * 220 * t) * 0.4).astype(np.float32)
+            sf.write(str(path), drone, sr)
+            with self.assertRaises(ValueError):
+                analyze_audio(path, engine="precision")
+
+
+class GridMathTests(unittest.TestCase):
+    def test_coherence_phase_has_the_right_sign(self):
+        # Regression: the phase used to come back negated, putting the seed
+        # grid in anti-phase and forcing least squares to start half a beat off.
+        period, phase = 0.25, 0.1234
+        times = phase + np.arange(120) * period
+        weights = np.ones_like(times)
+        candidates = _atomic_grid_candidates(times, weights)
+        self.assertTrue(candidates)
+        best = min(candidates, key=lambda c: abs(c[0] - period))
+        self.assertAlmostEqual(best[0], period, places=3)
+        self.assertAlmostEqual(best[1] % period, phase % period, places=2)
+
+    def test_least_squares_beats_interval_differencing(self):
+        rng = np.random.default_rng(3)
+        period, phase = 60.0 / 174.31, 0.4137
+        k = np.arange(400)
+        times = phase + k * period + rng.normal(0, 0.004, k.size)   # 4 ms jitter
+        weights = np.ones_like(times)
+        # Seeded 1 % off, as a coherence scan on a short window would be: the
+        # expanding fit has to walk that in without slipping a beat index.
+        fitted, fitted_phase = _expand_fit(times, weights, period * 1.01, phase + 0.01,
+                                           float(times[0]), float(times[-1]))
+        self.assertAlmostEqual(60.0 / fitted, 174.31, delta=0.01)
+        # The beat-index origin may shift; only the phase modulo one beat means
+        # anything, and it must land within a couple of milliseconds.
+        drift = ((fitted_phase - phase + period / 2) % period) - period / 2
+        self.assertLess(abs(drift), 0.002)
+        # For contrast, the v2 approach — differencing consecutive beats — is
+        # two orders of magnitude noisier on the very same data.
+        naive = float(np.median(60.0 / np.diff(times)))
+        self.assertGreater(abs(naive - 174.31), abs(60.0 / fitted - 174.31))
+
+    def test_recentre_phase_picks_the_dense_cluster(self):
+        period = 0.5
+        beats = np.arange(60) * period
+        ghosts = beats[:-1] + 0.04                    # weak, consistently late
+        times = np.sort(np.concatenate([beats, ghosts]))
+        weights = np.where(np.isin(times, beats), 1.0, 0.45)
+        biased = 0.018                                 # what plain LS would settle on
+        fixed = _recentre_phase(times, weights, period, biased)
+        self.assertLess(abs(((fixed + period / 2) % period) - period / 2), 0.004)
+
+    def test_boundary_lands_where_the_grids_cross(self):
+        change = 20.0
+        left = GridSection(0.0, change, 0.5, 0.0, 40, 0.5, 1.0)
+        right = GridSection(change, 40.0, 0.46, change, 40, 0.5, 1.0)
+        times = np.concatenate([np.arange(0, change, 0.5),
+                                change + np.arange(0, 20.0, 0.46)])
+        weights = np.ones_like(times)
+        split = _tune_boundary(times, weights, left, right)
+        self.assertAlmostEqual(split, change, delta=0.5)
+
+    def test_attack_retiming_removes_detector_latency(self):
+        sr = 44100
+        y = np.zeros(sr * 3, dtype=np.float32)
+        hits = np.array([0.5, 1.0, 1.5, 2.0])
+        n = int(0.12 * sr)
+        decay = np.exp(-np.arange(n) / (0.02 * sr)).astype(np.float32)
+        tone = (np.sin(2 * np.pi * 90 * np.arange(n) / sr) * decay).astype(np.float32)
+        for hit in hits:
+            i = int(hit * sr)
+            y[i:i + n] += tone
+        late = hits + 0.008                            # a flux peak lags the attack
+        fixed = _retime_onsets(y, sr, late)
+        self.assertTrue(np.all(np.abs(fixed - hits) < 0.003),
+                        f"retimed {np.round((fixed - hits) * 1000, 2)} ms off")
+
+
+class ExportHardeningTests(unittest.TestCase):
+    def _analysis(self, points, meter="4/4"):
+        from types import SimpleNamespace
+        return SimpleNamespace(source="song.mp3", points=points, meter=meter)
+
+    def test_offsets_are_whole_milliseconds_by_default(self):
+        text = osu_timing_text(self._analysis([TimingPoint(353.4137, 225.0, 1.0, 0)]))
+        self.assertIn("\n353,", text)
+        self.assertNotIn("353.4", text)
+        detailed = osu_timing_text(self._analysis([TimingPoint(353.4137, 225.0, 1.0, 0)]), decimals=3)
+        self.assertIn("353.414,", detailed)
+
+    def test_meter_is_written_from_the_detection(self):
+        text = osu_timing_text(self._analysis([TimingPoint(0.0, 120.0, 1.0, 0)], meter="3/4"))
+        self.assertTrue(text.splitlines()[1].split(",")[2] == "3")
+
+    def test_impossible_points_are_skipped_not_crashed(self):
+        text = osu_timing_text(self._analysis([TimingPoint(0.0, 0.0, 1.0, 0),
+                                               TimingPoint(10.0, 120.0, 1.0, 1)]))
+        self.assertEqual(len(text.splitlines()), 2)      # comment + one usable row
+
+    def test_snap_keeps_an_exact_offset_it_cannot_improve(self):
+        # A change that genuinely does not sit on the old grid must not be
+        # dragged onto it — the v3 fit already knows where it is.
+        points = [TimingPoint(0.0, 120.0, 1.0, 0), TimingPoint(5250.0, 140.0, 1.0, 10)]
+        self.assertEqual(snap_timing_points(points)[1].offset_ms, 5250.0)
+
+    def test_click_track_survives_a_hand_edited_zero_bpm(self):
+        from types import SimpleNamespace
+        analysis = SimpleNamespace(duration=4.0, points=[TimingPoint(0.0, 120.0, 1.0, 0),
+                                                         TimingPoint(2000.0, 0.0, 1.0, 4)])
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "c.wav"
+            export_click_track(analysis, out)
+            self.assertTrue(out.is_file())
+
+
+class ConfigAndInjectHardeningTests(unittest.TestCase):
+    LEGACY_OSU = ("osu file format v4\n[General]\nAudioFilename: song.mp3\n"
+                  "[TimingPoints]\n500,344.827\n1200,-50\n[HitObjects]\n")
+
+    def _analysis(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(source="song.mp3", meter="4/4",
+                               points=[TimingPoint(431.0, 174.0, 0.95, 1)])
+
+    def test_legacy_two_field_red_lines_are_replaced(self):
+        self.assertTrue(_is_red_line("500,344.827"))
+        self.assertFalse(_is_red_line("1200,-50"))
+        self.assertFalse(_is_red_line("1200,-50,4,2,0,60,1,0"))   # negative wins
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "old.osu"
+            target.write_text(self.LEGACY_OSU, encoding="utf-8")
+            summary = inject_osu_timing_points(target, self._analysis(), backup=False)
+            out = target.read_text(encoding="utf-8")
+        self.assertEqual(summary["reds_replaced"], 1)
+        self.assertEqual(summary["greens_kept"], 1)
+        self.assertNotIn("500,344.827", out)
+        self.assertIn("1200,-50", out)
+
+    def test_backup_keeps_the_pristine_original(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(self.LEGACY_OSU, encoding="utf-8")
+            inject_osu_timing_points(target, self._analysis())
+            inject_osu_timing_points(target, self._analysis())
+            spare = Path(str(target) + ".bak").read_text(encoding="utf-8")
+        self.assertEqual(spare, self.LEGACY_OSU)
+
+    def test_inject_refuses_an_empty_analysis(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(self.LEGACY_OSU, encoding="utf-8")
+            with self.assertRaises(ValueError):
+                inject_osu_timing_points(
+                    target, SimpleNamespace(source="s", points=[], meter="4/4"))
+            with self.assertRaises(ValueError):
+                inject_osu_timing_points(Path(tmp) / "missing.osu", self._analysis())
+            self.assertEqual(target.read_text(encoding="utf-8"), self.LEGACY_OSU)
+
+    def test_config_tolerates_garbage(self):
+        import timing_analyzer
+        with tempfile.TemporaryDirectory() as tmp:
+            original = timing_analyzer.CONFIG_PATH
+            timing_analyzer.CONFIG_PATH = Path(tmp) / "cfg.json"
+            try:
+                timing_analyzer.CONFIG_PATH.write_text("[1, 2, 3]", encoding="utf-8")
+                self.assertEqual(timing_analyzer.load_config(), {})
+                timing_analyzer.CONFIG_PATH.write_text("{not json", encoding="utf-8")
+                self.assertEqual(timing_analyzer.load_config(), {})
+                timing_analyzer.save_config({"language": "English"})
+                self.assertEqual(timing_analyzer.load_config(), {"language": "English"})
+                # An unserialisable value must not raise, and must not corrupt
+                # the file that is already there.
+                timing_analyzer.save_config({"bad": object()})
+                self.assertEqual(timing_analyzer.load_config(), {"language": "English"})
+            finally:
+                timing_analyzer.CONFIG_PATH = original
+
+    def test_local_bpm_helper_handles_degenerate_input(self):
+        self.assertEqual(len(_robust_local_bpms(np.zeros(0))), 0)
+        self.assertEqual(len(_robust_local_bpms(np.array([1.0]))), 1)
 
 
 if __name__ == "__main__":

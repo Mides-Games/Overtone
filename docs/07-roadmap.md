@@ -106,9 +106,10 @@ Ported since: **section growth** (grow, re-seed, merge, boundaries at the grid c
 per-section refit) in `overtone-tempo::sections`, then meter (global, per-section and the
 v3.2/v3.3 measure grid), confidence and timing points in `overtone-tempo::points`, with an
 end-to-end `analyze_attacks` driver that carries structured diagnostics. The golden gate
-diffs atom, beat and settled sections plus meter and all 34 red lines on the 24 fixtures.
-Still to port: the full `Analysis` assembly (global BPM, stability, beat arrays) and the
-remaining v3 unit tests by name.
+diffs atom, beat and settled sections plus meter, all 34 red lines and the global BPM
+on the 24 fixtures. The `Analysis` assembly (beats, local curve, global BPM, stability,
+residual) is ported in `overtone-tempo::analysis` since. Still to port: the remaining
+v3 unit tests by name.
 
 **Exit:** `cargo run -p overtone-bench` prints **24/24 · median 0.0000 BPM · 0.16 ms**, golden
 vectors match within tolerance, and the Python reference still passes. Until then, nothing

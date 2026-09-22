@@ -145,7 +145,7 @@ mod tests {
                 break;
             }
             let dt = i as f64 / sr as f64;
-            let attack = (0.5 - 0.5 * (std::f64::consts::PI * (dt / 0.01).min(1.0)).cos());
+            let attack = 0.5 - 0.5 * (std::f64::consts::PI * (dt / 0.01).min(1.0)).cos();
             y[start + i] +=
                 ((2.0 * std::f64::consts::PI * freq * dt).sin() * attack * (-dt / 0.2).exp()) as f32;
         }

@@ -57,7 +57,7 @@ pub fn build_with(times: &[f64], weights: &[f32], width: f64, hop: f64) -> Coher
     let (t0, t1) = (times[0], times[times.len() - 1]);
     let mut edge = t0;
     while edge + width <= t1 + 1e-9 {
-        let (w_times, w_weights) = windowed(times, weights, edge, edge + width);
+        let (w_times, w_weights) = crate::fit::window(times, weights, edge, edge + width);
         if w_times.len() >= 8 {
             let column: Vec<f32> = coherence::sweep(&w_times, &w_weights, &map.freqs)
                 .into_iter()
@@ -176,23 +176,6 @@ pub fn mean_ridge_coherence(ridge: &[RidgePoint]) -> f64 {
         return 0.0;
     }
     ridge.iter().map(|p| p.coherence).sum::<f64>() / ridge.len() as f64
-}
-
-fn windowed(
-    times: &[f64],
-    weights: &[f32],
-    lo: f64,
-    hi: f64,
-) -> (Vec<f64>, Vec<f32>) {
-    let mut out_times = Vec::new();
-    let mut out_weights = Vec::new();
-    for (&t, &w) in times.iter().zip(weights.iter()) {
-        if t >= lo && t <= hi {
-            out_times.push(t);
-            out_weights.push(w);
-        }
-    }
-    (out_times, out_weights)
 }
 
 #[cfg(test)]

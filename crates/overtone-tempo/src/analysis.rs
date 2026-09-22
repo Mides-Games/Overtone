@@ -18,6 +18,10 @@ use overtone_core::GridSection;
 /// Beat times implied by the fitted sections — v3 `_synth_beats`.
 pub fn synth_beats(sections: &[GridSection], factor: f64) -> Vec<f64> {
     let mut beats = Vec::new();
+    if !(factor > 0.0) {
+        // v3 divides and crashes; an empty grid is the honest answer.
+        return beats;
+    }
     for section in sections {
         let period = section.period / factor;
         if !(period > 0.0) {
@@ -78,7 +82,7 @@ pub fn local_bpm_curve(
         let mut sampled: Vec<usize> = Vec::new();
         for &j in idx.iter().step_by(4) {
             let t = beats[j];
-            let (w_times, w_weights) = window(times, weights, t - half, t + half);
+            let (w_times, w_weights) = crate::fit::window(times, weights, t - half, t + half);
             if w_times.len() >= 8 {
                 if let Some((grid, _)) = crate::fit::ls_pass(
                     &w_times,
@@ -156,18 +160,6 @@ pub fn fit_residual_ms(sections: &[GridSection]) -> f64 {
         .map(|s| s.residual_ms * (s.end.get() - s.start.get()).max(1e-6))
         .sum::<f64>()
         / total.max(1e-9)
-}
-
-fn window(times: &[f64], weights: &[f32], lo: f64, hi: f64) -> (Vec<f64>, Vec<f32>) {
-    let mut out_times = Vec::new();
-    let mut out_weights = Vec::new();
-    for (&t, &w) in times.iter().zip(weights.iter()) {
-        if t >= lo && t <= hi {
-            out_times.push(t);
-            out_weights.push(w);
-        }
-    }
-    (out_times, out_weights)
 }
 
 /// Median with numpy's even-count rule (mean of the middle pair).

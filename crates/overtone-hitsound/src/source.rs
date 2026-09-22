@@ -19,7 +19,10 @@ pub fn percussive_ratio(
     if frames == 0 {
         return 0.0;
     }
-    let (lo, hi) = (frame_lo.min(frames), frame_hi.min(frames).max(frame_lo.min(frames)));
+    let (lo, hi) = (
+        frame_lo.min(frames),
+        frame_hi.min(frames).max(frame_lo.min(frames)),
+    );
     if hi <= lo {
         return 0.0;
     }
@@ -63,7 +66,10 @@ pub fn pitch(mags: &[f64], sr: u32, n_fft: usize) -> Pitch {
     let lo = ((FMIN / bin_hz).floor() as usize).max(1);
     let hi = ((FMAX / bin_hz).ceil() as usize).min(mags.len() / HARMONICS);
     if hi <= lo || mags.is_empty() {
-        return Pitch { f0_hz: 0.0, harmonicity: 0.0 };
+        return Pitch {
+            f0_hz: 0.0,
+            harmonicity: 0.0,
+        };
     }
     let total: f64 = mags.iter().sum();
     let (mut best_i, mut best_v) = (lo, 0.0);
@@ -78,9 +84,7 @@ pub fn pitch(mags: &[f64], sr: u32, n_fft: usize) -> Pitch {
         // Normalise by the local level so one loud partial does not read
         // as harmonicity by itself: divide by the mean magnitude around
         // the fundamental bin.
-        let neighbourhood: f64 = mags[lo..hi.min(mags.len())]
-            .iter()
-            .sum::<f64>()
+        let neighbourhood: f64 = mags[lo..hi.min(mags.len())].iter().sum::<f64>()
             / hi.max(lo + 1).saturating_sub(lo).max(1) as f64;
         let score = hps / neighbourhood.max(1e-12).powi(HARMONICS as i32 - 1);
         if score > best_v {
@@ -138,7 +142,8 @@ mod tests {
             *slot = v as f64;
         }
         let mut output = fft.make_output_vec();
-        fft.process(&mut input, &mut output).expect("fft sizes are fixed");
+        fft.process(&mut input, &mut output)
+            .expect("fft sizes are fixed");
         output.iter().map(|c| c.norm()).collect()
     }
 
@@ -170,7 +175,11 @@ mod tests {
             .collect();
         let mags = spectrum_of(&tone_sig, n_fft);
         let tone = pitch(&mags, sr, n_fft);
-        assert!((tone.f0_hz - 220.0).abs() < 220.0 * 0.05, "f0 {}", tone.f0_hz);
+        assert!(
+            (tone.f0_hz - 220.0).abs() < 220.0 * 0.05,
+            "f0 {}",
+            tone.f0_hz
+        );
         assert!(tone.harmonicity > 0.5, "harmonicity {}", tone.harmonicity);
 
         let mut rng = 3u64;
@@ -213,9 +222,13 @@ mod tests {
         for (i, slot) in kick.iter_mut().enumerate() {
             let t = i as f64 / sr as f64;
             *slot = (0.9 * (2.0 * std::f64::consts::PI * 60.0 * t).sin() * (-t / 0.03).exp()
-                + 0.3 * (2.0 * std::f64::consts::PI * 4000.0 * t).sin() * (-t / 0.003).exp()) as f32;
+                + 0.3 * (2.0 * std::f64::consts::PI * 4000.0 * t).sin() * (-t / 0.003).exp())
+                as f32;
         }
         let kform = formant_likeness(&spectrum_of(&kick, n_fft), sr, n_fft);
-        assert!(vform > 2.0 * kform.max(0.05), "vowel {vform:.3} vs kick {kform:.3}");
+        assert!(
+            vform > 2.0 * kform.max(0.05),
+            "vowel {vform:.3} vs kick {kform:.3}"
+        );
     }
 }

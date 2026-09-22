@@ -112,8 +112,7 @@ pub fn analyze(y: &[f32], sr: u32, attack_s: f64) -> Spectral {
         (mag.len() - 1) as f64 * bin_hz
     };
     let bandwidth = if mag_sum > 0.0 {
-        (mag
-            .iter()
+        (mag.iter()
             .enumerate()
             .map(|(i, &m)| {
                 let d = i as f64 * bin_hz - centroid;
@@ -156,7 +155,16 @@ pub fn analyze(y: &[f32], sr: u32, attack_s: f64) -> Spectral {
         num / mag_sum.max(1e-12)
     };
 
-    Spectral { band_ratios, centroid, rolloff85: rolloff(0.85), rolloff95: rolloff(0.95), bandwidth, flatness, crest, flux }
+    Spectral {
+        band_ratios,
+        centroid,
+        rolloff85: rolloff(0.85),
+        rolloff95: rolloff(0.95),
+        bandwidth,
+        flatness,
+        crest,
+        flux,
+    }
 }
 
 #[cfg(test)]

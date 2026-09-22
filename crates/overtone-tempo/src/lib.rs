@@ -10,6 +10,7 @@
 
 pub mod coherence;
 pub mod density;
+pub mod elastic;
 pub mod fit;
 pub mod octave;
 pub mod points;

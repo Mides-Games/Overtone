@@ -165,7 +165,7 @@ mod tests {
         // blip in a sea of zeros is erased by *both* medians (correctly —
         // it is neither a line nor a transient), and relative error against
         // ~zero measures nothing.
-        let y = mix(44_100, 4.0);
+        let y = mix(44_100, 2.5);
         let spec = stft::power_spectrogram(&y, 2048, 128);
         let peak = spec.iter().flatten().copied().fold(0.0f64, f64::max);
         let sep = separate(&spec);
@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn a_sustained_partial_is_harmonic() {
-        let y = mix(44_100, 4.0);
+        let y = mix(44_100, 2.5);
         let spec = stft::power_spectrogram(&y, 2048, 128);
         let sep = separate(&spec);
         let (h, p) = band_shares(&sep, 44_100, 2048, 440.0);
@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn clicks_are_percussive() {
-        let y = mix(44_100, 4.0);
+        let y = mix(44_100, 2.5);
         let spec = stft::power_spectrogram(&y, 2048, 128);
         let sep = separate(&spec);
         // Click band far from the sine (2–4 kHz): transients must dominate.

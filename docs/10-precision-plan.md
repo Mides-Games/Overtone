@@ -55,39 +55,63 @@ Corpus A stays the same. Corpus B is the new bar.
 
 ---
 
-## Phase 10.1 — Fingerprint & reuse (100 % when it applies)
+## Phase 10.1 — Fingerprint & reuse against the user's own `osu!/Songs`
 
-**The insight.** If the audio has already been timed by anyone in the ranked
-section of osu!, that timing is available and free. Fingerprinting the audio
-locally and matching it against a local mirror of ranked maps gives an exact
-answer for a huge share of user tracks with no detection at all.
+**The insight.** The user already has osu! installed. Every map they have
+downloaded lives in `C:\osu!\Songs\` with its `.osu` (timing included) and
+its audio next to it. That is a local, personal, licenced corpus of timed
+tracks, keyed to exactly the music the user listens to and maps.
 
-### Dependencies (all free)
+Fingerprinting an incoming track against this local library gives an exact
+answer for every song the user already has a map for — with zero network,
+zero external mirror to maintain, and zero terms-of-service to accept.
 
-- **Chromaprint** (LGPL-2.1) — audio fingerprint, small C library
+### Dependencies (all free, offline)
+
+- **Chromaprint** (LGPL-2.1) — audio fingerprint, small C library, ~2 MB
 - **pyacoustid** (MIT) — Python bindings for Chromaprint
-- **osu! API v2** (free with OAuth, no rate limit for search) — for scraping
-  and matching to beatmap IDs
-- Local storage: ~50–200 GB of `.osu` files (metadata only — audio is not
-  redistributed), ingested once and updated weekly
+- Local SQLite index — a few MB per thousand maps
+
+**Deliberately not used:**
+- ~~osu! API v2~~ — was the earlier plan; requires network, breaks the
+  offline-first policy the user asked for
+- ~~Public mirror of ranked maps (50 GB download)~~ — not portable, not
+  installable in one step
 
 ### Steps
 
-1. **Install Chromaprint** as a project dependency, vendorable statically.
-2. **Build the local mirror.**
-   - Scrape ranked/loved maps via osu! API. Each `.osu` is 20–80 KB. Store the
-     timing sections plus the audio filename, artist, title, duration.
-     Total ~200 MB per 10,000 maps.
-   - Compute a Chromaprint fingerprint from the beatmapset's audio (from the
-     user's own osu!/Songs folder for maps they already have; the API does
-     not distribute audio for the rest).
-   - Store `{fingerprint_hash → beatmap_set}` in SQLite locally.
-3. **Match at analysis time.**
-   - Fingerprint the input audio (one-shot, ~2 s).
-   - Query the local index; if a match with confidence > 0.9 is found, use
-     that map's `.osu` timing directly. Verify by aligning the first and last
+1. **Install Chromaprint** as a bundled DLL in the installer. Nothing to
+   configure.
+2. **First-run index build.** On first launch, the app scans
+   `%USERPROFILE%\AppData\Local\osu!\Songs\`,
+   `C:\osu!\Songs\` and any folders the user adds. For each mapset:
+   - Compute a Chromaprint fingerprint of the audio (~2 s per track).
+   - Parse the `.osu` timing sections.
+   - Store `{fingerprint_hash → (path, timing_lines)}` in
+     `%LOCALAPPDATA%\Overtone\fingerprints.sqlite`.
+   - Cache the fingerprint on the audio file's blake3 hash so re-scans are
+     instant.
+   - Progress bar during the scan; the app is usable immediately for
+     non-cached tracks.
+3. **Passive updates.** When the user opens a new track in Overtone, its
+   fingerprint is computed and cached anyway. When they add a new map to
+   `osu!/Songs`, a background watch (or a manual "Rescan" button) updates
+   the index.
+4. **Match at analysis time.**
+   - Fingerprint the input audio (~2 s).
+   - Query the local index; if a match with score > 0.9 is found, use that
+     map's `.osu` timing directly. Verify by aligning the first and last
      onset — a fingerprint match plus onset alignment is proof of identity.
-4. **Fall through** to Phase 10.2+ when no match exists.
+5. **Fall through** to Phase 10.2+ when no match exists.
+
+### What this gains and what it does not
+
+Perfect result on any song the user has already downloaded a ranked or loved
+map for. That is a large fraction of what mappers actually work on — most
+people mapping a song have that map's set in their folder as reference.
+
+Does **nothing** for a song the user has never seen. Phases 10.2 onward
+handle those.
 
 ### Measurable
 
@@ -488,6 +512,66 @@ No accuracy metric — usability.
 ### Cost
 
 ~1500 lines UI, mostly in the workspace canvas.
+
+
+---
+
+## Phase 10.13 — MSI distribution (Windows first, self-contained)
+
+**The insight.** The user asked for a single Windows installer that contains
+every capability of the app. No runtime downloads, no external services, no
+"first-launch setup" that fails offline. Full detail in
+[`11-msi-distribution.md`](11-msi-distribution.md); summary here.
+
+### What ships in the installer
+
+Everything Phase 10 needs, bundled: Python 3.14 embedded, PyTorch CPU,
+BeatThis weights, Demucs v4 drum-stem weights, madmom fallback models,
+Chromaprint DLL, librosa/scipy/numpy, FFmpeg CLI for MP3/M4A fallback,
+app icons, licence texts. Full component table in the distribution doc.
+
+**Estimated installer size: 1.15–1.25 GB.** Size-reduction pass (INT8
+quantisation, Demucs drums-only, drop madmom as bundled dep) drops that
+to ~450 MB — same accuracy, easier to host.
+
+### Toolchain
+
+- **WiX Toolset v5** (MIT) — MSI authoring.
+- **PyInstaller** — bundle Python + wheels into a redistributable tree.
+- **Azure Trusted Signing** ($10/month) — cheapest path past SmartScreen.
+
+### Windows integration
+
+Start Menu entry, optional desktop shortcut, file associations for
+`.mp3` / `.ogg` / `.flac` / `.wav` / `.m4a` / `.osu` / `.osz`, right-click
+"Analyze with Overtone", uninstall via Control Panel. All opt-in.
+
+### Portable ZIP variant
+
+Same tree in a ZIP the user unpacks anywhere. No registry, no file
+associations, reads settings from a `data\` subfolder. Ships alongside the
+MSI for pen drives, sandboxes and locked-down PCs.
+
+### Sub-phase timeline (~12 days on top of Phase 10)
+
+| # | Adds | Days |
+|---|---|---:|
+| 10.13.1 | PyInstaller wrapper + reproducible wheel set + first unsigned MSI | 2 |
+| 10.13.2 | WiX authoring: install flow, custom setup screen, file associations, uninstall | 3 |
+| 10.13.3 | Model manifest + integrity checks + SBOM + third-party licence packaging | 1 |
+| 10.13.4 | Size reduction: INT8 quantisation, drop madmom, drums-only Demucs | 2 |
+| 10.13.5 | Portable ZIP variant | 1 |
+| 10.13.6 | Code signing (Azure Trusted Signing) + documented signed release process | 2 |
+| 10.13.7 | Build automation script (`build_release.py`) + release checklist | 1 |
+
+### What is deliberately *not* included
+
+- macOS `.pkg` and Linux `.AppImage` — the app runs on those platforms, the
+  installers are out of scope.
+- Microsoft Store / Winget submission — GitHub Releases is enough.
+- Auto-update — Overtone has no network requirements; silent auto-update
+  would be a policy change.
+
 
 ---
 

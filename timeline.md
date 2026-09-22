@@ -16,6 +16,51 @@ later costs more than writing it down now.
 
 ---
 
+## v3.5 — 2026-09-22 · Distribution model: one MSI, everything inside
+
+Follow-up to v3.4. The user asked for the app to be installable as a single
+MSI without any online dependency, portable if possible. That constraint
+rewrote two parts of the precision plan.
+
+### Changed
+
+- **New doc**: [`docs/11-msi-distribution.md`](docs/11-msi-distribution.md) —
+  the concrete plan to build a single-file Windows installer that bundles
+  every model, every wheel, every native DLL. ~1.15 GB before size reduction,
+  ~450 MB after (INT8 quantisation, Demucs drums-only, drop madmom as bundled
+  dep — no accuracy loss beyond 0.5 %). WiX Toolset v5 for MSI authoring,
+  PyInstaller for the Python bundle, Azure Trusted Signing ($10/month) for
+  Windows SmartScreen. A portable ZIP variant ships alongside.
+- **Phase 10.1 rewritten** in [`docs/10-precision-plan.md`](docs/10-precision-plan.md).
+  The earlier plan scraped a public mirror of ranked maps from the osu! API —
+  that requires network and does not fit the offline requirement. The rewrite
+  indexes the user's own `C:\osu!\Songs\` folder instead. Every ranked map
+  they already downloaded is already a ground-truth timing source; a
+  Chromaprint fingerprint matches an incoming audio to that local corpus.
+- **Phase 10.13 added to the roadmap** — MSI distribution as seven sub-phases
+  (build harness, WiX, model manifest, size reduction, portable ZIP, code
+  signing, build automation), ~12 days on top of Phase 10's ~4–6 weeks.
+
+### Rejected in this release
+
+- **osu! API scraping at runtime** — needs network permanently. Even a
+  one-time build of a public mirror was rejected because 50 GB of downloads
+  cannot ship inside a portable installer.
+- **Runtime auto-update** — would be a policy change. Users update by
+  downloading and re-running the new installer.
+- **Cross-platform installers** for macOS and Linux — the app runs on those,
+  but the packaging plan is Windows-first.
+- **Microsoft Store submission** — GitHub Releases is enough for direct
+  distribution.
+
+### Measured
+
+Nothing changes today: this is a plan, not code. The measurable claim in
+v3.4 (4.7 % → ~95 % of ranked timing points within 5 ms) holds. The MSI plan
+is about *how the product reaches users*, not *what accuracy it reaches*.
+
+---
+
 ## v3.4 — 2026-09-22 · A written plan for human-level timing accuracy
 
 Not a code release; a plan release. A user asked what it would take to time a

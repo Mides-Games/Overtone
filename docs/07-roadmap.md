@@ -305,6 +305,7 @@ green throughout.
 | 10.10 | Chord & cadence anchors | Cadences resolve on downbeats. Optional voter. | +1 pt |
 | 10.11 | Instrument specialists | Trained kick / snare / hat detectors from ADTOF. | +1 pt |
 | 10.12 | UX for slow but precise | Multi-stage progress, cancellable, cached intermediates, confidence colouring, in-app click preview. | usability |
+| 10.13 | **MSI distribution** | Windows installer, ~1.15 GB, self-contained — every model, every wheel, every DLL bundled. No network at install or runtime. Portable ZIP variant ships alongside. See [`11-msi-distribution.md`](11-msi-distribution.md). | packaging |
 
 **Time budget: analysis time is not budgeted.** A 5-minute song is allowed to
 take 2–3 minutes to analyse. The progress panel (10.12) is what makes that
@@ -318,6 +319,15 @@ Tempora's own model. That mode is Phase 10 optional but not blocking anything.
 
 **Timeline: 4–6 weeks of focused work**, one PR per sub-phase. Every PR is
 gated on measurable improvement without regression on Corpus A.
+
+**Distribution model**: single Windows MSI, ~1.15 GB, self-contained. Every
+model and dependency ships bundled in the installer. No runtime downloads, no
+network requirements, no external services. A portable ZIP variant is built
+from the same tree. Full plan in [`11-msi-distribution.md`](11-msi-distribution.md).
+
+**Fingerprint corpus is local**: Phase 10.1 indexes the user's own
+`C:\osu!\Songs\` folder rather than a public mirror. Every map the user has
+downloaded is already a source of ground-truth timing.
 
 **Dependencies added by this phase** (audited for licence in 10-precision-plan.md):
 Chromaprint (LGPL), BeatThis (MIT), Demucs v4 (MIT + CC-BY-NC weights, verify

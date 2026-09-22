@@ -335,6 +335,32 @@ commercial use), PyTorch (BSD-3), and public datasets (Ballroom, ADTOF,
 Isophonics). Essentia is optional and kept as a subprocess boundary because
 its AGPL would otherwise infect the project.
 
+## Phases 12–18 — Comfort features (parallel to Phase 10)
+
+Documented in full in [`12-comfort-features.md`](12-comfort-features.md). Not
+sequenced against Phase 10; they can proceed in parallel because they touch
+the presentation and I/O layers, not the engine.
+
+| Phase | Adds | Days |
+|---:|---|---:|
+| 12 | Modern UI (PySide6 + pyqtgraph) — GPU-accelerated timeline, QSS themes, real spectrogram | 20 |
+| 13 | Audio playback engine — sounddevice, live click, scrubbing, MIDI input | 14 |
+| 14 | Project system — `.oto` format, auto-save, undo tree, **organised output folders**, batch, advanced I/O | 17 |
+| 15 | Deep osu! integration — Songs browser, lazer support, editor round-trip, sample library | 14 |
+| 16 | Localization + accessibility — 12 languages, NVDA support, high contrast, colour-blind palettes | 10 |
+| 17 | Plugins + reports — sandboxed plugin API, PDF/HTML report generation | 12 |
+| 18 | Advanced input — multi-monitor, live loopback capture, video preview, gamepad/MIDI | 9 |
+
+Total: ~96 days of parallel work. Adds ~322 MB to the installer (bringing it
+to ~1.5 GB before size reduction, ~800 MB after).
+
+**Output-file policy** (from 14.4b): every artefact Overtone produces lives
+under `%USERPROFILE%\Documents\Overtone\`. Nothing lands loose next to the
+installed app; `Program Files\` is read-only. The user can relocate the
+whole tree in Settings.
+
+---
+
 ## 11. Rejected — and why
 
 The brief asks which of its own ideas are real and which are features for the sake of

@@ -16,6 +16,46 @@ later costs more than writing it down now.
 
 ---
 
+## v3.6 — 2026-09-22 · Comfort features plan, and a place for output to live
+
+Not code beyond a small repository hygiene fix; a plan release.
+
+### Changed
+
+- **New doc**: [`docs/12-comfort-features.md`](docs/12-comfort-features.md) —
+  Phases 12 through 18, everything that raises the app's *comfort* ceiling
+  without changing what it does. PySide6 + pyqtgraph (Phase 12) for the
+  timeline, sounddevice for live playback and click (13), a proper `.oto`
+  project format with auto-save and undo tree (14), deep osu! integration
+  including lazer support and a Songs browser (15), full localization and
+  accessibility (16), plugin API and PDF reports (17), MIDI/gamepad/video
+  input (18). Every dependency audited: PySide6 LGPL-3.0, pyqtgraph MIT,
+  everything else free.
+
+- **Sub-phase 14.4b — Organised output folders** added. Every artefact
+  Overtone writes goes under
+  `%USERPROFILE%\Documents\Overtone\Exports\<Artist> - <Title>\`, keyed
+  by song. Nothing lands loose next to the installed app; `Program Files\`
+  is read-only after install. An `Exports\index.sqlite` records what was
+  written when and from which project. The user can point the root
+  elsewhere in Settings.
+
+- **`STK_timing_points.osu.txt` moved** from the repo root to `fixtures/`,
+  where new hand-timed samples will also live as the project grows. This
+  is the loose file the user was reacting to.
+
+### Cumulative installer estimate
+
+Comfort deps add ~322 MB on top of Phase 10's precision stack. Total MSI
+before size reduction: ~1.5 GB. After 10.13.4 quantisation and drums-only
+Demucs: ~800 MB.
+
+### Measured
+
+Nothing. This is a plan. 76/76 tests still pass on the moved fixture.
+
+---
+
 ## v3.5 — 2026-09-22 · Distribution model: one MSI, everything inside
 
 Follow-up to v3.4. The user asked for the app to be installable as a single

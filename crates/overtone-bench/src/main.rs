@@ -231,7 +231,6 @@ struct Report {
     case: String,
     decode_s: f64,
     analyse_s: f64,
-    candidates: usize,
     seed_in_candidates: bool,
     octave_expected: usize,
     octave_found: usize,
@@ -532,7 +531,6 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
         case: golden.case,
         decode_s,
         analyse_s,
-        candidates: got_candidates.len(),
         seed_in_candidates,
         octave_expected,
         octave_found,
@@ -639,7 +637,7 @@ fn density_mode(root: &Path, only: &[String]) -> Result<()> {
         let best = hints.iter().max_by(|a, b| a.score.total_cmp(&b.score));
         if let Some(found) = best {
             println!(
-                "{:<20} {:>6}  {:>6}  {:>7.1}s  {:>5.2}/{:<5.2}  {:>5.2}/{:<5.2}{}",
+                "{:<20} {:>6}  {:>6}  {:>7.1}s  {:>5.2}/{:<5.2}  {:>5.2}/{:<5.2}",
                 name,
                 truth
                     .map(|(_, r)| format!("{r}"))
@@ -654,7 +652,6 @@ fn density_mode(root: &Path, only: &[String]) -> Result<()> {
                 found.coverage_out,
                 found.parity_in,
                 found.parity_out,
-                ""
             );
         } else {
             println!(

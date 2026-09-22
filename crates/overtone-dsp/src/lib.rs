@@ -13,9 +13,11 @@
 //! `docs/05-dsp-pipeline.md` Part A. Where a librosa or scipy default is
 //! load-bearing, the module that reproduces it says so.
 
+pub mod chroma;
 pub mod envelope;
 pub mod hpss;
 pub mod mel;
+pub mod mfcc;
 pub mod multiband;
 pub mod peaks;
 pub mod retime;

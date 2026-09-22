@@ -2710,7 +2710,7 @@ class TimingAnalyzerApp:
             "results": "③  Results", "global": "GLOBAL", "sections": "SECTIONS",
             "beats": "BEATS", "stability": "STABLE", "meter": "METER",
             "export_csv": "Export CSV", "copy": "Copy .osu", "click": "Click track…",
-            "csv": "Export CSV",
+            "csv": "CSV",
             "inject": "Inject .osu…",
             "details": "Details…", "offset": "Offset (ms)", "beatlen": "Beat (ms)",
             "confidence": "Confidence", "overview": "TEMPO TRACE — click a row to highlight its section",
@@ -2759,7 +2759,7 @@ class TimingAnalyzerApp:
             "results": "③  Resultados", "global": "GLOBAL", "sections": "SECCIONES",
             "beats": "BEATS", "stability": "ESTABLE", "meter": "COMPÁS",
             "export_csv": "Exportar CSV", "copy": "Copiar .osu", "click": "Click track…",
-            "csv": "Exportar CSV", "inject": "Inyectar .osu…",
+            "csv": "CSV", "inject": "Inyectar .osu…",
             "details": "Detalles…", "offset": "Offset (ms)", "beatlen": "Beat (ms)",
             "confidence": "Confianza", "overview": "CURVA DE TEMPO — clic en una fila para resaltar su sección",
             "hint": "Consejo: los presets fijan el equilibrio — Variable detecta secciones cortas, Estable ignora fluctuaciones. El BPM y los offsets salen de un ajuste por mínimos cuadrados, así que son exactos a ~0,001 BPM si la canción tiene pulso estable; lo que sigue siendo criterio es la octava. Si el BPM sale a la mitad o al doble (p. ej. 112 en vez de 225), pulsa ×2 o ÷2 — es instantáneo y exacto. Exporta el click track y escúchalo antes de mapear.",
@@ -2798,7 +2798,7 @@ class TimingAnalyzerApp:
         },
     }
 
-    ACCENT = "#FF66AA"
+    ACCENT = "#6EE7B7"
     ACCENT2 = "#7C5CFF"
 
     #: Detection presets. VARIABLE is the default: tuned for songs whose BPM
@@ -2865,44 +2865,107 @@ class TimingAnalyzerApp:
             style.theme_use("clam")
         except Exception:
             pass
-        bg, panel, panel2, field = "#0B0E14", "#131926", "#182032", "#1E2738"
-        fg, muted, border, accent = "#F2F5FA", "#8B98AD", "#263044", self.ACCENT
+        # Three greys instead of two -- cards blend into the page rather than
+        # sitting on top of it. Every value chosen so a card outline of one
+        # step darker is still readable.
+        bg     = "#0F1420"
+        panel  = "#151B28"
+        panel2 = "#1B2231"
+        field  = "#1F2735"
+        fg     = "#E8ECF2"
+        muted  = "#8892A5"
+        dim    = "#5F6B80"
+        border = "#232B3B"
+        accent = self.ACCENT                                     # soft mint
+        accent_ink = "#0A0D14"                                   # on-accent text
+        accent_dim = "#3F8F73"                                   # accent, dulled
+        # Tk cannot draw border-radius, so "rounded" is: taller padding, thin
+        # outline, subdued hover -- reads as a pill next to the sharper table.
         self.C = {"bg": bg, "panel": panel, "panel2": panel2, "field": field,
                   "fg": fg, "muted": muted, "border": border, "accent": accent}
         self.root.configure(bg=bg)
+
         style.configure("TFrame", background=bg)
         style.configure("Card.TFrame", background=panel, borderwidth=1, relief="flat")
         style.configure("Stat.TFrame", background=panel2, borderwidth=1, relief="flat")
+
         style.configure("TLabel", background=bg, foreground=fg, font=("Segoe UI", 10))
         style.configure("Card.TLabel", background=panel, foreground=fg, font=("Segoe UI", 10))
         style.configure("Muted.TLabel", background=panel, foreground=muted, font=("Segoe UI", 9))
-        style.configure("CardHead.TLabel", background=panel, foreground=fg, font=("Segoe UI Semibold", 11))
-        style.configure("Title.TLabel", background=bg, foreground=fg, font=("Segoe UI Semibold", 22))
-        style.configure("Subtitle.TLabel", background=bg, foreground=muted, font=("Segoe UI", 10))
-        style.configure("Pill.TLabel", background=accent, foreground="#FFFFFF", font=("Segoe UI Semibold", 9), padding=(10, 3))
-        style.configure("StatBig.TLabel", background=panel2, foreground=fg, font=("Segoe UI Semibold", 20))
-        style.configure("StatCap.TLabel", background=panel2, foreground=muted, font=("Segoe UI Semibold", 9))
-        style.configure("Status.TLabel", background=panel, foreground="#C4D0E2", font=("Segoe UI", 10))
+        style.configure("CardHead.TLabel", background=panel, foreground=fg,
+                        font=("Segoe UI Semibold", 11))
+        style.configure("Title.TLabel", background=bg, foreground=fg,
+                        font=("Segoe UI Semibold", 22))
+        style.configure("Subtitle.TLabel", background=bg, foreground=muted,
+                        font=("Segoe UI", 10))
+        # The version pill: an outline instead of a filled brand colour, so it
+        # reads as metadata rather than a call to action.
+        style.configure("Pill.TLabel", background=panel2, foreground=muted,
+                        font=("Segoe UI Semibold", 9), padding=(11, 4),
+                        borderwidth=1, relief="solid")
+        style.configure("StatBig.TLabel", background=panel2, foreground=fg,
+                        font=("Segoe UI Semibold", 22))
+        style.configure("StatCap.TLabel", background=panel2, foreground=dim,
+                        font=("Segoe UI Semibold", 9))
+        style.configure("Status.TLabel", background=panel, foreground="#B8C1D2",
+                        font=("Segoe UI", 10))
+
         style.configure("TEntry", fieldbackground=field, foreground=fg, insertcolor=fg,
-                        borderwidth=1, relief="flat", padding=9)
-        style.configure("TCombobox", fieldbackground=field, background=field, foreground=fg, padding=6)
-        style.map("TCombobox", fieldbackground=[("readonly", field)], foreground=[("readonly", fg)])
-        style.configure("TCheckbutton", background=panel, foreground=fg, font=("Segoe UI", 10))
-        style.map("TCheckbutton", background=[("active", panel)], foreground=[("active", fg)])
-        style.configure("TButton", background="#242E44", foreground=fg, borderwidth=0,
-                        relief="flat", padding=(14, 9), font=("Segoe UI Semibold", 10))
-        style.map("TButton", background=[("active", "#303C57"), ("disabled", "#1A2130")])
-        style.configure("Accent.TButton", background=accent, foreground="#FFFFFF", borderwidth=0,
-                        relief="flat", padding=(18, 11), font=("Segoe UI Semibold", 11))
-        style.map("Accent.TButton", background=[("active", "#FF85BE"), ("disabled", "#5A3348")])
-        style.configure("Ghost.TButton", background=panel2, foreground=fg, borderwidth=1, relief="flat", padding=(12, 8))
-        style.configure("Treeview", background=panel, fieldbackground=panel, foreground=fg,
-                        rowheight=30, borderwidth=0, font=("Segoe UI", 10))
-        style.configure("Treeview.Heading", background="#1D2639", foreground=muted, relief="flat",
-                        font=("Segoe UI Semibold", 10), padding=(10, 8))
-        style.map("Treeview", background=[("selected", "#3A2B4D")], foreground=[("selected", fg)])
-        style.configure("Horizontal.TProgressbar", background=accent, troughcolor=panel2,
-                        borderwidth=0, thickness=6)
+                        borderwidth=1, relief="flat", padding=10)
+        style.configure("TCombobox", fieldbackground=field, background=field,
+                        foreground=fg, padding=8)
+        style.map("TCombobox", fieldbackground=[("readonly", field)],
+                  foreground=[("readonly", fg)])
+        style.configure("TCheckbutton", background=panel, foreground=fg,
+                        font=("Segoe UI", 10))
+        style.map("TCheckbutton", background=[("active", panel)],
+                  foreground=[("active", fg)])
+
+        # Buttons: taller vertical padding, thin outline. Read as pills against
+        # the flat table below them. Active state lifts one step; disabled
+        # keeps the outline but drops the fill so it does not shout.
+        # Padding tuned so the widest button row (Results: Export / Copy .osu /
+        # Click track / ÷2 / ×2 / Inject / Details) still fits at the default
+        # 1180 px window -- a taller value was tried and cropped "Export" to
+        # "E>". A shorter one loses the pill shape. This is the compromise.
+        style.configure("TButton", background=panel2, foreground=fg,
+                        bordercolor=border, focuscolor=border,
+                        borderwidth=1, relief="solid",
+                        padding=(13, 10), font=("Segoe UI Semibold", 10))
+        style.map("TButton",
+                  background=[("active", "#232C40"), ("disabled", panel)],
+                  foreground=[("disabled", dim)],
+                  bordercolor=[("active", "#2E3852")])
+        style.configure("Accent.TButton", background=accent, foreground=accent_ink,
+                        borderwidth=0, relief="flat",
+                        padding=(20, 12), font=("Segoe UI Semibold", 11))
+        style.map("Accent.TButton",
+                  background=[("active", "#8DEDC4"), ("disabled", accent_dim)],
+                  foreground=[("disabled", "#22392E")])
+        # Ghost buttons live in dense rows (the Results header carries seven
+        # of them). Kept intentionally narrower than the primary TButton so
+        # every label survives without a horizontal scroll -- an earlier pass
+        # cropped "Export" to "E>".
+        style.configure("Ghost.TButton", background=panel, foreground=muted,
+                        bordercolor=border, borderwidth=1, relief="solid",
+                        padding=(11, 8))
+        style.map("Ghost.TButton",
+                  background=[("active", panel2)],
+                  foreground=[("active", fg)])
+
+        style.configure("Treeview", background=panel, fieldbackground=panel,
+                        foreground=fg, rowheight=32, borderwidth=0,
+                        font=("Segoe UI", 10))
+        style.configure("Treeview.Heading", background=panel2, foreground=muted,
+                        relief="flat", font=("Segoe UI Semibold", 10),
+                        padding=(12, 9))
+        # Selection uses a tinted accent instead of purple -- keeps to the
+        # single-accent rule.
+        style.map("Treeview",
+                  background=[("selected", "#1E3A32")],
+                  foreground=[("selected", fg)])
+        style.configure("Horizontal.TProgressbar", background=accent,
+                        troughcolor=panel2, borderwidth=0, thickness=6)
 
     # -- layout ----------------------------------------------------------
     def _card(self, parent, title_key: str):
@@ -3612,13 +3675,13 @@ class TimingAnalyzerApp:
     #: for decoration.
     TRACE = {
         "bg": "#0F1420",
-        "lane": "#141B2A",
-        "grid": "#1E2738",
-        "grid_soft": "#182031",
-        "bed": "#2B3444",
-        "text": "#C4D0E2",
-        "muted": "#8B98AD",
-        "dim": "#5B6678",
+        "lane": "#151B28",
+        "grid": "#232B3B",
+        "grid_soft": "#1B2231",
+        "bed": "#2A3244",
+        "text": "#B8C1D2",
+        "muted": "#8892A5",
+        "dim": "#5F6B80",
         "tempo": "#7AA2F7",
         "tempo_fill": "#1A2437",
         "red": "#F0616D",

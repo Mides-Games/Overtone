@@ -8,6 +8,7 @@
 //!
 //! See `docs/05-dsp-pipeline.md` Part A, sections A.5 to A.7.
 
+pub mod analysis;
 pub mod coherence;
 pub mod density;
 pub mod elastic;

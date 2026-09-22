@@ -518,6 +518,16 @@ pub struct PipelineOutput {
     pub meter_beats: usize,
     pub atoms_per_beat: usize,
     pub first_class: usize,
+    /// Beat grid implied by the settled sections (the GUI trace).
+    pub beats: Vec<f64>,
+    /// Local tempo at each beat, from short least-squares fits.
+    pub local_bpms: Vec<f64>,
+    /// Duration-weighted global BPM.
+    pub global_bpm: f64,
+    /// Stability of the local curve: 1 is a metronome.
+    pub stability: f64,
+    /// Duration-weighted grid residual in ms.
+    pub fit_residual_ms: f64,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -544,6 +554,11 @@ pub fn analyze_attacks(
         meter_beats: 4,
         atoms_per_beat: 1,
         first_class: 0,
+        beats: Vec::new(),
+        local_bpms: Vec::new(),
+        global_bpm: 0.0,
+        stability: 0.0,
+        fit_residual_ms: 0.0,
         diagnostics,
     };
     if times.len() < 24 {
@@ -614,6 +629,11 @@ pub fn analyze_attacks(
         min_delta,
         min_confidence,
     );
+    let beat_times = crate::analysis::synth_beats(&settled, 1.0);
+    let local = crate::analysis::local_bpm_curve(times, &w32, &settled, &beat_times, 1.0);
+    let global_bpm = crate::analysis::global_bpm(&settled, 1.0);
+    let stability = crate::analysis::stability(&local);
+    let fit_residual_ms = crate::analysis::fit_residual_ms(&settled);
     PipelineOutput {
         points,
         atom_sections: atom,
@@ -624,6 +644,11 @@ pub fn analyze_attacks(
         meter_beats,
         atoms_per_beat: m,
         first_class,
+        beats: beat_times,
+        local_bpms: local,
+        global_bpm,
+        stability,
+        fit_residual_ms,
         diagnostics: Vec::new(),
     }
 }

@@ -82,6 +82,8 @@ struct GoldenResult {
     points: Vec<GoldenPoint>,
     #[serde(default)]
     fit_residual_ms: f64,
+    #[serde(default)]
+    global_bpm: f64,
 }
 
 /// One snapped red line as the Python dump writes it.
@@ -250,6 +252,7 @@ struct Report {
     settled: SectionDiff,
     meter_diff: Option<String>,
     points_diff: Option<String>,
+    global_bpm_err: f64,
 }
 
 impl Report {
@@ -269,6 +272,7 @@ impl Report {
             && self.settled.ok()
             && self.meter_diff.is_none()
             && self.points_diff.is_none()
+            && self.global_bpm_err <= 1e-3
     }
 }
 
@@ -522,6 +526,9 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
         }
     }
 
+    // Duration-weighted global BPM, as `_assemble_analysis` reduces it.
+    let global_bpm_err = (pipeline.global_bpm - golden.result.global_bpm).abs();
+
     Ok(Report {
         case: golden.case,
         decode_s,
@@ -547,6 +554,7 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
         settled,
         meter_diff,
         points_diff,
+        global_bpm_err,
     })
 }
 
@@ -1203,6 +1211,9 @@ fn main() -> Result<()> {
                     }
                     if let Some(text) = &report.points_diff {
                         why.push(text.clone());
+                    }
+                    if report.global_bpm_err > 1e-3 {
+                        why.push(format!("global bpm {:.4} off", report.global_bpm_err));
                     }
                     if report.matched != report.expected {
                         why.push(format!(

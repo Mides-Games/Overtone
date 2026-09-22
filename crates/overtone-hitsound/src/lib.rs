@@ -11,6 +11,7 @@
 //! demo read the same.
 
 pub mod spectral;
+pub mod temporal;
 
 /// Analysis windows around each attack, in seconds (docs §2).
 pub const PRE_START_S: f64 = -0.060;

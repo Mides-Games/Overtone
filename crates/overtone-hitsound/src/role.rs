@@ -222,7 +222,11 @@ fn phrase_position(t: f64, edges: &[f64], bar_len: f64) -> (f64, f64) {
         }
     }
     let since = (t - prev) / bar_len;
-    let to = if next.is_finite() { (next - t) / bar_len } else { since };
+    let to = if next.is_finite() {
+        (next - t) / bar_len
+    } else {
+        since
+    };
     (since.max(0.0), to.max(0.0))
 }
 

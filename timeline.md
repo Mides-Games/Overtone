@@ -16,6 +16,56 @@ later costs more than writing it down now.
 
 ---
 
+## v3.4 — 2026-09-22 · A written plan for human-level timing accuracy
+
+Not a code release; a plan release. A user asked what it would take to time a
+song as accurately as a mapper who has already done it by hand, using only free
+software and offline models, without any budget on how long analysis is allowed
+to take.
+
+The answer, worked out in [`docs/10-precision-plan.md`](docs/10-precision-plan.md),
+is that **90–95 % of a ranked map's timing points within 5 ms** is a real,
+reachable target with the current state of open-source tooling. It takes about
+4–6 weeks and twelve sub-phases, and every one of them is measurable.
+
+### Changed
+
+- **`docs/10-precision-plan.md`** — 12 sub-phases with dependencies, licences,
+  expected accuracy gains, and a cumulative projection from today's 4.7 %
+  within 5 ms on the Vampires reference track to ~95 %. Includes an honest
+  audit of what stays outside even this plan.
+- **Roadmap gets Phase 10** — a summary that points into the precision plan.
+
+### Measured
+
+Baseline on the reference track (My Chemical Romance – Vampires Will Never Hurt
+You, 236 hand-placed red lines):
+
+```
+today             median offset error 60.0 ms   within 5 ms   4.7 %
+after Phase 10    projected           ~1 ms                  ~95 %
+```
+
+The projection is not a promise. Each cell of the projection column is anchored
+to published benchmarks for that specific technique (madmom's F-measure gain on
+GTZAN, Demucs' SDR on MUSDB, etc), so it can be checked against reality one PR
+at a time.
+
+### What was rejected
+
+- **Anything paid.** Spotify's Audio Analysis API is more accurate than an
+  open pipeline for the tracks it has, but was rejected outright: the project's
+  offline-first policy holds, and Spotify's terms restrict what can be built
+  on their data.
+- **Anything not free-licence.** RWC Popular Music dataset is skipped
+  (commercial licence), even though it would help. Essentia is kept optional
+  (AGPL) rather than statically linked.
+- **Copying ranked map timings without matching them first** — Phase 10.1
+  fingerprints before copying, so the user is not silently given someone
+  else's timing for a different song.
+
+---
+
 ## v3.3 — 2026-09-22 · Time signatures over a constant bar
 
 A user compared Overtone against a beatmap they had timed by hand in Tempora

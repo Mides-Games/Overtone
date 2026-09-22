@@ -278,6 +278,53 @@ Nothing here is promised. Each item is a hypothesis with a way to test it.
 
 ---
 
+
+## Phase 10 — Human-level timing accuracy
+
+This whole phase is documented in full in [`10-precision-plan.md`](10-precision-plan.md).
+It is the plan to push automatic accuracy from today's baseline (about 5 % of a
+ranked map's timing points within 5 ms) to **90–95 % within 5 ms with a 1–2 ms
+median error**, using only free software, offline models and public datasets.
+
+**Correct measurement first, everything else second.** No sub-phase ships without
+a measured gain on a new corpus of 20 hand-timed ranked tracks spanning every
+category the plan needs to handle. Corpus A (the 24 synthetic fixtures) stays
+green throughout.
+
+| # | Sub-phase | What it adds | Estimated gain on Corpus B |
+|---|---|---|---:|
+| 10.1 | Fingerprint & reuse | Chromaprint + local mirror of ranked `.osu` files. When the audio is in the mirror, timing is copied and the result is exact. | +35 pts (avg) |
+| 10.2 | Source separation | Demucs v4 drum stem. Every later stage operates on drums-only audio. | +8 pts |
+| 10.3 | Neural beat tracking | BeatThis (MIT). Best current downbeat model. | +17 pts |
+| 10.4 | Multi-signal evidence | 7-band onsets, 3-way HPSS, chroma novelty, CQT. | +5 pts |
+| 10.5 | Rippling model | Port Tempora's `CalculateMPSBasedOnAdjacentPoints` and `FixBpmsToEnsureProperLineups` verbatim. Micro-timing points every 1–2 s to follow drift. | +12 pts |
+| 10.6 | Bayesian ensemble | Combine every voter with priors calibrated on the osu! corpus. | +5 pts |
+| 10.7 | Rubato modelling | Gaussian process on the tempo curve, particle filter, HSMM — all compared. | +2 pts |
+| 10.8 | Alignment feedback | Virtual metronome cross-correlated with the drum stem, iterative micro-adjust. | +2 pts |
+| 10.9 | Fine-tune on osu! ranked | Domain-specific edge. Weekly re-train as maps get ranked. | +2 pts |
+| 10.10 | Chord & cadence anchors | Cadences resolve on downbeats. Optional voter. | +1 pt |
+| 10.11 | Instrument specialists | Trained kick / snare / hat detectors from ADTOF. | +1 pt |
+| 10.12 | UX for slow but precise | Multi-stage progress, cancellable, cached intermediates, confidence colouring, in-app click preview. | usability |
+
+**Time budget: analysis time is not budgeted.** A 5-minute song is allowed to
+take 2–3 minutes to analyse. The progress panel (10.12) is what makes that
+acceptable. Every intermediate result is cached, so re-analysing the same track
+is fast.
+
+**Escape valve.** Even after 10.11, some 5 % of tracks stay unresolvable — genuine
+rubato, aesthetic timing points, culturally ambiguous octave choices. For those,
+an assisted mode where the user taps two downbeats reconstructs the rest from
+Tempora's own model. That mode is Phase 10 optional but not blocking anything.
+
+**Timeline: 4–6 weeks of focused work**, one PR per sub-phase. Every PR is
+gated on measurable improvement without regression on Corpus A.
+
+**Dependencies added by this phase** (audited for licence in 10-precision-plan.md):
+Chromaprint (LGPL), BeatThis (MIT), Demucs v4 (MIT + CC-BY-NC weights, verify
+commercial use), PyTorch (BSD-3), and public datasets (Ballroom, ADTOF,
+Isophonics). Essentia is optional and kept as a subprocess boundary because
+its AGPL would otherwise infect the project.
+
 ## 11. Rejected — and why
 
 The brief asks which of its own ideas are real and which are features for the sake of

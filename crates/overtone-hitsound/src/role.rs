@@ -40,7 +40,7 @@ pub fn metrical_weight(beat_in_bar: i64, bar_beats: usize, division: u32) -> f64
 /// names the slot; a strict minimum would hand on-beats to 1/3 or 1/6.
 pub fn grid_position(t: f64, period: f64, phase: f64) -> (u32, f64) {
     const DIVISIONS: [u32; 6] = [1, 2, 3, 4, 6, 8];
-    if !(period > 0.0) {
+    if period.is_nan() || period <= 0.0 {
         return (1, 0.0);
     }
     let beat = (t - phase) / period;
@@ -90,6 +90,7 @@ pub struct Role {
 /// `sections` are beat-level fitted grids, `downbeat`/`bar_beats` the global
 /// meter reading, `phrase_edges` structure boundaries (plus track start/end
 /// are implied), `weights` the attack weights parallel to `times`.
+#[allow(clippy::too_many_arguments)]
 pub fn analyze(
     y: &[f32],
     sr: u32,
@@ -202,8 +203,8 @@ pub fn analyze(
 fn section_at(sections: &[GridSection], t: f64) -> Option<GridSection> {
     sections
         .iter()
-        .filter(|s| t >= s.start.get() - 1e-9 && t <= s.end.get() + 1e-9)
-        .last()
+        .rev()
+        .find(|s| t >= s.start.get() - 1e-9 && t <= s.end.get() + 1e-9)
         .copied()
 }
 

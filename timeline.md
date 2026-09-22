@@ -51,6 +51,11 @@ A bug fix in the hitsound crate's musical role. The tempo engine is untouched.
   division and a 0.5 ms residual. Under the strict minimum, 80 of the 600
   on-beats read as triplets. The edm-174 reading that exposed the bug is pinned
   beside it.
+- `corpus.rs` and `role.rs` are rustfmt-clean, and `role.rs` is clippy-clean:
+  `section_at` walks back from the last section instead of scanning all of
+  them, the period guard names NaN explicitly, and `analyze` takes the same
+  `too_many_arguments` allow as `points_from_sections`. No behaviour change;
+  177/177 tests, golden 24/24.
 
 ### Measured
 

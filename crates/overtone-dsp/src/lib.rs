@@ -15,6 +15,7 @@
 
 pub mod bandpass;
 pub mod chroma;
+pub mod classify;
 pub mod envelope;
 pub mod hpss;
 pub mod mel;

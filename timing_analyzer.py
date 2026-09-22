@@ -1426,6 +1426,213 @@ def section_measures(sections: list[GridSection], times: np.ndarray,
     return out
 
 
+#: Beats a bar may hold. Not every integer: 11 beats to a bar is not a time
+#: signature, it is a fit artefact.
+BAR_MULTIPLES = (2, 3, 4, 5, 6, 7, 8, 9, 12)
+#: Beats-per-bar a *region* may be written in, given a bar. These are the
+#: subdivisions a mapper actually chooses between.
+BEATS_PER_BAR = (2, 3, 4, 6, 8, 12)
+#: A bar is only claimed when its downbeat stands out by this much.
+BAR_CONTRAST = 1.20
+#: A meter region must hold at least this many bars to be worth a red line.
+MIN_METER_BARS = 4
+
+
+def detect_bar(times: np.ndarray, weights: np.ndarray, period: float,
+               phase: float) -> tuple[float, float, int, float] | None:
+    """Find the **bar**: how many of this grid's beats make one measure.
+
+    Tempora's timeline is measures, not beats, and its physical quantity is
+    measures per second — BPM is a presentation of it through the time
+    signature (`MpsToBpm(mps) = mps * 60 * beats_per_bar`). Finding the bar is
+    therefore the first thing an automatic version has to do, and everything
+    else is expressed against it.
+
+    Returns ``(bar_seconds, bar_phase, beats_in_bar, contrast)``, or None when
+    the accents do not prove a bar. Refusing is the right answer then: a bar
+    invented from nothing moves every red line.
+    """
+    if times.size < 16 or period <= 0:
+        return None
+    k = np.round((times - phase) / period)
+    inlier = np.abs(times - (phase + k * period)) <= 0.15 * period
+    if int(inlier.sum()) < 16:
+        return None
+    k = k[inlier].astype(np.int64)
+    w = weights[inlier].astype(float)
+    span = float(np.ptp(k))
+
+    best: tuple[float, float, int, float] | None = None
+    for m in BAR_MULTIPLES:
+        if span < m * 4:
+            continue
+        cls = np.mod(k, m)
+        totals = np.bincount(cls, weights=w, minlength=m)
+        counts = np.bincount(cls, minlength=m)
+        means = totals / np.maximum(counts, 1)
+        r = int(np.argmax(means))
+        contrast = float(means[r] / max(float(np.mean(means)), 1e-9))
+        # Strongest downbeat wins. Preferring the *longest* bar was tried and
+        # is wrong: a four-bar hypermeasure still shows some contrast (1.24 on
+        # the reference track) and beat a true 3-beat bar at 1.5, giving a
+        # 4800 ms measure where the truth is 1200. Near-ties go to the shorter
+        # reading, which is the one a mapper writes.
+        if contrast < BAR_CONTRAST:
+            continue
+        if best is None or contrast > best[3] * 1.05:
+            best = (period * m, phase + r * period, m, contrast)
+    return best
+
+
+def meter_segments(times: np.ndarray, weights: np.ndarray, bar: float,
+                   bar_phase: float, window_bars: int = 4
+                   ) -> list[tuple[float, float, int, float]]:
+    """Split a track into regions by **how the bar is subdivided**.
+
+    This is the piece v3 had no notion of. Sections are grown on tempo — on
+    measures per second — so a song whose bar never changes length but whose
+    time signature moves between 6/4, 3/4 and 4/4 comes out as one section with
+    one BPM. Measured on a track built to that shape, v3 reported two sections
+    where the truth has six, and chose a single subdivision for all of it.
+
+    Each window is scored against every plausible beats-per-bar with the same
+    ``share x coverage`` ranking the seeder uses, and for the same reason: a
+    grid twice too fine fills half its own slots, a grid too coarse leaves
+    attacks off it, and only the written subdivision scores on both.
+
+    Returns ``[(start_s, end_s, beats_in_bar, score)]``.
+    """
+    if times.size < 16 or bar <= 0:
+        return []
+    start = float(times[0])
+    stop = float(times[-1])
+    span = window_bars * bar
+    if stop - start < 2 * span:
+        return []
+
+    windows: list[tuple[float, int, float]] = []
+    edge = bar_phase + np.floor((start - bar_phase) / bar) * bar
+    while edge + span <= stop + 1e-9:
+        mask = (times >= edge) & (times < edge + span)
+        if int(mask.sum()) >= 6:
+            w_times, w_weights = times[mask], weights[mask]
+            scored: list[tuple[float, int]] = []
+            for beats in BEATS_PER_BAR:
+                share, coverage, _rms = _grid_quality(
+                    w_times, w_weights, bar / beats, bar_phase)
+                scored.append((share * coverage, beats))
+            scored.sort(key=lambda item: (-item[0], -item[1]))
+            windows.append((edge, scored[0][1], scored[0][0]))
+        edge += span
+
+    if len(windows) < 2:
+        return []
+
+    # Merge neighbouring windows that agree, then drop runs too short to be a
+    # time-signature change rather than a fill.
+    runs: list[list] = []
+    for edge, beats, score in windows:
+        if runs and runs[-1][2] == beats:
+            runs[-1][1] = edge + span
+            runs[-1][3].append(score)
+        else:
+            runs.append([edge, edge + span, beats, [score]])
+    merged = [r for r in runs if (r[1] - r[0]) >= MIN_METER_BARS * bar]
+    if len(merged) < 2:
+        return []
+    # A dropped short run leaves a hole; hand it to the run before it. Then
+    # settle each boundary on the exact bar, because a window wide enough to
+    # read a signature is too wide to locate its change: a window straddling
+    # the switch is labelled by whichever side fills more of it, which put
+    # every boundary exactly one bar early on the reference track.
+    out: list[tuple[float, float, int, float]] = []
+    for n, run in enumerate(merged):
+        end = merged[n + 1][0] if n + 1 < len(merged) else stop
+        out.append([run[0], end, int(run[2]), float(np.mean(run[3]))])
+    for n in range(1, len(out)):
+        settled = _settle_meter_boundary(times, weights, bar, bar_phase,
+                                         out[n - 1][2], out[n][2], out[n][0],
+                                         window_bars)
+        out[n - 1][1] = settled
+        out[n][0] = settled
+    return [(a, b, c, d) for a, b, c, d in out]
+
+
+def _settle_meter_boundary(times: np.ndarray, weights: np.ndarray, bar: float,
+                           bar_phase: float, left_beats: int, right_beats: int,
+                           rough: float, window_bars: int) -> float:
+    """The first bar that reads as ``right_beats`` rather than ``left_beats``.
+
+    Scored one bar at a time. A single bar is thin evidence, so the walk takes
+    the first bar where the new signature wins *and keeps winning* through the
+    next one — a single ambiguous bar at a transition is common and should not
+    move the red line.
+    """
+    if left_beats == right_beats or bar <= 0:
+        return rough
+
+    def reads_as(bar_index: float) -> int | None:
+        lo = bar_phase + bar_index * bar
+        mask = (times >= lo) & (times < lo + bar)
+        if int(mask.sum()) < 3:
+            return None
+        scores = []
+        for beats in (left_beats, right_beats):
+            share, coverage, _rms = _grid_quality(times[mask], weights[mask],
+                                                  bar / beats, bar_phase)
+            scores.append(share * coverage)
+        if abs(scores[0] - scores[1]) < 1e-9:
+            return None
+        return right_beats if scores[1] > scores[0] else left_beats
+
+    centre = round((rough - bar_phase) / bar)
+    for step in range(-window_bars, window_bars + 1):
+        index = centre + step
+        if reads_as(index) == right_beats and reads_as(index + 1) != left_beats:
+            return bar_phase + index * bar
+    return rough
+
+
+def points_from_meter(sections: list[GridSection], times: np.ndarray,
+                      weights: np.ndarray, persistence: int,
+                      factor: float = 1.0) -> list[TimingPoint] | None:
+    """Red lines from the **measure grid**, one per time-signature region.
+
+    This is Tempora's model, automated. Its physical quantity is measures per
+    second; BPM is a presentation of it through the signature, via
+    ``MpsToBpm(mps) = mps * 60 * beats_per_bar``. A song whose bar never
+    changes length but whose signature moves between 6/4, 3/4 and 4/4 is one
+    tempo and several notations — and v3, which grows sections on tempo alone,
+    could only ever report it as one BPM.
+
+    Returns None when the track gives no reason to use this path: no provable
+    bar, or a single signature throughout. Then the ordinary per-section
+    placement stands, unchanged.
+    """
+    if not sections or times.size < 16 or factor != 1.0:
+        return None
+    primary = max(sections, key=lambda sec: sec.end_s - sec.start_s)
+    found = detect_bar(times, weights, primary.period, primary.phase)
+    if found is None:
+        return None
+    bar, bar_phase, _beats_in_bar, _contrast = found
+
+    segments = meter_segments(times, weights, bar, bar_phase)
+    if len(segments) < 2:
+        return None
+
+    points: list[TimingPoint] = []
+    for n, (start, end, beats, score) in enumerate(segments):
+        # Tempora's formula, with measures per second as the physical quantity.
+        bpm = (60.0 / bar) * beats
+        if not 20.0 <= bpm <= 900.0:
+            return None
+        confidence = float(min(1.0, max(0.0, score)))
+        points.append(TimingPoint(float(start * 1000.0), float(bpm),
+                                  confidence, n, int(beats), True))
+    return points
+
+
 def _points_from_sections(sections: list[GridSection], first_sound: float,
                           persistence: int, downbeat_class: int, meter: int,
                           factor: float = 1.0,
@@ -1655,10 +1862,16 @@ def _assemble_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int, fit
                        factor: float) -> Analysis:
     """Build the public :class:`Analysis` from a precision fit."""
     sections: list[GridSection] = fit["sections"]
-    measures = section_measures(sections, fit["times"], fit["weights"])
-    points = _points_from_sections(sections, fit["first_sound"], persistence,
-                                   fit["downbeat"], fit["meter_beats"], factor,
-                                   measures)
+    # A time-signature change at a constant tempo is invisible to section
+    # growth, which splits on measures per second. When the bar is provable
+    # and the signature moves, the measure grid places the red lines instead.
+    points = points_from_meter(sections, fit["times"], fit["weights"],
+                               persistence, factor)
+    if points is None:
+        measures = section_measures(sections, fit["times"], fit["weights"])
+        points = _points_from_sections(sections, fit["first_sound"], persistence,
+                                       fit["downbeat"], fit["meter_beats"], factor,
+                                       measures)
     kept = [p for p in points if p.confidence >= min_confidence]
     if not kept and points:
         # Never hand back an empty map when a grid was clearly found.

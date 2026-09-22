@@ -20,6 +20,7 @@ So this file holds two gates:
     python bench/gates.py bpm-snapshot --update
     python bench/gates.py coverage            # F-11: find density changes
     python bench/gates.py measures            # per-section bars and downbeats
+    python bench/gates.py signatures          # time-signature regions over one bar
 
 Both exit non-zero on failure. Neither renders new audio for the main corpus —
 they reuse ``bench/audio/`` — but ``coverage`` has two fixtures of its own,
@@ -391,7 +392,8 @@ def measures(audio_dir: Path, engine: str, regen: bool) -> int:
         ok = first_ok and anchored
         note = ""
         if len(truth) > 1 and len(detected) < len(truth):
-            note = f"  (meter change at constant tempo not split: {truth} -> {detected})"
+            note = (f"  (constant BEAT, changing bar length: {truth} -> {detected} "
+                    f"-- see the `signatures` gate for the shape that is handled)")
         if not ok:
             failures.append(f"{name}: truth {truth}, detected {bars}, anchored {anchored}")
         print(f"{name:<20} {str(truth):>12} {str(bars):>12}  "
@@ -404,8 +406,115 @@ def measures(audio_dir: Path, engine: str, regen: bool) -> int:
             print(f"  {line}")
         return 1
     print(f"{len(MEASURE_CASES)}/{len(MEASURE_CASES)} cases read their bar and anchored their")
-    print("red line on a downbeat. A meter change without a tempo change is a")
-    print("known gap -- see the note above and docs/07-roadmap.md Phase 5.")
+    print("red line on a downbeat.")
+    print()
+    print("A signature change that keeps the BEAT and changes the bar's length")
+    print("is still open. The opposite shape -- a constant bar with a changing")
+    print("subdivision -- is handled; see the `signatures` gate.")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Time-signature regions over a constant bar
+# ---------------------------------------------------------------------------
+
+#: Taken from a real beatmap a user timed by hand in Tempora. Every red line
+#: in it sits an exact multiple of 1200 ms from the first, and the beat length
+#: alternates 200 / 400 / 300 ms -- which is 6, 3 and 4 beats to the *same*
+#: 1200 ms bar. The song has no tempo change at all: the measure grid is
+#: constant and only the time signature moves.
+#:
+#: v3 could not express that. Sections grow on measures per second, which
+#: never changes here, so it reported one tempo for the whole track.
+SIGNATURE_BAR = 1.200
+SIGNATURE_FIRST = 0.168
+#: (first bar index, beats in that bar)
+SIGNATURE_REGIONS = [(0, 6), (17, 3), (33, 6), (49, 3), (57, 6), (84, 4)]
+SIGNATURE_BARS = 100
+
+
+def build_signatures(path: Path, sr: int = bm.SR) -> list[tuple[float, int]]:
+    """Render the reference shape and return its truth as [(start_s, beats)]."""
+    duration = SIGNATURE_FIRST + SIGNATURE_BARS * SIGNATURE_BAR + 2.0
+    buffer = np.zeros(int(duration * sr), dtype=np.float32)
+
+    def beats_at(bar_index: int) -> int:
+        current = SIGNATURE_REGIONS[0][1]
+        for start, beats in SIGNATURE_REGIONS:
+            if bar_index >= start:
+                current = beats
+        return current
+
+    for bar_index in range(SIGNATURE_BARS):
+        beats = beats_at(bar_index)
+        beat = SIGNATURE_BAR / beats
+        bar_start = SIGNATURE_FIRST + bar_index * SIGNATURE_BAR
+        for b in range(beats):
+            at = (bar_start + b * beat) * sr
+            if b == 0:
+                bm._place(buffer, bm.KICK, at, 1.0)
+                bm._place(buffer, bm.SNARE, at, 0.55)
+            elif b * 2 == beats:
+                bm._place(buffer, bm.SNARE, at, 0.85)
+            else:
+                bm._place(buffer, bm.HAT, at, 0.45)
+    peak = float(np.max(np.abs(buffer)))
+    sf.write(str(path), buffer / max(peak, 1e-9) * 0.92, sr)
+    return [(SIGNATURE_FIRST + start * SIGNATURE_BAR, beats)
+            for start, beats in SIGNATURE_REGIONS]
+
+
+def signatures(audio_dir: Path, engine: str, regen: bool) -> int:
+    audio_dir.mkdir(parents=True, exist_ok=True)
+    print("Time-signature regions over a constant bar.")
+    print("Tempora's physical quantity is measures per second; BPM is a")
+    print("presentation of it through the signature. A song can change")
+    print("signature without changing tempo, and v3 could not express that.\n")
+
+    path = audio_dir / "signature-changes.wav"
+    if regen or not path.exists():
+        truth = build_signatures(path)
+    else:
+        truth = [(SIGNATURE_FIRST + start * SIGNATURE_BAR, beats)
+                 for start, beats in SIGNATURE_REGIONS]
+
+    analysis = ta.analyze_audio(str(path), engine=engine)
+    points = ta.snap_timing_points(analysis.points)
+
+    print(f"{'#':>3}  {'offset':>12} {'truth':>12} {'error':>10}  "
+          f"{'beats':>5} {'truth':>5}  {'bpm':>9}  verdict")
+    print("-" * 76)
+    failures = []
+    if len(points) != len(truth):
+        failures.append(f"{len(points)} red line(s), truth has {len(truth)}")
+    for i in range(max(len(points), len(truth))):
+        point = points[i] if i < len(points) else None
+        want = truth[i] if i < len(truth) else None
+        if point is None or want is None:
+            print(f"{i+1:>3}  {'-' if point is None else point.offset_ms:>12}"
+                  f"{'  (missing)' if point is None else '  (extra)'}")
+            continue
+        error_ms = point.offset_ms - want[0] * 1000.0
+        ok = abs(error_ms) <= 5.0 and point.meter == want[1]
+        if not ok:
+            failures.append(f"line {i+1}: {error_ms:+.1f} ms, "
+                            f"beats {point.meter} vs {want[1]}")
+        print(f"{i+1:>3}  {point.offset_ms:>12.1f} {want[0]*1000:>12.1f} "
+              f"{error_ms:>+9.1f}ms  {point.meter:>5} {want[1]:>5}  "
+              f"{point.bpm:>9.3f}  {'ok' if ok else 'MISS'}")
+
+    print()
+    if failures:
+        print("Gate failed:")
+        for line in failures:
+            print(f"  {line}")
+        return 1
+    print(f"{len(truth)}/{len(truth)} signature regions found, each red line on")
+    print("its bar line and carrying its own meter.")
+    print()
+    print("Still open: a signature change that keeps the BEAT and changes the")
+    print("bar's length (4/4 -> 3/4 at the same BPM) is a different shape and")
+    print("is not detected -- see `measures`, case downbeat-4-then-3.")
     return 0
 
 
@@ -413,7 +522,8 @@ def measures(audio_dir: Path, engine: str, regen: bool) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("gate", choices=("bpm-snapshot", "coverage", "measures"))
+    parser.add_argument("gate",
+                        choices=("bpm-snapshot", "coverage", "measures", "signatures"))
     parser.add_argument("--only", nargs="*", metavar="CASE",
                         help="bpm-snapshot: run just these cases")
     parser.add_argument("--update", action="store_true",
@@ -435,6 +545,8 @@ def main() -> None:
         raise SystemExit(bpm_snapshot(names, audio_dir, args.engine, args.update))
     if args.gate == "measures":
         raise SystemExit(measures(audio_dir, args.engine, args.regen))
+    if args.gate == "signatures":
+        raise SystemExit(signatures(audio_dir, args.engine, args.regen))
     raise SystemExit(coverage(audio_dir, args.engine, args.regen))
 
 

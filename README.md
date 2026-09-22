@@ -338,6 +338,11 @@ offsets, newer `.osu` versions).
   `--engine precision` refuses the file rather than inventing an answer.
 - **White noise currently returns a BPM** through the legacy tracker (`127.68` on the
   degenerate fixture). It should refuse; v4 adds a no-grid verdict.
+- **A time-signature change that alters the bar's length is not detected.**
+  A song whose bar stays the same length while the subdivision moves — 6/4 to
+  3/4 to 4/4 over a constant 1.2 s measure — is handled exactly, and each red
+  line carries its own meter. The opposite shape, where the beat stays and the
+  bar changes length, still comes out as one section.
 - **An exact 2× tempo change is reported as one section.** 87.5 is half of 175, so both
   halves share the same atomic grid and there is no change to find at that level — what
   changed is the octave, and v3 decides the octave globally. See audit finding **F-11**;

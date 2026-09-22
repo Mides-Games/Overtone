@@ -198,7 +198,8 @@ Full results and the four implementation traps found:
 | lazer compatibility | decimal offsets, `.osu` v14+ specifics | low | med | writer | no | no | P2 | |
 | **Per-section meter** | each red line carries the bar its own section proved | med | high | meter | no | no | **P1** | **done (v3)** |
 | **Downbeat anchoring** | every red line lands on a downbeat, not the next beat | med | high | meter | no | no | **P1** | **done (v3)** |
-| Meter-change detection | split on time signature, not only on tempo | high | med | sections | no | no | P2 | todo |
+| Meter-change detection | split on time signature, not only on tempo | high | med | sections | no | no | P2 | **done (v3)** for a constant bar |
+| Bar-length change | 4/4 → 3/4 keeping the *beat*, so the bar changes length | high | med | meter | no | no | P2 | todo |
 | `.osz` export | time a song from nothing: audio + a minimal `.osu` in a zip | med | high | writer | no | no | P2 | **done (v3)** |
 
 The last four come from comparing against [Tempora](https://github.com/teamkongehund/Tempora),

@@ -42,6 +42,9 @@ from timing_analyzer import (
     export_osz,
     osu_beatmap_text,
     section_measures,
+    detect_bar,
+    meter_segments,
+    points_from_meter,
     _points_from_sections,
     snap_timing_points,
     suggest_section_pulse,
@@ -871,6 +874,105 @@ class OszExportTests(unittest.TestCase):
                 export_osz(broken, out, audio)
             self.assertFalse(out.exists())
             self.assertFalse((Path(tmp) / "map.osz.part").exists())
+
+
+class SignatureRegionTests(unittest.TestCase):
+    """Tempora's measure model, automated.
+
+    Tempora's physical quantity is measures per second; BPM is a presentation
+    of it through the time signature (`MpsToBpm(mps) = mps * 60 * beats`). A
+    song can therefore change signature without changing tempo, and v3 — which
+    grows sections on measures per second — could only report one BPM for it.
+    """
+
+    @staticmethod
+    def _track(bar: float, phase: float, regions, bars: int):
+        """Attacks on a constant bar, subdivided differently per region."""
+        def beats_at(index: int) -> int:
+            current = regions[0][1]
+            for start, beats in regions:
+                if index >= start:
+                    current = beats
+            return current
+
+        times, weights = [], []
+        for index in range(bars):
+            beats = beats_at(index)
+            beat = bar / beats
+            start = phase + index * bar
+            for b in range(beats):
+                times.append(start + b * beat)
+                weights.append(1.0 if b == 0 else 0.3)
+        return np.asarray(times), np.asarray(weights, dtype=float)
+
+    def test_detect_bar_finds_the_measure_not_a_hypermeasure(self):
+        # Four bars of anything also show some accent contrast; the bar is the
+        # strongest reading, not the longest. Getting this wrong gave a
+        # 4800 ms measure where the truth is 1200.
+        bar, phase = 1.2, 0.168
+        times, weights = self._track(bar, phase, [(0, 6)], 60)
+        found = detect_bar(times, weights, bar / 6, phase)
+        self.assertIsNotNone(found)
+        self.assertAlmostEqual(found[0], bar, places=6)
+        self.assertAlmostEqual(found[1], phase, places=6)
+
+    def test_detect_bar_refuses_without_accents(self):
+        # Every attack equally loud: there is no downbeat, so claiming a bar
+        # would move every red line on no evidence.
+        times = np.arange(200) * 0.2
+        weights = np.ones(200)
+        self.assertIsNone(detect_bar(times, weights, 0.2, 0.0))
+
+    def test_meter_segments_splits_on_the_subdivision(self):
+        bar, phase = 1.2, 0.168
+        regions = [(0, 6), (20, 3), (40, 6)]
+        times, weights = self._track(bar, phase, regions, 60)
+        segments = meter_segments(times, weights, bar, phase)
+        self.assertEqual([beats for _s, _e, beats, _sc in segments], [6, 3, 6])
+        for (start, _end, _beats, _score), (index, _b) in zip(segments, regions):
+            self.assertAlmostEqual(start, phase + index * bar, places=3)
+
+    def test_meter_segments_is_silent_on_one_signature(self):
+        # Nothing to split: the ordinary per-section placement must stand.
+        bar, phase = 1.2, 0.0
+        times, weights = self._track(bar, phase, [(0, 4)], 60)
+        self.assertEqual(meter_segments(times, weights, bar, phase), [])
+
+    def test_bpm_follows_temporas_formula(self):
+        # BPM = measures-per-second * 60 * beats-in-bar. A 1.2 s bar written
+        # in 6 is 300 BPM, in 3 is 150, in 4 is 200 -- the same tempo.
+        bar, phase = 1.2, 0.168
+        regions = [(0, 6), (20, 3), (40, 4)]
+        times, weights = self._track(bar, phase, regions, 60)
+        sections = [GridSection(phase, phase + 60 * bar, bar / 6, phase,
+                                len(times), 0.1, 1.0)]
+        points = points_from_meter(sections, times, weights, 4)
+        self.assertIsNotNone(points)
+        self.assertEqual([round(p.bpm, 6) for p in points], [300.0, 150.0, 200.0])
+        self.assertEqual([p.meter for p in points], [6, 3, 4])
+        self.assertTrue(all(p.meter_known for p in points))
+
+    def test_every_red_line_lands_on_a_bar_line(self):
+        bar, phase = 1.2, 0.168
+        regions = [(0, 6), (20, 3), (40, 6)]
+        times, weights = self._track(bar, phase, regions, 60)
+        sections = [GridSection(phase, phase + 60 * bar, bar / 6, phase,
+                                len(times), 0.1, 1.0)]
+        points = points_from_meter(sections, times, weights, 4)
+        for point in points:
+            bars = (point.offset_ms / 1000.0 - phase) / bar
+            self.assertAlmostEqual(bars, round(bars), places=3,
+                                   msg=f"{point.offset_ms} is not on a bar line")
+
+    def test_a_forced_octave_falls_back_to_the_ordinary_path(self):
+        # points_from_meter derives BPM from the bar, so a user-forced pulse
+        # octave has no meaning in it; it must decline rather than ignore the
+        # user's choice.
+        bar, phase = 1.2, 0.168
+        times, weights = self._track(bar, phase, [(0, 6), (20, 3)], 60)
+        sections = [GridSection(phase, phase + 60 * bar, bar / 6, phase,
+                                len(times), 0.1, 1.0)]
+        self.assertIsNone(points_from_meter(sections, times, weights, 4, factor=2.0))
 
 
 class ConfigAndInjectHardeningTests(unittest.TestCase):

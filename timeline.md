@@ -16,6 +16,100 @@ later costs more than writing it down now.
 
 ---
 
+## v3.3 — 2026-09-22 · Time signatures over a constant bar
+
+A user compared Overtone against a beatmap they had timed by hand in Tempora
+and reported a large difference. Reading their timing points made the cause
+obvious, and it was not what either of us expected:
+
+```
+168    6 x 200 ms    bar 1200 ms         168 -   168 =      0 =  0 x 1200
+20568  3 x 400 ms    bar 1200 ms       20568 -   168 =  20400 = 17 x 1200
+39768  6 x 200 ms    bar 1200 ms       39768 -   168 =  39600 = 33 x 1200
+58968  3 x 400 ms    bar 1200 ms       58968 -   168 =  58800 = 49 x 1200
+68568  6 x 200 ms    bar 1200 ms       68568 -   168 =  68400 = 57 x 1200
+100968 4 x 300 ms    bar 1200 ms      100968 -   168 = 100800 = 84 x 1200
+```
+
+**Every red line sits an exact multiple of 1200 ms from the first, and every
+bar is 1200 ms.** The song has no tempo change anywhere. 300, 150 and 200 BPM
+are three ways of writing the same measure with 6, 3 and 4 beats — which is
+exactly Tempora's model, read from its source:
+
+```csharp
+MpsToBpm(mps) => mps * 60 * (TimeSignature[0] * 4f / TimeSignature[1])
+measurePosition = (time - point.Offset) * point.MeasuresPerSecond + point.MeasurePosition
+```
+
+Measures per second is the physical quantity; BPM is a presentation of it
+through the signature. v3 grows sections on measures per second, so a song that
+changes only its signature was structurally invisible to it — it reported one
+tempo for the whole track.
+
+### Changed
+
+- **`detect_bar`** — how many of a grid's beats make one measure, from accent
+  contrast, refusing when the accents prove nothing.
+- **`meter_segments`** — splits a track by *how the bar is subdivided*, scoring
+  each window against every plausible beats-per-bar with the same
+  `share x coverage` ranking the seeder uses. A grid too fine fills half its
+  own slots; one too coarse leaves attacks off it; only the written
+  subdivision scores on both.
+- **`points_from_meter`** — one red line per signature region, on a bar line,
+  with BPM derived as Tempora derives it. Declines and leaves the ordinary
+  per-section placement alone when there is no provable bar, only one
+  signature, or the user forced a pulse octave.
+- New gate, `bench/gates.py signatures`, built from the reference track's shape.
+
+### Measured
+
+On a faithful reproduction of that song, against the hand-timed truth:
+
+```
+  #        offset        truth      error  beats truth        bpm
+  1         168.1        168.0      +0.1ms      6     6    300.000
+  2       20568.1      20568.0      +0.1ms      3     3    150.000
+  3       39768.1      39768.0      +0.1ms      6     6    300.000
+  4       58968.1      58968.0      +0.1ms      3     3    150.000
+  5       68568.1      68568.0      +0.1ms      6     6    300.000
+  6      100968.1     100968.0      +0.1ms      4     4    200.000
+```
+
+Six of six regions, every offset within 0.1 ms of the bar line a human placed
+by hand, every signature right. Before this the same audio produced **two**
+sections and a single subdivision for all of it.
+
+Accuracy untouched, which the guard is there to ensure: **24/24 within 0.05 BPM
+and 5 ms, median 0.0000 BPM / 0.16 ms**, `bpm-snapshot` and the golden vectors
+both unchanged. On the 24-case corpus `detect_bar` returns "no bar" on every
+fixture — those tracks put a hat on every beat and vary the kick only between
+1.0 and 0.8 — so the new path never fires there. 76 unit tests, up from 69.
+
+### Rejected / tried and dropped
+
+- **Preferring the longest bar with usable accent contrast.** A four-bar
+  hypermeasure still scores 1.24 on the reference track, beating the true
+  three-beat bar at 1.22 under a "longest wins" rule and giving a 4800 ms
+  measure where the truth is 1200. Strongest contrast wins instead, with
+  near-ties going to the shorter reading — the one a mapper writes.
+- **Labelling a region from the window that reads it.** A window wide enough
+  to identify a signature is too wide to locate its change: one straddling the
+  switch is labelled by whichever side fills more of it, which put every
+  boundary exactly one bar early. Boundaries are now settled bar by bar, and
+  a single ambiguous bar does not move the line.
+
+### Open items
+
+- **A signature change that keeps the beat and changes the bar's length**
+  (4/4 → 3/4 at the same BPM) is a different shape and is not detected. The
+  `measures` gate's `downbeat-4-then-3` case records it.
+- The reference track is real audio; the reproduction is synthetic. On the real
+  recording the offset came out about 20 ms late with 52 % confidence — the
+  engine knew it was struggling. Synthetic fixtures remain an upper bound, as
+  v3.0 already says of the corpus.
+
+---
+
 ## v3.2 — 2026-09-22 · The measure grid, and timing a song from nothing
 
 Tempora (`teamkongehund/Tempora`) times a song by associating points of time in

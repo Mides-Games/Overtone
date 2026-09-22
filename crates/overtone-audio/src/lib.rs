@@ -67,11 +67,9 @@ pub fn decode(path: &Path) -> Result<Decoded> {
 
     // Duration from metadata, before decoding anything. v3 does the same via
     // libsndfile's header, and for the same reason.
-    if let (Some(frames), rate) = (track.num_frames, params.sample_rate) {
-        if let Some(rate) = rate {
-            if rate > 0 && frames as f64 / rate as f64 > MAX_AUDIO_SECONDS {
-                return Err(Error::TooLong);
-            }
+    if let (Some(frames), Some(rate)) = (track.num_frames, params.sample_rate) {
+        if rate > 0 && frames as f64 / rate as f64 > MAX_AUDIO_SECONDS {
+            return Err(Error::TooLong);
         }
     }
 

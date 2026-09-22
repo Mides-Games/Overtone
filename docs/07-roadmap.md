@@ -65,20 +65,29 @@ The whole of [`05-dsp-pipeline.md`](05-dsp-pipeline.md) Part A, and nothing from
 | Mel-flux envelope | the exact librosa contract (DSP §A.2) | **high** | **high** | decode | no | no | **P0** | **done** |
 | Peak picking | scipy `find_peaks` prominence semantics + parabolic interp | med | high | envelope | no | no | **P0** | **done** |
 | Attack re-timing | sample-resolution 20 % rise walk (DSP §A.4) | med | **high** | decode | no | no | **P0** | **done** |
-| Coherence sweep | SIMD `R(f)`, correct phase sign, ×1–4 widening | med | **high** | attacks | no | no | **P0** |
-| IRLS fit | tolerance ladder, mode re-centring at pass 2, expanding windows | med | **high** | coherence | no | no | **P0** |
-| Octave decision | accent depth + tempogram hints (librosa-equivalent for now) | high | high | fit | no | no | **P0** |
-| Sections | grow · re-seed · merge · crossing boundaries · refit | high | **high** | fit | no | no | **P0** |
-| Meter, confidence, points | downbeat anchoring, snapping, whole-ms export | med | high | sections | no | no | **P0** |
-| 55 unit tests ported | names preserved; coherence-sign test first | med | **high** | all | no | no | **P0** |
-| Property tests | ×2/÷2 identity, exact-grid recovery, monotone boundaries | low | high | all | no | no | P1 |
-| Structured diagnostics | carried on the result, not in a progress string — closes **F-08** | low | med | all | no | no | P1 |
+| Coherence sweep | SIMD `R(f)`, correct phase sign, ×1–4 widening | med | **high** | attacks | no | no | **P0** | **done** |
+| IRLS fit | tolerance ladder, mode re-centring at pass 2, expanding windows | med | **high** | coherence | no | no | **P0** | **done** |
+| Octave decision | accent depth + tempogram hints (librosa-equivalent for now) | high | high | fit | no | no | **P0** | **done** |
+| Sections | grow · re-seed · merge · crossing boundaries · refit | high | **high** | fit | no | no | **P0** | **next** |
+| Meter, confidence, points | downbeat anchoring, snapping, whole-ms export | med | high | sections | no | no | **P0** | todo |
+| Unit tests ported | names preserved; coherence-sign test first | med | **high** | all | no | no | **P0** | partial |
+| Property tests | ×2/÷2 identity, exact-grid recovery, monotone boundaries | low | high | all | no | no | P1 | todo |
+| Structured diagnostics | carried on the result, not in a progress string — closes **F-08** | low | med | all | no | no | P1 | todo |
 
-**Progress.** The attack front-end — decode, envelope, peak picking, re-timing — is done
-and **matches v3 attack for attack on all 24 fixtures**, worst error 0.0001 ms against a
-0.05 ms tolerance, weight correlation 1.0000. That was the riskiest item in the phase:
-every attack time in the engine comes off the envelope, and a wrong mel basis or a
-mis-sized pad produces a slightly worse answer rather than an obviously broken one.
+**Progress.** Everything up to and including the octave decision is ported and checked
+against v3 on all 24 fixtures:
+
+| stage | agreement with v3 |
+|---|---|
+| attacks | exact — worst 0.0001 ms against a 0.05 ms tolerance, weight correlation 1.0000 |
+| coherence candidates | the list contains the grid v3 seeded, every fixture |
+| anchor seed | period within 1e-11 to 2.6e-7 s, against a 1e-6 s tolerance |
+| octave | **exact on all 24**, including `shuffle-96` at 3 atoms per beat and `slow-92` at 1 |
+
+The attacks were the riskiest item: every attack time in the engine comes off the
+envelope, and a wrong mel basis or a mis-sized pad produces a slightly worse answer rather
+than an obviously broken one. The octave was the second riskiest, because audit **F-07**
+records that nothing in v3 tests it — the accuracy benchmark normalises octaves away.
 
 Speed, measured rather than projected:
 
@@ -93,10 +102,13 @@ bins, so the dense projection did ~50x the arithmetic), and the STFT is **fused*
 mel projection so the linear spectrogram — over a gigabyte for a 6-minute track — is never
 materialised. The first naive version was 2.5x *slower* than Python.
 
-Still to port: coherence sweep, IRLS fit, octave decision, sections, meter, points.
+Still to port: **section growth** (grow, re-seed, merge, boundaries at the grid crossing,
+per-section refit), then meter, confidence and timing points. Section growth is the last
+large piece; the rest follows from it.
 
 **Exit:** `cargo run -p overtone-bench` prints **24/24 · median 0.0000 BPM · 0.16 ms**, golden
-vectors match within tolerance, 56/56 Python tests still pass. Until then, nothing else starts.
+vectors match within tolerance, and the Python reference still passes. Until then, nothing
+else starts.
 
 ---
 

@@ -43,6 +43,9 @@ Si el paso 1 no trae su test (unitario o gate), volver al paso 1.
 - Mensaje imperativo corto + cuerpo con el **porqué** (el diff ya dice el
   qué). Sin `Co-Authored-By`, sin firmas de herramienta.
 - El cuerpo cita la medición del paso 3.
+- Antes de cerrar el commit: todo `.rs` nuevo tiene su línea `mod` y todo
+  cambio necesario está staged (`git status` + compilar con solo lo staged
+  en la cabeza). Dos commits incompletos por esta causa bastan para la regla.
 
 ## 5. Auditar
 

@@ -12,6 +12,7 @@ pub mod coherence;
 pub mod density;
 pub mod elastic;
 pub mod fit;
+pub mod map;
 pub mod octave;
 pub mod points;
 pub mod sections;

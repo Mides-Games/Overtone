@@ -128,7 +128,7 @@ Part B of the DSP doc, in the order its gates can be met.
 | **Elastic grid** | spline tempo model for rubato; a **selector** beside the piecewise fit, not a replacement | **high** | **high** | IRLS | no | no | **P1** | **ported** as polynomial-in-k — 0.16 BPM on realistic ramps, flat on 20/24; extreme ramp needs the spline |
 | No-grid verdict | refuse honestly instead of the tracker's white-noise BPM | low | med | elastic | no | no | P1 |
 | SuperFlux ODF | vibrato-suppressed flux, auto-selected on non-percussive audio | low | med | envelope | no | no | P2 |
-| Drop librosa tempogram | octave hint from the coherence map | med | med | 2-D map, **octave test** | no | no | P2 |
+| Drop librosa tempogram | octave hint from the coherence map | med | med | 2-D map, **octave test** | no | no | P2 | **rejected** — measured: map-R ranks atoms first (5 octave flips); Rust tempogram costs 8 ms |
 | Multi-band flux | 7-band onset functions; also feeds hitsounds | low | med | STFT | no | no | **P1** |
 | HPSS | harmonic/percussive/residual separation | med | high | STFT | no | no | **P1** |
 | Band-limited re-timing | re-time each attack in its own band | med | low-med | multi-band | no | no | P3 |

@@ -332,6 +332,22 @@ hack v3 needed to make the tempogram affordable.
 improvement, per fixture, by listening.
 Difficulty **medium** · impact **medium** (removes a dependency, not an error) · no ML · no GPU.
 
+**Measured, and rejected as specified.** Reading the map surface (per-column
+normalised mean R under the same log-normal prior) ranks the *atom* first:
+R is ~1.0 at the pulse and ~0.18 at the beat on accented tracks, and no
+honest prior closes a 5× gap — the prior would have to want the answer
+before seeing the evidence. Ported and gated, it flips 5 of 24 octave
+decisions (change-128-142, decimal-128.37, secs-2, secs-3, three-sections,
+all m=2 → m=1). The tempogram's autocorrelation of the envelope measures
+genuinely different information (energy self-similarity, beat-first: best
+hint 172.27 on the 174 fixture) and the ported Rust version costs **8 ms**
+a track, 49 ms on the 6-minute fixture — v3's "ten seconds" was NumPy loop
+overhead the port already killed, and realfft stays in the workspace for
+the STFT regardless. So both stated motivations are gone and the change is
+all risk. If hints are ever re-sourced, the candidate is autocorrelating an
+envelope *rebuilt from the attacks* (same information, no mel contract) —
+as a Python prototype with the 24/24 octave gate, not as a port.
+
 ## B.5 SuperFlux onset function
 
 Vibrato-suppressed spectral flux (Böck & Widmer): a maximum filter across frequency before

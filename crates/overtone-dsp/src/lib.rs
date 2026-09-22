@@ -15,6 +15,7 @@
 
 pub mod envelope;
 pub mod mel;
+pub mod multiband;
 pub mod peaks;
 pub mod retime;
 pub mod stft;

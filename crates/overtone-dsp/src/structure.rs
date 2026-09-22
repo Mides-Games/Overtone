@@ -46,7 +46,9 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
     let chroma = chroma::chroma(&spec, sr, n_fft);
     // STFT frames (128 hop) grouped into WIN_S windows.
     let per = ((WIN_S * sr as f64) / 128.0).round() as usize;
-    if per == 0 || chroma.len() < 2 * KERNEL_HALF + 1 {
+    // Windows, not STFT frames: the loop below indexes feature windows, so
+    // a short track must bow out here rather than panic there.
+    if per == 0 || y.len().div_ceil(hop.max(1)) < 2 * KERNEL_HALF + 1 {
         return Structure { boundaries: Vec::new(), energy: Vec::new(), energy_hop: WIN_S };
     }
 
@@ -106,12 +108,11 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
             / (norms[a] * norms[b])
     };
 
-    // Foote novelty: homogeneity within past/future minus across.
+    // Foote novelty: homogeneity within past/future minus across. The
+    // early return above guarantees windows >= 2*K+1, so every index below
+    // is in range — no saturating arithmetic needed here.
     let mut novelty = vec![0.0f64; windows];
-    for i in KERNEL_HALF..windows.saturating_sub(KERNEL_HALF).max(KERNEL_HALF + 1) {
-        if i + KERNEL_HALF >= windows {
-            break;
-        }
+    for i in KERNEL_HALF..windows - KERNEL_HALF {
         let (mut within, mut across) = (0.0, 0.0);
         let (mut n_within, mut n_across) = (0usize, 0usize);
         for a in i - KERNEL_HALF..i {
@@ -260,5 +261,16 @@ mod tests {
     fn silence_has_no_structure() {
         let structure = analyze(&vec![0.0f32; 44_100 * 10], 44_100);
         assert!(structure.boundaries.is_empty());
+    }
+
+    #[test]
+    fn short_audio_bows_out_instead_of_panicking() {
+        // Fewer windows than two kernel widths: the novelty loop would
+        // index past the feature vector. Regression test from the audit.
+        for seconds in [1, 3, 8] {
+            let y = chord(44_100, 220.0, true, 0.4, seconds as f64);
+            let structure = analyze(&y, 44_100);
+            assert!(structure.boundaries.is_empty(), "{seconds}s");
+        }
     }
 }

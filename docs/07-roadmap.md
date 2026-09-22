@@ -132,7 +132,7 @@ Part B of the DSP doc, in the order its gates can be met.
 | Multi-band flux | 7-band onset functions; also feeds hitsounds | low | med | STFT | no | no | **P1** | **done** — absolute dB flux, switch-isolation + floor pinned |
 | HPSS | harmonic/percussive/residual separation | med | high | STFT | no | no | **P1** | **done** 2-way — partial >9x H, clicks >3x P, conservative; residual open |
 | Band-limited re-timing | re-time each attack in its own band | med | low-med | multi-band | no | no | P3 |
-| Structure analysis | novelty curve → phrases, downbeats, energy map | med | high | chroma/MFCC | no | no | **P1** |
+| Structure analysis | novelty curve → phrases, downbeats, energy map | med | high | chroma/MFCC | no | no | **P1** | **done** — chroma+MFCC front ends, Foote novelty exact on 2 fixtures; downbeat snap deferred |
 | Section classification | intro/verse/chorus/bridge labels from structure | med | med | structure | opt | no | P2 |
 
 The two starred items were the riskiest entries in this phase, so both are **prototyped

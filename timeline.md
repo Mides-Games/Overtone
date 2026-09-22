@@ -16,6 +16,85 @@ later costs more than writing it down now.
 
 ---
 
+## v3.2 — 2026-09-22 · The measure grid
+
+Tempora (`teamkongehund/Tempora`) times a song by associating points of time in
+the music to a timeline of **measures and measure divisions**, by hand. Overtone
+already automates the hard half of that — the pairing of audio time to beat
+index is exactly `t(k) = offset + k·period`, solved over hundreds of attacks
+instead of two hand-placed anchors. What it did not do was measures.
+
+### Changed
+
+- **Per-section time signature.** `section_measures` runs the meter detector on
+  each section's own attacks. v3 read the meter once, from the first section,
+  and wrote that number into every red line, so a song that moves to 3/4 for a
+  bridge came out wrong everywhere after the change.
+- **Red lines anchor to downbeats.** v3 anchored only the *first* line to a
+  downbeat; every later section took the next plain beat, so osu!'s bar lines
+  drifted out of step with the music after the first tempo change. Each section
+  now anchors to its own downbeat — but only when its accents prove one.
+- `TimingPoint` carries `meter` and `meter_known`. The second field matters:
+  a point that does not know its bar falls back to the analysis meter rather
+  than to a hard-coded 4, so writing 4 over a detected 3/4 cannot happen.
+- New gate, `bench/gates.py measures`.
+
+### Fixed
+
+- **The click track accented every fourth beat regardless of meter** (audit
+  **F-03**). A waltz clicked in 4 against the music, and the click track is
+  what the README calls the arbiter — a mapper checking a 3/4 song by ear could
+  have concluded the timing was wrong when it was not. Now accents on the
+  point's own bar.
+- **`snap_timing_points` dropped the bar.** It rebuilds each point, and the new
+  fields were not carried, so every section silently reset to "unknown" before
+  export and the per-section meter never reached the `.osu` or the click track.
+  Caught by a test, not by inspection. The same omission was fixed in
+  `update_timing_point`, `nudge_timing_point` and `rescale_section`.
+
+### Hardening
+
+- The "no evidence, no bar" rule is preserved exactly: a section whose accents
+  do not prove a time signature reports `1` and keeps v3's beat anchoring.
+  Guessing a bar without evidence pushes a red line up to three beats past
+  where the music changed, which is worse than not knowing.
+
+### Measured
+
+Accuracy unchanged, which is the point: **24/24 within 0.05 BPM and 5 ms,
+median 0.0000 BPM and 0.16 ms**, `bpm-snapshot` 24/24 unchanged, golden vectors
+24/24 unchanged. 62 unit tests, up from 56.
+
+The new gate needed its own fixtures, and the reason is worth recording. On the
+24-case corpus the detector reports "no bar" on **every section**, and it is
+right to: `build_track` puts a hat on every beat and varies the kick only
+between 1.0 and 0.8, so downbeat contrast lands near 1.05 against a 1.20
+threshold. The feature was therefore a no-op on the whole corpus — implemented
+but unproven. Rather than lower a threshold with no ground truth to justify it,
+three fixtures with an audible downbeat were added:
+
+```
+case                        truth     detected   anchored
+downbeat-4-4                  [4]          [4]        yes
+downbeat-3-4                  [3]          [3]        yes
+downbeat-4-then-3          [4, 3]          [4]        yes
+```
+
+Anchoring is exact: the emitted offset sits a whole number of bars from its
+section's downbeat, to within 2 % of a bar.
+
+### Open items
+
+- **A time-signature change at constant tempo is not detected.** Sections split
+  on tempo, so 4/4 → 3/4 at the same BPM stays one section and only the first
+  bar is reported (`downbeat-4-then-3` above). Tempora lets a user set the
+  signature per audio block regardless of tempo; matching that needs a
+  meter-change detector alongside the tempo one.
+- `.osz` export — timing a song from nothing, rather than injecting into an
+  existing `.osu` — is the remaining piece of Tempora's workflow.
+
+---
+
 ## v3.1 — 2026-09-22 · Audit, and the v4 design
 
 No engine behaviour changed. This entry exists because the next release is a rewrite, and

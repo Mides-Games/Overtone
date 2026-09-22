@@ -81,6 +81,15 @@ class TimingPoint:
     bpm: float
     confidence: float
     beat_index: int
+    #: Beats per bar for this point, written into the .osu meter field and
+    #: used to accent the click track. Defaults to 4 so every existing caller
+    #: and every hand-made point keeps working unchanged.
+    meter: int = 4
+    #: True when the accents actually proved where the bar starts. When they
+    #: did not, the offset is anchored to a beat rather than a downbeat —
+    #: guessing a bar without evidence pushes the first red line up to three
+    #: beats past the first sound.
+    meter_known: bool = False
 
 
 @dataclass
@@ -1388,9 +1397,39 @@ def _section_confidence(section: GridSection, persistence: int) -> float:
     return float(max(0.0, min(1.0, value)))
 
 
+def section_measures(sections: list[GridSection], times: np.ndarray,
+                     weights: np.ndarray) -> list[tuple[str, int, int]]:
+    """Per-section ``(meter text, downbeat class, beats per bar)``.
+
+    v3 read the meter once, from the first section, and wrote that same number
+    into every red line. A song that moves to 3/4 for a bridge therefore came
+    out wrong everywhere after the change, and every red line after the first
+    was anchored to a plain beat, so osu!'s bar lines drifted out of step with
+    the music.
+
+    Each section is now measured on **its own attacks**. The rule that matters
+    is inherited unchanged: a section whose accents do not prove a bar reports
+    ``1``, meaning "anchor to a beat, not a bar". Guessing a bar without
+    evidence pushes a red line up to three beats past where the music changed,
+    which is worse than not knowing.
+    """
+    out: list[tuple[str, int, int]] = []
+    for section in sections:
+        window = ((times >= section.start_s - section.period)
+                  & (times <= section.end_s + section.period))
+        if int(window.sum()) < 12:
+            out.append(("4/4", 0, 1))
+            continue
+        out.append(_meter_from_grid(times[window], weights[window],
+                                    section.period, section.phase))
+    return out
+
+
 def _points_from_sections(sections: list[GridSection], first_sound: float,
                           persistence: int, downbeat_class: int, meter: int,
-                          factor: float = 1.0) -> list[TimingPoint]:
+                          factor: float = 1.0,
+                          measures: list[tuple[str, int, int]] | None = None
+                          ) -> list[TimingPoint]:
     """Turn fitted grids into osu! red lines, each on a (down)beat of its own grid."""
     points: list[TimingPoint] = []
     for n, section in enumerate(sections):
@@ -1400,22 +1439,42 @@ def _points_from_sections(sections: list[GridSection], first_sound: float,
         bpm = 60.0 / period
         if not 20.0 <= bpm <= 900.0:
             continue
-        anchor = section.phase
+        # Per-section bar, falling back to the global reading for section 0 so
+        # behaviour is unchanged when no per-section measurement was made.
+        if measures is not None and n < len(measures):
+            _text, section_downbeat, section_bar = measures[n]
+        elif n == 0:
+            _text, section_downbeat, section_bar = ("4/4", downbeat_class, meter)
+        else:
+            _text, section_downbeat, section_bar = ("4/4", 0, 1)
+        known = section_bar > 1
+
         if n == 0:
             # The first red line should land on a downbeat so osu!'s bar lines
             # match the music — but only when the accents prove where the bar
-            # starts. ``meter`` is 1 when they do not.
-            anchor = section.phase + downbeat_class * section.period
-            span = section.period * max(1, meter)
+            # starts.
+            anchor = section.phase + section_downbeat * section.period
+            span = section.period * max(1, section_bar)
             start = max(section.start_s, first_sound) - 0.25 * period
             offset = anchor + np.ceil((start - anchor) / span - 1e-9) * span
             while offset < first_sound - 0.55 * period:
                 offset += span
+        elif known:
+            # A tempo change lands on a bar line in practically all music, and
+            # a red line on a downbeat is what makes osu!'s editor agree with
+            # the song. Only done when this section's accents prove the bar.
+            anchor = section.phase + section_downbeat * section.period
+            span = section.period * section_bar
+            offset = anchor + np.ceil((section.start_s - anchor) / span - 1e-9) * span
         else:
+            anchor = section.phase
             k = np.ceil((section.start_s - anchor) / period - 1e-9)
             offset = anchor + k * period
+
         points.append(TimingPoint(float(offset * 1000.0), float(bpm),
-                                  _section_confidence(section, persistence), n))
+                                  _section_confidence(section, persistence), n,
+                                  max(1, int(section_bar)) if known else 4,
+                                  bool(known)))
     return points
 
 
@@ -1595,8 +1654,10 @@ def _assemble_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int, fit
                        factor: float) -> Analysis:
     """Build the public :class:`Analysis` from a precision fit."""
     sections: list[GridSection] = fit["sections"]
+    measures = section_measures(sections, fit["times"], fit["weights"])
     points = _points_from_sections(sections, fit["first_sound"], persistence,
-                                   fit["downbeat"], fit["meter_beats"], factor)
+                                   fit["downbeat"], fit["meter_beats"], factor,
+                                   measures)
     kept = [p for p in points if p.confidence >= min_confidence]
     if not kept and points:
         # Never hand back an empty map when a grid was clearly found.
@@ -1844,10 +1905,22 @@ def export_click_track(analysis: Analysis, destination: str | os.PathLike[str],
         start = point.offset_ms / 1000.0
         end = snapped[s + 1].offset_ms / 1000.0 if s + 1 < len(snapped) else duration
         beat_len = 60.0 / point.bpm
+        # Audit F-03: this accented every fourth beat regardless of the
+        # detected meter, so a waltz clicked in 4 against the music and a
+        # mapper checking it by ear could conclude the timing was wrong when
+        # it was not. The click track is the arbiter; it has to agree.
+        bar = 4
+        if getattr(point, "meter_known", False):
+            bar = max(1, int(getattr(point, "meter", 4) or 4))
+        else:
+            try:
+                bar = max(1, min(16, int(str(getattr(analysis, "meter", "4/4")).split("/")[0])))
+            except (ValueError, TypeError):
+                bar = 4
         k = 0
         t = start
         while t <= end + 1e-6:
-            place(t, accent=(k % 4 == 0))
+            place(t, accent=(k % bar == 0))
             t += beat_len
             k += 1
             if k > 20000:
@@ -1884,7 +1957,11 @@ def snap_timing_points(points: list[TimingPoint]) -> list[TimingPoint]:
         if abs(offset - point.offset_ms) > 0.25 * beat_length:
             snapped.append(point)
             continue
-        snapped.append(TimingPoint(offset, point.bpm, point.confidence, point.beat_index))
+        # Carry the bar across: rebuilding a point without it silently
+        # reset every section to 'unknown', so the per-section meter
+        # never reached the .osu or the click track.
+        snapped.append(TimingPoint(offset, point.bpm, point.confidence,
+                                   point.beat_index, point.meter, point.meter_known))
     return snapped
 
 
@@ -1900,15 +1977,26 @@ def osu_timing_text(analysis: Analysis, decimals: int = 0) -> str:
     # annotation after the Effects field: some parsers treat it as invalid.
     rows = ["// Generated by Overtone v" + APP_VERSION]
     try:
-        meter = max(1, min(16, int(str(getattr(analysis, "meter", "4/4")).split("/")[0])))
+        fallback = max(1, min(16, int(str(getattr(analysis, "meter", "4/4")).split("/")[0])))
     except (ValueError, TypeError):
-        meter = 4
+        fallback = 4
     for p in snap_timing_points(list(getattr(analysis, "points", None) or [])):
         if not np.isfinite(p.bpm) or p.bpm <= 0 or not np.isfinite(p.offset_ms):
             continue
         beat_length = 60000.0 / p.bpm
         offset = (f"{p.offset_ms:.{int(decimals)}f}" if decimals > 0
                   else str(int(round(p.offset_ms))))
+        # Each point carries the bar its own section proved. A song that moves
+        # to 3/4 for a bridge used to get the first section's meter written
+        # into every line.
+        #
+        # A point that does *not* know its own bar — a hand-added one, or a
+        # section whose accents proved nothing — falls back to the analysis
+        # meter rather than to a hard-coded 4. Writing 4 over a detected 3/4
+        # would be inventing information the engine did not have.
+        meter = fallback
+        if getattr(p, "meter_known", False):
+            meter = max(1, min(16, int(getattr(p, "meter", fallback) or fallback)))
         rows.append(f"{offset},{beat_length:.12f},{meter},1,0,100,1,0")
     return "\n".join(rows)
 
@@ -1970,8 +2058,11 @@ def update_timing_point(points: list[TimingPoint], beats: np.ndarray, index: int
         raise ValueError("Offset must be finite and BPM positive.")
     old = points[index]
     merged = list(points)
+    # Editing a point's offset or BPM does not change its time signature, so
+    # the bar it knows travels with it.
     merged[index] = TimingPoint(float(offset_ms), float(bpm), old.confidence,
-                                _nearest_beat_index(beats, offset_ms))
+                                _nearest_beat_index(beats, offset_ms),
+                                old.meter, old.meter_known)
     merged.sort(key=lambda p: p.offset_ms)
     return merged
 
@@ -1994,7 +2085,7 @@ def nudge_timing_point(points: list[TimingPoint], beats: np.ndarray, index: int,
     offset = max(0.0, old.offset_ms + delta_ms)
     merged = list(points)
     merged[index] = TimingPoint(offset, old.bpm, old.confidence,
-                                _nearest_beat_index(beats, offset))
+                                old.beat_index, old.meter, old.meter_known)
     merged.sort(key=lambda p: p.offset_ms)
     return merged
 
@@ -2010,7 +2101,8 @@ def rescale_section(points: list[TimingPoint], index: int, factor: float) -> lis
     if not 30 <= bpm <= 600:
         raise ValueError(f"Resulting BPM {bpm:.1f} is outside 30–600.")
     merged = list(points)
-    merged[index] = TimingPoint(old.offset_ms, bpm, old.confidence, old.beat_index)
+    merged[index] = TimingPoint(old.offset_ms, bpm, old.confidence, old.beat_index,
+                                old.meter, old.meter_known)
     return merged
 
 

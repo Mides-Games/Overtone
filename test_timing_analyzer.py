@@ -13,6 +13,7 @@ import numpy as np
 
 from timing_analyzer import (
     DEFAULT_LANGUAGE,
+    Analysis,
     GridSection,
     TimingAnalyzerApp,
     TimingPoint,
@@ -38,6 +39,8 @@ from timing_analyzer import (
     osu_timing_text,
     rebuild_with_subdivision,
     rescale_section,
+    section_measures,
+    _points_from_sections,
     snap_timing_points,
     suggest_section_pulse,
     update_timing_point,
@@ -656,6 +659,119 @@ class ExportHardeningTests(unittest.TestCase):
             out = Path(tmp) / "c.wav"
             export_click_track(analysis, out)
             self.assertTrue(out.is_file())
+
+
+class MeasureGridTests(unittest.TestCase):
+    """Per-section bars: audit F-03, and Tempora's measure model automated.
+
+    v3 read the meter once, from the first section, wrote that number into
+    every red line, and anchored every line after the first to a plain beat.
+    A song that moves to 3/4 came out wrong everywhere after the change, and
+    osu!'s bar lines drifted out of step with the music.
+    """
+
+    @staticmethod
+    def _accented(period, phase, count, bar, start_class=0):
+        """Attacks on a grid, accented once per `bar` beats."""
+        times = np.array([phase + k * period for k in range(count)])
+        weights = np.array(
+            [1.0 if (k % bar) == start_class else 0.3 for k in range(count)],
+            dtype=float,
+        )
+        return times, weights
+
+    def test_section_measures_reads_each_section_separately(self):
+        # 4/4 for 16 bars, then 3/4 for 16 bars, on the same tempo.
+        period = 0.5
+        a_times, a_weights = self._accented(period, 0.0, 64, 4)
+        b_start = 64 * period
+        b_times, b_weights = self._accented(period, b_start, 48, 3)
+        times = np.r_[a_times, b_times]
+        weights = np.r_[a_weights, b_weights]
+        sections = [
+            GridSection(0.0, b_start, period, 0.0, 64, 0.1, 1.0),
+            GridSection(b_start, b_start + 48 * period, period, b_start, 48, 0.1, 1.0),
+        ]
+        measures = section_measures(sections, times, weights)
+        self.assertEqual(measures[0][2], 4, f"first section: {measures[0]}")
+        self.assertEqual(measures[1][2], 3, f"second section: {measures[1]}")
+
+    def test_a_proven_bar_anchors_the_red_line_to_a_downbeat(self):
+        # The second section's downbeat sits two beats after its start, so a
+        # beat-anchored line would land on the wrong beat of the bar.
+        period = 0.5
+        sections = [
+            GridSection(0.0, 10.0, period, 0.0, 20, 0.1, 1.0),
+            GridSection(10.0, 20.0, period, 9.0, 20, 0.1, 1.0),
+        ]
+        measures = [("4/4", 0, 4), ("4/4", 1, 4)]
+        points = _points_from_sections(sections, 0.0, 4, 0, 4, 1.0, measures)
+        self.assertEqual(len(points), 2)
+        second = points[1]
+        # phase 9.0, downbeat class 1 -> downbeats at 9.5, 11.5, 13.5 ...
+        # The first at or after the section start (10.0) is 11.5.
+        self.assertAlmostEqual(second.offset_ms, 11500.0, places=6)
+        self.assertTrue(second.meter_known)
+        self.assertEqual(second.meter, 4)
+
+    def test_no_evidence_keeps_the_old_beat_anchoring(self):
+        # A section whose accents prove nothing must behave exactly as before:
+        # anchored to the next beat, not pushed forward to an invented bar.
+        period = 0.5
+        sections = [
+            GridSection(0.0, 10.0, period, 0.0, 20, 0.1, 1.0),
+            GridSection(10.0, 20.0, period, 9.0, 20, 0.1, 1.0),
+        ]
+        measures = [("4/4", 0, 1), ("4/4", 0, 1)]
+        points = _points_from_sections(sections, 0.0, 4, 0, 1, 1.0, measures)
+        # phase 9.0, beats at 9.0, 9.5, 10.0 -> the first at/after 10.0 is 10.0
+        self.assertAlmostEqual(points[1].offset_ms, 10000.0, places=6)
+        self.assertFalse(points[1].meter_known)
+
+    def test_each_point_writes_its_own_meter(self):
+        analysis = Analysis("s", 30.0, np.zeros(0), np.zeros(0),
+                            [TimingPoint(0.0, 120.0, 1.0, 0, 4, True),
+                             TimingPoint(8000.0, 120.0, 1.0, 1, 3, True)],
+                            512, 44100, 1, 120.0, 1.0, "4/4")
+        rows = [r for r in osu_timing_text(analysis).splitlines() if not r.startswith("//")]
+        self.assertEqual(rows[0].split(",")[2], "4")
+        self.assertEqual(rows[1].split(",")[2], "3", "the 3/4 section must say 3")
+
+    def test_an_unknown_meter_falls_back_to_the_analysis(self):
+        # A hand-added point knows no bar; writing a hard-coded 4 over a
+        # detected 3/4 would invent information the engine did not have.
+        analysis = Analysis("s", 30.0, np.zeros(0), np.zeros(0),
+                            [TimingPoint(0.0, 120.0, 1.0, 0)],
+                            512, 44100, 1, 120.0, 1.0, "3/4")
+        rows = [r for r in osu_timing_text(analysis).splitlines() if not r.startswith("//")]
+        self.assertEqual(rows[0].split(",")[2], "3")
+
+    def test_click_track_accents_on_the_detected_meter(self):
+        """Audit F-03: the metronome accented every 4th beat on a waltz."""
+        import soundfile as sf
+        bpm, bar = 120.0, 3
+        analysis = Analysis("s", 8.0, np.zeros(0), np.zeros(0),
+                            [TimingPoint(0.0, bpm, 1.0, 0, bar, True)],
+                            512, 44100, 1, bpm, 1.0, "3/4")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "click.wav"
+            export_click_track(analysis, path)
+            y, sr = sf.read(str(path))
+        beat = 60.0 / bpm
+        # Peak amplitude in a short window at each beat. The accent tone is
+        # louder, so accented beats must be the maxima.
+        levels = []
+        for k in range(12):
+            start = int(k * beat * sr)
+            levels.append(float(np.max(np.abs(y[start:start + int(0.03 * sr)]))))
+        # The unaccented tone is rendered at 0.7 of the accent's gain, so a
+        # 0.6 threshold would call every beat an accent. 0.85 separates them.
+        accents = [k for k, level in enumerate(levels) if level > 0.85 * max(levels)]
+        self.assertTrue(accents, f"no accents found in {levels}")
+        self.assertTrue(
+            all(k % bar == 0 for k in accents),
+            f"accents at {accents} should all be multiples of {bar}",
+        )
 
 
 class ConfigAndInjectHardeningTests(unittest.TestCase):

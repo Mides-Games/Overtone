@@ -156,8 +156,8 @@ Full results and the four implementation traps found:
 
 ## Phase 4 — Playback and timing editor
 
-| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri |
-|---|---|:--:|:--:|---|:--:|:--:|:--:|
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | cpal transport | play/pause/seek, ring buffer, no alloc in the callback | med | **high** | `overtone-audio` | no | no | **P1** |
 | Live click track | synthesised against the *current* timing points | med | **high** | transport | no | no | **P1** |
 | Playhead sync | timestamped position, UI extrapolates at 60 Hz | low | high | transport | no | no | **P1** |
@@ -167,7 +167,7 @@ Full results and the four implementation traps found:
 | Add / delete / split / merge | with per-section re-seeded recalculation | med | high | editor | no | no | **P1** |
 | **Lock timing point** | protect a verified point from re-analysis | low | high | editor | no | no | P1 |
 | Undo/redo | one stack per project | med | high | editor | no | no | P1 |
-| Click-accent meter fix | accent on the detected meter — closes audit **F-03** | trivial | low | click | no | no | P1 |
+| Click-accent meter fix | accent on the detected meter — closes audit **F-03** | trivial | low | click | no | no | P1 | **done** |
 
 ---
 
@@ -183,7 +183,17 @@ Full results and the four implementation traps found:
 | Beatmap folder import | audio + all difficulties from one drop | low | med | reader | no | no | P1 |
 | **Map vs detected compare** | per-section BPM/offset diff table | med | **high** | reader, P1 | no | no | **P1** |
 | Audio/object alignment | do the map's objects land on real attacks? | med | **high** | reader, attacks | no | no | **P1** |
-| lazer compatibility | decimal offsets, `.osu` v14+ specifics | low | med | writer | no | no | P2 |
+| lazer compatibility | decimal offsets, `.osu` v14+ specifics | low | med | writer | no | no | P2 | |
+| **Per-section meter** | each red line carries the bar its own section proved | med | high | meter | no | no | **P1** | **done (v3)** |
+| **Downbeat anchoring** | every red line lands on a downbeat, not the next beat | med | high | meter | no | no | **P1** | **done (v3)** |
+| Meter-change detection | split on time signature, not only on tempo | high | med | sections | no | no | P2 | todo |
+| `.osz` export | time a song from nothing: audio + a minimal `.osu` in a zip | med | high | writer | no | no | P2 | todo |
+
+The last four come from comparing against [Tempora](https://github.com/teamkongehund/Tempora),
+which times a song manually by pairing points in the audio to a timeline of
+measures. Overtone already automates the pairing itself — that *is*
+`t(k) = offset + k·period`, fitted over hundreds of attacks rather than two
+hand-placed anchors. The measures were what was missing.
 
 ---
 

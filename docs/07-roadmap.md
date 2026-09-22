@@ -226,7 +226,7 @@ All of [`06-hitsound-engine.md`](06-hitsound-engine.md).
 | Instrument templates | 13 scored classes, explainable by construction | high | **high** | features | no | no | **P1** | **done** — 13/13 scored, F1 0.91 dense; vocal known-weak |
 | Synthetic label corpus | renderer emits audio + per-hit labels (no dataset licence) | med | **high** | bench | no | no | **P1** | **done** — 8 classes, seeded Rust renderer |
 | Template calibration | logistic fit of term weights on the corpus | med | high | corpus | **light** | no | P1 | **done** — LR, macro F1 0.85 on dense tracks |
-| Musical role | grid position, metrical weight, phrase, accent, density | med | **high** | P2 structure | no | no | **P1** | |
+| Musical role | grid position, metrical weight, phrase, accent, density | med | **high** | P2 structure | no | no | **P1** | **done** — audio-side role per attack; object context waits P5 | |
 | Object context | type, pattern class, spacing, combo, existing hitsounds | med | **high** | P5 reader | no | no | **P1** | |
 | **Viterbi decision** | sequence labelling with consistency/symmetry/refractory costs | high | **high** | all above | no | no | **P1** | |
 | Explanations | itemised terms + alternatives from DP marginals | med | **high** | decision | no | no | **P1** | |

@@ -88,6 +88,19 @@ pub fn analyze(
     bar_beats: usize,
     phrase_edges: &[f64],
 ) -> Vec<Role> {
+    debug_assert_eq!(
+        times.len(),
+        weights.len(),
+        "attacks and weights run in parallel"
+    );
+    // Phrase edges with the track bounds implied on both sides, so the
+    // first and last phrases measure against something real.
+    let duration = y.len() as f64 / sr.max(1) as f64;
+    let mut edges: Vec<f64> = vec![0.0];
+    edges.extend(phrase_edges.iter().copied());
+    edges.push(duration);
+    edges.sort_by(f64::total_cmp);
+    edges.dedup();
     // Track RMS distribution over 2 s windows, for the energy percentile.
     let win = (2.0 * sr as f64) as usize;
     let mut buckets = Vec::new();
@@ -120,9 +133,10 @@ pub fn analyze(
             };
             let metrical_weight = metrical_weight(beat_in_bar, bar_beats, division);
 
-            // Phrase edges with implied track start/end.
-            let (since, to) = phrase_position(t, phrase_edges, bar_len);
+            let (since, to) = phrase_position(t, &edges, bar_len);
 
+            // INFINITY when there are no sections: "no boundary", never
+            // subtracted, only compared with `<` — which is inf-safe.
             let section_boundary_s = sections
                 .iter()
                 .flat_map(|s| [s.start.get(), s.end.get()])

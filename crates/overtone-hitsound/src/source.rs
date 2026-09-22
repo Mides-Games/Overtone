@@ -216,7 +216,6 @@ mod tests {
                 + 0.3 * (2.0 * std::f64::consts::PI * 4000.0 * t).sin() * (-t / 0.003).exp()) as f32;
         }
         let kform = formant_likeness(&spectrum_of(&kick, n_fft), sr, n_fft);
-        eprintln!("vowel {vform:.3} kick {kform:.3}");
         assert!(vform > 2.0 * kform.max(0.05), "vowel {vform:.3} vs kick {kform:.3}");
     }
 }

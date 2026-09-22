@@ -553,7 +553,6 @@ mod tests {
         let (before, _) = macro_f1(&initial_templates(), &test_rows);
         let (after, per_class) = macro_f1(&templates, &test_rows);
         eprintln!("F1 {before:.3} -> {after:.3}: {per_class:.2?}");
-        eprintln!("F1 {before:.3} -> {after:.3}: {per_class:.2?}");
         for (truth, features) in &test_rows {
             let mut scored = classify(&templates, features);
             scored.sort_by(|a, b| b.1.total_cmp(&a.1));

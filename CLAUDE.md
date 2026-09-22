@@ -25,7 +25,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_timing_analyzer      # must be 62/62
+.venv/Scripts/python.exe -m unittest test_timing_analyzer      # must be 69/69
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 24/24 stage for stage
@@ -88,7 +88,7 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
 
 ```
 timing_analyzer.py        v3 engine + Tk GUI + CLI  (to move to reference/python-v3)
-test_timing_analyzer.py   62 unit tests
+test_timing_analyzer.py   69 unit tests
 bench/benchmark.py        synthetic accuracy harness, exact ground truth
 bench/gates.py            octave snapshot, density-change and measure gates
                           (the things the accuracy benchmark cannot see)

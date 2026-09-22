@@ -89,7 +89,8 @@ python timing_analyzer.py "song.wav" --stats --csv timing.csv --click click.wav
 | `--decimal-offsets 3` | sub-millisecond offsets (lazer accepts them; **stable does not**) |
 | `--click click.wav` | metronome aligned to the red lines — **listen to it against the song** |
 | `--stats` | global BPM, stability, meter, engine used, grid residual |
-| `--inject map.osu` | writes red lines straight into the beatmap (`--no-backup` skips the `.bak`) |
+| `--osz out.osz` | writes a **complete beatmap archive** — the audio plus an `.osu` carrying this timing. Times a song from nothing, rather than injecting into a map that already exists. `--artist` / `--title` / `--creator` set the metadata |
+| `--inject map.osu` | writes red lines straight into an existing beatmap (`--no-backup` skips the `.bak`) |
 | `--no-refine` | skips sample-resolution attack re-timing (diagnostic aid) |
 
 GUI presets: **⚡ Variable** = 1.5 / 12 / 75 (default — songs that change often),

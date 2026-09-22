@@ -47,6 +47,7 @@ import csv
 import json
 import os
 import queue
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -2148,6 +2149,168 @@ def suggest_section_pulse(analysis: Analysis,
 
 
 # ---------------------------------------------------------------------------
+# .osz export
+# ---------------------------------------------------------------------------
+
+#: An .osz is a zip; a mistyped path should not turn into a gigabyte of audio.
+MAX_OSZ_AUDIO_BYTES = 64 * 1024 * 1024
+#: Characters Windows refuses in a filename, plus the ones osu! trips over.
+_UNSAFE_FILENAME = str.maketrans({c: "_" for c in '<>:"/\\|?*'})
+
+
+def _safe_component(text: str, fallback: str) -> str:
+    """A filename piece that is safe on Windows and readable afterwards.
+
+    Path separators are already replaced, so traversal is not reachable, but a
+    run of dots is collapsed as well: ".." inside an archive entry is harmless
+    here and alarming everywhere else, and some extractors refuse it outright.
+    A single dot survives, because "Mr. Blue" is a legitimate artist.
+    """
+    cleaned = " ".join(str(text).translate(_UNSAFE_FILENAME).split())
+    cleaned = re.sub(r"\.{2,}", "_", cleaned)
+    cleaned = cleaned.strip(". ")
+    return cleaned[:80] or fallback
+
+
+def osu_beatmap_text(analysis: "Analysis", audio_filename: str,
+                     metadata: dict | None = None, decimals: int = 0) -> str:
+    """A complete, openable .osu carrying this analysis and nothing else.
+
+    Timing a song from nothing is the one part of Tempora's workflow Overtone
+    could not do: it could only inject red lines into a beatmap that already
+    existed. This writes the beatmap.
+
+    Deliberately minimal — no hit objects, no background, default difficulty
+    settings. The point is a file a mapper can open in the editor with the
+    timing already correct, not a playable map.
+    """
+    meta = {
+        "title": "Untitled",
+        "artist": "Unknown Artist",
+        "creator": "Overtone",
+        "version": "Timing",
+        "source": "",
+        "tags": "",
+    }
+    meta.update({k: v for k, v in (metadata or {}).items() if v is not None})
+
+    timing = "\n".join(
+        row for row in osu_timing_text(analysis, decimals).splitlines()
+        if row and not row.startswith("//")
+    )
+    if not timing:
+        raise ValueError("This analysis has no usable timing points to export.")
+
+    return "\n".join([
+        "osu file format v14",
+        "",
+        "[General]",
+        f"AudioFilename: {audio_filename}",
+        "AudioLeadIn: 0",
+        "PreviewTime: -1",
+        "Countdown: 0",
+        "SampleSet: Normal",
+        "StackLeniency: 0.7",
+        "Mode: 0",
+        "LetterboxInBreaks: 0",
+        "WidescreenStoryboard: 0",
+        "",
+        "[Editor]",
+        "DistanceSpacing: 1",
+        "BeatDivisor: 4",
+        "GridSize: 4",
+        "TimelineZoom: 1",
+        "",
+        "[Metadata]",
+        f"Title:{meta['title']}",
+        f"TitleUnicode:{meta['title']}",
+        f"Artist:{meta['artist']}",
+        f"ArtistUnicode:{meta['artist']}",
+        f"Creator:{meta['creator']}",
+        f"Version:{meta['version']}",
+        f"Source:{meta['source']}",
+        f"Tags:{meta['tags']}",
+        "BeatmapID:0",
+        "BeatmapSetID:-1",
+        "",
+        "[Difficulty]",
+        "HPDrainRate:5",
+        "CircleSize:4",
+        "OverallDifficulty:7",
+        "ApproachRate:9",
+        "SliderMultiplier:1.4",
+        "SliderTickRate:1",
+        "",
+        "[Events]",
+        "//Background and Video events",
+        "//Break Periods",
+        "//Storyboard Layer 0 (Background)",
+        "//Storyboard Layer 1 (Fail)",
+        "//Storyboard Layer 2 (Pass)",
+        "//Storyboard Layer 3 (Foreground)",
+        "//Storyboard Layer 4 (Overlay)",
+        "//Storyboard Sound Samples",
+        "",
+        "[TimingPoints]",
+        timing,
+        "",
+        "",
+        "[HitObjects]",
+        "",
+    ])
+
+
+def export_osz(analysis: "Analysis", destination: str | os.PathLike[str],
+               audio_path: str | os.PathLike[str] | None = None,
+               metadata: dict | None = None, decimals: int = 0) -> dict:
+    """Write a .osz: the audio plus a beatmap carrying this timing.
+
+    The archive is built in a temporary file and renamed into place, so an
+    interrupted export cannot leave a half-written .osz that osu! will refuse
+    and the user will not think to delete.
+    """
+    import zipfile
+
+    source = Path(audio_path) if audio_path else Path(getattr(analysis, "source", ""))
+    if not source.is_file():
+        raise ValueError(f"Audio file not found: {source}")
+    size = source.stat().st_size
+    if size > MAX_OSZ_AUDIO_BYTES:
+        raise ValueError(
+            f"{source.name} is {size / 1e6:.0f} MB; that is not a beatmap's audio.")
+
+    # Drop keys the caller passed as None -- a CLI flag that was not given
+    # arrives as None, and keeping it would shadow the default with "None".
+    meta = {k: v for k, v in (metadata or {}).items() if v is not None}
+    meta.setdefault("title", source.stem)
+    artist = _safe_component(meta.get("artist", "Unknown Artist"), "Unknown Artist")
+    title = _safe_component(meta.get("title", "Untitled"), "Untitled")
+    creator = _safe_component(meta.get("creator", "Overtone"), "Overtone")
+    version = _safe_component(meta.get("version", "Timing"), "Timing")
+
+    audio_name = _safe_component(source.name, "audio" + source.suffix)
+    osu_name = f"{artist} - {title} ({creator}) [{version}].osu"
+    text = osu_beatmap_text(analysis, audio_name, meta, decimals)
+
+    target = Path(destination)
+    temp = target.with_name(target.name + ".part")
+    try:
+        with zipfile.ZipFile(temp, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr(osu_name, text.encode("utf-8"))
+            archive.write(source, audio_name)
+        os.replace(temp, target)
+    except BaseException:
+        try:
+            temp.unlink()
+        except OSError:
+            pass
+        raise
+    return {"osu": osu_name, "audio": audio_name,
+            "points": len(snap_timing_points(list(analysis.points))),
+            "bytes": target.stat().st_size}
+
+
+# ---------------------------------------------------------------------------
 # .osu injection
 # ---------------------------------------------------------------------------
 
@@ -3479,6 +3642,10 @@ def main() -> None:
     parser.add_argument("--decimal-offsets", type=int, default=0, metavar="N",
                         help="Write N decimals on offsets (default 0 — whole ms, what osu!stable expects)")
     parser.add_argument("--no-refine", action="store_true", help="Skip sample-resolution attack re-timing (diagnostic)")
+    parser.add_argument("--osz", metavar="OUT.OSZ", help="Write a complete beatmap archive: the audio plus an .osu carrying this timing")
+    parser.add_argument("--artist", help="Artist for --osz metadata (default: unknown)")
+    parser.add_argument("--title", help="Title for --osz metadata (default: the audio filename)")
+    parser.add_argument("--creator", help="Creator for --osz metadata (default: Overtone)")
     parser.add_argument("--inject", metavar="MAP.OSU", help="Inject red lines into an .osu [TimingPoints] (backup .bak, greens kept)")
     parser.add_argument("--no-backup", action="store_true", help="Skip the .bak backup when injecting")
     parser.add_argument("--no-map-preference", action="store_true", help="Do not prefer 120-300 mapping BPM when resolving the octave")
@@ -3506,6 +3673,13 @@ def main() -> None:
             export_csv(analysis, args.csv)
         if args.click:
             export_click_track(analysis, args.click)
+        if args.osz:
+            written = export_osz(
+                analysis, args.osz, args.audio,
+                {"artist": args.artist, "title": args.title, "creator": args.creator},
+                args.decimal_offsets)
+            print(f"Wrote {args.osz}: {written['osu']} "
+                  f"({written['points']} red line(s), {written['bytes'] / 1e6:.1f} MB)")
     except (OSError, ValueError) as exc:
         print(f"Error writing output: {exc}")
         raise SystemExit(1)

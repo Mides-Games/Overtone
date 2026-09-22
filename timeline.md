@@ -16,7 +16,7 @@ later costs more than writing it down now.
 
 ---
 
-## v3.2 — 2026-09-22 · The measure grid
+## v3.2 — 2026-09-22 · The measure grid, and timing a song from nothing
 
 Tempora (`teamkongehund/Tempora`) times a song by associating points of time in
 the music to a timeline of **measures and measure divisions**, by hand. Overtone
@@ -83,6 +83,32 @@ downbeat-4-then-3          [4, 3]          [4]        yes
 Anchoring is exact: the emitted offset sits a whole number of bars from its
 section's downbeat, to within 2 % of a bar.
 
+### Also changed — `.osz` export
+
+The remaining piece of Tempora's workflow. v3 could only **inject** red lines
+into a beatmap that already existed; `export_osz` writes the beatmap: a zip
+holding the audio and a complete, openable `.osu` carrying this timing and
+nothing else — no hit objects, no background, default difficulty. The point is
+a file a mapper opens in the editor with the timing already correct.
+
+`--osz out.osz`, with `--artist` / `--title` / `--creator` for the metadata.
+
+Hardening, because an archive is a filename problem as much as a format one:
+
+- the zip is built in a `.part` file and renamed into place, so an interrupted
+  export cannot leave a half-written `.osz` that osu! refuses and the user does
+  not think to delete;
+- metadata is sanitised into the filename — path separators and the characters
+  Windows refuses become `_`, and a run of dots collapses. `../../evil` cannot
+  reach outside the archive, and a single dot survives because "Mr. Blue" is a
+  legitimate artist;
+- the audio is size-capped before anything is written;
+- an analysis with no usable points is refused rather than producing a beatmap
+  with an empty `[TimingPoints]`.
+
+Seven tests, including that a failed export leaves neither the archive nor the
+temporary file behind.
+
 ### Open items
 
 - **A time-signature change at constant tempo is not detected.** Sections split
@@ -90,8 +116,6 @@ section's downbeat, to within 2 % of a bar.
   bar is reported (`downbeat-4-then-3` above). Tempora lets a user set the
   signature per audio block regardless of tempo; matching that needs a
   meter-change detector alongside the tempo one.
-- `.osz` export — timing a song from nothing, rather than injecting into an
-  existing `.osu` — is the remaining piece of Tempora's workflow.
 
 ---
 

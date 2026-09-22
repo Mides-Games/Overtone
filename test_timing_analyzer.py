@@ -39,6 +39,8 @@ from timing_analyzer import (
     osu_timing_text,
     rebuild_with_subdivision,
     rescale_section,
+    export_osz,
+    osu_beatmap_text,
     section_measures,
     _points_from_sections,
     snap_timing_points,
@@ -772,6 +774,103 @@ class MeasureGridTests(unittest.TestCase):
             all(k % bar == 0 for k in accents),
             f"accents at {accents} should all be multiples of {bar}",
         )
+
+
+class OszExportTests(unittest.TestCase):
+    """Timing a song from nothing — the part of Tempora's flow v3 could not do.
+
+    v3 could only inject red lines into a beatmap that already existed. These
+    cover writing the beatmap.
+    """
+
+    def _analysis(self, source="song.wav"):
+        return Analysis(source, 30.0, np.zeros(0), np.zeros(0),
+                        [TimingPoint(298.0, 224.0, 0.98, 0, 4, True),
+                         TimingPoint(13240.0, 226.5, 0.94, 1, 3, True)],
+                        512, 44100, 1, 224.0, 1.0, "4/4")
+
+    @staticmethod
+    def _audio(path: Path) -> Path:
+        import soundfile as sf
+        sf.write(str(path), np.zeros(4410, dtype=np.float32), 44100)
+        return path
+
+    def test_archive_holds_the_audio_and_one_beatmap(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = self._audio(Path(tmp) / "song.wav")
+            out = Path(tmp) / "map.osz"
+            written = export_osz(self._analysis(), out, audio)
+            self.assertTrue(out.is_file())
+            with zipfile.ZipFile(out) as archive:
+                self.assertIsNone(archive.testzip())
+                names = archive.namelist()
+                osu = [n for n in names if n.endswith(".osu")]
+                self.assertEqual(len(osu), 1, names)
+                self.assertIn("song.wav", names)
+                text = archive.read(osu[0]).decode("utf-8")
+            # The beatmap must point at the name the archive actually used, or
+            # osu! opens a map with no audio.
+            self.assertIn(f"AudioFilename: {written['audio']}", text)
+            self.assertEqual(written["points"], 2)
+
+    def test_the_beatmap_has_every_section_osu_expects(self):
+        text = osu_beatmap_text(self._analysis(), "song.mp3")
+        self.assertTrue(text.startswith("osu file format v14"))
+        for section in ("[General]", "[Editor]", "[Metadata]", "[Difficulty]",
+                        "[Events]", "[TimingPoints]", "[HitObjects]"):
+            self.assertIn(section, text, section)
+
+    def test_each_points_own_meter_reaches_the_beatmap(self):
+        text = osu_beatmap_text(self._analysis(), "song.mp3")
+        body = text[text.index("[TimingPoints]"):]
+        rows = [r for r in body.splitlines()[1:] if r.strip()][:2]
+        self.assertEqual(rows[0].split(",")[2], "4")
+        self.assertEqual(rows[1].split(",")[2], "3")
+
+    def test_unsafe_metadata_cannot_escape_the_filename(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = self._audio(Path(tmp) / "song.wav")
+            out = Path(tmp) / "map.osz"
+            written = export_osz(self._analysis(), out, audio,
+                                 {"artist": "../../evil", "title": 'a:b"c|d?e*f'})
+            for bad in ("..", "/", "\\", ":", '"', "|", "?", "*"):
+                self.assertNotIn(bad, written["osu"], f"{bad!r} in {written['osu']!r}")
+            with zipfile.ZipFile(out) as archive:
+                for name in archive.namelist():
+                    self.assertFalse(Path(name).is_absolute())
+                    self.assertNotIn("..", name)
+
+    def test_an_empty_analysis_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = self._audio(Path(tmp) / "song.wav")
+            empty = Analysis("song.wav", 30.0, np.zeros(0), np.zeros(0), [],
+                             512, 44100, 1, 0.0, 0.0, "4/4")
+            with self.assertRaises(ValueError):
+                export_osz(empty, Path(tmp) / "map.osz", audio)
+
+    def test_missing_audio_is_refused_before_writing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "map.osz"
+            with self.assertRaises(ValueError):
+                export_osz(self._analysis(), out, Path(tmp) / "nope.wav")
+            self.assertFalse(out.exists())
+            self.assertFalse((Path(tmp) / "map.osz.part").exists())
+
+    def test_a_failed_export_leaves_no_half_written_archive(self):
+        # An interrupted export must not leave a .osz osu! will refuse and the
+        # user will not think to delete.
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = self._audio(Path(tmp) / "song.wav")
+            out = Path(tmp) / "map.osz"
+            broken = Analysis("song.wav", 30.0, np.zeros(0), np.zeros(0),
+                              [TimingPoint(0.0, 0.0, 1.0, 0)],
+                              512, 44100, 1, 0.0, 0.0, "4/4")
+            with self.assertRaises(ValueError):
+                export_osz(broken, out, audio)
+            self.assertFalse(out.exists())
+            self.assertFalse((Path(tmp) / "map.osz.part").exists())
 
 
 class ConfigAndInjectHardeningTests(unittest.TestCase):

@@ -13,6 +13,7 @@
 pub mod corpus;
 pub mod source;
 pub mod spectral;
+pub mod template;
 pub mod temporal;
 
 /// Analysis windows around each attack, in seconds (docs §2).

@@ -406,7 +406,6 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
         overtone_tempo::fit::window(&ours, &our_w32, anchor_lo, anchor_lo + span);
     let got_candidates = overtone_tempo::coherence::candidates(&w_times, &w_weights, 10);
 
-
     // The anchor seed: the first `_seed_grid` call v3 records. Two things are
     // checked against it — that our refined seed matches, and that the raw
     // candidate list contained it in the first place.
@@ -466,18 +465,18 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
     // `_assemble_analysis` filters at factor 1): seed, octave, grow,
     // beat-convert, settle, meter, points. Defaults match `analyze_audio`:
     // min_delta 1.5, persistence 12, min_confidence 0.75.
-    let pipeline = overtone_tempo::points::analyze_attacks(
-        &ours,
-        &our_w32,
-        &env,
-        44_100,
-        1.5,
-        12,
-        true,
-        0.75,
+    let pipeline =
+        overtone_tempo::points::analyze_attacks(&ours, &our_w32, &env, 44_100, 1.5, 12, true, 0.75);
+    let atom = diff_sections(
+        "atom_sections",
+        &pipeline.atom_sections,
+        &golden.atom_sections,
     );
-    let atom = diff_sections("atom_sections", &pipeline.atom_sections, &golden.atom_sections);
-    let beat = diff_sections("beat_sections", &pipeline.beat_sections, &golden.beat_sections);
+    let beat = diff_sections(
+        "beat_sections",
+        &pipeline.beat_sections,
+        &golden.beat_sections,
+    );
     let settled = diff_sections(
         "settled_sections",
         &pipeline.settled_sections,
@@ -589,7 +588,10 @@ fn density_truth(name: &str) -> Option<(f64, f64)> {
 fn density_mode(root: &Path, only: &[String]) -> Result<()> {
     let mut names = all_cases(root)?;
     for extra in ["halftime-175-87.5", "halftime-150-75", "doubletime-110-220"] {
-        if root.join("bench/audio").join(format!("{extra}.wav")).is_file()
+        if root
+            .join("bench/audio")
+            .join(format!("{extra}.wav"))
+            .is_file()
             && !names.contains(&extra.to_string())
         {
             names.push(extra.to_string());
@@ -623,14 +625,10 @@ fn density_mode(root: &Path, only: &[String]) -> Result<()> {
         let (attacks, env) = overtone_dsp::detect_attacks_default(&y, sr);
         let times: Vec<f64> = attacks.iter().map(|a| a.time.get()).collect();
         let w32: Vec<f32> = attacks.iter().map(|a| a.weight).collect();
-        let pipeline = overtone_tempo::points::analyze_attacks(
-            &times, &w32, &env, sr, 1.5, 12, true, 0.75,
-        );
-        let hints = overtone_tempo::density::scan_sections(
-            &pipeline.settled_sections,
-            &times,
-            &w32,
-        );
+        let pipeline =
+            overtone_tempo::points::analyze_attacks(&times, &w32, &env, sr, 1.5, 12, true, 0.75);
+        let hints =
+            overtone_tempo::density::scan_sections(&pipeline.settled_sections, &times, &w32);
         let truth = density_truth(name);
         // Only count it as expected when the engine merged the change into
         // one section: two red lines mean there is nothing left to find.
@@ -643,7 +641,9 @@ fn density_mode(root: &Path, only: &[String]) -> Result<()> {
             println!(
                 "{:<20} {:>6}  {:>6}  {:>7.1}s  {:>5.2}/{:<5.2}  {:>5.2}/{:<5.2}{}",
                 name,
-                truth.map(|(_, r)| format!("{r}")).unwrap_or_else(|| "-".into()),
+                truth
+                    .map(|(_, r)| format!("{r}"))
+                    .unwrap_or_else(|| "-".into()),
                 match found.side {
                     overtone_tempo::density::ThinSide::Head => "head",
                     overtone_tempo::density::ThinSide::Tail => "tail",
@@ -660,7 +660,9 @@ fn density_mode(root: &Path, only: &[String]) -> Result<()> {
             println!(
                 "{:<20} {:>6}  {:>6}  {:>8}  {:>12}  {:>14}",
                 name,
-                truth.map(|(_, r)| format!("{r}")).unwrap_or_else(|| "-".into()),
+                truth
+                    .map(|(_, r)| format!("{r}"))
+                    .unwrap_or_else(|| "-".into()),
                 "no",
                 "-",
                 "-",
@@ -839,7 +841,11 @@ fn elastic_mode(root: &Path, only: &[String]) -> Result<()> {
                         );
                     }
                 }
-                let winner = if v3_rms <= report.rms_ms { "v3" } else { "elastic" };
+                let winner = if v3_rms <= report.rms_ms {
+                    "v3"
+                } else {
+                    "elastic"
+                };
                 println!(
                     "{:<18} {:>3} {:>6.2}ms  {:>9.3} -> {:<9.3}  {:>5.2}%  {:>6.2}ms  {}{}",
                     name,
@@ -894,7 +900,10 @@ fn map_mode(root: &Path, only: &[String]) -> Result<()> {
         "ramp-180-140",
         "ramp-90-200",
     ] {
-        if root.join("bench/audio").join(format!("{extra}.wav")).is_file()
+        if root
+            .join("bench/audio")
+            .join(format!("{extra}.wav"))
+            .is_file()
             && !names.contains(&extra.to_string())
         {
             names.push(extra.to_string());
@@ -903,7 +912,10 @@ fn map_mode(root: &Path, only: &[String]) -> Result<()> {
     names.sort();
     println!("2-D coherence map: the ridge must follow the pulse — flat on");
     println!("constants, sloping on ramps, jumping once per atom change.\n");
-    println!("{:<20} {:>7}  {:>10}  {:>22}  verdict", "case", "windows", "ridge R", "changes");
+    println!(
+        "{:<20} {:>7}  {:>10}  {:>22}  verdict",
+        "case", "windows", "ridge R", "changes"
+    );
     println!("{}", "-".repeat(76));
     let mut failures = 0usize;
     for name in &names {
@@ -997,7 +1009,10 @@ fn map_mode(root: &Path, only: &[String]) -> Result<()> {
 fn nogrid_mode(root: &Path) -> Result<()> {
     use overtone_core::Diagnostic;
     let cases = ["_noise", "_ambient", "_silence"];
-    println!("{:<10} {:>8}  {:>9}  {:>8}  verdict", "case", "attacks", "sections", "points");
+    println!(
+        "{:<10} {:>8}  {:>9}  {:>8}  verdict",
+        "case", "attacks", "sections", "points"
+    );
     println!("{}", "-".repeat(56));
     let mut failures = 0usize;
     let mut ran = 0usize;
@@ -1012,9 +1027,8 @@ fn nogrid_mode(root: &Path) -> Result<()> {
         let (attacks, env) = overtone_dsp::detect_attacks_default(&y, sr);
         let times: Vec<f64> = attacks.iter().map(|a| a.time.get()).collect();
         let w32: Vec<f32> = attacks.iter().map(|a| a.weight).collect();
-        let pipeline = overtone_tempo::points::analyze_attacks(
-            &times, &w32, &env, sr, 1.5, 12, true, 0.75,
-        );
+        let pipeline =
+            overtone_tempo::points::analyze_attacks(&times, &w32, &env, sr, 1.5, 12, true, 0.75);
         let honest = pipeline.points.is_empty()
             && pipeline.settled_sections.is_empty()
             && matches!(
@@ -1109,9 +1123,15 @@ fn main() -> Result<()> {
         let (lo, hi) = overtone_tempo::anchor_window(&times);
         let span = overtone_tempo::SEED_WIDTHS[0].min(hi - lo);
         let (wt, ww) = overtone_tempo::fit::window(&times, &w, lo, lo + span);
-        println!("anchor {lo:.6}..{hi:.6}  span {span:.6}  attacks in window {}", wt.len());
+        println!(
+            "anchor {lo:.6}..{hi:.6}  span {span:.6}  attacks in window {}",
+            wt.len()
+        );
         let got = overtone_tempo::coherence::candidates(&wt, &ww, 10);
-        println!("{:<4} {:>14} {:>14} {:>10}   {:>14} {:>14}", "#", "v3 period", "rust period", "d period", "v3 phase", "rust phase");
+        println!(
+            "{:<4} {:>14} {:>14} {:>10}   {:>14} {:>14}",
+            "#", "v3 period", "rust period", "d period", "v3 phase", "rust phase"
+        );
         for i in 0..golden.candidates.len().max(got.len()) {
             let want = golden.candidates.get(i);
             let mine = got.get(i);
@@ -1122,11 +1142,15 @@ fn main() -> Result<()> {
             println!(
                 "{:<4} {:>14} {:>14} {:>10}   {:>14} {:>14}",
                 i,
-                want.map(|c| format!("{:.9}", c.period_s)).unwrap_or_else(|| "-".into()),
-                mine.map(|c| format!("{:.9}", c.period)).unwrap_or_else(|| "-".into()),
+                want.map(|c| format!("{:.9}", c.period_s))
+                    .unwrap_or_else(|| "-".into()),
+                mine.map(|c| format!("{:.9}", c.period))
+                    .unwrap_or_else(|| "-".into()),
                 dp,
-                want.map(|c| format!("{:.7}", c.phase_s)).unwrap_or_else(|| "-".into()),
-                mine.map(|c| format!("{:.7}", c.phase)).unwrap_or_else(|| "-".into()),
+                want.map(|c| format!("{:.7}", c.phase_s))
+                    .unwrap_or_else(|| "-".into()),
+                mine.map(|c| format!("{:.7}", c.phase))
+                    .unwrap_or_else(|| "-".into()),
             );
         }
         return Ok(());
@@ -1150,7 +1174,10 @@ fn main() -> Result<()> {
     }
 
     println!("Stage-by-stage diff against the v3 Python engine.");
-    println!("Tolerance: attacks within {:.3} ms.\n", ATTACK_TOL_S * 1000.0);
+    println!(
+        "Tolerance: attacks within {:.3} ms.\n",
+        ATTACK_TOL_S * 1000.0
+    );
     println!(
         "{:<18} {:>8} {:>8} {:>10} {:>3} {:>10} {:>7} {:>8}  verdict",
         "case", "attacks", "matched", "worst", "in", "seed dP", "octave", "analyse"
@@ -1221,7 +1248,11 @@ fn main() -> Result<()> {
                             report.expected.saturating_sub(report.matched)
                         ));
                     }
-                    format!("DIFF: {} (worst at {:.3}s)", why.join(", "), report.worst_at)
+                    format!(
+                        "DIFF: {} (worst at {:.3}s)",
+                        why.join(", "),
+                        report.worst_at
+                    )
                 };
                 total_decode += report.decode_s;
                 total_analyse += report.analyse_s;
@@ -1250,7 +1281,11 @@ fn main() -> Result<()> {
         total_decode + total_analyse
     );
     if failures == 0 {
-        println!("{}/{} cases match the v3 engine attack for attack.", names.len(), names.len());
+        println!(
+            "{}/{} cases match the v3 engine attack for attack.",
+            names.len(),
+            names.len()
+        );
         Ok(())
     } else {
         println!("{failures}/{} cases diverge.", names.len());

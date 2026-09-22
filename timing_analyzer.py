@@ -2600,7 +2600,7 @@ class TimingAnalyzerApp:
         table_frame = ttk.Frame(center)
         table_frame.pack(fill="both", expand=True)
         cols = ("n", "offset", "bpm", "beatlen", "confidence")
-        self.table = ttk.Treeview(table_frame, columns=cols, show="headings", height=9)
+        self.table = ttk.Treeview(table_frame, columns=cols, show="headings", height=7)
         for col, w in (("n", 50), ("offset", 130), ("bpm", 130), ("beatlen", 110), ("confidence", 120)):
             self.table.column(col, width=w, anchor="center")
         self.table.pack(side="left", fill="both", expand=True)
@@ -2644,10 +2644,13 @@ class TimingAnalyzerApp:
         ttk.Label(editor, textvariable=self.suggest_var, style="Muted.TLabel",
                   wraplength=640).pack(anchor="w", pady=(6, 0))
 
-        self.preview = tk.Canvas(center, height=132, bg="#131926", highlightthickness=1,
+        self.preview = tk.Canvas(center, height=208, bg=self.TRACE["bg"],
+                                 highlightthickness=1,
                                  highlightbackground=self.C["border"])
-        self.preview.pack(fill="x", pady=(10, 0))
+        self.preview.pack(fill="both", expand=True, pady=(10, 0))
         self.preview.bind("<Configure>", lambda _e: self._draw_preview())
+        self.preview.bind("<Motion>", self._trace_hover)
+        self.preview.bind("<Leave>", lambda _e: self.preview.delete("hover"))
         self.widgets["hint"] = ttk.Label(center, style="Subtitle.TLabel", wraplength=720)
         self.widgets["hint"].pack(anchor="w", pady=(8, 0))
 
@@ -3134,65 +3137,234 @@ class TimingAnalyzerApp:
         }
         return reverse.get(message, message)
 
+    # -- tempo trace -----------------------------------------------------
+    #: One palette for the trace, kept apart from the widget theme so the plot
+    #: can be read as its own surface. Semantic only: red means a timing point,
+    #: blue means tempo, amber means the current selection. Nothing is coloured
+    #: for decoration.
+    TRACE = {
+        "bg": "#0F1420",
+        "lane": "#141B2A",
+        "grid": "#1E2738",
+        "grid_soft": "#182031",
+        "bed": "#2B3444",
+        "text": "#C4D0E2",
+        "muted": "#8B98AD",
+        "dim": "#5B6678",
+        "tempo": "#7AA2F7",
+        "tempo_fill": "#1A2437",
+        "red": "#F0616D",
+        "sel": "#FFD166",
+    }
+
+    @staticmethod
+    def _tick_step(span: float, target: int = 6) -> float:
+        """A round time step so axis labels land on values a human reads."""
+        if span <= 0:
+            return 1.0
+        for step in (1, 2, 5, 10, 15, 30, 60, 120, 300, 600):
+            if span / step <= target:
+                return float(step)
+        return 900.0
+
+    @staticmethod
+    def _mmss(seconds: float) -> str:
+        seconds = max(0.0, seconds)
+        return f"{int(seconds) // 60}:{int(seconds) % 60:02d}"
+
+    def _trace_geometry(self):
+        """Shared layout so hover and drawing cannot disagree."""
+        canvas = self.preview
+        width = max(canvas.winfo_width(), 1)
+        height = max(canvas.winfo_height(), 1)
+        pad_l, pad_r = 44, 14
+        head = 24                      # title row
+        axis = 18                      # time labels along the bottom
+        body_top = head + 8
+        body_bottom = height - axis - 6
+        # The tempo curve gets the upper two thirds, the onset bed the lower.
+        split = body_top + (body_bottom - body_top) * 0.62
+        return {
+            "w": width, "h": height, "l": pad_l, "r": width - pad_r,
+            "top": body_top, "split": split, "bottom": body_bottom,
+        }
+
+    def _trace_scales(self):
+        """(duration, low, high) for the current analysis, or None."""
+        if not self.analysis or len(self.analysis.local_bpms) < 2:
+            return None
+        values = np.asarray(self.analysis.local_bpms, dtype=float)
+        times = np.asarray(self.analysis.beats, dtype=float)
+        if times.size < 2:
+            return None
+        low, high = (float(v) for v in np.quantile(values, [0.02, 0.98]))
+        if high - low < 1.0:                     # a constant-tempo track
+            centre = 0.5 * (low + high)
+            low, high = centre - 1.5, centre + 1.5
+        else:
+            margin = 0.25 * (high - low)
+            low, high = low - margin, high + margin
+        duration = max(float(self.analysis.duration or times[-1]), 0.001)
+        return duration, low, high
+
     def _draw_preview(self) -> None:
-        """Tempo trace with section shading, red-line markers and selection."""
+        """Tempo trace: onset bed, tempo curve, sections and red lines."""
         canvas = self.preview
         canvas.delete("all")
-        width, height = max(canvas.winfo_width(), 1), max(canvas.winfo_height(), 1)
-        canvas.create_text(14, 13, anchor="w", fill="#8B98AD", font=("Segoe UI Semibold", 9),
-                           text="TEMPO TRACE · BPM")
-        if not self.analysis or len(self.analysis.local_bpms) < 2:
-            canvas.create_text(width / 2, height / 2 + 8, fill="#5B6678",
+        C = self.TRACE
+        g = self._trace_geometry()
+
+        canvas.create_text(14, 13, anchor="w", fill=C["muted"],
+                           font=("Segoe UI Semibold", 9), text="TEMPO TRACE")
+
+        scales = self._trace_scales()
+        if scales is None:
+            canvas.create_text(g["w"] / 2, g["h"] / 2, fill=C["dim"],
                                font=("Segoe UI", 10), text=self.tr("trace_empty"))
             return
+        duration, low, high = scales
         values = np.asarray(self.analysis.local_bpms, dtype=float)
         times = np.asarray(self.analysis.beats, dtype=float)
         snapped = snap_timing_points(self.analysis.points)
-        low, high = np.quantile(values, [0.05, 0.95])
-        if high - low < 0.5:
-            low, high = low - 1, high + 1
-        pad_x, top, bottom = 16, 30, height - 14
-        duration = max(float(times[-1]), 0.001)
 
         def x_of(t: float) -> float:
-            return pad_x + (width - pad_x * 2) * float(t) / duration
+            return g["l"] + (g["r"] - g["l"]) * min(max(float(t) / duration, 0.0), 1.0)
 
         def y_of(bpm: float) -> float:
-            return bottom - (bottom - top) * float(np.clip((bpm - low) / (high - low), 0, 1))
+            frac = (float(bpm) - low) / max(high - low, 1e-9)
+            return g["split"] - (g["split"] - g["top"]) * min(max(frac, 0.0), 1.0)
 
-        # Section shading (alternating) + faint onset bed.
-        bounds = [0.0] + [p.offset_ms / 1000.0 for p in snapped[1:]] + [duration]
-        for s in range(len(bounds) - 1):
-            if s % 2 == 1:
-                canvas.create_rectangle(x_of(bounds[s]), top, x_of(bounds[s + 1]), bottom,
-                                        fill="#182032", outline="")
+        # -- lanes ------------------------------------------------------
+        canvas.create_rectangle(g["l"], g["top"], g["r"], g["bottom"],
+                                fill=C["lane"], outline="")
+
+        # -- section shading, behind everything else --------------------
+        edges = [0.0] + [p.offset_ms / 1000.0 for p in snapped[1:]] + [duration]
+        for i in range(len(edges) - 1):
+            if i == self.selected_section:
+                fill = "#1D2740"
+            elif i % 2 == 1:
+                fill = "#18202F"
+            else:
+                continue
+            canvas.create_rectangle(x_of(edges[i]), g["top"], x_of(edges[i + 1]),
+                                    g["bottom"], fill=fill, outline="")
+
+        # -- BPM grid ---------------------------------------------------
+        for frac in (0.0, 0.5, 1.0):
+            bpm = low + (high - low) * frac
+            y = y_of(bpm)
+            canvas.create_line(g["l"], y, g["r"], y, fill=C["grid_soft"])
+            canvas.create_text(g["l"] - 7, y, anchor="e", fill=C["dim"],
+                               font=("Consolas", 8), text=f"{bpm:.0f}")
+
+        # -- onset bed, max-pooled per pixel column ---------------------
+        # One sample per column would miss the peaks entirely and draw noise;
+        # taking the maximum over each column's frames is what makes the bed
+        # look like the music instead of like static.
         try:
             bed = np.asarray(self.analysis.onset, dtype=float)
-            if bed.size > 8:
-                xs = np.linspace(pad_x, width - pad_x, min(400, bed.size))
-                idx = np.linspace(0, bed.size - 1, len(xs)).astype(int)
-                peak = max(float(np.max(bed)), 1e-9)
-                for x, b in zip(xs, bed[idx]):
-                    h = (bottom - top) * 0.35 * float(b) / peak
-                    canvas.create_line(x, bottom, x, bottom - h, fill="#2A3550")
+            columns = int(g["r"] - g["l"])
+            if bed.size > 8 and columns > 8:
+                bins = np.minimum((np.arange(bed.size) * columns) // bed.size,
+                                  columns - 1)
+                pooled = np.zeros(columns)
+                np.maximum.at(pooled, bins, bed)
+                peak = max(float(pooled.max()), 1e-9)
+                floor = g["bottom"]
+                span = (g["bottom"] - g["split"]) - 4
+                points = [g["l"], floor]
+                for c in range(columns):
+                    points.extend((g["l"] + c, floor - span * pooled[c] / peak))
+                points.extend((g["r"], floor))
+                canvas.create_polygon(*points, fill=C["bed"],
+                                      outline="")
         except Exception:
             pass
-        # Tempo line.
+        canvas.create_line(g["l"], g["split"], g["r"], g["split"], fill=C["grid"])
+
+        # -- tempo curve ------------------------------------------------
+        # No spline smoothing: a smoothed curve through hundreds of beats
+        # invents wiggles the engine never reported. Decimated to about two
+        # points per pixel so long tracks stay responsive.
+        step = max(1, times.size // max(int(g["r"] - g["l"]) * 2, 1))
         coords: list[float] = []
-        for t, bpm in zip(times, values):
-            coords.extend((x_of(float(t)), y_of(float(bpm))))
+        for t, bpm in zip(times[::step], values[::step]):
+            coords.extend((x_of(t), y_of(bpm)))
         if len(coords) >= 4:
-            canvas.create_line(*coords, fill="#FF66AA", width=2, smooth=True)
-        # Red lines + labels.
-        for s, point in enumerate(snapped):
+            fill_pts = [coords[0], g["split"]] + coords + [coords[-2], g["split"]]
+            canvas.create_polygon(*fill_pts, fill=C["tempo_fill"], outline="")
+            canvas.create_line(*coords, fill=C["tempo"], width=2)
+
+        # -- red lines and their section chips --------------------------
+        for i, point in enumerate(snapped):
             x = x_of(point.offset_ms / 1000.0)
-            selected = self.selected_section == s
-            canvas.create_line(x, top, x, bottom, fill="#FFD166" if selected else "#3DDC84",
+            selected = self.selected_section == i
+            colour = C["sel"] if selected else C["red"]
+            canvas.create_line(x, g["top"], x, g["bottom"], fill=colour,
                                width=2 if selected else 1)
-            label = f"{point.bpm:.0f}"
-            canvas.create_text(min(max(x + 4, pad_x + 20), width - 30), top + 9, anchor="w",
-                               fill="#FFD166" if selected else "#7EE2B0",
-                               font=("Segoe UI Semibold", 9), text=label)
+            canvas.create_polygon(x - 4, g["top"], x + 4, g["top"], x, g["top"] + 6,
+                                  fill=colour, outline="")
+            label = f"{point.bpm:.3f}"
+            tx = min(max(x + 6, g["l"] + 2), g["r"] - 54)
+            canvas.create_rectangle(tx - 3, g["top"] + 3, tx + 50, g["top"] + 19,
+                                    fill=C["bg"], outline=colour)
+            canvas.create_text(tx, g["top"] + 11, anchor="w", fill=colour,
+                               font=("Consolas", 8), text=label)
+
+        # -- time axis --------------------------------------------------
+        step_s = self._tick_step(duration)
+        tick = 0.0
+        while tick <= duration + 1e-6:
+            x = x_of(tick)
+            canvas.create_line(x, g["bottom"], x, g["bottom"] + 4, fill=C["grid"])
+            canvas.create_text(x, g["bottom"] + 12, fill=C["dim"],
+                               font=("Consolas", 8), text=self._mmss(tick))
+            tick += step_s
+
+    def _trace_hover(self, event) -> None:
+        """Read out the time, tempo and section under the cursor."""
+        canvas = self.preview
+        canvas.delete("hover")
+        scales = self._trace_scales()
+        if scales is None:
+            return
+        duration, _low, _high = scales
+        g = self._trace_geometry()
+        if not (g["l"] <= event.x <= g["r"] and g["top"] <= event.y <= g["bottom"]):
+            return
+        C = self.TRACE
+        at = duration * (event.x - g["l"]) / max(g["r"] - g["l"], 1)
+
+        snapped = snap_timing_points(self.analysis.points)
+        section = 0
+        for i, point in enumerate(snapped):
+            if point.offset_ms / 1000.0 <= at + 1e-9:
+                section = i
+        point = snapped[section] if snapped else None
+
+        canvas.create_line(event.x, g["top"], event.x, g["bottom"],
+                           fill=C["muted"], dash=(2, 3), tags="hover")
+        if point is None:
+            return
+        beat_ms = 60000.0 / point.bpm if point.bpm > 0 else float("nan")
+        lines = [
+            self._mmss(at),
+            f"{point.bpm:.3f} BPM",
+            f"beat  {beat_ms:.3f} ms",
+            f"conf  {point.confidence:.0%}",
+        ]
+        box_w, box_h = 118, 14 * len(lines) + 10
+        bx = event.x + 10
+        if bx + box_w > g["r"]:
+            bx = event.x - 10 - box_w
+        by = min(max(g["top"] + 2, event.y - box_h - 8), g["bottom"] - box_h)
+        canvas.create_rectangle(bx, by, bx + box_w, by + box_h, fill=C["bg"],
+                                outline=C["grid"], tags="hover")
+        for n, text in enumerate(lines):
+            canvas.create_text(bx + 8, by + 12 + n * 14, anchor="w",
+                               fill=C["text"] if n else C["sel"],
+                               font=("Consolas", 8), text=text, tags="hover")
 
     def start(self) -> None:
         self.root.mainloop()

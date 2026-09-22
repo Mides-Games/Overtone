@@ -51,6 +51,16 @@ struct Golden {
     candidates: Vec<GoldenGrid>,
     #[serde(default)]
     seeds: Vec<Option<GoldenGrid>>,
+    #[serde(default)]
+    octave: Option<GoldenOctave>,
+}
+
+/// v3's octave decision. The accuracy benchmark normalises octaves away, so
+/// this is the only thing that can catch a change to it — audit finding F-07.
+#[derive(Deserialize)]
+struct GoldenOctave {
+    atoms_per_beat: usize,
+    first_class: usize,
 }
 
 /// A period/phase pair as the Python dump writes it.
@@ -74,6 +84,10 @@ struct Report {
     analyse_s: f64,
     candidates: usize,
     seed_in_candidates: bool,
+    octave_expected: usize,
+    octave_found: usize,
+    class_expected: usize,
+    class_found: usize,
     seed_period_err: f64,
     seed_phase_ms: f64,
     expected: usize,
@@ -93,6 +107,8 @@ impl Report {
             && self.worst_ms <= ATTACK_TOL_S * 1000.0
             && self.env_frames_found == self.env_frames_expected
             && self.seed_in_candidates
+            && self.octave_found == self.octave_expected
+            && self.class_found == self.class_expected
             && self.weight_correlation > 0.999
             && self.seed_period_err <= PERIOD_TOL_S
             && self.seed_phase_ms <= ATTACK_TOL_S * 1000.0
@@ -259,12 +275,42 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
         }
     }
 
+    // The octave decision, on the same anchor window and seed v3 used. This
+    // is the stage audit finding F-07 says nothing in v3 tests.
+    let mut octave_expected = 0usize;
+    let mut octave_found = 0usize;
+    let mut class_expected = 0usize;
+    let mut class_found = 0usize;
+    if let (Some(want), Some(Some(seed))) = (&golden.octave, golden.seeds.first()) {
+        octave_expected = want.atoms_per_beat;
+        class_expected = want.first_class;
+        let hints = overtone_tempo::octave::tempo_hints(&env, sr, overtone_core::FIT_HOP);
+        let (aw_times, aw_weights) =
+            overtone_tempo::fit::window(&ours, &our_w32, anchor_lo, anchor_hi);
+        let (m, class) = overtone_tempo::octave::beat_from_atoms(
+            &aw_times,
+            &aw_weights,
+            overtone_tempo::fit::Grid {
+                period: seed.period_s,
+                phase: seed.phase_s,
+            },
+            &hints,
+            true,
+        );
+        octave_found = m;
+        class_found = class;
+    }
+
     Ok(Report {
         case: golden.case,
         decode_s,
         analyse_s,
         candidates: got_candidates.len(),
         seed_in_candidates,
+        octave_expected,
+        octave_found,
+        class_expected,
+        class_found,
         seed_period_err,
         seed_phase_ms,
         expected: golden.attacks.count,
@@ -353,8 +399,8 @@ fn main() -> Result<()> {
     println!("Stage-by-stage diff against the v3 Python engine.");
     println!("Tolerance: attacks within {:.3} ms.\n", ATTACK_TOL_S * 1000.0);
     println!(
-        "{:<18} {:>8} {:>8} {:>10} {:>5} {:>3} {:>10} {:>8}  verdict",
-        "case", "attacks", "matched", "worst", "cands", "in", "seed dP", "analyse"
+        "{:<18} {:>8} {:>8} {:>10} {:>3} {:>10} {:>7} {:>8}  verdict",
+        "case", "attacks", "matched", "worst", "in", "seed dP", "octave", "analyse"
     );
     println!("{}", "-".repeat(92));
 
@@ -384,6 +430,18 @@ fn main() -> Result<()> {
                     if !report.seed_in_candidates {
                         why.push("seed not among candidates".to_string());
                     }
+                    if report.octave_found != report.octave_expected {
+                        why.push(format!(
+                            "OCTAVE {} -> {} atoms/beat",
+                            report.octave_expected, report.octave_found
+                        ));
+                    }
+                    if report.class_found != report.class_expected {
+                        why.push(format!(
+                            "accent class {} -> {}",
+                            report.class_expected, report.class_found
+                        ));
+                    }
                     if report.seed_period_err > PERIOD_TOL_S {
                         why.push(format!("seed period {:.2e}s off", report.seed_period_err));
                     }
@@ -401,14 +459,14 @@ fn main() -> Result<()> {
                 total_decode += report.decode_s;
                 total_analyse += report.analyse_s;
                 println!(
-                    "{:<18} {:>8} {:>8} {:>8.4}ms {:>5} {:>3} {:>10.2e} {:>7.3}s  {verdict}",
+                    "{:<18} {:>8} {:>8} {:>8.4}ms {:>3} {:>10.2e} {:>7} {:>7.3}s  {verdict}",
                     report.case,
                     report.expected,
                     report.matched,
                     report.worst_ms,
-                    report.candidates,
                     if report.seed_in_candidates { "y" } else { "N" },
                     report.seed_period_err,
+                    format!("{}/{}", report.octave_found, report.octave_expected),
                     report.analyse_s,
                 );
             }

@@ -10,6 +10,7 @@
 
 pub mod coherence;
 pub mod fit;
+pub mod octave;
 
 use fit::{Grid, Quality};
 

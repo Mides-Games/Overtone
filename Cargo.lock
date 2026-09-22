@@ -159,6 +159,7 @@ dependencies = [
  "overtone-core",
  "overtone-dsp",
  "rayon",
+ "realfft",
 ]
 
 [[package]]

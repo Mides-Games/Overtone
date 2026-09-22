@@ -13,3 +13,4 @@ workspace = true
 overtone-core = { version = "4.0.0-dev", path = "../overtone-core" }
 overtone-dsp = { version = "4.0.0-dev", path = "../overtone-dsp" }
 rayon = "1.12.0"
+realfft = "3.5.0"

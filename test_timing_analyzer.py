@@ -361,6 +361,25 @@ class SectionPulseTests(unittest.TestCase):
     def test_in_range_section_is_never_suggested(self):
         self.assertEqual(suggest_section_pulse(_section_analysis(0.9, bpm=224.0)), [])
 
+    def test_pulse_hints_only_ever_suggest_doubling(self):
+        """Documents a real gap, not desired behaviour — audit finding F-11.
+
+        Every suggestion the helper can emit is ``x2``: it skips any point at
+        or above ``low_bpm`` before looking at the audio, so a section reported
+        at 175 BPM whose note rate has actually halved to 87.5 gets no hint.
+        The benchmark cannot see this either (it normalizes octaves), and
+        ``bench/gates.py coverage`` measures the signal that would drive the
+        missing halving hint. When v4 adds it, this test should be replaced by
+        one asserting the hint appears.
+        """
+        # A sparse, fast section: attacks on every other beat of the reported
+        # grid, which is what a half-time region looks like from here.
+        analysis = _section_analysis(0.0, bpm=200.0)
+        self.assertEqual(suggest_section_pulse(analysis), [])
+        factors = {factor for _idx, factor, _ratio in
+                   suggest_section_pulse(_section_analysis(0.7))}
+        self.assertEqual(factors, {2}, "the helper has no downward direction")
+
 
 class OsuInjectTests(unittest.TestCase):
     FAKE_OSU = ("osu file format v14\n[General]\nAudioFilename: song.mp3\n"

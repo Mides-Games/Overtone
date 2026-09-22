@@ -1,0 +1,315 @@
+{
+  "_comment": "Absolute reported BPMs, no octave normalization. Regenerate with: python bench/gates.py bpm-snapshot --update",
+  "engine": "auto",
+  "bpm_eps": 0.01,
+  "cases": {
+    "edm-174": {
+      "global_bpm": 174.0,
+      "section_bpms": [
+        174.0
+      ],
+      "point_bpms": [
+        174.0
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "stream-225": {
+      "global_bpm": 225.0,
+      "section_bpms": [
+        225.0
+      ],
+      "point_bpms": [
+        225.0
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "odd-222.22": {
+      "global_bpm": 222.2222,
+      "section_bpms": [
+        222.2222
+      ],
+      "point_bpms": [
+        222.2222
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "decimal-128.37": {
+      "global_bpm": 128.37,
+      "section_bpms": [
+        128.37
+      ],
+      "point_bpms": [
+        128.37
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "slow-92": {
+      "global_bpm": 184.0,
+      "section_bpms": [
+        184.0
+      ],
+      "point_bpms": [
+        184.0
+      ],
+      "meter": "4/4",
+      "meter_beats": 4,
+      "engine": "precision"
+    },
+    "fast-300": {
+      "global_bpm": 150.0,
+      "section_bpms": [
+        150.0
+      ],
+      "point_bpms": [
+        150.0
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "lead-silence": {
+      "global_bpm": 155.0,
+      "section_bpms": [
+        155.0
+      ],
+      "point_bpms": [
+        155.0
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "long-6min": {
+      "global_bpm": 186.0,
+      "section_bpms": [
+        186.0
+      ],
+      "point_bpms": [
+        186.0
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "noisy-140": {
+      "global_bpm": 140.0,
+      "section_bpms": [
+        140.0
+      ],
+      "point_bpms": [
+        140.0
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "very-noisy-132": {
+      "global_bpm": 131.9999,
+      "section_bpms": [
+        131.9999
+      ],
+      "point_bpms": [
+        131.9999
+      ],
+      "meter": "4/4",
+      "meter_beats": 4,
+      "engine": "precision"
+    },
+    "jitter-150": {
+      "global_bpm": 150.0002,
+      "section_bpms": [
+        150.0002
+      ],
+      "point_bpms": [
+        150.0002
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "heavy-jitter-168": {
+      "global_bpm": 168.0007,
+      "section_bpms": [
+        168.0007
+      ],
+      "point_bpms": [
+        168.0007
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "swing-120": {
+      "global_bpm": 120.0,
+      "section_bpms": [
+        120.0
+      ],
+      "point_bpms": [
+        120.0
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "shuffle-96": {
+      "global_bpm": 96.0,
+      "section_bpms": [
+        96.0
+      ],
+      "point_bpms": [
+        96.0
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "with-drop-180": {
+      "global_bpm": 180.0,
+      "section_bpms": [
+        180.0
+      ],
+      "point_bpms": [
+        180.0
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "sparse-160": {
+      "global_bpm": 160.0,
+      "section_bpms": [
+        160.0
+      ],
+      "point_bpms": [
+        160.0
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "breakdown-175": {
+      "global_bpm": 175.0,
+      "section_bpms": [
+        175.0
+      ],
+      "point_bpms": [
+        175.0
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "change-128-142": {
+      "global_bpm": 128.0,
+      "section_bpms": [
+        128.0,
+        142.0
+      ],
+      "point_bpms": [
+        128.0,
+        142.0
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "change-175-87.5": {
+      "global_bpm": 174.9984,
+      "section_bpms": [
+        174.9984
+      ],
+      "point_bpms": [
+        174.9984
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "secs-2": {
+      "global_bpm": 128.0,
+      "section_bpms": [
+        128.0,
+        142.0
+      ],
+      "point_bpms": [
+        128.0,
+        142.0
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "secs-3": {
+      "global_bpm": 145.0001,
+      "section_bpms": [
+        144.9999,
+        151.9999,
+        145.0001
+      ],
+      "point_bpms": [
+        144.9999,
+        151.9999,
+        145.0001
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "secs-4": {
+      "global_bpm": 174.0002,
+      "section_bpms": [
+        170.0,
+        174.0,
+        179.9999,
+        174.0002
+      ],
+      "point_bpms": [
+        170.0,
+        174.0,
+        179.9999,
+        174.0002
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "three-sections": {
+      "global_bpm": 145.0001,
+      "section_bpms": [
+        144.9999,
+        151.9999,
+        145.0001
+      ],
+      "point_bpms": [
+        144.9999,
+        151.9999,
+        145.0001
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    },
+    "tiny-change": {
+      "global_bpm": 203.5,
+      "section_bpms": [
+        200.0,
+        203.5
+      ],
+      "point_bpms": [
+        200.0,
+        203.5
+      ],
+      "meter": "4/4",
+      "meter_beats": 1,
+      "engine": "precision"
+    }
+  }
+}

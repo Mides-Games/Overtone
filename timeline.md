@@ -33,6 +33,24 @@ anyone noticing.
   trailers, no GitHub Actions — every gate is a local one-liner.
 - `.gitignore` scoped so `.osu` and `.csv` **fixtures can be committed**; the repo-wide
   ignore is why the one sample lives as `STK_timing_points.osu.txt`.
+- **`bench/gates.py`** — two gates for things the accuracy benchmark structurally cannot
+  see. `bpm-snapshot` pins the **absolute** reported BPM per fixture (`bench/bpm_snapshot.json`,
+  24 cases): the benchmark normalizes octaves, so a change to the octave decision could
+  halve every track and all 24 rows would stay green. Verified by tampering with the
+  baseline — it reports `global BPM 112.5 -> 225.0  <-- OCTAVE FLIP`. `coverage` measures
+  the density signal behind F-11 on three half/double-time fixtures, deliberately kept out
+  of `benchmark.CASES` so the published 24/24 stays comparable.
+- **`bench/golden.py`** — per-stage golden vectors: attacks, coherence candidates, seed
+  grids, octave, atom sections, beat sections, meter and points, 362 KB committed across
+  the 24 fixtures, with a `check` mode that diffs stage by stage within documented
+  tolerances (attacks 0.05 ms, period 1e-6 s, offsets 0.05 ms). This is the harness the
+  Rust engine gets pointed at in Phase 1: a port can reach the right BPM through a wrong
+  envelope and a compensating peak-picker, and only a stage-by-stage diff catches that.
+  It captures by wrapping the private stage functions with recording proxies, so it
+  duplicates no pipeline logic — what is recorded is what the shipped path computed.
+- **`requirements.lock`** — the exact versions behind the measured baseline.
+- One test added (56 total): `test_pulse_hints_only_ever_suggest_doubling`, which
+  documents that `suggest_section_pulse` has no downward direction.
 
 ### Fixed
 
@@ -58,7 +76,7 @@ The v3 baseline was **reproduced on this machine**, which matters more than quot
 | median BPM error | 0.0000 BPM | **0.0000 BPM** |
 | median offset error | 0.16 ms | **0.16 ms** |
 | sections within 0.05 BPM and 5 ms | 24/24 | **24/24** |
-| unit tests | 55 | **55/55 pass** |
+| unit tests | 55 | **55/55 pass** (56/56 after this release's addition) |
 
 Environment: Windows 11 26200, Python 3.14.4, numpy 2.5.3, scipy 1.18.1, librosa 1.0.0,
 numba 0.67.0. Worth recording because `requirements.txt` has lower bounds only, and the
@@ -71,12 +89,33 @@ removes the last excuse for an unmeasured change.
 
 Two results the README did not previously state:
 
-- `change-175-87.5` reports **1 of 2 sections**. 87.5 is exactly half of 175, so both
-  halves share one atomic grid and there is no tempo change at that level — what changed
-  is the octave, and v3 decides the octave once, globally. The benchmark passes the case
-  only because it scores sections with an octave allowance, which is the same blind spot
-  as the untested tempogram path. Now filed as audit findings F-11 and F-07, with the
-  fixtures that would catch both listed as Phase 0 work.
+- `change-175-87.5` reports **1 of 2 sections**, and the cause is not what it looked
+  like. My first diagnosis blamed the global octave decision; instrumenting the engine
+  showed otherwise:
+
+  ```
+  ATOMIC grid on 175 region  : share=1.000 coverage=1.000 rms=1.27 ms
+  ATOMIC grid on 87.5 region : share=1.000 coverage=0.633 rms=2.18 ms
+  growth gate: break when share < 0.55 or rms > 15.43 ms
+  ```
+
+  The grid is continuous across the change, so every attack in the slow half still lands
+  on the fast half's grid and `share` never moves. What halves is **coverage** — and
+  `_grow_sections` computes it and throws it away (`share, _cov, rms = _grid_quality(...)`).
+  The statistic `_seed_grid` ranks candidates by is discarded by the loop that decides
+  whether a section continues. The signal is strong (drop 0.36–0.46 across three fixtures)
+  and localises the change to within one 8-beat window, but it lives on the **subdivided**
+  grid: at beat level coverage is 1.000 for the whole track, and the first version of the
+  gate measured beat level, found nothing, and would have "proved" the signal absent.
+
+  Whether it *should* split is a separate and genuinely open question — the README's
+  policy is to keep the BPM through a half-time section, while the benchmark's ground
+  truth asserts two sections. The repository contradicts itself and nothing resolves it.
+  Third part of the gap: `suggest_section_pulse` returns early for any point at or above
+  120 BPM, so it can only ever propose `×2` and offers nothing here.
+- The octave choices are visible for the first time now that they are pinned:
+  `slow-92` is reported as **184.000** and `fast-300` as **150.000**. Both were previously
+  hidden behind the benchmark's `x2` / `x0.5` notes.
 - White noise returns `127.68 BPM` through the legacy tracker. It should refuse.
 
 ### Rejected / tried and dropped
@@ -99,9 +138,14 @@ Two results the README did not previously state:
 
 ### Open items
 
-Unchanged from v3.0, plus: the octave decision is global and should be per-section (F-11),
-and the benchmark cannot currently see an octave regression at all (F-07). Both are
-Phase 0 gates in the roadmap, before any Rust engine work begins.
+Unchanged from v3.0, plus: `_grow_sections` should consult coverage (F-11), and
+`suggest_section_pulse` needs a downward direction so a half-time region can be surfaced
+the way the global octave already is. Both now have gates that measure the signal; neither
+has a fix.
+
+Phase 0's remaining work is blocked on the Rust toolchain (MSVC Build Tools, then rustup
+with the `x86_64-pc-windows-msvc` target), which is not installed. Everything in Phase 0
+that does not need it is done.
 
 ---
 

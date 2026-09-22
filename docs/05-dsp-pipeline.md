@@ -275,10 +275,31 @@ octave is decided **once, globally**, on the anchor window, so the half-time reg
 reported at the wrong beat rate. Half-time drops and double-time choruses are everywhere
 in osu!'s music.
 
-**Design.** Keep one global atomic grid (correct, and shared). Decide `m` **per region** by
-running the accent-depth scorer on that region's own attacks, then split where consecutive
+**The signal is measured and strong.** `bench/gates.py coverage` reports, on three
+purpose-built fixtures:
+
+```
+halftime-175-87.5   coverage 0.625..1.000  drop 0.359  at 30.8s   truth 32.17s
+halftime-150-75     coverage 0.533..1.000  drop 0.447  at 29.3s   truth 28.10s
+doubletime-110-220  coverage 0.529..1.000  drop 0.456  at 26.98s  truth 26.44s
+```
+
+Coverage on a **subdivided** grid halves; `share` does not move (it stays at 1.000 against
+a 0.55 break) so the one statistic `_grow_sections` consults cannot fire. The change
+localises to within one 8-beat window. Note the subdivision: at beat level coverage is
+1.000 across the whole track, because the slow half's attacks land on every beat.
+
+**Design.** Add coverage to the growth gate — the statistic `_seed_grid` already ranks
+candidates by and `_grow_sections` currently discards. Then decide `m` **per region** by
+running the accent-depth scorer on that region's own attacks, and split where consecutive
 regions disagree on `m` — a split on the shared atomic grid, so both sides stay exact and
 the boundary is exact by construction. Hysteresis on `m` so a 2-bar fill cannot flip it.
+
+**And surface it rather than deciding it.** Whether a half-time region wants its own red
+line is a judgement call of the same kind as the global octave: mapping the whole track at
+175 is defensible, and v3's README says to do exactly that. So the deliverable is a
+**bidirectional** pulse hint with confidence — `suggest_section_pulse` can currently only
+propose `×2` (audit **F-11**) — plus one-click apply, not a silent split.
 
 **Gate:** a new fixture with a genuine 175 → 87.5 change must report `2/2` scored
 **without** the octave allowance, and no currently-green fixture may change its BPM.

@@ -25,10 +25,19 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-# Python reference implementation (v3)
-.venv/Scripts/python.exe -m unittest test_timing_analyzer      # must be 55/55
+.venv/Scripts/python.exe -m unittest test_timing_analyzer      # must be 56/56
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
+.venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
+.venv/Scripts/python.exe bench/golden.py check                 # 24/24 stage for stage
+.venv/Scripts/python.exe bench/gates.py coverage               # density signal present
 ```
+
+The last three exist because the benchmark cannot see them. `bpm-snapshot` pins the
+**octave** — the benchmark normalizes it away, so a change there could halve every BPM
+and all 24 rows would stay green. `golden.py check` compares **stage by stage**, so a
+divergence names its own stage instead of surfacing as a mystery at the output. When a
+reading changes on purpose, say why in `timeline.md` and re-run with `--update` / `dump`;
+never re-baseline to make a red gate green.
 
 Once the Rust workspace exists, add:
 
@@ -65,8 +74,13 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
 
 ```
 timing_analyzer.py        v3 engine + Tk GUI + CLI  (to move to reference/python-v3)
-test_timing_analyzer.py   55 unit tests
+test_timing_analyzer.py   56 unit tests
 bench/benchmark.py        synthetic accuracy harness, exact ground truth
+bench/gates.py            octave snapshot + density-change gates (benchmark blind spots)
+bench/golden.py           per-stage golden vectors; the harness Rust gets pointed at
+bench/golden/             24 committed vector files, 362 KB
+bench/bpm_snapshot.json   pinned absolute BPM per fixture
+requirements.lock         exact versions behind the measured baseline
 docs/                     audit, stack evaluation, architecture, UI, DSP, hitsounds,
                           roadmap, ML evaluation, naming
 timeline.md               engineering log

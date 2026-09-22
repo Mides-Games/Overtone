@@ -242,38 +242,83 @@ sees only `engine == "legacy"` and cannot distinguish "this audio has no grid" (
 from "the precision engine crashed" (a bug). The rewrite should carry a structured
 diagnostic on the result.
 
-### F-11 · S2 · An exact 2× tempo change is not detected as a change
+### F-11 · S2 · A density change inside a section cannot be detected at all
 
-Reproducing the benchmark here (see §5) surfaced one case that is not green and is not
-mentioned in the README's `Honest limits`:
+Reproducing the benchmark surfaced one case that is not green and is not in the
+README's `Honest limits`:
 
 ```
 case                 bpm_err offset_ms  sec/exp    time  note
 change-175-87.5       0.0016      0.70    1/2       0.8  x2
 ```
 
-`sec/exp = 1/2`: the fixture changes 175 → 87.5 BPM and **one** section is reported.
-Every other multi-section fixture finds all of them (`2/2`, `3/3`, `4/4`).
+`sec/exp = 1/2`: the fixture changes 175 → 87.5 BPM and **one** section is reported,
+at 174.9984 BPM, while every other multi-section fixture finds all of them.
 
-The cause is structural, not a tuning miss. 87.5 is exactly half of 175, so both halves of
-the track share the same *atomic* grid — the attacks on the second half land on every
-other beat of the first half's grid. `_grow_sections` extends a region while attacks keep
-landing on its grid, and they do, perfectly. There is no tempo change to find at the atom
-level; what changed is the **octave**, and the octave decision in v3 is global
-(`_beat_from_atoms` runs once on the anchor window).
+**The mechanism, measured rather than assumed.** My first reading of this blamed the
+global octave decision. That is wrong, and the correction matters because it points at a
+different fix. Instrumenting the engine on the fixture:
 
-The benchmark still passes the case because it scores each detected section against truth
-with an octave allowance (`note: x2`), and one section at 175 covers the whole track
-within 0.05 BPM of *something* true. That is the scorer being generous, and F-07 is the
-same blind spot from a different angle.
+```
+ATOMIC grid on 175 region  : share=1.000 coverage=1.000 rms=1.27 ms
+ATOMIC grid on 87.5 region : share=1.000 coverage=0.633 rms=2.18 ms
 
-This matters in practice: half-time drops and double-time choruses are extremely common in
-the music osu! is mapped to, and they are exactly where a mapper wants a red line. The v4
-design addresses it directly with a **per-section octave decision** driven by accent depth
-within each region rather than one global choice — see
-[`05-dsp-pipeline.md`](05-dsp-pipeline.md) §"Per-section octave". It needs a new fixture
-that requires two sections with a genuine 2× relationship, scored **without** the octave
-allowance.
+growth gate: break when share < 0.55 or rms > 0.09*atom*1000 = 15.43 ms
+```
+
+87.5 is exactly half of 175, so the grid is *continuous*: every attack in the slow half
+still lands on the fast half's grid. `share` — the fraction of attack energy the grid
+explains — therefore stays at **1.000**, nowhere near the 0.55 break, and the RMS stays at
+2.18 ms against a 15.43 ms threshold. So `_grow_sections` extends straight through the
+change, correctly by its own rules.
+
+What *does* change is **coverage**, the fraction of grid slots carrying an attack:
+1.000 → 0.633. And `_grow_sections` computes it and throws it away:
+
+```python
+share, _cov, rms = _grid_quality(times[chunk], weights[chunk],
+                                 local_period, local_phase, tol_ratio=0.11)
+if share < 0.55 or rms > 0.09 * local_period * 1000.0:
+    break
+```
+
+The statistic `_seed_grid` uses to *rank* candidates — `share × coverage`, the insight the
+timeline is proudest of — is discarded by the loop that decides whether a section
+continues. That is the defect: not a wrong answer, a signal computed and dropped.
+
+**Whether it should split is a separate, genuinely open question.** The README's stated
+policy is to keep the BPM through a half-time section ("map the feel, not a new red
+line"), and mapping this track at 175 throughout is defensible — the 87.5 beats all fall
+on 175 beats, so only bar lines and snap semantics differ. But the benchmark's ground
+truth asserts two sections. **The repository contradicts itself here and nothing resolves
+it.** The accent data shows the pulse genuinely halved, not merely the feel — in the slow
+half one accent class is entirely empty (`m=4` class means `[0.803, 0.000, 1.084, 0.239]`,
+accent depth 1.000 against 0.803 in the fast half) — so there is bar-level evidence a
+detector could use.
+
+**Third part of the gap:** `suggest_section_pulse`, which exists to surface exactly this
+kind of octave doubt, is **one-directional**. It returns early for any point at or above
+`low_bpm` (120), so it can only ever propose `×2`. A section reported at 175 that is
+musically 87.5 gets no hint at all — verified, it returns `[]` on this fixture. Regression
+test added: `test_pulse_hints_only_ever_suggest_doubling`.
+
+**Gates built for this** (`bench/gates.py coverage`, three fixtures kept out of
+`benchmark.CASES` so the published 24/24 stays comparable):
+
+```
+halftime-175-87.5   coverage 0.625..1.000  drop 0.359 (halves)  at 30.8s   truth 32.17s
+halftime-150-75     coverage 0.533..1.000  drop 0.447 (halves)  at 29.3s   truth 28.10s
+doubletime-110-220  coverage 0.529..1.000  drop 0.456 (doubles) at 26.98s  truth 26.44s
+```
+
+The signal is strong and localises the change to within one 8-beat window. Note it lives
+on the **subdivided** grid: at beat level, coverage is 1.000 across the whole track,
+because the slow half's attacks land on every beat. My first attempt at this gate measured
+beat-level coverage, found nothing, and would have "proved" the signal absent.
+
+So v4's job is not to decide this silently either way. It is to **detect it and surface it
+with confidence**, the same way the global octave is surfaced — see
+[`05-dsp-pipeline.md`](05-dsp-pipeline.md) §B.2.
 
 ### F-09 · S4 · `.gitignore` ignores `*.osu` and `*.csv` repo-wide
 

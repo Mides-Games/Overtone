@@ -66,7 +66,7 @@ The full engineering log, including the approaches that were tried and dropped, 
 ## Install & run
 
 ```bash
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.lock   # exact versions behind the numbers below
 python timing_analyzer.py
 ```
 
@@ -281,7 +281,10 @@ read as an upper bound rather than a promise about real masters.
 ## Testing
 
 ```bash
-python -m unittest test_timing_analyzer -v      # 55 tests
+python -m unittest test_timing_analyzer -v      # 56 tests
+python bench/gates.py bpm-snapshot              # the octave, pinned per fixture
+python bench/gates.py coverage                  # density changes inside a section
+python bench/golden.py check                    # per-stage vectors, 24/24
 ```
 
 Covering: least-squares grid fitting (including a regression test for the coherence phase
@@ -292,9 +295,23 @@ engine and its fallback, `.osu` injection (CRLF-safe, idempotent, legacy two-fie
 backup preservation), whole-millisecond offset export, corrupt-config tolerance, and the
 v2 segmentation helpers that remain in the fallback path.
 
-Gaps the v4 plan closes: no `.osu` **parser** tests, no octave-agreement test, no
-property-based tests, no performance gate, no fuzzing of the beatmap reader. See
-[`docs/01-audit-v3.md`](docs/01-audit-v3.md) §4.
+Three gates were added for things the accuracy benchmark structurally cannot see:
+
+- **`bench/gates.py bpm-snapshot`** pins the **absolute** reported BPM per fixture. The
+  benchmark normalizes octaves, so a change to the octave decision could halve every
+  track while all 24 rows stayed green. The snapshot catches it and labels it
+  (`global BPM 112.5 -> 225.0  <-- OCTAVE FLIP`).
+- **`bench/gates.py coverage`** measures the density signal behind audit finding F-11 on
+  three purpose-built half/double-time fixtures, kept out of the 24-case corpus so the
+  published numbers stay comparable.
+- **`bench/golden.py`** dumps and checks **per-stage** vectors — attacks, seed grid,
+  octave, atom sections, beat sections, meter, points — 362 KB committed across the 24
+  fixtures. This is the harness the Rust engine will be pointed at: a port can reach the
+  right BPM through a wrong envelope and a compensating peak-picker, and only a
+  stage-by-stage diff catches that.
+
+Still open: no `.osu` **parser** tests, no property-based tests, no performance gate, no
+fuzzing of the beatmap reader. See [`docs/01-audit-v3.md`](docs/01-audit-v3.md) §4.
 
 ---
 

@@ -16,17 +16,38 @@ end until the Rust engine matches the measured v3 baseline** — 24/24 within 0.
 Nothing here produces a feature. It produces the ability to know whether later phases
 broke something, which is why it is first.
 
-| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri |
-|---|---|:--:|:--:|---|:--:|:--:|:--:|
-| Toolchain | MSVC Build Tools + rustup MSVC target | — | — | — | no | no | **P0** |
-| Workspace skeleton | 12 crates, dependency rules, `cargo xtask check-deps` | low | high | — | no | no | **P0** |
-| `reference/python-v3` | move v3 in, keep it runnable, pin `requirements.lock` | low | high | — | no | no | **P0** |
-| Golden-vector dump | `--dump-json` on v3: per-stage attacks, grids, sections, points | med | **high** | ref | no | no | **P0** |
-| Corpus port | the 24 fixtures + 4 degenerate, same seeds, same scoring | med | **high** | skeleton | no | no | **P0** |
-| **Octave-agreement test** | pins `atoms_per_beat` per fixture — closes audit **F-07** | low | **high** | corpus | no | no | **P0** |
-| **2× section fixture** | a genuine 175→87.5 two-section case, no octave allowance — closes **F-11** | low | high | corpus | no | no | **P0** |
-| Perf gate | per-stage budget vs measured baseline (21.6 s corpus, 5.0 s for 6 min) | low | med | corpus | no | no | P1 |
-| `.gitignore` scoping | stop ignoring `*.osu` repo-wide — closes **F-09** | trivial | low | — | no | no | P1 |
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Toolchain | MSVC Build Tools + rustup MSVC target | — | — | — | no | no | **P0** | **blocked** |
+| Workspace skeleton | 12 crates, dependency rules, `cargo xtask check-deps` | low | high | toolchain | no | no | **P0** | blocked |
+| `reference/python-v3` | move v3 in, keep it runnable | low | high | — | no | no | **P0** | deferred¹ |
+| `requirements.lock` | exact versions behind the measured baseline — **F-05** | trivial | med | — | no | no | **P0** | **done** |
+| Golden-vector dump | per-stage attacks, seeds, octave, sections, points | med | **high** | — | no | no | **P0** | **done** |
+| Golden-vector check | stage-by-stage diff, so a divergence names its stage | med | **high** | dump | no | no | **P0** | **done** |
+| Corpus port | the 24 fixtures + 4 degenerate, same seeds, same scoring | med | **high** | skeleton | no | no | **P0** | blocked |
+| **Octave-agreement gate** | pins absolute BPM per fixture — closes **F-07** | low | **high** | — | no | no | **P0** | **done** |
+| **Density-change gate** | measures the coverage signal — closes **F-11** | low | high | — | no | no | **P0** | **done** |
+| Pulse-hint regression test | documents the one-directional hint gap | trivial | low | — | no | no | P1 | **done** |
+| Perf gate | per-stage budget vs measured baseline | low | med | corpus | no | no | P1 | todo |
+| `.gitignore` scoping | stop ignoring `*.osu` repo-wide — **F-09** | trivial | low | — | no | no | P1 | **done** |
+
+¹ Deferred deliberately: moving `timing_analyzer.py` before the Rust workspace exists
+would break every path in the gates that were just built, for no gain. It moves in the
+same commit that adds `crates/`.
+
+**What the new gates cover, concretely:**
+
+```bash
+python bench/gates.py bpm-snapshot     # 24/24 readings unchanged
+python bench/gates.py coverage         # signal present in 3/3 density fixtures
+python bench/golden.py check           # 24/24 cases match stage for stage
+```
+
+The first pins the octave, which the accuracy benchmark normalizes away — it catches a
+flip and labels it (`global BPM 112.5 -> 225.0  <-- OCTAVE FLIP`), verified by tampering
+with the baseline. The second measures the coverage drop that `_grow_sections` discards.
+The third is the harness the Rust engine gets pointed at: 362 KB of committed per-stage
+vectors across the 24 fixtures.
 
 **Exit:** the harness runs, produces v3's numbers from v3, and would fail if a Rust engine
 disagreed.

@@ -125,7 +125,7 @@ Part B of the DSP doc, in the order its gates can be met.
 | Parallel + cache | rayon stages, blake3-keyed cache, incremental invalidation | med | **high** | P1 | no | no | **P1** |
 | **Per-section octave** | half/double-time regions get their own beat rate — **F-11** | med | **high** | P1, fixture | no | no | **P1** | **ported** — Rust matches the prototype 4/4, 0 FP on audio |
 | 2-D coherence map | `R(t,f)` full-track: better seeds + confidence map | med | high | P1 | no | no | P1 |
-| **Elastic grid** | spline tempo model for rubato; a **selector** beside the piecewise fit, not a replacement | **high** | **high** | IRLS | no | no | **P1** | **prototyped** 0.16 BPM |
+| **Elastic grid** | spline tempo model for rubato; a **selector** beside the piecewise fit, not a replacement | **high** | **high** | IRLS | no | no | **P1** | **ported** as polynomial-in-k — 0.16 BPM on realistic ramps, flat on 20/24; extreme ramp needs the spline |
 | No-grid verdict | refuse honestly instead of the tracker's white-noise BPM | low | med | elastic | no | no | P1 |
 | SuperFlux ODF | vibrato-suppressed flux, auto-selected on non-percussive audio | low | med | envelope | no | no | P2 |
 | Drop librosa tempogram | octave hint from the coherence map | med | med | 2-D map, **octave test** | no | no | P2 |

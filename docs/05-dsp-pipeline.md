@@ -359,6 +359,29 @@ low peak contrast (the signature of non-percussive audio).
 **Gate:** no change on the 24 percussive fixtures; measurable improvement on new
 pad/strings/vocal fixtures. Difficulty **low** · impact **medium** · no ML · no GPU.
 
+**Measured, and rejected as specified.** A max-filtered (±1 mel band) median
+flux was built and scored against mel-flux with identical peak picking:
+
+- dense triads with ±7 % vibrato: SuperFlux F=0.222 vs mel F=0.276 — the
+  max-filter masks new partials landing near decaying old ones (masking
+  also arrives as latency: matched peaks land up to 150 ms late);
+- real pads (`_ambient.wav`): identical picks, 17 vs 17 — no recall gain
+  where it was supposed to help;
+- percussive control: identical picks, 346 vs 346;
+- solo legato line with wide leaps: SuperFlux F=0.333 vs mel F=0.125 —
+  the one place the mechanism works, at poor absolute recall (3/8).
+
+The median (not the paper's sum) was required to keep narrowband flicker
+from drowning recall, and linear magnitudes beat dB (the log lift promotes
+vibrato residue) — both deviations were measured, neither closed the gap.
+Peak contrast as a selector was also miscalibrated: percussive envelopes
+are sparse (median ~0), so contrast must read peak height (pads never crest:
+p99 0.000 vs ≥0.72), and that routes pads but never the mono lines where
+SuperFlux wins. Shipping auto-select would trade a documented loss on the
+common case for a win on a slice with no routing signal and no corpus.
+Revisit only with a mono/poly selector and a non-percussive corpus — until
+then the honest answer on pads stays the no-grid refusal, which is gated.
+
 ## B.6 Band-limited attack re-timing
 
 A kick's physical attack in a full-band signal is smeared by the hat on top of it. Re-time

@@ -1,4 +1,4 @@
-# Audit — osu! Timing Analyzer v3.0 (Python)
+# Audit — Overtone v3.0 (Python)
 
 Read of the shipped code at commit `146d299`, before any rewrite work. The point of
 this document is to establish (a) what the baseline actually is, so "equal or better"

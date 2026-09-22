@@ -1,4 +1,4 @@
-# osu! Timing Analyzer
+# Overtone
 
 Local desktop app that extracts BPMs and offsets from audio with sub-millisecond accuracy,
 built for creating osu! red timing points. Everything runs offline — no uploads, no
@@ -187,7 +187,7 @@ Designed in full before any code. Each document stands alone.
 | [06 · Hitsound engine](docs/06-hitsound-engine.md) | Features → instruments → context → decision → explanation → export |
 | [07 · Roadmap](docs/07-roadmap.md) | Phases 0–9 with difficulty, impact, dependencies, and what was rejected |
 | [08 · Machine learning](docs/08-machine-learning.md) | Where ML earns its place, and the conditions for shipping a model |
-| [09 · Naming](docs/09-naming.md) | The app outgrew "Timing Analyzer"; shortlist and recommendation |
+| [09 · Naming](docs/09-naming.md) | The app outgrew "Overtone"; shortlist and recommendation |
 
 ### Stack
 

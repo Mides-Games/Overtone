@@ -81,7 +81,7 @@ Three traps for the port, all of which will show up as a golden-vector mismatch:
   envelope is therefore *not* a purely local function of the audio: one loud transient
   raises the floor everywhere. Chunked or streaming STFT must compute the global max
   before the clip, or results differ from v3. This is also why incremental analysis
-  (`ota-project`) treats the envelope as a whole-file artefact.
+  (`overtone-project`) treats the envelope as a whole-file artefact.
 - **Slaney-normalised mel filters**, not HTK, not unit-norm. A different mel basis changes
   the median across bands and therefore every peak height.
 
@@ -357,7 +357,7 @@ Difficulty **medium** · impact **low-medium** · no ML · no GPU.
 - STFT frames and the coherence sweep over `rayon`; per-file parallelism for batch.
 - Peak pyramid, envelope, attacks and spectral features cached under
   `blake3(audio) + engine_version + params_hash`; parameter changes recompute only
-  downstream stages (see [`03-architecture.md`](03-architecture.md) §`ota-project`).
+  downstream stages (see [`03-architecture.md`](03-architecture.md) §`overtone-project`).
 - Octave changes recompute **nothing** — v3's exact `rebuild_with_subdivision` insight.
 
 **Target, to be measured not assumed:** the 6-minute fixture from 5.0 s (measured, Python,

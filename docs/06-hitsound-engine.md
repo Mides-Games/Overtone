@@ -306,7 +306,7 @@ Every line is a term that was actually evaluated, with its feature value, its
 interpretation and its signed contribution. If the sum does not equal the decision, that
 is a bug and it is visible.
 
-`ota-cli explain map.osu --object 1842` prints the same block, which makes disagreements
+`overtone-cli explain map.osu --object 1842` prints the same block, which makes disagreements
 reportable as text.
 
 ---

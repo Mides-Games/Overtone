@@ -1,74 +1,95 @@
 # Naming
 
-"osu! Timing Analyzer" described v1–v3 accurately. It will not describe v4: timing becomes
-one of four things the app does, alongside hitsound analysis, map validation and
-audio/map comparison. A name built around "timing" would undersell the tool and would have
-to be lived with for years.
+**Decided: Overtone.** The repository was renamed on 2026-09-22; it was
+`githaltwastaken/Timing-Analyzer` before that.
 
-## What the name has to do
+"osu! Timing Analyzer" described v1–v3 accurately. It does not describe v4: timing becomes
+one of four things the app does, alongside hitsound analysis, map validation and audio/map
+comparison. A name built around "timing" would undersell the tool and would have to be
+lived with for years.
 
-1. Cover **rhythm analysis, hitsounding and validation** without naming any one of them.
-2. Read as a professional audio tool. The reference points — Ableton, Reaper, Serum,
-   Vital, Linear — are **evocative, not descriptive**. "Audio Timing Analyzer Pro" is what
-   a name looks like when nobody chose one.
-3. Be searchable. A common English word is a bad name: "Onset" and "Pulse" are perfect
-   descriptions and unfindable.
-4. Survive not mentioning osu!. Trademark caution aside, `osu-` prefixes age badly, and
-   the engine is genuinely general — it is a tempo analyser that happens to export `.osu`.
-5. Be pronounceable, typable, and short enough for a CLI binary.
+## Why Overtone works
 
-## Shortlist
+An overtone is a frequency above the fundamental. That is a good description of what this
+engine spends its time on, in a way that is not merely decorative:
 
-| Name | Where it comes from | For | Against |
-|---|---|---|---|
-| **Tactus** | The musicological term for the *fundamental pulse* — literally what the engine's coherence sweep searches for and what it calls the "atomic pulse" | Precise without being descriptive; distinctive; elegant; scales past timing; almost no software collisions; `tactus` is a clean binary name | Obscure term; needs one line of explanation (TAK-tus) |
-| **Beatwright** | "-wright" as in shipwright, playwright: one who makes | Covers analysis *and* hitsound authoring; craft connotation fits a mapper tool; memorable; low collision | Slightly folksy next to a DAW-grade UI |
-| **Metrum** | Latin *measure / metre* | Short, elegant, distinctive, meaningful | Reads as a measurement utility; several unrelated small projects use it |
-| **Redline** | osu! mappers call uninherited timing points "red lines" | Instantly recognisable to the exact audience; short and punchy | Reads automotive out of context; centres timing, which is the thing the rename is trying to de-centre |
-| **Downbeat** | The first beat of a bar; also detected by the engine | Accessible, musical, evocative | Collides with *DownBeat*, a long-established jazz magazine |
-| **Kiai** | osu! term for a map's hype section | Very native to the audience, short, memorable | Means a specific beatmap feature, so it misdescribes the tool; Japanese loanword with an unrelated martial-arts meaning |
-| **Coherence** | `R(f) = |Σ w·e^{2πi f t}| / Σ w`, the statistic the engine is built on | Technically exact and rather beautiful | Long, abstract, hard to brand |
-| **Onset** | Onset detection, the first stage of everything | Perfectly apt, short | Unsearchable; every audio paper uses the word |
-
-## Recommendation
-
-> **Tactus**
-
-It names the thing the whole engine exists to find. It is short, distinctive, trivially
-searchable, works as `tactus` on the command line, and says nothing that will be wrong in
-two years when the tool does six things instead of four. The one cost — that some users
-will not know the word — is paid back the first time they read the tagline:
+- The coherence sweep `R(f) = |Σ w·e^{2πi f t}| / Σ w` is high at the true pulse **and at
+  every multiple of it**. Picking the fundamental out of its overtones is precisely the
+  hard part, and it is what `share × coverage` ranking exists to do.
+- The octave decision — is this 112 or 225? — is the same problem stated musically: which
+  harmonic of the pulse a human calls "the beat".
+- It says nothing that will be wrong in two years when the tool does six things.
+- It is short, pronounceable, typable, and works as `overtone` for the CLI binary.
 
 ```
-Tactus — find the pulse.
+Overtone — find the fundamental.
 Precision tempo analysis, timing and hitsound assistance for osu! mappers.
 ```
 
-**Second choice: Beatwright**, if a warmer and more self-explanatory name is preferred.
-It is the better name if the hitsound authoring side ends up being what people use it for.
+## The one honest caveat
 
-Avoid: anything with `osu` in the project name (keep it in the description and the
-keywords instead), and anything containing "Analyzer", "Tool", "Studio" or "Pro".
+**There is an established music-programming project called Overtone** — a Clojure
+live-coding environment built on SuperCollider. Different language, different ecosystem,
+different purpose, and no trademark issue, but it does mean:
+
+- Searching "overtone" plus a music term will surface that project first for a long time.
+  The repository description and topics are what will carry discovery: put `osu`,
+  `beatmap`, `bpm`, `tempo`, `hitsounds`, `dsp`, `rust` there, and let people find it by
+  what it does rather than by the name.
+- The crate name `overtone` on crates.io may be unavailable. That costs nothing here —
+  this is an application, not a published library, and the workspace crates are
+  `overtone-core`, `overtone-dsp` and so on, which are never published.
+- If disambiguation is ever needed in prose, "Overtone for osu!" reads naturally.
+
+Worth knowing, not worth reversing a decision over.
+
+## Also considered
+
+Kept for the record, with accurate reasoning:
+
+| Name | Where it comes from | Why not |
+|---|---|---|
+| **Tactus** | The musicological term for the fundamental pulse — literally what the coherence sweep searches for | The most precise option, and the most obscure: needs a pronunciation note (TAK-tus) every time |
+| **Beatwright** | "-wright" as in shipwright, playwright: one who makes | Good fit for the hitsound-authoring half; slightly folksy next to a DAW-grade UI |
+| **Metrum** | Latin *measure / metre* | Reads as a measurement utility rather than a workbench |
+| **Redline** | osu! mappers call uninherited timing points "red lines" | Instantly recognisable to the audience, but centres timing — the thing the rename exists to de-centre. Also reads automotive out of context |
+| **Downbeat** | The first beat of a bar | Collides with *DownBeat*, a long-established jazz magazine |
+| **Kiai** | osu! term for a map's hype section | Names a specific beatmap feature, so it misdescribes the tool |
+| **Coherence** | The statistic the engine is built on | Technically exact and rather beautiful; too long and abstract to brand |
+| **Onset** | Onset detection, the first stage of everything | Perfectly apt and completely unsearchable |
+
+Avoided throughout: anything with `osu` in the project name (it belongs in the description
+and topics, not the title), and anything containing "Analyzer", "Tool", "Studio" or "Pro".
 
 ## Rename mechanics
 
-Renaming the GitHub repository keeps working links — GitHub redirects the old
-`githaltwastaken/Timing-Analyzer` URLs to the new name indefinitely, and existing clones
-keep functioning. Still worth doing properly:
+GitHub redirects the old `githaltwastaken/Timing-Analyzer` URLs indefinitely and existing
+clones keep working, so nothing breaks. Still worth doing properly:
 
-1. Rename on GitHub (Settings → Repository name).
-2. Update the local remote:
-   ```
-   git remote set-url origin https://github.com/githaltwastaken/Tactus.git
-   ```
-3. Update the description and topics (`osu`, `beatmap`, `bpm`, `tempo`, `dsp`, `rust`,
-   `hitsounds`) — the topics are where "osu! timing analyzer" should live for search.
-4. Keep the old name in the README's history section so existing users recognise it.
-5. Rename the crates (`ota-*` → `tactus-*`) **before** Phase 1 starts, not during. A crate
-   rename mid-port is pure churn.
+1. ✅ Renamed on GitHub.
+2. ✅ Local remote updated: `git remote set-url origin https://github.com/githaltwastaken/Overtone.git`
+3. Update the repository description and topics — this is where discovery now lives, see
+   the caveat above.
+4. ✅ Product-facing strings renamed: README, all docs, `CLAUDE.md` / `AGENTS.md`,
+   `timeline.md`, the GUI title and about box, the CLI description, and the `.osu` comment
+   (`// Generated by Overtone v3.0`).
+5. ✅ Settings file moved to `~/.overtone.json`, with `~/.timing_analyzer.json` read as a
+   fallback so an existing install keeps its preferences rather than silently losing them.
+6. Crate names in the v4 design are `overtone-*` (`overtone-core`, `overtone-dsp`,
+   `overtone-tempo`, …) and the binary is `overtone`. The custom URI scheme for bulk
+   binary transfer to the UI is `overtone://`.
 
-## Held back deliberately
+### Deliberately not renamed
+
+`timing_analyzer.py`, `test_timing_analyzer.py` and their imports. That file is the **v3
+reference implementation**, and the roadmap already moves it to `reference/python-v3/` in
+the same commit that creates `crates/`. Renaming the module now would touch every import
+in the test suite, the benchmark and all three gates for no gain, and the gates are the
+one thing that must not wobble right before a port. The former name surviving inside the
+reference implementation is accurate rather than stale.
+
+## Held back
 
 A logo, an icon and a wordmark are Phase 3 work, once the UI's visual language exists. A
-name chosen now and a mark designed later is the right order; the reverse produces a name
-that fits a logo rather than a product.
+name chosen first and a mark designed later is the right order; the reverse produces a
+name that fits a logo rather than a product.

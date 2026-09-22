@@ -1,4 +1,4 @@
-"""Accuracy benchmark for the osu! Timing Analyzer.
+"""Accuracy benchmark for Overtone.
 
 Synthesizes drum-machine tracks whose grid is known exactly, runs the analyzer
 over them, and reports how far every reported section is from the truth. This is

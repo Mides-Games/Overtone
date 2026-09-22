@@ -14,18 +14,18 @@ osu-timing-analyzer/
 ├─ Cargo.toml                    # workspace root
 ├─ Cargo.lock                    # committed
 ├─ crates/
-│  ├─ ota-core/                  # shared types. no deps beyond serde/thiserror
-│  ├─ ota-audio/                 # decode · resample · peak pyramid · mmap
-│  ├─ ota-dsp/                   # STFT · ODFs · spectral features · HPSS · filters
-│  ├─ ota-tempo/                 # THE v3 MATH. coherence · IRLS · octave. zero I/O
-│  ├─ ota-grid/                  # sections · boundaries · confidence · timing points
-│  ├─ ota-osu/                   # .osu read/write · hitobjects · atomic write · backup
-│  ├─ ota-hitsound/              # features → instruments → decision engine → export
-│  ├─ ota-analysis/              # orchestration: job graph · progress · cancellation
-│  ├─ ota-project/               # project format · analysis cache · settings
-│  ├─ ota-playback/              # cpal output · click synth · transport
-│  ├─ ota-cli/                   # bin: ota
-│  └─ ota-bench/                 # criterion benches + accuracy harness + golden diff
+│  ├─ overtone-core/                  # shared types. no deps beyond serde/thiserror
+│  ├─ overtone-audio/                 # decode · resample · peak pyramid · mmap
+│  ├─ overtone-dsp/                   # STFT · ODFs · spectral features · HPSS · filters
+│  ├─ overtone-tempo/                 # THE v3 MATH. coherence · IRLS · octave. zero I/O
+│  ├─ overtone-grid/                  # sections · boundaries · confidence · timing points
+│  ├─ overtone-osu/                   # .osu read/write · hitobjects · atomic write · backup
+│  ├─ overtone-hitsound/              # features → instruments → decision engine → export
+│  ├─ overtone-analysis/              # orchestration: job graph · progress · cancellation
+│  ├─ overtone-project/               # project format · analysis cache · settings
+│  ├─ overtone-playback/              # cpal output · click synth · transport
+│  ├─ overtone-cli/                   # bin: ota
+│  └─ overtone-bench/                 # criterion benches + accuracy harness + golden diff
 ├─ app/                          # Tauri v2 shell
 │  ├─ src-tauri/                 # commands · binary channels · event bus
 │  └─ src/                       # TypeScript frontend
@@ -37,32 +37,32 @@ osu-timing-analyzer/
 ### Dependency rules, enforced
 
 ```
-ota-core   ← everything (leaf; no reverse deps)
+overtone-core   ← everything (leaf; no reverse deps)
 
-ota-audio  → ota-core
-ota-dsp    → ota-core
-ota-tempo  → ota-core, ota-dsp                     ← NO I/O, NO audio decode
-ota-grid   → ota-core, ota-tempo
-ota-osu    → ota-core                              ← NO dsp, NO audio
-ota-hitsound → ota-core, ota-dsp, ota-grid, ota-osu
-ota-playback → ota-core, ota-audio
-ota-analysis → ota-audio, ota-dsp, ota-tempo, ota-grid, ota-osu, ota-hitsound
-ota-project  → ota-core, ota-analysis
-ota-cli      → ota-analysis, ota-project, ota-osu, ota-playback
-ota-bench    → ota-analysis                        ← links the SHIPPED engine
+overtone-audio  → overtone-core
+overtone-dsp    → overtone-core
+overtone-tempo  → overtone-core, overtone-dsp                     ← NO I/O, NO audio decode
+overtone-grid   → overtone-core, overtone-tempo
+overtone-osu    → overtone-core                              ← NO dsp, NO audio
+overtone-hitsound → overtone-core, overtone-dsp, overtone-grid, overtone-osu
+overtone-playback → overtone-core, overtone-audio
+overtone-analysis → overtone-audio, overtone-dsp, overtone-tempo, overtone-grid, overtone-osu, overtone-hitsound
+overtone-project  → overtone-core, overtone-analysis
+overtone-cli      → overtone-analysis, overtone-project, overtone-osu, overtone-playback
+overtone-bench    → overtone-analysis                        ← links the SHIPPED engine
 
-app/src-tauri → ota-analysis, ota-project, ota-playback, ota-osu
+app/src-tauri → overtone-analysis, overtone-project, overtone-playback, overtone-osu
 ```
 
 Three rules, each with a reason:
 
-1. **`ota-tempo` has no I/O and no audio decoding.** It takes `&[f64]` attack times and
+1. **`overtone-tempo` has no I/O and no audio decoding.** It takes `&[f64]` attack times and
    `&[f32]` weights and returns fitted grids. This is the code that produces 0.16 ms
    offsets; it must be fuzzable, property-testable and benchmarkable in isolation, and it
    must be impossible for a file-handling change to affect it.
-2. **`ota-osu` knows nothing about audio.** Beatmap parsing is a text/format problem. It
+2. **`overtone-osu` knows nothing about audio.** Beatmap parsing is a text/format problem. It
    gets its own fuzz target and round-trip property tests.
-3. **`ota-bench` depends on `ota-analysis`, not on private internals.** A benchmark that
+3. **`overtone-bench` depends on `overtone-analysis`, not on private internals.** A benchmark that
    reaches into internals stops measuring the shipped path. This is how v3's benchmark is
    written and it is right.
 
@@ -74,13 +74,13 @@ task parses the workspace metadata and fails on a forbidden edge, run from the s
 
 ## 2. Engine module responsibilities
 
-### `ota-core`
+### `overtone-core`
 `TimingPoint`, `GridSection`, `Attack`, `Section`, `Analysis`, `Confidence`,
 `AnalysisDiagnostic`, `Progress`, error types. Serde derives. Newtypes for units —
 `Seconds(f64)`, `Millis(f64)`, `Bpm(f64)`, `BeatIndex(i64)` — because the v3 code mixes
 seconds and milliseconds across function boundaries and the compiler can carry that for us.
 
-### `ota-audio`
+### `overtone-audio`
 - Decode via **Symphonia** (MP3/AAC/ALAC/FLAC/Vorbis/WAV/MP4) with a `symphonia-play`-style
   format probe; no FFmpeg, no external process.
 - Header-first duration check before decoding (v3's `sf.info` guard — keep it).
@@ -89,7 +89,7 @@ seconds and milliseconds across function boundaries and the compiler can carry t
   cached. This is what the timeline renders; the raw samples are never sent to the UI.
 - `memmap2` for large files; streaming decode for the progress bar.
 
-### `ota-dsp`
+### `overtone-dsp`
 Pure functions over slices. No state, no globals.
 - STFT (realfft), windowed, configurable hop; `rayon` over frames.
 - Onset detection functions: **v3-compatible mel flux** (the porting contract in
@@ -101,7 +101,7 @@ Pure functions over slices. No state, no globals.
 - Chroma, for chord-change detection.
 - Peak picking with parabolic interpolation (v3-compatible `find_peaks` semantics).
 
-### `ota-tempo` — the precious one
+### `overtone-tempo` — the precious one
 A direct, line-traceable port of v3's math. Each function keeps its v3 name in a doc
 comment so the two can be diffed by a human:
 
@@ -121,13 +121,13 @@ comment so the two can be diffed by a human:
 Plus the v4 additions (elastic grid, per-section octave, 2-D coherence map), each behind
 a feature flag until it beats the baseline on the corpus.
 
-### `ota-grid`
+### `overtone-grid`
 Section growth, merging, boundary settling at the grid crossing, per-section refit,
 confidence, and the conversion to osu! red lines including the downbeat/meter anchoring
-rules. Separated from `ota-tempo` because this layer is *policy* (what counts as a
+rules. Separated from `overtone-tempo` because this layer is *policy* (what counts as a
 section) over *math* (how a grid is fitted), and policy is what users tune.
 
-### `ota-osu`
+### `overtone-osu`
 - Full reader: `[General]`, `[Metadata]`, `[Difficulty]`, `[Events]`, `[TimingPoints]`,
   `[Colours]`, `[HitObjects]`, with unknown keys and sections **preserved verbatim**.
 - Hitobjects: circles, sliders (all curve types, repeats, per-node sample sets), spinners,
@@ -141,11 +141,11 @@ section) over *math* (how a grid is fitted), and policy is what users tune.
   what makes hitsound injection safe.
 - Atomic write + `.bak` that is never overwritten. Ported verbatim in behaviour.
 
-### `ota-hitsound`
+### `overtone-hitsound`
 See [`06-hitsound-engine.md`](06-hitsound-engine.md). Structurally:
 `features` → `instruments` → `context` → `decide` (DP) → `explain` → `export`.
 
-### `ota-analysis`
+### `overtone-analysis`
 The orchestrator, and the only crate that knows the *order* of things.
 
 ```rust
@@ -165,7 +165,7 @@ pub enum Stage {
 - Results are immutable `Arc<Analysis>` snapshots so the UI keeps rendering the old one
   while a new analysis runs.
 
-### `ota-project`
+### `overtone-project`
 Project file = a directory with a `project.toml` plus a binary `cache/` of derived data
 (peak pyramid, onset envelope, attack list, spectral features) keyed by
 `blake3(audio bytes) + engine_version + params_hash`. Reopening a project recomputes
@@ -180,7 +180,7 @@ params.octave    changed → nothing recomputed; grids are re-read at a new beat
 
 That last line is v3's exact `rebuild_with_subdivision` insight, promoted to a general rule.
 
-### `ota-playback`
+### `overtone-playback`
 `cpal` output stream; lock-free ring buffer fed by a decode/mix thread; the audio callback
 allocates nothing and locks nothing. Mixes the source with a synthesised click aligned to
 the current timing points. Publishes `Playhead { position: Seconds, at: Instant }`; the UI
@@ -195,7 +195,7 @@ extrapolates between updates rather than receiving a message per frame.
 │ WebView UI thread            never blocks, never computes      │
 └───────────┬──────────────────────────────▲─────────────────────┘
             │ commands (typed, small)      │ events (progress, playhead)
-            │ binary reads (ota:// URIs)   │
+            │ binary reads (overtone:// URIs)   │
 ┌───────────▼──────────────────────────────┴─────────────────────┐
 │ Tauri main / command handlers            dispatch only         │
 └───────────┬────────────────────────────────────────────────────┘
@@ -230,10 +230,10 @@ Two channels, chosen by payload size. This is the main thing to get right in a T
 **Binary reads** — a custom URI scheme, zero-copy into a `TypedArray`:
 
 ```
-ota://peaks/{analysis_id}/{lod}/{from_sample}-{to_sample}     → i8/i16 min-max pairs
-ota://envelope/{analysis_id}/{from_frame}-{to_frame}          → f32
-ota://spectrogram/{analysis_id}/{tile_x}/{tile_y}             → u8 tile
-ota://attacks/{analysis_id}                                   → f64 times + f32 weights
+overtone://peaks/{analysis_id}/{lod}/{from_sample}-{to_sample}     → i8/i16 min-max pairs
+overtone://envelope/{analysis_id}/{from_frame}-{to_frame}          → f32
+overtone://spectrogram/{analysis_id}/{tile_x}/{tile_y}             → u8 tile
+overtone://attacks/{analysis_id}                                   → f64 times + f32 weights
 ```
 
 A waveform is never JSON. The frontend asks for the LOD that matches its current zoom and
@@ -253,7 +253,7 @@ all gating:
 
 1. **Golden vectors.** `reference/python-v3` gains a `--dump-json` flag emitting attacks,
    coherence peaks, per-stage fitted grids, sections and final points for every benchmark
-   fixture. `ota-bench` asserts the Rust engine matches within documented tolerances
+   fixture. `overtone-bench` asserts the Rust engine matches within documented tolerances
    (attacks ≤ 0.05 ms, period ≤ 1e-6 s, offsets ≤ 0.05 ms). A stage-by-stage diff means a
    divergence is localised instead of appearing as a mystery at the output.
 2. **The v3 test suite, ported.** All 55, keeping their names, so a reader can map them.

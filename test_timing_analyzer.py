@@ -1,4 +1,4 @@
-"""Tests for osu! Timing Analyzer v3.
+"""Tests for Overtone (v3 engine).
 
 Fast unit tests run without audio; end-to-end tests synthesize click and drum
 tracks with known ground truth, so no fixture files are needed. The v2

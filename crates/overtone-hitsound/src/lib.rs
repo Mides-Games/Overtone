@@ -11,6 +11,7 @@
 //! demo read the same.
 
 pub mod corpus;
+pub mod role;
 pub mod source;
 pub mod spectral;
 pub mod template;

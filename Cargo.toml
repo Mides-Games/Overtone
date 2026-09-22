@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/overtone-core",
+    "crates/overtone-audio",
+    "crates/overtone-dsp",
+    "crates/overtone-bench",
+]
+
+[workspace.package]
+version = "4.0.0-dev"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/githaltwastaken/Overtone"
+rust-version = "1.85"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+# Debug assertions were briefly left on for overtone-dsp in release, so that an
+# indexing mistake in a kernel would panic rather than return a slightly wrong
+# number. Measured, it cost more than it was worth on the hot paths; the same
+# guarantee comes from `cargo test`, which runs in debug.

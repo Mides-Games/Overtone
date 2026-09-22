@@ -58,13 +58,13 @@ disagreed.
 
 The whole of [`05-dsp-pipeline.md`](05-dsp-pipeline.md) Part A, and nothing from Part B.
 
-| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri |
-|---|---|:--:|:--:|---|:--:|:--:|:--:|
-| `overtone-core` types | unit newtypes, serde, errors, diagnostics | low | med | P0 | no | no | **P0** |
-| Symphonia decode | MP3/AAC/ALAC/FLAC/Vorbis/WAV/MP4 — **removes FFmpeg** (F-06) | med | **high** | — | no | no | **P0** |
-| Mel-flux envelope | the exact librosa contract (DSP §A.2) | **high** | **high** | decode | no | no | **P0** |
-| Peak picking | scipy `find_peaks` prominence semantics + parabolic interp | med | high | envelope | no | no | **P0** |
-| Attack re-timing | sample-resolution 20 % rise walk (DSP §A.4) | med | **high** | decode | no | no | **P0** |
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| `overtone-core` types | unit newtypes, serde, errors, diagnostics | low | med | P0 | no | no | **P0** | **done** |
+| Symphonia decode | MP3/AAC/ALAC/FLAC/Vorbis/WAV/MP4 — **removes FFmpeg** (F-06) | med | **high** | — | no | no | **P0** | **done** |
+| Mel-flux envelope | the exact librosa contract (DSP §A.2) | **high** | **high** | decode | no | no | **P0** | **done** |
+| Peak picking | scipy `find_peaks` prominence semantics + parabolic interp | med | high | envelope | no | no | **P0** | **done** |
+| Attack re-timing | sample-resolution 20 % rise walk (DSP §A.4) | med | **high** | decode | no | no | **P0** | **done** |
 | Coherence sweep | SIMD `R(f)`, correct phase sign, ×1–4 widening | med | **high** | attacks | no | no | **P0** |
 | IRLS fit | tolerance ladder, mode re-centring at pass 2, expanding windows | med | **high** | coherence | no | no | **P0** |
 | Octave decision | accent depth + tempogram hints (librosa-equivalent for now) | high | high | fit | no | no | **P0** |
@@ -74,8 +74,29 @@ The whole of [`05-dsp-pipeline.md`](05-dsp-pipeline.md) Part A, and nothing from
 | Property tests | ×2/÷2 identity, exact-grid recovery, monotone boundaries | low | high | all | no | no | P1 |
 | Structured diagnostics | carried on the result, not in a progress string — closes **F-08** | low | med | all | no | no | P1 |
 
+**Progress.** The attack front-end — decode, envelope, peak picking, re-timing — is done
+and **matches v3 attack for attack on all 24 fixtures**, worst error 0.0001 ms against a
+0.05 ms tolerance, weight correlation 1.0000. That was the riskiest item in the phase:
+every attack time in the engine comes off the envelope, and a wrong mel basis or a
+mis-sized pad produces a slightly worse answer rather than an obviously broken one.
+
+Speed, measured rather than projected:
+
+| | Python v3 | Rust | |
+|---|---|---|---|
+| 24-track corpus | 21.6 s | **2.53 s** | 8.5x |
+| 6-minute fixture | 5.0 s | **0.51 s** | 9.8x |
+
+Both already beat the targets in the README. Two things got them there and neither was the
+language: the mel filterbank is **sparse** (a triangular filter touches a few dozen of 1025
+bins, so the dense projection did ~50x the arithmetic), and the STFT is **fused** into the
+mel projection so the linear spectrogram — over a gigabyte for a 6-minute track — is never
+materialised. The first naive version was 2.5x *slower* than Python.
+
+Still to port: coherence sweep, IRLS fit, octave decision, sections, meter, points.
+
 **Exit:** `cargo run -p overtone-bench` prints **24/24 · median 0.0000 BPM · 0.16 ms**, golden
-vectors match within tolerance, 55/55 tests pass. Until then, nothing else starts.
+vectors match within tolerance, 56/56 Python tests still pass. Until then, nothing else starts.
 
 ---
 

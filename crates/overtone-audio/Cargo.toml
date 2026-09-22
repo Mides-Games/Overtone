@@ -1,0 +1,14 @@
+[package]
+name = "overtone-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+overtone-core = { version = "4.0.0-dev", path = "../overtone-core" }
+symphonia = { version = "0.6.1", features = ["mp3", "aac", "isomp4", "flac", "vorbis", "alac"] }

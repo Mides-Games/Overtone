@@ -42,10 +42,18 @@ never re-baseline to make a red gate green.
 Once the Rust workspace exists, add:
 
 ```bash
-cargo test --workspace
-cargo run -p overtone-bench --release -- --accuracy    # must match the v3 baseline
-cargo run -p overtone-bench --release -- --golden      # per-stage diff vs v3
+cargo test --workspace                                 # 37/37 today
+cargo run --release -q -p overtone-bench -- golden     # 24/24 attack for attack
 ```
+
+The golden check is the gate that matters during the port: it diffs the Rust
+engine against v3 **stage by stage** on the committed vectors, so a divergence
+names its own stage. Current state: all 24 fixtures match every attack within
+0.0001 ms, and the whole corpus analyses in 2.5 s against Python's 21.6 s.
+
+`cargo run --release` may spend a minute compiling the first time after an
+edit; that is the build, not the engine. The bench prints its own decode and
+analyse timings so the two are never confused.
 
 **The accuracy baseline is not negotiable:** 24/24 sections within 0.05 BPM and 5 ms,
 median 0.0000 BPM and 0.16 ms. A change that moves those numbers is a regression until
@@ -83,6 +91,11 @@ bench/bpm_snapshot.json   pinned absolute BPM per fixture
 requirements.lock         exact versions behind the measured baseline
 proto/                    Python prototypes of the riskiest v4 algorithms,
                           measured against the corpus before any port
+crates/                   the v4 Rust workspace
+  overtone-core/            shared types, unit newtypes, diagnostics
+  overtone-audio/           Symphonia decode, resample, normalise
+  overtone-dsp/             mel, STFT, onset envelope, peak picking, re-timing
+  overtone-bench/           golden-vector diff against the Python engine
 docs/                     audit, stack evaluation, architecture, UI, DSP, hitsounds,
                           roadmap, ML evaluation, naming
 timeline.md               engineering log

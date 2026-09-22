@@ -1,0 +1,15 @@
+[package]
+name = "overtone-dsp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+overtone-core = { version = "4.0.0-dev", path = "../overtone-core" }
+rayon = "1.12.0"
+realfft = "3.5.0"

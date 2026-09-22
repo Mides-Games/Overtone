@@ -252,6 +252,7 @@ fn meter_segments_with(
 /// First bar reading as the new signature — v3 `_settle_meter_boundary`.
 /// Takes the first bar where the new signature wins *and keeps winning*:
 /// a single ambiguous bar at a transition must not move the red line.
+#[allow(clippy::too_many_arguments)]
 pub fn settle_meter_boundary(
     times: &[f64],
     weights: &[f32],
@@ -429,6 +430,7 @@ pub fn snap_timing_points(points: &[TimingPoint]) -> Vec<TimingPoint> {
 /// Full red-line assembly mirroring `_assemble_analysis` at `factor = 1`:
 /// measure grid wins when it applies, else per-section placement, then the
 /// confidence and convergence filters, then snapping.
+#[allow(clippy::too_many_arguments)]
 pub fn assemble_points(
     sections: &[GridSection],
     times: &[f64],
@@ -502,7 +504,7 @@ pub fn osu_timing_text(points: &[TimingPoint], analysis_meter: &str, decimals: u
             format!("{}", p.offset.get().round() as i64)
         };
         let meter = if p.meter_known {
-            p.meter.max(1).min(16)
+            p.meter.clamp(1, 16)
         } else {
             fallback
         };
@@ -540,6 +542,7 @@ pub struct PipelineOutput {
 /// End-to-end precision driver over already-detected attacks: seed, octave,
 /// grow, beat-convert, settle, meter, points — v3 `_precision_engine` plus
 /// the `_assemble_analysis` filters at `factor = 1`.
+#[allow(clippy::too_many_arguments)]
 pub fn analyze_attacks(
     times: &[f64],
     weights: &[f32],

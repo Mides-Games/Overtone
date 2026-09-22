@@ -67,6 +67,7 @@ pub fn grow_sections(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn grow_sections_with(
     times: &[f64],
     weights: &[f32],
@@ -299,6 +300,7 @@ pub fn grid_reach(
     grid_reach_with_misses(times, period, phase, anchor, limit, backwards, tolerance, 1)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn grid_reach_with_misses(
     times: &[f64],
     period: f64,

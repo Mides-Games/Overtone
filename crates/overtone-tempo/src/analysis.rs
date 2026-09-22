@@ -18,13 +18,13 @@ use overtone_core::GridSection;
 /// Beat times implied by the fitted sections — v3 `_synth_beats`.
 pub fn synth_beats(sections: &[GridSection], factor: f64) -> Vec<f64> {
     let mut beats = Vec::new();
-    if !(factor > 0.0) {
+    if factor.is_nan() || factor <= 0.0 {
         // v3 divides and crashes; an empty grid is the honest answer.
         return beats;
     }
     for section in sections {
         let period = section.period / factor;
-        if !(period > 0.0) {
+        if period.is_nan() || period <= 0.0 {
             continue;
         }
         let k0 = ((section.start.get() - section.phase) / period - 1e-9).ceil() as i64;
@@ -61,7 +61,7 @@ pub fn local_bpm_curve(
     }
     for section in sections {
         let period = section.period / factor;
-        if !(period > 0.0) {
+        if period.is_nan() || period <= 0.0 {
             continue;
         }
         let idx: Vec<usize> = beats

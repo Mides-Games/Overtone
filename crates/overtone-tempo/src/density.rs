@@ -212,7 +212,7 @@ fn scan_section(
         };
         if best
             .as_ref()
-            .map_or(true, |prev| candidate.score > prev.score)
+            .is_none_or(|prev| candidate.score > prev.score)
         {
             best = Some(candidate);
         }

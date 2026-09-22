@@ -121,7 +121,7 @@ fn peak_near(col: &[f64], freqs: &[f64], prev_log: Option<f64>) -> Option<usize>
         return None;
     }
     let best = col.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    if !(best > 1e-6) {
+    if best.is_nan() || best <= 1e-6 {
         return None;
     }
     let mut peaks = overtone_dsp::peaks::find_peaks(col, 2, None, None);

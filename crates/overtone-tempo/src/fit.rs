@@ -91,7 +91,8 @@ pub fn ls_pass(
         k_max = k_max.max(k);
     }
     // A fit across fewer than two beat indices is a point, not a line.
-    if !(k_max - k_min >= 2.0) || sum_w <= 0.0 {
+    let k_span = k_max - k_min;
+    if k_span.is_nan() || k_span < 2.0 || sum_w <= 0.0 {
         return None;
     }
     let mean_k = sum_wx / sum_w;

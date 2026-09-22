@@ -439,6 +439,9 @@ pub fn fit_with_degree(
 /// Weighted least squares for `t(k) = Σ c_i·u^i`, or `None` when there is
 /// too little to fit. Tiny systems (≤ 4 unknowns): normal equations with
 /// partial-pivot elimination are plenty.
+/// Index loops on purpose: the matrix steps read one row of `a` while
+/// writing another, which iterators can only say through split borrows.
+#[allow(clippy::needless_range_loop)]
 fn wls(k: &[f64], t: &[f64], w: &[f64], degree: usize, k0: f64, scale: f64) -> Option<Elastic> {
     if k.len() < degree + 3 {
         return None;
@@ -481,6 +484,9 @@ fn wls(k: &[f64], t: &[f64], w: &[f64], degree: usize, k0: f64, scale: f64) -> O
 /// Weighted polynomial fit of `y` over the abscissa `u`, lowest power first.
 /// Weights enter as `sqrt` (the same `w` the caller passes to `weighted_rms`
 /// squared), matching `np.polyfit(u, y, deg, w=...)`.
+/// Index loops on purpose: the matrix steps read one row of `a` while
+/// writing another, which iterators can only say through split borrows.
+#[allow(clippy::needless_range_loop)]
 fn polyfit(u: &[f64], y: &[f64], w: &[f64], degree: usize) -> Option<Vec<f64>> {
     if u.len() < degree + 1 {
         return None;
@@ -533,6 +539,9 @@ fn polyval(coeffs: &[f64], x: f64) -> f64 {
 
 /// Gaussian elimination with partial pivoting on a symmetric augmented
 /// `(n × (n+1))` system, solved in place.
+/// Index loops on purpose: the matrix steps read one row of `a` while
+/// writing another, which iterators can only say through split borrows.
+#[allow(clippy::needless_range_loop)]
 fn solve_symmetric(a: &mut [Vec<f64>]) -> Option<Vec<f64>> {
     let n = a.len();
     for col in 0..n {

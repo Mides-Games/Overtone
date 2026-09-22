@@ -16,6 +16,95 @@ later costs more than writing it down now.
 
 ---
 
+## v3.1 — 2026-09-22 · Audit, and the v4 design
+
+No engine behaviour changed. This entry exists because the next release is a rewrite, and
+a rewrite with no written baseline is how a 0.16 ms tool becomes an 8 ms tool without
+anyone noticing.
+
+### Changed
+
+- **`docs/` — nine design documents** covering the audit of v3, a five-way stack
+  evaluation, the v4 architecture, the UI/UX language, the DSP porting contract, the
+  hitsound engine, the roadmap (phases 0–9), an ML assessment, and naming.
+- **README rewritten** around what is measured versus what is designed. Every number now
+  carries the date and the environment that produced it.
+- **`CLAUDE.md` / `AGENTS.md`**: contributor and agent conventions. No `Co-Authored-By`
+  trailers, no GitHub Actions — every gate is a local one-liner.
+- `.gitignore` scoped so `.osu` and `.csv` **fixtures can be committed**; the repo-wide
+  ignore is why the one sample lives as `STK_timing_points.osu.txt`.
+
+### Fixed
+
+- **`_atomic_grid_candidates` rebound its own `keep` parameter** with a 5000-element index
+  array in the dense-audio guard, so `strong[:keep]` would raise `TypeError` and drop the
+  whole analysis to the v2 tracker. Currently unreachable — every call site goes through
+  `_seed_grid`, whose windows are at most 30 s, and the 25 ms minimum peak spacing caps
+  that at ~1200 attacks — but the v4 design widens exactly those windows, and the code's
+  own comment at `MAX_SCAN_FREQS` predicts it. Renamed the local to `dense`.
+- **`window_of` was defined twice, identically, in `_tune_boundary`.** Copy-paste residue;
+  Python binds the second, so behaviour was never affected. Deleted the first.
+
+### Hardening
+
+- Not applicable; no new I/O or parsing paths.
+
+### Measured
+
+The v3 baseline was **reproduced on this machine**, which matters more than quoting it:
+
+| | published | reproduced 2026-09-21 |
+|---|---|---|
+| median BPM error | 0.0000 BPM | **0.0000 BPM** |
+| median offset error | 0.16 ms | **0.16 ms** |
+| sections within 0.05 BPM and 5 ms | 24/24 | **24/24** |
+| unit tests | 55 | **55/55 pass** |
+
+Environment: Windows 11 26200, Python 3.14.4, numpy 2.5.3, scipy 1.18.1, librosa 1.0.0,
+numba 0.67.0. Worth recording because `requirements.txt` has lower bounds only, and the
+resolve pulled librosa **1.0.0** — a major version past what v3 was developed against.
+Everything passes on it; nothing in the repo would have told us either way.
+
+Corpus wall time: **21.6 s for 24 tracks** single-threaded, worst case 5.0 s on the
+6-minute fixture. Cheap enough that the full accuracy gate can run on every commit, which
+removes the last excuse for an unmeasured change.
+
+Two results the README did not previously state:
+
+- `change-175-87.5` reports **1 of 2 sections**. 87.5 is exactly half of 175, so both
+  halves share one atomic grid and there is no tempo change at that level — what changed
+  is the octave, and v3 decides the octave once, globally. The benchmark passes the case
+  only because it scores sections with an octave allowance, which is the same blind spot
+  as the untested tempogram path. Now filed as audit findings F-11 and F-07, with the
+  fixtures that would catch both listed as Phase 0 work.
+- White noise returns `127.68 BPM` through the legacy tracker. It should refuse.
+
+### Rejected / tried and dropped
+
+- **Porting the v2 hybrid tracker to Rust as the v4 fallback.** It means reimplementing
+  librosa's DP beat tracker and PLP to reproduce an engine whose measured output on the
+  degenerate corpus is an 8-section staircase on a tempo ramp and a confident BPM for
+  white noise. Instead: keep the Python v3 runnable as the reference that produces
+  `--engine legacy` numbers, ship an elastic (spline) tempo model for genuinely varying
+  tempo, and refuse honestly when neither fits.
+- **GPU compute for the analysis pipeline.** A 6-minute track is ~124k frames of
+  1024-point real FFT; on CPU with rayon that is well under a second against the 5.0 s
+  measured in Python. Transfer overhead, driver variance and a second numeric path to
+  validate, for a fraction of an already-negligible cost. GPU is used for *rendering*,
+  where the timeline genuinely needs it.
+- **Fixing the click track's hardcoded 4-beat accent** (finding F-03, audible on 3/4
+  tracks). It is a behaviour change to an audio export with no test covering the accent
+  pattern, and the rule is that precision-adjacent code does not change without a test in
+  the same commit. Patch is written down in the audit; it lands with its test.
+
+### Open items
+
+Unchanged from v3.0, plus: the octave decision is global and should be per-section (F-11),
+and the benchmark cannot currently see an octave regression at all (F-07). Both are
+Phase 0 gates in the roadmap, before any Rust engine work begins.
+
+---
+
 ## v3.0 — 2026-09-04 · Least-squares grid engine
 
 The headline change: **BPM is no longer derived from the gaps between beats.**

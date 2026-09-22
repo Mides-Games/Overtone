@@ -197,7 +197,17 @@ pub fn refine(times: &[f64], weights: &[f32], mut grid: Grid) -> (Grid, Vec<bool
 
 /// `(share, coverage, RMS residual)` of a grid against a set of attacks.
 pub fn quality(times: &[f64], weights: &[f32], grid: Grid) -> Quality {
+    quality_with_tol(times, weights, grid, 0.12)
+}
+
+/// Same as [`quality`] with an explicit tolerance ratio.
+///
+/// v3's `_grid_quality` takes `tol_ratio` (default 0.12); the section-growth
+/// loop passes 0.11 so the gate that extends a region is slightly stricter
+/// than the one that scores it.
+pub fn quality_with_tol(times: &[f64], weights: &[f32], grid: Grid, tol_ratio: f64) -> Quality {
     const TOL_RATIO: f64 = 0.12;
+    let tol_ratio = if tol_ratio > 0.0 { tol_ratio } else { TOL_RATIO };
     if times.is_empty() || grid.period <= 0.0 {
         return Quality {
             share: 0.0,
@@ -206,7 +216,7 @@ pub fn quality(times: &[f64], weights: &[f32], grid: Grid) -> Quality {
             inliers: 0,
         };
     }
-    let tol = (TOL_RATIO * grid.period).max(MIN_TOL_S);
+    let tol = (tol_ratio * grid.period).max(MIN_TOL_S);
     let total: f64 = weights.iter().map(|&w| w as f64).sum();
 
     let mut inlier_weight = 0.0f64;

@@ -53,6 +53,59 @@ struct Golden {
     seeds: Vec<Option<GoldenGrid>>,
     #[serde(default)]
     octave: Option<GoldenOctave>,
+    #[serde(default)]
+    atom_sections: Vec<GoldenSection>,
+    #[serde(default)]
+    beat_sections: Vec<GoldenSection>,
+    #[serde(default)]
+    settled_sections: Vec<GoldenSection>,
+    #[serde(default)]
+    meter: Option<GoldenMeter>,
+    #[serde(default)]
+    result: GoldenResult,
+}
+
+/// v3's global meter reading on the first settled section.
+#[derive(Deserialize, Default)]
+struct GoldenMeter {
+    #[serde(default)]
+    meter: String,
+    #[serde(default)]
+    downbeat_class: usize,
+    #[serde(default)]
+    bar_beats: usize,
+}
+
+#[derive(Deserialize, Default)]
+struct GoldenResult {
+    #[serde(default)]
+    points: Vec<GoldenPoint>,
+}
+
+/// One snapped red line as the Python dump writes it.
+#[derive(Deserialize, Default)]
+struct GoldenPoint {
+    #[serde(default)]
+    offset_ms: f64,
+    #[serde(default)]
+    bpm: f64,
+}
+
+/// One constant-tempo region as the Python dump writes it.
+#[derive(Deserialize)]
+struct GoldenSection {
+    #[serde(default)]
+    start_s: f64,
+    #[serde(default)]
+    end_s: f64,
+    #[serde(default)]
+    period_s: f64,
+    #[serde(default)]
+    phase_s: f64,
+    #[serde(default)]
+    bpm: f64,
+    #[serde(default)]
+    residual_ms: f64,
 }
 
 /// v3's octave decision. The accuracy benchmark normalises octaves away, so
@@ -78,6 +131,98 @@ struct GoldenAttacks {
     envelope_frames: usize,
 }
 
+/// Boundaries become red lines, so a moved boundary is a moved red line.
+/// 5 ms is the benchmark's own offset tolerance.
+const BOUNDARY_TOL_S: f64 = 5e-3;
+
+struct SectionDiff {
+    name: &'static str,
+    expected: usize,
+    found: usize,
+    worst_period_err: f64,
+    worst_phase_ms: f64,
+    worst_bpm_err: f64,
+    worst_residual_err: f64,
+    worst_boundary_err: f64,
+}
+
+impl SectionDiff {
+    fn ok(&self) -> bool {
+        self.expected == self.found
+            && self.worst_period_err <= PERIOD_TOL_S
+            && self.worst_phase_ms <= ATTACK_TOL_S * 1000.0
+            && self.worst_bpm_err <= 1e-3
+            && self.worst_residual_err <= 0.05
+            && self.worst_boundary_err <= BOUNDARY_TOL_S
+    }
+
+    fn describe(&self) -> Option<String> {
+        if self.expected != self.found {
+            return Some(format!(
+                "{}: {} sections -> {}",
+                self.name, self.expected, self.found
+            ));
+        }
+        let mut bits = Vec::new();
+        if self.worst_period_err > PERIOD_TOL_S {
+            bits.push(format!("period {:.2e}s off", self.worst_period_err));
+        }
+        if self.worst_phase_ms > ATTACK_TOL_S * 1000.0 {
+            bits.push(format!("phase {:.4}ms off", self.worst_phase_ms));
+        }
+        if self.worst_bpm_err > 1e-3 {
+            bits.push(format!("bpm {:.4} off", self.worst_bpm_err));
+        }
+        if self.worst_residual_err > 0.05 {
+            bits.push(format!("residual {:.4}ms off", self.worst_residual_err));
+        }
+        if self.worst_boundary_err > BOUNDARY_TOL_S {
+            bits.push(format!("boundary {:.3}s off", self.worst_boundary_err));
+        }
+        if bits.is_empty() {
+            None
+        } else {
+            Some(format!("{}: {}", self.name, bits.join(", ")))
+        }
+    }
+}
+
+fn diff_sections(
+    name: &'static str,
+    got: &[overtone_core::GridSection],
+    want: &[GoldenSection],
+) -> SectionDiff {
+    let mut diff = SectionDiff {
+        name,
+        expected: want.len(),
+        found: got.len(),
+        worst_period_err: 0.0,
+        worst_phase_ms: 0.0,
+        worst_bpm_err: 0.0,
+        worst_residual_err: 0.0,
+        worst_boundary_err: 0.0,
+    };
+    if got.len() != want.len() {
+        return diff;
+    }
+    for (g, w) in got.iter().zip(want.iter()) {
+        diff.worst_period_err = diff.worst_period_err.max((g.period - w.period_s).abs());
+        diff.worst_phase_ms = diff
+            .worst_phase_ms
+            .max((g.phase - w.phase_s).abs() * 1000.0);
+        let bpm = if g.period > 0.0 { 60.0 / g.period } else { 0.0 };
+        diff.worst_bpm_err = diff.worst_bpm_err.max((bpm - w.bpm).abs());
+        diff.worst_residual_err = diff
+            .worst_residual_err
+            .max((g.residual_ms - w.residual_ms).abs());
+        diff.worst_boundary_err = diff
+            .worst_boundary_err
+            .max((g.start.get() - w.start_s).abs())
+            .max((g.end.get() - w.end_s).abs());
+    }
+    diff
+}
+
 struct Report {
     case: String,
     decode_s: f64,
@@ -98,6 +243,11 @@ struct Report {
     env_frames_expected: usize,
     env_frames_found: usize,
     weight_correlation: f64,
+    atom: SectionDiff,
+    beat: SectionDiff,
+    settled: SectionDiff,
+    meter_diff: Option<String>,
+    points_diff: Option<String>,
 }
 
 impl Report {
@@ -112,6 +262,11 @@ impl Report {
             && self.weight_correlation > 0.999
             && self.seed_period_err <= PERIOD_TOL_S
             && self.seed_phase_ms <= ATTACK_TOL_S * 1000.0
+            && self.atom.ok()
+            && self.beat.ok()
+            && self.settled.ok()
+            && self.meter_diff.is_none()
+            && self.points_diff.is_none()
     }
 }
 
@@ -301,6 +456,70 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
         class_found = class;
     }
 
+    // End-to-end precision driver (`_precision_engine` + the
+    // `_assemble_analysis` filters at factor 1): seed, octave, grow,
+    // beat-convert, settle, meter, points. Defaults match `analyze_audio`:
+    // min_delta 1.5, persistence 12, min_confidence 0.75.
+    let pipeline = overtone_tempo::points::analyze_attacks(
+        &ours,
+        &our_w32,
+        &env,
+        44_100,
+        1.5,
+        12,
+        true,
+        0.75,
+    );
+    let atom = diff_sections("atom_sections", &pipeline.atom_sections, &golden.atom_sections);
+    let beat = diff_sections("beat_sections", &pipeline.beat_sections, &golden.beat_sections);
+    let settled = diff_sections(
+        "settled_sections",
+        &pipeline.settled_sections,
+        &golden.settled_sections,
+    );
+
+    // Global meter, as `_precision_engine` reads it off the first settled
+    // section — the only octave-adjacent stage v3 tests never pinned (F-07).
+    let mut meter_diff: Option<String> = None;
+    if let Some(want) = &golden.meter {
+        if pipeline.meter_text != want.meter
+            || pipeline.downbeat != want.downbeat_class
+            || pipeline.meter_beats != want.bar_beats
+        {
+            meter_diff = Some(format!(
+                "meter: {}/{}/{} -> {}/{}/{}",
+                want.meter,
+                want.downbeat_class,
+                want.bar_beats,
+                pipeline.meter_text,
+                pipeline.downbeat,
+                pipeline.meter_beats
+            ));
+        }
+    }
+    // Snapped red lines, the actual product. Tolerances match golden.py:
+    // offsets within 0.05 ms, BPM within 0.001.
+    let mut points_diff: Option<String> = None;
+    if pipeline.points.len() != golden.result.points.len() {
+        points_diff = Some(format!(
+            "points: {} red lines -> {}",
+            golden.result.points.len(),
+            pipeline.points.len()
+        ));
+    } else {
+        let mut worst_off = 0.0f64;
+        let mut worst_bpm = 0.0f64;
+        for (got, want) in pipeline.points.iter().zip(golden.result.points.iter()) {
+            worst_off = worst_off.max((got.offset.get() - want.offset_ms).abs());
+            worst_bpm = worst_bpm.max((got.bpm.get() - want.bpm).abs());
+        }
+        if worst_off > 0.05 || worst_bpm > 1e-3 {
+            points_diff = Some(format!(
+                "points: worst offset {worst_off:.4}ms, worst bpm {worst_bpm:.6}"
+            ));
+        }
+    }
+
     Ok(Report {
         case: golden.case,
         decode_s,
@@ -321,6 +540,11 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
         env_frames_expected: golden.attacks.envelope_frames,
         env_frames_found: env.len(),
         weight_correlation: correlation(&our_weights, &golden.attacks.weights),
+        atom,
+        beat,
+        settled,
+        meter_diff,
+        points_diff,
     })
 }
 
@@ -447,6 +671,17 @@ fn main() -> Result<()> {
                     }
                     if report.seed_phase_ms > ATTACK_TOL_S * 1000.0 {
                         why.push(format!("seed phase {:.4}ms off", report.seed_phase_ms));
+                    }
+                    for diff in [&report.atom, &report.beat, &report.settled] {
+                        if let Some(text) = diff.describe() {
+                            why.push(text);
+                        }
+                    }
+                    if let Some(text) = &report.meter_diff {
+                        why.push(text.clone());
+                    }
+                    if let Some(text) = &report.points_diff {
+                        why.push(text.clone());
                     }
                     if report.matched != report.expected {
                         why.push(format!(

@@ -110,6 +110,25 @@ pub struct TimingPoint {
     /// 0..=1.
     pub confidence: f64,
     pub section: usize,
+    /// Beats per bar written into the `.osu` meter field. Defaults to 4 so
+    /// every hand-made point keeps working unchanged.
+    pub meter: u32,
+    /// True when the accents actually proved where the bar starts. When they
+    /// did not, the offset is anchored to a beat rather than a downbeat.
+    pub meter_known: bool,
+}
+
+impl TimingPoint {
+    pub fn new(offset_ms: f64, bpm: f64, confidence: f64, section: usize) -> Self {
+        Self {
+            offset: Millis(offset_ms),
+            bpm: Bpm(bpm),
+            confidence,
+            section,
+            meter: 4,
+            meter_known: false,
+        }
+    }
 }
 
 /// Which engine produced a result. Carried on the analysis so a consumer never

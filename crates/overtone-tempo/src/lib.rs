@@ -11,6 +11,11 @@
 pub mod coherence;
 pub mod fit;
 pub mod octave;
+pub mod points;
+pub mod sections;
+
+/// Crate version, written into exported `.osu` timing comments.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 use fit::{Grid, Quality};
 

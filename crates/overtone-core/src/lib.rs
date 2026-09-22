@@ -42,7 +42,10 @@ macro_rules! unit {
 }
 
 unit!(Seconds, "A time, in seconds from the start of the audio.");
-unit!(Millis, "A time or duration in milliseconds — what `.osu` speaks.");
+unit!(
+    Millis,
+    "A time or duration in milliseconds — what `.osu` speaks."
+);
 unit!(Bpm, "Beats per minute.");
 
 impl Seconds {

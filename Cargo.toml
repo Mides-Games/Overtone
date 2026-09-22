@@ -4,6 +4,7 @@ members = [
     "crates/overtone-core",
     "crates/overtone-audio",
     "crates/overtone-dsp",
+    "crates/overtone-tempo",
     "crates/overtone-bench",
 ]
 

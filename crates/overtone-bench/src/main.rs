@@ -23,11 +23,41 @@ use serde::Deserialize;
 /// 0.05 ms. Tight enough that a different computation fails, loose enough to
 /// survive float-order differences between a NumPy expression and a loop.
 const ATTACK_TOL_S: f64 = 5e-5;
+/// 1e-6 s of period at 340 ms per beat is about 0.0002 BPM. This is the
+/// tolerance for a *fitted* grid, which is a real invariant.
+const PERIOD_TOL_S: f64 = 1e-6;
+/// Candidate periods are compared loosely, and the candidate *list* is not
+/// gated on at all. It is not a real invariant.
+///
+/// The sweep's frequency resolution is `0.2/span`, and where two adjacent grid
+/// points score almost equally, a difference in floating-point summation order
+/// (NumPy dispatches the dot product to BLAS; this crate sums in attack order)
+/// moves the peak to the neighbouring index. Measured across the corpus that
+/// shifts a candidate period by up to 4e-5 s — under one grid step — and its
+/// *phase* by ~9e-4 s, because phase is `arg(z)/(2*pi*f)` and a 0.001 Hz shift
+/// accumulates over a 29 s window. Meanwhile the grid those candidates seed
+/// still refines to within 1e-10 s of v3's on all 24 fixtures.
+///
+/// So what is gated is the property that actually has to hold: **the candidate
+/// list contains the grid v3 went on to seed**. Peak indices are an
+/// implementation detail of the sweep; the answer being in the list is not.
+const CANDIDATE_REL_TOL: f64 = 5e-3;
 
 #[derive(Deserialize)]
 struct Golden {
     case: String,
     attacks: GoldenAttacks,
+    #[serde(default)]
+    candidates: Vec<GoldenGrid>,
+    #[serde(default)]
+    seeds: Vec<Option<GoldenGrid>>,
+}
+
+/// A period/phase pair as the Python dump writes it.
+#[derive(Deserialize)]
+struct GoldenGrid {
+    period_s: f64,
+    phase_s: f64,
 }
 
 #[derive(Deserialize)]
@@ -42,6 +72,10 @@ struct Report {
     case: String,
     decode_s: f64,
     analyse_s: f64,
+    candidates: usize,
+    seed_in_candidates: bool,
+    seed_period_err: f64,
+    seed_phase_ms: f64,
     expected: usize,
     found: usize,
     matched: usize,
@@ -58,6 +92,10 @@ impl Report {
             && self.matched == self.expected
             && self.worst_ms <= ATTACK_TOL_S * 1000.0
             && self.env_frames_found == self.env_frames_expected
+            && self.seed_in_candidates
+            && self.weight_correlation > 0.999
+            && self.seed_period_err <= PERIOD_TOL_S
+            && self.seed_phase_ms <= ATTACK_TOL_S * 1000.0
     }
 }
 
@@ -122,6 +160,7 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
 
     let ours: Vec<f64> = attacks.iter().map(|a| a.time.get()).collect();
     let our_weights: Vec<f64> = attacks.iter().map(|a| a.weight as f64).collect();
+    let our_w32: Vec<f32> = attacks.iter().map(|a| a.weight).collect();
 
     // Pair by nearest neighbour rather than by index: one extra or missing
     // attack should show up as a count mismatch, not as every later attack
@@ -146,10 +185,52 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
         }
     }
 
+    // Coherence candidates, on the window v3's first sweep used: the widest
+    // seed width inside the anchor window.
+    let (anchor_lo, anchor_hi) = overtone_tempo::anchor_window(&ours);
+    let span = overtone_tempo::SEED_WIDTHS[0].min(anchor_hi - anchor_lo);
+    let (w_times, w_weights) =
+        overtone_tempo::fit::window(&ours, &our_w32, anchor_lo, anchor_lo + span);
+    let got_candidates = overtone_tempo::coherence::candidates(&w_times, &w_weights, 10);
+
+
+    // The anchor seed: the first `_seed_grid` call v3 records. Two things are
+    // checked against it — that our refined seed matches, and that the raw
+    // candidate list contained it in the first place.
+    let mut seed_period_err = 0.0f64;
+    let mut seed_phase_ms = 0.0f64;
+    let mut seed_in_candidates = true;
+    if let Some(Some(want)) = golden.seeds.first() {
+        seed_in_candidates = got_candidates
+            .iter()
+            .any(|c| (c.period - want.period_s).abs() <= CANDIDATE_REL_TOL * want.period_s);
+        match overtone_tempo::seed_grid(
+            &ours,
+            &our_w32,
+            anchor_lo,
+            anchor_hi,
+            None,
+            &overtone_tempo::SEED_WIDTHS,
+        ) {
+            Some(grid) => {
+                seed_period_err = (grid.period - want.period_s).abs();
+                seed_phase_ms = (grid.phase - want.phase_s).abs() * 1000.0;
+            }
+            None => {
+                seed_period_err = f64::INFINITY;
+                seed_phase_ms = f64::INFINITY;
+            }
+        }
+    }
+
     Ok(Report {
         case: golden.case,
         decode_s,
         analyse_s,
+        candidates: got_candidates.len(),
+        seed_in_candidates,
+        seed_period_err,
+        seed_phase_ms,
         expected: golden.attacks.count,
         found: ours.len(),
         matched,
@@ -179,10 +260,45 @@ fn all_cases(root: &Path) -> Result<Vec<String>> {
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mode = args.first().map(String::as_str).unwrap_or("golden");
-    if mode != "golden" {
-        bail!("usage: overtone-bench golden [--only CASE...]");
-    }
     let root = repo_root();
+    if mode == "candidates" {
+        // Debug aid: print the coherence candidates beside v3's, for one case.
+        let name = args.get(1).context("usage: candidates <case>")?;
+        let text = std::fs::read_to_string(root.join("bench/golden").join(format!("{name}.json")))?;
+        let golden: Golden = serde_json::from_str(&text)?;
+        let (y, sr) = overtone_audio::load(&root.join("bench/audio").join(format!("{name}.wav")))
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let (attacks, _) = overtone_dsp::detect_attacks_default(&y, sr);
+        let times: Vec<f64> = attacks.iter().map(|a| a.time.get()).collect();
+        let w: Vec<f32> = attacks.iter().map(|a| a.weight).collect();
+        let (lo, hi) = overtone_tempo::anchor_window(&times);
+        let span = overtone_tempo::SEED_WIDTHS[0].min(hi - lo);
+        let (wt, ww) = overtone_tempo::fit::window(&times, &w, lo, lo + span);
+        println!("anchor {lo:.6}..{hi:.6}  span {span:.6}  attacks in window {}", wt.len());
+        let got = overtone_tempo::coherence::candidates(&wt, &ww, 10);
+        println!("{:<4} {:>14} {:>14} {:>10}   {:>14} {:>14}", "#", "v3 period", "rust period", "d period", "v3 phase", "rust phase");
+        for i in 0..golden.candidates.len().max(got.len()) {
+            let want = golden.candidates.get(i);
+            let mine = got.get(i);
+            let dp = match (want, mine) {
+                (Some(a), Some(b)) => format!("{:10.2e}", (a.period_s - b.period).abs()),
+                _ => "-".to_string(),
+            };
+            println!(
+                "{:<4} {:>14} {:>14} {:>10}   {:>14} {:>14}",
+                i,
+                want.map(|c| format!("{:.9}", c.period_s)).unwrap_or_else(|| "-".into()),
+                mine.map(|c| format!("{:.9}", c.period)).unwrap_or_else(|| "-".into()),
+                dp,
+                want.map(|c| format!("{:.7}", c.phase_s)).unwrap_or_else(|| "-".into()),
+                mine.map(|c| format!("{:.7}", c.phase)).unwrap_or_else(|| "-".into()),
+            );
+        }
+        return Ok(());
+    }
+    if mode != "golden" {
+        bail!("usage: overtone-bench golden [--only CASE...] | candidates <case>");
+    }
     let only: Vec<String> = args
         .iter()
         .skip_while(|a| *a != "--only")
@@ -201,10 +317,10 @@ fn main() -> Result<()> {
     println!("Stage-by-stage diff against the v3 Python engine.");
     println!("Tolerance: attacks within {:.3} ms.\n", ATTACK_TOL_S * 1000.0);
     println!(
-        "{:<18} {:>7} {:>7} {:>8} {:>11} {:>8} {:>8} {:>8}  verdict",
-        "case", "v3", "rust", "matched", "worst", "w.corr", "decode", "analyse"
+        "{:<18} {:>8} {:>8} {:>10} {:>5} {:>3} {:>10} {:>8}  verdict",
+        "case", "attacks", "matched", "worst", "cands", "in", "seed dP", "analyse"
     );
-    println!("{}", "-".repeat(96));
+    println!("{}", "-".repeat(92));
 
     let mut failures = 0usize;
     let mut total_decode = 0.0f64;
@@ -226,6 +342,18 @@ fn main() -> Result<()> {
                             report.env_frames_found, report.env_frames_expected
                         ));
                     }
+                    if report.weight_correlation <= 0.999 {
+                        why.push(format!("weights r={:.4}", report.weight_correlation));
+                    }
+                    if !report.seed_in_candidates {
+                        why.push("seed not among candidates".to_string());
+                    }
+                    if report.seed_period_err > PERIOD_TOL_S {
+                        why.push(format!("seed period {:.2e}s off", report.seed_period_err));
+                    }
+                    if report.seed_phase_ms > ATTACK_TOL_S * 1000.0 {
+                        why.push(format!("seed phase {:.4}ms off", report.seed_phase_ms));
+                    }
                     if report.matched != report.expected {
                         why.push(format!(
                             "{} unmatched",
@@ -237,14 +365,14 @@ fn main() -> Result<()> {
                 total_decode += report.decode_s;
                 total_analyse += report.analyse_s;
                 println!(
-                    "{:<18} {:>7} {:>7} {:>8} {:>8.4}ms {:>8.4} {:>7.3}s {:>7.3}s  {verdict}",
+                    "{:<18} {:>8} {:>8} {:>8.4}ms {:>5} {:>3} {:>10.2e} {:>7.3}s  {verdict}",
                     report.case,
                     report.expected,
-                    report.found,
                     report.matched,
                     report.worst_ms,
-                    report.weight_correlation,
-                    report.decode_s,
+                    report.candidates,
+                    if report.seed_in_candidates { "y" } else { "N" },
+                    report.seed_period_err,
                     report.analyse_s,
                 );
             }

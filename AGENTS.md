@@ -42,14 +42,18 @@ never re-baseline to make a red gate green.
 Once the Rust workspace exists, add:
 
 ```bash
-cargo test --workspace                                 # 37/37 today
+cargo test --workspace                                 # 64/64 today
 cargo run --release -q -p overtone-bench -- golden     # 24/24 attack for attack
 ```
 
 The golden check is the gate that matters during the port: it diffs the Rust
 engine against v3 **stage by stage** on the committed vectors, so a divergence
 names its own stage. Current state: all 24 fixtures match every attack within
-0.0001 ms, and the whole corpus analyses in 2.5 s against Python's 21.6 s.
+0.0001 ms and every anchor seed within 2.6e-7 s of period, and the whole corpus
+analyses in 2.5 s against Python's 21.6 s.
+
+`cargo run --release -q -p overtone-bench -- candidates <case>` prints the
+coherence candidates beside v3's when a seed diverges.
 
 `cargo run --release` may spend a minute compiling the first time after an
 edit; that is the build, not the engine. The bench prints its own decode and
@@ -95,6 +99,7 @@ crates/                   the v4 Rust workspace
   overtone-core/            shared types, unit newtypes, diagnostics
   overtone-audio/           Symphonia decode, resample, normalise
   overtone-dsp/             mel, STFT, onset envelope, peak picking, re-timing
+  overtone-tempo/           coherence sweep, IRLS grid fit, seeding
   overtone-bench/           golden-vector diff against the Python engine
 docs/                     audit, stack evaluation, architecture, UI, DSP, hitsounds,
                           roadmap, ML evaluation, naming

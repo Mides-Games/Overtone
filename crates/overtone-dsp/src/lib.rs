@@ -35,7 +35,7 @@ pub fn detect_attacks(y: &[f32], sr: u32, hop: usize, retime_attacks: bool) -> (
     // bare-distance retry when nothing survives.
     let distance = ((0.025 * sr as f64 / hop as f64).round() as usize).max(1);
     let env64: Vec<f64> = env.iter().map(|&v| v as f64).collect();
-    let floor = 0.04f32.max(envelope::percentile(&env64, 55.0) as f32);
+    let floor = 0.04f64.max(envelope::percentile(&env64, 55.0));
     let mut picked = peaks::find_peaks(&env, distance, Some(0.05), Some(floor));
     if picked.is_empty() {
         picked = peaks::find_peaks(&env, distance, None, None);

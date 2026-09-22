@@ -1,6 +1,6 @@
 # Timeline
 
-Engineering log for osu! Timing Analyzer: what changed, **why**, and what it measurably did.
+Engineering log for Overtone: what changed, **why**, and what it measurably did.
 
 Newest first. One entry per release. Each entry keeps the same four sections so a
 future reader can skim for the one they need:
@@ -51,6 +51,20 @@ anyone noticing.
 - **`requirements.lock`** — the exact versions behind the measured baseline.
 - One test added (56 total): `test_pulse_hints_only_ever_suggest_doubling`, which
   documents that `suggest_section_pulse` has no downward direction.
+- **`proto/` — the two highest-risk roadmap algorithms, prototyped in Python** against the
+  existing corpus before committing to them in Rust. Both are Phase 2 items rated
+  difficulty *high* / impact *high*, and both would have been expensive to discover wrong
+  after a port. Results in [`proto/README.md`](proto/README.md); summary under Measured.
+- **Renamed to Overtone.** The repository was `githaltwastaken/Timing-Analyzer`; an
+  overtone is a frequency above the fundamental, which is what the coherence sweep spends
+  its time separating — `R(f)` peaks at the true pulse and at every multiple of it.
+  Renamed: README, all docs, `CLAUDE.md` / `AGENTS.md`, this file, the GUI title and about
+  box, the CLI description, and the `.osu` comment. Settings moved to `~/.overtone.json`
+  with `~/.timing_analyzer.json` read as a fallback, so an existing install keeps its
+  preferences instead of silently losing them. `timing_analyzer.py` keeps its filename on
+  purpose — it is the v3 reference implementation and the roadmap already moves it to
+  `reference/python-v3/` in the same commit that creates `crates/`; renaming it now would
+  touch every import in the suite, the benchmark and all three gates for no gain.
 
 ### Fixed
 
@@ -118,6 +132,32 @@ Two results the README did not previously state:
   hidden behind the benchmark's `x2` / `x0.5` notes.
 - White noise returns `127.68 BPM` through the legacy tracker. It should refuse.
 
+**Prototype results** (`proto/`, full detail in `proto/README.md`):
+
+*Density detector* — **4/4** real half/double-time changes found, **0 false positives out
+of 23**, worst localisation error 1.37 s (one 8-beat window). Zero false positives on the
+three fixtures built to look like this — a 6 s drop, a 10 s sparse region, and a track with
+both — is the result that matters, and **parity** is what buys it: coverage says "half the
+slots are empty", parity says "and it is every other one, not a random half". Verdict:
+build it.
+
+*Elastic grid* — a polynomial in `k` (degree 1 *is* v3, degree 2 is a ramp), so IRLS
+carries over unchanged.
+
+| case | deg | rms | fitted BPM | BPM err med/max | v3 |
+|---|---:|---:|---|---|---|
+| ramp-120-160 | 3 | 4.06 ms | 120.65 -> 159.04 | **0.163** / 0.748 | legacy, 8 sections |
+| ramp-180-140 | 3 | 2.70 ms | 179.32 -> 140.44 | **0.144** / 0.536 | legacy, 13 sections |
+| ramp-90-200 | 3 | 23.79 ms | 98.92 -> 189.51 | 1.387 / 10.739 | legacy, 1 section |
+
+And the test that mattered more — it does **not** invent curvature: **22 of 24** constant
+fixtures chose degree 1 with **0.00 % drift**. The two that bent, `secs-4` and
+`tiny-change`, both have genuine tempo changes, so the model was noticing real changes and
+smoothing them rather than hallucinating. That makes residual a clean **selector**: where
+v3's piecewise fit applies it wins by two orders of magnitude (0.15 ms vs 8-15 ms); where
+it falls back, elastic wins. The two models are complementary, not competing, and v4
+should fit both and report which one answered.
+
 ### Rejected / tried and dropped
 
 - **Porting the v2 hybrid tracker to Rust as the v4 fallback.** It means reimplementing
@@ -131,6 +171,18 @@ Two results the README did not previously state:
   measured in Python. Transfer overhead, driver variance and a second numeric path to
   validate, for a fraction of an already-negligible cost. GPU is used for *rendering*,
   where the timeline genuinely needs it.
+- **Extending the elastic tempo curve past its samples with the edge slope.** A ramp
+  genuinely keeps ramping, and measurement showed the entire max error on every ramp
+  fixture is edge behaviour rather than curve shape, so this looked like the obvious fix.
+  It made the extreme fixture *worse* — median 0.63 -> 5.65 BPM, because a steep edge slope
+  fed the polynomial-in-k stage badly enough to flip its degree choice — and changed
+  nothing on the other two. Clamping at the sample edges is kept.
+- **Seeding the elastic fit with a constant period.** Assigning beat indices with one
+  period across a 60 s ramp slips indices, and least squares cannot recover a slipped
+  index — the same failure mode this file records for the coherence phase sign. It
+  returned degree 1 at 30 ms rms and a tempo 17 BPM from truth. The pipeline has to be
+  curve-first: sample locally, normalise octaves, fit `period(t)`, integrate to a grid,
+  *then* assign indices.
 - **Fixing the click track's hardcoded 4-beat accent** (finding F-03, audible on 3/4
   tracks). It is a behaviour change to an audio export with no test covering the accent
   pattern, and the rule is that precision-adjacent code does not change without a test in

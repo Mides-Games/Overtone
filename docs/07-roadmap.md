@@ -60,7 +60,7 @@ The whole of [`05-dsp-pipeline.md`](05-dsp-pipeline.md) Part A, and nothing from
 
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|
-| `ota-core` types | unit newtypes, serde, errors, diagnostics | low | med | P0 | no | no | **P0** |
+| `overtone-core` types | unit newtypes, serde, errors, diagnostics | low | med | P0 | no | no | **P0** |
 | Symphonia decode | MP3/AAC/ALAC/FLAC/Vorbis/WAV/MP4 — **removes FFmpeg** (F-06) | med | **high** | — | no | no | **P0** |
 | Mel-flux envelope | the exact librosa contract (DSP §A.2) | **high** | **high** | decode | no | no | **P0** |
 | Peak picking | scipy `find_peaks` prominence semantics + parabolic interp | med | high | envelope | no | no | **P0** |
@@ -74,7 +74,7 @@ The whole of [`05-dsp-pipeline.md`](05-dsp-pipeline.md) Part A, and nothing from
 | Property tests | ×2/÷2 identity, exact-grid recovery, monotone boundaries | low | high | all | no | no | P1 |
 | Structured diagnostics | carried on the result, not in a progress string — closes **F-08** | low | med | all | no | no | P1 |
 
-**Exit:** `cargo run -p ota-bench` prints **24/24 · median 0.0000 BPM · 0.16 ms**, golden
+**Exit:** `cargo run -p overtone-bench` prints **24/24 · median 0.0000 BPM · 0.16 ms**, golden
 vectors match within tolerance, 55/55 tests pass. Until then, nothing else starts.
 
 ---
@@ -83,12 +83,12 @@ vectors match within tolerance, 55/55 tests pass. Until then, nothing else start
 
 Part B of the DSP doc, in the order its gates can be met.
 
-| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri |
-|---|---|:--:|:--:|---|:--:|:--:|:--:|
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Parallel + cache | rayon stages, blake3-keyed cache, incremental invalidation | med | **high** | P1 | no | no | **P1** |
-| **Per-section octave** | half/double-time regions get their own beat rate — **F-11** | med | **high** | P1, fixture | no | no | **P1** |
+| **Per-section octave** | half/double-time regions get their own beat rate — **F-11** | med | **high** | P1, fixture | no | no | **P1** | **prototyped** 4/4, 0 FP |
 | 2-D coherence map | `R(t,f)` full-track: better seeds + confidence map | med | high | P1 | no | no | P1 |
-| **Elastic grid** | spline tempo model for rubato; replaces the v2 staircase | **high** | **high** | IRLS | no | no | **P1** |
+| **Elastic grid** | spline tempo model for rubato; a **selector** beside the piecewise fit, not a replacement | **high** | **high** | IRLS | no | no | **P1** | **prototyped** 0.16 BPM |
 | No-grid verdict | refuse honestly instead of the tracker's white-noise BPM | low | med | elastic | no | no | P1 |
 | SuperFlux ODF | vibrato-suppressed flux, auto-selected on non-percussive audio | low | med | envelope | no | no | P2 |
 | Drop librosa tempogram | octave hint from the coherence map | med | med | 2-D map, **octave test** | no | no | P2 |
@@ -98,6 +98,19 @@ Part B of the DSP doc, in the order its gates can be met.
 | Structure analysis | novelty curve → phrases, downbeats, energy map | med | high | chroma/MFCC | no | no | **P1** |
 | Section classification | intro/verse/chorus/bridge labels from structure | med | med | structure | opt | no | P2 |
 
+The two starred items were the riskiest entries in this phase, so both are **prototyped
+and measured** in [`../proto/`](../proto/) before any Rust is written.
+
+- Density detection: **4/4** found, **0 false positives out of 23**, within 1.37 s. The
+  discriminator is parity, not coverage — a drop and a sparse bar lower coverage too.
+- Elastic grid: **0.144-0.163 BPM** median error on realistic ramps against v3's 8- and
+  13-section staircases, and degree 1 with **0.00 % invented drift** on 22 of 24 constant
+  fixtures. It belongs **beside** the piecewise fit with residual as the selector, not in
+  place of it, and a 2.2x accelerando over 75 s still exceeds a global cubic.
+
+Full results and the four implementation traps found:
+[`../proto/README.md`](../proto/README.md).
+
 ---
 
 ## Phase 3 — Modern UI
@@ -105,8 +118,8 @@ Part B of the DSP doc, in the order its gates can be met.
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|
 | Tauri shell + tokens | window, theme, typography, command layer | med | **high** | P1 | no | no | **P1** |
-| Binary transport | `ota://` URI scheme for peaks/envelope/attacks | med | **high** | shell | no | no | **P1** |
-| Peak pyramid | LOD min/max, computed once, cached | low | **high** | `ota-audio` | no | no | **P1** |
+| Binary transport | `overtone://` URI scheme for peaks/envelope/attacks | med | **high** | shell | no | no | **P1** |
+| Peak pyramid | LOD min/max, computed once, cached | low | **high** | `overtone-audio` | no | no | **P1** |
 | **WebGL timeline** | waveform · onsets · grid · attacks · sections · red lines | **high** | **high** | transport | no | **yes** | **P1** |
 | Zoom / scroll / select | cursor-anchored zoom, range selection, keyboard nav | med | **high** | timeline | no | no | **P1** |
 | Tempo curve layer | own axis above the waveform, from the fitted model | med | high | timeline | no | no | **P1** |
@@ -124,7 +137,7 @@ Part B of the DSP doc, in the order its gates can be met.
 
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|
-| cpal transport | play/pause/seek, ring buffer, no alloc in the callback | med | **high** | `ota-audio` | no | no | **P1** |
+| cpal transport | play/pause/seek, ring buffer, no alloc in the callback | med | **high** | `overtone-audio` | no | no | **P1** |
 | Live click track | synthesised against the *current* timing points | med | **high** | transport | no | no | **P1** |
 | Playhead sync | timestamped position, UI extrapolates at 60 Hz | low | high | transport | no | no | **P1** |
 | Scrub + loop | waveform scrubbing, loop selection, loop section | med | high | transport | no | no | P1 |

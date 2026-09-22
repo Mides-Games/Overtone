@@ -43,8 +43,8 @@ Once the Rust workspace exists, add:
 
 ```bash
 cargo test --workspace
-cargo run -p ota-bench --release -- --accuracy    # must match the v3 baseline
-cargo run -p ota-bench --release -- --golden      # per-stage diff vs v3
+cargo run -p overtone-bench --release -- --accuracy    # must match the v3 baseline
+cargo run -p overtone-bench --release -- --golden      # per-stage diff vs v3
 ```
 
 **The accuracy baseline is not negotiable:** 24/24 sections within 0.05 BPM and 5 ms,
@@ -81,6 +81,8 @@ bench/golden.py           per-stage golden vectors; the harness Rust gets pointe
 bench/golden/             24 committed vector files, 362 KB
 bench/bpm_snapshot.json   pinned absolute BPM per fixture
 requirements.lock         exact versions behind the measured baseline
+proto/                    Python prototypes of the riskiest v4 algorithms,
+                          measured against the corpus before any port
 docs/                     audit, stack evaluation, architecture, UI, DSP, hitsounds,
                           roadmap, ML evaluation, naming
 timeline.md               engineering log

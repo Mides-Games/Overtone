@@ -132,7 +132,7 @@ Part B of the DSP doc, in the order its gates can be met.
 | Drop librosa tempogram | octave hint from the coherence map | med | med | 2-D map, **octave test** | no | no | P2 | **rejected** — measured: map-R ranks atoms first (5 octave flips); Rust tempogram costs 8 ms |
 | Multi-band flux | 7-band onset functions; also feeds hitsounds | low | med | STFT | no | no | **P1** | **done** — absolute dB flux, switch-isolation + floor pinned |
 | HPSS | harmonic/percussive/residual separation | med | high | STFT | no | no | **P1** | **done** 2-way — partial >9x H, clicks >3x P, conservative; residual open |
-| Band-limited re-timing | re-time each attack in its own band | med | low-med | multi-band | no | no | P3 |
+| Band-limited re-timing | re-time each attack in its own band | med | low-med | multi-band | no | no | P3 | **partial** — zero-phase bank proven; narrow bands lose to full-band, gentle lowpass halves contrived smear; wiring deferred |
 | Structure analysis | novelty curve → phrases, downbeats, energy map | med | high | chroma/MFCC | no | no | **P1** | **done** — chroma+MFCC front ends, Foote novelty exact on 2 fixtures; downbeat snap deferred |
 | Section classification | intro/verse/chorus/bridge labels from structure | med | med | structure | opt | no | P2 |
 

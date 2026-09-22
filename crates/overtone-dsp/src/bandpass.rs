@@ -84,8 +84,9 @@ pub fn design_bank(sr: u32) -> Vec<Biquad> {
         .collect()
 }
 
-/// Zero-phase filter one signal: forward, reverse, forward, reverse, with
-/// reflected edges so the ends do not ring into the music.
+/// Zero-phase filter one signal — one forward pass plus one backward pass
+/// on the reversed output — with reflected edges so the ends do not ring
+/// into the music.
 pub fn filtfilt(section: &Biquad, y: &[f32]) -> Vec<f32> {
     if y.len() < 8 {
         return y.to_vec();
@@ -226,6 +227,29 @@ mod tests {
             "lowpassed {fixed:.5} vs truth {truth}"
         );
         assert!(fixed < full, "lowpassed {fixed:.5} should beat full {full:.5}");
+    }
+
+    #[test]
+    fn bank_returns_seven_aligned_waveforms() {
+        let sr = 44_100;
+        let y = sine(sr, 1.0, 60.0);
+        let bands = band_waveforms(&y, sr);
+        assert_eq!(bands.len(), BANDS);
+        for band in &bands {
+            assert_eq!(band.len(), y.len());
+        }
+        // The 60 Hz sine lives in band 0; every other band holds leakage.
+        let energy: Vec<f64> = bands
+            .iter()
+            .map(|b| b.iter().map(|&v| (v as f64).powi(2)).sum::<f64>())
+            .collect();
+        let top = energy
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.total_cmp(b.1))
+            .map(|(i, _)| i)
+            .unwrap();
+        assert_eq!(top, 0, "energies {energy:.2?}");
     }
 
     #[test]

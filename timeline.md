@@ -16,6 +16,84 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-22 · A shared grid slot reads as its coarsest division
+
+A bug fix in the hitsound crate's musical role. The tempo engine is untouched.
+
+### Changed
+
+- **`role::grid_position` names a shared slot by its coarsest division.** An
+  on-beat is 1/1, a half-beat 1/2, a 16th 1/4, whatever the period. Residuals
+  are unchanged to within 1e-9 beats; only the label on coinciding slots moves.
+
+### Fixed
+
+- **On-beats read as triplets.** The loop over divisions 1, 2, 3, 4, 6, 8 kept
+  the strictly smallest residual. Slots coincide across divisions (a beat is
+  also 3/3 and 6/6, a half-beat is 2/4, 3/6 and 4/8), so for an attack on a
+  shared slot every division reads the same residual, and rounding in
+  `beat * d` picked the winner. Whenever the attack time was not an exact
+  binary fraction of the period, which is every real track, 1/3 or 1/6 could
+  win by 1e-13 ms. The division feeds `metrical_weight`, which returns 0.25 for
+  1/2 to 1/4 and 0.10 finer, so a kick misread as 1/3 lost its downbeat (1.0)
+  or backbeat (0.5) weight, and a hat misread as 1/6 dropped from 0.25 to 0.10
+  as if it were a ghost note. The tests passed only because their times were binary
+  fractions; one accepted "4 or 8" for a 16th, which was this ambiguity showing
+  through. Now the coarsest division within 1e-9 beats of the minimum wins.
+  Rounding is ~1e-12 beats even a thousand beats in; distinct slots sit at
+  least 1/24 beat apart.
+
+### Hardening
+
+- The 16th test asserts division 4, not "4 or 8".
+- New test at 174 BPM, phase off zero, every attack 0.5 ms late: 600 beats ×
+  seven slots (1/1, 1/2, 1/3, both 1/4s, 1/6, 1/8) must each read their own
+  division and a 0.5 ms residual. Under the strict minimum, 80 of the 600
+  on-beats read as triplets. The edm-174 reading that exposed the bug is pinned
+  beside it.
+
+### Measured
+
+Share of attack weight per division, on v3's precision analysis of every
+corpus fixture that has a grid (31 of 34; the three ramps fall back to another
+engine). Measured through a Python port of the same arithmetic: the hitsound
+crate has no corpus harness yet, so this measures the arithmetic, not the Rust
+binary.
+
+```
+                   before (strict minimum)          after (coarsest tie)
+fixture          1/1   1/2   1/3   1/4   1/6   1/8    1/1   1/2   1/3   1/4   1/6   1/8
+edm-174         48.9  23.5  17.6   0.0  10.0   0.0   66.5  33.5   0.0   0.0   0.0   0.0
+downbeat-4-4    66.5   0.0  33.5   0.0   0.0   0.0  100.0   0.0   0.0   0.0   0.0   0.0
+fast-300        25.0  39.4  13.7   0.0  21.9   0.0   38.7  61.3   0.0   0.0   0.0   0.0
+shuffle-96      36.5   0.0  58.0   5.4   0.0   0.0   53.4   0.0  41.1   5.4   0.0   0.0
+swing-120       34.4   0.0  25.8   0.0   0.0  39.8   53.7   0.0   6.5   0.0   0.0  39.8
+very-noisy-132  40.2   9.7  26.9   3.9   9.4   9.8   62.3  15.5   4.9   3.9   3.7   9.8
+```
+
+- **Straight fixtures (29):** 1/3 + 1/6 carried 25–39 % of attack weight
+  before, 0.0 % after on 26 of them. The other three (noisy-140 0.4 %,
+  signature-changes 0.2 %, very-noisy-132 8.6 %) are attacks nearer a triplet
+  slot than any other, not ties. On edm-174, 1/3's 17.6 points moved to 1/1 and
+  1/6's 10.0 to 1/2: a quarter of the on-beat weight and a third of the
+  half-beat weight had been read with the wrong metrical weight.
+- **Shuffle-96** keeps its triplet hats at 41.1 %; the other 16.9 points were
+  on-beats. **Swing-120** swings its hats to 0.58 beats, nearest the 5/8 slot,
+  so they read 1/8 before and after.
+- 1/4 and 1/8 shares are identical before and after on every fixture.
+- `cargo test --workspace` passes (177 tests, one new). Golden gate 24/24
+  attack for attack. The Python gates were not run: the v3 engine is untouched.
+
+### Rejected / tried and dropped
+
+- **A relative tolerance on the residual.** It collapses as the residual
+  approaches zero, which is exactly an attack sitting on its slot: a 1e-15
+  minimum and a 1e-13 rival are a factor of 100 apart and still a tie. The
+  residual is already in beats, so an absolute tolerance is already
+  period-relative.
+
+---
+
 ## v3.6 — 2026-09-22 · Comfort features plan, and a place for output to live
 
 Not code beyond a small repository hygiene fix; a plan release.

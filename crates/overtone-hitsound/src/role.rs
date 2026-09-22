@@ -33,22 +33,34 @@ pub fn metrical_weight(beat_in_bar: i64, bar_beats: usize, division: u32) -> f64
 /// 1/8, from the fitted grid, exactly. Returns the division plus the
 /// residual in milliseconds — a 16th that is 30 ms off is a flam, not a
 /// 16th, and the residual is how the decision knows.
+///
+/// Slots coincide across divisions (a beat is also 3/3 and 6/6, a half is
+/// 2/4), and then every division reads the same residual up to rounding in
+/// `beat * d`. The coarsest division within [`TIE_BEATS`] of the minimum
+/// names the slot; a strict minimum would hand on-beats to 1/3 or 1/6.
 pub fn grid_position(t: f64, period: f64, phase: f64) -> (u32, f64) {
     const DIVISIONS: [u32; 6] = [1, 2, 3, 4, 6, 8];
     if !(period > 0.0) {
         return (1, 0.0);
     }
     let beat = (t - phase) / period;
-    let mut best = (1u32, f64::INFINITY);
-    for &d in &DIVISIONS {
+    let residuals = DIVISIONS.map(|d| {
         let slots = beat * d as f64;
-        let residual_beats = (slots - slots.round()).abs() / d as f64;
-        if residual_beats < best.1 {
-            best = (d, residual_beats);
-        }
-    }
-    (best.0, best.1 * period * 1000.0)
+        (slots - slots.round()).abs() / d as f64
+    });
+    let min = residuals.iter().copied().fold(f64::INFINITY, f64::min);
+    let (d, r) = DIVISIONS
+        .into_iter()
+        .zip(residuals)
+        .find(|&(_, r)| r <= min + TIE_BEATS)
+        .unwrap_or((1, min));
+    (d, r * period * 1000.0)
 }
+
+/// Residuals closer than this, in beats, are one slot read twice. Rounding
+/// in `beat * d` is ~1e-12 beats even a thousand beats in; distinct slots
+/// sit at least 1/24 beat apart. 1e-9 beats is under a nanosecond.
+const TIE_BEATS: f64 = 1e-9;
 
 /// Role of one attack in the music.
 #[derive(Debug, Clone, PartialEq)]
@@ -254,12 +266,46 @@ mod tests {
         assert_eq!(d, 2);
         let (d, _) = grid_position(2.0 + 0.5 / 3.0, 0.5, 0.0);
         assert_eq!(d, 3);
-        // 15 ms past the 16th slot: division 4 or 8 (the two nearest —
-        // a triplet slot sits 27 ms away, so this is unambiguous), and
-        // the residual must read the true distance either way.
+        // 15 ms past the 16th slot. That slot is also 2/8, so divisions 4
+        // and 8 read the same residual; the coarser one names it. A
+        // triplet slot sits 27 ms away, so nothing else competes.
         let (d, r) = grid_position(2.0 + 0.5 / 4.0 + 0.015, 0.5, 0.0);
         assert!((r - 15.0).abs() < 2.0, "residual {r}");
-        assert!(d == 4 || d == 8, "division {d}");
+        assert_eq!(d, 4);
+    }
+
+    #[test]
+    fn grid_position_coinciding_slots_read_coarsest() {
+        // 174 BPM with a phase off zero: no attack time is a binary
+        // fraction, so every division's residual carries its own rounding
+        // and a strict minimum lets 1/3 or 1/6 win an on-beat. Every
+        // attack sits 0.5 ms late so the residual is never exactly zero.
+        let period = 60.0 / 174.0;
+        let phase = 0.0864759576658507;
+        let late = 0.0005;
+        for beat in 0..600 {
+            let on = phase + beat as f64 * period + late;
+            let cases = [
+                (on, 1),
+                (on + period / 2.0, 2),
+                (on + period / 3.0, 3),
+                (on + period / 4.0, 4),
+                (on + 3.0 * period / 4.0, 4),
+                (on + period / 6.0, 6),
+                (on + period / 8.0, 8),
+            ];
+            for (t, want) in cases {
+                let (d, r) = grid_position(t, period, phase);
+                assert_eq!(d, want, "beat {beat}, want 1/{want}, got 1/{d}");
+                assert!((r - 0.5).abs() < 1e-6, "beat {beat}, residual {r}");
+            }
+        }
+        // The edm-174 reading that exposed it: v3's fitted grid, 0.54 ms
+        // past beat 3. The strict minimum named it 1/3, by 1e-13 ms.
+        let (period, phase) = (0.34482757812552717, 0.0864759576658507);
+        let (d, r) = grid_position(phase + 3.00157 * period, period, phase);
+        assert_eq!(d, 1);
+        assert!((r - 0.5413).abs() < 1e-3, "residual {r}");
     }
 
     #[test]

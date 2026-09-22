@@ -68,11 +68,11 @@ The whole of [`05-dsp-pipeline.md`](05-dsp-pipeline.md) Part A, and nothing from
 | Coherence sweep | SIMD `R(f)`, correct phase sign, ×1–4 widening | med | **high** | attacks | no | no | **P0** | **done** |
 | IRLS fit | tolerance ladder, mode re-centring at pass 2, expanding windows | med | **high** | coherence | no | no | **P0** | **done** |
 | Octave decision | accent depth + tempogram hints (librosa-equivalent for now) | high | high | fit | no | no | **P0** | **done** |
-| Sections | grow · re-seed · merge · crossing boundaries · refit | high | **high** | fit | no | no | **P0** | **next** |
-| Meter, confidence, points | downbeat anchoring, snapping, whole-ms export | med | high | sections | no | no | **P0** | todo |
+| Sections | grow · re-seed · merge · crossing boundaries · refit | high | **high** | fit | no | no | **P0** | **done** |
+| Meter, confidence, points | downbeat anchoring, snapping, whole-ms export | med | high | sections | no | no | **P0** | **done** |
 | Unit tests ported | names preserved; coherence-sign test first | med | **high** | all | no | no | **P0** | partial |
-| Property tests | ×2/÷2 identity, exact-grid recovery, monotone boundaries | low | high | all | no | no | P1 | todo |
-| Structured diagnostics | carried on the result, not in a progress string — closes **F-08** | low | med | all | no | no | P1 | todo |
+| Property tests | ×2/÷2 identity, exact-grid recovery, monotone boundaries | low | high | all | no | no | P1 | partial |
+| Structured diagnostics | carried on the result, not in a progress string — closes **F-08** | low | med | all | no | no | P1 | partial |
 
 **Progress.** Everything up to and including the octave decision is ported and checked
 against v3 on all 24 fixtures:
@@ -102,9 +102,13 @@ bins, so the dense projection did ~50x the arithmetic), and the STFT is **fused*
 mel projection so the linear spectrogram — over a gigabyte for a 6-minute track — is never
 materialised. The first naive version was 2.5x *slower* than Python.
 
-Still to port: **section growth** (grow, re-seed, merge, boundaries at the grid crossing,
-per-section refit), then meter, confidence and timing points. Section growth is the last
-large piece; the rest follows from it.
+Ported since: **section growth** (grow, re-seed, merge, boundaries at the grid crossing,
+per-section refit) in `overtone-tempo::sections`, then meter (global, per-section and the
+v3.2/v3.3 measure grid), confidence and timing points in `overtone-tempo::points`, with an
+end-to-end `analyze_attacks` driver that carries structured diagnostics. The golden gate
+diffs atom, beat and settled sections plus meter and all 34 red lines on the 24 fixtures.
+Still to port: the full `Analysis` assembly (global BPM, stability, beat arrays) and the
+remaining v3 unit tests by name.
 
 **Exit:** `cargo run -p overtone-bench` prints **24/24 · median 0.0000 BPM · 0.16 ms**, golden
 vectors match within tolerance, and the Python reference still passes. Until then, nothing

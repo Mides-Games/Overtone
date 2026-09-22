@@ -67,9 +67,7 @@ pub fn local_bpm_curve(
         let idx: Vec<usize> = beats
             .iter()
             .enumerate()
-            .filter(|(_, &t)| {
-                t >= section.start.get() - 1e-9 && t <= section.end.get() + 1e-9
-            })
+            .filter(|(_, &t)| t >= section.start.get() - 1e-9 && t <= section.end.get() + 1e-9)
             .map(|(i, _)| i)
             .collect();
         if idx.is_empty() {
@@ -87,7 +85,10 @@ pub fn local_bpm_curve(
                 if let Some((grid, _)) = crate::fit::ls_pass(
                     &w_times,
                     &w_weights,
-                    crate::fit::Grid { period: section.period, phase: section.phase },
+                    crate::fit::Grid {
+                        period: section.period,
+                        phase: section.phase,
+                    },
                     0.12 * section.period,
                 ) {
                     let local = grid.period / factor;
@@ -110,7 +111,13 @@ pub fn local_bpm_curve(
     let unset = curve.iter().any(|&v| v <= 0.0);
     let any_set = curve.iter().any(|&v| v > 0.0);
     if unset && any_set {
-        let med = median(&curve.iter().copied().filter(|&v| v > 0.0).collect::<Vec<_>>());
+        let med = median(
+            &curve
+                .iter()
+                .copied()
+                .filter(|&v| v > 0.0)
+                .collect::<Vec<_>>(),
+        );
         for v in curve.iter_mut().filter(|v| **v <= 0.0) {
             *v = med;
         }
@@ -137,7 +144,13 @@ pub fn global_bpm(sections: &[GridSection], factor: f64) -> f64 {
     }
     let bpms: Vec<f64> = sections
         .iter()
-        .map(|s| if s.period > 0.0 { 60.0 * factor / s.period } else { 0.0 })
+        .map(|s| {
+            if s.period > 0.0 {
+                60.0 * factor / s.period
+            } else {
+                0.0
+            }
+        })
         .collect();
     let durations: Vec<f64> = sections
         .iter()
@@ -251,7 +264,9 @@ mod tests {
     #[test]
     fn stability_punishes_wobble() {
         let flat = vec![150.0; 40];
-        let wobbly: Vec<f64> = (0..40).map(|k| if k % 2 == 0 { 140.0 } else { 160.0 }).collect();
+        let wobbly: Vec<f64> = (0..40)
+            .map(|k| if k % 2 == 0 { 140.0 } else { 160.0 })
+            .collect();
         assert!(stability(&flat) > stability(&wobbly));
         assert_eq!(stability(&[150.0]), 0.0);
         assert_eq!(stability(&[]), 0.0);
@@ -260,7 +275,10 @@ mod tests {
     #[test]
     fn global_bpm_follows_the_long_section() {
         // 10 s at 128 BPM, 50 s at 142 BPM: the long one wins the median.
-        let sections = vec![section(0.0, 10.0, 60.0 / 128.0, 0.0), section(10.0, 60.0, 60.0 / 142.0, 10.0)];
+        let sections = vec![
+            section(0.0, 10.0, 60.0 / 128.0, 0.0),
+            section(10.0, 60.0, 60.0 / 142.0, 10.0),
+        ];
         assert!((global_bpm(&sections, 1.0) - 142.0).abs() < 1e-9);
         assert!((global_bpm(&[], 1.0) - 0.0).abs() < 1e-12);
     }

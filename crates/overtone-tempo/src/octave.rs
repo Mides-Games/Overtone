@@ -170,9 +170,7 @@ pub fn tempo_hints(env: &[f32], sr: u32, hop: usize) -> Vec<(f64, f64)> {
 
     // Keep the plausible tempo range, then normalise to a peak of one.
     let keep: Vec<usize> = (0..agg.len())
-        .filter(|&i| {
-            freqs[i].is_finite() && freqs[i] >= HINT_RANGE.0 && freqs[i] <= HINT_RANGE.1
-        })
+        .filter(|&i| freqs[i].is_finite() && freqs[i] >= HINT_RANGE.0 && freqs[i] <= HINT_RANGE.1)
         .collect();
     if keep.len() < 8 {
         return Vec::new();
@@ -443,7 +441,10 @@ mod tests {
         let (m, class) = beat_from_atoms(
             &times,
             &weights,
-            Grid { period: 0.2, phase: 0.0 },
+            Grid {
+                period: 0.2,
+                phase: 0.0,
+            },
             &[(150.0, 1.0)],
             true,
         );
@@ -457,7 +458,10 @@ mod tests {
         let (m, class) = beat_from_atoms(
             &times,
             &weights,
-            Grid { period: 0.2, phase: 0.0 },
+            Grid {
+                period: 0.2,
+                phase: 0.0,
+            },
             &[(75.0, 1.0)],
             false,
         );
@@ -474,7 +478,10 @@ mod tests {
         let (m, _) = beat_from_atoms(
             &times,
             &weights,
-            Grid { period: 0.4, phase: 0.0 },
+            Grid {
+                period: 0.4,
+                phase: 0.0,
+            },
             &[(150.0, 1.0)],
             true,
         );
@@ -485,7 +492,10 @@ mod tests {
     fn hint_score_falls_off_by_an_octave() {
         let hints = [(150.0, 1.0)];
         assert!(hint_score(&hints, 150.0) > 0.99);
-        assert!(hint_score(&hints, 300.0) < 0.05, "an octave away must be ~0");
+        assert!(
+            hint_score(&hints, 300.0) < 0.05,
+            "an octave away must be ~0"
+        );
         assert!(hint_score(&hints, 75.0) < 0.05);
     }
 
@@ -503,7 +513,10 @@ mod tests {
         let (with, _) = beat_from_atoms(
             &times,
             &weights,
-            Grid { period: 0.15, phase: 0.0 },
+            Grid {
+                period: 0.15,
+                phase: 0.0,
+            },
             &[],
             true,
         );
@@ -515,7 +528,14 @@ mod tests {
     fn meter_refuses_to_guess_without_accents() {
         let times: Vec<f64> = (0..200).map(|k| k as f64 * 0.5).collect();
         let weights = vec![1.0f32; times.len()];
-        let (meter, downbeat, bar) = meter_from_grid(&times, &weights, Grid { period: 0.5, phase: 0.0 });
+        let (meter, downbeat, bar) = meter_from_grid(
+            &times,
+            &weights,
+            Grid {
+                period: 0.5,
+                phase: 0.0,
+            },
+        );
         assert_eq!(meter, "4/4");
         assert_eq!(downbeat, 0);
         assert_eq!(bar, 1, "no accent evidence must mean 'snap to a beat'");
@@ -524,7 +544,14 @@ mod tests {
     #[test]
     fn meter_finds_four_four_when_the_downbeat_is_accented() {
         let (times, weights) = accented(0.5, 4, 200, 0);
-        let (meter, downbeat, bar) = meter_from_grid(&times, &weights, Grid { period: 0.5, phase: 0.0 });
+        let (meter, downbeat, bar) = meter_from_grid(
+            &times,
+            &weights,
+            Grid {
+                period: 0.5,
+                phase: 0.0,
+            },
+        );
         assert_eq!(meter, "4/4");
         assert_eq!(downbeat, 0);
         assert_eq!(bar, 4);
@@ -533,7 +560,14 @@ mod tests {
     #[test]
     fn meter_finds_three_four() {
         let (times, weights) = accented(0.5, 3, 200, 0);
-        let (meter, _downbeat, bar) = meter_from_grid(&times, &weights, Grid { period: 0.5, phase: 0.0 });
+        let (meter, _downbeat, bar) = meter_from_grid(
+            &times,
+            &weights,
+            Grid {
+                period: 0.5,
+                phase: 0.0,
+            },
+        );
         assert_eq!(meter, "3/4");
         assert_eq!(bar, 3);
     }
@@ -547,7 +581,15 @@ mod tests {
     #[test]
     fn phase_class_locates_the_accent() {
         let (times, weights) = accented(0.2, 4, 400, 2);
-        let class = phase_class(&times, &weights, Grid { period: 0.2, phase: 0.0 }, 4);
+        let class = phase_class(
+            &times,
+            &weights,
+            Grid {
+                period: 0.2,
+                phase: 0.0,
+            },
+            4,
+        );
         assert_eq!(class, 2);
     }
 }

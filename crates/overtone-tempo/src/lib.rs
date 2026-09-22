@@ -127,7 +127,10 @@ pub fn seed_grid(
         if pool.is_empty() {
             continue;
         }
-        let top = pool.iter().map(|(_, s)| *s).fold(f64::NEG_INFINITY, f64::max);
+        let top = pool
+            .iter()
+            .map(|(_, s)| *s)
+            .fold(f64::NEG_INFINITY, f64::max);
         if top > best_score {
             best_pool = pool;
             best_score = top;
@@ -200,8 +203,22 @@ mod tests {
     fn seed_score_rejects_a_grid_twice_too_slow() {
         // Half the attacks fall off a doubled grid, so share collapses.
         let (times, weights) = drum_grid(0.2, 0.0, 40.0);
-        let truth = fit::quality(&times, &weights, Grid { period: 0.2, phase: 0.0 });
-        let slow = fit::quality(&times, &weights, Grid { period: 0.4, phase: 0.0 });
+        let truth = fit::quality(
+            &times,
+            &weights,
+            Grid {
+                period: 0.2,
+                phase: 0.0,
+            },
+        );
+        let slow = fit::quality(
+            &times,
+            &weights,
+            Grid {
+                period: 0.4,
+                phase: 0.0,
+            },
+        );
         assert!(
             seed_score(&truth) > seed_score(&slow),
             "truth {:?} vs slow {:?}",
@@ -215,8 +232,22 @@ mod tests {
         // Every attack is still on a halved grid, so share stays high and
         // coverage is what rejects it.
         let (times, weights) = drum_grid(0.2, 0.0, 40.0);
-        let truth = fit::quality(&times, &weights, Grid { period: 0.2, phase: 0.0 });
-        let fast = fit::quality(&times, &weights, Grid { period: 0.1, phase: 0.0 });
+        let truth = fit::quality(
+            &times,
+            &weights,
+            Grid {
+                period: 0.2,
+                phase: 0.0,
+            },
+        );
+        let fast = fit::quality(
+            &times,
+            &weights,
+            Grid {
+                period: 0.1,
+                phase: 0.0,
+            },
+        );
         assert!(fast.share > 0.99, "share cannot see it: {fast:?}");
         assert!(
             seed_score(&truth) > seed_score(&fast),
@@ -252,8 +283,8 @@ mod tests {
     #[test]
     fn a_prior_keeps_the_octave_stable() {
         let (times, weights) = drum_grid(0.25, 0.0, 40.0);
-        let with_prior = seed_grid(&times, &weights, 0.0, 30.0, Some(0.25), &SEED_WIDTHS)
-            .expect("seeds");
+        let with_prior =
+            seed_grid(&times, &weights, 0.0, 30.0, Some(0.25), &SEED_WIDTHS).expect("seeds");
         let ratio = with_prior.period / 0.25;
         assert!(
             (ratio - 1.0).abs() < 0.05,

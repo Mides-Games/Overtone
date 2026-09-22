@@ -10,6 +10,7 @@
 //! standing rule — ratios, never absolutes — so a mastered track and its
 //! demo read the same.
 
+pub mod source;
 pub mod spectral;
 pub mod temporal;
 

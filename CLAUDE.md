@@ -39,7 +39,7 @@ divergence names its own stage instead of surfacing as a mystery at the output. 
 reading changes on purpose, say why in `timeline.md` and re-run with `--update` / `dump`;
 never re-baseline to make a red gate green.
 
-Once the Rust workspace exists, add:
+And the Rust side:
 
 ```bash
 cargo test --workspace                                 # 64/64 today
@@ -111,5 +111,9 @@ timeline.md               engineering log
 - Python reference runs in `.venv` (Python 3.14; numpy 2.5.3, scipy 1.18.1, librosa 1.0.0,
   numba 0.67.0). `requirements.txt` has lower bounds only — pin a `requirements.lock`
   before trusting a benchmark comparison across machines.
-- The Rust toolchain is **not yet installed**; Phase 0 of the roadmap covers it
-  (MSVC Build Tools, then rustup with the `x86_64-pc-windows-msvc` target).
+- Rust: rustup 1.29 / rustc 1.98.1 on `x86_64-pc-windows-msvc`, with Visual Studio
+  Build Tools 2022 17.14 supplying the linker. `Cargo.lock` is committed.
+- The local folder is `Overtone-master`, matching the `<Name>-master` convention used by
+  the other projects here; the GitHub repository is `githaltwastaken/Overtone`. Nothing in
+  the build depends on either name — the bench resolves the repository root at runtime by
+  walking up for `Cargo.toml` and `bench/golden/`, precisely so a rename cannot break it.

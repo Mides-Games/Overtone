@@ -99,15 +99,51 @@ impl Report {
     }
 }
 
-fn repo_root() -> PathBuf {
-    // The binary lives in target/<profile>/, so the repo is two levels up from
-    // the manifest dir at build time. Using CARGO_MANIFEST_DIR keeps this
-    // working regardless of the working directory the user runs from.
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("crate lives at <root>/crates/<name>")
-        .to_path_buf()
+/// Find the repository root by walking up for the things this tool needs.
+///
+/// Deliberately resolved at runtime. `CARGO_MANIFEST_DIR` is baked in at
+/// compile time, so a binary built before the project folder was renamed went
+/// looking for its fixtures under the old absolute path — which is exactly
+/// what happened when this project was renamed to Overtone. Searching from the
+/// working directory first, then from the executable, keeps the binary
+/// relocatable and makes it work from any subdirectory.
+fn repo_root() -> Result<PathBuf> {
+    fn looks_like_root(dir: &Path) -> bool {
+        dir.join("Cargo.toml").is_file() && dir.join("bench").join("golden").is_dir()
+    }
+    fn walk_up(start: &Path) -> Option<PathBuf> {
+        let mut dir = Some(start);
+        while let Some(current) = dir {
+            if looks_like_root(current) {
+                return Some(current.to_path_buf());
+            }
+            dir = current.parent();
+        }
+        None
+    }
+
+    if let Ok(cwd) = std::env::current_dir() {
+        if let Some(root) = walk_up(&cwd) {
+            return Ok(root);
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(root) = exe.parent().and_then(walk_up) {
+            return Ok(root);
+        }
+    }
+    // Last resort, and the one that breaks on a rename — so it is last.
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    if let Some(root) = manifest.parent().and_then(Path::parent) {
+        if looks_like_root(root) {
+            return Ok(root.to_path_buf());
+        }
+    }
+    bail!(
+        "could not find the repository root (a directory with Cargo.toml and \
+         bench/golden/) from {:?} or the executable's path",
+        std::env::current_dir().ok()
+    )
 }
 
 /// Pearson correlation. Weights are envelope heights, which carry the same
@@ -260,7 +296,7 @@ fn all_cases(root: &Path) -> Result<Vec<String>> {
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mode = args.first().map(String::as_str).unwrap_or("golden");
-    let root = repo_root();
+    let root = repo_root()?;
     if mode == "candidates" {
         // Debug aid: print the coherence candidates beside v3's, for one case.
         let name = args.get(1).context("usage: candidates <case>")?;

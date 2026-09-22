@@ -68,6 +68,11 @@ clones keep working, so nothing breaks. Still worth doing properly:
 
 1. ✅ Renamed on GitHub.
 2. ✅ Local remote updated: `git remote set-url origin https://github.com/githaltwastaken/Overtone.git`
+   and the working copy renamed to `Overtone-master`, matching the `<Name>-master`
+   convention the other projects on this machine use. Nothing in the build depends on the
+   folder name: `overtone-bench` finds the repository root at runtime by walking up for
+   `Cargo.toml` and `bench/golden/`, because `CARGO_MANIFEST_DIR` is baked in at compile
+   time and a binary built before the rename went looking for fixtures under the old path.
 3. Update the repository description and topics — this is where discovery now lives, see
    the caveat above.
 4. ✅ Product-facing strings renamed: README, all docs, `CLAUDE.md` / `AGENTS.md`,

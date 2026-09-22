@@ -14,6 +14,7 @@
 //! load-bearing, the module that reproduces it says so.
 
 pub mod envelope;
+pub mod hpss;
 pub mod mel;
 pub mod multiband;
 pub mod peaks;

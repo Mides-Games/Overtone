@@ -22,6 +22,7 @@ pub mod multiband;
 pub mod peaks;
 pub mod retime;
 pub mod stft;
+pub mod structure;
 
 use overtone_core::{Attack, Seconds, FIT_HOP, N_FFT};
 

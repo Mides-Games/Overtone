@@ -788,8 +788,11 @@ def _atomic_grid_candidates(times: np.ndarray, weights: np.ndarray,
     if times.size < 8:
         return []
     if times.size > MAX_SCAN_ONSETS:        # bound the scan on very dense audio
-        keep = np.sort(np.argsort(weights)[-MAX_SCAN_ONSETS:])
-        times, weights = times[keep], weights[keep]
+        # Must not be called `keep`: that is the parameter naming how many
+        # candidates to return, and rebinding it here made the final
+        # `strong[:keep]` slice raise TypeError on dense tracks.
+        dense = np.sort(np.argsort(weights)[-MAX_SCAN_ONSETS:])
+        times, weights = times[dense], weights[dense]
     span = float(times[-1] - times[0])
     if span <= 1.0:
         return []
@@ -1281,13 +1284,6 @@ def _tune_boundary(times: np.ndarray, weights: np.ndarray, left: GridSection,
     hi = min(right.end_s - right.period, right.start_s + span)
     if hi <= lo:
         return right.start_s
-    # The tolerance has to be tight enough that the old grid cannot claim the
-    # first beat of the new tempo, yet loose enough for a human drummer. Each
-    # side's own fit residual sets it, so a jittery track relaxes on its own.
-    def window_of(section: GridSection) -> float:
-        return float(min(0.06 * section.period,
-                         max(0.010, 4.0 * section.residual_ms / 1000.0)))
-
     # The tolerance has to be tight enough that the old grid cannot claim the
     # first beat of the new tempo, yet loose enough for a human drummer. Each
     # side's own fit residual sets it, so a jittery track relaxes on its own.

@@ -1,9 +1,20 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
-*.csv
-*.osu
-*.bak
 .venv/
 venv/
 bench/audio/
+
+# Scoped so that .osu and .csv test fixtures can be committed (audit F-09):
+# only ignore exports dropped at the repo root or in exports/.
+/*.osu
+/*.csv
+/exports/
+*.bak
+*.part
+
+# Rust (v4)
+/target/
+# Tauri frontend
+/app/node_modules/
+/app/dist/

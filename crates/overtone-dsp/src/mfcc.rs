@@ -40,7 +40,11 @@ fn dct_ii(input: &[f64]) -> [f64; N_MFCC] {
         for (i, &x) in input.iter().enumerate() {
             sum += x * (std::f64::consts::PI * k as f64 * (2 * i + 1) as f64 / (2.0 * n)).cos();
         }
-        let scale = if k == 0 { (1.0 / n).sqrt() } else { (2.0 / n).sqrt() };
+        let scale = if k == 0 {
+            (1.0 / n).sqrt()
+        } else {
+            (2.0 / n).sqrt()
+        };
         *slot = sum * scale;
     }
     out
@@ -77,7 +81,9 @@ mod tests {
         // A timbre descriptor that cannot tell them apart is decoration.
         let sr = 44_100;
         let sine: Vec<f32> = (0..sr)
-            .map(|i| (0.5 * (2.0 * std::f64::consts::PI * 220.0 * i as f64 / sr as f64).sin()) as f32)
+            .map(|i| {
+                (0.5 * (2.0 * std::f64::consts::PI * 220.0 * i as f64 / sr as f64).sin()) as f32
+            })
             .collect();
         let rich: Vec<f32> = (0..sr)
             .map(|i| {
@@ -112,7 +118,9 @@ mod tests {
     #[test]
     fn same_input_twice_is_bit_stable() {
         let y: Vec<f32> = (0..8192)
-            .map(|i| (0.3 * (2.0 * std::f64::consts::PI * 330.0 * i as f64 / 44_100.0).sin()) as f32)
+            .map(|i| {
+                (0.3 * (2.0 * std::f64::consts::PI * 330.0 * i as f64 / 44_100.0).sin()) as f32
+            })
             .collect();
         assert_eq!(mfcc(&y, 44_100, 512, 2048), mfcc(&y, 44_100, 512, 2048));
     }

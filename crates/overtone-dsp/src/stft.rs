@@ -9,8 +9,8 @@
 //!
 //! Frame count follows from the padding: `1 + len(y) / hop`.
 
-use realfft::RealFftPlanner;
 use rayon::prelude::*;
+use realfft::RealFftPlanner;
 
 use crate::mel::MelBank;
 
@@ -19,9 +19,7 @@ use crate::mel::MelBank;
 /// window and would change every magnitude slightly.
 pub fn hann_periodic(n: usize) -> Vec<f64> {
     (0..n)
-        .map(|i| {
-            0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / n as f64).cos()
-        })
+        .map(|i| 0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / n as f64).cos())
         .collect()
 }
 
@@ -130,12 +128,7 @@ mod tests {
 /// ~124k frames, and holding `124k x 1025` f64 bins is over a gigabyte. The
 /// mel result is `124k x 128`, about 127 MB, and the FFT output for a single
 /// frame stays in cache.
-pub fn mel_power_spectrogram(
-    y: &[f32],
-    n_fft: usize,
-    hop: usize,
-    bank: &MelBank,
-) -> Vec<Vec<f64>> {
+pub fn mel_power_spectrogram(y: &[f32], n_fft: usize, hop: usize, bank: &MelBank) -> Vec<Vec<f64>> {
     let frames = frame_count(y.len(), hop);
     let pad = n_fft / 2;
     let window = hann_periodic(n_fft);

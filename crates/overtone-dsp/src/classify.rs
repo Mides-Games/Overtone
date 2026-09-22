@@ -64,7 +64,11 @@ pub fn classify(y: &[f32], sr: u32, boundaries: &[f64]) -> Vec<LabeledSection> {
     }
     let spans: Vec<(f64, f64)> = edges.windows(2).map(|w| (w[0], w[1])).collect();
     if spans.len() == 1 {
-        return vec![LabeledSection { start: spans[0].0, end: spans[0].1, kind: SectionKind::Verse }];
+        return vec![LabeledSection {
+            start: spans[0].0,
+            end: spans[0].1,
+            kind: SectionKind::Verse,
+        }];
     }
 
     // Segment-mean chroma plus mean energy, on the structure grid.
@@ -236,13 +240,7 @@ mod tests {
         let intro = chord(sr, 220.0, false, 0.2, 8.0);
         let verse = chord(sr, 261.63, true, 0.3, 16.0);
         let chorus = chord(sr, 174.61, true, 0.6, 16.0);
-        let y = concat(&[
-            intro,
-            verse.clone(),
-            chorus.clone(),
-            verse,
-            chorus,
-        ]);
+        let y = concat(&[intro, verse.clone(), chorus.clone(), verse, chorus]);
         assert_eq!(
             kinds(&y, sr, &[8.0, 24.0, 40.0, 56.0]),
             vec![
@@ -293,9 +291,6 @@ mod tests {
     #[test]
     fn single_span_defaults_to_verse() {
         let y = chord(44_100, 261.63, true, 0.4, 12.0);
-        assert_eq!(
-            kinds(&y, 44_100, &[]),
-            vec![SectionKind::Verse]
-        );
+        assert_eq!(kinds(&y, 44_100, &[]), vec![SectionKind::Verse]);
     }
 }

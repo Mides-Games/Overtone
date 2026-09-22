@@ -34,7 +34,10 @@ pub fn separate(power: &[Vec<f64>]) -> Separation {
 pub fn separate_with(power: &[Vec<f64>], kernel_time: usize, kernel_freq: usize) -> Separation {
     let frames = power.len();
     if frames == 0 {
-        return Separation { harmonic: Vec::new(), percussive: Vec::new() };
+        return Separation {
+            harmonic: Vec::new(),
+            percussive: Vec::new(),
+        };
     }
     let bins = power[0].len();
     let kt = kernel_time | 1;
@@ -61,7 +64,10 @@ pub fn separate_with(power: &[Vec<f64>], kernel_time: usize, kernel_freq: usize)
             *p = s * pm * pm / denom;
         }
     }
-    Separation { harmonic, percussive }
+    Separation {
+        harmonic,
+        percussive,
+    }
 }
 
 /// Median filter along the time axis, per bin. Edge-replicated: the window
@@ -213,7 +219,9 @@ mod tests {
     #[test]
     fn pure_tone_has_no_percussive_residue() {
         let y: Vec<f32> = (0..44_100 * 2)
-            .map(|i| (0.5 * (2.0 * std::f64::consts::PI * 440.0 * i as f64 / 44_100.0).sin()) as f32)
+            .map(|i| {
+                (0.5 * (2.0 * std::f64::consts::PI * 440.0 * i as f64 / 44_100.0).sin()) as f32
+            })
             .collect();
         let spec = stft::power_spectrogram(&y, 2048, 128);
         let sep = separate(&spec);

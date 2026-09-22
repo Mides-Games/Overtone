@@ -123,9 +123,7 @@ pub fn onset_envelope(y: &[f32], sr: u32, hop: usize, n_fft: usize) -> Vec<f32> 
             *value /= ceiling;
         }
     }
-    env.into_iter()
-        .map(|v| v.clamp(0.0, 1.5) as f32)
-        .collect()
+    env.into_iter().map(|v| v.clamp(0.0, 1.5) as f32).collect()
 }
 
 #[cfg(test)]

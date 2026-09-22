@@ -38,7 +38,13 @@ impl Biquad {
         let a0 = 1.0 + alpha;
         let a1 = -2.0 * w0.cos();
         let a2 = 1.0 - alpha;
-        Self { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0 }
+        Self {
+            b0: b0 / a0,
+            b1: b1 / a0,
+            b2: b2 / a0,
+            a1: a1 / a0,
+            a2: a2 / a0,
+        }
     }
 
     /// Gentle lowpass (RBJ, Q = 0.5, no resonance): minimal ringing for
@@ -49,11 +55,21 @@ impl Biquad {
     pub fn lowpass(fc_hz: f64, q: f64, sr: f64) -> Self {
         let w0 = 2.0 * std::f64::consts::PI * fc_hz / sr;
         let alpha = w0.sin() / (2.0 * q);
-        let (b0, b1, b2) = ((1.0 - w0.cos()) / 2.0, 1.0 - w0.cos(), (1.0 - w0.cos()) / 2.0);
+        let (b0, b1, b2) = (
+            (1.0 - w0.cos()) / 2.0,
+            1.0 - w0.cos(),
+            (1.0 - w0.cos()) / 2.0,
+        );
         let a0 = 1.0 + alpha;
         let a1 = -2.0 * w0.cos();
         let a2 = 1.0 - alpha;
-        Self { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0 }
+        Self {
+            b0: b0 / a0,
+            b1: b1 / a0,
+            b2: b2 / a0,
+            a1: a1 / a0,
+            a2: a2 / a0,
+        }
     }
 
     fn run(&self, input: &[f64], output: &mut [f64]) {
@@ -109,7 +125,10 @@ pub fn filtfilt(section: &Biquad, y: &[f32]) -> Vec<f32> {
     buf.reverse();
     section.run(&buf, &mut tmp);
     tmp.reverse();
-    tmp[pad..tmp.len() - pad].iter().map(|&v| v as f32).collect()
+    tmp[pad..tmp.len() - pad]
+        .iter()
+        .map(|&v| v as f32)
+        .collect()
 }
 
 /// Band-limited waveforms, one per flux band, same length as the input.
@@ -124,7 +143,9 @@ mod tests {
 
     fn sine(sr: u32, seconds: f64, freq: f64) -> Vec<f32> {
         (0..(seconds * sr as f64) as usize)
-            .map(|i| (0.5 * (2.0 * std::f64::consts::PI * freq * i as f64 / sr as f64).sin()) as f32)
+            .map(|i| {
+                (0.5 * (2.0 * std::f64::consts::PI * freq * i as f64 / sr as f64).sin()) as f32
+            })
             .collect()
     }
 
@@ -200,9 +221,8 @@ mod tests {
             if dt > 0.03 {
                 break;
             }
-            y[i] += (3.0
-                * (2.0 * std::f64::consts::PI * 6000.0 * dt).sin()
-                * (-dt / 0.005).exp()) as f32;
+            y[i] += (3.0 * (2.0 * std::f64::consts::PI * 6000.0 * dt).sin() * (-dt / 0.005).exp())
+                as f32;
         }
         let peak = y.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
         for v in &mut y {
@@ -226,7 +246,10 @@ mod tests {
             (fixed - truth).abs() < 0.0015,
             "lowpassed {fixed:.5} vs truth {truth}"
         );
-        assert!(fixed < full, "lowpassed {fixed:.5} should beat full {full:.5}");
+        assert!(
+            fixed < full,
+            "lowpassed {fixed:.5} should beat full {full:.5}"
+        );
     }
 
     #[test]
@@ -256,7 +279,9 @@ mod tests {
     fn silence_stays_silent() {
         let bank = design_bank(44_100);
         for section in &bank {
-            assert!(filtfilt(section, &vec![0.0f32; 4096]).iter().all(|&v| v == 0.0));
+            assert!(filtfilt(section, &vec![0.0f32; 4096])
+                .iter()
+                .all(|&v| v == 0.0));
         }
     }
 }

@@ -49,7 +49,11 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
     // Windows, not STFT frames: the loop below indexes feature windows, so
     // a short track must bow out here rather than panic there.
     if per == 0 || y.len().div_ceil(hop.max(1)) < 2 * KERNEL_HALF + 1 {
-        return Structure { boundaries: Vec::new(), energy: Vec::new(), energy_hop: WIN_S };
+        return Structure {
+            boundaries: Vec::new(),
+            energy: Vec::new(),
+            energy_hop: WIN_S,
+        };
     }
 
     // Per-window features: mean chroma plus normalised log energy. The
@@ -59,7 +63,10 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
     let mut start = 0usize;
     while start < y.len() {
         let end = (start + hop).min(y.len());
-        let energy: f64 = y[start..end].iter().map(|&v| (v as f64).powi(2)).sum::<f64>()
+        let energy: f64 = y[start..end]
+            .iter()
+            .map(|&v| (v as f64).powi(2))
+            .sum::<f64>()
             / (end - start).max(1) as f64;
         peak_rms = peak_rms.max(energy.sqrt());
         rms.push(energy.sqrt());
@@ -202,7 +209,10 @@ mod tests {
     fn abab(sr: u32) -> (Vec<f32>, Vec<f64>) {
         let a = chord(sr, 220.0, false, 0.25, 16.0);
         let b = chord(sr, 174.61, true, 0.6, 16.0);
-        (concat(&[a.clone(), b.clone(), a, b]), vec![16.0, 32.0, 48.0])
+        (
+            concat(&[a.clone(), b.clone(), a, b]),
+            vec![16.0, 32.0, 48.0],
+        )
     }
 
     /// Same C-major chord throughout, dynamics alternate every 12 s over

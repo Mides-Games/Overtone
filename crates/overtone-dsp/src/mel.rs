@@ -137,12 +137,7 @@ impl MelBank {
     pub fn project(&self, power: &[f64], out: &mut [f64]) {
         for (band, slot) in self.bands.iter().zip(out.iter_mut()) {
             let bins = &power[band.start..band.start + band.weights.len()];
-            *slot = band
-                .weights
-                .iter()
-                .zip(bins)
-                .map(|(&w, &p)| w * p)
-                .sum();
+            *slot = band.weights.iter().zip(bins).map(|(&w, &p)| w * p).sum();
         }
     }
 
@@ -194,7 +189,9 @@ mod tests {
         let dense = filterbank(44_100, 2048, 128, 0.0, 11_025.0);
         let sparse = MelBank::new(44_100, 2048, 128, 0.0, 11_025.0);
         // A spectrum that is not flat, so a mis-aligned `start` cannot pass.
-        let power: Vec<f64> = (0..1025).map(|i| (i as f64 * 0.37).sin().abs() + 0.1).collect();
+        let power: Vec<f64> = (0..1025)
+            .map(|i| (i as f64 * 0.37).sin().abs() + 0.1)
+            .collect();
         let want: Vec<f64> = dense
             .iter()
             .map(|row| row.iter().zip(&power).map(|(&w, &p)| w * p).sum())
@@ -202,7 +199,10 @@ mod tests {
         let mut got = vec![0.0; sparse.len()];
         sparse.project(&power, &mut got);
         for (i, (g, w)) in got.iter().zip(&want).enumerate() {
-            assert!((g - w).abs() <= 1e-9 * w.abs().max(1.0), "band {i}: {g} vs {w}");
+            assert!(
+                (g - w).abs() <= 1e-9 * w.abs().max(1.0),
+                "band {i}: {g} vs {w}"
+            );
         }
     }
 

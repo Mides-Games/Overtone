@@ -211,17 +211,17 @@ mod tests {
         let sr = 44_100;
         let mut y = vec![0.0f32; (3.0 * sr as f64) as usize];
         let kick = (1.0 * sr as f64) as usize;
-        for i in kick..y.len() {
+        for (i, v) in y.iter_mut().enumerate().skip(kick) {
             let dt = (i - kick) as f64 / sr as f64;
-            y[i] += ((2.0 * std::f64::consts::PI * 60.0 * dt).sin() * (-dt / 0.02).exp()) as f32;
+            *v += ((2.0 * std::f64::consts::PI * 60.0 * dt).sin() * (-dt / 0.02).exp()) as f32;
         }
         let hat = kick + (0.003 * sr as f64) as usize;
-        for i in hat..y.len() {
+        for (i, v) in y.iter_mut().enumerate().skip(hat) {
             let dt = (i - hat) as f64 / sr as f64;
             if dt > 0.03 {
                 break;
             }
-            y[i] += (3.0 * (2.0 * std::f64::consts::PI * 6000.0 * dt).sin() * (-dt / 0.005).exp())
+            *v += (3.0 * (2.0 * std::f64::consts::PI * 6000.0 * dt).sin() * (-dt / 0.005).exp())
                 as f32;
         }
         let peak = y.iter().map(|v| v.abs()).fold(0.0f32, f32::max);

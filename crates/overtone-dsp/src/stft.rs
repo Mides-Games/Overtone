@@ -73,54 +73,6 @@ pub fn power_spectrogram(y: &[f32], n_fft: usize, hop: usize) -> Vec<Vec<f64>> {
         .collect()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hann_is_periodic_not_symmetric() {
-        let w = hann_periodic(8);
-        // Periodic: w[0] == 0 and no second zero at the end (w[7] != 0).
-        assert!((w[0] - 0.0).abs() < 1e-12);
-        assert!(w[7] > 0.0, "symmetric window would end at 0");
-        // Symmetric hann(8) would have w[4] == 1.0; periodic peaks at w[4] too
-        // but the shoulders differ. Check a known value: w[2] = 0.5.
-        assert!((w[2] - 0.5).abs() < 1e-12);
-    }
-
-    #[test]
-    fn frame_count_matches_librosa_centred_padding() {
-        assert_eq!(frame_count(0, 128), 1);
-        assert_eq!(frame_count(128, 128), 2);
-        assert_eq!(frame_count(44_100, 128), 1 + 344);
-    }
-
-    #[test]
-    fn a_pure_tone_lands_in_one_bin() {
-        let sr = 44_100.0;
-        let freq = sr * 64.0 / 2048.0; // exactly bin 64
-        let y: Vec<f32> = (0..8192)
-            .map(|i| (2.0 * std::f64::consts::PI * freq * i as f64 / sr).sin() as f32)
-            .collect();
-        let spec = power_spectrogram(&y, 2048, 128);
-        // Pick a frame well inside the signal so the padding does not leak.
-        let row = &spec[20];
-        let peak = row
-            .iter()
-            .enumerate()
-            .max_by(|a, b| a.1.total_cmp(b.1))
-            .unwrap()
-            .0;
-        assert_eq!(peak, 64);
-    }
-
-    #[test]
-    fn silence_is_silent() {
-        let spec = power_spectrogram(&vec![0.0f32; 4096], 2048, 128);
-        assert!(spec.iter().flatten().all(|&v| v == 0.0));
-    }
-}
-
 /// Mel power spectrogram, computed one frame at a time so the linear
 /// spectrogram is never materialised.
 ///
@@ -168,4 +120,52 @@ pub fn mel_power_spectrogram(y: &[f32], n_fft: usize, hop: usize, bank: &MelBank
             },
         )
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hann_is_periodic_not_symmetric() {
+        let w = hann_periodic(8);
+        // Periodic: w[0] == 0 and no second zero at the end (w[7] != 0).
+        assert!((w[0] - 0.0).abs() < 1e-12);
+        assert!(w[7] > 0.0, "symmetric window would end at 0");
+        // Symmetric hann(8) would have w[4] == 1.0; periodic peaks at w[4] too
+        // but the shoulders differ. Check a known value: w[2] = 0.5.
+        assert!((w[2] - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn frame_count_matches_librosa_centred_padding() {
+        assert_eq!(frame_count(0, 128), 1);
+        assert_eq!(frame_count(128, 128), 2);
+        assert_eq!(frame_count(44_100, 128), 1 + 344);
+    }
+
+    #[test]
+    fn a_pure_tone_lands_in_one_bin() {
+        let sr = 44_100.0;
+        let freq = sr * 64.0 / 2048.0; // exactly bin 64
+        let y: Vec<f32> = (0..8192)
+            .map(|i| (2.0 * std::f64::consts::PI * freq * i as f64 / sr).sin() as f32)
+            .collect();
+        let spec = power_spectrogram(&y, 2048, 128);
+        // Pick a frame well inside the signal so the padding does not leak.
+        let row = &spec[20];
+        let peak = row
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.total_cmp(b.1))
+            .unwrap()
+            .0;
+        assert_eq!(peak, 64);
+    }
+
+    #[test]
+    fn silence_is_silent() {
+        let spec = power_spectrogram(&vec![0.0f32; 4096], 2048, 128);
+        assert!(spec.iter().flatten().all(|&v| v == 0.0));
+    }
 }

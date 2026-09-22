@@ -74,7 +74,7 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
     }
     let windows = rms.len();
     let mut features: Vec<Vec<f64>> = Vec::with_capacity(windows);
-    for w in 0..windows {
+    for (w, &window_rms) in rms.iter().enumerate() {
         let lo = (w * per).min(chroma.len());
         let hi = ((w + 1) * per).min(chroma.len());
         let mut mean = [0.0f64; 12];
@@ -92,7 +92,7 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
         // Log-energy beside the chroma: 0 at silence, 1 at full scale,
         // logarithmic in between, so verse/chorus contrast survives next
         // to pitch content without drowning it. ln(1e-9) = -20.723.
-        let r = (rms[w] / peak_rms).clamp(0.0, 1.0);
+        let r = (window_rms / peak_rms).clamp(0.0, 1.0);
         let mut vec = mean.to_vec();
         vec.push((1.0 + r.max(1e-9).ln() / 20.723).clamp(0.0, 1.0));
         features.push(vec);
@@ -119,7 +119,12 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
     // early return above guarantees windows >= 2*K+1, so every index below
     // is in range — no saturating arithmetic needed here.
     let mut novelty = vec![0.0f64; windows];
-    for i in KERNEL_HALF..windows - KERNEL_HALF {
+    for (i, slot) in novelty
+        .iter_mut()
+        .enumerate()
+        .take(windows - KERNEL_HALF)
+        .skip(KERNEL_HALF)
+    {
         let (mut within, mut across) = (0.0, 0.0);
         let (mut n_within, mut n_across) = (0usize, 0usize);
         for a in i - KERNEL_HALF..i {
@@ -138,7 +143,7 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
                 n_within += 1;
             }
         }
-        novelty[i] = within / n_within.max(1) as f64 - across / n_across.max(1) as f64;
+        *slot = within / n_within.max(1) as f64 - across / n_across.max(1) as f64;
     }
 
     // Peak-pick, threshold relative to the global max, merge neighbours.

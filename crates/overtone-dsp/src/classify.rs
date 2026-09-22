@@ -22,7 +22,7 @@
 //! Bridge, and two different quiet sections sharing chords merge into one
 //! Verse group. Both need intent (or lyrics) no audio statistic carries.
 
-use crate::{chroma, structure};
+use crate::chroma;
 
 /// Cosine similarity at or above which two segments count as repetitions.
 /// Same-chord repeats score ~1.0; triads a fourth apart ~0.3–0.5.
@@ -55,6 +55,9 @@ pub fn classify(y: &[f32], sr: u32, boundaries: &[f64]) -> Vec<LabeledSection> {
     let mut edges: Vec<f64> = vec![0.0];
     edges.extend(boundaries.iter().copied());
     edges.push(duration);
+    // Sort before dedup: dedup only collapses neighbours, and an unsorted
+    // caller must not produce zero-length spans downstream.
+    edges.sort_by(f64::total_cmp);
     edges.dedup();
     if edges.len() < 2 {
         return Vec::new();
@@ -69,7 +72,7 @@ pub fn classify(y: &[f32], sr: u32, boundaries: &[f64]) -> Vec<LabeledSection> {
     let spec = crate::stft::power_spectrogram(y, n_fft, 128);
     let chroma = chroma::chroma(&spec, sr, n_fft);
     // Segment seconds to STFT frame indices (128 hop).
-    let to_frame = |t: f64| (t * sr as f64 / 128.0);
+    let to_frame = |t: f64| t * sr as f64 / 128.0;
     let mut signatures: Vec<[f64; 12]> = Vec::new();
     let mut energies: Vec<f64> = Vec::new();
     for &(start, end) in &spans {

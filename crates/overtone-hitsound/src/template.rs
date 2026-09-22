@@ -108,7 +108,9 @@ pub fn extract(
     let mags = attack_spectrum(y, sr, attack_s, n_fft);
     let pitch = source::pitch(&mags, sr, n_fft);
     let formant = source::formant_likeness(&mags, sr, n_fft);
-    let hop = 128usize;
+    // Same hop the detector and the HPSS spectrogram run on: frame indices
+    // must address the same grid, or the ratio reads the wrong moment.
+    let hop = overtone_core::FIT_HOP;
     let frame = (attack_s * sr as f64 / hop as f64).round() as usize;
     let lo = frame.saturating_sub(4);
     let hi = frame + 4;
@@ -138,13 +140,19 @@ fn attack_spectrum(y: &[f32], sr: u32, attack_s: f64, n_fft: usize) -> Vec<f64> 
     output.iter().map(|c| c.norm()).collect()
 }
 
-/// Monotone response shapes. Knots are fixed; weights are learned.
+/// Monotone response shapes. Knots are fixed and must ascend (a debug
+/// assert enforces it); weights are learned.
 #[derive(Debug, Clone, Copy)]
 pub enum Response {
+    /// 0 at or below `a`, 1 at or above `b`.
     Rising(f64, f64),
+    /// 1 at or below `a`, 0 at or above `b`.
     Falling(f64, f64),
+    /// Triangular peak of 1 at `mid`, 0 outside `[lo, hi]`.
     Band(f64, f64, f64),
+    /// 1 at or below `t`, 0 at or above `2t`.
     AtMost(f64),
+    /// 0 at or below `t - 0.5`, 1 at or above `t + 0.5`.
     AtLeast(f64),
 }
 

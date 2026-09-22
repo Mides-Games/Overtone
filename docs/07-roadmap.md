@@ -219,24 +219,24 @@ hand-placed anchors. The measures were what was missing.
 
 All of [`06-hitsound-engine.md`](06-hitsound-engine.md).
 
-| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri |
-|---|---|:--:|:--:|---|:--:|:--:|:--:|
-| Per-attack features | 7 bands, centroid/rolloff/flatness/crest, rise/decay, sub-attacks | med | **high** | P2 HPSS | no | no | **P1** |
-| Harmonicity + pitch | autocorrelation, inharmonicity, formant-likeness | med | high | features | no | no | **P1** |
-| Instrument templates | 13 scored classes, explainable by construction | high | **high** | features | no | no | **P1** |
-| Synthetic label corpus | renderer emits audio + per-hit labels (no dataset licence) | med | **high** | bench | no | no | **P1** |
-| Template calibration | logistic fit of term weights on the corpus | med | high | corpus | **light** | no | P1 |
-| Musical role | grid position, metrical weight, phrase, accent, density | med | **high** | P2 structure | no | no | **P1** |
-| Object context | type, pattern class, spacing, combo, existing hitsounds | med | **high** | P5 reader | no | no | **P1** |
-| **Viterbi decision** | sequence labelling with consistency/symmetry/refractory costs | high | **high** | all above | no | no | **P1** |
-| Explanations | itemised terms + alternatives from DP marginals | med | **high** | decision | no | no | **P1** |
-| Profiles | 7 built-in + custom, as TOML data | low | high | decision | no | no | **P1** |
-| Hitsound timeline | instrument lanes over object lanes, toggleable | med | **high** | P3 timeline | no | yes | **P1** |
-| Hitsound editor | change/remove/volume/sample, apply to selection/pattern/section | med | **high** | decision | no | no | **P1** |
-| Sample bank | import skin/folder, detect samples, audition against the song | med | high | P4 playback | no | no | P1 |
-| Sample recommendation | map a bank's samples to roles by their own spectral profile | med | med | bank, features | no | no | P2 |
-| Hitsound export | only hitsound fields change; `_hitsounded.osu` | med | **high** | P5 writer | no | no | **P1** |
-| Consistency check | flag objects whose sound disagrees with their role or neighbours | low | high | decision | no | no | P2 |
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Per-attack features | 7 bands, centroid/rolloff/flatness/crest, rise/decay, sub-attacks | med | **high** | P2 HPSS | no | no | **P1** | **done** — spectral, temporal, source; 18 tests |
+| Harmonicity + pitch | autocorrelation, inharmonicity, formant-likeness | med | high | features | no | no | **P1** | **done** — HPS pitch + formants; inharmonicity deferred |
+| Instrument templates | 13 scored classes, explainable by construction | high | **high** | features | no | no | **P1** | **partial** — 8/13 scored; ride·bass·guitar·keys·vocal queued |
+| Synthetic label corpus | renderer emits audio + per-hit labels (no dataset licence) | med | **high** | bench | no | no | **P1** | **done** — 8 classes, seeded Rust renderer |
+| Template calibration | logistic fit of term weights on the corpus | med | high | corpus | **light** | no | P1 | **done** — LR, macro F1 0.85 on dense tracks |
+| Musical role | grid position, metrical weight, phrase, accent, density | med | **high** | P2 structure | no | no | **P1** | |
+| Object context | type, pattern class, spacing, combo, existing hitsounds | med | **high** | P5 reader | no | no | **P1** | |
+| **Viterbi decision** | sequence labelling with consistency/symmetry/refractory costs | high | **high** | all above | no | no | **P1** | |
+| Explanations | itemised terms + alternatives from DP marginals | med | **high** | decision | no | no | **P1** | |
+| Profiles | 7 built-in + custom, as TOML data | low | high | decision | no | no | **P1** | |
+| Hitsound timeline | instrument lanes over object lanes, toggleable | med | **high** | P3 timeline | no | no | **P1** | |
+| Hitsound editor | change/remove/volume/sample, apply to selection/pattern/section | med | **high** | decision | no | no | **P1** | |
+| Sample bank | import skin/folder, detect samples, audition against the song | med | high | P4 playback | no | no | P1 | |
+| Sample recommendation | map a bank's samples to roles by their own spectral profile | med | med | bank, features | no | no | P2 | |
+| Hitsound export | only hitsound fields change; `_hitsounded.osu` | med | **high** | P5 writer | no | no | **P1** | |
+| Consistency check | flag objects whose sound disagrees with their role or neighbours | low | high | decision | no | no | P2 | |
 
 ---
 

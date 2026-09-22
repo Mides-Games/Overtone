@@ -9,8 +9,8 @@
 //!
 //! The frequency grid is fixed across windows (step `0.2 / MAP_WIDTH`, the
 //! same lobe resolvability the candidate sweep uses) so columns compare.
-//! Windows shorter than 4 s of attacks carry no peak worth tracking and are
-//! left without a ridge point rather than with a noisy one.
+//! Windows with fewer than 8 attacks carry no peak worth tracking and are
+//! skipped rather than given a noisy ridge point.
 
 use crate::coherence::{self, PERIOD_RANGE};
 
@@ -157,7 +157,11 @@ pub fn ridge_changes(ridge: &[RidgePoint]) -> Vec<f64> {
     let mut out = Vec::new();
     for pair in ridge.windows(2) {
         let jump = (pair[1].period.log2() - pair[0].period.log2()).abs();
-        if jump > RIDGE_JUMP_OCTAVES && (jump - jump.round()).abs() > 0.12 {
+        // Near an exact octave (of 1 or more) is density territory, not a
+        // ridge change — but a small genuine step just above the resolution
+        // floor is still one, so only integers ≥ 1 exclude.
+        let near_octave = jump.round() >= 1.0 && (jump - jump.round()).abs() <= 0.12;
+        if jump > RIDGE_JUMP_OCTAVES && !near_octave {
             out.push(pair[1].centre);
         }
     }
@@ -302,6 +306,32 @@ mod tests {
         assert!(first > last, "periods should shrink as tempo rises");
         assert!((60.0 / first - 120.0).abs() < 6.0, "BPM {}", 60.0 / first);
         assert!((60.0 / last - 160.0).abs() < 6.0, "BPM {}", 60.0 / last);
+    }
+
+    #[test]
+    fn an_exact_halving_is_not_a_ridge_change() {
+        // Same atom throughout, half the note rate after the change: the
+        // ridge stays put by construction, and the density detector owns
+        // this shape. Pin it so a future threshold tweak cannot steal it.
+        let beat = 60.0 / 175.0;
+        let mut times: Vec<f64> = Vec::new();
+        let mut weights: Vec<f32> = Vec::new();
+        let mut t = 0.0;
+        while t < 32.0 {
+            times.push(t);
+            weights.push(0.7);
+            t += beat / 2.0;
+        }
+        let mut k = (32.0 / beat).ceil() as i64;
+        while k as f64 * beat < 64.0 {
+            times.push(k as f64 * beat);
+            weights.push(1.0);
+            k += 1;
+        }
+        let map = build(&times, &weights);
+        let ridge = ridge(&map);
+        assert!(ridge.len() >= 10);
+        assert!(ridge_changes(&ridge).is_empty());
     }
 
     #[test]

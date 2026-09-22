@@ -767,6 +767,62 @@ mod tests {
     }
 
     #[test]
+    fn white_noise_gets_no_grid_and_says_so() {
+        // Uniform random attacks: no pulse explains more than chance, so the
+        // share gate (0.40) refuses long before any grid is fitted. This pins
+        // audit F-08's honest half: the legacy tracker answered 127.68 BPM
+        // here, and nothing in Rust may ever invent that answer again.
+        let mut seed = 7u64;
+        let mut times: Vec<f64> = (0..600)
+            .map(|_| {
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                (seed >> 33) as f64 / (1u64 << 31) as f64 * 60.0
+            })
+            .collect();
+        times.sort_by(f64::total_cmp);
+        let weights = vec![0.8f32; times.len()];
+        let out = analyze_attacks(&times, &weights, &[], 44_100, 1.5, 12, true, 0.75);
+        assert!(out.points.is_empty());
+        assert!(out.settled_sections.is_empty());
+        assert!(
+            matches!(out.diagnostics.as_slice(), [Diagnostic::NoCoherentPulse { .. }]),
+            "got {:?}",
+            out.diagnostics
+        );
+    }
+
+    #[test]
+    fn sparse_pads_get_no_grid_and_say_so() {
+        // Seventeen scattered attacks: not enough evidence to fit anything.
+        let times: Vec<f64> = (0..17).map(|k| k as f64 * 2.63 + 0.4).collect();
+        let weights = vec![0.3f32; times.len()];
+        let out = analyze_attacks(&times, &weights, &[], 44_100, 1.5, 12, true, 0.75);
+        assert!(out.points.is_empty());
+        assert!(
+            matches!(
+                out.diagnostics.as_slice(),
+                [Diagnostic::TooFewAttacks { found: 17, needed: 24 }]
+            ),
+            "got {:?}",
+            out.diagnostics
+        );
+    }
+
+    #[test]
+    fn silence_gets_no_grid_and_says_so() {
+        let out = analyze_attacks(&[], &[], &[], 44_100, 1.5, 12, true, 0.75);
+        assert!(out.points.is_empty());
+        assert!(
+            matches!(
+                out.diagnostics.as_slice(),
+                [Diagnostic::TooFewAttacks { found: 0, needed: 24 }]
+            ),
+            "got {:?}",
+            out.diagnostics
+        );
+    }
+
+    #[test]
     fn snapping_only_nudges_onto_the_previous_grid() {
         let a = TimingPoint::new(1000.0, 120.0, 0.9, 0);
         // 500 ms later is exactly one beat at 120 BPM: snaps exactly.

@@ -1,0 +1,15 @@
+[package]
+name = "overtone-hitsound"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+overtone-core = { version = "4.0.0-dev", path = "../overtone-core" }
+overtone-dsp = { version = "4.0.0-dev", path = "../overtone-dsp" }
+realfft = "3.5.0"

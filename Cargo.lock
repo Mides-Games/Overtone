@@ -153,6 +153,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "overtone-hitsound"
+version = "4.0.0-dev"
+dependencies = [
+ "overtone-core",
+ "overtone-dsp",
+ "realfft",
+]
+
+[[package]]
 name = "overtone-tempo"
 version = "4.0.0-dev"
 dependencies = [

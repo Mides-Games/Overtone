@@ -26,10 +26,15 @@ pub enum HitClass {
     Tom,
     Cymbal,
     Other,
+    Ride,
+    Bass,
+    Guitar,
+    Keys,
+    Vocal,
 }
 
 impl HitClass {
-    pub const ALL: [HitClass; 8] = [
+    pub const ALL: [HitClass; 13] = [
         HitClass::Kick,
         HitClass::Snare,
         HitClass::Clap,
@@ -38,6 +43,11 @@ impl HitClass {
         HitClass::Tom,
         HitClass::Cymbal,
         HitClass::Other,
+        HitClass::Ride,
+        HitClass::Bass,
+        HitClass::Guitar,
+        HitClass::Keys,
+        HitClass::Vocal,
     ];
 }
 
@@ -112,12 +122,18 @@ fn place(buf: &mut [f32], sr: u32, at: f64, class: HitClass, velocity: f64, rng:
             HitClass::Clap => (200.0, 0.030, 0.3, 0.8, 0.004, 3),
             HitClass::HatClosed => (0.0, 0.030, 0.0, 1.0, 0.008, 0),
             HitClass::HatOpen => (0.0, 0.150, 0.0, 1.0, 0.030, 0),
-            HitClass::Tom => (90.0 + 20.0 * rng.next(), 0.150 + 0.05 * rng.next(), 0.9, 0.1, 0.010, 0),
+            HitClass::Tom => (0.0, 0.150, 0.0, 0.1, 0.010, 0),
             HitClass::Cymbal => (0.0, 0.800, 0.0, 0.0, 0.200, 0),
             HitClass::Other => (0.0, 0.400, 0.0, 0.0, 0.100, 0),
+            // Fully bespoke branches below; the tuple carries silence.
+            HitClass::Ride | HitClass::Bass | HitClass::Guitar | HitClass::Keys | HitClass::Vocal => {
+                (0.0, 0.300, 0.0, 0.0, 0.100, 0)
+            }
         };
     // Cymbals and hats are noise coloured by rough metallic partials;
-    // `other` is a soft major triad stab (pitched, sustained, unpercussive).
+    // `other` is a soft major triad stab (pitched, sustained,
+    // unpercussive). Ride, bass, guitar, keys and vocal render fully in
+    // their own branches below — the generic loop stays silent for them.
     let metallic = matches!(class, HitClass::Cymbal | HitClass::HatClosed | HitClass::HatOpen);
     let hit_len = (1.2 * sr as f64) as usize;
     for i in 0..hit_len {
@@ -135,25 +151,182 @@ fn place(buf: &mut [f32], sr: u32, at: f64, class: HitClass, velocity: f64, rng:
             let dec = if metallic { noise_decay } else { noise_decay };
             v += amp * n * (-dt / dec).exp();
         }
-        if matches!(class, HitClass::Other) {
-            // Soft C-major stab: C4+E4+G4, slow attack, long sustain.
-            let attack = 0.5 - 0.5 * (std::f64::consts::PI * (dt / 0.15).min(1.0)).cos();
-            v = 0.0;
-            for &f in &[261.63, 329.63, 392.0] {
-                v += 0.3 * (2.0 * std::f64::consts::PI * f * dt).sin();
-            }
-            v *= attack * (-dt / 0.4).exp();
-        }
-        if matches!(class, HitClass::Cymbal) {
-            // Inharmonic shimmer: partials at non-integer ratios.
-            v = 0.0;
-            for &ratio in &[1.0, 1.483, 2.09, 2.94] {
-                v += 0.25 * (2.0 * std::f64::consts::PI * 800.0 * ratio * dt).sin();
-            }
-            v *= (-dt / 0.8).exp() * (0.5 + 0.5 * rng.next());
-        }
         buf[start + i] += (v * velocity) as f32;
     }
+    // Bespoke voices render in their own loops below. They used to sit
+    // inside the generic per-sample loop, which re-ran them per sample:
+    // a tom cost 1.4B iterations (wrong audio and a hang in one).
+        if matches!(class, HitClass::Other) {
+            // Soft C-major stab: C4+E4+G4 with real harmonic series, slow
+            // attack, long sustain. Pure sines carry no harmonicity and
+            // read as unpitched - no real sustained instrument sounds so
+            // pure, and the templates rightly refuse it.
+            for j in 0..hit_len {
+                if start + j >= buf.len() {
+                    break;
+                }
+                let dt = j as f64 / sr as f64;
+                let attack = 0.5 - 0.5 * (std::f64::consts::PI * (dt / 0.15).min(1.0)).cos();
+                let mut v = 0.0;
+                for &f in &[261.63, 329.63, 392.0] {
+                    for (h, amp) in [(1.0, 0.3), (2.0, 0.15), (3.0, 0.08)] {
+                        v += amp * (2.0 * std::f64::consts::PI * f * h * dt).sin();
+                    }
+                }
+                v *= attack * (-dt / 0.4).exp();
+                buf[start + j] += (v * velocity) as f32;
+            }
+        }
+        if matches!(class, HitClass::Cymbal) {
+            // Real crash: broadband noise wash with slow decay under
+            // inharmonic shimmer voiced high (a crash lives at 3-8 kHz,
+            // not at 800 Hz). The wash carries the high/air energy the
+            // template reads; partials alone read as mid-heavy snare.
+            for j in 0..hit_len {
+                if start + j >= buf.len() {
+                    break;
+                }
+                let dt = j as f64 / sr as f64;
+                let mut v = 0.0;
+                for &ratio in &[1.0, 1.483, 2.09, 2.94] {
+                    v += 0.2 * (2.0 * std::f64::consts::PI * 1600.0 * ratio * dt).sin();
+                }
+                v = v * (-dt / 0.8).exp()
+                    + 1.0 * (rng.next() * 2.0 - 1.0) * (-dt / 0.25).exp();
+                buf[start + j] += (v * velocity) as f32;
+            }
+        }
+    // Crack and partials render in their own loops AFTER the generic
+    // voice: nesting them per sample re-ran them per sample (a tom cost
+    // 1.4B iterations and 53k overdubs — wrong audio and a hang in one).
+    // Value-assigning voices above stay inline: reassignment is idempotent.
+    if matches!(class, HitClass::Snare) {
+        // Wires: broadband crack on top of the body, without which the
+        // recipe is a tom and the templates rightly say so.
+        for i in 0..(0.02 * sr as f64) as usize {
+            if start + i >= buf.len() {
+                break;
+            }
+            let dt = i as f64 / sr as f64;
+            buf[start + i] += (0.5
+                * (2.0 * std::f64::consts::PI * 3200.0 * dt).sin()
+                * (-dt / 0.008).exp()
+                * velocity) as f32;
+        }
+    }
+    if matches!(class, HitClass::Tom) {
+        // Real toms ring a series, not a sine: the upper partials feed
+        // the low-mid band and lock the HPS fundamental. A pure sine
+        // reads an octave down and starves its own template.
+        let root = 90.0 + 20.0 * rng.next();
+        let decay = 0.150 + 0.05 * rng.next();
+        for i in 0..(0.6 * sr as f64) as usize {
+            if start + i >= buf.len() {
+                break;
+            }
+            let dt = i as f64 / sr as f64;
+            let mut partials = 0.0;
+            for (h, amp) in [(1.0, 0.9), (2.0, 0.5), (3.0, 0.25)] {
+                partials += amp * (2.0 * std::f64::consts::PI * root * h * dt).sin();
+            }
+            buf[start + i] += (partials * (-dt / decay).exp() * velocity) as f32;
+        }
+    }
+        if matches!(class, HitClass::Ride) {
+            // Metallic ping with a mid decay: a crash cut to a third, plus
+            // a clear ping partial the crash buries in shimmer.
+            for j in 0..hit_len {
+                if start + j >= buf.len() {
+                    break;
+                }
+                let dt = j as f64 / sr as f64;
+                let mut v = 0.0;
+                for &(ratio, amp) in &[(1.0, 0.45), (1.51, 0.25), (2.09, 0.2)] {
+                    v += amp * (2.0 * std::f64::consts::PI * 620.0 * ratio * dt).sin();
+                }
+                v = v * (-dt / 0.3).exp() + 0.3 * (rng.next() * 2.0 - 1.0) * (-dt / 0.02).exp();
+                buf[start + j] += (v * velocity) as f32;
+            }
+        }
+        if matches!(class, HitClass::Bass) {
+            // Low sustained E with harmonics: pitched like a kick, long
+            // like a pad. Decay, not punch, separates them.
+            let f0 = 41.0 + 7.0 * rng.next();
+            for j in 0..hit_len {
+                if start + j >= buf.len() {
+                    break;
+                }
+                let dt = j as f64 / sr as f64;
+                let mut v = 0.0;
+                for (h, amp) in [(1.0, 0.9), (2.0, 0.5), (3.0, 0.25)] {
+                    v += amp * (2.0 * std::f64::consts::PI * f0 * h * dt).sin();
+                }
+                v *= (-dt / 0.45).exp();
+                buf[start + j] += (v * velocity) as f32;
+            }
+        }
+        if matches!(class, HitClass::Guitar) {
+            // Power chord with a pick attack: E2+B2+E3, fast bite, singing
+            // sustain. No hammer noise - that belongs to keys.
+            for j in 0..hit_len {
+                if start + j >= buf.len() {
+                    break;
+                }
+                let dt = j as f64 / sr as f64;
+                let attack = 0.5 - 0.5 * (std::f64::consts::PI * (dt / 0.008).min(1.0)).cos();
+                let mut v = 0.0;
+                for &f in &[82.41, 123.47, 164.81] {
+                    v += 0.35 * (2.0 * std::f64::consts::PI * f * dt).sin();
+                }
+                v *= attack * (-dt / 0.45).exp();
+                buf[start + j] += (v * velocity) as f32;
+            }
+        }
+        if matches!(class, HitClass::Keys) {
+            // Piano-ish: C4 chord, hammer noise up front, highs dying first
+            // (per-partial decay quickening with frequency).
+            for j in 0..hit_len {
+                if start + j >= buf.len() {
+                    break;
+                }
+                let dt = j as f64 / sr as f64;
+                let mut v = 0.0;
+                for (h, base) in [(1.0, 261.63), (2.0, 261.63), (3.0, 261.63), (4.0, 261.63)] {
+                    let f = base * h;
+                    v += 0.3 / h * (2.0 * std::f64::consts::PI * f * dt).sin() * (-dt / (0.5 / h)).exp();
+                }
+                v += 0.4 * (rng.next() * 2.0 - 1.0) * (-dt / 0.005).exp();
+                buf[start + j] += (v * velocity) as f32;
+            }
+        }
+        if matches!(class, HitClass::Vocal) {
+            // Vowel "ah": formant bumps, gentle 5 Hz vibrato, soft attack,
+            // sustained. Root varies per take; the formants do not, which
+            // is what makes it a vowel and not a note.
+            let root = 240.0 + 40.0 * rng.next();
+            let bump = |f: f64, c: f64| (-((f - c) / 220.0).powi(2)).exp();
+            // Phase-integrated vibrato: sin(2π·f(t)·t) with varying f(t)
+            // is FM garbage spraying kilohertz, not vibrato. The phase is
+            // the closed-form integral instead: 2π·f·(t + depth·(1-cos)/w).
+            let omega = 2.0 * std::f64::consts::PI * 5.0;
+            for j in 0..hit_len {
+                if start + j >= buf.len() {
+                    break;
+                }
+                let dt = j as f64 / sr as f64;
+                let attack = 0.5 - 0.5 * (std::f64::consts::PI * (dt / 0.08).min(1.0)).cos();
+                let mut v = 0.0;
+                for h in 1..=10 {
+                    let f = root * h as f64;
+                    let phase = 2.0 * std::f64::consts::PI * f * dt
+                        + 2.0 * std::f64::consts::PI * f * 0.02 * (1.0 - (omega * dt).cos()) / omega;
+                    v += (0.4 * bump(f, 500.0) + 0.4 * bump(f, 1500.0) + 0.4 * bump(f, 2500.0) + 0.05)
+                        * phase.sin();
+                }
+                v *= attack * (-dt / 0.6).exp() * 0.15;
+                buf[start + j] += (v * velocity) as f32;
+            }
+        }
     // Clap flams: two extra noise bursts 8 and 16 ms later.
     for f in 0..flams.min(2) {
         let extra = start + ((0.008 * (f + 1) as f64) * sr as f64) as usize;

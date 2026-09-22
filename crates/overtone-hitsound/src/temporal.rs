@@ -22,7 +22,8 @@ pub struct Temporal {
     /// Decay constant from a log-linear fit over 20–200 ms, in seconds.
     /// Infinite when nothing decays (sustain pedal down, analytically).
     pub decay_tau_s: f64,
-    /// Seconds the envelope spends above 10 % of peak.
+    /// Seconds above 10 % of peak, looking 500 ms past the attack.
+    /// Short hits read their decay; sustained ones saturate near 0.5.
     pub sustain_s: f64,
     /// Fraction of sign changes in the window.
     pub zcr: f64,
@@ -121,11 +122,16 @@ pub fn analyze(y: &[f32], sr: u32, attack_s: f64) -> Temporal {
         }
     };
 
+    // Sustain reads past the analysis window (up to 500 ms past the
+    // attack): inside 130 ms every sustained sound saturates identically,
+    // which made the feature a constant. Same smoothed envelope, longer
+    // look — zero-crossings must not vote, so raw samples are out.
     let sustain_s = if peak <= 0.0 {
         0.0
     } else {
-        let over = env.iter().filter(|&&v| v >= 0.10 * peak).count();
-        over as f64 / sr as f64
+        let long = crate::window_samples(y, sr, attack_s, WIN_START_S, 0.500);
+        let env_long = envelope(&long);
+        env_long.iter().filter(|&&v| v >= 0.10 * peak).count() as f64 / sr as f64
     };
 
     let zcr = {
@@ -163,7 +169,7 @@ pub fn analyze(y: &[f32], sr: u32, attack_s: f64) -> Temporal {
         overtone_dsp::peaks::find_peaks(
             &slow[..first_30ms],
             distance,
-            Some(0.15 * slow_peak),
+            Some(0.25 * slow_peak),
             Some(0.30 * slow_peak),
         )
         .len()
@@ -294,6 +300,24 @@ mod tests {
         }
         let noisy = analyze(&y, sr, 1.0);
         assert!(noisy.zcr > 10.0 * tone.zcr.max(1e-4), "{} vs {}", noisy.zcr, tone.zcr);
+    }
+
+    #[test]
+    fn sustain_separates_hit_from_pad() {
+        let sr = 44_100;
+        let hit = analyze(&hit(sr, 1.0, 200.0, 0.05, 0.0, 1), sr, 1.0);
+        assert!(hit.sustain_s < 0.15, "hit {}", hit.sustain_s);
+        // Sustained chord: still ringing at the end of the look.
+        let n = (3.0 * sr as f64) as usize;
+        let mut y = vec![0.0f32; n];
+        for (i, slot) in y.iter_mut().enumerate() {
+            let t = i as f64 / sr as f64;
+            if t >= 1.0 {
+                *slot = (0.4 * (2.0 * std::f64::consts::PI * 261.63 * t).sin()) as f32;
+            }
+        }
+        let pad = analyze(&y, sr, 1.0);
+        assert!(pad.sustain_s > 0.4, "pad {}", pad.sustain_s);
     }
 
     #[test]

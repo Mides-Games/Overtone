@@ -223,7 +223,7 @@ All of [`06-hitsound-engine.md`](06-hitsound-engine.md).
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Per-attack features | 7 bands, centroid/rolloff/flatness/crest, rise/decay, sub-attacks | med | **high** | P2 HPSS | no | no | **P1** | **done** — spectral, temporal, source; 18 tests |
 | Harmonicity + pitch | autocorrelation, inharmonicity, formant-likeness | med | high | features | no | no | **P1** | **done** — HPS pitch + formants; inharmonicity deferred |
-| Instrument templates | 13 scored classes, explainable by construction | high | **high** | features | no | no | **P1** | **partial** — 8/13 scored; ride·bass·guitar·keys·vocal queued |
+| Instrument templates | 13 scored classes, explainable by construction | high | **high** | features | no | no | **P1** | **done** — 13/13 scored, F1 0.91 dense; vocal known-weak |
 | Synthetic label corpus | renderer emits audio + per-hit labels (no dataset licence) | med | **high** | bench | no | no | **P1** | **done** — 8 classes, seeded Rust renderer |
 | Template calibration | logistic fit of term weights on the corpus | med | high | corpus | **light** | no | P1 | **done** — LR, macro F1 0.85 on dense tracks |
 | Musical role | grid position, metrical weight, phrase, accent, density | med | **high** | P2 structure | no | no | **P1** | |

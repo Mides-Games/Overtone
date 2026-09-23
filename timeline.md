@@ -16,6 +16,54 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-23 · Long mixes, the fallback's pulse factor, scattered clicks
+
+Three more medium findings, each reproduced before its fix and each with a test that
+fails on the old code.
+
+### Fixed
+
+- **Section growth stopped after 64 passes** (#41, Python and Rust). A 15-minute mix
+  changing tempo every 9 s came out as 64 sections ending at 576.5 s; the last 323 s had
+  no red line and nothing said so. Every pass advances at least `seed_s`, so the guard
+  is now `ceil(length / seed_s) + 2` (never below 64).
+- **The fallback tracker ignored ÷2 / ÷4 and read x1 as "force"** (#42). It took the
+  factor as an absolute subdivision of its tracked beats. The factor now multiplies its
+  chosen subdivision, as it does the precision engine's; halving keeps every 2nd / 4th
+  tracked beat from the first (not the more accented phase — the snare bias again), and
+  `rebuild_with_subdivision` shares the helper, so ÷2 in the app works on it too.
+- **The fallback tracker answered scattered clicks** (#43). `MIN_PULSE_GAP` 0.05 -> 0.07.
+
+### Measured
+
+```
+15-minute grid, 120/127 BPM every 9 s        64 sections to 576.5 s -> to 899.8 s
+kit 100 read at 199.5, ÷2 (fallback)         199.5 -> 99.8 BPM, first red line on the 1st kick
+kit 170, ÷2 (fallback)                        170.9 -> 84.8, on the first kick
+x1 vs auto (fallback), three renders          identical
+random-click renders answered                 12/240 -> 1/240 (gap 0.0779 left)
+real songs reaching the fallback, refused     0/28 -> 0/28 (lowest gap 0.0956)
+gates: 232/232 Python; benchmark 24/24, 0.0000 BPM / 0.16 ms; bpm-snapshot and golden
+unchanged; coverage, measures, signatures green; cargo test 193/193; golden 24/24
+```
+
+### Rejected / tried and dropped
+
+- **MIN_PULSE_GAP 0.085**, which refuses the last random render too: 0.005 to spare
+  below the lowest of 55 real songs.
+- **Attack density** as a second signal for the fallback: random renders reach 22
+  attacks/s, above most songs.
+- **Chance of the attacks landing on the fallback's own beats:** backwards — the
+  tracker follows the clicks, so random renders align better than music does.
+- **Halving on the more accented phase:** on a 170 BPM kit it put the grid on the snare.
+
+### Found, not fixed
+
+- x2 on the fallback tracker with nothing between its beats reads an unrelated BPM
+  (bare click 120 -> 186).
+
+---
+
 ## v4.0.0-dev — 2026-09-23 · No bar without a proven 1
 
 A section's bar was claimed whenever its strongest beat class stood 1.20 above the mean

@@ -4,8 +4,8 @@ Findings from the 2026-09-22 audit that its own verifiers confirmed (three votes
 high severity, one for medium and low). The five leads the roadmap listed as "to verify"
 were re-probed and fixed on 2026-09-23 (PRs #22–#26); the four bugs reproduced before that
 were fixed in PRs #17–#20; the six high findings below were fixed the same day (PRs
-#29–#34); three medium ones since (PRs #36–#38). **Open: 81 — none high, 41 medium
-(two of them found while fixing the high ones), 40 low.** Nothing still open has been re-probed yet: each gets a probe before its
+#29–#34); eight medium ones since (PRs #36–#38, #40–#43). **Open: 78 — none high,
+38 medium (four of them found while fixing others), 40 low.** Nothing still open has been re-probed yet: each gets a probe before its
 fix, and some may turn out to be fixed already (the ×2 / ÷2 edit guard, for one, landed in
 PR #20).
 
@@ -33,21 +33,22 @@ landed with a test that fails on the old code.
 | `.bak` written in place, then never replaced | a backup write failing halfway left a truncated `.bak` -> leaves none; a map edited between two injects went unkept -> kept in `.bak2`, byte for byte | #36 |
 | Rust decode dropped a rejected packet, shifting everything after it | one bad MP3 frame: every later click 26.1 ms early -> on the same sample as the intact file | #37 |
 | (new) One analysis of a 5-minute song peaked at 3.7 GB of RAM | spectrogram and tempogram built in blocks: 3.7 -> 0.55 GB, the same red lines | #38 |
+| A section's bar read one beat late when its downbeat is weak (the snare out-weighs the kick) | change renders 3/60 -> 0/60; first red line on a ranked map's 1: 36/88 -> 40/88 | #40 |
+| `_grow_sections` stops after 64 passes on a long mix | 15-minute grid: coverage ended at 576.5 s -> reaches the last attack | #41 |
+| The fallback tracker ignored ÷2 / ÷4 and read x1 as "force" (two findings) | kit read at 199.5: ÷2 ignored -> 99.8 BPM, on the first kick | #42 |
+| The fallback tracker answered scattered clicks | 12/240 random renders -> 1/240; 0 of 55 real songs refused | #43 |
 
-## Medium (41)
+## Medium (38)
 
 | Area | Where | Finding | What goes wrong |
 |---|---|---|---|
-| py-engine + rust-tempo | `_beat_sections` / `sections.rs` (new, 2026-09-23) | A new section's bar is read one beat late when its downbeat contrast is weak | Found while probing PR #31: with kick 1.0 against snare 0.9, the per-section bar reading puts the section's red line on beat 2 instead of the "1" — 3 of 60 changes placed on a bar line, 6 of 38 at random positions. The beat grid stays right; the bar lines are one beat off until the mapper moves the red line. |
-| py-engine | `_legacy_analysis` (new, 2026-09-23) | The fallback tracker still answers some scattered-click audio | Found while measuring PR #33: of 240 rendered random-click files, 12 get a BPM, all from the fallback tracker — its own no-pulse check (`MIN_PULSE_GAP`, measured on noise) lets them through. The precision engine refuses all 240. Python only: Rust has no fallback tracker. |
-| py-engine | `timing_analyzer.py:1165` | _grow_sections stops after 64 iterations and leaves the rest of the track with no section, without any diagnostic | A long live set, DJ mix or rubato recording where growth re-seeds often (more than 64 growth breaks). After roughly 8-15 minutes the map stops changing tempo: the last BPM governs the remainder, which drifts, and the us… |
+| py-engine + rust-tempo | `_points_from_sections` (new, 2026-09-23) | With no bar claimed, the first red line follows the first attack, even noise before the music | Found while fixing #40: `very-noisy-132` has noise from 0 s, an attack at 27 ms, and music from 420 ms; its first red line lands on the grid beat before the music (-34.65 ms). On the grid, but one beat from the 1. |
+| py-engine | `_legacy_analysis` (new, 2026-09-23) | x2 on the fallback tracker gives an unrelated BPM when nothing sounds between its beats | Found while fixing #42: a bare 120 BPM click at x2 reads 186 BPM, a 100 BPM kit read at 199.5 reads 519. The inserted midpoints are snapped to the nearest transient, which is the next beat. |
 | py-engine | `timing_analyzer.py:1540` | meter_segments keeps or drops a one-window run depending on float rounding | A time-signature region exactly one window (4 bars) long, such as a 4-bar 3/4 interlude in a 4/4 song, is reported or silently merged into its neighbour depending on where the song starts and the bar length. The resulti… |
-| py-engine | `timing_analyzer.py:2011` | analyze_audio silently ignores force_subdivision 0.5/0.25 (and treats 1 as 'force' not 'auto') when the legacy tracker runs | The CLI runs with `--subdivision 0.5 --engine legacy`, or auto mode falls back on a rubato track. The user asked for half time and gets the unhalved BPM. analysis.subdivision reports 1, so the GUI shows 'normal' as if t… |
 | py-gui | `timing_analyzer.py:2825` | A wrongly typed value in ~/.overtone.json crashes the GUI on every launch | The user hand-edits the config to `"cfg_version": "2"` or `"prefer_map_bpm": "on"`. `TimingAnalyzerApp()` raises in `__init__` before the window appears, and every later launch fails the same way until the user finds an… |
 | py-gui | `timing_analyzer.py:3227` | Window-wide <Control-c> binding overwrites the clipboard when the user copies from any entry | After an analysis, the user selects the offset `12345.6` in the editor's ms field (or the audio path in the Source entry) and presses Ctrl+C to paste it into the osu! editor. The clipboard ends up holding the whole `//… |
 | py-gui | `timing_analyzer.py:3389` | ×2 / ÷2 silently discards every manual Apply/Add/Delete/Nudge edit | A mapper analyses a song, fixes §3 by hand (Apply 175 BPM), adds a red line at a transition and deletes a spurious §5. They then notice the global octave is half and press ×2. All three edits vanish, the table shows the… |
 | py-gui | `timing_analyzer.py:3614` | Export CSV has no error handling; a locked or unwritable target fails silently | On Windows the user re-exports timing.csv while it is open in Excel, which locks it. `open(..., 'w')` raises PermissionError. The exception escapes the Tk callback and goes to report_callback_exception, which prints to… |
-| py-io | `timing_analyzer.py:2011` | --subdivision 0.5/0.25 is silently ignored on the legacy engine (forced or fallback) | On a rubato track, `--engine auto --subdivision 0.5` falls back to the tracker, or the user passes `--engine legacy --subdivision 0.5` to fix a double-time read. The halving is dropped with no message and the output kee… |
 | py-io | `timing_analyzer.py:2504` | .osz audio entry loses its file extension (and can end in a space) when the name is long or has '...' before the suffix | Exporting a song whose filename is over 80 characters, or whose title ends in '...', produces an .osz whose audio has no .mp3/.ogg extension. Windows strips the trailing space on extraction and osu!'s parser trims the A… |
 | py-io | `timing_analyzer.py:2825` | A hand-edited config with a wrong-typed value still crashes the GUI at startup | The user edits ~/.overtone.json and quotes the version ("cfg_version": "2") or writes a non-Tcl boolean. TimingAnalyzerApp.__init__ then raises before the window opens, on every launch, until the file is deleted by hand… |
 | rust-core-audio-bench | `Cargo.toml:15` | v4 cannot open AIFF or Opus, both of which v3 opens and its file dialog advertises | A user loads song.aiff or song.opus, which v3 analyses directly. v4 fails in `probe` (AIFF: unsupported format) or in `make_audio_decoder` (Opus: unsupported codec) and returns Error::Decode. That is a parity regression… |

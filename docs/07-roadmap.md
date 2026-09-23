@@ -28,26 +28,22 @@ plugged into the app.**
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **225** Python (156 engine + 69 web shell) · **191** Rust.
+Tests: **232** Python (163 engine + 69 web shell) · **193** Rust.
 
 ### What is pending, in order
 
 1. **Audit backlog, medium findings** ([`13-audit-backlog.md`](13-audit-backlog.md)) — the six
-   high ones are fixed, and so are `.bak` atomicity (#36), the Rust decoder's dropped
-   packets (#37) and a 3.7 GB memory peak per long song (#38). **Next**, in this order,
-   each re-probed before its fix:
-   1. A section's bar read one beat late when its downbeat is weak. **Diagnosed:** all 3
-      failing renders out of 60 are the 3 read at double tempo; there four "beats" are
-      eighths, and the snare out-weighs the kick in the onset envelope, so the backbeat
-      wins. Candidate fix: a downbeat must also beat the class half a bar away (ratio
-      1.55 and 1.29 on true accents, 1.01-1.20 on the wrong claims, but 1.17 on
-      `slow-92`, which looks right). Settle the threshold on ranked maps first —
-      `map_downbeats` sweep, small batches.
-   2. `_grow_sections` stops after 64 iterations on long mixes, with no diagnostic.
-   3. `--subdivision 0.5 / 0.25` silently ignored on the fallback tracker.
-   4. The fallback tracker answers 12 of 240 scattered-click files (found on 2026-09-23).
-   5. Then the GUI and I/O ones (config crash, clipboard, CSV errors, `.osz` names), then
-      the 40 low.
+   high ones are fixed, and so are eight medium ones (#36–#38, #40–#43): backups, the
+   Rust decoder, memory, the weak downbeat, long mixes, the fallback's pulse factor and
+   scattered clicks. **Next**, in this order, each re-probed before its fix (some may be
+   fixed already — the ×2 / ÷2 edit guard landed in #20):
+   1. The GUI and I/O findings: a wrongly typed `~/.overtone.json` crashes the classic
+      window at launch; Ctrl+C anywhere overwrites the clipboard; CSV export fails
+      silently on a locked file; `.osz` audio entries lose their extension.
+   2. Two found on 2026-09-23: x2 on the fallback tracker with nothing between its
+      beats reads an unrelated BPM; with no bar claimed, the first red line follows noise
+      before the music.
+   3. The rest of the medium findings, then the 40 low.
 2. **Playback in the app** (Phase 4) — hear the song with the click, scrub, loop.
 3. **Plug the Rust engine into the app** (Phase 22) — the ~9x speed-up reaches the user.
 4. **Timeline** (Phase 3) — waveform, zoom, drag red lines.
@@ -94,10 +90,12 @@ fails on the old code; Python and Rust were fixed together where both apply.
 | Sparse random attacks got a grid | random attack times 18–22/40 → 0/40; random-click files 63/240 → 12/240 answered, none by the precision engine | #33 |
 | Rust hitsound flux compared spectra of different sizes | steady tone 0.9996 → ~0; 450 test hits 35 → 29 wrong, macro F1 0.913 → 0.931 | #34 |
 
-Since then: `.bak` atomicity (#36), dropped packets in the Rust decoder (#37), and the
-engine's memory — one 5-minute song peaked at 3.7 GB, 0.55 GB now (#38).
+Since then: `.bak` atomicity (#36), dropped packets in the Rust decoder (#37), the
+engine's memory — one 5-minute song peaked at 3.7 GB, 0.55 GB now (#38) — the weak
+downbeat (#40), long mixes (#41), the fallback's pulse factor (#42) and scattered clicks
+in the fallback (#43).
 
-Still open — 81 findings nobody has re-probed yet (none high, 41 medium, 40 low) — in
+Still open — 78 findings nobody has re-probed yet (none high, 38 medium, 40 low) — in
 [`13-audit-backlog.md`](13-audit-backlog.md).
 
 ---
@@ -392,6 +390,7 @@ estimate with a number or is dropped.
 | 10.2 | Source separation | percussive stem first — HPSS (built, no weights); Demucs weights are research-only | +8 pts | partial (HPSS in Rust) |
 | 10.3 | Neural beat tracking | Beat This! (MIT code and weights) as one more voter | +17 pts | todo |
 | 10.4 | Multi-signal evidence | multi-band onsets, HPSS, chroma novelty (partly built in Phase 2) | +5 pts | partial (Rust pieces exist) |
+| 10.4a | Downbeat from the low band | read the 1 from kick and bass onsets, not the broadband envelope: on 88 ranked maps its accents put a claimed bar on the map's 1 only 5 times in 21, mostly one beat early on the snare (9/21 after #40's half-bar rule) | not estimated | todo |
 | 10.5 | Rippling model | tempo from neighbouring downbeats, lineup fix on export — our own implementation of the idea | +12 pts | todo |
 | 10.6 | Bayesian ensemble | combine every voter with mapper priors | +5 pts | todo |
 | 10.7 | Rubato modelling | smooth tempo curve (elastic grid is the start) | +2 pts | partial (elastic grid) |

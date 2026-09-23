@@ -372,7 +372,9 @@ pub fn points_from_sections(
             continue;
         }
         let bpm = 60.0 / period;
-        if !(20.0..=900.0).contains(&bpm) {
+        // The plausibility range reads the section's own tempo, not the one a
+        // pulse factor presents — v3 `_points_from_sections`.
+        if !(20.0..=900.0).contains(&(60.0 / section.period)) {
             continue;
         }
         // Per-section bar, falling back to the global reading for section 0.
@@ -847,6 +849,16 @@ mod tests {
         let points = points_from_meter(&sections, &times, &weights, 1.0).expect("meter path");
         let meters: Vec<u32> = points.iter().map(|p| p.meter).collect();
         assert_eq!(meters, vec![6, 3, 6]);
+    }
+
+    #[test]
+    fn a_pulse_factor_does_not_drop_a_plausible_section() {
+        // 60 BPM read at a quarter pulse is 15 BPM: outside 20..900, but the
+        // music is not, so the red line must still be written.
+        let sections = [section_of(0.5, 60.0, 1.0, 0.5)];
+        let points = points_from_sections(&sections, 0.5, 12, 0, 1, 0.25, None);
+        assert_eq!(points.len(), 1);
+        assert!((points[0].bpm.get() - 15.0).abs() < 1e-9);
     }
 
     #[test]

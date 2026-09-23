@@ -1664,7 +1664,9 @@ def _points_from_sections(sections: list[GridSection], first_sound: float,
         if not np.isfinite(period) or period <= 0:
             continue
         bpm = 60.0 / period
-        if not 20.0 <= bpm <= 900.0:
+        # The plausibility range is about the music, so it reads the section's
+        # own tempo: a pulse factor the user chose must not silently drop one.
+        if not 20.0 <= 60.0 / section.period <= 900.0:
             continue
         # Per-section bar, falling back to the global reading for section 0 so
         # behaviour is unchanged when no per-section measurement was made.
@@ -1906,7 +1908,9 @@ def _assemble_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int, fit
     # Two sections can converge once each is refitted on its own attacks.
     final: list[TimingPoint] = kept[:1]
     for point in kept[1:]:
-        if abs(point.bpm - final[-1].bpm) >= min_delta:
+        # point.bpm already carries the pulse factor, so the threshold must too:
+        # compared raw, ÷4 shrank a 3.5 BPM change to 0.875 and dropped it.
+        if abs(point.bpm - final[-1].bpm) >= min_delta * factor:
             final.append(point)
     beats = _synth_beats(sections, factor)
     local = _local_bpm_curve(fit["times"], fit["weights"], sections, beats, factor)

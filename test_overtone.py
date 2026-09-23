@@ -956,6 +956,27 @@ class MeterPathTempoChangeTests(unittest.TestCase):
         self.assertEqual([p.meter for p in points], [6, 3, 6])
 
 
+class PulseFactorKeepsChangesTests(unittest.TestCase):
+    """÷2 / ÷4 must not delete a real tempo change.
+
+    The duplicate filter compared BPMs that already carried the pulse factor
+    against a threshold that did not: at ÷4 a 3.5 BPM change became 0.875 BPM
+    and fell under the 1.5 BPM minimum.
+    """
+
+    def test_a_small_change_survives_halving_and_quartering(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "change.wav"
+            _drum_track(path, [(0.5, 200.0), (16.0, 203.5)], duration=32.0)
+            analysis = analyze_audio(path)
+        self.assertEqual(len(analysis.points), 2)
+        for factor in (0.5, 0.25):
+            with self.subTest(factor=factor):
+                rebuilt = rebuild_with_subdivision(analysis, factor)
+                self.assertEqual([round(p.bpm, 2) for p in rebuilt.points],
+                                 [round(200.0 * factor, 2), round(203.5 * factor, 2)])
+
+
 class GridMathTests(unittest.TestCase):
     def test_coherence_phase_has_the_right_sign(self):
         # Regression: the phase used to come back negated, putting the seed

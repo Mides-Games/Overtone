@@ -58,6 +58,7 @@ from overtone import (
     set_beatmap_reds,
     write_osu_beatmap,
     attack_object_context,
+    alignment_report,
 )
 
 
@@ -1461,6 +1462,16 @@ class MapFullReaderTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 read_osu_beatmap(str(Path(tmp) / "missing.osu"))
 
+    def test_decimal_time_survives_as_float(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text("[HitObjects]\n256,192,1000.5,1,0,0:0:0:0:\n",
+                              encoding="utf-8")
+            objects = read_osu_beatmap(target)["hitobjects"]
+        self.assertEqual(len(objects), 1)
+        self.assertEqual(objects[0]["kind"], "circle")
+        self.assertAlmostEqual(objects[0]["time"], 1000.5)
+
 
 class MapWriterTests(unittest.TestCase):
     def _write(self, raw: bytes, name: str = "map.osu"):
@@ -1556,7 +1567,7 @@ class ObjectContextTests(unittest.TestCase):
         return rows
 
     def test_patterns_combos_and_sounds(self) -> None:
-        rows = self._context([1005.0, 1103.0, 1198.0, 1402.0, 5000.0, 8000.0, 30000.0])
+        rows = self._context([1.005, 1.103, 1.198, 1.402, 5.0, 8.0, 30.0])
         kinds = [r["object"]["kind"] if r["object"] else None for r in rows]
         self.assertEqual(kinds, ["circle", "circle", "circle", "circle", "circle", "spinner", None])
         self.assertEqual([r["pattern"] for r in rows],
@@ -1581,7 +1592,7 @@ class ObjectContextTests(unittest.TestCase):
             target.write_text(_CONTEXT_OSU, encoding="utf-8")
             beatmap = read_osu_beatmap(target)
         # 1050 ms sits exactly 50 ms from the first circle: inclusive by default.
-        attack = np.array([1050.0])
+        attack = np.array([1.05])
         default = attack_object_context(attack, np.ones(1), beatmap)
         self.assertIsNotNone(default[0]["object"])
         strict = attack_object_context(attack, np.ones(1), beatmap, tolerance_ms=49.0)
@@ -1590,8 +1601,62 @@ class ObjectContextTests(unittest.TestCase):
             target = Path(tmp) / "map.osu"
             target.write_text("[General]\n", encoding="utf-8")
             beatmap = read_osu_beatmap(target)
-        rows = attack_object_context(np.array([1000.0]), np.array([1.0]), beatmap)
+        rows = attack_object_context(np.array([1.0]), np.array([1.0]), beatmap)
         self.assertEqual([(r["pattern"], r["object"]) for r in rows], [("none", None)])
+
+
+def _alignment_analysis(times, weights) -> Analysis:
+    beats = np.arange(0.5, 60.0, 0.4)
+    return Analysis(
+        source="test", duration=60.0, beats=beats,
+        local_bpms=np.full(beats.size, 150.0), points=[],
+        hop_length=512, sample_rate=22050, subdivision=1.0,
+        attack_times=np.asarray(times, dtype=float),
+        attack_weights=np.asarray(weights, dtype=float))
+
+
+def _context_beatmap(tmp: str, text: str = _CONTEXT_OSU):
+    target = Path(tmp) / "map.osu"
+    target.write_text(text, encoding="utf-8")
+    return read_osu_beatmap(target)
+
+
+class AlignmentTests(unittest.TestCase):
+    def test_aligned_map_is_clean(self) -> None:
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = _context_beatmap(tmp)
+        times = [1.0, 1.1, 1.2, 1.4, 5.0, 8.0]
+        report = alignment_report(
+            _alignment_analysis(times, np.ones(len(times))), beatmap)
+        self.assertEqual((report["objects"], report["matched"]), (6, 6))
+        self.assertEqual((report["attacks"], report["covered"]), (6, 6))
+        self.assertEqual(report["offenders"], [])
+        self.assertEqual(report["uncovered"], [])
+        self.assertEqual(report["findings"], [])
+        json.dumps(report)
+
+    def test_shifted_object_and_stray_attack_are_flagged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = _context_beatmap(
+                tmp, _CONTEXT_OSU.replace("80,192,1100,", "80,192,1300,"))
+        times = [1.0, 1.1, 1.2, 1.4, 5.0, 8.0, 30.0, 20.0]
+        weights = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.1]
+        report = alignment_report(_alignment_analysis(times, weights), beatmap)
+        self.assertEqual(report["offenders"], [{"time": 1300.0, "kind": "circle", "ms": 100.0}])
+        # The abandoned attack joins the stray; the weak one stays unreported.
+        self.assertEqual(report["uncovered"], [1100.0, 30000.0])
+        self.assertEqual([(f["level"], f["key"]) for f in report["findings"]],
+                         [("warn", "objects_off_grid"), ("warn", "attacks_without_objects")])
+        self.assertEqual(report["findings"][0]["values"], {"n": 1, "worst": 100.0})
+
+    def test_no_attacks_reports_instead_of_inventing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = _context_beatmap(tmp)
+        report = alignment_report(_alignment_analysis([], []), beatmap)
+        self.assertEqual(report["objects"], 6)
+        self.assertEqual([(f["level"], f["key"]) for f in report["findings"]],
+                         [("info", "no_attacks")])
 
 
 if __name__ == "__main__":

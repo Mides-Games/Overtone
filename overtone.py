@@ -3101,9 +3101,12 @@ def _parse_hit_object(line: str) -> dict:
     if len(fields) < 5:
         return obj
     try:
-        x, y, time = int(fields[0]), int(fields[1]), int(fields[2])
+        x, y = int(fields[0]), int(fields[1])
+        time = float(fields[2])
         type_bits, hit_sound = int(fields[3]), int(fields[4])
     except ValueError:
+        return obj
+    if not np.isfinite(time):
         return obj
     obj.update({"x": x, "y": y, "time": time, "type": type_bits,
                 "hit_sound": hit_sound, "new_combo": bool(type_bits & 4),
@@ -3279,7 +3282,9 @@ def attack_object_context(times: np.ndarray, weights: np.ndarray,
     starts only — slider ends and repeat hits stay future work, stated here so
     nobody assumes them), the object spacing around it, a coarse pattern class
     (stream/jump/single/none), the running combo, and the object's existing
-    hitsound. Unparsed objects still match by time — their sound is unknown,
+    hitsound. Attack times arrive in seconds (engine convention, like beats)
+    and are reported in milliseconds (map convention, like objects).
+    Unparsed objects still match by time — their sound is unknown,
     not their position. Attacks with no object nearby come back with nulls,
     never invented context. All plain JSON types.
     """
@@ -3298,7 +3303,7 @@ def attack_object_context(times: np.ndarray, weights: np.ndarray,
         combos.append(combo)
 
     rows: list[dict] = []
-    times = np.asarray(times, dtype=np.float64)
+    times = np.asarray(times, dtype=np.float64) * 1000.0
     weights = np.asarray(weights, dtype=np.float64)
     for n, attack in enumerate(times):
         weight = float(weights[n]) if n < weights.size else 0.0
@@ -3355,6 +3360,71 @@ def _object_step(obj: dict, other: dict | None) -> float | None:
         return float(np.hypot(obj["x"] - other["x"], obj["y"] - other["y"]))
     except (TypeError, KeyError):
         return None
+
+
+def alignment_report(analysis: Analysis, beatmap: dict,
+                     tolerance_ms: float = OBJECT_WINDOW_MS) -> dict:
+    """Objects not on attacks; strong attacks with no object (Phase 7, row 3).
+
+    Objects match their nearest attack start,     slider ends excluded like in the
+    context — an end is a release, not a hit to land. Only attacks at half the
+    strongest weight or above can leave an object uncovered: ghost notes stay
+    unmapped on purpose, and flagging them would be noise, not signal. Attack
+    times arrive in seconds (engine convention) and are reported in
+    milliseconds (map convention). Findings
+    stay summarized (counts plus worst case) rather than one banner per object
+    because a real map holds hundreds. Legacy analyses carry no attacks, so
+    they report that instead of inventing alignment. All plain JSON types.
+    """
+    times = np.asarray(getattr(analysis, "attack_times", []), dtype=np.float64) * 1000.0
+    weights = np.asarray(getattr(analysis, "attack_weights", []), dtype=np.float64)
+    try:
+        objects = [(float(o["time"]), o.get("kind")) for o in beatmap.get("hitobjects", [])
+                   if isinstance(o, dict) and np.isfinite(o.get("time", float("nan")))]
+    except (TypeError, ValueError):
+        objects = []
+    objects.sort()
+    otimes = np.array([t for t, _kind in objects])
+    if times.size == 0:
+        return {"objects": len(objects), "matched": 0, "attacks": 0, "covered": 0,
+                "offenders": [], "uncovered": [],
+                "findings": [{"level": "info", "key": "no_attacks",
+                              "index": -1, "values": {}}]}
+
+    offenders: list[dict] = []
+    for time, kind in objects:
+        near = _nearest_sorted(times, time)
+        ms = abs(time - near)
+        if ms > tolerance_ms:
+            offenders.append({"time": time, "kind": kind, "ms": round(ms, 1)})
+
+    peak = float(weights.max()) if weights.size else 0.0
+    strong = times if peak <= 0 else times[np.asarray(weights) >= 0.5 * peak]
+    uncovered: list[float] = []
+    for attack in strong:
+        if otimes.size == 0 or abs(float(attack) - _nearest_sorted(otimes, float(attack))) > tolerance_ms:
+            uncovered.append(round(float(attack), 1))
+
+    findings: list[dict] = []
+    if offenders:
+        worst = max(o["ms"] for o in offenders)
+        findings.append({"level": "warn", "key": "objects_off_grid", "index": -1,
+                         "values": {"n": len(offenders), "worst": worst}})
+    if uncovered:
+        findings.append({"level": "warn", "key": "attacks_without_objects", "index": -1,
+                         "values": {"n": len(uncovered)}})
+    return {"objects": len(objects), "matched": len(objects) - len(offenders),
+            "attacks": int(times.size), "covered": int(len(strong) - len(uncovered)),
+            "offenders": offenders, "uncovered": uncovered, "findings": findings}
+
+
+def _nearest_sorted(values: np.ndarray, target: float) -> float:
+    """Nearest entry of a sorted array (binary search, edges included)."""
+    idx = int(np.searchsorted(values, target))
+    candidates = [v for v in (idx - 1, idx) if 0 <= v < values.size]
+    if not candidates:
+        return float("inf")
+    return float(min((values[v] for v in candidates), key=lambda v: abs(v - target)))
 
 
 # ---------------------------------------------------------------------------

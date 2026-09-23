@@ -2239,6 +2239,111 @@ def analysis_summary(analysis: Analysis) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Validation findings (Phase 7, first row)
+# ---------------------------------------------------------------------------
+
+#: Two red lines this close (in units of the governing beat) cannot both sit
+#: on downbeats: one of them is a duplicate.
+DUPLICATE_BEATS = 1.0
+#: A section shorter than one bar is suspicious but possible (fills, pickups).
+MIN_BEATS_PER_SECTION = 4.0
+#: Past this adjacent-section ratio the change is a detection error, not music.
+IMPOSSIBLE_RATIO = 4.0
+#: Within this band of x2 (or /2, in log2 space — octaves live there) the
+#: octave is a human judgement call, and the finding says exactly that: it
+#: never asserts which side is right.
+OCTAVE_BAND_LOG = 0.15
+#: A first red line this far after the first beat leaves the intro untimed.
+LATE_FIRST_LINE_S = 2.0
+
+
+def validate_timing_points(analysis: Analysis) -> list[dict]:
+    """Findings a mapper should review by ear before trusting the red lines.
+
+    Pure Phase 7, first row: duplicate points, very short sections, impossible
+    changes, suspicious offsets, octave mistakes. Operates on the *snapped*
+    points — what the exporters write — so a finding names the line the mapper
+    actually sees. Each finding is ``{"level", "key", "index", "values"}`` with
+    plain JSON types; ``index`` is the governing point, -1 for song-level.
+    Levels: ``error`` (the map is wrong), ``warn`` (check it), ``info`` (a
+    judgement call, stated as one). An empty map has no findings, and findings
+    never raise: validation must not break on the input it is checking.
+    """
+    try:
+        points = snap_timing_points(list(getattr(analysis, "points", None) or []))
+    except Exception:
+        return []
+    if not points:
+        return []
+    try:
+        duration = float(getattr(analysis, "duration", 0.0) or 0.0)
+        beats = np.asarray(getattr(analysis, "beats", []), dtype=np.float64)
+        first_beat = float(beats[0]) if beats.size else 0.0
+    except (TypeError, ValueError):
+        duration, first_beat = 0.0, 0.0
+
+    findings: list[dict] = []
+
+    def err(key: str, index: int, values: dict | None = None) -> None:
+        findings.append({"level": "error", "key": key, "index": index,
+                         "values": values or {}})
+
+    def warn(key: str, index: int, values: dict | None = None) -> None:
+        findings.append({"level": "warn", "key": key, "index": index,
+                         "values": values or {}})
+
+    def info(key: str, index: int, values: dict | None = None) -> None:
+        findings.append({"level": "info", "key": key, "index": index,
+                         "values": values or {}})
+
+    for n, point in enumerate(points):
+        offset = getattr(point, "offset_ms", float("nan"))
+        bpm = getattr(point, "bpm", float("nan"))
+        try:
+            bad = not (np.isfinite(offset) and np.isfinite(bpm))
+        except TypeError:
+            bad = True
+        if bad or bpm <= 0:
+            err("bad_number", n)
+            continue
+        if offset < 0:
+            err("negative_offset", n, {"ms": f"{offset:.1f}"})
+        elif duration > 0 and offset / 1000.0 > duration + 0.001:
+            warn("past_end", n, {"ms": f"{offset:.1f}"})
+        if n == 0 and first_beat > 0 and offset / 1000.0 - first_beat > LATE_FIRST_LINE_S:
+            warn("late_first", n, {"line": f"{offset / 1000.0:.1f}",
+                                   "beat": f"{first_beat:.1f}"})
+
+    for n in range(1, len(points)):
+        prev, point = points[n - 1], points[n]
+        if prev.bpm <= 0 or not np.isfinite(prev.bpm) or not np.isfinite(point.bpm):
+            continue
+        gap_ms = point.offset_ms - prev.offset_ms
+        beat_ms = 60000.0 / prev.bpm
+        if gap_ms < DUPLICATE_BEATS * beat_ms:
+            err("dup_points", n, {"gap": f"{gap_ms:.1f}"})
+            continue
+        if gap_ms < MIN_BEATS_PER_SECTION * beat_ms:
+            warn("short_section", n - 1, {"beats": f"{gap_ms / beat_ms:.1f}"})
+        ratio = point.bpm / prev.bpm
+        if ratio >= IMPOSSIBLE_RATIO or ratio <= 1.0 / IMPOSSIBLE_RATIO:
+            err("impossible_change", n,
+                {"from": f"{prev.bpm:.2f}", "to": f"{point.bpm:.2f}"})
+        elif min(abs(float(np.log2(ratio)) - 1.0),
+                 abs(float(np.log2(ratio)) + 1.0)) <= OCTAVE_BAND_LOG:
+            info("octave_check", n,
+                 {"from": f"{prev.bpm:.2f}", "to": f"{point.bpm:.2f}"})
+
+    # The last section runs to the end of the song: it can be short too.
+    last = points[-1]
+    if last.bpm > 0 and np.isfinite(last.bpm) and duration > 0:
+        tail_beats = (duration - last.offset_ms / 1000.0) / (60.0 / last.bpm)
+        if 0 <= tail_beats < MIN_BEATS_PER_SECTION:
+            warn("short_section", len(points) - 1, {"beats": f"{tail_beats:.1f}"})
+    return findings
+
+
+# ---------------------------------------------------------------------------
 # Manual timing-point editing (pure helpers — GUI calls these)
 # ---------------------------------------------------------------------------
 

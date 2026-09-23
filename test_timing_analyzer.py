@@ -49,6 +49,7 @@ from timing_analyzer import (
     snap_timing_points,
     suggest_section_pulse,
     update_timing_point,
+    validate_timing_points,
 )
 
 
@@ -1041,6 +1042,86 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
     def test_local_bpm_helper_handles_degenerate_input(self):
         self.assertEqual(len(_robust_local_bpms(np.zeros(0))), 0)
         self.assertEqual(len(_robust_local_bpms(np.array([1.0]))), 1)
+
+
+def _validation_analysis(points, duration=60.0) -> Analysis:
+    beats = np.arange(0.5, duration, 0.4)
+    return Analysis(
+        source="test", duration=duration, beats=beats,
+        local_bpms=np.full(beats.size, 150.0), points=list(points),
+        hop_length=512, sample_rate=22050, subdivision=1.0,
+        global_bpm=150.0, stability=0.9,
+        onset=np.zeros(100, dtype=np.float32), engine="precision",
+        fit_residual_ms=0.4)
+
+
+class ValidationTests(unittest.TestCase):
+    def keys(self, analysis):
+        return [(f["level"], f["key"]) for f in validate_timing_points(analysis)]
+
+    def test_clean_map_has_no_findings_and_is_json(self) -> None:
+        import json
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        findings = validate_timing_points(analysis)
+        self.assertEqual(findings, [])
+        json.dumps(findings)
+
+    def test_two_lines_within_a_beat_are_a_duplicate(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(1000.0, 120.0, 0.9, 0), TimingPoint(1200.0, 120.0, 0.9, 1)])
+        self.assertIn(("error", "dup_points"), self.keys(analysis))
+
+    def test_section_shorter_than_a_bar_warns(self) -> None:
+        # 150 BPM: 3 beats = 1200 ms, under the 4-beat bar.
+        analysis = _validation_analysis(
+            [TimingPoint(0.0, 150.0, 0.9, 0), TimingPoint(1200.0, 150.0, 0.9, 3)],
+            duration=60.0)
+        self.assertIn(("warn", "short_section"), self.keys(analysis))
+
+    def test_fourfold_jump_is_impossible_but_twofold_is_a_question(self) -> None:
+        impossible = _validation_analysis(
+            [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(30000.0, 500.0, 0.9, 60)])
+        self.assertIn(("error", "impossible_change"), self.keys(impossible))
+        halved = _validation_analysis(
+            [TimingPoint(0.0, 140.0, 0.9, 0), TimingPoint(30000.0, 280.0, 0.9, 70)])
+        keys = self.keys(halved)
+        self.assertIn(("info", "octave_check"), keys)
+        self.assertNotIn(("error", "impossible_change"), keys)
+        drift = _validation_analysis(
+            [TimingPoint(0.0, 140.0, 0.9, 0), TimingPoint(30000.0, 150.0, 0.9, 70)])
+        self.assertNotIn(("info", "octave_check"), self.keys(drift))
+
+    def test_bad_numbers_never_raise(self) -> None:
+        import json
+        analysis = _validation_analysis(
+            [TimingPoint(-50.0, 120.0, 0.9, 0),
+             TimingPoint(10000.0, float("nan"), 0.5, 20)])
+        keys = self.keys(analysis)
+        self.assertIn(("error", "negative_offset"), keys)
+        self.assertIn(("error", "bad_number"), keys)
+        json.dumps(validate_timing_points(analysis))
+        self.assertEqual(validate_timing_points(_validation_analysis([])), [])
+
+    def test_first_line_long_after_the_music_warns(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(70393.1, 196.5, 0.74, 150)], duration=90.0)
+        late = [f for f in validate_timing_points(analysis) if f["key"] == "late_first"]
+        self.assertEqual(len(late), 1)
+        self.assertEqual(late[0]["values"], {"line": "70.4", "beat": "0.5"})
+
+    def test_point_past_the_end_of_the_audio_warns(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(65000.0, 150.0, 0.9, 150)],
+            duration=60.0)
+        self.assertIn(("warn", "past_end"), self.keys(analysis))
+
+    def test_trailing_stub_section_warns(self) -> None:
+        # Last red line two beats before the song ends.
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(59200.0, 150.0, 0.9, 145)],
+            duration=60.0)
+        self.assertIn(("warn", "short_section"), self.keys(analysis))
 
 
 if __name__ == "__main__":

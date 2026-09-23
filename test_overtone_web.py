@@ -415,6 +415,50 @@ class CompareBridgeTests(_IsolatedConfig):
         self.assertEqual(_api_with_points().compare("C:/does/not/exist.osu")["key"], "bad_file")
 
 
+class FolderImportTests(_IsolatedConfig):
+    def _song(self, tmp: str) -> Path:
+        root = Path(tmp) / "123 Artist - Title"
+        root.mkdir()
+        (root / "song.mp3").write_bytes(b"ID3.....")
+        (root / "map [Easy].osu").write_text(
+            "[General]\nAudioFilename: song.mp3\n\n[TimingPoints]\n1000,400,4,1,0,100,1,0\n",
+            encoding="utf-8")
+        return root
+
+    def test_import_adopts_the_audio_and_lists_difficulties(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._song(tmp)
+            api = web.Api()
+            reply = api.import_folder(str(root))
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["file"]["name"], "song.mp3")
+        self.assertEqual(len(reply["beatmaps"]), 1)
+        self.assertEqual(reply["folder"], str(root))
+        self.assertEqual(self.saved[-1]["file"], str(root / "song.mp3"))
+        json.dumps(reply)
+
+    def test_maps_without_audio_still_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "song"
+            root.mkdir()
+            (root / "map.osu").write_text("[TimingPoints]\n1000,400,4,1,0,100,1,0\n",
+                                          encoding="utf-8")
+            reply = web.Api().import_folder(str(root))
+        self.assertTrue(reply["ok"])
+        self.assertIsNone(reply["file"])
+        self.assertEqual(len(reply["beatmaps"]), 1)
+
+    def test_import_refuses_a_non_folder(self) -> None:
+        self.assertEqual(web.Api().import_folder("C:/does/not/exist")["key"], "bad_folder")
+
+    def test_pick_folder_returns_the_chosen_directory(self) -> None:
+        api = web.Api()
+        api._window = _FakeWindow("C:/osu!/Songs/123")
+        self.assertEqual(api.pick_folder(), "C:/osu!/Songs/123")
+        api._window = _FakeWindow(None)
+        self.assertIsNone(api.pick_folder())
+
+
 class DropTests(_IsolatedConfig):
     def test_corrupt_and_oversized_drops_are_refused(self) -> None:
         api = web.Api()

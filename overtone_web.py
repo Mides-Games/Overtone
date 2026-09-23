@@ -517,14 +517,47 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "path": target, "points": info["points"]}
 
-    def pick_osu(self) -> str | None:
+    def pick_osu(self, directory: str = "") -> str | None:
         import webview
         if self._window is None:
             return None
-        chosen = self._window.create_file_dialog(webview.OPEN_DIALOG, file_types=OSU_TYPES)
+        chosen = self._window.create_file_dialog(
+            webview.OPEN_DIALOG, directory=directory or "", file_types=OSU_TYPES)
         if not chosen:
             return None
         return chosen[0] if isinstance(chosen, (list, tuple)) else str(chosen)
+
+    def pick_folder(self) -> str | None:
+        import webview
+        if self._window is None:
+            return None
+        chosen = self._window.create_file_dialog(webview.FOLDER_DIALOG)
+        if not chosen:
+            return None
+        return chosen[0] if isinstance(chosen, (list, tuple)) else str(chosen)
+
+    def import_folder(self, folder: str) -> dict:
+        """Scan a beatmap folder and adopt its audio as the current file.
+
+        The difficulties stay listed (compare picker opens there), the audio
+        becomes the remembered file so Analyze just works. A folder with maps
+        but no readable audio still reports its beatmaps — there is nothing to
+        analyse, but plenty to compare once audio arrives.
+        """
+        if not Path(str(folder)).is_dir():
+            return {"ok": False, "key": "bad_folder"}
+        try:
+            scan = ta.scan_beatmap_folder(folder)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        if not scan["audio"]:
+            return {"ok": True, "folder": scan["folder"], "file": None,
+                    "beatmaps": scan["beatmaps"]}
+        self._cfg["file"] = scan["audio"]
+        self._persist()
+        return {"ok": True, "folder": scan["folder"],
+                "file": self._file_info(scan["audio"]),
+                "beatmaps": scan["beatmaps"]}
 
     def inject_preview(self, osu_path: str) -> dict:
         """Dry run first, like the Tk GUI's confirmation dialog data."""

@@ -70,6 +70,11 @@ const I18N = {
     cmp_count_f: "The .osu has {map} red lines, detection found {det} sections.",
     cmp_no_reds_f: "That .osu has no red lines to compare.",
     cmp_unreadable_f: "Could not compare: {detail}",
+    import_folder: "Import beatmap folder…",
+    imported: "Folder: {audio} + {n} {difficulties}.",
+    difficulties: "difficulties",
+    no_audio: "That folder has no audio Overtone can read — its maps are still listed for compare.",
+    bad_folder: "Choose a real folder first.",
     done: "Done: {n} timing points · {bpm} BPM", rescaled: "Pulse ×{f}: {n} timing points · {bpm} BPM",
     error: "Error: {detail}",
   },
@@ -140,6 +145,11 @@ const I18N = {
     cmp_count_f: "El .osu tiene {map} líneas rojas, la detección encontró {det} secciones.",
     cmp_no_reds_f: "Ese .osu no tiene líneas rojas para comparar.",
     cmp_unreadable_f: "No se pudo comparar: {detail}",
+    import_folder: "Importar carpeta…",
+    imported: "Carpeta: {audio} + {n} {difficulties}.",
+    difficulties: "dificultades",
+    no_audio: "Esa carpeta no tiene audio legible — sus mapas igual sirven para comparar.",
+    bad_folder: "Elegí primero una carpeta real.",
     done: "Listo: {n} timing points · {bpm} BPM", rescaled: "Pulso ×{f}: {n} timing points · {bpm} BPM",
     error: "Error: {detail}",
   },
@@ -238,6 +248,7 @@ function setBusy(busy, message) {
   S.busy = busy;
   $("analyzeBtn").disabled = busy || !S.file;
   $("openBtn").disabled = busy;
+  $("importBtn").disabled = busy;
   $("analyzeIcon").hidden = busy;
   $("analyzeSpin").hidden = !busy;
   $("analyzeText").textContent = t(busy ? "analyzing" : "analyze");
@@ -311,6 +322,25 @@ async function openAudio() {
   if (!api() || S.busy) return;
   const info = await api().pick_audio();
   if (info) setFile(info);
+}
+
+async function importFolder() {
+  if (!api() || S.busy) return;
+  const folder = await api().pick_folder();
+  if (!folder) return;
+  const reply = await api().import_folder(folder);
+  if (!reply.ok) {
+    toast(reply.key === "error" ? t("error", { detail: reply.detail || "" }) : t(reply.key), true);
+    return;
+  }
+  S.lastFolder = reply.folder;
+  if (reply.file) {
+    setFile(reply.file);
+    toast(t("imported", { audio: reply.file.name, n: reply.beatmaps.length,
+                          difficulties: t("difficulties") }));
+  } else {
+    toast(t("no_audio"), true);
+  }
 }
 
 async function rescale(mult) {
@@ -556,7 +586,7 @@ async function saveAs(kind) {
 
 async function injectOsu() {
   if (!api() || !S.result || S.busy) return;
-  const target = await api().pick_osu();
+  const target = await api().pick_osu(S.lastFolder || "");
   if (!target) return;
   const prev = await api().inject_preview(target);
   if (!prev.ok) { editFailure(prev); return; }
@@ -636,7 +666,7 @@ const CMP_STR = {
 
 async function compareOsu() {
   if (!api() || !S.result || S.busy) return;
-  const target = await api().pick_osu();
+  const target = await api().pick_osu(S.lastFolder || "");
   if (!target) return;
   const reply = await api().compare(target);
   if (!reply.ok) { editFailure(reply); return; }
@@ -871,6 +901,7 @@ function openDrawer(open) {
 function wire() {
   $("openBtn").onclick = openAudio;
   $("emptyOpen").onclick = (e) => { e.stopPropagation(); openAudio(); };
+  $("importBtn").onclick = (e) => { e.stopPropagation(); importFolder(); };
   $("emptyAnalyze").onclick = (e) => { e.stopPropagation(); analyze(); };
   $("settingsBtn").onclick = () => openDrawer(true);
   $("closeDrawer").onclick = () => openDrawer(false);

@@ -397,10 +397,13 @@ pub fn points_from_sections(
         } else if known {
             let anchor = section.phase + section_downbeat as f64 * section.period;
             let span = section.period * section_bar as f64;
-            anchor + ((section.start.get() - anchor) / span - 1e-9).ceil() * span
+            // Quarter-period slack, as section 0 has: the refit can leave the
+            // boundary beat microseconds before the settled start, and a bare
+            // ceil then put the red line a whole beat (or bar) late.
+            anchor + ((section.start.get() - 0.25 * period - anchor) / span - 1e-9).ceil() * span
         } else {
             let anchor = section.phase;
-            anchor + ((section.start.get() - anchor) / period - 1e-9).ceil() * period
+            anchor + ((section.start.get() - 0.25 * period - anchor) / period - 1e-9).ceil() * period
         };
         let mut point = TimingPoint::new(
             offset * 1000.0,
@@ -864,6 +867,23 @@ mod tests {
         let points = points_from_sections(&sections, 0.5, 12, 0, 1, 0.25, None);
         assert_eq!(points.len(), 1);
         assert!((points[0].bpm.get() - 15.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_change_red_line_takes_the_beat_just_before_the_start() {
+        // The refit can leave the new grid's boundary beat microseconds before
+        // the settled start; a bare ceil took the next beat, a whole beat late.
+        let (p1, p2) = (60.0 / 132.0, 60.0 / 138.0);
+        let change = 0.5 + 70.0 * p1;
+        let sections = [
+            section_of(0.5, change, p1, 0.5),
+            section_of(change, change + 30.0, p2, change - 3e-5),
+        ];
+        let beat = points_from_sections(&sections, 0.5, 12, 0, 1, 1.0, None);
+        assert!((beat[1].offset.get() - (change * 1000.0 - 0.03)).abs() < 1e-6);
+        let bars = vec![("4/4".to_string(), 0usize, 4usize); 2];
+        let bar = points_from_sections(&sections, 0.5, 12, 0, 4, 1.0, Some(&bars));
+        assert!((bar[1].offset.get() - (change * 1000.0 - 0.03)).abs() < 1e-6);
     }
 
     #[test]

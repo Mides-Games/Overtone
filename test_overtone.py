@@ -1011,6 +1011,34 @@ class HandPlacedPointsStayPutTests(unittest.TestCase):
         self.assertFalse(base[1].manual)
 
 
+class ChangeRedLineOnItsBeatTests(unittest.TestCase):
+    """A section's red line sits on the beat at its start, even when the final
+    refit leaves that beat a hair before the start.
+
+    Red lines after the first were placed with ceil(x - 1e-9): a beat 0.03 ms
+    before the settled start counted as "before", so the next beat was taken
+    and the red line landed a whole beat (with a proven bar, a whole bar) late.
+    """
+
+    def _sections(self):
+        p1, p2 = 60.0 / 132.0, 60.0 / 138.0
+        change = 0.5 + 70 * p1
+        # the new grid's beat sits 0.03 ms before the settled start
+        return [GridSection(0.5, change, p1, 0.5, 140, 0.2, 1.0),
+                GridSection(change, change + 30.0, p2, change - 3e-5, 130, 0.2, 1.0)], change
+
+    def test_beat_branch(self):
+        sections, change = self._sections()
+        points = _points_from_sections(sections, 0.5, 12, 0, 1)
+        self.assertLess(abs(points[1].offset_ms - (change * 1000.0 - 0.03)), 1e-6)
+
+    def test_known_bar_branch(self):
+        sections, change = self._sections()
+        points = _points_from_sections(sections, 0.5, 12, 0, 4,
+                                       measures=[("4/4", 0, 4), ("4/4", 0, 4)])
+        self.assertLess(abs(points[1].offset_ms - (change * 1000.0 - 0.03)), 1e-6)
+
+
 class GridMathTests(unittest.TestCase):
     def test_coherence_phase_has_the_right_sign(self):
         # Regression: the phase used to come back negated, putting the seed

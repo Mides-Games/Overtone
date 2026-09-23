@@ -1697,10 +1697,14 @@ def _points_from_sections(sections: list[GridSection], first_sound: float,
             # the song. Only done when this section's accents prove the bar.
             anchor = section.phase + section_downbeat * section.period
             span = section.period * section_bar
-            offset = anchor + np.ceil((section.start_s - anchor) / span - 1e-9) * span
+            # A quarter-period of slack, as section 0 has: the settled start
+            # is a beat of this grid, and the final refit can leave that beat
+            # microseconds before it -- ceil(x - 1e-9) then chose the next
+            # one and the red line landed a whole beat (or bar) late.
+            offset = anchor + np.ceil((section.start_s - 0.25 * period - anchor) / span - 1e-9) * span
         else:
             anchor = section.phase
-            k = np.ceil((section.start_s - anchor) / period - 1e-9)
+            k = np.ceil((section.start_s - 0.25 * period - anchor) / period - 1e-9)
             offset = anchor + k * period
 
         points.append(TimingPoint(float(offset * 1000.0), float(bpm),

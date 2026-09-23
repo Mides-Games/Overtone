@@ -87,7 +87,12 @@ pub fn grow_sections_with(
     let mut prior = period;
     let mut phase = phase;
     let mut guard = 0usize;
-    while start < finish - 1.0 && guard < 64 {
+    // Every counted pass ends at or past its seed window, so it moves `start`
+    // on by `seed_s` or to the end: the track needs at most this many passes
+    // and the guard only backs that up — v3 `_grow_sections`. A fixed 64
+    // stopped a 15-minute mix at 576 s and left the rest with no section.
+    let limit = 64usize.max(((finish - start) / seed_s).ceil() as usize + 2);
+    while start < finish - 1.0 && guard < limit {
         guard += 1;
         let seed_hi = finish.min(start + seed_s.max(12.0 * prior));
         let fresh = crate::seed_grid(
@@ -563,6 +568,24 @@ mod tests {
             k += 1;
         }
         (times, weights)
+    }
+
+    #[test]
+    fn growth_covers_a_fifteen_minute_mix() {
+        // 120 and 127 BPM alternating every 9 s for 15 minutes: growth stopped
+        // after 64 passes, at 576.5 s, and the last 323 s had no section.
+        let mut times = Vec::new();
+        let mut t = 0.5f64;
+        while t < 900.0 {
+            times.push(t);
+            let bpm = if ((t - 0.5) / 9.0).floor() as i64 % 2 == 0 { 120.0 } else { 127.0 };
+            t += 60.0 / bpm;
+        }
+        let weights = vec![0.8f32; times.len()];
+        let sections = grow_sections(&times, &weights, 0.5, 0.5, 1.5, 12);
+        assert!(sections.len() > 64, "{} sections", sections.len());
+        let last = sections.last().unwrap().end.get();
+        assert!(last > times[times.len() - 1] - 1.0, "last section ends at {last}");
     }
 
     #[test]

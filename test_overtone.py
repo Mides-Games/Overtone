@@ -1095,6 +1095,27 @@ class SparseNoiseRefusalTests(unittest.TestCase):
         self.assertEqual(_pulse_log10p(np.array([]), 0.8, 0.1), 0.0)
 
 
+class LongMixTests(unittest.TestCase):
+    """Section growth must reach the end of a long track.
+
+    It stopped after 64 passes: a 15-minute mix changing tempo every 9 s came
+    out as 64 sections ending at 576.5 s, and the last 323 s had none.
+    """
+
+    def test_growth_covers_a_fifteen_minute_mix(self):
+        from overtone import _grow_sections
+        times, t = [], 0.5
+        while t < 900.0:
+            bpm = 120.0 if int((t - 0.5) // 9.0) % 2 == 0 else 127.0
+            times.append(t)
+            t += 60.0 / bpm
+        times = np.array(times)
+        sections = _grow_sections(times, np.full(times.size, 0.8, dtype=np.float32),
+                                  0.5, 0.5, 1.5, 12)
+        self.assertGreater(len(sections), 64)
+        self.assertGreater(sections[-1].end_s, times[-1] - 1.0)
+
+
 class HalfBarDownbeatTests(unittest.TestCase):
     """A bar is only claimed when its downbeat beats the class half a bar away.
 

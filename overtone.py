@@ -1296,7 +1296,12 @@ def _grow_sections(times: np.ndarray, weights: np.ndarray, period: float, phase:
     finish = float(times[-1])
     prior = period
     guard = 0
-    while start < finish - 1.0 and guard < 64:
+    # Every counted pass ends at or past its seed window, so it moves start on
+    # by seed_s or to the end: the track needs at most this many, and the guard
+    # only backs that up. A fixed 64 stopped a 15-minute mix that changes tempo
+    # every 9 s at 576 s and left the rest with no section and no red line.
+    limit = max(64, int(np.ceil((finish - start) / seed_s)) + 2)
+    while start < finish - 1.0 and guard < limit:
         guard += 1
         seed_hi = min(finish, start + max(seed_s, 12 * prior))
         # Short seed windows on purpose: a long one straddles the very tempo

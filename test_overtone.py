@@ -54,6 +54,7 @@ from overtone import (
     compare_map_timing,
     scan_beatmap_folder,
     analyze_batch,
+    read_osu_beatmap,
 )
 
 
@@ -1355,6 +1356,107 @@ class BatchTests(unittest.TestCase):
             self.assertEqual(analyze_batch(str(empty)), [])
             with self.assertRaises(ValueError):
                 analyze_batch(str(Path(tmp) / "missing"))
+
+
+_FULL_OSU = "\n".join([
+    "osu file format v14",
+    "",
+    "[General]",
+    "AudioFilename: audio.mp3",
+    "AudioLeadIn: 0",
+    "Mode: 0",
+    "CustomTag: keep me",
+    "",
+    "[Editor]",
+    "Bookmarks: 1000,2000",
+    "",
+    "[Metadata]",
+    "Title:Test",
+    "Artist:Me",
+    "Creator:Mapper",
+    "Version:Hard",
+    "",
+    "[Difficulty]",
+    "HPDrainRate:5",
+    "CircleSize:4",
+    "",
+    "[Events]",
+    "//Background and Video events",
+    '0,0,"bg.jpg",0,0',
+    "",
+    "[TimingPoints]",
+    "1000,400,4,1,0,100,1,0",
+    "2000,-100,4,2,0,100,0,0",
+    "",
+    "[Colours]",
+    "Combo1 : 255,0,0",
+    "",
+    "[HitObjects]",
+    "256,192,1000,1,0,0:0:0:0:",
+    "100,100,2000,2,0,B|150:150|200:100,2,120.5,2|1,0:0|0:0,0:0:0:0:",
+    "256,192,5000,8,0,8000,0:0:0:0:",
+    "192,192,9000,132,0,9500:0:0:0:0:",
+    "broken,line",
+    "",
+])
+
+
+class MapFullReaderTests(unittest.TestCase):
+    def _read(self, text, **kwargs):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            newline = kwargs.get("newline", "\n")
+            target.write_bytes(text.replace("\n", newline).encode("utf-8"))
+            beatmap = read_osu_beatmap(target)
+        json.dumps(beatmap)  # everything stays plain JSON types
+        return beatmap
+
+    def test_sections_and_known_keys_with_unknowns_preserved(self) -> None:
+        beatmap = self._read(_FULL_OSU)
+        self.assertEqual(beatmap["format"], 14)
+        self.assertEqual([s["name"] for s in beatmap["sections"]],
+                         ["General", "Editor", "Metadata", "Difficulty",
+                          "Events", "TimingPoints", "Colours", "HitObjects"])
+        self.assertEqual(beatmap["general"]["AudioFilename"], "audio.mp3")
+        self.assertEqual(beatmap["general"]["CustomTag"], "keep me")
+        self.assertEqual(beatmap["metadata"]["Version"], "Hard")
+        self.assertEqual(beatmap["difficulty"]["CircleSize"], "4")
+        colours = next(s for s in beatmap["sections"] if s["name"] == "Colours")
+        self.assertEqual(colours["lines"], ["Combo1 : 255,0,0", ""])
+        events = next(s for s in beatmap["sections"] if s["name"] == "Events")
+        self.assertIn('0,0,"bg.jpg",0,0', events["lines"])
+
+    def test_timing_reds_and_greens(self) -> None:
+        timing = self._read(_FULL_OSU)["timing"]
+        self.assertEqual(timing["reds"], [(1000.0, 150.0)])
+        self.assertEqual(timing["greens"], ["2000,-100,4,2,0,100,0,0"])
+
+    def test_hitobjects_all_kinds(self) -> None:
+        objects = self._read(_FULL_OSU)["hitobjects"]
+        self.assertEqual([o["kind"] for o in objects],
+                         ["circle", "slider", "spinner", "hold", "unparsed"])
+        circle, slider, spinner, hold, broken = objects
+        self.assertEqual((circle["x"], circle["y"], circle["time"]), (256, 192, 1000))
+        self.assertFalse(circle["new_combo"])
+        self.assertEqual(circle["hit_sample"]["volume"], 0)
+        self.assertEqual(slider["curve"], {"curve_type": "B", "points": [(150, 150), (200, 100)]})
+        self.assertEqual(slider["slides"], 2)
+        self.assertAlmostEqual(slider["length"], 120.5)
+        self.assertEqual(slider["edge_sounds"], "2|1")
+        self.assertEqual(slider["edge_sets"], "0:0|0:0")
+        self.assertEqual(spinner["end_time"], 8000)
+        self.assertTrue(hold["new_combo"])  # type 132 carries the combo flag
+        self.assertEqual(hold["end_time"], 9500)
+        self.assertEqual(broken["raw"], "broken,line")
+
+    def test_crlf_and_missing_file(self) -> None:
+        beatmap = self._read(_FULL_OSU, newline="\r\n")
+        self.assertEqual(beatmap["format"], 14)
+        self.assertEqual(len(beatmap["hitobjects"]), 5)
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                read_osu_beatmap(str(Path(tmp) / "missing.osu"))
 
 
 if __name__ == "__main__":

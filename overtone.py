@@ -2831,8 +2831,8 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
 # .osu red-line reading and map-vs-detected comparison (Phase 5)
 # ---------------------------------------------------------------------------
 
-def _timing_section_lines(osu_path: str | os.PathLike[str]) -> list[str]:
-    """Raw body lines of the .osu [TimingPoints] section."""
+def _load_osu_text(osu_path: str | os.PathLike[str]) -> str:
+    """The whole .osu as text, with the size and encoding guards in one place."""
     path = Path(osu_path)
     if not path.is_file():
         raise ValueError(f"{path} is not a file.")
@@ -2840,9 +2840,14 @@ def _timing_section_lines(osu_path: str | os.PathLike[str]) -> list[str]:
     if size > MAX_OSU_BYTES:
         raise ValueError(f"{path.name} is {size / 1e6:.1f} MB — that is not a beatmap.")
     try:
-        text = path.read_bytes().decode("utf-8-sig")
+        return path.read_bytes().decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise ValueError(f"Could not decode {path.name} as UTF-8.") from exc
+
+
+def _timing_section_lines(osu_path: str | os.PathLike[str]) -> list[str]:
+    """Raw body lines of the .osu [TimingPoints] section."""
+    text = _load_osu_text(osu_path)
     lines = text.splitlines()
     header_idx = next((n for n, line in enumerate(lines)
                        if line.strip() == "[TimingPoints]"), None)
@@ -2857,6 +2862,21 @@ def _timing_section_lines(osu_path: str | os.PathLike[str]) -> list[str]:
     return [line for line in lines[header_idx + 1:end_idx] if line.strip()]
 
 
+def _parse_red_line(line: str) -> tuple[float, float] | None:
+    """One red line as ``(offset_ms, bpm)``, or None when it has no numbers."""
+    if not _is_red_line(line.strip()):
+        return None
+    fields = line.strip().split(",")
+    try:
+        offset = float(fields[0])
+        beat_length = float(fields[1])
+    except (ValueError, IndexError):
+        return None
+    if not (np.isfinite(offset) and np.isfinite(beat_length)) or beat_length <= 0:
+        return None
+    return (offset, 60000.0 / beat_length)
+
+
 def read_osu_red_lines(osu_path: str | os.PathLike[str]) -> list[tuple[float, float]]:
     """Every uninherited (red) timing line as ``(offset_ms, bpm)``.
 
@@ -2868,20 +2888,8 @@ def read_osu_red_lines(osu_path: str | os.PathLike[str]) -> list[tuple[float, fl
     Lines with no usable numbers are skipped rather than fatal: one hand-broken
     line must not hide the rest of the map.
     """
-    reds: list[tuple[float, float]] = []
-    for line in _timing_section_lines(osu_path):
-        if not _is_red_line(line.strip()):
-            continue
-        fields = line.strip().split(",")
-        try:
-            offset = float(fields[0])
-            beat_length = float(fields[1])
-        except (ValueError, IndexError):
-            continue
-        if not (np.isfinite(offset) and np.isfinite(beat_length)) or beat_length <= 0:
-            continue
-        reds.append((offset, 60000.0 / beat_length))
-    return reds
+    return [red for line in _timing_section_lines(osu_path)
+            if (red := _parse_red_line(line)) is not None]
 
 
 #: Past this octave-normalised BPM gap the map and the detection disagree
@@ -2998,6 +3006,169 @@ def scan_beatmap_folder(folder: str | os.PathLike[str]) -> dict:
         audio = audios[0]
     return {"folder": str(root), "audio": str(audio) if audio else None,
             "beatmaps": beatmaps, "audio_from": audio_from}
+
+
+# ---------------------------------------------------------------------------
+# Full .osu reading (Phase 5, first row)
+# ---------------------------------------------------------------------------
+
+def _split_osu_sections(text: str) -> tuple[int, list[dict]]:
+    """Format version plus every section in file order, raw lines included.
+
+    Unknown sections ride along verbatim in ``sections`` — the span-preserving
+    writer's contract is that a field nobody asked to change comes out
+    byte-identical, and that starts with the reader losing nothing.
+    """
+    version = 0
+    sections: list[dict] = []
+    current: dict | None = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("osu file format v"):
+            try:
+                version = int(stripped.rsplit("v", 1)[1])
+            except ValueError:
+                pass
+            continue
+        if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
+            current = {"name": stripped[1:-1], "lines": []}
+            sections.append(current)
+            continue
+        if current is not None:
+            current["lines"].append(line)
+    return version, sections
+
+
+def _osu_key_values(lines: list[str]) -> dict:
+    """``Key: value`` pairs; comments and blanks skipped, last key wins."""
+    values: dict[str, str] = {}
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("//") or ":" not in stripped:
+            continue
+        key, value = stripped.split(":", 1)
+        values[key.strip()] = value.strip()
+    return values
+
+
+def _parse_hit_sample(text: str) -> dict:
+    """``normal:addition:index:volume:file`` — short forms pad with silence."""
+    parts = (text or "").split(":")
+    while len(parts) < 5:
+        parts.append("")
+    out: dict = {"raw": text}
+    for key, part in zip(("normal_set", "addition_set", "index", "volume"), parts[:4]):
+        try:
+            out[key] = int(part)
+        except ValueError:
+            out[key] = 0
+    out["file"] = parts[4]
+    return out
+
+
+def _parse_slider_curve(data: str) -> dict:
+    """``B|123:456|789:12`` — curve kind plus integer anchor points."""
+    kind, _, rest = data.partition("|")
+    points: list[tuple[int, int]] = []
+    for token in rest.split("|"):
+        if ":" not in token:
+            continue
+        try:
+            px, py = token.split(":")
+            points.append((int(px), int(py)))
+        except ValueError:
+            continue
+    return {"curve_type": kind, "points": points}
+
+
+def _parse_hit_object(line: str) -> dict:
+    """One [HitObjects] line as plain types, always keeping the raw line.
+
+    Circles, sliders (curve, slides, length, edges), spinners and mania holds;
+    anything else — including a hand-broken line — comes back as ``unparsed``
+    with its raw text, so one bad object never hides the rest of the map.
+    """
+    obj: dict = {"raw": line, "kind": "unparsed"}
+    fields = line.split(",")
+    if len(fields) < 5:
+        return obj
+    try:
+        x, y, time = int(fields[0]), int(fields[1]), int(fields[2])
+        type_bits, hit_sound = int(fields[3]), int(fields[4])
+    except ValueError:
+        return obj
+    obj.update({"x": x, "y": y, "time": time, "type": type_bits,
+                "hit_sound": hit_sound, "new_combo": bool(type_bits & 4),
+                "combo_skip": (type_bits >> 4) & 7})
+    rest = fields[5:]
+    if type_bits & 128:  # mania hold: endTime, then the sample
+        try:
+            end, _, sample = rest[0].partition(":")
+            obj.update({"kind": "hold", "end_time": int(end),
+                        "hit_sample": _parse_hit_sample(sample)})
+        except (ValueError, IndexError):
+            pass
+    elif type_bits & 8:  # spinner: endTime, then the sample
+        try:
+            obj.update({"kind": "spinner", "end_time": int(rest[0]),
+                        "hit_sample": _parse_hit_sample(rest[1] if len(rest) > 1 else "")})
+        except (ValueError, IndexError):
+            pass
+    elif type_bits & 2:  # slider: curve, slides, length, then edges and sample
+        try:
+            curve = _parse_slider_curve(rest[0])
+            obj.update({"kind": "slider", "curve": curve,
+                        "slides": int(rest[1]), "length": float(rest[2])})
+        except (ValueError, IndexError):
+            return obj
+        if len(rest) > 3:
+            obj["edge_sounds"] = rest[3]
+        if len(rest) > 4:
+            obj["edge_sets"] = rest[4]
+        if len(rest) > 5:
+            obj["hit_sample"] = _parse_hit_sample(rest[5])
+    elif type_bits & 1:
+        obj.update({"kind": "circle",
+                    "hit_sample": _parse_hit_sample(rest[0] if rest else "")})
+    return obj
+
+
+def read_osu_beatmap(osu_path: str | os.PathLike[str]) -> dict:
+    """The whole beatmap as plain types (Phase 5, first row).
+
+    ``sections`` carries every section in file order with raw lines, so
+    unknown sections and keys survive even though only the known ones get
+    parsed views (``general``/``editor``/``metadata``/``difficulty``,
+    ``timing`` reds plus green raws, ``hitobjects``). Hit sounds parse into
+    ``normal_set``/``addition_set``/``index``/``volume``/``file``. Nothing
+    here writes; the writer will rebuild from ``sections``.
+    """
+    text = _load_osu_text(osu_path)
+    version, sections = _split_osu_sections(text)
+    by_name: dict[str, dict] = {}
+    for section in sections:
+        by_name.setdefault(section["name"], section)
+
+    def body(name: str) -> list[str]:
+        return by_name.get(name, {}).get("lines", [])
+
+    timing = [line for line in body("TimingPoints") if line.strip()
+              and not line.strip().startswith("//")]
+    objects = [line for line in body("HitObjects") if line.strip()
+               and not line.strip().startswith("//")]
+    return {
+        "format": version,
+        "sections": sections,
+        "general": _osu_key_values(body("General")),
+        "editor": _osu_key_values(body("Editor")),
+        "metadata": _osu_key_values(body("Metadata")),
+        "difficulty": _osu_key_values(body("Difficulty")),
+        "timing": {
+            "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
+            "greens": [line for line in timing if not _is_red_line(line.strip())],
+        },
+        "hitobjects": [_parse_hit_object(line) for line in objects],
+    }
 
 
 # ---------------------------------------------------------------------------

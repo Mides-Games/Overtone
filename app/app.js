@@ -442,6 +442,8 @@ function renderDetail() {
       </div>
       <div class="editor-row">
         <button class="btn small" data-action="nudge--5">−5 ms</button>
+        <button class="btn small" data-action="nudge--1">−1 ms</button>
+        <button class="btn small" data-action="nudge-1">+1 ms</button>
         <button class="btn small" data-action="nudge-5">+5 ms</button>
         <button class="btn small" data-action="half-s">÷2 §</button>
         <button class="btn small" data-action="double-s">×2 §</button>
@@ -486,9 +488,9 @@ async function editAction(action) {
     if (sel < 0) { toast(t("no_selection"), true); return; }
     reply = await api().edit_delete(sel);
     if (reply.ok) message = t("deleted", { n: sel + 1 });
-  } else if (action === "nudge--5" || action === "nudge-5") {
+  } else if (action.startsWith("nudge")) {
     if (sel < 0) { toast(t("no_selection"), true); return; }
-    reply = await api().edit_nudge(sel, action === "nudge--5" ? -5 : 5);
+    reply = await api().edit_nudge(sel, parseFloat(action.replace("nudge-", "")));
     if (reply.ok) {
       const q = reply.result.points[reply.selected];
       message = t("edited", { n: reply.selected + 1, bpm: q.bpm.toFixed(3), ms: q.offset_ms.toFixed(1) });

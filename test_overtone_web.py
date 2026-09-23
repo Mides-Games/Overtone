@@ -398,5 +398,68 @@ class DropTests(_IsolatedConfig):
         self.assertAlmostEqual(payload["global_bpm"], direct.global_bpm)
 
 
+class UndoTests(_IsolatedConfig):
+    def test_undo_restores_and_redo_reapplies(self) -> None:
+        api = _api_with_points()
+        before = list(api._analysis.points)
+        reply = api.edit_apply(1, 9200.0, 160.0)
+        self.assertTrue(reply["undo"])
+        self.assertFalse(reply["redo"])
+        undone = api.undo()
+        self.assertTrue(undone["ok"])
+        self.assertEqual(api._analysis.points, before)
+        self.assertFalse(undone["undo"])
+        self.assertTrue(undone["redo"])
+        redone = api.redo()
+        self.assertTrue(redone["ok"])
+        self.assertAlmostEqual(api._analysis.points[1].bpm, 160.0)
+        self.assertTrue(redone["undo"])
+        self.assertFalse(redone["redo"])
+        json.dumps(redone["result"])
+
+    def test_a_new_edit_discards_the_redo_stack(self) -> None:
+        api = _api_with_points()
+        api.edit_apply(1, 9200.0, 160.0)
+        api.undo()
+        api.edit_add(5000.0, 140.0)
+        self.assertEqual(api.redo()["key"], "no_redo")
+
+    def test_empty_stacks_and_missing_result(self) -> None:
+        self.assertEqual(web.Api().undo()["key"], "first")
+        self.assertEqual(web.Api().redo()["key"], "first")
+        api = _api_with_points()
+        self.assertEqual(api.undo()["key"], "no_undo")
+        self.assertEqual(api.redo()["key"], "no_redo")
+        self.assertEqual(api.history_state(), {"undo": False, "redo": False})
+
+    def test_a_failed_edit_leaves_no_history_entry(self) -> None:
+        api = _api_with_points()
+        self.assertFalse(api.edit_apply(0, 1000.0, -3.0)["ok"])
+        self.assertFalse(api.history_state()["undo"])
+
+    def test_history_is_capped(self) -> None:
+        api = _api_with_points()
+        for n in range(60):
+            self.assertTrue(api.edit_add(2000.0 + n, 140.0)["ok"])
+        for _ in range(50):
+            self.assertTrue(api.undo()["ok"])
+        self.assertEqual(api.undo()["key"], "no_undo")
+
+    def test_a_fresh_analysis_clears_both_stacks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "drums.wav"
+            _drum_track(wav, [(0.5, 128.0)], duration=4.0)
+            api = _api_with_points()
+            api.edit_add(5000.0, 140.0)
+            self.assertTrue(api.history_state()["undo"])
+            done = threading.Event()
+            api._emit = lambda handler, payload: done.set() if handler == "onResult" else None
+            self.assertTrue(api.analyze(
+                str(wav), {"delta": 1.5, "persistence": 12, "confidence": 75, "pulse": "auto",
+                           "prefer_map_bpm": True, "refine_beats": True})["ok"])
+            self.assertTrue(done.wait(120), "analysis did not finish")
+            self.assertEqual(api.history_state(), {"undo": False, "redo": False})
+
+
 if __name__ == "__main__":
     unittest.main()

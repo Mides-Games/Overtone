@@ -34,6 +34,9 @@ const I18N = {
     bad_drop: "That drop could not be read as audio.", too_big: "That file is over 64 MB — not a beatmap's audio.",
     busy: "An analysis is already running.", first: "Analyze a song first.", no_grid: "No stored beat grid — analyze again.",
     no_selection: "Select a timing point first.",
+    undo: "Undo", redo: "Redo",
+    no_undo: "Nothing to undo.", no_redo: "Nothing to redo.",
+    undone: "Undone.", redone: "Redone.",
     actions_copy: "Copy .osu", actions_csv: "CSV", actions_click: "Click track", actions_osz: ".osz package", actions_inject: "Inject .osu…",
     e_offset: "Offset (ms)", e_bpm: "BPM", e_apply: "Apply", e_add: "Add", e_delete: "Delete",
     edited: "Point #{n}: {bpm} BPM · {ms} ms", added: "Added {bpm} BPM at {ms} ms", deleted: "Deleted point #{n}",
@@ -79,6 +82,9 @@ const I18N = {
     bad_drop: "No se pudo leer lo soltado como audio.", too_big: "Ese archivo supera los 64 MB — no es el audio de un beatmap.",
     busy: "Ya hay un análisis en curso.", first: "Analizá una canción primero.", no_grid: "No hay rejilla guardada — analizá de nuevo.",
     no_selection: "Elegí primero un timing point.",
+    undo: "Deshacer", redo: "Rehacer",
+    no_undo: "Nada que deshacer.", no_redo: "Nada que rehacer.",
+    undone: "Deshecho.", redone: "Rehecho.",
     actions_copy: "Copiar .osu", actions_csv: "CSV", actions_click: "Pista de clic", actions_osz: "Paquete .osz", actions_inject: "Inyectar .osu…",
     e_offset: "Offset (ms)", e_bpm: "BPM", e_apply: "Aplicar", e_add: "Añadir", e_delete: "Borrar",
     edited: "Punto #{n}: {bpm} BPM · {ms} ms", added: "Añadido {bpm} BPM en {ms} ms", deleted: "Borrado el punto #{n}",
@@ -199,6 +205,41 @@ function setBusy(busy, message) {
 function syncActions() {
   const on = !!S.result && !S.busy;
   ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn"].forEach((id) => { $(id).disabled = !on; });
+  if (!on) {
+    $("undoBtn").disabled = true;
+    $("redoBtn").disabled = true;
+  } else {
+    syncHistory();
+  }
+}
+
+async function syncHistory(known) {
+  const st = known || (api() ? await api().history_state() : { undo: false, redo: false });
+  const off = !S.result || S.busy;
+  $("undoBtn").disabled = off || !st.undo;
+  $("redoBtn").disabled = off || !st.redo;
+}
+
+async function undo() {
+  if (!api() || !S.result || S.busy) return;
+  const keep = S.selected;
+  const reply = await api().undo();
+  if (!reply.ok) { editFailure(reply); return; }
+  S.selected = Math.min(keep, reply.result.points.length - 1);
+  showResult(reply.result);
+  syncHistory(reply);
+  toast(t("undone"));
+}
+
+async function redo() {
+  if (!api() || !S.result || S.busy) return;
+  const keep = S.selected;
+  const reply = await api().redo();
+  if (!reply.ok) { editFailure(reply); return; }
+  S.selected = Math.min(keep, reply.result.points.length - 1);
+  showResult(reply.result);
+  syncHistory(reply);
+  toast(t("redone"));
 }
 
 async function analyze() {
@@ -222,6 +263,7 @@ async function rescale(mult) {
   if (!reply.ok) { toast(t(reply.key, { detail: reply.detail || "" }), true); return; }
   S.selected = -1;
   showResult(reply.result);
+  syncHistory(reply);
   toast(t("rescaled", { f: reply.result.subdivision, n: reply.result.points.length, bpm: reply.result.global_bpm.toFixed(2) }));
 }
 
@@ -238,6 +280,7 @@ window.overtone = {
     }
     S.selected = -1;
     showResult(result);
+    syncHistory();
     toast(t("done", { n: result.points.length, bpm: result.global_bpm.toFixed(2) }));
   },
   onError(detail) { S.pendingDrop = null; setBusy(false); toast(t("error", { detail }), true); },
@@ -352,6 +395,7 @@ function editFailure(reply) {
 function showEditResult(reply, message) {
   S.selected = reply.selected;
   showResult(reply.result);
+  syncHistory(reply);
   toast(message);
 }
 
@@ -703,6 +747,8 @@ function wire() {
   $("csvBtn").onclick = () => saveAs("save_csv");
   $("clickBtn").onclick = () => saveAs("save_click");
   $("oszBtn").onclick = () => saveAs("save_osz");
+  $("undoBtn").onclick = undo;
+  $("redoBtn").onclick = redo;
   $("injectBtn").onclick = injectOsu;
   wireDrop();
   $("trace").addEventListener("mousemove", onTraceMove);
@@ -737,6 +783,10 @@ function wire() {
       return;
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") { e.preventDefault(); openAudio(); }
+    // Inside a field the browser's own undo wins; everywhere else it is the map's.
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); return; }
+    if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "z")
+        || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y")) { e.preventDefault(); redo(); return; }
     if ((e.key === "Enter" || e.key === "F5") && !$("drawer").classList.contains("open")) { e.preventDefault(); analyze(); }
   });
 }

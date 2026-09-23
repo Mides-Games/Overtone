@@ -153,8 +153,47 @@ class Api:
         self._analysis: ta.Analysis | None = None
         self._busy = threading.Lock()
         self._cfg = ta.load_config()
+        #: Undo/redo stacks: snapshots of the point list before each mutation.
+        #: A fresh analysis replaces the whole map, so it clears both.
+        self._history: list[list] = []
+        self._future: list[list] = []
         if initial_file:
             self._cfg["file"] = initial_file
+
+    #: Cap, so an evening of nudging cannot grow memory without bound.
+    UNDO_DEPTH = 50
+
+    def _push_history(self) -> None:
+        if self._analysis is None:
+            return
+        self._history.append(list(self._analysis.points))
+        del self._history[:-self.UNDO_DEPTH]
+        self._future.clear()
+
+    def history_state(self) -> dict:
+        return {"undo": bool(self._history), "redo": bool(self._future)}
+
+    def undo(self) -> dict:
+        """Restore the point list from before the last edit."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not self._history:
+            return {"ok": False, "key": "no_undo"}
+        self._future.append(list(self._analysis.points))
+        self._analysis.points = self._history.pop()
+        return {"ok": True, "result": analysis_payload(self._analysis),
+                "selected": -1, **self.history_state()}
+
+    def redo(self) -> dict:
+        """Re-apply an undone edit. Any new edit discards the redo stack."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not self._future:
+            return {"ok": False, "key": "no_redo"}
+        self._history.append(list(self._analysis.points))
+        self._analysis.points = self._future.pop()
+        return {"ok": True, "result": analysis_payload(self._analysis),
+                "selected": -1, **self.history_state()}
 
     # -- state -----------------------------------------------------------
     def state(self) -> dict:
@@ -271,12 +310,15 @@ class Api:
         factor = min(ta.ALLOWED_FACTORS, key=lambda f: abs(np.log2(f / target)))
         params = self._params(self.state()["options"])
         try:
-            self._analysis = ta.rebuild_with_subdivision(
+            rebuilt = ta.rebuild_with_subdivision(
                 analysis, factor, params["min_delta"], params["persistence"],
                 params["min_confidence"])
         except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
             return {"ok": False, "key": "error", "detail": str(exc)}
-        return {"ok": True, "result": analysis_payload(self._analysis)}
+        self._push_history()
+        self._analysis = rebuilt
+        return {"ok": True, "result": analysis_payload(self._analysis),
+                **self.history_state()}
 
     # -- manual editing (same helpers, same guards as the Tk editor) -----
     def _edited(self, index: int | None, seek: float | None) -> dict:
@@ -289,7 +331,7 @@ class Api:
             selected = min(range(len(points)),
                            key=lambda n: abs(points[n].offset_ms - seek))
         return {"ok": True, "result": analysis_payload(self._analysis),
-                "selected": selected}
+                "selected": selected, **self.history_state()}
 
     def edit_apply(self, index: int, offset_ms: float, bpm: float) -> dict:
         """Replace one point's offset/BPM, like the Tk editor's Apply."""
@@ -298,10 +340,12 @@ class Api:
         try:
             index = int(index)
             offset = float(offset_ms)
-            self._analysis.points = ta.update_timing_point(
+            points = ta.update_timing_point(
                 self._analysis.points, self._analysis.beats, index, offset, float(bpm))
         except (ValueError, TypeError, IndexError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
+        self._push_history()
+        self._analysis.points = points
         return self._edited(index, offset)
 
     def edit_add(self, offset_ms: float, bpm: float) -> dict:
@@ -310,10 +354,12 @@ class Api:
             return {"ok": False, "key": "first"}
         try:
             offset = float(offset_ms)
-            self._analysis.points = ta.add_timing_point(
+            points = ta.add_timing_point(
                 self._analysis.points, self._analysis.beats, offset, float(bpm))
         except (ValueError, TypeError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
+        self._push_history()
+        self._analysis.points = points
         return self._edited(None, offset)
 
     def edit_delete(self, index: int) -> dict:
@@ -322,9 +368,11 @@ class Api:
             return {"ok": False, "key": "first"}
         try:
             index = int(index)
-            self._analysis.points = ta.delete_timing_point(self._analysis.points, index)
+            points = ta.delete_timing_point(self._analysis.points, index)
         except (ValueError, TypeError, IndexError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
+        self._push_history()
+        self._analysis.points = points
         return self._edited(index, None)
 
     def edit_nudge(self, index: int, delta_ms: float) -> dict:
@@ -335,10 +383,12 @@ class Api:
             index = int(index)
             before = self._analysis.points[index].offset_ms
             target = before + float(delta_ms)
-            self._analysis.points = ta.nudge_timing_point(
+            points = ta.nudge_timing_point(
                 self._analysis.points, self._analysis.beats, index, float(delta_ms))
         except (ValueError, TypeError, IndexError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
+        self._push_history()
+        self._analysis.points = points
         return self._edited(index, target)
 
     def edit_rescale(self, index: int, factor: float) -> dict:
@@ -347,10 +397,12 @@ class Api:
             return {"ok": False, "key": "first"}
         try:
             index = int(index)
-            self._analysis.points = ta.rescale_section(
+            points = ta.rescale_section(
                 self._analysis.points, index, float(factor))
         except (ValueError, TypeError, IndexError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
+        self._push_history()
+        self._analysis.points = points
         return self._edited(index, None)
 
     # -- exports and .osu injection (same engine calls as the Tk GUI) -----
@@ -445,6 +497,8 @@ class Api:
         try:
             result = run_analysis(path, params, self._emit_progress)
             self._analysis = result
+            self._history.clear()
+            self._future.clear()
             self._emit("onResult", analysis_payload(result))
         except Exception as exc:  # noqa: BLE001 -- the UI shows the message
             self._emit("onError", str(exc))

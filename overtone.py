@@ -2102,8 +2102,11 @@ def _assemble_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int, fit
 #: white, pink and brown noise and the benchmark's noise fixture +0.014..+0.022;
 #: 27 real songs from an osu! Songs folder (including the live-band track that
 #: falls back to the tracker) +0.090 or more, median +0.225; every synthetic
-#: fixture, ramps included, +0.257 or more.
-MIN_PULSE_GAP = 0.05
+#: fixture, ramps included, +0.257 or more. 0.05 still let the tracker answer
+#: 12 of 240 random-click renders (gaps 0.0505-0.0779); at 0.07 it answers one
+#: (0.0779), and none of 28 more real songs that reach the tracker scores below
+#: 0.0956. Higher would be cutting into music on a sample this size.
+MIN_PULSE_GAP = 0.07
 PULSE_SHUFFLES = 5
 #: One analysis window in 16 (~93 ms apart at 44.1 kHz). The median barely
 #: moves (0.64289 -> 0.64295 on secs-4) and the check costs ~0.25 s, not ~7 s.

@@ -859,6 +859,26 @@ class NoPulseRefusalTests(unittest.TestCase):
                         with self.assertRaises(ValueError):
                             analyze_audio(path, engine=engine)
 
+    def test_scattered_clicks_get_no_bpm_from_the_fallback(self):
+        # One of 12 random-click renders out of 240 that the tracker still
+        # answered at MIN_PULSE_GAP 0.05 (188.6 BPM, gap 0.0558): 34 decaying
+        # noise bursts at random times in 28 s, over a faint noise floor.
+        import soundfile as sf
+        rng = np.random.default_rng(1006)
+        sr = 22050
+        seconds = float(rng.uniform(20, 45))
+        n = int(seconds * rng.uniform(0.6, 1.6))
+        y = (rng.standard_normal(int(seconds * sr)) * rng.uniform(0, 0.01)).astype(np.float32)
+        for t in rng.uniform(0.2, seconds - 0.5, n):
+            i, gain = int(t * sr), rng.uniform(0.2, 0.9)
+            burst = rng.standard_normal(300) * np.exp(-np.arange(300) / 60.0)
+            y[i:i + 300] += (gain * burst[: y.size - i]).astype(np.float32)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "scatter.wav"
+            sf.write(str(path), y, sr)
+            with self.assertRaises(ValueError):
+                analyze_audio(path)
+
     def test_a_pulse_through_the_fallback_still_gets_its_bpm(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "drums.wav"

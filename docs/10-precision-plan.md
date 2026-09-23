@@ -133,14 +133,20 @@ fails partly because the vocals dominate energetically.
 
 ### Dependencies
 
-- **Demucs v4 (htdemucs)** — Meta AI, MIT licence, offline. ~500 MB of
-  weights, ~10 s per minute of audio on CPU, seconds on GPU.
-- **PyTorch** as a runtime dep.
+- **HPSS percussive part** — already in `overtone-dsp` (Fitzgerald median
+  filtering), no weights, no licence question. **The default.**
+- ~~Demucs v4 (htdemucs)~~ — the code is MIT, but its author states that "the
+  model weights are not covered by the MIT license, and are provided only for
+  scientific purposes" ([facebookresearch/demucs#327](https://github.com/facebookresearch/demucs/issues/327)).
+  They cannot ship in Overtone. (84 MB, not the ~500 MB this plan first said.)
+- A learned separator is only added if its **weights'** licence allows
+  redistribution, checked at the source first.
 
 ### Steps
 
-1. **Vendor the weights** in a downloadable-once-on-first-use manner. Never
-   fetched silently; a UI prompt confirms the download.
+1. **Start from the HPSS percussive part.** Anything learned is bundled in the
+   installer if its licence allows it — never downloaded at runtime (see
+   `11-msi-distribution.md`).
 2. **Cache the drum stem** per audio file, keyed by blake3 hash. A track is
    never separated twice.
 3. **Extend the pipeline**:
@@ -170,11 +176,14 @@ reliably than accent depth alone.
 
 ### Dependencies (in preference order — all free/permissive)
 
-- **BeatThis** (Böck et al. 2024, MIT) — newest, smallest, best measured
-  performance on GTZAN and RWC. ~50 MB. First choice.
-- **BeatNet** (Heydari et al. 2021, MIT) — TCN, ~40 MB. Fallback.
-- **madmom** (MPI-2.0) — RNN+DBN, ~200 MB with all models, robust and older
-  but the reference implementation for many benchmarks. Second fallback.
+- **Beat This!** (Foscarin, Schlüter & Widmer, ISMIR 2024) — code **and
+  published weights MIT**. ~78 MB per main model, ~8 MB for the small one.
+  First choice.
+- **BeatNet** (Heydari et al. 2021) — **CC-BY-4.0**: usable with attribution.
+  Fallback.
+- **madmom** — code BSD, but **model files CC BY-NC-SA 4.0**: non-commercial
+  and share-alike. Fine inside a free app with attribution; never in a paid
+  one. Second fallback.
 - **Beat Transformer** (Zhao et al. 2022, MIT) — dilated self-attention.
   Highest peak accuracy in papers but heavier.
 
@@ -184,10 +193,9 @@ reliably than accent depth alone.
 2. **Add `overtone-neural` as a Python subprocess boundary**, so PyTorch is
    loaded lazily and doesn't leak into the fast path. First analysis after
    install shows a "loading model" progress state.
-3. **Get three signals from BeatThis per track**:
-   - beat positions (in seconds, sub-frame),
-   - downbeat positions,
-   - meter (2/3/4 estimate).
+3. **Get two signals from Beat This! per track**: beat and downbeat
+   positions (frame-wise; it has no meter output — the meter stays with
+   Overtone's own measure grid).
 4. **Present them as candidates to the ensemble** (Phase 10.6), not as
    ground truth. The neural model is one voter, not the decider.
 
@@ -254,10 +262,13 @@ fit. This is what handles drift naturally: the tempo of point *k* is
 1. **Re-derive the timing model.** Replace the per-section `period` with
    per-point `mps`. `TimingPoint` gains `measure_position` and
    `measures_per_second`. BPM is derived: `bpm = mps * 60 * beats_per_bar`.
-2. **Port `CalculateMPSBasedOnAdjacentPoints` verbatim.** When a candidate
-   downbeat is added, its `mps` is set from the neighbour ahead; the
-   neighbour behind is updated too. This is a direct port of Tempora's C#.
-3. **Port `FixBpmsToEnsureProperLineups`.** When exporting to `.osu` with
+2. **Reimplement the idea behind `CalculateMPSBasedOnAdjacentPoints`.** When
+   a candidate downbeat is added, its `mps` is set from the neighbour ahead;
+   the neighbour behind is updated too. Tempora is licensed **CC BY-NC-ND
+   4.0 — no derivatives** — so none of its code is copied or translated: the
+   behaviour is rebuilt from its description and tested on Overtone's own
+   fixtures.
+3. **Reimplement the lineup fix (`FixBpmsToEnsureProperLineups`)** the same way. When exporting to `.osu` with
    integer millisecond offsets, tiny rounding errors accumulate across long
    sections; Tempora adjusts the BPM *up* slightly on each point so the next
    downbeat still lands on its intended bar line. Overtone must do the same.
@@ -536,7 +547,9 @@ to ~450 MB — same accuracy, easier to host.
 
 ### Toolchain
 
-- **WiX Toolset v5** (MIT) — MSI authoring.
+- **WiX Toolset** — MSI authoring. Licence **MS-RL**, not MIT; its releases
+  also require the Open Source Maintenance Fee EULA, which asks for a fee when
+  the tool is used to generate revenue.
 - **PyInstaller** — bundle Python + wheels into a redistributable tree.
 - **Azure Trusted Signing** ($10/month) — cheapest path past SmartScreen.
 
@@ -657,26 +670,27 @@ For that residual, the escape valve is the assisted mode — the user taps two
 downbeats and the algorithm rebuilds from there. It stays available even
 after 10.11, and covers the ~5 % nothing else does.
 
-## Free software licence audit
+## Licence audit
 
-Every dependency named here is either MIT, LGPL, or open dataset:
+Checked on 2026-09-23 against each project's own licence file (GitHub API) or,
+where noted, its maintainer's statement. The first version of this table was
+written from memory and got six rows wrong.
 
-| Component | Licence | Notes |
+| Component | Licence | Can it ship in Overtone? |
 |---|---|---|
-| Chromaprint | LGPL-2.1 | dynamic link |
-| BeatThis | MIT | model weights CC-BY-4.0 |
-| BeatNet | MIT | |
-| madmom | MPI-2.0 | |
-| Beat Transformer | MIT | |
-| Demucs v4 | MIT | weights CC-BY-NC — verify commercial use |
-| PyTorch | BSD-3 | |
-| librosa | ISC | |
-| Essentia | AGPL | subprocess boundary to preserve MIT project |
-| osu! API | free, no key needed for GET | rate limit |
-| Ballroom Dataset | research licence | tempo/meter labels |
-| ADTOF | CC-BY-4.0 | drum transcription training |
-| RWC | commercial licence — skip | |
-| Isophonics Beatles | free for research | |
+| Chromaprint | MIT code, **LGPL-2.1 as a whole** (bundled FFmpeg parts) | yes, dynamically linked |
+| Beat This! | **MIT**, code and published weights | yes |
+| BeatNet | **CC-BY-4.0** | yes, with attribution |
+| madmom | code BSD; **models CC BY-NC-SA 4.0** | only in a free app, with attribution, never paid |
+| Beat Transformer | MIT | yes |
+| Demucs v4 | code MIT; **weights "only for scientific purposes"** ([#327](https://github.com/facebookresearch/demucs/issues/327)) | **no** — HPSS instead |
+| Tempora | **CC BY-NC-ND 4.0** | no code; ideas reimplemented only |
+| PyTorch | BSD-3 | yes |
+| librosa | ISC | yes |
+| Essentia | AGPL | only behind a process boundary, if at all |
+| Ballroom, Isophonics, ADTOF, RWC | not checked yet | development only, until checked |
+
+The osu! API row is gone: Overtone makes no network calls.
 
 `Essentia`'s AGPL is the one that needs a careful boundary — anything statically
 linked to it inherits AGPL. Kept as an optional subprocess so the core stays

@@ -395,7 +395,9 @@ pyside6-accessibility  bundled with pyside6
 ### Sub-phase 17.1 — Plugin API (5 days)
 
 - Load Python modules from `%APPDATA%\Overtone\plugins\`.
-- Sandboxed via `RestrictedPython` (MIT, ~1 MB).
+- Restricted with `RestrictedPython` (ZPL-2.1, ~1 MB). Its own README says it
+  "is not a sandbox system": plugins are opt-in, installed by the user, and
+  trusted like any other code they install.
 - Extension points: custom analyzer, custom exporter, custom theme, custom
   hitsound decision.
 - Plugin manifest with declared permissions.
@@ -417,7 +419,7 @@ pyside6-accessibility  bundled with pyside6
 ### Dependencies
 
 ```
-RestrictedPython       7.4.*      ZPL-2.1     ~1 MB   (plugin sandbox)
+RestrictedPython       7.4.*      ZPL-2.1     ~1 MB   (restricted execution — not a sandbox)
 reportlab              4.2.*      BSD-3       ~10 MB
 jinja2                 3.1.*      BSD-3       ~1 MB
 plotly                 5.24.*     MIT         ~40 MB

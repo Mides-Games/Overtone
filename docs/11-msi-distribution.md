@@ -15,14 +15,18 @@ This is the concrete plan to build that.
 Every piece of code and every trained model that Phase 10 needs, so no runtime
 download is ever required.
 
+Sizes and licences re-checked on 2026-09-23 (see the licence audit in
+`10-precision-plan.md`). The totals further down predate that check: they
+still count ~500 MB of Demucs weights that no longer ship.
+
 | Component | Size | Licence | Purpose |
 |---|---:|---|---|
 | Overtone Python source | ~5 MB | MIT | the app |
 | Python embedded 3.14 runtime | ~30 MB | PSF | Python without a system install |
 | PyTorch CPU 2.x | ~200 MB | BSD-3 | run BeatThis and Demucs on CPU |
-| BeatThis weights + inference | ~50 MB | MIT + CC-BY-4.0 | neural beat & downbeat tracking |
-| Demucs v4 (htdemucs) weights | ~500 MB | MIT + CC-BY-NC | source separation |
-| madmom + models (fallback) | ~200 MB | MPI-2.0 | fallback if BeatThis is disabled |
+| Beat This! weights + inference | ~78 MB (small model ~8 MB) | MIT, code and weights | neural beat & downbeat tracking |
+| ~~Demucs v4 weights~~ | — | weights "only for scientific purposes" | **not bundled**; the HPSS percussive part (built in) replaces it |
+| madmom + models (fallback) | size to measure | code BSD, models CC BY-NC-SA 4.0 | fallback; free app only, with attribution |
 | librosa + scipy + numpy | ~120 MB | ISC / BSD | DSP baseline |
 | Chromaprint DLL | ~2 MB | LGPL-2.1 | fingerprint against the user's own `osu!/Songs` |
 | soundfile / libsndfile | ~2 MB | LGPL-2.1 | audio decode |
@@ -43,7 +47,8 @@ Two options for how that lands in the user's storage after install:
 
 ### Toolchain
 
-- **WiX Toolset v5** (MIT) — the industry-standard MSI builder. Turns a
+- **WiX Toolset** (MS-RL; releases need the Open Source Maintenance Fee
+  EULA, with a fee if used to generate revenue) — the industry-standard MSI builder. Turns a
   declarative XML into a signed `.msi`.
 - **PyOxidizer** or **PyInstaller** — bundle Python plus the app into a single
   redistributable directory tree.
@@ -123,7 +128,7 @@ Every installer produces:
 2. **A SHA-256 checksum file** — for offline verification.
 3. **A software bill of materials (SBOM)** in CycloneDX format — every
    bundled dependency, its version, its licence, its source. This is what
-   makes the LGPL and CC-BY-NC obligations reviewable.
+   makes the LGPL, CC-BY and CC BY-NC-SA obligations reviewable.
 4. **A build log** — every wheel, every model, every checksum, reproducibly.
 
 These four are the reason a user can install this on a work machine or a

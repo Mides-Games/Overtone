@@ -356,8 +356,8 @@ estimate with a number or is dropped.
 |---|---|---|---:|:--:|
 | 10.0 | Corpus B | 20 ranked tracks + the scoring script | — | todo |
 | 10.1 | Fingerprint & reuse | match the audio against the user's own `osu!/Songs`; exact when the song is already mapped | large when matched | todo |
-| 10.2 | Source separation | drum stem first | +8 pts | todo |
-| 10.3 | Neural beat tracking | a downbeat model as one more voter | +17 pts | todo |
+| 10.2 | Source separation | percussive stem first — HPSS (built, no weights); Demucs weights are research-only | +8 pts | partial (HPSS in Rust) |
+| 10.3 | Neural beat tracking | Beat This! (MIT code and weights) as one more voter | +17 pts | todo |
 | 10.4 | Multi-signal evidence | multi-band onsets, HPSS, chroma novelty (partly built in Phase 2) | +5 pts | partial (Rust pieces exist) |
 | 10.5 | Rippling model | tempo from neighbouring downbeats, lineup fix on export — our own implementation of the idea | +12 pts | todo |
 | 10.6 | Bayesian ensemble | combine every voter with mapper priors | +5 pts | todo |
@@ -369,9 +369,11 @@ estimate with a number or is dropped.
 | 10.12 | UX for slow but precise | stage progress, cancel, cached intermediates | usability | partial (cache) |
 | 10.13 | **MSI distribution** | one self-contained installer + portable ZIP — [`11-msi-distribution.md`](11-msi-distribution.md) | packaging | todo |
 
-**Before bundling anything:** check each licence at the source. WiX, the madmom model files,
-the Demucs weights and every dataset have terms of their own, and Tempora's code is not to
-be copied — only its ideas reimplemented.
+**Licences, checked at the source on 2026-09-23** (full table in `10-precision-plan.md`):
+Beat This! is MIT down to its weights; BeatNet is CC-BY-4.0; madmom's models are
+non-commercial (CC BY-NC-SA); Demucs's weights are "only for scientific purposes", so
+they do not ship; WiX is MS-RL with a maintenance-fee EULA; Tempora is CC BY-NC-ND, so its
+code is never copied — only its ideas are reimplemented.
 
 **Escape valve.** Some tracks will stay unresolvable (real rubato, aesthetic timing
 choices). For those, an assisted mode — the user taps two downbeats — rebuilds the rest.

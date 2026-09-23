@@ -1094,6 +1094,86 @@ class SparseNoiseRefusalTests(unittest.TestCase):
         self.assertEqual(_pulse_log10p(np.array([]), 0.8, 0.1), 0.0)
 
 
+class BoundedMemoryTests(unittest.TestCase):
+    """Long songs must not take gigabytes, and the blocks must not move a result.
+
+    librosa builds a whole spectrogram for the onset envelope and a whole
+    8-second tempogram (twice) for the fallback tracker. For a 5-minute song
+    that peaked at 3.7 GB; two analyses at once froze a 16 GB machine. Both are
+    now built in blocks that join into the same frames.
+    """
+
+    @staticmethod
+    def _envelope(seconds: float = 40.0) -> tuple[np.ndarray, int]:
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "drums.wav"
+            _drum_track(path, [(0.5, 128.0), (seconds / 2, 140.0)], duration=seconds)
+            y, sr = _load_audio(str(path), lambda _message: None)
+        return ta._onset_envelope(y, sr, HOP), sr
+
+    def test_blocks_rebuild_librosas_tempogram_exactly(self):
+        import librosa
+        from unittest import mock
+        import overtone as ta
+        onset, sr = self._envelope()
+        with mock.patch.object(ta, "TEMPOGRAM_BLOCK", 300):   # several blocks, a ragged last one
+            for win in (384, 1378):
+                pieces = np.concatenate(list(ta._tempogram(onset, sr, HOP, win)), axis=-1)
+                whole = librosa.feature.tempogram(onset_envelope=onset, sr=sr,
+                                                  hop_length=HOP, win_length=win)
+                with self.subTest(win=win):
+                    self.assertTrue(np.array_equal(pieces, whole))
+
+    def test_tempo_readings_are_librosas(self):
+        import librosa
+        import overtone as ta
+        onset, sr = self._envelope()
+        per_frame, overall = ta._tempo_readings(onset, sr, HOP)
+        self.assertTrue(np.array_equal(per_frame, librosa.feature.rhythm.tempo(
+            onset_envelope=onset, sr=sr, hop_length=HOP, aggregate=None, std_bpm=1.0)))
+        self.assertTrue(np.array_equal(overall, librosa.feature.rhythm.tempo(
+            onset_envelope=onset, sr=sr, hop_length=HOP)))
+
+    def test_mel_blocks_match_the_one_shot_spectrogram(self):
+        import librosa
+        from unittest import mock
+        import overtone as ta
+        rng = np.random.default_rng(0)
+        y = (rng.standard_normal(22050 * 8) * 0.1).astype(np.float32)
+        with mock.patch.object(ta, "SPECTROGRAM_BLOCK", 500):
+            pieces = ta._mel_power(y, 22050, HOP)
+        whole = librosa.feature.melspectrogram(y=y, sr=22050, hop_length=HOP,
+                                               fmax=11025, n_mels=128)
+        self.assertEqual(pieces.shape, whole.shape)
+        # Same frames; only float32 summation order in the mel projection differs.
+        self.assertTrue(np.allclose(pieces, whole, rtol=1e-5, atol=1e-6 * float(whole.max())))
+
+    def test_a_two_minute_song_stays_small(self):
+        import tracemalloc
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "long.wav"
+            _drum_track(path, [(0.5, 128.0)], duration=120.0)
+            y, sr = _load_audio(str(path), lambda _message: None)
+        tracemalloc.start()
+        try:
+            start = tracemalloc.get_traced_memory()[0]
+            ta._onset_envelope(y, sr, ta.FIT_HOP)
+            envelope = tracemalloc.get_traced_memory()[1] - start
+            onset = ta._onset_envelope(y, sr, HOP)
+            tracemalloc.reset_peak()
+            start = tracemalloc.get_traced_memory()[0]
+            ta._global_tempo_guides(onset, sr, HOP)
+            ta._track_beats_hybrid(onset, sr, HOP)
+            tracker = tracemalloc.get_traced_memory()[1] - start
+        finally:
+            tracemalloc.stop()
+        # Measured: 533 MB and 1363 MB before, 160 MB and 131 MB in blocks.
+        self.assertLess(envelope / 2**20, 300)
+        self.assertLess(tracker / 2**20, 400)
+
+
 class StrayLeadInTests(unittest.TestCase):
     """A lone click before the music must not throw the grid away.
 

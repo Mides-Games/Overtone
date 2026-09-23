@@ -139,12 +139,43 @@ def _fast_onset_envelope(y: np.ndarray, sr: int, hop: int) -> np.ndarray:
     return np.maximum(np.diff(magnitude, axis=1), 0).mean(axis=0).astype(np.float32)
 
 
+#: Spectrogram and tempogram are built a block at a time. librosa materialises
+#: each whole: the linear spectrogram behind the onset envelope was ~1.3 GB for
+#: a 5-minute song at FIT_HOP, the tempogram behind the fallback tracker's
+#: tempo estimate ~3.5 GB -- enough, two songs at a time, to freeze a 16 GB
+#: machine. Block sizes are the fastest measured on that song: large for the
+#: spectrogram (2.2 s against 1.9 s one-shot, ~0.2 GB), small for the
+#: tempogram, whose column FFTs then stay in cache (6.0 s a pass against 7.0 s
+#: one-shot, ~70 MB). The frames come out the same (see _mel_power, _tempogram).
+SPECTROGRAM_BLOCK = 8192
+TEMPOGRAM_BLOCK = 1024
+ONSET_N_FFT = 2048
+
+
+def _mel_power(y: np.ndarray, sr: int, hop: int) -> np.ndarray:
+    """librosa's centred 128-band mel power spectrogram, a block at a time.
+
+    Each frame is the same zero-padded slice of the signal as in the one-shot
+    call, so only the mel projection's float32 summation order can differ:
+    at most ~2e-6 of the envelope's range, measured on a real song.
+    """
+    padded = np.pad(y.astype(np.float32), ONSET_N_FFT // 2, mode="constant")
+    frames = 1 + y.size // hop
+    blocks = []
+    for first in range(0, frames, SPECTROGRAM_BLOCK):
+        last = min(frames, first + SPECTROGRAM_BLOCK)
+        blocks.append(librosa.feature.melspectrogram(
+            y=padded[first * hop:(last - 1) * hop + ONSET_N_FFT], sr=sr, n_fft=ONSET_N_FFT,
+            hop_length=hop, center=False, fmax=11025, n_mels=128))
+    return np.concatenate(blocks, axis=-1)
+
+
 def _onset_envelope(y: np.ndarray, sr: int, hop: int) -> np.ndarray:
     """Normalized onset-strength envelope (librosa first, flux fallback)."""
     try:
         env = librosa.onset.onset_strength(
-            y=y.astype(np.float32), sr=sr, hop_length=hop,
-            aggregate=np.median, fmax=11025, n_mels=128,
+            S=librosa.power_to_db(_mel_power(y, sr, hop)), sr=sr, hop_length=hop,
+            n_fft=ONSET_N_FFT, aggregate=np.median,
         ).astype(np.float32)
     except Exception:
         env = _fast_onset_envelope(y, sr, hop)
@@ -198,15 +229,60 @@ def _regularity_score(frames: np.ndarray) -> float:
     return float(coverage - 6.0 * cv)
 
 
+def _tempogram(onset: np.ndarray, sr: int, hop: int, win_length: int):
+    """librosa.feature.tempogram(onset, center=True), in blocks of columns.
+
+    The envelope is padded once exactly as librosa pads it, and each block is
+    the uncentred tempogram of its own slice: every column is the same window
+    of the same signal, so the blocks join bit for bit into the one-shot array
+    (checked on fixtures and a real song) without its FFT buffers.
+    """
+    n = onset.shape[-1]
+    half = win_length // 2
+    padded = np.pad(onset, (half, half), mode="linear_ramp", end_values=[0, 0])
+    for first in range(0, n, TEMPOGRAM_BLOCK):
+        last = min(n, first + TEMPOGRAM_BLOCK)
+        yield librosa.feature.tempogram(onset_envelope=padded[first:last - 1 + win_length],
+                                        sr=sr, hop_length=hop, win_length=win_length,
+                                        center=False)
+
+
+def _tempo_readings(onset: np.ndarray, sr: int, hop: int) -> tuple[np.ndarray, np.ndarray]:
+    """Both of the fallback tracker's readings of librosa's 8-second tempogram.
+
+    ``(per-frame tempo, overall tempo)``: what _global_tempo_guides reads with
+    ``aggregate=None, std_bpm=1.0``, and what librosa.beat.beat_track estimates
+    for itself (the time-mean read through the default prior). v3 built that
+    tempogram twice, whole; this is one pass in blocks. The per-frame tempo is
+    column for column the same; the mean is summed block by block and differs
+    from numpy's one-shot mean by ~1e-16, which picks the same tempo bin.
+    """
+    win = int(librosa.time_to_frames(8.0, sr=sr, hop_length=hop))
+    per_frame, total = [], 0.0
+    for block in _tempogram(onset, sr, hop, win):
+        per_frame.append(librosa.feature.rhythm.tempo(tg=block, sr=sr, hop_length=hop,
+                                                      aggregate=None, std_bpm=1.0))
+        total = total + block.sum(axis=-1, keepdims=True)
+    overall = librosa.feature.rhythm.tempo(tg=total / onset.shape[-1], sr=sr, hop_length=hop)
+    return np.concatenate(per_frame, axis=-1), overall
+
+
 def _track_beats_hybrid(onset: np.ndarray, sr: int, hop: int,
-                        prior_tempo: float | None = None) -> np.ndarray:
-    """Combine librosa trackers with the peak fallback; keep the steadiest."""
+                        prior_tempo: float | None = None,
+                        tracker_bpm: np.ndarray | None = None) -> np.ndarray:
+    """Combine librosa trackers with the peak fallback; keep the steadiest.
+
+    ``tracker_bpm`` is the DP tracker's own tempo estimate when the caller has
+    it already (see _tempo_readings).
+    """
     candidates: list[np.ndarray] = []
     # 1) Dynamic-programming beat tracker (tight: less drift on steady music).
     try:
+        if tracker_bpm is None:
+            tracker_bpm = _tempo_readings(onset, sr, hop)[1]
         _tempo, lib_frames = librosa.beat.beat_track(
             onset_envelope=onset, sr=sr, hop_length=hop,
-            tightness=100, trim=False)
+            tightness=100, trim=False, bpm=tracker_bpm)
         lib_frames = np.asarray(lib_frames, dtype=int)
         if len(lib_frames) >= 8:
             candidates.append(lib_frames)
@@ -343,28 +419,29 @@ def _robust_local_bpms(beats: np.ndarray, radius: int = 3) -> np.ndarray:
     return np.append(smooth, smooth[-1])
 
 
-def _global_tempo_guides(onset: np.ndarray, sr: int, hop: int) -> list[tuple[float, float]]:
+def _global_tempo_guides(onset: np.ndarray, sr: int, hop: int,
+                         frame_tempi: np.ndarray | None = None) -> list[tuple[float, float]]:
     """Return [(bpm, weight)] tempo hypotheses from a tempogram + tracker.
 
     Legacy (v2) path only; the v3 engine uses ``_tempo_hints`` instead.
+    ``frame_tempi`` is the per-frame tempo when the caller has it already
+    (see _tempo_readings).
     """
     guides: list[tuple[float, float]] = []
     try:
         # aggregate=None returns one estimate per frame (shape 2×T); collapse
         # across time with a median — never just read the first frames, which
         # cover the (often unrepresentative) song intro.
-        tempo_frames = librosa.feature.rhythm.tempo(onset_envelope=onset, sr=sr,
-                                                    hop_length=hop, aggregate=None,
-                                                    std_bpm=1.0)
-        tempo_frames = np.atleast_2d(np.asarray(tempo_frames, dtype=float))
+        if frame_tempi is None:
+            frame_tempi = _tempo_readings(onset, sr, hop)[0]
+        tempo_frames = np.atleast_2d(np.asarray(frame_tempi, dtype=float))
         for value in np.median(tempo_frames, axis=1):
             if 30 <= value <= 600 and np.isfinite(value):
                 guides.append((float(value), 1.0))
     except Exception:
         pass
     try:
-        tempogram = librosa.feature.tempogram(onset_envelope=onset, sr=sr,
-                                              hop_length=hop, win_length=384)
+        tempogram = np.concatenate(list(_tempogram(onset, sr, hop, 384)), axis=-1)
         agg = np.mean(tempogram, axis=1)
         freqs = librosa.tempo_frequencies(len(agg), hop_length=hop, sr=sr)
         mask = (freqs >= 30) & (freqs <= 600)
@@ -2088,11 +2165,15 @@ def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
     if _pulse_gap(onset, sr, hop) < MIN_PULSE_GAP:
         raise ValueError("No rhythmic pulse found: this audio sounds like noise or has no beat, "
                          "so there is no BPM to report.")
-    guides = _global_tempo_guides(onset, sr, hop)
+    try:
+        frame_tempi, tracker_bpm = _tempo_readings(onset, sr, hop)
+    except Exception:
+        frame_tempi = tracker_bpm = None
+    guides = _global_tempo_guides(onset, sr, hop, frame_tempi)
     prior = guides[0][0] if guides else None
 
     say("Tracking beats (hybrid DP + PLP + peaks)…")
-    beat_frames = _track_beats_hybrid(onset, sr, hop, prior)
+    beat_frames = _track_beats_hybrid(onset, sr, hop, prior, tracker_bpm)
     if len(beat_frames) < 8:
         raise ValueError("Not enough beats detected. Try a file with clearer percussion.")
     if refine_beats:

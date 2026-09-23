@@ -628,6 +628,21 @@ def _insert_subdivisions(frames: np.ndarray, factor: int) -> np.ndarray:
     return np.append(np.concatenate(pieces), frames[-1])
 
 
+def _resubdivide(frames: np.ndarray, subdivision: float) -> np.ndarray:
+    """Beats at ``subdivision`` times the tracked rate.
+
+    1, 2, 4 split each tracked step evenly (_insert_subdivisions). 0.5 and 0.25
+    keep every 2nd / 4th tracked beat from the first, as the precision grid
+    does when it is halved. Not the more accented phase: the onset envelope
+    favours the snare, and on a 170 BPM kit that put the halved grid on the
+    backbeat (see HALF_BAR_CONTRAST).
+    """
+    frames = np.asarray(frames, dtype=float)
+    if subdivision >= 1:
+        return _insert_subdivisions(frames, int(subdivision))
+    return frames[::int(round(1.0 / subdivision))]
+
+
 def _trim_leading_silence(beat_frames: np.ndarray, onset: np.ndarray) -> np.ndarray:
     """Drop beats extrapolated into leading silence before the music starts.
 
@@ -2171,7 +2186,7 @@ def _fit_pulse_gap(env: np.ndarray, sr: int) -> float:
 def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
                      min_delta: float, persistence: int, prefer_map_bpm: bool,
                      min_confidence: float, say: Callable[[str], None],
-                     force_subdivision: int, refine_beats: bool) -> Analysis:
+                     factor: float, refine_beats: bool) -> Analysis:
     """v2 tracker path: used when no regular pulse grid can be fitted.
 
     It refuses audio with no pulse at all instead of tracking one: a beat
@@ -2201,12 +2216,15 @@ def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
         beat_frames = _refine_beats_to_transients(beat_frames, onset, sr, hop)
 
     say("Resolving half/double-time pulse…")
-    if force_subdivision in (1, 2, 4):
-        subdivision = int(force_subdivision)
-    else:
-        subdivision = _choose_subdivision(onset, beat_frames, prefer_map_bpm, guides)
+    # ``factor`` multiplies the pulse the tracker settles on, as it does the
+    # precision engine's: 0 or 1 is that pulse. It was read as an absolute
+    # subdivision, so 1 switched the octave choice off and 0.5 / 0.25 were
+    # dropped without a word.
+    subdivision = _choose_subdivision(onset, beat_frames, prefer_map_bpm, guides)
+    if factor:
+        subdivision *= float(factor)
     beat_frames_raw = np.asarray(beat_frames, dtype=float).copy()
-    beat_frames = _insert_subdivisions(beat_frames, subdivision)
+    beat_frames = _resubdivide(beat_frames, subdivision)
     if refine_beats:
         # Interpolated midpoints can sit up to half a beat away from the true
         # attack, so widen the snap window proportionally to the beat length.
@@ -2292,9 +2310,8 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
             raise ValueError(
                 "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
         say("No fittable grid — falling back to the beat tracker…" + failure)
-    legacy_force = int(force_subdivision) if float(force_subdivision) in (1, 2, 4) else 0
     return _legacy_analysis(path, y, sr, min_delta, persistence, prefer_map_bpm,
-                            min_confidence, say, legacy_force, refine_beats)
+                            min_confidence, say, float(force_subdivision), refine_beats)
 
 
 def analyze_batch(folder: str | os.PathLike[str], min_delta: float = 1.5,
@@ -2361,11 +2378,9 @@ def rebuild_with_subdivision(analysis: Analysis, factor: float,
                         rebuilt.onset, rebuilt.base_frames, rebuilt.attack_times,
                         rebuilt.attack_weights, rebuilt.sections, rebuilt.meter_beats,
                         rebuilt.downbeat_class, rebuilt.fit_residual_ms, "precision")
-    if factor not in (1.0, 2.0, 4.0):
-        raise ValueError("Legacy analyses only support factors 1, 2 and 4.")
     if analysis.base_frames is None or len(analysis.base_frames) < 4:
         raise ValueError("This analysis has no stored beat grid to rebuild from.")
-    frames = _insert_subdivisions(np.asarray(analysis.base_frames, dtype=float), int(factor))
+    frames = _resubdivide(analysis.base_frames, factor)
     median_gap_s = (float(np.median(np.diff(np.asarray(frames, dtype=float)))) * analysis.hop_length
                     / analysis.sample_rate) if len(frames) > 1 else 0.5
     frames = _refine_beats_to_transients(
@@ -2384,7 +2399,7 @@ def rebuild_with_subdivision(analysis: Analysis, factor: float,
         points = [max(candidates, key=lambda p: p.confidence)]
     global_bpm = float(np.median(local_v)) if len(local_v) else 0.0
     return Analysis(analysis.source, analysis.duration, beats_v, local_v, points,
-                    analysis.hop_length, analysis.sample_rate, int(factor), global_bpm,
+                    analysis.hop_length, analysis.sample_rate, factor, global_bpm,
                     _stability(local_v),
                     _guess_meter(beats_v, analysis.onset, analysis.sample_rate,
                                  analysis.hop_length),

@@ -1095,6 +1095,43 @@ class SparseNoiseRefusalTests(unittest.TestCase):
         self.assertEqual(_pulse_log10p(np.array([]), 0.8, 0.1), 0.0)
 
 
+class LegacyPulseFactorTests(unittest.TestCase):
+    """The fallback tracker must honour ÷2 and ÷4, and read x1 as the precision engine does.
+
+    It took the factor as an absolute subdivision of its tracked beats: 0.5 and
+    0.25 fell back to auto without a word -- a 100 BPM kit read at 199.5 stayed
+    at 199.5 when the user asked for half -- and 1 switched its octave choice off.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.path = Path(cls._tmp.name) / "kit100.wav"
+        _drum_track(cls.path, [(0.5, 100.0)], duration=20.0)
+        cls.auto = analyze_audio(cls.path, engine="legacy")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_half_is_applied_from_the_first_beat(self):
+        self.assertAlmostEqual(self.auto.global_bpm, 200.0, delta=2.0)   # read at double time
+        half = analyze_audio(self.path, engine="legacy", force_subdivision=0.5)
+        self.assertAlmostEqual(half.global_bpm, 100.0, delta=1.0)
+        self.assertEqual(half.subdivision, 0.5)
+        self.assertLess(abs(snap_timing_points(half.points)[0].offset_ms - 500.0), 20.0)
+
+    def test_one_means_as_detected(self):
+        same = analyze_audio(self.path, engine="legacy", force_subdivision=1)
+        self.assertEqual(same.global_bpm, self.auto.global_bpm)
+        self.assertEqual([(p.offset_ms, p.bpm) for p in same.points],
+                         [(p.offset_ms, p.bpm) for p in self.auto.points])
+
+    def test_halving_a_legacy_result_needs_no_reanalysis(self):
+        half = rebuild_with_subdivision(self.auto, 0.5)
+        self.assertAlmostEqual(half.global_bpm, 100.0, delta=1.0)
+
+
 class LongMixTests(unittest.TestCase):
     """Section growth must reach the end of a long track.
 

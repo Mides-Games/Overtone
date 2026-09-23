@@ -112,8 +112,7 @@ pub fn analyze(y: &[f32], sr: u32, attack_s: f64) -> Spectral {
         (mag.len() - 1) as f64 * bin_hz
     };
     let bandwidth = if mag_sum > 0.0 {
-        (mag
-            .iter()
+        (mag.iter()
             .enumerate()
             .map(|(i, &m)| {
                 let d = i as f64 * bin_hz - centroid;
@@ -156,7 +155,16 @@ pub fn analyze(y: &[f32], sr: u32, attack_s: f64) -> Spectral {
         num / mag_sum.max(1e-12)
     };
 
-    Spectral { band_ratios, centroid, rolloff85: rolloff(0.85), rolloff95: rolloff(0.95), bandwidth, flatness, crest, flux }
+    Spectral {
+        band_ratios,
+        centroid,
+        rolloff85: rolloff(0.85),
+        rolloff95: rolloff(0.95),
+        bandwidth,
+        flatness,
+        crest,
+        flux,
+    }
 }
 
 #[cfg(test)]
@@ -182,7 +190,7 @@ mod tests {
         let n = (seconds * sr as f64) as usize;
         let start = (at * sr as f64) as usize;
         let mut y = vec![0.0f32; n];
-        for i in start..n {
+        for (i, v) in y.iter_mut().enumerate().skip(start) {
             let dt = (i - start) as f64 / sr as f64;
             let env = (-dt / decay).exp();
             let tone = if freq > 0.0 {
@@ -190,7 +198,7 @@ mod tests {
             } else {
                 0.0
             };
-            y[i] = (tone * env + noise * rng() * (-dt / 0.01).exp().min(1.0) * env) as f32;
+            *v = (tone * env + noise * rng() * (-dt / 0.01).exp().min(1.0) * env) as f32;
         }
         let peak = y.iter().map(|v| v.abs()).fold(0.0f32, f32::max).max(1e-9);
         y.iter().map(|v| v / peak * 0.99).collect()

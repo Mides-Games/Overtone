@@ -146,8 +146,9 @@ mod tests {
             }
             let dt = i as f64 / sr as f64;
             let attack = 0.5 - 0.5 * (std::f64::consts::PI * (dt / 0.01).min(1.0)).cos();
-            y[start + i] +=
-                ((2.0 * std::f64::consts::PI * freq * dt).sin() * attack * (-dt / 0.2).exp()) as f32;
+            y[start + i] += ((2.0 * std::f64::consts::PI * freq * dt).sin()
+                * attack
+                * (-dt / 0.2).exp()) as f32;
         }
         let peak = y.iter().map(|v| v.abs()).fold(0.0f32, f32::max).max(1e-9);
         y.iter().map(|v| v / peak * 0.99).collect()
@@ -173,7 +174,12 @@ mod tests {
         for pair in edges.windows(2) {
             assert!(pair[1] > pair[0]);
             // Log-spaced over 40–11025 Hz in 7 bands: each ~2.23x the last.
-            assert!((pair[1] / pair[0] - 2.23).abs() < 0.05, "{} vs {}", pair[0], pair[1]);
+            assert!(
+                (pair[1] / pair[0] - 2.23).abs() < 0.05,
+                "{} vs {}",
+                pair[0],
+                pair[1]
+            );
         }
     }
 
@@ -211,10 +217,7 @@ mod tests {
         let mut order: Vec<usize> = (0..BANDS).collect();
         order.sort_by(|&a, &b| peaks[b].total_cmp(&peaks[a]));
         assert_eq!(order[0], target, "peaks {peaks:.2?}");
-        assert!(
-            peaks[order[0]] > 2.0 * peaks[order[1]],
-            "peaks {peaks:.2?}"
-        );
+        assert!(peaks[order[0]] > 2.0 * peaks[order[1]], "peaks {peaks:.2?}");
     }
 
     #[test]
@@ -227,8 +230,14 @@ mod tests {
         let hi = ((2.4 * 44_100.0 / 128.0) as usize).min(env.len() - 1);
         // Past the switch, the 8 kHz band holds only decaying energy.
         let top = band_of(8000.0);
-        let late: f64 = env[lo..=hi].iter().map(|row| row[top] as f64).fold(0.0, f64::max);
-        assert!(late < 1e-9, "decaying band flux {late} should rectify to zero");
+        let late: f64 = env[lo..=hi]
+            .iter()
+            .map(|row| row[top] as f64)
+            .fold(0.0, f64::max);
+        assert!(
+            late < 1e-9,
+            "decaying band flux {late} should rectify to zero"
+        );
     }
 
     #[test]

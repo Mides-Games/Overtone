@@ -49,7 +49,9 @@ mod tests {
 
     fn tone(sr: u32, seconds: f64, freq: f64) -> Vec<f32> {
         (0..(seconds * sr as f64) as usize)
-            .map(|i| (0.5 * (2.0 * std::f64::consts::PI * freq * i as f64 / sr as f64).sin()) as f32)
+            .map(|i| {
+                (0.5 * (2.0 * std::f64::consts::PI * freq * i as f64 / sr as f64).sin()) as f32
+            })
             .collect()
     }
 

@@ -32,7 +32,12 @@ use overtone_core::{Attack, Seconds, FIT_HOP, N_FFT};
 ///
 /// `retime = false` reproduces v3's `--no-refine`, which exists to diagnose
 /// whether the snapping itself drifts.
-pub fn detect_attacks(y: &[f32], sr: u32, hop: usize, retime_attacks: bool) -> (Vec<Attack>, Vec<f32>) {
+pub fn detect_attacks(
+    y: &[f32],
+    sr: u32,
+    hop: usize,
+    retime_attacks: bool,
+) -> (Vec<Attack>, Vec<f32>) {
     let env = envelope::onset_envelope(y, sr, hop, N_FFT);
     if env.len() < 8 {
         return (Vec::new(), env);
@@ -52,10 +57,7 @@ pub fn detect_attacks(y: &[f32], sr: u32, hop: usize, retime_attacks: bool) -> (
     }
 
     let (frames, mut weights) = peaks::refine_parabolic(&env, &picked);
-    let mut times: Vec<f64> = frames
-        .iter()
-        .map(|&f| f * hop as f64 / sr as f64)
-        .collect();
+    let mut times: Vec<f64> = frames.iter().map(|&f| f * hop as f64 / sr as f64).collect();
 
     if retime_attacks {
         times = retime::retime(y, sr, &times);
@@ -125,7 +127,11 @@ mod tests {
         for attack in &attacks {
             let beats = (attack.time.get() - 0.25) / period;
             let error = (beats - beats.round()).abs() * period * 1000.0;
-            assert!(error < 6.0, "attack at {:?} is {error:.2} ms off", attack.time);
+            assert!(
+                error < 6.0,
+                "attack at {:?} is {error:.2} ms off",
+                attack.time
+            );
         }
     }
 

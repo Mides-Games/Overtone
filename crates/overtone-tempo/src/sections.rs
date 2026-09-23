@@ -55,9 +55,19 @@ pub fn grow_sections(
     min_delta: f64,
     persistence: usize,
 ) -> Vec<GridSection> {
-    grow_sections_with(times, weights, period, phase, min_delta, persistence, SEED_S, STEP_S)
+    grow_sections_with(
+        times,
+        weights,
+        period,
+        phase,
+        min_delta,
+        persistence,
+        SEED_S,
+        STEP_S,
+    )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn grow_sections_with(
     times: &[f64],
     weights: &[f32],
@@ -80,20 +90,29 @@ pub fn grow_sections_with(
     while start < finish - 1.0 && guard < 64 {
         guard += 1;
         let seed_hi = finish.min(start + seed_s.max(12.0 * prior));
-        let fresh = crate::seed_grid(times, weights, start, seed_hi, Some(prior), &crate::GROWTH_WIDTHS);
+        let fresh = crate::seed_grid(
+            times,
+            weights,
+            start,
+            seed_hi,
+            Some(prior),
+            &crate::GROWTH_WIDTHS,
+        );
         let (mut local_period, mut local_phase) = match fresh {
             Some(grid) => (grid.period, grid.phase),
             None => {
-                let (s_times, s_weights) = masked(times, weights, |t| {
-                    t >= start - 0.5 * prior && t <= seed_hi
-                });
+                let (s_times, s_weights) =
+                    masked(times, weights, |t| t >= start - 0.5 * prior && t <= seed_hi);
                 if s_times.len() < 6 {
                     break;
                 }
                 let (grid, _) = fit::refine(
                     &s_times,
                     &s_weights,
-                    Grid { period: prior, phase },
+                    Grid {
+                        period: prior,
+                        phase,
+                    },
                 );
                 (grid.period, grid.phase)
             }
@@ -101,13 +120,15 @@ pub fn grow_sections_with(
         let mut edge = seed_hi;
         while edge < finish {
             let nxt = finish.min(edge + step_s.max(4.0 * local_period));
-            let (c_times, c_weights) =
-                masked(times, weights, |t| t > edge && t <= nxt);
+            let (c_times, c_weights) = masked(times, weights, |t| t > edge && t <= nxt);
             if c_times.len() < 3 {
                 edge = nxt;
                 continue;
             }
-            let grid = Grid { period: local_period, phase: local_phase };
+            let grid = Grid {
+                period: local_period,
+                phase: local_phase,
+            };
             let q = fit::quality_with_tol(&c_times, &c_weights, grid, 0.11);
             if q.share < GROW_SHARE_MIN || q.residual_ms > GROW_RMS_RATIO * local_period * 1000.0 {
                 break;
@@ -124,7 +145,10 @@ pub fn grow_sections_with(
         let (w_times, w_weights) = masked(times, weights, |t| {
             t >= start - 0.5 * local_period && t <= end
         });
-        let grid = Grid { period: local_period, phase: local_phase };
+        let grid = Grid {
+            period: local_period,
+            phase: local_phase,
+        };
         let (grid, _) = fit::refine(&w_times, &w_weights, grid);
         let q = fit::quality(&w_times, &w_weights, grid);
         sections.push(section_of(start, end, grid, q));
@@ -162,8 +186,7 @@ pub fn merge_sections(
         let last = merged.len() - 1;
         let previous = merged[last];
         let same = (section_bpm(section) - bpm_of(&previous)).abs() < min_delta;
-        let tiny = section.end.get() - section.start.get()
-            < persistence as f64 * section.period;
+        let tiny = section.end.get() - section.start.get() < persistence as f64 * section.period;
         if same || tiny {
             let fused = refit_span(
                 times,
@@ -244,10 +267,7 @@ pub fn refit_span(
             inliers += 1;
         }
     }
-    Some(section_of(start, end, grid, fit::Quality {
-        inliers,
-        ..q
-    }))
+    Some(section_of(start, end, grid, fit::Quality { inliers, ..q }))
 }
 
 /// Distance to the closest attack (`inf` when there are none) — v3
@@ -280,6 +300,7 @@ pub fn grid_reach(
     grid_reach_with_misses(times, period, phase, anchor, limit, backwards, tolerance, 1)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn grid_reach_with_misses(
     times: &[f64],
     period: f64,
@@ -323,7 +344,12 @@ fn window_of(section: &GridSection) -> f64 {
     (0.06 * section.period).min((4.0 * section.residual_ms / 1000.0).max(0.010))
 }
 
-pub fn tune_boundary_with_reach(times: &[f64], left: GridSection, right: GridSection, reach: f64) -> f64 {
+pub fn tune_boundary_with_reach(
+    times: &[f64],
+    left: GridSection,
+    right: GridSection,
+    reach: f64,
+) -> f64 {
     if left.period <= 0.0 || right.period <= 0.0 {
         return right.start.get();
     }
@@ -400,8 +426,14 @@ pub fn settle_boundaries(
             let split = tune_boundary(times, sections[i], sections[i + 1]);
             let left = sections[i];
             let right = sections[i + 1];
-            sections[i] = GridSection { end: Seconds(split), ..left };
-            sections[i + 1] = GridSection { start: Seconds(split), ..right };
+            sections[i] = GridSection {
+                end: Seconds(split),
+                ..left
+            };
+            sections[i + 1] = GridSection {
+                start: Seconds(split),
+                ..right
+            };
         }
         let mut refitted: Vec<GridSection> = Vec::with_capacity(sections.len());
         for section in &sections {
@@ -486,7 +518,11 @@ pub fn beat_sections(
     out
 }
 
-fn masked(times: &[f64], weights: &[f32], mut keep: impl FnMut(f64) -> bool) -> (Vec<f64>, Vec<f32>) {
+fn masked(
+    times: &[f64],
+    weights: &[f32],
+    mut keep: impl FnMut(f64) -> bool,
+) -> (Vec<f64>, Vec<f32>) {
     let mut out_times = Vec::new();
     let mut out_weights = Vec::new();
     for (&t, &w) in times.iter().zip(weights.iter()) {
@@ -524,7 +560,11 @@ mod tests {
         let (times, weights) = drum(atom, 0.4, 0.4, 60.0);
         let sections = grow_sections(&times, &weights, atom, 0.4, 1.5, 12);
         assert_eq!(sections.len(), 1, "got {sections:?}");
-        assert!((sections[0].period - atom).abs() < 1e-9, "period {}", sections[0].period);
+        assert!(
+            (sections[0].period - atom).abs() < 1e-9,
+            "period {}",
+            sections[0].period
+        );
         assert!((sections[0].start.get() - times[0]).abs() < 1e-9);
         assert!((sections[0].end.get() - times[times.len() - 1]).abs() < 1e-9);
     }
@@ -543,8 +583,16 @@ mod tests {
         weights.extend(w2.iter().skip(1));
         let sections = grow_sections(&times, &weights, a1, 0.4, 1.5, 12);
         assert_eq!(sections.len(), 2, "got {sections:?}");
-        assert!((sections[0].period - a1).abs() < 1e-6, "first {}", sections[0].period);
-        assert!((sections[1].period - a2).abs() < 1e-6, "second {}", sections[1].period);
+        assert!(
+            (sections[0].period - a1).abs() < 1e-6,
+            "first {}",
+            sections[0].period
+        );
+        assert!(
+            (sections[1].period - a2).abs() < 1e-6,
+            "second {}",
+            sections[1].period
+        );
         assert!(
             (sections[0].end.get() - change).abs() < 6.0,
             "boundary {} vs change {change}",
@@ -557,7 +605,10 @@ mod tests {
         let atom = 60.0 / 174.0 / 2.0;
         let (times, weights) = drum(atom, 0.4, 0.4, 60.0);
         let mk = |start: f64, end: f64| {
-            let grid = Grid { period: atom, phase: 0.4 };
+            let grid = Grid {
+                period: atom,
+                phase: 0.4,
+            };
             let (w, ww) = masked(&times, &weights, |t| t >= start && t <= end);
             let (grid, _) = fit::refine(&w, &ww, grid);
             let q = fit::quality(&w, &ww, grid);
@@ -583,14 +634,34 @@ mod tests {
         let left = section_of(
             0.4,
             change + 3.0,
-            Grid { period: a1, phase: 0.4 },
-            fit::quality(&times, &weights, Grid { period: a1, phase: 0.4 }),
+            Grid {
+                period: a1,
+                phase: 0.4,
+            },
+            fit::quality(
+                &times,
+                &weights,
+                Grid {
+                    period: a1,
+                    phase: 0.4,
+                },
+            ),
         );
         let right = section_of(
             change - 3.0,
             60.0,
-            Grid { period: a2, phase: change },
-            fit::quality(&times, &weights, Grid { period: a2, phase: change }),
+            Grid {
+                period: a2,
+                phase: change,
+            },
+            fit::quality(
+                &times,
+                &weights,
+                Grid {
+                    period: a2,
+                    phase: change,
+                },
+            ),
         );
         let split = tune_boundary(&times, left, right);
         assert!(

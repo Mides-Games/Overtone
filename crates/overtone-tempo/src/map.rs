@@ -50,7 +50,11 @@ pub fn build(times: &[f64], weights: &[f32]) -> CoherenceMap {
 
 pub fn build_with(times: &[f64], weights: &[f32], width: f64, hop: f64) -> CoherenceMap {
     let freqs = frequency_grid(width);
-    let mut map = CoherenceMap { centres: Vec::new(), freqs, columns: Vec::new() };
+    let mut map = CoherenceMap {
+        centres: Vec::new(),
+        freqs,
+        columns: Vec::new(),
+    };
     if times.is_empty() || width <= 0.0 || hop <= 0.0 {
         return map;
     }
@@ -117,7 +121,7 @@ fn peak_near(col: &[f64], freqs: &[f64], prev_log: Option<f64>) -> Option<usize>
         return None;
     }
     let best = col.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    if !(best > 1e-6) {
+    if best.is_nan() || best <= 1e-6 {
         return None;
     }
     let mut peaks = overtone_dsp::peaks::find_peaks(col, 2, None, None);
@@ -203,7 +207,11 @@ mod tests {
         let atom = 60.0 / 174.0 / 2.0;
         let (times, weights) = drum(atom, 0.4, 0.4, 60.0);
         let map = build(&times, &weights);
-        assert!(map.centres.len() >= 20, "only {} windows", map.centres.len());
+        assert!(
+            map.centres.len() >= 20,
+            "only {} windows",
+            map.centres.len()
+        );
         let ridge = ridge(&map);
         assert_eq!(ridge.len(), map.centres.len());
         // R peaks at the pulse and at every multiple of it, so the ridge may

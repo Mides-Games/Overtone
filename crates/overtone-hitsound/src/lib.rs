@@ -25,7 +25,13 @@ pub const WIN_END_S: f64 = 0.120;
 
 /// Samples for `[from_s, to_s)` around `attack_s`, zero-padded past the ends
 /// so edge attacks analyse instead of panicking.
-pub(crate) fn window_samples(y: &[f32], sr: u32, attack_s: f64, from_s: f64, to_s: f64) -> Vec<f64> {
+pub(crate) fn window_samples(
+    y: &[f32],
+    sr: u32,
+    attack_s: f64,
+    from_s: f64,
+    to_s: f64,
+) -> Vec<f64> {
     let start = ((attack_s + from_s) * sr as f64).round() as i64;
     let end = ((attack_s + to_s) * sr as f64).round() as i64;
     (start..end.max(start))

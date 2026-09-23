@@ -67,7 +67,7 @@ impl Rng {
         Self(seed)
     }
 
-    pub fn next(&mut self) -> f64 {
+    pub fn next_f64(&mut self) -> f64 {
         self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1);
         ((self.0 >> 33) as f64 / (1u64 << 31) as f64).clamp(0.0, 1.0)
     }
@@ -99,7 +99,7 @@ pub fn render(
     let mut k = 0usize;
     while t < duration_s - 0.5 {
         let class = classes[k % classes.len()];
-        let velocity = 0.7 + 0.3 * rng.next();
+        let velocity = 0.7 + 0.3 * rng.next_f64();
         place(&mut samples, sr, t, class, velocity, &mut rng);
         hits.push(Hit {
             class,
@@ -119,14 +119,14 @@ fn place(buf: &mut [f32], sr: u32, at: f64, class: HitClass, velocity: f64, rng:
     let (freq, decay, tone_amp, noise_amp, noise_decay, flams): (f64, f64, f64, f64, f64, usize) =
         match class {
             HitClass::Kick => (
-                55.0 + 10.0 * rng.next(),
-                0.020 + 0.008 * rng.next(),
+                55.0 + 10.0 * rng.next_f64(),
+                0.020 + 0.008 * rng.next_f64(),
                 1.0,
                 0.0,
                 0.005,
                 0,
             ),
-            HitClass::Snare => (180.0 + 40.0 * rng.next(), 0.050, 0.7, 0.5, 0.010, 0),
+            HitClass::Snare => (180.0 + 40.0 * rng.next_f64(), 0.050, 0.7, 0.5, 0.010, 0),
             HitClass::Clap => (200.0, 0.030, 0.3, 0.8, 0.004, 3),
             HitClass::HatClosed => (0.0, 0.030, 0.0, 1.0, 0.008, 0),
             HitClass::HatOpen => (0.0, 0.150, 0.0, 1.0, 0.030, 0),
@@ -159,10 +159,11 @@ fn place(buf: &mut [f32], sr: u32, at: f64, class: HitClass, velocity: f64, rng:
             v += tone_amp * (2.0 * std::f64::consts::PI * freq * dt).sin() * (-dt / decay).exp();
         }
         if noise_amp > 0.0 || metallic {
-            let n = rng.next() * 2.0 - 1.0;
+            let n = rng.next_f64() * 2.0 - 1.0;
+            // Metallic voices override only the amplitude; their decay is
+            // already per class in the table (cymbal 0.2 s, hats 30/8 ms).
             let amp = if metallic { 0.6 } else { noise_amp };
-            let dec = if metallic { noise_decay } else { noise_decay };
-            v += amp * n * (-dt / dec).exp();
+            v += amp * n * (-dt / noise_decay).exp();
         }
         buf[start + i] += (v * velocity) as f32;
     }
@@ -204,7 +205,7 @@ fn place(buf: &mut [f32], sr: u32, at: f64, class: HitClass, velocity: f64, rng:
             for &ratio in &[1.0, 1.483, 2.09, 2.94] {
                 v += 0.2 * (2.0 * std::f64::consts::PI * 1600.0 * ratio * dt).sin();
             }
-            v = v * (-dt / 0.8).exp() + 1.0 * (rng.next() * 2.0 - 1.0) * (-dt / 0.25).exp();
+            v = v * (-dt / 0.8).exp() + 1.0 * (rng.next_f64() * 2.0 - 1.0) * (-dt / 0.25).exp();
             buf[start + j] += (v * velocity) as f32;
         }
     }
@@ -230,8 +231,8 @@ fn place(buf: &mut [f32], sr: u32, at: f64, class: HitClass, velocity: f64, rng:
         // Real toms ring a series, not a sine: the upper partials feed
         // the low-mid band and lock the HPS fundamental. A pure sine
         // reads an octave down and starves its own template.
-        let root = 90.0 + 20.0 * rng.next();
-        let decay = 0.150 + 0.05 * rng.next();
+        let root = 90.0 + 20.0 * rng.next_f64();
+        let decay = 0.150 + 0.05 * rng.next_f64();
         for i in 0..(0.6 * sr as f64) as usize {
             if start + i >= buf.len() {
                 break;
@@ -256,14 +257,14 @@ fn place(buf: &mut [f32], sr: u32, at: f64, class: HitClass, velocity: f64, rng:
             for &(ratio, amp) in &[(1.0, 0.45), (1.51, 0.25), (2.09, 0.2)] {
                 v += amp * (2.0 * std::f64::consts::PI * 620.0 * ratio * dt).sin();
             }
-            v = v * (-dt / 0.3).exp() + 0.3 * (rng.next() * 2.0 - 1.0) * (-dt / 0.02).exp();
+            v = v * (-dt / 0.3).exp() + 0.3 * (rng.next_f64() * 2.0 - 1.0) * (-dt / 0.02).exp();
             buf[start + j] += (v * velocity) as f32;
         }
     }
     if matches!(class, HitClass::Bass) {
         // Low sustained E with harmonics: pitched like a kick, long
         // like a pad. Decay, not punch, separates them.
-        let f0 = 41.0 + 7.0 * rng.next();
+        let f0 = 41.0 + 7.0 * rng.next_f64();
         for j in 0..hit_len {
             if start + j >= buf.len() {
                 break;
@@ -308,7 +309,7 @@ fn place(buf: &mut [f32], sr: u32, at: f64, class: HitClass, velocity: f64, rng:
                 v +=
                     0.3 / h * (2.0 * std::f64::consts::PI * f * dt).sin() * (-dt / (0.5 / h)).exp();
             }
-            v += 0.4 * (rng.next() * 2.0 - 1.0) * (-dt / 0.005).exp();
+            v += 0.4 * (rng.next_f64() * 2.0 - 1.0) * (-dt / 0.005).exp();
             buf[start + j] += (v * velocity) as f32;
         }
     }
@@ -316,7 +317,7 @@ fn place(buf: &mut [f32], sr: u32, at: f64, class: HitClass, velocity: f64, rng:
         // Vowel "ah": formant bumps, gentle 5 Hz vibrato, soft attack,
         // sustained. Root varies per take; the formants do not, which
         // is what makes it a vowel and not a note.
-        let root = 240.0 + 40.0 * rng.next();
+        let root = 240.0 + 40.0 * rng.next_f64();
         let bump = |f: f64, c: f64| (-((f - c) / 220.0).powi(2)).exp();
         // Phase-integrated vibrato: sin(2π·f(t)·t) with varying f(t)
         // is FM garbage spraying kilohertz, not vibrato. The phase is
@@ -349,7 +350,7 @@ fn place(buf: &mut [f32], sr: u32, at: f64, class: HitClass, velocity: f64, rng:
             }
             let dt = i as f64 / sr as f64;
             buf[extra + i] +=
-                (0.7 * (rng.next() * 2.0 - 1.0) * (-dt / 0.004).exp() * velocity) as f32;
+                (0.7 * (rng.next_f64() * 2.0 - 1.0) * (-dt / 0.004).exp() * velocity) as f32;
         }
     }
 }

@@ -192,7 +192,9 @@ impl Response {
             }
             Response::Band(lo, mid, hi) => {
                 debug_assert!(lo <= mid && mid <= hi);
-                Response::Rising(lo, mid).apply(x).min(Response::Falling(mid, hi).apply(x))
+                Response::Rising(lo, mid)
+                    .apply(x)
+                    .min(Response::Falling(mid, hi).apply(x))
             }
             Response::AtMost(t) => ((2.0 * t - x) / t.max(1e-12)).clamp(0.0, 1.0),
             Response::AtLeast(t) => ((x - (t - 0.5)) / 1.0).clamp(0.0, 1.0),
@@ -236,154 +238,426 @@ pub fn initial_templates() -> Vec<Template> {
             class: HitClass::Kick,
             bias: 0.0,
             terms: vec![
-                Term { feature: SubRatio, response: Response::Rising(0.25, 0.55), weight: 1.0 },
-                Term { feature: CentroidHz, response: Response::Falling(250.0, 600.0), weight: 0.8 },
-                Term { feature: DecayTauS, response: Response::Band(0.005, 0.02, 0.06), weight: 0.7 },
-                Term { feature: Harmonicity, response: Response::Rising(0.4, 0.7), weight: 0.8 },
-                Term { feature: F0Hz, response: Response::Band(40.0, 60.0, 100.0), weight: 0.7 },
+                Term {
+                    feature: SubRatio,
+                    response: Response::Rising(0.25, 0.55),
+                    weight: 1.0,
+                },
+                Term {
+                    feature: CentroidHz,
+                    response: Response::Falling(250.0, 600.0),
+                    weight: 0.8,
+                },
+                Term {
+                    feature: DecayTauS,
+                    response: Response::Band(0.005, 0.02, 0.06),
+                    weight: 0.7,
+                },
+                Term {
+                    feature: Harmonicity,
+                    response: Response::Rising(0.4, 0.7),
+                    weight: 0.8,
+                },
+                Term {
+                    feature: F0Hz,
+                    response: Response::Band(40.0, 60.0, 100.0),
+                    weight: 0.7,
+                },
             ],
         },
         Template {
             class: HitClass::Snare,
             bias: 0.0,
             terms: vec![
-                Term { feature: MidRatio, response: Response::Rising(0.15, 0.45), weight: 1.0 },
-                Term { feature: HighMidRatio, response: Response::Rising(0.10, 0.35), weight: 0.9 },
-                Term { feature: SubRatio, response: Response::Falling(0.05, 0.20), weight: 0.8 },
-                Term { feature: Flatness, response: Response::Rising(0.25, 0.55), weight: 0.7 },
-                Term { feature: PercussiveRatio, response: Response::Rising(0.45, 0.75), weight: 1.0 },
-                Term { feature: Harmonicity, response: Response::Falling(0.25, 0.55), weight: 0.6 },
-                Term { feature: DecayTauS, response: Response::Band(0.04, 0.10, 0.25), weight: 0.5 },
-                Term { feature: SubAttacks, response: Response::AtMost(1.5), weight: 0.4 },
-                Term { feature: AirRatio, response: Response::Falling(0.05, 0.20), weight: 0.7 },
+                Term {
+                    feature: MidRatio,
+                    response: Response::Rising(0.15, 0.45),
+                    weight: 1.0,
+                },
+                Term {
+                    feature: HighMidRatio,
+                    response: Response::Rising(0.10, 0.35),
+                    weight: 0.9,
+                },
+                Term {
+                    feature: SubRatio,
+                    response: Response::Falling(0.05, 0.20),
+                    weight: 0.8,
+                },
+                Term {
+                    feature: Flatness,
+                    response: Response::Rising(0.25, 0.55),
+                    weight: 0.7,
+                },
+                Term {
+                    feature: PercussiveRatio,
+                    response: Response::Rising(0.45, 0.75),
+                    weight: 1.0,
+                },
+                Term {
+                    feature: Harmonicity,
+                    response: Response::Falling(0.25, 0.55),
+                    weight: 0.6,
+                },
+                Term {
+                    feature: DecayTauS,
+                    response: Response::Band(0.04, 0.10, 0.25),
+                    weight: 0.5,
+                },
+                Term {
+                    feature: SubAttacks,
+                    response: Response::AtMost(1.5),
+                    weight: 0.4,
+                },
+                Term {
+                    feature: AirRatio,
+                    response: Response::Falling(0.05, 0.20),
+                    weight: 0.7,
+                },
             ],
         },
         Template {
             class: HitClass::Clap,
             bias: 0.0,
             terms: vec![
-                Term { feature: MidRatio, response: Response::Rising(0.15, 0.40), weight: 0.9 },
-                Term { feature: HighMidRatio, response: Response::Rising(0.10, 0.30), weight: 0.8 },
-                Term { feature: PercussiveRatio, response: Response::Rising(0.40, 0.70), weight: 0.9 },
-                Term { feature: SubAttacks, response: Response::AtLeast(1.5), weight: 1.0 },
-                Term { feature: SustainS, response: Response::Rising(0.02, 0.06), weight: 0.4 },
+                Term {
+                    feature: MidRatio,
+                    response: Response::Rising(0.15, 0.40),
+                    weight: 0.9,
+                },
+                Term {
+                    feature: HighMidRatio,
+                    response: Response::Rising(0.10, 0.30),
+                    weight: 0.8,
+                },
+                Term {
+                    feature: PercussiveRatio,
+                    response: Response::Rising(0.40, 0.70),
+                    weight: 0.9,
+                },
+                Term {
+                    feature: SubAttacks,
+                    response: Response::AtLeast(1.5),
+                    weight: 1.0,
+                },
+                Term {
+                    feature: SustainS,
+                    response: Response::Rising(0.02, 0.06),
+                    weight: 0.4,
+                },
             ],
         },
         Template {
             class: HitClass::HatClosed,
             bias: 0.0,
             terms: vec![
-                Term { feature: HighRatio, response: Response::Rising(0.35, 0.65), weight: 1.0 },
-                Term { feature: CentroidHz, response: Response::Rising(3500.0, 6500.0), weight: 0.8 },
-                Term { feature: DecayTauS, response: Response::Falling(0.015, 0.05), weight: 0.7 },
-                Term { feature: SustainS, response: Response::Falling(0.03, 0.08), weight: 0.6 },
-                Term { feature: Zcr, response: Response::Rising(0.10, 0.25), weight: 0.5 },
+                Term {
+                    feature: HighRatio,
+                    response: Response::Rising(0.35, 0.65),
+                    weight: 1.0,
+                },
+                Term {
+                    feature: CentroidHz,
+                    response: Response::Rising(3500.0, 6500.0),
+                    weight: 0.8,
+                },
+                Term {
+                    feature: DecayTauS,
+                    response: Response::Falling(0.015, 0.05),
+                    weight: 0.7,
+                },
+                Term {
+                    feature: SustainS,
+                    response: Response::Falling(0.03, 0.08),
+                    weight: 0.6,
+                },
+                Term {
+                    feature: Zcr,
+                    response: Response::Rising(0.10, 0.25),
+                    weight: 0.5,
+                },
             ],
         },
         Template {
             class: HitClass::HatOpen,
             bias: 0.0,
             terms: vec![
-                Term { feature: HighRatio, response: Response::Rising(0.30, 0.60), weight: 1.0 },
-                Term { feature: DecayTauS, response: Response::Band(0.02, 0.08, 0.25), weight: 0.9 },
-                Term { feature: SustainS, response: Response::Rising(0.05, 0.12), weight: 0.7 },
-                Term { feature: CentroidHz, response: Response::Rising(3000.0, 6000.0), weight: 0.6 },
+                Term {
+                    feature: HighRatio,
+                    response: Response::Rising(0.30, 0.60),
+                    weight: 1.0,
+                },
+                Term {
+                    feature: DecayTauS,
+                    response: Response::Band(0.02, 0.08, 0.25),
+                    weight: 0.9,
+                },
+                Term {
+                    feature: SustainS,
+                    response: Response::Rising(0.05, 0.12),
+                    weight: 0.7,
+                },
+                Term {
+                    feature: CentroidHz,
+                    response: Response::Rising(3000.0, 6000.0),
+                    weight: 0.6,
+                },
             ],
         },
         Template {
             class: HitClass::Tom,
             bias: 0.0,
             terms: vec![
-                Term { feature: LowMidRatio, response: Response::Rising(0.20, 0.45), weight: 1.0 },
-                Term { feature: Harmonicity, response: Response::Rising(0.35, 0.65), weight: 0.8 },
-                Term { feature: F0Hz, response: Response::Band(70.0, 110.0, 180.0), weight: 0.7 },
-                Term { feature: DecayTauS, response: Response::Band(0.06, 0.12, 0.30), weight: 0.6 },
+                Term {
+                    feature: LowMidRatio,
+                    response: Response::Rising(0.20, 0.45),
+                    weight: 1.0,
+                },
+                Term {
+                    feature: Harmonicity,
+                    response: Response::Rising(0.35, 0.65),
+                    weight: 0.8,
+                },
+                Term {
+                    feature: F0Hz,
+                    response: Response::Band(70.0, 110.0, 180.0),
+                    weight: 0.7,
+                },
+                Term {
+                    feature: DecayTauS,
+                    response: Response::Band(0.06, 0.12, 0.30),
+                    weight: 0.6,
+                },
             ],
         },
         Template {
             class: HitClass::Cymbal,
             bias: 0.0,
             terms: vec![
-                Term { feature: HighRatio, response: Response::Rising(0.25, 0.50), weight: 0.9 },
-                Term { feature: AirRatio, response: Response::Rising(0.10, 0.30), weight: 0.9 },
-                Term { feature: DecayTauS, response: Response::Rising(0.25, 0.60), weight: 0.8 },
-                Term { feature: SustainS, response: Response::Rising(0.20, 0.50), weight: 0.7 },
-                Term { feature: Flatness, response: Response::Rising(0.30, 0.60), weight: 0.6 },
+                Term {
+                    feature: HighRatio,
+                    response: Response::Rising(0.25, 0.50),
+                    weight: 0.9,
+                },
+                Term {
+                    feature: AirRatio,
+                    response: Response::Rising(0.10, 0.30),
+                    weight: 0.9,
+                },
+                Term {
+                    feature: DecayTauS,
+                    response: Response::Rising(0.25, 0.60),
+                    weight: 0.8,
+                },
+                Term {
+                    feature: SustainS,
+                    response: Response::Rising(0.20, 0.50),
+                    weight: 0.7,
+                },
+                Term {
+                    feature: Flatness,
+                    response: Response::Rising(0.30, 0.60),
+                    weight: 0.6,
+                },
                 // Mirror absence terms: a crash carries no sub energy and
                 // no harmonicity, and without them the snare template —
                 // which does score those absences — outbids crash on its
                 // own hits.
-                Term { feature: SubRatio, response: Response::Falling(0.05, 0.20), weight: 0.8 },
-                Term { feature: Harmonicity, response: Response::Falling(0.25, 0.55), weight: 0.6 },
+                Term {
+                    feature: SubRatio,
+                    response: Response::Falling(0.05, 0.20),
+                    weight: 0.8,
+                },
+                Term {
+                    feature: Harmonicity,
+                    response: Response::Falling(0.25, 0.55),
+                    weight: 0.6,
+                },
             ],
         },
         Template {
             class: HitClass::Ride,
             bias: 0.0,
             terms: vec![
-                Term { feature: MidRatio, response: Response::Rising(0.20, 0.40), weight: 0.9 },
-                Term { feature: HighRatio, response: Response::Rising(0.20, 0.45), weight: 0.8 },
-                Term { feature: DecayTauS, response: Response::Band(0.15, 0.30, 0.50), weight: 0.9 },
-                Term { feature: AirRatio, response: Response::Falling(0.10, 0.25), weight: 0.6 },
-                Term { feature: PercussiveRatio, response: Response::Rising(0.35, 0.60), weight: 0.6 },
+                Term {
+                    feature: MidRatio,
+                    response: Response::Rising(0.20, 0.40),
+                    weight: 0.9,
+                },
+                Term {
+                    feature: HighRatio,
+                    response: Response::Rising(0.20, 0.45),
+                    weight: 0.8,
+                },
+                Term {
+                    feature: DecayTauS,
+                    response: Response::Band(0.15, 0.30, 0.50),
+                    weight: 0.9,
+                },
+                Term {
+                    feature: AirRatio,
+                    response: Response::Falling(0.10, 0.25),
+                    weight: 0.6,
+                },
+                Term {
+                    feature: PercussiveRatio,
+                    response: Response::Rising(0.35, 0.60),
+                    weight: 0.6,
+                },
             ],
         },
         Template {
             class: HitClass::Bass,
             bias: 0.0,
             terms: vec![
-                Term { feature: SubRatio, response: Response::Rising(0.30, 0.60), weight: 1.0 },
-                Term { feature: F0Hz, response: Response::Band(30.0, 45.0, 70.0), weight: 0.9 },
-                Term { feature: DecayTauS, response: Response::Rising(0.20, 0.40), weight: 0.8 },
-                Term { feature: SustainS, response: Response::Rising(0.15, 0.35), weight: 0.7 },
-                Term { feature: Harmonicity, response: Response::Rising(0.40, 0.70), weight: 0.7 },
+                Term {
+                    feature: SubRatio,
+                    response: Response::Rising(0.30, 0.60),
+                    weight: 1.0,
+                },
+                Term {
+                    feature: F0Hz,
+                    response: Response::Band(30.0, 45.0, 70.0),
+                    weight: 0.9,
+                },
+                Term {
+                    feature: DecayTauS,
+                    response: Response::Rising(0.20, 0.40),
+                    weight: 0.8,
+                },
+                Term {
+                    feature: SustainS,
+                    response: Response::Rising(0.15, 0.35),
+                    weight: 0.7,
+                },
+                Term {
+                    feature: Harmonicity,
+                    response: Response::Rising(0.40, 0.70),
+                    weight: 0.7,
+                },
             ],
         },
         Template {
             class: HitClass::Guitar,
             bias: 0.0,
             terms: vec![
-                Term { feature: LowMidRatio, response: Response::Rising(0.20, 0.40), weight: 0.9 },
-                Term { feature: SustainS, response: Response::Rising(0.10, 0.30), weight: 0.8 },
-                Term { feature: Harmonicity, response: Response::Rising(0.35, 0.60), weight: 0.7 },
-                Term { feature: PercussiveRatio, response: Response::Falling(0.20, 0.50), weight: 0.7 },
-                Term { feature: RiseS, response: Response::Falling(0.02, 0.08), weight: 0.5 },
+                Term {
+                    feature: LowMidRatio,
+                    response: Response::Rising(0.20, 0.40),
+                    weight: 0.9,
+                },
+                Term {
+                    feature: SustainS,
+                    response: Response::Rising(0.10, 0.30),
+                    weight: 0.8,
+                },
+                Term {
+                    feature: Harmonicity,
+                    response: Response::Rising(0.35, 0.60),
+                    weight: 0.7,
+                },
+                Term {
+                    feature: PercussiveRatio,
+                    response: Response::Falling(0.20, 0.50),
+                    weight: 0.7,
+                },
+                Term {
+                    feature: RiseS,
+                    response: Response::Falling(0.02, 0.08),
+                    weight: 0.5,
+                },
             ],
         },
         Template {
             class: HitClass::Keys,
             bias: 0.0,
             terms: vec![
-                Term { feature: MidRatio, response: Response::Rising(0.15, 0.35), weight: 0.8 },
-                Term { feature: Flux, response: Response::Rising(0.30, 0.60), weight: 0.9 },
-                Term { feature: Zcr, response: Response::Rising(0.05, 0.15), weight: 0.6 },
-                Term { feature: Harmonicity, response: Response::Rising(0.35, 0.60), weight: 0.6 },
-                Term { feature: DecayTauS, response: Response::Band(0.15, 0.30, 0.60), weight: 0.6 },
+                Term {
+                    feature: MidRatio,
+                    response: Response::Rising(0.15, 0.35),
+                    weight: 0.8,
+                },
+                Term {
+                    feature: Flux,
+                    response: Response::Rising(0.30, 0.60),
+                    weight: 0.9,
+                },
+                Term {
+                    feature: Zcr,
+                    response: Response::Rising(0.05, 0.15),
+                    weight: 0.6,
+                },
+                Term {
+                    feature: Harmonicity,
+                    response: Response::Rising(0.35, 0.60),
+                    weight: 0.6,
+                },
+                Term {
+                    feature: DecayTauS,
+                    response: Response::Band(0.15, 0.30, 0.60),
+                    weight: 0.6,
+                },
             ],
         },
         Template {
             class: HitClass::Vocal,
             bias: 0.0,
             terms: vec![
-                Term { feature: Formant, response: Response::Rising(0.30, 0.60), weight: 1.0 },
-                Term { feature: Harmonicity, response: Response::Rising(0.50, 0.80), weight: 0.8 },
-                Term { feature: SustainS, response: Response::Rising(0.20, 0.50), weight: 0.7 },
-                Term { feature: Flux, response: Response::Falling(0.20, 0.50), weight: 0.7 },
-                Term { feature: F0Hz, response: Response::Band(150.0, 260.0, 400.0), weight: 0.5 },
+                Term {
+                    feature: Formant,
+                    response: Response::Rising(0.30, 0.60),
+                    weight: 1.0,
+                },
+                Term {
+                    feature: Harmonicity,
+                    response: Response::Rising(0.50, 0.80),
+                    weight: 0.8,
+                },
+                Term {
+                    feature: SustainS,
+                    response: Response::Rising(0.20, 0.50),
+                    weight: 0.7,
+                },
+                Term {
+                    feature: Flux,
+                    response: Response::Falling(0.20, 0.50),
+                    weight: 0.7,
+                },
+                Term {
+                    feature: F0Hz,
+                    response: Response::Band(150.0, 260.0, 400.0),
+                    weight: 0.5,
+                },
             ],
         },
         Template {
             class: HitClass::Other,
             bias: 0.0,
             terms: vec![
-                Term { feature: Harmonicity, response: Response::Rising(0.40, 0.70), weight: 0.8 },
-                Term { feature: SustainS, response: Response::Rising(0.10, 0.30), weight: 0.7 },
+                Term {
+                    feature: Harmonicity,
+                    response: Response::Rising(0.40, 0.70),
+                    weight: 0.8,
+                },
+                Term {
+                    feature: SustainS,
+                    response: Response::Rising(0.10, 0.30),
+                    weight: 0.7,
+                },
                 // Slow rise, not low flux: every detected attack has flux
                 // by definition, so Flux-falling could never fire. A soft
                 // attack cresting over tens of milliseconds is the actual
                 // signature of unpercussive material.
-                Term { feature: RiseS, response: Response::Rising(0.05, 0.12), weight: 0.7 },
-                Term { feature: PercussiveRatio, response: Response::Falling(0.20, 0.50), weight: 0.7 },
+                Term {
+                    feature: RiseS,
+                    response: Response::Rising(0.05, 0.12),
+                    weight: 0.7,
+                },
+                Term {
+                    feature: PercussiveRatio,
+                    response: Response::Falling(0.20, 0.50),
+                    weight: 0.7,
+                },
             ],
         },
     ]
@@ -445,7 +719,10 @@ pub fn calibrate(
 }
 
 /// Macro F1 of calibrated templates on labelled rows.
-pub fn macro_f1(templates: &[Template], rows: &[(HitClass, Features)]) -> (f64, Vec<(HitClass, f64)>) {
+pub fn macro_f1(
+    templates: &[Template],
+    rows: &[(HitClass, Features)],
+) -> (f64, Vec<(HitClass, f64)>) {
     use std::collections::HashMap;
     let mut tp: HashMap<HitClass, usize> = HashMap::new();
     let mut fp: HashMap<HitClass, usize> = HashMap::new();

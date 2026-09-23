@@ -91,7 +91,8 @@ pub fn ls_pass(
         k_max = k_max.max(k);
     }
     // A fit across fewer than two beat indices is a point, not a line.
-    if !(k_max - k_min >= 2.0) || sum_w <= 0.0 {
+    let k_span = k_max - k_min;
+    if k_span.is_nan() || k_span < 2.0 || sum_w <= 0.0 {
         return None;
     }
     let mean_k = sum_wx / sum_w;
@@ -207,7 +208,11 @@ pub fn quality(times: &[f64], weights: &[f32], grid: Grid) -> Quality {
 /// than the one that scores it.
 pub fn quality_with_tol(times: &[f64], weights: &[f32], grid: Grid, tol_ratio: f64) -> Quality {
     const TOL_RATIO: f64 = 0.12;
-    let tol_ratio = if tol_ratio > 0.0 { tol_ratio } else { TOL_RATIO };
+    let tol_ratio = if tol_ratio > 0.0 {
+        tol_ratio
+    } else {
+        TOL_RATIO
+    };
     if times.is_empty() || grid.period <= 0.0 {
         return Quality {
             share: 0.0,
@@ -241,8 +246,8 @@ pub fn quality_with_tol(times: &[f64], weights: &[f32], grid: Grid, tol_ratio: f
             inliers: 0,
         };
     }
-    let span = (slots.iter().copied().max().unwrap() - slots.iter().copied().min().unwrap()) as f64
-        + 1.0;
+    let span =
+        (slots.iter().copied().max().unwrap() - slots.iter().copied().min().unwrap()) as f64 + 1.0;
     slots.sort_unstable();
     slots.dedup();
     Quality {
@@ -325,7 +330,11 @@ mod tests {
                 phase: 0.298,
             },
         );
-        assert!((grid.period - period).abs() < 1e-9, "period {}", grid.period);
+        assert!(
+            (grid.period - period).abs() < 1e-9,
+            "period {}",
+            grid.period
+        );
         assert!((grid.phase - 0.298).abs() < 1e-9, "phase {}", grid.phase);
     }
 
@@ -387,8 +396,22 @@ mod tests {
         // statistic behind audit finding F-11.
         let times: Vec<f64> = (0..100).map(|k| k as f64 * 0.4).collect();
         let weights = vec![1.0f32; times.len()];
-        let full = quality(&times, &weights, Grid { period: 0.4, phase: 0.0 });
-        let half = quality(&times, &weights, Grid { period: 0.2, phase: 0.0 });
+        let full = quality(
+            &times,
+            &weights,
+            Grid {
+                period: 0.4,
+                phase: 0.0,
+            },
+        );
+        let half = quality(
+            &times,
+            &weights,
+            Grid {
+                period: 0.2,
+                phase: 0.0,
+            },
+        );
         assert!(full.coverage > 0.99, "full {full:?}");
         assert!(half.share > 0.99, "share should not notice: {half:?}");
         assert!(half.coverage < 0.55, "coverage should: {half:?}");
@@ -403,7 +426,10 @@ mod tests {
         let result = ls_pass(
             &times,
             &weights,
-            Grid { period: 1.6, phase: 0.0 },
+            Grid {
+                period: 1.6,
+                phase: 0.0,
+            },
             0.5,
         );
         assert!(result.is_none() || result.unwrap().0.period <= 3.2);

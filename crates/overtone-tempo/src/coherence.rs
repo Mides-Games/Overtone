@@ -108,7 +108,7 @@ pub fn candidates(times: &[f64], weights: &[f32], keep: usize) -> Vec<Candidate>
     let hi_f = 1.0 / PERIOD_RANGE.0;
     // Keeps the coherence lobe resolvable: its width scales as 1/span.
     let step = (0.2 / span).max(1e-4);
-    let count = (((hi_f - lo_f) / step).ceil() as usize).max(0);
+    let count = ((hi_f - lo_f) / step).ceil() as usize;
     if count < 4 {
         return Vec::new();
     }

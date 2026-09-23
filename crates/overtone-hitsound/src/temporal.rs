@@ -67,8 +67,7 @@ fn spectrum(samples: &[f64], n_fft: usize) -> Vec<f64> {
 }
 
 pub fn analyze(y: &[f32], sr: u32, attack_s: f64) -> Temporal {
-    let attack: Vec<f64> =
-        crate::window_samples(y, sr, attack_s, WIN_START_S, WIN_END_S);
+    let attack: Vec<f64> = crate::window_samples(y, sr, attack_s, WIN_START_S, WIN_END_S);
     let pre: Vec<f64> = crate::window_samples(y, sr, attack_s, PRE_START_S, PRE_END_S);
     let env = envelope(&attack);
     let peak = env.iter().copied().fold(0.0f64, f64::max);
@@ -202,7 +201,14 @@ pub fn analyze(y: &[f32], sr: u32, attack_s: f64) -> Temporal {
         }
     };
 
-    Temporal { rise_s, decay_tau_s, sustain_s, zcr, sub_attacks, chroma_change }
+    Temporal {
+        rise_s,
+        decay_tau_s,
+        sustain_s,
+        zcr,
+        sub_attacks,
+        chroma_change,
+    }
 }
 
 #[cfg(test)]
@@ -219,11 +225,10 @@ mod tests {
         let n = (3.0 * sr as f64) as usize;
         let start = (at * sr as f64) as usize;
         let mut y = vec![0.0f32; n];
-        for i in start..n {
+        for (i, v) in y.iter_mut().enumerate().skip(start) {
             let dt = (i - start) as f64 / sr as f64;
-            y[i] = ((2.0 * std::f64::consts::PI * freq * dt).sin() * (-dt / decay).exp()
-                + noise * roll() * (-dt / 0.01).exp())
-                as f32;
+            *v = ((2.0 * std::f64::consts::PI * freq * dt).sin() * (-dt / decay).exp()
+                + noise * roll() * (-dt / 0.01).exp()) as f32;
         }
         let peak = y.iter().map(|v| v.abs()).fold(0.0f32, f32::max).max(1e-9);
         y.iter().map(|v| v / peak * 0.99).collect()
@@ -240,9 +245,10 @@ mod tests {
         let mut y = vec![0.0f32; n];
         for k in 0..3 {
             let start = (at * sr as f64) as usize + k * (0.008 * sr as f64) as usize;
-            for i in start..n.min(start + (0.03 * sr as f64) as usize) {
+            let burst = (0.03 * sr as f64) as usize;
+            for (i, v) in y.iter_mut().enumerate().skip(start).take(burst) {
                 let dt = (i - start) as f64 / sr as f64;
-                y[i] += (roll() * (-dt / 0.004).exp()) as f32;
+                *v += (roll() * (-dt / 0.004).exp()) as f32;
             }
         }
         let peak = y.iter().map(|v| v.abs()).fold(0.0f32, f32::max).max(1e-9);
@@ -265,7 +271,11 @@ mod tests {
             }
         }
         let slow = analyze(&y, sr, 1.0);
-        assert!(slow.rise_s > 10.0 * fast.rise_s.max(1e-4), "slow {}", slow.rise_s);
+        assert!(
+            slow.rise_s > 10.0 * fast.rise_s.max(1e-4),
+            "slow {}",
+            slow.rise_s
+        );
     }
 
     #[test]
@@ -291,15 +301,20 @@ mod tests {
         let start = (1.0 * sr as f64) as usize;
         let mut y = vec![0.0f32; n];
         let mut rng = 5u64;
-        for i in start..n {
+        for (i, v) in y.iter_mut().enumerate().skip(start) {
             let dt = (i - start) as f64 / sr as f64;
             rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
             let noise = ((rng >> 33) as f64 / (1u64 << 31) as f64) - 0.5;
-            y[i] = (0.3 * (2.0 * std::f64::consts::PI * 220.0 * dt).sin() * (-dt / 0.2).exp()
+            *v = (0.3 * (2.0 * std::f64::consts::PI * 220.0 * dt).sin() * (-dt / 0.2).exp()
                 + 0.6 * noise * (-dt / 0.3).exp()) as f32;
         }
         let noisy = analyze(&y, sr, 1.0);
-        assert!(noisy.zcr > 10.0 * tone.zcr.max(1e-4), "{} vs {}", noisy.zcr, tone.zcr);
+        assert!(
+            noisy.zcr > 10.0 * tone.zcr.max(1e-4),
+            "{} vs {}",
+            noisy.zcr,
+            tone.zcr
+        );
     }
 
     #[test]
@@ -343,12 +358,13 @@ mod tests {
             *slot = (0.2 * (2.0 * std::f64::consts::PI * 130.81 * t).sin()) as f32;
         }
         let kick_at = (1.0 * sr as f64) as usize;
-        for i in kick_at..y.len() {
+        for (i, v) in y.iter_mut().enumerate().skip(kick_at) {
             let dt = (i - kick_at) as f64 / sr as f64;
             if dt > 0.2 {
                 break;
             }
-            y[i] += (0.8 * (2.0 * std::f64::consts::PI * 55.0 * dt).sin() * (-dt / 0.03).exp()) as f32;
+            *v +=
+                (0.8 * (2.0 * std::f64::consts::PI * 55.0 * dt).sin() * (-dt / 0.03).exp()) as f32;
         }
         let same = analyze(&y, sr, 1.0);
         // New chord at the attack: C major pad under an F major stab.
@@ -360,9 +376,11 @@ mod tests {
             } else {
                 let dt = t - 1.0;
                 let attack = 0.5 - 0.5 * (std::f64::consts::PI * (dt / 0.05).min(1.0)).cos();
-                *slot = (0.5 * attack
+                *slot = (0.5
+                    * attack
                     * ((2.0 * std::f64::consts::PI * 174.61 * t).sin()
-                        + 0.5 * (2.0 * std::f64::consts::PI * 220.0 * t).sin())) as f32;
+                        + 0.5 * (2.0 * std::f64::consts::PI * 220.0 * t).sin()))
+                    as f32;
             }
         }
         let changed = analyze(&z, sr, 1.0);

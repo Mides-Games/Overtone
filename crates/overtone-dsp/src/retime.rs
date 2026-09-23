@@ -132,9 +132,9 @@ mod tests {
     /// A synthetic attack: silence, then an exponentially decaying tone.
     fn attack_at(sr: u32, len: usize, onset: usize) -> Vec<f32> {
         let mut y = vec![0.0f32; len];
-        for i in onset..len {
+        for (i, v) in y.iter_mut().enumerate().skip(onset) {
             let t = (i - onset) as f64 / sr as f64;
-            y[i] = ((2.0 * std::f64::consts::PI * 180.0 * t).sin() * (-t / 0.02).exp()) as f32;
+            *v = ((2.0 * std::f64::consts::PI * 180.0 * t).sin() * (-t / 0.02).exp()) as f32;
         }
         y
     }

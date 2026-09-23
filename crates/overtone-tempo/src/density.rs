@@ -73,12 +73,7 @@ pub struct PulseHint {
 }
 
 /// `(coverage, parity concentration at m=2, inlier count)` for one window.
-pub fn window_stats(
-    times: &[f64],
-    weights: &[f32],
-    period: f64,
-    phase: f64,
-) -> (f64, f64, usize) {
+pub fn window_stats(times: &[f64], weights: &[f32], period: f64, phase: f64) -> (f64, f64, usize) {
     if times.is_empty() || period <= 0.0 {
         return (0.0, 0.0, 0);
     }
@@ -95,9 +90,9 @@ pub fn window_stats(
     if n < 4 {
         return (0.0, 0.0, n);
     }
-    let (k_min, k_max) = ks.iter().fold((i64::MAX, i64::MIN), |(lo, hi), &k| {
-        (lo.min(k), hi.max(k))
-    });
+    let (k_min, k_max) = ks
+        .iter()
+        .fold((i64::MAX, i64::MIN), |(lo, hi), &k| (lo.min(k), hi.max(k)));
     let slots = (k_max - k_min) as f64 + 1.0;
     let mut unique = ks.clone();
     unique.sort_unstable();
@@ -114,11 +109,7 @@ pub fn window_stats(
 
 /// Propose pulse changes inside every reported section long enough to hold
 /// them — `proto/density.py::scan`.
-pub fn scan_sections(
-    sections: &[GridSection],
-    times: &[f64],
-    weights: &[f32],
-) -> Vec<PulseHint> {
+pub fn scan_sections(sections: &[GridSection], times: &[f64], weights: &[f32]) -> Vec<PulseHint> {
     let mut out = Vec::new();
     for (n, section) in sections.iter().enumerate() {
         if let Some(hint) = scan_section(n, section, times, weights) {
@@ -144,9 +135,9 @@ fn scan_section(
         let mut rows: Vec<(f64, f64, f64, usize)> = Vec::new();
         let mut edge = section.start.get();
         while edge + span <= section.end.get() + 1e-9 {
-            let (w_times, w_weights) =
-                windowed(times, weights, |t| t >= edge && t < edge + span);
-            let (coverage, parity, count) = window_stats(&w_times, &w_weights, period, section.phase);
+            let (w_times, w_weights) = windowed(times, weights, |t| t >= edge && t < edge + span);
+            let (coverage, parity, count) =
+                window_stats(&w_times, &w_weights, period, section.phase);
             rows.push((edge, coverage, parity, count));
             edge += span;
         }
@@ -175,11 +166,7 @@ fn scan_section(
         }
         let &(a, b) = runs.iter().max_by_key(|&&(a, b)| b - a).unwrap();
         let covs: Vec<f64> = rows.iter().map(|&(_, c, _, _)| c).collect();
-        let outside: Vec<f64> = covs[..a]
-            .iter()
-            .chain(covs[b..].iter())
-            .copied()
-            .collect();
+        let outside: Vec<f64> = covs[..a].iter().chain(covs[b..].iter()).copied().collect();
         if outside.is_empty() {
             continue;
         }
@@ -193,8 +180,7 @@ fn scan_section(
         let at_head = a == 0;
         let at_tail = b >= rows.len();
         let boundary = if at_head && !at_tail { to_s } else { from_s };
-        let parity_in =
-            rows[a..b].iter().map(|&(_, _, p, _)| p).sum::<f64>() / (b - a) as f64;
+        let parity_in = rows[a..b].iter().map(|&(_, _, p, _)| p).sum::<f64>() / (b - a) as f64;
         let par_rows: Vec<f64> = rows[..a]
             .iter()
             .chain(rows[b..].iter())
@@ -224,7 +210,10 @@ fn scan_section(
             thinned: b - a,
             score,
         };
-        if best.as_ref().map_or(true, |prev| candidate.score > prev.score) {
+        if best
+            .as_ref()
+            .is_none_or(|prev| candidate.score > prev.score)
+        {
             best = Some(candidate);
         }
     }
@@ -259,7 +248,11 @@ mod tests {
         let mut t = 0.0;
         while t < change {
             times.push(t);
-            weights.push(if (t / beat).round() as i64 % 2 == 0 { 1.0 } else { 0.5 });
+            weights.push(if (t / beat).round() as i64 % 2 == 0 {
+                1.0
+            } else {
+                0.5
+            });
             t += beat / 2.0;
         }
         let mut k = (change / beat).ceil() as i64;

@@ -9,8 +9,8 @@
 //!
 //! Frame count follows from the padding: `1 + len(y) / hop`.
 
-use realfft::RealFftPlanner;
 use rayon::prelude::*;
+use realfft::RealFftPlanner;
 
 use crate::mel::MelBank;
 
@@ -19,9 +19,7 @@ use crate::mel::MelBank;
 /// window and would change every magnitude slightly.
 pub fn hann_periodic(n: usize) -> Vec<f64> {
     (0..n)
-        .map(|i| {
-            0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / n as f64).cos()
-        })
+        .map(|i| 0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / n as f64).cos())
         .collect()
 }
 
@@ -75,6 +73,55 @@ pub fn power_spectrogram(y: &[f32], n_fft: usize, hop: usize) -> Vec<Vec<f64>> {
         .collect()
 }
 
+/// Mel power spectrogram, computed one frame at a time so the linear
+/// spectrogram is never materialised.
+///
+/// This matters for memory, not just speed: a 6-minute track at hop 128 is
+/// ~124k frames, and holding `124k x 1025` f64 bins is over a gigabyte. The
+/// mel result is `124k x 128`, about 127 MB, and the FFT output for a single
+/// frame stays in cache.
+pub fn mel_power_spectrogram(y: &[f32], n_fft: usize, hop: usize, bank: &MelBank) -> Vec<Vec<f64>> {
+    let frames = frame_count(y.len(), hop);
+    let pad = n_fft / 2;
+    let window = hann_periodic(n_fft);
+    let bins = n_fft / 2 + 1;
+    let n_mels = bank.len();
+
+    let mut planner = RealFftPlanner::<f64>::new();
+    let fft = planner.plan_fft_forward(n_fft);
+
+    let mut padded = vec![0.0f64; y.len() + 2 * pad];
+    for (dst, &src) in padded[pad..pad + y.len()].iter_mut().zip(y) {
+        *dst = src as f64;
+    }
+
+    (0..frames)
+        .into_par_iter()
+        .map_init(
+            || {
+                (
+                    fft.make_input_vec(),
+                    fft.make_output_vec(),
+                    vec![0.0f64; bins],
+                )
+            },
+            |(input, output, power), frame| {
+                let start = frame * hop;
+                for (i, slot) in input.iter_mut().enumerate() {
+                    *slot = padded.get(start + i).copied().unwrap_or(0.0) * window[i];
+                }
+                fft.process(input, output).expect("fft sizes are fixed");
+                for (slot, value) in power.iter_mut().zip(output.iter()) {
+                    *slot = value.re * value.re + value.im * value.im;
+                }
+                let mut row = vec![0.0f64; n_mels];
+                bank.project(power, &mut row);
+                row
+            },
+        )
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,58 +168,4 @@ mod tests {
         let spec = power_spectrogram(&vec![0.0f32; 4096], 2048, 128);
         assert!(spec.iter().flatten().all(|&v| v == 0.0));
     }
-}
-
-/// Mel power spectrogram, computed one frame at a time so the linear
-/// spectrogram is never materialised.
-///
-/// This matters for memory, not just speed: a 6-minute track at hop 128 is
-/// ~124k frames, and holding `124k x 1025` f64 bins is over a gigabyte. The
-/// mel result is `124k x 128`, about 127 MB, and the FFT output for a single
-/// frame stays in cache.
-pub fn mel_power_spectrogram(
-    y: &[f32],
-    n_fft: usize,
-    hop: usize,
-    bank: &MelBank,
-) -> Vec<Vec<f64>> {
-    let frames = frame_count(y.len(), hop);
-    let pad = n_fft / 2;
-    let window = hann_periodic(n_fft);
-    let bins = n_fft / 2 + 1;
-    let n_mels = bank.len();
-
-    let mut planner = RealFftPlanner::<f64>::new();
-    let fft = planner.plan_fft_forward(n_fft);
-
-    let mut padded = vec![0.0f64; y.len() + 2 * pad];
-    for (dst, &src) in padded[pad..pad + y.len()].iter_mut().zip(y) {
-        *dst = src as f64;
-    }
-
-    (0..frames)
-        .into_par_iter()
-        .map_init(
-            || {
-                (
-                    fft.make_input_vec(),
-                    fft.make_output_vec(),
-                    vec![0.0f64; bins],
-                )
-            },
-            |(input, output, power), frame| {
-                let start = frame * hop;
-                for (i, slot) in input.iter_mut().enumerate() {
-                    *slot = padded.get(start + i).copied().unwrap_or(0.0) * window[i];
-                }
-                fft.process(input, output).expect("fft sizes are fixed");
-                for (slot, value) in power.iter_mut().zip(output.iter()) {
-                    *slot = value.re * value.re + value.im * value.im;
-                }
-                let mut row = vec![0.0f64; n_mels];
-                bank.project(power, &mut row);
-                row
-            },
-        )
-        .collect()
 }

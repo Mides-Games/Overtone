@@ -61,7 +61,10 @@ pub fn section_measures(
         let (text, downbeat, bar) = crate::octave::meter_from_grid(
             &w_times,
             &w_weights,
-            Grid { period: section.period, phase: section.phase },
+            Grid {
+                period: section.period,
+                phase: section.phase,
+            },
         );
         out.push((text.to_string(), downbeat, bar));
     }
@@ -172,21 +175,21 @@ fn meter_segments_with(
     let mut windows: Vec<(f64, usize, f64)> = Vec::new();
     let mut edge = bar_phase + ((start - bar_phase) / bar).floor() * bar;
     while edge + span <= stop + 1e-9 {
-        let (w_times, w_weights) =
-            windowed(times, weights, |t| t >= edge && t < edge + span);
+        let (w_times, w_weights) = windowed(times, weights, |t| t >= edge && t < edge + span);
         if w_times.len() >= 6 {
             let mut scored: Vec<(f64, usize)> = Vec::new();
             for beats in BEATS_PER_BAR {
                 let q = fit::quality(
                     &w_times,
                     &w_weights,
-                    Grid { period: bar / beats as f64, phase: bar_phase },
+                    Grid {
+                        period: bar / beats as f64,
+                        phase: bar_phase,
+                    },
                 );
                 scored.push((q.share * q.coverage, beats));
             }
-            scored.sort_by(|a, b| {
-                b.0.total_cmp(&a.0).then(b.1.cmp(&a.1))
-            });
+            scored.sort_by(|a, b| b.0.total_cmp(&a.0).then(b.1.cmp(&a.1)));
             windows.push((edge, scored[0].1, scored[0].0));
         }
         edge += span;
@@ -216,9 +219,18 @@ fn meter_segments_with(
     }
     let mut out: Vec<MeterSegment> = Vec::new();
     for (n, run) in merged.iter().enumerate() {
-        let end = if n + 1 < merged.len() { merged[n + 1].0 } else { stop };
+        let end = if n + 1 < merged.len() {
+            merged[n + 1].0
+        } else {
+            stop
+        };
         let mean = run.3.iter().sum::<f64>() / run.3.len() as f64;
-        out.push(MeterSegment { start: run.0, end, beats: run.2, score: mean });
+        out.push(MeterSegment {
+            start: run.0,
+            end,
+            beats: run.2,
+            score: mean,
+        });
     }
     for n in 1..out.len() {
         let settled = settle_meter_boundary(
@@ -240,6 +252,7 @@ fn meter_segments_with(
 /// First bar reading as the new signature — v3 `_settle_meter_boundary`.
 /// Takes the first bar where the new signature wins *and keeps winning*:
 /// a single ambiguous bar at a transition must not move the red line.
+#[allow(clippy::too_many_arguments)]
 pub fn settle_meter_boundary(
     times: &[f64],
     weights: &[f32],
@@ -255,8 +268,7 @@ pub fn settle_meter_boundary(
     }
     let reads_as = |index: i64| -> Option<usize> {
         let lo = bar_phase + index as f64 * bar;
-        let (w_times, w_weights) =
-            windowed(times, weights, |t| t >= lo && t < lo + bar);
+        let (w_times, w_weights) = windowed(times, weights, |t| t >= lo && t < lo + bar);
         if w_times.len() < 3 {
             return None;
         }
@@ -265,14 +277,21 @@ pub fn settle_meter_boundary(
             let q = fit::quality(
                 &w_times,
                 &w_weights,
-                Grid { period: bar / beats as f64, phase: bar_phase },
+                Grid {
+                    period: bar / beats as f64,
+                    phase: bar_phase,
+                },
             );
             scores[i] = q.share * q.coverage;
         }
         if (scores[0] - scores[1]).abs() < 1e-9 {
             return None;
         }
-        Some(if scores[1] > scores[0] { right_beats } else { left_beats })
+        Some(if scores[1] > scores[0] {
+            right_beats
+        } else {
+            left_beats
+        })
     };
     let centre = ((rough - bar_phase) / bar).round() as i64;
     for step in -(window_bars as i64)..=(window_bars as i64) {
@@ -298,10 +317,7 @@ pub fn points_from_meter(
     }
     let primary = sections
         .iter()
-        .max_by(|a, b| {
-            (a.end.get() - a.start.get())
-                .total_cmp(&(b.end.get() - b.start.get()))
-        })?;
+        .max_by(|a, b| (a.end.get() - a.start.get()).total_cmp(&(b.end.get() - b.start.get())))?;
     let (bar, bar_phase, _, _) = detect_bar(times, weights, primary.period, primary.phase)?;
     let segments = meter_segments(times, weights, bar, bar_phase);
     if segments.len() < 2 {
@@ -313,12 +329,7 @@ pub fn points_from_meter(
         if !(20.0..=900.0).contains(&bpm) {
             return None;
         }
-        let mut point = TimingPoint::new(
-            seg.start * 1000.0,
-            bpm,
-            seg.score.clamp(0.0, 1.0),
-            n,
-        );
+        let mut point = TimingPoint::new(seg.start * 1000.0, bpm, seg.score.clamp(0.0, 1.0), n);
         point.meter = seg.beats as u32;
         point.meter_known = true;
         points.push(point);
@@ -419,6 +430,7 @@ pub fn snap_timing_points(points: &[TimingPoint]) -> Vec<TimingPoint> {
 /// Full red-line assembly mirroring `_assemble_analysis` at `factor = 1`:
 /// measure grid wins when it applies, else per-section placement, then the
 /// confidence and convergence filters, then snapping.
+#[allow(clippy::too_many_arguments)]
 pub fn assemble_points(
     sections: &[GridSection],
     times: &[f64],
@@ -472,11 +484,7 @@ pub fn assemble_points(
 /// `osu_timing_text`. Offsets are whole milliseconds by default, the 12-decimal
 /// beat length is exact, and each line carries the bar its own section proved
 /// (falling back to the analysis meter, never to a hard-coded 4).
-pub fn osu_timing_text(
-    points: &[TimingPoint],
-    analysis_meter: &str,
-    decimals: u32,
-) -> String {
+pub fn osu_timing_text(points: &[TimingPoint], analysis_meter: &str, decimals: u32) -> String {
     let mut rows = vec![format!("// Generated by Overtone v{}", crate::VERSION)];
     let fallback = analysis_meter
         .split('/')
@@ -496,7 +504,7 @@ pub fn osu_timing_text(
             format!("{}", p.offset.get().round() as i64)
         };
         let meter = if p.meter_known {
-            p.meter.max(1).min(16)
+            p.meter.clamp(1, 16)
         } else {
             fallback
         };
@@ -534,6 +542,7 @@ pub struct PipelineOutput {
 /// End-to-end precision driver over already-detected attacks: seed, octave,
 /// grow, beat-convert, settle, meter, points — v3 `_precision_engine` plus
 /// the `_assemble_analysis` filters at `factor = 1`.
+#[allow(clippy::too_many_arguments)]
 pub fn analyze_attacks(
     times: &[f64],
     weights: &[f32],
@@ -562,7 +571,10 @@ pub fn analyze_attacks(
         diagnostics,
     };
     if times.len() < 24 {
-        return empty(vec![Diagnostic::TooFewAttacks { found: times.len(), needed: 24 }]);
+        return empty(vec![Diagnostic::TooFewAttacks {
+            found: times.len(),
+            needed: 24,
+        }]);
     }
     let (anchor, anchor_hi) = crate::anchor_window(times);
     let Some(seed) = crate::seed_grid(times, weights, anchor, anchor_hi, None, &crate::SEED_WIDTHS)
@@ -573,7 +585,10 @@ pub fn analyze_attacks(
     let share = fit::quality(
         &w_times,
         &w_weights,
-        Grid { period: seed.period, phase: seed.phase },
+        Grid {
+            period: seed.period,
+            phase: seed.phase,
+        },
     )
     .share;
     if share < 0.40 {
@@ -585,7 +600,10 @@ pub fn analyze_attacks(
     let (m, first_class) = crate::octave::beat_from_atoms(
         &w2_times,
         &w2_weights,
-        Grid { period: seed.period, phase: seed.phase },
+        Grid {
+            period: seed.period,
+            phase: seed.phase,
+        },
         &hints,
         prefer_map_bpm,
     );
@@ -612,7 +630,10 @@ pub fn analyze_attacks(
             let (text, down, bar) = crate::octave::meter_from_grid(
                 times,
                 &w32,
-                Grid { period: first.period, phase: first.phase },
+                Grid {
+                    period: first.period,
+                    phase: first.phase,
+                },
             );
             (text.to_string(), down, bar)
         }
@@ -700,7 +721,12 @@ mod tests {
         (times, weights)
     }
 
-    fn beat_track(period: f64, phase: f64, beats: usize, downbeat_weight: f32) -> (Vec<f64>, Vec<f32>) {
+    fn beat_track(
+        period: f64,
+        phase: f64,
+        beats: usize,
+        downbeat_weight: f32,
+    ) -> (Vec<f64>, Vec<f32>) {
         let times: Vec<f64> = (0..beats).map(|k| phase + k as f64 * period).collect();
         let weights: Vec<f32> = (0..beats)
             .map(|k| if k % 4 == 0 { downbeat_weight } else { 0.6 })
@@ -780,8 +806,7 @@ mod tests {
         times.extend(t2.iter().skip(1));
         weights.extend(w2.iter().skip(1));
         let grown = crate::sections::grow_sections(&times, &weights, a1, 0.4, 1.5, 12);
-        let settled =
-            crate::sections::settle_boundaries(&times, &weights, grown, SETTLE_ROUNDS);
+        let settled = crate::sections::settle_boundaries(&times, &weights, grown, SETTLE_ROUNDS);
         assert!(settled.len() >= 2);
         for pair in settled.windows(2) {
             assert!((pair[1].start.get() - pair[0].end.get()).abs() < 1e-9);
@@ -810,7 +835,10 @@ mod tests {
         assert!(out.points.is_empty());
         assert!(out.settled_sections.is_empty());
         assert!(
-            matches!(out.diagnostics.as_slice(), [Diagnostic::NoCoherentPulse { .. }]),
+            matches!(
+                out.diagnostics.as_slice(),
+                [Diagnostic::NoCoherentPulse { .. }]
+            ),
             "got {:?}",
             out.diagnostics
         );
@@ -826,7 +854,10 @@ mod tests {
         assert!(
             matches!(
                 out.diagnostics.as_slice(),
-                [Diagnostic::TooFewAttacks { found: 17, needed: 24 }]
+                [Diagnostic::TooFewAttacks {
+                    found: 17,
+                    needed: 24
+                }]
             ),
             "got {:?}",
             out.diagnostics
@@ -840,7 +871,10 @@ mod tests {
         assert!(
             matches!(
                 out.diagnostics.as_slice(),
-                [Diagnostic::TooFewAttacks { found: 0, needed: 24 }]
+                [Diagnostic::TooFewAttacks {
+                    found: 0,
+                    needed: 24
+                }]
             ),
             "got {:?}",
             out.diagnostics

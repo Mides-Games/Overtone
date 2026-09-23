@@ -165,11 +165,7 @@ pub fn refine_parabolic<T: Sample>(x: &[T], peaks: &[usize]) -> (Vec<f64>, Vec<T
     for &p in peaks {
         let mut frame = p as f64;
         if p > 0 && p + 1 < x.len() {
-            let (a, b, c) = (
-                x[p - 1].as_f64(),
-                x[p].as_f64(),
-                x[p + 1].as_f64(),
-            );
+            let (a, b, c) = (x[p - 1].as_f64(), x[p].as_f64(), x[p + 1].as_f64());
             let denom = a - 2.0 * b + c;
             if denom.abs() > 1e-9 {
                 frame += (0.5 * (a - c) / denom).clamp(-0.5, 0.5);
@@ -243,7 +239,10 @@ mod tests {
         // Samples from a parabola whose vertex sits a quarter frame right of
         // the middle sample.
         let f = |t: f64| -(t - 0.25) * (t - 0.25);
-        let x: Vec<f32> = [-1.0, 0.0, 1.0].iter().map(|&t| f(t) as f32 + 2.0).collect();
+        let x: Vec<f32> = [-1.0, 0.0, 1.0]
+            .iter()
+            .map(|&t| f(t) as f32 + 2.0)
+            .collect();
         let (frames, _) = refine_parabolic(&x, &[1]);
         assert!((frames[0] - 1.25).abs() < 1e-3, "got {}", frames[0]);
     }

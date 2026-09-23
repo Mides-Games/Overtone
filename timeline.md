@@ -56,6 +56,14 @@ A bug fix in the hitsound crate's musical role. The tempo engine is untouched.
   them, the period guard names NaN explicitly, and `analyze` takes the same
   `too_many_arguments` allow as `points_from_sections`. No behaviour change;
   177/177 tests, golden 24/24.
+- The whole workspace is now `cargo fmt --check` and `cargo clippy
+  --workspace --all-targets` clean: 28 files reformatted, 35 warnings cleared,
+  one commit per crate. Negated float comparisons spell out NaN; loops that
+  only wrote one slice iterate it; the elastic solver's matrix loops and the
+  five eight-to-nine-input functions keep an `allow` with the reason written
+  down. The corpus's metallic decay looked like a lost per-voice value but the
+  table already carries one per class, so the identical branch went. No
+  behaviour change: every commit passes 177/177 and golden 24/24.
 
 ### Measured
 

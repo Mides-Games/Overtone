@@ -150,10 +150,7 @@ pub struct ElasticReport {
 }
 
 /// Local tempo samples: `(centres, periods, quality)` from short v3 fits.
-pub fn sample_tempo(
-    times: &[f64],
-    weights: &[f32],
-) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+pub fn sample_tempo(times: &[f64], weights: &[f32]) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     let (mut centres, mut periods, mut quality, mut residuals) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     if times.is_empty() {
@@ -170,7 +167,10 @@ pub fn sample_tempo(
                 let (grid, _) = fit::refine(
                     &w_times,
                     &w_weights,
-                    Grid { period: seed.period, phase: seed.phase },
+                    Grid {
+                        period: seed.period,
+                        phase: seed.phase,
+                    },
                 );
                 let q = fit::quality(&w_times, &w_weights, grid);
                 if grid.period > 0.0 {
@@ -320,9 +320,8 @@ pub fn fit_with_degree(
     let lo = times[0];
     let hi = times[times.len() - 1].min(lo + SAMPLE_WIDTH);
     let seed = crate::seed_grid(times, weights, lo, hi, None, &[SAMPLE_WIDTH, 6.0])?;
-    let phase = seed.phase
-        + ((lo - seed.phase - 1e-9) / seed.period).ceil() * seed.period
-        - seed.period;
+    let phase =
+        seed.phase + ((lo - seed.phase - 1e-9) / seed.period).ceil() * seed.period - seed.period;
     let grid = integrate_grid(&curve, phase, times[times.len() - 1] + 2.0);
     if grid.len() < 8 {
         return None;
@@ -440,6 +439,9 @@ pub fn fit_with_degree(
 /// Weighted least squares for `t(k) = Σ c_i·u^i`, or `None` when there is
 /// too little to fit. Tiny systems (≤ 4 unknowns): normal equations with
 /// partial-pivot elimination are plenty.
+/// Index loops on purpose: the matrix steps read one row of `a` while
+/// writing another, which iterators can only say through split borrows.
+#[allow(clippy::needless_range_loop)]
 fn wls(k: &[f64], t: &[f64], w: &[f64], degree: usize, k0: f64, scale: f64) -> Option<Elastic> {
     if k.len() < degree + 3 {
         return None;
@@ -469,7 +471,11 @@ fn wls(k: &[f64], t: &[f64], w: &[f64], degree: usize, k0: f64, scale: f64) -> O
     }
     let coeffs = solve_symmetric(&mut a)?;
     if coeffs.iter().all(|c| c.is_finite()) {
-        Some(Elastic { c: coeffs, k0, scale })
+        Some(Elastic {
+            c: coeffs,
+            k0,
+            scale,
+        })
     } else {
         None
     }
@@ -478,6 +484,9 @@ fn wls(k: &[f64], t: &[f64], w: &[f64], degree: usize, k0: f64, scale: f64) -> O
 /// Weighted polynomial fit of `y` over the abscissa `u`, lowest power first.
 /// Weights enter as `sqrt` (the same `w` the caller passes to `weighted_rms`
 /// squared), matching `np.polyfit(u, y, deg, w=...)`.
+/// Index loops on purpose: the matrix steps read one row of `a` while
+/// writing another, which iterators can only say through split borrows.
+#[allow(clippy::needless_range_loop)]
 fn polyfit(u: &[f64], y: &[f64], w: &[f64], degree: usize) -> Option<Vec<f64>> {
     if u.len() < degree + 1 {
         return None;
@@ -530,6 +539,9 @@ fn polyval(coeffs: &[f64], x: f64) -> f64 {
 
 /// Gaussian elimination with partial pivoting on a symmetric augmented
 /// `(n × (n+1))` system, solved in place.
+/// Index loops on purpose: the matrix steps read one row of `a` while
+/// writing another, which iterators can only say through split borrows.
+#[allow(clippy::needless_range_loop)]
 fn solve_symmetric(a: &mut [Vec<f64>]) -> Option<Vec<f64>> {
     let n = a.len();
     for col in 0..n {
@@ -681,14 +693,27 @@ mod tests {
         );
         // Survival implies monotonicity — fit rejects the rest — but state
         // it: a non-monotone "tempo curve" is never a valid answer.
-        let klo = report.beat_indices.iter().copied().fold(f64::INFINITY, f64::min) as i64;
-        let khi = report.beat_indices.iter().copied().fold(f64::NEG_INFINITY, f64::max) as i64;
+        let klo = report
+            .beat_indices
+            .iter()
+            .copied()
+            .fold(f64::INFINITY, f64::min) as i64;
+        let khi = report
+            .beat_indices
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max) as i64;
         assert!(model.is_monotone(klo, khi));
     }
 
     #[test]
     fn the_curve_holds_constant_past_its_samples() {
-        let curve = TempoCurve { first: 5.0, last: 55.0, span: 50.0, coeffs: vec![0.4, 0.001] };
+        let curve = TempoCurve {
+            first: 5.0,
+            last: 55.0,
+            span: 50.0,
+            coeffs: vec![0.4, 0.001],
+        };
         assert!((curve.period_at(0.0) - curve.period_at(5.0)).abs() < 1e-12);
         assert!((curve.period_at(90.0) - curve.period_at(55.0)).abs() < 1e-12);
     }
@@ -716,5 +741,4 @@ mod tests {
             report.rms_ms
         );
     }
-
 }

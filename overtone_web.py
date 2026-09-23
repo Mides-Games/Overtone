@@ -235,7 +235,20 @@ class Api:
             # A file handed over on the command line ("Open with Overtone") is
             # analysed straight away; the user asked for exactly that file.
             "autorun": autorun,
+            "recent": self._recent(),
         }
+
+    #: How many recent files the empty state offers back.
+    RECENT_LIMIT = 8
+
+    def _recent(self) -> list:
+        """Remembered files that still exist, most recent first."""
+        seen, out = set(), []
+        for path in self._cfg.get("recent", []):
+            if path not in seen and Path(str(path)).is_file():
+                seen.add(path)
+                out.append(self._file_info(str(path)))
+        return out[:self.RECENT_LIMIT]
 
     def set_language(self, code: str) -> None:
         self._cfg["language"] = "Español" if code == "es" else "English"
@@ -673,6 +686,8 @@ class Api:
                           "pulse": tk_pulse.get(options.get("pulse", "auto"), "Auto"),
                           "prefer_map_bpm": bool(options.get("prefer_map_bpm", True)),
                           "refine_beats": bool(options.get("refine_beats", True))})
+        recent = [path] + [p for p in self._cfg.get("recent", []) if p != path]
+        self._cfg["recent"] = recent[:self.RECENT_LIMIT]
         self._persist()
 
     def _persist(self) -> None:

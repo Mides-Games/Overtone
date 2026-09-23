@@ -59,6 +59,7 @@ const I18N = {
     inject_confirm: "Replace {reds} red lines with {n} new ones in {file}?{warn}",
     inject_warn: "\nThe .osu audio ({osu}) differs from the analyzed file ({src}).",
     drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
+    recent: "Recent",
     cmp_title: "Map vs detected", cmp_pick: "Choose .osu…",
     cmp_empty: "Choose the .osu you mapped to compare it against this detection.",
     cmp_sections: "{n} sections",
@@ -134,6 +135,7 @@ const I18N = {
     inject_confirm: "¿Reemplazar {reds} líneas rojas por {n} nuevas en {file}?{warn}",
     inject_warn: "\nEl audio del .osu ({osu}) difiere del analizado ({src}).",
     drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
+    recent: "Recientes",
     cmp_title: "Mapa vs detección", cmp_pick: "Elegir .osu…",
     cmp_empty: "Elegí el .osu que mapeaste para compararlo con esta detección.",
     cmp_sections: "{n} secciones",
@@ -155,7 +157,7 @@ const I18N = {
   },
 };
 
-const S = { lang: "en", file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null };
+const S = { lang: "en", file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, recent: [] };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
@@ -171,6 +173,7 @@ function translate() {
   document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll("#langSwitch button").forEach((b) => b.classList.toggle("on", b.dataset.lang === S.lang));
   renderSong();
+  renderRecents();
   if (S.result) renderResult(S.result);
   if (S.busy) $("analyzeText").textContent = t("analyzing");
 }
@@ -336,6 +339,7 @@ async function importFolder() {
   S.lastFolder = reply.folder;
   if (reply.file) {
     setFile(reply.file);
+    refreshRecents();
     toast(t("imported", { audio: reply.file.name, n: reply.beatmaps.length,
                           difficulties: t("difficulties") }));
   } else {
@@ -369,6 +373,7 @@ window.overtone = {
     showResult(result);
     syncHistory();
     syncLocks();
+    refreshRecents();
     toast(t("done", { n: result.points.length, bpm: result.global_bpm.toFixed(2) }));
   },
   onError(detail) { S.pendingDrop = null; setBusy(false); toast(t("error", { detail }), true); },
@@ -610,6 +615,26 @@ function hasFiles(e) {
 }
 
 const AUDIO_EXT = /\.(wav|flac|ogg|mp3|m4a|aac|opus|aiff?)$/i;
+
+function renderRecents() {
+  const box = $("recents"), list = $("recentList");
+  box.hidden = !S.recent.length;
+  list.innerHTML = S.recent.map((f, i) => `
+    <button class="recent-item" data-recent="${i}" title="${f.path.replaceAll('"', "")}">
+      <span class="name">${f.name}</span>
+      <span class="meta num">${f.size_mb} MB</span>
+    </button>`).join("");
+}
+
+async function refreshRecents() {
+  if (!api()) return;
+  try {
+    S.recent = (await api().state()).recent || [];
+  } catch (err) {
+    S.recent = [];
+  }
+  renderRecents();
+}
 
 async function dropAnalyze(file) {
   if (!api() || S.busy) return;
@@ -911,6 +936,10 @@ function wire() {
   $("halfBtn").onclick = () => rescale(0.5);
   $("doubleBtn").onclick = () => rescale(2);
   $("rows").onclick = (e) => { const tr = e.target.closest("tr"); if (tr) selectPoint(+tr.dataset.i); };
+  $("recentList").onclick = (e) => {
+    const btn = e.target.closest("[data-recent]");
+    if (btn && S.recent[+btn.dataset.recent]) setFile(S.recent[+btn.dataset.recent]);
+  };
   $("detail").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-action]");
     if (btn) editAction(btn.dataset.action);
@@ -968,6 +997,7 @@ async function boot() {
   wire();
   const st = await api().state();
   S.lang = st.language; S.presets = st.presets;
+  S.recent = st.recent || [];
   $("version").textContent = st.version;
   if (st.logo) $("logo").src = st.logo;
   applyOptions(st.options);

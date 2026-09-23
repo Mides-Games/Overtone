@@ -459,6 +459,32 @@ class FolderImportTests(_IsolatedConfig):
         self.assertIsNone(api.pick_folder())
 
 
+class RecentTests(_IsolatedConfig):
+    OPTIONS = {"delta": 1.5, "persistence": 12, "confidence": 75, "pulse": "auto",
+               "prefer_map_bpm": True, "refine_beats": True}
+
+    def test_remember_orders_dedupes_and_caps(self) -> None:
+        api = web.Api()
+        for n in range(10):
+            api._remember(f"C:/songs/{n}.mp3", self.OPTIONS)
+        self.assertEqual(api._cfg["recent"][:2], ["C:/songs/9.mp3", "C:/songs/8.mp3"])
+        self.assertEqual(len(api._cfg["recent"]), 8)
+        api._remember("C:/songs/5.mp3", self.OPTIONS)
+        self.assertEqual(api._cfg["recent"][:2], ["C:/songs/5.mp3", "C:/songs/9.mp3"])
+        json.dumps(api._cfg["recent"])
+
+    def test_state_lists_only_files_that_still_exist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            alive = str(Path(tmp) / "a.wav")
+            Path(alive).write_bytes(b"RIFF")
+            api = web.Api()
+            api._cfg["recent"] = [alive, "C:/gone/b.wav", alive]
+            recent = api.state()["recent"]
+        self.assertEqual(len(recent), 1)
+        self.assertEqual(recent[0]["name"], "a.wav")
+        json.dumps(recent)
+
+
 class DropTests(_IsolatedConfig):
     def test_corrupt_and_oversized_drops_are_refused(self) -> None:
         api = web.Api()

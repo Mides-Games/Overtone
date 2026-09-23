@@ -7,6 +7,7 @@ as the Tk GUI does, (2) returns only JSON types, and (3) never touches the
 user's real ~/.overtone.json.
 """
 import json
+import os
 import tempfile
 import threading
 import unittest
@@ -31,7 +32,12 @@ def _analysis(points, beats=None, engine="precision", residual=0.4, onset_frames
 
 
 class _IsolatedConfig(unittest.TestCase):
-    """Every test sees an empty config and records writes instead of saving."""
+    """Every test sees an empty config and records writes instead of saving.
+
+    LOCALAPPDATA is also redirected: the result cache and drop staging must
+    never touch the real machine, and one test's cache entry must never make
+    another test skip its engine run.
+    """
 
     def setUp(self) -> None:
         self.saved: list[dict] = []
@@ -40,6 +46,11 @@ class _IsolatedConfig(unittest.TestCase):
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        env = mock.patch.dict(os.environ, {"LOCALAPPDATA": scratch.name})
+        env.start()
+        self.addCleanup(env.stop)
 
 
 class PayloadTests(unittest.TestCase):
@@ -728,6 +739,133 @@ class LockTests(_IsolatedConfig):
             by_offset = {lock["offset_ms"]: lock["bpm"] for lock in api._locked}
             self.assertAlmostEqual(by_offset[api._analysis.points[0].offset_ms],
                                    2 * first_bpm, places=6)
+
+
+class CacheTests(_IsolatedConfig):
+    OPTIONS = {"delta": 1.5, "persistence": 12, "confidence": 75, "pulse": "auto",
+               "prefer_map_bpm": True, "refine_beats": True}
+
+    def _local_app(self, tmp: str) -> web.Api:
+        import os
+        self._env = mock.patch.dict(os.environ, {"LOCALAPPDATA": tmp})
+        self._env.start()
+        self.addCleanup(self._env.stop)
+        return web.Api()
+
+    def test_key_tracks_content_options_and_missing_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            one = Path(tmp) / "a.wav"
+            one.write_bytes(b"RIFF....")
+            api = web.Api()
+            params = web.Api._params(self.OPTIONS)
+            key = api._cache_key(str(one), params)
+            self.assertEqual(key, api._cache_key(str(one), params))
+            altered = dict(self.OPTIONS, confidence=80)
+            self.assertNotEqual(key, api._cache_key(str(one), web.Api._params(altered)))
+            one.write_bytes(b"RIFF....!")
+            self.assertNotEqual(key, api._cache_key(str(one), params))
+            self.assertIsNone(api._cache_key(str(Path(tmp) / "gone.wav"), params))
+
+    def test_save_load_round_trip_and_corrupt_cache_is_a_miss(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            one = Path(tmp) / "a.wav"
+            one.write_bytes(b"RIFF....")
+            api = self._local_app(tmp)
+            params = web.Api._params(self.OPTIONS)
+            original = _analysis([ta.TimingPoint(500, 150, 1, 0)])
+            api._cache_save(str(one), params, original)
+            loaded = api._cache_load(str(one), params)
+            self.assertEqual(loaded.points, original.points)
+            self.assertEqual(loaded.global_bpm, original.global_bpm)
+            key = api._cache_key(str(one), params)
+            (api._cache_dir() / (key + ".pickle")).write_bytes(b"not a pickle")
+            self.assertIsNone(api._cache_load(str(one), params))
+
+    def test_prune_keeps_newest_within_both_caps(self) -> None:
+        import os
+        import time
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._local_app(tmp)
+            cache = api._cache_dir()
+            for n in range(5):
+                entry = cache / f"e{n}.pickle"
+                entry.write_bytes(b"x" * 100)
+                os.utime(entry, (1000 + n, 1000 + n))
+            with mock.patch.object(web.Api, "CACHE_ENTRIES", 3):
+                api._prune_cache()
+            self.assertEqual(sorted(p.name for p in cache.glob("*.pickle")),
+                             ["e2.pickle", "e3.pickle", "e4.pickle"])
+            with mock.patch.object(web.Api, "CACHE_BYTES", 250):
+                api._prune_cache()
+            self.assertEqual(sorted(p.name for p in cache.glob("*.pickle")),
+                             ["e3.pickle", "e4.pickle"])
+
+    def test_second_analysis_of_the_same_file_skips_the_engine(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "a.wav"
+            wav.write_bytes(b"RIFF....")
+            api = self._local_app(tmp)
+            fixed = _analysis([ta.TimingPoint(500, 150, 1, 0)])
+            events: list[tuple[str, object]] = []
+            done = threading.Event()
+
+            def emit(handler, payload):
+                events.append((handler, payload))
+                if handler in ("onResult", "onError"):
+                    done.set()
+
+            api._emit = emit
+            with mock.patch.object(web, "run_analysis", return_value=fixed) as run:
+                self.assertTrue(api.analyze(str(wav), self.OPTIONS)["ok"])
+                self.assertTrue(done.wait(30))
+                done.clear()
+                events.clear()
+                self.assertTrue(api.analyze(str(wav), self.OPTIONS)["ok"])
+                self.assertTrue(done.wait(30))
+                self.assertEqual(run.call_count, 1)
+            kinds = [k for k, _ in events]
+            self.assertEqual(kinds, ["onResult"])
+            self.assertEqual(events[0][1]["points"], web.analysis_payload(fixed)["points"])
+
+    def test_active_locks_bypass_the_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "a.wav"
+            wav.write_bytes(b"RIFF....")
+            api = self._local_app(tmp)
+            api._locked = [{"offset_ms": 500.0, "bpm": 150.0, "meter": 4, "meter_known": False}]
+            fixed = _analysis([ta.TimingPoint(500, 150, 1, 0)])
+            done = threading.Event()
+            api._emit = lambda handler, payload: done.set() if handler == "onResult" else None
+            with mock.patch.object(web, "run_analysis", return_value=fixed) as run:
+                self.assertTrue(api.analyze(str(wav), self.OPTIONS)["ok"])
+                self.assertTrue(done.wait(30))
+                self.assertEqual(run.call_count, 1)
+
+    def test_byte_twins_share_the_entry_but_keep_their_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            a = Path(tmp) / "a.wav"
+            b = Path(tmp) / "b.wav"
+            a.write_bytes(b"RIFF....")
+            b.write_bytes(b"RIFF....")
+            api = self._local_app(tmp)
+            fixed = _analysis([ta.TimingPoint(500, 150, 1, 0)])
+            payloads: list[dict] = []
+            done = threading.Event()
+
+            def emit(handler, payload):
+                if handler == "onResult":
+                    payloads.append(payload)
+                    done.set()
+
+            api._emit = emit
+            with mock.patch.object(web, "run_analysis", return_value=fixed) as run:
+                self.assertTrue(api.analyze(str(a), self.OPTIONS)["ok"])
+                self.assertTrue(done.wait(30))
+                done.clear()
+                self.assertTrue(api.analyze(str(b), self.OPTIONS)["ok"])
+                self.assertTrue(done.wait(30))
+                self.assertEqual(run.call_count, 1)
+            self.assertEqual([p["path"] for p in payloads], [fixed.source, str(b)])
 
 
 if __name__ == "__main__":

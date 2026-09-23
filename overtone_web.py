@@ -646,7 +646,17 @@ class Api:
 
     def _worker(self, path: str, params: dict) -> None:
         try:
-            result = run_analysis(path, params, self._emit_progress)
+            result = None
+            if not self._locked:
+                result = self._cache_load(path, params)
+            if result is None:
+                result = run_analysis(path, params, self._emit_progress)
+                if not self._locked:
+                    self._cache_save(path, params, result)
+            else:
+                # Content-keyed cache: the DSP is identical for byte twins,
+                # but the path on the payload must be this file's.
+                result.source = path
             if self._locked:
                 # Verified red lines survive re-analysis: re-merge them as
                 # hand-placed points (confidence 1.0, bar preserved), skipping
@@ -674,6 +684,91 @@ class Api:
 
     def _emit_progress(self, message: str) -> None:
         self._emit("onProgress", message)
+
+    # -- result cache (Phase 2: same audio plus same options, no recompute) --
+    #: Entries kept and total bytes kept; payloads are small (pooled onset
+    #: plus one value per beat), analyses are not.
+    CACHE_ENTRIES = 10
+    CACHE_BYTES = 50 * 1024 * 1024
+
+    @staticmethod
+    def _cache_dir() -> Path:
+        directory = Path(os.environ.get("LOCALAPPDATA", str(HERE))) / "Overtone" / "cache"
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
+
+    @staticmethod
+    def _cache_key(path: str, params: dict) -> str | None:
+        """Content hash plus app version plus engine code plus options.
+
+        The engine mtime is in the key on purpose: editing the DSP must
+        invalidate every cached result, or the suite would keep passing
+        against yesterday's analyses. None when unreadable.
+        """
+        import hashlib
+        try:
+            digest = hashlib.sha256()
+            with open(path, "rb") as handle:
+                for chunk in iter(lambda: handle.read(1 << 20), b""):
+                    digest.update(chunk)
+            engine_mtime = os.path.getmtime(ta.__file__)
+        except OSError:
+            return None
+        stamp = json.dumps([ta.APP_VERSION, engine_mtime, params],
+                           sort_keys=True, default=str)
+        return hashlib.sha256(
+            f"{stamp}|".encode() + digest.digest()).hexdigest()
+
+    def _cache_load(self, path: str, params: dict):
+        """A cached Analysis, or None on any failure (a miss, never an error)."""
+        import pickle
+        key = self._cache_key(path, params)
+        if key is None:
+            return None
+        try:
+            with open(self._cache_dir() / (key + ".pickle"), "rb") as handle:
+                result = pickle.load(handle)  # noqa: S301 -- own dir, own version key
+        except Exception:  # noqa: BLE001 -- any cache failure is a miss
+            return None
+        return result if isinstance(result, ta.Analysis) else None
+
+    def _cache_save(self, path: str, params: dict, result) -> None:
+        """Persist an engine result; must never break the analysis it follows."""
+        import pickle
+        try:
+            key = self._cache_key(path, params)
+            if key is None:
+                return
+            target = self._cache_dir() / (key + ".pickle")
+            tmp = target.with_suffix(".part")
+            with open(tmp, "wb") as handle:
+                pickle.dump(result, handle, protocol=4)
+            os.replace(tmp, target)
+            self._prune_cache()
+        except (OSError, ValueError):
+            pass
+
+    def _prune_cache(self) -> None:
+        """Newest entries survive, by count and by total bytes."""
+        try:
+            entries = sorted(self._cache_dir().glob("*.pickle"),
+                             key=lambda p: p.stat().st_mtime, reverse=True)
+        except OSError:
+            return
+        kept, total = 0, 0
+        for entry in entries:
+            try:
+                size = entry.stat().st_size
+            except OSError:
+                continue
+            if kept < self.CACHE_ENTRIES and total + size <= self.CACHE_BYTES:
+                kept += 1
+                total += size
+            else:
+                try:
+                    entry.unlink()
+                except OSError:
+                    pass
 
     def _emit(self, handler: str, payload: object) -> None:
         if self._window is not None:

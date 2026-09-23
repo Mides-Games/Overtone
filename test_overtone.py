@@ -53,6 +53,7 @@ from overtone import (
     read_osu_red_lines,
     compare_map_timing,
     scan_beatmap_folder,
+    analyze_batch,
 )
 
 
@@ -1320,6 +1321,40 @@ class FolderScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):
                 scan_beatmap_folder(str(Path(tmp) / "missing"))
+
+
+class BatchTests(unittest.TestCase):
+    def _songs(self, tmp: str) -> Path:
+        folder = Path(tmp) / "songs"
+        folder.mkdir()
+        _click_track(folder / "a-150.wav", bpm=150.0)
+        _click_track(folder / "b-140.wav", bpm=140.0)
+        (folder / "broken.wav").write_bytes(b"RIFF....")
+        (folder / "notes.txt").write_text("not audio", encoding="utf-8")
+        return folder
+
+    def test_batch_reports_each_audio_and_never_stops(self) -> None:
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = analyze_batch(str(self._songs(tmp)))
+        self.assertEqual([row["file"] for row in rows], ["a-150.wav", "b-140.wav", "broken.wav"])
+        a, b, broken = rows
+        self.assertTrue(a["ok"])
+        self.assertAlmostEqual(a["global_bpm"], 150.0, delta=150.0 * 0.04)
+        self.assertGreaterEqual(a["points"], 1)
+        self.assertTrue(b["ok"])
+        self.assertAlmostEqual(b["global_bpm"], 140.0, delta=140.0 * 0.04)
+        self.assertFalse(broken["ok"])
+        self.assertTrue(broken["error"])
+        json.dumps(rows)
+
+    def test_empty_folder_is_empty_and_missing_is_an_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            empty = Path(tmp) / "empty"
+            empty.mkdir()
+            self.assertEqual(analyze_batch(str(empty)), [])
+            with self.assertRaises(ValueError):
+                analyze_batch(str(Path(tmp) / "missing"))
 
 
 if __name__ == "__main__":

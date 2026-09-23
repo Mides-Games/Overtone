@@ -2013,6 +2013,42 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
                             min_confidence, say, legacy_force, refine_beats)
 
 
+def analyze_batch(folder: str | os.PathLike[str], min_delta: float = 1.5,
+                  persistence: int = 12, prefer_map_bpm: bool = True,
+                  min_confidence: float = 0.75, force_subdivision: float = 0.0,
+                  refine_beats: bool = True, progress=None) -> list[dict]:
+    """Analyze every audio file in a folder; one bad file never stops the rest.
+
+    Phase 8 batch entry point (single flat folder — osu! song folders are
+    flat, and so is this). Each row is plain JSON types: ``{"file", "ok",
+    "global_bpm", "points", "duration", "error"}`` with the file's basename,
+    sorted by name so two runs print the same table.
+    """
+    root = Path(folder)
+    if not root.is_dir():
+        raise ValueError(f"{root} is not a folder.")
+    try:
+        names = sorted(p.name for p in root.iterdir()
+                       if p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS)
+    except OSError as exc:
+        raise ValueError(f"Could not list {root}: {exc}") from exc
+    rows: list[dict] = []
+    for name in names:
+        try:
+            analysis = analyze_audio(str(root / name), min_delta, persistence,
+                                     prefer_map_bpm, min_confidence, progress,
+                                     force_subdivision, refine_beats)
+        except (ValueError, RuntimeError, OSError) as exc:
+            rows.append({"file": name, "ok": False, "global_bpm": 0.0,
+                         "points": 0, "duration": 0.0, "error": str(exc)})
+            continue
+        rows.append({"file": name, "ok": True,
+                     "global_bpm": round(float(analysis.global_bpm), 4),
+                     "points": len(analysis.points),
+                     "duration": round(float(analysis.duration), 2), "error": ""})
+    return rows
+
+
 def rebuild_with_subdivision(analysis: Analysis, factor: float,
                              min_delta: float = 1.5, persistence: int = 12,
                              min_confidence: float = 0.75) -> Analysis:
@@ -4233,7 +4269,7 @@ class TimingAnalyzerApp:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Overtone — BPM and offset detector for osu! mapping")
-    parser.add_argument("audio", nargs="?", help="Audio file to analyze (no argument opens the GUI)")
+    parser.add_argument("audio", nargs="?", help="Audio file to analyze (a folder analyses every audio file in it; no argument opens the GUI)")
     parser.add_argument("--delta", type=float, default=1.5, help="Minimum BPM change (default 1.5)")
     parser.add_argument("--persistence", type=int, default=12, help="Beats required to confirm a change (default 12; 20+ for steady songs)")
     parser.add_argument("--min-confidence", type=float, default=75, help="Minimum confidence of exported points (0-100; default 75)")
@@ -4263,6 +4299,34 @@ def main() -> None:
         print("Error: --decimal-offsets must be between 0 and 6")
         raise SystemExit(2)
     force = 0.0 if args.subdivision == "auto" else float(args.subdivision)
+    if Path(args.audio).is_dir():
+        if args.click or args.osz or args.inject or args.stats:
+            print("Error: --click/--osz/--inject/--stats need a single audio file, not a folder")
+            raise SystemExit(2)
+        try:
+            rows = analyze_batch(args.audio, args.delta, args.persistence, not args.no_map_preference,
+                                 args.min_confidence / 100, force, refine_beats=not args.no_refine)
+        except ValueError as exc:
+            print(f"Error: {exc}")
+            raise SystemExit(1)
+        print(f"{'file':<32} {'bpm':>10} {'points':>7} {'seconds':>8}  status")
+        failures = 0
+        for row in rows:
+            failures += not row["ok"]
+            status = "ok" if row["ok"] else f"FAILED: {row['error']}"
+            print(f"{row['file']:<32} {row['global_bpm']:>10.2f} {row['points']:>7d} "
+                  f"{row['duration']:>8.1f}  {status}")
+        if args.csv:
+            try:
+                with open(args.csv, "w", newline="", encoding="utf-8") as handle:
+                    writer = csv.writer(handle)
+                    writer.writerow(["file", "ok", "global_bpm", "points", "duration", "error"])
+                    writer.writerows([[row["file"], row["ok"], row["global_bpm"],
+                                       row["points"], row["duration"], row["error"]] for row in rows])
+            except OSError as exc:
+                print(f"Error writing output: {exc}")
+                raise SystemExit(1)
+        raise SystemExit(1 if failures else 0)
     try:
         analysis = analyze_audio(args.audio, args.delta, args.persistence, not args.no_map_preference,
                                  args.min_confidence / 100, print, force,

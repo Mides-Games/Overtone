@@ -15,10 +15,26 @@ pub const A4_HZ: f64 = 440.0;
 /// Pitch classes C..B as indices 0..11.
 pub const CLASSES: usize = 12;
 
+/// Pitch class of a frequency, 12-TET against [`A4_HZ`].
+fn class_of(freq: f64) -> usize {
+    let midi = (69.0 + 12.0 * (freq / A4_HZ).log2()).round() as i64;
+    midi.rem_euclid(12) as usize
+}
+
 /// Chroma matrix: one L1-normalised 12-vector per frame. `power` rows hold
 /// `n_fft/2 + 1` bins from [`crate::stft::power_spectrogram`].
+///
+/// Above the frequency where one bin is narrower than a semitone, each bin
+/// folds into the class of its centre. Below it (about 362 Hz at 2048/44.1 k,
+/// 181 Hz at 4096) a bin spans more than a semitone, and folding by centre
+/// put A1 on F and E2 on F — 24 of the 36 notes from E1 to D#4 landed on the
+/// wrong class. There, only spectral peaks count: each is placed at its
+/// frequency interpolated from the log power of its two neighbours (a
+/// Gaussian fit, near-exact for the Hann window), carrying its lobe's
+/// magnitude.
 pub fn chroma(power: &[Vec<f64>], sr: u32, n_fft: usize) -> Vec<[f64; CLASSES]> {
     let bin_hz = sr as f64 / n_fft as f64;
+    let resolved_hz = bin_hz / (2f64.powf(1.0 / 12.0) - 1.0);
     power
         .iter()
         .map(|row| {
@@ -28,8 +44,29 @@ pub fn chroma(power: &[Vec<f64>], sr: u32, n_fft: usize) -> Vec<[f64; CLASSES]> 
                     continue;
                 }
                 let freq = bin as f64 * bin_hz;
-                let midi = (69.0 + 12.0 * (freq / A4_HZ).log2()).round() as i64;
-                classes[midi.rem_euclid(12) as usize] += energy.sqrt();
+                if freq >= resolved_hz {
+                    classes[class_of(freq)] += energy.sqrt();
+                    continue;
+                }
+                let (left, right) = (row[bin - 1], row.get(bin + 1).copied().unwrap_or(0.0));
+                if energy <= left || energy < right {
+                    continue; // lobe tail: its peak carries it
+                }
+                let offset = if left > 0.0 && right > 0.0 {
+                    let (a, b, c) = (left.ln(), energy.ln(), right.ln());
+                    let curve = a - 2.0 * b + c;
+                    if curve < 0.0 {
+                        (0.5 * (a - c) / curve).clamp(-0.5, 0.5)
+                    } else {
+                        0.0
+                    }
+                } else {
+                    0.0
+                };
+                let peak_hz = (bin as f64 + offset) * bin_hz;
+                if peak_hz > 0.0 {
+                    classes[class_of(peak_hz)] += left.sqrt() + energy.sqrt() + right.sqrt();
+                }
             }
             let total: f64 = classes.iter().sum();
             if total > 0.0 {
@@ -68,6 +105,31 @@ mod tests {
         }
         let n = mid.len() as f64;
         acc.map(|v| v / n)
+    }
+
+    #[test]
+    fn bass_notes_land_on_their_own_class() {
+        // Below ~362 Hz a 21.5 Hz bin is wider than a semitone, so folding
+        // each bin by its centre frequency put A1 (55 Hz) on F and E2 on F:
+        // 24 of these 36 notes came out on the wrong class.
+        let mut wrong = Vec::new();
+        for midi in 28..=63 {
+            let freq = A4_HZ * 2f64.powf((midi as f64 - 69.0) / 12.0);
+            let mean = mean_chroma(&tone(44_100, 2.0, freq), 44_100);
+            let top = mean
+                .iter()
+                .enumerate()
+                .max_by(|a, b| a.1.total_cmp(b.1))
+                .map(|(c, _)| c)
+                .unwrap();
+            if top != (midi % 12) as usize {
+                wrong.push((midi, top));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "notes on the wrong class (midi, got): {wrong:?}"
+        );
     }
 
     #[test]

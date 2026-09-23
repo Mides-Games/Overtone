@@ -14,6 +14,9 @@ use crate::{PRE_END_S, PRE_START_S, WIN_END_S, WIN_START_S};
 /// Kills sample ripple without moving onsets.
 pub const SMOOTH_SAMPLES: usize = 32;
 
+/// Lowest frequency that counts toward `chroma_change`: chords, not kicks.
+pub const CHORD_FLOOR_HZ: f64 = 100.0;
+
 /// Temporal evidence for one attack.
 #[derive(Debug, Clone)]
 pub struct Temporal {
@@ -178,10 +181,20 @@ pub fn analyze(y: &[f32], sr: u32, attack_s: f64) -> Temporal {
         let n_fft = 4096;
         let mag = spectrum(&attack, n_fft);
         let pre_mag = spectrum(&pre, n_fft);
+        // A chord change is read from the harmonic register. Below
+        // CHORD_FLOOR_HZ sits a kick's fundamental (40-100 Hz), which chroma
+        // now places on its true note: left in, a kick on a sustained pad
+        // reads as a new pitch class and the feature fires on drums.
+        let floor_bin = (CHORD_FLOOR_HZ * n_fft as f64 / sr as f64).ceil() as usize;
         // Fold both into chroma via the DSP crate and read the distance.
         let rows: Vec<Vec<f64>> = [&mag, &pre_mag]
             .iter()
-            .map(|m| m.iter().map(|&v| v * v).collect())
+            .map(|m| {
+                m.iter()
+                    .enumerate()
+                    .map(|(bin, &v)| if bin < floor_bin { 0.0 } else { v * v })
+                    .collect()
+            })
             .collect();
         let chroma = overtone_dsp::chroma::chroma(&rows, sr, n_fft);
         if chroma.len() == 2 {

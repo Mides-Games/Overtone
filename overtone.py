@@ -3255,6 +3255,109 @@ def write_osu_beatmap(osu_path: str | os.PathLike[str], beatmap: dict,
 
 
 # ---------------------------------------------------------------------------
+# Attack object context (Phase 6: what the map was doing at each attack)
+# ---------------------------------------------------------------------------
+
+#: An object within this of an attack belongs to it. Mappers think in
+#: milliseconds, and 50 ms is an eighth note at 150 BPM — generous enough for
+#: human timing, tight enough to exclude the neighbour.
+OBJECT_WINDOW_MS = 50.0
+#: Nearest-neighbour object gap under this with small steps reads as a stream.
+STREAM_GAP_MS = 250.0
+STREAM_STEP_PX = 150.0
+#: A step at least this big on a fast gap reads as a jump.
+JUMP_STEP_PX = 200.0
+JUMP_GAP_MS = 500.0
+
+
+def attack_object_context(times: np.ndarray, weights: np.ndarray,
+                          beatmap: dict,
+                          tolerance_ms: float = OBJECT_WINDOW_MS) -> list[dict]:
+    """Per-attack map context for the hitsound decision (Phase 6, first row).
+
+    For every attack: the nearest hitobject start inside the tolerance (object
+    starts only — slider ends and repeat hits stay future work, stated here so
+    nobody assumes them), the object spacing around it, a coarse pattern class
+    (stream/jump/single/none), the running combo, and the object's existing
+    hitsound. Unparsed objects still match by time — their sound is unknown,
+    not their position. Attacks with no object nearby come back with nulls,
+    never invented context. All plain JSON types.
+    """
+    try:
+        hitobjects = [o for o in beatmap.get("hitobjects", [])
+                      if isinstance(o, dict) and np.isfinite(o.get("time", float("nan")))]
+    except (TypeError, ValueError):
+        hitobjects = []
+    hitobjects.sort(key=lambda o: o["time"])
+
+    combos: list[int] = []
+    combo = 0
+    for obj in hitobjects:
+        if obj.get("new_combo"):
+            combo += 1
+        combos.append(combo)
+
+    rows: list[dict] = []
+    times = np.asarray(times, dtype=np.float64)
+    weights = np.asarray(weights, dtype=np.float64)
+    for n, attack in enumerate(times):
+        weight = float(weights[n]) if n < weights.size else 0.0
+        best, best_dt = -1, float("inf")
+        for i, obj in enumerate(hitobjects):
+            dt = abs(float(obj["time"]) - float(attack))
+            if dt < best_dt:
+                best, best_dt = i, dt
+        if best < 0 or best_dt > tolerance_ms:
+            rows.append({"time": float(attack), "weight": weight, "object": None,
+                         "spacing_prev_ms": None, "spacing_next_ms": None,
+                         "step_px": None, "pattern": "none", "combo": None,
+                         "new_combo": False, "hitsound": {}})
+            continue
+        obj = hitobjects[best]
+        prev = hitobjects[best - 1] if best > 0 else None
+        nxt = hitobjects[best + 1] if best + 1 < len(hitobjects) else None
+        gap_prev = float(obj["time"] - prev["time"]) if prev else None
+        gap_next = float(nxt["time"] - obj["time"]) if nxt else None
+        step_prev = _object_step(obj, prev)
+        step_next = _object_step(obj, nxt)
+        # The nearest neighbour decides the pattern, by time then by space.
+        gaps = [(g, s) for g, s in ((gap_prev, step_prev), (gap_next, step_next))
+                if g is not None and s is not None]
+        pattern, step_px = "single", step_prev
+        if gaps:
+            _gap, step_px = min(gaps, key=lambda gs: gs[0])
+            if _gap < STREAM_GAP_MS and step_px < STREAM_STEP_PX:
+                pattern = "stream"
+            elif step_px >= JUMP_STEP_PX and _gap < JUMP_GAP_MS:
+                pattern = "jump"
+        sample = obj.get("hit_sample") or {}
+        rows.append({
+            "time": float(attack), "weight": weight,
+            "object": {"kind": obj.get("kind"), "time": float(obj["time"]),
+                       "dt_ms": float(obj["time"]) - float(attack),
+                       "x": obj.get("x"), "y": obj.get("y")},
+            "spacing_prev_ms": gap_prev, "spacing_next_ms": gap_next,
+            "step_px": step_prev,
+            "pattern": pattern, "combo": combos[best],
+            "new_combo": bool(obj.get("new_combo")),
+            "hitsound": {"sound": int(obj.get("hit_sound", 0)),
+                         "sample": {k: sample.get(k) for k in
+                                    ("normal_set", "addition_set", "index", "volume", "file")}},
+        })
+    return rows
+
+
+def _object_step(obj: dict, other: dict | None) -> float | None:
+    """Playfield distance in pixels, None when either end lacks a position."""
+    if other is None:
+        return None
+    try:
+        return float(np.hypot(obj["x"] - other["x"], obj["y"] - other["y"]))
+    except (TypeError, KeyError):
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Settings persistence
 # ---------------------------------------------------------------------------
 

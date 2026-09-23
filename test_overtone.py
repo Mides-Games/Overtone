@@ -57,6 +57,7 @@ from overtone import (
     read_osu_beatmap,
     set_beatmap_reds,
     write_osu_beatmap,
+    attack_object_context,
 )
 
 
@@ -1520,6 +1521,77 @@ class MapWriterTests(unittest.TestCase):
             target.write_text("[General]\nAudioFilename: a.mp3\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 set_beatmap_reds(read_osu_beatmap(target), ["1,500,4,1,0,100,1,0"])
+
+
+_CONTEXT_OSU = "\n".join([
+    "osu file format v14",
+    "",
+    "[General]",
+    "AudioFilename: audio.mp3",
+    "",
+    "[TimingPoints]",
+    "1000,400,4,1,0,100,1,0",
+    "",
+    "[HitObjects]",
+    "64,192,1000,5,0,0:0:0:0:",
+    "80,192,1100,1,0,0:0:0:0:",
+    "96,192,1200,1,2,2:0:0:25:",
+    "400,100,1400,5,0,0:0:0:0:",
+    "100,300,5000,1,0,0:0:0:0:",
+    "256,192,8000,8,0,9000,0:0:0:0:",
+    "",
+])
+
+
+class ObjectContextTests(unittest.TestCase):
+    def _context(self, attacks):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(_CONTEXT_OSU, encoding="utf-8")
+            beatmap = read_osu_beatmap(target)
+        times = np.array(attacks, dtype=np.float64)
+        rows = attack_object_context(times, np.ones(times.size), beatmap)
+        json.dumps(rows)
+        return rows
+
+    def test_patterns_combos_and_sounds(self) -> None:
+        rows = self._context([1005.0, 1103.0, 1198.0, 1402.0, 5000.0, 8000.0, 30000.0])
+        kinds = [r["object"]["kind"] if r["object"] else None for r in rows]
+        self.assertEqual(kinds, ["circle", "circle", "circle", "circle", "circle", "spinner", None])
+        self.assertEqual([r["pattern"] for r in rows],
+                         ["stream", "stream", "stream", "jump", "single", "single", "none"])
+        self.assertEqual([r["combo"] for r in rows], [1, 1, 1, 2, 2, 2, None])
+        self.assertEqual([r["new_combo"] for r in rows],
+                         [True, False, False, True, False, False, False])
+        third = rows[2]
+        self.assertAlmostEqual(third["object"]["dt_ms"], 2.0)
+        self.assertEqual(third["spacing_prev_ms"], 100.0)
+        self.assertEqual(third["spacing_next_ms"], 200.0)
+        self.assertEqual(third["hitsound"]["sound"], 2)
+        self.assertEqual(third["hitsound"]["sample"]["volume"], 25)
+        stray = rows[6]
+        self.assertIsNone(stray["object"])
+        self.assertIsNone(stray["spacing_prev_ms"])
+        self.assertEqual(stray["hitsound"], {})
+
+    def test_tolerance_boundary_and_empty_map(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(_CONTEXT_OSU, encoding="utf-8")
+            beatmap = read_osu_beatmap(target)
+        # 1050 ms sits exactly 50 ms from the first circle: inclusive by default.
+        attack = np.array([1050.0])
+        default = attack_object_context(attack, np.ones(1), beatmap)
+        self.assertIsNotNone(default[0]["object"])
+        strict = attack_object_context(attack, np.ones(1), beatmap, tolerance_ms=49.0)
+        self.assertIsNone(strict[0]["object"])
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text("[General]\n", encoding="utf-8")
+            beatmap = read_osu_beatmap(target)
+        rows = attack_object_context(np.array([1000.0]), np.array([1.0]), beatmap)
+        self.assertEqual([(r["pattern"], r["object"]) for r in rows], [("none", None)])
 
 
 if __name__ == "__main__":

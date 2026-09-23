@@ -758,6 +758,73 @@ class ClassicWindowLayoutTests(unittest.TestCase):
                 app.root.destroy()
 
 
+class ClassicWindowEditGuardTests(unittest.TestCase):
+    """×2/÷2 and Analyze rebuild the points from the detected sections; in the
+    classic window they used to throw hand edits away without a word."""
+
+    def _app(self, tmp):
+        from unittest import mock
+        import overtone
+        for name in ("CONFIG_PATH", "LEGACY_CONFIG_PATH"):
+            patcher = mock.patch.object(overtone, name, Path(tmp) / f"{name}.json")
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        try:
+            app = TimingAnalyzerApp()
+        except Exception as exc:  # no display
+            self.skipTest(f"Tk unavailable: {exc}")
+        self.addCleanup(app.root.destroy)
+        app.root.attributes("-alpha", 0.0)
+        wav = Path(tmp) / "drums.wav"
+        _drum_track(wav, [(0.5, 128.0), (12.0, 140.0)], duration=24.0)
+        app.analysis = analyze_audio(wav)
+        app._render_results()
+        return app
+
+    def _edit(self, app):
+        app.selected_section = 1
+        app.edit_nudge(7.0)
+        return app.analysis.points[1].offset_ms
+
+    def test_declining_keeps_the_edit_and_accepting_drops_it(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp)
+            edited = self._edit(app)
+            with mock.patch("tkinter.messagebox.askyesno", return_value=False) as ask:
+                app._rescale_pulse(2.0)
+            ask.assert_called_once()
+            self.assertEqual(app.analysis.points[1].offset_ms, edited)  # still there
+            bpm = app.analysis.global_bpm
+            with mock.patch("tkinter.messagebox.askyesno", return_value=True):
+                app._rescale_pulse(2.0)
+            self.assertAlmostEqual(app.analysis.global_bpm, 2 * bpm, places=1)
+            with mock.patch("tkinter.messagebox.askyesno") as ask:  # nothing edited now
+                app._rescale_pulse(0.5)
+            ask.assert_not_called()
+
+    def test_exporting_makes_the_edits_safe(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp)
+            self._edit(app)
+            app.copy_osu()
+            with mock.patch("tkinter.messagebox.askyesno") as ask:
+                app._rescale_pulse(2.0)
+            ask.assert_not_called()
+
+    def test_analyze_asks_before_replacing_edits(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp)
+            edited = self._edit(app)
+            with mock.patch("tkinter.messagebox.askyesno", return_value=False) as ask:
+                app.run()
+            ask.assert_called_once()
+            self.assertFalse(app._busy)  # no analysis started
+            self.assertEqual(app.analysis.points[1].offset_ms, edited)
+
+
 class NoPulseRefusalTests(unittest.TestCase):
     """White noise must not return a BPM (CLAUDE.md rule 2).
 

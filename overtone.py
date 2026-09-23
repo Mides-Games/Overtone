@@ -3794,6 +3794,8 @@ class TimingAnalyzerApp:
             "pulse": "Pulse (octave)",
             "preset_variable": "⚡ Variable", "preset_steady": "🛡 Steady",
             "rescaled": "Pulse ×{factor}: {points} section(s) • {bpm} BPM. Verify with the click track.",
+            "discard_title": "Discard manual edits?",
+            "discard_edits": "You edited the timing points {n} time(s) since this result was made and have not exported them. This replaces them with the detected points. Continue?",
             "ready": "Choose an audio file, then press Analyze.",
             "bad_file": "Choose a valid audio file first.", "bad_values": "Parameters must be valid numbers.",
             "preparing": "Preparing analysis…", "error": "Error: {value}",
@@ -3843,6 +3845,8 @@ class TimingAnalyzerApp:
             "pulse": "Pulso (octava)",
             "preset_variable": "⚡ Variable", "preset_steady": "🛡 Estable",
             "rescaled": "Pulso ×{factor}: {points} sección(es) • {bpm} BPM. Verifícalo con el click track.",
+            "discard_title": "¿Descartar ediciones manuales?",
+            "discard_edits": "Editaste los timing points {n} vez/veces desde este resultado y no los exportaste. Esto los reemplaza por los puntos detectados. ¿Continuar?",
             "ready": "Elige un audio y pulsa Analizar.",
             "bad_file": "Elige primero un archivo de audio válido.", "bad_values": "Los parámetros deben ser números válidos.",
             "preparing": "Preparando análisis…", "error": "Error: {value}",
@@ -3929,6 +3933,10 @@ class TimingAnalyzerApp:
         self.selected_section: int | None = None
         self.suggestions: dict[int, tuple[int, float]] = {}
         self._busy = False
+        # Hand edits made since the last analysis, pulse change or export.
+        # ×2/÷2 and Analyze rebuild the points from the detected sections, so
+        # while this is non-zero they ask before throwing the edits away.
+        self._manual_edits = 0
         self._theme()
         self._build()
         self._translate()
@@ -4406,6 +4414,8 @@ class TimingAnalyzerApp:
     def run(self) -> None:
         if self._busy:
             return
+        if not self._confirm_discard():
+            return
         if not Path(self.file.get()).is_file():
             self.status.set(self.tr("bad_file"))
             return
@@ -4449,6 +4459,14 @@ class TimingAnalyzerApp:
         except Exception as exc:
             self.events.put(("error", str(exc)))
 
+    def _confirm_discard(self) -> bool:
+        """True when nothing hand-edited would be lost, or the user agrees."""
+        if not self._manual_edits:
+            return True
+        from tkinter import messagebox
+        return bool(messagebox.askyesno(self.tr("discard_title"),
+                                        self.tr("discard_edits", n=self._manual_edits)))
+
     def _current_params(self) -> tuple[float, int, float]:
         try:
             return (float(self.delta.get()), int(self.persistence.get()),
@@ -4464,6 +4482,8 @@ class TimingAnalyzerApp:
         if not self.analysis.sections and self.analysis.base_frames is None:
             self.status.set(self.tr("error", value="No stored beat grid — re-run Analyze first."))
             return
+        if not self._confirm_discard():
+            return
         target = float(self.analysis.subdivision) * mult
         factor = min(ALLOWED_FACTORS, key=lambda f: abs(np.log2(f / target)))
         delta, persistence, confidence = self._current_params()
@@ -4473,6 +4493,7 @@ class TimingAnalyzerApp:
         except Exception as exc:
             self.status.set(self.tr("error", value=str(exc)))
             return
+        self._manual_edits = 0
         self.selected_section = None
         self._render_results()
         self.status.set(self.tr("rescaled", factor=f"{factor:g}",
@@ -4490,6 +4511,7 @@ class TimingAnalyzerApp:
                     self._finish()
                 else:
                     self.analysis = value  # type: ignore[assignment]
+                    self._manual_edits = 0
                     self._render_results()
                     self._finish()
         except queue.Empty:
@@ -4563,6 +4585,7 @@ class TimingAnalyzerApp:
 
     def _after_edit(self, message: str) -> None:
         assert self.analysis is not None
+        self._manual_edits += 1
         self.selected_section = None
         self._render_results()
         self.status.set(message)
@@ -4685,6 +4708,7 @@ class TimingAnalyzerApp:
         except (ValueError, OSError) as exc:
             self.status.set(self.tr("error", value=str(exc)))
             return
+        self._manual_edits = 0
         self.status.set(self.tr("injected", added=done["reds_added"],
                                 replaced=done["reds_replaced"], greens=done["greens_kept"]))
 
@@ -4696,6 +4720,7 @@ class TimingAnalyzerApp:
         target = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
         if target:
             export_csv(self.analysis, target)
+            self._manual_edits = 0
             self.status.set(self.tr("saved", path=target))
 
     def save_click(self) -> None:
@@ -4718,6 +4743,7 @@ class TimingAnalyzerApp:
             return
         self.root.clipboard_clear()
         self.root.clipboard_append(osu_timing_text(self.analysis))
+        self._manual_edits = 0
         self.status.set(self.tr("copied"))
 
     def show_details(self) -> None:

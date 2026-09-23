@@ -25,7 +25,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone      # must be 76/76
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (209 on 2026-09-23)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 24/24 stage for stage
@@ -44,7 +44,7 @@ never re-baseline to make a red gate green.
 And the Rust side:
 
 ```bash
-cargo test --workspace                                 # 75/75 today
+cargo test --workspace                                 # all pass (181 on 2026-09-23)
 cargo run --release -q -p overtone-bench -- golden     # 24/24 attack for attack
 ```
 
@@ -88,8 +88,14 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
 ## Layout
 
 ```
-overtone.py               v3 engine + Tk GUI + CLI  (to move to reference/python-v3)
-test_overtone.py          76 unit tests
+overtone.py               v3 engine + classic Tk GUI + CLI  (to move to reference/python-v3)
+overtone_web.py           web shell host: pywebview window + JSON bridge to the engine
+app/                      web shell frontend (HTML/CSS/JS, no network)
+Overtone.bat              double-click launcher
+test_overtone.py          engine, I/O and classic-window tests
+test_overtone_web.py      web bridge tests (never touch the real config)
+assets/                   generated logo (assets/logo.py) and window icon
+fixtures/                 hand-timed samples the tests read
 bench/benchmark.py        synthetic accuracy harness, exact ground truth
 bench/gates.py            octave snapshot, density-change and measure gates
                           (the things the accuracy benchmark cannot see)
@@ -103,10 +109,14 @@ crates/                   the v4 Rust workspace
   overtone-core/            shared types, unit newtypes, diagnostics
   overtone-audio/           Symphonia decode, resample, normalise
   overtone-dsp/             mel, STFT, onset envelope, peak picking, re-timing
-  overtone-tempo/           coherence sweep, IRLS grid fit, seeding, octave
+  overtone-tempo/           coherence sweep, IRLS grid fit, seeding, octave, sections,
+                            points, density, elastic grid, 2-D coherence map
+  overtone-hitsound/        per-attack features, instrument templates, musical role
   overtone-bench/           golden-vector diff against the Python engine
 docs/                     audit, stack evaluation, architecture, UI, DSP, hitsounds,
-                          roadmap, ML evaluation, naming
+                          roadmap, ML evaluation, naming, precision plan, MSI
+                          distribution, comfort features
+WORKFLOW.md               the per-task routine: program, test, measure, commit, audit
 timeline.md               engineering log
 ```
 

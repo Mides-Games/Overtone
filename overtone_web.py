@@ -608,6 +608,19 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "report": report, "file": Path(osu_path).name}
 
+    def align(self, osu_path: str) -> dict:
+        """Map-vs-attack alignment for the alignment card."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not Path(str(osu_path)).is_file():
+            return {"ok": False, "key": "bad_file"}
+        try:
+            beatmap = ta.read_osu_beatmap(osu_path)
+            report = ta.alignment_report(self._analysis, beatmap)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "report": report, "file": Path(osu_path).name}
+
     # -- helpers (not exposed: underscored) ----------------------------------
     def _save_dialog(self, filename: str, file_types) -> str | None:
         import webview

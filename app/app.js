@@ -71,6 +71,15 @@ const I18N = {
     cmp_count_f: "The .osu has {map} red lines, detection found {det} sections.",
     cmp_no_reds_f: "That .osu has no red lines to compare.",
     cmp_unreadable_f: "Could not compare: {detail}",
+    align_title: "Alignment", align_pick: "Check alignment…",
+    align_empty: "Choose a .osu to check its objects against the detected attacks.",
+    align_counts: "{m}/{o} objects · {c}/{a} attacks",
+    align_off_f: "{n} objects miss the attacks (worst {worst} ms).",
+    align_unc_f: "{n} strong attacks have no object.",
+    align_none_f: "No attacks to align against — this result came from the fallback tracker.",
+    align_t_time: "Time", align_t_kind: "Object", align_t_ms: "Off by",
+    align_uncovered: "Uncovered attacks (ms):",
+    align_more: "+{n} more",
     import_folder: "Import beatmap folder…",
     imported: "Folder: {audio} + {n} {difficulties}.",
     difficulties: "difficulties",
@@ -147,6 +156,15 @@ const I18N = {
     cmp_count_f: "El .osu tiene {map} líneas rojas, la detección encontró {det} secciones.",
     cmp_no_reds_f: "Ese .osu no tiene líneas rojas para comparar.",
     cmp_unreadable_f: "No se pudo comparar: {detail}",
+    align_title: "Alineación", align_pick: "Revisar alineación…",
+    align_empty: "Elegí un .osu para contrastar sus objetos con los ataques detectados.",
+    align_counts: "{m}/{o} objetos · {c}/{a} ataques",
+    align_off_f: "{n} objetos erran los ataques (peor {worst} ms).",
+    align_unc_f: "{n} ataques fuertes no tienen objeto.",
+    align_none_f: "Sin ataques contra los que alinear — este resultado vino del tracker de respaldo.",
+    align_t_time: "Tiempo", align_t_kind: "Objeto", align_t_ms: "Desvío",
+    align_uncovered: "Ataques sin objeto (ms):",
+    align_more: "+{n} más",
     import_folder: "Importar carpeta…",
     imported: "Carpeta: {audio} + {n} {difficulties}.",
     difficulties: "dificultades",
@@ -157,7 +175,7 @@ const I18N = {
   },
 };
 
-const S = { lang: "en", file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, recent: [] };
+const S = { lang: "en", file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, align: null, recent: [] };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
@@ -262,7 +280,7 @@ function setBusy(busy, message) {
 
 function syncActions() {
   const on = !!S.result && !S.busy;
-  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn", "cmpPick"].forEach((id) => { $(id).disabled = !on; });
+  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn", "cmpPick", "alignPick"].forEach((id) => { $(id).disabled = !on; });
   if (!on) {
     $("undoBtn").disabled = true;
     $("redoBtn").disabled = true;
@@ -388,7 +406,8 @@ function mmss(s) { const m = Math.floor(s / 60), r = Math.round(s - m * 60); ret
 
 function showResult(result) {
   S.result = result;
-  S.compare = null;  // a compare belongs to one map and one point list
+  S.compare = null;  // compares and alignments belong to one map and one point list
+  S.align = null;
   $("empty").hidden = true;
   $("results").hidden = false;
   syncActions();
@@ -427,6 +446,7 @@ function renderResult(r) {
   renderDetail();
   drawTrace();
   renderCompare();
+  renderAlign();
 }
 
 function renderDetail() {
@@ -745,6 +765,60 @@ function renderCompare() {
     </div>`;
 }
 
+// ------------------------------------------------------------------ alignment
+const ALIGN_STR = {
+  objects_off_grid: "align_off_f", attacks_without_objects: "align_unc_f",
+  no_attacks: "align_none_f",
+};
+
+async function alignOsu() {
+  if (!api() || !S.result || S.busy) return;
+  const target = await api().pick_osu(S.lastFolder || "");
+  if (!target) return;
+  const reply = await api().align(target);
+  if (!reply.ok) { editFailure(reply); return; }
+  S.align = { file: reply.file, report: reply.report };
+  renderAlign();
+}
+
+function renderAlign() {
+  const body = $("alignBody"), al = S.align;
+  if (!al) {
+    $("alignCount").hidden = true;
+    $("alignFile").textContent = "";
+    body.innerHTML = `<div class="card-sub">${t("align_empty")}</div>`;
+    return;
+  }
+  const { report, file } = al;
+  $("alignFile").textContent = file;
+  const pill = $("alignCount");
+  pill.hidden = false;
+  pill.textContent = t("align_counts", { m: report.matched, o: report.objects,
+                                        c: report.covered, a: report.attacks });
+  const banners = report.findings.map((f) => `
+    <div class="banner ${f.level === "info" ? "info" : ""}">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div>${t(ALIGN_STR[f.key] || "error", f.values)}</div>
+    </div>`).join("");
+  const rows = report.offenders.map((o) => `
+    <tr>
+      <td class="num">${o.time.toFixed(1)}</td>
+      <td>${o.kind || "?"}</td>
+      <td class="num neg">${o.ms.toFixed(1)}</td>
+    </tr>`).join("");
+  const shown = report.uncovered.slice(0, 20);
+  const rest = report.uncovered.length - shown.length;
+  body.innerHTML = `
+    ${banners ? `<div class="warnings">${banners}</div>` : ""}
+    ${rows ? `<div class="table-scroll">
+      <table>
+        <thead><tr><th>${t("align_t_time")}</th><th>${t("align_t_kind")}</th><th>${t("align_t_ms")}</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>` : ""}
+    ${shown.length ? `<div class="card-sub" style="margin-top:10px">${t("align_uncovered")} ${shown.map((ms) => ms.toFixed(1)).join(", ")}${rest > 0 ? ` ${t("align_more", { n: rest })}` : ""}</div>` : ""}`;
+}
+
 // ------------------------------------------------------------------ tempo trace
 const C = {
   plot: "#0e1320", grid: "#1a2233", gridText: "#606b80", tempo: "#7f9df0", fill: "rgba(127,157,240,0.10)",
@@ -949,6 +1023,7 @@ function wire() {
   $("clickBtn").onclick = () => saveAs("save_click");
   $("oszBtn").onclick = () => saveAs("save_osz");
   $("cmpPick").onclick = compareOsu;
+  $("alignPick").onclick = alignOsu;
   $("undoBtn").onclick = undo;
   $("redoBtn").onclick = redo;
   $("injectBtn").onclick = injectOsu;

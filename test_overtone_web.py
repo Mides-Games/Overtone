@@ -415,6 +415,50 @@ class CompareBridgeTests(_IsolatedConfig):
         self.assertEqual(_api_with_points().compare("C:/does/not/exist.osu")["key"], "bad_file")
 
 
+class AlignBridgeTests(_IsolatedConfig):
+    def _map_for(self, tmp: str, times_ms) -> str:
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: drums.wav", "",
+                 "[HitObjects]"]
+        lines += [f"256,192,{t:.1f},1,0,0:0:0:0:" for t in times_ms]
+        beatmap = Path(tmp) / "map.osu"
+        beatmap.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return str(beatmap)
+
+    def test_align_needs_a_result_and_a_real_file(self) -> None:
+        self.assertEqual(web.Api().align("C:/x.osu")["key"], "first")
+        self.assertEqual(_api_with_points().align("C:/does/not/exist.osu")["key"], "bad_file")
+
+    def test_align_without_attacks_reports_no_attacks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reply = _api_with_points().align(self._map_for(tmp, [1000.0]))
+        self.assertTrue(reply["ok"])
+        self.assertEqual([(f["level"], f["key"]) for f in reply["report"]["findings"]],
+                         [("info", "no_attacks")])
+        json.dumps(reply["report"])
+
+    def test_align_on_real_attacks_matches_and_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "drums.wav"
+            _drum_track(wav, [(0.5, 128.0)], duration=16.0)
+            api = _api_with_points()
+            done = threading.Event()
+            api._emit = lambda handler, payload: done.set() if handler == "onResult" else None
+            options = {"delta": 1.5, "persistence": 12, "confidence": 75, "pulse": "auto",
+                       "prefer_map_bpm": True, "refine_beats": True}
+            self.assertTrue(api.analyze(str(wav), options)["ok"])
+            self.assertTrue(done.wait(120), "analysis did not finish")
+            attack_ms = [float(t) * 1000.0 for t in api._analysis.attack_times]
+            self.assertGreater(len(attack_ms), 0)
+            clean = api.align(self._map_for(tmp, attack_ms))
+            self.assertTrue(clean["ok"])
+            self.assertEqual(clean["report"]["matched"], clean["report"]["objects"])
+            shifted = api.align(self._map_for(tmp, [t + 60.0 for t in attack_ms]))
+            offenders = shifted["report"]["offenders"]
+            self.assertTrue(len(offenders) > 0)
+            self.assertTrue(all(o["ms"] >= 60.0 - 0.1 for o in offenders))
+            json.dumps(shifted["report"])
+
+
 class FolderImportTests(_IsolatedConfig):
     def _song(self, tmp: str) -> Path:
         root = Path(tmp) / "123 Artist - Title"

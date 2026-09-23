@@ -55,6 +55,8 @@ from overtone import (
     scan_beatmap_folder,
     analyze_batch,
     read_osu_beatmap,
+    set_beatmap_reds,
+    write_osu_beatmap,
 )
 
 
@@ -1457,6 +1459,67 @@ class MapFullReaderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):
                 read_osu_beatmap(str(Path(tmp) / "missing.osu"))
+
+
+class MapWriterTests(unittest.TestCase):
+    def _write(self, raw: bytes, name: str = "map.osu"):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / name
+            target.write_bytes(raw)
+            beatmap = read_osu_beatmap(target)
+            out = Path(tmp) / ("out-" + name)
+            info = write_osu_beatmap(out, beatmap)
+            result = out.read_bytes()
+        json.dumps(info)
+        return beatmap, result, info
+
+    def test_untouched_file_round_trips_byte_identical(self) -> None:
+        for newline in ("\n", "\r\n"):
+            raw = _FULL_OSU.replace("\n", newline).encode("utf-8")
+            _beatmap, result, info = self._write(raw)
+            self.assertEqual(result, raw)
+            self.assertTrue(info["bytes"] > 0)
+            self.assertFalse(info["backup"])  # new path: nothing to protect
+
+    def test_bom_and_missing_trailing_newline_survive(self) -> None:
+        raw = b"\xef\xbb\xbf" + _FULL_OSU.encode("utf-8")
+        _beatmap, result, _info = self._write(raw)
+        self.assertEqual(result, raw)
+        raw = _FULL_OSU.encode("utf-8").rstrip(b"\n")
+        _beatmap, result, _info = self._write(raw)
+        self.assertEqual(result, raw)
+
+    def test_set_reds_changes_only_reds_with_pristine_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            original = _FULL_OSU.encode("utf-8")
+            target.write_bytes(original)
+            beatmap = read_osu_beatmap(target)
+            replaced = set_beatmap_reds(beatmap, ["1000,60000.000000000000,4,1,0,100,1,0"])
+            self.assertEqual(replaced, 1)
+            self.assertEqual(beatmap["timing"]["reds"], [(1000.0, 1.0)])
+            self.assertEqual(beatmap["timing"]["greens"], ["2000,-100,4,2,0,100,0,0"])
+            info = write_osu_beatmap(target, beatmap)
+            self.assertTrue(info["backup"])
+            kept = [line for line in target.read_text(encoding="utf-8").splitlines()
+                    if line.strip() and not line.strip().startswith("//")]
+            before = [line for line in original.decode("utf-8").splitlines()
+                      if line.strip() and not line.strip().startswith("//")]
+            self.assertEqual(len(kept), len(before))
+            self.assertEqual([l for l in kept if "Combo1" in l or "bg.jpg" in l],
+                             [l for l in before if "Combo1" in l or "bg.jpg" in l])
+            # A second write keeps the pristine original, never the last write.
+            set_beatmap_reds(beatmap, ["1000,30000.000000000000,4,1,0,100,1,0"])
+            write_osu_beatmap(target, beatmap)
+            self.assertEqual(Path(str(target) + ".bak").read_bytes(), original)
+
+    def test_set_reds_without_timing_section_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text("[General]\nAudioFilename: a.mp3\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                set_beatmap_reds(read_osu_beatmap(target), ["1,500,4,1,0,100,1,0"])
 
 
 if __name__ == "__main__":

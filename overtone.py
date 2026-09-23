@@ -2831,23 +2831,28 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
 # .osu red-line reading and map-vs-detected comparison (Phase 5)
 # ---------------------------------------------------------------------------
 
-def _load_osu_text(osu_path: str | os.PathLike[str]) -> str:
-    """The whole .osu as text, with the size and encoding guards in one place."""
+def _load_osu_text(osu_path: str | os.PathLike[str]) -> tuple[str, bool]:
+    """The whole .osu as text plus whether it carried a BOM.
+
+    Size and encoding guards in one place; the writer needs the BOM flag so an
+    untouched file comes back byte-identical.
+    """
     path = Path(osu_path)
     if not path.is_file():
         raise ValueError(f"{path} is not a file.")
     size = path.stat().st_size
     if size > MAX_OSU_BYTES:
         raise ValueError(f"{path.name} is {size / 1e6:.1f} MB — that is not a beatmap.")
+    raw = path.read_bytes()
     try:
-        return path.read_bytes().decode("utf-8-sig")
+        return raw.decode("utf-8-sig"), raw.startswith(b"\xef\xbb\xbf")
     except UnicodeDecodeError as exc:
         raise ValueError(f"Could not decode {path.name} as UTF-8.") from exc
 
 
 def _timing_section_lines(osu_path: str | os.PathLike[str]) -> list[str]:
     """Raw body lines of the .osu [TimingPoints] section."""
-    text = _load_osu_text(osu_path)
+    text, _bom = _load_osu_text(osu_path)
     lines = text.splitlines()
     header_idx = next((n for n, line in enumerate(lines)
                        if line.strip() == "[TimingPoints]"), None)
@@ -3012,31 +3017,34 @@ def scan_beatmap_folder(folder: str | os.PathLike[str]) -> dict:
 # Full .osu reading (Phase 5, first row)
 # ---------------------------------------------------------------------------
 
-def _split_osu_sections(text: str) -> tuple[int, list[dict]]:
-    """Format version plus every section in file order, raw lines included.
+def _split_osu_sections(text: str) -> tuple[int, list[str], list[dict]]:
+    """Format version, pre-section head lines, and every section in file order.
 
     Unknown sections ride along verbatim in ``sections`` — the span-preserving
     writer's contract is that a field nobody asked to change comes out
-    byte-identical, and that starts with the reader losing nothing.
+    byte-identical, and that starts with the reader losing nothing, including
+    the exact head lines before the first section.
     """
     version = 0
+    head: list[str] = []
     sections: list[dict] = []
     current: dict | None = None
     for line in text.splitlines():
         stripped = line.strip()
-        if stripped.startswith("osu file format v"):
+        if version == 0 and stripped.startswith("osu file format v"):
             try:
                 version = int(stripped.rsplit("v", 1)[1])
             except ValueError:
                 pass
-            continue
         if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
             current = {"name": stripped[1:-1], "lines": []}
             sections.append(current)
             continue
-        if current is not None:
+        if current is None:
+            head.append(line)
+        else:
             current["lines"].append(line)
-    return version, sections
+    return version, head, sections
 
 
 def _osu_key_values(lines: list[str]) -> dict:
@@ -3140,11 +3148,12 @@ def read_osu_beatmap(osu_path: str | os.PathLike[str]) -> dict:
     unknown sections and keys survive even though only the known ones get
     parsed views (``general``/``editor``/``metadata``/``difficulty``,
     ``timing`` reds plus green raws, ``hitobjects``). Hit sounds parse into
-    ``normal_set``/``addition_set``/``index``/``volume``/``file``. Nothing
-    here writes; the writer will rebuild from ``sections``.
+    ``normal_set``/``addition_set``/``index``/``volume``/``file``. ``head``,
+    ``newline`` and ``bom`` exist for one reason: the writer rebuilds from
+    them, so an untouched file comes back byte-identical.
     """
-    text = _load_osu_text(osu_path)
-    version, sections = _split_osu_sections(text)
+    text, bom = _load_osu_text(osu_path)
+    version, head, sections = _split_osu_sections(text)
     by_name: dict[str, dict] = {}
     for section in sections:
         by_name.setdefault(section["name"], section)
@@ -3158,6 +3167,10 @@ def read_osu_beatmap(osu_path: str | os.PathLike[str]) -> dict:
                and not line.strip().startswith("//")]
     return {
         "format": version,
+        "head": head,
+        "newline": "\r\n" if "\r\n" in text else "\n",
+        "trailing_newline": text.endswith(("\n", "\r")),
+        "bom": bom,
         "sections": sections,
         "general": _osu_key_values(body("General")),
         "editor": _osu_key_values(body("Editor")),
@@ -3169,6 +3182,76 @@ def read_osu_beatmap(osu_path: str | os.PathLike[str]) -> dict:
         },
         "hitobjects": [_parse_hit_object(line) for line in objects],
     }
+
+
+def set_beatmap_reds(beatmap: dict, new_reds: list[str]) -> int:
+    """Replace the red raws in place; greens, comments and blanks stay put.
+
+    New reds take the position of the first old red (same rule as inject, but
+    on the parsed structure instead of the file); with no old reds they append
+    at the end of the section. The ``timing`` view is refreshed, and the
+    replaced red count returns.
+    """
+    section = next((s for s in beatmap["sections"] if s["name"] == "TimingPoints"), None)
+    if section is None:
+        raise ValueError("No [TimingPoints] section in this beatmap.")
+    replaced = sum(1 for line in section["lines"]
+                   if line.strip() and _is_red_line(line.strip()))
+    out: list[str] = []
+    done = False
+    for line in section["lines"]:
+        if line.strip() and _is_red_line(line.strip()):
+            if not done:
+                out.extend(new_reds)
+                done = True
+        else:
+            out.append(line)
+    if not done:
+        out.extend(new_reds)
+    section["lines"] = out
+    timing = [line for line in out if line.strip() and not line.strip().startswith("//")]
+    beatmap["timing"] = {
+        "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
+        "greens": [line for line in timing if not _is_red_line(line.strip())],
+    }
+    return replaced
+
+
+def beatmap_text(beatmap: dict) -> str:
+    """Head plus sections in order, raw lines untouched, original newline."""
+    newline = beatmap.get("newline", "\n")
+    text = newline.join(beatmap.get("head", []) +
+                        [line for section in beatmap["sections"]
+                         for line in [f"[{section['name']}]"] + section["lines"]])
+    return text + newline if beatmap.get("trailing_newline", True) else text
+
+
+def write_osu_beatmap(osu_path: str | os.PathLike[str], beatmap: dict,
+                      backup: bool = True) -> dict:
+    """Write a parsed beatmap back (Phase 5, writer row).
+
+    Untouched sections come out byte-identical — same lines, same newline,
+    same BOM — because the reader kept them all. Atomic temp-plus-rename, and
+    the ``.bak`` beside the original follows v3's rules: written first, never
+    overwritten, skipped when there is no original to protect.
+    """
+    path = Path(osu_path)
+    original = path.read_bytes() if path.is_file() else None
+    payload = beatmap_text(beatmap).encode("utf-8-sig" if beatmap.get("bom") else "utf-8")
+    wrote_backup = False
+    if backup and original is not None:
+        spare = Path(str(path) + ".bak")
+        if not spare.exists():
+            try:
+                spare.write_bytes(original)
+            except OSError as exc:
+                raise ValueError(f"Could not back up {path.name}: {exc}") from exc
+            wrote_backup = True
+    try:
+        _atomic_write_bytes(path, payload)
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Could not write {path.name}: {exc}") from exc
+    return {"bytes": len(payload), "backup": wrote_backup}
 
 
 # ---------------------------------------------------------------------------

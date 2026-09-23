@@ -60,6 +60,7 @@ from overtone import (
     attack_object_context,
     alignment_report,
     analysis_report,
+    density_report,
     main,
 )
 
@@ -1659,6 +1660,47 @@ class AlignmentTests(unittest.TestCase):
         self.assertEqual(report["objects"], 6)
         self.assertEqual([(f["level"], f["key"]) for f in report["findings"]],
                          [("info", "no_attacks")])
+
+
+class DensityTests(unittest.TestCase):
+    def _report(self, text, **kwargs):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(text, encoding="utf-8")
+            report = density_report(read_osu_beatmap(target), **kwargs)
+        json.dumps(report)
+        return report
+
+    def test_stream_section_reads_ten_per_second(self) -> None:
+        lines = ["osu file format v14", "", "[HitObjects]"]
+        lines += [f"64,192,{n * 100},1,0,0:0:0:0:" for n in range(21)]
+        report = self._report("\n".join(lines) + "\n")
+        self.assertEqual(report["objects"], 21)
+        self.assertEqual(len(report["buckets"]), 1)
+        bucket = report["buckets"][0]
+        self.assertEqual((bucket["objects"], bucket["stream"]), (21, 21))
+        self.assertAlmostEqual(bucket["per_second"], 4.2)
+        self.assertEqual(report["peak_per_second"], 4.2)
+
+    def test_mixed_map_splits_stream_jump_single(self) -> None:
+        report = self._report(_CONTEXT_OSU)
+        self.assertEqual(report["objects"], 6)
+        self.assertEqual((report["stream"], report["jump"], report["single"]), (3, 1, 2))
+        self.assertEqual(len(report["buckets"]), 2)
+        self.assertEqual(report["buckets"][0]["objects"], 4)
+        self.assertEqual(report["buckets"][1]["objects"], 2)
+
+    def test_empty_map_and_bad_bucket(self) -> None:
+        report = self._report("[General]\n")
+        self.assertEqual(report, {"objects": 0, "buckets": [], "peak_per_second": 0.0,
+                                  "mean_per_second": 0.0, "stream": 0, "jump": 0, "single": 0})
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text("[General]\n", encoding="utf-8")
+            beatmap = read_osu_beatmap(target)
+        with self.assertRaises(ValueError):
+            density_report(beatmap, bucket_s=0)
 
 
 class JsonReportTests(unittest.TestCase):

@@ -3349,16 +3349,9 @@ def attack_object_context(times: np.ndarray, weights: np.ndarray,
         gap_next = float(nxt["time"] - obj["time"]) if nxt else None
         step_prev = _object_step(obj, prev)
         step_next = _object_step(obj, nxt)
-        # The nearest neighbour decides the pattern, by time then by space.
-        gaps = [(g, s) for g, s in ((gap_prev, step_prev), (gap_next, step_next))
-                if g is not None and s is not None]
-        pattern, step_px = "single", step_prev
-        if gaps:
-            _gap, step_px = min(gaps, key=lambda gs: gs[0])
-            if _gap < STREAM_GAP_MS and step_px < STREAM_STEP_PX:
-                pattern = "stream"
-            elif step_px >= JUMP_STEP_PX and _gap < JUMP_GAP_MS:
-                pattern = "jump"
+        pattern, step_px = _pattern_class(gap_prev, step_prev, gap_next, step_next)
+        if step_px is None:
+            step_px = step_prev
         sample = obj.get("hit_sample") or {}
         rows.append({
             "time": float(attack), "weight": weight,
@@ -3384,6 +3377,26 @@ def _object_step(obj: dict, other: dict | None) -> float | None:
         return float(np.hypot(obj["x"] - other["x"], obj["y"] - other["y"]))
     except (TypeError, KeyError):
         return None
+
+
+def _pattern_class(gap_prev: float | None, step_prev: float | None,
+                   gap_next: float | None, step_next: float | None
+                   ) -> tuple[str, float | None]:
+    """Coarse pattern class plus the deciding step (nearest neighbour first).
+
+    Shared by the object context and the density report so both mean the same
+    thing by stream and jump. No neighbour with a position: single.
+    """
+    gaps = [(g, s) for g, s in ((gap_prev, step_prev), (gap_next, step_next))
+            if g is not None and s is not None]
+    if not gaps:
+        return "single", None
+    gap, step = min(gaps, key=lambda gs: gs[0])
+    if gap < STREAM_GAP_MS and step < STREAM_STEP_PX:
+        return "stream", step
+    if step >= JUMP_STEP_PX and gap < JUMP_GAP_MS:
+        return "jump", step
+    return "single", step
 
 
 def alignment_report(analysis: Analysis, beatmap: dict,
@@ -3440,6 +3453,55 @@ def alignment_report(analysis: Analysis, beatmap: dict,
     return {"objects": len(objects), "matched": len(objects) - len(offenders),
             "attacks": int(times.size), "covered": int(len(strong) - len(uncovered)),
             "offenders": offenders, "uncovered": uncovered, "findings": findings}
+
+
+def density_report(beatmap: dict, bucket_s: float = 5.0) -> dict:
+    """Objects per second plus stream/jump/single breakdown over time (P7).
+
+    Buckets cover the map from 0 to the last object; every bucket reports its
+    count, rate and pattern split using the same rule as the object context.
+    Spinners and holds count once at their start — the report measures hit
+    density, not held time. Empty maps report zeros, and everything stays
+    plain JSON types.
+    """
+    if bucket_s <= 0:
+        raise ValueError("Bucket length must be positive.")
+    try:
+        objects = [o for o in beatmap.get("hitobjects", [])
+                   if isinstance(o, dict) and np.isfinite(o.get("time", float("nan")))]
+    except (TypeError, ValueError):
+        objects = []
+    objects.sort(key=lambda o: o["time"])
+    if not objects:
+        return {"objects": 0, "buckets": [], "peak_per_second": 0.0,
+                "mean_per_second": 0.0, "stream": 0, "jump": 0, "single": 0}
+    kinds: list[str] = []
+    for i, obj in enumerate(objects):
+        prev = objects[i - 1] if i > 0 else None
+        nxt = objects[i + 1] if i + 1 < len(objects) else None
+        gap_prev = float(obj["time"] - prev["time"]) if prev else None
+        gap_next = float(nxt["time"] - obj["time"]) if nxt else None
+        pattern, _step = _pattern_class(gap_prev, _object_step(obj, prev),
+                                        gap_next, _object_step(obj, nxt))
+        kinds.append(pattern)
+    last_ms = float(objects[-1]["time"])
+    span_s = last_ms / 1000.0
+    count = max(1, int(np.ceil(span_s / bucket_s)))
+    buckets: list[dict] = []
+    for b in range(count):
+        t0, t1 = b * bucket_s, (b + 1) * bucket_s
+        in_bucket = [k for o, k in zip(objects, kinds)
+                     if t0 <= o["time"] / 1000.0 < t1 or (b == count - 1 and o["time"] / 1000.0 == t1)]
+        buckets.append({"t0": round(t0, 2), "t1": round(t1, 2), "objects": len(in_bucket),
+                        "per_second": round(len(in_bucket) / bucket_s, 2),
+                        "stream": in_bucket.count("stream"),
+                        "jump": in_bucket.count("jump"),
+                        "single": in_bucket.count("single")})
+    rates = [b["per_second"] for b in buckets]
+    totals = {kind: kinds.count(kind) for kind in ("stream", "jump", "single")}
+    return {"objects": len(objects), "buckets": buckets,
+            "peak_per_second": max(rates), "mean_per_second": round(sum(rates) / len(rates), 2),
+            **totals}
 
 
 def _nearest_sorted(values: np.ndarray, target: float) -> float:

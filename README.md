@@ -67,7 +67,14 @@ The full engineering log, including the approaches that were tried and dropped, 
 
 ```bash
 python -m pip install -r requirements.lock   # exact versions behind the numbers below
-python overtone.py
+```
+
+Double-click `Overtone.bat` — the app (web shell + GUI, no console). A file
+dropped on the icon opens straight into analysis. Same from a terminal:
+
+```bash
+python overtone_web.py [audio-file]   # web shell (needs Edge WebView2 + pywebview)
+python overtone.py                    # classic Tk window + full CLI
 ```
 
 WAV/FLAC/OGG open directly via SoundFile. For MP3/M4A/AAC install FFmpeg and put it on
@@ -282,7 +289,7 @@ read as an upper bound rather than a promise about real masters.
 ## Testing
 
 ```bash
-python -m unittest test_overtone -v      # 56 tests
+python -m unittest test_overtone -v      # 97 tests
 python bench/gates.py bpm-snapshot              # the octave, pinned per fixture
 python bench/gates.py coverage                  # density changes inside a section
 python bench/golden.py check                    # per-stage vectors, 24/24
@@ -364,7 +371,11 @@ offsets, newer `.osu` versions).
 
 ```
 overtone.py               v3 engine + Tk GUI + CLI
-test_overtone.py          55 unit tests
+overtone_web.py           web shell bridge (HTML/CSS UI in app/)
+app/                      web shell frontend (index.html, app.js, styles.css)
+Overtone.bat              double-click launcher for the web shell
+test_overtone.py          97 unit tests
+test_overtone_web.py      53 bridge tests (no window opened)
 bench/benchmark.py        synthetic accuracy harness
 docs/                     v4 design documents
 timeline.md               engineering log — one entry per release, with what was rejected

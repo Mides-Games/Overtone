@@ -2932,6 +2932,38 @@ def _atomic_write_bytes(path: Path, payload: bytes) -> None:
         raise
 
 
+def _backup_before_write(path: Path, raw: bytes) -> Path:
+    """Keep ``raw``, the bytes a write is about to replace; return where.
+
+    The first backup is ``map.osu.bak`` and stays pristine for good. Each later
+    write keeps what it replaces in the next free ``.bak2``, ``.bak3``... unless
+    the newest backup already holds exactly those bytes. A backup is written
+    to a temp file and renamed into place, so a full disk or a lock halfway
+    through leaves no truncated ``.bak`` for a retry to trust; os.rename, not
+    os.replace, because on Windows it refuses an existing target, so no
+    backup is ever overwritten.
+    """
+    newest, number = None, 1
+    while True:
+        spare = Path(f"{path}.bak{number if number > 1 else ''}")
+        if not spare.exists():
+            break
+        newest, number = spare, number + 1
+    if newest is not None and newest.read_bytes() == raw:
+        return newest
+    temp = spare.with_name(spare.name + ".part")
+    try:
+        temp.write_bytes(raw)
+        os.rename(temp, spare)
+    except BaseException:
+        try:
+            temp.unlink()
+        except OSError:
+            pass
+        raise
+    return spare
+
+
 def _is_red_line(line: str) -> bool:
     """True for an uninherited (red) timing line, across every .osu version.
 
@@ -3040,11 +3072,14 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
     Green lines keep their exact bytes, and so does everything outside
     [TimingPoints]: the BOM, each line's own line ending, a missing final
     newline. The timing section is written in time order, a red before a green
-    at the same time. A ``.bak`` copy is written first unless ``backup`` is
-    False, and an existing ``.bak`` is never overwritten. With ``dry_run``
-    nothing is written. Returns ``reds_replaced``, ``reds_added``,
-    ``greens_kept``, ``greens_added`` and an ``audio_mismatch`` warning when
-    the .osu's AudioFilename differs from the analysed file.
+    at the same time. Unless ``backup`` is False, what the write replaces is
+    kept first (see _backup_before_write): the pristine ``.bak`` on the first
+    inject, a ``.bak2``, ``.bak3``... after the mapper has worked on the map
+    since; no backup is ever overwritten. With ``dry_run`` nothing is written.
+    Returns ``reds_replaced``, ``reds_added``, ``greens_kept``,
+    ``greens_added``, ``backup`` (the path holding the replaced bytes, or
+    None) and an ``audio_mismatch`` warning when the .osu's AudioFilename
+    differs from the analysed file.
     """
     path = Path(osu_path)
     if not path.is_file():
@@ -3144,11 +3179,10 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
             break
     analysed_name = Path(getattr(analysis, "source", "")).name
 
+    spare = None
     if not dry_run:
         if backup:
-            spare = Path(str(path) + ".bak")
-            if not spare.exists():
-                spare.write_bytes(raw)
+            spare = _backup_before_write(path, raw)
         # Bytes, not write_text: on Windows, text mode would translate our
         # existing "\r\n" into "\r\r\n".
         payload = "".join(lines[:header_idx + 1] + out_body + lines[end_idx:]).encode("utf-8")
@@ -3158,7 +3192,7 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
 
     return {"reds_replaced": len(old_reds), "reds_added": len(reds),
             "greens_kept": len(greens), "greens_added": len(added),
-            "backup": bool(backup),
+            "backup": str(spare) if spare else None,
             "audio_mismatch": bool(audio_name and analysed_name
                                    and audio_name.lower() != analysed_name.lower()),
             "osu_audio": audio_name, "analysed_audio": analysed_name}
@@ -3572,26 +3606,24 @@ def write_osu_beatmap(osu_path: str | os.PathLike[str], beatmap: dict,
 
     Untouched sections come out byte-identical — same lines, same newline,
     same BOM — because the reader kept them all. Atomic temp-plus-rename, and
-    the ``.bak`` beside the original follows v3's rules: written first, never
-    overwritten, skipped when there is no original to protect.
+    backups follow inject's rules (_backup_before_write): written first, never
+    overwritten, skipped when there is no original to protect. ``backup`` in
+    the result is the path holding the replaced bytes, or None.
     """
     path = Path(osu_path)
     original = path.read_bytes() if path.is_file() else None
     payload = beatmap_text(beatmap).encode("utf-8-sig" if beatmap.get("bom") else "utf-8")
-    wrote_backup = False
+    spare = None
     if backup and original is not None:
-        spare = Path(str(path) + ".bak")
-        if not spare.exists():
-            try:
-                spare.write_bytes(original)
-            except OSError as exc:
-                raise ValueError(f"Could not back up {path.name}: {exc}") from exc
-            wrote_backup = True
+        try:
+            spare = _backup_before_write(path, original)
+        except OSError as exc:
+            raise ValueError(f"Could not back up {path.name}: {exc}") from exc
     try:
         _atomic_write_bytes(path, payload)
     except (OSError, ValueError) as exc:
         raise ValueError(f"Could not write {path.name}: {exc}") from exc
-    return {"bytes": len(payload), "backup": wrote_backup}
+    return {"bytes": len(payload), "backup": str(spare) if spare else None}
 
 
 # ---------------------------------------------------------------------------
@@ -5266,6 +5298,8 @@ def main() -> None:
               f"({summary['reds_replaced']} replaced, {summary['greens_kept']} greens kept, "
               f"{summary['greens_added']} greens added to keep SV and hitsounds)"
               + (" [audio mismatch!]" if summary["audio_mismatch"] else ""))
+        if summary["backup"]:
+            print(f"Backup: {summary['backup']}")
 
 
 if __name__ == "__main__":

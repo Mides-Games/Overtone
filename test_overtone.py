@@ -1566,6 +1566,57 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
             spare = Path(str(target) + ".bak").read_text(encoding="utf-8")
         self.assertEqual(spare, self.LEGACY_OSU)
 
+    def test_a_failed_backup_leaves_no_truncated_bak(self):
+        # A full disk or an AV lock halfway through the backup used to leave a
+        # truncated .bak; the retry saw it existed, kept it for good, and
+        # overwrote the map with no usable backup.
+        from unittest import mock
+        real_write = Path.write_bytes
+
+        def disk_full(self, data):
+            if ".bak" in self.name:
+                real_write(self, data[: len(data) // 2])
+                raise OSError(28, "No space left on device")
+            return real_write(self, data)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(self.LEGACY_OSU, encoding="utf-8")
+            original = target.read_bytes()
+            with mock.patch.object(Path, "write_bytes", disk_full):
+                with self.assertRaises(OSError):
+                    inject_osu_timing_points(target, self._analysis())
+            self.assertEqual(target.read_bytes(), original)  # the map was not touched
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["map.osu"])
+            summary = inject_osu_timing_points(target, self._analysis())  # space freed
+            self.assertEqual(Path(str(target) + ".bak").read_bytes(), original)
+            self.assertEqual(summary["backup"], str(target) + ".bak")
+
+    def test_every_inject_keeps_what_it_overwrites(self):
+        # Hours of mapping between two injects used to be overwritten with no
+        # backup: the .bak held the pre-first-inject file, and the summary still
+        # said backup=True. The .bak stays pristine; the state each inject
+        # replaces goes to the next free name, once.
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(self.LEGACY_OSU, encoding="utf-8")
+            original = target.read_bytes()
+            first = inject_osu_timing_points(target, self._analysis())
+            self.assertEqual(first["backup"], str(target) + ".bak")
+            mapped = target.read_bytes() + b"256,192,1000,1,0,0:0:0:0:\n"  # the mapper's work
+            target.write_bytes(mapped)
+            second = inject_osu_timing_points(target, self._analysis())
+            self.assertEqual(second["backup"], str(target) + ".bak2")
+            self.assertEqual(Path(str(target) + ".bak").read_bytes(), original)
+            self.assertEqual(Path(str(target) + ".bak2").read_bytes(), mapped)
+            # Nothing new to keep: these injects replace bytes .bak2 already holds.
+            self.assertEqual(target.read_bytes(), mapped)
+            third = inject_osu_timing_points(target, self._analysis())
+            fourth = inject_osu_timing_points(target, self._analysis())
+            self.assertEqual(third["backup"], str(target) + ".bak2")
+            self.assertEqual(fourth["backup"], str(target) + ".bak2")
+            self.assertFalse(Path(str(target) + ".bak3").exists())
+
     def test_inject_refuses_an_empty_analysis(self):
         from types import SimpleNamespace
         with tempfile.TemporaryDirectory() as tmp:
@@ -2070,10 +2121,14 @@ class MapWriterTests(unittest.TestCase):
             self.assertEqual(len(kept), len(before))
             self.assertEqual([l for l in kept if "Combo1" in l or "bg.jpg" in l],
                              [l for l in before if "Combo1" in l or "bg.jpg" in l])
-            # A second write keeps the pristine original, never the last write.
+            # A second write keeps the pristine original, never the last write,
+            # and keeps what it replaces beside it.
+            first_write = target.read_bytes()
             set_beatmap_reds(beatmap, ["1000,30000.000000000000,4,1,0,100,1,0"])
-            write_osu_beatmap(target, beatmap)
+            info = write_osu_beatmap(target, beatmap)
             self.assertEqual(Path(str(target) + ".bak").read_bytes(), original)
+            self.assertEqual(info["backup"], str(target) + ".bak2")
+            self.assertEqual(Path(info["backup"]).read_bytes(), first_write)
 
     def test_set_reds_without_timing_section_raises(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

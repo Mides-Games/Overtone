@@ -585,7 +585,7 @@ class Api:
         return {"ok": True, "summary": summary}
 
     def inject_apply(self, osu_path: str) -> dict:
-        """Replace the red lines, with a .bak beside the original (never overwritten)."""
+        """Replace the red lines, keeping what they replace in a backup (never overwritten)."""
         if self._analysis is None:
             return {"ok": False, "key": "first"}
         if not Path(str(osu_path)).is_file():

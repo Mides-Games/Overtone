@@ -154,7 +154,9 @@ pub enum Engine {
 pub enum Diagnostic {
     /// Fewer attacks than the engine needs to fit anything.
     TooFewAttacks { found: usize, needed: usize },
-    /// No pulse rate explained enough of the attack energy.
+    /// No pulse rate explained enough of the attack energy, or what it
+    /// explained is likely chance and the envelope has no beat to vouch for
+    /// it (`best_share` is then above 0.40).
     NoCoherentPulse { best_share: f64 },
     /// The fit succeeded but the music does not sit on a fixed grid.
     LargeGridResidual { residual_ms: f64 },

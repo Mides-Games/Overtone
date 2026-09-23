@@ -16,6 +16,7 @@ pub mod fit;
 pub mod map;
 pub mod octave;
 pub mod points;
+pub mod pulse;
 pub mod sections;
 
 /// Crate version, written into exported `.osu` timing comments.

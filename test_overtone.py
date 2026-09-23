@@ -17,6 +17,7 @@ from overtone import (
     _load_audio,
     _onset_envelope,
     _pulse_gap,
+    _pulse_log10p,
     DEFAULT_LANGUAGE,
     Analysis,
     GridSection,
@@ -1037,6 +1038,60 @@ class ChangeRedLineOnItsBeatTests(unittest.TestCase):
         points = _points_from_sections(sections, 0.5, 12, 0, 4,
                                        measures=[("4/4", 0, 4), ("4/4", 0, 4)])
         self.assertLess(abs(points[1].offset_ms - (change * 1000.0 - 0.03)), 1e-6)
+
+
+class SparseNoiseRefusalTests(unittest.TestCase):
+    """Scattered transients with no pulse must not get a grid.
+
+    About one random attack per second for 30 s (speech, ambient, an FX clip)
+    passed the 0.40 share gate often enough that 4 of these 12 renders came
+    out with a BPM between 29.7 and 48.3. A sparse pulse that really is there
+    must keep its answer, off-grid attacks and all.
+    """
+
+    @staticmethod
+    def _scatter(path: Path, trial: int, sr: int = 22050) -> None:
+        import soundfile as sf
+        rng = np.random.default_rng(trial)
+        n, seconds = int(rng.integers(24, 45)), 30.0
+        y = np.zeros(int(seconds * sr), dtype=np.float32)
+        for t in np.sort(rng.uniform(0.2, seconds - 0.5, n)):
+            i = int(t * sr)
+            y[i:i + 300] += (rng.standard_normal(300) * np.exp(-np.arange(300) / 60)).astype(np.float32) * 0.6
+        sf.write(str(path), y, sr)
+
+    def test_random_clicks_get_no_bpm(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for trial in range(12):
+                path = Path(tmp) / f"scatter{trial}.wav"
+                self._scatter(path, trial)
+                with self.subTest(trial=trial), self.assertRaises(ValueError):
+                    analyze_audio(path)
+
+    def test_a_sparse_pulse_keeps_its_bpm(self):
+        import soundfile as sf
+        with tempfile.TemporaryDirectory() as tmp:
+            for bpm in (60.0, 90.0):
+                path = Path(tmp) / f"sparse{bpm:.0f}.wav"
+                _click_track(path, bpm, duration=30.0)
+                y, sr = sf.read(str(path), dtype="float32")
+                rng = np.random.default_rng(1)  # a third as many attacks again, off the grid
+                for t in rng.uniform(0.3, 29.5, int(bpm / 6)):
+                    i = int(t * sr)
+                    y[i:i + 300] += (rng.standard_normal(300) * np.exp(-np.arange(300) / 60)).astype(np.float32) * 0.4
+                sf.write(str(path), y, sr)
+                analysis = analyze_audio(path)
+                with self.subTest(bpm=bpm):
+                    self.assertEqual(analysis.engine, "precision")
+                    self.assertAlmostEqual(analysis.global_bpm, bpm, places=2)
+
+    def test_the_chance_of_the_inliers(self):
+        rng = np.random.default_rng(0)
+        scattered = np.sort(rng.uniform(0.0, 30.0, 30))
+        regular = np.arange(30) * 0.8 + 0.1
+        self.assertGreater(_pulse_log10p(scattered, 0.8, 0.1), -2.0)
+        self.assertLess(_pulse_log10p(regular, 0.8, 0.1), -15.0)
+        self.assertEqual(_pulse_log10p(np.array([]), 0.8, 0.1), 0.0)
 
 
 class StrayLeadInTests(unittest.TestCase):

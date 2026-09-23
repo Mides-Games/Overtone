@@ -620,6 +620,14 @@ pub fn analyze_attacks(
     if share < 0.40 {
         return empty(vec![Diagnostic::NoCoherentPulse { best_share: share }]);
     }
+    let seed_grid = Grid {
+        period: seed.period,
+        phase: seed.phase,
+    };
+    if crate::pulse::is_chance(&w_times, seed_grid, env, sr, overtone_core::FIT_HOP) {
+        // Chance explains the grid's inliers and the envelope agrees.
+        return empty(vec![Diagnostic::NoCoherentPulse { best_share: share }]);
+    }
 
     let hints = crate::octave::tempo_hints(env, sr, overtone_core::FIT_HOP);
     let (w2_times, w2_weights) = crate::fit::window(times, weights, anchor, anchor_hi);
@@ -974,6 +982,59 @@ mod tests {
         }
         assert!((settled[0].start.get() - times[0]).abs() < 1e-9);
         assert!((settled.last().unwrap().end.get() - times[times.len() - 1]).abs() < 1e-9);
+    }
+
+    #[test]
+    fn sparse_random_attacks_get_no_grid() {
+        // About one attack a second for 30 s, at random: speech, ambient, an
+        // FX clip. The best seed grid cleared the 0.40 share gate for about
+        // half of these; its inliers are what chance gives, and the envelope
+        // (a spike per attack) has no beat to vouch for it.
+        let sr = 44_100;
+        let hop = overtone_core::FIT_HOP;
+        let mut given = Vec::new();
+        for trial in 0..40u64 {
+            let mut seed = trial * 7 + 1;
+            let mut times: Vec<f64> = (0..30)
+                .map(|_| {
+                    seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                    (seed >> 33) as f64 / (1u64 << 31) as f64 * 30.0
+                })
+                .collect();
+            times.sort_by(f64::total_cmp);
+            let weights = vec![0.8f32; times.len()];
+            let mut env = vec![0.0f32; 32 * sr as usize / hop];
+            for &t in &times {
+                env[(t * sr as f64 / hop as f64) as usize] = 0.8;
+            }
+            let out = analyze_attacks(&times, &weights, &env, sr, 1.5, 12, true, 0.75);
+            if !out.points.is_empty() || !out.settled_sections.is_empty() {
+                given.push(trial);
+            }
+        }
+        assert!(given.is_empty(), "grids given to random attacks: {given:?}");
+    }
+
+    #[test]
+    fn a_sparse_pulse_keeps_its_grid() {
+        // One attack a second, with a third as many again off the grid: the
+        // inliers are far beyond chance, so the envelope is never consulted.
+        // (The off-grid attacks near a beat pull the fit by ~0.01 BPM.)
+        let mut times: Vec<f64> = (0..30).map(|k| 0.25 + k as f64).collect();
+        let mut seed = 3u64;
+        for _ in 0..10 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            times.push(0.6 + (seed >> 33) as f64 / (1u64 << 31) as f64 * 28.0);
+        }
+        times.sort_by(f64::total_cmp);
+        let weights = vec![0.8f32; times.len()];
+        let out = analyze_attacks(&times, &weights, &[], 44_100, 1.5, 12, true, 0.75);
+        assert!(!out.points.is_empty(), "got {:?}", out.diagnostics);
+        let bpm = out.points[0].bpm.get();
+        assert!(
+            [60.0, 120.0].iter().any(|b| (bpm - b).abs() < 0.05),
+            "got {bpm}"
+        );
     }
 
     #[test]

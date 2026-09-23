@@ -925,6 +925,43 @@ def _refine_grid(times: np.ndarray, weights: np.ndarray, period: float, phase: f
     return period, phase, inlier
 
 
+#: The share gate (0.40) alone let sparse random attacks through: with 24-40
+#: attacks in 30-40 s, the best of the seed search's grids cleared it in
+#: 38-55 % of trials, and 53 of 240 rendered random-click files got a grid.
+#: No single statistic separates them from real music. The chance of so many
+#: inliers (_pulse_log10p) reached 10**-5.47 for random attacks but was as
+#: weak as 10**-1.30 for real songs whose vocals sit off the grid. The fitting
+#: envelope's pulse gap (_fit_pulse_gap) reached 0.072 for the random clicks,
+#: and 0.105 for random attack times, while five of 109 real songs sat
+#: between 0.035 and 0.101. Together they do: a grid is refused only when both
+#: are weak. At 0.10 one of 240 random attack sets kept a grid; at 0.15 none
+#: does. Of the songs weak enough to consult the envelope, two score above it
+#: (0.200, 0.426) and keep their grid. Three are refused, and none had a grid
+#: worth keeping: a ballad guessed at 73 BPM whose ranked map has 363 red lines
+#: between 47 and 68.5, and two songs whose grids put 5 % and 18 % of their
+#: ranked map's beats within 10 ms (median 48 and 28 ms off). Python hands
+#: those to the fallback tracker; Rust reports no grid.
+WEAK_PULSE_LOG10P = -6.0
+STRONG_PULSE_GAP = 0.15
+
+
+def _pulse_log10p(times: np.ndarray, period: float, phase: float,
+                  tol_ratio: float = 0.12) -> float:
+    """log10 of the chance that uniformly random attack times land this many
+    inliers on the grid (a binomial tail with p = 2*tol/period)."""
+    n = int(times.size)
+    if n == 0 or period <= 0:
+        return 0.0
+    tol = max(tol_ratio * period, 0.006)
+    chance = min(1.0, 2.0 * tol / period)
+    k = np.round((times - phase) / period)
+    inliers = int(np.sum(np.abs(times - (phase + k * period)) <= tol))
+    if inliers == 0 or chance >= 1.0:
+        return 0.0
+    from scipy.stats import binom
+    return float(binom.logsf(inliers - 1, n, chance) / np.log(10.0))
+
+
 def _grid_quality(times: np.ndarray, weights: np.ndarray, period: float,
                   phase: float, tol_ratio: float = 0.12) -> tuple[float, float, float]:
     """(inlier fraction, coverage of grid positions, RMS residual in ms)."""
@@ -1807,6 +1844,9 @@ def _precision_engine(y: np.ndarray, sr: int, min_delta: float, persistence: int
                                            atom_period, atom_phase)
     if share < 0.40:
         return None                       # no regular pulse: let the tracker try
+    if (_pulse_log10p(times[window], atom_period, atom_phase) > WEAK_PULSE_LOG10P
+            and _fit_pulse_gap(env, sr) < STRONG_PULSE_GAP):
+        return None                       # chance explains the grid and the envelope agrees
 
     say("Resolving the beat octave…")
     hints = _tempo_hints(env, sr, FIT_HOP)
@@ -1998,6 +2038,35 @@ def _pulse_gap(onset: np.ndarray, sr: int, hop: int) -> float:
         return 0.0
     rng = np.random.default_rng(0)
     shuffled = [_pulse_clarity(rng.permutation(onset), sr, hop) for _ in range(PULSE_SHUFFLES)]
+    return _pulse_clarity(onset, sr, hop) - float(np.mean(shuffled))
+
+
+def _splitmix64(x: np.ndarray) -> np.ndarray:
+    """SplitMix64 of each uint64: a hash Rust computes bit for bit."""
+    z = x + np.uint64(0x9E3779B97F4A7C15)
+    z = (z ^ (z >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+    z = (z ^ (z >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+    return z ^ (z >> np.uint64(31))
+
+
+def _fit_pulse_gap(env: np.ndarray, sr: int) -> float:
+    """_pulse_gap on the fitting envelope, for the precision engine's gate.
+
+    The envelope at FIT_HOP is max-pooled in pairs, which puts its frames at
+    HOP and the tempogram's 0.2-1.5 s lags inside its window. The shuffles
+    order the frames by a SplitMix64 hash instead of numpy's generator, so the
+    Rust engine takes the same decision on the same envelope.
+    """
+    usable = (env.size // 2) * 2
+    onset = np.asarray(env[:usable], dtype=np.float64).reshape(-1, 2).max(axis=1)
+    if onset.size < 64 or not np.any(onset > 0):
+        return 0.0
+    hop = 2 * FIT_HOP
+    index = np.arange(onset.size, dtype=np.uint64)
+    shuffled = []
+    for shuffle in range(PULSE_SHUFFLES):
+        keys = _splitmix64(index + np.uint64(shuffle << 32))
+        shuffled.append(_pulse_clarity(onset[np.argsort(keys, kind="stable")], sr, hop))
     return _pulse_clarity(onset, sr, hop) - float(np.mean(shuffled))
 
 

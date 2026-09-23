@@ -28,11 +28,11 @@ plugged into the app.**
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **205** Python (136 engine + 69 web shell) · **177** Rust.
+Tests: **209** Python (140 engine + 69 web shell) · **181** Rust.
 
 ### What is pending, in order
 
-1. **Confirm or drop the "to verify" list** below — two of them could move red lines.
+1. **Work the audit backlog** ([`13-audit-backlog.md`](13-audit-backlog.md)) — its 6 high findings first.
 2. **Playback in the app** (Phase 4) — hear the song with the click, scrub, loop.
 3. **Plug the Rust engine into the app** (Phase 22) — the ~9x speed-up reaches the user.
 4. **Timeline** (Phase 3) — waveform, zoom, drag red lines.
@@ -53,19 +53,20 @@ All four were reproduced with a probe before the fix and have a test that fails 
 | Classic window: CSV clipped to 21 px at the default size | ghost buttons size to their labels; minimum width 1070 | nothing clipped in English or Spanish |
 | Classic window: ×2 / ÷2 and Analyze silently dropped hand edits | they ask first while edits are unexported | 3 tests on the real window |
 
-### To verify (reported by the audit, not yet confirmed)
+### Audit leads verified on 2026-09-23
 
-The 2026-09-22 audit ran out of budget before its verifiers finished, so these stay
-unconfirmed until a probe reproduces them:
+The five leads the audit's verifiers did not finish. Each was re-probed; all five were real.
 
-- the first red line can land **half a beat late** on a constant-tempo track whose first
-  beat sits on the atom grid (Python and Rust);
-- the meter path can **hide a real tempo change** (128 → 150) when the song has a clear
-  downbeat;
-- Rust chroma gives the **wrong pitch class below ~360 Hz** (bass notes);
-- licence claims in `10-precision-plan.md` / `11-msi-distribution.md` (WiX is not MIT;
-  madmom model files and Demucs weights have their own terms) — check before any is bundled;
-- `CLAUDE.md` still says 76 / 75 tests and lists 5 crates.
+| Lead | Result | Measured | PR |
+|---|---|---|---|
+| First red line half a beat late | **real, critical** — section 0 applied a beat class counted in another seed's frame | plain renders on the off-beat: 5/8 → 0/8; `fast-300` was on the snare, now on the kick | #22 |
+| Meter path hides a tempo change | **real, high** — one bar applied to the whole track | 128 → 150 and 120 → 160 keep both red lines; `signatures` 6/6 | #23 |
+| Rust chroma wrong below ~362 Hz | **real** — bins wider than a semitone | bass notes on the wrong class: 24/36 → 0/36; hitsound F1 0.910 unchanged | #24 |
+| Licence claims in the plans | **real** — six rows wrong | checked against each project's licence file; Demucs weights are research-only | #25 |
+| Stale counts in CLAUDE.md | **real** | 76/75 → 209/181, layout complete | #26 |
+
+The rest of the audit — 87 findings its verifiers confirmed and nobody has re-probed yet
+(6 high, 41 medium, 40 low) — is in [`13-audit-backlog.md`](13-audit-backlog.md).
 
 ---
 
@@ -530,7 +531,7 @@ P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─�
                            ├─► P4 playback ✗ / editor ✓
                            └─► P5 osu! ✓ ─────────────► P8 automation (half) ─► P9 (suggestions ✓)
 
-Next: verify audit leads ─► playback ─► Rust engine in the app ─► timeline ─► sections + settings
+Next: audit backlog (6 high) ─► playback ─► Rust engine in the app ─► timeline ─► sections + settings
       ─► map tools ─► hitsounds ─► Phase 10 ─► installer
 ```
 

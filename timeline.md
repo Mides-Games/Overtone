@@ -16,6 +16,55 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-23 · Five audit leads, five real bugs
+
+The roadmap listed five audit findings as "to verify". Each was re-probed before any
+change; all five were real. Three touched the engines.
+
+### Fixed
+
+- **First red line half a beat late** (Python and Rust). The octave stage picks the
+  accented atom class counting from the anchor seed's phase; section 0 is seeded again
+  during growth and can sit a whole atom away. The class is now re-expressed in section
+  0's own frame (halves rounded as `floor(x + 0.5)` in both languages).
+- **Meter path swallowing a tempo change** (Python and Rust). The bar measured on one
+  section was applied to the whole track, so 128 → 150 BPM with an audible downbeat came
+  out as one 128 BPM red line. Every section's beat must now tile that bar (within 0.02
+  beats); a signature change over one bar does, a tempo change does not.
+- **Rust chroma misplacing bass notes.** Below ~362 Hz a 21.5 Hz bin is wider than a
+  semitone; there, only spectral peaks count, at their interpolated frequency. The
+  hitsound crate's chord-change feature now ignores bins below 100 Hz, where kick
+  fundamentals sit — its test had passed only because the old chroma misfiled a 55 Hz
+  kick onto the pad's own class.
+- **Licence claims** in the precision, installer and comfort plans, corrected from the
+  projects' own licence files; Demucs dropped for HPSS (its weights are research-only).
+- **CLAUDE.md / AGENTS.md** counts and layout.
+
+### Changed
+
+- **`bench/golden/fast-300.json` re-dumped, on purpose.** `fast-300` is a 300 BPM render
+  read at 150 whose first kick is at 0.2 s. Its red line sat at 400.2 ms — on the snare —
+  and passed because the benchmark scores offsets modulo one 300 BPM beat. With the
+  section-0 fix it sits at 200.2 ms, on the kick. Only `beat_sections[0].phase_s`,
+  `settled_sections[0].phase_s` and `result.points[0].offset_ms` changed; the other 23
+  vectors are byte-identical.
+- New `docs/13-audit-backlog.md`: the 87 findings the audit's verifiers confirmed that
+  are still open, so they live in the repository and not in a temporary file.
+
+### Measured
+
+```
+first red line on the off-beat, 8 plain constant-tempo renders     5/8 -> 0/8
+tempo change with an audible downbeat (128->150, 120->160)         1 red line -> 2
+bass notes E1..D#4 on the wrong pitch class (Rust chroma)          24/36 -> 0/36
+hitsound calibration macro F1                                       0.910 -> 0.910
+gates: 209/209 Python; benchmark 24/24, 0.0000 BPM / 0.16 ms; bpm-snapshot unchanged;
+golden 24/24 (after the fast-300 re-dump); coverage, measures, signatures green;
+cargo test 181/181; overtone-bench golden 24/24
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-23 · Four confirmed bugs fixed
 
 The four bugs the 2026-09-22 audit reproduced with a probe. Each fix has a test

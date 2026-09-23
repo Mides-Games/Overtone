@@ -57,6 +57,7 @@ const I18N = {
     saved_to: "Saved to {path}",
     injected: "Injected {added} red lines ({replaced} replaced, {greens} green kept).",
     inject_confirm: "Replace {reds} red lines with {n} new ones in {file}?{warn}",
+    inject_greens: "\nIt also adds {g} green lines so slider velocity and hitsounds play as before.",
     inject_warn: "\nThe .osu audio ({osu}) differs from the analyzed file ({src}).",
     drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
     recent: "Recent",
@@ -151,6 +152,7 @@ const I18N = {
     saved_to: "Guardado en {path}",
     injected: "Inyectadas {added} líneas rojas ({replaced} reemplazadas, {greens} verdes intactas).",
     inject_confirm: "¿Reemplazar {reds} líneas rojas por {n} nuevas en {file}?{warn}",
+    inject_greens: "\nTambién agrega {g} líneas verdes para que la velocidad de sliders y los hitsounds suenen igual.",
     inject_warn: "\nEl audio del .osu ({osu}) difiere del analizado ({src}).",
     drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
     recent: "Recientes",
@@ -641,7 +643,8 @@ async function injectOsu() {
   const prev = await api().inject_preview(target);
   if (!prev.ok) { editFailure(prev); return; }
   const s = prev.summary;
-  const warn = s.audio_mismatch ? t("inject_warn", { osu: s.osu_audio, src: s.analysed_audio }) : "";
+  const warn = (s.audio_mismatch ? t("inject_warn", { osu: s.osu_audio, src: s.analysed_audio }) : "")
+    + (s.greens_added ? t("inject_greens", { g: s.greens_added }) : "");
   const name = String(target).split(/[\\/]/).pop();
   if (!confirm(t("inject_confirm", { reds: s.reds_replaced, n: s.reds_added, file: name, warn }))) return;
   const done = await api().inject_apply(target);

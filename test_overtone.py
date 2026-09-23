@@ -452,6 +452,152 @@ class OsuInjectTests(unittest.TestCase):
             self.assertTrue(summary["audio_mismatch"])
 
 
+def _timing_rows(text: str) -> list[list[str]]:
+    rows, inside = [], False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped == "[TimingPoints]":
+            inside = True
+            continue
+        if inside and stripped.startswith("["):
+            break
+        if inside and stripped and not stripped.startswith("//"):
+            rows.append([f.strip() for f in stripped.split(",")])
+    return rows
+
+
+def _heard_at(text: str, t: float) -> tuple:
+    """What osu! plays at time t: (SV, sample set, index, volume, kiai).
+
+    Written independently of the injector on purpose: a red line resets SV to
+    1, a green sets it to -100/beatLength, both set the sample fields; points
+    at the same time apply red first; before the first point, the first
+    point's settings apply.
+    """
+    points = []
+    for n, f in enumerate(_timing_rows(text)):
+        length = float(f[1])
+        red = length > 0 and (len(f) < 7 or f[6] == "1")
+        points.append((float(f[0]), 0 if red else 1, n, length, red,
+                       int(f[3]), int(f[4]), int(f[5]), int(f[7]) & 1))
+    points.sort()
+    active = [q for q in points if q[0] <= t] or points[:1]
+    sv, heard = 1.0, None
+    for time, _o, _n, length, red, sample_set, index, volume, kiai in active:
+        sv = 1.0 if red else (-100.0 / length if length < 0 else sv)
+        heard = (sample_set, index, volume, kiai)
+    return (round(sv, 9),) + heard
+
+
+class InjectKeepsWhatPlaysTests(unittest.TestCase):
+    """Injection changes the timing and nothing a player hears or sees scroll.
+
+    Before this, every new red line was written as Normal / 100 % / no kiai and
+    the section was left out of time order: re-injecting a hitsounded map with
+    kiai silently flattened it.
+    """
+
+    # Soft 60 % from 400; kiai from 20 s; a red at 30 s re-states Soft 60 with
+    # kiai; kiai off at 45 s. A 2.0x slider-velocity green at 22 s.
+    MAP = ("osu file format v14\n[General]\nAudioFilename: song.mp3\n\n"
+           "[TimingPoints]\n"
+           "400,400,4,2,0,60,1,0\n"
+           "20000,-100,4,2,0,60,0,1\n"
+           "22000,-50,4,2,0,60,0,1\n"
+           "30000,375,4,2,0,60,1,1\n"
+           "45000,-100,4,2,1,40,0,0\n"
+           "\n[HitObjects]\n")
+    OBJECTS = [1000, 5000, 19000, 20500, 22500, 25000, 29000, 30500, 31000,
+               33000, 39000, 41000, 44000, 46000, 50000]
+
+    def _map(self, tmp: str, text: str = "", newline: str = "\n", bom: bool = False) -> Path:
+        text = text or self.MAP + "".join(f"256,192,{t},1,0\n" for t in self.OBJECTS)
+        path = Path(tmp) / "map.osu"
+        data = text.replace("\n", newline).encode("utf-8")
+        path.write_bytes((b"\xef\xbb\xbf" if bom else b"") + data)
+        return path
+
+    def _analysis(self):
+        from types import SimpleNamespace
+        # red lines that do not sit where the old ones were
+        return SimpleNamespace(source="song.mp3", meter="4/4",
+                               points=[TimingPoint(500.0, 150.0, 0.95, 0),
+                                       TimingPoint(25000.0, 160.0, 0.9, 60),
+                                       TimingPoint(40000.0, 170.0, 0.9, 100)])
+
+    def test_every_object_plays_as_before(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp)
+            before = path.read_text(encoding="utf-8")
+            inject_osu_timing_points(path, self._analysis(), backup=False)
+            after = path.read_text(encoding="utf-8")
+        for t in self.OBJECTS:
+            self.assertEqual(_heard_at(after, t), _heard_at(before, t), f"object at {t} ms")
+
+    def test_new_red_lines_carry_the_state_they_land_in(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp)
+            inject_osu_timing_points(path, self._analysis(), backup=False)
+            reds = [r for r in _timing_rows(path.read_text(encoding="utf-8")) if r[6] == "1"]
+        # offsets as exported (25000 snaps to 24900 on the 150 BPM grid)
+        self.assertEqual([r[0] for r in reds], ["500", "24900", "40000"])
+        self.assertEqual(reds[0][3:8], ["2", "0", "60", "1", "0"])   # Soft 60, before kiai
+        self.assertEqual(reds[1][3:8], ["2", "0", "60", "1", "1"])   # inside the kiai
+        self.assertEqual(reds[2][3:8], ["2", "0", "60", "1", "1"])
+
+    def test_timing_section_is_in_time_order_red_before_green(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp)
+            summary = inject_osu_timing_points(path, self._analysis(), backup=False)
+            rows = _timing_rows(path.read_text(encoding="utf-8"))
+        keys = [(float(r[0]), 0 if r[6] == "1" else 1) for r in rows]
+        self.assertEqual(keys, sorted(keys))
+        self.assertEqual(summary["reds_replaced"], 2)
+        self.assertEqual(summary["reds_added"], 3)
+        self.assertEqual(summary["greens_kept"], 3)
+        self.assertGreater(summary["greens_added"], 0)  # SV 2.0 around the moved reds
+
+    def test_original_greens_are_byte_identical(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp, newline="\r\n")
+            inject_osu_timing_points(path, self._analysis(), backup=False)
+            out = path.read_bytes()
+        for green in (b"20000,-100,4,2,0,60,0,1\r\n", b"22000,-50,4,2,0,60,0,1\r\n",
+                      b"45000,-100,4,2,1,40,0,0\r\n"):
+            self.assertIn(green, out)
+        self.assertNotIn(b"\r\r\n", out)
+
+    def test_injecting_twice_changes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp, newline="\r\n")
+            inject_osu_timing_points(path, self._analysis(), backup=False)
+            first = path.read_bytes()
+            summary = inject_osu_timing_points(path, self._analysis(), backup=False)
+            self.assertEqual(path.read_bytes(), first)
+        self.assertEqual(summary["greens_added"], 0)
+
+    def test_bom_and_missing_final_newline_survive(self):
+        text = self.MAP + "256,192,1000,1,0"  # no newline at the end of the file
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp, text=text, newline="\r\n", bom=True)
+            original = path.read_bytes()
+            inject_osu_timing_points(path, self._analysis(), backup=False)
+            out = path.read_bytes()
+        self.assertTrue(out.startswith(b"\xef\xbb\xbfosu file format v14\r\n"))
+        head = original[:original.index(b"[TimingPoints]")]
+        self.assertTrue(out.startswith(head))
+        self.assertTrue(out.endswith(b"\r\n\r\n[HitObjects]\r\n256,192,1000,1,0"))
+
+    def test_a_map_without_timing_gets_plain_red_lines(self):
+        text = "osu file format v14\n[General]\nAudioFilename: song.mp3\n\n[TimingPoints]\n\n[HitObjects]\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp, text=text)
+            summary = inject_osu_timing_points(path, self._analysis(), backup=False)
+            rows = _timing_rows(path.read_text(encoding="utf-8"))
+        self.assertEqual(summary["greens_added"], 0)
+        self.assertEqual([r[3:8] for r in rows], [["1", "0", "100", "1", "0"]] * 3)
+
+
 # ---------------------------------------------------------------------------
 # v3 precision engine
 # ---------------------------------------------------------------------------

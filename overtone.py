@@ -2760,6 +2760,77 @@ def _is_red_line(line: str) -> bool:
     return not inherited_by_length
 
 
+@dataclass(frozen=True)
+class _PlayState:
+    """What a timing point makes audible from its time on.
+
+    Red lines reset slider velocity to 1.0; green lines set it. Both set the
+    hitsound sample set, index, volume and kiai. Timing (BPM, meter) is not
+    part of it: that is exactly what injection is asked to change.
+    """
+    sv: float
+    sample_set: int
+    sample_index: int
+    volume: int
+    kiai: bool
+
+    def same_as(self, other: "_PlayState") -> bool:
+        return (abs(self.sv - other.sv) <= 1e-9 * max(1.0, abs(other.sv))
+                and (self.sample_set, self.sample_index, self.volume, self.kiai)
+                == (other.sample_set, other.sample_index, other.volume, other.kiai))
+
+
+def _timing_point_fields(line: str) -> dict | None:
+    """One [TimingPoints] line with osu!'s defaults for the fields old formats omit."""
+    fields = [f.strip() for f in line.split(",")]
+    if len(fields) < 2:
+        return None
+    try:
+        time = float(fields[0])
+        beat_length = float(fields[1])
+
+        def number(n: int, default: int) -> int:
+            return int(float(fields[n])) if len(fields) > n and fields[n] else default
+
+        return {"time": time, "beat_length": beat_length, "red": _is_red_line(line),
+                "meter": number(2, 4), "sample_set": number(3, 0),
+                "sample_index": number(4, 0), "volume": number(5, 100),
+                "effects": number(7, 0)}
+    except ValueError:
+        return None
+
+
+def _apply_point(state: "_PlayState | None", point: dict) -> _PlayState:
+    if point["red"]:
+        sv = 1.0
+    elif point["beat_length"] < 0:
+        sv = -100.0 / point["beat_length"]
+    else:
+        sv = state.sv if state is not None else 1.0
+    return _PlayState(sv, point["sample_set"], point["sample_index"], point["volume"],
+                      bool(point["effects"] & 1))
+
+
+def _ordered(points: list[dict]) -> list[dict]:
+    """Time order, a red before a green at the same time (osu!'s own order)."""
+    return sorted(points, key=lambda q: (q["time"], 0 if q["red"] else 1, q["order"]))
+
+
+def _states_at_events(points: list[dict], events: list[float]) -> list["_PlayState | None"]:
+    """The audible state at each event time; before the first point, the first
+    point's settings apply, as in osu!."""
+    ordered = _ordered(points)
+    first = _apply_point(None, ordered[0]) if ordered else None
+    out: list[_PlayState | None] = []
+    state, i = None, 0
+    for time in events:
+        while i < len(ordered) and ordered[i]["time"] <= time + 1e-6:
+            state = _apply_point(state, ordered[i])
+            i += 1
+        out.append(state if state is not None else first)
+    return out
+
+
 def inject_osu_timing_points(osu_path: str | os.PathLike[str],
                              analysis: Analysis,
                              backup: bool = True,
@@ -2767,14 +2838,21 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
                              decimals: int = 0) -> dict:
     """Replace the red (uninherited) lines of an .osu with this analysis.
 
-    Green lines, metadata, hit objects — everything else — are preserved
-    byte-for-byte, including the file's CRLF/LF style. A ``.bak`` copy is
-    written first unless ``backup`` is False, and an existing ``.bak`` is never
-    overwritten: the pristine original is the one worth keeping. With
-    ``dry_run`` nothing is written (used for the GUI confirmation dialog).
-    Returns a summary dict with ``reds_replaced``, ``reds_added``,
-    ``greens_kept`` and an ``audio_mismatch`` warning when the .osu's
-    AudioFilename differs from the analyzed file.
+    Only the timing changes. Each new red line takes the sample set, index,
+    volume and kiai the original map had at its time, and where moving the red
+    lines would change what plays — slider velocity, which a red line resets,
+    or the hitsound state an old red line set — a green line carrying the
+    original values is added at that time. So the map sounds and scrolls as it
+    did, with the new timing; nothing the user did not ask for changes.
+
+    Green lines keep their exact bytes, and so does everything outside
+    [TimingPoints]: the BOM, each line's own line ending, a missing final
+    newline. The timing section is written in time order, a red before a green
+    at the same time. A ``.bak`` copy is written first unless ``backup`` is
+    False, and an existing ``.bak`` is never overwritten. With ``dry_run``
+    nothing is written. Returns ``reds_replaced``, ``reds_added``,
+    ``greens_kept``, ``greens_added`` and an ``audio_mismatch`` warning when
+    the .osu's AudioFilename differs from the analysed file.
     """
     path = Path(osu_path)
     if not path.is_file():
@@ -2782,18 +2860,19 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
     size = path.stat().st_size
     if size > MAX_OSU_BYTES:
         raise ValueError(f"{path.name} is {size / 1e6:.1f} MB — that is not a beatmap.")
-    new_reds = [row for row in osu_timing_text(analysis, decimals).splitlines()
+    new_rows = [row for row in osu_timing_text(analysis, decimals).splitlines()
                 if row and not row.startswith("//")]
-    if not new_reds:
+    if not new_rows:
         raise ValueError("This analysis has no usable timing points to inject.")
 
     raw = path.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise ValueError(f"Could not decode {path.name} as UTF-8.") from exc
     newline = "\r\n" if b"\r\n" in raw else "\n"
-    lines = text.splitlines()
+    lines = text.splitlines(keepends=True)  # every line keeps its own ending
 
     header_idx = next((n for n, line in enumerate(lines)
                        if line.strip() == "[TimingPoints]"), None)
@@ -2806,24 +2885,65 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
             end_idx = n
             break
     body = lines[header_idx + 1:end_idx]
+    # Blank lines closing the section stay where they are; so do comments and
+    # anything else that is not a point, above the points.
+    tail_start = len(body)
+    while tail_start > 0 and not body[tail_start - 1].strip():
+        tail_start -= 1
+    tail = body[tail_start:]
+    others: list[str] = []
+    originals: list[dict] = []
+    for n, line in enumerate(body[:tail_start]):
+        point = _timing_point_fields(line.strip()) if line.strip() else None
+        if point is None:
+            others.append(line)
+        else:
+            point.update(order=n, raw=line)
+            originals.append(point)
+    old_reds = [q for q in originals if q["red"]]
+    greens = [q for q in originals if not q["red"]]
 
-    greens = [line for line in body if line.strip() and not _is_red_line(line.strip())]
-    old_reds = sum(1 for line in body if line.strip() and _is_red_line(line.strip()))
+    # New reds carry the state the original map had at their own time.
+    parsed = [(row, _timing_point_fields(row)) for row in new_rows]
+    parsed = [(row, q) for row, q in parsed if q is not None]
+    carried = _states_at_events(originals, [q["time"] for _row, q in parsed])
+    omit_barline = {round(q["time"]) for q in old_reds if q["effects"] & 8}
+    reds: list[dict] = []
+    for (row, q), state in zip(parsed, carried):
+        fields = [f.strip() for f in row.split(",")]
+        if state is not None:
+            effects = (1 if state.kiai else 0) | (8 if round(q["time"]) in omit_barline else 0)
+            fields[3:6] = [str(state.sample_set), str(state.sample_index), str(state.volume)]
+            fields[7] = str(effects)
+            q.update(sample_set=state.sample_set, sample_index=state.sample_index,
+                     volume=state.volume, effects=effects)
+        q.update(order=-1, raw=",".join(fields) + newline)
+        reds.append(q)
 
-    if old_reds:
-        # Replace in place: new reds take the position of the first old red,
-        # remaining old reds are dropped, greens keep their exact lines.
-        out_body: list[str] = []
-        replaced = False
-        for line in body:
-            if line.strip() and _is_red_line(line.strip()):
-                if not replaced:
-                    out_body.extend(new_reds)
-                    replaced = True
-            else:
-                out_body.append(line)
-    else:
-        out_body = list(body) + new_reds
+    # Wherever the new set would play differently, a green restores the original.
+    events = sorted({q["time"] for q in originals} | {q["time"] for q in reds})
+    wanted = _states_at_events(originals, events)
+    added: list[dict] = []
+    for time, want in zip(events, wanted):
+        if want is None:
+            continue
+        have = _states_at_events(reds + greens + added, [time])[0]
+        if have is not None and have.same_as(want):
+            continue
+        governing = [q for q in reds if q["time"] <= time + 1e-6] or reds[:1]
+        meter = governing[-1]["meter"] if governing else 4
+        stamp = (f"{time:.{int(decimals)}f}" if decimals > 0 else str(int(round(time))))
+        row = (f"{stamp},{-100.0 / want.sv:.12g},{meter},{want.sample_set},"
+               f"{want.sample_index},{want.volume},0,{1 if want.kiai else 0}")
+        point = _timing_point_fields(row)
+        point.update(order=len(body) + len(added), raw=row + newline)
+        added.append(point)
+
+    out_body = others + [q["raw"] for q in _ordered(reds + greens + added)] + tail
+    # The last line of the section needs an ending even if the file's last
+    # line did not have one (the section is followed by more content).
+    if end_idx < len(lines) and out_body and not out_body[-1].endswith(("\n", "\r")):
+        out_body[-1] += newline
 
     audio_name = ""
     for line in lines[:header_idx]:
@@ -2839,12 +2959,13 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
                 spare.write_bytes(raw)
         # Bytes, not write_text: on Windows, text mode would translate our
         # existing "\r\n" into "\r\r\n".
-        payload = (newline.join(lines[:header_idx + 1] + out_body + lines[end_idx:])
-                   + newline).encode("utf-8")
+        payload = "".join(lines[:header_idx + 1] + out_body + lines[end_idx:]).encode("utf-8")
+        if bom:
+            payload = b"\xef\xbb\xbf" + payload
         _atomic_write_bytes(path, payload)
 
-    return {"reds_replaced": old_reds, "reds_added": len(new_reds),
-            "greens_kept": len([l for l in greens if l.strip()]),
+    return {"reds_replaced": len(old_reds), "reds_added": len(reds),
+            "greens_kept": len(greens), "greens_added": len(added),
             "backup": bool(backup),
             "audio_mismatch": bool(audio_name and analysed_name
                                    and audio_name.lower() != analysed_name.lower()),
@@ -3628,6 +3749,7 @@ class TimingAnalyzerApp:
             "suggest": "§{n} reads {bpm} BPM but off-beats suggest ×2 — press 2× § to fix.",
             "inject_confirm": "Replace {reds} red line(s), keep {greens} green line(s) in\n{file}?\nA .bak backup will be created.{warn}",
             "inject_warn": "\nWARNING: .osu audio is '{osu}', you analyzed '{src}'.",
+            "inject_greens": "\nIt also adds {n} green line(s) so slider velocity and hitsounds play as before.",
             "injected": "Injected {added} red lines ({replaced} replaced, {greens} greens kept). Backup saved.",
             "all_audio": "Audio files", "all": "All files",
             "language": "Language", "file": "Audio file",
@@ -3676,6 +3798,7 @@ class TimingAnalyzerApp:
             "suggest": "§{n} marca {bpm} BPM pero los contratiempos sugieren ×2 — pulsa 2× § para corregirlo.",
             "inject_confirm": "¿Reemplazar {reds} línea(s) roja(s), mantener {greens} verde(s) en\n{file}?\nSe creará backup .bak.{warn}",
             "inject_warn": "\nAVISO: el audio del .osu es '{osu}', analizaste '{src}'.",
+            "inject_greens": "\nTambién agrega {n} línea(s) verde(s) para que la velocidad de sliders y los hitsounds suenen igual.",
             "injected": "Inyectadas {added} líneas rojas ({replaced} reemplazadas, {greens} verdes intactas). Backup guardado.",
             "all_audio": "Archivos de audio", "all": "Todos los archivos",
             "language": "Idioma", "file": "Archivo de audio",
@@ -4481,6 +4604,8 @@ class TimingAnalyzerApp:
         warn = ""
         if summary["audio_mismatch"]:
             warn = self.tr("inject_warn", osu=summary["osu_audio"], src=summary["analysed_audio"])
+        if summary.get("greens_added"):
+            warn += self.tr("inject_greens", n=summary["greens_added"])
         if not messagebox.askyesno(self.tr("inject"),
                                    self.tr("inject_confirm", reds=summary["reds_replaced"],
                                            greens=summary["greens_kept"],
@@ -4916,7 +5041,8 @@ def main() -> None:
             print(f"Error injecting into {args.inject}: {exc}")
             raise SystemExit(1)
         print(f"Injected {summary['reds_added']} red lines "
-              f"({summary['reds_replaced']} replaced, {summary['greens_kept']} greens kept)"
+              f"({summary['reds_replaced']} replaced, {summary['greens_kept']} greens kept, "
+              f"{summary['greens_added']} greens added to keep SV and hitsounds)"
               + (" [audio mismatch!]" if summary["audio_mismatch"] else ""))
 
 

@@ -475,7 +475,7 @@
    "end_s": 44.799997,
    "inliers": 224,
    "period_s": 0.399999968,
-   "phase_s": 0.400203,
+   "phase_s": 0.200203,
    "residual_ms": 0.1706,
    "start_s": 0.20033
   }
@@ -547,7 +547,7 @@
    {
     "bpm": 150.000012,
     "confidence": 0.99609,
-    "offset_ms": 400.203
+    "offset_ms": 200.203
    }
   ],
   "stability": 1.0
@@ -573,7 +573,7 @@
    "end_s": 44.799997,
    "inliers": 224,
    "period_s": 0.399999968,
-   "phase_s": 0.400203,
+   "phase_s": 0.200203,
    "residual_ms": 0.1706,
    "start_s": 0.20033
   }

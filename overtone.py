@@ -1783,6 +1783,14 @@ def _precision_engine(y: np.ndarray, sr: int, min_delta: float, persistence: int
                                    max(min_delta * m, 1e-3), max(2, persistence * m))
     if not atom_sections:
         return None
+    # first_class counts atoms from the anchor seed's phase, but section 0 was
+    # seeded again inside _grow_sections and its phase can sit whole atoms
+    # away; applied as-is, the class then names the off-beat (the only red line
+    # 250 ms late at 120 BPM on tracks that start on the eighth-note grid).
+    # Re-express it in section 0's own frame. floor(x + 0.5), not round():
+    # the Rust port rounds halves the same way.
+    shift = int(np.floor((atom_sections[0].phase - atom_phase) / atom_period + 0.5))
+    first_class = (first_class - shift) % max(m, 1)
     sections = _beat_sections(atom_sections, times, weights, m, first_class)
     sections = _settle_boundaries(times, weights, sections)
     meter_text, downbeat, bar_beats = _meter_from_grid(

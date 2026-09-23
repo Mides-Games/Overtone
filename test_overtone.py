@@ -875,6 +875,25 @@ class NoPulseRefusalTests(unittest.TestCase):
         self.assertEqual(_pulse_gap(np.zeros(4000), 22050, HOP), 0.0)  # silence
 
 
+class FirstRedLinePhaseTests(unittest.TestCase):
+    """The first red line lands on the beat when the song starts on the atom grid.
+
+    Section 0 used to apply a beat class counted from the anchor seed's phase
+    while its own phase came from a second seed a whole atom away, so on 5 of 8
+    plain constant-tempo renders the only red line sat on the off-beat (250 ms
+    late at 120 BPM). The 24-case corpus never starts on those offsets.
+    """
+
+    def test_start_on_the_eighth_note_grid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for start, bpm in ((0.5, 120.0), (1.0, 120.0), (0.25, 120.0), (0.6, 150.0), (0.4, 150.0)):
+                path = Path(tmp) / f"s{start}_{bpm}.wav"
+                _drum_track(path, [(start, bpm)], duration=24.0)
+                first = snap_timing_points(analyze_audio(path).points)[0]
+                with self.subTest(start=start, bpm=bpm):
+                    self.assertLess(_offset_error_ms(first.offset_ms, start, bpm), 5.0)
+
+
 class GridMathTests(unittest.TestCase):
     def test_coherence_phase_has_the_right_sign(self):
         # Regression: the phase used to come back negated, putting the seed

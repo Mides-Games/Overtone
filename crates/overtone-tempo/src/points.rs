@@ -622,6 +622,12 @@ pub fn analyze_attacks(
             detail: "growth found no sections".to_string(),
         }]);
     }
+    // first_class counts atoms from the anchor seed's phase, but section 0 was
+    // seeded again inside grow_sections and its phase can sit whole atoms
+    // away; applied as-is, the class then names the off-beat. Re-express it in
+    // section 0's own frame, rounding halves as the Python reference does.
+    let shift = ((atom[0].phase - seed.phase) / seed.period + 0.5).floor() as i64;
+    let first_class = (first_class as i64 - shift).rem_euclid(m.max(1) as i64) as usize;
     let w32: Vec<f32> = weights.to_vec();
     let beats = crate::sections::beat_sections(&atom, times, &w32, m.max(1), first_class);
     let settled = crate::sections::settle_boundaries(times, &w32, beats.clone(), SETTLE_ROUNDS);
@@ -743,6 +749,45 @@ mod tests {
             inliers: 0,
             residual_ms: 0.0,
             coverage: 1.0,
+        }
+    }
+
+    /// Eighth-note attacks with accented beats, first beat at `start`.
+    fn eighths(bpm: f64, start: f64, to: f64) -> (Vec<f64>, Vec<f32>) {
+        let atom = 30.0 / bpm;
+        let mut times = Vec::new();
+        let mut weights = Vec::new();
+        let mut k = 0i64;
+        loop {
+            let t = start + k as f64 * atom;
+            if t > to {
+                break;
+            }
+            times.push(t);
+            weights.push(if k % 2 == 0 { 1.0 } else { 0.45 });
+            k += 1;
+        }
+        (times, weights)
+    }
+
+    #[test]
+    fn first_red_line_lands_on_the_beat_when_the_song_starts_on_the_atom_grid() {
+        // Section 0 used to apply a beat class counted from the anchor seed's
+        // phase, while its own phase came from a second seed that can sit a
+        // whole atom away: the only red line landed on the off-beat, 250 ms
+        // late at 120 BPM, on tracks that start on the eighth-note grid.
+        for &(bpm, start) in &[(120.0, 0.5), (120.0, 1.0), (120.0, 0.25), (150.0, 0.6), (150.0, 0.4)] {
+            let (times, weights) = eighths(bpm, start, 40.0);
+            let out = analyze_attacks(&times, &weights, &[], 44_100, 1.5, 12, true, 0.75);
+            let first = out.points.first().expect("a red line");
+            let beat_ms = 60_000.0 / bpm;
+            let k = (first.offset.get() - start * 1000.0) / beat_ms;
+            let off = (k - k.round()).abs() * beat_ms;
+            assert!(
+                off < 5.0,
+                "{bpm} BPM from {start} s: red line at {:.1} ms is {off:.1} ms off the beat",
+                first.offset.get()
+            );
         }
     }
 

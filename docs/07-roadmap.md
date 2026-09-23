@@ -11,7 +11,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 
 ---
 
-## Where we are — 2026-09-23
+## Where we are — 2026-09-23 (evening)
 
 **Stage: the app is usable end to end in Python; the Rust engine is at parity but not yet
 plugged into the app.**
@@ -28,28 +28,30 @@ plugged into the app.**
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **191** Python (122 engine + 69 web shell) · **177** Rust.
+Tests: **205** Python (136 engine + 69 web shell) · **177** Rust.
 
 ### What is pending, in order
 
-1. **Fix the known bugs** (next section) — they break promises the tool makes.
+1. **Confirm or drop the "to verify" list** below — two of them could move red lines.
 2. **Playback in the app** (Phase 4) — hear the song with the click, scrub, loop.
-3. **Plug the Rust engine into the app** — the ~9x speed-up reaches the user.
+3. **Plug the Rust engine into the app** (Phase 22) — the ~9x speed-up reaches the user.
 4. **Timeline** (Phase 3) — waveform, zoom, drag red lines.
-5. **Hitsounds** (Phase 6) — decision, editor, export; then show them in the app.
-6. **Real-audio accuracy** (Phase 10) — build Corpus B first, then one sub-phase at a time.
-7. **Installer** (Phase 10.13) — MSI + portable ZIP.
+5. **App sections and settings** (Phases 19–20) — one home per job, every option in one place.
+6. **Map tools** (Phase 21) — kiai, preview point, SV normaliser, inject into every difficulty.
+7. **Hitsounds** (Phase 6) — decision, editor, export; then its own section.
+8. **Real-audio accuracy** (Phase 10) — build Corpus B first, then one sub-phase at a time.
+9. **Installer** (Phase 10.13) — MSI + portable ZIP.
 
-### Known bugs to fix
+### Bugs fixed on 2026-09-23
 
-Each was reproduced with a probe, not just read in the code.
+All four were reproduced with a probe before the fix and have a test that fails on the old code.
 
-| Bug | Why it matters |
-|---|---|
-| **Inject resets sampleset, volume and kiai** on every new red line (hard-coded `…,1,0,100,1,0`) and writes the timing section out of time order | breaks rule 5: fields the user did not ask to change must come out unchanged |
-| **Python engine returns a BPM for white noise** (127.68 in the benchmark's degenerate inputs) | breaks rule 2; the Rust engine already refuses |
-| Classic Tk window: toolbar buttons are clipped at the default size (every ghost button has an 11-character minimum) | CSV / Copy .osu hard to reach in the classic window |
-| Classic Tk window: ×2 / ÷2 silently throws away manual edits | lost work; the web shell has undo, the classic window does not |
+| Bug | Fix | Measured |
+|---|---|---|
+| Inject reset sampleset, volume and kiai and wrote the section out of order | new red lines carry the state they land in; greens added where SV/sounds would change; sorted section; BOM and line endings kept | ranked map, 1341 objects: **229 → 0** changed what they play |
+| Python engine returned a BPM for white noise (127.68) and pads (60.09) | the fallback first checks the onset envelope is more periodic than itself shuffled | noise ≤ +0.022, 27 real songs ≥ +0.090, threshold 0.05; results on real songs unchanged |
+| Classic window: CSV clipped to 21 px at the default size | ghost buttons size to their labels; minimum width 1070 | nothing clipped in English or Spanish |
+| Classic window: ×2 / ÷2 and Analyze silently dropped hand edits | they ask first while edits are unexported | 3 tests on the real window |
 
 ### To verify (reported by the audit, not yet confirmed)
 
@@ -161,7 +163,7 @@ Part B of the DSP doc, in the order its gates can be met.
 | **Per-section octave** | half/double-time regions get their own beat rate — **F-11** | med | **high** | P1, fixture | no | no | **P1** | **ported** — matches the prototype 4/4, 0 FP |
 | 2-D coherence map | `R(t,f)` full-track: better seeds + confidence map | med | high | P1 | no | no | P1 | **ported** |
 | **Elastic grid** | tempo model for ramps; a **selector** beside the piecewise fit | **high** | **high** | IRLS | no | no | **P1** | **ported** as polynomial-in-k — 0.16 BPM on realistic ramps; extreme ramp needs the spline |
-| No-grid verdict | refuse honestly instead of a white-noise BPM | low | med | elastic | no | no | P1 | **done in Rust** — Python still answers (see known bugs) |
+| No-grid verdict | refuse honestly instead of a white-noise BPM | low | med | elastic | no | no | P1 | **done** — Rust, and Python's fallback since 2026-09-23 |
 | SuperFlux ODF | vibrato-suppressed flux | low | med | envelope | no | no | P2 | **rejected** — measured: no win on pads |
 | Drop librosa tempogram | octave hint from the coherence map | med | med | 2-D map | no | no | P2 | **rejected** — measured: 5 octave flips |
 | Multi-band flux | 7-band onset functions; also feeds hitsounds | low | med | STFT | no | no | **P1** | **done** |
@@ -201,6 +203,18 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Confidence ribbon | per-section confidence under the ruler | low | med | timeline | no | no | P2 | todo — per-point bars in the list only |
 | Spectrogram layer | optional spectral energy | med | low-med | STFT | no | yes | P3 | todo |
 | Light theme | full token counterpart | low | low | tokens | no | no | P3 | todo |
+| Zoom and pan | wheel zoom anchored at the cursor, drag to pan; beat grid and attack ticks when zoomed in | med | **high** | timeline | no | no | **P1** | todo |
+| Drag red lines | click to select, drag to move (snapped to attacks), double-click to add | med | **high** | zoom | no | no | **P1** | todo |
+| Drift lane | how far each attack sits from the grid osu! will play | med | high | timeline | no | no | P1 | todo |
+| Map red lines as ghosts | the loaded .osu's red lines drawn beside the detected ones | low | high | compare | no | no | P1 | todo |
+| Verdict strip | which engine answered, its residual, and whether to trust it, in one line | low | high | shell | no | no | P1 | partial — banners + engine pill |
+| Snap indicator | say when export snapping moved an offset, so a ±1 ms nudge is not silently undone | low | med | editor | no | no | P2 | todo |
+| Uncovered-intro shading | hatch the audio before the first red line | low | med | timeline | no | no | P2 | partial — banner only |
+| Density ribbon | half- and double-time inside one reported section | med | med | P2 density | no | no | P2 | todo |
+| Measures on the map | bar ticks and signature regions | low | med | timeline | no | no | P2 | partial — meter column |
+| Keyboard map | every action reachable from the keyboard; `?` shows the sheet | low | med | shell | no | no | P2 | partial |
+| Cancellable analysis | stop button, stage names and timings | low | med | progress | no | no | P2 | todo |
+| Command palette | Ctrl+K search over every action | low | low | shell | no | no | P3 | todo |
 
 ---
 
@@ -218,6 +232,11 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | **Lock timing point** | protect a verified point from re-analysis | low | high | editor | no | no | P1 | **done** |
 | Undo/redo | one stack per song | med | high | editor | no | no | P1 | **done** (web shell) |
 | Click-accent meter fix | accent on the detected meter — closes audit **F-03** | trivial | low | click | no | no | P1 | **done** |
+| In-app preview | play song + click from the selected red line (WebAudio in the shell) | med | **high** | transport | no | no | **P1** | todo |
+| Slow section loop | 4-bar loop of song + click at 100 / 75 / 50 %, pitch kept | med | high | transport | no | no | P1 | todo |
+| Tap-along check | tap along inside the app; show how far each tap lands from the grid | low | med | transport | no | no | P2 | todo |
+| Percussion-only audition | hear just the percussive part (HPSS) to judge timing | med | med | P2 HPSS | no | no | P2 | todo |
+| Latency calibration | measure output latency once so the click lines up with the audio | low | med | transport | no | no | P2 | todo |
 
 ---
 
@@ -228,7 +247,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Full `.osu` reader | all sections, hitobjects, sliders, SV, samples; unknown keys kept | **high** | **high** | — | no | no | **P1** | **done** (Python) |
 | Span-preserving writer | untouched fields come out byte-identical | high | **high** | reader | no | no | **P1** | **done** (Python) |
 | Atomic write + backup | temp+rename, `.bak` never overwritten | low | **high** | writer | no | no | **P1** | **done** |
-| Timing injection | red-line replacement, greens preserved | med | **high** | writer | no | no | **P1** | **done, with a bug** — resets sampleset/volume/kiai (see known bugs) |
+| Timing injection | red-line replacement, greens preserved, what plays unchanged | med | **high** | writer | no | no | **P1** | **done** — keeps sampleset/volume/kiai/SV since 2026-09-23 |
 | Parser fuzzing | fuzz the reader | low | high | reader | no | no | P1 | todo |
 | Beatmap folder import | audio + all difficulties from one folder | low | med | reader | no | no | P1 | **done** |
 | **Map vs detected compare** | per-section BPM/offset diff table | med | **high** | reader, P1 | no | no | **P1** | **done** |
@@ -379,6 +398,111 @@ under `%USERPROFILE%\Documents\Overtone\`, never next to the installed app.
 
 ---
 
+## Phase 19 — App sections
+
+One sidebar entry per job, each shippable on its own, all sharing the one
+loaded song. Today everything lives in the Timing view.
+
+| Section | What it holds | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Session model | one loaded song shared by every section through events | med | **high** | shell | no | no | **P1** | todo |
+| Library | home: open audio or a beatmap folder, recents, osu! Songs browser with search | med | **high** | P5 reader | no | no | **P1** | partial — recents, folder import |
+| Timing | tempo map, points, editor, verdict | — | — | — | no | no | **P1** | **done** |
+| Map check | compare, alignment, validation, density and suggestions for the loaded difficulty | med | **high** | P5, P7 | no | no | **P1** | partial — cards live in Timing |
+| Hitsounds | instrument lanes, per-object sound, exported hitsound difficulty | high | **high** | P6 | no | no | P1 | todo |
+| Audio | spectrogram, 7-band onset lanes, percussive/harmonic balance, energy with sections, tempo heatmap | med | med | P2 via bridge | no | opt | P2 | todo |
+| Export | every output in one place: `.osu` text, CSV, click, `.osz`, lazer decimals, other games | low | high | P5 | no | no | P1 | partial — buttons in Timing |
+| Settings | every option in Phase 20 | low | high | shell | no | no | P1 | partial — language, detection drawer |
+
+---
+
+## Phase 20 — Options and settings
+
+| Option | What it controls | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Output folder | where exports go; `Documents\Overtone\<Artist - Title>\` by default | low | high | 14.4b | no | no | P1 | todo |
+| Offset precision | whole ms (stable) or decimals (lazer) on every export | low | med | writer | no | no | P1 | partial — CLI flag only |
+| Octave preference | prefer 120–300 BPM, or a custom range | low | med | engine | no | no | P2 | partial — on/off toggle |
+| Live confidence threshold | a slider that shows which candidate points would appear | low | med | engine | no | no | P2 | todo |
+| Analysis mode | fast (Rust) or precise (every Phase 10 voter) | low | med | P10, P22 | no | no | P2 | todo |
+| Backup policy | one pristine `.bak` (today) or timestamped backups | low | med | writer | no | no | P2 | todo |
+| Cache | size limit, location, clear button | low | low | cache | no | no | P2 | todo |
+| Click track | sound, accent on downbeats, level, subdivision clicks | low | med | click | no | no | P2 | todo |
+| Theme and scale | light theme, UI scale 90–150 %, reduced motion | low | med | tokens | no | no | P2 | todo |
+| Shortcuts | rebind any action | low | low | keyboard map | no | no | P3 | todo |
+| Per-song presets | remember detection settings per song | low | med | project format | no | no | P2 | todo |
+| Language | English and Spanish; more through translation files | low | med | i18n | no | no | P2 | partial |
+| Settings file | export/import settings to another PC | low | low | settings | no | no | P3 | todo |
+
+---
+
+## Phase 21 — Map tools
+
+Everything here writes to a `.osu` only as a proposal with a preview and a
+consent step, through the same backup-and-keep-what-plays writer as inject.
+
+| Tool | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Inject diff | each old red line beside its new value, and the drift it causes | low | **high** | inject | no | no | **P1** | todo |
+| Inject into every difficulty | one confirmation for the whole mapset | low | **high** | inject | no | no | **P1** | todo |
+| Kiai from structure | kiai on chorus sections, written as greens | med | high | P2 structure, writer | no | no | P1 | todo |
+| Preview point | suggest `PreviewTime` at the chorus | low | med | structure | no | no | P2 | todo |
+| Bookmarks | section starts as editor bookmarks | low | med | structure | no | no | P2 | todo |
+| Breaks | quiet spans long enough for a break | low | med | energy | no | no | P2 | todo |
+| Volume by section | hitsound volume from section energy, as greens | low | med | energy, writer | no | no | P2 | todo |
+| SV normaliser | greens that cancel BPM changes so scroll and slider speed stay constant | med | **high** | writer | no | no | P1 | todo |
+| Re-snap objects | move hit objects onto the new grid after a timing change | high | **high** | writer, P5 | no | no | P1 | todo |
+| Snap-divisor map | where the song needs 1/3, 1/4 or 1/6, per section | med | high | attacks | no | no | P1 | todo |
+| Swing lane | where the music swings or sits off the grid | med | med | attacks | no | no | P2 | todo |
+| New mapset from audio | encode MP3/OGG at a target bitrate, trim lead silence and re-offset | med | high | `.osz` | no | no | P2 | partial — `.osz` without encoding |
+| Metadata from tags | artist/title/source from the audio's tags, romanised and Unicode kept apart | low | med | `.osz` | no | no | P2 | todo |
+| Audio file check | bitrate, sample rate, length, clipping and lead-in against ranking rules | low | med | decode | no | no | P2 | todo |
+| Video offset | match the video's own audio track to the song | med | low | decode | no | no | P3 | todo |
+| Other games | export timing to Quaver (`.qua`) and StepMania (`.sm`/`.ssc`) | low | med | writer | no | no | P2 | todo |
+| Import other formats | read Quaver / StepMania timing to compare against | low | low | reader | no | no | P3 | todo |
+| Library health check | scan a Songs folder and list maps whose timing disagrees with their audio | med | med | batch, compare | no | no | P2 | todo |
+| Sample kit analysis | classify a skin's samples and suggest a mapping | med | low | P6 | no | no | P3 | todo |
+
+---
+
+## Phase 22 — Engine robustness and speed
+
+| Item | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Rust engine in the app | `overtone-cli analyze --json` sidecar, opt-in, v3 as fallback | med | **high** | P1 | no | no | **P1** | todo |
+| Fallback re-timing | re-time the fallback tracker's beats at sample resolution (they land 5–35 ms late) | med | **high** | — | no | no | P1 | todo |
+| Real-MP3 offset bias | measure the ~20–26 ms attack-vs-map bias on real MP3s before trusting absolute offsets | med | **high** | Corpus B | no | no | P1 | todo |
+| Envelope memory bound | mel in chunks: ~2.65 → ~0.74 GB peak on long tracks; no silent MemoryError fallback | med | high | — | no | no | P1 | todo |
+| Pre-warm the engine | load librosa and numba in the background at startup (~2.3 s off the first analysis) | low | med | shell | no | no | P2 | todo |
+| Linear section growth | refine the growth grid on a trailing window | med | med | — | no | no | P2 | todo |
+| Faster phase re-centring | a recurrence instead of one `exp` per shift | low | low | — | no | no | P3 | todo |
+| Specific load errors | missing, empty and junk files each get their own message | low | med | decode | no | no | P2 | todo |
+| Config type checks | a wrong-typed or BOM config never crashes or silently resets | low | med | config | no | no | P2 | partial — web shell only |
+| CLI Unicode output | no crash on Japanese names when output is redirected | low | med | CLI | no | no | P2 | todo |
+| CSV save errors | a locked CSV (open in Excel) shows an error | low | low | GUI | no | no | P3 | todo |
+| Injection backups | back up the current state on every injection, and report it truthfully | low | med | writer | no | no | P2 | todo |
+
+---
+
+## Phase 23 — Quality gates
+
+| Gate | What it catches | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| Golden fails on a missing stage | a skipped stage counts as a failure, not a pass | low | high | golden | no | no | P1 | todo |
+| Real-audio smoke set | a handful of local songs that must keep analysing, never refused | low | **high** | — | no | no | P1 | todo |
+| Robustness gate | the audit's probes (short audio, odd rates, junk `.osu`, read-only files) as one command | low | high | — | no | no | P1 | todo |
+| One fixture manifest | Python and Rust read the same list; no Rust gate passes on missing audio | med | med | bench | no | no | P2 | todo |
+| Facts check | documented test counts and crate lists checked against the repo | low | med | — | no | no | P2 | todo |
+| Bench times the tempo stage | the Rust-vs-Python speed claim compares like with like | low | low | bench | no | no | P3 | todo |
+| `.gitattributes` | `.osu` fixtures keep their CRLF | trivial | low | — | no | no | P3 | todo |
+| Layout-fit check | no control clipped at the minimum window size | low | med | GUI | no | no | P2 | **done** — classic toolbar |
+
+Sources: the 2026-09-22 review passes (128 proposals, each checked against the
+code by a skeptical judge; the ones already built or only relevant to the old
+Tk layout are left out) plus the map tools, options and exports above.
+
+---
+
 ## Rejected ideas
 
 | Idea | Verdict |
@@ -404,7 +528,8 @@ P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─�
                            ├─► P4 playback ✗ / editor ✓
                            └─► P5 osu! ✓ ─────────────► P8 automation (half) ─► P9 (suggestions ✓)
 
-Next: fix known bugs ─► playback ─► Rust engine in the app ─► timeline ─► hitsounds ─► Phase 10
+Next: verify audit leads ─► playback ─► Rust engine in the app ─► timeline ─► sections + settings
+      ─► map tools ─► hitsounds ─► Phase 10 ─► installer
 ```
 
 P3, P4 and P5 are independent of each other. P6 is the largest body of work and waits on

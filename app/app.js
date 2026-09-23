@@ -551,9 +551,9 @@ function wireDrop() {
 
 // ------------------------------------------------------------------ tempo trace
 const C = {
-  plot: "#0f1522", grid: "#1b2334", gridText: "#5f6b80", tempo: "#7aa2f7", fill: "rgba(122,162,247,0.10)",
-  onset: "#1f2940", red: "#f0616d", redSoft: "rgba(240,97,109,0.16)", section: "rgba(255,255,255,0.018)",
-  selected: "rgba(110,231,183,0.08)", cursor: "rgba(232,236,242,0.35)",
+  plot: "#0e1320", grid: "#1a2233", gridText: "#606b80", tempo: "#7f9df0", fill: "rgba(127,157,240,0.10)",
+  onset: "#1e2739", red: "#e0606c", redSoft: "rgba(224,96,108,0.16)", section: "rgba(255,255,255,0.018)",
+  selected: "rgba(79,192,138,0.08)", cursor: "rgba(232,236,242,0.35)",
 };
 const PAD = { l: 52, r: 18, t: 34, b: 30 };
 let geom = null;

@@ -50,6 +50,8 @@ from timing_analyzer import (
     suggest_section_pulse,
     update_timing_point,
     validate_timing_points,
+    read_osu_red_lines,
+    compare_map_timing,
 )
 
 
@@ -1122,6 +1124,131 @@ class ValidationTests(unittest.TestCase):
             [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(59200.0, 150.0, 0.9, 145)],
             duration=60.0)
         self.assertIn(("warn", "short_section"), self.keys(analysis))
+
+
+_MAP_OSU = "\n".join([
+    "osu file format v14",
+    "",
+    "[General]",
+    "AudioFilename: audio.mp3",
+    "",
+    "[TimingPoints]",
+    "// a comment line",
+    "1000,400,4,1,0,100,1,0",
+    "2000,-50,4,2,0,100,0,0",
+    "3000,500",
+    "4000.5,333.333333333333,4,1,0,100,1,0",
+    "oops,not-a-line",
+    "",
+    "[HitObjects]",
+    "",
+])
+
+
+def _write_osu(tmp: str, text: str, name: str = "map.osu") -> str:
+    target = str(Path(tmp) / name)
+    Path(target).write_text(text, encoding="utf-8")
+    return target
+
+
+def _compare_analysis(points, duration=60.0) -> Analysis:
+    beats = np.arange(0.5, duration, 0.4)
+    return Analysis(
+        source="test", duration=duration, beats=beats,
+        local_bpms=np.full(beats.size, 150.0), points=list(points),
+        hop_length=512, sample_rate=22050, subdivision=1.0)
+
+
+class MapReaderTests(unittest.TestCase):
+    def test_reads_reds_skips_greens_and_broken_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reds = read_osu_red_lines(_write_osu(tmp, _MAP_OSU))
+        self.assertEqual(len(reds), 3)
+        self.assertAlmostEqual(reds[0][0], 1000.0)
+        self.assertAlmostEqual(reds[0][1], 150.0)
+        self.assertAlmostEqual(reds[1][0], 3000.0)  # legacy two-field line
+        self.assertAlmostEqual(reds[1][1], 120.0)
+        self.assertAlmostEqual(reds[2][0], 4000.5)  # lazer decimal offset
+        self.assertAlmostEqual(reds[2][1], 180.0, places=4)
+
+    def test_missing_section_missing_file_or_no_reds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                read_osu_red_lines(_write_osu(tmp, "[General]\n", name="a.osu"))
+            with self.assertRaises(ValueError):
+                read_osu_red_lines(str(Path(tmp) / "missing.osu"))
+            greens = _write_osu(tmp, "[TimingPoints]\n2000,-50,4,2,0,100,0,0\n", name="b.osu")
+            self.assertEqual(read_osu_red_lines(greens), [])
+
+    def test_round_trip_through_the_own_exporter(self) -> None:
+        analysis = _compare_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        with tempfile.TemporaryDirectory() as tmp:
+            reds = read_osu_red_lines(
+                _write_osu(tmp, osu_beatmap_text(analysis, "audio.mp3")))
+        snapped = snap_timing_points(analysis.points)
+        self.assertEqual(len(reds), len(snapped))
+        for (offset, bpm), point in zip(reds, snapped):
+            self.assertLessEqual(abs(offset - point.offset_ms), 0.5)  # whole-ms file
+            self.assertAlmostEqual(bpm, point.bpm, places=6)
+
+
+class MapCompareTests(unittest.TestCase):
+    def _report(self, analysis, text):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            report = compare_map_timing(_write_osu(tmp, text), analysis)
+        json.dumps(report)  # sections and findings stay plain JSON types
+        return report
+
+    def test_identical_map_is_clean(self) -> None:
+        analysis = _compare_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        report = self._report(analysis, osu_beatmap_text(analysis, "audio.mp3"))
+        self.assertEqual(len(report["sections"]), 2)
+        for row in report["sections"]:
+            self.assertLess(row["bpm_error"], 0.05)
+            self.assertLessEqual(row["offset_error_ms"], 0.5)
+            self.assertEqual(row["octave"], 1)
+        self.assertEqual(report["findings"], [])
+
+    def test_shifted_line_warns_with_milliseconds(self) -> None:
+        analysis = _compare_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        lines = osu_beatmap_text(analysis, "audio.mp3").splitlines()
+        lines = [line.replace("30500,", "30530,") if line.startswith("30500,") else line
+                 for line in lines]
+        report = self._report(analysis, "\n".join(lines))
+        offset = [f for f in report["findings"] if f["key"] == "map_offset"]
+        self.assertEqual(len(offset), 1)
+        self.assertEqual(offset[0]["level"], "warn")
+        self.assertEqual(offset[0]["values"], {"ms": "30.0"})
+
+    def test_doubled_map_bpm_is_an_octave_question(self) -> None:
+        analysis = _compare_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        lines = osu_beatmap_text(analysis, "audio.mp3").splitlines()
+        # Halve the second line's beat length: the map runs at 2x detection.
+        for n, line in enumerate(lines):
+            if line.startswith("30500,"):
+                fields = line.split(",")
+                fields[1] = repr(float(fields[1]) / 2)
+                lines[n] = ",".join(fields)
+        report = self._report(analysis, "\n".join(lines))
+        octave = [f for f in report["findings"] if f["key"] == "map_octave"]
+        self.assertEqual(len(octave), 1)
+        self.assertEqual(octave[0]["level"], "info")
+        self.assertEqual(octave[0]["values"]["octave"], "x0.5")
+        self.assertNotIn("map_bpm", [f["key"] for f in report["findings"]])
+
+    def test_empty_sides_report_instead_of_crashing(self) -> None:
+        greens = "[TimingPoints]\n2000,-50,4,2,0,100,0,0\n"
+        report = self._report(_compare_analysis([TimingPoint(500.0, 150.0, 0.9, 0)]), greens)
+        self.assertEqual([(f["level"], f["key"]) for f in report["findings"]],
+                         [("error", "map_no_reds")])
+        report = compare_map_timing("whatever.osu", _compare_analysis([]))
+        self.assertEqual([(f["level"], f["key"]) for f in report["findings"]],
+                         [("error", "no_detected")])
 
 
 if __name__ == "__main__":

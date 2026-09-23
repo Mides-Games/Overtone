@@ -2763,6 +2763,136 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
 
 
 # ---------------------------------------------------------------------------
+# .osu red-line reading and map-vs-detected comparison (Phase 5)
+# ---------------------------------------------------------------------------
+
+def _timing_section_lines(osu_path: str | os.PathLike[str]) -> list[str]:
+    """Raw body lines of the .osu [TimingPoints] section."""
+    path = Path(osu_path)
+    if not path.is_file():
+        raise ValueError(f"{path} is not a file.")
+    size = path.stat().st_size
+    if size > MAX_OSU_BYTES:
+        raise ValueError(f"{path.name} is {size / 1e6:.1f} MB — that is not a beatmap.")
+    try:
+        text = path.read_bytes().decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"Could not decode {path.name} as UTF-8.") from exc
+    lines = text.splitlines()
+    header_idx = next((n for n, line in enumerate(lines)
+                       if line.strip() == "[TimingPoints]"), None)
+    if header_idx is None:
+        raise ValueError("No [TimingPoints] section found in this .osu file.")
+    end_idx = len(lines)
+    for n in range(header_idx + 1, len(lines)):
+        stripped = lines[n].strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            end_idx = n
+            break
+    return [line for line in lines[header_idx + 1:end_idx] if line.strip()]
+
+
+def read_osu_red_lines(osu_path: str | os.PathLike[str]) -> list[tuple[float, float]]:
+    """Every uninherited (red) timing line as ``(offset_ms, bpm)``.
+
+    The first half of Phase 5's map-vs-detected compare, and the reader the
+    full .osu work will grow into. Green (inherited) lines are timing-neutral
+    by definition — negative slider-velocity multipliers, not tempo — so they
+    are skipped, not parsed. Legacy v3-v4 two-field lines count when their
+    beat length is positive; decimal offsets (osu!lazer) survive as floats.
+    Lines with no usable numbers are skipped rather than fatal: one hand-broken
+    line must not hide the rest of the map.
+    """
+    reds: list[tuple[float, float]] = []
+    for line in _timing_section_lines(osu_path):
+        if not _is_red_line(line.strip()):
+            continue
+        fields = line.strip().split(",")
+        try:
+            offset = float(fields[0])
+            beat_length = float(fields[1])
+        except (ValueError, IndexError):
+            continue
+        if not (np.isfinite(offset) and np.isfinite(beat_length)) or beat_length <= 0:
+            continue
+        reds.append((offset, 60000.0 / beat_length))
+    return reds
+
+
+#: Past this octave-normalised BPM gap the map and the detection disagree
+#: rather than round differently. Offsets reuse the benchmark's 5 ms bar.
+MAP_BPM_TOLERANCE = 1.0
+MAP_OFFSET_TOLERANCE_MS = 5.0
+
+
+def compare_map_timing(osu_path: str | os.PathLike[str],
+                       analysis: Analysis) -> dict:
+    """Per-section map-vs-detected diff table (Phase 5, second row).
+
+    For every detected section, the governing map line — the last red line at
+    or before the section start, with half a beat of slack, exactly as the
+    benchmark scores ground truth — and two questions: is its BPM right (up
+    to an octave), and does its grid pass through the detected beats. Returns
+    ``{"sections": [...], "findings": [...]}`` with plain JSON types; findings
+    reuse the validation vocabulary (``map_octave`` is info, because the
+    octave is a judgement call; the rest are warns, never errors — the map is
+    someone's work, and disagreement is review material, not a verdict).
+    """
+    detected = snap_timing_points(list(getattr(analysis, "points", None) or []))
+    if not detected:
+        return {"sections": [], "findings": [
+            {"level": "error", "key": "no_detected", "index": -1, "values": {}}]}
+    try:
+        reds = read_osu_red_lines(osu_path)
+    except (ValueError, OSError) as exc:
+        return {"sections": [], "findings": [
+            {"level": "error", "key": "map_unreadable", "index": -1,
+             "values": {"detail": str(exc)}}]}
+    if not reds:
+        return {"sections": [], "findings": [
+            {"level": "error", "key": "map_no_reds", "index": -1, "values": {}}]}
+
+    sections: list[dict] = []
+    findings: list[dict] = []
+    for n, point in enumerate(detected):
+        start_s = point.offset_ms / 1000.0
+        step = 60.0 / point.bpm if point.bpm > 0 else 0.0
+        governing = reds[0]
+        for offset_ms, _bpm in reds:
+            if offset_ms / 1000.0 <= start_s + 0.5 * step:
+                governing = (offset_ms, _bpm)
+        map_offset, map_bpm = governing
+        ratio = point.bpm / map_bpm if map_bpm > 0 else 1.0
+        octave = 2.0 ** round(float(np.log2(ratio))) if ratio > 0 else 1.0
+        bpm_error = abs(point.bpm / octave - map_bpm)
+        beats = (map_offset / 1000.0 - start_s) / step if step > 0 else 0.0
+        offset_error = abs(beats - round(beats)) * step * 1000.0
+        sections.append({
+            "index": n, "det_offset_ms": point.offset_ms, "det_bpm": point.bpm,
+            "map_offset_ms": map_offset, "map_bpm": map_bpm,
+            "bpm_error": bpm_error, "offset_error_ms": offset_error,
+            "octave": octave,
+        })
+        if octave != 1:
+            findings.append({"level": "info", "key": "map_octave", "index": n,
+                             "values": {"map": f"{map_bpm:.2f}",
+                                        "det": f"{point.bpm:.2f}",
+                                        "octave": f"x{octave:g}"}})
+        elif bpm_error > MAP_BPM_TOLERANCE:
+            findings.append({"level": "warn", "key": "map_bpm", "index": n,
+                             "values": {"map": f"{map_bpm:.2f}",
+                                        "det": f"{point.bpm:.2f}",
+                                        "err": f"{bpm_error:.2f}"}})
+        if offset_error > MAP_OFFSET_TOLERANCE_MS:
+            findings.append({"level": "warn", "key": "map_offset", "index": n,
+                             "values": {"ms": f"{offset_error:.1f}"}})
+    if len(reds) != len(detected):
+        findings.append({"level": "info", "key": "map_count", "index": -1,
+                         "values": {"map": len(reds), "det": len(detected)}})
+    return {"sections": sections, "findings": findings}
+
+
+# ---------------------------------------------------------------------------
 # Settings persistence
 # ---------------------------------------------------------------------------
 

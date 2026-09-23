@@ -80,6 +80,11 @@ const I18N = {
     align_t_time: "Time", align_t_kind: "Object", align_t_ms: "Off by",
     align_uncovered: "Uncovered attacks (ms):",
     align_more: "+{n} more",
+    den_title: "Density", den_pick: "Check density…",
+    den_empty: "Choose a .osu to break its objects into hits per second.",
+    den_counts: "{o} objects · peak {p}/s · {s} stream · {j} jump",
+    den_t_range: "Time", den_t_n: "Objects", den_t_rate: "Per second",
+    den_t_stream: "Stream", den_t_jump: "Jump", den_t_single: "Single",
     import_folder: "Import beatmap folder…",
     imported: "Folder: {audio} + {n} {difficulties}.",
     difficulties: "difficulties",
@@ -165,6 +170,11 @@ const I18N = {
     align_t_time: "Tiempo", align_t_kind: "Objeto", align_t_ms: "Desvío",
     align_uncovered: "Ataques sin objeto (ms):",
     align_more: "+{n} más",
+    den_title: "Densidad", den_pick: "Revisar densidad…",
+    den_empty: "Elegí un .osu para desglosar sus objetos en hits por segundo.",
+    den_counts: "{o} objetos · pico {p}/s · {s} stream · {j} jump",
+    den_t_range: "Tiempo", den_t_n: "Objetos", den_t_rate: "Por segundo",
+    den_t_stream: "Stream", den_t_jump: "Jump", den_t_single: "Single",
     import_folder: "Importar carpeta…",
     imported: "Carpeta: {audio} + {n} {difficulties}.",
     difficulties: "dificultades",
@@ -175,7 +185,7 @@ const I18N = {
   },
 };
 
-const S = { lang: "en", file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, align: null, recent: [] };
+const S = { lang: "en", file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, align: null, density: null, recent: [] };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
@@ -280,7 +290,7 @@ function setBusy(busy, message) {
 
 function syncActions() {
   const on = !!S.result && !S.busy;
-  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn", "cmpPick", "alignPick"].forEach((id) => { $(id).disabled = !on; });
+  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn", "cmpPick", "alignPick", "denPick"].forEach((id) => { $(id).disabled = !on; });
   if (!on) {
     $("undoBtn").disabled = true;
     $("redoBtn").disabled = true;
@@ -406,8 +416,9 @@ function mmss(s) { const m = Math.floor(s / 60), r = Math.round(s - m * 60); ret
 
 function showResult(result) {
   S.result = result;
-  S.compare = null;  // compares and alignments belong to one map and one point list
+  S.compare = null;  // these cards belong to one map and one point list
   S.align = null;
+  S.density = null;
   $("empty").hidden = true;
   $("results").hidden = false;
   syncActions();
@@ -447,6 +458,7 @@ function renderResult(r) {
   drawTrace();
   renderCompare();
   renderAlign();
+  renderDensity();
 }
 
 function renderDetail() {
@@ -819,6 +831,52 @@ function renderAlign() {
     ${shown.length ? `<div class="card-sub" style="margin-top:10px">${t("align_uncovered")} ${shown.map((ms) => ms.toFixed(1)).join(", ")}${rest > 0 ? ` ${t("align_more", { n: rest })}` : ""}</div>` : ""}`;
 }
 
+// ------------------------------------------------------------------ density
+async function densityOsu() {
+  if (!api() || !S.result || S.busy) return;
+  const target = await api().pick_osu(S.lastFolder || "");
+  if (!target) return;
+  const reply = await api().density(target);
+  if (!reply.ok) { editFailure(reply); return; }
+  S.density = { file: reply.file, report: reply.report };
+  renderDensity();
+}
+
+function renderDensity() {
+  const body = $("denBody"), den = S.density;
+  if (!den) {
+    $("denCount").hidden = true;
+    $("denFile").textContent = "";
+    body.innerHTML = `<div class="card-sub">${t("den_empty")}</div>`;
+    return;
+  }
+  const { report, file } = den;
+  $("denFile").textContent = file;
+  const pill = $("denCount");
+  pill.hidden = false;
+  pill.textContent = t("den_counts", { o: report.objects, p: report.peak_per_second,
+                                      s: report.stream, j: report.jump });
+  const rows = report.buckets.map((b) => `
+    <tr>
+      <td class="num">${b.t0.toFixed(1)}–${b.t1.toFixed(1)}</td>
+      <td class="num">${b.objects}</td>
+      <td class="num">${b.per_second.toFixed(1)}</td>
+      <td class="num">${b.stream}</td>
+      <td class="num">${b.jump}</td>
+      <td class="num">${b.single}</td>
+    </tr>`).join("");
+  body.innerHTML = `
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th>${t("den_t_range")}</th><th>${t("den_t_n")}</th><th>${t("den_t_rate")}</th>
+          <th>${t("den_t_stream")}</th><th>${t("den_t_jump")}</th><th>${t("den_t_single")}</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
 // ------------------------------------------------------------------ tempo trace
 const C = {
   plot: "#0e1320", grid: "#1a2233", gridText: "#606b80", tempo: "#7f9df0", fill: "rgba(127,157,240,0.10)",
@@ -1024,6 +1082,7 @@ function wire() {
   $("oszBtn").onclick = () => saveAs("save_osz");
   $("cmpPick").onclick = compareOsu;
   $("alignPick").onclick = alignOsu;
+  $("denPick").onclick = densityOsu;
   $("undoBtn").onclick = undo;
   $("redoBtn").onclick = redo;
   $("injectBtn").onclick = injectOsu;

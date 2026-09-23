@@ -459,6 +459,30 @@ class AlignBridgeTests(_IsolatedConfig):
             json.dumps(shifted["report"])
 
 
+class DensityBridgeTests(_IsolatedConfig):
+    def _map(self, tmp: str) -> str:
+        lines = ["osu file format v14", "", "[HitObjects]"]
+        lines += [f"64,192,{n * 100},1,0,0:0:0:0:" for n in range(21)]
+        beatmap = Path(tmp) / "map.osu"
+        beatmap.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return str(beatmap)
+
+    def test_density_reports_breakdown(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reply = _api_with_points().density(self._map(tmp))
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["file"], "map.osu")
+        report = reply["report"]
+        self.assertEqual(report["objects"], 21)
+        self.assertEqual(report["stream"], 21)
+        self.assertAlmostEqual(report["peak_per_second"], 4.2)
+        json.dumps(report)
+
+    def test_density_needs_a_result_and_a_real_file(self) -> None:
+        self.assertEqual(web.Api().density("C:/x.osu")["key"], "first")
+        self.assertEqual(_api_with_points().density("C:/does/not/exist.osu")["key"], "bad_file")
+
+
 class FolderImportTests(_IsolatedConfig):
     def _song(self, tmp: str) -> Path:
         root = Path(tmp) / "123 Artist - Title"

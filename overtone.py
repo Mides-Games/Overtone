@@ -1594,6 +1594,12 @@ def _settle_meter_boundary(times: np.ndarray, weights: np.ndarray, bar: float,
     return rough
 
 
+#: How close, in beats, every section's beat must divide the measured bar for
+#: the whole track to be one bar in several notations. Measured: signature
+#: changes over a constant bar tile it to 0.0001; 128 -> 150 BPM misses by 0.31.
+BAR_TILE_TOL = 0.02
+
+
 def points_from_meter(sections: list[GridSection], times: np.ndarray,
                       weights: np.ndarray, persistence: int,
                       factor: float = 1.0) -> list[TimingPoint] | None:
@@ -1609,6 +1615,14 @@ def points_from_meter(sections: list[GridSection], times: np.ndarray,
     Returns None when the track gives no reason to use this path: no provable
     bar, or a single signature throughout. Then the ordinary per-section
     placement stands, unchanged.
+
+    It also returns None when the sections do not share that bar. The bar is
+    measured on one section and applied to the whole track, so with a real
+    tempo change it used to replace the correct sections: 128 -> 150 BPM with
+    an audible downbeat came out as one 128 BPM red line for the whole song.
+    A signature change over a constant bar tiles it with every section's beat
+    (1.2 s / 0.4 s = 3, / 0.6 s = 2); a tempo change does not
+    (1.875 s / 0.4 s = 4.69). A tempo change is the section path's job.
     """
     if not sections or times.size < 16 or factor != 1.0:
         return None
@@ -1617,6 +1631,10 @@ def points_from_meter(sections: list[GridSection], times: np.ndarray,
     if found is None:
         return None
     bar, bar_phase, _beats_in_bar, _contrast = found
+    for section in sections:
+        beats = bar / section.period
+        if round(beats) < 1 or abs(beats - round(beats)) > BAR_TILE_TOL:
+            return None
 
     segments = meter_segments(times, weights, bar, bar_phase)
     if len(segments) < 2:

@@ -303,6 +303,10 @@ pub fn settle_meter_boundary(
     rough
 }
 
+/// How close, in beats, every section's beat must divide the measured bar
+/// for the whole track to be one bar in several notations — v3 `BAR_TILE_TOL`.
+pub const BAR_TILE_TOL: f64 = 0.02;
+
 /// Red lines from the measure grid, one per signature region — v3
 /// `points_from_meter`. `None` when the track gives no reason: no provable
 /// bar, a single signature, or a forced subdivision (`factor != 1`).
@@ -319,6 +323,18 @@ pub fn points_from_meter(
         .iter()
         .max_by(|a, b| (a.end.get() - a.start.get()).total_cmp(&(b.end.get() - b.start.get())))?;
     let (bar, bar_phase, _, _) = detect_bar(times, weights, primary.period, primary.phase)?;
+    // The bar is measured on one section and applied to the whole track, so
+    // every section's beat must tile it. A signature change over a constant
+    // bar does (1.2 s / 0.4 s = 3); a real tempo change does not
+    // (128 -> 150 BPM: 1.875 s / 0.4 s = 4.69) and used to be replaced by one
+    // red line at the first tempo. A tempo change is the section path's job.
+    let tiles = sections.iter().all(|section| {
+        let beats = bar / section.period;
+        beats.round() >= 1.0 && (beats - beats.round()).abs() <= BAR_TILE_TOL
+    });
+    if !tiles {
+        return None;
+    }
     let segments = meter_segments(times, weights, bar, bar_phase);
     if segments.len() < 2 {
         return None;
@@ -789,6 +805,48 @@ mod tests {
                 first.offset.get()
             );
         }
+    }
+
+    /// A heavy downbeat and light beats. `segments` = [(bpm, bars, beats)].
+    fn accented(segments: &[(f64, usize, usize)]) -> (Vec<f64>, Vec<f32>) {
+        let (mut times, mut weights, mut t) = (Vec::new(), Vec::new(), 0.5);
+        for &(bpm, bars, beats) in segments {
+            for _ in 0..bars {
+                for b in 0..beats {
+                    times.push(t);
+                    weights.push(if b == 0 { 1.0 } else { 0.25 });
+                    t += 60.0 / bpm;
+                }
+            }
+        }
+        (times, weights)
+    }
+
+    #[test]
+    fn a_real_tempo_change_leaves_the_meter_path() {
+        // The bar was measured on one section and applied to the whole track:
+        // 128 -> 150 BPM with an audible downbeat came out as one 128 BPM line.
+        let (times, weights) = accented(&[(128.0, 24, 4), (150.0, 24, 4)]);
+        let change = 0.5 + 24.0 * 4.0 * 60.0 / 128.0;
+        let sections = [
+            section_of(0.5, change, 60.0 / 128.0, 0.5),
+            section_of(change, *times.last().unwrap(), 60.0 / 150.0, change),
+        ];
+        assert!(points_from_meter(&sections, &times, &weights, 1.0).is_none());
+    }
+
+    #[test]
+    fn a_signature_change_over_one_bar_still_uses_the_meter_path() {
+        // 6/4 at 300 then 3/4 at 150 then 6/4: one 1.2 s bar, two notations.
+        let (times, weights) = accented(&[(300.0, 12, 6), (150.0, 12, 3), (300.0, 12, 6)]);
+        let first_end = 0.5 + 12.0 * 1.2;
+        let sections = [
+            section_of(0.5, first_end, 0.2, 0.5),
+            section_of(first_end, *times.last().unwrap(), 0.4, first_end),
+        ];
+        let points = points_from_meter(&sections, &times, &weights, 1.0).expect("meter path");
+        let meters: Vec<u32> = points.iter().map(|p| p.meter).collect();
+        assert_eq!(meters, vec![6, 3, 6]);
     }
 
     #[test]

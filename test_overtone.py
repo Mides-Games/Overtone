@@ -894,6 +894,68 @@ class FirstRedLinePhaseTests(unittest.TestCase):
                     self.assertLess(_offset_error_ms(first.offset_ms, start, bpm), 5.0)
 
 
+def _accented_attacks(segments, start=0.5):
+    """Attack times and weights: a heavy downbeat, light beats. segments = [(bpm, bars, beats)]."""
+    times, weights, t = [], [], start
+    for bpm, bars, beats in segments:
+        for _bar in range(bars):
+            for b in range(beats):
+                times.append(t)
+                weights.append(1.0 if b == 0 else 0.25)
+                t += 60.0 / bpm
+    return np.asarray(times), np.asarray(weights)
+
+
+def _accented_track(path: Path, segments, sr: int = 44100) -> None:
+    """Kick-like thump on every downbeat, a quiet tick on the other beats."""
+    import soundfile as sf
+    times, weights = _accented_attacks(segments)
+    buffer = np.zeros(int((times[-1] + 2.0) * sr), dtype=np.float32)
+    n = int(0.12 * sr)
+    tt = np.arange(n) / sr
+    rng = np.random.default_rng(5)
+    thump = (np.sin(2 * np.pi * 60 * tt) * np.exp(-tt / 0.05)
+             + rng.standard_normal(n) * np.exp(-tt / 0.004) * 0.4).astype(np.float32)
+    for t, w in zip(times, weights):
+        i = int(round(t * sr))
+        buffer[i:i + n] += thump[:len(buffer) - i] * w
+    sf.write(str(path), buffer / np.max(np.abs(buffer)) * 0.9, sr)
+
+
+class MeterPathTempoChangeTests(unittest.TestCase):
+    """The measure grid must not swallow a real tempo change.
+
+    It measures the bar on one section and applied it to the whole track; with
+    an audible downbeat, 128 -> 150 BPM came out as a single 128 BPM red line.
+    """
+
+    def test_tempo_change_with_a_clear_downbeat_keeps_both_red_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "change.wav"
+            _accented_track(path, [(128.0, 24, 4), (150.0, 24, 4)])
+            points = snap_timing_points(analyze_audio(path).points)
+        self.assertEqual([round(p.bpm) for p in points], [128, 150])
+        change = 0.5 + 24 * 4 * 60.0 / 128.0
+        self.assertLess(abs(points[1].offset_ms / 1000.0 - change), 0.005)
+
+    def test_sections_that_do_not_tile_one_bar_leave_the_meter_path(self):
+        times, weights = _accented_attacks([(128.0, 24, 4), (150.0, 24, 4)])
+        change = 0.5 + 24 * 4 * 60.0 / 128.0
+        sections = [GridSection(0.5, change, 60.0 / 128.0, 0.5, 96, 0.1, 1.0),
+                    GridSection(change, float(times[-1]), 60.0 / 150.0, change, 96, 0.1, 1.0)]
+        self.assertIsNone(points_from_meter(sections, times, weights, 12))
+
+    def test_a_signature_change_over_one_bar_still_tiles(self):
+        # 6/4 at 300 then 3/4 at 150: one 1.2 s bar, two notations
+        times, weights = _accented_attacks([(300.0, 12, 6), (150.0, 12, 3), (300.0, 12, 6)])
+        first_end = 0.5 + 12 * 1.2
+        sections = [GridSection(0.5, first_end, 0.2, 0.5, 72, 0.1, 1.0),
+                    GridSection(first_end, float(times[-1]), 0.4, first_end, 36, 0.1, 1.0)]
+        points = points_from_meter(sections, times, weights, 12)
+        self.assertIsNotNone(points)
+        self.assertEqual([p.meter for p in points], [6, 3, 6])
+
+
 class GridMathTests(unittest.TestCase):
     def test_coherence_phase_has_the_right_sign(self):
         # Regression: the phase used to come back negated, putting the seed

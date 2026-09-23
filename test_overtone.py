@@ -5,6 +5,7 @@ tracks with known ground truth, so no fixture files are needed. The v2
 segmentation and gap-filling helpers are still covered — they remain in the
 fallback path used for rubato and non-percussive audio.
 """
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -1838,8 +1839,39 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
                 # the file that is already there.
                 overtone.save_config({"bad": object()})
                 self.assertEqual(overtone.load_config(), {"language": "English"})
+                # Hand-edited values of the wrong type used to crash the classic
+                # window on every launch. They are dropped; the rest is kept.
+                overtone.CONFIG_PATH.write_text(json.dumps({
+                    "cfg_version": "2", "prefer_map_bpm": "on", "refine_beats": None,
+                    "delta": True, "language": 5, "recent": ["a.mp3", 7, None],
+                    "file": "song.mp3", "persistence": "12", "theme": {"kept": 1}}),
+                    encoding="utf-8")
+                self.assertEqual(overtone.load_config(), {
+                    "recent": ["a.mp3"], "file": "song.mp3", "persistence": "12",
+                    "theme": {"kept": 1}})
             finally:
                 overtone.CONFIG_PATH = original
+
+    def test_the_classic_window_opens_on_a_badly_typed_config(self):
+        import tkinter
+        from unittest import mock
+        import overtone
+        try:
+            tkinter.Tk().destroy()
+        except tkinter.TclError as exc:
+            self.skipTest(f"Tk unavailable: {exc}")
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"), \
+                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
+            overtone.CONFIG_PATH.write_text(json.dumps(
+                {"cfg_version": "2", "prefer_map_bpm": "on", "refine_beats": "abc"}),
+                encoding="utf-8")
+            app = TimingAnalyzerApp()   # raised TypeError before the window opened
+            try:
+                self.assertTrue(app.prefer_map_bpm.get())
+                self.assertTrue(app.refine_beats.get())
+            finally:
+                app.root.destroy()
 
     def test_local_bpm_helper_handles_degenerate_input(self):
         self.assertEqual(len(_robust_local_bpms(np.zeros(0))), 0)

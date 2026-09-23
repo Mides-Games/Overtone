@@ -4016,11 +4016,25 @@ def _nearest_sorted(values: np.ndarray, target: float) -> float:
 # Settings persistence
 # ---------------------------------------------------------------------------
 
+#: The type each saved preference must have. The classic window saves its
+#: numbers as the text in its fields, the web shell as numbers; both are fine.
+CONFIG_TYPES: dict[str, tuple[type, ...]] = {
+    "cfg_version": (int,), "file": (str,), "language": (str,), "pulse": (str,),
+    "delta": (int, float, str), "persistence": (int, float, str),
+    "confidence": (int, float, str), "prefer_map_bpm": (bool,), "refine_beats": (bool,),
+    "recent": (list,),
+}
+
+
 def load_config() -> dict:
     """Read the saved preferences, tolerating anything that is not a dict.
 
     A truncated or hand-edited config used to crash the app on startup with an
     AttributeError, which is unrecoverable without deleting the file by hand.
+    So did a value of the wrong type -- ``"cfg_version": "2"`` or
+    ``"prefer_map_bpm": "on"`` stopped the classic window on every launch. A
+    known key whose value has the wrong type is dropped, so its reader's
+    default applies; unknown keys are kept as they are.
     """
     for path in (CONFIG_PATH, LEGACY_CONFIG_PATH):
         try:
@@ -4034,7 +4048,19 @@ def load_config() -> dict:
         return {}
     if not isinstance(data, dict):
         return {}
-    return {str(key): value for key, value in data.items()}
+    config = {}
+    for key, value in data.items():
+        key = str(key)
+        allowed = CONFIG_TYPES.get(key)
+        if allowed is not None:
+            # bool is an int to Python; only a real bool is a flag, and a flag
+            # is never a version or a number.
+            if isinstance(value, bool) != (bool in allowed) or not isinstance(value, allowed):
+                continue
+            if key == "recent":
+                value = [item for item in value if isinstance(item, str)]
+        config[key] = value
+    return config
 
 
 def save_config(data: dict) -> None:

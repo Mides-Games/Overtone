@@ -1,29 +1,37 @@
 # Audit backlog
 
 Findings from the 2026-09-22 audit that its own verifiers confirmed (three votes for
-high severity, one for medium and low) and that are still open. The five leads the
-roadmap listed as "to verify" were re-probed and fixed on 2026-09-23 (PRs #22–#26); the
-four bugs reproduced before that were fixed in PRs #17–#20. Nothing below has been
-re-probed yet: each gets a probe before its fix, as those did.
+high severity, one for medium and low). The five leads the roadmap listed as "to verify"
+were re-probed and fixed on 2026-09-23 (PRs #22–#26); the four bugs reproduced before that
+were fixed in PRs #17–#20; the six high findings below were fixed the same day (PRs
+#29–#34). **Open: 83 — none high, 43 medium (two of them found while fixing the high
+ones), 40 low.** Nothing still open has been re-probed yet: each gets a probe before its
+fix, and some may turn out to be fixed already (the ×2 / ÷2 edit guard, for one, landed in
+PR #20).
 
 File paths are as the audit saw them: `timing_analyzer.py` is today's `overtone.py`,
 and line numbers have moved since.
 
-## High (6)
+## High — all six fixed on 2026-09-23
+
+Each was reproduced with a probe first, fixed in Python and Rust where both apply, and
+landed with a test that fails on the old code.
+
+| Finding | Measured | PR |
+|---|---|---|
+| ÷2 / ÷4 deleted real tempo changes (dedupe threshold not scaled by the factor) | changes kept at ÷4: tiny-change 1/2 → 2/2, secs-4 2/4 → 4/4 | #29 |
+| Export snapping moved hand-placed red lines by up to a quarter beat | tolerance 1 ms (real rounding ≤ 0.026 ms); hand-placed lines never move; ranked real map within 10 ms 8.1 % → 14.4 % | #30 |
+| A change's red line one beat late when the boundary beat sits µs before the start | fixed at the function level in both languages; the end-to-end cliff did not reproduce (0/77 constructions, 0/100 renders) | #31 |
+| Stray attacks before the music threw away the grid | click before drums: fallback at 295.3 BPM → precision at exactly 150.000, red line within 0.1 ms | #32 |
+| Sparse random attacks got a grid (no-grid verdict) | random attack times 18–22/40 → 0/40; rendered random clicks answered 63/240 → 12/240, none by the precision engine | #33 |
+| Rust hitsound flux compared an 8192-point spectrum with a 4096-point one | steady tone 0.9996 → ~0; nine test seeds, 450 hits: 35 → 29 wrong, macro F1 0.913 → 0.931 | #34 |
+
+## Medium (43)
 
 | Area | Where | Finding | What goes wrong |
 |---|---|---|---|
-| py-engine | `timing_analyzer.py:1882` | Halving the pulse (÷2/÷4) silently deletes real tempo changes because the dedupe min_delta is not scaled by factor | A mapper presses ÷2 (GUI _rescale_pulse) or passes --subdivision 0.5 on a song with a 2-3 BPM tempo change. The red line for the change disappears, and the earlier BPM governs a region with a different real tempo. At 1.… |
-| py-io | `timing_analyzer.py:2171` | Export snapping moves hand-placed or nudged red lines by up to a quarter beat | After a fermata the mapper types a red line at 10100 ms, and add_timing_point promises that hand-placed points are vouched for by the mapper. The status bar says 'added at 10100.0 ms' (line 3516) and the editor shows 10… |
-| rust-hitsound | `spectral.rs:148` | Spectral flux subtracts a 4096-point pre spectrum from an 8192-point attack spectrum bin by bin; a steady tone scores 0.998 | Flux cannot tell an attack from no change, so the terms that read it are constant. Keys' `Flux Rising(0.30, 0.60)` (template.rs:358) is always 1, which acts as a hidden bias. Vocal's `Flux Falling(0.20, 0.50)` (template… |
-| rust-tempo-core | `points.rs:579` | No-grid verdict does not refuse sparse noise: the 0.40 share gate passes 30-80% of short random-attack inputs | A short or sparse unmetered input, about one attack per second over 24-40 s (speech, ambient, a pad-and-FX clip with scattered transients), passes TooFewAttacks and passes share >= 0.40 about half the time. It is then e… |
-| rust-tempo-sections | `points.rs:374` | Red lines after the first land one beat (or bar) late when the refit puts the boundary beat microseconds before the start; snapping then shifts the w… | Any track with a tempo change of less than about 25% (128->136, 200->203.5), where the final refit leaves the right grid's boundary beat a hair before the settled start. The red line lands one beat late, and snap_timing… |
-| rust-tempo-sections | `sections.rs:90` | A few stray attacks 8 s or more before the music make grow_sections return nothing; Rust then outputs no grid and labels it StageFailed (a bug) | A song whose intro has 5 or fewer detected transients in its first ~8 s (a count-in click, vinyl pop, riser or spoken word) before the drums start. v3's _precision_engine returns None and at least falls back to the lega… |
-
-## Medium (41)
-
-| Area | Where | Finding | What goes wrong |
-|---|---|---|---|
+| py-engine + rust-tempo | `_beat_sections` / `sections.rs` (new, 2026-09-23) | A new section's bar is read one beat late when its downbeat contrast is weak | Found while probing PR #31: with kick 1.0 against snare 0.9, the per-section bar reading puts the section's red line on beat 2 instead of the "1" — 3 of 60 changes placed on a bar line, 6 of 38 at random positions. The beat grid stays right; the bar lines are one beat off until the mapper moves the red line. |
+| py-engine | `_legacy_analysis` (new, 2026-09-23) | The fallback tracker still answers some scattered-click audio | Found while measuring PR #33: of 240 rendered random-click files, 12 get a BPM, all from the fallback tracker — its own no-pulse check (`MIN_PULSE_GAP`, measured on noise) lets them through. The precision engine refuses all 240. Python only: Rust has no fallback tracker. |
 | py-engine | `timing_analyzer.py:1165` | _grow_sections stops after 64 iterations and leaves the rest of the track with no section, without any diagnostic | A long live set, DJ mix or rubato recording where growth re-seeds often (more than 64 growth breaks). After roughly 8-15 minutes the map stops changing tempo: the last BPM governs the remainder, which drifts, and the us… |
 | py-engine | `timing_analyzer.py:1540` | meter_segments keeps or drops a one-window run depending on float rounding | A time-signature region exactly one window (4 bars) long, such as a 4-bar 3/4 interlude in a 4/4 song, is reported or silently merged into its neighbour depending on where the song starts and the bar length. The resulti… |
 | py-engine | `timing_analyzer.py:2011` | analyze_audio silently ignores force_subdivision 0.5/0.25 (and treats 1 as 'force' not 'auto') when the legacy tracker runs | The CLI runs with `--subdivision 0.5 --engine legacy`, or auto mode falls back on a rubato track. The user asked for half time and gets the unhalved BPM. analysis.subdivision reports 1, so the GUI shows 'normal' as if t… |

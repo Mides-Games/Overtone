@@ -16,6 +16,84 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-23 · The six high audit findings
+
+The backlog's six high findings. Each was reproduced with a probe before any change,
+fixed in Python and Rust where both apply, and landed as its own PR (#29–#34) with a test
+that fails on the old code.
+
+### Fixed
+
+- **÷2 / ÷4 deleted real tempo changes** (#29). The duplicate filter compared factored
+  BPMs against the unfactored minimum change, so every change shrank by the factor; the
+  20–900 BPM range check read the presented tempo too. Both now read the song's own
+  tempo; Rust got the same range rule.
+- **Export snapping moved hand-placed red lines** (#30). Any line within a quarter beat
+  of the previous grid was pulled onto it. Snapping now removes only rounding noise
+  (≤ 1 ms), and a `manual` flag, set by every edit and by re-added locks, keeps the
+  mapper's lines where they were put.
+- **A change's red line one beat late** (#31). `ceil` skipped the boundary beat when the
+  refit left it microseconds before the start; the other sections now get section 0's
+  quarter-period slack.
+- **A stray click before the music threw the grid away** (#32). Section growth stopped
+  when its first seed window held fewer than six attacks; it now moves on to the next
+  attack.
+- **Sparse random attacks got a grid** (#33). The 0.40 share gate passed about half of
+  them. A grid is now refused when the binomial chance of its inliers is above 10^-6
+  *and* the fitting envelope's pulse gap is below 0.15. The gap runs on the envelope the
+  engine already has, max-pooled in pairs, with SplitMix64-ordered shuffles, so Rust
+  reproduces v3's numbers to 1e-9.
+- **Rust hitsound flux** (#34) subtracted a 4096-point spectrum from an 8192-point one bin
+  by bin, so a steady tone scored 0.9996. It now compares the 50 ms before the attack with
+  its first 50 ms, on the same bins.
+
+### Changed
+
+- `docs/13-audit-backlog.md`: the high section is now a record of the fixes; two new
+  medium findings recorded (a weak downbeat read one beat late; the fallback tracker
+  answering some scattered clicks). Open: 83 — none high, 43 medium, 40 low.
+- README: most MP3s open directly, not all — one of the songs tested needs FFmpeg.
+
+### Hardening
+
+- Rust `NoCoherentPulse` now also covers a grid that chance explains (`best_share` is
+  then above 0.40); its doc says so.
+
+### Measured
+
+```
+÷4, changes kept                        tiny-change 1/2 -> 2/2, secs-4 2/4 -> 4/4
+hand-placed red line at 10100 ms        exported 10000 -> 10100
+ranked real map, within 10 ms           8.1 % -> 14.4 %   (median error 60.0 -> 42.7 ms)
+change red line one beat late           not reproduced end to end (0/77 constructions,
+                                        0/100 renders, before and after)
+click at 0.3 s, drums at 8 s (150)      fallback 295.3 BPM -> precision 150.000
+random attack times given a grid        18, 17, 15, 22, 5 of 40 -> 0 in every case
+random-click files answered             63/240 (53 precision) -> 12/240 (0 precision)
+real audio (36 fixtures + 40 songs)     76/76 still analysed, 0 newly refused
+hitsound flux, steady tone              0.9996 -> ~0
+hitsound, seed 12 (the gate)            same 4 misses; macro F1 0.910 -> 0.906
+hitsound, seeds 12-20, 450 hits         35 -> 29 wrong; macro F1 0.913 -> 0.931
+gates: 219/219 Python; benchmark 24/24, 0.0000 BPM / 0.16 ms; bpm-snapshot and golden
+unchanged; coverage, measures, signatures green; cargo test 190/190;
+overtone-bench golden 24/24, nogrid 3/3
+```
+
+### Rejected / tried and dropped
+
+- **One statistic for the sparse-noise gate.** The binomial chance alone refused real
+  songs whose vocals sit off the grid (as weak as 10^-1.3); the pulse gap alone refused a
+  rubato ballad (0.035). Only both together separate them.
+- **The pulse gap on a second, HOP-256 onset envelope.** It worked in Python, but Rust's
+  engine only has the fitting envelope and numpy's shuffle cannot be reproduced there.
+  Max-pooling the fitting envelope in pairs and hashing the shuffle gives both engines
+  the same number.
+- **A 0.10 gap threshold.** It kept two real songs on the precision path but let one of
+  240 random attack sets through (gap 0.105). Those two songs' grids put 5 % and 18 % of
+  their ranked map's beats within 10 ms, so 0.15 costs nothing worth keeping.
+
+---
+
 ## v4.0.0-dev — 2026-09-23 · Five audit leads, five real bugs
 
 The roadmap listed five audit findings as "to verify". Each was re-probed before any

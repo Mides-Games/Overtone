@@ -11,7 +11,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 
 ---
 
-## Where we are — 2026-09-23 (evening)
+## Where we are — 2026-09-23 (night)
 
 **Stage: the app is usable end to end in Python; the Rust engine is at parity but not yet
 plugged into the app.**
@@ -28,11 +28,23 @@ plugged into the app.**
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **209** Python (140 engine + 69 web shell) · **181** Rust.
+Tests: **219** Python (150 engine + 69 web shell) · **190** Rust.
 
 ### What is pending, in order
 
-1. **Work the audit backlog** ([`13-audit-backlog.md`](13-audit-backlog.md)) — its 6 high findings first.
+1. **Audit backlog, medium findings** ([`13-audit-backlog.md`](13-audit-backlog.md)) — the six
+   high ones are fixed. **Start here**, in this order, each re-probed before its fix:
+   1. `.bak` written non-atomically, then never replaced (breaks CLAUDE.md rule 5: a
+      failed first inject leaves later injects without a backup).
+   2. Rust decode drops corrupt packets without inserting silence, shifting every later
+      timestamp (wrong offsets after a damaged frame).
+   3. A new section's bar read one beat late when its downbeat is weak (found on
+      2026-09-23: 3/60 bar-line changes, 6/38 random).
+   4. `_grow_sections` stops after 64 iterations on long mixes, with no diagnostic.
+   5. `--subdivision 0.5 / 0.25` silently ignored on the fallback tracker.
+   6. The fallback tracker answers 12 of 240 scattered-click files (found on 2026-09-23).
+   7. Then the GUI and I/O ones (config crash, clipboard, CSV errors, `.osz` names), then
+      the 40 low.
 2. **Playback in the app** (Phase 4) — hear the song with the click, scrub, loop.
 3. **Plug the Rust engine into the app** (Phase 22) — the ~9x speed-up reaches the user.
 4. **Timeline** (Phase 3) — waveform, zoom, drag red lines.
@@ -65,8 +77,22 @@ The five leads the audit's verifiers did not finish. Each was re-probed; all fiv
 | Licence claims in the plans | **real** — six rows wrong | checked against each project's licence file; Demucs weights are research-only | #25 |
 | Stale counts in CLAUDE.md | **real** | 76/75 → 209/181, layout complete | #26 |
 
-The rest of the audit — 87 findings its verifiers confirmed and nobody has re-probed yet
-(6 high, 41 medium, 40 low) — is in [`13-audit-backlog.md`](13-audit-backlog.md).
+### High audit findings fixed on 2026-09-23
+
+All six from the backlog. Each was reproduced with a probe first and has a test that
+fails on the old code; Python and Rust were fixed together where both apply.
+
+| Finding | Measured | PR |
+|---|---|---|
+| ÷2 / ÷4 deleted real tempo changes | tiny-change 1/2 → 2/2, secs-4 2/4 → 4/4 red lines kept at ÷4 | #29 |
+| Export snapping moved hand-placed red lines up to a quarter beat | snaps only ≤ 1 ms of rounding; hand-placed lines never move; ranked real map within 10 ms 8.1 % → 14.4 % | #30 |
+| A change's red line one beat late (boundary beat µs before the start) | fixed at the function level; did not reproduce end to end (0/177 probes) | #31 |
+| A stray click before the music threw the grid away | fallback 295.3 BPM → precision 150.000, red line within 0.1 ms | #32 |
+| Sparse random attacks got a grid | random attack times 18–22/40 → 0/40; random-click files 63/240 → 12/240 answered, none by the precision engine | #33 |
+| Rust hitsound flux compared spectra of different sizes | steady tone 0.9996 → ~0; 450 test hits 35 → 29 wrong, macro F1 0.913 → 0.931 | #34 |
+
+Still open — 83 findings nobody has re-probed yet (none high, 43 medium, 40 low) — in
+[`13-audit-backlog.md`](13-audit-backlog.md).
 
 ---
 
@@ -531,7 +557,7 @@ P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─�
                            ├─► P4 playback ✗ / editor ✓
                            └─► P5 osu! ✓ ─────────────► P8 automation (half) ─► P9 (suggestions ✓)
 
-Next: audit backlog (6 high) ─► playback ─► Rust engine in the app ─► timeline ─► sections + settings
+Next: audit backlog (medium) ─► playback ─► Rust engine in the app ─► timeline ─► sections + settings
       ─► map tools ─► hitsounds ─► Phase 10 ─► installer
 ```
 

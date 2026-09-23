@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-209%20Python%20%C2%B7%20181%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-219%20Python%20%C2%B7%20190%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -60,7 +60,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Time signatures per red line | ✅ | 6/4 → 3/4 → 4/4 over a constant bar, each line with its own meter |
 | Instant, exact ×2 / ÷2 | ✅ | Re-reads the fitted grid; nothing is re-detected |
 | Per-section pulse hints | ✅ | Flags half-time-looking sections |
-| Refuses audio with no pulse | ✅ | White, pink and brown noise, pads and silence get no BPM |
+| Refuses audio with no pulse | ✅ | White, pink and brown noise, pads, silence and scattered clicks get no grid |
 | Fallback beat tracker for rubato / free time | ✅ | Says so in the result and the app |
 | Result cache by audio content | ✅ | Re-analysing a song takes ~0.02 s |
 | Per-section octave (exact 2× changes) | 🦀 | In Rust; the Python engine decides the octave globally |
@@ -161,7 +161,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Feature | Status | Notes |
 |---|:--:|---|
 | Per-attack spectral, temporal and source features | 🦀 | |
-| 13 instrument templates, calibrated | 🦀 | Macro F1 0.91 on the synthetic corpus it was calibrated on — not a real-song number |
+| 13 instrument templates, calibrated | 🦀 | Macro F1 0.93 over nine synthetic test tracks (0.91 on the gate's own) — not a real-song number |
 | Musical role: grid position, metrical weight, phrase, accent | 🦀 | |
 | Map context per attack | 🟡 | Python |
 | Sequence decision (Viterbi) with explanations | 📋 | P6 |
@@ -213,8 +213,9 @@ Then double-click **`Overtone.bat`**, or from a terminal:
 .venv/Scripts/python.exe overtone.py song.wav --stats   # command line
 ```
 
-WAV, FLAC, OGG and MP3 open directly (libsndfile 1.2). M4A / AAC need FFmpeg on `PATH`
-for the Python engine; the Rust engine decodes all of them in-process.
+WAV, FLAC, OGG and most MP3s open directly (libsndfile 1.2); the odd MP3 it cannot read
+(one of the songs tested) and M4A / AAC need FFmpeg on `PATH` for the Python engine. The
+Rust engine decodes all of them in-process.
 
 Command-line flags:
 
@@ -273,14 +274,14 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 209 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 219 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 24/24 stage by stage
 .venv/Scripts/python.exe bench/gates.py coverage       # density changes inside a section
 .venv/Scripts/python.exe bench/gates.py measures       # bars read and anchored
 .venv/Scripts/python.exe bench/gates.py signatures     # signature regions over one bar
-cargo test --workspace                                 # 181 tests
+cargo test --workspace                                 # 190 tests
 cargo run --release -q -p overtone-bench -- golden     # Rust vs Python, attack for attack
 ```
 
@@ -313,7 +314,8 @@ analysis — a like-for-like full-pipeline timing is still [on the backlog](docs
 - **Swing and shuffle**: BPM and offset are exact, but the grid residual is large — that
   number is telling the truth about the music.
 - **Offsets export as whole milliseconds** (the `.osu` format); the fit is sub-millisecond.
-- **87 audit findings are still open** (6 high) — [`docs/13-audit-backlog.md`](docs/13-audit-backlog.md).
+- **83 audit findings are still open**, none high (all six high ones were fixed on
+  2026-09-23) — [`docs/13-audit-backlog.md`](docs/13-audit-backlog.md).
 - **Always check the first beat and every transition in the osu! editor.**
 
 ---
@@ -373,7 +375,8 @@ sliders quedan igual).
   (`.osu`, CSV, pista de clic, `.osz`), inyección con vista previa, comparación con un mapa,
   alineación, densidad y sugerencias, en inglés y español.
 - **Motor en Rust (🦀):** da los mismos resultados que Python y su etapa de ataques es ~8× más rápida; todavía no lo usa la app.
-- **Próximo (📋):** escuchar la canción con el clic dentro de la app, conectar el motor
+- **Próximo (📋):** los hallazgos medios de la auditoría (los 6 altos ya están
+  arreglados), escuchar la canción con el clic dentro de la app, conectar el motor
   Rust, línea de tiempo con zoom, secciones (Biblioteca, Hitsounds, Audio…), herramientas
   de mapa, precisión en canciones reales e instalador `.msi`.
 

@@ -20,7 +20,7 @@ cargo test --workspace                                   # Rust, todo
 cargo run --release -q -p overtone-bench -- golden      # paridad vs v3
 cargo run --release -q -p overtone-bench -- density     # hints F-11
 cargo run --release -q -p overtone-bench -- elastic     # rampas + deriva
-.venv/Scripts/python.exe -m unittest test_timing_analyzer
+.venv/Scripts/python.exe -m unittest test_overtone
 .venv/Scripts/python.exe bench/benchmark.py
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot
 .venv/Scripts/python.exe bench/golden.py check

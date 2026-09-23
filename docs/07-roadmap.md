@@ -31,7 +31,7 @@ broke something, which is why it is first.
 | Perf gate | per-stage budget vs measured baseline | low | med | corpus | no | no | P1 | todo |
 | `.gitignore` scoping | stop ignoring `*.osu` repo-wide — **F-09** | trivial | low | — | no | no | P1 | **done** |
 
-¹ Deferred deliberately: moving `timing_analyzer.py` before the Rust workspace exists
+¹ Deferred deliberately: moving `overtone.py` before the Rust workspace exists
 would break every path in the gates that were just built, for no gain. It moves in the
 same commit that adds `crates/`.
 

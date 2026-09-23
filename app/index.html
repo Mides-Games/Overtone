@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overtone</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ============================================================ sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <img id="logo" alt="">
+      <div class="brand-text">
+        <div class="brand-name">Overtone</div>
+        <div class="brand-sub" data-i18n="tagline">Timing for osu! maps</div>
+      </div>
+    </div>
+    <nav>
+      <div class="nav-item active" data-view="timing" title="Timing">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l2-6 3 12 3-9 2 5 2-2h5"/></svg>
+        <span class="nav-label" data-i18n="nav_timing">Timing</span>
+      </div>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="segmented stretch" id="langSwitch">
+        <button data-lang="en">EN</button><button data-lang="es">ES</button>
+      </div>
+      <div class="foot-note">v<span id="version">3.0</span> · <span data-i18n="offline">offline, nothing leaves this PC</span></div>
+    </div>
+  </aside>
+
+  <!-- =============================================================== main -->
+  <main class="main">
+    <header class="topbar">
+      <div class="song" id="song">
+        <div class="song-art">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        </div>
+        <div class="song-text">
+          <div class="song-title" id="songTitle" data-i18n="no_song">No song open</div>
+          <div class="song-meta" id="songMeta" data-i18n="no_song_hint">Open an audio file to start</div>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn" id="openBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        <span data-i18n="open">Open audio</span>
+      </button>
+      <button class="btn icon" id="settingsBtn" title="Detection settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+      </button>
+      <button class="btn primary" id="analyzeBtn" disabled>
+        <svg id="analyzeIcon" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 3.8v16.4a1 1 0 0 0 1.5.86l13.2-8.2a1 1 0 0 0 0-1.72L7.5 2.94A1 1 0 0 0 6 3.8z"/></svg>
+        <span class="spinner" id="analyzeSpin" hidden></span>
+        <span id="analyzeText" data-i18n="analyze">Analyze</span>
+      </button>
+    </header>
+
+    <div class="progress" id="progress" hidden>
+      <div class="track"></div>
+      <div class="text" id="progressText"></div>
+    </div>
+
+    <div class="content">
+      <!-- empty state -->
+      <section class="empty" id="empty">
+        <div class="drop" id="drop">
+          <div class="halo">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l2-6 3 12 3-9 2 5 2-2h5"/></svg>
+          </div>
+          <h2 data-i18n="empty_title">Time a song in one click</h2>
+          <p data-i18n="empty_body">Open an audio file and Overtone finds every BPM change, offset and bar line.</p>
+          <div class="drop-actions">
+            <button class="btn primary" id="emptyOpen"><span data-i18n="open">Open audio</span></button>
+            <button class="btn" id="importBtn"><span data-i18n="import_folder">Import beatmap folder…</span></button>
+            <button class="btn" id="emptyAnalyze" hidden><span data-i18n="analyze_last">Analyze the last song</span></button>
+          </div>
+          <div class="formats">WAV · FLAC · OGG · MP3 · M4A · OPUS · AIFF</div>
+          <div class="kbd-hints"><span><kbd>Ctrl</kbd><kbd>O</kbd> <span data-i18n="k_open">open</span></span><span><kbd>Enter</kbd> <span data-i18n="k_analyze">analyze</span></span></div>
+        </div>
+        <div class="recents" id="recents" hidden>
+          <div class="recents-title" data-i18n="recent">Recent</div>
+          <div class="stack" id="recentList" style="gap:8px"></div>
+        </div>
+      </section>
+
+      <!-- results -->
+      <section id="results" hidden>
+        <div class="stats">
+          <div class="stat">
+            <div class="label" data-i18n="stat_global">Global BPM</div>
+            <div class="value num" id="statGlobal">—</div>
+          </div>
+          <div class="stat">
+            <div class="label" data-i18n="stat_points">Timing points</div>
+            <div class="value num" id="statPoints">—</div>
+          </div>
+          <div class="stat">
+            <div class="label" data-i18n="stat_beats">Beats</div>
+            <div class="value num" id="statBeats">—</div>
+          </div>
+          <div class="stat">
+            <div class="label" data-i18n="stat_stability">Stability</div>
+            <div class="value num" id="statStability">—</div>
+          </div>
+          <div class="stat grow">
+            <div class="label" data-i18n="stat_engine">Engine</div>
+            <div class="value small" id="statEngine">—</div>
+          </div>
+        </div>
+
+        <div class="warnings" id="warnings"></div>
+
+        <div class="actions">
+          <button class="btn small" id="copyOsuBtn"><span data-i18n="actions_copy">Copy .osu</span></button>
+          <button class="btn small" id="csvBtn"><span data-i18n="actions_csv">CSV</span></button>
+          <button class="btn small" id="clickBtn"><span data-i18n="actions_click">Click track</span></button>
+          <button class="btn small" id="oszBtn"><span data-i18n="actions_osz">.osz package</span></button>
+          <div class="spacer"></div>
+          <button class="btn small" id="undoBtn"><span data-i18n="undo">Undo</span></button>
+          <button class="btn small" id="redoBtn"><span data-i18n="redo">Redo</span></button>
+          <button class="btn small" id="injectBtn"><span data-i18n="actions_inject">Inject .osu…</span></button>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="cmp_title">Map vs detected</div>
+            <span class="pill" id="cmpCount" hidden></span>
+            <div class="spacer"></div>
+            <span class="card-sub" id="cmpFile"></span>
+            <button class="btn small" id="cmpPick"><span data-i18n="cmp_pick">Choose .osu…</span></button>
+          </div>
+          <div class="card-body" id="cmpBody"></div>
+        </div>
+
+        <div class="card trace-card">
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="trace_title">Tempo map</div>
+              <div class="card-sub" data-i18n="trace_sub">Local BPM over time · click to select the governing red line</div>
+            </div>
+            <div class="spacer"></div>
+            <div class="legend">
+              <span><i style="background:var(--blue)"></i><span data-i18n="lg_tempo">tempo</span></span>
+              <span><i style="background:var(--red)"></i><span data-i18n="lg_points">timing points</span></span>
+              <span><i style="background:#2e3a55"></i><span data-i18n="lg_onsets">onsets</span></span>
+            </div>
+            <div class="segmented" style="margin-left:14px" title="Pulse octave">
+              <button id="halfBtn">÷2</button><button id="doubleBtn">×2</button>
+            </div>
+          </div>
+          <div class="trace-wrap" id="traceWrap">
+            <canvas id="trace"></canvas>
+            <div class="tooltip" id="tip" hidden></div>
+          </div>
+        </div>
+
+        <div class="split">
+          <div class="card table-card">
+            <div class="card-head">
+              <div class="card-title" data-i18n="table_title">Timing points</div>
+              <span class="pill" id="tableCount"></span>
+              <div class="spacer"></div>
+              <span class="card-sub" data-i18n="table_hint">↑ ↓ to move</span>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead><tr>
+                  <th>#</th>
+                  <th data-i18n="col_offset">Offset (ms)</th>
+                  <th>BPM</th>
+                  <th data-i18n="col_beat">Beat (ms)</th>
+                  <th data-i18n="col_meter">Meter</th>
+                  <th data-i18n="col_conf">Confidence</th>
+                </tr></thead>
+                <tbody id="rows"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card detail-card" id="detail"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- ========================================================= settings drawer -->
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <div>
+      <h3 data-i18n="detection">Detection settings</h3>
+      <div class="card-sub" data-i18n="inspector_note">Applied on the next Analyze. Shared with the classic window.</div>
+    </div>
+    <button class="btn icon ghost" id="closeDrawer" title="Close">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body stack">
+    <div class="field">
+      <label data-i18n="f_preset">Preset</label>
+      <div class="segmented stretch" id="presetSwitch">
+        <button data-preset="variable" data-i18n="preset_variable">Variable tempo</button>
+        <button data-preset="steady" data-i18n="preset_steady">Steady</button>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="field">
+        <label for="delta" data-i18n="f_delta">Min change (BPM)</label>
+        <input class="input num" id="delta" type="number" step="0.1" min="0.1">
+      </div>
+      <div class="field">
+        <label for="persistence" data-i18n="f_persist">Confirm beats</label>
+        <input class="input num" id="persistence" type="number" step="1" min="2">
+      </div>
+    </div>
+    <div class="field">
+      <label for="confidence" data-i18n="f_conf">Min confidence (%)</label>
+      <input class="input num" id="confidence" type="number" step="1" min="0" max="100">
+    </div>
+    <div class="field">
+      <label data-i18n="f_pulse">Pulse (octave)</label>
+      <div class="segmented stretch" id="pulseSwitch">
+        <button data-pulse="auto" data-i18n="auto">Auto</button>
+        <button data-pulse="/4">÷4</button><button data-pulse="/2">÷2</button>
+        <button data-pulse="x1">×1</button><button data-pulse="x2">×2</button><button data-pulse="x4">×4</button>
+      </div>
+    </div>
+    <div class="card" style="border-radius:var(--r-lg)">
+      <div class="card-body stack" style="padding:14px 18px">
+        <label class="switch"><span data-i18n="t_prefer">Prefer map BPM (120–300)</span><input type="checkbox" id="preferMap"><i></i></label>
+        <div class="divider"></div>
+        <label class="switch"><span data-i18n="t_refine">Re-anchor beats to transients</span><input type="checkbox" id="refineBeats"><i></i></label>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<div class="toast" id="toast"></div>
+<div class="drop-overlay" id="dropOverlay" hidden>
+  <div class="drop-msg">
+    <div class="halo">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l2-6 3 12 3-9 2 5 2-2h5"/></svg>
+    </div>
+    <h2 data-i18n="drop_title">Drop the audio</h2>
+    <p data-i18n="drop_body">Release to time it with the current detection settings.</p>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

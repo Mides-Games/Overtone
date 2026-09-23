@@ -2013,6 +2013,42 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
                             min_confidence, say, legacy_force, refine_beats)
 
 
+def analyze_batch(folder: str | os.PathLike[str], min_delta: float = 1.5,
+                  persistence: int = 12, prefer_map_bpm: bool = True,
+                  min_confidence: float = 0.75, force_subdivision: float = 0.0,
+                  refine_beats: bool = True, progress=None) -> list[dict]:
+    """Analyze every audio file in a folder; one bad file never stops the rest.
+
+    Phase 8 batch entry point (single flat folder — osu! song folders are
+    flat, and so is this). Each row is plain JSON types: ``{"file", "ok",
+    "global_bpm", "points", "duration", "error"}`` with the file's basename,
+    sorted by name so two runs print the same table.
+    """
+    root = Path(folder)
+    if not root.is_dir():
+        raise ValueError(f"{root} is not a folder.")
+    try:
+        names = sorted(p.name for p in root.iterdir()
+                       if p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS)
+    except OSError as exc:
+        raise ValueError(f"Could not list {root}: {exc}") from exc
+    rows: list[dict] = []
+    for name in names:
+        try:
+            analysis = analyze_audio(str(root / name), min_delta, persistence,
+                                     prefer_map_bpm, min_confidence, progress,
+                                     force_subdivision, refine_beats)
+        except (ValueError, RuntimeError, OSError) as exc:
+            rows.append({"file": name, "ok": False, "global_bpm": 0.0,
+                         "points": 0, "duration": 0.0, "error": str(exc)})
+            continue
+        rows.append({"file": name, "ok": True,
+                     "global_bpm": round(float(analysis.global_bpm), 4),
+                     "points": len(analysis.points),
+                     "duration": round(float(analysis.duration), 2), "error": ""})
+    return rows
+
+
 def rebuild_with_subdivision(analysis: Analysis, factor: float,
                              min_delta: float = 1.5, persistence: int = 12,
                              min_confidence: float = 0.75) -> Analysis:
@@ -2235,7 +2271,141 @@ def analysis_summary(analysis: Analysis) -> str:
         lines.append("Pulse suggestions (select the section, then 2× § / ÷2 §):")
         for idx, factor, ratio in suggestions:
             lines.append(f"  §{idx + 1}: try ×{factor} (off-beat support {ratio:.0%})")
+    findings = validate_timing_points(analysis)
+    if findings:
+        lines.append("")
+        lines.append("Validation (check by ear):")
+        for finding in findings:
+            where = f"§{finding['index'] + 1}" if finding["index"] >= 0 else "song"
+            lines.append(f"  {finding['level']:5} {where}: {_finding_text(finding)}")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Validation findings (Phase 7, first row)
+# ---------------------------------------------------------------------------
+
+#: Two red lines this close (in units of the governing beat) cannot both sit
+#: on downbeats: one of them is a duplicate.
+DUPLICATE_BEATS = 1.0
+#: A section shorter than one bar is suspicious but possible (fills, pickups).
+MIN_BEATS_PER_SECTION = 4.0
+#: Past this adjacent-section ratio the change is a detection error, not music.
+IMPOSSIBLE_RATIO = 4.0
+#: Within this band of x2 (or /2, in log2 space — octaves live there) the
+#: octave is a human judgement call, and the finding says exactly that: it
+#: never asserts which side is right.
+OCTAVE_BAND_LOG = 0.15
+#: A first red line this far after the first beat leaves the intro untimed.
+LATE_FIRST_LINE_S = 2.0
+
+
+def validate_timing_points(analysis: Analysis) -> list[dict]:
+    """Findings a mapper should review by ear before trusting the red lines.
+
+    Pure Phase 7, first row: duplicate points, very short sections, impossible
+    changes, suspicious offsets, octave mistakes. Operates on the *snapped*
+    points — what the exporters write — so a finding names the line the mapper
+    actually sees. Each finding is ``{"level", "key", "index", "values"}`` with
+    plain JSON types; ``index`` is the governing point, -1 for song-level.
+    Levels: ``error`` (the map is wrong), ``warn`` (check it), ``info`` (a
+    judgement call, stated as one). An empty map has no findings, and findings
+    never raise: validation must not break on the input it is checking.
+    """
+    try:
+        points = snap_timing_points(list(getattr(analysis, "points", None) or []))
+    except Exception:
+        return []
+    if not points:
+        return []
+    try:
+        duration = float(getattr(analysis, "duration", 0.0) or 0.0)
+        beats = np.asarray(getattr(analysis, "beats", []), dtype=np.float64)
+        first_beat = float(beats[0]) if beats.size else 0.0
+    except (TypeError, ValueError):
+        duration, first_beat = 0.0, 0.0
+
+    findings: list[dict] = []
+
+    def err(key: str, index: int, values: dict | None = None) -> None:
+        findings.append({"level": "error", "key": key, "index": index,
+                         "values": values or {}})
+
+    def warn(key: str, index: int, values: dict | None = None) -> None:
+        findings.append({"level": "warn", "key": key, "index": index,
+                         "values": values or {}})
+
+    def info(key: str, index: int, values: dict | None = None) -> None:
+        findings.append({"level": "info", "key": key, "index": index,
+                         "values": values or {}})
+
+    for n, point in enumerate(points):
+        offset = getattr(point, "offset_ms", float("nan"))
+        bpm = getattr(point, "bpm", float("nan"))
+        try:
+            bad = not (np.isfinite(offset) and np.isfinite(bpm))
+        except TypeError:
+            bad = True
+        if bad or bpm <= 0:
+            err("bad_number", n)
+            continue
+        if offset < 0:
+            err("negative_offset", n, {"ms": f"{offset:.1f}"})
+        elif duration > 0 and offset / 1000.0 > duration + 0.001:
+            warn("past_end", n, {"ms": f"{offset:.1f}"})
+        if n == 0 and first_beat > 0 and offset / 1000.0 - first_beat > LATE_FIRST_LINE_S:
+            warn("late_first", n, {"line": f"{offset / 1000.0:.1f}",
+                                   "beat": f"{first_beat:.1f}"})
+
+    for n in range(1, len(points)):
+        prev, point = points[n - 1], points[n]
+        if prev.bpm <= 0 or not np.isfinite(prev.bpm) or not np.isfinite(point.bpm):
+            continue
+        gap_ms = point.offset_ms - prev.offset_ms
+        beat_ms = 60000.0 / prev.bpm
+        if gap_ms < DUPLICATE_BEATS * beat_ms:
+            err("dup_points", n, {"gap": f"{gap_ms:.1f}"})
+            continue
+        if gap_ms < MIN_BEATS_PER_SECTION * beat_ms:
+            warn("short_section", n - 1, {"beats": f"{gap_ms / beat_ms:.1f}"})
+        ratio = point.bpm / prev.bpm
+        if ratio >= IMPOSSIBLE_RATIO or ratio <= 1.0 / IMPOSSIBLE_RATIO:
+            err("impossible_change", n,
+                {"from": f"{prev.bpm:.2f}", "to": f"{point.bpm:.2f}"})
+        elif min(abs(float(np.log2(ratio)) - 1.0),
+                 abs(float(np.log2(ratio)) + 1.0)) <= OCTAVE_BAND_LOG:
+            info("octave_check", n,
+                 {"from": f"{prev.bpm:.2f}", "to": f"{point.bpm:.2f}"})
+
+    # The last section runs to the end of the song: it can be short too.
+    last = points[-1]
+    if last.bpm > 0 and np.isfinite(last.bpm) and duration > 0:
+        tail_beats = (duration - last.offset_ms / 1000.0) / (60.0 / last.bpm)
+        if 0 <= tail_beats < MIN_BEATS_PER_SECTION:
+            warn("short_section", len(points) - 1, {"beats": f"{tail_beats:.1f}"})
+    return findings
+
+
+def _finding_text(finding: dict) -> str:
+    """One human line per validation finding (CLI --stats, GUI details)."""
+    key, values = finding["key"], finding["values"]
+    if key == "dup_points":
+        return f"two red lines {values['gap']} ms apart — one is a duplicate"
+    if key == "short_section":
+        return f"section lasts {values['beats']} beats, less than a bar"
+    if key == "impossible_change":
+        return f"tempo {values['from']} → {values['to']} BPM is a detection error, not music"
+    if key == "octave_check":
+        return f"tempo {values['from']} → {values['to']} BPM: half-time or an octave mistake?"
+    if key == "negative_offset":
+        return f"offset {values['ms']} ms is before the audio starts"
+    if key == "bad_number":
+        return "no usable number — re-analyze or delete"
+    if key == "late_first":
+        return f"first red line at {values['line']} s, music starts at {values['beat']} s"
+    if key == "past_end":
+        return f"offset {values['ms']} ms is past the end of the audio"
+    return f"{key} {values}"
 
 
 # ---------------------------------------------------------------------------
@@ -2655,6 +2825,179 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
             "audio_mismatch": bool(audio_name and analysed_name
                                    and audio_name.lower() != analysed_name.lower()),
             "osu_audio": audio_name, "analysed_audio": analysed_name}
+
+
+# ---------------------------------------------------------------------------
+# .osu red-line reading and map-vs-detected comparison (Phase 5)
+# ---------------------------------------------------------------------------
+
+def _timing_section_lines(osu_path: str | os.PathLike[str]) -> list[str]:
+    """Raw body lines of the .osu [TimingPoints] section."""
+    path = Path(osu_path)
+    if not path.is_file():
+        raise ValueError(f"{path} is not a file.")
+    size = path.stat().st_size
+    if size > MAX_OSU_BYTES:
+        raise ValueError(f"{path.name} is {size / 1e6:.1f} MB — that is not a beatmap.")
+    try:
+        text = path.read_bytes().decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"Could not decode {path.name} as UTF-8.") from exc
+    lines = text.splitlines()
+    header_idx = next((n for n, line in enumerate(lines)
+                       if line.strip() == "[TimingPoints]"), None)
+    if header_idx is None:
+        raise ValueError("No [TimingPoints] section found in this .osu file.")
+    end_idx = len(lines)
+    for n in range(header_idx + 1, len(lines)):
+        stripped = lines[n].strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            end_idx = n
+            break
+    return [line for line in lines[header_idx + 1:end_idx] if line.strip()]
+
+
+def read_osu_red_lines(osu_path: str | os.PathLike[str]) -> list[tuple[float, float]]:
+    """Every uninherited (red) timing line as ``(offset_ms, bpm)``.
+
+    The first half of Phase 5's map-vs-detected compare, and the reader the
+    full .osu work will grow into. Green (inherited) lines are timing-neutral
+    by definition — negative slider-velocity multipliers, not tempo — so they
+    are skipped, not parsed. Legacy v3-v4 two-field lines count when their
+    beat length is positive; decimal offsets (osu!lazer) survive as floats.
+    Lines with no usable numbers are skipped rather than fatal: one hand-broken
+    line must not hide the rest of the map.
+    """
+    reds: list[tuple[float, float]] = []
+    for line in _timing_section_lines(osu_path):
+        if not _is_red_line(line.strip()):
+            continue
+        fields = line.strip().split(",")
+        try:
+            offset = float(fields[0])
+            beat_length = float(fields[1])
+        except (ValueError, IndexError):
+            continue
+        if not (np.isfinite(offset) and np.isfinite(beat_length)) or beat_length <= 0:
+            continue
+        reds.append((offset, 60000.0 / beat_length))
+    return reds
+
+
+#: Past this octave-normalised BPM gap the map and the detection disagree
+#: rather than round differently. Offsets reuse the benchmark's 5 ms bar.
+MAP_BPM_TOLERANCE = 1.0
+MAP_OFFSET_TOLERANCE_MS = 5.0
+
+
+def compare_map_timing(osu_path: str | os.PathLike[str],
+                       analysis: Analysis) -> dict:
+    """Per-section map-vs-detected diff table (Phase 5, second row).
+
+    For every detected section, the governing map line — the last red line at
+    or before the section start, with half a beat of slack, exactly as the
+    benchmark scores ground truth — and two questions: is its BPM right (up
+    to an octave), and does its grid pass through the detected beats. Returns
+    ``{"sections": [...], "findings": [...]}`` with plain JSON types; findings
+    reuse the validation vocabulary (``map_octave`` is info, because the
+    octave is a judgement call; the rest are warns, never errors — the map is
+    someone's work, and disagreement is review material, not a verdict).
+    """
+    detected = snap_timing_points(list(getattr(analysis, "points", None) or []))
+    if not detected:
+        return {"sections": [], "findings": [
+            {"level": "error", "key": "no_detected", "index": -1, "values": {}}]}
+    try:
+        reds = read_osu_red_lines(osu_path)
+    except (ValueError, OSError) as exc:
+        return {"sections": [], "findings": [
+            {"level": "error", "key": "map_unreadable", "index": -1,
+             "values": {"detail": str(exc)}}]}
+    if not reds:
+        return {"sections": [], "findings": [
+            {"level": "error", "key": "map_no_reds", "index": -1, "values": {}}]}
+
+    sections: list[dict] = []
+    findings: list[dict] = []
+    for n, point in enumerate(detected):
+        start_s = point.offset_ms / 1000.0
+        step = 60.0 / point.bpm if point.bpm > 0 else 0.0
+        governing = reds[0]
+        for offset_ms, _bpm in reds:
+            if offset_ms / 1000.0 <= start_s + 0.5 * step:
+                governing = (offset_ms, _bpm)
+        map_offset, map_bpm = governing
+        ratio = point.bpm / map_bpm if map_bpm > 0 else 1.0
+        octave = 2.0 ** round(float(np.log2(ratio))) if ratio > 0 else 1.0
+        bpm_error = abs(point.bpm / octave - map_bpm)
+        beats = (map_offset / 1000.0 - start_s) / step if step > 0 else 0.0
+        offset_error = abs(beats - round(beats)) * step * 1000.0
+        sections.append({
+            "index": n, "det_offset_ms": point.offset_ms, "det_bpm": point.bpm,
+            "map_offset_ms": map_offset, "map_bpm": map_bpm,
+            "bpm_error": bpm_error, "offset_error_ms": offset_error,
+            "octave": octave,
+        })
+        if octave != 1:
+            findings.append({"level": "info", "key": "map_octave", "index": n,
+                             "values": {"map": f"{map_bpm:.2f}",
+                                        "det": f"{point.bpm:.2f}",
+                                        "octave": f"x{octave:g}"}})
+        elif bpm_error > MAP_BPM_TOLERANCE:
+            findings.append({"level": "warn", "key": "map_bpm", "index": n,
+                             "values": {"map": f"{map_bpm:.2f}",
+                                        "det": f"{point.bpm:.2f}",
+                                        "err": f"{bpm_error:.2f}"}})
+        if offset_error > MAP_OFFSET_TOLERANCE_MS:
+            findings.append({"level": "warn", "key": "map_offset", "index": n,
+                             "values": {"ms": f"{offset_error:.1f}"}})
+    if len(reds) != len(detected):
+        findings.append({"level": "info", "key": "map_count", "index": -1,
+                         "values": {"map": len(reds), "det": len(detected)}})
+    return {"sections": sections, "findings": findings}
+
+
+#: Audio extensions Overtone can analyse, shared by the GUIs' file dialogs.
+AUDIO_EXTENSIONS = (".wav", ".flac", ".ogg", ".mp3", ".m4a", ".aac", ".opus", ".aiff")
+
+
+def scan_beatmap_folder(folder: str | os.PathLike[str]) -> dict:
+    """Beatmap folder import, first half (Phase 5): audio plus difficulties.
+
+    An osu! song folder holds one audio file and one .osu per difficulty.
+    Returns ``{"folder", "audio" (path or None), "beatmaps" (sorted paths),
+    "audio_from" (the beatmap that named the audio, or None)}`` with plain
+    types. Audio choice: the first beatmap's AudioFilename when that file
+    exists — the mapper's own word beats guessing; else the single audio file
+    when there is exactly one; else None. Several candidates with no map to
+    arbitrate is ambiguity, and guessing an audio file is worse than asking.
+    Flat listing on purpose: osu! song folders are flat.
+    """
+    root = Path(folder)
+    if not root.is_dir():
+        raise ValueError(f"{root} is not a folder.")
+    try:
+        entries = sorted(p for p in root.iterdir() if p.is_file())
+    except OSError as exc:
+        raise ValueError(f"Could not list {root}: {exc}") from exc
+    beatmaps = [str(p) for p in entries if p.suffix.lower() == ".osu"]
+    audios = [p for p in entries if p.suffix.lower() in AUDIO_EXTENSIONS]
+    audio: Path | None = None
+    audio_from: str | None = None
+    for beatmap in beatmaps:
+        try:
+            text = Path(beatmap).read_bytes().decode("utf-8-sig")
+        except (OSError, ValueError):
+            continue
+        named = next((line.split(":", 1)[1].strip() for line in text.splitlines()
+                      if line.startswith("AudioFilename:")), "")
+        if named and (root / named).is_file():
+            audio, audio_from = root / named, beatmap
+            break
+    if audio is None and len(audios) == 1:
+        audio = audios[0]
+    return {"folder": str(root), "audio": str(audio) if audio else None,
+            "beatmaps": beatmaps, "audio_from": audio_from}
 
 
 # ---------------------------------------------------------------------------
@@ -3926,7 +4269,7 @@ class TimingAnalyzerApp:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Overtone — BPM and offset detector for osu! mapping")
-    parser.add_argument("audio", nargs="?", help="Audio file to analyze (no argument opens the GUI)")
+    parser.add_argument("audio", nargs="?", help="Audio file to analyze (a folder analyses every audio file in it; no argument opens the GUI)")
     parser.add_argument("--delta", type=float, default=1.5, help="Minimum BPM change (default 1.5)")
     parser.add_argument("--persistence", type=int, default=12, help="Beats required to confirm a change (default 12; 20+ for steady songs)")
     parser.add_argument("--min-confidence", type=float, default=75, help="Minimum confidence of exported points (0-100; default 75)")
@@ -3956,6 +4299,34 @@ def main() -> None:
         print("Error: --decimal-offsets must be between 0 and 6")
         raise SystemExit(2)
     force = 0.0 if args.subdivision == "auto" else float(args.subdivision)
+    if Path(args.audio).is_dir():
+        if args.click or args.osz or args.inject or args.stats:
+            print("Error: --click/--osz/--inject/--stats need a single audio file, not a folder")
+            raise SystemExit(2)
+        try:
+            rows = analyze_batch(args.audio, args.delta, args.persistence, not args.no_map_preference,
+                                 args.min_confidence / 100, force, refine_beats=not args.no_refine)
+        except ValueError as exc:
+            print(f"Error: {exc}")
+            raise SystemExit(1)
+        print(f"{'file':<32} {'bpm':>10} {'points':>7} {'seconds':>8}  status")
+        failures = 0
+        for row in rows:
+            failures += not row["ok"]
+            status = "ok" if row["ok"] else f"FAILED: {row['error']}"
+            print(f"{row['file']:<32} {row['global_bpm']:>10.2f} {row['points']:>7d} "
+                  f"{row['duration']:>8.1f}  {status}")
+        if args.csv:
+            try:
+                with open(args.csv, "w", newline="", encoding="utf-8") as handle:
+                    writer = csv.writer(handle)
+                    writer.writerow(["file", "ok", "global_bpm", "points", "duration", "error"])
+                    writer.writerows([[row["file"], row["ok"], row["global_bpm"],
+                                       row["points"], row["duration"], row["error"]] for row in rows])
+            except OSError as exc:
+                print(f"Error writing output: {exc}")
+                raise SystemExit(1)
+        raise SystemExit(1 if failures else 0)
     try:
         analysis = analyze_audio(args.audio, args.delta, args.persistence, not args.no_map_preference,
                                  args.min_confidence / 100, print, force,

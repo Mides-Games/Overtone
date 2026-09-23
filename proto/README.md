@@ -5,7 +5,7 @@ committing to them in Rust. Both are Phase 2 items rated difficulty *high* / imp
 in [`../docs/07-roadmap.md`](../docs/07-roadmap.md), and both would be expensive to
 discover wrong after a port.
 
-Neither touches `timing_analyzer.py`. They read a finished analysis and use the engine's
+Neither touches `overtone.py`. They read a finished analysis and use the engine's
 own private helpers, so the five gates stay green while these are iterated on.
 
 ```bash

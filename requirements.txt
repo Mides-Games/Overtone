@@ -3,3 +3,5 @@ scipy>=1.11
 librosa>=0.10.2
 soundfile>=0.12
 soxr>=0.3
+# Web shell only (overtone_web.py): Edge WebView2 must already be on the PC.
+pywebview>=6.0

@@ -29,10 +29,10 @@ applied without exception.
 --bg-1:#111316  /* panels                */  --text-1:#9aa0a6  /* secondary */
 --bg-2:#181b1f  /* cards, inputs         */  --text-2:#5f6570  /* tertiary  */
 --bg-3:#1f2329  /* hover                 */
---line :#24282e /* 1px borders           */  --accent:#6ee7b7  /* single accent   */
---wave :#3d444d /* waveform body         */  --red   :#f0616d  /* timing points   */
+--line :#24282e /* 1px borders           */  --accent:#4fc08a  /* single accent   */
+--wave :#3d444d /* waveform body         */  --red   :#e0606c  /* timing points   */
 --onset:#4a5561 /* onset bed             */  --warn  :#e8b339  /* low confidence  */
---grid :#2a3038 /* beat grid             */  --info  :#7aa2f7  /* tempo curve     */
+--grid :#2a3038 /* beat grid             */  --info  :#7f9df0  /* tempo curve     */
 ```
 
 Dark is the default and the design target. A light theme is a Phase 3 deliverable, not an

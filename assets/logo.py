@@ -20,12 +20,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 # Design tokens borrowed from docs/04-ui-ux.md and the Tk theme.
-BG = (0x15, 0x1B, 0x28, 0xFF)      # panel
-MINT = (0x6E, 0xE7, 0xB7)          # accent
-RED = (0xF0, 0x61, 0x6D, 0xFF)     # timing points
+BG = (0x15, 0x1C, 0x29, 0xFF)      # panel
+MINT = (0x4F, 0xC0, 0x8A)          # accent
+RED = (0xE0, 0x60, 0x6C, 0xFF)     # timing points
 SIZE = 256
 SUPER = 2                          # supersample factor (antialiasing)
-RADIUS = 52                        # rounded-corner radius at 256 px
+RADIUS = 40                        # rounded-corner radius at 256 px
 
 
 def rounded_rect(w, h, radius):

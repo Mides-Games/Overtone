@@ -20,7 +20,7 @@ Run it:
     python proto/density.py                  # all corpus fixtures + the 3 density ones
     python proto/density.py --only sparse-160
 
-Nothing here touches ``timing_analyzer.py``: this is a post-hoc detector over
+  Nothing here touches ``overtone.py``: this is a post-hoc detector over
 a finished analysis, which is also the shape the v4 feature takes — a
 bidirectional pulse hint with confidence, not a silent split.
 """
@@ -39,7 +39,7 @@ sys.path.insert(0, str(ROOT / "bench"))
 
 import benchmark as bm  # noqa: E402
 import gates  # noqa: E402
-import timing_analyzer as ta  # noqa: E402
+import overtone as ta  # noqa: E402
 
 #: Windows are sized in beats of the reported grid. Eight beats is two bars of
 #: 4/4 — short enough to localise a change, long enough that one missed hit

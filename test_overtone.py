@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from timing_analyzer import (
+from overtone import (
     DEFAULT_LANGUAGE,
     Analysis,
     GridSection,
@@ -49,6 +49,11 @@ from timing_analyzer import (
     snap_timing_points,
     suggest_section_pulse,
     update_timing_point,
+    validate_timing_points,
+    read_osu_red_lines,
+    compare_map_timing,
+    scan_beatmap_folder,
+    analyze_batch,
 )
 
 
@@ -239,7 +244,7 @@ class EndToEndTests(unittest.TestCase):
 
     def test_tempo_guides_contain_true_tempo(self):
         import soundfile as sf
-        from timing_analyzer import _global_tempo_guides, _onset_envelope
+        from overtone import _global_tempo_guides, _onset_envelope
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "steady.wav"
             _click_track(path, bpm=128.0)
@@ -271,7 +276,7 @@ class EndToEndTests(unittest.TestCase):
     def test_rebuild_with_subdivision_doubles_bpm_without_retracking(self):
         # Synthetic grid: strong attacks every 80 frames (~129 BPM) plus
         # weaker off-beat attacks halfway between — so a ×2 grid is musical.
-        from timing_analyzer import Analysis
+        from overtone import Analysis
         sr, hop = 44100, 256
         onset = np.zeros(2000, dtype=np.float32)
         onset[np.arange(50, 1950, 80)] = 1.0
@@ -343,7 +348,7 @@ class ManualEditTests(unittest.TestCase):
 
 
 def _section_analysis(mid_amp: float, bpm: float = 112.4):
-    from timing_analyzer import Analysis
+    from overtone import Analysis
     sr, hop = 44100, 256
     step = int(round(60.0 / bpm * sr / hop))
     onset = np.zeros(3000, dtype=np.float32)
@@ -1020,27 +1025,336 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), self.LEGACY_OSU)
 
     def test_config_tolerates_garbage(self):
-        import timing_analyzer
+        import overtone
         with tempfile.TemporaryDirectory() as tmp:
-            original = timing_analyzer.CONFIG_PATH
-            timing_analyzer.CONFIG_PATH = Path(tmp) / "cfg.json"
+            original = overtone.CONFIG_PATH
+            overtone.CONFIG_PATH = Path(tmp) / "cfg.json"
             try:
-                timing_analyzer.CONFIG_PATH.write_text("[1, 2, 3]", encoding="utf-8")
-                self.assertEqual(timing_analyzer.load_config(), {})
-                timing_analyzer.CONFIG_PATH.write_text("{not json", encoding="utf-8")
-                self.assertEqual(timing_analyzer.load_config(), {})
-                timing_analyzer.save_config({"language": "English"})
-                self.assertEqual(timing_analyzer.load_config(), {"language": "English"})
+                overtone.CONFIG_PATH.write_text("[1, 2, 3]", encoding="utf-8")
+                self.assertEqual(overtone.load_config(), {})
+                overtone.CONFIG_PATH.write_text("{not json", encoding="utf-8")
+                self.assertEqual(overtone.load_config(), {})
+                overtone.save_config({"language": "English"})
+                self.assertEqual(overtone.load_config(), {"language": "English"})
                 # An unserialisable value must not raise, and must not corrupt
                 # the file that is already there.
-                timing_analyzer.save_config({"bad": object()})
-                self.assertEqual(timing_analyzer.load_config(), {"language": "English"})
+                overtone.save_config({"bad": object()})
+                self.assertEqual(overtone.load_config(), {"language": "English"})
             finally:
-                timing_analyzer.CONFIG_PATH = original
+                overtone.CONFIG_PATH = original
 
     def test_local_bpm_helper_handles_degenerate_input(self):
         self.assertEqual(len(_robust_local_bpms(np.zeros(0))), 0)
         self.assertEqual(len(_robust_local_bpms(np.array([1.0]))), 1)
+
+
+def _validation_analysis(points, duration=60.0) -> Analysis:
+    beats = np.arange(0.5, duration, 0.4)
+    return Analysis(
+        source="test", duration=duration, beats=beats,
+        local_bpms=np.full(beats.size, 150.0), points=list(points),
+        hop_length=512, sample_rate=22050, subdivision=1.0,
+        global_bpm=150.0, stability=0.9,
+        onset=np.zeros(100, dtype=np.float32), engine="precision",
+        fit_residual_ms=0.4)
+
+
+class ValidationTests(unittest.TestCase):
+    def keys(self, analysis):
+        return [(f["level"], f["key"]) for f in validate_timing_points(analysis)]
+
+    def test_clean_map_has_no_findings_and_is_json(self) -> None:
+        import json
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        findings = validate_timing_points(analysis)
+        self.assertEqual(findings, [])
+        json.dumps(findings)
+
+    def test_two_lines_within_a_beat_are_a_duplicate(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(1000.0, 120.0, 0.9, 0), TimingPoint(1200.0, 120.0, 0.9, 1)])
+        self.assertIn(("error", "dup_points"), self.keys(analysis))
+
+    def test_section_shorter_than_a_bar_warns(self) -> None:
+        # 150 BPM: 3 beats = 1200 ms, under the 4-beat bar.
+        analysis = _validation_analysis(
+            [TimingPoint(0.0, 150.0, 0.9, 0), TimingPoint(1200.0, 150.0, 0.9, 3)],
+            duration=60.0)
+        self.assertIn(("warn", "short_section"), self.keys(analysis))
+
+    def test_fourfold_jump_is_impossible_but_twofold_is_a_question(self) -> None:
+        impossible = _validation_analysis(
+            [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(30000.0, 500.0, 0.9, 60)])
+        self.assertIn(("error", "impossible_change"), self.keys(impossible))
+        halved = _validation_analysis(
+            [TimingPoint(0.0, 140.0, 0.9, 0), TimingPoint(30000.0, 280.0, 0.9, 70)])
+        keys = self.keys(halved)
+        self.assertIn(("info", "octave_check"), keys)
+        self.assertNotIn(("error", "impossible_change"), keys)
+        drift = _validation_analysis(
+            [TimingPoint(0.0, 140.0, 0.9, 0), TimingPoint(30000.0, 150.0, 0.9, 70)])
+        self.assertNotIn(("info", "octave_check"), self.keys(drift))
+
+    def test_bad_numbers_never_raise(self) -> None:
+        import json
+        analysis = _validation_analysis(
+            [TimingPoint(-50.0, 120.0, 0.9, 0),
+             TimingPoint(10000.0, float("nan"), 0.5, 20)])
+        keys = self.keys(analysis)
+        self.assertIn(("error", "negative_offset"), keys)
+        self.assertIn(("error", "bad_number"), keys)
+        json.dumps(validate_timing_points(analysis))
+        self.assertEqual(validate_timing_points(_validation_analysis([])), [])
+
+    def test_first_line_long_after_the_music_warns(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(70393.1, 196.5, 0.74, 150)], duration=90.0)
+        late = [f for f in validate_timing_points(analysis) if f["key"] == "late_first"]
+        self.assertEqual(len(late), 1)
+        self.assertEqual(late[0]["values"], {"line": "70.4", "beat": "0.5"})
+
+    def test_point_past_the_end_of_the_audio_warns(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(65000.0, 150.0, 0.9, 150)],
+            duration=60.0)
+        self.assertIn(("warn", "past_end"), self.keys(analysis))
+
+    def test_trailing_stub_section_warns(self) -> None:
+        # Last red line two beats before the song ends.
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(59200.0, 150.0, 0.9, 145)],
+            duration=60.0)
+        self.assertIn(("warn", "short_section"), self.keys(analysis))
+
+    def test_summary_carries_findings_for_cli_and_gui_details(self) -> None:
+        clean = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        self.assertNotIn("Validation", analysis_summary(clean))
+        dup = _validation_analysis(
+            [TimingPoint(1000.0, 120.0, 0.9, 0), TimingPoint(1200.0, 120.0, 0.9, 1)])
+        summary = analysis_summary(dup)
+        self.assertIn("Validation (check by ear):", summary)
+        self.assertIn("one is a duplicate", summary)
+        halved = _validation_analysis(
+            [TimingPoint(0.0, 140.0, 0.9, 0), TimingPoint(30000.0, 280.0, 0.9, 70)])
+        self.assertIn("octave mistake?", analysis_summary(halved))
+
+
+_MAP_OSU = "\n".join([
+    "osu file format v14",
+    "",
+    "[General]",
+    "AudioFilename: audio.mp3",
+    "",
+    "[TimingPoints]",
+    "// a comment line",
+    "1000,400,4,1,0,100,1,0",
+    "2000,-50,4,2,0,100,0,0",
+    "3000,500",
+    "4000.5,333.333333333333,4,1,0,100,1,0",
+    "oops,not-a-line",
+    "",
+    "[HitObjects]",
+    "",
+])
+
+
+def _write_osu(tmp: str, text: str, name: str = "map.osu") -> str:
+    target = str(Path(tmp) / name)
+    Path(target).write_text(text, encoding="utf-8")
+    return target
+
+
+def _compare_analysis(points, duration=60.0) -> Analysis:
+    beats = np.arange(0.5, duration, 0.4)
+    return Analysis(
+        source="test", duration=duration, beats=beats,
+        local_bpms=np.full(beats.size, 150.0), points=list(points),
+        hop_length=512, sample_rate=22050, subdivision=1.0)
+
+
+class MapReaderTests(unittest.TestCase):
+    def test_reads_reds_skips_greens_and_broken_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reds = read_osu_red_lines(_write_osu(tmp, _MAP_OSU))
+        self.assertEqual(len(reds), 3)
+        self.assertAlmostEqual(reds[0][0], 1000.0)
+        self.assertAlmostEqual(reds[0][1], 150.0)
+        self.assertAlmostEqual(reds[1][0], 3000.0)  # legacy two-field line
+        self.assertAlmostEqual(reds[1][1], 120.0)
+        self.assertAlmostEqual(reds[2][0], 4000.5)  # lazer decimal offset
+        self.assertAlmostEqual(reds[2][1], 180.0, places=4)
+
+    def test_missing_section_missing_file_or_no_reds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                read_osu_red_lines(_write_osu(tmp, "[General]\n", name="a.osu"))
+            with self.assertRaises(ValueError):
+                read_osu_red_lines(str(Path(tmp) / "missing.osu"))
+            greens = _write_osu(tmp, "[TimingPoints]\n2000,-50,4,2,0,100,0,0\n", name="b.osu")
+            self.assertEqual(read_osu_red_lines(greens), [])
+
+    def test_round_trip_through_the_own_exporter(self) -> None:
+        analysis = _compare_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        with tempfile.TemporaryDirectory() as tmp:
+            reds = read_osu_red_lines(
+                _write_osu(tmp, osu_beatmap_text(analysis, "audio.mp3")))
+        snapped = snap_timing_points(analysis.points)
+        self.assertEqual(len(reds), len(snapped))
+        for (offset, bpm), point in zip(reds, snapped):
+            self.assertLessEqual(abs(offset - point.offset_ms), 0.5)  # whole-ms file
+            self.assertAlmostEqual(bpm, point.bpm, places=6)
+
+
+class MapCompareTests(unittest.TestCase):
+    def _report(self, analysis, text):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            report = compare_map_timing(_write_osu(tmp, text), analysis)
+        json.dumps(report)  # sections and findings stay plain JSON types
+        return report
+
+    def test_identical_map_is_clean(self) -> None:
+        analysis = _compare_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        report = self._report(analysis, osu_beatmap_text(analysis, "audio.mp3"))
+        self.assertEqual(len(report["sections"]), 2)
+        for row in report["sections"]:
+            self.assertLess(row["bpm_error"], 0.05)
+            self.assertLessEqual(row["offset_error_ms"], 0.5)
+            self.assertEqual(row["octave"], 1)
+        self.assertEqual(report["findings"], [])
+
+    def test_shifted_line_warns_with_milliseconds(self) -> None:
+        analysis = _compare_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        lines = osu_beatmap_text(analysis, "audio.mp3").splitlines()
+        lines = [line.replace("30500,", "30530,") if line.startswith("30500,") else line
+                 for line in lines]
+        report = self._report(analysis, "\n".join(lines))
+        offset = [f for f in report["findings"] if f["key"] == "map_offset"]
+        self.assertEqual(len(offset), 1)
+        self.assertEqual(offset[0]["level"], "warn")
+        self.assertEqual(offset[0]["values"], {"ms": "30.0"})
+
+    def test_doubled_map_bpm_is_an_octave_question(self) -> None:
+        analysis = _compare_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        lines = osu_beatmap_text(analysis, "audio.mp3").splitlines()
+        # Halve the second line's beat length: the map runs at 2x detection.
+        for n, line in enumerate(lines):
+            if line.startswith("30500,"):
+                fields = line.split(",")
+                fields[1] = repr(float(fields[1]) / 2)
+                lines[n] = ",".join(fields)
+        report = self._report(analysis, "\n".join(lines))
+        octave = [f for f in report["findings"] if f["key"] == "map_octave"]
+        self.assertEqual(len(octave), 1)
+        self.assertEqual(octave[0]["level"], "info")
+        self.assertEqual(octave[0]["values"]["octave"], "x0.5")
+        self.assertNotIn("map_bpm", [f["key"] for f in report["findings"]])
+
+    def test_empty_sides_report_instead_of_crashing(self) -> None:
+        greens = "[TimingPoints]\n2000,-50,4,2,0,100,0,0\n"
+        report = self._report(_compare_analysis([TimingPoint(500.0, 150.0, 0.9, 0)]), greens)
+        self.assertEqual([(f["level"], f["key"]) for f in report["findings"]],
+                         [("error", "map_no_reds")])
+        report = compare_map_timing("whatever.osu", _compare_analysis([]))
+        self.assertEqual([(f["level"], f["key"]) for f in report["findings"]],
+                         [("error", "no_detected")])
+
+
+class FolderScanTests(unittest.TestCase):
+    def _song(self, tmp: str, audio: str = "song.mp3") -> Path:
+        root = Path(tmp) / "123 Artist - Title"
+        root.mkdir()
+        (root / audio).write_bytes(b"RIFF....")
+        (root / "map [Easy].osu").write_text(
+            "[General]\nAudioFilename: song.mp3\n\n[TimingPoints]\n1000,400,4,1,0,100,1,0\n",
+            encoding="utf-8")
+        (root / "map [Hard].osu").write_text(
+            "[General]\nAudioFilename: song.mp3\n\n[TimingPoints]\n1000,500,4,1,0,100,1,0\n",
+            encoding="utf-8")
+        return root
+
+    def test_finds_audio_and_difficulties_sorted(self) -> None:
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = scan_beatmap_folder(self._song(tmp))
+        self.assertTrue(scan["audio"].endswith("song.mp3"))
+        self.assertEqual(len(scan["beatmaps"]), 2)
+        self.assertEqual(scan["beatmaps"], sorted(scan["beatmaps"]))
+        self.assertTrue(scan["audio_from"].endswith("[Easy].osu"))
+        json.dumps(scan)
+
+    def test_single_audio_without_maps_is_enough(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "song"
+            root.mkdir()
+            (root / "audio.ogg").write_bytes(b"OggS....")
+            scan = scan_beatmap_folder(root)
+        self.assertTrue(scan["audio"].endswith("audio.ogg"))
+        self.assertEqual(scan["beatmaps"], [])
+        self.assertIsNone(scan["audio_from"])
+
+    def test_ambiguity_returns_no_audio_rather_than_guessing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "song"
+            root.mkdir()
+            (root / "a.mp3").write_bytes(b"ID3.....")
+            (root / "b.mp3").write_bytes(b"ID3.....")
+            scan = scan_beatmap_folder(root)
+        self.assertIsNone(scan["audio"])
+
+    def test_missing_named_audio_falls_back_to_the_single_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._song(tmp)
+            (root / "song.mp3").unlink()
+            (root / "other.wav").write_bytes(b"RIFF....")
+            scan = scan_beatmap_folder(root)
+        self.assertTrue(scan["audio"].endswith("other.wav"))
+        self.assertIsNone(scan["audio_from"])
+
+    def test_not_a_folder_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                scan_beatmap_folder(str(Path(tmp) / "missing"))
+
+
+class BatchTests(unittest.TestCase):
+    def _songs(self, tmp: str) -> Path:
+        folder = Path(tmp) / "songs"
+        folder.mkdir()
+        _click_track(folder / "a-150.wav", bpm=150.0)
+        _click_track(folder / "b-140.wav", bpm=140.0)
+        (folder / "broken.wav").write_bytes(b"RIFF....")
+        (folder / "notes.txt").write_text("not audio", encoding="utf-8")
+        return folder
+
+    def test_batch_reports_each_audio_and_never_stops(self) -> None:
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = analyze_batch(str(self._songs(tmp)))
+        self.assertEqual([row["file"] for row in rows], ["a-150.wav", "b-140.wav", "broken.wav"])
+        a, b, broken = rows
+        self.assertTrue(a["ok"])
+        self.assertAlmostEqual(a["global_bpm"], 150.0, delta=150.0 * 0.04)
+        self.assertGreaterEqual(a["points"], 1)
+        self.assertTrue(b["ok"])
+        self.assertAlmostEqual(b["global_bpm"], 140.0, delta=140.0 * 0.04)
+        self.assertFalse(broken["ok"])
+        self.assertTrue(broken["error"])
+        json.dumps(rows)
+
+    def test_empty_folder_is_empty_and_missing_is_an_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            empty = Path(tmp) / "empty"
+            empty.mkdir()
+            self.assertEqual(analyze_batch(str(empty)), [])
+            with self.assertRaises(ValueError):
+                analyze_batch(str(Path(tmp) / "missing"))
 
 
 if __name__ == "__main__":

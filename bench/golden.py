@@ -35,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import benchmark as bm  # noqa: E402
-import timing_analyzer as ta  # noqa: E402
+import overtone as ta  # noqa: E402
 
 GOLDEN_DIR = Path(__file__).resolve().parent / "golden"
 

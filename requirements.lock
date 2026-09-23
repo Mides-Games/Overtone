@@ -38,3 +38,13 @@ soxr==1.1.0
 threadpoolctl==3.7.0
 typing_extensions==4.16.0
 urllib3==2.8.0
+
+# Web shell only (overtone_web.py, pywebview 6.2.1 on 2026-09-23): nowhere near
+# the accuracy path, so pinned separately and never re-baselined against it.
+# Windows additionally needs the Edge WebView2 runtime; pythonnet arrives
+# through pywebview itself.
+bottle==0.13.4
+clr-loader==0.3.1
+proxy-tools==0.1.0
+pythonnet==3.1.0
+pywebview==6.2.1

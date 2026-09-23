@@ -59,6 +59,17 @@ const I18N = {
     inject_confirm: "Replace {reds} red lines with {n} new ones in {file}?{warn}",
     inject_warn: "\nThe .osu audio ({osu}) differs from the analyzed file ({src}).",
     drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
+    cmp_title: "Map vs detected", cmp_pick: "Choose .osu…",
+    cmp_empty: "Choose the .osu you mapped to compare it against this detection.",
+    cmp_sections: "{n} sections",
+    cmp_det_off: "Det. offset", cmp_det_bpm: "Det. BPM", cmp_map_off: "Map offset", cmp_map_bpm: "Map BPM",
+    cmp_dbpm: "Δ BPM", cmp_dms: "Δ ms", cmp_oct: "Octave",
+    cmp_octave_f: "Section #{n}: map {map} vs detected {det} BPM — an octave apart ({octave}).",
+    cmp_bpm_f: "Section #{n}: map {map} vs detected {det} BPM (off by {err}).",
+    cmp_offset_f: "Section #{n}: the map grid misses the detected beats by {ms} ms.",
+    cmp_count_f: "The .osu has {map} red lines, detection found {det} sections.",
+    cmp_no_reds_f: "That .osu has no red lines to compare.",
+    cmp_unreadable_f: "Could not compare: {detail}",
     done: "Done: {n} timing points · {bpm} BPM", rescaled: "Pulse ×{f}: {n} timing points · {bpm} BPM",
     error: "Error: {detail}",
   },
@@ -118,12 +129,23 @@ const I18N = {
     inject_confirm: "¿Reemplazar {reds} líneas rojas por {n} nuevas en {file}?{warn}",
     inject_warn: "\nEl audio del .osu ({osu}) difiere del analizado ({src}).",
     drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
+    cmp_title: "Mapa vs detección", cmp_pick: "Elegir .osu…",
+    cmp_empty: "Elegí el .osu que mapeaste para compararlo con esta detección.",
+    cmp_sections: "{n} secciones",
+    cmp_det_off: "Offset det.", cmp_det_bpm: "BPM det.", cmp_map_off: "Offset mapa", cmp_map_bpm: "BPM mapa",
+    cmp_dbpm: "Δ BPM", cmp_dms: "Δ ms", cmp_oct: "Octava",
+    cmp_octave_f: "Sección #{n}: mapa {map} vs detectado {det} BPM — a una octava ({octave}).",
+    cmp_bpm_f: "Sección #{n}: mapa {map} vs detectado {det} BPM (difiere {err}).",
+    cmp_offset_f: "Sección #{n}: la rejilla del mapa erra los beats detectados por {ms} ms.",
+    cmp_count_f: "El .osu tiene {map} líneas rojas, la detección encontró {det} secciones.",
+    cmp_no_reds_f: "Ese .osu no tiene líneas rojas para comparar.",
+    cmp_unreadable_f: "No se pudo comparar: {detail}",
     done: "Listo: {n} timing points · {bpm} BPM", rescaled: "Pulso ×{f}: {n} timing points · {bpm} BPM",
     error: "Error: {detail}",
   },
 };
 
-const S = { lang: "en", file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [] };
+const S = { lang: "en", file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
@@ -226,7 +248,7 @@ function setBusy(busy, message) {
 
 function syncActions() {
   const on = !!S.result && !S.busy;
-  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn"].forEach((id) => { $(id).disabled = !on; });
+  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn", "cmpPick"].forEach((id) => { $(id).disabled = !on; });
   if (!on) {
     $("undoBtn").disabled = true;
     $("redoBtn").disabled = true;
@@ -331,6 +353,7 @@ function mmss(s) { const m = Math.floor(s / 60), r = Math.round(s - m * 60); ret
 
 function showResult(result) {
   S.result = result;
+  S.compare = null;  // a compare belongs to one map and one point list
   $("empty").hidden = true;
   $("results").hidden = false;
   syncActions();
@@ -368,6 +391,7 @@ function renderResult(r) {
   }).join("");
   renderDetail();
   drawTrace();
+  renderCompare();
 }
 
 function renderDetail() {
@@ -602,6 +626,68 @@ function wireDrop() {
   });
 }
 
+// ------------------------------------------------------------------ map vs detected
+const CMP_STR = {
+  map_octave: "cmp_octave_f", map_bpm: "cmp_bpm_f", map_offset: "cmp_offset_f",
+  map_count: "cmp_count_f", map_no_reds: "cmp_no_reds_f", map_unreadable: "cmp_unreadable_f",
+};
+
+async function compareOsu() {
+  if (!api() || !S.result || S.busy) return;
+  const target = await api().pick_osu();
+  if (!target) return;
+  const reply = await api().compare(target);
+  if (!reply.ok) { editFailure(reply); return; }
+  S.compare = { file: reply.file, report: reply.report };
+  renderCompare();
+}
+
+function renderCompare() {
+  const body = $("cmpBody"), cmp = S.compare;
+  if (!cmp) {
+    $("cmpCount").hidden = true;
+    $("cmpFile").textContent = "";
+    body.innerHTML = `<div class="card-sub">${t("cmp_empty")}</div>`;
+    return;
+  }
+  const { report, file } = cmp;
+  $("cmpFile").textContent = file;
+  const pill = $("cmpCount");
+  pill.hidden = false;
+  pill.textContent = t("cmp_sections", { n: report.sections.length });
+  const banners = report.findings.map((f) => `
+    <div class="banner ${f.level === "info" ? "info" : ""}">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div>${t(CMP_STR[f.key] || "error", f.values)}</div>
+    </div>`).join("");
+  const rows = report.sections.map((r) => {
+    // Display thresholds, same bars as the engine findings.
+    const badB = r.bpm_error > 1, badM = r.offset_error_ms > 5;
+    return `<tr>
+      <td><span class="idx">${r.index + 1}</span></td>
+      <td class="num">${r.det_offset_ms.toFixed(1)}</td>
+      <td class="num">${r.det_bpm.toFixed(3)}</td>
+      <td class="num">${r.map_offset_ms.toFixed(1)}</td>
+      <td class="num">${r.map_bpm.toFixed(3)}</td>
+      <td class="num ${badB ? "neg" : ""}">${r.bpm_error.toFixed(3)}</td>
+      <td class="num ${badM ? "neg" : ""}">${r.offset_error_ms.toFixed(1)}</td>
+      <td>${r.octave === 1 ? "×1" : `<span class="pill amber">×${r.octave}</span>`}</td>
+    </tr>`;
+  }).join("");
+  body.innerHTML = `
+    ${banners ? `<div class="warnings">${banners}</div>` : ""}
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th>#</th><th>${t("cmp_det_off")}</th><th>${t("cmp_det_bpm")}</th>
+          <th>${t("cmp_map_off")}</th><th>${t("cmp_map_bpm")}</th>
+          <th>${t("cmp_dbpm")}</th><th>${t("cmp_dms")}</th><th>${t("cmp_oct")}</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
 // ------------------------------------------------------------------ tempo trace
 const C = {
   plot: "#0e1320", grid: "#1a2233", gridText: "#606b80", tempo: "#7f9df0", fill: "rgba(127,157,240,0.10)",
@@ -800,6 +886,7 @@ function wire() {
   $("csvBtn").onclick = () => saveAs("save_csv");
   $("clickBtn").onclick = () => saveAs("save_click");
   $("oszBtn").onclick = () => saveAs("save_osz");
+  $("cmpPick").onclick = compareOsu;
   $("undoBtn").onclick = undo;
   $("redoBtn").onclick = redo;
   $("injectBtn").onclick = injectOsu;

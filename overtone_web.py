@@ -550,6 +550,18 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "summary": summary}
 
+    def compare(self, osu_path: str) -> dict:
+        """Per-section map-vs-detected table for the compare card."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not Path(str(osu_path)).is_file():
+            return {"ok": False, "key": "bad_file"}
+        try:
+            report = ta.compare_map_timing(osu_path, self._analysis)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "report": report, "file": Path(osu_path).name}
+
     # -- helpers (not exposed: underscored) ----------------------------------
     def _save_dialog(self, filename: str, file_types) -> str | None:
         import webview

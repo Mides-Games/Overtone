@@ -383,6 +383,38 @@ class ExportTests(_IsolatedConfig):
         self.assertEqual(_api_with_points().inject_preview("C:/does/not/exist.osu")["key"], "bad_file")
 
 
+class CompareBridgeTests(_IsolatedConfig):
+    def _report_for(self, api, text):
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = Path(tmp) / "map.osu"
+            beatmap.write_text(text, encoding="utf-8")
+            return api.compare(str(beatmap))
+
+    def test_identical_map_reports_clean_sections(self) -> None:
+        api = _api_with_points()
+        text = ta.osu_beatmap_text(api._analysis, "audio.mp3")
+        reply = self._report_for(api, text)
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["file"], "map.osu")
+        self.assertEqual(len(reply["report"]["sections"]), 2)
+        self.assertEqual(reply["report"]["findings"], [])
+        json.dumps(reply["report"])
+
+    def test_shifted_map_line_warns(self) -> None:
+        api = _api_with_points()
+        lines = ta.osu_beatmap_text(api._analysis, "audio.mp3").splitlines()
+        lines = [line.replace("9000,", "9030,") if line.startswith("9000,") else line
+                 for line in lines]
+        reply = self._report_for(api, "\n".join(lines))
+        offset = [f for f in reply["report"]["findings"] if f["key"] == "map_offset"]
+        self.assertEqual(len(offset), 1)
+        self.assertEqual(offset[0]["values"], {"ms": "30.0"})
+
+    def test_compare_needs_a_result_and_a_real_file(self) -> None:
+        self.assertEqual(web.Api().compare("C:/x.osu")["key"], "first")
+        self.assertEqual(_api_with_points().compare("C:/does/not/exist.osu")["key"], "bad_file")
+
+
 class DropTests(_IsolatedConfig):
     def test_corrupt_and_oversized_drops_are_refused(self) -> None:
         api = web.Api()

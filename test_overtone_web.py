@@ -194,5 +194,209 @@ class EndToEndBridgeTests(_IsolatedConfig):
         self.assertAlmostEqual(doubled["result"]["global_bpm"], 2 * payload["global_bpm"], places=1)
 
 
+class _FakeWindow:
+    """Stands in for the pywebview window: answers file dialogs, nothing else."""
+
+    def __init__(self, choice: str | None) -> None:
+        self.choice = choice
+
+    def create_file_dialog(self, *args, **kwargs):
+        return [self.choice] if self.choice else None
+
+
+def _api_with_points() -> web.Api:
+    api = web.Api()
+    api._analysis = _analysis([ta.TimingPoint(1000.0, 120.0, 0.9, 0),
+                               ta.TimingPoint(9000.0, 150.0, 0.8, 10)])
+    return api
+
+
+class EditTests(_IsolatedConfig):
+    def test_apply_replaces_offset_and_bpm(self) -> None:
+        api = _api_with_points()
+        # 9200 ms stays off the previous 500 ms grid, so no snap hides the edit.
+        reply = api.edit_apply(1, 9200.0, 160.0)
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["selected"], 1)
+        self.assertAlmostEqual(api._analysis.points[1].offset_ms, 9200.0)
+        self.assertAlmostEqual(api._analysis.points[1].bpm, 160.0)
+        json.dumps(reply["result"])
+
+    def test_add_inserts_sorted_and_selects_the_new_point(self) -> None:
+        api = _api_with_points()
+        reply = api.edit_add(5000.0, 140.0)
+        self.assertTrue(reply["ok"])
+        self.assertEqual([p.offset_ms for p in api._analysis.points], [1000.0, 5000.0, 9000.0])
+        self.assertEqual(reply["selected"], 1)
+        self.assertEqual(reply["result"]["points"][1]["bpm"], 140.0)
+
+    def test_delete_removes_and_clamps_the_selection(self) -> None:
+        api = _api_with_points()
+        reply = api.edit_delete(1)
+        self.assertTrue(reply["ok"])
+        self.assertEqual(len(api._analysis.points), 1)
+        self.assertEqual(reply["selected"], 0)
+
+    def test_delete_refuses_the_first_point_like_the_tk_editor(self) -> None:
+        reply = _api_with_points().edit_delete(0)
+        self.assertFalse(reply["ok"])
+        self.assertIn("anchors", reply["detail"])
+
+    def test_nudge_shifts_and_clamps_at_zero(self) -> None:
+        api = _api_with_points()
+        reply = api.edit_nudge(0, -5000.0)
+        self.assertTrue(reply["ok"])
+        self.assertAlmostEqual(api._analysis.points[0].offset_ms, 0.0)
+        self.assertEqual(reply["selected"], 0)
+
+    def test_rescale_section_doubles_one_sections_bpm(self) -> None:
+        api = _api_with_points()
+        reply = api.edit_rescale(0, 2.0)
+        self.assertTrue(reply["ok"])
+        self.assertAlmostEqual(api._analysis.points[0].bpm, 240.0)
+        self.assertEqual(reply["selected"], 0)
+        self.assertFalse(api.edit_rescale(0, 3.0)["ok"])
+
+    def test_edits_need_a_result_and_valid_values(self) -> None:
+        self.assertEqual(web.Api().edit_apply(0, 1000.0, 120.0)["key"], "first")
+        self.assertEqual(web.Api().edit_add(1000.0, 120.0)["key"], "first")
+        self.assertEqual(web.Api().edit_delete(0)["key"], "first")
+        self.assertEqual(web.Api().edit_nudge(0, 5.0)["key"], "first")
+        self.assertEqual(web.Api().edit_rescale(0, 2.0)["key"], "first")
+        api = _api_with_points()
+        self.assertFalse(api.edit_apply(7, 1000.0, 120.0)["ok"])
+        self.assertFalse(api.edit_apply(0, 1000.0, -3.0)["ok"])
+        self.assertFalse(api.edit_add(1000.0, float("nan"))["ok"])
+
+
+_OSU_TEXT = "\n".join([
+    "osu file format v14",
+    "",
+    "[General]",
+    "AudioFilename: audio.mp3",
+    "",
+    "[TimingPoints]",
+    "1000,400,4,1,0,100,1,0",
+    "2000,-50,4,2,0,100,0,0",
+    "",
+    "[HitObjects]",
+    "",
+])
+
+
+class ExportTests(_IsolatedConfig):
+    def test_osu_text_matches_the_engine_verbatim(self) -> None:
+        api = _api_with_points()
+        reply = api.osu_text()
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["text"], ta.osu_timing_text(api._analysis))
+        self.assertEqual(web.Api().osu_text()["key"], "first")
+
+    def test_save_csv_writes_the_same_rows_as_the_engine(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = str(Path(tmp) / "t.csv")
+            api = _api_with_points()
+            api._window = _FakeWindow(target)
+            reply = api.save_csv()
+            self.assertTrue(reply["ok"])
+            self.assertEqual(reply["path"], target)
+            lines = Path(target).read_text(encoding="utf-8").splitlines()
+            self.assertEqual(lines[0], "offset_ms,bpm,beat_index,confidence")
+            self.assertEqual(len(lines), 3)
+
+    def test_save_dialog_cancel_is_silence_not_an_error(self) -> None:
+        api = _api_with_points()
+        api._window = _FakeWindow(None)
+        self.assertEqual(api.save_csv()["key"], "cancelled")
+        self.assertEqual(api.save_click()["key"], "cancelled")
+        self.assertEqual(api.save_osz()["key"], "cancelled")
+
+    def test_save_click_writes_a_wav(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = str(Path(tmp) / "click.wav")
+            api = _api_with_points()
+            api._window = _FakeWindow(target)
+            self.assertTrue(api.save_click()["ok"])
+            self.assertGreater(Path(target).stat().st_size, 1000)
+
+    def test_save_osz_bundles_audio_plus_timing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "song.wav"
+            _drum_track(wav, [(0.5, 128.0)], duration=8.0)
+            target = str(Path(tmp) / "song.osz")
+            api = _api_with_points()
+            api._cfg["file"] = str(wav)
+            api._window = _FakeWindow(target)
+            reply = api.save_osz()
+            self.assertTrue(reply["ok"])
+            self.assertGreater(Path(target).stat().st_size, 1000)
+
+    def test_inject_dry_run_writes_nothing_then_apply_writes_with_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = Path(tmp) / "map.osu"
+            beatmap.write_text(_OSU_TEXT, encoding="utf-8")
+            api = _api_with_points()
+            prev = api.inject_preview(str(beatmap))
+            self.assertTrue(prev["ok"])
+            self.assertEqual(prev["summary"]["reds_replaced"], 1)
+            self.assertEqual(prev["summary"]["greens_kept"], 1)
+            self.assertEqual(beatmap.read_text(encoding="utf-8"), _OSU_TEXT)
+            done = api.inject_apply(str(beatmap))
+            self.assertTrue(done["ok"])
+            self.assertEqual(done["summary"]["reds_added"], 2)
+            self.assertTrue(Path(str(beatmap) + ".bak").is_file())
+            # A second inject keeps the pristine original, never the last write.
+            api.inject_apply(str(beatmap))
+            self.assertEqual(Path(str(beatmap) + ".bak").read_text(encoding="utf-8"), _OSU_TEXT)
+
+    def test_inject_needs_a_result_and_a_real_file(self) -> None:
+        self.assertEqual(web.Api().inject_preview("C:/x.osu")["key"], "first")
+        self.assertEqual(web.Api().inject_apply("C:/x.osu")["key"], "first")
+        self.assertEqual(_api_with_points().inject_preview("C:/does/not/exist.osu")["key"], "bad_file")
+
+
+class DropTests(_IsolatedConfig):
+    def test_corrupt_and_oversized_drops_are_refused(self) -> None:
+        api = web.Api()
+        options = {"delta": 1.5, "persistence": 12, "confidence": 75, "pulse": "auto",
+                   "prefer_map_bpm": True, "refine_beats": True}
+        self.assertEqual(api.analyze_bytes("a.wav", "!!!not-base64!!!", options)["key"], "bad_drop")
+        with mock.patch.object(ta, "MAX_OSZ_AUDIO_BYTES", 10):
+            import base64
+            self.assertEqual(
+                api.analyze_bytes("a.wav", base64.b64encode(b"0123456789!").decode(), options)["key"],
+                "too_big")
+
+    def test_dropped_bytes_analyse_like_the_same_file_on_disk(self) -> None:
+        import base64
+
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "drums.wav"
+            _drum_track(wav, [(0.5, 128.0)], duration=16.0)
+            options = {"delta": 1.5, "persistence": 12, "confidence": 75, "pulse": "auto",
+                       "prefer_map_bpm": True, "refine_beats": True}
+            direct = ta.analyze_audio(str(wav), 1.5, 12, True, 0.75)
+            api = web.Api()
+            events: list[tuple[str, object]] = []
+            done = threading.Event()
+
+            def emit(handler, payload):
+                events.append((handler, payload))
+                if handler in ("onResult", "onError"):
+                    done.set()
+
+            api._emit = emit
+            staged = Path(tmp) / "staged"
+            with mock.patch.object(web, "DROP_DIR", staged):
+                reply = api.analyze_bytes("drums.wav", base64.b64encode(wav.read_bytes()).decode(), options)
+            self.assertTrue(reply["ok"])
+            self.assertTrue(done.wait(120), "dropped analysis did not finish")
+            self.assertTrue((staged / "drums.wav").is_file())
+        kind, payload = events[-1]
+        self.assertEqual(kind, "onResult")
+        self.assertEqual(payload["points"], web.analysis_payload(direct)["points"])
+        self.assertAlmostEqual(payload["global_bpm"], direct.global_bpm)
+
+
 if __name__ == "__main__":
     unittest.main()

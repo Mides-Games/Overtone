@@ -35,6 +35,14 @@ LOGO_PNG = HERE / "assets" / "logo.png"
 
 AUDIO_TYPES = ("Audio files (*.wav;*.flac;*.ogg;*.mp3;*.m4a;*.aac;*.opus;*.aiff)",
                "All files (*.*)")
+OSU_TYPES = ("osu! beatmap (*.osu)", "All files (*.*)")
+CSV_TYPES = ("CSV (*.csv)", "All files (*.*)")
+WAV_TYPES = ("WAV (*.wav)", "All files (*.*)")
+OSZ_TYPES = ("osu! beatmap package (*.osz)", "All files (*.*)")
+#: Dropped files are staged here so "analyze the last song", the song header
+#: and .osz export keep working after the drag: a temp file that vanishes
+#: after the analysis would leave all three pointing at nothing.
+DROP_DIR = Path(os.environ.get("LOCALAPPDATA", str(HERE))) / "Overtone" / "drops"
 PULSE_FACTORS = {"auto": 0.0, "/4": 0.25, "/2": 0.5, "x1": 1.0, "x2": 2.0, "x4": 4.0}
 #: The trace needs the shape of the onset envelope, not its 40 k frames.
 ONSET_BINS = 1600
@@ -205,6 +213,47 @@ class Api:
             params = self._params(options)
         except (TypeError, ValueError, KeyError):
             return {"ok": False, "key": "bad_values"}
+        return self._launch(path, params, options)
+
+    def analyze_bytes(self, filename: str, data_b64: str, options: dict) -> dict:
+        """Analyse a file dragged onto the window.
+
+        JavaScript cannot hand over a local path (the File API deliberately
+        hides it), so the bytes travel as base64 and are staged under
+        ``DROP_DIR`` first. From there on it is exactly an ``analyze``: the
+        staged copy becomes the remembered file, so re-analysing, the header
+        and .osz export all work.
+        """
+        try:
+            raw = base64.b64decode(data_b64, validate=True)
+        except ValueError:
+            return {"ok": False, "key": "bad_drop"}
+        if len(raw) > ta.MAX_OSZ_AUDIO_BYTES:
+            return {"ok": False, "key": "too_big"}
+        try:
+            params = self._params(options)
+        except (TypeError, ValueError, KeyError):
+            return {"ok": False, "key": "bad_values"}
+        DROP_DIR.mkdir(parents=True, exist_ok=True)
+        stem = Path(str(filename)).name[:80] or "audio.wav"
+        target = DROP_DIR / stem
+        for n in range(2, 1000):
+            if not target.exists():
+                break
+            target = DROP_DIR / f"{target.stem}-{n}{target.suffix}"
+        try:
+            target.write_bytes(raw)
+        except OSError as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        reply = self._launch(str(target), params, options)
+        if not reply.get("ok"):
+            try:
+                target.unlink()
+            except OSError:
+                pass
+        return reply
+
+    def _launch(self, path: str, params: dict, options: dict) -> dict:
         if not self._busy.acquire(blocking=False):
             return {"ok": False, "key": "busy"}
         self._remember(path, options)
@@ -229,7 +278,169 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "result": analysis_payload(self._analysis)}
 
+    # -- manual editing (same helpers, same guards as the Tk editor) -----
+    def _edited(self, index: int | None, seek: float | None) -> dict:
+        points = self._analysis.points if self._analysis is not None else []
+        if not points:
+            selected = -1
+        elif seek is None:
+            selected = max(0, min(int(index), len(points) - 1))
+        else:
+            selected = min(range(len(points)),
+                           key=lambda n: abs(points[n].offset_ms - seek))
+        return {"ok": True, "result": analysis_payload(self._analysis),
+                "selected": selected}
+
+    def edit_apply(self, index: int, offset_ms: float, bpm: float) -> dict:
+        """Replace one point's offset/BPM, like the Tk editor's Apply."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            index = int(index)
+            offset = float(offset_ms)
+            self._analysis.points = ta.update_timing_point(
+                self._analysis.points, self._analysis.beats, index, offset, float(bpm))
+        except (ValueError, TypeError, IndexError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return self._edited(index, offset)
+
+    def edit_add(self, offset_ms: float, bpm: float) -> dict:
+        """Insert a hand-placed point, keeping the list sorted by offset."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            offset = float(offset_ms)
+            self._analysis.points = ta.add_timing_point(
+                self._analysis.points, self._analysis.beats, offset, float(bpm))
+        except (ValueError, TypeError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return self._edited(None, offset)
+
+    def edit_delete(self, index: int) -> dict:
+        """Remove one point. The first point anchors the map and stays."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            index = int(index)
+            self._analysis.points = ta.delete_timing_point(self._analysis.points, index)
+        except (ValueError, TypeError, IndexError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return self._edited(index, None)
+
+    def edit_nudge(self, index: int, delta_ms: float) -> dict:
+        """Shift one point's offset, clamped at 0 ms."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            index = int(index)
+            before = self._analysis.points[index].offset_ms
+            target = before + float(delta_ms)
+            self._analysis.points = ta.nudge_timing_point(
+                self._analysis.points, self._analysis.beats, index, float(delta_ms))
+        except (ValueError, TypeError, IndexError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return self._edited(index, target)
+
+    def edit_rescale(self, index: int, factor: float) -> dict:
+        """Multiply one section's BPM (per-section x2//2 fix)."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            index = int(index)
+            self._analysis.points = ta.rescale_section(
+                self._analysis.points, index, float(factor))
+        except (ValueError, TypeError, IndexError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return self._edited(index, None)
+
+    # -- exports and .osu injection (same engine calls as the Tk GUI) -----
+    def osu_text(self) -> dict:
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        return {"ok": True, "text": ta.osu_timing_text(self._analysis)}
+
+    def save_csv(self) -> dict:
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        target = self._save_dialog("overtone-timing.csv", CSV_TYPES)
+        if not target:
+            return {"ok": False, "key": "cancelled"}
+        try:
+            ta.export_csv(self._analysis, target)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "path": target}
+
+    def save_click(self) -> dict:
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        target = self._save_dialog("overtone-click.wav", WAV_TYPES)
+        if not target:
+            return {"ok": False, "key": "cancelled"}
+        try:
+            ta.export_click_track(self._analysis, target)
+        except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "path": target}
+
+    def save_osz(self) -> dict:
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        audio = self._cfg.get("file") or self._analysis.source
+        stem = Path(str(audio)).stem or "overtone"
+        target = self._save_dialog(f"{stem}.osz", OSZ_TYPES)
+        if not target:
+            return {"ok": False, "key": "cancelled"}
+        try:
+            info = ta.export_osz(self._analysis, target, audio_path=audio)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "path": target, "points": info["points"]}
+
+    def pick_osu(self) -> str | None:
+        import webview
+        if self._window is None:
+            return None
+        chosen = self._window.create_file_dialog(webview.OPEN_DIALOG, file_types=OSU_TYPES)
+        if not chosen:
+            return None
+        return chosen[0] if isinstance(chosen, (list, tuple)) else str(chosen)
+
+    def inject_preview(self, osu_path: str) -> dict:
+        """Dry run first, like the Tk GUI's confirmation dialog data."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not Path(str(osu_path)).is_file():
+            return {"ok": False, "key": "bad_file"}
+        try:
+            summary = ta.inject_osu_timing_points(osu_path, self._analysis, dry_run=True)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "summary": summary}
+
+    def inject_apply(self, osu_path: str) -> dict:
+        """Replace the red lines, with a .bak beside the original (never overwritten)."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not Path(str(osu_path)).is_file():
+            return {"ok": False, "key": "bad_file"}
+        try:
+            summary = ta.inject_osu_timing_points(osu_path, self._analysis, backup=True)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "summary": summary}
+
     # -- helpers (not exposed: underscored) ----------------------------------
+    def _save_dialog(self, filename: str, file_types) -> str | None:
+        import webview
+        if self._window is None:
+            return None
+        chosen = self._window.create_file_dialog(
+            webview.SAVE_DIALOG, save_filename=filename, file_types=file_types)
+        if not chosen:
+            return None
+        return chosen[0] if isinstance(chosen, (list, tuple)) else str(chosen)
+
     def _worker(self, path: str, params: dict) -> None:
         try:
             result = run_analysis(path, params, self._emit_progress)

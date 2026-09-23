@@ -31,7 +31,20 @@ const I18N = {
     warn_late_first: "The first red line is at {line} s but the music starts at {beat} s. Everything before it inherits this timing — check the intro.",
     warn_loose: "The grid fits loosely (residual {ms} ms). The tempo may drift; listen to the click track.",
     bad_file: "Choose an existing audio file first.", bad_values: "Check the detection values.",
+    bad_drop: "That drop could not be read as audio.", too_big: "That file is over 64 MB — not a beatmap's audio.",
     busy: "An analysis is already running.", first: "Analyze a song first.", no_grid: "No stored beat grid — analyze again.",
+    no_selection: "Select a timing point first.",
+    actions_copy: "Copy .osu", actions_csv: "CSV", actions_click: "Click track", actions_osz: ".osz package", actions_inject: "Inject .osu…",
+    e_offset: "Offset (ms)", e_bpm: "BPM", e_apply: "Apply", e_add: "Add", e_delete: "Delete",
+    edited: "Point #{n}: {bpm} BPM · {ms} ms", added: "Added {bpm} BPM at {ms} ms", deleted: "Deleted point #{n}",
+    section_rescaled: "Section #{n}: {bpm} BPM",
+    copied: "Timing points copied — paste into the .osu [TimingPoints].",
+    clipboard_failed: "Could not reach the clipboard: {detail}",
+    saved_to: "Saved to {path}",
+    injected: "Injected {added} red lines ({replaced} replaced, {greens} green kept).",
+    inject_confirm: "Replace {reds} red lines with {n} new ones in {file}?{warn}",
+    inject_warn: "\nThe .osu audio ({osu}) differs from the analyzed file ({src}).",
+    drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
     done: "Done: {n} timing points · {bpm} BPM", rescaled: "Pulse ×{f}: {n} timing points · {bpm} BPM",
     error: "Error: {detail}",
   },
@@ -63,7 +76,20 @@ const I18N = {
     warn_late_first: "La primera línea roja está en {line} s pero la música empieza en {beat} s. Todo lo anterior hereda ese timing — revisá la intro.",
     warn_loose: "La rejilla ajusta con holgura (residuo {ms} ms). El tempo puede derivar; escuchá la pista de clic.",
     bad_file: "Elegí primero un archivo de audio existente.", bad_values: "Revisá los valores de detección.",
+    bad_drop: "No se pudo leer lo soltado como audio.", too_big: "Ese archivo supera los 64 MB — no es el audio de un beatmap.",
     busy: "Ya hay un análisis en curso.", first: "Analizá una canción primero.", no_grid: "No hay rejilla guardada — analizá de nuevo.",
+    no_selection: "Elegí primero un timing point.",
+    actions_copy: "Copiar .osu", actions_csv: "CSV", actions_click: "Pista de clic", actions_osz: "Paquete .osz", actions_inject: "Inyectar .osu…",
+    e_offset: "Offset (ms)", e_bpm: "BPM", e_apply: "Aplicar", e_add: "Añadir", e_delete: "Borrar",
+    edited: "Punto #{n}: {bpm} BPM · {ms} ms", added: "Añadido {bpm} BPM en {ms} ms", deleted: "Borrado el punto #{n}",
+    section_rescaled: "Sección #{n}: {bpm} BPM",
+    copied: "Timing points copiados — pegalos en el [TimingPoints] del .osu.",
+    clipboard_failed: "No se pudo llegar al portapapeles: {detail}",
+    saved_to: "Guardado en {path}",
+    injected: "Inyectadas {added} líneas rojas ({replaced} reemplazadas, {greens} verdes intactas).",
+    inject_confirm: "¿Reemplazar {reds} líneas rojas por {n} nuevas en {file}?{warn}",
+    inject_warn: "\nEl audio del .osu ({osu}) difiere del analizado ({src}).",
+    drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
     done: "Listo: {n} timing points · {bpm} BPM", rescaled: "Pulso ×{f}: {n} timing points · {bpm} BPM",
     error: "Error: {detail}",
   },
@@ -167,6 +193,12 @@ function setBusy(busy, message) {
   $("analyzeText").textContent = t(busy ? "analyzing" : "analyze");
   $("progress").hidden = !busy;
   if (message !== undefined) $("progressText").textContent = message;
+  syncActions();
+}
+
+function syncActions() {
+  const on = !!S.result && !S.busy;
+  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn"].forEach((id) => { $(id).disabled = !on; });
 }
 
 async function analyze() {
@@ -197,11 +229,18 @@ window.overtone = {
   onProgress(message) { $("progressText").textContent = message; },
   onResult(result) {
     setBusy(false);
+    // A dragged file has no remembered entry yet: the staged copy Python
+    // analysed becomes the current song, so the header names it.
+    if (S.pendingDrop) {
+      setFile({ path: result.path, name: result.source, folder: result.source,
+                size_mb: S.pendingDrop.size_mb, exists: true });
+      S.pendingDrop = null;
+    }
     S.selected = -1;
     showResult(result);
     toast(t("done", { n: result.points.length, bpm: result.global_bpm.toFixed(2) }));
   },
-  onError(detail) { setBusy(false); toast(t("error", { detail }), true); },
+  onError(detail) { S.pendingDrop = null; setBusy(false); toast(t("error", { detail }), true); },
 };
 
 // ------------------------------------------------------------------ rendering
@@ -215,6 +254,7 @@ function showResult(result) {
   S.result = result;
   $("empty").hidden = true;
   $("results").hidden = false;
+  syncActions();
   renderResult(result);
 }
 
@@ -282,7 +322,187 @@ function renderDetail() {
           [t("d_conf"), `${c}%`],
           [t("d_span"), `${fmtTime(start)} → ${next ? fmtTime(end) : t("d_end")}`],
           ["", t("d_bars", { n: bars })]])}
+    <div class="editor">
+      <div class="grid-2">
+        <div class="field"><label>${t("e_offset")}</label>
+          <input class="input num" id="editOffset" type="number" step="0.1" value="${p.offset_ms.toFixed(1)}"></div>
+        <div class="field"><label>${t("e_bpm")}</label>
+          <input class="input num" id="editBpm" type="number" step="0.001" value="${p.bpm.toFixed(3)}"></div>
+      </div>
+      <div class="editor-row">
+        <button class="btn small primary" data-action="apply">${t("e_apply")}</button>
+        <button class="btn small" data-action="add">${t("e_add")}</button>
+        <button class="btn small" data-action="delete">${t("e_delete")}</button>
+      </div>
+      <div class="editor-row">
+        <button class="btn small" data-action="nudge--5">−5 ms</button>
+        <button class="btn small" data-action="nudge-5">+5 ms</button>
+        <button class="btn small" data-action="half-s">÷2 §</button>
+        <button class="btn small" data-action="double-s">×2 §</button>
+      </div>
+    </div>
     <div class="detail-note">${t(p.meter_known ? "d_meter_known" : "d_meter_guess")}</div>`;
+}
+
+// ------------------------------------------------------------------ point editing
+function editFailure(reply) {
+  toast(reply.key === "error" ? t("error", { detail: reply.detail || "" }) : t(reply.key), true);
+}
+
+function showEditResult(reply, message) {
+  S.selected = reply.selected;
+  showResult(reply.result);
+  toast(message);
+}
+
+async function editAction(action) {
+  if (!api() || S.busy || !S.result) return;
+  const sel = S.selected;
+  const num = (id) => parseFloat($(id) && $(id).value);
+  let reply = null, message = null;
+  if (action === "apply" || action === "add") {
+    if (action === "apply" && sel < 0) { toast(t("no_selection"), true); return; }
+    reply = action === "apply"
+      ? await api().edit_apply(sel, num("editOffset"), num("editBpm"))
+      : await api().edit_add(num("editOffset"), num("editBpm"));
+    if (reply.ok) {
+      const q = reply.result.points[reply.selected];
+      message = action === "apply"
+        ? t("edited", { n: reply.selected + 1, bpm: q.bpm.toFixed(3), ms: q.offset_ms.toFixed(1) })
+        : t("added", { bpm: q.bpm.toFixed(2), ms: q.offset_ms.toFixed(1) });
+    }
+  } else if (action === "delete") {
+    if (sel < 0) { toast(t("no_selection"), true); return; }
+    reply = await api().edit_delete(sel);
+    if (reply.ok) message = t("deleted", { n: sel + 1 });
+  } else if (action === "nudge--5" || action === "nudge-5") {
+    if (sel < 0) { toast(t("no_selection"), true); return; }
+    reply = await api().edit_nudge(sel, action === "nudge--5" ? -5 : 5);
+    if (reply.ok) {
+      const q = reply.result.points[reply.selected];
+      message = t("edited", { n: reply.selected + 1, bpm: q.bpm.toFixed(3), ms: q.offset_ms.toFixed(1) });
+    }
+  } else if (action === "half-s" || action === "double-s") {
+    if (sel < 0) { toast(t("no_selection"), true); return; }
+    reply = await api().edit_rescale(sel, action === "half-s" ? 0.5 : 2);
+    if (reply.ok) {
+      const q = reply.result.points[reply.selected];
+      message = t("section_rescaled", { n: reply.selected + 1, bpm: q.bpm.toFixed(2) });
+    }
+  }
+  if (!reply) return;
+  if (!reply.ok) { editFailure(reply); return; }
+  showEditResult(reply, message);
+}
+
+// ------------------------------------------------------------------ exports + inject
+async function copyOsu() {
+  if (!api() || !S.result) return;
+  const reply = await api().osu_text();
+  if (!reply.ok) { editFailure(reply); return; }
+  try {
+    await navigator.clipboard.writeText(reply.text);
+    toast(t("copied"));
+    return;
+  } catch (err) {
+    // A local file page may not get the async clipboard; the legacy path works.
+    const box = document.createElement("textarea");
+    box.value = reply.text;
+    document.body.appendChild(box);
+    box.select();
+    try {
+      if (!document.execCommand("copy")) throw new Error("execCommand");
+      toast(t("copied"));
+    } catch (err2) {
+      toast(t("clipboard_failed", { detail: String((err2 && err2.message) || err) }), true);
+    }
+    box.remove();
+  }
+}
+
+async function saveAs(kind) {
+  if (!api() || !S.result || S.busy) return;
+  const reply = await api()[kind]();
+  if (!reply.ok) {
+    if (reply.key === "cancelled") return;  // closed the dialog: silence, not an error
+    editFailure(reply);
+    return;
+  }
+  toast(t("saved_to", { path: reply.path }));
+}
+
+async function injectOsu() {
+  if (!api() || !S.result || S.busy) return;
+  const target = await api().pick_osu();
+  if (!target) return;
+  const prev = await api().inject_preview(target);
+  if (!prev.ok) { editFailure(prev); return; }
+  const s = prev.summary;
+  const warn = s.audio_mismatch ? t("inject_warn", { osu: s.osu_audio, src: s.analysed_audio }) : "";
+  const name = String(target).split(/[\\/]/).pop();
+  if (!confirm(t("inject_confirm", { reds: s.reds_replaced, n: s.reds_added, file: name, warn }))) return;
+  const done = await api().inject_apply(target);
+  if (!done.ok) { editFailure(done); return; }
+  const d = done.summary;
+  toast(t("injected", { added: d.reds_added, replaced: d.reds_replaced, greens: d.greens_kept }));
+}
+
+// ------------------------------------------------------------------ drag and drop
+// The File API hides local paths on purpose, so a drop cannot reuse analyze():
+// the bytes travel as base64 and Python stages them before analysing.
+let dragDepth = 0;
+
+function hasFiles(e) {
+  return [...(e.dataTransfer ? e.dataTransfer.types : [])].some((k) => String(k).toLowerCase() === "files");
+}
+
+const AUDIO_EXT = /\.(wav|flac|ogg|mp3|m4a|aac|opus|aiff?)$/i;
+
+async function dropAnalyze(file) {
+  if (!api() || S.busy) return;
+  const options = readOptions();
+  if (!options) { toast(t("bad_values"), true); openDrawer(true); return; }
+  setBusy(true, file.name);
+  let dataUrl = "";
+  try {
+    dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  } catch (err) {
+    setBusy(false);
+    toast(t("bad_drop"), true);
+    return;
+  }
+  S.pendingDrop = { name: file.name, size_mb: Math.round((file.size / 1048576) * 10) / 10 };
+  const reply = await api().analyze_bytes(file.name, String(dataUrl).split(",")[1] || "", options);
+  if (!reply.ok) { S.pendingDrop = null; setBusy(false); toast(t(reply.key, { detail: reply.detail || "" }), true); }
+}
+
+function wireDrop() {
+  const overlay = $("dropOverlay");
+  document.addEventListener("dragenter", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth++;
+    overlay.hidden = false;
+  });
+  document.addEventListener("dragover", (e) => { if (!overlay.hidden) e.preventDefault(); });
+  document.addEventListener("dragleave", () => {
+    if (overlay.hidden) return;
+    if (--dragDepth <= 0) { dragDepth = 0; overlay.hidden = true; }
+  });
+  document.addEventListener("drop", (e) => {
+    if (overlay.hidden) return;
+    e.preventDefault();
+    dragDepth = 0;
+    overlay.hidden = true;
+    const file = [...(e.dataTransfer.files || [])].find((f) => AUDIO_EXT.test(f.name));
+    if (!file) { toast(t("bad_drop"), true); return; }
+    dropAnalyze(file);
+  });
 }
 
 // ------------------------------------------------------------------ tempo trace
@@ -475,6 +695,16 @@ function wire() {
   $("halfBtn").onclick = () => rescale(0.5);
   $("doubleBtn").onclick = () => rescale(2);
   $("rows").onclick = (e) => { const tr = e.target.closest("tr"); if (tr) selectPoint(+tr.dataset.i); };
+  $("detail").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-action]");
+    if (btn) editAction(btn.dataset.action);
+  });
+  $("copyOsuBtn").onclick = copyOsu;
+  $("csvBtn").onclick = () => saveAs("save_csv");
+  $("clickBtn").onclick = () => saveAs("save_click");
+  $("oszBtn").onclick = () => saveAs("save_osz");
+  $("injectBtn").onclick = injectOsu;
+  wireDrop();
   $("trace").addEventListener("mousemove", onTraceMove);
   $("trace").addEventListener("mouseleave", () => { $("tip").hidden = true; drawTrace(); });
   $("trace").addEventListener("click", (e) => {
@@ -497,7 +727,9 @@ function wire() {
   window.addEventListener("resize", () => drawTrace());
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { openDrawer(false); return; }
-    if (e.target.tagName === "INPUT") return;
+    // Typing an offset or a detection value must not trigger shortcuts:
+    // Enter inside the point editor would otherwise start a full analysis.
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
     if (S.result && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
       e.preventDefault();
       const n = S.result.points.length, step = e.key === "ArrowDown" ? 1 : -1;
@@ -518,6 +750,7 @@ async function boot() {
   applyOptions(st.options);
   setFile(st.file);
   translate();
+  syncActions();
   if (st.autorun && S.file) analyze();
 }
 

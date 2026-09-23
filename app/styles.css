@@ -288,6 +288,29 @@ kbd {
 .stat .value.small { font: 600 14px/1.2 var(--font); margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
 
 .warnings { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+
+.actions { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+
+.editor { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+.editor-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.drop-overlay {
+  position: fixed; inset: 12px; z-index: 30;
+  display: grid; place-items: center;
+  background: rgba(5, 8, 13, .72);
+  backdrop-filter: blur(3px);
+  border: 2px dashed var(--accent);
+  border-radius: 24px;
+}
+.drop-overlay .drop-msg { text-align: center; }
+.drop-overlay .halo {
+  width: 76px; height: 76px; margin: 0 auto 20px; border-radius: 26px;
+  display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.drop-overlay h2 { margin: 0 0 8px; font: 600 22px/1.2 var(--font-display); }
+.drop-overlay p { margin: 0; color: var(--muted); }
+
 .banner {
   display: flex; align-items: flex-start; gap: 12px;
   padding: 14px 18px;

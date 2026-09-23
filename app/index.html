@@ -109,6 +109,15 @@
 
         <div class="warnings" id="warnings"></div>
 
+        <div class="actions">
+          <button class="btn small" id="copyOsuBtn"><span data-i18n="actions_copy">Copy .osu</span></button>
+          <button class="btn small" id="csvBtn"><span data-i18n="actions_csv">CSV</span></button>
+          <button class="btn small" id="clickBtn"><span data-i18n="actions_click">Click track</span></button>
+          <button class="btn small" id="oszBtn"><span data-i18n="actions_osz">.osz package</span></button>
+          <div class="spacer"></div>
+          <button class="btn small" id="injectBtn"><span data-i18n="actions_inject">Inject .osu…</span></button>
+        </div>
+
         <div class="card trace-card">
           <div class="card-head">
             <div>
@@ -213,6 +222,15 @@
 </aside>
 
 <div class="toast" id="toast"></div>
+<div class="drop-overlay" id="dropOverlay" hidden>
+  <div class="drop-msg">
+    <div class="halo">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l2-6 3 12 3-9 2 5 2-2h5"/></svg>
+    </div>
+    <h2 data-i18n="drop_title">Drop the audio</h2>
+    <p data-i18n="drop_body">Release to time it with the current detection settings.</p>
+  </div>
+</div>
 <script src="app.js"></script>
 </body>
 </html>

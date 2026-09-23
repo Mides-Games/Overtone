@@ -43,7 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import soundfile as sf  # noqa: E402
 
 import benchmark as bm  # noqa: E402
-import timing_analyzer as ta  # noqa: E402
+import overtone as ta  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 SNAPSHOT = HERE / "bpm_snapshot.json"

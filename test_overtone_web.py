@@ -2,7 +2,7 @@
 
 No window is opened: the bridge is plain Python, so everything the frontend
 receives can be checked here. The engine itself is covered by
-test_timing_analyzer.py; these tests pin that the bridge (1) calls it exactly
+test_overtone.py; these tests pin that the bridge (1) calls it exactly
 as the Tk GUI does, (2) returns only JSON types, and (3) never touches the
 user's real ~/.overtone.json.
 """
@@ -16,9 +16,9 @@ from unittest import mock
 import numpy as np
 
 import overtone_web as web
-import timing_analyzer as ta
-from test_timing_analyzer import _drum_track
+import overtone as ta
 
+from test_overtone import _drum_track
 
 def _analysis(points, beats=None, engine="precision", residual=0.4, onset_frames=5000):
     beats = np.arange(0.5, 60.0, 0.4) if beats is None else np.asarray(beats, dtype=float)

@@ -67,7 +67,7 @@ The full engineering log, including the approaches that were tried and dropped, 
 
 ```bash
 python -m pip install -r requirements.lock   # exact versions behind the numbers below
-python timing_analyzer.py
+python overtone.py
 ```
 
 WAV/FLAC/OGG open directly via SoundFile. For MP3/M4A/AAC install FFmpeg and put it on
@@ -76,7 +76,7 @@ WAV/FLAC/OGG open directly via SoundFile. For MP3/M4A/AAC install FFmpeg and put
 CLI analysis:
 
 ```bash
-python timing_analyzer.py "song.wav" --stats --csv timing.csv --click click.wav
+python overtone.py "song.wav" --stats --csv timing.csv --click click.wav
 ```
 
 | Flag | Effect |
@@ -282,7 +282,7 @@ read as an upper bound rather than a promise about real masters.
 ## Testing
 
 ```bash
-python -m unittest test_timing_analyzer -v      # 56 tests
+python -m unittest test_overtone -v      # 56 tests
 python bench/gates.py bpm-snapshot              # the octave, pinned per fixture
 python bench/gates.py coverage                  # density changes inside a section
 python bench/golden.py check                    # per-stage vectors, 24/24
@@ -363,8 +363,8 @@ offsets, newer `.osu` versions).
 ## Development
 
 ```
-timing_analyzer.py        v3 engine + Tk GUI + CLI
-test_timing_analyzer.py   55 unit tests
+overtone.py               v3 engine + Tk GUI + CLI
+test_overtone.py          55 unit tests
 bench/benchmark.py        synthetic accuracy harness
 docs/                     v4 design documents
 timeline.md               engineering log — one entry per release, with what was rejected

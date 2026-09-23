@@ -42,7 +42,7 @@ import numpy as np
 import soundfile as sf
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import timing_analyzer as ta  # noqa: E402
+import overtone as ta  # noqa: E402
 
 SR = 44100
 AUDIO_DIR = Path(__file__).resolve().parent / "audio"

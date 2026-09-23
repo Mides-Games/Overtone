@@ -1,6 +1,6 @@
 """Overtone web shell: the app's UI as HTML/CSS in a native WebView2 window.
 
-The Tk GUI in ``timing_analyzer.py`` cannot draw rounded corners, soft
+The Tk GUI in ``overtone.py`` cannot draw rounded corners, soft
 shadows or a GPU-composited timeline; a web view can, and the same frontend
 (``app/``) moves unchanged to Tauri when the Rust engine replaces this Python
 backend. The engine is not touched here: this module is a thin bridge that
@@ -26,7 +26,7 @@ from pathlib import Path
 
 import numpy as np
 
-import timing_analyzer as ta
+import overtone as ta
 
 HERE = Path(__file__).resolve().parent
 APP_DIR = HERE / "app"

@@ -84,14 +84,14 @@ clones keep working, so nothing breaks. Still worth doing properly:
    `overtone-tempo`, …) and the binary is `overtone`. The custom URI scheme for bulk
    binary transfer to the UI is `overtone://`.
 
-### Deliberately not renamed
+### Renamed after all
 
-`timing_analyzer.py`, `test_timing_analyzer.py` and their imports. That file is the **v3
-reference implementation**, and the roadmap already moves it to `reference/python-v3/` in
-the same commit that creates `crates/`. Renaming the module now would touch every import
-in the test suite, the benchmark and all three gates for no gain, and the gates are the
-one thing that must not wobble right before a port. The former name surviving inside the
-reference implementation is accurate rather than stale.
+`timing_analyzer.py` → `overtone.py` (and `test_timing_analyzer.py` →
+`test_overtone.py`), at the owner's request: the file is no longer just a timing
+analyzer but the application's main, so the old module name lied about what it
+is. The caution above still applied — every import in the suite, the benchmark
+and all three gates moved in the same commit, and the gates were re-run green
+before pushing, so the rename provably changed no number.
 
 ## Held back
 

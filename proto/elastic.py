@@ -51,7 +51,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "bench"))
 
 import benchmark as bm  # noqa: E402
-import timing_analyzer as ta  # noqa: E402
+import overtone as ta  # noqa: E402
 
 #: Local tempo sampling. Ten seconds is long enough for v3's fit to be precise
 #: and short enough that a ramp only moves a few BPM across it.

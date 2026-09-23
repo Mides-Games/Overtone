@@ -2235,6 +2235,13 @@ def analysis_summary(analysis: Analysis) -> str:
         lines.append("Pulse suggestions (select the section, then 2× § / ÷2 §):")
         for idx, factor, ratio in suggestions:
             lines.append(f"  §{idx + 1}: try ×{factor} (off-beat support {ratio:.0%})")
+    findings = validate_timing_points(analysis)
+    if findings:
+        lines.append("")
+        lines.append("Validation (check by ear):")
+        for finding in findings:
+            where = f"§{finding['index'] + 1}" if finding["index"] >= 0 else "song"
+            lines.append(f"  {finding['level']:5} {where}: {_finding_text(finding)}")
     return "\n".join(lines)
 
 
@@ -2341,6 +2348,28 @@ def validate_timing_points(analysis: Analysis) -> list[dict]:
         if 0 <= tail_beats < MIN_BEATS_PER_SECTION:
             warn("short_section", len(points) - 1, {"beats": f"{tail_beats:.1f}"})
     return findings
+
+
+def _finding_text(finding: dict) -> str:
+    """One human line per validation finding (CLI --stats, GUI details)."""
+    key, values = finding["key"], finding["values"]
+    if key == "dup_points":
+        return f"two red lines {values['gap']} ms apart — one is a duplicate"
+    if key == "short_section":
+        return f"section lasts {values['beats']} beats, less than a bar"
+    if key == "impossible_change":
+        return f"tempo {values['from']} → {values['to']} BPM is a detection error, not music"
+    if key == "octave_check":
+        return f"tempo {values['from']} → {values['to']} BPM: half-time or an octave mistake?"
+    if key == "negative_offset":
+        return f"offset {values['ms']} ms is before the audio starts"
+    if key == "bad_number":
+        return "no usable number — re-analyze or delete"
+    if key == "late_first":
+        return f"first red line at {values['line']} s, music starts at {values['beat']} s"
+    if key == "past_end":
+        return f"offset {values['ms']} ms is past the end of the audio"
+    return f"{key} {values}"
 
 
 # ---------------------------------------------------------------------------

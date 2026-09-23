@@ -1125,6 +1125,19 @@ class ValidationTests(unittest.TestCase):
             duration=60.0)
         self.assertIn(("warn", "short_section"), self.keys(analysis))
 
+    def test_summary_carries_findings_for_cli_and_gui_details(self) -> None:
+        clean = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        self.assertNotIn("Validation", analysis_summary(clean))
+        dup = _validation_analysis(
+            [TimingPoint(1000.0, 120.0, 0.9, 0), TimingPoint(1200.0, 120.0, 0.9, 1)])
+        summary = analysis_summary(dup)
+        self.assertIn("Validation (check by ear):", summary)
+        self.assertIn("one is a duplicate", summary)
+        halved = _validation_analysis(
+            [TimingPoint(0.0, 140.0, 0.9, 0), TimingPoint(30000.0, 280.0, 0.9, 70)])
+        self.assertIn("octave mistake?", analysis_summary(halved))
+
 
 _MAP_OSU = "\n".join([
     "osu file format v14",

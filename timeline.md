@@ -16,6 +16,67 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-23 · No bar without a proven 1
+
+A section's bar was claimed whenever its strongest beat class stood 1.20 above the mean
+of the classes. The onset envelope favours broadband hits, so that class was often the
+snare: on the backbeat at the song's own tempo, or — read at double tempo, where four
+"beats" are two — on every other beat. The red line then sat on the snare.
+
+### Fixed
+
+- **A downbeat must also out-weigh the beat half a bar away** (Python and Rust,
+  `HALF_BAR_CONTRAST = 1.25`). A pattern that repeats every half bar cannot say which
+  half starts the bar; the section then anchors to a beat, as it does with no accent at
+  all. 3/4 has no half-bar class and keeps the rule it had.
+
+### Changed
+
+- **Two golden vectors re-dumped, on purpose.**
+  - `slow-92` starts on its downbeat at 750 ms. Its first red line sat at 1402.1 ms, on
+    the snare of beat 2; it is now at 749.93 ms, on the 1. `meter.bar_beats` 4 -> 1.
+  - `very-noisy-132` starts on its downbeat at 420 ms. Its first red line sat at
+    874.4 ms, on the snare of beat 2 (`downbeat_class` 1). It is now at -34.65 ms: with
+    no bar claimed the line anchors to the first attack, and noise at 27 ms puts that
+    on the grid beat before the music. Still one beat from the 1, now on the other side,
+    but no longer claiming a bar the accents do not prove.
+  - The benchmark scores offsets modulo one beat, which is how both hid. The other 22
+    vectors are unchanged; `long-6min` drifted one weight in the 5th decimal from #38's
+    blocks, inside the 1e-3 tolerance, and was left as committed.
+
+### Measured
+
+```
+tempo-change renders, change on a bar line      3/60 red lines a beat late -> 0/60
+  (all 3 were the renders read at double tempo)
+88 ranked maps, first red line on the map's 1   36/88 -> 40/88
+  of the 21 that claimed a bar                   5/21 -> 9/21 (5 gained, 1 lost)
+  claimed bars by half-bar ratio, before         < 1.25: 0/9 on the 1; 1.25-1.5: 1/7;
+                                                 >= 1.5: 4/5
+gates: 227/227 Python; benchmark 24/24, 0.0000 BPM / 0.16 ms; bpm-snapshot unchanged;
+golden 24/24 after the two re-dumps; coverage, measures (3/3), signatures (6/6) green;
+cargo test 192/192; overtone-bench golden 24/24, nogrid 3/3
+```
+
+### Rejected / tried and dropped
+
+- **A threshold of 1.5.** The ranked maps favour it (15 wrong claims gone, 1 right one
+  lost), but the `measures` gate's `downbeat-4-then-3` fixture carries a real accent at
+  only 1.29 and would lose its bar. Lowering that fixture's bar to pass would be
+  re-baselining. At 1.25 the change removes only claims that were all wrong.
+- **Fixing it at the octave.** All three failing renders were read at double tempo,
+  but the octave is pinned by `bpm-snapshot` and the same snare-over-kick bias shows
+  at the right octave on real songs (the maps' wrong claims were mostly one beat early,
+  on beat 4). The real fix is a downbeat cue the snare cannot win: low-frequency (kick,
+  bass) onsets. Recorded in the roadmap; not attempted here.
+
+### Not measured
+
+- Songs whose first attack is noise before the music: their first red line follows it
+  (`very-noisy-132` above). Recorded as its own finding.
+
+---
+
 ## v4.0.0-dev — 2026-09-23 · Backups, dropped packets, and 3.7 GB per song
 
 Two medium audit findings, and one that no audit listed: the user's PC froze while

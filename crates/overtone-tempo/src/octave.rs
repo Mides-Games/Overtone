@@ -360,6 +360,14 @@ pub fn phase_class(times: &[f64], weights: &[f32], grid: Grid, m: usize) -> usiz
         .unwrap_or(0)
 }
 
+/// A 4-beat bar's downbeat must also out-weigh the beat half a bar away — v3
+/// `HALF_BAR_CONTRAST`. The onset envelope favours broadband hits, so a snare
+/// on 2 and 4 (or, at double tempo, on every other "beat") can out-weigh the
+/// kick on 1; a pattern that repeats every half bar cannot say which half
+/// starts the bar. On 88 ranked maps, the 9 claimed bars below 1.25 all
+/// missed the map's downbeat.
+pub const HALF_BAR_CONTRAST: f64 = 1.25;
+
 /// `(meter, downbeat class, beats per bar to snap to)`.
 ///
 /// The third value is the bar length **only when the accents prove one**;
@@ -383,6 +391,7 @@ pub fn meter_from_grid(times: &[f64], weights: &[f32], grid: Grid) -> (&'static 
     let k_max = inlier.iter().map(|(k, _)| *k).max().unwrap();
 
     let mut best = (4usize, 0usize, 0.0f64);
+    let mut best_means = vec![1.0f64; 4];
     for meter in [4usize, 3] {
         if (k_max - k_min) < (meter as i64) * 4 {
             continue;
@@ -412,11 +421,19 @@ pub fn meter_from_grid(times: &[f64], weights: &[f32], grid: Grid) -> (&'static 
         let contrast = top / mean_of_means.max(1e-9);
         if contrast > best.2 {
             best = (meter, r, contrast);
+            best_means = means;
         }
     }
     if best.2 < 1.20 {
         // No usable accent: do not move the offset.
         return ("4/4", 0, 1);
+    }
+    if best.0 % 2 == 0 {
+        let opposite = best_means[(best.1 + best.0 / 2) % best.0];
+        if best_means[best.1] < HALF_BAR_CONTRAST * opposite {
+            // The accent repeats every half bar.
+            return ("4/4", 0, 1);
+        }
     }
     (if best.0 == 4 { "4/4" } else { "3/4" }, best.1, best.0)
 }
@@ -555,6 +572,37 @@ mod tests {
         assert_eq!(meter, "4/4");
         assert_eq!(downbeat, 0);
         assert_eq!(bar, 4);
+    }
+
+    /// Four-beat cycles with these class weights (±3 %), 64 bars at 0.25 s.
+    fn cycles(class_weights: &[f64]) -> (Vec<f64>, Vec<f32>) {
+        let mut seed = 0u64;
+        let n = 64 * class_weights.len();
+        let times = (0..n).map(|k| 0.5 + k as f64 * 0.25).collect();
+        let weights = (0..n)
+            .map(|k| {
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                let jitter = 0.97 + 0.06 * ((seed >> 33) as f64 / (1u64 << 31) as f64);
+                (class_weights[k % class_weights.len()] * jitter) as f32
+            })
+            .collect();
+        (times, weights)
+    }
+
+    #[test]
+    fn a_backbeat_is_not_a_downbeat() {
+        // Kick-beats 1.05, snare-beats 1.25, off-beats 0.85: 1.25 over the
+        // mean, but only 1.19 over the class half a bar away.
+        let grid = Grid {
+            period: 0.25,
+            phase: 0.5,
+        };
+        let (times, weights) = cycles(&[1.05, 0.85, 1.25, 0.85]);
+        assert_eq!(meter_from_grid(&times, &weights, grid), ("4/4", 0, 1));
+        let (times, weights) = cycles(&[1.0, 1.0, 1.5, 1.0]);
+        assert_eq!(meter_from_grid(&times, &weights, grid), ("4/4", 2, 4));
+        let (times, weights) = cycles(&[1.5, 1.0, 1.0]);
+        assert_eq!(meter_from_grid(&times, &weights, grid), ("3/4", 0, 3));
     }
 
     #[test]

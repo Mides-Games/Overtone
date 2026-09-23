@@ -552,7 +552,7 @@
  ],
  "case": "slow-92",
  "meter": {
-  "bar_beats": 4,
+  "bar_beats": 1,
   "downbeat_class": 0,
   "meter": "4/4"
  },
@@ -570,7 +570,7 @@
    {
     "bpm": 183.999992,
     "confidence": 0.98505,
-    "offset_ms": 1402.1039
+    "offset_ms": 749.93
    }
   ],
   "stability": 0.99896

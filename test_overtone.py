@@ -18,6 +18,7 @@ from overtone import (
     _onset_envelope,
     _pulse_gap,
     _pulse_log10p,
+    _meter_from_grid,
     DEFAULT_LANGUAGE,
     Analysis,
     GridSection,
@@ -1092,6 +1093,40 @@ class SparseNoiseRefusalTests(unittest.TestCase):
         self.assertGreater(_pulse_log10p(scattered, 0.8, 0.1), -2.0)
         self.assertLess(_pulse_log10p(regular, 0.8, 0.1), -15.0)
         self.assertEqual(_pulse_log10p(np.array([]), 0.8, 0.1), 0.0)
+
+
+class HalfBarDownbeatTests(unittest.TestCase):
+    """A bar is only claimed when its downbeat beats the class half a bar away.
+
+    The onset envelope favours broadband hits: a snare can out-weigh the kick
+    on 1, and read at double tempo the "bar" of four is two beats of kick and
+    snare. The old rule compared the strongest class with the mean only, so it
+    claimed the backbeat as the 1 -- 3 of 60 tempo-change renders put a red
+    line one beat late, and on 88 ranked maps 16 of 21 claimed bars missed the
+    map's downbeat.
+    """
+
+    @staticmethod
+    def _grid(class_weights, bars: int = 64, period: float = 0.25):
+        k = np.arange(bars * len(class_weights))
+        rng = np.random.default_rng(0)
+        weights = np.array(class_weights)[k % len(class_weights)] * rng.uniform(0.97, 1.03, k.size)
+        return 0.5 + k * period, weights.astype(np.float32), period, 0.5
+
+    def test_a_backbeat_is_not_a_downbeat(self):
+        # Kick-beats 1.05, snare-beats 1.25, off-beats 0.85: 1.25 over the mean,
+        # enough for the old rule, but only 1.19 over the class half a bar away.
+        times, weights, period, phase = self._grid([1.05, 0.85, 1.25, 0.85])
+        self.assertEqual(_meter_from_grid(times, weights, period, phase), ("4/4", 0, 1))
+
+    def test_a_real_accent_still_proves_the_bar(self):
+        times, weights, period, phase = self._grid([1.5, 1.0, 1.0, 1.0])
+        self.assertEqual(_meter_from_grid(times, weights, period, phase), ("4/4", 0, 4))
+        times, weights, period, phase = self._grid([1.0, 1.0, 1.5, 1.0])
+        self.assertEqual(_meter_from_grid(times, weights, period, phase), ("4/4", 2, 4))
+        # An odd bar has no half-bar class; 3/4 keeps the rule it had.
+        times, weights, period, phase = self._grid([1.5, 1.0, 1.0])
+        self.assertEqual(_meter_from_grid(times, weights, period, phase), ("3/4", 0, 3))
 
 
 class BoundedMemoryTests(unittest.TestCase):

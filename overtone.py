@@ -1175,6 +1175,17 @@ def _beat_from_atoms(times: np.ndarray, weights: np.ndarray, period: float, phas
     return best[0], best[1]
 
 
+#: A 4-beat bar's downbeat must also out-weigh the beat half a bar away. The
+#: onset envelope favours broadband hits, so a snare on 2 and 4 -- or, read at
+#: double tempo, on every other "beat" -- can out-weigh the kick on 1, and a
+#: pattern that repeats every half bar says nothing about which half starts
+#: the bar. Measured against 88 ranked maps: of the 21 bars claimed, only 5 sat
+#: on the map's downbeat, and the 9 below 1.25 all missed (7 of them one beat
+#: early, on the backbeat before the 1); the synthetic fixtures with a real
+#: accent score 1.29 and 1.55.
+HALF_BAR_CONTRAST = 1.25
+
+
 def _meter_from_grid(times: np.ndarray, weights: np.ndarray, period: float,
                      phase: float) -> tuple[str, int, int]:
     """Guess the meter, the downbeat class, and how many beats to snap to.
@@ -1191,6 +1202,7 @@ def _meter_from_grid(times: np.ndarray, weights: np.ndarray, period: float,
     k = k[inlier].astype(np.int64)
     w = weights[inlier].astype(float)
     best_meter, best_class, best_contrast = 4, 0, 0.0
+    best_means = np.ones(4)
     for meter in (4, 3):
         if float(np.ptp(k)) < meter * 4:
             continue
@@ -1201,9 +1213,13 @@ def _meter_from_grid(times: np.ndarray, weights: np.ndarray, period: float,
         r = int(np.argmax(means))
         contrast = float(means[r] / max(float(np.mean(means)), 1e-9))
         if contrast > best_contrast:
-            best_meter, best_class, best_contrast = meter, r, contrast
+            best_meter, best_class, best_contrast, best_means = meter, r, contrast, means
     if best_contrast < 1.20:
         return "4/4", 0, 1                    # no usable accent: do not move the offset
+    if best_meter % 2 == 0:
+        opposite = best_means[(best_class + best_meter // 2) % best_meter]
+        if best_means[best_class] < HALF_BAR_CONTRAST * opposite:
+            return "4/4", 0, 1                # the accent repeats every half bar
     return ("4/4" if best_meter == 4 else "3/4"), best_class, best_meter
 
 

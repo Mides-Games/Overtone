@@ -494,6 +494,36 @@ class DensityBridgeTests(_IsolatedConfig):
         self.assertEqual(_api_with_points().density("C:/does/not/exist.osu")["key"], "bad_file")
 
 
+class SuggestBridgeTests(_IsolatedConfig):
+    def _map(self, tmp: str, reds) -> str:
+        lines = ["osu file format v14", "", "[TimingPoints]"]
+        lines += [f"{offset},{60000.0 / bpm:.12f},4,1,0,100,1,0" for offset, bpm in reds]
+        beatmap = Path(tmp) / "map.osu"
+        beatmap.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return str(beatmap)
+
+    def test_suggest_proposes_what_the_map_lacks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = _api_with_points()  # (1000, 120) and (9000, 150)
+            reply = api.suggest(self._map(tmp, [(1000.0, 120.0)]))
+        self.assertTrue(reply["ok"])
+        self.assertEqual(len(reply["suggestions"]), 1)
+        self.assertEqual(reply["suggestions"][0]["index"], 1)
+        self.assertAlmostEqual(reply["suggestions"][0]["offset_ms"], 9000.0)
+        json.dumps(reply["suggestions"])
+
+    def test_complete_map_suggests_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = _api_with_points()
+            reply = api.suggest(self._map(tmp, [(1000.0, 120.0), (9000.0, 150.0)]))
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["suggestions"], [])
+
+    def test_suggest_needs_a_result_and_a_real_file(self) -> None:
+        self.assertEqual(web.Api().suggest("C:/x.osu")["key"], "first")
+        self.assertEqual(_api_with_points().suggest("C:/does/not/exist.osu")["key"], "bad_file")
+
+
 class FolderImportTests(_IsolatedConfig):
     def _song(self, tmp: str) -> Path:
         root = Path(tmp) / "123 Artist - Title"

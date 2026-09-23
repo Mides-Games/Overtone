@@ -71,6 +71,9 @@ const I18N = {
     cmp_count_f: "The .osu has {map} red lines, detection found {det} sections.",
     cmp_no_reds_f: "That .osu has no red lines to compare.",
     cmp_unreadable_f: "Could not compare: {detail}",
+    sug_title: "Suggestions",
+    sug_empty: "Every detected change has a red line nearby.",
+    sug_add: "Add",
     align_title: "Alignment", align_pick: "Check alignment…",
     align_empty: "Choose a .osu to check its objects against the detected attacks.",
     align_counts: "{m}/{o} objects · {c}/{a} attacks",
@@ -161,6 +164,9 @@ const I18N = {
     cmp_count_f: "El .osu tiene {map} líneas rojas, la detección encontró {det} secciones.",
     cmp_no_reds_f: "Ese .osu no tiene líneas rojas para comparar.",
     cmp_unreadable_f: "No se pudo comparar: {detail}",
+    sug_title: "Sugerencias",
+    sug_empty: "Cada cambio detectado tiene una línea roja cerca.",
+    sug_add: "Añadir",
     align_title: "Alineación", align_pick: "Revisar alineación…",
     align_empty: "Elegí un .osu para contrastar sus objetos con los ataques detectados.",
     align_counts: "{m}/{o} objetos · {c}/{a} ataques",
@@ -185,7 +191,7 @@ const I18N = {
   },
 };
 
-const S = { lang: "en", file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, align: null, density: null, recent: [] };
+const S = { lang: "en", file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, recent: [] };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
@@ -727,7 +733,25 @@ async function compareOsu() {
   if (!target) return;
   const reply = await api().compare(target);
   if (!reply.ok) { editFailure(reply); return; }
-  S.compare = { file: reply.file, report: reply.report };
+  const sug = await api().suggest(target);
+  S.comparePath = target;
+  S.compare = { file: reply.file, report: reply.report,
+                suggestions: sug.ok ? sug.suggestions : [] };
+  renderCompare();
+}
+
+async function refreshCompare() {
+  if (!api() || !S.result || !S.comparePath) return;
+  const reply = await api().compare(S.comparePath);
+  if (!reply.ok) {
+    S.compare = null;
+    S.comparePath = null;
+    renderCompare();
+    return;
+  }
+  const sug = await api().suggest(S.comparePath);
+  S.compare = { file: reply.file, report: reply.report,
+                suggestions: sug.ok ? sug.suggestions : [] };
   renderCompare();
 }
 
@@ -763,6 +787,14 @@ function renderCompare() {
       <td>${r.octave === 1 ? "×1" : `<span class="pill amber">×${r.octave}</span>`}</td>
     </tr>`;
   }).join("");
+  const sug = (cmp.suggestions || []).map((s, i) => `
+    <tr>
+      <td><span class="idx">${s.index + 1}</span></td>
+      <td class="num">${s.offset_ms.toFixed(1)}</td>
+      <td class="num">${s.bpm.toFixed(3)}</td>
+      <td class="num">${s.nearest_ms === null ? "—" : s.nearest_ms.toFixed(1)}</td>
+      <td><button class="btn small" data-suggest="${i}">${t("sug_add")}</button></td>
+    </tr>`).join("");
   body.innerHTML = `
     ${banners ? `<div class="warnings">${banners}</div>` : ""}
     <div class="table-scroll">
@@ -774,7 +806,18 @@ function renderCompare() {
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
-    </div>`;
+    </div>
+    <div class="card-head" style="padding-left:0">
+      <div class="card-title">${t("sug_title")}</div>
+      <div class="spacer"></div>
+      <span class="card-sub">${(cmp.suggestions || []).length ? "" : t("sug_empty")}</span>
+    </div>
+    ${sug ? `<div class="table-scroll">
+      <table>
+        <thead><tr><th>#</th><th>${t("cmp_det_off")}</th><th>${t("cmp_det_bpm")}</th><th>${t("cmp_dms")}</th><th></th></tr></thead>
+        <tbody>${sug}</tbody>
+      </table>
+    </div>` : ""}`;
 }
 
 // ------------------------------------------------------------------ alignment
@@ -1075,6 +1118,17 @@ function wire() {
   $("detail").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-action]");
     if (btn) editAction(btn.dataset.action);
+  });
+  $("cmpBody").addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-suggest]");
+    if (!btn || !S.compare || S.busy) return;
+    const s = (S.compare.suggestions || [])[+btn.dataset.suggest];
+    if (!s) return;
+    const reply = await api().edit_add(s.offset_ms, s.bpm);
+    if (!reply.ok) { editFailure(reply); return; }
+    if (reply.locks !== undefined) S.locks = reply.locks;
+    showEditResult(reply, t("added", { bpm: s.bpm.toFixed(2), ms: s.offset_ms.toFixed(1) }));
+    refreshCompare();
   });
   $("copyOsuBtn").onclick = copyOsu;
   $("csvBtn").onclick = () => saveAs("save_csv");

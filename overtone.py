@@ -3532,7 +3532,9 @@ def suggest_missing_lines(analysis: Analysis, beatmap: dict,
         nearest = min((abs(red - point.offset_ms) for red in reds), default=float("inf"))
         if nearest > tolerance_beats * beat_ms:
             suggestions.append({"index": n, "offset_ms": point.offset_ms,
-                                "bpm": point.bpm, "nearest_ms": nearest})
+                                "bpm": point.bpm,
+                                # Infinity is not JSON: no red line reads as null.
+                                "nearest_ms": None if nearest == float("inf") else nearest})
     return suggestions
 
 

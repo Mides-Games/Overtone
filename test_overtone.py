@@ -1727,6 +1727,7 @@ class SuggestTests(unittest.TestCase):
             analysis, _reds_map([(500.0, 150.0), (30500.0, 152.0)])), [])
         partial = suggest_missing_lines(analysis, _reds_map([]))
         self.assertEqual([s["index"] for s in partial], [1])
+        self.assertIsNone(partial[0]["nearest_ms"])  # null, not Infinity: the JS bridge
         self.assertEqual(suggest_missing_lines(_validation_analysis([]), _reds_map([])), [])
 
     def test_tolerance_is_honoured_and_validated(self) -> None:

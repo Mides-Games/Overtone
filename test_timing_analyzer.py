@@ -52,6 +52,7 @@ from timing_analyzer import (
     validate_timing_points,
     read_osu_red_lines,
     compare_map_timing,
+    scan_beatmap_folder,
 )
 
 
@@ -1262,6 +1263,63 @@ class MapCompareTests(unittest.TestCase):
         report = compare_map_timing("whatever.osu", _compare_analysis([]))
         self.assertEqual([(f["level"], f["key"]) for f in report["findings"]],
                          [("error", "no_detected")])
+
+
+class FolderScanTests(unittest.TestCase):
+    def _song(self, tmp: str, audio: str = "song.mp3") -> Path:
+        root = Path(tmp) / "123 Artist - Title"
+        root.mkdir()
+        (root / audio).write_bytes(b"RIFF....")
+        (root / "map [Easy].osu").write_text(
+            "[General]\nAudioFilename: song.mp3\n\n[TimingPoints]\n1000,400,4,1,0,100,1,0\n",
+            encoding="utf-8")
+        (root / "map [Hard].osu").write_text(
+            "[General]\nAudioFilename: song.mp3\n\n[TimingPoints]\n1000,500,4,1,0,100,1,0\n",
+            encoding="utf-8")
+        return root
+
+    def test_finds_audio_and_difficulties_sorted(self) -> None:
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = scan_beatmap_folder(self._song(tmp))
+        self.assertTrue(scan["audio"].endswith("song.mp3"))
+        self.assertEqual(len(scan["beatmaps"]), 2)
+        self.assertEqual(scan["beatmaps"], sorted(scan["beatmaps"]))
+        self.assertTrue(scan["audio_from"].endswith("[Easy].osu"))
+        json.dumps(scan)
+
+    def test_single_audio_without_maps_is_enough(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "song"
+            root.mkdir()
+            (root / "audio.ogg").write_bytes(b"OggS....")
+            scan = scan_beatmap_folder(root)
+        self.assertTrue(scan["audio"].endswith("audio.ogg"))
+        self.assertEqual(scan["beatmaps"], [])
+        self.assertIsNone(scan["audio_from"])
+
+    def test_ambiguity_returns_no_audio_rather_than_guessing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "song"
+            root.mkdir()
+            (root / "a.mp3").write_bytes(b"ID3.....")
+            (root / "b.mp3").write_bytes(b"ID3.....")
+            scan = scan_beatmap_folder(root)
+        self.assertIsNone(scan["audio"])
+
+    def test_missing_named_audio_falls_back_to_the_single_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._song(tmp)
+            (root / "song.mp3").unlink()
+            (root / "other.wav").write_bytes(b"RIFF....")
+            scan = scan_beatmap_folder(root)
+        self.assertTrue(scan["audio"].endswith("other.wav"))
+        self.assertIsNone(scan["audio_from"])
+
+    def test_not_a_folder_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                scan_beatmap_folder(str(Path(tmp) / "missing"))
 
 
 if __name__ == "__main__":

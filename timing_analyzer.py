@@ -2921,6 +2921,49 @@ def compare_map_timing(osu_path: str | os.PathLike[str],
     return {"sections": sections, "findings": findings}
 
 
+#: Audio extensions Overtone can analyse, shared by the GUIs' file dialogs.
+AUDIO_EXTENSIONS = (".wav", ".flac", ".ogg", ".mp3", ".m4a", ".aac", ".opus", ".aiff")
+
+
+def scan_beatmap_folder(folder: str | os.PathLike[str]) -> dict:
+    """Beatmap folder import, first half (Phase 5): audio plus difficulties.
+
+    An osu! song folder holds one audio file and one .osu per difficulty.
+    Returns ``{"folder", "audio" (path or None), "beatmaps" (sorted paths),
+    "audio_from" (the beatmap that named the audio, or None)}`` with plain
+    types. Audio choice: the first beatmap's AudioFilename when that file
+    exists — the mapper's own word beats guessing; else the single audio file
+    when there is exactly one; else None. Several candidates with no map to
+    arbitrate is ambiguity, and guessing an audio file is worse than asking.
+    Flat listing on purpose: osu! song folders are flat.
+    """
+    root = Path(folder)
+    if not root.is_dir():
+        raise ValueError(f"{root} is not a folder.")
+    try:
+        entries = sorted(p for p in root.iterdir() if p.is_file())
+    except OSError as exc:
+        raise ValueError(f"Could not list {root}: {exc}") from exc
+    beatmaps = [str(p) for p in entries if p.suffix.lower() == ".osu"]
+    audios = [p for p in entries if p.suffix.lower() in AUDIO_EXTENSIONS]
+    audio: Path | None = None
+    audio_from: str | None = None
+    for beatmap in beatmaps:
+        try:
+            text = Path(beatmap).read_bytes().decode("utf-8-sig")
+        except (OSError, ValueError):
+            continue
+        named = next((line.split(":", 1)[1].strip() for line in text.splitlines()
+                      if line.startswith("AudioFilename:")), "")
+        if named and (root / named).is_file():
+            audio, audio_from = root / named, beatmap
+            break
+    if audio is None and len(audios) == 1:
+        audio = audios[0]
+    return {"folder": str(root), "audio": str(audio) if audio else None,
+            "beatmaps": beatmaps, "audio_from": audio_from}
+
+
 # ---------------------------------------------------------------------------
 # Settings persistence
 # ---------------------------------------------------------------------------

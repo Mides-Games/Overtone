@@ -73,7 +73,8 @@ const I18N = {
     cmp_unreadable_f: "Could not compare: {detail}",
     sug_title: "Suggestions",
     sug_empty: "Every detected change has a red line nearby.",
-    sug_add: "Add",
+    sug_hint: "Changes Overtone hears that this map has no red line for. Inject .osu… writes them.",
+    sug_show: "Show",
     align_title: "Alignment", align_pick: "Check alignment…",
     align_empty: "Choose a .osu to check its objects against the detected attacks.",
     align_counts: "{m}/{o} objects · {c}/{a} attacks",
@@ -166,7 +167,8 @@ const I18N = {
     cmp_unreadable_f: "No se pudo comparar: {detail}",
     sug_title: "Sugerencias",
     sug_empty: "Cada cambio detectado tiene una línea roja cerca.",
-    sug_add: "Añadir",
+    sug_hint: "Cambios que Overtone detecta y este mapa no tiene como línea roja. Inyectar .osu… los escribe.",
+    sug_show: "Ver",
     align_title: "Alineación", align_pick: "Revisar alineación…",
     align_empty: "Elegí un .osu para contrastar sus objetos con los ataques detectados.",
     align_counts: "{m}/{o} objetos · {c}/{a} ataques",
@@ -421,14 +423,19 @@ function fmtTime(s) {
 function mmss(s) { const m = Math.floor(s / 60), r = Math.round(s - m * 60); return `${m}:${String(r).padStart(2, "0")}`; }
 
 function showResult(result) {
+  const sameSong = !!S.result && S.result.path === result.path;
   S.result = result;
   S.compare = null;  // these cards belong to one map and one point list
   S.align = null;
   S.density = null;
+  if (!sameSong) S.comparePath = null;  // a map belongs to one song
   $("empty").hidden = true;
   $("results").hidden = false;
   syncActions();
   renderResult(result);
+  // Same song, new point list (edit, undo, redo, pulse): recompare so the
+  // suggestions stay current instead of vanishing until the map is re-picked.
+  if (S.comparePath) refreshCompare();
 }
 
 function renderResult(r) {
@@ -787,13 +794,13 @@ function renderCompare() {
       <td>${r.octave === 1 ? "×1" : `<span class="pill amber">×${r.octave}</span>`}</td>
     </tr>`;
   }).join("");
-  const sug = (cmp.suggestions || []).map((s, i) => `
+  const sug = (cmp.suggestions || []).map((s) => `
     <tr>
       <td><span class="idx">${s.index + 1}</span></td>
       <td class="num">${s.offset_ms.toFixed(1)}</td>
       <td class="num">${s.bpm.toFixed(3)}</td>
       <td class="num">${s.nearest_ms === null ? "—" : s.nearest_ms.toFixed(1)}</td>
-      <td><button class="btn small" data-suggest="${i}">${t("sug_add")}</button></td>
+      <td><button class="btn small" data-show="${s.index}">${t("sug_show")}</button></td>
     </tr>`).join("");
   body.innerHTML = `
     ${banners ? `<div class="warnings">${banners}</div>` : ""}
@@ -810,7 +817,7 @@ function renderCompare() {
     <div class="card-head" style="padding-left:0">
       <div class="card-title">${t("sug_title")}</div>
       <div class="spacer"></div>
-      <span class="card-sub">${(cmp.suggestions || []).length ? "" : t("sug_empty")}</span>
+      <span class="card-sub">${t((cmp.suggestions || []).length ? "sug_hint" : "sug_empty")}</span>
     </div>
     ${sug ? `<div class="table-scroll">
       <table>
@@ -1119,16 +1126,13 @@ function wire() {
     const btn = e.target.closest("[data-action]");
     if (btn) editAction(btn.dataset.action);
   });
-  $("cmpBody").addEventListener("click", async (e) => {
-    const btn = e.target.closest("[data-suggest]");
-    if (!btn || !S.compare || S.busy) return;
-    const s = (S.compare.suggestions || [])[+btn.dataset.suggest];
-    if (!s) return;
-    const reply = await api().edit_add(s.offset_ms, s.bpm);
-    if (!reply.ok) { editFailure(reply); return; }
-    if (reply.locks !== undefined) S.locks = reply.locks;
-    showEditResult(reply, t("added", { bpm: s.bpm.toFixed(2), ms: s.offset_ms.toFixed(1) }));
-    refreshCompare();
+  $("cmpBody").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-show]");
+    if (!btn || !S.result) return;
+    const i = +btn.dataset.show;
+    if (!(i >= 0 && i < S.result.points.length)) return;
+    selectPoint(i, false);
+    document.querySelector(".trace-card").scrollIntoView({ behavior: "smooth", block: "center" });
   });
   $("copyOsuBtn").onclick = copyOsu;
   $("csvBtn").onclick = () => saveAs("save_csv");

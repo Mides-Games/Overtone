@@ -415,9 +415,14 @@ pub fn points_from_sections(
     points
 }
 
-/// Place each change on the previous section's beat grid — v3
-/// `snap_timing_points`. Only nudges when the grids nearly agree: a large
-/// "correction" means the change genuinely is off the old grid.
+/// How far snapping may move a change onto the previous grid — v3
+/// `SNAP_TOLERANCE_MS`. Section changes sit 0.005-0.026 ms off it; anything
+/// further is where the music put the change.
+pub const SNAP_TOLERANCE_MS: f64 = 1.0;
+
+/// Remove rounding noise between a change and the previous grid — v3
+/// `snap_timing_points`. The engine places no hand-edited points, so there is
+/// no manual flag to honour here.
 pub fn snap_timing_points(points: &[TimingPoint]) -> Vec<TimingPoint> {
     if points.is_empty() {
         return Vec::new();
@@ -434,7 +439,7 @@ pub fn snap_timing_points(points: &[TimingPoint]) -> Vec<TimingPoint> {
             .round()
             .max(1.0);
         let offset = previous.offset.get() + beat_count * beat_length;
-        if (offset - point.offset.get()).abs() > 0.25 * beat_length {
+        if (offset - point.offset.get()).abs() > SNAP_TOLERANCE_MS {
             snapped.push(*point);
             continue;
         }

@@ -683,7 +683,7 @@ class Api:
                            if beats.size else 0)
                     points.append(ta.TimingPoint(
                         lock["offset_ms"], lock["bpm"], 1.0, idx,
-                        lock["meter"], lock["meter_known"]))
+                        lock["meter"], lock["meter_known"], manual=True))
                 points.sort(key=lambda p: p.offset_ms)
                 result.points = points
             self._analysis = result

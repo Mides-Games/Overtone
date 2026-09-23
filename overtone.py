@@ -92,6 +92,9 @@ class TimingPoint:
     #: guessing a bar without evidence pushes the first red line up to three
     #: beats past the first sound.
     meter_known: bool = False
+    #: True when the mapper placed or edited this point. Export snapping never
+    #: moves it, and never pulls the next detected point onto its grid.
+    manual: bool = False
 
 
 @dataclass
@@ -2277,20 +2280,30 @@ def export_click_track(analysis: Analysis, destination: str | os.PathLike[str],
     sf.write(destination, click, sr)
 
 
-def snap_timing_points(points: list[TimingPoint]) -> list[TimingPoint]:
-    """Place each tempo change on the previous section's beat grid.
+#: How far export snapping may move a detected red line onto the previous
+#: grid. Measured: the precision engine's section changes sit 0.005-0.026 ms
+#: off it (rounding noise, the only thing snapping is for). The old tolerance,
+#: a quarter beat, moved the fallback tracker's red lines by up to 75 ms on a
+#: real song and hand-placed ones by up to a quarter beat.
+SNAP_TOLERANCE_MS = 1.0
 
-    osu! continues a red-line grid until the next red line. Audio detection
-    can find a transition a few milliseconds beside the attack; snapping it
-    to the nearest beat of the preceding section avoids accumulated phase
-    errors without inserting a timing point for every beat.
+
+def snap_timing_points(points: list[TimingPoint]) -> list[TimingPoint]:
+    """Remove rounding noise between a tempo change and the previous grid.
+
+    osu! continues a red-line grid until the next red line. When a detected
+    change sits within SNAP_TOLERANCE_MS of a beat of the preceding section,
+    it is placed exactly on it, so the grids join without a sub-millisecond
+    phase step. Anything further off is where the music put it and stays.
+    Points the mapper placed or edited are never moved, and a detected point
+    is never pulled onto the grid of one they moved.
     """
     if not points:
         return []
     snapped = [points[0]]
     for point in points[1:]:
         previous = snapped[-1]
-        if previous.bpm <= 0:
+        if previous.bpm <= 0 or point.manual or previous.manual:
             snapped.append(point)
             continue
         beat_length = 60000.0 / previous.bpm
@@ -2300,7 +2313,7 @@ def snap_timing_points(points: list[TimingPoint]) -> list[TimingPoint]:
         # are already exact. Only nudge one onto the previous grid when the two
         # nearly agree — a large "correction" means the change genuinely does
         # not fall on the old grid, and moving it there would invent an error.
-        if abs(offset - point.offset_ms) > 0.25 * beat_length:
+        if abs(offset - point.offset_ms) > SNAP_TOLERANCE_MS:
             snapped.append(point)
             continue
         # Carry the bar across: rebuilding a point without it silently
@@ -2547,7 +2560,8 @@ def add_timing_point(points: list[TimingPoint], beats: np.ndarray,
     if not np.isfinite(offset_ms) or not np.isfinite(bpm) or bpm <= 0:
         raise ValueError("Offset must be finite and BPM positive.")
     merged = list(points) + [TimingPoint(float(offset_ms), float(bpm), 1.0,
-                                         _nearest_beat_index(beats, offset_ms))]
+                                         _nearest_beat_index(beats, offset_ms),
+                                         manual=True)]
     merged.sort(key=lambda p: p.offset_ms)
     return merged
 
@@ -2565,7 +2579,7 @@ def update_timing_point(points: list[TimingPoint], beats: np.ndarray, index: int
     # the bar it knows travels with it.
     merged[index] = TimingPoint(float(offset_ms), float(bpm), old.confidence,
                                 _nearest_beat_index(beats, offset_ms),
-                                old.meter, old.meter_known)
+                                old.meter, old.meter_known, manual=True)
     merged.sort(key=lambda p: p.offset_ms)
     return merged
 
@@ -2588,7 +2602,7 @@ def nudge_timing_point(points: list[TimingPoint], beats: np.ndarray, index: int,
     offset = max(0.0, old.offset_ms + delta_ms)
     merged = list(points)
     merged[index] = TimingPoint(offset, old.bpm, old.confidence,
-                                old.beat_index, old.meter, old.meter_known)
+                                old.beat_index, old.meter, old.meter_known, manual=True)
     merged.sort(key=lambda p: p.offset_ms)
     return merged
 
@@ -2605,7 +2619,7 @@ def rescale_section(points: list[TimingPoint], index: int, factor: float) -> lis
         raise ValueError(f"Resulting BPM {bpm:.1f} is outside 30–600.")
     merged = list(points)
     merged[index] = TimingPoint(old.offset_ms, bpm, old.confidence, old.beat_index,
-                                old.meter, old.meter_known)
+                                old.meter, old.meter_known, manual=True)
     return merged
 
 

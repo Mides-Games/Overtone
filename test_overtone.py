@@ -140,10 +140,14 @@ class SegmentationTests(unittest.TestCase):
         onset[np.arange(100, 900, 100)] = 1.0
         self.assertEqual(_choose_subdivision(onset, np.arange(100, 900, 100), True), 1)
 
-    def test_export_snaps_change_to_previous_grid(self):
-        points = [TimingPoint(353, 225, 1, 0), TimingPoint(13160, 222, 1, 48)]
-        snapped = snap_timing_points(points)
-        self.assertAlmostEqual(snapped[1].offset_ms, 13153.0, places=6)
+    def test_export_snaps_only_rounding_noise(self):
+        # 0.4 ms off the previous grid is rounding: joined exactly. 7 ms off is
+        # where the music put the change (the engine's own changes sit within
+        # 0.03 ms), and moving it would invent an error: left alone.
+        near = [TimingPoint(353, 225, 1, 0), TimingPoint(13153.4, 222, 1, 48)]
+        self.assertAlmostEqual(snap_timing_points(near)[1].offset_ms, 13153.0, places=6)
+        far = [TimingPoint(353, 225, 1, 0), TimingPoint(13160, 222, 1, 48)]
+        self.assertEqual(snap_timing_points(far)[1].offset_ms, 13160)
 
     def test_out_of_range_base_doubles_with_moderate_evidence(self):
         # Half-time lock scenario: tracker sits on ~112.5 BPM while the song
@@ -544,8 +548,9 @@ class InjectKeepsWhatPlaysTests(unittest.TestCase):
             path = self._map(tmp)
             inject_osu_timing_points(path, self._analysis(), backup=False)
             reds = [r for r in _timing_rows(path.read_text(encoding="utf-8")) if r[6] == "1"]
-        # offsets as exported (25000 snaps to 24900 on the 150 BPM grid)
-        self.assertEqual([r[0] for r in reds], ["500", "24900", "40000"])
+        # offsets as exported: 25000 is 100 ms off the 150 BPM grid, so export
+        # snapping (rounding noise only) leaves it where it is
+        self.assertEqual([r[0] for r in reds], ["500", "25000", "40000"])
         self.assertEqual(reds[0][3:8], ["2", "0", "60", "1", "0"])   # Soft 60, before kiai
         self.assertEqual(reds[1][3:8], ["2", "0", "60", "1", "1"])   # inside the kiai
         self.assertEqual(reds[2][3:8], ["2", "0", "60", "1", "1"])
@@ -975,6 +980,35 @@ class PulseFactorKeepsChangesTests(unittest.TestCase):
                 rebuilt = rebuild_with_subdivision(analysis, factor)
                 self.assertEqual([round(p.bpm, 2) for p in rebuilt.points],
                                  [round(200.0 * factor, 2), round(203.5 * factor, 2)])
+
+
+class HandPlacedPointsStayPutTests(unittest.TestCase):
+    """Export snapping used to move any red line within a quarter beat of the
+    previous grid — including the ones the mapper typed in."""
+
+    BEATS = np.arange(0.0, 60.0, 0.5)
+
+    def _rows(self, points):
+        from types import SimpleNamespace
+        text = osu_timing_text(SimpleNamespace(points=points, meter="4/4"))
+        return [row.split(",")[0] for row in text.splitlines()[1:]]
+
+    def test_a_hand_added_point_is_exported_where_it_was_typed(self):
+        # 10100 ms is 0.2 beat off the 120 BPM grid: it used to leave as 10000.
+        points = add_timing_point([TimingPoint(0.0, 120.0, 0.9, 0)], self.BEATS, 10100.0, 140.0)
+        self.assertEqual(self._rows(points), ["0", "10100"])
+
+    def test_nudging_one_line_does_not_move_the_next(self):
+        points = [TimingPoint(353.0, 225.0, 0.9, 0), TimingPoint(13153.0, 222.0, 0.9, 48)]
+        nudged = nudge_timing_point(points, self.BEATS, 0, 10.0)
+        self.assertEqual(self._rows(nudged), ["363", "13153"])  # it used to write 13163
+
+    def test_every_edit_marks_its_point(self):
+        base = [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(8000.0, 130.0, 0.9, 16)]
+        self.assertTrue(update_timing_point(base, self.BEATS, 1, 8010.0, 131.0)[1].manual)
+        self.assertTrue(nudge_timing_point(base, self.BEATS, 1, 1.0)[1].manual)
+        self.assertTrue(rescale_section(base, 1, 2.0)[1].manual)
+        self.assertFalse(base[1].manual)
 
 
 class GridMathTests(unittest.TestCase):

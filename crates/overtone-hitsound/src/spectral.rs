@@ -3,7 +3,7 @@
 //! One Hann-windowed FFT over [−10 ms, +120 ms] per attack (length rounded
 //! up to a power of two), then everything as ratios: seven log-band
 //! energies, centroid, two rolloffs, bandwidth, flatness, crest, and the
-//! flux against the pre-window spectrum. Ratios keep the engine
+//! flux from the pre window to the attack's first 50 ms. Ratios keep the engine
 //! loudness-invariant; the tests assert the same features from the same hit
 //! at two master levels.
 
@@ -39,7 +39,10 @@ pub struct Spectral {
     pub flatness: f64,
     /// Peak / mean magnitude.
     pub crest: f64,
-    /// Rectified attack-minus-pre magnitude change, over attack total.
+    /// Rectified magnitude change from the 50 ms before the attack window to
+    /// its first 50 ms, over the latter's total: ~0 for a sound that was
+    /// already there, ~1 for one out of silence. Both spectra have the same
+    /// length, window and bins, so they compare frequency for frequency.
     pub flux: f64,
 }
 
@@ -145,14 +148,20 @@ pub fn analyze(y: &[f32], sr: u32, attack_s: f64) -> Spectral {
         0.0
     };
     let flux = {
-        let n = mag.len().max(pre_mag.len());
-        let mut num = 0.0;
-        for i in 0..n {
-            let a = mag.get(i).copied().unwrap_or(0.0);
-            let p = pre_mag.get(i).copied().unwrap_or(0.0);
-            num += (a - p).max(0.0);
+        // The attack window starts where the pre window ends; its first
+        // pre.len() samples are the onset, as long as the pre window.
+        let (onset_mag, _) = spectrum(&attack[..pre.len().min(attack.len())], sr);
+        let onset_sum: f64 = onset_mag.iter().sum();
+        if onset_sum > 0.0 && onset_mag.len() == pre_mag.len() {
+            onset_mag
+                .iter()
+                .zip(&pre_mag)
+                .map(|(&a, &p)| (a - p).max(0.0))
+                .sum::<f64>()
+                / onset_sum
+        } else {
+            0.0
         }
-        num / mag_sum.max(1e-12)
     };
 
     Spectral {
@@ -256,6 +265,25 @@ mod tests {
             assert!((a - b).abs() < 0.02, "{a} vs {b}");
         }
         assert!((loud.centroid - quiet.centroid).abs() < 5.0);
+    }
+
+    #[test]
+    fn flux_is_change_not_presence() {
+        // A tone that was already sounding has nothing new at the "attack";
+        // a hit out of silence is all new. Comparing an 8192-point attack
+        // spectrum with a 4096-point pre spectrum bin by bin scored the
+        // steady tone 0.998, so flux could not tell the two apart.
+        let sr = 44_100;
+        let steady: Vec<f32> = (0..sr as usize * 4)
+            .map(|i| (0.5 * (std::f64::consts::TAU * 440.0 * i as f64 / sr as f64).sin()) as f32)
+            .collect();
+        let tone = analyze(&steady, sr, 2.0);
+        let hit = analyze(&kick(sr, 2.0), sr, 2.0);
+        assert!(tone.flux < 0.1, "steady tone flux {}", tone.flux);
+        assert!(hit.flux > 0.9, "kick out of silence flux {}", hit.flux);
+        // Loudness-invariant, like every other ratio.
+        let quiet: Vec<f32> = steady.iter().map(|v| v * 0.25).collect();
+        assert!((analyze(&quiet, sr, 2.0).flux - tone.flux).abs() < 1e-9);
     }
 
     #[test]

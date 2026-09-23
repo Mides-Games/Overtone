@@ -4,8 +4,8 @@ Findings from the 2026-09-22 audit that its own verifiers confirmed (three votes
 high severity, one for medium and low). The five leads the roadmap listed as "to verify"
 were re-probed and fixed on 2026-09-23 (PRs #22–#26); the four bugs reproduced before that
 were fixed in PRs #17–#20; the six high findings below were fixed the same day (PRs
-#29–#34). **Open: 83 — none high, 43 medium (two of them found while fixing the high
-ones), 40 low.** Nothing still open has been re-probed yet: each gets a probe before its
+#29–#34); three medium ones since (PRs #36–#38). **Open: 81 — none high, 41 medium
+(two of them found while fixing the high ones), 40 low.** Nothing still open has been re-probed yet: each gets a probe before its
 fix, and some may turn out to be fixed already (the ×2 / ÷2 edit guard, for one, landed in
 PR #20).
 
@@ -26,7 +26,15 @@ landed with a test that fails on the old code.
 | Sparse random attacks got a grid (no-grid verdict) | random attack times 18–22/40 → 0/40; rendered random clicks answered 63/240 → 12/240, none by the precision engine | #33 |
 | Rust hitsound flux compared an 8192-point spectrum with a 4096-point one | steady tone 0.9996 → ~0; nine test seeds, 450 hits: 35 → 29 wrong, macro F1 0.913 → 0.931 | #34 |
 
-## Medium (43)
+## Medium — fixed since
+
+| Finding | Measured | PR |
+|---|---|---|
+| `.bak` written in place, then never replaced | a backup write failing halfway left a truncated `.bak` -> leaves none; a map edited between two injects went unkept -> kept in `.bak2`, byte for byte | #36 |
+| Rust decode dropped a rejected packet, shifting everything after it | one bad MP3 frame: every later click 26.1 ms early -> on the same sample as the intact file | #37 |
+| (new) One analysis of a 5-minute song peaked at 3.7 GB of RAM | spectrogram and tempogram built in blocks: 3.7 -> 0.55 GB, the same red lines | #38 |
+
+## Medium (41)
 
 | Area | Where | Finding | What goes wrong |
 |---|---|---|---|
@@ -41,11 +49,9 @@ landed with a test that fails on the old code.
 | py-gui | `timing_analyzer.py:3614` | Export CSV has no error handling; a locked or unwritable target fails silently | On Windows the user re-exports timing.csv while it is open in Excel, which locks it. `open(..., 'w')` raises PermissionError. The exception escapes the Tk callback and goes to report_callback_exception, which prints to… |
 | py-io | `timing_analyzer.py:2011` | --subdivision 0.5/0.25 is silently ignored on the legacy engine (forced or fallback) | On a rubato track, `--engine auto --subdivision 0.5` falls back to the tracker, or the user passes `--engine legacy --subdivision 0.5` to fix a double-time read. The halving is dropped with no message and the output kee… |
 | py-io | `timing_analyzer.py:2504` | .osz audio entry loses its file extension (and can end in a space) when the name is long or has '...' before the suffix | Exporting a song whose filename is over 80 characters, or whose title ends in '...', produces an .osz whose audio has no .mp3/.ogg extension. Windows strips the trailing space on extraction and osu!'s parser trims the A… |
-| py-io | `timing_analyzer.py:2644` | .bak is written non-atomically, then never replaced, so later injects run without a backup | (1) The first inject hits a full disk or an AV lock partway through writing the .bak. A truncated map.osu.bak is left, the inject aborts, the user frees space and retries. `spare.exists()` is now True, so the truncated… |
 | py-io | `timing_analyzer.py:2825` | A hand-edited config with a wrong-typed value still crashes the GUI at startup | The user edits ~/.overtone.json and quotes the version ("cfg_version": "2") or writes a non-Tcl boolean. TimingAnalyzerApp.__init__ then raises before the window opens, on every launch, until the file is deleted by hand… |
 | rust-core-audio-bench | `Cargo.toml:15` | v4 cannot open AIFF or Opus, both of which v3 opens and its file dialog advertises | A user loads song.aiff or song.opus, which v3 analyses directly. v4 fails in `probe` (AIFF: unsupported format) or in `make_audio_decoder` (Opus: unsupported codec) and returns Error::Decode. That is a parity regression… |
 | rust-core-audio-bench | `lib.rs:104` | In-loop TooLong guard assumes 44.1 kHz stereo and refuses valid files well under an hour | A 30-minute 96 kHz stereo FLAC passes the metadata check at line 72 (1800 s < 3600 s). The loop then aborts at 27.6 minutes of decoded audio with 'audio is longer than 60 minutes; trim it first'. Computed trip points: 4… |
-| rust-core-audio-bench | `lib.rs:109` | Corrupt packets are silently dropped without inserting silence, shifting every later timestamp | An MP3 with one damaged frame 40 s in, from a truncated download or a bad rip. Symphonia returns DecodeError for that 1152-sample packet (for example 'mpa: invalid packet length', or the 'invalid audio buffer signal spe… |
 | rust-core-audio-bench | `lib.rs:167` | No tests cover the load contract (minimum 2 s, 1-hour cap, NaN/Inf scrub, 0.99 peak normalisation) | The rate- and channel-blind cap in `decode` (line 104) shipped because nothing tests TooLong. A reorder that normalised before the scrub, or a change to the 2 s threshold, would also pass `cargo test`. The golden gate w… |
 | rust-core-audio-bench | `resample.rs:78` | Resampler calls sin() 65 times per output sample and its speed is not measured | A 6-minute 48 kHz file, common for video-sourced audio, needs 15.9 M outputs × 65 taps = 1.03e9 f64 sin() evaluations on one thread before analysis starts. That cost is not measured anywhere, so the speed claims do not… |
 | rust-core-audio-bench | `main.rs:372` | Bench 'analyse' time covers attack detection only, but the docs compare it with Python's full analyze_audio | A reader or reviewer takes 8.5x as the end-to-end speedup of the ported engine. The Rust figure omits every tempo stage, and those stages are included in Python's 21.6 s. A regression that makes section growth or meter… |

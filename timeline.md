@@ -16,6 +16,69 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-23 · Backups, dropped packets, and 3.7 GB per song
+
+Two medium audit findings, and one that no audit listed: the user's PC froze while
+several analyses ran, and one 5-minute song turned out to peak at 3.7 GB.
+
+### Fixed
+
+- **`.bak` written in place, then never replaced** (#36). A backup write that failed
+  halfway left a truncated `.bak`, and the retry trusted it. A map the mapper worked on
+  between two injects was overwritten with nothing keeping it, while the summary said
+  `backup=True`. Backups now go through a temp file and `os.rename` (which refuses an
+  existing target on Windows); the first `.bak` stays pristine and each later write keeps
+  what it replaces in the next free `.bak2`, `.bak3`..., unless the newest backup already
+  holds those bytes. The result reports the backup's path.
+- **Rust decode dropped a rejected packet** (#37). Everything after it moved earlier by
+  the packet's length — 26.1 ms for an MP3 frame. The packet now becomes silence of its
+  own duration, and `Decoded.concealed_frames` counts it.
+- **3.7 GB for one 5-minute song** (#38). librosa built the whole linear spectrogram for
+  the onset envelope (~1.3 GB) and the fallback tracker built a whole 8-second tempogram
+  twice (~3.5 GB each). Both are now built in blocks, and one tempogram pass feeds both
+  of the tracker's tempo readings.
+
+### Hardening
+
+- New test fixture `crates/overtone-audio/testdata/clicks.mp3` (23.6 KB, libsndfile 1.2 /
+  LAME): the decoder test corrupts one frame of it in memory.
+- A memory test: 2 minutes of audio must stay under 300 MB for the envelope and 400 MB
+  for the tempo guides plus tracker (533 and 1363 MB before, 160 and 131 MB now).
+
+### Measured
+
+```
+backup write failing halfway              truncated .bak left -> no file left
+map edited between two injects            unkept -> kept in .bak2, byte for byte
+one rejected MP3 frame (Rust)             1152 frames short, later clicks 26.1 ms early
+                                          -> same length, all 16 clicks on the same sample
+5-minute song, peak RAM                   3.7 GB -> 0.55 GB, same 8 red lines
+5-minute song, time                       14.5-21.7 s -> 16.0-23.0 s (this machine's noise)
+2-minute render, envelope / tracker       533 / 1363 MB -> 160 / 131 MB
+16 real songs, old vs new                 14 identical; 2 fallback songs moved one BPM in
+                                          the 6th decimal, offsets identical
+gates: 225/225 Python; benchmark 24/24, 0.0000 BPM / 0.16 ms; bpm-snapshot and golden
+unchanged; coverage, measures, signatures green; cargo test 191/191; golden 24/24
+```
+
+### Rejected / tried and dropped
+
+- **One block size for both.** 4096 frames made the tempogram 1.5-2x slower than
+  one-shot (its column FFTs fall out of cache) and 512 made the spectrogram slower. They
+  now have their own: 8192 frames for the spectrogram, 1024 columns for the tempogram.
+- **The tempogram built blockwise but twice**, as v3 did whole: the saving in memory
+  came with ~6 s more per fallback song. Sharing one pass removed it.
+- **A bit-identical mel spectrogram.** The mel projection's float32 summation order
+  follows the block shape (differences up to ~2e-6 of the envelope's range); the golden
+  check's tolerances exist for exactly this, and all 24 fixtures match stage for stage.
+
+### Not measured
+
+- The downbeat fix (next item). The ranked-map sweep that should set its threshold was
+  lost twice when the app quit; it now appends per song and resumes.
+
+---
+
 ## v4.0.0-dev — 2026-09-23 · The six high audit findings
 
 The backlog's six high findings. Each was reproduced with a probe before any change,

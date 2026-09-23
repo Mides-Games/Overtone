@@ -25,7 +25,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (219 on 2026-09-23)
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (225 on 2026-09-23)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 24/24 stage for stage
@@ -44,7 +44,7 @@ never re-baseline to make a red gate green.
 And the Rust side:
 
 ```bash
-cargo test --workspace                                 # all pass (190 on 2026-09-23)
+cargo test --workspace                                 # all pass (191 on 2026-09-23)
 cargo run --release -q -p overtone-bench -- golden     # 24/24 attack for attack
 ```
 

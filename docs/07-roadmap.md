@@ -28,22 +28,25 @@ plugged into the app.**
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **219** Python (150 engine + 69 web shell) · **190** Rust.
+Tests: **225** Python (156 engine + 69 web shell) · **191** Rust.
 
 ### What is pending, in order
 
 1. **Audit backlog, medium findings** ([`13-audit-backlog.md`](13-audit-backlog.md)) — the six
-   high ones are fixed. **Start here**, in this order, each re-probed before its fix:
-   1. `.bak` written non-atomically, then never replaced (breaks CLAUDE.md rule 5: a
-      failed first inject leaves later injects without a backup).
-   2. Rust decode drops corrupt packets without inserting silence, shifting every later
-      timestamp (wrong offsets after a damaged frame).
-   3. A new section's bar read one beat late when its downbeat is weak (found on
-      2026-09-23: 3/60 bar-line changes, 6/38 random).
-   4. `_grow_sections` stops after 64 iterations on long mixes, with no diagnostic.
-   5. `--subdivision 0.5 / 0.25` silently ignored on the fallback tracker.
-   6. The fallback tracker answers 12 of 240 scattered-click files (found on 2026-09-23).
-   7. Then the GUI and I/O ones (config crash, clipboard, CSV errors, `.osz` names), then
+   high ones are fixed, and so are `.bak` atomicity (#36), the Rust decoder's dropped
+   packets (#37) and a 3.7 GB memory peak per long song (#38). **Next**, in this order,
+   each re-probed before its fix:
+   1. A section's bar read one beat late when its downbeat is weak. **Diagnosed:** all 3
+      failing renders out of 60 are the 3 read at double tempo; there four "beats" are
+      eighths, and the snare out-weighs the kick in the onset envelope, so the backbeat
+      wins. Candidate fix: a downbeat must also beat the class half a bar away (ratio
+      1.55 and 1.29 on true accents, 1.01-1.20 on the wrong claims, but 1.17 on
+      `slow-92`, which looks right). Settle the threshold on ranked maps first —
+      `map_downbeats` sweep, small batches.
+   2. `_grow_sections` stops after 64 iterations on long mixes, with no diagnostic.
+   3. `--subdivision 0.5 / 0.25` silently ignored on the fallback tracker.
+   4. The fallback tracker answers 12 of 240 scattered-click files (found on 2026-09-23).
+   5. Then the GUI and I/O ones (config crash, clipboard, CSV errors, `.osz` names), then
       the 40 low.
 2. **Playback in the app** (Phase 4) — hear the song with the click, scrub, loop.
 3. **Plug the Rust engine into the app** (Phase 22) — the ~9x speed-up reaches the user.
@@ -91,7 +94,10 @@ fails on the old code; Python and Rust were fixed together where both apply.
 | Sparse random attacks got a grid | random attack times 18–22/40 → 0/40; random-click files 63/240 → 12/240 answered, none by the precision engine | #33 |
 | Rust hitsound flux compared spectra of different sizes | steady tone 0.9996 → ~0; 450 test hits 35 → 29 wrong, macro F1 0.913 → 0.931 | #34 |
 
-Still open — 83 findings nobody has re-probed yet (none high, 43 medium, 40 low) — in
+Since then: `.bak` atomicity (#36), dropped packets in the Rust decoder (#37), and the
+engine's memory — one 5-minute song peaked at 3.7 GB, 0.55 GB now (#38).
+
+Still open — 81 findings nobody has re-probed yet (none high, 41 medium, 40 low) — in
 [`13-audit-backlog.md`](13-audit-backlog.md).
 
 ---

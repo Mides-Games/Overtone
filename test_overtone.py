@@ -1039,6 +1039,31 @@ class ChangeRedLineOnItsBeatTests(unittest.TestCase):
         self.assertLess(abs(points[1].offset_ms - (change * 1000.0 - 0.03)), 1e-6)
 
 
+class StrayLeadInTests(unittest.TestCase):
+    """A lone click before the music must not throw the grid away.
+
+    Section growth gave up when its first seed window held fewer than six
+    attacks, so a click at 0.3 s before drums at 8 s left no section: the
+    precision engine returned nothing and the fallback tracker answered with
+    the wrong BPM and a red line on the click.
+    """
+
+    def test_a_click_before_the_drums(self):
+        import soundfile as sf
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "leadin.wav"
+            _drum_track(path, [(8.0, 150.0)], duration=40.0)
+            y, sr = sf.read(str(path), dtype="float32")
+            i = int(0.3 * sr)  # a sharp click, not a smooth bump: it must read as an attack
+            y[i:i + 400] += (np.hanning(400) * 0.8 * np.sign(np.sin(np.arange(400)))).astype(np.float32)
+            sf.write(str(path), y, sr)
+            analysis = analyze_audio(path)
+        self.assertEqual(analysis.engine, "precision")
+        first = snap_timing_points(analysis.points)[0]
+        self.assertAlmostEqual(first.bpm, 150.0, places=2)
+        self.assertLess(_offset_error_ms(first.offset_ms, 8.0, 150.0), 2.0)
+
+
 class GridMathTests(unittest.TestCase):
     def test_coherence_phase_has_the_right_sign(self):
         # Regression: the phase used to come back negated, putting the seed

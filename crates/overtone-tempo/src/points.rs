@@ -887,6 +887,26 @@ mod tests {
     }
 
     #[test]
+    fn a_lone_click_before_the_music_keeps_the_grid() {
+        // One attack at 0.3 s, then 150 BPM eighths from 8 s: growth used to
+        // give up on its first seed window and report StageFailed ("a bug").
+        let (mut times, mut weights) = eighths(150.0, 8.0, 70.0);
+        times.insert(0, 0.3);
+        weights.insert(0, 0.8);
+        let out = analyze_attacks(&times, &weights, &[], 44_100, 1.5, 12, true, 0.75);
+        assert!(
+            !out.diagnostics.iter().any(|d| matches!(d, Diagnostic::StageFailed { .. })),
+            "{:?}",
+            out.diagnostics
+        );
+        let first = out.points.first().expect("a red line");
+        assert!((first.bpm.get() - 150.0).abs() < 0.01, "bpm {}", first.bpm.get());
+        let beat_ms = 400.0;
+        let k = (first.offset.get() - 8000.0) / beat_ms;
+        assert!((k - k.round()).abs() * beat_ms < 2.0, "offset {}", first.offset.get());
+    }
+
+    #[test]
     fn confidence_is_one_on_a_tight_long_section() {
         let atom = 60.0 / 174.0 / 2.0;
         let (times, weights) = drum(atom, 0.4, 0.4, 60.0);

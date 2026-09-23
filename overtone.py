@@ -1178,7 +1178,17 @@ def _grow_sections(times: np.ndarray, weights: np.ndarray, period: float, phase:
         else:
             seed = (times >= start - 0.5 * prior) & (times <= seed_hi)
             if int(seed.sum()) < 6:
-                break
+                # Too few attacks to seed from here -- a lone click, a count-in,
+                # a quiet intro. Move on to the next attack instead of giving up
+                # on the whole track: one click at 0.3 s before drums at 8 s used
+                # to leave no section at all. Skips do not count against the
+                # guard; start only moves forward through a finite list.
+                later = times[times > start]
+                if later.size == 0:
+                    break
+                start = float(later[0])
+                guard -= 1
+                continue
             local_period, local_phase, _ = _refine_grid(times[seed], weights[seed], prior, phase)
         edge = seed_hi
         while edge < finish:

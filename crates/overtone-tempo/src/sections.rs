@@ -104,7 +104,18 @@ pub fn grow_sections_with(
                 let (s_times, s_weights) =
                     masked(times, weights, |t| t >= start - 0.5 * prior && t <= seed_hi);
                 if s_times.len() < 6 {
-                    break;
+                    // Too few attacks to seed from here (a lone click, a
+                    // count-in, a quiet intro): move on to the next attack
+                    // instead of giving up on the whole track. Skips do not
+                    // count against the guard; start only moves forward.
+                    match times.iter().find(|&&t| t > start) {
+                        Some(&next) => {
+                            start = next;
+                            guard -= 1;
+                            continue;
+                        }
+                        None => break,
+                    }
                 }
                 let (grid, _) = fit::refine(
                     &s_times,

@@ -725,6 +725,39 @@ class PrecisionEngineTests(unittest.TestCase):
                 analyze_audio(path, engine="precision")
 
 
+class ClassicWindowLayoutTests(unittest.TestCase):
+    """The Tk window's Results header fits the window it opens in.
+
+    Every ghost button inherited the clam theme's 11-character minimum, so the
+    seven header buttons asked for 1204 px (1259 in Spanish) and CSV was cut
+    to 21 px at the default 1120.
+    """
+
+    def test_results_toolbar_fits_at_default_and_minimum_size(self):
+        from unittest import mock
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp,                 mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"),                 mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
+            try:
+                app = TimingAnalyzerApp()
+            except Exception as exc:  # no display: nothing to lay out
+                self.skipTest(f"Tk unavailable: {exc}")
+            try:
+                app.root.attributes("-alpha", 0.0)
+                width, height = app.root.minsize()
+                for language in ("English", "Español"):
+                    app.language.set(language)
+                    app._translate()
+                    for geometry in ("1120x760", f"{width}x{height}"):
+                        app.root.geometry(geometry + "+-3000+-3000")
+                        app.root.update()
+                        for key in ("csv", "copy", "click", "half", "double", "inject", "details"):
+                            widget = app.widgets[key]
+                            with self.subTest(language=language, geometry=geometry, button=key):
+                                self.assertGreaterEqual(widget.winfo_width(), widget.winfo_reqwidth() - 1)
+            finally:
+                app.root.destroy()
+
+
 class NoPulseRefusalTests(unittest.TestCase):
     """White noise must not return a BPM (CLAUDE.md rule 2).
 

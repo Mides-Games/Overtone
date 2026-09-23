@@ -3894,7 +3894,9 @@ class TimingAnalyzerApp:
         self.tk, self.ttk = tk, ttk
         cfg = load_config()
         self.root = tk.Tk()
-        self.root.minsize(1020, 680)
+        # 1070: the Results header needs 1061 px in Spanish once its buttons
+        # size to their labels (measured off-screen); at 1020 CSV was cut.
+        self.root.minsize(1070, 680)
         self.root.geometry("1120x760")
         self._set_window_icon()
         # --- English is the default; Spanish stays available. ---
@@ -4044,12 +4046,14 @@ class TimingAnalyzerApp:
                   background=[("active", "#8DEDC4"), ("disabled", accent_dim)],
                   foreground=[("disabled", "#22392E")])
         # Ghost buttons live in dense rows (the Results header carries seven
-        # of them). Kept intentionally narrower than the primary TButton so
-        # every label survives without a horizontal scroll -- an earlier pass
-        # cropped "Export" to "E>".
+        # of them). width=0 lets each one size to its label: the clam theme
+        # gives every TButton an 11-character minimum, so all seven asked for
+        # 105 px (even ÷2 and ×2) and the header needed 1204 px (1259 in
+        # Spanish) -- more than the window, which cut CSV to 21 px. Measured
+        # after: 1052 px (1061 in Spanish), nothing cut at the default size.
         style.configure("Ghost.TButton", background=panel, foreground=muted,
                         bordercolor=border, borderwidth=1, relief="solid",
-                        padding=(11, 8))
+                        padding=(11, 8), width=0)
         style.map("Ghost.TButton",
                   background=[("active", panel2)],
                   foreground=[("active", fg)])

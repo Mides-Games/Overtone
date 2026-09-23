@@ -16,6 +16,56 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-23 · Four confirmed bugs fixed
+
+The four bugs the 2026-09-22 audit reproduced with a probe. Each fix has a test
+that fails on the old code. The accuracy baseline did not move.
+
+### Fixed
+
+- **Inject changed what a map plays.** Every new red line was written as
+  Normal / index 0 / 100 % / no kiai, and all of them went where the first old
+  red line was, out of time order. New red lines now carry the sample set,
+  index, volume and kiai the map had at their time; where moving red lines
+  would still change slider velocity or sounds, a green with the original
+  values is added; the section is sorted, red before green at ties; greens,
+  the BOM, each line's ending and a missing final newline keep their bytes.
+- **White noise got a BPM.** The v2 tracker behind the precision engine always
+  finds beats: noise came back as 127.68 BPM, pads as 60.09. The fallback now
+  refuses audio whose onset envelope is no more periodic than itself with its
+  frames shuffled.
+- **Classic window: CSV clipped to 21 px.** Every ghost button inherited the
+  clam theme's 11-character minimum; they now size to their labels and the
+  minimum window width is 1070.
+- **Classic window: ×2 / ÷2 and Analyze dropped hand edits.** They now ask
+  while edits are unexported; exports clear the count.
+
+### Hardening
+
+- The pulse check is numpy, not librosa. A first version called librosa's
+  tempogram before the tracker and moved the tracker's global BPM on a real
+  song (198.07 → 199.27); the numpy version equals librosa's tempogram to
+  6e-16 and leaves that song identical.
+- Tests: 7 inject (against an independent play-state evaluator), 3 no-pulse,
+  1 layout fit, 3 edit guard.
+
+### Measured
+
+```
+inject on a ranked map (236 reds, 199 greens, 1341 objects), Overtone's 22 red lines:
+  objects whose SV/sampleset/index/volume/kiai changed   old 229   new 0
+  section in time order                                  old no    new yes
+pulse gap (threshold 0.05):
+  white / pink / brown noise + bench noise               +0.014 .. +0.022
+  27 real songs from an osu! Songs folder                +0.090 min, +0.225 median
+  check cost on a 5-minute song                          ~0.25 s (librosa version ~7 s)
+classic window toolbar, clipped buttons (EN/ES x default/minimum)   old 4/4 cases   new 0/4
+gates: 205/205 unit tests; benchmark 24/24, 0.0000 BPM / 0.16 ms; bpm-snapshot unchanged;
+golden 24/24; coverage, measures, signatures green
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-22 · A shared grid slot reads as its coarsest division
 
 A bug fix in the hitsound crate's musical role. The tempo engine is untouched.

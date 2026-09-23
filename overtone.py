@@ -1897,16 +1897,81 @@ def _assemble_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int, fit
                     fit["downbeat"], residual, "precision")
 
 
+#: Below this, the onset envelope is no more periodic than itself shuffled:
+#: there is no pulse to time. Measured with _pulse_gap exactly as written:
+#: white, pink and brown noise and the benchmark's noise fixture +0.014..+0.022;
+#: 27 real songs from an osu! Songs folder (including the live-band track that
+#: falls back to the tracker) +0.090 or more, median +0.225; every synthetic
+#: fixture, ramps included, +0.257 or more.
+MIN_PULSE_GAP = 0.05
+PULSE_SHUFFLES = 5
+#: One analysis window in 16 (~93 ms apart at 44.1 kHz). The median barely
+#: moves (0.64289 -> 0.64295 on secs-4) and the check costs ~0.25 s, not ~7 s.
+PULSE_STRIDE = 16
+PULSE_WINDOW = 384
+
+
+def _pulse_clarity(onset: np.ndarray, sr: int, hop: int) -> float:
+    """Median over the track of the best 40-300 BPM self-similarity.
+
+    librosa.feature.tempogram's autocorrelation (periodic Hann, centred with a
+    linear ramp, each window normalised by its peak) written in numpy and
+    evaluated every PULSE_STRIDE frames; with a stride of 1 it matches librosa
+    to 6e-16. It must not *call* librosa: a tempogram computed before the
+    fallback tracker's first call changed that tracker's global BPM on a real
+    song (198.07 -> 199.27), and a safeguard must not move a result.
+    """
+    env = np.asarray(onset, dtype=np.float64)
+    k = np.arange(PULSE_WINDOW)
+    half = PULSE_WINDOW // 2
+    padded = np.pad(env, (half, half), mode="linear_ramp", end_values=(0, 0))
+    hann = 0.5 - 0.5 * np.cos(2.0 * np.pi * k / PULSE_WINDOW)
+    starts = np.arange(0, env.size, PULSE_STRIDE)
+    frames = padded[starts[:, None] + k[None, :]] * hann[None, :]
+    nfft = 1 << int(np.ceil(np.log2(2 * PULSE_WINDOW - 1)))
+    spectrum = np.fft.rfft(frames, n=nfft, axis=1)
+    lagged = np.fft.irfft(spectrum * np.conj(spectrum), n=nfft, axis=1)[:, :PULSE_WINDOW]
+    peak = np.abs(lagged).max(axis=1, keepdims=True)
+    lagged = np.divide(lagged, peak, out=np.zeros_like(lagged), where=peak > 0)
+    lags = k * hop / sr
+    band = (lags >= 0.2) & (lags <= 1.5)
+    return float(np.median(lagged[:, band].max(axis=1)))
+
+
+def _pulse_gap(onset: np.ndarray, sr: int, hop: int) -> float:
+    """How much more periodic the onset envelope is than itself, shuffled.
+
+    Shuffling the frames keeps the loudness distribution and destroys any
+    rhythm, so noise scores about zero whatever its colour, while music — even
+    rubato, even a live band whose tempo drifts — scores clearly above it. The
+    shuffles use a fixed seed: the same audio always gets the same verdict.
+    """
+    onset = np.asarray(onset, dtype=np.float64)
+    if onset.size < 64 or not np.any(onset > 0):
+        return 0.0
+    rng = np.random.default_rng(0)
+    shuffled = [_pulse_clarity(rng.permutation(onset), sr, hop) for _ in range(PULSE_SHUFFLES)]
+    return _pulse_clarity(onset, sr, hop) - float(np.mean(shuffled))
+
+
 def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
                      min_delta: float, persistence: int, prefer_map_bpm: bool,
                      min_confidence: float, say: Callable[[str], None],
                      force_subdivision: int, refine_beats: bool) -> Analysis:
-    """v2 tracker path: used when no regular pulse grid can be fitted."""
+    """v2 tracker path: used when no regular pulse grid can be fitted.
+
+    It refuses audio with no pulse at all instead of tracking one: a beat
+    tracker always finds *some* beats, so on white noise it used to report
+    127.68 BPM. A tempo that drifts or ramps still passes; noise does not.
+    """
     say("Extracting transients and tempo hypotheses…")
     hop = HOP
     onset = _onset_envelope(y, sr, hop)
     if onset.size < 8:
         raise ValueError("Not enough beats detected. Try a file with clearer percussion.")
+    if _pulse_gap(onset, sr, hop) < MIN_PULSE_GAP:
+        raise ValueError("No rhythmic pulse found: this audio sounds like noise or has no beat, "
+                         "so there is no BPM to report.")
     guides = _global_tempo_guides(onset, sr, hop)
     prior = guides[0][0] if guides else None
 

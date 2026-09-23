@@ -12,6 +12,11 @@ from pathlib import Path
 import numpy as np
 
 from overtone import (
+    HOP,
+    MIN_PULSE_GAP,
+    _load_audio,
+    _onset_envelope,
+    _pulse_gap,
     DEFAULT_LANGUAGE,
     Analysis,
     GridSection,
@@ -718,6 +723,56 @@ class PrecisionEngineTests(unittest.TestCase):
             sf.write(str(path), drone, sr)
             with self.assertRaises(ValueError):
                 analyze_audio(path, engine="precision")
+
+
+class NoPulseRefusalTests(unittest.TestCase):
+    """White noise must not return a BPM (CLAUDE.md rule 2).
+
+    The precision engine already gave up on noise; the beat-tracker fallback
+    then invented 127.68 BPM for it. It now refuses, while audio whose pulse
+    drifts keeps its answer.
+    """
+
+    def _noise(self, path: Path, colour: str = "white", seconds: float = 20.0) -> None:
+        import soundfile as sf
+        sr = 22050
+        rng = np.random.default_rng(3)
+        spectrum = np.fft.rfft(rng.standard_normal(int(seconds * sr)))
+        tilt = {"white": 0.0, "pink": 0.5, "brown": 1.0}[colour]
+        signal = np.fft.irfft(spectrum / (np.arange(spectrum.size) + 1.0) ** tilt, int(seconds * sr))
+        sf.write(str(path), (0.3 * signal / np.max(np.abs(signal))).astype(np.float32), sr)
+
+    def test_noise_of_any_colour_gets_no_bpm(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for colour in ("white", "pink", "brown"):
+                path = Path(tmp) / f"{colour}.wav"
+                self._noise(path, colour)
+                for engine in ("auto", "legacy"):
+                    with self.subTest(colour=colour, engine=engine):
+                        with self.assertRaises(ValueError):
+                            analyze_audio(path, engine=engine)
+
+    def test_a_pulse_through_the_fallback_still_gets_its_bpm(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "drums.wav"
+            _drum_track(path, [(0.5, 140.0)], duration=20.0)
+            analysis = analyze_audio(path, engine="legacy")
+        # not refused; the tracker's octave preference (120-300) may double it
+        octave_error = min(abs(analysis.global_bpm - 140.0), abs(analysis.global_bpm - 280.0))
+        self.assertLess(octave_error, 140.0 * 0.03)
+
+    def test_the_gap_separates_noise_from_a_beat(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            noise, drums = Path(tmp) / "noise.wav", Path(tmp) / "drums.wav"
+            self._noise(noise)
+            _drum_track(drums, [(0.5, 128.0)], duration=20.0)
+            gaps = {}
+            for name, path in (("noise", noise), ("drums", drums)):
+                y, sr = _load_audio(str(path), lambda _message: None)  # the engine's own path
+                gaps[name] = _pulse_gap(_onset_envelope(y, sr, HOP), sr, HOP)
+        self.assertLess(gaps["noise"], MIN_PULSE_GAP)
+        self.assertGreater(gaps["drums"], 3 * MIN_PULSE_GAP)
+        self.assertEqual(_pulse_gap(np.zeros(4000), 22050, HOP), 0.0)  # silence
 
 
 class GridMathTests(unittest.TestCase):

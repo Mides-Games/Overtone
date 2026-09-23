@@ -48,6 +48,7 @@ import json
 import os
 import queue
 import re
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -2249,6 +2250,29 @@ def osu_timing_text(analysis: Analysis, decimals: int = 0) -> str:
             meter = max(1, min(16, int(getattr(p, "meter", fallback) or fallback)))
         rows.append(f"{offset},{beat_length:.12f},{meter},1,0,100,1,0")
     return "\n".join(rows)
+
+
+def analysis_report(analysis: Analysis) -> dict:
+    """Machine-readable report (CLI --json, Phase 8).
+
+    Snapped points — what the exporters write — plus the validation findings,
+    all plain JSON types.
+    """
+    return {
+        "source": str(getattr(analysis, "source", "")),
+        "duration": float(analysis.duration),
+        "global_bpm": float(analysis.global_bpm),
+        "stability": float(analysis.stability),
+        "meter": analysis.meter,
+        "engine": analysis.engine,
+        "subdivision": float(analysis.subdivision),
+        "residual_ms": float(analysis.fit_residual_ms),
+        "points": [{"offset_ms": p.offset_ms, "bpm": p.bpm,
+                    "confidence": p.confidence, "meter": p.meter,
+                    "meter_known": bool(p.meter_known)}
+                   for p in snap_timing_points(analysis.points)],
+        "findings": validate_timing_points(analysis),
+    }
 
 
 def analysis_summary(analysis: Analysis) -> str:
@@ -4703,6 +4727,7 @@ def main() -> None:
     parser.add_argument("--csv", help="Output CSV path")
     parser.add_argument("--click", help="Output click-track WAV path (metronome aligned to red lines)")
     parser.add_argument("--stats", action="store_true", help="Print a human-readable summary table")
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON instead of the human report")
     parser.add_argument("--subdivision", choices=("auto", "0.25", "0.5", "1", "2", "4"), default="auto",
                         help="Multiply the detected beat rate: 2 doubles (fixes a half-time read), 0.5 halves. Default: auto.")
     parser.add_argument("--engine", choices=("auto", "precision", "legacy"), default="auto",
@@ -4736,13 +4761,15 @@ def main() -> None:
         except ValueError as exc:
             print(f"Error: {exc}")
             raise SystemExit(1)
-        print(f"{'file':<32} {'bpm':>10} {'points':>7} {'seconds':>8}  status")
-        failures = 0
-        for row in rows:
-            failures += not row["ok"]
-            status = "ok" if row["ok"] else f"FAILED: {row['error']}"
-            print(f"{row['file']:<32} {row['global_bpm']:>10.2f} {row['points']:>7d} "
-                  f"{row['duration']:>8.1f}  {status}")
+        failures = sum(not row["ok"] for row in rows)
+        if args.json:
+            print(json.dumps(rows, indent=2))
+        else:
+            print(f"{'file':<32} {'bpm':>10} {'points':>7} {'seconds':>8}  status")
+            for row in rows:
+                status = "ok" if row["ok"] else f"FAILED: {row['error']}"
+                print(f"{row['file']:<32} {row['global_bpm']:>10.2f} {row['points']:>7d} "
+                      f"{row['duration']:>8.1f}  {status}")
         if args.csv:
             try:
                 with open(args.csv, "w", newline="", encoding="utf-8") as handle:
@@ -4755,16 +4782,21 @@ def main() -> None:
                 raise SystemExit(1)
         raise SystemExit(1 if failures else 0)
     try:
+        # Progress goes to stderr under --json, so stdout stays pure JSON.
+        say = (lambda message: print(message, file=sys.stderr)) if args.json else print
         analysis = analyze_audio(args.audio, args.delta, args.persistence, not args.no_map_preference,
-                                 args.min_confidence / 100, print, force,
+                                 args.min_confidence / 100, say, force,
                                  refine_beats=not args.no_refine, engine=args.engine)
     except (ValueError, RuntimeError, OSError) as exc:
         print(f"Error: {exc}")
         raise SystemExit(1)
-    if args.stats:
-        print(analysis_summary(analysis))
-        print()
-    print(osu_timing_text(analysis, args.decimal_offsets))
+    if args.json:
+        print(json.dumps(analysis_report(analysis), indent=2))
+    else:
+        if args.stats:
+            print(analysis_summary(analysis))
+            print()
+        print(osu_timing_text(analysis, args.decimal_offsets))
     try:
         if args.csv:
             export_csv(analysis, args.csv)

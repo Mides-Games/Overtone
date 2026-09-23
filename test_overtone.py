@@ -59,6 +59,8 @@ from overtone import (
     write_osu_beatmap,
     attack_object_context,
     alignment_report,
+    analysis_report,
+    main,
 )
 
 
@@ -1657,6 +1659,54 @@ class AlignmentTests(unittest.TestCase):
         self.assertEqual(report["objects"], 6)
         self.assertEqual([(f["level"], f["key"]) for f in report["findings"]],
                          [("info", "no_attacks")])
+
+
+class JsonReportTests(unittest.TestCase):
+    def test_report_carries_snapped_points_and_findings(self) -> None:
+        import json
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        report = analysis_report(analysis)
+        self.assertEqual(report["global_bpm"], 150.0)
+        self.assertEqual(len(report["points"]), 2)
+        self.assertEqual(report["points"][0]["offset_ms"], 500.0)
+        self.assertEqual(report["findings"], [])
+        json.dumps(report)
+
+    def test_cli_json_single_file(self) -> None:
+        import contextlib
+        import io
+        import json
+        import sys
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "steady.wav"
+            _click_track(wav, bpm=128.0)
+            out = io.StringIO()
+            with mock.patch.object(sys, "argv", ["overtone.py", str(wav), "--json"]):
+                with contextlib.redirect_stdout(out):
+                    main()
+        report = json.loads(out.getvalue())
+        self.assertAlmostEqual(report["global_bpm"], 128.0, delta=128.0 * 0.04)
+        self.assertGreaterEqual(len(report["points"]), 1)
+
+    def test_cli_json_batch_folder(self) -> None:
+        import contextlib
+        import io
+        import json
+        import sys
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            _click_track(Path(tmp) / "steady.wav", bpm=128.0)
+            out = io.StringIO()
+            with mock.patch.object(sys, "argv", ["overtone.py", tmp, "--json"]):
+                with contextlib.redirect_stdout(out):
+                    with self.assertRaises(SystemExit) as done:
+                        main()
+        self.assertEqual(done.exception.code, 0)
+        rows = json.loads(out.getvalue())
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]["ok"])
 
 
 if __name__ == "__main__":

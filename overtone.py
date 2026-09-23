@@ -3504,6 +3504,38 @@ def density_report(beatmap: dict, bucket_s: float = 5.0) -> dict:
             **totals}
 
 
+def suggest_missing_lines(analysis: Analysis, beatmap: dict,
+                          tolerance_beats: float = 1.0) -> list[dict]:
+    """Detected sections with no nearby map red (Phase 9: timing suggestions).
+
+    For every detected point past the first, the nearest map red line; when
+    none sits within ``tolerance_beats`` of the detected tempo, the detector
+    hears a change the map does not have. Proposals, never auto-fixes — Phase 7
+    consents first. Each is ``{"index", "offset_ms", "bpm", "nearest_ms"}``
+    with plain JSON types; a map with no reds proposes every section past the
+    first, which is exactly timing-from-scratch assistance.
+    """
+    if tolerance_beats <= 0:
+        raise ValueError("Tolerance must be positive.")
+    detected = snap_timing_points(list(getattr(analysis, "points", None) or []))
+    try:
+        reds = [float(offset) for offset, _bpm in beatmap.get("timing", {}).get("reds", [])]
+    except (TypeError, ValueError):
+        reds = []
+    reds.sort()
+    suggestions: list[dict] = []
+    for n in range(1, len(detected)):
+        point = detected[n]
+        if not np.isfinite(point.bpm) or point.bpm <= 0 or not np.isfinite(point.offset_ms):
+            continue
+        beat_ms = 60000.0 / point.bpm
+        nearest = min((abs(red - point.offset_ms) for red in reds), default=float("inf"))
+        if nearest > tolerance_beats * beat_ms:
+            suggestions.append({"index": n, "offset_ms": point.offset_ms,
+                                "bpm": point.bpm, "nearest_ms": nearest})
+    return suggestions
+
+
 def _nearest_sorted(values: np.ndarray, target: float) -> float:
     """Nearest entry of a sorted array (binary search, edges included)."""
     idx = int(np.searchsorted(values, target))

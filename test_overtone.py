@@ -61,6 +61,7 @@ from overtone import (
     alignment_report,
     analysis_report,
     density_report,
+    suggest_missing_lines,
     main,
 )
 
@@ -1701,6 +1702,42 @@ class DensityTests(unittest.TestCase):
             beatmap = read_osu_beatmap(target)
         with self.assertRaises(ValueError):
             density_report(beatmap, bucket_s=0)
+
+
+def _reds_map(reds) -> dict:
+    return {"timing": {"reds": list(reds), "greens": []}}
+
+
+class SuggestTests(unittest.TestCase):
+    def test_missing_section_is_proposed(self) -> None:
+        import json
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        suggestions = suggest_missing_lines(analysis, _reds_map([(500.0, 150.0)]))
+        self.assertEqual(len(suggestions), 1)
+        self.assertEqual(suggestions[0]["index"], 1)
+        self.assertAlmostEqual(suggestions[0]["offset_ms"], 30500.0)
+        self.assertAlmostEqual(suggestions[0]["nearest_ms"], 30000.0)
+        json.dumps(suggestions)
+
+    def test_complete_and_empty_maps(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        self.assertEqual(suggest_missing_lines(
+            analysis, _reds_map([(500.0, 150.0), (30500.0, 152.0)])), [])
+        partial = suggest_missing_lines(analysis, _reds_map([]))
+        self.assertEqual([s["index"] for s in partial], [1])
+        self.assertEqual(suggest_missing_lines(_validation_analysis([]), _reds_map([])), [])
+
+    def test_tolerance_is_honoured_and_validated(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        # 300 ms off a 394.7 ms beat: inside one beat, outside half a beat.
+        beatmap = _reds_map([(500.0, 150.0), (30800.0, 152.0)])
+        self.assertEqual(suggest_missing_lines(analysis, beatmap), [])
+        self.assertEqual(len(suggest_missing_lines(analysis, beatmap, tolerance_beats=0.5)), 1)
+        with self.assertRaises(ValueError):
+            suggest_missing_lines(analysis, beatmap, tolerance_beats=0)
 
 
 class JsonReportTests(unittest.TestCase):

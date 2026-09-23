@@ -91,11 +91,39 @@ class WarningTests(unittest.TestCase):
         self.assertIn("warn_legacy", self.keys(_analysis([ta.TimingPoint(500, 150, 1, 0)], engine="legacy")))
 
     def test_first_red_line_long_after_the_music_starts_is_flagged(self) -> None:
-        # the 90->200 BPM ramp: music from 0.5 s, only red line at 70 s
+        # the 90->200 BPM ramp: music from 0.5 s, only red line at 70 s.
+        # The engine owns the rule now; the shell only translates the key.
         notes = web.analysis_payload(_analysis([ta.TimingPoint(70_393.1, 196.5, 0.74, 150)]))["warnings"]
-        late = [n for n in notes if n["key"] == "warn_late_first"]
+        late = [n for n in notes if n["key"] == "v_late_first"]
         self.assertEqual(len(late), 1)
-        self.assertEqual(late[0]["values"], {"line": "70.4", "beat": "0.5"})
+        self.assertEqual(late[0]["values"], {"line": "70.4", "beat": "0.5", "n": 1})
+
+    def test_engine_findings_surface_with_shell_levels(self) -> None:
+        notes = web.analysis_payload(_analysis(
+            [ta.TimingPoint(1000.0, 120.0, 0.9, 0),
+             ta.TimingPoint(1200.0, 120.0, 0.9, 1)]))["warnings"]
+        dup = [n for n in notes if n["key"] == "v_dup_points"]
+        self.assertEqual(len(dup), 1)
+        self.assertEqual(dup[0]["level"], "warn")  # engine errors read as banners
+        halved = web.analysis_payload(_analysis(
+            [ta.TimingPoint(0.0, 140.0, 0.9, 0),
+             ta.TimingPoint(30000.0, 280.0, 0.9, 70)]))["warnings"]
+        octave = [n for n in halved if n["key"] == "v_octave_check"]
+        self.assertEqual(len(octave), 1)
+        self.assertEqual(octave[0]["level"], "info")
+        json.dumps(halved)
+
+    def test_fixing_a_duplicate_clears_its_banner(self) -> None:
+        api = web.Api()
+        api._analysis = _analysis(
+            [ta.TimingPoint(1000.0, 120.0, 0.9, 0),
+             ta.TimingPoint(1200.0, 120.0, 0.9, 1)])
+        before = [w["key"] for w in web.analysis_payload(api._analysis)["warnings"]]
+        self.assertIn("v_dup_points", before)
+        reply = api.edit_nudge(1, 5000.0)
+        self.assertTrue(reply["ok"])
+        after = [w["key"] for w in reply["result"]["warnings"]]
+        self.assertNotIn("v_dup_points", after)
 
     def test_loose_grid_is_flagged(self) -> None:
         self.assertIn("warn_loose", self.keys(_analysis([ta.TimingPoint(500, 150, 1, 0)], residual=14.6)))

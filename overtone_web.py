@@ -46,8 +46,6 @@ DROP_DIR = Path(os.environ.get("LOCALAPPDATA", str(HERE))) / "Overtone" / "drops
 PULSE_FACTORS = {"auto": 0.0, "/4": 0.25, "/2": 0.5, "x1": 1.0, "x2": 2.0, "x4": 4.0}
 #: The trace needs the shape of the onset envelope, not its 40 k frames.
 ONSET_BINS = 1600
-#: A red line this far after the first beat leaves the intro without timing.
-LATE_FIRST_LINE_S = 2.0
 LOOSE_RESIDUAL_MS = 5.0
 
 
@@ -64,17 +62,22 @@ def _pool_max(values: np.ndarray, bins: int) -> np.ndarray:
     return np.maximum.reduceat(values, edges[:-1])
 
 
-def _warnings(analysis: ta.Analysis, points: list[ta.TimingPoint]) -> list[dict]:
-    """Things a mapper must check by ear before trusting the numbers."""
+def _warnings(analysis: ta.Analysis) -> list[dict]:
+    """Things a mapper must check by ear before trusting the numbers.
+
+    The engine owns every point-level rule (``validate_timing_points`` is the
+    single source of truth, so the Tk GUI will read the same findings when it
+    is wired); the shell only adds the two result-level notes the engine has
+    no keys for — fallback engine and loose grid.
+    """
     notes: list[dict] = []
     if analysis.engine != "precision":
         notes.append({"level": "warn", "key": "warn_legacy"})
-    if points and analysis.beats.size:
-        first_line = points[0].offset_ms / 1000.0
-        first_beat = float(analysis.beats[0])
-        if first_line - first_beat > LATE_FIRST_LINE_S:
-            notes.append({"level": "warn", "key": "warn_late_first",
-                          "values": {"line": f"{first_line:.1f}", "beat": f"{first_beat:.1f}"}})
+    for finding in ta.validate_timing_points(analysis):
+        values = dict(finding["values"])
+        values["n"] = finding["index"] + 1
+        notes.append({"level": "info" if finding["level"] == "info" else "warn",
+                      "key": "v_" + finding["key"], "values": values})
     if analysis.engine == "precision" and analysis.fit_residual_ms > LOOSE_RESIDUAL_MS:
         notes.append({"level": "info", "key": "warn_loose",
                       "values": {"ms": f"{analysis.fit_residual_ms:.1f}"}})
@@ -116,7 +119,7 @@ def analysis_payload(analysis: ta.Analysis) -> dict:
                   "bpm": local.round(3).tolist() if local.size == beats.size else []},
         "onset": {"span_s": float(onset.size * frame_s),
                   "v": (pooled / peak).round(3).tolist() if peak > 0 else []},
-        "warnings": _warnings(analysis, points),
+        "warnings": _warnings(analysis),
     }
 
 

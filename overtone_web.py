@@ -160,6 +160,11 @@ class Api:
         #: A fresh analysis replaces the whole map, so it clears both.
         self._history: list[list] = []
         self._future: list[list] = []
+        #: Locked points, by value: the editor refuses them and a fresh
+        #: analysis re-merges them, so a verified red line survives both.
+        #: Value-based on purpose — neighbours can come and go without
+        #: shifting anything, and undo/redo re-match by offset.
+        self._locked: list[dict] = []
         if initial_file:
             self._cfg["file"] = initial_file
 
@@ -184,8 +189,9 @@ class Api:
             return {"ok": False, "key": "no_undo"}
         self._future.append(list(self._analysis.points))
         self._analysis.points = self._history.pop()
+        self._prune_locks()
         return {"ok": True, "result": analysis_payload(self._analysis),
-                "selected": -1, **self.history_state()}
+                "selected": -1, "locks": self._lock_offsets(), **self.history_state()}
 
     def redo(self) -> dict:
         """Re-apply an undone edit. Any new edit discards the redo stack."""
@@ -195,8 +201,9 @@ class Api:
             return {"ok": False, "key": "no_redo"}
         self._history.append(list(self._analysis.points))
         self._analysis.points = self._future.pop()
+        self._prune_locks()
         return {"ok": True, "result": analysis_payload(self._analysis),
-                "selected": -1, **self.history_state()}
+                "selected": -1, "locks": self._lock_offsets(), **self.history_state()}
 
     # -- state -----------------------------------------------------------
     def state(self) -> dict:
@@ -320,8 +327,57 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         self._push_history()
         self._analysis = rebuilt
+        for lock in self._locked:
+            lock["bpm"] *= rebuilt.subdivision / analysis.subdivision
         return {"ok": True, "result": analysis_payload(self._analysis),
-                **self.history_state()}
+                "locks": self._lock_offsets(), **self.history_state()}
+
+    # -- point locks (Phase 4: a verified point survives edits and re-analysis)
+    def _lock_offsets(self) -> list:
+        return [lock["offset_ms"] for lock in self._locked]
+
+    def _is_locked(self, index) -> bool:
+        if self._analysis is None:
+            return False
+        try:
+            point = self._analysis.points[int(index)]
+        except (ValueError, TypeError, IndexError):
+            return False
+        return any(abs(lock["offset_ms"] - point.offset_ms) < 1e-6
+                   for lock in self._locked)
+
+    def _prune_locks(self) -> None:
+        """Drop locks whose point is gone (only undo can remove one: locked
+        points refuse delete, and every other edit keeps offsets). A pruned
+        lock stays pruned — redo brings the point back, not the lock."""
+        if self._analysis is None:
+            self._locked.clear()
+            return
+        offsets = [p.offset_ms for p in self._analysis.points]
+        self._locked = [lock for lock in self._locked
+                        if any(abs(lock["offset_ms"] - offset) < 1e-6
+                               for offset in offsets)]
+
+    def locks(self) -> dict:
+        return {"locks": self._lock_offsets()}
+
+    def set_locked(self, index: int, locked: bool) -> dict:
+        """Pin or release one point. Locked points refuse the editor."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            point = self._analysis.points[int(index)]
+        except (ValueError, TypeError, IndexError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        if locked:
+            if not self._is_locked(index):
+                self._locked.append({"offset_ms": point.offset_ms, "bpm": point.bpm,
+                                     "meter": point.meter, "meter_known": point.meter_known})
+        else:
+            self._locked = [lock for lock in self._locked
+                            if abs(lock["offset_ms"] - point.offset_ms) >= 1e-6]
+        return {"ok": True, "locked": self._is_locked(index),
+                "locks": self._lock_offsets()}
 
     # -- manual editing (same helpers, same guards as the Tk editor) -----
     def _edited(self, index: int | None, seek: float | None) -> dict:
@@ -334,12 +390,15 @@ class Api:
             selected = min(range(len(points)),
                            key=lambda n: abs(points[n].offset_ms - seek))
         return {"ok": True, "result": analysis_payload(self._analysis),
-                "selected": selected, **self.history_state()}
+                "selected": selected, "locks": self._lock_offsets(),
+                **self.history_state()}
 
     def edit_apply(self, index: int, offset_ms: float, bpm: float) -> dict:
         """Replace one point's offset/BPM, like the Tk editor's Apply."""
         if self._analysis is None:
             return {"ok": False, "key": "first"}
+        if self._is_locked(index):
+            return {"ok": False, "key": "locked"}
         try:
             index = int(index)
             offset = float(offset_ms)
@@ -369,6 +428,8 @@ class Api:
         """Remove one point. The first point anchors the map and stays."""
         if self._analysis is None:
             return {"ok": False, "key": "first"}
+        if self._is_locked(index):
+            return {"ok": False, "key": "locked"}
         try:
             index = int(index)
             points = ta.delete_timing_point(self._analysis.points, index)
@@ -382,6 +443,8 @@ class Api:
         """Shift one point's offset, clamped at 0 ms."""
         if self._analysis is None:
             return {"ok": False, "key": "first"}
+        if self._is_locked(index):
+            return {"ok": False, "key": "locked"}
         try:
             index = int(index)
             before = self._analysis.points[index].offset_ms
@@ -398,6 +461,8 @@ class Api:
         """Multiply one section's BPM (per-section x2//2 fix)."""
         if self._analysis is None:
             return {"ok": False, "key": "first"}
+        if self._is_locked(index):
+            return {"ok": False, "key": "locked"}
         try:
             index = int(index)
             points = ta.rescale_section(
@@ -499,6 +564,22 @@ class Api:
     def _worker(self, path: str, params: dict) -> None:
         try:
             result = run_analysis(path, params, self._emit_progress)
+            if self._locked:
+                # Verified red lines survive re-analysis: re-merge them as
+                # hand-placed points (confidence 1.0, bar preserved), skipping
+                # any the fresh map already found so locks never duplicate.
+                points = list(result.points)
+                beats = np.asarray(result.beats, dtype=np.float64)
+                for lock in self._locked:
+                    if any(abs(p.offset_ms - lock["offset_ms"]) < 1.0 for p in points):
+                        continue
+                    idx = (int(np.argmin(np.abs(beats * 1000.0 - lock["offset_ms"])))
+                           if beats.size else 0)
+                    points.append(ta.TimingPoint(
+                        lock["offset_ms"], lock["bpm"], 1.0, idx,
+                        lock["meter"], lock["meter_known"]))
+                points.sort(key=lambda p: p.offset_ms)
+                result.points = points
             self._analysis = result
             self._history.clear()
             self._future.clear()

@@ -369,6 +369,7 @@ tbody td { text-align: right; padding: 12px 20px; border-bottom: 1px solid rgba(
 tbody tr { cursor: pointer; transition: background .12s; }
 tbody tr:hover { background: rgba(29, 38, 56, .6); }
 tbody tr.sel { background: var(--accent-soft); }
+tbody tr.locked td:first-child .idx { background: var(--accent-soft); color: var(--accent); }
 tbody tr:last-child td { border-bottom: 0; }
 .idx { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: var(--red-soft); color: var(--red); font: 600 12px var(--mono); }
 .conf { display: inline-flex; align-items: center; gap: 10px; }

@@ -41,6 +41,10 @@ const I18N = {
     bad_drop: "That drop could not be read as audio.", too_big: "That file is over 64 MB — not a beatmap's audio.",
     busy: "An analysis is already running.", first: "Analyze a song first.", no_grid: "No stored beat grid — analyze again.",
     no_selection: "Select a timing point first.",
+    lock: "Lock", unlock: "Unlock", locked_pill: "locked",
+    locked_note: "Locked: the editor skips this point and re-analysis keeps it.",
+    locked_on: "Point #{n} locked.", locked_off: "Point #{n} unlocked.",
+    point_locked: "Point #{n} is locked — unlock it first.",
     undo: "Undo", redo: "Redo",
     no_undo: "Nothing to undo.", no_redo: "Nothing to redo.",
     undone: "Undone.", redone: "Redone.",
@@ -96,6 +100,10 @@ const I18N = {
     bad_drop: "No se pudo leer lo soltado como audio.", too_big: "Ese archivo supera los 64 MB — no es el audio de un beatmap.",
     busy: "Ya hay un análisis en curso.", first: "Analizá una canción primero.", no_grid: "No hay rejilla guardada — analizá de nuevo.",
     no_selection: "Elegí primero un timing point.",
+    lock: "Bloquear", unlock: "Desbloquear", locked_pill: "bloqueado",
+    locked_note: "Bloqueado: la edición lo saltea y el re-análisis lo conserva.",
+    locked_on: "Punto #{n} bloqueado.", locked_off: "Punto #{n} desbloqueado.",
+    point_locked: "El punto #{n} está bloqueado — desbloquealo primero.",
     undo: "Deshacer", redo: "Rehacer",
     no_undo: "Nada que deshacer.", no_redo: "Nada que rehacer.",
     undone: "Deshecho.", redone: "Rehecho.",
@@ -115,7 +123,7 @@ const I18N = {
   },
 };
 
-const S = { lang: "en", file: null, options: null, presets: {}, result: null, busy: false, selected: -1 };
+const S = { lang: "en", file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [] };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
@@ -240,6 +248,7 @@ async function undo() {
   const reply = await api().undo();
   if (!reply.ok) { editFailure(reply); return; }
   S.selected = Math.min(keep, reply.result.points.length - 1);
+  S.locks = reply.locks || [];
   showResult(reply.result);
   syncHistory(reply);
   toast(t("undone"));
@@ -251,9 +260,20 @@ async function redo() {
   const reply = await api().redo();
   if (!reply.ok) { editFailure(reply); return; }
   S.selected = Math.min(keep, reply.result.points.length - 1);
+  S.locks = reply.locks || [];
   showResult(reply.result);
   syncHistory(reply);
   toast(t("redone"));
+}
+
+async function syncLocks() {
+  if (!api() || !S.result) { S.locks = []; return; }
+  try {
+    S.locks = (await api().locks()).locks || [];
+  } catch (err) {
+    S.locks = [];
+  }
+  renderResult(S.result);
 }
 
 async function analyze() {
@@ -276,6 +296,7 @@ async function rescale(mult) {
   const reply = await api().rescale(mult);
   if (!reply.ok) { toast(t(reply.key, { detail: reply.detail || "" }), true); return; }
   S.selected = -1;
+  S.locks = reply.locks || [];
   showResult(reply.result);
   syncHistory(reply);
   toast(t("rescaled", { f: reply.result.subdivision, n: reply.result.points.length, bpm: reply.result.global_bpm.toFixed(2) }));
@@ -295,6 +316,7 @@ window.overtone = {
     S.selected = -1;
     showResult(result);
     syncHistory();
+    syncLocks();
     toast(t("done", { n: result.points.length, bpm: result.global_bpm.toFixed(2) }));
   },
   onError(detail) { S.pendingDrop = null; setBusy(false); toast(t("error", { detail }), true); },
@@ -334,7 +356,8 @@ function renderResult(r) {
   $("tableCount").textContent = t("points_n", { n: r.points.length });
   $("rows").innerHTML = r.points.map((p, i) => {
     const c = p.confidence, cls = c >= 0.9 ? "" : c >= 0.75 ? "mid" : "low";
-    return `<tr data-i="${i}" class="${i === S.selected ? "sel" : ""}">
+    const locked = (S.locks || []).includes(p.offset_ms);
+    return `<tr data-i="${i}" class="${i === S.selected ? "sel" : ""}${locked ? " locked" : ""}">
       <td><span class="idx">${i + 1}</span></td>
       <td class="num">${p.offset_ms.toFixed(1)}</td>
       <td class="num">${p.bpm.toFixed(3)}</td>
@@ -367,11 +390,13 @@ function renderDetail() {
   const start = p.offset_ms / 1000, end = next ? next.offset_ms / 1000 : r.duration;
   const bars = p.beat_ms > 0 ? Math.floor(((end - start) * 1000) / (p.beat_ms * p.meter)) : 0;
   const c = Math.round(p.confidence * 100);
+  const locked = (S.locks || []).includes(p.offset_ms);
   el.innerHTML = `
     <div class="detail-head">
       <span class="idx">${S.selected + 1}</span>
       <div class="card-title">${t("d_point")}</div>
       <div class="spacer"></div>
+      ${locked ? `<span class="pill accent">${t("locked_pill")}</span>` : ""}
       <span class="pill ${p.meter_known ? "accent" : ""}">${p.meter}/4</span>
     </div>
     <div class="detail-big">${p.bpm.toFixed(3)}<small>BPM</small></div>
@@ -398,7 +423,11 @@ function renderDetail() {
         <button class="btn small" data-action="double-s">×2 §</button>
       </div>
     </div>
-    <div class="detail-note">${t(p.meter_known ? "d_meter_known" : "d_meter_guess")}</div>`;
+      <div class="editor-row">
+        <button class="btn small" data-action="lock">${t(locked ? "unlock" : "lock")}</button>
+      </div>
+    </div>
+    <div class="detail-note">${t(locked ? "locked_note" : (p.meter_known ? "d_meter_known" : "d_meter_guess"))}</div>`;
 }
 
 // ------------------------------------------------------------------ point editing
@@ -407,7 +436,7 @@ function editFailure(reply) {
 }
 
 function showEditResult(reply, message) {
-  S.selected = reply.selected;
+  if (reply.selected !== undefined) S.selected = reply.selected;
   showResult(reply.result);
   syncHistory(reply);
   toast(message);
@@ -447,9 +476,19 @@ async function editAction(action) {
       const q = reply.result.points[reply.selected];
       message = t("section_rescaled", { n: reply.selected + 1, bpm: q.bpm.toFixed(2) });
     }
+  } else if (action === "lock") {
+    if (sel < 0) { toast(t("no_selection"), true); return; }
+    const off = S.result.points[sel].offset_ms;
+    reply = await api().set_locked(sel, !(S.locks || []).includes(off));
+    if (reply.ok) message = t(reply.locked ? "locked_on" : "locked_off", { n: sel + 1 });
   }
   if (!reply) return;
-  if (!reply.ok) { editFailure(reply); return; }
+  if (!reply.ok) {
+    if (reply.key === "locked") toast(t("point_locked", { n: sel + 1 }), true);
+    else editFailure(reply);
+    return;
+  }
+  if (reply.locks !== undefined) S.locks = reply.locks;
   showEditResult(reply, message);
 }
 
@@ -815,6 +854,7 @@ async function boot() {
   setFile(st.file);
   translate();
   syncActions();
+  syncLocks();
   if (st.autorun && S.file) analyze();
 }
 

@@ -489,5 +489,76 @@ class UndoTests(_IsolatedConfig):
             self.assertEqual(api.history_state(), {"undo": False, "redo": False})
 
 
+class LockTests(_IsolatedConfig):
+    def test_lock_unlock_roundtrip(self) -> None:
+        api = _api_with_points()
+        reply = api.set_locked(0, True)
+        self.assertTrue(reply["ok"])
+        self.assertTrue(reply["locked"])
+        self.assertEqual(reply["locks"], [1000.0])
+        self.assertEqual(api.locks(), {"locks": [1000.0]})
+        released = api.set_locked(0, False)
+        self.assertFalse(released["locked"])
+        self.assertEqual(api.locks(), {"locks": []})
+        json.dumps(reply)
+
+    def test_locked_points_refuse_the_editor(self) -> None:
+        api = _api_with_points()
+        api.set_locked(0, True)
+        before = list(api._analysis.points)
+        self.assertEqual(api.edit_apply(0, 1100.0, 130.0)["key"], "locked")
+        self.assertEqual(api.edit_delete(0)["key"], "locked")
+        self.assertEqual(api.edit_nudge(0, 5.0)["key"], "locked")
+        self.assertEqual(api.edit_rescale(0, 2.0)["key"], "locked")
+        self.assertEqual(api._analysis.points, before)
+        # Neighbours stay editable, and release re-opens the point.
+        self.assertTrue(api.edit_nudge(1, 5.0)["ok"])
+        api.set_locked(0, False)
+        self.assertTrue(api.edit_nudge(0, 5.0)["ok"])
+
+    def test_lock_needs_a_result_and_a_valid_index(self) -> None:
+        self.assertEqual(web.Api().set_locked(0, True)["key"], "first")
+        self.assertFalse(_api_with_points().set_locked(7, True)["ok"])
+
+    def test_undo_of_a_locked_add_prunes_the_lock(self) -> None:
+        api = _api_with_points()
+        api.edit_add(5000.0, 140.0)
+        api.set_locked(1, True)
+        self.assertEqual(len(api.locks()["locks"]), 1)
+        api.undo()
+        self.assertEqual(api.locks(), {"locks": []})
+        api.redo()
+        self.assertEqual(api.locks(), {"locks": []})  # pruned, not resurrected
+
+    def test_fresh_analysis_remerges_locks_and_rescale_scales_them(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "drums.wav"
+            _drum_track(wav, [(0.5, 128.0)], duration=16.0)
+            api = _api_with_points()
+            api.edit_add(12345.6, 140.0)
+            api.set_locked(2, True)
+            done = threading.Event()
+            api._emit = lambda handler, payload: done.set() if handler == "onResult" else None
+            options = {"delta": 1.5, "persistence": 12, "confidence": 75, "pulse": "auto",
+                       "prefer_map_bpm": True, "refine_beats": True}
+            self.assertTrue(api.analyze(str(wav), options)["ok"])
+            self.assertTrue(done.wait(120), "analysis did not finish")
+            merged = [p for p in api._analysis.points if abs(p.offset_ms - 12345.6) < 0.01]
+            self.assertEqual(len(merged), 1)
+            self.assertEqual(merged[0].confidence, 1.0)
+            self.assertEqual(merged[0].bpm, 140.0)
+            self.assertIn(12345.6, api.locks()["locks"])
+            # No lock duplicates a line the fresh map already found.
+            offsets = sorted(p.offset_ms for p in api._analysis.points)
+            self.assertTrue(all(b - a >= 1.0 for a, b in zip(offsets, offsets[1:])))
+            # A global pulse change carries the locks with their sections.
+            first_bpm = api._analysis.points[0].bpm
+            api.set_locked(0, True)
+            self.assertTrue(api.rescale(2)["ok"])
+            by_offset = {lock["offset_ms"]: lock["bpm"] for lock in api._locked}
+            self.assertAlmostEqual(by_offset[api._analysis.points[0].offset_ms],
+                                   2 * first_bpm, places=6)
+
+
 if __name__ == "__main__":
     unittest.main()

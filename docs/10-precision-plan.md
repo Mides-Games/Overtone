@@ -222,6 +222,11 @@ piece of information about where the "1" is.
 1. **7-band onset envelopes.** STFT split into logarithmic bands:
    sub (20–60), low (60–120), low-mid (120–400), mid (400–2000),
    high-mid (2k–6k), high (6k–11k), air (11k+). One envelope per band.
+   *Built differently:* the Rust `multiband` flux splits the mel path's
+   40 Hz–11.025 kHz into seven equal log steps (edges 40, 89, 199, 445,
+   992, 2214, 4940, 11025 Hz), so nothing above 11.025 kHz is read and its
+   bands do not line up with the table above, which the hitsound features
+   use.
 2. **3-way HPSS.** Fitzgerald extended to harmonic + percussive + residual.
    Beat tracking runs on percussive; chord-change detection runs on harmonic.
 3. **Chroma novelty.** Cosine distance between consecutive chroma frames.

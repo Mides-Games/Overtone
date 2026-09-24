@@ -588,6 +588,10 @@ def _choose_subdivision(onset: np.ndarray, beat_frames: np.ndarray,
     ~1.4 BPM < min_delta), collapsing the whole map into one "constant"
     section. So an out-of-range base only needs moderate in-between attack
     evidence to double, while an in-range base still needs strong evidence.
+
+    It only ever keeps the tracked pulse or doubles / quadruples it. A lock
+    above 300 BPM is kept as it is; nothing here halves it, so ÷2 is the way
+    back from a double-time read.
     """
     if len(beat_frames) < 4:
         return 1
@@ -616,12 +620,6 @@ def _choose_subdivision(onset: np.ndarray, beat_frames: np.ndarray,
         score = support_ratio + range_bonus + guide_boost
         if support_ratio >= need and score > best_score:
             best_factor, best_score = factor, score
-    # Octave-down safety net: if the tracker locked onto double-time while the
-    # tempogram strongly prefers half, halve back — but only with evidence.
-    if best_factor == 1 and base_bpm > 300:
-        half_support = _subdivision_support(onset, beat_frames[::2], 1)
-        if half_support >= base_support * 0.9:
-            return 1  # keep grid; tempo halves naturally via local BPM median
     return best_factor
 
 
@@ -899,11 +897,14 @@ def _coherence_curve(times: np.ndarray, weights: np.ndarray,
 def _atomic_grid_candidates(times: np.ndarray, weights: np.ndarray,
                             period_range: tuple[float, float] = (0.055, 1.35),
                             keep: int = 10) -> list[tuple[float, float, float]]:
-    """Candidate atomic pulses as [(period, phase, coherence)], slowest first.
+    """Candidate atomic pulses as [(period, phase, coherence)], shortest period first.
 
     ``R`` is high at the atomic pulse *and at every multiple of it*, and low at
     sub-multiples — so the fundamental is the slowest strong peak, which is
-    exactly what we want to hand to the least-squares stage.
+    exactly what we want to hand to the least-squares stage. The ``keep``
+    slowest strong peaks are kept, each joined by its 2-4x multiples (up to
+    1.6 times the range's slowest period), and the whole list is sorted by
+    ascending period: fastest first, so ``[0]`` is not the fundamental.
     """
     if times.size < 8:
         return []
@@ -2029,6 +2030,14 @@ def _load_audio(path: str | os.PathLike[str],
                 say: Callable[[str], None]) -> tuple[np.ndarray, int]:
     """Decode to mono float32 at 44.1 kHz, peak-normalized."""
     say("Loading and normalizing audio…")
+    # A missing or empty file is not a codec problem. All three used to read
+    # "Could not decode audio ... install FFmpeg", which sends the user off to
+    # install a program that cannot help.
+    name = os.path.basename(os.fspath(path))
+    if not os.path.isfile(path):
+        raise RuntimeError(f"No audio file at {os.fspath(path)}.")
+    if os.path.getsize(path) == 0:
+        raise RuntimeError(f"{name} is empty (0 bytes).")
     try:
         # Ask libsndfile for the header first: a mistyped path to a multi-hour
         # file should cost nothing, not gigabytes of decoded samples.
@@ -2054,9 +2063,16 @@ def _load_audio(path: str | os.PathLike[str],
         try:
             y, sr = librosa.load(path, sr=TARGET_SR, mono=True, res_type="soxr_hq")
         except Exception as exc:
+            if Path(name).suffix.lower() in (".mp3", ".m4a", ".aac", ".mp4", ".wma"):
+                raise RuntimeError(
+                    "Could not decode audio. For MP3/M4A/AAC install FFmpeg and add it to "
+                    "PATH; WAV/FLAC/OGG open directly."
+                ) from exc
+            # WAV, FLAC, OGG and AIFF need no FFmpeg: this file is damaged or
+            # is not the audio its name says.
             raise RuntimeError(
-                "Could not decode audio. For MP3/M4A/AAC install FFmpeg and add it to PATH; "
-                "WAV/FLAC/OGG should open directly."
+                f"Could not decode {name}: it is not audio this program can read, "
+                "or it is damaged."
             ) from exc
     y = np.asarray(y, dtype=np.float32).reshape(-1)
     if not np.all(np.isfinite(y)):
@@ -2286,13 +2302,11 @@ def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
     if not points and candidates:
         points = [max(candidates, key=lambda p: p.confidence)]
 
+    # The median of the measured beats, as rebuild_with_subdivision reports it.
+    # Averaging it with a nearby tempogram guide was tried: a guide is a bin a
+    # few tenths of a BPM wide, and on 16 single-tempo corpus cases the average
+    # was further from the truth 14 times (median error 0.39 against 0.17 BPM).
     global_bpm = float(np.median(local_v)) if len(local_v) else 0.0
-    if guides:
-        for tempo_hint, _w in guides[:3]:
-            for mult in (0.5, 1.0, 2.0):
-                if abs(tempo_hint * mult - global_bpm) <= max(2.0, global_bpm * 0.02):
-                    global_bpm = float((global_bpm + tempo_hint * mult) / 2.0)
-                    break
     return Analysis(str(path), y.size / sr, beats_v, local_v, points, hop, sr,
                     subdivision, global_bpm, _stability(local_v),
                     _guess_meter(beats_v, onset, sr, hop), onset, beat_frames_raw)
@@ -2355,7 +2369,8 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
 def analyze_batch(folder: str | os.PathLike[str], min_delta: float = 1.5,
                   persistence: int = 12, prefer_map_bpm: bool = True,
                   min_confidence: float = 0.75, force_subdivision: float = 0.0,
-                  refine_beats: bool = True, progress=None) -> list[dict]:
+                  refine_beats: bool = True, progress=None,
+                  engine: str = "auto") -> list[dict]:
     """Analyze every audio file in a folder; one bad file never stops the rest.
 
     Phase 8 batch entry point (single flat folder — osu! song folders are
@@ -2376,7 +2391,7 @@ def analyze_batch(folder: str | os.PathLike[str], min_delta: float = 1.5,
         try:
             analysis = analyze_audio(str(root / name), min_delta, persistence,
                                      prefer_map_bpm, min_confidence, progress,
-                                     force_subdivision, refine_beats)
+                                     force_subdivision, refine_beats, engine)
         except (ValueError, RuntimeError, OSError) as exc:
             rows.append({"file": name, "ok": False, "global_bpm": 0.0,
                          "points": 0, "duration": 0.0, "error": str(exc)})
@@ -2448,10 +2463,12 @@ def rebuild_with_subdivision(analysis: Analysis, factor: float,
 # ---------------------------------------------------------------------------
 
 def export_csv(analysis: Analysis, destination: str | os.PathLike[str]) -> None:
+    """The red lines as the table, .osu, .osz and click track have them: snapped."""
     with open(destination, "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["offset_ms", "bpm", "beat_index", "confidence"])
-        writer.writerows((f"{p.offset_ms:.3f}", f"{p.bpm:.6f}", p.beat_index, f"{p.confidence:.3f}") for p in analysis.points)
+        writer.writerows((f"{p.offset_ms:.3f}", f"{p.bpm:.6f}", p.beat_index, f"{p.confidence:.3f}")
+                         for p in snap_timing_points(analysis.points))
 
 
 def export_click_track(analysis: Analysis, destination: str | os.PathLike[str],
@@ -2465,6 +2482,14 @@ def export_click_track(analysis: Analysis, destination: str | os.PathLike[str],
         raise ValueError("Analyze audio first — there are no timing points.")
     if not 8000 <= sr <= 192000:
         raise ValueError("Click-track sample rate must be between 8 and 192 kHz.")
+    # Checked before rendering, in words: soundfile raised a TypeError for an
+    # unknown extension and "System error." for a missing folder, and only
+    # after a long click track had been built.
+    target = Path(destination)
+    if not sf.check_format(target.suffix.lstrip(".").upper() or "?"):
+        raise ValueError(f"{target.name}: give the click track a sound file extension such as .wav.")
+    if not target.parent.is_dir():
+        raise ValueError(f"Folder not found: {target.parent}")
     duration = float(min(max(analysis.duration, 1.0), MAX_CLICK_SECONDS))
     total = int((duration + 1.0) * sr)
     click = np.zeros(total, dtype=np.float32)
@@ -2832,14 +2857,23 @@ def delete_timing_point(points: list[TimingPoint], index: int) -> list[TimingPoi
 
 def nudge_timing_point(points: list[TimingPoint], beats: np.ndarray, index: int,
                        delta_ms: float) -> list[TimingPoint]:
-    """Shift one point's offset, clamped at 0 ms, beat index refreshed."""
+    """Shift one point's offset by ``delta_ms``, beat index refreshed.
+
+    A nudge stops at 0 ms rather than carry a point from the audio into the
+    time before it. A point already before 0 ms (an anacrusis, or audio that
+    opens on its first beat) moves by exactly ``delta_ms``: clamping it too
+    turned a -1 ms nudge on a line at -20 ms into a +20 ms jump.
+    """
     if not 0 <= index < len(points):
         raise ValueError("No timing point at that index.")
     old = points[index]
-    offset = max(0.0, old.offset_ms + delta_ms)
+    offset = old.offset_ms + delta_ms
+    if old.offset_ms >= 0.0 > offset:
+        offset = 0.0
     merged = list(points)
     merged[index] = TimingPoint(offset, old.bpm, old.confidence,
-                                old.beat_index, old.meter, old.meter_known, manual=True)
+                                _nearest_beat_index(beats, offset),
+                                old.meter, old.meter_known, manual=True)
     merged.sort(key=lambda p: p.offset_ms)
     return merged
 
@@ -3052,9 +3086,11 @@ def export_osz(analysis: "Analysis", destination: str | os.PathLike[str],
     target = Path(destination)
     temp = target.with_name(target.name + ".part")
     try:
-        with zipfile.ZipFile(temp, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr(osu_name, text.encode("utf-8"))
-            archive.write(source, audio_name)
+        with open(temp, "wb") as handle:
+            with zipfile.ZipFile(handle, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr(osu_name, text.encode("utf-8"))
+                archive.write(source, audio_name)
+            _sync(handle)
         os.replace(temp, target)
     except BaseException:
         try:
@@ -3071,8 +3107,26 @@ def export_osz(analysis: "Analysis", destination: str | os.PathLike[str],
 # .osu injection
 # ---------------------------------------------------------------------------
 
+def _sync(handle) -> None:
+    """Push a temp file's bytes to the disk before it is renamed into place.
+
+    The OS may persist a rename before the data it points at. After a power
+    cut or a crash between the two, the name then holds an empty or
+    zero-filled file and the content it replaced is gone. Syncing first
+    leaves the old file or the complete new one, never neither.
+    """
+    handle.flush()
+    os.fsync(handle.fileno())
+
+
+def _write_synced(path: Path, payload: bytes) -> None:
+    with open(path, "wb") as handle:
+        handle.write(payload)
+        _sync(handle)
+
+
 def _atomic_write_bytes(path: Path, payload: bytes) -> None:
-    """Write via a sibling temp file + rename.
+    """Write via a sibling temp file, synced, then renamed.
 
     Injecting rewrites the user's beatmap in place. Truncating the real file
     and then failing mid-write would destroy work that may not exist anywhere
@@ -3080,7 +3134,7 @@ def _atomic_write_bytes(path: Path, payload: bytes) -> None:
     """
     temp = path.with_name(path.name + ".part")
     try:
-        temp.write_bytes(payload)
+        _write_synced(temp, payload)
         os.replace(temp, path)
     except BaseException:
         try:
@@ -3111,7 +3165,7 @@ def _backup_before_write(path: Path, raw: bytes) -> Path:
         return newest
     temp = spare.with_name(spare.name + ".part")
     try:
-        temp.write_bytes(raw)
+        _write_synced(temp, raw)
         os.rename(temp, spare)
     except BaseException:
         try:
@@ -4007,6 +4061,96 @@ def density_report(beatmap: dict, bucket_s: float = 5.0) -> dict:
             **totals}
 
 
+#: The snap divisors osu!'s editor offers, coarsest first.
+SNAP_DIVISORS = (1, 2, 3, 4, 6, 8, 12, 16)
+#: osu! stores whole milliseconds, so a snapped object sits up to 1 ms from
+#: its exact tick; past that it is off the grid.
+SNAP_TOLERANCE_MS = 1.0
+
+
+def _snap_of(time_ms: float, reds: list[tuple[float, float]]) -> dict:
+    """Where one time sits on a red-line grid: the coarsest divisor it hits
+    within SNAP_TOLERANCE_MS, or the nearest tick it misses."""
+    governing = reds[0]
+    for red in reds:
+        if red[0] <= time_ms + 1e-9:
+            governing = red
+    offset, bpm = governing
+    beat_ms = 60000.0 / bpm
+    position = (time_ms - offset) / beat_ms
+    best = None
+    for divisor in SNAP_DIVISORS:
+        tick = round(position * divisor) / divisor
+        off = time_ms - (offset + tick * beat_ms)
+        if abs(off) <= SNAP_TOLERANCE_MS:
+            return {"divisor": divisor, "off_ms": off, "snapped": True}
+        if best is None or abs(off) < abs(best["off_ms"]) - 1e-9:
+            best = {"divisor": divisor, "off_ms": off, "snapped": False}
+    return best
+
+
+def snap_audit(beatmap: dict, analysis: Analysis | None = None,
+               duration_s: float | None = None) -> dict:
+    """Objects off the map's own grid, and what a new timing would unsnap
+    (Phase 7, "Snap audit").
+
+    Every object start is placed on the red line governing it at the snap
+    divisors the editor offers (1/1 to 1/16). An object on none of them within
+    SNAP_TOLERANCE_MS is listed with the nearest tick and how far it misses.
+    Objects before the first red line and, given the audio length, past its
+    end are listed too. With an analysis, the same audit runs against the red
+    lines an inject would write, and the report says how many objects that
+    would move off the grid and how many it would put back on — the question
+    to ask before injecting. Starts only, like the alignment check: slider
+    ends follow from length and slider velocity, and spinner and hold ends are
+    not audited yet. Nothing is changed. All plain JSON types.
+    """
+    reds = sorted(beatmap.get("timing", {}).get("reds", []))
+    objects = [o for o in beatmap.get("hitobjects", []) if "time" in o]
+    unparsed = sum(1 for o in beatmap.get("hitobjects", []) if "time" not in o)
+    if not reds:
+        return {"ok": False, "reason": "no_red_lines", "objects": len(objects),
+                "unparsed": unparsed}
+    audited, histogram = [], {str(d): 0 for d in SNAP_DIVISORS}
+    for obj in objects:
+        snap = _snap_of(float(obj["time"]), reds)
+        audited.append((obj, snap))
+        if snap["snapped"]:
+            histogram[str(snap["divisor"])] += 1
+    unsnapped = [{"time_ms": float(obj["time"]), "kind": obj.get("kind", "unparsed"),
+                  "nearest_divisor": snap["divisor"], "off_ms": round(snap["off_ms"], 3)}
+                 for obj, snap in audited if not snap["snapped"]]
+    report = {
+        "ok": True,
+        "objects": len(objects),
+        "unparsed": unparsed,
+        "red_lines": len(reds),
+        "snapped": len(objects) - len(unsnapped),
+        "by_divisor": histogram,
+        "unsnapped": unsnapped,
+        "before_first_red": [float(o["time"]) for o in objects if o["time"] < reds[0][0]],
+        "past_audio": ([float(o["time"]) for o in objects if o["time"] > duration_s * 1000.0]
+                       if duration_s is not None else None),
+    }
+    if analysis is not None:
+        detected = [(p.offset_ms, p.bpm) for p in snap_timing_points(analysis.points)
+                    if np.isfinite(p.offset_ms) and p.bpm > 0]
+        if detected:
+            detected.sort()
+            would_unsnap, would_snap = [], 0
+            for obj, snap in audited:
+                after = _snap_of(float(obj["time"]), detected)
+                if snap["snapped"] and not after["snapped"]:
+                    would_unsnap.append({"time_ms": float(obj["time"]),
+                                         "nearest_divisor": after["divisor"],
+                                         "off_ms": round(after["off_ms"], 3)})
+                elif after["snapped"] and not snap["snapped"]:
+                    would_snap += 1
+            report["with_detected_timing"] = {"would_unsnap": would_unsnap,
+                                              "would_snap": would_snap}
+    return report
+
+
 def suggest_missing_lines(analysis: Analysis, beatmap: dict,
                           tolerance_beats: float = 1.0) -> list[dict]:
     """Detected sections with no nearby map red (Phase 9: timing suggestions).
@@ -4048,6 +4192,237 @@ def _nearest_sorted(values: np.ndarray, target: float) -> float:
     if not candidates:
         return float("inf")
     return float(min((values[v] for v in candidates), key=lambda v: abs(v - target)))
+
+
+# ---------------------------------------------------------------------------
+# Mapset check (proposal P1): what every difficulty of one set must share
+# ---------------------------------------------------------------------------
+
+#: Beat lengths closer than this are one number written twice (a float
+#: round-trip in some editor); offsets are compared exactly as written.
+MAPSET_BEAT_TOLERANCE_MS = 1e-6
+#: Fields the difficulties of one set must agree on, by .osu section.
+MAPSET_AUDIO_FIELDS = ("AudioFilename", "PreviewTime", "AudioLeadIn")
+MAPSET_METADATA_FIELDS = ("Artist", "ArtistUnicode", "Title", "TitleUnicode",
+                          "Creator", "Source", "Tags")
+#: osu!'s value for a [General] number that is left out, so a missing
+#: AudioLeadIn and an explicit 0 read as the same setting.
+_MAPSET_GENERAL_DEFAULTS = {"PreviewTime": -1.0, "AudioLeadIn": 0.0}
+
+
+def _mapset_difficulty_name(path: Path, beatmap: dict | None) -> str:
+    """The difficulty name: ``Version`` when the map has one, else the file's."""
+    version = str(((beatmap or {}).get("metadata") or {}).get("Version", "")).strip()
+    if version:
+        return version
+    bracket = re.search(r"\[([^\]]+)\]\s*$", path.stem)
+    return bracket.group(1) if bracket else path.stem
+
+
+def _mapset_timing_lines(beatmap: dict) -> list[dict]:
+    """Every timing line with usable numbers, red or green, in file order.
+
+    The parsed ``timing`` view keeps reds as ``(offset, bpm)`` only; this
+    check needs the beat length as written, the meter and the kiai bit, so it
+    reads the raw section. Lines without numbers are skipped, never fatal.
+    """
+    section = next((s for s in beatmap.get("sections", [])
+                    if s.get("name") == "TimingPoints"), None)
+    lines: list[dict] = []
+    for raw in (section or {}).get("lines", []):
+        text = str(raw).strip()
+        if not text or text.startswith("//"):
+            continue
+        fields = text.split(",")
+        try:
+            time_ms = float(fields[0])
+            beat_length = float(fields[1])
+        except (ValueError, IndexError):
+            continue
+        if not (np.isfinite(time_ms) and np.isfinite(beat_length)):
+            continue
+        meter: int | str = 4
+        if len(fields) > 2 and fields[2].strip():
+            try:
+                meter = int(fields[2])
+            except ValueError:
+                meter = fields[2].strip()  # compared as written, not guessed
+        try:
+            effects = int(fields[7]) if len(fields) > 7 and fields[7].strip() else 0
+        except ValueError:
+            effects = 0
+        lines.append({"time": time_ms, "beat_length": beat_length, "meter": meter,
+                      "red": _is_red_line(text) and beat_length > 0,
+                      "kiai": bool(effects & 1)})
+    return lines
+
+
+def _mapset_kiai_spans(lines: list[dict]) -> list[dict]:
+    """Kiai on/off spans; ``end_ms`` None means kiai runs to the end of the map."""
+    spans: list[dict] = []
+    active, start = False, 0.0
+    for line in sorted(lines, key=lambda item: item["time"]):  # stable: file order at ties
+        if line["kiai"] == active:
+            continue
+        if line["kiai"]:
+            start = line["time"]
+        elif line["time"] > start:
+            spans.append({"start_ms": start, "end_ms": line["time"]})
+        active = line["kiai"]
+    if active:
+        spans.append({"start_ms": start, "end_ms": None})
+    return spans
+
+
+def _mapset_red_differences(reference: list[dict], other: list[dict]) -> list[dict]:
+    """How ``other``'s red lines differ from ``reference``'s, one entry each.
+
+    Lines pair on an identical offset first; a leftover within half a
+    reference beat of a leftover is the same line moved (``offset``). Paired
+    lines then compare beat length (within ``MAPSET_BEAT_TOLERANCE_MS``) and
+    meter. Whatever stays unpaired is ``missing`` from, or ``extra`` in,
+    ``other``. Sorted by offset.
+    """
+    ref_left, other_left = list(reference), list(other)
+    pairs: list[tuple[dict, dict]] = []
+    diffs: list[dict] = []
+    for red in reference:
+        match = next((o for o in other_left if o["time"] == red["time"]), None)
+        if match is not None:
+            other_left.remove(match)
+            ref_left.remove(red)
+            pairs.append((red, match))
+    for red in sorted(ref_left, key=lambda item: item["time"]):
+        near = min(other_left, key=lambda o: abs(o["time"] - red["time"]), default=None)
+        if near is None or abs(near["time"] - red["time"]) > 0.5 * red["beat_length"]:
+            continue
+        other_left.remove(near)
+        ref_left.remove(red)
+        pairs.append((red, near))
+        diffs.append({"offset_ms": red["time"], "kind": "offset",
+                      "expected": red["time"], "found": near["time"]})
+    for red, found in pairs:
+        if abs(red["beat_length"] - found["beat_length"]) > MAPSET_BEAT_TOLERANCE_MS:
+            diffs.append({"offset_ms": red["time"], "kind": "beat_length",
+                          "expected": red["beat_length"], "found": found["beat_length"]})
+        if red["meter"] != found["meter"]:
+            diffs.append({"offset_ms": red["time"], "kind": "meter",
+                          "expected": red["meter"], "found": found["meter"]})
+    diffs += [{"offset_ms": red["time"], "kind": "missing", "expected": red["time"],
+               "found": None} for red in ref_left]
+    diffs += [{"offset_ms": extra["time"], "kind": "extra", "expected": None,
+               "found": extra["time"]} for extra in other_left]
+    return sorted(diffs, key=lambda d: d["offset_ms"])
+
+
+def _mapset_field_key(field_name: str, value: str | None):
+    """What two values of one field must share to count as the same setting."""
+    if field_name in _MAPSET_GENERAL_DEFAULTS:
+        if value is None or not value.strip():
+            return _MAPSET_GENERAL_DEFAULTS[field_name]
+        try:
+            number = float(value)
+        except ValueError:
+            return value
+        return number if np.isfinite(number) else value
+    if field_name == "Tags" and value is not None:
+        return frozenset(value.split())  # order and spacing carry no meaning
+    return value
+
+
+def mapset_report(folder: str | os.PathLike[str]) -> dict:
+    """Every difficulty of one beatmap folder, checked for what must match.
+
+    Read only: differences are listed, never fixed. Compared across
+    difficulties: red lines (offset exactly as written, beat length within
+    ``MAPSET_BEAT_TOLERANCE_MS``, meter), ``AudioFilename``/``PreviewTime``/
+    ``AudioLeadIn`` (osu!'s defaults stand in for a missing number) and the
+    metadata in ``MAPSET_METADATA_FIELDS`` (tags as a set of words). Reported
+    per difficulty for information: kiai spans, and object density from
+    ``density_report`` -- objects per second, not a star rating.
+
+    Red lines are compared against one reference difficulty: the one the
+    most others match exactly (first in file order on a tie), so a single
+    odd difficulty is the one that shows up, not everything compared to it.
+    Fields use the value most difficulties share. A file that cannot be read
+    is reported with the reason and left out of the comparison; it never
+    stops the rest. Raises ``ValueError`` only when ``folder`` is not a
+    folder. Plain JSON types throughout.
+    """
+    scan = scan_beatmap_folder(folder)
+    difficulties: list[dict] = []
+    parsed: list[tuple[dict, dict, list[dict]]] = []
+    for name in scan["beatmaps"]:
+        path = Path(name)
+        entry: dict = {"file": path.name}
+        try:
+            beatmap = read_osu_beatmap(path)
+            lines = _mapset_timing_lines(beatmap)
+            density = density_report(beatmap)
+        except (ValueError, OSError, TypeError, KeyError) as exc:
+            entry.update({"difficulty": _mapset_difficulty_name(path, None),
+                          "readable": False, "detail": str(exc)})
+            difficulties.append(entry)
+            continue
+        reds = [line for line in lines if line["red"]]
+        entry.update({
+            "difficulty": _mapset_difficulty_name(path, beatmap), "readable": True,
+            "reference": False, "red_lines": len(reds),
+            "kiai": _mapset_kiai_spans(lines),
+            "density": {"objects": density["objects"],
+                        "mean_per_second": density["mean_per_second"],
+                        "peak_per_second": density["peak_per_second"]},
+            "checks": {"red_lines": 0, "audio": [], "metadata": []},
+        })
+        difficulties.append(entry)
+        parsed.append((entry, beatmap, reds))
+
+    reference = None
+    red_differences: list[dict] = []
+    if parsed:
+        def agreeing(candidate: list[dict]) -> int:
+            return sum(1 for _e, _b, reds in parsed
+                       if not _mapset_red_differences(candidate, reds))
+        ref_index = max(range(len(parsed)), key=lambda n: (agreeing(parsed[n][2]), -n))
+        ref_entry, _ref_map, ref_reds = parsed[ref_index]
+        reference = ref_entry["file"]
+        ref_entry["reference"] = True
+        for entry, _beatmap, reds in parsed:
+            if entry is ref_entry:
+                continue
+            found = _mapset_red_differences(ref_reds, reds)
+            entry["checks"]["red_lines"] = len(found)
+            red_differences += [{"file": entry["file"], "difficulty": entry["difficulty"],
+                                 **diff} for diff in found]
+        # The reference's value breaks ties, so it goes first.
+        parsed = [parsed[ref_index]] + parsed[:ref_index] + parsed[ref_index + 1:]
+
+    fields: list[dict] = []
+    for section, names, check in (("General", MAPSET_AUDIO_FIELDS, "audio"),
+                                  ("Metadata", MAPSET_METADATA_FIELDS, "metadata")):
+        for field_name in names:
+            values = [(entry, (beatmap.get(section.lower()) or {}).get(field_name))
+                      for entry, beatmap, _reds in parsed]
+            keys = [_mapset_field_key(field_name, value) for _entry, value in values]
+            common = max(dict.fromkeys(keys), key=keys.count) if keys else None
+            shown = next((value for (_entry, value), key in zip(values, keys)
+                          if key == common), None)
+            odd = []
+            for (entry, value), key in zip(values, keys):
+                if key != common:
+                    entry["checks"][check].append(field_name)
+                    odd.append({"file": entry["file"], "difficulty": entry["difficulty"],
+                                "value": value})
+            fields.append({"section": section, "field": field_name,
+                           "identical": not odd, "value": shown, "differences": odd})
+
+    unreadable = sum(1 for entry in difficulties if not entry["readable"])
+    field_differences = sum(len(f["differences"]) for f in fields)
+    return {"folder": scan["folder"], "reference": reference,
+            "difficulties": difficulties, "red_lines": red_differences,
+            "fields": fields, "unreadable": unreadable,
+            "differences": len(red_differences) + field_differences,
+            "consistent": not red_differences and not field_differences and not unreadable}
 
 
 # ---------------------------------------------------------------------------
@@ -4163,6 +4538,8 @@ class TimingAnalyzerApp:
             "injected": "Injected {added} red lines ({replaced} replaced, {greens} greens kept). Backup saved.",
             "all_audio": "Audio files", "all": "All files",
             "language": "Language", "file": "Audio file",
+            "trace_title": "TEMPO TRACE",
+            "trace_beat": "beat  {ms} ms", "trace_conf": "conf  {pct}",
             "trace_empty": "Analyze an audio file to preview its tempo trace",
             "section": "§{n}  {bpm} BPM @ {ms}",
             "menu_file": "File", "menu_export": "Export", "menu_help": "Help",
@@ -4214,6 +4591,8 @@ class TimingAnalyzerApp:
             "injected": "Inyectadas {added} líneas rojas ({replaced} reemplazadas, {greens} verdes intactas). Backup guardado.",
             "all_audio": "Archivos de audio", "all": "Todos los archivos",
             "language": "Idioma", "file": "Archivo de audio",
+            "trace_title": "CURVA DE TEMPO",
+            "trace_beat": "beat  {ms} ms", "trace_conf": "confianza  {pct}",
             "trace_empty": "Analiza un audio para ver su curva de tempo",
             "section": "§{n}  {bpm} BPM @ {ms}",
             "menu_file": "Archivo", "menu_export": "Exportar", "menu_help": "Ayuda",
@@ -4224,7 +4603,6 @@ class TimingAnalyzerApp:
     }
 
     ACCENT = "#6EE7B7"
-    ACCENT2 = "#7C5CFF"
 
     #: Detection presets. VARIABLE is the default: tuned for songs whose BPM
     #: changes often (short sections, quick transitions). STEADY trades recall
@@ -4380,7 +4758,7 @@ class TimingAnalyzerApp:
         # keeps the outline but drops the fill so it does not shout.
         # Padding tuned so the widest button row (Results: Export / Copy .osu /
         # Click track / ÷2 / ×2 / Inject / Details) still fits at the default
-        # 1180 px window -- a taller value was tried and cropped "Export" to
+        # 1120 px window -- a taller value was tried and cropped "Export" to
         # "E>". A shorter one loses the pill shape. This is the compromise.
         style.configure("TButton", background=panel2, foreground=fg,
                         bordercolor=border, focuscolor=border,
@@ -4450,7 +4828,7 @@ class TimingAnalyzerApp:
         root = ttk.Frame(self.root, padding=(22, 18), style="TFrame")
         root.pack(fill="both", expand=True)
 
-        # Header: pink dot + title + version pill + language
+        # Header: accent dot + title + version pill + language
         header = ttk.Frame(root)
         header.pack(fill="x", pady=(0, 2))
         dot = tk.Canvas(header, width=26, height=26, bg=self.C["bg"], highlightthickness=0)
@@ -4681,6 +5059,10 @@ class TimingAnalyzerApp:
                     cap.configure(text=self.tr(key))  # type: ignore[union-attr]
                 except Exception:
                     pass
+        try:
+            self.widgets["language_lbl"].configure(text=self.tr("language"))  # type: ignore[union-attr]
+        except Exception:
+            pass
         heads = {"n": "#", "offset": self.tr("offset"), "bpm": "BPM",
                  "beatlen": self.tr("beatlen"), "confidence": self.tr("confidence")}
         for col, text in heads.items():
@@ -4926,17 +5308,40 @@ class TimingAnalyzerApp:
         except ValueError as exc:
             raise ValueError(self.tr("bad_numbers")) from exc
 
-    def _after_edit(self, message: str) -> None:
+    def _edited_index(self, before: list[TimingPoint]) -> int:
+        """Where the point an edit made sits now, after the re-sort.
+
+        The edit helpers copy every other point as it is, so the one object
+        missing from ``before`` is the edited one; an offset search could land
+        on a neighbour at the same time.
+        """
+        assert self.analysis is not None
+        kept = {id(point) for point in before}
+        return next((n for n, point in enumerate(self.analysis.points) if id(point) not in kept),
+                    self.selected_section or 0)
+
+    def _after_edit(self, message: str, select: int | None = None) -> None:
+        """Redraw after a hand edit, keeping row ``select`` selected.
+
+        Every edit used to clear the selection and refill the editor with §1,
+        so a second press of +1 said "Select a table row first."
+        """
         assert self.analysis is not None
         self._manual_edits += 1
         self.selected_section = None
         self._render_results()
+        rows = self.table.get_children()
+        if select is not None and 0 <= select < len(rows):
+            self.table.selection_set(rows[select])
+            self.table.see(rows[select])
+            self._on_row()
         self.status.set(message)
 
     def edit_apply(self) -> None:
         if not self.analysis or self.selected_section is None:
             self.status.set(self.tr("no_selection"))
             return
+        before = self.analysis.points
         try:
             offset, bpm = self._editor_values()
             self.analysis.points = update_timing_point(
@@ -4944,16 +5349,16 @@ class TimingAnalyzerApp:
         except ValueError as exc:
             self.status.set(self.tr("error", value=str(exc)))
             return
-        index = min(range(len(self.analysis.points)),
-                    key=lambda n: abs(self.analysis.points[n].offset_ms - offset))
+        index = self._edited_index(before)
         point = self.analysis.points[index]
         self._after_edit(self.tr("edited", n=index + 1,
-                                 bpm=f"{point.bpm:.3f}", ms=f"{point.offset_ms:.1f}"))
+                                 bpm=f"{point.bpm:.3f}", ms=f"{point.offset_ms:.1f}"), index)
 
     def edit_add(self) -> None:
         if not self.analysis:
             self.status.set(self.tr("first"))
             return
+        before = self.analysis.points
         try:
             offset, bpm = self._editor_values()
             self.analysis.points = add_timing_point(
@@ -4961,11 +5366,16 @@ class TimingAnalyzerApp:
         except ValueError as exc:
             self.status.set(self.tr("error", value=str(exc)))
             return
-        self._after_edit(self.tr("added_point", bpm=f"{bpm:.2f}", ms=f"{offset:.1f}"))
+        self._after_edit(self.tr("added_point", bpm=f"{bpm:.2f}", ms=f"{offset:.1f}"),
+                         self._edited_index(before))
 
     def edit_delete(self) -> None:
         if not self.analysis or self.selected_section is None:
             self.status.set(self.tr("no_selection"))
+            return
+        if self.selected_section == 0:
+            # delete_timing_point refuses it too, but in English only.
+            self.status.set(self.tr("first_locked"))
             return
         try:
             n = self.selected_section + 1
@@ -4979,19 +5389,17 @@ class TimingAnalyzerApp:
         if not self.analysis or self.selected_section is None:
             self.status.set(self.tr("no_selection"))
             return
+        before = self.analysis.points
         try:
-            before = self.analysis.points[self.selected_section].offset_ms
             self.analysis.points = nudge_timing_point(
                 self.analysis.points, self.analysis.beats, self.selected_section, delta_ms)
         except ValueError as exc:
             self.status.set(self.tr("error", value=str(exc)))
             return
-        target = before + delta_ms
-        index = min(range(len(self.analysis.points)),
-                    key=lambda n: abs(self.analysis.points[n].offset_ms - target))
+        index = self._edited_index(before)
         point = self.analysis.points[index]
         self._after_edit(self.tr("edited", n=index + 1,
-                                 bpm=f"{point.bpm:.3f}", ms=f"{point.offset_ms:.1f}"))
+                                 bpm=f"{point.bpm:.3f}", ms=f"{point.offset_ms:.1f}"), index)
 
     def edit_rescale(self, factor: float) -> None:
         if not self.analysis or self.selected_section is None:
@@ -5003,10 +5411,9 @@ class TimingAnalyzerApp:
         except ValueError as exc:
             self.status.set(self.tr("error", value=str(exc)))
             return
-        point = self.analysis.points[self.selected_section]
-        self._set_editor(f"{point.offset_ms:.1f}", f"{point.bpm:.2f}")
-        self._after_edit(self.tr("section_rescaled", n=self.selected_section + 1,
-                                 bpm=f"{point.bpm:.2f}"))
+        index = self.selected_section
+        point = self.analysis.points[index]
+        self._after_edit(self.tr("section_rescaled", n=index + 1, bpm=f"{point.bpm:.2f}"), index)
 
     def _refresh_suggestion(self) -> None:
         try:
@@ -5244,7 +5651,7 @@ class TimingAnalyzerApp:
         g = self._trace_geometry()
 
         canvas.create_text(14, 13, anchor="w", fill=C["muted"],
-                           font=("Segoe UI Semibold", 9), text="TEMPO TRACE")
+                           font=("Segoe UI Semibold", 9), text=self.tr("trace_title"))
 
         scales = self._trace_scales()
         if scales is None:
@@ -5380,8 +5787,8 @@ class TimingAnalyzerApp:
         lines = [
             self._mmss(at),
             f"{point.bpm:.3f} BPM",
-            f"beat  {beat_ms:.3f} ms",
-            f"conf  {point.confidence:.0%}",
+            self.tr("trace_beat", ms=f"{beat_ms:.3f}"),
+            self.tr("trace_conf", pct=f"{point.confidence:.0%}"),
         ]
         box_w, box_h = 118, 14 * len(lines) + 10
         bx = event.x + 10
@@ -5425,22 +5832,45 @@ def main() -> None:
     parser.add_argument("--no-backup", action="store_true", help="Skip the .bak backup when injecting")
     parser.add_argument("--no-map-preference", action="store_true", help="Do not prefer 120-300 mapping BPM when resolving the octave")
     args = parser.parse_args()
+
+    def note(message: str) -> None:
+        """Progress, status and errors go to stderr: stdout carries only the
+        red lines (or the JSON), so `> timing.txt` holds nothing else."""
+        print(message, file=sys.stderr)
+
+    # A flag that cannot act is refused, never dropped: --inject with the
+    # audio forgotten opened the window, and --title without --osz wrote
+    # nothing anywhere, both without a word.
+    given = sorted("--" + name.replace("_", "-") for name, value in vars(args).items()
+                   if name != "audio" and value != parser.get_default(name))
     if not args.audio:
+        if given:
+            parser.error(f"{', '.join(given)} {'needs' if len(given) == 1 else 'need'} an "
+                         "audio file to analyze; with no arguments at all the window opens")
         TimingAnalyzerApp().start()
         return
+    metadata = [flag for flag in ("--artist", "--title", "--creator") if flag in given]
+    if metadata and not args.osz:
+        parser.error(f"{', '.join(metadata)} only {'names' if len(metadata) == 1 else 'name'} "
+                     "what --osz writes; add --osz OUT.osz")
+    if args.no_backup and not args.inject:
+        parser.error("--no-backup only applies to --inject; nothing else makes a backup")
     if not 0 <= args.decimal_offsets <= 6:
-        print("Error: --decimal-offsets must be between 0 and 6")
+        note("Error: --decimal-offsets must be between 0 and 6")
         raise SystemExit(2)
     force = 0.0 if args.subdivision == "auto" else float(args.subdivision)
     if Path(args.audio).is_dir():
-        if args.click or args.osz or args.inject or args.stats:
-            print("Error: --click/--osz/--inject/--stats need a single audio file, not a folder")
+        single = [flag for flag in ("--click", "--osz", "--inject", "--stats", "--decimal-offsets")
+                  if flag in given]
+        if single:
+            note(f"Error: {'/'.join(single)} need a single audio file, not a folder")
             raise SystemExit(2)
         try:
             rows = analyze_batch(args.audio, args.delta, args.persistence, not args.no_map_preference,
-                                 args.min_confidence / 100, force, refine_beats=not args.no_refine)
+                                 args.min_confidence / 100, force, refine_beats=not args.no_refine,
+                                 engine=args.engine)
         except ValueError as exc:
-            print(f"Error: {exc}")
+            note(f"Error: {exc}")
             raise SystemExit(1)
         failures = sum(not row["ok"] for row in rows)
         if args.json:
@@ -5459,17 +5889,15 @@ def main() -> None:
                     writer.writerows([[row["file"], row["ok"], row["global_bpm"],
                                        row["points"], row["duration"], row["error"]] for row in rows])
             except OSError as exc:
-                print(f"Error writing output: {exc}")
+                note(f"Error writing output: {exc}")
                 raise SystemExit(1)
         raise SystemExit(1 if failures else 0)
     try:
-        # Progress goes to stderr under --json, so stdout stays pure JSON.
-        say = (lambda message: print(message, file=sys.stderr)) if args.json else print
         analysis = analyze_audio(args.audio, args.delta, args.persistence, not args.no_map_preference,
-                                 args.min_confidence / 100, say, force,
+                                 args.min_confidence / 100, note, force,
                                  refine_beats=not args.no_refine, engine=args.engine)
     except (ValueError, RuntimeError, OSError) as exc:
-        print(f"Error: {exc}")
+        note(f"Error: {exc}")
         raise SystemExit(1)
     if args.json:
         print(json.dumps(analysis_report(analysis), indent=2))
@@ -5488,24 +5916,24 @@ def main() -> None:
                 analysis, args.osz, args.audio,
                 {"artist": args.artist, "title": args.title, "creator": args.creator},
                 args.decimal_offsets)
-            print(f"Wrote {args.osz}: {written['osu']} "
-                  f"({written['points']} red line(s), {written['bytes'] / 1e6:.1f} MB)")
-    except (OSError, ValueError) as exc:
-        print(f"Error writing output: {exc}")
+            note(f"Wrote {args.osz}: {written['osu']} "
+                 f"({written['points']} red line(s), {written['bytes'] / 1e6:.1f} MB)")
+    except (OSError, ValueError, RuntimeError) as exc:  # soundfile's errors are RuntimeErrors
+        note(f"Error writing output: {exc}")
         raise SystemExit(1)
     if args.inject:
         try:
             summary = inject_osu_timing_points(args.inject, analysis, backup=not args.no_backup,
                                                decimals=args.decimal_offsets)
         except (ValueError, OSError) as exc:
-            print(f"Error injecting into {args.inject}: {exc}")
+            note(f"Error injecting into {args.inject}: {exc}")
             raise SystemExit(1)
-        print(f"Injected {summary['reds_added']} red lines "
-              f"({summary['reds_replaced']} replaced, {summary['greens_kept']} greens kept, "
-              f"{summary['greens_added']} greens added to keep SV and hitsounds)"
-              + (" [audio mismatch!]" if summary["audio_mismatch"] else ""))
+        note(f"Injected {summary['reds_added']} red lines "
+             f"({summary['reds_replaced']} replaced, {summary['greens_kept']} greens kept, "
+             f"{summary['greens_added']} greens added to keep SV and hitsounds)"
+             + (" [audio mismatch!]" if summary["audio_mismatch"] else ""))
         if summary["backup"]:
-            print(f"Backup: {summary['backup']}")
+            note(f"Backup: {summary['backup']}")
 
 
 if __name__ == "__main__":

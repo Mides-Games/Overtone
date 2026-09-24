@@ -188,7 +188,7 @@ fn scan_section(
             .map(|&(_, _, p, _)| p)
             .collect();
         let parity_out = par_rows.iter().sum::<f64>() / par_rows.len() as f64;
-        let score = (mean_out - mean_in) * parity_in;
+        let score = proto_score(mean_out, mean_in, parity_in);
         let candidate = PulseHint {
             section: index,
             subdivision: sub,
@@ -219,6 +219,15 @@ fn scan_section(
         }
     }
     best
+}
+
+/// The prototype's score: coverage and parity rounded to three decimals,
+/// then their product rounded again, and the subdivisions compared on that
+/// (the first of equal scores stays). The port compared the raw product, so
+/// two subdivisions within rounding of each other could pick the other one.
+fn proto_score(mean_out: f64, mean_in: f64, parity_in: f64) -> f64 {
+    let round3 = |x: f64| (x * 1000.0).round() / 1000.0;
+    round3((round3(mean_out) - round3(mean_in)) * round3(parity_in))
 }
 
 fn windowed(
@@ -329,9 +338,25 @@ mod tests {
     }
 
     #[test]
+    fn scores_compare_as_the_prototype_rounds_them() {
+        // Raw 0.4500 against 0.45018: the prototype rounds both to 0.450 and
+        // keeps the first subdivision; raw, the second would win.
+        let first = proto_score(0.9, 0.4, 0.9);
+        let second = proto_score(0.9002, 0.4, 0.9);
+        assert_eq!(first, 0.45);
+        assert_eq!(second, first);
+        // Raw, the second product is larger, and would have won.
+        let raw = [(0.9f64, 0.4, 0.9), (0.9002, 0.4, 0.9)].map(|(out, inn, par)| (out - inn) * par);
+        assert!(raw[1] > raw[0]);
+    }
+
+    #[test]
     fn a_six_second_drop_is_not_a_pulse_change() {
-        // Constant eighths with a hole: coverage collapses but parity is
-        // scattered, so nothing fires.
+        // Constant eighths with a hole. The hole's windows are empty, and an
+        // empty window is not a thinned one: under four attacks it has no
+        // parity to read and fails the count floor as well, so either guard
+        // alone keeps this quiet. (It said scattered parity rejected it; the
+        // parity guard is what a_sparse_region_is_not_a_pulse_change pins.)
         let beat = 60.0 / 180.0;
         let mut times = Vec::new();
         let mut weights = Vec::new();

@@ -9,11 +9,13 @@
 //! order, the spacing and the level, which is what a held-out evaluation
 //! needs. The seed fixes everything, so a rerun reproduces a run bit-for-bit.
 //!
-//! Eight classes (seven drums plus `other` as sustained chord stabs —
-//! `other` is a real class that fires often, and an attack the engine
-//! cannot characterise must never be forced into a drum). Results on
-//! synthetic drums are an upper bound, as the timeline states for tempo;
-//! the honest complement is a hand-labelled set of real tracks.
+//! Thirteen classes: eight drums (kick, snare, clap, closed and open hat,
+//! tom, crash, ride), four pitched sources (bass, guitar, keys, vocal) and
+//! `other` as soft sustained chord stabs — `other` is a real class that
+//! fires often, and an attack the engine cannot characterise must never be
+//! forced into a drum. Results on synthetic drums are an upper bound, as
+//! the timeline states for tempo; the honest complement is a hand-labelled
+//! set of real tracks.
 
 use std::collections::HashMap;
 
@@ -182,7 +184,9 @@ fn place(buf: &mut [f32], sr: u32, at: f64, class: HitClass, velocity: f64, rng:
             | HitClass::Keys
             | HitClass::Vocal => (0.0, 0.300, 0.0, 0.0, 0.100, 0),
         };
-    // Cymbals and hats are noise coloured by rough metallic partials;
+    // The "metallic" voices get plain white noise here, with no partials:
+    // the hats are nothing else, and the crash adds its own branch below
+    // (a slower noise wash under four inharmonic partials from 1.6 kHz).
     // `other` is a soft major triad stab (pitched, sustained,
     // unpercussive). Ride, bass, guitar, keys and vocal render fully in
     // their own branches below — the generic loop stays silent for them.

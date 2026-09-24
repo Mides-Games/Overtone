@@ -18,11 +18,32 @@
         <div class="brand-sub" data-i18n="tagline">Timing for osu! maps</div>
       </div>
     </div>
-    <nav>
-      <div class="nav-item active" data-view="timing" title="Timing">
+    <nav class="nav" id="nav" data-i18n-aria="nav_sections" aria-label="Sections">
+      <button type="button" class="nav-item active" data-view="library" data-i18n-title="nav_library" title="Library" aria-current="page">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>
+        <span class="nav-label" data-i18n="nav_library">Library</span>
+      </button>
+      <button type="button" class="nav-item" data-view="timing" data-i18n-title="nav_timing" title="Timing">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l2-6 3 12 3-9 2 5 2-2h5"/></svg>
         <span class="nav-label" data-i18n="nav_timing">Timing</span>
-      </div>
+      </button>
+      <button type="button" class="nav-item" data-view="mapcheck" data-i18n-title="nav_mapcheck" title="Map check">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8.5 12 2.5 2.5 5-5"/><path d="M20 12.5V18a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3h8"/></svg>
+        <span class="nav-label" data-i18n="nav_mapcheck">Map check</span>
+      </button>
+      <button type="button" class="nav-item" data-view="mapset" data-i18n-title="nav_mapset" title="Mapset">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 4.5-9 4.5-9-4.5z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></svg>
+        <span class="nav-label" data-i18n="nav_mapset">Mapset</span>
+      </button>
+      <button type="button" class="nav-item" data-view="export" data-i18n-title="nav_export" title="Export">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>
+        <span class="nav-label" data-i18n="nav_export">Export</span>
+      </button>
+      <div class="nav-sep" role="presentation"></div>
+      <button type="button" class="nav-item" id="navSettings" data-i18n-title="nav_settings" title="Settings" aria-haspopup="dialog" aria-controls="drawer">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+        <span class="nav-label" data-i18n="nav_settings">Settings</span>
+      </button>
     </nav>
     <div class="sidebar-foot">
       <div class="segmented stretch" id="langSwitch">
@@ -49,7 +70,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
         <span data-i18n="open">Open audio</span>
       </button>
-      <button class="btn icon" id="settingsBtn" title="Detection settings">
+      <button class="btn icon" id="settingsBtn" data-i18n-title="detection" title="Detection settings" aria-haspopup="dialog" aria-controls="drawer">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
       </button>
       <button class="btn primary" id="analyzeBtn" disabled>
@@ -64,9 +85,9 @@
       <div class="text" id="progressText"></div>
     </div>
 
-    <div class="content">
-      <!-- empty state -->
-      <section class="empty" id="empty">
+    <div class="content" id="content">
+      <!-- library: the home view, open audio or a beatmap folder -->
+      <section class="view empty" id="viewLibrary" data-view="library">
         <div class="drop" id="drop">
           <div class="halo">
             <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l2-6 3 12 3-9 2 5 2-2h5"/></svg>
@@ -87,8 +108,24 @@
         </div>
       </section>
 
-      <!-- results -->
-      <section id="results" hidden>
+      <!-- shown instead of a view that needs the analysed song -->
+      <section class="view empty" id="needSong" hidden>
+        <div class="need-song">
+          <div class="halo">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l2-6 3 12 3-9 2 5 2-2h5"/></svg>
+          </div>
+          <h2 id="needTitle" data-i18n="need_title">Nothing analyzed yet</h2>
+          <p id="needBody"></p>
+          <div class="drop-actions">
+            <button class="btn primary" id="needAnalyze" hidden><span id="needAnalyzeText"></span></button>
+            <button class="btn" id="needOpen"><span data-i18n="open">Open audio</span></button>
+            <button class="btn" id="needLibrary"><span data-i18n="need_library">Go to Library</span></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- timing: stats, verdict, tempo map, points and editor -->
+      <section class="view" id="viewTiming" data-view="timing" data-needs-result hidden>
         <div class="stats">
           <div class="stat">
             <div class="label" data-i18n="stat_global">Global BPM</div>
@@ -114,15 +151,61 @@
 
         <div class="warnings" id="warnings"></div>
 
-        <div class="actions">
-          <button class="btn small" id="copyOsuBtn"><span data-i18n="actions_copy">Copy .osu</span></button>
-          <button class="btn small" id="csvBtn"><span data-i18n="actions_csv">CSV</span></button>
-          <button class="btn small" id="clickBtn"><span data-i18n="actions_click">Click track</span></button>
-          <button class="btn small" id="oszBtn"><span data-i18n="actions_osz">.osz package</span></button>
-          <div class="spacer"></div>
-          <button class="btn small" id="undoBtn"><span data-i18n="undo">Undo</span></button>
-          <button class="btn small" id="redoBtn"><span data-i18n="redo">Redo</span></button>
-          <button class="btn small" id="injectBtn"><span data-i18n="actions_inject">Inject .osu…</span></button>
+        <div class="card trace-card">
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="trace_title">Tempo map</div>
+              <div class="card-sub" data-i18n="trace_sub">Local BPM over time · click to select the governing red line</div>
+            </div>
+            <div class="spacer"></div>
+            <div class="legend">
+              <span><i style="background:var(--blue)"></i><span data-i18n="lg_tempo">tempo</span></span>
+              <span><i style="background:var(--red)"></i><span data-i18n="lg_points">timing points</span></span>
+              <span><i style="background:#2e3a55"></i><span data-i18n="lg_onsets">onsets</span></span>
+            </div>
+            <div class="segmented" style="margin-left:14px" title="Pulse octave">
+              <button id="halfBtn">÷2</button><button id="doubleBtn">×2</button>
+            </div>
+          </div>
+          <div class="trace-wrap" id="traceWrap">
+            <canvas id="trace"></canvas>
+            <div class="tooltip" id="tip" hidden></div>
+          </div>
+        </div>
+
+        <div class="split">
+          <div class="card table-card">
+            <div class="card-head">
+              <div class="card-title" data-i18n="table_title">Timing points</div>
+              <span class="pill" id="tableCount"></span>
+              <div class="spacer"></div>
+              <span class="card-sub" data-i18n="table_hint">↑ ↓ to move</span>
+              <button class="btn small" id="undoBtn"><span data-i18n="undo">Undo</span></button>
+              <button class="btn small" id="redoBtn"><span data-i18n="redo">Redo</span></button>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead><tr>
+                  <th>#</th>
+                  <th data-i18n="col_offset">Offset (ms)</th>
+                  <th>BPM</th>
+                  <th data-i18n="col_beat">Beat (ms)</th>
+                  <th data-i18n="col_meter">Meter</th>
+                  <th data-i18n="col_conf">Confidence</th>
+                </tr></thead>
+                <tbody id="rows"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card detail-card" id="detail"></div>
+        </div>
+      </section>
+
+      <!-- map check: one difficulty against the analysed song -->
+      <section class="view" id="viewMapcheck" data-view="mapcheck" data-needs-result hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_mapcheck">Map check</h2>
+          <div class="view-sub" data-i18n="mapcheck_sub">One difficulty you mapped, checked against this analysis. Read only: nothing is written.</div>
         </div>
 
         <div class="card cmp-card">
@@ -158,51 +241,99 @@
           <div class="card-body" id="denBody"></div>
         </div>
 
-        <div class="card trace-card">
+        <div class="card cmp-card">
           <div class="card-head">
-            <div>
-              <div class="card-title" data-i18n="trace_title">Tempo map</div>
-              <div class="card-sub" data-i18n="trace_sub">Local BPM over time · click to select the governing red line</div>
-            </div>
+            <div class="card-title" data-i18n="snap_title">Snap audit</div>
+            <span class="pill" id="snapCount" hidden></span>
             <div class="spacer"></div>
-            <div class="legend">
-              <span><i style="background:var(--blue)"></i><span data-i18n="lg_tempo">tempo</span></span>
-              <span><i style="background:var(--red)"></i><span data-i18n="lg_points">timing points</span></span>
-              <span><i style="background:#2e3a55"></i><span data-i18n="lg_onsets">onsets</span></span>
-            </div>
-            <div class="segmented" style="margin-left:14px" title="Pulse octave">
-              <button id="halfBtn">÷2</button><button id="doubleBtn">×2</button>
-            </div>
+            <span class="card-sub" id="snapFile"></span>
+            <button class="btn small" id="snapPick"><span data-i18n="snap_pick">Check snapping…</span></button>
           </div>
-          <div class="trace-wrap" id="traceWrap">
-            <canvas id="trace"></canvas>
-            <div class="tooltip" id="tip" hidden></div>
-          </div>
+          <div class="card-body" id="snapBody"></div>
+        </div>
+      </section>
+
+      <!-- mapset: every difficulty of one folder, read only; needs no analysis -->
+      <section class="view" id="viewMapset" data-view="mapset" hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_mapset">Mapset</h2>
+          <div class="view-sub" data-i18n="mapset_sub">Every difficulty of one beatmap folder side by side: red lines, audio settings and metadata that must match. Read only: differences are listed, never fixed.</div>
         </div>
 
-        <div class="split">
-          <div class="card table-card">
-            <div class="card-head">
-              <div class="card-title" data-i18n="table_title">Timing points</div>
-              <span class="pill" id="tableCount"></span>
-              <div class="spacer"></div>
-              <span class="card-sub" data-i18n="table_hint">↑ ↓ to move</span>
-            </div>
-            <div class="table-scroll">
-              <table>
-                <thead><tr>
-                  <th>#</th>
-                  <th data-i18n="col_offset">Offset (ms)</th>
-                  <th>BPM</th>
-                  <th data-i18n="col_beat">Beat (ms)</th>
-                  <th data-i18n="col_meter">Meter</th>
-                  <th data-i18n="col_conf">Confidence</th>
-                </tr></thead>
-                <tbody id="rows"></tbody>
-              </table>
-            </div>
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="ms_title">Difficulties</div>
+            <span class="pill" id="msCount" hidden></span>
+            <span class="pill" id="msVerdict" hidden></span>
+            <div class="spacer"></div>
+            <span class="card-sub" id="msFolder"></span>
+            <button class="btn small" id="msRecheck" hidden><span data-i18n="ms_recheck">Check again</span></button>
+            <button class="btn small" id="msPick"><span data-i18n="ms_pick">Choose beatmap folder…</span></button>
           </div>
-          <div class="card detail-card" id="detail"></div>
+          <div class="card-body" id="msBody"></div>
+        </div>
+
+        <div class="card cmp-card" id="msRedCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="ms_red_title">Red lines</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="msRedHint"></span>
+          </div>
+          <div class="card-body" id="msRedBody"></div>
+        </div>
+
+        <div class="card cmp-card" id="msFieldCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="ms_fields_title">Audio and metadata</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="msFieldHint"></span>
+          </div>
+          <div class="card-body" id="msFieldBody"></div>
+        </div>
+      </section>
+
+      <!-- export: every output of the analysed song in one place -->
+      <section class="view" id="viewExport" data-view="export" data-needs-result hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_export">Export</h2>
+          <div class="view-sub" data-i18n="export_sub">Everything here writes the current timing points, edits included.</div>
+        </div>
+        <div class="card export-list">
+          <div class="export-row">
+            <div class="export-text">
+              <div class="export-title" data-i18n="exp_osu_t">osu! timing points</div>
+              <div class="card-sub" data-i18n="exp_osu_d">The red lines as [TimingPoints] text, ready to paste into a .osu.</div>
+            </div>
+            <button class="btn small" id="copyOsuBtn"><span data-i18n="actions_copy">Copy .osu</span></button>
+          </div>
+          <div class="export-row">
+            <div class="export-text">
+              <div class="export-title" data-i18n="exp_csv_t">CSV table</div>
+              <div class="card-sub" data-i18n="exp_csv_d">Offset, BPM, beat and confidence per point, for a spreadsheet.</div>
+            </div>
+            <button class="btn small" id="csvBtn"><span data-i18n="actions_csv">Save CSV…</span></button>
+          </div>
+          <div class="export-row">
+            <div class="export-text">
+              <div class="export-title" data-i18n="exp_click_t">Click track</div>
+              <div class="card-sub" data-i18n="exp_click_d">A metronome WAV on these red lines, to hear any drift against the song.</div>
+            </div>
+            <button class="btn small" id="clickBtn"><span data-i18n="actions_click">Save click track…</span></button>
+          </div>
+          <div class="export-row">
+            <div class="export-text">
+              <div class="export-title" data-i18n="exp_osz_t">.osz package</div>
+              <div class="card-sub" data-i18n="exp_osz_d">The audio plus a new beatmap carrying this timing.</div>
+            </div>
+            <button class="btn small" id="oszBtn"><span data-i18n="actions_osz">Save .osz…</span></button>
+          </div>
+          <div class="export-row">
+            <div class="export-text">
+              <div class="export-title" data-i18n="exp_inject_t">Inject into a .osu</div>
+              <div class="card-sub" data-i18n="exp_inject_d">Replaces the red lines of a difficulty you already have. You confirm first, and a backup is kept.</div>
+            </div>
+            <button class="btn small" id="injectBtn"><span data-i18n="actions_inject">Inject .osu…</span></button>
+          </div>
         </div>
       </section>
     </div>
@@ -211,13 +342,13 @@
 
 <!-- ========================================================= settings drawer -->
 <div class="scrim" id="scrim" hidden></div>
-<aside class="drawer" id="drawer" aria-hidden="true">
+<aside class="drawer" id="drawer" aria-hidden="true" inert>
   <div class="drawer-head">
     <div>
       <h3 data-i18n="detection">Detection settings</h3>
       <div class="card-sub" data-i18n="inspector_note">Applied on the next Analyze. Shared with the classic window.</div>
     </div>
-    <button class="btn icon ghost" id="closeDrawer" title="Close">
+    <button class="btn icon ghost" id="closeDrawer" data-i18n-title="close" title="Close">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
   </div>
@@ -256,6 +387,12 @@
         <label class="switch"><span data-i18n="t_prefer">Prefer map BPM (120–300)</span><input type="checkbox" id="preferMap"><i></i></label>
         <div class="divider"></div>
         <label class="switch"><span data-i18n="t_refine">Re-anchor beats to transients</span><input type="checkbox" id="refineBeats"><i></i></label>
+      </div>
+    </div>
+    <div class="card" style="border-radius:var(--r-lg)">
+      <div class="card-body stack" style="padding:14px 18px">
+        <label class="switch"><span data-i18n="t_rust">Rust engine (faster, same results)</span><input type="checkbox" id="rustEngine"><i></i></label>
+        <div class="card-sub" id="rustNote" data-i18n="t_rust_note">Runs at the grid's own pulse. Where it finds no grid, the Python engine takes over and says so.</div>
       </div>
     </div>
   </div>

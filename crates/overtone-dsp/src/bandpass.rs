@@ -21,9 +21,17 @@
 
 use crate::multiband::{self, BANDS};
 
-/// Reflection padding for filtfilt edges, in samples. Biquad ringing at
-/// these Qs dies within dozens of samples; a thousand is plenty.
-pub const EDGE_PAD: usize = 1024;
+/// Reflection padding for filtfilt edges, in samples. Each pass starts from
+/// rest, so the reflection opens with a step the filter rings on, and the
+/// pad is where that ringing must die before the signal starts. The slowest
+/// section sets it: band 0 (40-89 Hz, pole radius 0.9965 at 44.1 kHz) decays
+/// with a 285-sample time constant, and its impulse response stays above
+/// 1e-3 of its peak for 1,992 samples; the top band rings out in about 20.
+/// Measured on audio cut mid-note, band 0 kept 6.5 % of its RMS as edge
+/// transient with a 1,024-sample pad, 0.07 % with 2,048 and under 1e-6
+/// with 4,096. Inputs shorter than four pads are padded by a quarter of
+/// their length.
+pub const EDGE_PAD: usize = 4096;
 
 /// One RBJ section (bandpass or gentle lowpass). Coefficients stay
 /// private; design through [`design_bank`] or [`Biquad::lowpass`].
@@ -111,10 +119,16 @@ pub fn design_bank(sr: u32) -> Vec<Biquad> {
 /// on the reversed output — with reflected edges so the ends do not ring
 /// into the music.
 pub fn filtfilt(section: &Biquad, y: &[f32]) -> Vec<f32> {
+    filtfilt_padded(section, y, EDGE_PAD)
+}
+
+/// [`filtfilt`] with an explicit reflection pad, capped at a quarter of the
+/// input.
+fn filtfilt_padded(section: &Biquad, y: &[f32], pad: usize) -> Vec<f32> {
     if y.len() < 8 {
         return y.to_vec();
     }
-    let pad = EDGE_PAD.min(y.len() / 4).max(4);
+    let pad = pad.min(y.len() / 4).max(4);
     let mut ext = Vec::with_capacity(y.len() + 2 * pad);
     for i in (1..=pad).rev() {
         ext.push(2.0 * y[0] as f64 - y[i.min(y.len() - 1)] as f64);
@@ -194,6 +208,42 @@ mod tests {
     }
 
     #[test]
+    fn audio_cut_mid_note_carries_no_edge_transient() {
+        // A chunk, or a track cut mid-note, starts and ends on a non-zero
+        // sample: the reflection opens with a step and every band rings on
+        // it. The reference pads by a quarter of the input, 77 time
+        // constants of band 0, so it holds the signal's response alone.
+        let sr = 44_100;
+        let mut seed = 7u64;
+        let y: Vec<f32> = (0..2 * sr as usize)
+            .map(|i| {
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                let noise = ((seed >> 33) as f64 / (1u64 << 31) as f64) - 0.5;
+                let t = i as f64 / sr as f64 + 2.0;
+                (0.5 * (2.0 * std::f64::consts::PI * 60.0 * t + 0.3).sin()
+                    + 0.3 * (2.0 * std::f64::consts::PI * 150.0 * t).sin()
+                    + 0.1 * noise) as f32
+            })
+            .collect();
+        let worst = |section: &Biquad, pad: usize| {
+            let reference = filtfilt_padded(section, &y, y.len() / 4);
+            let err = filtfilt_padded(section, &y, pad)
+                .iter()
+                .zip(&reference)
+                .map(|(a, b)| (a - b).abs() as f64)
+                .fold(0.0f64, f64::max);
+            err / rms(&reference)
+        };
+        for (b, section) in design_bank(sr).iter().enumerate() {
+            let rel = worst(section, EDGE_PAD);
+            assert!(rel < 1e-5, "band {b}: edge transient {rel:.1e} of RMS");
+        }
+        // The 1,024 samples once called plenty: band 0 kept 6.5 % of RMS.
+        let old = worst(&design_bank(sr)[0], 1024);
+        assert!(old > 0.01, "band 0 at 1024: {old:.1e}");
+    }
+
+    #[test]
     fn zero_phase_holds_an_impulse_in_place() {
         let sr = 44_100;
         let section = design_bank(sr)[2];
@@ -211,9 +261,9 @@ mod tests {
     }
 
     #[test]
-    fn band_limited_retiming_beats_full_band_under_a_hat() {
+    fn under_a_hat_the_lowpass_halves_the_smear_and_the_bank_loses() {
         // B.6's core claim: a hat landing on a kick moves the full-band
-        // 20 % rise the walker looks for. Kick onset at 1.0 s, hat 5 ms
+        // 20 % rise the walker looks for. Kick onset at 1.0 s, hat 3 ms
         // later and louder; the coarse time arrives 8 ms late as usual.
         let sr = 44_100;
         let mut y = vec![0.0f32; (3.0 * sr as f64) as usize];
@@ -237,26 +287,30 @@ mod tests {
         }
         let truth = 1.0;
         let coarse = truth + 0.008;
-        let full = crate::retime::retime(&y, sr, &[coarse])[0];
+        let error = |signal: &[f32]| crate::retime::retime(signal, sr, &[coarse])[0] - truth;
+        // Measured: full band +1.86 ms, gentle lowpass +0.96 ms (0.52 of
+        // the smear), the bank's band 0 +9.07 ms, bands 0-2 summed -4.54 ms.
+        let full = error(&y);
         // Full-band must demonstrably smear, or this test proves nothing.
+        assert!(full > 0.001, "no smear to fix: full {full:.5}");
+        let lowpassed = error(&filtfilt(&Biquad::lowpass(800.0, 0.5, sr as f64), &y));
+        // Halves the smear: a change keeping less than 40 % of the gain
+        // (1.4 ms, say) must fail here, not just one that loses all of it.
         assert!(
-            full - truth > 0.001,
-            "no smear to fix: full {full:.5} vs truth {truth}"
+            lowpassed.abs() < 0.6 * full,
+            "lowpassed {lowpassed:.5} vs full {full:.5}"
         );
-        let gentle = Biquad::lowpass(800.0, 0.5, sr as f64);
-        let lowpassed = filtfilt(&gentle, &y);
-        let fixed = crate::retime::retime(&lowpassed, sr, &[coarse])[0];
-        // Halves the smear with headroom: 0.96 ms vs 1.86 ms measured.
-        // Tried and dropped: narrow band 0 (+9 ms late — ringing outlasts
-        // the smear) and a 0-2 submix (−4.5 ms early — skirt pre-ring).
-        assert!(
-            (fixed - truth).abs() < 0.0015,
-            "lowpassed {fixed:.5} vs truth {truth}"
-        );
-        assert!(
-            fixed < full,
-            "lowpassed {fixed:.5} should beat full {full:.5}"
-        );
+        // Why B.6 was dropped as specified. The attack's own band rings
+        // longer than the smear it removes...
+        let bands = band_waveforms(&y, sr);
+        let own_band = error(&bands[0]);
+        assert!(own_band > 0.005, "band 0 {own_band:.5}");
+        // ...and a submix of the low bands pre-rings through its skirts.
+        let submix: Vec<f32> = (0..y.len())
+            .map(|i| bands[0][i] + bands[1][i] + bands[2][i])
+            .collect();
+        let low_bands = error(&submix);
+        assert!(low_bands < -0.003, "bands 0-2 {low_bands:.5}");
     }
 
     #[test]

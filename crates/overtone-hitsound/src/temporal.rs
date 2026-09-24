@@ -27,7 +27,9 @@ pub struct Temporal {
     /// seconds. The design doc says 20-200 ms; measured on held-out dense
     /// arrangements, reading that far collapsed Clap's F1 to 0.00 (macro
     /// 0.659): past ~100 ms the fit reads the neighbours' tails, not the hit.
-    /// Infinite when nothing decays (sustain pedal down, analytically).
+    /// Infinite when nothing decays (sustain pedal down, analytically), and
+    /// on a silent window, where nothing is there to decay; the template
+    /// classifier reads such an attack as `Other` before any term does.
     pub decay_tau_s: f64,
     /// Seconds above 10 % of peak, looking 500 ms past the attack.
     /// Short hits read their decay; sustained ones saturate near 0.5.

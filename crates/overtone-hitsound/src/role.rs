@@ -194,11 +194,16 @@ pub fn analyze(
                 0.0
             } else {
                 let centre = (t * sr as f64) as usize;
-                let lo = centre.saturating_sub(win / 2);
-                let hi = (centre + win / 2).min(y.len()).max(lo + 1);
-                let rms = (y[lo..hi].iter().map(|&v| (v as f64).powi(2)).sum::<f64>()
-                    / (hi - lo) as f64)
-                    .sqrt();
+                let lo = centre.saturating_sub(win / 2).min(y.len());
+                let hi = centre.saturating_add(win / 2).min(y.len());
+                // Over a second past the audio (object times, a longer
+                // decode) the window holds no samples: energy 0.
+                let rms = if hi > lo {
+                    (y[lo..hi].iter().map(|&v| (v as f64).powi(2)).sum::<f64>() / (hi - lo) as f64)
+                        .sqrt()
+                } else {
+                    0.0
+                };
                 buckets.partition_point(|&b| b < rms) as f64 / buckets.len() as f64
             };
 
@@ -397,6 +402,22 @@ mod tests {
         assert!((roles[4].bars_since_phrase_start - 0.5).abs() < 1e-9);
         // Density over ±2 s around t = 1: ten attacks (3.5 is out).
         assert!((roles[4].density - 10.0 / 4.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn an_attack_past_the_audio_reads_no_energy() {
+        // Object times, or attacks from a longer decode than `y`, can land
+        // past its end. Half a window past, the window still holds the
+        // last second; over a second past, it holds nothing -- and slicing
+        // it panicked.
+        let sr = 44_100;
+        let n = 4 * sr as usize;
+        let y: Vec<f32> = (0..n).map(|i| i as f32 / n as f32).collect();
+        let times = [4.5, 5.5, 3600.0];
+        let roles = analyze(&y, sr, &times, &[1.0; 3], &[], &[], &[]);
+        assert_eq!(roles[0].local_energy, 1.0);
+        assert_eq!(roles[1].local_energy, 0.0);
+        assert_eq!(roles[2].local_energy, 0.0);
     }
 
     #[test]

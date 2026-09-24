@@ -168,7 +168,9 @@ class ApiTests(_IsolatedConfig):
                                   "pulse": "/2", "prefer_map_bpm": False, "refine_beats": True})
         self.assertEqual(params, {"min_delta": 1.5, "persistence": 12, "min_confidence": 0.75,
                                   "prefer_map_bpm": False, "refine_beats": True,
-                                  "force_subdivision": 0.5})
+                                  "force_subdivision": 0.5,
+                                  # Not a Tk argument: which engine runs, v3 unless asked.
+                                  "engine": "python"})
         with self.assertRaises(ValueError):
             web.Api._params({"delta": 1.5, "persistence": 12, "confidence": 150})
 
@@ -494,6 +496,99 @@ class DensityBridgeTests(_IsolatedConfig):
         self.assertEqual(_api_with_points().density("C:/does/not/exist.osu")["key"], "bad_file")
 
 
+class SnapBridgeTests(_IsolatedConfig):
+    def _map(self, tmp: str) -> str:
+        # One red line at 1000 ms, 120 BPM; 1250 sits on 1/2, 1300 on nothing.
+        lines = ["osu file format v14", "", "[TimingPoints]", "1000,500,4,1,0,100,1,0",
+                 "", "[HitObjects]", "64,192,1250,1,0,0:0:0:0:", "64,192,1300,1,0,0:0:0:0:"]
+        beatmap = Path(tmp) / "map.osu"
+        beatmap.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return str(beatmap)
+
+    def test_snap_lists_the_object_off_the_grid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reply = _api_with_points().snap(self._map(tmp))
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["file"], "map.osu")
+        report = reply["report"]
+        self.assertEqual((report["objects"], report["snapped"]), (2, 1))
+        self.assertEqual(report["unsnapped"][0]["time_ms"], 1300.0)
+        # The loaded result's red lines are the ones an inject would write.
+        self.assertIn("with_detected_timing", report)
+        json.dumps(report)
+
+    def test_snap_needs_a_result_and_a_real_file(self) -> None:
+        self.assertEqual(web.Api().snap("C:/x.osu")["key"], "first")
+        self.assertEqual(_api_with_points().snap("C:/does/not/exist.osu")["key"], "bad_file")
+
+
+class EngineChoiceTests(_IsolatedConfig):
+    """The Rust engine is opt-in, falls back to v3, and says when it did."""
+
+    PARAMS = {"min_delta": 1.5, "persistence": 12, "min_confidence": 0.75,
+              "prefer_map_bpm": True, "refine_beats": True, "force_subdivision": 0.0}
+
+    @staticmethod
+    def _clicks(folder: str) -> str:
+        sr = 44_100
+        y = np.zeros(20 * sr, dtype=np.float32)
+        burst = np.exp(-np.arange(1300) / 180.0) * (np.random.default_rng(3).random(1300) - 0.5)
+        for k, t in enumerate(np.arange(0.5, 19.5, 0.4)):
+            start = int(t * sr)
+            y[start:start + 1300] += (0.9 if k % 4 == 0 else 0.5) * burst
+        path = Path(folder) / "clicks.wav"
+        ta.sf.write(str(path), y, sr, subtype="PCM_16")
+        return str(path)
+
+    def test_the_choice_travels_through_params_and_config(self) -> None:
+        api = web.Api()
+        options = {"delta": 1.5, "persistence": 12, "confidence": 75, "pulse": "auto",
+                   "prefer_map_bpm": True, "refine_beats": True, "engine": "rust"}
+        self.assertEqual(api._params(options)["engine"], "rust")
+        self.assertEqual(api._params({**options, "engine": "bogus"})["engine"], "python")
+        api._remember("C:/song.wav", options)
+        self.assertEqual(self.saved[-1]["engine"], "rust")
+        self.assertIn("rust_available", api.state())
+
+    def test_python_is_the_default_and_carries_no_note(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = web.run_analysis(self._clicks(tmp), dict(self.PARAMS))
+        self.assertEqual((result.backend, result.backend_note), ("python", ""))
+        payload = web.analysis_payload(result)
+        self.assertEqual(payload["backend"], "python")
+        self.assertNotIn("warn_rust_fallback", [w["key"] for w in payload["warnings"]])
+
+    def test_a_missing_binary_falls_back_and_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(web.overtone_rust, "find_cli", return_value=None):
+            result = web.run_analysis(self._clicks(tmp), {**self.PARAMS, "engine": "rust"})
+        self.assertEqual(result.backend, "python")
+        self.assertIn("not built", result.backend_note)
+        keys = [w["key"] for w in web.analysis_payload(result)["warnings"]]
+        self.assertIn("warn_rust_fallback", keys)
+
+    def test_a_forced_pulse_goes_to_python(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = web.run_analysis(self._clicks(tmp), {**self.PARAMS, "engine": "rust",
+                                                         "force_subdivision": 2.0})
+        self.assertEqual(result.backend, "python")
+        self.assertIn("own pulse", result.backend_note)
+
+    def test_the_rust_engine_answers_when_built(self) -> None:
+        if web.overtone_rust.find_cli() is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._clicks(tmp)
+            rust = web.run_analysis(path, {**self.PARAMS, "engine": "rust"})
+            python = web.run_analysis(path, dict(self.PARAMS))
+        self.assertEqual(rust.backend, "rust")
+        self.assertAlmostEqual(rust.global_bpm, python.global_bpm, places=6)
+        self.assertEqual(web.analysis_payload(rust)["backend"], "rust")
+        # What gets written: the whole-millisecond offsets of the .osu lines.
+        rows = lambda a: [line.split(",")[0] for line in ta.osu_timing_text(a).splitlines()[1:]]
+        self.assertEqual(rows(rust), rows(python))
+
+
 class SuggestBridgeTests(_IsolatedConfig):
     def _map(self, tmp: str, reds) -> str:
         lines = ["osu file format v14", "", "[TimingPoints]"]
@@ -566,6 +661,48 @@ class FolderImportTests(_IsolatedConfig):
         self.assertEqual(api.pick_folder(), "C:/osu!/Songs/123")
         api._window = _FakeWindow(None)
         self.assertIsNone(api.pick_folder())
+
+
+class MapsetBridgeTests(_IsolatedConfig):
+    def _set(self, tmp: str) -> Path:
+        root = Path(tmp) / "123 Artist - Title"
+        root.mkdir()
+        for version, audio in (("Easy", "song.mp3"), ("Hard", "song.mp3"), ("Insane", "other.mp3")):
+            (root / f"map [{version}].osu").write_text(
+                f"[General]\nAudioFilename: {audio}\n\n[Metadata]\nVersion:{version}\n\n"
+                "[TimingPoints]\n1000,400,4,1,0,100,1,0\n", encoding="utf-8")
+        (root / "map [Broken].osu").write_bytes(b"\xff\xfe\x00")
+        return root
+
+    def test_mapset_check_reports_every_difficulty_without_an_analysis(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reply = web.Api().mapset_check(str(self._set(tmp)))
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["folder"], "123 Artist - Title")
+        report = reply["report"]
+        self.assertEqual(len(report["difficulties"]), 4)
+        self.assertEqual(report["unreadable"], 1)
+        audio = next(f for f in report["fields"] if f["field"] == "AudioFilename")
+        self.assertEqual([d["difficulty"] for d in audio["differences"]], ["Insane"])
+        json.dumps(reply)
+
+    def test_mapset_check_is_read_only_and_remembers_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._set(tmp)
+            before = {p.name: p.read_bytes() for p in root.iterdir()}
+            api = web.Api()
+            api.mapset_check(str(root))
+            after = {p.name: p.read_bytes() for p in root.iterdir()}
+        self.assertEqual(before, after)
+        self.assertEqual(self.saved, [])
+        self.assertNotIn("file", api._cfg)
+
+    def test_mapset_check_refuses_a_non_folder(self) -> None:
+        self.assertEqual(web.Api().mapset_check("C:/does/not/exist")["key"], "bad_folder")
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text("[General]\n", encoding="utf-8")
+            self.assertEqual(web.Api().mapset_check(str(target))["key"], "bad_folder")
 
 
 class RecentTests(_IsolatedConfig):

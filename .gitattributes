@@ -1,0 +1,5 @@
+# .osu is CRLF by format, and the tests read beatmaps byte for byte: a field
+# the user did not change must come out identical, CRLF included. Never let
+# git rewrite their line endings, on any platform or autocrlf setting.
+*.osu -text
+*.osu.txt -text

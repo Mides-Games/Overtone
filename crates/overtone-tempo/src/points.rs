@@ -551,9 +551,13 @@ pub fn osu_timing_text(points: &[TimingPoint], analysis_meter: &str, decimals: u
         let offset = if decimals > 0 {
             format!("{:.*}", decimals as usize, p.offset.get())
         } else {
-            format!("{}", p.offset.get().round() as i64)
+            // Half to even, as Python's round(): half away from zero wrote
+            // 1001 where v3 writes 1000.
+            format!("{}", p.offset.get().round_ties_even() as i64)
         };
-        let meter = if p.meter_known {
+        // A proved bar of 0 is no bar: v3 takes `meter or fallback`, so it
+        // writes the analysis meter where clamping wrote 1.
+        let meter = if p.meter_known && p.meter > 0 {
             p.meter.clamp(1, 16)
         } else {
             fallback
@@ -1235,6 +1239,29 @@ mod tests {
         let c = TimingPoint::new(1700.0, 140.0, 0.9, 1);
         let snapped = snap_timing_points(&[a, c]);
         assert!((snapped[1].offset.get() - 1700.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn osu_text_rounds_and_falls_back_as_v3_does() {
+        // Python's round() takes half to even: 1000.5 -> 1000, 5251.5 ->
+        // 5252. The two points sit far enough apart that snapping leaves
+        // both alone.
+        let a = TimingPoint::new(1000.5, 120.0, 1.0, 0);
+        let b = TimingPoint::new(5251.5, 140.0, 1.0, 1);
+        let text = osu_timing_text(&[a, b], "4/4", 0);
+        let rows: Vec<&str> = text.lines().collect();
+        assert!(rows[1].starts_with("1000,"), "{}", rows[1]);
+        assert!(rows[2].starts_with("5252,"), "{}", rows[2]);
+        // A proved bar of 0 is no bar: v3 writes the analysis meter
+        // (`int(meter or fallback)`), not 1.
+        let mut c = TimingPoint::new(400.0, 174.0, 1.0, 0);
+        c.meter = 0;
+        c.meter_known = true;
+        let text = osu_timing_text(&[c], "3/4", 0);
+        assert!(
+            text.lines().nth(1).unwrap().contains(",3,1,0,100,1,0"),
+            "{text}"
+        );
     }
 
     #[test]

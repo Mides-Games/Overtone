@@ -70,6 +70,7 @@ from overtone import (
     analysis_report,
     density_report,
     suggest_missing_lines,
+    mapset_report,
     main,
 )
 
@@ -170,6 +171,14 @@ class SegmentationTests(unittest.TestCase):
         onset[beats] = 1.0
         midpoints = ((beats[:-1] + beats[1:]) / 2).astype(int)
         onset[midpoints] = 0.15
+        self.assertEqual(_choose_subdivision(onset, beats, True), 1)
+
+    def test_a_lock_above_300_is_kept_not_halved(self):
+        # A branch here claimed to halve a double-time lock; it returned 1
+        # either way. The chooser never halves, so ÷2 is the user's way back.
+        onset = np.zeros(700)
+        beats = np.arange(10, 650, 30)  # ~344.5 BPM, every beat struck
+        onset[beats] = 1.0
         self.assertEqual(_choose_subdivision(onset, beats, True), 1)
 
 
@@ -354,6 +363,22 @@ class ManualEditTests(unittest.TestCase):
         self.assertEqual(out[0].offset_ms, 0.0)
         out = nudge_timing_point(points, beats, 1, 4.0)
         self.assertAlmostEqual(out[1].offset_ms, 5004.0)
+
+    def test_nudge_moves_a_line_before_zero_the_way_it_was_asked(self):
+        # Every negative offset came out as 0, so -1 ms on -20 moved it +20.
+        beats = np.arange(-0.02, 20.0, 0.5)
+        points = [TimingPoint(-20.0, 120.0, 0.9, 0), TimingPoint(5000.0, 140.0, 0.9, 10)]
+        self.assertEqual(nudge_timing_point(points, beats, 0, -1.0)[0].offset_ms, -21.0)
+        self.assertEqual(nudge_timing_point(points, beats, 0, 5.0)[0].offset_ms, -15.0)
+        self.assertEqual(nudge_timing_point(points, beats, 0, 30.0)[0].offset_ms, 10.0)
+        # From at or after zero, a nudge still stops at zero.
+        start = [TimingPoint(3.0, 120.0, 0.9, 0)]
+        self.assertEqual(nudge_timing_point(start, beats, 0, -5.0)[0].offset_ms, 0.0)
+
+    def test_nudge_refreshes_the_beat_index(self):
+        beats = np.arange(0.0, 20.0, 0.5)
+        points = [TimingPoint(1000.0, 120.0, 0.9, 2), TimingPoint(5000.0, 140.0, 0.9, 10)]
+        self.assertEqual(nudge_timing_point(points, beats, 1, 1000.0)[1].beat_index, 12)
 
     def test_rescale_section(self):
         _, points = _two_points()
@@ -833,6 +858,111 @@ class ClassicWindowEditGuardTests(unittest.TestCase):
             self.assertEqual(app.analysis.points[1].offset_ms, edited)
 
 
+def _classic_app(test, tmp):
+    """The Tk window on a throwaway config, hidden, or skip without a display."""
+    from unittest import mock
+    import overtone
+    for name in ("CONFIG_PATH", "LEGACY_CONFIG_PATH"):
+        patcher = mock.patch.object(overtone, name, Path(tmp) / f"{name}.json")
+        patcher.start()
+        test.addCleanup(patcher.stop)
+    try:
+        app = TimingAnalyzerApp()
+    except Exception as exc:  # no display
+        test.skipTest(f"Tk unavailable: {exc}")
+    test.addCleanup(app.root.destroy)
+    app.root.attributes("-alpha", 0.0)
+    app.root.geometry("1120x760+-3000+-3000")
+    return app
+
+
+def _grid_analysis(offsets_bpms):
+    """A 30 s analysis at 120 BPM carrying the given (offset_ms, bpm) points."""
+    points = [TimingPoint(float(ms), float(bpm), 0.9, n) for n, (ms, bpm) in enumerate(offsets_bpms)]
+    return Analysis("synthetic.wav", 30.0, np.arange(60) * 0.5, np.full(60, 120.0), points,
+                    HOP, 44100, 1.0, 120.0, 1.0, "4/4", np.zeros(4000, dtype=np.float32))
+
+
+class ClassicWindowSpanishTests(unittest.TestCase):
+    """With Español selected, the classic window still showed English: the
+    language label, the trace title and hover, and the refusal to delete §1."""
+
+    def test_spanish_reaches_the_label_trace_hover_and_delete(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            app = _classic_app(self, tmp)
+            app.language.set("Español")
+            app._translate()
+            self.assertEqual(app.widgets["language_lbl"].cget("text"), "Idioma")
+
+            app.analysis = _grid_analysis([(1000.0, 120.0), (11000.0, 140.0)])
+            app._render_results()
+            app.root.geometry("1120x1000+-3000+-3000")  # room for the trace
+            app.root.update()
+            app._draw_preview()
+            canvas = app.preview
+            texts = [canvas.itemcget(i, "text") for i in canvas.find_all()
+                     if canvas.type(i) == "text"]
+            self.assertIn("CURVA DE TEMPO", texts)
+            self.assertNotIn("TEMPO TRACE", texts)
+
+            g = app._trace_geometry()
+            app._trace_hover(SimpleNamespace(x=(g["l"] + g["r"]) / 2,
+                                             y=(g["top"] + g["bottom"]) / 2))
+            hover = [canvas.itemcget(i, "text") for i in canvas.find_withtag("hover")
+                     if canvas.type(i) == "text"]
+            self.assertTrue(any(text.startswith("confianza") for text in hover), hover)
+
+            app.selected_section = 0
+            app.edit_delete()
+            self.assertEqual(app.status.get(), TimingAnalyzerApp.TEXT["Español"]["first_locked"])
+            self.assertEqual(len(app.analysis.points), 2)
+
+
+class ClassicWindowKeepsTheRowTests(unittest.TestCase):
+    """An edit re-rendered the table, which dropped the selection and put §1 in
+    the editor: a second +1 ms said "Select a table row first."."""
+
+    def _app(self, tmp):
+        app = _classic_app(self, tmp)
+        app.analysis = _grid_analysis([(1000.0, 120.0), (11000.0, 140.0), (21000.0, 120.0)])
+        app._render_results()
+        app.table.selection_set(app.table.get_children()[2])
+        app.root.update()                       # delivers <<TreeviewSelect>>
+        self.assertEqual(app.selected_section, 2)
+        return app
+
+    def test_nudging_twice_moves_the_same_point_twice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp)
+            for _ in range(2):
+                app.edit_nudge(1.0)
+                app.root.update()               # the re-render's own select events
+            self.assertEqual(app.analysis.points[2].offset_ms, 21002.0)
+            self.assertEqual(app.selected_section, 2)
+            self.assertEqual(app.edit_offset.get(), "21002.0")
+            self.assertEqual(app.table.index(app.table.selection()[0]), 2)
+
+    def test_the_editor_follows_the_point_it_edited(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp)
+            app.edit_rescale(2.0)
+            app.root.update()
+            self.assertEqual(app.selected_section, 2)
+            self.assertEqual(app.edit_bpm.get(), "240.00")    # §3, not §1's 120
+            # An offset edit that re-sorts the point still keeps it selected.
+            app._set_editor("5000.0", "150")
+            app.edit_apply()
+            app.root.update()
+            self.assertEqual(app.selected_section, 1)
+            self.assertEqual(app.analysis.points[1].offset_ms, 5000.0)
+            self.assertEqual(app.edit_offset.get(), "5000.0")
+            app.edit_delete()
+            app.root.update()
+            self.assertIsNone(app.selected_section)          # nothing to keep
+            self.assertEqual(len(app.analysis.points), 2)
+
+
 class NoPulseRefusalTests(unittest.TestCase):
     """White noise must not return a BPM (CLAUDE.md rule 2).
 
@@ -1164,6 +1294,19 @@ class LegacyPulseFactorTests(unittest.TestCase):
         half = rebuild_with_subdivision(self.auto, 0.5)
         self.assertAlmostEqual(half.global_bpm, 100.0, delta=1.0)
 
+    def test_global_bpm_is_the_measured_median(self):
+        # It was averaged with a tempogram bin, a few tenths of a BPM coarse:
+        # odd-222.22 read 222.88 against a median of 222.15, and pressing the
+        # same pulse again (a rebuild, which never averaged) moved it.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "click150.wav"
+            _click_track(path, 150.0, duration=20.0)
+            analysis = analyze_audio(path, engine="legacy")
+        self.assertEqual(analysis.subdivision, 1.0)
+        self.assertEqual(analysis.global_bpm, float(np.median(analysis.local_bpms)))
+        again = rebuild_with_subdivision(analysis, analysis.subdivision)
+        self.assertEqual(again.global_bpm, analysis.global_bpm)
+
 
 class OneWindowSignatureTests(unittest.TestCase):
     """A signature region exactly one window long is a region, wherever the song starts.
@@ -1325,6 +1468,180 @@ class BoundedMemoryTests(unittest.TestCase):
         self.assertLess(tracker / 2**20, 400)
 
 
+class LoadErrorMessageTests(unittest.TestCase):
+    """A missing, empty or junk file says which it is (roadmap Phase 22).
+
+    All three read "Could not decode audio ... install FFmpeg", which is the
+    wrong advice for every one of them.
+    """
+
+    def test_missing_empty_and_junk_files_each_get_their_own_message(self):
+        import overtone as ta
+
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            empty = folder / "empty.wav"
+            empty.write_bytes(b"")
+            junk = folder / "notes.wav"
+            junk.write_text("not audio at all")
+            cases = {
+                folder / "missing.wav": "No audio file at",
+                empty: "empty.wav is empty (0 bytes)",
+                junk: "Could not decode notes.wav: it is not audio",
+                folder: "No audio file at",
+            }
+            for path, message in cases.items():
+                with self.subTest(path=path.name):
+                    with self.assertRaises(RuntimeError) as caught:
+                        ta.analyze_audio(str(path))
+                    self.assertIn(message, str(caught.exception))
+                    self.assertNotIn("FFmpeg", str(caught.exception))
+
+    def test_a_compressed_file_that_fails_still_points_at_ffmpeg(self):
+        import overtone as ta
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = Path(tmp) / "song.mp3"
+            fake.write_bytes(b"ID3" + bytes(64))
+            with self.assertRaises(RuntimeError) as caught:
+                ta.analyze_audio(str(fake))
+            self.assertIn("FFmpeg", str(caught.exception))
+
+
+class RustSidecarTests(unittest.TestCase):
+    """The v4 engine through overtone-cli builds v3's own Analysis (Phase 22)."""
+
+    REPORT = {
+        "source": "song.wav", "duration": 10.0, "global_bpm": 150.0, "stability": 0.99,
+        "meter": "4/4", "residual_ms": 0.4,
+        "sections": [{"start_s": 0.5, "end_s": 9.8, "bpm": 150.0, "period_s": 0.4,
+                      "phase_s": 0.5, "residual_ms": 0.4, "coverage": 0.97, "inliers": 24}],
+        "evidence": {"hop": 128, "sample_rate": 44100, "onset": [0.0, 1.0, 0.5],
+                     "attack_times": [0.5, 0.9], "attack_weights": [1.0, 0.6],
+                     "beats": [0.5, 0.9, 1.3], "local_bpms": [150.0, 150.0, 150.0],
+                     "meter_beats": 4, "downbeat_class": 0,
+                     "points": [{"offset_ms": 500.25, "bpm": 150.0, "confidence": 0.98,
+                                 "section": 0, "meter": 4, "meter_known": True}]},
+    }
+
+    def test_a_report_becomes_the_analysis_v3_would_store(self):
+        import overtone_rust as rs
+
+        analysis = rs.analysis_from_report(self.REPORT)
+        self.assertEqual(analysis.engine, "precision")
+        self.assertEqual((analysis.hop_length, analysis.sample_rate), (128, 44100))
+        self.assertEqual(analysis.onset.dtype, np.float32)
+        np.testing.assert_allclose(analysis.base_frames, np.array([0.5, 0.9, 1.3]) * 44100 / 128)
+        point = analysis.points[0]
+        self.assertEqual((point.offset_ms, point.beat_index, point.meter, point.meter_known),
+                         (500.25, 0, 4, True))
+        section = analysis.sections[0]
+        self.assertEqual((section.period, section.phase, section.inliers), (0.4, 0.5, 24))
+        self.assertIn("500,400.000000000000,4", osu_timing_text(analysis))
+
+    def test_without_a_binary_it_says_so(self):
+        from unittest import mock
+
+        import overtone_rust as rs
+
+        self.assertIsNone(rs.find_cli([Path("no/such/overtone-cli.exe")]))
+        with mock.patch.object(rs, "find_cli", return_value=None):
+            with self.assertRaises(rs.SidecarUnavailable):
+                rs.analyze("song.wav")
+
+    def test_the_rust_engine_reads_what_v3_reads(self):
+        import overtone as ta
+        import overtone_rust as rs
+
+        if rs.find_cli() is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        sr = 44_100
+        y = np.zeros(20 * sr, dtype=np.float32)
+        rng = np.random.default_rng(3)
+        burst = np.exp(-np.arange(1300) / 180.0) * (rng.random(1300) - 0.5)
+        for k, t in enumerate(np.arange(0.5, 19.5, 0.4)):
+            start = int(t * sr)
+            y[start:start + 1300] += (0.9 if k % 4 == 0 else 0.5) * burst
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "clicks.wav"
+            ta.sf.write(str(path), y, sr, subtype="PCM_16")
+            ours, theirs = rs.analyze(path), ta.analyze_audio(str(path))
+            noise = Path(tmp) / "noise.wav"
+            ta.sf.write(str(noise), (rng.random(10 * sr) - 0.5).astype(np.float32), sr,
+                        subtype="PCM_16")
+            with self.assertRaises(rs.SidecarRefused) as refused:
+                rs.analyze(noise)
+        self.assertEqual(theirs.engine, "precision")
+        self.assertAlmostEqual(ours.global_bpm, theirs.global_bpm, places=6)
+        np.testing.assert_allclose(ours.beats, theirs.beats, atol=1e-6)
+        rows = [line.split(",")[0] for line in osu_timing_text(ours).splitlines()[1:]]
+        self.assertEqual(rows, [line.split(",")[0]
+                                for line in osu_timing_text(theirs).splitlines()[1:]])
+        self.assertIn("No rhythmic pulse", str(refused.exception))
+
+
+class SnapAuditTests(unittest.TestCase):
+    """Objects off the map's own grid, and what an inject would unsnap."""
+
+    MAP = ("osu file format v14\r\n\r\n[General]\r\nAudioFilename: a.mp3\r\n\r\n"
+           "[TimingPoints]\r\n1000,500,4,1,0,100,1,0\r\n5000,400,4,1,0,100,1,0\r\n\r\n"
+           "[HitObjects]\r\n"
+           "256,192,500,1,0,0:0:0:0:\r\n"      # before the first red line, on 1/1
+           "256,192,1000,1,0,0:0:0:0:\r\n"     # 1/1
+           "256,192,1250,1,0,0:0:0:0:\r\n"     # 1/2
+           "256,192,1167,1,0,0:0:0:0:\r\n"     # 1/3: 1166.67, rounded
+           "256,192,1125,1,0,0:0:0:0:\r\n"     # 1/4
+           "256,192,1300,1,0,0:0:0:0:\r\n"     # off: nearest tick 1/12 at 1291.67
+           "256,192,5200,1,0,0:0:0:0:\r\n"     # second red line (150 BPM): 1/2
+           "256,192,70000,1,0,0:0:0:0:\r\n"    # past a 60 s audio, 1/2 of line two
+           "broken line\r\n")
+
+    def beatmap(self) -> dict:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(self.MAP.encode("utf-8"))
+            return read_osu_beatmap(path)
+
+    def test_objects_are_placed_on_their_own_red_line(self):
+        from overtone import snap_audit
+
+        report = snap_audit(self.beatmap(), duration_s=60.0)
+        self.assertTrue(report["ok"])
+        self.assertEqual((report["objects"], report["unparsed"], report["red_lines"]), (8, 1, 2))
+        self.assertEqual(len(report["unsnapped"]), 1)
+        off = report["unsnapped"][0]
+        self.assertEqual((off["time_ms"], off["nearest_divisor"]), (1300.0, 12))
+        self.assertAlmostEqual(off["off_ms"], round(1300 - (1000 + 7 / 12 * 500), 3))
+        self.assertEqual(report["by_divisor"]["1"], 2)   # 500 and 1000
+        # 1250; 5200 and 70000 on the second line's 400 ms beat (162.5 beats in)
+        self.assertEqual(report["by_divisor"]["2"], 3)
+        self.assertEqual(report["by_divisor"]["3"], 1)
+        self.assertEqual(report["by_divisor"]["4"], 1)
+        self.assertEqual(report["before_first_red"], [500.0])
+        self.assertEqual(report["past_audio"], [70000.0])
+        json.dumps(report)
+
+    def test_a_shifted_detection_says_what_an_inject_would_unsnap(self):
+        from overtone import snap_audit
+
+        analysis = Analysis("x.wav", 60.0, np.zeros(0), np.zeros(0),
+                            [TimingPoint(1010.0, 120.0, 1.0, 0)], 128, 44100, 1.0)
+        report = snap_audit(self.beatmap(), analysis)
+        moved = report["with_detected_timing"]
+        # 10 ms later, 120 BPM throughout: every snapped object moves off
+        # except the ones a 1/16 tick still catches within 1 ms; none of
+        # them is 1300, so nothing comes back on.
+        self.assertGreater(len(moved["would_unsnap"]), 0)
+        self.assertEqual(moved["would_snap"], 0)
+        self.assertNotIn(1300.0, [m["time_ms"] for m in moved["would_unsnap"]])
+
+    def test_no_red_lines_is_said_not_guessed(self):
+        from overtone import snap_audit
+
+        report = snap_audit({"timing": {"reds": []}, "hitobjects": [{"time": 5.0}]})
+        self.assertEqual((report["ok"], report["reason"]), (False, "no_red_lines"))
+
+
 class NoiseBeforeTheMusicTests(unittest.TestCase):
     """The first red line starts where the grid starts, not at the first noise.
 
@@ -1386,6 +1703,9 @@ class GridMathTests(unittest.TestCase):
         best = min(candidates, key=lambda c: abs(c[0] - period))
         self.assertAlmostEqual(best[0], period, places=3)
         self.assertAlmostEqual(best[1] % period, phase % period, places=2)
+        # Fastest first, as the docstring says (it used to say slowest).
+        periods = [c[0] for c in candidates]
+        self.assertEqual(periods, sorted(periods))
 
     def test_least_squares_beats_interval_differencing(self):
         rng = np.random.default_rng(3)
@@ -1447,6 +1767,19 @@ class ExportHardeningTests(unittest.TestCase):
     def _analysis(self, points, meter="4/4"):
         from types import SimpleNamespace
         return SimpleNamespace(source="song.mp3", points=points, meter=meter)
+
+    def test_csv_carries_the_snapped_offsets(self):
+        # 0.4 ms off the first section's grid: the table, .osu and click
+        # track join it to 11000 ms; the CSV wrote the raw 11000.400.
+        import csv
+        from overtone import export_csv
+        analysis = _grid_analysis([(1000.0, 120.0), (11000.4, 140.0)])
+        with tempfile.TemporaryDirectory() as tmp:
+            export_csv(analysis, Path(tmp) / "timing.csv")
+            with open(Path(tmp) / "timing.csv", encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+        self.assertEqual([row["offset_ms"] for row in rows], ["1000.000", "11000.000"])
+        self.assertIn("\n11000,", osu_timing_text(analysis))
 
     def test_offsets_are_whole_milliseconds_by_default(self):
         text = osu_timing_text(self._analysis([TimingPoint(353.4137, 225.0, 1.0, 0)]))
@@ -1831,6 +2164,33 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
         self.assertNotIn("500,344.827", out)
         self.assertIn("1200,-50", out)
 
+    def test_every_rename_follows_a_sync(self):
+        # A rename can reach the disk before its data: a crash in between left
+        # map.osu (or its .bak, or the .osz) empty or zero-filled.
+        import os
+        from unittest import mock
+        import overtone
+        events = []
+
+        def record(name, real):
+            def call(*args):
+                events.append(name)
+                return real(*args)
+            return call
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(self.LEGACY_OSU, encoding="utf-8")
+            audio = Path(tmp) / "song.mp3"
+            audio.write_bytes(b"\xff\xfb" * 64)
+            with mock.patch.object(overtone.os, "fsync", record("fsync", os.fsync)), \
+                    mock.patch.object(overtone.os, "replace", record("replace", os.replace)), \
+                    mock.patch.object(overtone.os, "rename", record("rename", os.rename)):
+                inject_osu_timing_points(target, self._analysis())
+                export_osz(_grid_analysis([(431.0, 174.0)]), Path(tmp) / "map.osz", audio)
+            self.assertTrue(Path(str(target) + ".bak").is_file())
+        self.assertEqual(events, ["fsync", "rename", "fsync", "replace", "fsync", "replace"])
+
     def test_backup_keeps_the_pristine_original(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "map.osu"
@@ -1845,19 +2205,20 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
         # truncated .bak; the retry saw it existed, kept it for good, and
         # overwrote the map with no usable backup.
         from unittest import mock
-        real_write = Path.write_bytes
+        import overtone
+        real_write = overtone._write_synced
 
-        def disk_full(self, data):
-            if ".bak" in self.name:
-                real_write(self, data[: len(data) // 2])
+        def disk_full(path, data):
+            if ".bak" in path.name:
+                real_write(path, data[: len(data) // 2])
                 raise OSError(28, "No space left on device")
-            return real_write(self, data)
+            return real_write(path, data)
 
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "map.osu"
             target.write_text(self.LEGACY_OSU, encoding="utf-8")
             original = target.read_bytes()
-            with mock.patch.object(Path, "write_bytes", disk_full):
+            with mock.patch.object(overtone, "_write_synced", disk_full):
                 with self.assertRaises(OSError):
                     inject_osu_timing_points(target, self._analysis())
             self.assertEqual(target.read_bytes(), original)  # the map was not touched
@@ -1904,33 +2265,38 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), self.LEGACY_OSU)
 
     def test_config_tolerates_garbage(self):
+        from unittest import mock
         import overtone
-        with tempfile.TemporaryDirectory() as tmp:
-            original = overtone.CONFIG_PATH
-            overtone.CONFIG_PATH = Path(tmp) / "cfg.json"
-            try:
-                overtone.CONFIG_PATH.write_text("[1, 2, 3]", encoding="utf-8")
-                self.assertEqual(overtone.load_config(), {})
-                overtone.CONFIG_PATH.write_text("{not json", encoding="utf-8")
-                self.assertEqual(overtone.load_config(), {})
-                overtone.save_config({"language": "English"})
-                self.assertEqual(overtone.load_config(), {"language": "English"})
-                # An unserialisable value must not raise, and must not corrupt
-                # the file that is already there.
-                overtone.save_config({"bad": object()})
-                self.assertEqual(overtone.load_config(), {"language": "English"})
-                # Hand-edited values of the wrong type used to crash the classic
-                # window on every launch. They are dropped; the rest is kept.
-                overtone.CONFIG_PATH.write_text(json.dumps({
-                    "cfg_version": "2", "prefer_map_bpm": "on", "refine_beats": None,
-                    "delta": True, "language": 5, "recent": ["a.mp3", 7, None],
-                    "file": "song.mp3", "persistence": "12", "theme": {"kept": 1}}),
-                    encoding="utf-8")
-                self.assertEqual(overtone.load_config(), {
-                    "recent": ["a.mp3"], "file": "song.mp3", "persistence": "12",
-                    "theme": {"kept": 1}})
-            finally:
-                overtone.CONFIG_PATH = original
+        # Both paths: an unreadable config falls through to the pre-rename
+        # one, so leaving LEGACY_CONFIG_PATH real made "{not json" read back
+        # whatever ~/.timing_analyzer.json holds on the developer's machine.
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "cfg.json"), \
+                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "legacy.json"):
+            overtone.CONFIG_PATH.write_text("[1, 2, 3]", encoding="utf-8")
+            self.assertEqual(overtone.load_config(), {})
+            overtone.CONFIG_PATH.write_text("{not json", encoding="utf-8")
+            self.assertEqual(overtone.load_config(), {})
+            overtone.save_config({"language": "English"})
+            self.assertEqual(overtone.load_config(), {"language": "English"})
+            # An unserialisable value must not raise, and must not corrupt
+            # the file that is already there.
+            overtone.save_config({"bad": object()})
+            self.assertEqual(overtone.load_config(), {"language": "English"})
+            # Hand-edited values of the wrong type used to crash the classic
+            # window on every launch. They are dropped; the rest is kept.
+            overtone.CONFIG_PATH.write_text(json.dumps({
+                "cfg_version": "2", "prefer_map_bpm": "on", "refine_beats": None,
+                "delta": True, "language": 5, "recent": ["a.mp3", 7, None],
+                "file": "song.mp3", "persistence": "12", "theme": {"kept": 1}}),
+                encoding="utf-8")
+            self.assertEqual(overtone.load_config(), {
+                "recent": ["a.mp3"], "file": "song.mp3", "persistence": "12",
+                "theme": {"kept": 1}})
+            # Without a config of its own, the pre-rename file is read.
+            overtone.CONFIG_PATH.unlink()
+            overtone.LEGACY_CONFIG_PATH.write_text('{"language": "Español"}', encoding="utf-8")
+            self.assertEqual(overtone.load_config(), {"language": "Español"})
 
     def test_ctrl_c_in_a_field_copies_the_field(self):
         import tkinter
@@ -2703,6 +3069,165 @@ class SuggestTests(unittest.TestCase):
             suggest_missing_lines(analysis, beatmap, tolerance_beats=0)
 
 
+def _mapset_osu(version: str, audio: str = "song.mp3", reds=((1000, 400.0, 4), (30000, 300.0, 4)),
+                lead_in: str | None = "0", preview: str | None = "12000",
+                tags: str = "drum bass electronic", kiai=(), objects=()) -> str:
+    """A small but complete difficulty, CRLF like the osu! editor writes."""
+    lines = ["osu file format v14", "", "[General]", f"AudioFilename: {audio}"]
+    if lead_in is not None:
+        lines.append(f"AudioLeadIn: {lead_in}")
+    if preview is not None:
+        lines.append(f"PreviewTime: {preview}")
+    lines += ["", "[Metadata]", "Title:Song", "TitleUnicode:Song", "Artist:Band",
+              "ArtistUnicode:Band", "Creator:Mapper", f"Version:{version}", "Source:",
+              f"Tags:{tags}", "", "[TimingPoints]"]
+    lines += [f"{offset},{beat!r},{meter},2,0,60,1,0" for offset, beat, meter in reds]
+    lines += [f"{time},-100,4,2,0,60,0,{1 if on else 0}" for time, on in kiai]
+    lines += ["", "[HitObjects]"]
+    lines += [f"256,192,{time},1,0,0:0:0:0:" for time in objects]
+    return "\r\n".join(lines) + "\r\n"
+
+
+class MapsetReportTests(unittest.TestCase):
+    """Proposal P1: what the difficulties of one set must share. Read only."""
+
+    def _report(self, maps: dict, raw: dict | None = None) -> dict:
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "123 Band - Song"
+            root.mkdir()
+            for name, text in maps.items():
+                (root / f"Band - Song (Mapper) [{name}].osu").write_bytes(text.encode("utf-8"))
+            for name, data in (raw or {}).items():
+                (root / name).write_bytes(data)
+            before = {p.name: p.read_bytes() for p in root.iterdir()}
+            report = mapset_report(root)
+            after = {p.name: p.read_bytes() for p in root.iterdir()}
+        self.assertEqual(before, after)  # read only: nothing written, nothing fixed
+        json.dumps(report)
+        return report
+
+    def test_identical_mapset_has_no_differences(self) -> None:
+        report = self._report({name: _mapset_osu(name) for name in ("Easy", "Hard", "Insane")})
+        self.assertTrue(report["consistent"])
+        self.assertEqual(report["differences"], 0)
+        self.assertEqual(report["red_lines"], [])
+        self.assertTrue(all(f["identical"] for f in report["fields"]))
+        self.assertEqual([f["field"] for f in report["fields"]],
+                         ["AudioFilename", "PreviewTime", "AudioLeadIn", "Artist", "ArtistUnicode",
+                          "Title", "TitleUnicode", "Creator", "Source", "Tags"])
+        self.assertEqual([d["difficulty"] for d in report["difficulties"]], ["Easy", "Hard", "Insane"])
+        self.assertEqual(report["reference"], "Band - Song (Mapper) [Easy].osu")
+        for entry in report["difficulties"]:
+            self.assertTrue(entry["readable"])
+            self.assertEqual(entry["red_lines"], 2)
+            self.assertEqual(entry["checks"], {"red_lines": 0, "audio": [], "metadata": []})
+
+    def test_shifted_red_line_is_reported_against_the_majority(self) -> None:
+        # The odd one sorts first: the reference must still be a majority map,
+        # so only Easy is flagged, not Hard and Insane for disagreeing with it.
+        maps = {name: _mapset_osu(name) for name in ("Hard", "Insane")}
+        maps["Easy"] = _mapset_osu("Easy", reds=((1000, 400.0, 4), (30005, 300.0, 4)))
+        report = self._report(maps)
+        self.assertFalse(report["consistent"])
+        self.assertEqual(report["reference"], "Band - Song (Mapper) [Hard].osu")
+        self.assertEqual(len(report["red_lines"]), 1)
+        diff = report["red_lines"][0]
+        self.assertEqual((diff["difficulty"], diff["kind"]), ("Easy", "offset"))
+        self.assertEqual((diff["offset_ms"], diff["expected"], diff["found"]), (30000.0, 30000.0, 30005.0))
+        checks = {d["difficulty"]: d["checks"]["red_lines"] for d in report["difficulties"]}
+        self.assertEqual(checks, {"Easy": 1, "Hard": 0, "Insane": 0})
+
+    def test_beat_length_meter_missing_and_extra_lines(self) -> None:
+        base = ((1000, 400.0, 4), (30000, 300.0, 4))
+        maps = {
+            "A": _mapset_osu("A", reds=base),
+            "B": _mapset_osu("B", reds=base),
+            # 5e-7 ms off: the same number written twice, not a difference.
+            "C": _mapset_osu("C", reds=((1000, 400.0000005, 4), (30000, 300.0, 4))),
+            "D": _mapset_osu("D", reds=((1000, 400.01, 3), (30000, 300.0, 4), (60000, 250.0, 4))),
+            "E": _mapset_osu("E", reds=((1000, 400.0, 4),)),
+        }
+        report = self._report(maps)
+        self.assertEqual(report["reference"], "Band - Song (Mapper) [A].osu")
+        kinds = sorted((d["difficulty"], d["kind"]) for d in report["red_lines"])
+        self.assertEqual(kinds, [("D", "beat_length"), ("D", "extra"), ("D", "meter"), ("E", "missing")])
+        beat = next(d for d in report["red_lines"] if d["kind"] == "beat_length")
+        self.assertEqual((beat["expected"], beat["found"]), (400.0, 400.01))
+        meter = next(d for d in report["red_lines"] if d["kind"] == "meter")
+        self.assertEqual((meter["expected"], meter["found"]), (4, 3))
+        self.assertEqual(next(d for d in report["red_lines"] if d["kind"] == "missing")["offset_ms"], 30000.0)
+        self.assertEqual(next(d for d in report["red_lines"] if d["kind"] == "extra")["offset_ms"], 60000.0)
+
+    def test_different_audio_filename_is_reported(self) -> None:
+        maps = {name: _mapset_osu(name) for name in ("Easy", "Hard")}
+        maps["Insane"] = _mapset_osu("Insane", audio="song (1).mp3")
+        report = self._report(maps)
+        self.assertFalse(report["consistent"])
+        audio = next(f for f in report["fields"] if f["field"] == "AudioFilename")
+        self.assertFalse(audio["identical"])
+        self.assertEqual(audio["value"], "song.mp3")
+        self.assertEqual(audio["differences"], [{"file": "Band - Song (Mapper) [Insane].osu",
+                                                 "difficulty": "Insane", "value": "song (1).mp3"}])
+        checks = {d["difficulty"]: d["checks"]["audio"] for d in report["difficulties"]}
+        self.assertEqual(checks, {"Easy": [], "Hard": [], "Insane": ["AudioFilename"]})
+        self.assertEqual(report["red_lines"], [])
+
+    def test_defaults_and_tag_order_are_not_differences(self) -> None:
+        maps = {
+            "Easy": _mapset_osu("Easy", lead_in=None, preview="12000", tags="drum bass electronic"),
+            "Hard": _mapset_osu("Hard", lead_in="0", preview="12000", tags="electronic  drum bass"),
+            "Insane": _mapset_osu("Insane", lead_in="0", preview="-1", tags="drum bass electronic"),
+        }
+        report = self._report(maps)
+        fields = {f["field"]: f for f in report["fields"]}
+        self.assertTrue(fields["AudioLeadIn"]["identical"])
+        self.assertTrue(fields["Tags"]["identical"])
+        self.assertFalse(fields["PreviewTime"]["identical"])
+        self.assertEqual([d["difficulty"] for d in fields["PreviewTime"]["differences"]], ["Insane"])
+
+    def test_unreadable_osu_is_reported_without_stopping_the_rest(self) -> None:
+        maps = {name: _mapset_osu(name) for name in ("Easy", "Hard")}
+        maps["Normal"] = _mapset_osu("Normal", audio="other.mp3")
+        report = self._report(maps, raw={"Band - Song (Mapper) [Broken].osu": b"\xff\xfe\x00 not utf-8"})
+        self.assertEqual(report["unreadable"], 1)
+        self.assertFalse(report["consistent"])
+        broken = next(d for d in report["difficulties"] if not d["readable"])
+        self.assertEqual((broken["difficulty"], broken["file"]), ("Broken", "Band - Song (Mapper) [Broken].osu"))
+        self.assertIn("UTF-8", broken["detail"])
+        self.assertEqual(sum(1 for d in report["difficulties"] if d["readable"]), 3)
+        audio = next(f for f in report["fields"] if f["field"] == "AudioFilename")
+        self.assertEqual([d["difficulty"] for d in audio["differences"]], ["Normal"])
+
+    def test_kiai_spans_and_density_are_reported_per_difficulty(self) -> None:
+        objects = [n * 250 for n in range(41)]  # 0 .. 10 s, 4 per second
+        # Greens switch kiai on and off; a span still open at the last line
+        # runs to the end of the map.
+        maps = {
+            "Easy": _mapset_osu("Easy", kiai=((5000, True), (20000, False), (40000, True)),
+                                objects=objects),
+            "Hard": _mapset_osu("Hard", kiai=((5000, True), (35000, False))),
+        }
+        report = self._report(maps)
+        easy, hard = report["difficulties"]
+        self.assertEqual(easy["kiai"], [{"start_ms": 5000.0, "end_ms": 20000.0},
+                                        {"start_ms": 40000.0, "end_ms": None}])
+        # A red line's own effects count: kiai off at 30000, before the green.
+        self.assertEqual(hard["kiai"], [{"start_ms": 5000.0, "end_ms": 30000.0}])
+        self.assertEqual(easy["density"]["objects"], 41)
+        self.assertGreater(easy["density"]["peak_per_second"], 0)
+        self.assertEqual(hard["density"], {"objects": 0, "mean_per_second": 0.0, "peak_per_second": 0.0})
+        # Kiai and density are information, not consistency checks.
+        self.assertTrue(report["consistent"])
+
+    def test_folder_without_maps_and_missing_folder(self) -> None:
+        report = self._report({})
+        self.assertEqual((report["difficulties"], report["reference"]), ([], None))
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                mapset_report(Path(tmp) / "missing")
+
+
 class JsonReportTests(unittest.TestCase):
     def test_report_carries_snapped_points_and_findings(self) -> None:
         import json
@@ -2749,6 +3274,116 @@ class JsonReportTests(unittest.TestCase):
         rows = json.loads(out.getvalue())
         self.assertEqual(len(rows), 1)
         self.assertTrue(rows[0]["ok"])
+
+
+def _run_cli(argv, analysis=None):
+    """main() on ``argv`` -> (exit code, stdout, stderr).
+
+    The analysis is stubbed with ``analysis`` when given (a function stands in
+    for analyze_audio itself), and the GUI never opens: it is a mock, so a
+    command that would launch it only says so.
+    """
+    import contextlib
+    import io
+    import sys
+    from unittest import mock
+    import overtone
+    out, err = io.StringIO(), io.StringIO()
+    code = 0
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(mock.patch.object(sys, "argv", ["overtone.py", *argv]))
+        gui = stack.enter_context(mock.patch.object(overtone, "TimingAnalyzerApp"))
+        if callable(analysis):
+            stack.enter_context(mock.patch.object(overtone, "analyze_audio", analysis))
+        elif analysis is not None:
+            stack.enter_context(mock.patch.object(overtone, "analyze_audio",
+                                                  return_value=analysis))
+        stack.enter_context(contextlib.redirect_stdout(out))
+        stack.enter_context(contextlib.redirect_stderr(err))
+        try:
+            main()
+        except SystemExit as exc:
+            code = exc.code
+    if gui.called:
+        err.write("<GUI opened>")
+    return code, out.getvalue(), err.getvalue()
+
+
+class CliOutputTests(unittest.TestCase):
+    def test_a_click_path_soundfile_cannot_write_is_an_error_not_a_traceback(self):
+        analysis = _grid_analysis([(1000.0, 120.0)])
+        with tempfile.TemporaryDirectory() as tmp:
+            for click, words in ((Path(tmp) / "click", "extension"),
+                                 (Path(tmp) / "no such folder" / "click.wav", "Folder not found")):
+                with self.subTest(click=click.name):
+                    code, out, err = _run_cli([str(Path(tmp) / "song.wav"), "--click", str(click)],
+                                              analysis)
+                    self.assertEqual(code, 1)
+                    self.assertIn("Error writing output", out + err)
+                    self.assertIn(words, out + err)
+
+    def test_stdout_carries_only_the_timing(self):
+        # `overtone.py song.mp3 > timing.txt` wrote the progress lines ahead of
+        # the red lines, and "Wrote x.osz" after them -- after the JSON too.
+        analysis = _grid_analysis([(1000.0, 120.0), (11000.0, 140.0)])
+
+        def analyse(path, delta, persistence, prefer, confidence, progress, *rest, **options):
+            progress("Loading and normalizing audio…")
+            return analysis
+
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "song.wav"
+            audio.write_bytes(b"RIFF")
+            osz = str(Path(tmp) / "map.osz")
+            code, out, err = _run_cli([str(audio), "--osz", osz], analyse)
+            self.assertEqual(code, 0)
+            lines = [line for line in out.splitlines() if line]
+            self.assertTrue(lines[0].startswith("// Generated"), lines[0])
+            self.assertTrue(all(line.startswith("//") or line.count(",") == 7 for line in lines),
+                            lines)
+            self.assertIn("Loading", err)
+            self.assertIn("Wrote", err)
+            code, out, err = _run_cli([str(audio), "--json", "--osz", osz], analyse)
+            self.assertEqual(json.loads(out)["global_bpm"], 120.0)
+            code, out, err = _run_cli([str(Path(tmp) / "missing.wav")])
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("Error:", err)
+
+
+class CliFlagTests(unittest.TestCase):
+    """A flag that cannot act is refused: --inject with the audio forgotten
+    opened the window, and --title without --osz wrote nothing, both silently."""
+
+    def test_flags_without_audio_do_not_open_the_window(self):
+        code, out, err = _run_cli(["--inject", "map.osu"])
+        self.assertEqual(code, 2)
+        self.assertIn("--inject needs an audio file", err)
+        self.assertNotIn("<GUI opened>", err)
+        code, out, err = _run_cli([])
+        self.assertIn("<GUI opened>", err)          # no arguments at all still opens it
+
+    def test_flags_that_need_another_flag_say_so(self):
+        analysis = _grid_analysis([(1000.0, 120.0)])
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = str(Path(tmp) / "song.wav")
+            for argv, words in (([audio, "--title", "X", "--artist", "Y"], "--osz"),
+                                ([audio, "--no-backup"], "--inject")):
+                with self.subTest(argv=argv[1:]):
+                    code, out, err = _run_cli(argv, analysis)
+                    self.assertEqual((code, out), (2, ""))
+                    self.assertIn(words, err)
+
+    def test_a_folder_refuses_offsets_and_honours_the_engine(self):
+        from unittest import mock
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out, err = _run_cli([tmp, "--decimal-offsets", "3"])
+            self.assertEqual(code, 2)
+            self.assertIn("--decimal-offsets need a single audio file", err)
+            with mock.patch.object(overtone, "analyze_batch", return_value=[]) as batch:
+                code, out, err = _run_cli([tmp, "--engine", "legacy", "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(batch.call_args.kwargs["engine"], "legacy")
 
 
 if __name__ == "__main__":

@@ -6,9 +6,8 @@ were re-probed and fixed on 2026-09-23 (PRs #22–#26); the four bugs reproduced
 were fixed in PRs #17–#20; the six high findings below were fixed the same day (PRs
 #29–#34); forty-five medium ones since (PRs #36–#38, #40–#43, #45–#48, #50–#61,
 #63–#66, #69, #71–#77, and one #20 had fixed already), and the Opus half of the last
-closed by decision: it stays refused. **Open: 40 — none high, none medium, all low.** Nothing still open has been re-probed yet: each gets a probe before its
-fix, and some may turn out to be fixed already (the ×2 / ÷2 edit guard, for one, landed in
-PR #20).
+closed by decision: it stays refused. All forty low ones were closed on 2026-09-24,
+five of them found already fixed. **Open: none.**
 
 File paths are as the audit saw them: `timing_analyzer.py` is today's `overtone.py`,
 and line numbers have moved since.
@@ -66,47 +65,50 @@ landed with a test that fails on the old code.
 | v4 could not open AIFF or Opus | AIFF decodes to the WAV's samples; Opus refused by name | #77 |
 | v4 cannot decode Opus | decided 2026-09-23: it stays refused, with what to convert it to. A decoder means libopus, a C build on every Windows machine | decision |
 
-## Low (40)
+## Low — all forty closed on 2026-09-24
 
-| Area | Where | Finding | What goes wrong |
-|---|---|---|---|
-| py-engine | `timing_analyzer.py:530` | _choose_subdivision's 'octave-down safety net' is a no-op: both branches return 1 | The legacy tracker locks at double time (e.g. 340 BPM on a 170 BPM song). The documented safety net never fires, and the 340 BPM reading is exported. |
-| py-engine | `timing_analyzer.py:769` | Colliding re-timed attacks keep the earlier one, not the stronger one as the comment claims | A soft flam or pre-echo 2-3 ms before a strong hit is kept with its low weight, and the main hit is discarded. The strong attack's weight disappears from the coherence and IRLS stages, and the kept time is the grace not… |
-| py-engine | `timing_analyzer.py:1954` | Legacy global_bpm is averaged with a quantized tempogram guide, which makes it less accurate | On the fallback path the GUI/summary 'Global BPM' is further from the truth than the engine's own measurement (error 0.66 instead of 0.075 BPM on odd-222.22), and it changes when the user presses ×1 again. |
-| py-gui | `timing_analyzer.py:2802` | Leftovers from the retheme: unused ACCENT2 purple, a 'pink dot' comment and a wrong window width in a comment | A contributor who trusts the comment tunes button padding against 1180 px and crops 'Export' at the real 1120 px default. The unused purple constant invites reintroducing a second accent colour. |
-| py-gui | `timing_analyzer.py:3040` | Spanish UI still shows English strings: 'Language' label, delete-§1 error, trace title and hover | With Español selected, the header reads 'Language' next to the combobox and the canvas title says 'TEMPO TRACE' while the label above it reads 'CURVA DE TEMPO …'. Trying to delete §1 shows 'Error: The first timing point… |
-| py-gui | `timing_analyzer.py:3484` | Every edit clears the row selection and refills the editor with §1, so the nudge buttons cannot be pressed twice | The user selects §4 and presses '+1' (ms). The offset moves by 1 ms. They press '+1' again and get 'Select a table row first.' with no change, so each 1 ms step needs a fresh row click. After '2× §' on §4, the status sa… |
-| py-io | `test_timing_analyzer.py:1030` | test_config_tolerates_garbage depends on whether ~/.timing_analyzer.json exists | On a machine that still has a pre-rename ~/.timing_analyzer.json, the `{not json` assertion `load_config() == {}` fails. The suite's 76/76 gate then depends on the developer's home directory. |
-| py-io | `timing_analyzer.py:2082` | CSV export writes raw offsets while the table, .osu, .osz and click track use snapped ones | With the points from the snap finding, the table and the .osu show section 2 at 10000.0 ms while the CSV saved from the same screen says 10100.000. Anyone comparing the CSV against the map sees a 100 ms disagreement. |
-| py-io | `timing_analyzer.py:2299` | nudge_timing_point turns any negative offset into 0 whichever way it nudges, and never refreshes beat_index despite its docstring | A mapper whose first red line is at -20 ms (an anacrusis, or audio that starts immediately) presses nudge -1 ms and the point moves +20 ms instead. The CSV beat_index column (line 2082) is stale after any nudge. |
-| py-io | `timing_analyzer.py:2539` | Atomic .osu/.osz/.bak writes never fsync before rename | A power loss or OS crash just after os.replace can persist the rename before the file data, leaving map.osu empty or zero-filled. The first inject has a .bak to recover from; later injects do not (see the .bak finding). |
-| py-io | `timing_analyzer.py:3952` | Flags that need another flag are silently ignored, and flags without an audio argument open the GUI | `python timing_analyzer.py --inject map.osu` (audio forgotten) opens the GUI and ignores --inject with no message. `python timing_analyzer.py song.mp3 --title X` writes no metadata anywhere and does not say so. |
-| py-io | `timing_analyzer.py:3961` | CLI progress and error messages go to stdout, mixed into the red-line output | `python timing_analyzer.py song.mp3 > timing.txt` writes 4-5 progress lines ahead of the '// Generated' comment and the red lines. Pasting that file into [TimingPoints] adds lines that are neither comments nor timing po… |
-| py-io | `timing_analyzer.py:3982` | CLI crashes with a traceback when --click has an unknown extension or a missing directory | `python timing_analyzer.py song.mp3 --click click` prints a Python traceback instead of 'Error writing output: …'. The GUI path at 3626 catches Exception, so the two front ends behave differently. |
-| rust-core-audio-bench | `CLAUDE.md:47` | CLAUDE.md/AGENTS.md still say `cargo test --workspace` is 75/75 | A contributor who sees 176 passed may think the count gate is broken. If tests were lost, the documented number cannot flag it, because the expected count is no longer the real one. |
-| rust-core-audio-bench | `main.rs:267` | Weight stage is gated by an affine-invariant Pearson r, not the documented tolerance | A port change that scales every attack weight by 2, or adds a constant (for example normalising the envelope by a different percentile), gives r = 1.0. The weight stage then reports 'ok' even though every weight is off… |
-| rust-core-audio-bench | `main.rs:1135` | Bench usage message omits the map and nogrid modes | A user who mistypes a mode is shown a list that hides the no-grid refusal gate and the coherence-map gate, so those checks are easy to forget. |
-| rust-core-audio-bench | `lib.rs:199` | weighted_median picks a different section than v3 at exact half-weight ties | Sections at 120/128/140/150 BPM with durations 38, 56, 20 and 114 s. v3's `_weighted_median` returns 140.0 (checked in the venv). The Rust accumulation reaches 0.49999999999999994 after the third section and returns 150… |
-| rust-dsp-new | `bandpass.rs:18` | EDGE_PAD comment claims biquad ringing dies within dozens of samples; band 0 needs ~2000 | For audio that starts or ends non-silent (a chunk, or a track cut mid-note), band 0's output near both edges carries a start-up transient of about 2% of the step 2*y[0] − y[pad]. That is an offset bias in the first and… |
-| rust-dsp-new | `bandpass.rs:186` | `band_limited_retiming_beats_full_band_under_a_hat` never uses the band bank and does not pin the 'halves the smear' claim | A change to Biquad::lowpass or retime that loses most of the improvement, say 1.4 ms instead of 0.96 ms, keeps this test green while the roadmap still claims a halving. The test name implies the bank itself is validated… |
-| rust-dsp-new | `classify.rs:28` | REPEAT_COSINE doc overstates the separation: triads a fourth apart score ~0.68, not 0.3–0.5 | Someone tuning REPEAT_COSINE from the documented 0.3–0.5 range believes there is a 0.4+ margin below 0.90. The real margin is about 0.2, so lowering the threshold toward 0.7 would start merging chords a fourth apart. |
-| rust-dsp-new | `hpss.rs:59` | 'H + P == S everywhere' is false wherever both medians are below ~1e-6 power | In near-silent bins (fades, the region above an MP3's 16 kHz lowpass, dither), H + P drops up to 99% of S. Energy ratios computed as P/S rather than P/(H+P) are biased there. The absolute energy is small, but the stated… |
-| rust-dsp-new | `mfcc.rs:5` | docs/06 says phrase novelty runs on chroma + MFCC; structure.rs excludes MFCC and mfcc() has no caller | A reviewer checking phrase-position behaviour against docs/06 expects timbre-driven boundaries (same chords, new instrumentation) to be found. They are not, and the MFCC module the docs rely on is dead in the pipeline. |
-| rust-dsp-new | `multiband.rs:18` | Multiband band layout disagrees with its own comment and with the band tables in docs/06 and docs/10 | Hat and cymbal energy above 11 kHz (docs/06: 'air 11k+ cymbal shimmer, crash') moves no multiband band. The index returned by band_flux is also not comparable to hitsound's band_ratios index, although roadmap line 133 s… |
-| rust-dsp-new | `structure.rs:149` | The left-to-right merge chain can drop a boundary that is more than MERGE_S from every kept boundary | Two real phrase boundaries 5-8 s apart, with a rising texture ripple of at least 30% of the maximum between them, collapse into one boundary. The earlier phrase edge is silently lost. |
-| rust-dsp-new | `structure.rs:161` | `merged.retain(/&i/ i > 1)` is unreachable filtering: novelty is zero for the first KERNEL_HALF windows | A reader believes leading-silence and track-start transitions are detected and filtered here. In fact, no boundary within 4 s of either end of the track can ever be reported, and nothing documents that. |
-| rust-dsp-parity | `retime.rs:76` | retime picks the last maximum energy index where v3's np.argmax picks the first | Two separate bursts in the 42 ms search window reach exactly the same peak energy, with a dip below the 20% level between them (digitally generated or hard-clipped material with dyadic sample values). Rust then snaps th… |
-| rust-dsp-parity | `stft.rs:63` | stft.rs says the last frames can run past the padded buffer; they cannot, so the defensive branch is dead | The comment misstates the centred-frame geometry the module is meant to document. A later change to frame_count or the padding, such as a streaming or chunked STFT, could rely on this silent zero-fill and quietly produc… |
-| rust-dsp-parity | `05-dsp-pipeline.md:88` | The contract says the v3 fallback envelope 'ports as OnsetFn::Flux1024'; no such type or fallback exists | A reader of the contract believes the degraded-envelope path from v3 (timing_analyzer.py:140-146, `except Exception: env = _fast_onset_envelope(...)`) exists in v4, and may cite it when reasoning about robustness or par… |
-| rust-hitsound | `role.rs:167` | role::analyze panics for an attack time ≥ duration + 1 s (slice out of range) | If role::analyze is fed object times (Phase 5 object context) or attacks from a different/longer decode than `y`, one time past the audio end by more than 1 s crashes the whole analysis instead of reporting energy 0. |
-| rust-hitsound | `template.rs:76` | Silent attack reads as 'never decays' and is classified Snare (30%), not other | An attack on digital silence, or one on the noise floor after a fade, is labelled Snare with Cymbal as the alternative, and 'other' gets 5%. Doc §3/§12 say an attack the engine cannot characterise 'must not be forced in… |
-| rust-hitsound | `template.rs:531` | Calibrated template weights exist only inside #[cfg(test)]; the public API ships hand-set weights (F1 0.07 per commit 92b3ddd) | Any consumer (the future decision engine, CLI or explain output) calling `classify(&initial_templates(), …)` gets the uncalibrated classifier with near-chance F1, and the explanations show hand-set contributions that we… |
-| rust-hitsound | `07-roadmap.md:227` | Stale or false text: roadmap 8 classes / F1 0.85 vs 0.91 / 18 tests; corpus 'Eight classes' and 'metallic partials'; phantom `frame_of` param | A reader of the roadmap or module docs gets the wrong class count, conflicting accuracy numbers, and a wrong idea of what the corpus renders and what extract() expects. |
-| rust-tempo-core | `coherence.rs:77` | coherence::candidates is documented and tested as 'slowest first' but returns ascending period (fastest first) | A caller relying on the doc takes `candidates(...)[0]` as the fundamental and gets the fastest widened candidate, e.g. a 0.055-0.2 s subdivision, instead of the slowest pulse. That would be an octave-level error at the… |
-| rust-tempo-core | `octave.rs:331` | octave::phase_class is dead code that duplicates sections::phase_class and breaks ties differently | If someone wires octave::phase_class in (it is public and documented as 'which atom class inside a beat carries the accents'), tied class means return m-1 instead of 0. The phase of every non-first beat section then shi… |
-| rust-tempo-core | `octave.rs:499` | map_preference_breaks_a_tie_towards_osu_range passes with the preference switched off | If the `prefer_map_bpm && in_range` +0.40 term (octave.rs:319) were dropped or its range changed, this test would stay green. That term decides octaves on real tracks (the bench passes prefer=true), and audit F-07 notes… |
-| rust-tempo-density-elastic | `density.rs:227` | Density chooses between subdivisions on the raw score; the prototype compares scores rounded to 3 decimals | If sub=2 scores 0.3341 and sub=4 scores 0.3344, the prototype rounds both to 0.334 and keeps sub=2. Rust picks sub=4, which can carry a different run and therefore a different boundary_s and side. |
-| rust-tempo-density-elastic | `density.rs:338` | The 'six-second drop' density test passes even with the parity discriminator disabled | If the port dropped or inverted the parity condition, or used the wrong residue in window_stats, a_six_second_drop_is_not_a_pulse_change would still pass. Its comment says it guards a property it never reaches. |
-| rust-tempo-sections | `points.rs:496` | osu_timing_text rounds x.5 ms offsets up and writes meter 1 for meter_known points with meter 0, where v3 does otherwise | A point at exactly 400.5 ms is written as `400,...` by v3 and `401,...` by Rust. A meter_known point with meter 0 is written with 1 beats per bar by Rust and with the analysis meter (for example 3) by v3. |
-| rust-tempo-sections | `sections.rs:130` | Atom and beat sections from growth carry the quality() inlier count, not v3's _refine_grid mask count | Any consumer or diagnostic that reads GridSection.inliers from atom_sections or beat_sections (beat_sections copies it unchanged) gets a different number than v3, and the 'stage by stage' gate cannot see it. |
-| rust-tempo-sections | `sections.rs:428` | Dead `classes` vector in phase_class and a duplicated BPM helper in merge_sections | No runtime failure. It is leftover scaffolding in a precision-critical function that a reviewer has to reason about, and a future edit could make the two BPM helpers diverge. |
+Each re-probed first; the fixes that change behaviour landed with a test that fails on the
+old code, and the ones that only needed the words to match the code say so.
+
+| Finding | Outcome |
+|---|---|
+| `_choose_subdivision`'s octave-down safety net was a no-op | dead branch removed and the docstring made true: the chooser never halves, ÷2 is the way back; behaviour unchanged |
+| Colliding re-timed attacks keep the earlier one, not the stronger | already true of the comment: "keep the earlier of any pair within 4 ms, whatever the weights", as the code and the Rust port do |
+| Legacy global BPM averaged with a quantized tempogram guide | plain median of the tracker's own tempo: legacy-engine median error 0.391 → 0.173 BPM over 16 cases (14 better, 2 worse); every gate unchanged |
+| Retheme leftovers in the classic window | unused ACCENT2 removed, comments corrected |
+| Spanish classic window still showed English | Idioma, CURVA DE TEMPO, confianza and the §1 refusal translated |
+| Every edit cleared the selection, so nudges could not repeat | +1 twice from 21000 → 21002 with the point still selected (was 21001, then "select a row") |
+| `test_config_tolerates_garbage` read the real config | both config paths patched; the test never touches the home directory |
+| CSV wrote raw offsets, every other export snapped ones | 11000.400 → 11000.000, as the table and the .osu |
+| `nudge_timing_point` floored negative offsets at 0, left beat_index stale | −5 from −3 → −8 (was 0); +1000 ms moves beat_index 10 → 12 |
+| Atomic writes never fsync before rename | each temp file synced before its rename (speed not measured) |
+| CLI flags needing another flag were ignored; flags without audio opened the GUI | usage errors naming the missing flag (exit 2); --engine reaches every file of a folder |
+| CLI progress and errors on stdout | stderr; `--json --osz` prints valid JSON |
+| CLI traceback on a bad `--click` path | "Error writing output: …", exit 1 |
+| CLAUDE.md said `cargo test` was 75/75 | long stale; `bench/facts.py` now checks every stated count against the source |
+| Golden weights gated by Pearson r | each weight within 2e-5 since #59 |
+| Bench usage omitted modes | every mode listed |
+| `weighted_median` split half-weight ties unlike v3 | sum then divide, as `cumsum/total`: 32,624 of 249,689 constructed ties disagreed → 0 |
+| `EDGE_PAD` comment: ringing dies in dozens of samples | band 0 rings 1,992 samples; pad 1024 → 4096, edge transient 6.5 % → under 1e-6 of band RMS |
+| Band re-timing test never used the band bank | it does, and pins the smear: lowpass 0.964 ms against 1.863 full band |
+| REPEAT_COSINE doc overstated the chord separation | already fixed by the chroma fix; the doc gives the measured 0.23–0.38 (fourths) and 0.548 (closest other chord) |
+| HPSS "H + P == S everywhere" false in quiet bins | masks scaled as librosa's: bins losing energy 727,347 of 883,550 → 0 |
+| docs/06 said phrase novelty uses MFCC | docs say MFCC is built and unused; novelty is chroma + energy |
+| Multiband layout disagreed with its comment and the docs | comment and docs/10 describe the log-spaced bands as built |
+| Structure merge chain could drop a boundary | strongest first: peaks at windows 10 / 16 / 22 keep [10, 22] (was [22]) |
+| Structure edge filter could never fire | removed; the 4 s blind zone at each end is documented and pinned |
+| `retime` took the last of equal maxima | the first, as np.argmax, since #52 |
+| stft.rs claimed frames run past the padding | true comments since #71; the test reference indexes the padded copy directly |
+| DSP contract named a nonexistent `OnsetFn::Flux1024` | docs/05 says the v3 fallback envelope was not ported |
+| `role::analyze` panicked past the end of the audio | the window clamps; energy past the end reads 0 |
+| A silent attack read as Snare | reads as Other (probability 1) |
+| Calibrated hitsound weights existed only in tests | public `calibrated_templates()`; `initial_templates()` documented uncalibrated (held out 0.231 against 0.723) |
+| Stale hitsound text in the roadmap and corpus | corpus comments and roadmap lines corrected |
+| `coherence::candidates` documented slowest first | says fastest first, ascending period, in both engines |
+| `octave::phase_class` was a dead duplicate | removed; its tests use `sections::phase_class` |
+| Map-preference test passed with the preference off | unaccented 0.19 s grid; the test fails with the bonus off |
+| Density compared raw scores; the prototype rounds | compares the prototype's rounded score; bench output byte-identical |
+| Drop test passed without the parity guard | its comment says what keeps it quiet; the sparse-region test pins parity |
+| `osu_timing_text` rounding and bar-less meters differed from v3 | half to even (1000.5 → 1000) and a proved bar of 0 falls back, as v3 |
+| Growth sections counted inliers at another tolerance than v3 | the refinement's own mask; golden now compares inliers (within one: a float tie at a step edge; was up to 62) |
+| Dead `classes` vector and a duplicated BPM helper | removed |

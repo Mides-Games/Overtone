@@ -10,8 +10,9 @@
 //! snapping belongs to the tempo layer, which owns grids; this crate is
 //! tempoless, so boundaries sit on the 0.5 s feature grid. And timbre
 //! (MFCC) does not enter the similarity: harmony plus dynamics segment
-//! phrases, timbre labels them — that labelling is section classification,
-//! a separate row.
+//! phrases, so a change of instrumentation over the same chords at the
+//! same level is not a boundary this reads. Section classification
+//! ([`crate::classify`]) labels the phrases from chroma and energy too.
 
 use crate::{chroma, stft};
 
@@ -39,6 +40,13 @@ pub struct Structure {
 
 /// Segment audio into phrases. Empty on silence or inputs shorter than two
 /// kernel widths.
+///
+/// The checkerboard needs [`KERNEL_HALF`] windows on each side of a
+/// boundary, so novelty exists only from 4 s after the start to 4-4.5 s
+/// before the end, and no boundary is ever reported in those end spans
+/// (leading silence included). A change inside one is lost, or read on the
+/// span's edge: measured on a 40 s track, a chord change at 2 s came out at
+/// 4.0 s, one at 38 s was lost, and one at 37 s came out at 35.5 s.
 pub fn analyze(y: &[f32], sr: u32) -> Structure {
     let hop = (WIN_S * sr as f64).round() as usize;
     let n_fft = 2048;
@@ -161,28 +169,35 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
         Vec::new()
     };
     found.sort_unstable();
-    let mut merged: Vec<usize> = Vec::new();
-    let merge_win = (MERGE_S / WIN_S).round() as usize;
-    for i in found {
-        if let Some(&last) = merged.last() {
-            if i - last < merge_win {
-                if novelty[i] > novelty[last] {
-                    merged.pop();
-                } else {
-                    continue;
-                }
-            }
-        }
-        merged.push(i);
-    }
-    // The track start is a boundary only if the music starts there; a
-    // leading silence is not a phrase. Drop index-0 artefacts.
-    merged.retain(|&i| i > 1);
+    // No edge filtering: novelty is zero outside the kernel's reach, so no
+    // peak can land within KERNEL_HALF windows of either end.
+    let merged = merge_close(&found, &novelty, (MERGE_S / WIN_S).round() as usize);
     Structure {
         boundaries: merged.iter().map(|&i| i as f64 * win_s).collect(),
         energy: rms,
         energy_hop: win_s,
     }
+}
+
+/// Keep the strongest of any peaks closer than `window`, strongest first:
+/// a peak is dropped only when a stronger kept one lies within `window` of
+/// it. Ties go to the earlier peak. `peaks` ascend; so does the result.
+///
+/// A left-to-right chain that compared each peak with the last kept one
+/// let a middle peak knock out its left neighbour and then lose to its
+/// right one, dropping a boundary a whole window from anything kept.
+fn merge_close(peaks: &[usize], novelty: &[f64], window: usize) -> Vec<usize> {
+    let mut by_strength = peaks.to_vec();
+    // Stable: equal novelty keeps ascending order, so the earlier wins.
+    by_strength.sort_by(|&a, &b| novelty[b].total_cmp(&novelty[a]));
+    let mut kept: Vec<usize> = Vec::new();
+    for i in by_strength {
+        if kept.iter().all(|&k| k.abs_diff(i) >= window) {
+            kept.push(i);
+        }
+    }
+    kept.sort_unstable();
+    kept
 }
 
 #[cfg(test)]
@@ -302,6 +317,44 @@ mod tests {
             "boundary {} vs 240.0",
             late[0]
         );
+    }
+
+    #[test]
+    fn merging_never_drops_a_peak_far_from_every_kept_one() {
+        // Peaks 3 s apart, each stronger than the last: 10 and 22 are 6 s
+        // apart, past MERGE_S, and both are boundaries. The chain let 16
+        // knock out 10, then lost 16 to 22, and kept only 22.
+        let mut novelty = vec![0.0; 40];
+        novelty[10] = 0.5;
+        novelty[16] = 0.7;
+        novelty[22] = 1.0;
+        let window = (MERGE_S / WIN_S).round() as usize;
+        assert_eq!(merge_close(&[10, 16, 22], &novelty, window), vec![10, 22]);
+        // Closer than the window, the stronger stays; at a tie the earlier.
+        assert_eq!(merge_close(&[10, 16], &novelty, window), vec![16]);
+        novelty[16] = 0.5;
+        assert_eq!(merge_close(&[10, 16], &novelty, window), vec![10]);
+    }
+
+    #[test]
+    fn no_boundary_lands_within_the_kernel_of_either_end() {
+        // Chord changes 2 s from each end and one mid-track, 40 s in all.
+        // The kernel reaches 4 s either side, so the edge changes cannot
+        // be placed: the first is read on the span's edge, 2 s late, the
+        // last is lost. Recorded as measured, not as right.
+        let sr = 44_100;
+        let y = concat(&[
+            chord(sr, 220.0, false, 0.4, 2.0),
+            chord(sr, 174.61, true, 0.4, 18.0),
+            chord(sr, 261.63, true, 0.4, 18.0),
+            chord(sr, 196.0, true, 0.4, 2.0),
+        ]);
+        let reach = KERNEL_HALF as f64 * WIN_S;
+        let found = analyze(&y, sr).boundaries;
+        for &b in &found {
+            assert!(b >= reach && b <= 40.0 - reach, "{b} in {found:?}");
+        }
+        assert_eq!(found, vec![4.0, 20.0]);
     }
 
     #[test]

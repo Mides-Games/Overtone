@@ -199,10 +199,15 @@ pub fn weighted_median(values: &[f64], weights: &[f64]) -> f64 {
             values[order[mid]]
         };
     }
+    // v3's `searchsorted(cumsum(w) / total, 0.5)`: sum the raw weights and
+    // divide once. Dividing each weight first rounds differently, and at an
+    // exact half-weight tie it chose the other section about one time in
+    // nine. (np.sum is pairwise past eight values, so a total of nine or
+    // more sections can still differ from v3's in the last bit.)
     let mut running = 0.0;
     for &i in &order {
-        running += weights[i].max(0.0) / total;
-        if running >= 0.5 {
+        running += weights[i].max(0.0);
+        if running / total >= 0.5 {
             return values[i];
         }
     }
@@ -223,6 +228,18 @@ mod tests {
     fn bpm_period_rejects_zero() {
         assert!(Bpm(0.0).period().is_none());
         assert!((Bpm(120.0).period().unwrap().get() - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_half_weight_tie_goes_where_v3_puts_it() {
+        // 6.7 + 50.516 = 57.216 exactly: the first two hold half the weight.
+        // np.searchsorted(np.cumsum(w) / w.sum(), 0.5) says index 1; summing
+        // w / total per step read 0.4999... and said index 2.
+        let values = [100.0, 150.0, 200.0];
+        assert_eq!(weighted_median(&values, &[6.7, 50.516, 57.216]), 150.0);
+        // 49.55 + 16.6 = 66.15 = 32.95 + 33.2: v3 says index 1 again.
+        let values = [100.0, 150.0, 200.0, 250.0];
+        assert_eq!(weighted_median(&values, &[49.55, 16.6, 32.95, 33.2]), 150.0);
     }
 
     #[test]

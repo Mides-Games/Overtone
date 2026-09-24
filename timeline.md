@@ -16,6 +16,103 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · Every audit finding closed; the app gets sections and the Rust engine
+
+The forty low findings, in three batches worked side by side (tempo and bench, Python,
+DSP and hitsounds), then the app: a real sidebar, two new map checks, and the v4 engine
+behind a switch.
+
+### Changed
+
+- **Sidebar sections.** The sidebar had one entry that did nothing. It now switches between
+  Library, Timing, Map check, Mapset, Export and Settings over one shared song. Nothing was
+  removed; views that need a song say so. English and Spanish.
+- **Mapset check** (new section): every difficulty of a folder side by side. It compares
+  red lines, AudioFilename, PreviewTime, lead-in and metadata, and shows kiai spans and
+  objects per second. Differences are listed, never fixed.
+- **Snap audit** (Map check card): objects off the map's own grid at the editor's divisors,
+  with the miss in ms. Also objects before the first red line or past the audio, and what
+  injecting the detected timing would unsnap.
+- **The Rust engine in the app**, opt-in (Settings). `overtone_rust` runs `overtone-cli
+  --full` and builds v3's own `Analysis`. A forced pulse, a missing binary, audio with no
+  grid or a file it cannot decode goes to v3, with a note saying why.
+- **`overtone-cli`**: `analyze <audio>` prints the red lines; `--json` gives v3's report
+  shape and `--full` adds the evidence an app needs. Exit codes: 0 grid, 3 refused,
+  1 unreadable, 2 usage.
+- **`calibrated_templates()`** is public; the hand-set templates are documented as
+  uncalibrated.
+- **The legacy tracker's global BPM** is its own median, no longer averaged with a quantised
+  tempogram guide.
+
+### Fixed
+
+- **Tempo parity details.** Growth inliers are counted from the refinement mask. Half-weight
+  ties in the weighted median, density's rounded score, `.osu` half-millisecond rounding
+  and bar-less meters now match v3 and its prototype.
+- **DSP.** The HPSS masks lost energy in quiet bins. Band 0's edge padding was too short
+  for its ringing. The structure merge could drop a boundary. `role::analyze` panicked past
+  the end of the audio. A silent attack read as Snare.
+- **Classic window and CLI** (Python):
+  - edits kept their selection, so nudges repeat;
+  - nudging below zero works;
+  - the CSV writes the snapped offsets;
+  - the Spanish strings are complete;
+  - CLI progress goes to stderr, and bad flags and `--click` paths end with a message;
+  - writes are synced before rename.
+- **Load errors say what is wrong.** Missing, empty and junk files each get their own
+  message, not "install FFmpeg".
+- **Three UI slips.** "Section #{n}" was printed literally, the alignment warning icon was
+  malformed, and the point editor had a stray `</div>`.
+
+### Hardening
+
+- **Golden** fails on a vector missing a stage, and compares section inliers.
+- **`gates.py robustness`** runs the audit's edge-case probes as one command. The CLI tests
+  run the same probes on v4.
+- **`bench/facts.py`** checks every test count, crate list and fixture count the docs state.
+- **`.gitattributes`** keeps `.osu` CRLF.
+- **Measuring modes** in the bench: `structure`, `resample`.
+
+### Measured
+
+```
+Python unittest                  239 -> 279, all pass
+cargo test --workspace           214 -> 231, all pass; fmt and clippy clean
+benchmark.py                     24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · coverage · measures 3/3 · signatures 6/6 · robustness 18/18
+overtone-bench golden 27/27; nogrid, density, elastic, map output identical to before
+weighted median, 249,689 constructed exact ties   32,624 disagreements with v3 -> 0
+golden section inliers                           up to 62 off -> within 1 (a float tie)
+legacy tracker global BPM, 16 cases              median error 0.391 -> 0.173 BPM
+Rust engine vs v3 through the app, five fixtures  beats within 6e-12 s, local BPM
+                                                  identical, whole-ms .osu offsets identical
+overtone-cli, release, one corpus song           ~0.1-0.2 s decode + attacks + tempo
+held-out hitsound F1                              0.723, unchanged
+```
+
+The app was exercised in the built-in browser against the real bridge (a local harness,
+not committed), in both languages:
+
+- Mapset flagged the Hard difficulty's red line 10 ms off.
+- Python and Rust both read 174.000 BPM on edm-174.
+- Snap audit listed the 40 objects the moved line unsnaps.
+
+### Rejected / tried and dropped
+
+- **A structure edge filter that refuses boundaries in the first 4 s.** It would also drop
+  a real change at exactly 4 s (a two-bar intro at 120 BPM). The blind zone is documented
+  instead.
+- **Rebuilding the multiband layout to match the old docs.** It would move the band bank
+  and every B.6 measurement; the docs now describe the bands as built.
+
+### Not measured
+
+- The fsync cost of atomic writes.
+- The Rust engine on real songs through the app (the corpus and synthetic clicks only).
+- Mapset and snap audit on real mapsets beyond a two-difficulty test folder.
+
+---
+
 ## v4.0.0-dev — 2026-09-23 · The last medium findings: elastic parity, memory, the percussive ratio
 
 Eight medium findings, and half of the ninth. Each was reproduced first; each fix landed

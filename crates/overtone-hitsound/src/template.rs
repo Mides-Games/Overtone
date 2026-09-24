@@ -56,6 +56,14 @@ pub struct Features {
 }
 
 impl Features {
+    /// Nothing audible in the attack window: every band ratio is zero, so
+    /// there is no energy from 20 Hz up (digital silence, or DC and rumble
+    /// alone). Every feature then reads as absence, and absence is what
+    /// several drum templates score.
+    pub fn is_silent(&self) -> bool {
+        self.spectral.band_ratios.iter().all(|&r| r == 0.0)
+    }
+
     pub fn value(&self, feature: Feature) -> f64 {
         match feature {
             Feature::SubRatio => self.spectral.band_ratios[0],
@@ -233,6 +241,12 @@ impl Template {
 
 /// Initial templates: shapes from acoustics, weights at 1-ish starting
 /// points. Calibration moves the weights; it never invents a term.
+///
+/// **Uncalibrated.** These are the starting point for [`calibrate`], not a
+/// classifier: held out they score macro F1 0.231, against 0.723 for
+/// [`calibrated_templates`], and their term contributions are hand-set, so
+/// an explanation built on them explains guesses. The only gate that
+/// judges them is the isolated-hit test, on five clean classes.
 ///
 /// The percussive ratio follows the physics: every drum expects a
 /// percussive attack (the snare's shape for dry hits, the ride's for struck
@@ -714,8 +728,45 @@ pub fn initial_templates() -> Vec<Template> {
     ]
 }
 
+/// The templates to classify with: [`initial_templates`] fitted by
+/// [`calibrate`] on four shuffled corpus arrangements (seeds 11-14, 24 s
+/// each, every class, gaps 0.22-0.45 s). These are the weights the held-out
+/// test judges: macro F1 0.723 on four arrangements the fit never saw,
+/// against 0.231 for the hand-set weights. Synthetic drums, so an upper
+/// bound on real songs, not a measurement of them.
+///
+/// Renders the corpus and fits it on every call, about 3.5 s in a release
+/// build (3.38 and 3.62 s measured): call once and keep the result.
+pub fn calibrated_templates() -> Vec<Template> {
+    let rows: Vec<(HitClass, Features)> = (11u64..15)
+        .flat_map(|seed| {
+            let track =
+                crate::corpus::render_shuffled(44_100, 24.0, (0.22, 0.45), &HitClass::ALL, seed);
+            track
+                .hits
+                .iter()
+                .map(|hit| (hit.class, extract(&track.samples, track.sr, hit.time_s)))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let mut templates = initial_templates();
+    calibrate(&mut templates, &rows, 2000, 0.5, 1e-4);
+    templates
+}
+
 /// Softmax classification: class probabilities in template order.
+///
+/// A [silent](Features::is_silent) attack is `Other` with probability 1
+/// when the set has an `Other` template: scoring nothing reads it as a
+/// sound that never decays and hands it to a drum. Without one it is
+/// scored like any attack.
 pub fn classify(templates: &[Template], features: &Features) -> Vec<(HitClass, f64)> {
+    if features.is_silent() && templates.iter().any(|t| t.class == HitClass::Other) {
+        return templates
+            .iter()
+            .map(|t| (t.class, if t.class == HitClass::Other { 1.0 } else { 0.0 }))
+            .collect();
+    }
     let scores: Vec<f64> = templates.iter().map(|t| t.score(features)).collect();
     let peak = scores.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let exps: Vec<f64> = scores.iter().map(|&s| (s - peak).exp()).collect();
@@ -837,34 +888,15 @@ mod tests {
             .collect()
     }
 
-    /// Templates calibrated once per test run on the dense train track and
-    /// shared: the F1 gate and the isolated gate must judge the same
-    /// artifact — the weights that would ship — not two separate fittings.
-    /// Judging tradeoffs (snare breadth vs cymbal narrowness) on
-    /// hand-set weights is the wrong gate; the shapes are hand-designed,
-    /// the tradeoffs are learned.
+    /// [`calibrated_templates`], fitted once per test run and shared: every
+    /// test that judges calibrated weights judges the ones that ship, not a
+    /// fitting of its own. Judging tradeoffs (snare breadth vs cymbal
+    /// narrowness) on hand-set weights is the wrong gate; the shapes are
+    /// hand-designed, the tradeoffs are learned.
     fn calibrated() -> Vec<Template> {
         use std::sync::OnceLock;
         static CACHE: OnceLock<Vec<Template>> = OnceLock::new();
-        CACHE
-            .get_or_init(|| {
-                let train_rows: Vec<(HitClass, Features)> = (11u64..15)
-                    .flat_map(|seed| {
-                        let track = crate::corpus::render_shuffled(
-                            44_100,
-                            24.0,
-                            (0.22, 0.45),
-                            &HitClass::ALL,
-                            seed,
-                        );
-                        extract_track(&track)
-                    })
-                    .collect();
-                let mut templates = initial_templates();
-                calibrate(&mut templates, &train_rows, 2000, 0.5, 1e-4);
-                templates
-            })
-            .clone()
+        CACHE.get_or_init(calibrated_templates).clone()
     }
 
     /// Held-out evaluation rows: arrangements the training render never
@@ -898,8 +930,10 @@ mod tests {
         // this replaces judged a re-draw of the training track -- same hit
         // times, same class order, same neighbours -- and read 0.906; held
         // out, those templates read 0.485. Trained on varied arrangements
-        // they read 0.650 (92 of 280 wrong). That is the honest number, and
-        // still synthetic.
+        // they read 0.650 (92 of 280 wrong) when this test landed, and 0.723
+        // (72 of 280) after the flam, sustain-window, HPSS-kernel and
+        // percussive-ratio fixes since. That is the honest number, and still
+        // synthetic.
         let rows = held_out_rows();
         let templates = calibrated();
         let (before, _) = macro_f1(&initial_templates(), &rows);
@@ -911,9 +945,8 @@ mod tests {
         );
         assert!(after >= before, "calibration must not regress {before:.3}");
         // The macro bar alone lets a whole class reach zero. Known weak,
-        // measured: Clap 0.13 (its flams need the first 30 ms after the
-        // attack, and the sub-attack window starts 10 ms early), the hats
-        // ~0.4 and Keys 0.44 in dense overlap, Kick and Snare ~0.5.
+        // measured in dense overlap: Clap 0.15, the closed hat 0.40, the
+        // open hat 0.50, Kick 0.57 and Keys 0.63.
         for (class, f1) in &per_class {
             assert!(*f1 >= 0.10, "{class:?} collapsed to {f1:.2}");
         }
@@ -972,9 +1005,28 @@ mod tests {
     }
 
     #[test]
+    fn a_silent_attack_is_other() {
+        // Digital silence under an attack: nothing in the window to
+        // characterise, and no drum may be forced onto it. Scored, it read
+        // as a sound that never decays: Snare 0.27 with the hand-set
+        // weights and 0.40 calibrated, Other 0.04 and 0.02.
+        let y = vec![0.0f32; 44_100];
+        let features = extract(&y, 44_100, 0.5);
+        for (name, templates) in [
+            ("initial", initial_templates()),
+            ("calibrated", calibrated()),
+        ] {
+            let mut probs = classify(&templates, &features);
+            probs.sort_by(|a, b| b.1.total_cmp(&a.1));
+            assert_eq!(probs[0], (HitClass::Other, 1.0), "{name}: {probs:.2?}");
+        }
+    }
+
+    #[test]
     fn softmax_probabilities_sum_to_one() {
         let templates = initial_templates();
-        let y = vec![0.0f32; 44_100];
+        // A tone, not silence: silence never reaches the softmax.
+        let y: Vec<f32> = (0..44_100).map(|i| (i as f32 * 0.0627).sin()).collect();
         let features = Features {
             spectral: crate::spectral::analyze(&y, 44_100, 0.5),
             temporal: crate::temporal::analyze(&y, 44_100, 0.5),
@@ -983,8 +1035,13 @@ mod tests {
             formant: 0.0,
             percussive_ratio: 0.0,
         };
+        assert!(!features.is_silent());
         let probs = classify(&templates, &features);
         let total: f64 = probs.iter().map(|(_, p)| p).sum();
         assert!((total - 1.0).abs() < 1e-9);
+        assert!(
+            probs.iter().all(|&(_, p)| p > 0.0 && p < 1.0),
+            "{probs:.3?}"
+        );
     }
 }

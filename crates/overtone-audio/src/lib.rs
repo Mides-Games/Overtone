@@ -310,7 +310,10 @@ mod tests {
     fn the_load_contract_holds() {
         let sr = TARGET_SR as usize;
         // At least two seconds.
-        assert!(matches!(finish(vec![0.1; 2 * sr - 1], TARGET_SR), Err(Error::TooShort)));
+        assert!(matches!(
+            finish(vec![0.1; 2 * sr - 1], TARGET_SR),
+            Err(Error::TooShort)
+        ));
         assert!(finish(vec![0.1; 2 * sr], TARGET_SR).is_ok());
         // Non-finite samples are zeroed before the peak is taken, and the peak
         // lands on 0.99 whatever the level.
@@ -330,7 +333,11 @@ mod tests {
         // A rate other than 44.1 kHz comes out at 44.1 kHz.
         let (out, rate) = finish(vec![0.1; 3 * 48_000], 48_000).unwrap();
         assert_eq!(rate, TARGET_SR);
-        assert!((out.len() as i64 - 3 * sr as i64).abs() <= 2, "{}", out.len());
+        assert!(
+            (out.len() as i64 - 3 * sr as i64).abs() <= 2,
+            "{}",
+            out.len()
+        );
     }
 
     #[test]

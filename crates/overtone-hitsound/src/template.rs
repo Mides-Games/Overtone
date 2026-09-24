@@ -873,7 +873,10 @@ mod tests {
         let (before, _) = macro_f1(&initial_templates(), &rows);
         let (after, per_class) = macro_f1(&templates, &rows);
         eprintln!("held-out F1 {before:.3} -> {after:.3}: {per_class:.2?}");
-        assert!(after >= 0.60, "macro F1 {after:.3} (per class {per_class:.2?})");
+        assert!(
+            after >= 0.60,
+            "macro F1 {after:.3} (per class {per_class:.2?})"
+        );
         assert!(after >= before, "calibration must not regress {before:.3}");
         // The macro bar alone lets a whole class reach zero. Known weak,
         // measured: Clap 0.13 (its flams need the first 30 ms after the

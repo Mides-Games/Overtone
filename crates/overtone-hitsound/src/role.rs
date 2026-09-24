@@ -371,7 +371,15 @@ mod tests {
         // which is zero when every neighbour carries the same weight.
         let weights: Vec<f32> = vec![1.0, 0.45, 1.0, 0.55, 1.0, 0.3, 0.9, 0.8, 1.0, 0.7, 0.6];
         let sections = vec![section(0.0, 4.0, period, 0.0)];
-        let roles = analyze(&y, sr, &times, &weights, &sections, &[(0, 4)], &[0.0, 2.0, 4.0]);
+        let roles = analyze(
+            &y,
+            sr,
+            &times,
+            &weights,
+            &sections,
+            &[(0, 4)],
+            &[0.0, 2.0, 4.0],
+        );
         // t = 1.0 is beat 3 (index 4): heavier than beat 2, on the beat.
         assert_eq!(roles[4].metrical_weight, Some(0.7));
         assert_eq!(roles[4].division, Some(1));

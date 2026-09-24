@@ -624,8 +624,14 @@ mod tests {
             period: 0.2,
             phase: 0.0,
         };
-        assert_eq!(beat_from_atoms(&times, &ones, grid, &[(150.0, 1.0)], true), (2, 0));
-        assert_eq!(beat_from_atoms(&times, &ones, grid, &[(75.0, 1.0)], true), (4, 0));
+        assert_eq!(
+            beat_from_atoms(&times, &ones, grid, &[(150.0, 1.0)], true),
+            (2, 0)
+        );
+        assert_eq!(
+            beat_from_atoms(&times, &ones, grid, &[(75.0, 1.0)], true),
+            (4, 0)
+        );
         assert_eq!(phase_class(&times, &ones, grid, 4), 0);
         // Two strongest classes tied in a 3-beat bar: v3 says ('3/4', 0, 3).
         let (times, weights) = cycles(&[2.0, 2.0, 0.5]);

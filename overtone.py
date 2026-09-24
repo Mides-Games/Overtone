@@ -2466,6 +2466,14 @@ def export_click_track(analysis: Analysis, destination: str | os.PathLike[str],
         raise ValueError("Analyze audio first — there are no timing points.")
     if not 8000 <= sr <= 192000:
         raise ValueError("Click-track sample rate must be between 8 and 192 kHz.")
+    # Checked before rendering, in words: soundfile raised a TypeError for an
+    # unknown extension and "System error." for a missing folder, and only
+    # after a long click track had been built.
+    target = Path(destination)
+    if not sf.check_format(target.suffix.lstrip(".").upper() or "?"):
+        raise ValueError(f"{target.name}: give the click track a sound file extension such as .wav.")
+    if not target.parent.is_dir():
+        raise ValueError(f"Folder not found: {target.parent}")
     duration = float(min(max(analysis.duration, 1.0), MAX_CLICK_SECONDS))
     total = int((duration + 1.0) * sr)
     click = np.zeros(total, dtype=np.float32)
@@ -5552,7 +5560,7 @@ def main() -> None:
                 args.decimal_offsets)
             print(f"Wrote {args.osz}: {written['osu']} "
                   f"({written['points']} red line(s), {written['bytes'] / 1e6:.1f} MB)")
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:  # soundfile's errors are RuntimeErrors
         print(f"Error writing output: {exc}")
         raise SystemExit(1)
     if args.inject:

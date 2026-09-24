@@ -2942,5 +2942,49 @@ class JsonReportTests(unittest.TestCase):
         self.assertTrue(rows[0]["ok"])
 
 
+def _run_cli(argv, analysis=None):
+    """main() on ``argv`` -> (exit code, stdout, stderr).
+
+    The analysis is stubbed with ``analysis`` when given, and the GUI never
+    opens: it is a mock, so a command that would launch it only says so.
+    """
+    import contextlib
+    import io
+    import sys
+    from unittest import mock
+    import overtone
+    out, err = io.StringIO(), io.StringIO()
+    code = 0
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(mock.patch.object(sys, "argv", ["overtone.py", *argv]))
+        gui = stack.enter_context(mock.patch.object(overtone, "TimingAnalyzerApp"))
+        if analysis is not None:
+            stack.enter_context(mock.patch.object(overtone, "analyze_audio",
+                                                  return_value=analysis))
+        stack.enter_context(contextlib.redirect_stdout(out))
+        stack.enter_context(contextlib.redirect_stderr(err))
+        try:
+            main()
+        except SystemExit as exc:
+            code = exc.code
+    if gui.called:
+        err.write("<GUI opened>")
+    return code, out.getvalue(), err.getvalue()
+
+
+class CliOutputTests(unittest.TestCase):
+    def test_a_click_path_soundfile_cannot_write_is_an_error_not_a_traceback(self):
+        analysis = _grid_analysis([(1000.0, 120.0)])
+        with tempfile.TemporaryDirectory() as tmp:
+            for click, words in ((Path(tmp) / "click", "extension"),
+                                 (Path(tmp) / "no such folder" / "click.wav", "Folder not found")):
+                with self.subTest(click=click.name):
+                    code, out, err = _run_cli([str(Path(tmp) / "song.wav"), "--click", str(click)],
+                                              analysis)
+                    self.assertEqual(code, 1)
+                    self.assertIn("Error writing output", out + err)
+                    self.assertIn(words, out + err)
+
+
 if __name__ == "__main__":
     unittest.main()

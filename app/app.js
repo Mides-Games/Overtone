@@ -663,7 +663,6 @@ function renderDetail() {
         <button class="btn small" data-action="half-s">÷2 §</button>
         <button class="btn small" data-action="double-s">×2 §</button>
       </div>
-    </div>
       <div class="editor-row">
         <button class="btn small" data-action="lock">${t(locked ? "unlock" : "lock")}</button>
       </div>
@@ -914,7 +913,7 @@ function renderCompare() {
   const banners = report.findings.map((f) => `
     <div class="banner ${f.level === "info" ? "info" : ""}">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-      <div>${t(CMP_STR[f.key] || "error", f.values)}</div>
+      <div>${t(CMP_STR[f.key] || "error", { ...f.values, n: f.index + 1 })}</div>
     </div>`).join("");
   const rows = report.sections.map((r) => {
     // Display thresholds, same bars as the engine findings.
@@ -995,7 +994,7 @@ function renderAlign() {
                                         c: report.covered, a: report.attacks });
   const banners = report.findings.map((f) => `
     <div class="banner ${f.level === "info" ? "info" : ""}">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
       <div>${t(ALIGN_STR[f.key] || "error", f.values)}</div>
     </div>`).join("");
   const rows = report.offenders.map((o) => `

@@ -19,7 +19,7 @@ plugged into the app.**
 | Area | State |
 |---|---|
 | Timing engine (Python v3) | **works** — 24/24 corpus, median 0.0000 BPM / 0.16 ms, all gates green |
-| Timing engine (Rust v4) | **at parity** — matches v3 attack for attack and red line for red line on 24/24, ~9x faster; **not used by the app yet** |
+| Timing engine (Rust v4) | **at parity** — matches v3 attack for attack and red line for red line on 24/24, ~4x faster end to end; **not used by the app yet** |
 | App (web shell) | **usable** — analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject, compare with a map, alignment, density, suggestions, folder import, recents, EN/ES |
 | osu! files | **works** — full reader, byte-identical writer, atomic write + backup |
 | Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks |
@@ -45,7 +45,7 @@ Tests: **236** Python (167 engine + 69 web shell) · **193** Rust.
       times, modes that pass on missing audio), `meter_segments` rounding, stale docs —
       then the 40 low.
 2. **Playback in the app** (Phase 4) — hear the song with the click, scrub, loop.
-3. **Plug the Rust engine into the app** (Phase 22) — the ~9x speed-up reaches the user.
+3. **Plug the Rust engine into the app** (Phase 22) — the ~4x speed-up reaches the user.
 4. **Timeline** (Phase 3) — waveform, zoom, drag red lines.
 5. **App sections and settings** (Phases 19–20) — one home per job, every option in one place.
 6. **Map tools** (Phase 21) — kiai, preview point, SV normaliser, inject into every difficulty.
@@ -174,8 +174,13 @@ Speed, measured:
 
 | | Python v3 | Rust | |
 |---|---|---|---|
-| 24-track corpus | 21.6 s | **2.53 s** | 8.5x |
-| 6-minute fixture | 5.0 s | **0.51 s** | 9.8x |
+| 24-track corpus, whole pipeline | 18.5 s | **4.2 s** (decode 0.45 + attacks 2.26 + tempo 1.49) | ~4.4x |
+| 6-minute fixture | 4.6 s | **1.12 s** + decode (attacks + tempo) | ~4x |
+
+Measured on 2026-09-23, like for like. The first version of this table (2.53 s, 8.5x;
+0.51 s, 9.8x) timed only decoding and attack detection on the Rust side against Python's
+whole `analyze_audio`; the bench now times the tempo pipeline too. The 05-dsp-pipeline
+target of "under 3 s" for the corpus is not met.
 
 Two things got there and neither was the language: a **sparse** mel filterbank and an STFT
 **fused** into the mel projection, so the linear spectrogram is never materialised.

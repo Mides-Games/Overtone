@@ -23,7 +23,7 @@ sections within 0.05 BPM and 5 ms     24 / 24
 | Area | State |
 |---|---|
 | **Timing engine** (Python) | ✅ Works. Exact on the synthetic corpus; refuses audio with no pulse |
-| **Timing engine** (Rust v4) | ✅ At parity with Python, attack for attack and red line for red line; its attack stage is ~8× faster — 🦀 not used by the app yet |
+| **Timing engine** (Rust v4) | ✅ At parity with Python, attack for attack and red line for red line; about 4× faster end to end on the corpus — 🦀 not used by the app yet |
 | **App** (web window) | ✅ Analyse, edit, undo, lock, export, inject, compare with a map, alignment, density, suggestions — in English and Spanish |
 | **osu! files** | ✅ Full reader; writer keeps every byte you did not ask to change |
 | **Hitsounds** | 🦀 Half built in Rust (features, 13 instrument classes, musical role); no decision or editor yet |
@@ -297,8 +297,9 @@ On a real live-band ranked map (*Vampires Will Never Hurt You*, 236 hand-placed 
 about 5 % of the red lines land within 5 ms today; closing that gap is
 [Phase 10](docs/10-precision-plan.md).
 
-Rust speed: the corpus's attack stage runs in ~2.6 s against 21.6 s for the whole Python
-analysis — a like-for-like full-pipeline timing is still [on the backlog](docs/13-audit-backlog.md).
+Rust speed, like for like: the whole pipeline over the corpus (decode, attacks, tempo)
+takes ~4.2 s against ~18.5 s for Python's `analyze_audio` — about 4×. An earlier "2.5 s"
+timed decoding and attack detection only.
 
 ---
 
@@ -374,7 +375,7 @@ sliders quedan igual).
 - **Qué funciona hoy (✅):** análisis, editor con deshacer, bloqueo de puntos, exportación
   (`.osu`, CSV, pista de clic, `.osz`), inyección con vista previa, comparación con un mapa,
   alineación, densidad y sugerencias, en inglés y español.
-- **Motor en Rust (🦀):** da los mismos resultados que Python y su etapa de ataques es ~8× más rápida; todavía no lo usa la app.
+- **Motor en Rust (🦀):** da los mismos resultados que Python y es unas 4 veces más rápido de punta a punta; todavía no lo usa la app.
 - **Próximo (📋):** los hallazgos medios de la auditoría (los 6 altos ya están
   arreglados), escuchar la canción con el clic dentro de la app, conectar el motor
   Rust, línea de tiempo con zoom, secciones (Biblioteca, Hitsounds, Audio…), herramientas

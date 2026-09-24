@@ -230,7 +230,10 @@ fn diff_sections(
 struct Report {
     case: String,
     decode_s: f64,
-    analyse_s: f64,
+    /// Attack detection (envelope, peaks, re-timing).
+    attacks_s: f64,
+    /// The tempo pipeline: seed, octave, sections, meter, points.
+    tempo_s: f64,
     seed_in_candidates: bool,
     octave_expected: usize,
     octave_found: usize,
@@ -368,7 +371,7 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
     let decode_s = started.elapsed().as_secs_f64();
     let started = std::time::Instant::now();
     let (attacks, env) = overtone_dsp::detect_attacks_default(&y, sr);
-    let analyse_s = started.elapsed().as_secs_f64();
+    let attacks_s = started.elapsed().as_secs_f64();
 
     let ours: Vec<f64> = attacks.iter().map(|a| a.time.get()).collect();
     let our_weights: Vec<f64> = attacks.iter().map(|a| a.weight as f64).collect();
@@ -464,8 +467,10 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
     // `_assemble_analysis` filters at factor 1): seed, octave, grow,
     // beat-convert, settle, meter, points. Defaults match `analyze_audio`:
     // min_delta 1.5, persistence 12, min_confidence 0.75.
+    let started = std::time::Instant::now();
     let pipeline =
         overtone_tempo::points::analyze_attacks(&ours, &our_w32, &env, 44_100, 1.5, 12, true, 0.75);
+    let tempo_s = started.elapsed().as_secs_f64();
     let atom = diff_sections(
         "atom_sections",
         &pipeline.atom_sections,
@@ -530,7 +535,8 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
     Ok(Report {
         case: golden.case,
         decode_s,
-        analyse_s,
+        attacks_s,
+        tempo_s,
         seed_in_candidates,
         octave_expected,
         octave_found,
@@ -583,15 +589,30 @@ fn density_truth(name: &str) -> Option<(f64, f64)> {
     }
 }
 
+/// Density cases rendered outside the 24-case corpus.
+const DENSITY_EXTRAS: [&str; 3] = ["halftime-175-87.5", "halftime-150-75", "doubletime-110-220"];
+/// Real density changes the density gate is documented to find (4/4).
+const DENSITY_TRUTH_CASES: usize = 4;
+
+/// The command that renders a bench fixture (bench/audio/ is not committed).
+fn render_hint(name: &str) -> &'static str {
+    if name.starts_with("ramp-") {
+        "render it with `python proto/elastic.py`"
+    } else if DENSITY_EXTRAS.contains(&name) {
+        "render it with `python bench/gates.py coverage`"
+    } else if name.starts_with('_') {
+        "render it with `python bench/benchmark.py`"
+    } else {
+        "render it with `python bench/golden.py dump`"
+    }
+}
+
 fn density_mode(root: &Path, only: &[String]) -> Result<()> {
     let mut names = all_cases(root)?;
-    for extra in ["halftime-175-87.5", "halftime-150-75", "doubletime-110-220"] {
-        if root
-            .join("bench/audio")
-            .join(format!("{extra}.wav"))
-            .is_file()
-            && !names.contains(&extra.to_string())
-        {
+    // Required, not optional: skipped when absent, they let the gate pass
+    // with nothing measured (bench/audio/ is not committed).
+    for extra in DENSITY_EXTRAS {
+        if !names.contains(&extra.to_string()) {
             names.push(extra.to_string());
         }
     }
@@ -613,10 +634,12 @@ fn density_mode(root: &Path, only: &[String]) -> Result<()> {
     let mut false_positives = 0usize;
     let mut worst_err = 0.0f64;
     let mut misses: Vec<String> = Vec::new();
+    let mut missing = 0usize;
     for name in &names {
         let audio = root.join("bench/audio").join(format!("{name}.wav"));
         if !audio.is_file() {
-            println!("{name:<20}  (no audio — skipped)");
+            println!("{name:<20}  MISSING — {}", render_hint(name));
+            missing += 1;
             continue;
         }
         let (y, sr) = overtone_audio::load(&audio).map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -690,6 +713,13 @@ fn density_mode(root: &Path, only: &[String]) -> Result<()> {
     if !misses.is_empty() {
         println!("missed: {}", misses.join(", "));
     }
+    if missing > 0 {
+        bail!("{missing} case(s) have no audio: nothing was measured for them");
+    }
+    // The documented gate is 4/4: with a case gone, 0/0 would read as a pass.
+    if only.is_empty() && expected != DENSITY_TRUTH_CASES {
+        bail!("{expected} truth case(s) needed a hint; the gate is {DENSITY_TRUTH_CASES}");
+    }
     if hits == expected && false_positives == 0 {
         Ok(())
     } else {
@@ -743,7 +773,8 @@ fn elastic_mode(root: &Path, only: &[String]) -> Result<()> {
         }
         let audio = root.join("bench/audio").join(format!("{name}.wav"));
         if !audio.is_file() {
-            println!("{name:<16}  (no audio — build it with proto/elastic.py)");
+            println!("{name:<16}  MISSING — {}", render_hint(name));
+            failures += 1;
             continue;
         }
         let (y, sr) = overtone_audio::load(&audio).map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -890,20 +921,11 @@ fn map_truth_changes(name: &str) -> Vec<f64> {
 fn map_mode(root: &Path, only: &[String]) -> Result<()> {
     use overtone_tempo::map;
     let mut names = all_cases(root)?;
-    for extra in [
-        "halftime-175-87.5",
-        "halftime-150-75",
-        "doubletime-110-220",
-        "ramp-120-160",
-        "ramp-180-140",
-        "ramp-90-200",
-    ] {
-        if root
-            .join("bench/audio")
-            .join(format!("{extra}.wav"))
-            .is_file()
-            && !names.contains(&extra.to_string())
-        {
+    for extra in DENSITY_EXTRAS
+        .iter()
+        .chain(["ramp-120-160", "ramp-180-140", "ramp-90-200"].iter())
+    {
+        if !names.contains(&extra.to_string()) {
             names.push(extra.to_string());
         }
     }
@@ -922,7 +944,8 @@ fn map_mode(root: &Path, only: &[String]) -> Result<()> {
         }
         let audio = root.join("bench/audio").join(format!("{name}.wav"));
         if !audio.is_file() {
-            println!("{name:<20}  (no audio — skipped)");
+            println!("{name:<20}  MISSING — {}", render_hint(name));
+            failures += 1;
             continue;
         }
         let (y, sr) = overtone_audio::load(&audio).map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -1017,7 +1040,8 @@ fn nogrid_mode(root: &Path) -> Result<()> {
     for name in cases {
         let audio = root.join("bench/audio").join(format!("{name}.wav"));
         if !audio.is_file() {
-            println!("{name:<10}  (no audio — run `python bench/benchmark.py` first)");
+            println!("{name:<10}  MISSING — {}", render_hint(name));
+            failures += 1;
             continue;
         }
         ran += 1;
@@ -1184,7 +1208,8 @@ fn main() -> Result<()> {
 
     let mut failures = 0usize;
     let mut total_decode = 0.0f64;
-    let mut total_analyse = 0.0f64;
+    let mut total_attacks = 0.0f64;
+    let mut total_tempo = 0.0f64;
     for name in &names {
         match check_case(&root, name) {
             Ok(report) => {
@@ -1253,7 +1278,8 @@ fn main() -> Result<()> {
                     )
                 };
                 total_decode += report.decode_s;
-                total_analyse += report.analyse_s;
+                total_attacks += report.attacks_s;
+                total_tempo += report.tempo_s;
                 println!(
                     "{:<18} {:>8} {:>8} {:>8.4}ms {:>3} {:>10.2e} {:>7} {:>7.3}s  {verdict}",
                     report.case,
@@ -1263,7 +1289,7 @@ fn main() -> Result<()> {
                     if report.seed_in_candidates { "y" } else { "N" },
                     report.seed_period_err,
                     format!("{}/{}", report.octave_found, report.octave_expected),
-                    report.analyse_s,
+                    report.attacks_s + report.tempo_s,
                 );
             }
             Err(e) => {
@@ -1274,9 +1300,12 @@ fn main() -> Result<()> {
     }
 
     println!();
+    // All three, because Python's figure times the whole analyze_audio call:
+    // attack detection alone once stood in for "the corpus analyses in 2.5 s".
     println!(
-        "decode {total_decode:.2}s + analyse {total_analyse:.2}s = {:.2}s of real work",
-        total_decode + total_analyse
+        "decode {total_decode:.2}s + attacks {total_attacks:.2}s + tempo {total_tempo:.2}s \
+         = {:.2}s, the whole pipeline",
+        total_decode + total_attacks + total_tempo
     );
     if failures == 0 {
         println!(

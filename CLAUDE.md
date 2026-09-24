@@ -53,14 +53,16 @@ engine against v3 **stage by stage** on the committed vectors, so a divergence
 names its own stage. Current state: all 24 fixtures match every attack within
 0.0001 ms, every anchor seed within 2.6e-7 s of period, and **every octave
 decision exactly** — which is the stage audit finding F-07 says nothing in v3
-tests. The whole corpus analyses in 2.5 s against Python's 21.6 s.
+tests. The whole pipeline over the corpus -- decode, attacks and tempo -- takes
+about 4.2 s against about 18.5 s for Python's `analyze_audio` (both measured on
+2026-09-23; this machine's timings vary by up to a third between runs).
 
 `cargo run --release -q -p overtone-bench -- candidates <case>` prints the
 coherence candidates beside v3's when a seed diverges.
 
 `cargo run --release` may spend a minute compiling the first time after an
-edit; that is the build, not the engine. The bench prints its own decode and
-analyse timings so the two are never confused.
+edit; that is the build, not the engine. The bench prints its own decode,
+attack and tempo timings so the two are never confused.
 
 **The accuracy baseline is not negotiable:** 24/24 sections within 0.05 BPM and 5 ms,
 median 0.0000 BPM and 0.16 ms. A change that moves those numbers is a regression until

@@ -27,6 +27,7 @@ from pathlib import Path
 import numpy as np
 
 import overtone as ta
+import overtone_rust
 
 HERE = Path(__file__).resolve().parent
 APP_DIR = HERE / "app"
@@ -71,6 +72,9 @@ def _warnings(analysis: ta.Analysis) -> list[dict]:
     no keys for — fallback engine and loose grid.
     """
     notes: list[dict] = []
+    note = getattr(analysis, "backend_note", "")
+    if note:
+        notes.append({"level": "info", "key": "warn_rust_fallback", "values": {"why": note}})
     if analysis.engine != "precision":
         notes.append({"level": "warn", "key": "warn_legacy"})
     for finding in ta.validate_timing_points(analysis):
@@ -105,6 +109,9 @@ def analysis_payload(analysis: ta.Analysis) -> dict:
         "stability": float(analysis.stability),
         "meter": analysis.meter,
         "engine": analysis.engine,
+        # Which implementation produced it: results predating the choice, and
+        # every v3 run, read "python".
+        "backend": getattr(analysis, "backend", "python"),
         "subdivision": float(analysis.subdivision),
         "residual_ms": float(analysis.fit_residual_ms),
         "beat_count": int(beats.size),
@@ -227,7 +234,10 @@ class Api:
                 "pulse": self._pulse_key(str(cfg.get("pulse", "Auto"))),
                 "prefer_map_bpm": bool(cfg.get("prefer_map_bpm", True)),
                 "refine_beats": bool(cfg.get("refine_beats", True)),
+                "engine": "rust" if cfg.get("engine") == "rust" else "python",
             },
+            # The Rust engine is opt-in and only offered where it is built.
+            "rust_available": overtone_rust.find_cli() is not None,
             "presets": ta.TimingAnalyzerApp.PRESETS,
             # pywebview serves app/ as the web root, so ../assets is out of
             # reach; the one image the page needs travels as a data URI.
@@ -753,6 +763,10 @@ class Api:
                 for chunk in iter(lambda: handle.read(1 << 20), b""):
                     digest.update(chunk)
             engine_mtime = os.path.getmtime(ta.__file__)
+            if params.get("engine") == "rust":
+                # A rebuilt binary is a different engine, as an edited DSP is.
+                binary = overtone_rust.find_cli()
+                engine_mtime = [engine_mtime, os.path.getmtime(binary) if binary else None]
         except OSError:
             return None
         stamp = json.dumps([ta.APP_VERSION, engine_mtime, params],
@@ -836,7 +850,8 @@ class Api:
                 "min_confidence": confidence,
                 "prefer_map_bpm": bool(options.get("prefer_map_bpm", True)),
                 "refine_beats": bool(options.get("refine_beats", True)),
-                "force_subdivision": PULSE_FACTORS[options.get("pulse", "auto")]}
+                "force_subdivision": PULSE_FACTORS[options.get("pulse", "auto")],
+                "engine": "rust" if options.get("engine") == "rust" else "python"}
 
     def _remember(self, path: str, options: dict) -> None:
         tk_pulse = {"/4": "÷4", "/2": "÷2", "x1": "×1", "x2": "×2", "x4": "×4"}
@@ -846,7 +861,8 @@ class Api:
                           "confidence": str(options["confidence"]),
                           "pulse": tk_pulse.get(options.get("pulse", "auto"), "Auto"),
                           "prefer_map_bpm": bool(options.get("prefer_map_bpm", True)),
-                          "refine_beats": bool(options.get("refine_beats", True))})
+                          "refine_beats": bool(options.get("refine_beats", True)),
+                          "engine": "rust" if options.get("engine") == "rust" else "python"})
         recent = [path] + [p for p in self._cfg.get("recent", []) if p != path]
         self._cfg["recent"] = recent[:self.RECENT_LIMIT]
         self._persist()
@@ -856,10 +872,35 @@ class Api:
 
 
 def run_analysis(path: str, params: dict, progress=None) -> ta.Analysis:
-    """The exact call the Tk worker makes, with the same argument order."""
-    return ta.analyze_audio(path, params["min_delta"], params["persistence"],
-                            params["prefer_map_bpm"], params["min_confidence"],
-                            progress, params["force_subdivision"], params["refine_beats"])
+    """The exact call the Tk worker makes, or the Rust engine when chosen.
+
+    Rust runs only where it computes what v3 would: pulse Auto, the grid's own
+    factor. Anything it cannot answer (no binary, no grid, since it has no
+    beat-tracker fallback, or a file it cannot decode) goes to v3, and the
+    result carries why, so a fallback is never silent.
+    """
+    note = ""
+    if params.get("engine") == "rust":
+        if params["force_subdivision"] != 0.0:
+            note = "the Rust engine runs at the grid's own pulse only"
+        else:
+            if progress:
+                progress("Analysing with the Rust engine…")
+            try:
+                result = overtone_rust.analyze(
+                    path, min_delta=params["min_delta"], persistence=params["persistence"],
+                    min_confidence=params["min_confidence"],
+                    prefer_map_bpm=params["prefer_map_bpm"])
+                result.backend = "rust"
+                return result
+            except Exception as exc:  # noqa: BLE001 -- v3 takes over and says why
+                note = str(exc)
+    result = ta.analyze_audio(path, params["min_delta"], params["persistence"],
+                              params["prefer_map_bpm"], params["min_confidence"],
+                              progress, params["force_subdivision"], params["refine_beats"])
+    result.backend = "python"
+    result.backend_note = note
+    return result
 
 
 # ---------------------------------------------------------------------------

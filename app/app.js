@@ -61,6 +61,11 @@ const I18N = {
     detection: "Detection settings", preset_variable: "Variable tempo", preset_steady: "Steady",
     f_delta: "Min change (BPM)", f_persist: "Confirm beats", f_conf: "Min confidence (%)", f_pulse: "Pulse (octave)", auto: "Auto",
     t_prefer: "Prefer map BPM (120–300)", t_refine: "Re-anchor beats to transients",
+    t_rust: "Rust engine (faster, same results)",
+    t_rust_note: "Runs at the grid's own pulse. Where it finds no grid, the Python engine takes over and says so.",
+    t_rust_missing: "The Rust engine is not built on this machine (cargo build --release -p overtone-cli).",
+    warn_rust_fallback: "Analysed with the Python engine: {why}.",
+    backend_rust: "Rust", backend_python: "Python",
     inspector_note: "Applied on the next Analyze. Shared with the classic window.",
     engine_precision: "precision grid", engine_legacy: "beat tracker fallback",
     constant: "constant", variable: "variable", points_n: "{n} points", meter_known: "bar found", meter_guess: "bar assumed",
@@ -204,6 +209,11 @@ const I18N = {
     detection: "Ajustes de detección", preset_variable: "Tempo variable", preset_steady: "Estable",
     f_delta: "Cambio mínimo (BPM)", f_persist: "Beats de confirmación", f_conf: "Confianza mínima (%)", f_pulse: "Pulso (octava)", auto: "Auto",
     t_prefer: "Preferir BPM de mapa (120–300)", t_refine: "Re-anclar beats a transitorios",
+    t_rust: "Motor Rust (más rápido, mismos resultados)",
+    t_rust_note: "Corre al pulso propio de la rejilla. Donde no encuentra rejilla, el motor Python toma el relevo y lo avisa.",
+    t_rust_missing: "El motor Rust no está compilado en esta máquina (cargo build --release -p overtone-cli).",
+    warn_rust_fallback: "Analizado con el motor Python: {why}.",
+    backend_rust: "Rust", backend_python: "Python",
     inspector_note: "Se aplican en el próximo análisis. Compartidos con la ventana clásica.",
     engine_precision: "rejilla de precisión", engine_legacy: "tracker de respaldo",
     constant: "constante", variable: "variable", points_n: "{n} puntos", meter_known: "compás hallado", meter_guess: "compás supuesto",
@@ -403,6 +413,7 @@ function applyOptions(o) {
   $("confidence").value = o.confidence;
   $("preferMap").checked = o.prefer_map_bpm;
   $("refineBeats").checked = o.refine_beats;
+  $("rustEngine").checked = o.engine === "rust";
   document.querySelectorAll("#pulseSwitch button").forEach((b) => b.classList.toggle("on", b.dataset.pulse === o.pulse));
   markPreset();
 }
@@ -415,6 +426,7 @@ function readOptions() {
     pulse: (document.querySelector("#pulseSwitch button.on") || {}).dataset?.pulse || "auto",
     prefer_map_bpm: $("preferMap").checked,
     refine_beats: $("refineBeats").checked,
+    engine: $("rustEngine").checked ? "rust" : "python",
   };
   const bad = {
     delta: !(o.delta > 0), persistence: !(o.persistence >= 2), confidence: !(o.confidence >= 0 && o.confidence <= 100),
@@ -641,7 +653,7 @@ function renderDetail() {
       <div class="detail-head"><div class="card-title">${t("d_song")}</div></div>
       <div class="detail-big">${r.global_bpm.toFixed(2)}<small>BPM</small></div>
       ${kv([[t("d_duration"), mmss(r.duration)], [t("d_first"), firstBeat],
-            [t("d_engine"), t(r.engine === "precision" ? "engine_precision" : "engine_legacy")],
+            [t("d_engine"), `${t(r.engine === "precision" ? "engine_precision" : "engine_legacy")} · ${t(r.backend === "rust" ? "backend_rust" : "backend_python")}`],
             [t("d_residual"), r.engine === "precision" ? `${r.residual_ms.toFixed(2)} ms` : "—"],
             [t("d_sections"), r.sections.length || "—"], [t("d_pulse"), `×${r.subdivision}`]])}
       <div class="detail-note">${t("d_hint")}</div>`;
@@ -1565,11 +1577,15 @@ async function boot() {
   const st = await api().state();
   S.lang = st.language; S.presets = st.presets;
   S.recent = st.recent || [];
+  S.rustAvailable = !!st.rust_available;
   $("version").textContent = st.version;
   if (st.logo) $("logo").src = st.logo;
   applyOptions(st.options);
   setFile(st.file);
   translate();
+  // Offered only where built; a saved choice without a binary falls back.
+  $("rustEngine").disabled = !S.rustAvailable;
+  if (!S.rustAvailable) $("rustNote").textContent = t("t_rust_missing");
   setView(S.view);  // Library until an analysis finishes
   syncActions();
   syncLocks();

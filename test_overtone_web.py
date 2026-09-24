@@ -520,6 +520,73 @@ class SnapBridgeTests(_IsolatedConfig):
         self.assertEqual(_api_with_points().snap("C:/does/not/exist.osu")["key"], "bad_file")
 
 
+class EngineChoiceTests(_IsolatedConfig):
+    """The Rust engine is opt-in, falls back to v3, and says when it did."""
+
+    PARAMS = {"min_delta": 1.5, "persistence": 12, "min_confidence": 0.75,
+              "prefer_map_bpm": True, "refine_beats": True, "force_subdivision": 0.0}
+
+    @staticmethod
+    def _clicks(folder: str) -> str:
+        sr = 44_100
+        y = np.zeros(20 * sr, dtype=np.float32)
+        burst = np.exp(-np.arange(1300) / 180.0) * (np.random.default_rng(3).random(1300) - 0.5)
+        for k, t in enumerate(np.arange(0.5, 19.5, 0.4)):
+            start = int(t * sr)
+            y[start:start + 1300] += (0.9 if k % 4 == 0 else 0.5) * burst
+        path = Path(folder) / "clicks.wav"
+        ta.sf.write(str(path), y, sr, subtype="PCM_16")
+        return str(path)
+
+    def test_the_choice_travels_through_params_and_config(self) -> None:
+        api = web.Api()
+        options = {"delta": 1.5, "persistence": 12, "confidence": 75, "pulse": "auto",
+                   "prefer_map_bpm": True, "refine_beats": True, "engine": "rust"}
+        self.assertEqual(api._params(options)["engine"], "rust")
+        self.assertEqual(api._params({**options, "engine": "bogus"})["engine"], "python")
+        api._remember("C:/song.wav", options)
+        self.assertEqual(self.saved[-1]["engine"], "rust")
+        self.assertIn("rust_available", api.state())
+
+    def test_python_is_the_default_and_carries_no_note(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = web.run_analysis(self._clicks(tmp), dict(self.PARAMS))
+        self.assertEqual((result.backend, result.backend_note), ("python", ""))
+        payload = web.analysis_payload(result)
+        self.assertEqual(payload["backend"], "python")
+        self.assertNotIn("warn_rust_fallback", [w["key"] for w in payload["warnings"]])
+
+    def test_a_missing_binary_falls_back_and_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(web.overtone_rust, "find_cli", return_value=None):
+            result = web.run_analysis(self._clicks(tmp), {**self.PARAMS, "engine": "rust"})
+        self.assertEqual(result.backend, "python")
+        self.assertIn("not built", result.backend_note)
+        keys = [w["key"] for w in web.analysis_payload(result)["warnings"]]
+        self.assertIn("warn_rust_fallback", keys)
+
+    def test_a_forced_pulse_goes_to_python(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = web.run_analysis(self._clicks(tmp), {**self.PARAMS, "engine": "rust",
+                                                         "force_subdivision": 2.0})
+        self.assertEqual(result.backend, "python")
+        self.assertIn("own pulse", result.backend_note)
+
+    def test_the_rust_engine_answers_when_built(self) -> None:
+        if web.overtone_rust.find_cli() is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._clicks(tmp)
+            rust = web.run_analysis(path, {**self.PARAMS, "engine": "rust"})
+            python = web.run_analysis(path, dict(self.PARAMS))
+        self.assertEqual(rust.backend, "rust")
+        self.assertAlmostEqual(rust.global_bpm, python.global_bpm, places=6)
+        self.assertEqual(web.analysis_payload(rust)["backend"], "rust")
+        # What gets written: the whole-millisecond offsets of the .osu lines.
+        rows = lambda a: [line.split(",")[0] for line in ta.osu_timing_text(a).splitlines()[1:]]
+        self.assertEqual(rows(rust), rows(python))
+
+
 class SuggestBridgeTests(_IsolatedConfig):
     def _map(self, tmp: str, reds) -> str:
         lines = ["osu file format v14", "", "[TimingPoints]"]

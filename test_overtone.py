@@ -2945,8 +2945,9 @@ class JsonReportTests(unittest.TestCase):
 def _run_cli(argv, analysis=None):
     """main() on ``argv`` -> (exit code, stdout, stderr).
 
-    The analysis is stubbed with ``analysis`` when given, and the GUI never
-    opens: it is a mock, so a command that would launch it only says so.
+    The analysis is stubbed with ``analysis`` when given (a function stands in
+    for analyze_audio itself), and the GUI never opens: it is a mock, so a
+    command that would launch it only says so.
     """
     import contextlib
     import io
@@ -2958,7 +2959,9 @@ def _run_cli(argv, analysis=None):
     with contextlib.ExitStack() as stack:
         stack.enter_context(mock.patch.object(sys, "argv", ["overtone.py", *argv]))
         gui = stack.enter_context(mock.patch.object(overtone, "TimingAnalyzerApp"))
-        if analysis is not None:
+        if callable(analysis):
+            stack.enter_context(mock.patch.object(overtone, "analyze_audio", analysis))
+        elif analysis is not None:
             stack.enter_context(mock.patch.object(overtone, "analyze_audio",
                                                   return_value=analysis))
         stack.enter_context(contextlib.redirect_stdout(out))
@@ -2984,6 +2987,33 @@ class CliOutputTests(unittest.TestCase):
                     self.assertEqual(code, 1)
                     self.assertIn("Error writing output", out + err)
                     self.assertIn(words, out + err)
+
+    def test_stdout_carries_only_the_timing(self):
+        # `overtone.py song.mp3 > timing.txt` wrote the progress lines ahead of
+        # the red lines, and "Wrote x.osz" after them -- after the JSON too.
+        analysis = _grid_analysis([(1000.0, 120.0), (11000.0, 140.0)])
+
+        def analyse(path, delta, persistence, prefer, confidence, progress, *rest, **options):
+            progress("Loading and normalizing audio…")
+            return analysis
+
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "song.wav"
+            audio.write_bytes(b"RIFF")
+            osz = str(Path(tmp) / "map.osz")
+            code, out, err = _run_cli([str(audio), "--osz", osz], analyse)
+            self.assertEqual(code, 0)
+            lines = [line for line in out.splitlines() if line]
+            self.assertTrue(lines[0].startswith("// Generated"), lines[0])
+            self.assertTrue(all(line.startswith("//") or line.count(",") == 7 for line in lines),
+                            lines)
+            self.assertIn("Loading", err)
+            self.assertIn("Wrote", err)
+            code, out, err = _run_cli([str(audio), "--json", "--osz", osz], analyse)
+            self.assertEqual(json.loads(out)["global_bpm"], 120.0)
+            code, out, err = _run_cli([str(Path(tmp) / "missing.wav")])
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("Error:", err)
 
 
 if __name__ == "__main__":

@@ -5495,22 +5495,28 @@ def main() -> None:
     parser.add_argument("--no-backup", action="store_true", help="Skip the .bak backup when injecting")
     parser.add_argument("--no-map-preference", action="store_true", help="Do not prefer 120-300 mapping BPM when resolving the octave")
     args = parser.parse_args()
+
+    def note(message: str) -> None:
+        """Progress, status and errors go to stderr: stdout carries only the
+        red lines (or the JSON), so `> timing.txt` holds nothing else."""
+        print(message, file=sys.stderr)
+
     if not args.audio:
         TimingAnalyzerApp().start()
         return
     if not 0 <= args.decimal_offsets <= 6:
-        print("Error: --decimal-offsets must be between 0 and 6")
+        note("Error: --decimal-offsets must be between 0 and 6")
         raise SystemExit(2)
     force = 0.0 if args.subdivision == "auto" else float(args.subdivision)
     if Path(args.audio).is_dir():
         if args.click or args.osz or args.inject or args.stats:
-            print("Error: --click/--osz/--inject/--stats need a single audio file, not a folder")
+            note("Error: --click/--osz/--inject/--stats need a single audio file, not a folder")
             raise SystemExit(2)
         try:
             rows = analyze_batch(args.audio, args.delta, args.persistence, not args.no_map_preference,
                                  args.min_confidence / 100, force, refine_beats=not args.no_refine)
         except ValueError as exc:
-            print(f"Error: {exc}")
+            note(f"Error: {exc}")
             raise SystemExit(1)
         failures = sum(not row["ok"] for row in rows)
         if args.json:
@@ -5529,17 +5535,15 @@ def main() -> None:
                     writer.writerows([[row["file"], row["ok"], row["global_bpm"],
                                        row["points"], row["duration"], row["error"]] for row in rows])
             except OSError as exc:
-                print(f"Error writing output: {exc}")
+                note(f"Error writing output: {exc}")
                 raise SystemExit(1)
         raise SystemExit(1 if failures else 0)
     try:
-        # Progress goes to stderr under --json, so stdout stays pure JSON.
-        say = (lambda message: print(message, file=sys.stderr)) if args.json else print
         analysis = analyze_audio(args.audio, args.delta, args.persistence, not args.no_map_preference,
-                                 args.min_confidence / 100, say, force,
+                                 args.min_confidence / 100, note, force,
                                  refine_beats=not args.no_refine, engine=args.engine)
     except (ValueError, RuntimeError, OSError) as exc:
-        print(f"Error: {exc}")
+        note(f"Error: {exc}")
         raise SystemExit(1)
     if args.json:
         print(json.dumps(analysis_report(analysis), indent=2))
@@ -5558,24 +5562,24 @@ def main() -> None:
                 analysis, args.osz, args.audio,
                 {"artist": args.artist, "title": args.title, "creator": args.creator},
                 args.decimal_offsets)
-            print(f"Wrote {args.osz}: {written['osu']} "
-                  f"({written['points']} red line(s), {written['bytes'] / 1e6:.1f} MB)")
+            note(f"Wrote {args.osz}: {written['osu']} "
+                 f"({written['points']} red line(s), {written['bytes'] / 1e6:.1f} MB)")
     except (OSError, ValueError, RuntimeError) as exc:  # soundfile's errors are RuntimeErrors
-        print(f"Error writing output: {exc}")
+        note(f"Error writing output: {exc}")
         raise SystemExit(1)
     if args.inject:
         try:
             summary = inject_osu_timing_points(args.inject, analysis, backup=not args.no_backup,
                                                decimals=args.decimal_offsets)
         except (ValueError, OSError) as exc:
-            print(f"Error injecting into {args.inject}: {exc}")
+            note(f"Error injecting into {args.inject}: {exc}")
             raise SystemExit(1)
-        print(f"Injected {summary['reds_added']} red lines "
-              f"({summary['reds_replaced']} replaced, {summary['greens_kept']} greens kept, "
-              f"{summary['greens_added']} greens added to keep SV and hitsounds)"
-              + (" [audio mismatch!]" if summary["audio_mismatch"] else ""))
+        note(f"Injected {summary['reds_added']} red lines "
+             f"({summary['reds_replaced']} replaced, {summary['greens_kept']} greens kept, "
+             f"{summary['greens_added']} greens added to keep SV and hitsounds)"
+             + (" [audio mismatch!]" if summary["audio_mismatch"] else ""))
         if summary["backup"]:
-            print(f"Backup: {summary['backup']}")
+            note(f"Backup: {summary['backup']}")
 
 
 if __name__ == "__main__":

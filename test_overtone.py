@@ -1165,6 +1165,31 @@ class LegacyPulseFactorTests(unittest.TestCase):
         self.assertAlmostEqual(half.global_bpm, 100.0, delta=1.0)
 
 
+class OneWindowSignatureTests(unittest.TestCase):
+    """A signature region exactly one window long is a region, wherever the song starts.
+
+    Its length in seconds was compared with MIN_METER_BARS bars, which it
+    equals: an ulp coin flip on accumulated float edges. At a 1.2 s bar, 85 of
+    200 such runs were kept and 115 dropped.
+    """
+
+    def test_a_four_bar_interlude_in_three(self):
+        bar = 1.2
+        found = []
+        for step in range(37):
+            phase = 0.25 + step * 0.0271
+            times, weights = [], []
+            for n in range(68):
+                beats = 3 if 32 <= n < 36 else 4
+                for k in range(beats):
+                    times.append(phase + n * bar + k * bar / beats)
+                    weights.append(1.0 if k == 0 else 0.6)
+            regions = meter_segments(np.array(times), np.array(weights, dtype=np.float32),
+                                     bar, phase)
+            found.append([beats for _a, _b, beats, _s in regions])
+        self.assertEqual(found, [[4, 3, 4]] * 37)
+
+
 class LongMixTests(unittest.TestCase):
     """Section growth must reach the end of a long track.
 

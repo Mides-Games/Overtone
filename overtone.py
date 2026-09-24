@@ -1712,7 +1712,11 @@ def meter_segments(times: np.ndarray, weights: np.ndarray, bar: float,
             runs[-1][3].append(score)
         else:
             runs.append([edge, edge + span, beats, [score]])
-    merged = [r for r in runs if (r[1] - r[0]) >= MIN_METER_BARS * bar]
+    # Counted in whole windows: the run's length in seconds is exactly one
+    # window for a single-window run, and comparing it with MIN_METER_BARS
+    # bars was an ulp coin flip -- at a 1.2 s bar, 85 of 200 such runs kept
+    # and 115 dropped, by where the song started.
+    merged = [r for r in runs if len(r[3]) * window_bars >= MIN_METER_BARS]
     if len(merged) < 2:
         return []
     # A dropped short run leaves a hole; hand it to the run before it. Then

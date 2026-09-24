@@ -212,7 +212,9 @@ fn meter_segments_with(
     }
     let merged: Vec<(f64, f64, usize, Vec<f64>)> = runs
         .into_iter()
-        .filter(|r| r.1 - r.0 >= MIN_METER_BARS as f64 * bar)
+        // Whole windows, as v3 counts them: one window's length in seconds IS
+        // MIN_METER_BARS bars, and comparing the two was an ulp coin flip.
+        .filter(|r| r.3.len() * window_bars >= MIN_METER_BARS)
         .collect();
     if merged.len() < 2 {
         return Vec::new();
@@ -1006,6 +1008,31 @@ mod tests {
         }
         assert!((settled[0].start.get() - times[0]).abs() < 1e-9);
         assert!((settled.last().unwrap().end.get() - times[times.len() - 1]).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_one_window_signature_region_is_kept_wherever_the_song_starts() {
+        // 32 bars of 4, 4 bars of 3 (exactly one window), 32 bars of 4. v3
+        // kept that region by float rounding: never at a 1.2 s or 1.6 s bar
+        // in 37 start offsets, 32 times in 37 at 1.875 s.
+        for bar in [1.2, 1.6, 1.875] {
+            for step in 0..37 {
+                let phase = 0.25 + step as f64 * 0.0271;
+                let (mut times, mut weights) = (Vec::new(), Vec::new());
+                for n in 0..68 {
+                    let beats = if (32..36).contains(&n) { 3 } else { 4 };
+                    for k in 0..beats {
+                        times.push(phase + n as f64 * bar + k as f64 * bar / beats as f64);
+                        weights.push(if k == 0 { 1.0f32 } else { 0.6 });
+                    }
+                }
+                let found: Vec<usize> = meter_segments(&times, &weights, bar, phase)
+                    .iter()
+                    .map(|s| s.beats)
+                    .collect();
+                assert_eq!(found, vec![4, 3, 4], "bar {bar}, start {phase}");
+            }
+        }
     }
 
     #[test]

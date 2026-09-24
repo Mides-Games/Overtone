@@ -731,14 +731,27 @@ class PlaybackBridgeTests(_IsolatedConfig):
 
     def test_levels_are_clamped_remembered_and_offered_back(self) -> None:
         api = web.Api()
-        self.assertEqual(api.state()["playback"], {"song_volume": 0.8, "click_volume": 0.6})
+        self.assertEqual(api.state()["playback"],
+                         {"song_volume": 0.8, "click_volume": 0.6, "tap_latency_ms": 0.0})
         reply = api.set_playback({"song_volume": 2, "click_volume": -1})
-        self.assertEqual(reply["playback"], {"song_volume": 1.0, "click_volume": 0.0})
+        self.assertEqual((reply["playback"]["song_volume"], reply["playback"]["click_volume"]),
+                         (1.0, 0.0))
         self.assertEqual((self.saved[-1]["song_volume"], self.saved[-1]["click_volume"]), (1.0, 0.0))
         self.assertEqual(api.set_playback({"song_volume": "loud"})["key"], "bad_values")
         self.assertEqual(api.set_playback({"song_volume": float("nan"), "click_volume": 1})["key"],
                          "bad_values")
         self.assertEqual(web.Api().audio_open()["key"], "first")
+
+    def test_tap_latency_is_remembered_and_refused_past_a_quarter_second(self) -> None:
+        api = web.Api()
+        self.assertEqual(api.set_tap_latency(38.5)["playback"]["tap_latency_ms"], 38.5)
+        self.assertEqual(self.saved[-1]["tap_latency_ms"], 38.5)
+        for bad in (400, "late", float("inf")):
+            with self.subTest(bad=bad):
+                self.assertFalse(api.set_tap_latency(bad)["ok"])
+        # A hand-edited config past the limit is ignored, not trusted.
+        api._cfg["tap_latency_ms"] = 900
+        self.assertEqual(api.state()["playback"]["tap_latency_ms"], 0.0)
 
 
 class ModReportBridgeTests(_IsolatedConfig):

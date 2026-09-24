@@ -49,6 +49,8 @@ PULSE_FACTORS = {"auto": 0.0, "/4": 0.25, "/2": 0.5, "x1": 1.0, "x2": 2.0, "x4":
 AUDIO_MIME = {".wav": "audio/wav", ".flac": "audio/flac", ".ogg": "audio/ogg",
               ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac",
               ".opus": "audio/ogg", ".aiff": "audio/aiff"}
+#: A tap calibration past this is not latency but taps that missed the click.
+TAP_LATENCY_LIMIT_MS = 250.0
 #: The trace needs the shape of the onset envelope, not its 40 k frames.
 ONSET_BINS = 1600
 LOOSE_RESIDUAL_MS = 5.0
@@ -904,12 +906,27 @@ class Api:
         clean = {key: min(1.0, max(0.0, value)) for key, value in raw.items()}
         self._cfg.update(clean)
         self._persist()
-        return {"ok": True, "playback": clean}
+        return {"ok": True, "playback": self._playback()}
+
+    def set_tap_latency(self, ms: float) -> dict:
+        """Remember how late this person's taps land on a click they hear
+        (key travel, the hand, the ear): the calibration taps are judged by."""
+        try:
+            value = float(ms)
+        except (TypeError, ValueError):
+            return {"ok": False, "key": "bad_values"}
+        if not np.isfinite(value) or abs(value) > TAP_LATENCY_LIMIT_MS:
+            return {"ok": False, "key": "bad_latency"}
+        self._cfg["tap_latency_ms"] = value
+        self._persist()
+        return {"ok": True, "playback": self._playback()}
 
     def _playback(self) -> dict:
         cfg = self._cfg
+        latency = _number(cfg.get("tap_latency_ms"), 0.0, float)
         return {"song_volume": min(1.0, max(0.0, _number(cfg.get("song_volume"), 0.8, float))),
-                "click_volume": min(1.0, max(0.0, _number(cfg.get("click_volume"), 0.6, float)))}
+                "click_volume": min(1.0, max(0.0, _number(cfg.get("click_volume"), 0.6, float))),
+                "tap_latency_ms": latency if abs(latency) <= TAP_LATENCY_LIMIT_MS else 0.0}
 
     # -- mod report: every finding as an osu! editor timestamp -------------
     def mod_report(self, osu_path: str) -> dict:

@@ -16,6 +16,79 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-23 · The last medium findings: elastic parity, memory, the percussive ratio
+
+Eight medium findings, and half of the ninth. Each was reproduced first; each fix landed
+with a test that fails on the old code.
+
+### Changed
+
+- **The percussive ratio means percussive** (#74). The HPSS time kernel is 33 frames, not
+  17: a transient smears over the 16 hops of the STFT window, and a 17-frame median was
+  the median of that smear. The templates had been designed against what the feature
+  measured, so only the snare, clap and ride expected a percussive attack. Now every drum
+  does, and every tonal source expects a harmonic one.
+- **A chorus on the verse's chords is a Chorus** (#75): a repetition group whose members
+  fall into a quiet and a loud family (two or more each, 3 dB apart) splits in two.
+- **AIFF opens in v4; Opus is refused by name** (#77), with what to convert it to.
+- **Two measuring modes in the bench**: `structure <case>` (whole-track spectral
+  analyses; peak memory read from outside) and `resample` (speed; every fixture is
+  44.1 kHz, so nothing else runs the resampler).
+
+### Fixed
+
+- **Elastic parity** (#69). Three divergences from `proto/elastic.py`, written off as float
+  noise near the degree cliff: a tolerance ladder that broke off dropped the whole degree;
+  `polyfit` rooted weights already rooted; the local median took the upper middle value.
+- **Structure's chroma drift** (#72): 172 STFT frames per window is 0.49923 s, so harmony
+  ran 0.37 s ahead of the energy windows by four minutes.
+
+### Hardening
+
+- **No whole-track linear spectrogram** (#71, #73). `stft::map_frames` reduces each frame
+  as it is computed; structure, classify and band flux keep 12 or 7 values a frame, and
+  the zero padding is read through the index instead of copied. The hitsound HPSS
+  separates only the frames it reads, bit for bit what the whole-track one gives there.
+- **The resampler tabulates its kernel per phase** (#76): 147 phases for 48 -> 44.1 kHz,
+  65 multiply-adds an output instead of 65 `sin()` calls.
+
+### Measured
+
+```
+elastic, worst invented drift            29.559 % -> 4.865 %   (prototype: 4.865 %)
+  change-128-142 / secs-2                degree 2 -> 1, 15.41 / 12.49 ms, as the prototype
+structure mode peak working set, 60 s    204 MB -> 23 MB; six minutes 81-88 MB
+Am -> F at 240 s, structure boundary     240.5 s -> 240.0 s
+hitsound HPSS, isolated 2 ms click       0.885 -> 1.00 percussive; 40 ms snare 0.55 -> 0.88
+hitsound macro F1                        validation 0.677 -> 0.707, held out 0.679 -> 0.723
+chorus on the verse's chords, +6 dB      all Verse -> V C V C; 0 of 39 fixtures moved
+resample six minutes, 48 kHz             12.25 s -> 0.73 s (96, 32, 22.05 kHz alike)
+gates: cargo test 214/214; overtone-bench golden 27/27, nogrid, density 4/4, elastic, map
+```
+
+The hitsound kernel and template design were chosen on a validation set (seeds 31-34)
+that neither trains nor judges; the held-out set was read once, at the end. Most of the
+gain is the tonal terms (Bass 0.84 -> 1.00 on validation), which work at either kernel;
+the kernel adds +0.005 macro and lifts Clap, the weakest class, 0.13 -> 0.27 at the
+closed hats' expense.
+
+### Rejected / tried and dropped
+
+- **The larger HPSS kernel with the old templates.** Held out it read 0.693, but on
+  validation 0.671 against 0.677: the held-out gain was selection on the test set. The
+  isolated gate also turned: kicks read as snares once they read as percussive.
+- **Kernels past 33.** Validation 0.668-0.674 (41-65 frames), held out falling to 0.657 at
+  129: short tonal notes start reading as percussive.
+- **Rayon in the resampler.** 0.7 s for six minutes did not call for a new dependency.
+
+### Not measured
+
+- Real songs, for any of the hitsound or structure numbers: nothing in the pipeline
+  labels sections or classifies hits yet. The six-minute "before" memory (~1.2 GB) is
+  computed, not run, to keep RAM free.
+
+---
+
 ## v4.0.0-dev — 2026-09-23 · The hitsound engine, judged honestly
 
 Six findings in the Rust hitsound engine. The first changes what every later number

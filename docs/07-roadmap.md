@@ -28,17 +28,16 @@ plugged into the app.**
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **239** Python (170 engine + 69 web shell) · **202** Rust.
+Tests: **239** Python (170 engine + 69 web shell) · **214** Rust.
 
 ### What is pending, in order
 
-1. **Audit backlog, medium findings** ([`13-audit-backlog.md`](13-audit-backlog.md)) — the six
-   high ones are fixed, and so are thirty-one medium ones (#36–#38, #40–#43, #45–#48,
-   #50–#61, #63–#66). **Next**, each re-probed before its fix, 9 medium left:
-   1. Elastic parity with its prototype (median, IRLS ladder, polyfit weights).
-   2. The structure/HPSS windows and their full-track spectrograms; the chorus that
-      shares the verse's chords.
-   3. Rust audio: AIFF and Opus (v3 opens both), resampler speed. Then the 40 low.
+1. **Audit backlog** ([`13-audit-backlog.md`](13-audit-backlog.md)) — the six high
+   findings are fixed, and so are forty-five medium ones (#36–#38, #40–#43, #45–#48,
+   #50–#61, #63–#66, #69, #71–#77). **Next**, each re-probed before its fix:
+   1. Opus: v4 refuses it by name; decoding it needs a dependency decision (libopus
+      is a C build).
+   2. The 40 low findings.
 2. **Playback in the app** (Phase 4) — hear the song with the click, scrub, loop.
 3. **Plug the Rust engine into the app** (Phase 22) — the ~4x speed-up reaches the user.
 4. **Timeline** (Phase 3) — waveform, zoom, drag red lines.
@@ -93,10 +92,12 @@ in the fallback (#43), the config crash (#45), Ctrl+C in fields (#46), CSV error
 Rust tie-breaking (#52), the Rust hour cap and load tests (#53), bench honesty (#54), the
 DSP contract's stale passages (#55), one-window signature regions (#57), the peak tie
 rule (#58), and the golden gate's blind spots — the envelope, every weight, each red
-line's bar, and fixtures with a proven bar (#59–#61); and the hitsound engine's
-evaluation, windows and metrical role (#63–#66).
+line's bar, and fixtures with a proven bar (#59–#61); the hitsound engine's
+evaluation, windows and metrical role (#63–#66); elastic parity with its prototype (#69);
+the whole-track spectrograms, the structure windows, the percussive ratio and a chorus on
+the verse's chords (#71–#75); the resampler's speed and AIFF (#76, #77).
 
-Still open — 49 findings nobody has re-probed yet (none high, 9 medium, 40 low) — in
+Still open — 41 findings nobody has re-probed yet (none high, 1 medium, 40 low) — in
 [`13-audit-backlog.md`](13-audit-backlog.md).
 
 ---
@@ -312,7 +313,7 @@ the app yet.**
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Per-attack features | 7 bands, centroid/rolloff/flatness/crest, rise/decay | med | **high** | P2 HPSS | no | no | **P1** | **done** |
 | Harmonicity + pitch | HPS pitch, formants | med | high | features | no | no | **P1** | **done** — inharmonicity deferred |
-| Instrument templates | 13 scored classes, explainable | high | **high** | features | no | no | **P1** | **done** — held-out F1 0.679 on synthetic arrangements it never saw (the old 0.91 judged a re-draw of its training track); Clap 0.13, hats ~0.4 weakest |
+| Instrument templates | 13 scored classes, explainable | high | **high** | features | no | no | **P1** | **done** — held-out F1 0.723 on synthetic arrangements it never saw (the old 0.91 judged a re-draw of its training track); Clap 0.15, closed hats 0.40 weakest |
 | Synthetic label corpus | renderer emits audio + per-hit labels | med | **high** | bench | no | no | **P1** | **done** |
 | Template calibration | logistic fit of term weights | med | high | corpus | **light** | no | P1 | **done** — macro F1 0.85 |
 | Musical role | grid position, metrical weight, phrase, accent, density | med | **high** | P2 structure | no | no | **P1** | **done** (audio side) |

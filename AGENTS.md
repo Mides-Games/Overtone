@@ -89,8 +89,10 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
 3. **Keep `timeline.md` current.** One entry per release, with the same sections:
    Changed / Fixed / Hardening / Measured, plus `Rejected / tried and dropped` whenever an
    approach was abandoned — the reasoning is the expensive part.
-4. **The v3 Python engine stays runnable** in `reference/python-v3` for as long as the
-   comparison is meaningful. It is the only way "equal or better" can be audited.
+4. **The v3 Python engine stays runnable** for as long as the comparison is meaningful. It
+   is the only way "equal or better" can be audited. It stays `overtone.py` at the root
+   while the app runs on it; it moves to `reference/python-v3` once the Rust engine is the
+   default and the osu! I/O is ported (deferred 2026-09-24, see the roadmap's Phase 0).
 5. **`.osu` writes are atomic, backed up, and never overwrite an existing `.bak`.**
    A field the user did not ask to change comes out byte-identical, CRLF included.
 6. Offline only. No network calls, no telemetry, no update checks, no external APIs.
@@ -101,7 +103,7 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
 ## Layout
 
 ```
-overtone.py               v3 engine + classic Tk GUI + CLI  (to move to reference/python-v3)
+overtone.py               v3 engine, osu! I/O, classic Tk GUI + CLI (the app's default)
 overtone_web.py           web shell host: pywebview window + JSON bridge to the engine
 overtone_rust.py          the v4 engine through overtone-cli, as v3's Analysis (opt-in)
 app/                      web shell frontend (HTML/CSS/JS, no network)

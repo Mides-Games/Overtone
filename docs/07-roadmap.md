@@ -109,7 +109,7 @@ broke something, which is why it is first.
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Toolchain | MSVC Build Tools + rustup MSVC target | — | — | — | no | no | **P0** | **done** |
 | Workspace skeleton | crates + dependency rules | low | high | toolchain | no | no | **P0** | **done** — 6 crates; `check-deps` rule not automated |
-| `reference/python-v3` | move v3 in, keep it runnable | low | high | — | no | no | **P0** | todo — still `overtone.py` at the root |
+| `reference/python-v3` | move v3 in, keep it runnable | low | high | — | no | no | **P0** | **deferred** (2026-09-24) — `overtone.py` is still the app's default engine and its only `.osu` reader/writer, so a copy in `reference/` would keep changing; it moves once the Rust engine is the default and the osu! I/O is ported |
 | `requirements.lock` | exact versions behind the measured baseline — **F-05** | trivial | med | — | no | no | **P0** | **done** |
 | Golden-vector dump | per-stage attacks, seeds, octave, sections, points | med | **high** | — | no | no | **P0** | **done** |
 | Golden-vector check | stage-by-stage diff, so a divergence names its stage | med | **high** | dump | no | no | **P0** | **done** |

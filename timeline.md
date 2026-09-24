@@ -16,6 +16,98 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · Reference timing, and what 30 ranked maps say about offsets
+
+The next sidebar mode on the roadmap: any map of the song, graded line by line against the
+attacks Overtone hears. Measuring it on real ranked maps turned up the offset bias the
+roadmap had only guessed at.
+
+### Changed
+
+- **Reference timing** (Map check card). Choose any `.osu` of the song, or find every map of
+  the same audio in a Songs folder. Each red line's span is fitted from the map's own grid
+  with the engine's tools: the phase mode first, then least squares on windows that double
+  forward from the line. It is read at the coarsest of 1/1-1/4 that explains the attacks.
+  Per line the card shows:
+  - its offset against the map's common shift, and its drift at the span's end, each with
+    two standard errors;
+  - the fitted BPM and the share of attack weight on the grid;
+  - a verdict: ok, check (with offset and/or drift), weak or too few attacks.
+
+  A line is flagged past 5 ms and past two of its own standard errors. The common shift is
+  one banner, not a flag per line. Two lines that disagree with no majority say so rather
+  than let the median pick a side. "Use as working timing" loads the map's red lines as
+  hand-placed points with their own meters, keeps locked points, and is one undo step.
+- **Same audio, byte for byte.** The card says whether the map's AudioFilename is the
+  analysed file. Two encodes share a name but not an offset.
+- **The fallback tracker's songs can be graded.** It keeps no attacks, so the bridge detects
+  them once per song, under the one-heavy-job lock.
+- **`reference/python-v3` is deferred.** `overtone.py` is the app's default engine and its
+  only `.osu` reader and writer. A copy under `reference/` would keep changing, and a frozen
+  split would stop the default engine taking fixes. It moves once Rust is the default and
+  the osu! I/O is ported (roadmap, Phase 0; rule 4 in CLAUDE.md).
+
+### Fixed
+
+- The roadmap still counted 41 open audit findings after all were closed, and called the
+  Rust engine unwired after Settings began running it.
+- CLAUDE.md said "the last three" gates exist because the benchmark cannot see them. The
+  list has grown to eight since then.
+
+### Hardening
+
+- **`gates.py reference`**: each corpus case timed four ways.
+  - The true map must come back clean.
+  - The whole map 10 ms late must read as one shift, within 1 ms, with no line flagged.
+  - With three or four lines, moving one flags that line alone. With two, it is a split.
+  - Every BPM 0.1 % high flags every line for drift.
+- A fit that wanders more than -20 %/+25 % from the map's beat is stopped. On one real
+  song it shrank every pass until the least squares overflowed.
+- The Songs search lists folders with `os.scandir`, which carries each file's size on
+  Windows.
+
+### Measured
+
+```
+gates.py reference                  24/24; true maps worst 2.26 ms (shuffle-96, as the
+                                    benchmark's worst); BPM +0.1 % drift ~1 ms per second
+30 random ranked maps, local Songs  every map reads its attacks after its lines:
+                                    median +26.2 ms, IQR +23.0..+30.9, range +12.1..+45.6
+                                    MP3 +26.1 (n=27), OGG +27.2 (n=3): not the MP3 decoder
+  their 318 red lines               207 graded; flagged: 206 against zero, 160 against the
+                                    map's shift, 101 against the shift and their own errors;
+                                    24 weak, 87 with too few attacks
+  time per map                      0.6-10.2 s, decode and attack detection included
+same-audio search, 4,798 sets       59,260 audio files; iterdir 20.7 s cold / 9.1 s warm ->
+                                    scandir 0.8 s, same one match and four maps
+Python unittest                     279 -> 298, all pass
+benchmark.py                        24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · coverage · measures · signatures · robustness · facts
+cargo test --workspace              231, all pass (no Rust changed)
+```
+
+The card was exercised in the built-in browser against replies frozen from the real bridge
+on secs-3 with its last line moved 12 ms. It showed 2 ok and 1 to check (-12.5 ms,
+offset), found the map by its audio, graded it from the list and loaded it (3 points).
+Every banner rendered in Spanish, with no console errors.
+
+### Rejected / tried and dropped
+
+- **Judging each line's offset against zero.** On real songs every line of every ranked map
+  was flagged (206 of 207), because of the +26 ms shift nobody has explained yet.
+- **A common shift reported only when two or more lines all agree on it.** It hid the shift
+  on single-line maps, which are most maps.
+- **Weighing the majority by attacks.** With two lines the one with more attacks always
+  won, even when it was the one moved. Lines vote, one each.
+- **Fitting outward from the middle of the span** (the engine's `_expand_fit`). At the
+  middle, a BPM 1.3 % off has already walked a beat, and the fit locked onto the wrong
+  one: share 0.25, fitted 152.7 for a true 150. Fitting forward from the red line reads
+  150.001 up to 3 % off.
+- **A flat 5 ms bar.** Twelve ms of jitter over 40 attacks gives a 10 ms drift by chance.
+  Two standard errors let it pass, and take real-map flags from 160 to 101.
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Every audit finding closed; the app gets sections and the Rust engine
 
 The forty low findings, in three batches worked side by side (tempo and bench, Python,

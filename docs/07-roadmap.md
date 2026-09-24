@@ -20,7 +20,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 |---|---|
 | Timing engine (Python v3) | **works** — 24/24 corpus, median 0.0000 BPM / 0.16 ms, all gates green |
 | Timing engine (Rust v4) | **at parity, in the app** — matches v3 attack for attack and red line for red line on 27/27, ~4x faster end to end; Settings → Rust engine runs it through `overtone-cli`, and v3 takes over (with a note) where it has no answer |
-| App (web shell) | **usable** — sidebar sections (Library, Timing, Map check, Mapset, Export, Settings); analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject, compare with a map, alignment, density, snap audit, suggestions, mapset check, folder import, recents, EN/ES |
+| App (web shell) | **usable** — sidebar sections (Library, Timing, Map check, Mapset, Export, Settings); analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject, compare with a map, alignment, density, snap audit, suggestions, mapset check, reference timing, folder import, recents, EN/ES |
 | osu! files | **works** — full reader, byte-identical writer, atomic write + backup |
 | Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks |
 | Hitsound engine | **half built, Rust only** — features, 13 instrument classes, musical role; no decision, editor or export; not in the app |
@@ -28,15 +28,15 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **279** Python (200 engine + 79 web shell) · **231** Rust.
+Tests: **298** Python (212 engine + 86 web shell) · **231** Rust.
 
 ### What is pending, in order
 
 The audit backlog is closed: every finding fixed, recorded as already fixed, or decided
 ([`13-audit-backlog.md`](13-audit-backlog.md)). The Rust engine is in the app, opt-in.
 
-1. **The next sidebar modes** ([Phase 19](#phase-19--app-sections)) — sections, Mapset and
-   Snap audit are in; next Reference timing, Assisted timing and the Mod report.
+1. **The next sidebar modes** ([Phase 19](#phase-19--app-sections)) — sections, Mapset, Snap
+   audit and Reference timing are in; next Assisted timing and the Mod report.
 2. **Playback in the app** (Phase 4) — hear the song with the click, scrub, loop.
 3. **Timeline** (Phase 3) — waveform, zoom, drag red lines.
 4. **Settings** (Phase 20) — every option in one place.
@@ -466,7 +466,7 @@ number and confidence. Every write goes through the atomic writer and keeps a ba
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Mapset check | every difficulty of a folder side by side: red lines, AudioFilename, PreviewTime, lead-in, metadata, kiai spans, density; differences listed, never auto-fixed | low | **high** | P5 reader, folder import | no | no | **P1** | **done** — `mapset_report`, own section |
 | Snap audit | objects off the map's own grid (divisor, ms off), objects before the first red line or past the audio, and how many would go unsnapped if the detected timing were injected | low | **high** | P5 reader | no | no | **P1** | **done** — `snap_audit`, a Map check card |
-| Reference timing | grade each red line of any `.osu` against the attacks (share, residual, drift at span end), load it as the working timing, find same-audio maps by content hash | med | **high** | P5 reader, attacks | no | no | **P1** | todo |
+| Reference timing | grade each red line of any `.osu` against the attacks (share, residual, drift at span end), load it as the working timing, find same-audio maps by content hash | med | **high** | P5 reader, attacks | no | no | **P1** | **done** — `grade_reference_timing`, a Map check card; offsets judged against the map's own shift, each error with its standard error; attacks detected when the fallback kept none; `gates.py reference` 24/24 |
 | Assisted timing | tap tempo in the app; tap or mark two downbeats and the grid fit starts from there, with residual and share, or refuses. The precision plan's escape valve, which had no row | med | **high** | IRLS fit, P4 transport | no | no | **P1** | todo |
 | Structure view | phrase boundaries snapped to the nearest proven downbeat, labelled with the evidence for each label, over the energy lane; home for the kiai, preview, bookmark and break proposals | med | **high** | P2 structure + classify, P22 | no | no | **P1** | todo |
 | Mod report | every finding as osu! editor timestamps (`mm:ss:mmm (combo) - ...`) with its number and confidence, copyable as text; each opens the local osu! editor | low | high | P7 findings | no | no | P2 | todo |
@@ -552,7 +552,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Rust engine in the app | `overtone-cli analyze --json` sidecar, opt-in, v3 as fallback; `.opus` goes to v3 or is refused (v4 has no decoder, by decision) | med | **high** | P1 | no | no | **P1** | **done** — opt-in; v3 takes over with a note where Rust has no answer |
 | Fallback re-timing | re-time the fallback tracker's beats at sample resolution (they land 5–35 ms late) | med | **high** | — | no | no | P1 | todo |
-| Real-MP3 offset bias | measure the ~20–26 ms attack-vs-map bias on real MP3s before trusting absolute offsets | med | **high** | Corpus B | no | no | P1 | todo |
+| Real-MP3 offset bias | measure the ~20–26 ms attack-vs-map bias on real MP3s before trusting absolute offsets | med | **high** | Corpus B | no | no | P1 | partial — measured 2026-09-24 by reference timing: 30 random ranked maps all read the attacks after their lines, median +26.2 ms (IQR +23.0..+30.9), OGG (+27.2, n=3) as MP3 (+26.1, n=27), so not the MP3 decoder; not explained or corrected |
 | Envelope memory bound | mel in chunks: ~2.65 → ~0.74 GB peak on long tracks; no silent MemoryError fallback | med | high | — | no | no | P1 | todo |
 | Pre-warm the engine | load librosa and numba in the background at startup (~2.3 s off the first analysis) | low | med | shell | no | no | P2 | todo |
 | Linear section growth | refine the growth grid on a trailing window | med | med | — | no | no | P2 | todo |
@@ -577,6 +577,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Bench times the tempo stage | the Rust-vs-Python speed claim compares like with like | low | low | bench | no | no | P3 | **done** — #54 |
 | `.gitattributes` | `.osu` fixtures keep their CRLF | trivial | low | — | no | no | P3 | **done** |
 | Layout-fit check | no control clipped at the minimum window size | low | med | GUI | no | no | P2 | **done** — classic toolbar |
+| Reference gate | a hand-timed map graded as timed: the true map clean, a late map one shift, a moved line flagged alone, a BPM 0.1 % off drifting | low | high | reference timing | no | no | P1 | **done** — `gates.py reference` 24/24 |
 
 Sources: the 2026-09-22 review passes (128 proposals, each checked against the
 code by a skeptical judge; the ones already built or only relevant to the old
@@ -609,7 +610,7 @@ P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─�
                            ├─► P4 playback ✗ / editor ✓
                            └─► P5 osu! ✓ ─────────────► P8 automation (half) ─► P9 (suggestions ✓)
 
-Next: sidebar modes (reference, assisted timing, mod report) ─► playback ─► timeline ─► settings
+Next: sidebar modes (assisted timing, mod report) ─► playback ─► timeline ─► settings
       ─► map tools ─► hitsounds ─► Phase 10 ─► installer
 ```
 

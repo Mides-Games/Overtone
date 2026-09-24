@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-279%20Python%20%C2%B7%20231%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-298%20Python%20%C2%B7%20231%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -24,7 +24,7 @@ sections within 0.05 BPM and 5 ms     24 / 24
 |---|---|
 | **Timing engine** (Python) | ✅ Works. Exact on the synthetic corpus; refuses audio with no pulse |
 | **Timing engine** (Rust v4) | ✅ At parity with Python, attack for attack and red line for red line; about 4× faster end to end on the corpus. In the app as an opt-in (Settings → Rust engine); Python takes over, and says so, where Rust has no answer |
-| **App** (web window) | ✅ Sections for Library, Timing, Map check, Mapset and Export; analyse, edit, undo, lock, export, inject, compare with a map, alignment, density, snap audit, suggestions, mapset check — in English and Spanish |
+| **App** (web window) | ✅ Sections for Library, Timing, Map check, Mapset and Export; analyse, edit, undo, lock, export, inject, compare with a map, alignment, density, snap audit, suggestions, mapset check, reference timing — in English and Spanish |
 | **osu! files** | ✅ Full reader; writer keeps every byte you did not ask to change |
 | **Hitsounds** | 🦀 Half built in Rust (features, 13 instrument classes, musical role); no decision or editor yet |
 | **Playback inside the app** | 📋 Planned |
@@ -68,7 +68,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | 2-D coherence map | 🦀 | Better seeds and a confidence map |
 | Bar-length change (4/4 → 3/4 keeping the beat) | 📋 | P5 |
 | Fallback beats re-timed at sample resolution | 📋 | P22 — they land 5–35 ms late today |
-| Real-MP3 offset bias measured and corrected | 📋 | P22 |
+| Real-audio offset bias measured and corrected | 📋 | P22 — measured, not explained: 30 ranked maps read the attacks +26 ms after their lines (median), OGG as much as MP3 |
 | Human-level accuracy on real songs | 📋 | P10 — fingerprint reuse, percussive stem, neural beats, rippling tempo, ensemble |
 | Analysis mode fast / precise | 📋 | P20 |
 
@@ -91,6 +91,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Object alignment: do the map's notes land on real attacks? | ✅ | |
 | Object density over time | ✅ | |
 | Suggestions: red lines the map is missing | ✅ | Shown on the tempo map; applying one is P9 |
+| Reference timing: grade any map's red lines against the attacks | ✅ | Offset, drift and fitted BPM per line, each with its standard error; load a map as the working timing; find every map of the same audio in a Songs folder |
 | Detection settings drawer, presets | ✅ | Shared with the classic window |
 | English / Spanish | ✅ | |
 | Dark window caption, generated app icon | ✅ | |
@@ -99,7 +100,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Zoom and pan, drag red lines, waveform, drift lane | 📋 | P3 |
 | Map red lines drawn as ghosts on the tempo map | 📋 | P3 |
 | Command palette, full keyboard map | 📋 | P3 |
-| Sections: Library, Map check, Hitsounds, Audio, Export, Settings | 📋 | P19 — Timing exists today |
+| Sections: Hitsounds, Audio, full Settings | 📋 | P19 — Library, Timing, Map check, Mapset and Export exist |
 | Light theme, UI scale | 📋 | P20 |
 
 ### Playback
@@ -277,7 +278,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 279 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 298 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage
@@ -285,6 +286,7 @@ instantly and exactly; the click track is the arbiter.
 .venv/Scripts/python.exe bench/gates.py measures       # bars read and anchored
 .venv/Scripts/python.exe bench/gates.py signatures     # signature regions over one bar
 .venv/Scripts/python.exe bench/gates.py robustness     # the audit's edge-case probes
+.venv/Scripts/python.exe bench/gates.py reference      # hand-timed maps graded by the attacks
 .venv/Scripts/python.exe bench/facts.py                # the numbers these docs state
 cargo test --workspace                                 # 231 tests
 cargo run --release -q -p overtone-bench -- golden     # Rust vs Python, attack for attack

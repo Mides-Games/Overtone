@@ -25,7 +25,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (279 on 2026-09-24)
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (298 on 2026-09-24)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -33,10 +33,11 @@ Repository conventions for any AI agent or contributor working here.
 .venv/Scripts/python.exe bench/gates.py measures               # bars read and anchored
 .venv/Scripts/python.exe bench/gates.py signatures             # signature regions, one bar
 .venv/Scripts/python.exe bench/gates.py robustness             # edge cases end cleanly
+.venv/Scripts/python.exe bench/gates.py reference              # maps graded as timed
 .venv/Scripts/python.exe bench/facts.py                        # stated counts match the source
 ```
 
-The last three exist because the benchmark cannot see them. `bpm-snapshot` pins the
+Every gate after the benchmark checks something the benchmark cannot see. `bpm-snapshot` pins the
 **octave** — the benchmark normalizes it away, so a change there could halve every BPM
 and all 24 rows would stay green. `golden.py check` compares **stage by stage**, so a
 divergence names its own stage instead of surfacing as a mystery at the output. When a

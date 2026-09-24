@@ -16,6 +16,54 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-23 · Rust parity, the audio contract, bench honesty
+
+Eleven more medium findings in four PRs, after #50 and #51 above.
+
+### Fixed
+
+- **Ties** (#52, three findings). `Iterator::max_by` keeps the last of equal maxima;
+  v3's `np.argmax` and `max()` keep the first. Every Rust site with a v3 or prototype
+  counterpart now iterates in reverse first (octave and meter classes, tempo hint,
+  coherence fallback, primary section, fallback red line, density runs, re-timing, the
+  bench's best hint); `tempo_hints` orders tied prominences as `argsort()[::-1]`.
+- **The Rust hour cap** (#53) counted interleaved samples against 44.1 kHz stereo, so a
+  30-minute 96 kHz stereo FLAC was refused at 27.6 min. The decoder now downmixes each
+  packet as it arrives (v3's frame mean) and the cap counts mono samples at the file's
+  own rate; the rest of `load()` is a pure function with tests for every clause.
+- **Bench honesty** (#54, three findings). A missing fixture is a failure naming the
+  script that renders it (it was skipped, and 0/0 passed). The bench times decode,
+  attacks and tempo apart; "analyse" had timed attacks only.
+- **Stale contract** (#55, three findings): peak distance 9 frames / 26.1 ms, re-timing
+  dedupe keeps the earlier attack, own-band re-timing recorded as measured and rejected.
+
+### Changed
+
+- **The speed figures.** "The whole corpus analyses in 2.5 s against Python's 21.6 s"
+  compared decode + attack detection with Python's whole `analyze_audio`. Like for
+  like, on 2026-09-23: 4.2 s against 18.5 s, about 4.4x (the 6-minute fixture 1.12 s +
+  decode against 4.6 s). CLAUDE.md, AGENTS.md, the README and the roadmap now say so.
+
+### Measured
+
+```
+beat_from_atoms, equal weights (Rust vs v3)   (2, 1) -> (2, 0)
+30 min 96 kHz stereo (Rust hour cap)           refused at 27.6 min -> accepted
+corpus, Rust whole pipeline                    decode 0.45 + attacks 2.26 + tempo 1.49 = 4.2 s
+corpus, Python analyze_audio                   18.5 s
+bench with one fixture moved aside             pass -> exit 1, names the script
+gates: 238/238 Python; cargo test 197/197; golden 24/24, nogrid 3/3, density 4/4 with 0
+false positives, elastic and map green
+```
+
+### Not measured
+
+- Decode memory on multichannel files after the per-packet downmix.
+- Python and Rust timings vary by up to a third between runs on this machine; the
+  figures above are single runs.
+
+---
+
 ## v4.0.0-dev — 2026-09-23 · The two findings from the fixes
 
 Both were recorded on 2026-09-23 while fixing others; each was reproduced first and

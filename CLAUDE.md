@@ -44,7 +44,7 @@ never re-baseline to make a red gate green.
 And the Rust side:
 
 ```bash
-cargo test --workspace                                 # all pass (201 on 2026-09-23)
+cargo test --workspace                                 # all pass (202 on 2026-09-23)
 cargo run --release -q -p overtone-bench -- golden     # 27/27 attack for attack
 ```
 

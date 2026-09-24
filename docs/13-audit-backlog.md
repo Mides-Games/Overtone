@@ -4,8 +4,8 @@ Findings from the 2026-09-22 audit that its own verifiers confirmed (three votes
 high severity, one for medium and low). The five leads the roadmap listed as "to verify"
 were re-probed and fixed on 2026-09-23 (PRs #22–#26); the four bugs reproduced before that
 were fixed in PRs #17–#20; the six high findings below were fixed the same day (PRs
-#29–#34); thirty-one medium ones since (PRs #36–#38, #40–#43, #45–#48, #50–#61,
-and one #20 had fixed already). **Open: 55 — none high, 15 medium, 40 low.** Nothing still open has been re-probed yet: each gets a probe before its
+#29–#34); thirty-seven medium ones since (PRs #36–#38, #40–#43, #45–#48, #50–#61,
+#63–#66, and one #20 had fixed already). **Open: 49 — none high, 9 medium, 40 low.** Nothing still open has been re-probed yet: each gets a probe before its
 fix, and some may turn out to be fixed already (the ×2 / ÷2 edit guard, for one, landed in
 PR #20).
 
@@ -52,8 +52,12 @@ landed with a test that fails on the old code.
 | Peak picking broke equal-height ties rightmost-first and claimed scipy did | tied pairs [25, 44] -> [20, 40]; scipy's own order is unstable, so the rule is pinned | #58 |
 | The golden gate never read the envelope; weights only by correlation | a symmetric Hann window now fails 24/24 (sum 4.7-6.6 off) where it passed | #59 |
 | The golden gate never exercised a proven bar or the measure grid | confidence and bar compared (#60); three bar fixtures added, 8 proven-bar red lines, Rust 27/27 | #60, #61 |
+| Hitsound "macro F1 0.91" judged a re-draw of its own training track; a class could collapse unseen (two findings) | held out: the old templates read 0.485; trained on varied arrangements 0.650; per-class floor | #63 |
+| Hitsound sub-attack and decay windows off spec | flams counted after the attack (0.650 -> 0.658); the spec's decay window collapsed Clap to 0.00, so the doc now states the measured one | #64 |
+| Hitsound pitch window cut to 93 ms, unwindowed | whole 20-300 ms, Hann: 0.658 -> 0.679, Vocal 0.74 -> 0.86, Keys 0.40 -> 0.67 | #65 |
+| Hitsound role: 16ths on the 8th weight; no grid scored as a downbeat (two findings) | 16th 0.25 -> 0.10; no grid -> None; unproven bar -> 0.5; bar per section | #66 |
 
-## Medium (15)
+## Medium (9)
 
 | Area | Where | Finding | What goes wrong |
 |---|---|---|---|
@@ -63,12 +67,6 @@ landed with a test that fails on the old code.
 | rust-dsp-new | `hpss.rs:17` | HPSS time kernel (17 frames) barely exceeds the 16-hop STFT window, so transients leak into the harmonic output | A kick drum's low-frequency body, where nearly all of its energy sits, ends up about two-thirds in `harmonic`. The hitsound 'percussive ratio' feature (docs/06 section 2, Source) under-reads exactly the hits it is meant… |
 | rust-dsp-new | `structure.rs:45` | structure, classify, multiband and HPSS materialise the full-track linear spectrogram that stft.rs says must never be built | On a 6-minute track, structure::analyze and classify::classify each allocate about 1.0 GB, and HPSS peaks at about 5 GB. On a permitted 1-hour mix, structure needs about 10 GB and HPSS about 50 GB, which is an out-of-me… |
 | rust-dsp-new | `structure.rs:48` | Structure's chroma windows (172 frames = 0.49923 s) drift against the 0.5 s RMS windows and the reported boundary times | On any track longer than about 3 minutes, harmony-driven boundaries are reported one to two 0.5 s windows late. Chroma and energy also describe different moments for the same window, which blurs novelty peaks where both… |
-| rust-hitsound | `role.rs:16` | Metrical ladder gives real 16ths (division 4) the 8th off-beat weight 0.25; '16ths 0.10' applies only to 1/6 and 1/8 | A 1/4 stream, the most common osu! stream snap, gets the same metrical weight as 8th off-beats, so the ghost-note cue that doc §4 calls 'the single most useful non-audio signal' never fires for 16ths. Only sextuplets an… |
-| rust-hitsound | `role.rs:132` | Unknown meter or no section is scored as a downbeat: weight 1.0, division 1, residual 0.0 ms | An untimed intro, or any track where the bar was not proven, gets every attack labelled 'downbeat, on the 1/1 grid, residual 0.0 ms'. That is the maximum metrical weight plus invented precision, which conflicts with CLA… |
-| rust-hitsound | `template.rs:155` | Pitch/formant 'sustain window' 20–300 ms is truncated to 20–113 ms (4096 samples) and unwindowed | A 5 Hz vibrato vowel (200 ms period, as rendered in corpus.rs:302-329) is read over less than half a vibrato cycle, which is exactly what the comment says the long window prevents. Harmonicity comes out low, f0 is zeroe… |
-| rust-hitsound | `template.rs:550` | 'Macro F1 0.91' is measured on a re-draw of the training arrangement: same times, class order, neighbours and mix; 81 params on 50 rows | The model learns 'class X is the one whose sustain includes class X+1's onset and whose pre-window holds classes X-1..X-3'. That transfers perfectly to seed 12 and says nothing about other orders, tempos or densities. R… |
-| rust-hitsound | `template.rs:578` | Dense F1 gate: 3–4 hits per class, macro-only bar 0.80; a whole class collapsing still passes | From macro 0.91, Vocal (3 hits, F1 1.0) collapsing entirely into Other (4 hits) costs (1.0 + 0.273)/13 = 0.098, giving macro 0.812 ≥ 0.80, so the gate stays green with a class at F1 0. Vocal's F1 is 'measured honestly'… |
-| rust-hitsound | `temporal.rs:99` | Decay fit reads 10–120 ms (doc: 20–200 ms); sub-attacks read −10..+20 ms (doc: first 30 ms) | Templates place decay knots far beyond what a 110 ms fit can resolve: Cymbal `DecayTauS Rising(0.25, 0.60)`, Keys `Band(0.15, 0.30, 0.60)`, Ride `Band(0.15, 0.30, 0.50)`. A τ = 0.6 s decay drops only 0.18 nepers over th… |
 | rust-tempo-density-elastic | `elastic.rs:218` | Elastic outlier filter uses the upper median on even-length windows; np.median averages the two middle values | On a steep ramp or a track whose second or second-to-last local window disagrees with its neighbours by 13-15 %, Rust drops (or keeps) a curve sample the prototype keeps (or drops). The period(t) curve is then fitted on… |
 | rust-tempo-density-elastic | `elastic.rs:387` | Elastic IRLS: a ladder break drops the whole degree in Rust; the prototype keeps the last model and scores it | The step-tempo fixtures change-128-142 and secs-2 (and any real track whose degree-1 ladder runs out of inliers at a tight tolerance) come out as a curved degree-2 model where the prototype reports degree 1. A lower deg… |
 | rust-tempo-density-elastic | `elastic.rs:488` | Rust fit_curve takes the square root of the quality weights twice, so it does not match np.polyfit(w=sqrt(q)) | Any track whose local windows differ in quality gets a different period(t) curve, so the integrated grid and the beat indices differ from the prototype. Least squares cannot recover a slipped index. The extreme ramp's r… |

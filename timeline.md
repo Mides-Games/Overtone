@@ -16,6 +16,57 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-23 · The hitsound engine, judged honestly
+
+Six findings in the Rust hitsound engine. The first changes what every later number
+means, so it went first.
+
+### Changed
+
+- **Held-out evaluation** (#63). The gate calibrated on render seed 11 and tested on seed
+  12, but `render()` keeps one schedule whatever the seed — same hit times, class order
+  and neighbours — so "macro F1 0.91" judged a re-draw of the training track, with 3-4
+  hits per class and only the macro asserted. `render_shuffled` varies order, gaps and
+  level; templates train on four arrangements and are judged on four others, and no
+  class may fall below 0.10. **The old templates read 0.485 held out.**
+- **Dev builds optimise the FFT dependencies and DSP kernels** (#63). Debug assertions
+  and overflow checks stay on; the larger evaluation made the hitsound tests 108 s, and
+  the workspace now runs in ~40 s against 46-51 s before.
+
+### Fixed
+
+- **Sub-attacks** are counted over the 30 ms after the attack, not from 10 ms before it (#64).
+- **The pitch window** reads the whole 20-300 ms with a Hann window; the 4096-point FFT
+  had cut it to 93 ms, rectangular (#65).
+- **The metrical role** (#66): 16ths weigh 0.10, not the 8th's 0.25; no grid means no
+  division or weight (it read as a downbeat); an unproven bar's beats weigh 0.5; each
+  section brings its own bar. Nothing consumes `Role` yet, so no F1 moves.
+
+### Measured
+
+```
+held out, 280 hits, 4 shuffled arrangements   old templates 0.485 (the "0.91")
+  trained on varied arrangements               0.650
+  + sub-attacks after the attack               0.658 (Snare 0.52 -> 0.62)
+  + whole pitch window, Hann                   0.679 (Vocal 0.86, Keys 0.67)
+hitsound tests (debug)                         108 s -> 23 s with the dev profile
+gates: cargo test 202/202; overtone-bench golden 27/27
+```
+
+### Rejected / tried and dropped
+
+- **The documented 20-200 ms decay window.** Held out, it collapsed Clap to 0.00 (macro
+  0.659): past ~100 ms a dense mix's neighbour tails dominate the fit. The code keeps
+  +10 to +120 ms and the doc now says so.
+- **Welch averaging for the pitch window** (4096-point frames): 0.666 against 0.679 for
+  one Hann-windowed FFT over the whole window.
+
+### Not measured
+
+- Any of this on real songs. Every figure above is synthetic.
+
+---
+
 ## v4.0.0-dev — 2026-09-23 · One-window signatures, the peak tie rule, the golden gate's blind spots
 
 ### Fixed

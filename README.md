@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-239%20Python%20%C2%B7%20201%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-239%20Python%20%C2%B7%20202%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -161,7 +161,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Feature | Status | Notes |
 |---|:--:|---|
 | Per-attack spectral, temporal and source features | 🦀 | |
-| 13 instrument templates, calibrated | 🦀 | Macro F1 0.93 over nine synthetic test tracks (0.91 on the gate's own) — not a real-song number |
+| 13 instrument templates, calibrated | 🦀 | Macro F1 0.68 on synthetic arrangements it never saw — not a real-song number (an earlier "0.91" judged a re-draw of its training track) |
 | Musical role: grid position, metrical weight, phrase, accent | 🦀 | |
 | Map context per attack | 🟡 | Python |
 | Sequence decision (Viterbi) with explanations | 📋 | P6 |
@@ -281,7 +281,7 @@ instantly and exactly; the click track is the arbiter.
 .venv/Scripts/python.exe bench/gates.py coverage       # density changes inside a section
 .venv/Scripts/python.exe bench/gates.py measures       # bars read and anchored
 .venv/Scripts/python.exe bench/gates.py signatures     # signature regions over one bar
-cargo test --workspace                                 # 201 tests
+cargo test --workspace                                 # 202 tests
 cargo run --release -q -p overtone-bench -- golden     # Rust vs Python, attack for attack
 ```
 
@@ -315,7 +315,7 @@ timed decoding and attack detection only.
 - **Swing and shuffle**: BPM and offset are exact, but the grid residual is large — that
   number is telling the truth about the music.
 - **Offsets export as whole milliseconds** (the `.osu` format); the fit is sub-millisecond.
-- **55 audit findings are still open**, none high (all six high ones were fixed on
+- **49 audit findings are still open**, none high (all six high ones were fixed on
   2026-09-23) — [`docs/13-audit-backlog.md`](docs/13-audit-backlog.md).
 - **Always check the first beat and every transition in the osu! editor.**
 

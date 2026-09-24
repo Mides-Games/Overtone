@@ -10,6 +10,7 @@
 //! cargo run -p overtone-bench --release -- golden
 //! cargo run -p overtone-bench --release -- golden --only edm-174 shuffle-96
 //! cargo run -p overtone-bench --release -- structure long-6min
+//! cargo run -p overtone-bench --release -- resample
 //! ```
 //!
 //! Vectors come from `bench/golden/*.json`, produced by
@@ -654,6 +655,33 @@ fn render_hint(name: &str) -> &'static str {
     }
 }
 
+/// Resampling speed, which no other mode sees: every fixture is already
+/// 44.1 kHz, so the resampler never runs in them. Six minutes of a
+/// three-tone signal at each common source rate, converted to 44.1 kHz.
+fn resample_mode() -> Result<()> {
+    let seconds = 360.0;
+    let tau = std::f64::consts::TAU;
+    for rate in [48_000u32, 96_000, 32_000, 22_050] {
+        let n = (seconds * rate as f64) as usize;
+        let y: Vec<f32> = (0..n)
+            .map(|i| {
+                let t = i as f64 / rate as f64;
+                (0.3 * (tau * 220.0 * t).sin()
+                    + 0.2 * (tau * 3_000.0 * t).sin()
+                    + 0.1 * (tau * 9_000.0 * t).sin()) as f32
+            })
+            .collect();
+        let started = std::time::Instant::now();
+        let out = overtone_audio::resample::resample(&y, rate, 44_100);
+        let took = started.elapsed().as_secs_f64();
+        println!(
+            "{rate:>6} Hz -> 44100 Hz   {seconds:.0} s of audio in {took:>6.2} s   {} samples out",
+            out.len()
+        );
+    }
+    Ok(())
+}
+
 /// Phrase boundaries, section labels and band flux on one fixture: the
 /// whole-track spectral analyses, which have no gate of their own yet. The
 /// mode exists to be measured from outside -- peak memory is the process's
@@ -1240,6 +1268,9 @@ fn main() -> Result<()> {
     }
     if mode == "nogrid" {
         return nogrid_mode(&root);
+    }
+    if mode == "resample" {
+        return resample_mode();
     }
     if mode == "structure" {
         let name = args.get(1).context("usage: structure <case>")?;

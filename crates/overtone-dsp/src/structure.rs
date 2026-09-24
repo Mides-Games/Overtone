@@ -42,8 +42,11 @@ pub struct Structure {
 pub fn analyze(y: &[f32], sr: u32) -> Structure {
     let hop = (WIN_S * sr as f64).round() as usize;
     let n_fft = 2048;
-    let spec = stft::power_spectrogram(y, n_fft, 128);
-    let chroma = chroma::chroma(&spec, sr, n_fft);
+    // Twelve classes per frame, reduced as each frame is computed: the
+    // linear spectrogram of a 6-minute track is over a gigabyte.
+    let chroma = stft::map_frames(y, n_fft, 128, |power| {
+        chroma::chroma_frame(power, sr, n_fft)
+    });
     // STFT frames (128 hop) grouped into WIN_S windows.
     let per = ((WIN_S * sr as f64) / 128.0).round() as usize;
     // Windows, not STFT frames: the loop below indexes feature windows, so

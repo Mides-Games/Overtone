@@ -29,12 +29,21 @@ pub fn frame_count(len: usize, hop: usize) -> usize {
     1 + len / hop
 }
 
-/// Power spectrogram `|STFT|^2`, frames along the outer axis.
+/// Each frame's power spectrum `|STFT|^2`, handed to `reduce` as soon as it
+/// is computed; the reductions come back in frame order.
 ///
-/// Returns `frames` rows of `n_fft / 2 + 1` bins. Row-major by frame because
-/// every consumer walks frames in order, and because it makes the rayon split
-/// trivial.
-pub fn power_spectrogram(y: &[f32], n_fft: usize, hop: usize) -> Vec<Vec<f64>> {
+/// This is how a whole track is analysed without holding its linear
+/// spectrogram. A 6-minute track at hop 128 is ~124k frames, and
+/// `124k x 1025` f64 bins is over a gigabyte -- more than ten on a
+/// one-hour mix. A reduction keeps what its consumer needs (128 mel bands,
+/// 12 chroma classes, 7 band energies), and one frame's spectrum stays in
+/// cache. The zero padding is read through the index, not copied: a padded
+/// f64 copy of the signal was another 127 MB at six minutes.
+pub fn map_frames<T, F>(y: &[f32], n_fft: usize, hop: usize, reduce: F) -> Vec<T>
+where
+    T: Send,
+    F: Fn(&[f64]) -> T + Sync,
+{
     let frames = frame_count(y.len(), hop);
     let pad = n_fft / 2;
     let window = hann_periodic(n_fft);
@@ -42,58 +51,6 @@ pub fn power_spectrogram(y: &[f32], n_fft: usize, hop: usize) -> Vec<Vec<f64>> {
 
     let mut planner = RealFftPlanner::<f64>::new();
     let fft = planner.plan_fft_forward(n_fft);
-
-    // Explicit zero padding rather than index arithmetic at the edges: it is
-    // the same cost once, and it removes a whole class of off-by-one bug from
-    // the hot loop.
-    let mut padded = vec![0.0f64; y.len() + 2 * pad];
-    for (dst, &src) in padded[pad..pad + y.len()].iter_mut().zip(y) {
-        *dst = src as f64;
-    }
-
-    (0..frames)
-        .into_par_iter()
-        .map_init(
-            || (fft.make_input_vec(), fft.make_output_vec()),
-            |(input, output), frame| {
-                let start = frame * hop;
-                for (i, slot) in input.iter_mut().enumerate() {
-                    // A frame can run past the padded end on the last few
-                    // frames; librosa pads there too.
-                    *slot = padded.get(start + i).copied().unwrap_or(0.0) * window[i];
-                }
-                fft.process(input, output).expect("fft sizes are fixed");
-                let mut row = vec![0.0f64; bins];
-                for (slot, value) in row.iter_mut().zip(output.iter()) {
-                    *slot = value.re * value.re + value.im * value.im;
-                }
-                row
-            },
-        )
-        .collect()
-}
-
-/// Mel power spectrogram, computed one frame at a time so the linear
-/// spectrogram is never materialised.
-///
-/// This matters for memory, not just speed: a 6-minute track at hop 128 is
-/// ~124k frames, and holding `124k x 1025` f64 bins is over a gigabyte. The
-/// mel result is `124k x 128`, about 127 MB, and the FFT output for a single
-/// frame stays in cache.
-pub fn mel_power_spectrogram(y: &[f32], n_fft: usize, hop: usize, bank: &MelBank) -> Vec<Vec<f64>> {
-    let frames = frame_count(y.len(), hop);
-    let pad = n_fft / 2;
-    let window = hann_periodic(n_fft);
-    let bins = n_fft / 2 + 1;
-    let n_mels = bank.len();
-
-    let mut planner = RealFftPlanner::<f64>::new();
-    let fft = planner.plan_fft_forward(n_fft);
-
-    let mut padded = vec![0.0f64; y.len() + 2 * pad];
-    for (dst, &src) in padded[pad..pad + y.len()].iter_mut().zip(y) {
-        *dst = src as f64;
-    }
 
     (0..frames)
         .into_par_iter()
@@ -106,25 +63,80 @@ pub fn mel_power_spectrogram(y: &[f32], n_fft: usize, hop: usize, bank: &MelBank
                 )
             },
             |(input, output, power), frame| {
+                // Frame `frame` reads padded samples `frame * hop ..` on, that
+                // is signal samples from `frame * hop - n_fft / 2`. Outside
+                // the signal is librosa's constant zero padding, including
+                // past the end on the last few frames.
                 let start = frame * hop;
                 for (i, slot) in input.iter_mut().enumerate() {
-                    *slot = padded.get(start + i).copied().unwrap_or(0.0) * window[i];
+                    let sample = (start + i)
+                        .checked_sub(pad)
+                        .and_then(|s| y.get(s))
+                        .map_or(0.0, |&v| v as f64);
+                    *slot = sample * window[i];
                 }
                 fft.process(input, output).expect("fft sizes are fixed");
                 for (slot, value) in power.iter_mut().zip(output.iter()) {
                     *slot = value.re * value.re + value.im * value.im;
                 }
-                let mut row = vec![0.0f64; n_mels];
-                bank.project(power, &mut row);
-                row
+                reduce(power)
             },
         )
         .collect()
 }
 
+/// Power spectrogram `|STFT|^2`, frames along the outer axis.
+///
+/// Returns `frames` rows of `n_fft / 2 + 1` bins, which is over a gigabyte
+/// for a 6-minute track at hop 128. For short excerpts and tests; a
+/// whole-track analysis reduces each frame through [`map_frames`] instead.
+pub fn power_spectrogram(y: &[f32], n_fft: usize, hop: usize) -> Vec<Vec<f64>> {
+    map_frames(y, n_fft, hop, <[f64]>::to_vec)
+}
+
+/// Mel power spectrogram, projected frame by frame so the linear spectrogram
+/// is never materialised: `124k x 128` bins for six minutes, about 127 MB.
+pub fn mel_power_spectrogram(y: &[f32], n_fft: usize, hop: usize, bank: &MelBank) -> Vec<Vec<f64>> {
+    let n_mels = bank.len();
+    map_frames(y, n_fft, hop, |power| {
+        let mut row = vec![0.0f64; n_mels];
+        bank.project(power, &mut row);
+        row
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frames_read_the_padding_exactly_as_a_padded_copy() {
+        // The implementation map_frames replaced: an explicit zero-padded
+        // f64 copy of the whole signal. A length that is not a multiple of
+        // the hop runs the last frames past the end of the padding too.
+        let y: Vec<f32> = (0..10_001)
+            .map(|i| ((i as f64 * 0.37).sin() * 0.8 + (i as f64 * 0.011).cos() * 0.1) as f32)
+            .collect();
+        let (n_fft, hop) = (2048, 128);
+        let pad = n_fft / 2;
+        let mut padded = vec![0.0f64; y.len() + 2 * pad];
+        for (dst, &src) in padded[pad..pad + y.len()].iter_mut().zip(&y) {
+            *dst = src as f64;
+        }
+        let window = hann_periodic(n_fft);
+        let fft = RealFftPlanner::<f64>::new().plan_fft_forward(n_fft);
+        let (mut input, mut output) = (fft.make_input_vec(), fft.make_output_vec());
+        let got = power_spectrogram(&y, n_fft, hop);
+        assert_eq!(got.len(), frame_count(y.len(), hop));
+        for (frame, row) in got.iter().enumerate() {
+            for (i, slot) in input.iter_mut().enumerate() {
+                *slot = padded.get(frame * hop + i).copied().unwrap_or(0.0) * window[i];
+            }
+            fft.process(&mut input, &mut output).unwrap();
+            let want: Vec<f64> = output.iter().map(|c| c.re * c.re + c.im * c.im).collect();
+            assert_eq!(row, &want, "frame {frame}");
+        }
+    }
 
     #[test]
     fn hann_is_periodic_not_symmetric() {

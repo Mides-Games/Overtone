@@ -4932,17 +4932,40 @@ class TimingAnalyzerApp:
         except ValueError as exc:
             raise ValueError(self.tr("bad_numbers")) from exc
 
-    def _after_edit(self, message: str) -> None:
+    def _edited_index(self, before: list[TimingPoint]) -> int:
+        """Where the point an edit made sits now, after the re-sort.
+
+        The edit helpers copy every other point as it is, so the one object
+        missing from ``before`` is the edited one; an offset search could land
+        on a neighbour at the same time.
+        """
+        assert self.analysis is not None
+        kept = {id(point) for point in before}
+        return next((n for n, point in enumerate(self.analysis.points) if id(point) not in kept),
+                    self.selected_section or 0)
+
+    def _after_edit(self, message: str, select: int | None = None) -> None:
+        """Redraw after a hand edit, keeping row ``select`` selected.
+
+        Every edit used to clear the selection and refill the editor with §1,
+        so a second press of +1 said "Select a table row first."
+        """
         assert self.analysis is not None
         self._manual_edits += 1
         self.selected_section = None
         self._render_results()
+        rows = self.table.get_children()
+        if select is not None and 0 <= select < len(rows):
+            self.table.selection_set(rows[select])
+            self.table.see(rows[select])
+            self._on_row()
         self.status.set(message)
 
     def edit_apply(self) -> None:
         if not self.analysis or self.selected_section is None:
             self.status.set(self.tr("no_selection"))
             return
+        before = self.analysis.points
         try:
             offset, bpm = self._editor_values()
             self.analysis.points = update_timing_point(
@@ -4950,16 +4973,16 @@ class TimingAnalyzerApp:
         except ValueError as exc:
             self.status.set(self.tr("error", value=str(exc)))
             return
-        index = min(range(len(self.analysis.points)),
-                    key=lambda n: abs(self.analysis.points[n].offset_ms - offset))
+        index = self._edited_index(before)
         point = self.analysis.points[index]
         self._after_edit(self.tr("edited", n=index + 1,
-                                 bpm=f"{point.bpm:.3f}", ms=f"{point.offset_ms:.1f}"))
+                                 bpm=f"{point.bpm:.3f}", ms=f"{point.offset_ms:.1f}"), index)
 
     def edit_add(self) -> None:
         if not self.analysis:
             self.status.set(self.tr("first"))
             return
+        before = self.analysis.points
         try:
             offset, bpm = self._editor_values()
             self.analysis.points = add_timing_point(
@@ -4967,7 +4990,8 @@ class TimingAnalyzerApp:
         except ValueError as exc:
             self.status.set(self.tr("error", value=str(exc)))
             return
-        self._after_edit(self.tr("added_point", bpm=f"{bpm:.2f}", ms=f"{offset:.1f}"))
+        self._after_edit(self.tr("added_point", bpm=f"{bpm:.2f}", ms=f"{offset:.1f}"),
+                         self._edited_index(before))
 
     def edit_delete(self) -> None:
         if not self.analysis or self.selected_section is None:
@@ -4989,19 +5013,17 @@ class TimingAnalyzerApp:
         if not self.analysis or self.selected_section is None:
             self.status.set(self.tr("no_selection"))
             return
+        before = self.analysis.points
         try:
-            before = self.analysis.points[self.selected_section].offset_ms
             self.analysis.points = nudge_timing_point(
                 self.analysis.points, self.analysis.beats, self.selected_section, delta_ms)
         except ValueError as exc:
             self.status.set(self.tr("error", value=str(exc)))
             return
-        target = before + delta_ms
-        index = min(range(len(self.analysis.points)),
-                    key=lambda n: abs(self.analysis.points[n].offset_ms - target))
+        index = self._edited_index(before)
         point = self.analysis.points[index]
         self._after_edit(self.tr("edited", n=index + 1,
-                                 bpm=f"{point.bpm:.3f}", ms=f"{point.offset_ms:.1f}"))
+                                 bpm=f"{point.bpm:.3f}", ms=f"{point.offset_ms:.1f}"), index)
 
     def edit_rescale(self, factor: float) -> None:
         if not self.analysis or self.selected_section is None:
@@ -5013,10 +5035,9 @@ class TimingAnalyzerApp:
         except ValueError as exc:
             self.status.set(self.tr("error", value=str(exc)))
             return
-        point = self.analysis.points[self.selected_section]
-        self._set_editor(f"{point.offset_ms:.1f}", f"{point.bpm:.2f}")
-        self._after_edit(self.tr("section_rescaled", n=self.selected_section + 1,
-                                 bpm=f"{point.bpm:.2f}"))
+        index = self.selected_section
+        point = self.analysis.points[index]
+        self._after_edit(self.tr("section_rescaled", n=index + 1, bpm=f"{point.bpm:.2f}"), index)
 
     def _refresh_suggestion(self) -> None:
         try:

@@ -902,6 +902,50 @@ class ClassicWindowSpanishTests(unittest.TestCase):
             self.assertEqual(len(app.analysis.points), 2)
 
 
+class ClassicWindowKeepsTheRowTests(unittest.TestCase):
+    """An edit re-rendered the table, which dropped the selection and put §1 in
+    the editor: a second +1 ms said "Select a table row first."."""
+
+    def _app(self, tmp):
+        app = _classic_app(self, tmp)
+        app.analysis = _grid_analysis([(1000.0, 120.0), (11000.0, 140.0), (21000.0, 120.0)])
+        app._render_results()
+        app.table.selection_set(app.table.get_children()[2])
+        app.root.update()                       # delivers <<TreeviewSelect>>
+        self.assertEqual(app.selected_section, 2)
+        return app
+
+    def test_nudging_twice_moves_the_same_point_twice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp)
+            for _ in range(2):
+                app.edit_nudge(1.0)
+                app.root.update()               # the re-render's own select events
+            self.assertEqual(app.analysis.points[2].offset_ms, 21002.0)
+            self.assertEqual(app.selected_section, 2)
+            self.assertEqual(app.edit_offset.get(), "21002.0")
+            self.assertEqual(app.table.index(app.table.selection()[0]), 2)
+
+    def test_the_editor_follows_the_point_it_edited(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp)
+            app.edit_rescale(2.0)
+            app.root.update()
+            self.assertEqual(app.selected_section, 2)
+            self.assertEqual(app.edit_bpm.get(), "240.00")    # §3, not §1's 120
+            # An offset edit that re-sorts the point still keeps it selected.
+            app._set_editor("5000.0", "150")
+            app.edit_apply()
+            app.root.update()
+            self.assertEqual(app.selected_section, 1)
+            self.assertEqual(app.analysis.points[1].offset_ms, 5000.0)
+            self.assertEqual(app.edit_offset.get(), "5000.0")
+            app.edit_delete()
+            app.root.update()
+            self.assertIsNone(app.selected_section)          # nothing to keep
+            self.assertEqual(len(app.analysis.points), 2)
+
+
 class NoPulseRefusalTests(unittest.TestCase):
     """White noise must not return a BPM (CLAUDE.md rule 2).
 

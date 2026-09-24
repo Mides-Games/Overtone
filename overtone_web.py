@@ -181,6 +181,8 @@ class Api:
         #: (source, times, weights) detected for a reference grade when the
         #: engine that answered kept no attacks.
         self._ref_attacks: tuple | None = None
+        #: The last assisted fit that was answered, waiting for "Add to timing".
+        self._assisted: dict | None = None
         if initial_file:
             self._cfg["file"] = initial_file
 
@@ -770,6 +772,37 @@ class Api:
             self._persist()
         return {"ok": True, "report": report}
 
+    # -- assisted timing: two marked downbeats seed the grid ---------------
+    def assisted_fit(self, first_ms: float, second_ms: float, bars: int, meter: int) -> dict:
+        """Fit the grid two marked downbeats imply. Read only: the answer (or
+        the refusal and why) is kept until "Add to timing" or the next fit."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not self._busy.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        try:
+            times, weights = self._attacks()
+            fit = ta.assisted_grid(times, weights, first_ms, second_ms, bars, meter)
+        except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            self._busy.release()
+        self._assisted = fit if fit["ok"] else None
+        return {"ok": True, "fit": fit}
+
+    def assisted_apply(self) -> dict:
+        """Add the last assisted line to the working timing: one undo step,
+        locked points kept, points inside the span it holds dropped."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if self._assisted is None:
+            return {"ok": False, "key": "no_fit"}
+        fit, self._assisted = self._assisted, None
+        points = ta.apply_assisted_grid(self._analysis.points, fit, self._analysis.beats)
+        self._push_history()
+        self._analysis.points = self._merge_locks(points, self._analysis.beats)
+        return self._edited(None, fit["offset_ms"])
+
     # -- helpers (not exposed: underscored) ----------------------------------
     def _save_dialog(self, filename: str, file_types) -> str | None:
         import webview
@@ -797,6 +830,7 @@ class Api:
             if self._locked:
                 result.points = self._merge_locks(result.points, result.beats)
             self._analysis = result
+            self._assisted = None       # a fit belongs to the song it was made on
             self._history.clear()
             self._future.clear()
             self._emit("onResult", analysis_payload(result))

@@ -629,6 +629,60 @@ class ReferenceBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().reference_find()["key"], "first")
 
 
+class AssistedBridgeTests(_IsolatedConfig):
+    """Assisted timing: fit from two marks, then add the line in one undo."""
+
+    @staticmethod
+    def _api() -> web.Api:
+        api = _api_with_points()          # 1000 ms @ 120, 9000 ms @ 150
+        times = np.arange(1.0, 60.0, 0.2)                  # 150 BPM 8ths
+        api._analysis.attack_times = times
+        api._analysis.attack_weights = np.where(np.arange(times.size) % 2 == 0, 1.0, 0.5)
+        return api
+
+    def test_fit_then_add_is_one_undo_step(self) -> None:
+        api = self._api()
+        reply = api.assisted_fit(9020, 10580, 1, 4)
+        json.dumps(reply)
+        self.assertTrue(reply["ok"] and reply["fit"]["ok"])
+        self.assertAlmostEqual(reply["fit"]["bpm"], 150.0, delta=0.01)
+        added = api.assisted_apply()
+        self.assertTrue(added["ok"])
+        # The grid holds the whole song, so the detected lines inside it go.
+        self.assertEqual([(round(p["offset_ms"], 3), round(p["bpm"], 2)) for p in added["result"]["points"]],
+                         [(1000.0, 150.0)])
+        self.assertEqual(added["selected"], 0)
+        self.assertTrue(added["undo"])
+        self.assertEqual(api.assisted_apply()["key"], "no_fit")   # used once
+        back = api.undo()
+        self.assertEqual([p["offset_ms"] for p in back["result"]["points"]], [1000.0, 9000.0])
+
+    def test_a_refusal_is_an_answer_and_leaves_nothing_to_add(self) -> None:
+        api = self._api()
+        reply = api.assisted_fit(9000, 9050, 1, 4)
+        self.assertTrue(reply["ok"])
+        self.assertEqual((reply["fit"]["ok"], reply["fit"]["reason"]), (False, "bpm_range"))
+        self.assertEqual(api.assisted_apply()["key"], "no_fit")
+
+    def test_a_locked_point_survives_the_new_line(self) -> None:
+        api = self._api()
+        api.set_locked(1, True)
+        api.assisted_fit(9020, 10580, 1, 4)
+        reply = api.assisted_apply()
+        self.assertEqual([round(p["offset_ms"], 3) for p in reply["result"]["points"]], [1000.0, 9000.0])
+        self.assertEqual(reply["locks"], [9000.0])
+
+    def test_assisted_needs_a_result_and_waits_for_an_analysis(self) -> None:
+        self.assertEqual(web.Api().assisted_fit(1, 2, 1, 4)["key"], "first")
+        self.assertEqual(web.Api().assisted_apply()["key"], "first")
+        api = self._api()
+        api._busy.acquire()
+        try:
+            self.assertEqual(api.assisted_fit(9020, 10580, 1, 4)["key"], "busy")
+        finally:
+            api._busy.release()
+
+
 class EngineChoiceTests(_IsolatedConfig):
     """The Rust engine is opt-in, falls back to v3, and says when it did."""
 

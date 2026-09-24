@@ -133,7 +133,18 @@ struct GoldenAttacks {
     times_s: Vec<f64>,
     weights: Vec<f64>,
     envelope_frames: usize,
+    /// Sum of v3's onset envelope, to 4 decimals.
+    envelope_sum: f64,
 }
+
+/// The envelope itself, which the gate used to dump but never read: correlation
+/// on the weights alone passed a symmetric Hann window that moves the sum by
+/// 0.6-7.1. Measured float noise against v3's float32 sum: at most 0.00098
+/// (long-6min), 0.00033 on every other fixture.
+const ENV_SUM_TOL: f64 = 2e-3;
+/// Each matched attack's weight against v3's, stored to 5 decimals: measured
+/// at most 5.4e-6, the rounding itself. Correlation alone allowed ~1.5 %.
+const WEIGHT_TOL: f64 = 2e-5;
 
 /// Boundaries become red lines, so a moved boundary is a moved red line.
 /// 5 ms is the benchmark's own offset tolerance.
@@ -249,6 +260,10 @@ struct Report {
     env_frames_expected: usize,
     env_frames_found: usize,
     weight_correlation: f64,
+    /// |sum of our envelope - v3's|.
+    env_sum_err: f64,
+    /// Largest |our weight - v3's| over matched attacks.
+    worst_weight_err: f64,
     atom: SectionDiff,
     beat: SectionDiff,
     settled: SectionDiff,
@@ -267,6 +282,8 @@ impl Report {
             && self.octave_found == self.octave_expected
             && self.class_found == self.class_expected
             && self.weight_correlation > 0.999
+            && self.env_sum_err <= ENV_SUM_TOL
+            && self.worst_weight_err <= WEIGHT_TOL
             && self.seed_period_err <= PERIOD_TOL_S
             && self.seed_phase_ms <= ATTACK_TOL_S * 1000.0
             && self.atom.ok()
@@ -383,16 +400,21 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
     let mut matched = 0usize;
     let mut worst_ms = 0.0f64;
     let mut worst_at = 0.0f64;
-    for &want in &golden.attacks.times_s {
+    let mut worst_weight_err = 0.0f64;
+    for (want, &want_weight) in golden.attacks.times_s.iter().zip(&golden.attacks.weights) {
+        let want = *want;
         let mut best = f64::INFINITY;
-        for &got in &ours {
+        let mut nearest = 0usize;
+        for (i, &got) in ours.iter().enumerate() {
             let d = (got - want).abs();
             if d < best {
                 best = d;
+                nearest = i;
             }
         }
         if best <= ATTACK_TOL_S {
             matched += 1;
+            worst_weight_err = worst_weight_err.max((our_weights[nearest] - want_weight).abs());
         }
         if best > worst_ms / 1000.0 {
             worst_ms = best * 1000.0;
@@ -552,6 +574,8 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
         env_frames_expected: golden.attacks.envelope_frames,
         env_frames_found: env.len(),
         weight_correlation: correlation(&our_weights, &golden.attacks.weights),
+        env_sum_err: (env.iter().map(|&v| v as f64).sum::<f64>() - golden.attacks.envelope_sum).abs(),
+        worst_weight_err,
         atom,
         beat,
         settled,
@@ -1226,6 +1250,12 @@ fn main() -> Result<()> {
                             "env {} vs {}",
                             report.env_frames_found, report.env_frames_expected
                         ));
+                    }
+                    if report.env_sum_err > ENV_SUM_TOL {
+                        why.push(format!("envelope sum {:.4} off", report.env_sum_err));
+                    }
+                    if report.worst_weight_err > WEIGHT_TOL {
+                        why.push(format!("a weight {:.2e} off", report.worst_weight_err));
                     }
                     if report.weight_correlation <= 0.999 {
                         why.push(format!("weights r={:.4}", report.weight_correlation));

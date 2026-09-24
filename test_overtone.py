@@ -70,6 +70,7 @@ from overtone import (
     analysis_report,
     density_report,
     suggest_missing_lines,
+    mapset_report,
     main,
 )
 
@@ -2701,6 +2702,165 @@ class SuggestTests(unittest.TestCase):
         self.assertEqual(len(suggest_missing_lines(analysis, beatmap, tolerance_beats=0.5)), 1)
         with self.assertRaises(ValueError):
             suggest_missing_lines(analysis, beatmap, tolerance_beats=0)
+
+
+def _mapset_osu(version: str, audio: str = "song.mp3", reds=((1000, 400.0, 4), (30000, 300.0, 4)),
+                lead_in: str | None = "0", preview: str | None = "12000",
+                tags: str = "drum bass electronic", kiai=(), objects=()) -> str:
+    """A small but complete difficulty, CRLF like the osu! editor writes."""
+    lines = ["osu file format v14", "", "[General]", f"AudioFilename: {audio}"]
+    if lead_in is not None:
+        lines.append(f"AudioLeadIn: {lead_in}")
+    if preview is not None:
+        lines.append(f"PreviewTime: {preview}")
+    lines += ["", "[Metadata]", "Title:Song", "TitleUnicode:Song", "Artist:Band",
+              "ArtistUnicode:Band", "Creator:Mapper", f"Version:{version}", "Source:",
+              f"Tags:{tags}", "", "[TimingPoints]"]
+    lines += [f"{offset},{beat!r},{meter},2,0,60,1,0" for offset, beat, meter in reds]
+    lines += [f"{time},-100,4,2,0,60,0,{1 if on else 0}" for time, on in kiai]
+    lines += ["", "[HitObjects]"]
+    lines += [f"256,192,{time},1,0,0:0:0:0:" for time in objects]
+    return "\r\n".join(lines) + "\r\n"
+
+
+class MapsetReportTests(unittest.TestCase):
+    """Proposal P1: what the difficulties of one set must share. Read only."""
+
+    def _report(self, maps: dict, raw: dict | None = None) -> dict:
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "123 Band - Song"
+            root.mkdir()
+            for name, text in maps.items():
+                (root / f"Band - Song (Mapper) [{name}].osu").write_bytes(text.encode("utf-8"))
+            for name, data in (raw or {}).items():
+                (root / name).write_bytes(data)
+            before = {p.name: p.read_bytes() for p in root.iterdir()}
+            report = mapset_report(root)
+            after = {p.name: p.read_bytes() for p in root.iterdir()}
+        self.assertEqual(before, after)  # read only: nothing written, nothing fixed
+        json.dumps(report)
+        return report
+
+    def test_identical_mapset_has_no_differences(self) -> None:
+        report = self._report({name: _mapset_osu(name) for name in ("Easy", "Hard", "Insane")})
+        self.assertTrue(report["consistent"])
+        self.assertEqual(report["differences"], 0)
+        self.assertEqual(report["red_lines"], [])
+        self.assertTrue(all(f["identical"] for f in report["fields"]))
+        self.assertEqual([f["field"] for f in report["fields"]],
+                         ["AudioFilename", "PreviewTime", "AudioLeadIn", "Artist", "ArtistUnicode",
+                          "Title", "TitleUnicode", "Creator", "Source", "Tags"])
+        self.assertEqual([d["difficulty"] for d in report["difficulties"]], ["Easy", "Hard", "Insane"])
+        self.assertEqual(report["reference"], "Band - Song (Mapper) [Easy].osu")
+        for entry in report["difficulties"]:
+            self.assertTrue(entry["readable"])
+            self.assertEqual(entry["red_lines"], 2)
+            self.assertEqual(entry["checks"], {"red_lines": 0, "audio": [], "metadata": []})
+
+    def test_shifted_red_line_is_reported_against_the_majority(self) -> None:
+        # The odd one sorts first: the reference must still be a majority map,
+        # so only Easy is flagged, not Hard and Insane for disagreeing with it.
+        maps = {name: _mapset_osu(name) for name in ("Hard", "Insane")}
+        maps["Easy"] = _mapset_osu("Easy", reds=((1000, 400.0, 4), (30005, 300.0, 4)))
+        report = self._report(maps)
+        self.assertFalse(report["consistent"])
+        self.assertEqual(report["reference"], "Band - Song (Mapper) [Hard].osu")
+        self.assertEqual(len(report["red_lines"]), 1)
+        diff = report["red_lines"][0]
+        self.assertEqual((diff["difficulty"], diff["kind"]), ("Easy", "offset"))
+        self.assertEqual((diff["offset_ms"], diff["expected"], diff["found"]), (30000.0, 30000.0, 30005.0))
+        checks = {d["difficulty"]: d["checks"]["red_lines"] for d in report["difficulties"]}
+        self.assertEqual(checks, {"Easy": 1, "Hard": 0, "Insane": 0})
+
+    def test_beat_length_meter_missing_and_extra_lines(self) -> None:
+        base = ((1000, 400.0, 4), (30000, 300.0, 4))
+        maps = {
+            "A": _mapset_osu("A", reds=base),
+            "B": _mapset_osu("B", reds=base),
+            # 5e-7 ms off: the same number written twice, not a difference.
+            "C": _mapset_osu("C", reds=((1000, 400.0000005, 4), (30000, 300.0, 4))),
+            "D": _mapset_osu("D", reds=((1000, 400.01, 3), (30000, 300.0, 4), (60000, 250.0, 4))),
+            "E": _mapset_osu("E", reds=((1000, 400.0, 4),)),
+        }
+        report = self._report(maps)
+        self.assertEqual(report["reference"], "Band - Song (Mapper) [A].osu")
+        kinds = sorted((d["difficulty"], d["kind"]) for d in report["red_lines"])
+        self.assertEqual(kinds, [("D", "beat_length"), ("D", "extra"), ("D", "meter"), ("E", "missing")])
+        beat = next(d for d in report["red_lines"] if d["kind"] == "beat_length")
+        self.assertEqual((beat["expected"], beat["found"]), (400.0, 400.01))
+        meter = next(d for d in report["red_lines"] if d["kind"] == "meter")
+        self.assertEqual((meter["expected"], meter["found"]), (4, 3))
+        self.assertEqual(next(d for d in report["red_lines"] if d["kind"] == "missing")["offset_ms"], 30000.0)
+        self.assertEqual(next(d for d in report["red_lines"] if d["kind"] == "extra")["offset_ms"], 60000.0)
+
+    def test_different_audio_filename_is_reported(self) -> None:
+        maps = {name: _mapset_osu(name) for name in ("Easy", "Hard")}
+        maps["Insane"] = _mapset_osu("Insane", audio="song (1).mp3")
+        report = self._report(maps)
+        self.assertFalse(report["consistent"])
+        audio = next(f for f in report["fields"] if f["field"] == "AudioFilename")
+        self.assertFalse(audio["identical"])
+        self.assertEqual(audio["value"], "song.mp3")
+        self.assertEqual(audio["differences"], [{"file": "Band - Song (Mapper) [Insane].osu",
+                                                 "difficulty": "Insane", "value": "song (1).mp3"}])
+        checks = {d["difficulty"]: d["checks"]["audio"] for d in report["difficulties"]}
+        self.assertEqual(checks, {"Easy": [], "Hard": [], "Insane": ["AudioFilename"]})
+        self.assertEqual(report["red_lines"], [])
+
+    def test_defaults_and_tag_order_are_not_differences(self) -> None:
+        maps = {
+            "Easy": _mapset_osu("Easy", lead_in=None, preview="12000", tags="drum bass electronic"),
+            "Hard": _mapset_osu("Hard", lead_in="0", preview="12000", tags="electronic  drum bass"),
+            "Insane": _mapset_osu("Insane", lead_in="0", preview="-1", tags="drum bass electronic"),
+        }
+        report = self._report(maps)
+        fields = {f["field"]: f for f in report["fields"]}
+        self.assertTrue(fields["AudioLeadIn"]["identical"])
+        self.assertTrue(fields["Tags"]["identical"])
+        self.assertFalse(fields["PreviewTime"]["identical"])
+        self.assertEqual([d["difficulty"] for d in fields["PreviewTime"]["differences"]], ["Insane"])
+
+    def test_unreadable_osu_is_reported_without_stopping_the_rest(self) -> None:
+        maps = {name: _mapset_osu(name) for name in ("Easy", "Hard")}
+        maps["Normal"] = _mapset_osu("Normal", audio="other.mp3")
+        report = self._report(maps, raw={"Band - Song (Mapper) [Broken].osu": b"\xff\xfe\x00 not utf-8"})
+        self.assertEqual(report["unreadable"], 1)
+        self.assertFalse(report["consistent"])
+        broken = next(d for d in report["difficulties"] if not d["readable"])
+        self.assertEqual((broken["difficulty"], broken["file"]), ("Broken", "Band - Song (Mapper) [Broken].osu"))
+        self.assertIn("UTF-8", broken["detail"])
+        self.assertEqual(sum(1 for d in report["difficulties"] if d["readable"]), 3)
+        audio = next(f for f in report["fields"] if f["field"] == "AudioFilename")
+        self.assertEqual([d["difficulty"] for d in audio["differences"]], ["Normal"])
+
+    def test_kiai_spans_and_density_are_reported_per_difficulty(self) -> None:
+        objects = [n * 250 for n in range(41)]  # 0 .. 10 s, 4 per second
+        # Greens switch kiai on and off; a span still open at the last line
+        # runs to the end of the map.
+        maps = {
+            "Easy": _mapset_osu("Easy", kiai=((5000, True), (20000, False), (40000, True)),
+                                objects=objects),
+            "Hard": _mapset_osu("Hard", kiai=((5000, True), (35000, False))),
+        }
+        report = self._report(maps)
+        easy, hard = report["difficulties"]
+        self.assertEqual(easy["kiai"], [{"start_ms": 5000.0, "end_ms": 20000.0},
+                                        {"start_ms": 40000.0, "end_ms": None}])
+        # A red line's own effects count: kiai off at 30000, before the green.
+        self.assertEqual(hard["kiai"], [{"start_ms": 5000.0, "end_ms": 30000.0}])
+        self.assertEqual(easy["density"]["objects"], 41)
+        self.assertGreater(easy["density"]["peak_per_second"], 0)
+        self.assertEqual(hard["density"], {"objects": 0, "mean_per_second": 0.0, "peak_per_second": 0.0})
+        # Kiai and density are information, not consistency checks.
+        self.assertTrue(report["consistent"])
+
+    def test_folder_without_maps_and_missing_folder(self) -> None:
+        report = self._report({})
+        self.assertEqual((report["difficulties"], report["reference"]), ([], None))
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                mapset_report(Path(tmp) / "missing")
 
 
 class JsonReportTests(unittest.TestCase):

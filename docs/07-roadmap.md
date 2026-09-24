@@ -95,7 +95,7 @@ evaluation, windows and metrical role (#63–#66); elastic parity with its proto
 the whole-track spectrograms, the structure windows, the percussive ratio and a chorus on
 the verse's chords (#71–#75); the resampler's speed and AIFF (#76, #77).
 
-Still open — 41 findings nobody has re-probed yet (none high, 1 medium, 40 low) — in
+The forty low findings were closed on 2026-09-24; nothing is open in
 [`13-audit-backlog.md`](13-audit-backlog.md).
 
 ---
@@ -185,7 +185,7 @@ Two things got there and neither was the language: a **sparse** mel filterbank a
 **fused** into the mel projection, so the linear spectrogram is never materialised.
 
 **Exit: met for the engine** (golden 24/24 attack for attack and red line for red line).
-Still open: the rest of the v3 unit tests by name, and wiring the engine into the app.
+Still open: the rest of the v3 unit tests by name. The engine is in the app, opt-in.
 
 ---
 

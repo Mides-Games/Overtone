@@ -496,21 +496,19 @@ mod tests {
 
     #[test]
     fn map_preference_breaks_a_tie_towards_osu_range() {
-        // A grid whose accents are equally happy at 1 or 2 atoms per beat, and
-        // no hints at all. With the preference on, the in-range reading wins.
-        let (times, weights) = accented(0.15, 2, 400, 0);
-        let (with, _) = beat_from_atoms(
-            &times,
-            &weights,
-            Grid {
-                period: 0.15,
-                phase: 0.0,
-            },
-            &[],
-            true,
-        );
-        // 0.15 s atoms: m=1 is 400 BPM, m=2 is 200 BPM (in range).
-        assert_eq!(with, 2);
+        // No accents and no hints, so nothing but the preference separates
+        // one atom per beat (0.19 s: 316 BPM, past osu!'s 120-300) from two
+        // (158 BPM, inside it); every other term scores them alike. The old
+        // test accented every second atom, so depth chose 2 with the
+        // preference off too.
+        let times: Vec<f64> = (0..400).map(|k| k as f64 * 0.19).collect();
+        let weights = vec![1.0f32; times.len()];
+        let grid = Grid {
+            period: 0.19,
+            phase: 0.0,
+        };
+        assert_eq!(beat_from_atoms(&times, &weights, grid, &[], true).0, 2);
+        assert_eq!(beat_from_atoms(&times, &weights, grid, &[], false).0, 1);
     }
 
     #[test]

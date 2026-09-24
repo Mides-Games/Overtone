@@ -40,6 +40,13 @@ pub struct Structure {
 
 /// Segment audio into phrases. Empty on silence or inputs shorter than two
 /// kernel widths.
+///
+/// The checkerboard needs [`KERNEL_HALF`] windows on each side of a
+/// boundary, so novelty exists only from 4 s after the start to 4-4.5 s
+/// before the end, and no boundary is ever reported in those end spans
+/// (leading silence included). A change inside one is lost, or read on the
+/// span's edge: measured on a 40 s track, a chord change at 2 s came out at
+/// 4.0 s, one at 38 s was lost, and one at 37 s came out at 35.5 s.
 pub fn analyze(y: &[f32], sr: u32) -> Structure {
     let hop = (WIN_S * sr as f64).round() as usize;
     let n_fft = 2048;
@@ -162,10 +169,9 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
         Vec::new()
     };
     found.sort_unstable();
-    let mut merged = merge_close(&found, &novelty, (MERGE_S / WIN_S).round() as usize);
-    // The track start is a boundary only if the music starts there; a
-    // leading silence is not a phrase. Drop index-0 artefacts.
-    merged.retain(|&i| i > 1);
+    // No edge filtering: novelty is zero outside the kernel's reach, so no
+    // peak can land within KERNEL_HALF windows of either end.
+    let merged = merge_close(&found, &novelty, (MERGE_S / WIN_S).round() as usize);
     Structure {
         boundaries: merged.iter().map(|&i| i as f64 * win_s).collect(),
         energy: rms,
@@ -328,6 +334,27 @@ mod tests {
         assert_eq!(merge_close(&[10, 16], &novelty, window), vec![16]);
         novelty[16] = 0.5;
         assert_eq!(merge_close(&[10, 16], &novelty, window), vec![10]);
+    }
+
+    #[test]
+    fn no_boundary_lands_within_the_kernel_of_either_end() {
+        // Chord changes 2 s from each end and one mid-track, 40 s in all.
+        // The kernel reaches 4 s either side, so the edge changes cannot
+        // be placed: the first is read on the span's edge, 2 s late, the
+        // last is lost. Recorded as measured, not as right.
+        let sr = 44_100;
+        let y = concat(&[
+            chord(sr, 220.0, false, 0.4, 2.0),
+            chord(sr, 174.61, true, 0.4, 18.0),
+            chord(sr, 261.63, true, 0.4, 18.0),
+            chord(sr, 196.0, true, 0.4, 2.0),
+        ]);
+        let reach = KERNEL_HALF as f64 * WIN_S;
+        let found = analyze(&y, sr).boundaries;
+        for &b in &found {
+            assert!(b >= reach && b <= 40.0 - reach, "{b} in {found:?}");
+        }
+        assert_eq!(found, vec![4.0, 20.0]);
     }
 
     #[test]

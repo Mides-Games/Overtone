@@ -242,6 +242,12 @@ impl Template {
 /// Initial templates: shapes from acoustics, weights at 1-ish starting
 /// points. Calibration moves the weights; it never invents a term.
 ///
+/// **Uncalibrated.** These are the starting point for [`calibrate`], not a
+/// classifier: held out they score macro F1 0.231, against 0.723 for
+/// [`calibrated_templates`], and their term contributions are hand-set, so
+/// an explanation built on them explains guesses. The only gate that
+/// judges them is the isolated-hit test, on five clean classes.
+///
 /// The percussive ratio follows the physics: every drum expects a
 /// percussive attack (the snare's shape for dry hits, the ride's for struck
 /// metal that rings on) and every tonal source a harmonic one (the
@@ -722,6 +728,32 @@ pub fn initial_templates() -> Vec<Template> {
     ]
 }
 
+/// The templates to classify with: [`initial_templates`] fitted by
+/// [`calibrate`] on four shuffled corpus arrangements (seeds 11-14, 24 s
+/// each, every class, gaps 0.22-0.45 s). These are the weights the held-out
+/// test judges: macro F1 0.723 on four arrangements the fit never saw,
+/// against 0.231 for the hand-set weights. Synthetic drums, so an upper
+/// bound on real songs, not a measurement of them.
+///
+/// Renders the corpus and fits it on every call, about 3.5 s in a release
+/// build (3.38 and 3.62 s measured): call once and keep the result.
+pub fn calibrated_templates() -> Vec<Template> {
+    let rows: Vec<(HitClass, Features)> = (11u64..15)
+        .flat_map(|seed| {
+            let track =
+                crate::corpus::render_shuffled(44_100, 24.0, (0.22, 0.45), &HitClass::ALL, seed);
+            track
+                .hits
+                .iter()
+                .map(|hit| (hit.class, extract(&track.samples, track.sr, hit.time_s)))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let mut templates = initial_templates();
+    calibrate(&mut templates, &rows, 2000, 0.5, 1e-4);
+    templates
+}
+
 /// Softmax classification: class probabilities in template order.
 ///
 /// A [silent](Features::is_silent) attack is `Other` with probability 1
@@ -856,34 +888,15 @@ mod tests {
             .collect()
     }
 
-    /// Templates calibrated once per test run on the dense train track and
-    /// shared: the F1 gate and the isolated gate must judge the same
-    /// artifact — the weights that would ship — not two separate fittings.
-    /// Judging tradeoffs (snare breadth vs cymbal narrowness) on
-    /// hand-set weights is the wrong gate; the shapes are hand-designed,
-    /// the tradeoffs are learned.
+    /// [`calibrated_templates`], fitted once per test run and shared: every
+    /// test that judges calibrated weights judges the ones that ship, not a
+    /// fitting of its own. Judging tradeoffs (snare breadth vs cymbal
+    /// narrowness) on hand-set weights is the wrong gate; the shapes are
+    /// hand-designed, the tradeoffs are learned.
     fn calibrated() -> Vec<Template> {
         use std::sync::OnceLock;
         static CACHE: OnceLock<Vec<Template>> = OnceLock::new();
-        CACHE
-            .get_or_init(|| {
-                let train_rows: Vec<(HitClass, Features)> = (11u64..15)
-                    .flat_map(|seed| {
-                        let track = crate::corpus::render_shuffled(
-                            44_100,
-                            24.0,
-                            (0.22, 0.45),
-                            &HitClass::ALL,
-                            seed,
-                        );
-                        extract_track(&track)
-                    })
-                    .collect();
-                let mut templates = initial_templates();
-                calibrate(&mut templates, &train_rows, 2000, 0.5, 1e-4);
-                templates
-            })
-            .clone()
+        CACHE.get_or_init(calibrated_templates).clone()
     }
 
     /// Held-out evaluation rows: arrangements the training render never

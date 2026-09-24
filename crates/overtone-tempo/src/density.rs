@@ -350,8 +350,11 @@ mod tests {
 
     #[test]
     fn a_six_second_drop_is_not_a_pulse_change() {
-        // Constant eighths with a hole: coverage collapses but parity is
-        // scattered, so nothing fires.
+        // Constant eighths with a hole. The hole's windows are empty, and an
+        // empty window is not a thinned one: under four attacks it has no
+        // parity to read and fails the count floor as well, so either guard
+        // alone keeps this quiet. (It said scattered parity rejected it; the
+        // parity guard is what a_sparse_region_is_not_a_pulse_change pins.)
         let beat = 60.0 / 180.0;
         let mut times = Vec::new();
         let mut weights = Vec::new();

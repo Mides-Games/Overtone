@@ -7,8 +7,8 @@
 //! HPSS — neither is a 10-line helper, and neither blocks templates.
 
 /// Percussive energy share over a frame range of a separated spectrogram:
-/// mean of P/(H+P). The separation (and its kernels) belongs to the
-/// caller — usually one full-track HPSS whose windows are read here.
+/// sum(P) / sum(H+P). The separation (and its kernels) belongs to the
+/// caller -- `hpss::separate_frames` over the frames around one attack.
 pub fn percussive_ratio(
     harmonic: &[Vec<f64>],
     percussive: &[Vec<f64>],

@@ -95,13 +95,7 @@ impl Features {
 /// Assemble every feature for the attack at `attack_s`. `harmonic` and
 /// `percussive` come from one full-track HPSS; `frame_of` maps seconds to
 /// spectrogram frames (hop 128).
-pub fn extract(
-    y: &[f32],
-    sr: u32,
-    attack_s: f64,
-    harmonic: &[Vec<f64>],
-    percussive: &[Vec<f64>],
-) -> Features {
+pub fn extract(y: &[f32], sr: u32, attack_s: f64) -> Features {
     let spectral = crate::spectral::analyze(y, sr, attack_s);
     let temporal = crate::temporal::analyze(y, sr, attack_s);
     let n_fft = 4096;
@@ -134,13 +128,16 @@ pub fn extract(
     } else {
         (0.0, pitch.harmonicity)
     };
-    // Same hop the detector and the HPSS spectrogram run on: frame indices
-    // must address the same grid, or the ratio reads the wrong moment.
+    // Same hop the detector runs on: frame indices must address the same
+    // grid, or the ratio reads the wrong moment. Only these eight frames
+    // are separated, exactly as a whole-track HPSS would separate them.
     let hop = overtone_core::FIT_HOP;
     let frame = (attack_s * sr as f64 / hop as f64).round() as usize;
     let lo = frame.saturating_sub(4);
     let hi = frame + 4;
-    let percussive_ratio = source::percussive_ratio(harmonic, percussive, lo, hi);
+    let sep = overtone_dsp::hpss::separate_frames(y, 2048, hop, lo..hi);
+    let percussive_ratio =
+        source::percussive_ratio(&sep.harmonic, &sep.percussive, 0, sep.harmonic.len());
     Features {
         spectral,
         temporal,
@@ -785,23 +782,10 @@ mod tests {
     }
 
     fn extract_track(track: &crate::corpus::CorpusTrack) -> Vec<(HitClass, Features)> {
-        let spec = overtone_dsp::stft::power_spectrogram(&track.samples, 2048, 128);
-        let sep = overtone_dsp::hpss::separate(&spec);
         track
             .hits
             .iter()
-            .map(|hit| {
-                (
-                    hit.class,
-                    extract(
-                        &track.samples,
-                        track.sr,
-                        hit.time_s,
-                        &sep.harmonic,
-                        &sep.percussive,
-                    ),
-                )
-            })
+            .map(|hit| (hit.class, extract(&track.samples, track.sr, hit.time_s)))
             .collect()
     }
 

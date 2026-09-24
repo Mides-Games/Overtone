@@ -12,6 +12,8 @@
 
 use rayon::prelude::*;
 
+use crate::stft;
+
 /// Median kernel along time, in frames. 17 frames at hop 128 is ~50 ms:
 /// long enough to bridge a transient, short enough to follow articulation.
 pub const KERNEL_TIME: usize = 17;
@@ -25,7 +27,9 @@ pub struct Separation {
     pub percussive: Vec<Vec<f64>>,
 }
 
-/// Separate with default kernels.
+/// Separate with default kernels. The whole input is held several times
+/// over, so this is for excerpts; a track is read through
+/// [`separate_frames`].
 pub fn separate(power: &[Vec<f64>]) -> Separation {
     separate_with(power, KERNEL_TIME, KERNEL_FREQ)
 }
@@ -67,6 +71,56 @@ pub fn separate_with(power: &[Vec<f64>], kernel_time: usize, kernel_freq: usize)
     Separation {
         harmonic,
         percussive,
+    }
+}
+
+/// Harmonic and percussive power on STFT frames `frames` of `y` only,
+/// exactly what [`separate`] of the whole track's spectrogram gives on
+/// those frames. The frequency median and the masks are per frame; the time
+/// median needs `KERNEL_TIME / 2` frames either side, so those are
+/// transformed too and nothing else. Past either end of the track the
+/// block stops where the track does, and the median clamps there as the
+/// whole-track filter does.
+///
+/// The hitsound features read eight frames around each attack. A
+/// whole-track separation held the linear spectrogram three times over
+/// (input, harmonic, percussive, plus both medians): about 5 GB at six
+/// minutes.
+pub fn separate_frames(
+    y: &[f32],
+    n_fft: usize,
+    hop: usize,
+    frames: std::ops::Range<usize>,
+) -> Separation {
+    separate_frames_with(y, n_fft, hop, frames, KERNEL_TIME, KERNEL_FREQ)
+}
+
+/// [`separate_frames`] with explicit kernels.
+pub fn separate_frames_with(
+    y: &[f32],
+    n_fft: usize,
+    hop: usize,
+    frames: std::ops::Range<usize>,
+    kernel_time: usize,
+    kernel_freq: usize,
+) -> Separation {
+    let total = stft::frame_count(y.len(), hop);
+    let lo = frames.start.min(total);
+    let hi = frames.end.min(total).max(lo);
+    if hi == lo {
+        return Separation {
+            harmonic: Vec::new(),
+            percussive: Vec::new(),
+        };
+    }
+    let half = (kernel_time | 1) / 2;
+    let (from, to) = (lo.saturating_sub(half), (hi + half).min(total));
+    let block = stft::map_frame_range(y, n_fft, hop, from..to, <[f64]>::to_vec);
+    let mut sep = separate_with(&block, kernel_time, kernel_freq);
+    let keep = lo - from..hi - from;
+    Separation {
+        harmonic: sep.harmonic.drain(keep.clone()).collect(),
+        percussive: sep.percussive.drain(keep).collect(),
     }
 }
 
@@ -162,6 +216,34 @@ mod tests {
             }
         }
         (h, p)
+    }
+
+    #[test]
+    fn a_few_frames_separate_exactly_as_the_whole_track_does() {
+        let y = mix(44_100, 3.0);
+        let spec = stft::power_spectrogram(&y, 2048, 128);
+        let whole = separate(&spec);
+        let total = spec.len();
+        // Interior, both ends of the track, and a range running past it.
+        for range in [
+            400..408,
+            0..8,
+            3..11,
+            total - 8..total,
+            total - 3..total + 5,
+        ] {
+            let local = separate_frames(&y, 2048, 128, range.clone());
+            let hi = range.end.min(total);
+            assert_eq!(local.harmonic, whole.harmonic[range.start..hi], "{range:?}");
+            assert_eq!(
+                local.percussive,
+                whole.percussive[range.start..hi],
+                "{range:?}"
+            );
+        }
+        assert!(separate_frames(&y, 2048, 128, total + 1..total + 9)
+            .harmonic
+            .is_empty());
     }
 
     #[test]

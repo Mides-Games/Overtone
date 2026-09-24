@@ -1885,6 +1885,30 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
             finally:
                 app.root.destroy()
 
+    def test_a_csv_that_cannot_be_written_says_so(self):
+        import tkinter
+        from unittest import mock
+        import overtone
+        try:
+            tkinter.Tk().destroy()
+        except tkinter.TclError as exc:
+            self.skipTest(f"Tk unavailable: {exc}")
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"), \
+                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
+            app = TimingAnalyzerApp()
+            try:
+                app.analysis = _validation_analysis([TimingPoint(500.0, 150.0, 0.9, 0)])
+                app._manual_edits = 2
+                # Like a CSV Excel holds open: the write raises an OSError.
+                unwritable = str(Path(tmp) / "no such folder" / "timing.csv")
+                with mock.patch("tkinter.filedialog.asksaveasfilename", return_value=unwritable):
+                    app.save_csv()                  # raised out of the Tk callback
+                self.assertIn(app.tr("error", value=""), app.status.get())
+                self.assertEqual(app._manual_edits, 2)   # nothing was exported
+            finally:
+                app.root.destroy()
+
     def test_the_classic_window_opens_on_a_badly_typed_config(self):
         import tkinter
         from unittest import mock

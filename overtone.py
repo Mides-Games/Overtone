@@ -5024,7 +5024,14 @@ class TimingAnalyzerApp:
         from tkinter import filedialog
         target = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
         if target:
-            export_csv(self.analysis, target)
+            try:
+                export_csv(self.analysis, target)
+            except OSError as exc:
+                # A CSV open in Excel is locked on Windows. Uncaught, the error
+                # went to stderr -- invisible from a shortcut -- and the status
+                # bar kept its last "Done" while nothing had been written.
+                self.status.set(self.tr("error", value=str(exc)))
+                return
             self._manual_edits = 0
             self.status.set(self.tr("saved", path=target))
 

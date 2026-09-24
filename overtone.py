@@ -3062,9 +3062,11 @@ def export_osz(analysis: "Analysis", destination: str | os.PathLike[str],
     target = Path(destination)
     temp = target.with_name(target.name + ".part")
     try:
-        with zipfile.ZipFile(temp, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr(osu_name, text.encode("utf-8"))
-            archive.write(source, audio_name)
+        with open(temp, "wb") as handle:
+            with zipfile.ZipFile(handle, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr(osu_name, text.encode("utf-8"))
+                archive.write(source, audio_name)
+            _sync(handle)
         os.replace(temp, target)
     except BaseException:
         try:
@@ -3081,8 +3083,26 @@ def export_osz(analysis: "Analysis", destination: str | os.PathLike[str],
 # .osu injection
 # ---------------------------------------------------------------------------
 
+def _sync(handle) -> None:
+    """Push a temp file's bytes to the disk before it is renamed into place.
+
+    The OS may persist a rename before the data it points at. After a power
+    cut or a crash between the two, the name then holds an empty or
+    zero-filled file and the content it replaced is gone. Syncing first
+    leaves the old file or the complete new one, never neither.
+    """
+    handle.flush()
+    os.fsync(handle.fileno())
+
+
+def _write_synced(path: Path, payload: bytes) -> None:
+    with open(path, "wb") as handle:
+        handle.write(payload)
+        _sync(handle)
+
+
 def _atomic_write_bytes(path: Path, payload: bytes) -> None:
-    """Write via a sibling temp file + rename.
+    """Write via a sibling temp file, synced, then renamed.
 
     Injecting rewrites the user's beatmap in place. Truncating the real file
     and then failing mid-write would destroy work that may not exist anywhere
@@ -3090,7 +3110,7 @@ def _atomic_write_bytes(path: Path, payload: bytes) -> None:
     """
     temp = path.with_name(path.name + ".part")
     try:
-        temp.write_bytes(payload)
+        _write_synced(temp, payload)
         os.replace(temp, path)
     except BaseException:
         try:
@@ -3121,7 +3141,7 @@ def _backup_before_write(path: Path, raw: bytes) -> Path:
         return newest
     temp = spare.with_name(spare.name + ".part")
     try:
-        temp.write_bytes(raw)
+        _write_synced(temp, raw)
         os.rename(temp, spare)
     except BaseException:
         try:

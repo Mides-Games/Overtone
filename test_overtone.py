@@ -1989,6 +1989,33 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
         self.assertNotIn("500,344.827", out)
         self.assertIn("1200,-50", out)
 
+    def test_every_rename_follows_a_sync(self):
+        # A rename can reach the disk before its data: a crash in between left
+        # map.osu (or its .bak, or the .osz) empty or zero-filled.
+        import os
+        from unittest import mock
+        import overtone
+        events = []
+
+        def record(name, real):
+            def call(*args):
+                events.append(name)
+                return real(*args)
+            return call
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(self.LEGACY_OSU, encoding="utf-8")
+            audio = Path(tmp) / "song.mp3"
+            audio.write_bytes(b"\xff\xfb" * 64)
+            with mock.patch.object(overtone.os, "fsync", record("fsync", os.fsync)), \
+                    mock.patch.object(overtone.os, "replace", record("replace", os.replace)), \
+                    mock.patch.object(overtone.os, "rename", record("rename", os.rename)):
+                inject_osu_timing_points(target, self._analysis())
+                export_osz(_grid_analysis([(431.0, 174.0)]), Path(tmp) / "map.osz", audio)
+            self.assertTrue(Path(str(target) + ".bak").is_file())
+        self.assertEqual(events, ["fsync", "rename", "fsync", "replace", "fsync", "replace"])
+
     def test_backup_keeps_the_pristine_original(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "map.osu"
@@ -2003,19 +2030,20 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
         # truncated .bak; the retry saw it existed, kept it for good, and
         # overwrote the map with no usable backup.
         from unittest import mock
-        real_write = Path.write_bytes
+        import overtone
+        real_write = overtone._write_synced
 
-        def disk_full(self, data):
-            if ".bak" in self.name:
-                real_write(self, data[: len(data) // 2])
+        def disk_full(path, data):
+            if ".bak" in path.name:
+                real_write(path, data[: len(data) // 2])
                 raise OSError(28, "No space left on device")
-            return real_write(self, data)
+            return real_write(path, data)
 
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "map.osu"
             target.write_text(self.LEGACY_OSU, encoding="utf-8")
             original = target.read_bytes()
-            with mock.patch.object(Path, "write_bytes", disk_full):
+            with mock.patch.object(overtone, "_write_synced", disk_full):
                 with self.assertRaises(OSError):
                     inject_osu_timing_points(target, self._analysis())
             self.assertEqual(target.read_bytes(), original)  # the map was not touched

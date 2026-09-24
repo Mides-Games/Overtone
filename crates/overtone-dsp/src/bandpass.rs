@@ -1,12 +1,19 @@
 //! Zero-phase bandpass bank matched to the multi-band flux bands.
 //!
 //! Re-timing an attack on the full-band waveform smears it: a hat landing
-//! on top of a kick moves the 20 % rise the walker looks for. Filtering the
-//! attack's own band out first removes the smear — but an IIR filter shifts
-//! phase, and a per-band phase shift is a per-band offset bias, which is
-//! worse than the smear. So every band is filtered forward *and* backward
-//! (filtfilt): zero phase distortion by construction, at the price of a
-//! squared magnitude response (skirts twice as steep — welcome here).
+//! on top of a kick moves the 20 % rise the walker looks for. The plan (DSP
+//! §B.6) was to re-time on the attack's own band. **Measured, that loses:**
+//! a narrow band rings longer than the smear it removes (+9 ms late on the
+//! kick-under-hat test), and a 0-2 band submix pre-rings (-4.5 ms early).
+//! What does help is a gentle lowpass (RBJ, Q = 0.5, no resonance): 0.96 ms
+//! against 1.86 ms full-band on the same test. Nothing in the engine uses
+//! any of it yet; the bank stays for the hitsound work and the lowpass is
+//! the candidate if B.6 is picked up again.
+//!
+//! An IIR filter shifts phase, and a per-band phase shift is a per-band
+//! offset bias, which is worse than the smear. So every band is filtered
+//! forward *and* backward (filtfilt): zero phase distortion by construction,
+//! at the price of a squared magnitude response (skirts twice as steep).
 //!
 //! Filters are RBJ constant-peak-gain bandpasses, one biquad per band,
 //! Direct Form I in f64. Edges come from [`crate::multiband::band_edges`]

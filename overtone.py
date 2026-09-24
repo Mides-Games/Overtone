@@ -870,7 +870,8 @@ def _detect_attacks(y: np.ndarray, sr: int, hop: int = FIT_HOP,
         times = _retime_onsets(y, sr, times)
         order = np.argsort(times)
         times, weights = times[order], weights[order]
-        # Sub-sample retiming can collide two neighbours; keep the stronger.
+        # Sub-sample retiming can collide two neighbours; keep the earlier of
+        # any pair within 4 ms, whatever the weights (the Rust port matches).
         if times.size > 1:
             keep = np.r_[True, np.diff(times) > 0.004]
             times, weights = times[keep], weights[keep]

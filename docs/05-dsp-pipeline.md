@@ -91,7 +91,8 @@ The fallback path (`_fast_onset_envelope`, a plain STFT flux with `nperseg=1024`
 ## A.3 Peak picking
 
 `scipy.signal.find_peaks(env, distance, prominence=0.05, height=floor)` with
-`distance = round(0.025·sr/hop)` (= 8 frames ⇒ 25 ms minimum spacing) and
+`distance = round(0.025·sr/hop)` (= round(8.61) = 9 frames ⇒ 26.1 ms minimum spacing at
+44.1 kHz / hop 128) and
 `floor = max(0.04, percentile(env, 55))`; if nothing is found, retry with `distance` only.
 Then parabolic sub-frame interpolation with the shift clamped to ±0.5 frames.
 
@@ -115,8 +116,9 @@ t'    = (lo + j + frac + window) / sr           (linear interp for frac)
 accept t' only if |t' − t| ≤ 30 ms
 ```
 
-Then re-sort, and drop attacks closer than 4 ms to a stronger neighbour (re-timing can
-collide two peaks). The `1.6×` guard and the `+ window` term are both easy to lose and
+Then re-sort, and drop any attack within 4 ms (inclusive) of its sorted predecessor,
+keeping the earlier one whatever the weights (re-timing can collide two peaks; v3 and the
+port both do exactly this). The `1.6×` guard and the `+ window` term are both easy to lose and
 both matter.
 
 ## A.5 Circular coherence
@@ -390,6 +392,14 @@ hitsound engine needs anyway) to pick the band. Plausibly worth a few tenths of 
 millisecond on dense mixes; the measured worst case today is `shuffle-96` at 2.26 ms.
 **Gate:** median offset error must not regress on any fixture.
 Difficulty **medium** · impact **low-medium** · no ML · no GPU.
+
+**Measured, and rejected as specified.** On a synthetic kick with a hat 3 ms on top
+(the `bandpass.rs` test), re-timing on the kick's own narrow band came out **+9 ms
+late** — the band's ringing outlasts the smear it removes — and a submix of bands 0-2
+**-4.5 ms early** from skirt pre-ring. A gentle lowpass (RBJ, Q = 0.5) does halve the
+smear (0.96 ms against 1.86 ms full-band) and is the candidate if this is picked up
+again; it is built and tested but not wired into the engine, and nothing has been
+measured on the corpus.
 
 ## B.7 Parallelism and caching
 

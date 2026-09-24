@@ -47,15 +47,15 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
     let chroma = stft::map_frames(y, n_fft, 128, |power| {
         chroma::chroma_frame(power, sr, n_fft)
     });
-    // STFT frames (128 hop) grouped into WIN_S windows.
-    let per = ((WIN_S * sr as f64) / 128.0).round() as usize;
+    // The windows' real length: `hop` samples, WIN_S only to rounding.
+    let win_s = hop as f64 / sr as f64;
     // Windows, not STFT frames: the loop below indexes feature windows, so
     // a short track must bow out here rather than panic there.
-    if per == 0 || y.len().div_ceil(hop.max(1)) < 2 * KERNEL_HALF + 1 {
+    if hop == 0 || y.len().div_ceil(hop) < 2 * KERNEL_HALF + 1 {
         return Structure {
             boundaries: Vec::new(),
             energy: Vec::new(),
-            energy_hop: WIN_S,
+            energy_hop: win_s,
         };
     }
 
@@ -78,8 +78,12 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
     let windows = rms.len();
     let mut features: Vec<Vec<f64>> = Vec::with_capacity(windows);
     for (w, &window_rms) in rms.iter().enumerate() {
-        let lo = (w * per).min(chroma.len());
-        let hi = ((w + 1) * per).min(chroma.len());
+        // The STFT frames whose centres (sample `f * 128`) fall inside the
+        // window's samples. A fixed 172 frames per window is 0.49923 s, so
+        // chroma ran ahead of the energy windows -- 0.37 s by four minutes,
+        // a whole window late on the boundary.
+        let lo = (w * hop).div_ceil(128).min(chroma.len());
+        let hi = ((w + 1) * hop).div_ceil(128).min(chroma.len());
         let mut mean = [0.0f64; 12];
         if hi > lo {
             for frame in &chroma[lo..hi] {
@@ -175,9 +179,9 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
     // leading silence is not a phrase. Drop index-0 artefacts.
     merged.retain(|&i| i > 1);
     Structure {
-        boundaries: merged.iter().map(|&i| i as f64 * WIN_S).collect(),
+        boundaries: merged.iter().map(|&i| i as f64 * win_s).collect(),
         energy: rms,
-        energy_hop: WIN_S,
+        energy_hop: win_s,
     }
 }
 
@@ -273,6 +277,31 @@ mod tests {
         let quiet: f64 = structure.energy[8..32].iter().sum::<f64>() / 24.0;
         let loud: f64 = structure.energy[36..60].iter().sum::<f64>() / 24.0;
         assert!(loud > 2.0 * quiet, "loud {loud:.4} vs quiet {quiet:.4}");
+    }
+
+    #[test]
+    fn a_late_chord_change_lands_on_its_own_window() {
+        // Four minutes of Am, then F major at the same level: only harmony
+        // moves. Grouping a fixed 172 STFT frames per window (0.49923 s)
+        // let chroma run 0.37 s ahead of the 0.5 s windows by 240 s, and
+        // the boundary came out a window late.
+        let y = concat(&[
+            chord(44_100, 220.0, false, 0.4, 240.0),
+            chord(44_100, 174.61, true, 0.4, 10.0),
+        ]);
+        let structure = analyze(&y, 44_100);
+        let late: Vec<f64> = structure
+            .boundaries
+            .iter()
+            .copied()
+            .filter(|&b| b > 200.0)
+            .collect();
+        assert_eq!(late.len(), 1, "{:?}", structure.boundaries);
+        assert!(
+            (late[0] - 240.0).abs() < 0.25,
+            "boundary {} vs 240.0",
+            late[0]
+        );
     }
 
     #[test]

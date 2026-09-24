@@ -1300,6 +1300,30 @@ class BoundedMemoryTests(unittest.TestCase):
         self.assertLess(tracker / 2**20, 400)
 
 
+class NoiseBeforeTheMusicTests(unittest.TestCase):
+    """The first red line starts where the grid starts, not at the first noise.
+
+    With no bar claimed, the first line went to the grid beat nearest the
+    first attack -- on very-noisy-132 a noise onset at 27 ms, so the line sat
+    at -34.65 ms, a beat before music that starts at 420 ms.
+    """
+
+    def test_a_burst_before_the_drums(self):
+        import soundfile as sf
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "burst.wav"
+            _drum_track(path, [(0.42, 132.0)], duration=30.0)
+            y, sr = sf.read(str(path), dtype="float32")
+            rng = np.random.default_rng(2)
+            i = int(0.027 * sr)   # 0.135 of a beat off the grid
+            y[i:i + 600] += (rng.standard_normal(600) * np.exp(-np.arange(600) / 120)).astype(np.float32) * 0.6
+            sf.write(str(path), y, sr)
+            analysis = analyze_audio(path)
+        self.assertEqual(analysis.engine, "precision")
+        first = snap_timing_points(analysis.points)[0]
+        self.assertLess(abs(first.offset_ms - 420.0), 2.0, first.offset_ms)
+
+
 class StrayLeadInTests(unittest.TestCase):
     """A lone click before the music must not throw the grid away.
 

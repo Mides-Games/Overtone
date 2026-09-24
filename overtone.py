@@ -1825,6 +1825,22 @@ def points_from_meter(sections: list[GridSection], times: np.ndarray,
     return points
 
 
+def _first_on_grid(times: np.ndarray, section: GridSection, tol_ratio: float = 0.12) -> float:
+    """The first attack the first section's grid counts as its own.
+
+    The first red line is placed from the first sound. With no bar to anchor
+    it, an attack off the grid before the music -- noise from 0 s, a stray
+    click -- put it on the grid beat nearest that attack, a beat before the
+    music began (``very-noisy-132``: -34.65 ms, the music at 420 ms). An
+    inlier is what the fit itself counts: within ``tol_ratio`` of a beat.
+    """
+    if times.size == 0:
+        return float(section.start_s)
+    k = np.round((times - section.phase) / section.period)
+    on_grid = np.abs(times - (section.phase + k * section.period)) <= tol_ratio * section.period
+    return float(times[on_grid][0]) if on_grid.any() else float(times[0])
+
+
 def _points_from_sections(sections: list[GridSection], first_sound: float,
                           persistence: int, downbeat_class: int, meter: int,
                           factor: float = 1.0,
@@ -1997,7 +2013,7 @@ def _precision_engine(y: np.ndarray, sr: int, min_delta: float, persistence: int
         times, weights, sections[0].period, sections[0].phase)
     return {"times": times, "weights": weights, "env": env, "sections": sections,
             "meter": meter_text, "meter_beats": bar_beats, "downbeat": downbeat,
-            "atoms_per_beat": m, "first_sound": float(times[0])}
+            "atoms_per_beat": m, "first_sound": _first_on_grid(times, sections[0])}
 
 
 # ---------------------------------------------------------------------------
@@ -2384,8 +2400,7 @@ def rebuild_with_subdivision(analysis: Analysis, factor: float,
                "env": analysis.onset, "sections": analysis.sections,
                "meter": analysis.meter, "meter_beats": analysis.meter_beats,
                "downbeat": analysis.downbeat_class,
-               "first_sound": float(analysis.attack_times[0]) if analysis.attack_times.size
-               else float(analysis.sections[0].start_s)}
+               "first_sound": _first_on_grid(analysis.attack_times, analysis.sections[0])}
         rebuilt = _assemble_analysis(analysis.source, np.zeros(1), analysis.sample_rate,
                                      fit, min_delta, persistence, min_confidence, factor)
         return Analysis(analysis.source, analysis.duration, rebuilt.beats,

@@ -353,6 +353,23 @@ pub fn points_from_meter(
     Some(points)
 }
 
+/// The first attack `section`'s grid counts as its own (within 0.12 of a
+/// beat) — v3 `_first_on_grid`. The first red line is placed from the first
+/// sound; with no bar to anchor it, an off-grid attack before the music (noise
+/// from 0 s, a stray click) put it on the grid beat before the music began.
+pub fn first_on_grid(times: &[f64], section: &GridSection) -> f64 {
+    let tol = 0.12 * section.period;
+    times
+        .iter()
+        .copied()
+        .find(|&t| {
+            let k = ((t - section.phase) / section.period).round();
+            (t - (section.phase + k * section.period)).abs() <= tol
+        })
+        .or_else(|| times.first().copied())
+        .unwrap_or(section.start.get())
+}
+
 /// Fitted grids into red lines, each on a (down)beat of its own grid — v3
 /// `_points_from_sections`.
 #[allow(clippy::too_many_arguments)]
@@ -679,11 +696,14 @@ pub fn analyze_attacks(
         }
         None => ("4/4".to_string(), 0, 1),
     };
+    let first_sound = settled
+        .first()
+        .map_or(times[0], |first| first_on_grid(times, first));
     let points = assemble_points(
         &settled,
         times,
         &w32,
-        times[0],
+        first_sound,
         persistence,
         downbeat,
         meter_beats,
@@ -982,6 +1002,29 @@ mod tests {
         }
         assert!((settled[0].start.get() - times[0]).abs() < 1e-9);
         assert!((settled.last().unwrap().end.get() - times[times.len() - 1]).abs() < 1e-9);
+    }
+
+    #[test]
+    fn noise_before_the_music_does_not_start_the_grid() {
+        // A beat grid from 0.42 s at 132 BPM, and one attack at 27 ms that is
+        // 0.136 of a beat off it -- noise at the start of the file. It was the
+        // "first sound", and the first red line landed on the grid beat before
+        // the music (-34.65 ms on very-noisy-132).
+        let period = 60.0 / 132.0;
+        let section = GridSection {
+            start: overtone_core::Seconds(0.027),
+            end: overtone_core::Seconds(30.0),
+            period,
+            phase: 0.42,
+            inliers: 60,
+            residual_ms: 0.2,
+            coverage: 1.0,
+        };
+        let mut times = vec![0.027];
+        times.extend((0..60).map(|k| 0.42 + k as f64 * period));
+        assert!((first_on_grid(&times, &section) - 0.42).abs() < 1e-12);
+        // With nothing on the grid, the first attack is all there is.
+        assert_eq!(first_on_grid(&[0.027], &section), 0.027);
     }
 
     #[test]

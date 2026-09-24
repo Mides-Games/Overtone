@@ -16,6 +16,47 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-23 · The two findings from the fixes
+
+Both were recorded on 2026-09-23 while fixing others; each was reproduced first and
+has a test that fails on the old code.
+
+### Fixed
+
+- **x2 on the fallback tracker dragged the new beats onto old hits** (#50). Inserted
+  beats were snapped to the loudest point of their window even when that point was the
+  window's edge — the previous hit's tail — so a bare 120 BPM click read 186 at x2. An
+  inserted beat now holds when its window's maximum is on the edge. Only for a factor
+  the user asked for: on the tracker's own doubling it changed 9 of 27 real songs with
+  no net gain against their ranked maps, so auto results are exactly as before.
+- **With no bar claimed, the first red line followed noise before the music** (Python and
+  Rust). The line was placed from the first attack of any kind; it is now placed from
+  the first attack the grid counts as an inlier (within 0.12 of a beat).
+
+### Changed
+
+- **`very-noisy-132` re-dumped, on purpose.** Its noise starts at 0 s and gives an
+  attack at 27 ms, 0.136 of a beat off the grid. The first red line sat at -34.65 ms, on
+  the grid beat before the music; it is now at 419.897 ms, on the first beat (truth
+  420 ms). The other 23 vectors are unchanged (`long-6min`'s 5th-decimal weight drift
+  from #38 was again left as committed).
+
+### Measured
+
+```
+bare click 120, x2 (fallback)                186.0 -> 240.1 BPM (rebuild 239.9)
+kit read at 199.5, x2 (fallback)             519.2 -> 399.2
+27 real songs on the fallback, auto          identical to the old code, 27/27
+  (holding on auto: within 10 ms of the map 0.128 -> 0.125, not applied)
+kit at 420 ms + noise burst at 27 ms         first red line -34.4 -> 420 ms
+very-noisy-132 first red line                -34.65 -> 419.897 ms
+gates: 238/238 Python; benchmark 24/24, 0.0000 BPM / 0.16 ms; bpm-snapshot unchanged;
+golden 24/24 after the re-dump; coverage, measures, signatures green; cargo test
+194/194; overtone-bench golden 24/24, nogrid 3/3
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-23 · The classic window's config, clipboard, CSV and .osz
 
 Four medium findings from the classic window and the file writers (five backlog rows —

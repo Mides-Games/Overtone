@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-325%20Python%20%C2%B7%20231%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-332%20Python%20%C2%B7%20231%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -102,8 +102,9 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Drag red lines on the timeline | ✅ | Snaps to the nearest attack (Alt: free); one undo |
 | Map red lines drawn as ghosts on the timeline | ✅ | From the reference or compare card |
 | Command palette, full keyboard map | 📋 | P3 |
-| Sections: Hitsounds, Audio, full Settings | 📋 | P19 — Library, Timing, Map check, Mapset, Report and Export exist |
-| Light theme, UI scale | 📋 | P20 |
+| Settings section: output folder, offset precision, click, interface size, cache | ✅ | Detection stays in its drawer |
+| Sections: Hitsounds, Audio | 📋 | P19 — Library, Timing, Map check, Mapset, Report, Export and Settings exist |
+| Light theme | 📋 | P20 — UI scale and reduced motion are in |
 
 ### Playback
 
@@ -115,7 +116,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Section loop at 75 / 50 % | ✅ | Resampled, so the pitch drops and every attack stays exactly in place; a pitch-kept stretch moved attacks ~24 ms |
 | Seek, section loop, playhead, play from a red line | ✅ | Space plays and pauses; double-click the tempo map to play from there |
 | Tap-along check, tap latency calibration | ✅ | How far your taps land from the click; calibrate once, remembered |
-| Metronome options (sound, subdivisions) | 📋 | P20 |
+| Metronome options | ✅ | 1-4 clicks per beat, bar accent; one sound |
 
 ### osu! files
 
@@ -281,7 +282,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 325 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 332 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage

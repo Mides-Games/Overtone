@@ -28,24 +28,23 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **325** Python (226 engine + 99 web shell) · **231** Rust.
+Tests: **332** Python (227 engine + 105 web shell) · **231** Rust.
 
 ### What is pending, in order
 
 The audit backlog is closed: every finding fixed, recorded as already fixed, or decided
 ([`13-audit-backlog.md`](13-audit-backlog.md)). The Rust engine is in the app, opt-in.
 
-1. **Settings** (Phase 20) — every option in one place. The timeline (Phase 3) is in:
-   waveform, zoom and pan, drag red lines, the drift lane and the map's lines as ghosts;
-   so is playback (Phase 4) but for the percussion-only audition, and the first five
-   sidebar modes of [Phase 19](#phase-19--app-sections): Mapset, Snap audit, Reference
-   timing, Assisted timing (typed or tapped) and the Report.
-2. **The next sidebar modes** (Phase 19) — Structure, Evidence, Write history, Audio swap.
-3. **Percussion-only audition** (Phase 4) — hear the percussive part alone.
-4. **Map tools** (Phase 21) — kiai, preview point, SV normaliser, inject into every difficulty.
-5. **Hitsounds** (Phase 6) — decision, editor, export; then its own section.
-6. **Real-audio accuracy** (Phase 10) — build Corpus B first, then one sub-phase at a time.
-7. **Installer** (Phase 10.13) — MSI + portable ZIP.
+1. **The next sidebar modes** (Phase 19) — Structure, Evidence, Write history, Audio swap.
+   In since 2026-09-24: Settings (Phase 20: output folder, offset precision, click,
+   interface size, cache), the timeline (Phase 3), playback (Phase 4, but for the
+   percussion-only audition) and the first five sidebar modes of
+   [Phase 19](#phase-19--app-sections).
+2. **Percussion-only audition** (Phase 4) — hear the percussive part alone.
+3. **Map tools** (Phase 21) — kiai, preview point, SV normaliser, inject into every difficulty.
+4. **Hitsounds** (Phase 6) — decision, editor, export; then its own section.
+5. **Real-audio accuracy** (Phase 10) — build Corpus B first, then one sub-phase at a time.
+6. **Installer** (Phase 10.13) — MSI + portable ZIP.
 
 ### Bugs fixed on 2026-09-23
 
@@ -453,7 +452,7 @@ loaded song. Today everything lives in the Timing view.
 | Hitsounds | instrument lanes, per-object sound, exported hitsound difficulty | high | **high** | P6 | no | no | P1 | todo |
 | Audio | spectrogram, 7-band onset lanes, percussive/harmonic balance, energy with sections, tempo heatmap | med | med | P2 via bridge | no | opt | P2 | todo |
 | Export | every output in one place: `.osu` text, CSV, click, `.osz`, lazer decimals, other games | low | high | P5 | no | no | P1 | **done** — own section |
-| Settings | every option in Phase 20 | low | high | shell | no | no | P1 | partial — detection drawer, language, engine choice |
+| Settings | every option in Phase 20 | low | high | shell | no | no | P1 | **done** — its own section; detection stays in the drawer |
 
 
 ### New sidebar modes — proposed 2026-09-24
@@ -503,15 +502,15 @@ limit applies.
 
 | Option | What it controls | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
-| Output folder | where exports go; `Documents\Overtone\<Artist - Title>\` by default | low | high | 14.4b | no | no | P1 | todo |
-| Offset precision | whole ms (stable) or decimals (lazer) on every export | low | med | writer | no | no | P1 | partial — CLI flag only |
+| Output folder | where exports go; `Documents\Overtone\<Artist - Title>\` by default | low | high | 14.4b | no | no | P1 | **done** — asked (the dialog opens there) or not (a free name, never over an earlier export) |
+| Offset precision | whole ms (stable) or decimals (lazer) on every export | low | med | writer | no | no | P1 | **done** — 0-3 decimals for copy, .osz and inject |
 | Octave preference | prefer 120–300 BPM, or a custom range | low | med | engine | no | no | P2 | partial — on/off toggle |
 | Live confidence threshold | a slider that shows which candidate points would appear | low | med | engine | no | no | P2 | todo |
 | Analysis mode | fast (Rust) or precise (every Phase 10 voter) | low | med | P10, P22 | no | no | P2 | todo |
-| Backup policy | one pristine `.bak` (today) or timestamped backups | low | med | writer | no | no | P2 | todo |
-| Cache | size limit, location, clear button | low | low | cache | no | no | P2 | todo |
-| Click track | sound, accent on downbeats, level, subdivision clicks | low | med | click | no | no | P2 | todo |
-| Theme and scale | light theme, UI scale 90–150 %, reduced motion | low | med | tokens | no | no | P2 | todo |
+| Backup policy | one pristine `.bak` (today) or timestamped backups | low | med | writer | no | no | P2 | **not needed** — every state is already kept (`.bak` pristine, then `.bak2`, `.bak3`…); the Settings section says so |
+| Cache | size limit, location, clear button | low | low | cache | no | no | P2 | **done** but a settable limit — entries, size, folder, clear |
+| Click track | sound, accent on downbeats, level, subdivision clicks | low | med | click | no | no | P2 | **done** — 1-4 clicks per beat, bar accent on/off, levels in the transport; one sound |
+| Theme and scale | light theme, UI scale 90–150 %, reduced motion | low | med | tokens | no | no | P2 | partial — UI scale 80-150 %, reduced motion; no light theme |
 | Shortcuts | rebind any action | low | low | keyboard map | no | no | P3 | todo |
 | Per-song presets | remember detection settings per song | low | med | project format | no | no | P2 | todo |
 | Language | English and Spanish; more through translation files | low | med | i18n | no | no | P2 | partial |
@@ -614,7 +613,7 @@ P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─�
                            ├─► P4 playback ✗ / editor ✓
                            └─► P5 osu! ✓ ─────────────► P8 automation (half) ─► P9 (suggestions ✓)
 
-Next: settings ─► map tools ─► hitsounds
+Next: map tools ─► hitsounds ─► Phase 10
       ─► map tools ─► hitsounds ─► Phase 10 ─► installer
 ```
 

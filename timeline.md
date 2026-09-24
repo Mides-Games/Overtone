@@ -16,6 +16,47 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · Settings, in one place
+
+### Changed
+
+- **Settings** is its own sidebar section:
+  - the output folder, `Documents/Overtone/<song>` by default, asked or not;
+  - offset precision, from whole ms for osu!stable up to 3 decimals for osu!lazer, used by
+    copy, `.osz` and inject;
+  - clicks per beat (1-4) and the bar accent, for the app and the WAV;
+  - interface size (80-150 %) and reduced motion;
+  - the cache, with a clear button;
+  - what the backups keep.
+
+  Detection stays in its drawer, one button away.
+- **The click has levels**: bar, beat and subdivision, in three tones, the same in the app
+  and in the WAV.
+
+### Fixed
+
+- **Under the interface size**, the tempo map read the pointer 20 % off at 120 %, so a red
+  line could not be caught. The pointer is taken in the canvas's own pixels now; at 80,
+  100 and 120 % it lands within 0.5 px.
+
+### Rejected / tried and dropped
+
+- **Timestamped backups.** Every state is already kept: `.bak` stays pristine, and later
+  states go to `.bak2`, `.bak3`… Timestamps would only rename them.
+
+### Measured
+
+```
+1/2 clicks per beat           clicks rebuilt at once: 0.310, 0.517, 0.724 s, levels 2 0 1
+2 decimals                    copied first line 310.14
+pointer at 80 / 100 / 120 %   within 0.5 px of the red line (was 57 px off at 120 %)
+Python unittest               325 -> 332, all pass
+benchmark.py 24/24 · bpm-snapshot · golden.py 27/27 · coverage · measures · signatures
+robustness · reference 24/24 · assisted 70/70 · facts
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · The tempo map becomes a timeline
 
 Phase 3's timeline rows, on the canvas the app already had.

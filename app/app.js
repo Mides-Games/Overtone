@@ -5,6 +5,19 @@
 const I18N = {
   en: {
     tagline: "Timing for osu! maps", nav_timing: "Timing", offline: "offline, nothing leaves this PC",
+    nav_sections: "Sections", nav_library: "Library", nav_mapcheck: "Map check", nav_export: "Export", nav_settings: "Settings",
+    close: "Close",
+    need_title: "Nothing analyzed yet",
+    need_body: "{view} works on the analyzed song, the same one every section shares. Open an audio file and analyze it.",
+    need_busy: "Analyzing… {view} fills in as soon as it finishes.",
+    need_analyze: "Analyze {name}", need_library: "Go to Library",
+    mapcheck_sub: "One difficulty you mapped, checked against this analysis. Read only: nothing is written.",
+    export_sub: "Everything here writes the current timing points, edits included.",
+    exp_osu_t: "osu! timing points", exp_osu_d: "The red lines as [TimingPoints] text, ready to paste into a .osu.",
+    exp_csv_t: "CSV table", exp_csv_d: "Offset, BPM, beat and confidence per point, for a spreadsheet.",
+    exp_click_t: "Click track", exp_click_d: "A metronome WAV on these red lines, to hear any drift against the song.",
+    exp_osz_t: ".osz package", exp_osz_d: "The audio plus a new beatmap carrying this timing.",
+    exp_inject_t: "Inject into a .osu", exp_inject_d: "Replaces the red lines of a difficulty you already have. You confirm first, and a backup is kept.",
     open: "Open audio", analyze: "Analyze", analyzing: "Analyzing…",
     empty_title: "Time a song in one click",
     empty_body: "Open an audio file and Overtone finds every BPM change, offset and bar line.",
@@ -48,7 +61,7 @@ const I18N = {
     undo: "Undo", redo: "Redo",
     no_undo: "Nothing to undo.", no_redo: "Nothing to redo.",
     undone: "Undone.", redone: "Redone.",
-    actions_copy: "Copy .osu", actions_csv: "CSV", actions_click: "Click track", actions_osz: ".osz package", actions_inject: "Inject .osu…",
+    actions_copy: "Copy .osu", actions_csv: "Save CSV…", actions_click: "Save click track…", actions_osz: "Save .osz…", actions_inject: "Inject .osu…",
     e_offset: "Offset (ms)", e_bpm: "BPM", e_apply: "Apply", e_add: "Add", e_delete: "Delete",
     edited: "Point #{n}: {bpm} BPM · {ms} ms", added: "Added {bpm} BPM at {ms} ms", deleted: "Deleted point #{n}",
     section_rescaled: "Section #{n}: {bpm} BPM",
@@ -100,6 +113,19 @@ const I18N = {
   },
   es: {
     tagline: "Timing para mapas de osu!", nav_timing: "Timing", offline: "sin conexión, nada sale de esta PC",
+    nav_sections: "Secciones", nav_library: "Biblioteca", nav_mapcheck: "Revisar mapa", nav_export: "Exportar", nav_settings: "Ajustes",
+    close: "Cerrar",
+    need_title: "Todavía no hay nada analizado",
+    need_body: "{view} trabaja sobre la canción analizada, la misma que comparten todas las secciones. Abrí un audio y analizalo.",
+    need_busy: "Analizando… {view} se completa apenas termine.",
+    need_analyze: "Analizar {name}", need_library: "Ir a la Biblioteca",
+    mapcheck_sub: "Una dificultad que mapeaste, contrastada con este análisis. Solo lectura: no se escribe nada.",
+    export_sub: "Todo lo de acá escribe los timing points actuales, ediciones incluidas.",
+    exp_osu_t: "Timing points de osu!", exp_osu_d: "Las líneas rojas como texto de [TimingPoints], listas para pegar en un .osu.",
+    exp_csv_t: "Tabla CSV", exp_csv_d: "Offset, BPM, beat y confianza por punto, para una planilla.",
+    exp_click_t: "Pista de clic", exp_click_d: "Un WAV de metrónomo sobre estas líneas rojas, para oír si derivan contra la canción.",
+    exp_osz_t: "Paquete .osz", exp_osz_d: "El audio más un beatmap nuevo con este timing.",
+    exp_inject_t: "Inyectar en un .osu", exp_inject_d: "Reemplaza las líneas rojas de una dificultad que ya tenés. Confirmás antes y se guarda un respaldo.",
     open: "Abrir audio", analyze: "Analizar", analyzing: "Analizando…",
     empty_title: "Timea una canción con un clic",
     empty_body: "Abre un audio y Overtone encuentra cada cambio de BPM, offset y línea de compás.",
@@ -143,7 +169,7 @@ const I18N = {
     undo: "Deshacer", redo: "Rehacer",
     no_undo: "Nada que deshacer.", no_redo: "Nada que rehacer.",
     undone: "Deshecho.", redone: "Rehecho.",
-    actions_copy: "Copiar .osu", actions_csv: "CSV", actions_click: "Pista de clic", actions_osz: "Paquete .osz", actions_inject: "Inyectar .osu…",
+    actions_copy: "Copiar .osu", actions_csv: "Guardar CSV…", actions_click: "Guardar pista de clic…", actions_osz: "Guardar .osz…", actions_inject: "Inyectar .osu…",
     e_offset: "Offset (ms)", e_bpm: "BPM", e_apply: "Aplicar", e_add: "Añadir", e_delete: "Borrar",
     edited: "Punto #{n}: {bpm} BPM · {ms} ms", added: "Añadido {bpm} BPM en {ms} ms", deleted: "Borrado el punto #{n}",
     section_rescaled: "Sección #{n}: {bpm} BPM",
@@ -195,7 +221,7 @@ const I18N = {
   },
 };
 
-const S = { lang: "en", file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, recent: [] };
+const S = { lang: "en", view: "library", file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, recent: [] };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
@@ -209,11 +235,60 @@ function t(key, values) {
 function translate() {
   document.documentElement.lang = S.lang;
   document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  // Icon-only controls (and nav items once the rail collapses) carry their
+  // name in title/aria-label, so those follow the language too.
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => {
+    el.title = t(el.dataset.i18nTitle);
+    el.setAttribute("aria-label", el.title);
+  });
+  document.querySelectorAll("[data-i18n-aria]").forEach((el) => el.setAttribute("aria-label", t(el.dataset.i18nAria)));
   document.querySelectorAll("#langSwitch button").forEach((b) => b.classList.toggle("on", b.dataset.lang === S.lang));
   renderSong();
   renderRecents();
+  renderNeedSong();
   if (S.result) renderResult(S.result);
   if (S.busy) $("analyzeText").textContent = t("analyzing");
+}
+
+// ------------------------------------------------------------------ views
+// One analysed song is shared by every view: switching only changes what is
+// visible, never the session. Views that read the analysis show the
+// "analyze first" panel until there is one, instead of blank space.
+const VIEWS = ["library", "timing", "mapcheck", "export"];
+const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", mapcheck: "nav_mapcheck", export: "nav_export" };
+
+function needsResult(view) {
+  const section = document.querySelector(`.content > [data-view="${view}"]`);
+  return !!section && section.hasAttribute("data-needs-result");
+}
+
+function setView(view) {
+  if (!VIEWS.includes(view)) return;
+  const changed = S.view !== view;
+  S.view = view;
+  document.querySelectorAll("#nav [data-view]").forEach((b) => {
+    const on = b.dataset.view === view;
+    b.classList.toggle("active", on);
+    if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  });
+  const blocked = needsResult(view) && !S.result;
+  document.querySelectorAll(".content > [data-view]").forEach((sec) => { sec.hidden = blocked || sec.dataset.view !== view; });
+  $("needSong").hidden = !blocked;
+  renderNeedSong();
+  if (changed) $("content").scrollTop = 0;
+  // The canvas measures its box: it can only be drawn while visible.
+  if (view === "timing" && S.result) drawTrace();
+}
+
+function renderNeedSong() {
+  const view = t(VIEW_LABEL[S.view] || "nav_timing");
+  $("needBody").textContent = t(S.busy ? "need_busy" : "need_body", { view });
+  const ready = !!S.file && !S.busy;
+  $("needAnalyze").hidden = !ready;
+  if (ready) $("needAnalyzeText").textContent = t("need_analyze", { name: S.file.name });
+  // One primary action: Analyze once a song is open, Open audio before.
+  $("needOpen").classList.toggle("primary", !ready);
+  $("needOpen").disabled = S.busy;
 }
 
 let toastTimer = 0;
@@ -232,6 +307,7 @@ function setFile(info) {
   renderSong();
   $("analyzeBtn").disabled = !S.file || S.busy;
   $("emptyAnalyze").hidden = !S.file;
+  renderNeedSong();
 }
 
 function renderSong() {
@@ -296,6 +372,7 @@ function setBusy(busy, message) {
   $("progress").hidden = !busy;
   if (message !== undefined) $("progressText").textContent = message;
   syncActions();
+  renderNeedSong();
 }
 
 function syncActions() {
@@ -409,6 +486,9 @@ window.overtone = {
     }
     S.selected = -1;
     showResult(result);
+    // A finished analysis lands on Timing, unless the user is already on a
+    // view that was waiting for it (Map check, Export): that one fills in.
+    if (!needsResult(S.view)) setView("timing");
     syncHistory();
     syncLocks();
     refreshRecents();
@@ -431,8 +511,7 @@ function showResult(result) {
   S.align = null;
   S.density = null;
   if (!sameSong) S.comparePath = null;  // a map belongs to one song
-  $("empty").hidden = true;
-  $("results").hidden = false;
+  setView(S.view);  // lifts the "analyze first" panel off the current view
   syncActions();
   renderResult(result);
   // Same song, new point list (edit, undo, redo, pulse): recompare so the
@@ -956,6 +1035,7 @@ function drawTrace(hoverX) {
   if (!r) return;
   const wrap = $("traceWrap"), dpr = window.devicePixelRatio || 1;
   const W = wrap.clientWidth, H = wrap.clientHeight;
+  if (!W || !H) return;  // Timing is not the visible view; setView redraws it
   if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
   }
@@ -1101,14 +1181,32 @@ function selectPoint(i, toggle = true) {
   drawTrace();
 }
 
+let drawerOpener = null;
 function openDrawer(open) {
-  $("drawer").classList.toggle("open", open);
-  $("drawer").setAttribute("aria-hidden", String(!open));
+  const drawer = $("drawer"), wasOpen = drawer.classList.contains("open");
+  drawer.classList.toggle("open", open);
+  drawer.setAttribute("aria-hidden", String(!open));
+  // Closed, it is only slid off screen: inert keeps Tab out of it.
+  drawer.inert = !open;
   $("scrim").hidden = !open;
+  if (open && !wasOpen) {
+    drawerOpener = document.activeElement;
+    $("closeDrawer").focus();
+  } else if (!open && wasOpen && drawerOpener && drawerOpener.focus) {
+    drawerOpener.focus();
+    drawerOpener = null;
+  }
 }
 
 // ------------------------------------------------------------------ wiring
+let focusByKey = false;
+
 function wire() {
+  document.querySelectorAll("#nav [data-view]").forEach((b) => { b.onclick = () => setView(b.dataset.view); });
+  $("navSettings").onclick = () => openDrawer(true);
+  $("needOpen").onclick = openAudio;
+  $("needAnalyze").onclick = analyze;
+  $("needLibrary").onclick = () => setView("library");
   $("openBtn").onclick = openAudio;
   $("emptyOpen").onclick = (e) => { e.stopPropagation(); openAudio(); };
   $("importBtn").onclick = (e) => { e.stopPropagation(); importFolder(); };
@@ -1134,6 +1232,7 @@ function wire() {
     if (!btn || !S.result) return;
     const i = +btn.dataset.show;
     if (!(i >= 0 && i < S.result.points.length)) return;
+    setView("timing");  // the tempo map and the point live in Timing
     selectPoint(i, false);
     document.querySelector(".trace-card").scrollIntoView({ behavior: "smooth", block: "center" });
   });
@@ -1168,12 +1267,22 @@ function wire() {
     S.lang = b.dataset.lang; translate(); if (api()) api().set_language(S.lang);
   });
   window.addEventListener("resize", () => drawTrace());
+  // How the focused control got focus: Tab means the user is driving the
+  // keyboard, a click means the button merely kept focus afterwards.
+  document.addEventListener("mousedown", () => { focusByKey = false; }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Tab") focusByKey = true; }, true);
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { openDrawer(false); return; }
     // Typing an offset or a detection value must not trigger shortcuts:
     // Enter inside the point editor would otherwise start a full analysis.
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
-    if (S.result && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+    // Enter on a button reached with Tab (a nav item, an export) presses that
+    // button; it must not be swallowed by the analyze shortcut below. A button
+    // that only kept focus after a mouse click (Open audio) does not count,
+    // so "open, then Enter to analyze" still works.
+    if (e.key === "Enter" && focusByKey && e.target.closest && e.target.closest("button, a")) return;
+    // The arrows walk the points table, so only where the table is.
+    if (S.result && S.view === "timing" && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
       e.preventDefault();
       const n = S.result.points.length, step = e.key === "ArrowDown" ? 1 : -1;
       selectPoint(Math.max(0, Math.min(n - 1, (S.selected < 0 ? (step > 0 ? -1 : n) : S.selected) + step)), false);
@@ -1198,6 +1307,7 @@ async function boot() {
   applyOptions(st.options);
   setFile(st.file);
   translate();
+  setView(S.view);  // Library until an analysis finishes
   syncActions();
   syncLocks();
   if (st.autorun && S.file) analyze();

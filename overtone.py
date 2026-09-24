@@ -2471,6 +2471,50 @@ def export_csv(analysis: Analysis, destination: str | os.PathLike[str]) -> None:
                          for p in snap_timing_points(analysis.points))
 
 
+#: Beats one red line may click before the schedule gives up on it: a guard
+#: against a hand-typed BPM in the thousands, not a limit any song reaches.
+MAX_CLICKS_PER_LINE = 20000
+
+
+def click_schedule(analysis: Analysis, duration: float | None = None) -> list[tuple[float, bool]]:
+    """Every metronome click the red lines imply, as ``(seconds, accented)``.
+
+    One source for the exported click track and the app's live click, so what
+    is heard in the app is what the WAV holds. Each red line clicks from its
+    offset up to, not onto, the next line: the next line clicks its own first
+    beat. It used to click onto it too, so every change of tempo clicked twice
+    (at once when the change fell on the old grid, milliseconds apart when it
+    did not). Accents fall on the line's own bar when it proved one, else on
+    the song's meter (audit F-03: a waltz must not click in 4).
+    """
+    points = snap_timing_points(list(getattr(analysis, "points", None) or []))
+    if duration is None:
+        duration = float(min(max(analysis.duration, 1.0), MAX_CLICK_SECONDS))
+    clicks: list[tuple[float, bool]] = []
+    for s, point in enumerate(points):
+        if not np.isfinite(point.bpm) or point.bpm <= 0 or not np.isfinite(point.offset_ms):
+            continue
+        start = point.offset_ms / 1000.0
+        last = s + 1 == len(points)
+        end = duration if last else points[s + 1].offset_ms / 1000.0
+        beat_len = 60.0 / point.bpm
+        bar = 4
+        if getattr(point, "meter_known", False):
+            bar = max(1, int(getattr(point, "meter", 4) or 4))
+        else:
+            try:
+                bar = max(1, min(16, int(str(getattr(analysis, "meter", "4/4")).split("/")[0])))
+            except (ValueError, TypeError):
+                bar = 4
+        for k in range(MAX_CLICKS_PER_LINE):
+            t = start + k * beat_len
+            # The song's last line clicks to the end of the audio, inclusive.
+            if (t > end + 1e-6) if last else (t >= end - 1e-6):
+                break
+            clicks.append((t, k % bar == 0))
+    return clicks
+
+
 def export_click_track(analysis: Analysis, destination: str | os.PathLike[str],
                        sr: int = 44100) -> None:
     """Write a metronome WAV aligned to the detected red lines.
@@ -2501,41 +2545,13 @@ def export_click_track(analysis: Analysis, destination: str | os.PathLike[str],
     tones = {True: (np.sin(2 * np.pi * 2093.0 * steps) * decay).astype(np.float32),
              False: (np.sin(2 * np.pi * 1568.0 * steps) * decay * 0.7).astype(np.float32)}
 
-    def place(time_s: float, accent: bool) -> None:
+    for time_s, accent in click_schedule(analysis, duration):
         idx = int(time_s * sr)
         if not 0 <= idx < total:
-            return
+            continue
         tone = tones[accent]
         end = min(total, idx + length)
         click[idx:end] += tone[:end - idx]
-
-    snapped = snap_timing_points(analysis.points)
-    for s, point in enumerate(snapped):
-        if not np.isfinite(point.bpm) or point.bpm <= 0:
-            continue
-        start = point.offset_ms / 1000.0
-        end = snapped[s + 1].offset_ms / 1000.0 if s + 1 < len(snapped) else duration
-        beat_len = 60.0 / point.bpm
-        # Audit F-03: this accented every fourth beat regardless of the
-        # detected meter, so a waltz clicked in 4 against the music and a
-        # mapper checking it by ear could conclude the timing was wrong when
-        # it was not. The click track is the arbiter; it has to agree.
-        bar = 4
-        if getattr(point, "meter_known", False):
-            bar = max(1, int(getattr(point, "meter", 4) or 4))
-        else:
-            try:
-                bar = max(1, min(16, int(str(getattr(analysis, "meter", "4/4")).split("/")[0])))
-            except (ValueError, TypeError):
-                bar = 4
-        k = 0
-        t = start
-        while t <= end + 1e-6:
-            place(t, accent=(k % bar == 0))
-            t += beat_len
-            k += 1
-            if k > 20000:
-                break
     peak = float(np.max(np.abs(click)))
     if peak > 1e-9:
         click = (click / peak * 0.9).astype(np.float32)

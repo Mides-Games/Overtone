@@ -3667,6 +3667,48 @@ class AssistedTimingTests(unittest.TestCase):
             apply_assisted_grid(points, {"ok": False})
 
 
+class ClickScheduleTests(unittest.TestCase):
+    """The one click schedule the WAV export and the app's live click share."""
+
+    @staticmethod
+    def _analysis(points, meter="4/4"):
+        return Analysis("x.wav", 10.0, np.zeros(0), np.zeros(0), points, 128, 44100, 1.0,
+                        meter=meter)
+
+    def test_a_change_on_the_old_grid_clicks_once(self):
+        from overtone import click_schedule
+        # 120 BPM from 1 s, 150 BPM from 5 s: 5 s is the old grid's 9th beat.
+        clicks = click_schedule(self._analysis([TimingPoint(1000.0, 120.0, 1.0, 0),
+                                                TimingPoint(5000.0, 150.0, 1.0, 8)]))
+        times = [round(t, 6) for t, _accent in clicks]
+        self.assertEqual(times.count(5.0), 1)
+        self.assertEqual(times[:9], [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0])
+        self.assertAlmostEqual(times[-1], 9.8)             # the last line runs to the end
+        self.assertEqual(len(times), len(set(times)))
+
+    def test_accents_follow_each_lines_bar(self):
+        from overtone import click_schedule
+        clicks = click_schedule(self._analysis(
+            [TimingPoint(0.0, 60.0, 1.0, 0, meter=3, meter_known=True)]))
+        self.assertEqual([a for _t, a in clicks[:7]], [True, False, False] * 2 + [True])
+        waltz = click_schedule(self._analysis([TimingPoint(0.0, 60.0, 1.0, 0)], meter="3/4"))
+        self.assertEqual([a for _t, a in waltz[:4]], [True, False, False, True])
+
+    def test_the_exported_wav_holds_one_click_per_scheduled_beat(self):
+        import soundfile as sf
+        analysis = self._analysis([TimingPoint(1000.0, 120.0, 1.0, 0),
+                                   TimingPoint(5000.0, 150.0, 1.0, 8)])
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "click.wav"
+            export_click_track(analysis, out)
+            y, sr = sf.read(str(out))
+        # The accent at the change used to be two tones summed: the loudest.
+        at = int(5.0 * sr)
+        first = int(1.0 * sr)
+        self.assertAlmostEqual(np.max(np.abs(y[at:at + 400])),
+                               np.max(np.abs(y[first:first + 400])), places=3)
+
+
 class ModReportTests(unittest.TestCase):
     """Proposal P2: every finding about a difficulty as an editor timestamp."""
 

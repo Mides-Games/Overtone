@@ -255,6 +255,9 @@ class Api:
         self._audio_bytes: bytes | None = None
         #: Held while the library index scans, so two scans never interleave.
         self._scanning = threading.Lock()
+        #: The Rust engine's structure report, keyed by (path, size, mtime):
+        #: the audio is read once, the bars are re-applied on every call.
+        self._structure: tuple[tuple, dict] | None = None
         if initial_file:
             self._cfg["file"] = initial_file
 
@@ -927,6 +930,33 @@ class Api:
         except OSError as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return self.library_state()
+
+    # -- structure: the Rust engine's phrases on this song's bars -----------
+    def structure(self) -> dict:
+        """Phrases, labels and the evidence behind each, for the current song.
+
+        ``overtone-cli structure`` reads the audio once per file; the phrase
+        edges are snapped to the current red lines' proven downbeats on every
+        call, so an edit in Timing moves them with it. Read only.
+        """
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        source = Path(str(self._analysis.source))
+        try:
+            stat = source.stat()
+        except OSError:
+            return {"ok": False, "key": "bad_file"}
+        key = (str(source), stat.st_size, stat.st_mtime_ns)
+        if self._structure is None or self._structure[0] != key:
+            try:
+                report = overtone_rust.structure(source)
+            except overtone_rust.SidecarUnavailable:
+                return {"ok": False, "key": "no_rust"}
+            except (RuntimeError, OSError) as exc:
+                return {"ok": False, "key": "error", "detail": str(exc)}
+            self._structure = (key, report)
+        return {"ok": True, "file": source.name,
+                "view": ta.structure_view(self._structure[1], self._analysis)}
 
     # -- assisted timing: two marked downbeats seed the grid ---------------
     def assisted_fit(self, first_ms: float, second_ms: float, bars: int, meter: int) -> dict:

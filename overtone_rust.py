@@ -146,3 +146,34 @@ def analyze(path: str | os.PathLike[str], *, min_delta: float = 1.5, persistence
         detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
         raise RuntimeError(f"The Rust engine failed (exit {done.returncode}): {detail}")
     return analysis_from_report(report)
+
+
+def structure(path: str | os.PathLike[str], *, cli: Path | None = None,
+              timeout: float = TIMEOUT_S) -> dict:
+    """``overtone-cli structure``: phrase boundaries, labels with their
+    evidence, and the energy lane, as the CLI's JSON (Phase 19, Structure).
+
+    Raises :class:`SidecarUnavailable` without a binary, and ``RuntimeError``
+    with the loader's message when the file cannot be read.
+    """
+    binary = cli or find_cli()
+    if binary is None:
+        raise SidecarUnavailable("The Rust engine (overtone-cli) is not built.")
+    try:
+        done = subprocess.run([str(binary), "structure", os.fspath(path)],
+                              capture_output=True, timeout=timeout,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"The Rust engine took over {timeout:.0f} s and was stopped.") from exc
+    except OSError as exc:
+        raise SidecarUnavailable(f"The Rust engine could not start: {exc}") from exc
+    try:
+        report = json.loads(done.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        report = None
+    if done.returncode == 1 and report is not None and "error" in report:
+        raise RuntimeError(f"Cannot load {Path(os.fspath(path)).name}: {report['error']}")
+    if done.returncode != 0 or report is None or "sections" not in report:
+        detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
+        raise RuntimeError(f"The Rust engine failed (exit {done.returncode}): {detail}")
+    return report

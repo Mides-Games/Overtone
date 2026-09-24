@@ -20,7 +20,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 |---|---|
 | Timing engine (Python v3) | **works** — 24/24 corpus, median 0.0000 BPM / 0.16 ms, all gates green |
 | Timing engine (Rust v4) | **at parity, in the app** — matches v3 attack for attack and red line for red line on 27/27, ~4x faster end to end; Settings → Rust engine runs it through `overtone-cli`, and v3 takes over (with a note) where it has no answer |
-| App (web shell) | **usable** — sidebar sections (Library, Timing, Map check, Mapset, Report, Export, Settings); analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject, compare with a map, alignment, density, snap audit, suggestions, mapset check, reference timing, assisted timing, mod report, folder import, recents, osu! Songs browser, EN/ES |
+| App (web shell) | **usable** — sidebar sections (Library, Timing, Structure, Map check, Mapset, Report, Export, Settings); analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject, compare with a map, alignment, density, snap audit, suggestions, mapset check, reference timing, assisted timing, mod report, folder import, recents, osu! Songs browser, EN/ES |
 | osu! files | **works** — full reader, byte-identical writer, atomic write + backup |
 | Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks |
 | Hitsound engine | **half built, Rust only** — features, 13 instrument classes, musical role; no decision, editor or export; not in the app |
@@ -28,17 +28,17 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **346** Python (237 engine + 109 web shell) · **233** Rust.
+Tests: **353** Python (241 engine + 112 web shell) · **233** Rust.
 
 ### What is pending, in order
 
 The audit backlog is closed: every finding fixed, recorded as already fixed, or decided
 ([`13-audit-backlog.md`](13-audit-backlog.md)). The Rust engine is in the app, opt-in.
 
-1. **The next sidebar modes** (Phase 19) — Structure, Evidence, Write history, Audio swap.
+1. **The next sidebar modes** (Phase 19) — Evidence, Write history, Audio swap.
    In since 2026-09-24: Settings (Phase 20: output folder, offset precision, click,
    interface size, cache), the timeline (Phase 3), playback (Phase 4, but for the
-   percussion-only audition) and the first five sidebar modes of
+   percussion-only audition) and the first six sidebar modes of
    [Phase 19](#phase-19--app-sections).
 2. **Other languages** (Phase 24) — SQL is in: the SQLite library index behind the Songs
    browser and same-audio lookup. Next TypeScript (needs Node.js) and a C# lazer gate
@@ -472,7 +472,8 @@ number and confidence. Every write goes through the atomic writer and keeps a ba
 | Snap audit | objects off the map's own grid (divisor, ms off), objects before the first red line or past the audio, and how many would go unsnapped if the detected timing were injected | low | **high** | P5 reader | no | no | **P1** | **done** — `snap_audit`, a Map check card |
 | Reference timing | grade each red line of any `.osu` against the attacks (share, residual, drift at span end), load it as the working timing, find same-audio maps by content hash | med | **high** | P5 reader, attacks | no | no | **P1** | **done** — `grade_reference_timing`, a Map check card; offsets judged against the map's own shift, each error with its standard error; attacks detected when the fallback kept none; `gates.py reference` 24/24 |
 | Assisted timing | tap tempo in the app; tap or mark two downbeats and the grid fit starts from there, with residual and share, or refuses. The precision plan's escape valve, which had no row | med | **high** | IRLS fit, P4 transport | no | no | **P1** | **done** without tapping — `assisted_grid`, a Timing card: two downbeats typed in ms, marks snapped to attacks, growth across gaps and not across changes, refusals with the reason; `gates.py assisted` 70/70; on 30 ranked maps median 0.004 BPM off the map. Marks can be tapped: a run of taps from a downbeat fills them |
-| Structure view | phrase boundaries snapped to the nearest proven downbeat, labelled with the evidence for each label, over the energy lane; home for the kiai, preview, bookmark and break proposals | med | **high** | P2 structure + classify, P22 | no | no | **P1** | todo |
+| Structure view | phrase boundaries snapped to the nearest proven downbeat, labelled with the evidence for each label, over the energy lane; home for the kiai, preview, bookmark and break proposals | med | **high** | P2 structure + classify, P22 | no | no | **P1** | **done** — `overtone-cli structure`, `structure_view`; edges on the nearest proven bar within 1.5 s (on 20 ranked maps' bars, 31 % on a 4-bar line against 25 % by chance: a bar near the change, not the phrase's first) |
+| Phrase starts on the phrase's bar | snap to the bar the phrase starts on, not the nearest; measured against ranked maps' kiai starts as truth | med | med | Structure view | no | no | P2 | todo |
 | Mod report | every finding as osu! editor timestamps (`mm:ss:mmm (combo) - ...`) with its number and confidence, copyable as text; each opens the local osu! editor | low | high | P7 findings | no | no | P2 | **done** — `mod_report`, the Report section: reference, suggestions, snap audit and alignment in time order, combo numbers, `osu://edit/` links from validated timestamps; 0.31 s per map |
 | Write history and restore | a log of every `.osu` write and its backup; see the timing diff against the backup and restore atomically, keeping the current file as a new backup | low | med | writer | no | no | P2 | todo |
 | Evidence view | the engine's alternatives for the open song: coherence candidates, octave margin, per-section residual and coverage, half-time hints, why the fallback ran; each one click from ×2 / ÷2 | med | med | payload fields or P22 | no | no | P2 | todo |
@@ -495,7 +496,7 @@ Build order:
 4. Assisted timing, so a refusal becomes a guided step instead of a dead end.
 5. Mod report.
 
-Structure, Ramps and Evidence come once the Rust engine reaches the app (Phase 22). Audio
+Structure runs on the Rust engine (in since 2026-09-24); Ramps and Evidence follow it. Audio
 swap needs two analyses, which run one after the other: the one-heavy-job-at-a-time
 limit applies.
 

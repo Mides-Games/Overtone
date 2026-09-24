@@ -16,7 +16,7 @@ later costs more than writing it down now.
 
 ---
 
-## v4.0.0-dev — 2026-09-24 · Structure, from the Rust engine
+## v4.0.0-dev — 2026-09-24 · Structure, a sidebar section
 
 ### Changed
 
@@ -27,6 +27,15 @@ later costs more than writing it down now.
   (which segments repeat, how often, how loud), and each section now reports them:
   repetition group by first appearance, repeats, and level in dB under the loudest
   segment. A caller can say why a section is a chorus instead of asserting it.
+- **The Structure view** (Phase 19): the song's sections over its energy lane, each with
+  its start, bar, length, family letter (A, B, ... by first appearance), level, the rule
+  that labelled it with the numbers that rule read, and how far its edge moved. Edges
+  snap to the nearest proven bar line (a bar the accents proved or the mapper set)
+  within 1.5 s, and re-snap on every visit, so an edit in Timing moves them. A section
+  opens in Timing, the timeline zoomed to it and the playhead at its start. The Rust
+  engine reads the audio once per file. English and Spanish.
+- When every section reads as one family, the view says so, and why: the labels cannot
+  tell verse from chorus there, while the edges and the energy still hold.
 
 ### Measured
 
@@ -40,6 +49,15 @@ labels on real mixes    6 of 8 songs: every section one family (all Verse, or Ve
                         the repetition rule rarely separates them: the labels are
                         weak on real audio, the boundaries and the energy are not
 Rust tests              231 -> 233, all pass; golden 27/27
+snapping, 20 songs      against ranked maps' own bars (one red line each, 84 inner
+                        edges): all 84 found a bar within 1.5 s, median move 258 ms,
+                        max 733 ms; 26 of 84 (31 %) on a 4-bar line from the first red
+                        line, against 25 % by chance. The nearest bar is a bar near the
+                        change, not the phrase's first bar, and the view says so
+browser harness         Structure on a real song (11 sections, no proven bar: every
+                        edge left unsnapped and marked), a section opening in Timing,
+                        EN and ES; nothing played
+Python unittest         346 -> 353, all pass
 ```
 
 ---

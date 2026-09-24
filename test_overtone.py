@@ -3729,6 +3729,103 @@ class LibraryIndexTests(unittest.TestCase):
             self.library.scan(self.tmp / "missing")
 
 
+def _structure_report(bounds, kinds, groups, levels, duration=64.0, energy=None):
+    """``overtone-cli structure``'s JSON for hand-made sections."""
+    edges = [0.0] + list(bounds) + [duration]
+    repeats = [groups.count(g) for g in groups]
+    return {"duration": duration, "boundaries": list(bounds),
+            "sections": [{"start_s": edges[i], "end_s": edges[i + 1], "kind": kinds[i],
+                          "group": groups[i], "repeats": repeats[i], "level_db": levels[i]}
+                         for i in range(len(kinds))],
+            "energy": list(energy if energy is not None else np.linspace(0.1, 1.0, 128)),
+            "energy_hop": 0.5,
+            "rules": {"window_s": 0.5, "edge_blind_s": 4.0, "intro_max_s": 12.0},
+            "timings_s": {"structure": 0.1, "classify": 0.1}}
+
+
+class StructureViewTests(unittest.TestCase):
+    """Phase 19, Structure: phrases on the song's proven bars, labels with why."""
+
+    @staticmethod
+    def _analysis(points, duration=64.0):
+        return Analysis("synthetic.wav", duration, np.arange(128) * 0.5, np.full(128, 120.0),
+                        points, HOP, 44100, 1.0, 120.0, 1.0, "4/4",
+                        np.zeros(4000, dtype=np.float32))
+
+    def test_downbeats_follow_each_line_and_say_which_are_proven(self):
+        from overtone import downbeat_times
+        points = [TimingPoint(0.0, 120.0, 0.9, 0, 4, True),        # 2 s bars, proven
+                  TimingPoint(8000.0, 90.0, 0.9, 1, 3, False)]     # 3/4 unproven: song's 4/4
+        bars = downbeat_times(self._analysis(points, duration=20.0))
+        self.assertEqual([round(t, 6) for t, _ in bars[:5]], [0.0, 2.0, 4.0, 6.0, 8.0])
+        self.assertEqual([known for _, known in bars[:4]], [True] * 4)
+        later = [(round(t, 4), known) for t, known in bars[4:]]
+        self.assertEqual(later, [(8.0, False), (10.6667, False), (13.3333, False),
+                                 (16.0, False), (18.6667, False)])
+        manual = [TimingPoint(0.0, 120.0, 0.9, 0, 4, False, manual=True)]
+        self.assertTrue(all(k for _, k in downbeat_times(self._analysis(manual, 10.0))))
+        self.assertEqual(downbeat_times(self._analysis([], 10.0)), [])
+
+    def test_edges_snap_to_proven_downbeats_and_say_how_far(self):
+        from overtone import structure_view
+        points = [TimingPoint(0.0, 120.0, 0.9, 0, 4, True)]        # bar lines every 2 s
+        report = _structure_report([16.5, 31.2, 47.4], ["verse", "chorus", "verse", "chorus"],
+                                   [0, 1, 0, 1], [-6.0, 0.0, -6.2, -0.1])
+        view = structure_view(report, self._analysis(points))
+        json.dumps(view)
+        starts = [s["start_s"] for s in view["sections"]]
+        self.assertEqual(starts, [0.0, 16.0, 32.0, 48.0])
+        self.assertEqual([s["moved_ms"] for s in view["sections"]], [None, -500.0, 800.0, 600.0])
+        self.assertEqual([s["end_s"] for s in view["sections"]], [16.0, 32.0, 48.0, 64.0])
+        self.assertEqual([s["bar"] for s in view["sections"]], [1, 9, 17, 25])
+        self.assertEqual([s["group"] for s in view["sections"]], ["A", "B", "A", "B"])
+        # No proven bar within reach: the edge stays where the audio put it.
+        unproven = [TimingPoint(0.0, 120.0, 0.9, 0, 4, False)]
+        loose = structure_view(report, self._analysis(unproven))
+        self.assertEqual([s["start_s"] for s in loose["sections"]], [0.0, 16.5, 31.2, 47.4])
+        self.assertEqual([s["snapped"] for s in loose["sections"]], [True, False, False, False])
+        far = [TimingPoint(0.0, 20.0, 0.9, 0, 4, True)]            # 12 s bars
+        self.assertEqual(structure_view(report, self._analysis(far))["sections"][1]["start_s"], 16.5)
+        # Before the first red line no bar is counted: no "bar 0".
+        late = [TimingPoint(3000.0, 120.0, 0.9, 0, 4, True)]
+        self.assertEqual([s["bar"] for s in structure_view(report, self._analysis(late))["sections"]],
+                         [None, 8, 15, 23])
+
+    def test_every_label_names_the_rule_and_the_numbers_it_read(self):
+        from overtone import structure_view
+        report = _structure_report([8.0, 24.0, 40.0, 50.0, 60.0],
+                                   ["intro", "verse", "chorus", "bridge", "chorus", "outro"],
+                                   [0, 1, 2, 3, 2, 4], [-12.0, -6.0, 0.0, -3.0, 0.0, -9.0], 70.0)
+        view = structure_view(report, self._analysis([], 70.0))
+        why = [s["why"] for s in view["sections"]]
+        self.assertEqual([w["rule"] for w in why], ["intro_first", "verse_one_family",
+                                                    "chorus_loudest", "bridge_once",
+                                                    "chorus_loudest", "outro_last"])
+        self.assertEqual((why[0]["length_s"], why[0]["max_s"]), (8.0, 12.0))
+        self.assertIsNone(why[2]["over_db"])      # only one repeated family to be louder than
+        two = _structure_report([16.0, 32.0, 48.0], ["verse", "chorus", "verse", "chorus"],
+                                [0, 1, 0, 1], [-6.0, 0.0, -6.0, 0.0])
+        rules = [s["why"] for s in structure_view(two, self._analysis([]))["sections"]]
+        self.assertEqual(rules[0], {"rule": "verse_quieter", "repeats": 2, "under_db": 6.0})
+        self.assertEqual(rules[1], {"rule": "chorus_loudest", "repeats": 2, "over_db": 6.0})
+        one = _structure_report([20.0, 40.0], ["verse"] * 3, [0, 0, 0], [0.0, -1.0, -0.5])
+        view = structure_view(one, self._analysis([]))
+        self.assertTrue(view["one_family"])
+        self.assertEqual(view["sections"][0]["why"], {"rule": "verse_one_family", "repeats": 3})
+
+    def test_the_energy_lane_is_pooled_by_its_peaks(self):
+        from overtone import STRUCTURE_LANE_POINTS, structure_view
+        energy = np.full(2000, 0.1)
+        energy[1234] = 2.0                                          # one short hit
+        report = _structure_report([], ["verse"], [0], [0.0], duration=1000.0, energy=energy)
+        lane = structure_view(report, self._analysis([], 1000.0))["lane"]
+        self.assertLessEqual(len(lane["values"]), STRUCTURE_LANE_POINTS)
+        self.assertEqual(max(lane["values"]), 1.0)
+        self.assertAlmostEqual(lane["hop"] * len(lane["values"]), 1000.0, delta=lane["hop"])
+        self.assertEqual(structure_view(report, self._analysis([], 1000.0))["sections"][0]["why"],
+                         {"rule": "verse_single"})
+
+
 class AssistedTimingTests(unittest.TestCase):
     """Proposal P1: two marked downbeats seed the grid, the attacks do the rest."""
 

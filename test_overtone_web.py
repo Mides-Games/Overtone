@@ -629,6 +629,68 @@ class ReferenceBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().reference_find()["key"], "first")
 
 
+class StructureBridgeTests(_IsolatedConfig):
+    """The Structure view: the Rust report once per file, bars every call."""
+
+    def _api(self, tmp: str) -> web.Api:
+        song = Path(tmp) / "song.wav"
+        song.write_bytes(b"RIFF" + bytes(64))
+        api = _api_with_points()
+        api._analysis.source = str(song)
+        return api
+
+    def test_the_audio_is_read_once_and_the_bars_every_call(self) -> None:
+        from test_overtone import _structure_report
+        report = _structure_report([16.3, 32.2, 48.1], ["verse", "chorus", "verse", "chorus"],
+                                   [0, 1, 0, 1], [-6.0, 0.0, -6.0, 0.0])
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._api(tmp)
+            api._analysis.points = [ta.TimingPoint(0.0, 120.0, 0.9, 0, 4, True)]    # 2 s bars
+            with mock.patch.object(web.overtone_rust, "structure", return_value=report) as run:
+                first = api.structure()
+                api._analysis.points = [ta.TimingPoint(500.0, 120.0, 0.9, 0, 4, True)]
+                second = api.structure()
+        json.dumps([first, second])
+        self.assertTrue(first["ok"])
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(first["file"], "song.wav")
+        self.assertEqual(len(first["view"]["sections"]), 4)
+        self.assertEqual([s["start_s"] for s in first["view"]["sections"]], [0.0, 16.0, 32.0, 48.0])
+        self.assertEqual([s["start_s"] for s in second["view"]["sections"]], [0.0, 16.5, 32.5, 48.5])
+
+    def test_without_a_song_or_an_engine_it_says_which(self) -> None:
+        self.assertEqual(web.Api().structure()["key"], "first")
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._api(tmp)
+            with mock.patch.object(web.overtone_rust, "find_cli", return_value=None):
+                self.assertEqual(api.structure()["key"], "no_rust")
+            with mock.patch.object(web.overtone_rust, "structure",
+                                   side_effect=RuntimeError("Cannot load song.wav: junk")):
+                failed = api.structure()
+        self.assertEqual((failed["key"], failed["detail"]), ("error", "Cannot load song.wav: junk"))
+        gone = _api_with_points()
+        gone._analysis.source = "C:/no/such/song.wav"
+        self.assertEqual(gone.structure()["key"], "bad_file")
+
+    @unittest.skipIf(web.overtone_rust.find_cli() is None, "overtone-cli is not built")
+    def test_the_real_engine_reads_a_two_part_song(self) -> None:
+        sr = 22050
+        t = np.arange(int(sr * 16.0)) / sr
+
+        def chord(root, amp):
+            return amp * (np.sin(2 * np.pi * root * t) + 0.6 * np.sin(2 * np.pi * root * 1.2599 * t)
+                          + 0.6 * np.sin(2 * np.pi * root * 1.4983 * t))
+
+        y = np.concatenate([chord(220.0, 0.12), chord(174.61, 0.3)] * 2).astype(np.float32)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "abab.wav"
+            ta.sf.write(path, y, sr)
+            report = web.overtone_rust.structure(path)
+        kinds = [s["kind"] for s in report["sections"]]
+        self.assertEqual(kinds, ["verse", "chorus", "verse", "chorus"])
+        self.assertEqual(len(report["energy"]), 128)
+
+
 class LibraryBridgeTests(_IsolatedConfig):
     """The Songs browser: scan, search, and same-audio from the index."""
 

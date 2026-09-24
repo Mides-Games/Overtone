@@ -4795,6 +4795,155 @@ def find_same_audio_maps(audio_path: str | os.PathLike[str],
 
 
 # ---------------------------------------------------------------------------
+# Structure view (Phase 19): the Rust engine's phrases, on this song's bars
+# ---------------------------------------------------------------------------
+
+#: A phrase boundary moves to a proven downbeat at most this far. The
+#: boundaries sit on a 0.5 s feature grid and the Rust tests hold them within
+#: 1.5 s of the truth; past that, the nearest bar line is another phrase's.
+STRUCTURE_SNAP_S = 1.5
+#: Points the energy lane keeps: enough for a wide window, few for the bridge.
+STRUCTURE_LANE_POINTS = 800
+
+
+def downbeat_times(analysis: Analysis) -> list[tuple[float, bool]]:
+    """Every bar line the red lines imply, as ``(seconds, proven)``.
+
+    The bars ``click_schedule`` accents, by the same rules: each red line
+    counts bars from its own offset, in its own meter when it proved one,
+    else in the song's. ``proven`` is True where the line's bar was proved
+    by the accents or set by the mapper; a bar counted on a guessed meter
+    is a bar line, but not evidence for a phrase.
+    """
+    points = snap_timing_points(list(getattr(analysis, "points", None) or []))
+    duration = float(getattr(analysis, "duration", 0.0) or 0.0)
+    try:
+        song_bar = max(1, min(16, int(str(getattr(analysis, "meter", "4/4")).split("/")[0])))
+    except (ValueError, TypeError):
+        song_bar = 4
+    out: list[tuple[float, bool]] = []
+    for s, point in enumerate(points):
+        if not np.isfinite(point.bpm) or point.bpm <= 0 or not np.isfinite(point.offset_ms):
+            continue
+        proven = bool(point.meter_known or point.manual)
+        bar = max(1, int(point.meter or 4)) if point.meter_known else song_bar
+        start = point.offset_ms / 1000.0
+        end = duration if s + 1 == len(points) else points[s + 1].offset_ms / 1000.0
+        step = bar * 60.0 / point.bpm
+        for k in range(MAX_CLICKS_PER_LINE):
+            t = start + k * step
+            if t >= end - 1e-6 and not (s + 1 == len(points) and t <= end + 1e-6):
+                break
+            out.append((t, proven))
+    return out
+
+
+def _pooled_lane(values: list[float], hop: float, points: int) -> dict:
+    """The energy lane at most ``points`` long: each point the loudest of the
+    windows it covers, so a short hit survives the pooling."""
+    energy = np.asarray(values, dtype=np.float64)
+    if energy.size == 0:
+        return {"values": [], "hop": hop}
+    factor = max(1, int(np.ceil(energy.size / points)))
+    usable = energy[: energy.size - energy.size % factor] if factor > 1 else energy
+    pooled = usable.reshape(-1, factor).max(axis=1) if factor > 1 else usable
+    if factor > 1 and energy.size % factor:
+        pooled = np.append(pooled, energy[energy.size - energy.size % factor:].max())
+    peak = float(pooled.max()) or 1.0
+    return {"values": [round(float(v) / peak, 4) for v in pooled], "hop": hop * factor}
+
+
+def structure_view(report: dict, analysis: Analysis) -> dict:
+    """The Structure view of one song: phrases snapped to proven downbeats,
+    each label beside the evidence it rests on. Plain types.
+
+    ``report`` is ``overtone-cli structure``'s JSON. Each inner boundary
+    moves to the nearest proven downbeat within ``STRUCTURE_SNAP_S`` and
+    says how far it moved; one with no proven downbeat that close stays on
+    the 0.5 s feature grid and says so. The song's start and end never move.
+
+    Labels are the Rust rules' (repetition, then level); ``why`` names the
+    rule that decided each one, with the numbers it read. Groups are letters
+    by first appearance, so "A B A B" reads at a glance whatever the labels.
+    """
+    duration = float(report.get("duration") or getattr(analysis, "duration", 0.0) or 0.0)
+    bars = downbeat_times(analysis)
+    proven = np.asarray([t for t, known in bars if known], dtype=np.float64)
+    every = np.asarray([t for t, _known in bars], dtype=np.float64)
+    raw = list(report.get("sections") or [])
+
+    def snap(t: float) -> tuple[float, float | None]:
+        if proven.size == 0:
+            return t, None
+        nearest = float(proven[np.argmin(np.abs(proven - t))])
+        return (nearest, nearest - t) if abs(nearest - t) <= STRUCTURE_SNAP_S else (t, None)
+
+    def bar_number(t: float) -> int | None:
+        # 1 from the first red line's bar; None before it, where no bar is counted.
+        count = int(np.searchsorted(every, t + 1e-6, side="right")) if every.size else 0
+        return count or None
+
+    def power(section: dict) -> float:
+        return 10.0 ** (float(section["level_db"]) / 10.0)
+
+    families: dict[int, list[dict]] = {}
+    for section in raw:
+        families.setdefault(int(section["group"]), []).append(section)
+    family_db = {g: 10.0 * np.log10(max(np.mean([power(s) for s in members]), 1e-12))
+                 for g, members in families.items()}
+    repeated = sorted((g for g, members in families.items() if len(members) >= 2),
+                      key=lambda g: family_db[g], reverse=True)
+
+    sections: list[dict] = []
+    for i, section in enumerate(raw):
+        start, end = float(section["start_s"]), float(section["end_s"])
+        start_to, start_moved = (start, None) if i == 0 else snap(start)
+        end_to = end if i + 1 == len(raw) else snap(end)[0]
+        kind, group = str(section["kind"]), int(section["group"])
+        repeats = int(section["repeats"])
+        if kind == "chorus":
+            louder = family_db[group] - family_db[repeated[1]] if len(repeated) > 1 else None
+            why = {"rule": "chorus_loudest", "repeats": repeats,
+                   "over_db": None if louder is None else round(float(louder), 1)}
+        elif kind == "verse" and len(raw) == 1:
+            why = {"rule": "verse_single"}
+        elif kind == "verse" and len(repeated) >= 2:
+            why = {"rule": "verse_quieter", "repeats": repeats,
+                   "under_db": round(float(family_db[repeated[0]] - family_db[group]), 1)}
+        elif kind == "verse":
+            why = {"rule": "verse_one_family", "repeats": repeats}
+        elif kind == "intro":
+            why = {"rule": "intro_first", "length_s": round(end - start, 1),
+                   "max_s": (report.get("rules") or {}).get("intro_max_s")}
+        elif kind == "outro":
+            why = {"rule": "outro_last"}
+        else:
+            why = {"rule": "bridge_once"}
+        sections.append({
+            "index": i, "kind": kind, "group": chr(ord("A") + group) if group < 26 else str(group),
+            "repeats": repeats, "level_db": round(float(section["level_db"]), 1),
+            "start_s": round(start_to, 4), "end_s": round(end_to, 4),
+            "raw_start_s": start, "moved_ms": None if start_moved is None else round(start_moved * 1000, 1),
+            "snapped": i == 0 or start_moved is not None, "bar": bar_number(start_to),
+            "why": why,
+        })
+    one_family = len(families) == 1 and len(raw) > 1
+    return {
+        "duration": duration,
+        "sections": sections,
+        "families": len(families),
+        "one_family": one_family,
+        "proven_bars": int(proven.size),
+        "bars": int(every.size),
+        "lane": _pooled_lane(report.get("energy") or [], float(report.get("energy_hop") or 0.5),
+                             STRUCTURE_LANE_POINTS),
+        "rules": report.get("rules") or {},
+        "snap_s": STRUCTURE_SNAP_S,
+        "timings_s": report.get("timings_s") or {},
+    }
+
+
+# ---------------------------------------------------------------------------
 # Assisted timing (proposal P1): two marked downbeats seed the grid
 # ---------------------------------------------------------------------------
 

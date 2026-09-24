@@ -104,6 +104,26 @@ const I18N = {
     inject_warn: "\nThe .osu audio ({osu}) differs from the analyzed file ({src}).",
     drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
     recent: "Recent",
+    nav_structure: "Structure",
+    stx_sub: "Where the song's phrases change, what each part is, and why: every label beside the evidence it rests on. Read only.",
+    stx_title: "Sections",
+    stx_loading: "Reading the song's structure…",
+    stx_no_rust: "The Structure view runs on the Rust engine (overtone-cli), and it is not built here: cargo build --release -p overtone-cli.",
+    stx_none: "No phrase change found: the song reads as one part. Changes within {s} s of either end cannot be placed.",
+    stx_count: "{n} sections",
+    stx_intro: "Intro", stx_verse: "Verse", stx_chorus: "Chorus", stx_bridge: "Bridge", stx_outro: "Outro",
+    stx_h_start: "Start", stx_h_bar: "Bar", stx_h_len: "Length", stx_h_part: "Part", stx_h_why: "Why", stx_h_moved: "Snapped",
+    stx_why_chorus: "Repeats ({n}×) and is the loudest repeated part.",
+    stx_why_chorus_db: "Repeats ({n}×) and is the loudest repeated part, {db} dB over the next.",
+    stx_why_verse_quieter: "Repeats ({n}×), {db} dB under the chorus.",
+    stx_why_verse_family: "Repeats ({n}×). The only repeated part, so there is no quieter repeat for a chorus to stand over.",
+    stx_why_single: "The whole song reads as one part.",
+    stx_why_intro: "Heard once, first, {s} s long (under {max} s).",
+    stx_why_outro: "Heard once, last.",
+    stx_why_bridge: "Heard once, between the repeats.",
+    stx_unsnapped: "no proven bar within {s} s",
+    stx_one_family: "Every section reads as one family: on a full mix, the harmony of verse and chorus often looks alike, and the labels cannot tell them apart. The phrase edges and the energy still hold.",
+    stx_note: "Letters are families of sections that repeat. Edges snap to the nearest proven bar line within {snap} s: a bar near the change, not proof the phrase starts on it. A change within {edge} s of either end cannot be placed. Click a section to open it in Timing.",
     songs_title: "osu! Songs",
     songs_scan: "Scan",
     songs_rescan: "Rescan",
@@ -355,6 +375,26 @@ const I18N = {
     inject_warn: "\nEl audio del .osu ({osu}) difiere del analizado ({src}).",
     drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
     recent: "Recientes",
+    nav_structure: "Estructura",
+    stx_sub: "Dónde cambian las frases de la canción, qué es cada parte y por qué: cada etiqueta junto a la evidencia en la que se apoya. Solo lectura.",
+    stx_title: "Secciones",
+    stx_loading: "Leyendo la estructura de la canción…",
+    stx_no_rust: "La vista Estructura usa el motor Rust (overtone-cli), y acá no está compilado: cargo build --release -p overtone-cli.",
+    stx_none: "No se encontró ningún cambio de frase: la canción se lee como una sola parte. Los cambios a menos de {s} s de cada punta no se pueden ubicar.",
+    stx_count: "{n} secciones",
+    stx_intro: "Intro", stx_verse: "Estrofa", stx_chorus: "Estribillo", stx_bridge: "Puente", stx_outro: "Final",
+    stx_h_start: "Inicio", stx_h_bar: "Compás", stx_h_len: "Duración", stx_h_part: "Parte", stx_h_why: "Por qué", stx_h_moved: "Ajuste",
+    stx_why_chorus: "Se repite ({n}×) y es la parte repetida más fuerte.",
+    stx_why_chorus_db: "Se repite ({n}×) y es la parte repetida más fuerte, {db} dB sobre la siguiente.",
+    stx_why_verse_quieter: "Se repite ({n}×), {db} dB por debajo del estribillo.",
+    stx_why_verse_family: "Se repite ({n}×). Es la única parte repetida, así que no hay una repetición más baja sobre la que se destaque un estribillo.",
+    stx_why_single: "Toda la canción se lee como una sola parte.",
+    stx_why_intro: "Suena una vez, al principio, {s} s (menos de {max} s).",
+    stx_why_outro: "Suena una vez, al final.",
+    stx_why_bridge: "Suena una vez, entre las repeticiones.",
+    stx_unsnapped: "sin compás probado a menos de {s} s",
+    stx_one_family: "Todas las secciones se leen como una sola familia: en una mezcla completa, la armonía de estrofa y estribillo suele parecerse, y las etiquetas no las distinguen. Los bordes de frase y la energía siguen valiendo.",
+    stx_note: "Las letras son familias de secciones que se repiten. Los bordes se ajustan a la línea de compás probada más cercana, a menos de {snap} s: un compás cerca del cambio, no la prueba de que la frase empiece ahí. Un cambio a menos de {edge} s de cada punta no se puede ubicar. Hacé clic en una sección para abrirla en Timing.",
     songs_title: "Songs de osu!",
     songs_scan: "Escanear",
     songs_rescan: "Reescanear",
@@ -532,6 +572,7 @@ function translate() {
   renderSong();
   renderRecents();
   renderSongs();
+  renderStructure();
   renderNeedSong();
   renderMapset();
   if (S.result) renderResult(S.result);
@@ -542,8 +583,8 @@ function translate() {
 // One analysed song is shared by every view: switching only changes what is
 // visible, never the session. Views that read the analysis show the
 // "analyze first" panel until there is one, instead of blank space.
-const VIEWS = ["library", "timing", "mapcheck", "mapset", "report", "export", "settings"];
-const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", mapcheck: "nav_mapcheck", mapset: "nav_mapset", report: "nav_report", export: "nav_export", settings: "nav_settings" };
+const VIEWS = ["library", "timing", "structure", "mapcheck", "mapset", "report", "export", "settings"];
+const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", structure: "nav_structure", mapcheck: "nav_mapcheck", mapset: "nav_mapset", report: "nav_report", export: "nav_export", settings: "nav_settings" };
 
 function needsResult(view) {
   const section = document.querySelector(`.content > [data-view="${view}"]`);
@@ -566,6 +607,7 @@ function setView(view) {
   if (changed) $("content").scrollTop = 0;
   // The canvas measures its box: it can only be drawn while visible.
   if (view === "timing" && S.result) { drawTrace(); waveLoad(); }
+  if (view === "structure" && S.result) stxLoad();
 }
 
 function renderNeedSong() {
@@ -812,6 +854,7 @@ function showResult(result) {
   // A grade depends on the map and the song's attacks, not on the point list:
   // it stays through edits and goes with the song.
   if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; pbReset(); }
+  if (!sameSong) { STX.view = null; STX.file = ""; STX.error = null; }
   if (!sameSong) S.comparePath = null;  // a map belongs to one song
   setView(S.view);  // lifts the "analyze first" panel off the current view
   syncActions();
@@ -1172,6 +1215,101 @@ function renderSongs() {
       <span class="meta num">${set.beatmaps.length} ${t(set.beatmaps.length === 1 ? "songs_diff" : "songs_diffs")}${songBpm(set)}</span>
     </button>`;
   }).join("") + (res.limited ? `<div class="card-sub">${t("songs_limited", { n: res.beatmaps })}</div>` : "");
+}
+
+// ------------------------------------------------------------------ structure
+// Phrases from the Rust engine (overtone-cli structure), snapped to this
+// song's proven bar lines, every label beside the evidence it rests on.
+const STX = { view: null, file: "", loading: false, error: null };
+const STX_KIND = { intro: "stx_intro", verse: "stx_verse", chorus: "stx_chorus", bridge: "stx_bridge", outro: "stx_outro" };
+
+async function stxLoad() {
+  if (!api() || !S.result || STX.loading) return;
+  STX.loading = true;
+  renderStructure();
+  let reply;
+  try {
+    reply = await api().structure();
+  } finally {
+    STX.loading = false;
+  }
+  STX.error = reply.ok ? null : reply;
+  if (reply.ok) { STX.view = reply.view; STX.file = reply.file; }
+  renderStructure();
+}
+
+function stxTime(s) {
+  const m = Math.floor(s / 60);
+  return `${m}:${(s - m * 60).toFixed(1).padStart(4, "0")}`;
+}
+
+function stxWhy(w) {
+  switch (w.rule) {
+    case "chorus_loudest":
+      return w.over_db === null ? t("stx_why_chorus", { n: w.repeats })
+        : t("stx_why_chorus_db", { n: w.repeats, db: w.over_db.toFixed(1) });
+    case "verse_quieter": return t("stx_why_verse_quieter", { n: w.repeats, db: w.under_db.toFixed(1) });
+    case "verse_one_family": return t("stx_why_verse_family", { n: w.repeats });
+    case "verse_single": return t("stx_why_single");
+    case "intro_first": return t("stx_why_intro", { s: w.length_s, max: w.max_s ?? 12 });
+    case "outro_last": return t("stx_why_outro");
+    default: return t("stx_why_bridge");
+  }
+}
+
+function renderStructure() {
+  const body = $("stxBody"), v = STX.view, pill = $("stxCount");
+  $("stxFile").textContent = STX.file || "";
+  pill.hidden = !(v && v.sections.length);
+  if (STX.loading && !v) { body.innerHTML = `<div class="card-sub">${t("stx_loading")}</div>`; return; }
+  if (STX.error) {
+    body.innerHTML = `<div class="card-sub">${STX.error.key === "no_rust" ? t("stx_no_rust")
+      : STX.error.key === "error" ? esc(t("error", { detail: STX.error.detail || "" })) : t(STX.error.key)}</div>`;
+    return;
+  }
+  if (!v) { body.innerHTML = ""; return; }
+  const edge = v.rules.edge_blind_s ?? 4;
+  if (!v.sections.length) { body.innerHTML = `<div class="card-sub">${t("stx_none", { s: edge })}</div>`; return; }
+  pill.textContent = t("stx_count", { n: v.sections.length });
+  const dur = v.duration || 1, lane = v.lane.values;
+  const x = (s) => (100 * s / dur).toFixed(3);
+  const path = lane.length ? `M0,100 ${lane.map((e, i) => `L${x((i + 0.5) * v.lane.hop)},${(100 - 88 * e).toFixed(2)}`).join(" ")} L100,100 Z` : "";
+  const blocks = v.sections.map((s, i) => `
+    <div class="stx-sec k-${s.kind}" data-stx="${i}" style="left:${x(s.start_s)}%;width:${x(s.end_s - s.start_s)}%"
+         title="${esc(`${s.group} · ${t(STX_KIND[s.kind])} · ${stxTime(s.start_s)}–${stxTime(s.end_s)}`)}">
+      <span class="lbl">${esc(s.group)} · ${t(STX_KIND[s.kind])}</span>
+    </div>`).join("");
+  const moved = (s) => s.index === 0 ? "—"
+    : s.moved_ms === null ? `<span class="muted">${t("stx_unsnapped", { s: v.snap_s })}</span>`
+    : `${s.moved_ms > 0 ? "+" : ""}${Math.round(s.moved_ms)} ms`;
+  const rows = v.sections.map((s, i) => `
+    <tr data-stx="${i}">
+      <td class="num">${stxTime(s.start_s)}</td>
+      <td class="num">${s.bar ?? "—"}</td>
+      <td class="num">${(s.end_s - s.start_s).toFixed(1)} s</td>
+      <td><span class="stx-kind k-${s.kind}">${esc(s.group)} · ${t(STX_KIND[s.kind])}</span> <span class="muted num">${s.level_db.toFixed(1)} dB</span></td>
+      <td class="why">${stxWhy(s.why)}</td>
+      <td class="num">${moved(s)}</td>
+    </tr>`).join("");
+  body.innerHTML = `
+    <div class="stx-lane"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path class="energy" d="${path}"/></svg>${blocks}</div>
+    ${v.one_family ? `<div class="card-sub" style="margin-bottom:10px">${t("stx_one_family")}</div>` : ""}
+    <div class="table-scroll"><table class="stx-table">
+      <thead><tr><th>${t("stx_h_start")}</th><th>${t("stx_h_bar")}</th><th>${t("stx_h_len")}</th><th>${t("stx_h_part")}</th><th>${t("stx_h_why")}</th><th>${t("stx_h_moved")}</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <div class="card-sub" style="margin-top:10px">${t("stx_note", { snap: v.snap_s, edge })}</div>`;
+}
+
+// A section opens in Timing: the timeline zoomed to it, the playhead at its start.
+function stxShow(i) {
+  const s = STX.view && STX.view.sections[i];
+  if (!s || !S.result) return;
+  VIEW.a = s.start_s;
+  VIEW.b = s.end_s;
+  setView("timing");
+  drawTrace();
+  pbSeek(s.start_s);
 }
 
 async function dropAnalyze(file) {
@@ -2729,6 +2867,10 @@ function wire() {
   $("halfBtn").onclick = () => rescale(0.5);
   $("doubleBtn").onclick = () => rescale(2);
   $("rows").onclick = (e) => { const tr = e.target.closest("tr"); if (tr) selectPoint(+tr.dataset.i); };
+  $("stxBody").addEventListener("click", (e) => {
+    const el = e.target.closest("[data-stx]");
+    if (el) stxShow(+el.dataset.stx);
+  });
   $("songsScan").onclick = () => songsScan();
   $("songsPick").onclick = songsPick;
   $("songsQuery").oninput = () => {

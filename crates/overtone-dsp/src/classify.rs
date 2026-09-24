@@ -53,12 +53,21 @@ pub enum SectionKind {
     Outro,
 }
 
-/// One labelled span of the track.
+/// One labelled span of the track, with the evidence its label rests on:
+/// the rules above read nothing else, so a caller can say why.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LabeledSection {
     pub start: f64,
     pub end: f64,
     pub kind: SectionKind,
+    /// Repetition group, numbered by first appearance from 0: segments with
+    /// one number share harmonic material (and level, after the split).
+    pub group: usize,
+    /// How many segments the group holds; 1 is a one-off.
+    pub repeats: usize,
+    /// Mean power relative to the loudest segment, in dB (0 at the loudest,
+    /// floored at -120 for silence).
+    pub level_db: f64,
 }
 
 /// Label the segments implied by `boundaries` (plus track start/end).
@@ -81,6 +90,9 @@ pub fn classify(y: &[f32], sr: u32, boundaries: &[f64]) -> Vec<LabeledSection> {
             start: spans[0].0,
             end: spans[0].1,
             kind: SectionKind::Verse,
+            group: 0,
+            repeats: 1,
+            level_db: 0.0,
         }];
     }
 
@@ -189,6 +201,22 @@ pub fn classify(y: &[f32], sr: u32, boundaries: &[f64]) -> Vec<LabeledSection> {
         })
         .flatten();
 
+    // Group ids by first appearance, and levels against the loudest segment.
+    let mut order: Vec<usize> = Vec::new();
+    for &g in group.iter() {
+        if !order.contains(&g) {
+            order.push(g);
+        }
+    }
+    let loudest = energies.iter().copied().fold(0.0f64, f64::max);
+    let level_db = |e: f64| {
+        if loudest <= 0.0 || e <= 0.0 {
+            -120.0
+        } else {
+            (10.0 * (e / loudest).log10()).max(-120.0)
+        }
+    };
+
     spans
         .iter()
         .enumerate()
@@ -208,7 +236,14 @@ pub fn classify(y: &[f32], sr: u32, boundaries: &[f64]) -> Vec<LabeledSection> {
             } else {
                 SectionKind::Bridge
             };
-            LabeledSection { start, end, kind }
+            LabeledSection {
+                start,
+                end,
+                kind,
+                group: order.iter().position(|&o| o == g).unwrap_or(0),
+                repeats: group_size.get(&g).copied().unwrap_or(1),
+                level_db: level_db(energies[i]),
+            }
         })
         .collect()
 }
@@ -415,6 +450,27 @@ mod tests {
         }
         let e_minor = against(329.63, false, 0.3);
         assert!(e_minor < 0.65, "E minor scored {e_minor:.3}");
+    }
+
+    #[test]
+    fn each_label_carries_its_group_repeats_and_level() {
+        // I V C V C again: groups by first appearance, the chorus loudest.
+        let sr = 44_100;
+        let intro = chord(sr, 220.0, false, 0.2, 8.0);
+        let verse = chord(sr, 261.63, true, 0.3, 16.0);
+        let chorus = chord(sr, 174.61, true, 0.6, 16.0);
+        let y = concat(&[intro, verse.clone(), chorus.clone(), verse, chorus]);
+        let sections = classify(&y, sr, &[8.0, 24.0, 40.0, 56.0]);
+        let groups: Vec<usize> = sections.iter().map(|s| s.group).collect();
+        let repeats: Vec<usize> = sections.iter().map(|s| s.repeats).collect();
+        assert_eq!(groups, vec![0, 1, 2, 1, 2]);
+        assert_eq!(repeats, vec![1, 2, 2, 2, 2]);
+        let chorus_db = sections[2].level_db;
+        assert!(chorus_db > -0.5 && chorus_db <= 0.0, "{chorus_db}");
+        // Twice the amplitude is 6 dB; the verse's triad is the same shape.
+        let verse_db = sections[1].level_db;
+        assert!((verse_db + 6.0).abs() < 1.0, "verse at {verse_db:.2} dB");
+        assert!(sections[0].level_db < verse_db);
     }
 
     #[test]

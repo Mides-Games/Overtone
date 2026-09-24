@@ -6,6 +6,7 @@
 //! overtone-cli analyze song.mp3 --json       # v3's report shape
 //! overtone-cli analyze song.mp3 --decimals 3 # lazer keeps fractional ms
 //! overtone-cli analyze song.mp3 --full       # + the evidence an app needs
+//! overtone-cli structure song.mp3            # phrases, labels, energy (JSON)
 //! ```
 //!
 //! `--full` adds what v3's `Analysis` carries beside the red lines: the
@@ -24,9 +25,16 @@
 //! "checked, nothing found", so the key is absent; and `diagnostics` says why
 //! the engine refused, where v3 falls back to its beat tracker instead.
 //!
-//! Exit codes: 0 a grid was found; 3 the engine refused (no grid in this
-//! audio, reason on stderr and in `diagnostics`); 1 the file could not be
-//! loaded; 2 the command line is wrong.
+//! `structure` prints phrase boundaries, the section labels with the evidence
+//! each rests on (repetition group, repeats, level), and the energy lane
+//! behind them. It is tempoless, as the DSP crate is: boundaries sit on the
+//! 0.5 s feature grid, and snapping them to downbeats is the caller's job,
+//! since the caller holds the grid.
+//!
+//! Exit codes: 0 a grid was found (for `structure`, the audio was read); 3
+//! the engine refused (no grid in this audio, reason on stderr and in
+//! `diagnostics`); 1 the file could not be loaded; 2 the command line is
+//! wrong.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -36,7 +44,8 @@ use overtone_core::Diagnostic;
 use serde_json::{json, Value};
 
 const USAGE: &str = "usage: overtone-cli analyze <audio> [--json | --full] [--decimals N] \
-[--min-delta BPM] [--persistence BEATS] [--min-confidence C] [--no-map-bpm]";
+[--min-delta BPM] [--persistence BEATS] [--min-confidence C] [--no-map-bpm]\n       \
+overtone-cli structure <audio>";
 
 /// The v3 CLI's defaults, which the golden vectors were dumped with.
 struct Options {
@@ -258,12 +267,89 @@ fn analyze(options: &Options) -> ExitCode {
     }
 }
 
+fn kind_name(kind: overtone_dsp::classify::SectionKind) -> &'static str {
+    use overtone_dsp::classify::SectionKind;
+    match kind {
+        SectionKind::Intro => "intro",
+        SectionKind::Verse => "verse",
+        SectionKind::Chorus => "chorus",
+        SectionKind::Bridge => "bridge",
+        SectionKind::Outro => "outro",
+    }
+}
+
+/// `structure <audio>`: phrases, labels with their evidence, and the energy
+/// lane, as JSON. Exit 1 when the audio cannot be read, 2 on a bad command.
+fn structure(args: &[String]) -> ExitCode {
+    use overtone_dsp::{classify as c, structure as s};
+    let audio = match args {
+        [path] if !path.starts_with("--") => PathBuf::from(path),
+        _ => {
+            eprintln!("overtone-cli: structure takes one audio file\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    let started = Instant::now();
+    let (y, sr) = match overtone_audio::load(&audio) {
+        Ok(loaded) => loaded,
+        Err(e) => {
+            eprintln!("overtone-cli: cannot load {}: {e}", audio.display());
+            println!(
+                "{}",
+                json!({"source": source(&audio), "error": e.to_string()})
+            );
+            return ExitCode::from(1);
+        }
+    };
+    let decode_s = started.elapsed().as_secs_f64();
+    let started = Instant::now();
+    let found = s::analyze(&y, sr);
+    let structure_s = started.elapsed().as_secs_f64();
+    let started = Instant::now();
+    let sections = c::classify(&y, sr, &found.boundaries);
+    let classify_s = started.elapsed().as_secs_f64();
+    let report = json!({
+        "source": source(&audio),
+        "duration": y.len() as f64 / sr as f64,
+        "boundaries": found.boundaries,
+        "sections": sections.iter().map(|x| json!({
+            "start_s": x.start,
+            "end_s": x.end,
+            "kind": kind_name(x.kind),
+            "group": x.group,
+            "repeats": x.repeats,
+            "level_db": x.level_db,
+        })).collect::<Vec<_>>(),
+        "energy": found.energy,
+        "energy_hop": found.energy_hop,
+        "rules": {
+            "window_s": s::WIN_S,
+            "edge_blind_s": s::KERNEL_HALF as f64 * s::WIN_S,
+            "merge_s": s::MERGE_S,
+            "repeat_cosine": c::REPEAT_COSINE,
+            "split_power_ratio": c::SPLIT_POWER_RATIO,
+            "intro_max_s": c::INTRO_MAX_S,
+        },
+        "version": overtone_tempo::VERSION,
+        "timings_s": {"decode": decode_s, "structure": structure_s, "classify": classify_s},
+    });
+    println!("{report}");
+    eprintln!(
+        "overtone-cli: {} sections; structure {structure_s:.2} s + classify {classify_s:.2} s",
+        sections.len()
+    );
+    ExitCode::SUCCESS
+}
+
 fn source(path: &Path) -> String {
     path.display().to_string()
 }
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("structure") {
+        return structure(&args[1..]);
+    }
     match parse(&args) {
         Ok(options) => analyze(&options),
         Err(message) => {

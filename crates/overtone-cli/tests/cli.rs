@@ -244,3 +244,76 @@ fn full_carries_the_evidence_an_analysis_object_needs() {
     assert!((60.0 / period - 150.0).abs() < 0.05, "period {period}");
     assert!(section["phase_s"].is_number());
 }
+
+/// A sustained triad, `seconds` long, at `amp`.
+fn triad(root: f64, amp: f64, seconds: f64) -> Vec<f32> {
+    let sr = 44_100.0;
+    (0..(seconds * sr) as usize)
+        .map(|i| {
+            let t = i as f64 / sr;
+            let tau = 2.0 * std::f64::consts::PI * t;
+            (amp * ((tau * root).sin()
+                + 0.6 * (tau * root * 1.2599).sin()
+                + 0.6 * (tau * root * 1.4983).sin())) as f32
+        })
+        .collect()
+}
+
+#[test]
+fn structure_reads_phrases_and_says_why_each_label() {
+    // Quiet A minor, loud F major, twice: 16 s phrases, boundaries at 16/32/48.
+    let dir = scratch("structure");
+    let path = dir.join("abab.wav");
+    let (a, b) = (triad(220.0, 0.12, 16.0), triad(174.61, 0.3, 16.0));
+    write_wav(&path, &[a.clone(), b.clone(), a, b].concat());
+    let out = run(&["structure", path.to_str().unwrap()]);
+    let missing = run(&["structure", "no-such-file.wav"]);
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let bounds: Vec<f64> = report["boundaries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap())
+        .collect();
+    assert_eq!(bounds.len(), 3, "{bounds:?}");
+    for (found, truth) in bounds.iter().zip([16.0, 32.0, 48.0]) {
+        assert!((found - truth).abs() <= 1.5, "{bounds:?}");
+    }
+    let sections = report["sections"].as_array().unwrap();
+    let kinds: Vec<&str> = sections
+        .iter()
+        .map(|s| s["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds, ["verse", "chorus", "verse", "chorus"]);
+    let groups: Vec<u64> = sections
+        .iter()
+        .map(|s| s["group"].as_u64().unwrap())
+        .collect();
+    assert_eq!(groups, [0, 1, 0, 1]);
+    assert!(sections.iter().all(|s| s["repeats"] == 2));
+    assert!(sections[1]["level_db"].as_f64().unwrap() > sections[0]["level_db"].as_f64().unwrap());
+    let energy = report["energy"].as_array().unwrap().len();
+    assert_eq!(energy, 128, "one value per 0.5 s window");
+    assert_eq!(report["rules"]["edge_blind_s"], 4.0);
+
+    assert_eq!(missing.status.code(), Some(1));
+    let failed: serde_json::Value = serde_json::from_slice(&missing.stdout).unwrap();
+    assert!(failed["error"].is_string());
+    for args in [
+        &["structure"][..],
+        &["structure", "a.wav", "b.wav"][..],
+        &["structure", "--full"][..],
+    ] {
+        let bad = run(args);
+        assert_eq!(bad.status.code(), Some(2), "{args:?}");
+        assert!(bad.stdout.is_empty());
+    }
+}

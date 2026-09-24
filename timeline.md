@@ -16,6 +16,34 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · Structure, from the Rust engine
+
+### Changed
+
+- **`overtone-cli structure <audio>`**: phrase boundaries, section labels and the energy
+  lane as JSON. The structure and classify stages existed in the DSP crate with no way
+  out of it; the app runs this command as it runs `analyze`.
+- **Every label carries its evidence.** `classify` labels by rules that read three things
+  (which segments repeat, how often, how loud), and each section now reports them:
+  repetition group by first appearance, repeats, and level in dB under the loudest
+  segment. A caller can say why a section is a chorus instead of asserting it.
+
+### Measured
+
+8 songs from `C:\osu!\Songs` (91-311 s), release build:
+
+```
+structure + classify    0.53-2.10 s per song; with decode, 0.98-2.74 s wall
+labels on real mixes    6 of 8 songs: every section one family (all Verse, or Verse
+                        and an Outro); 1 split verse/chorus by level; 1 Bridge + Outro.
+                        Whole-mix chroma looks alike across a pop song's sections, so
+                        the repetition rule rarely separates them: the labels are
+                        weak on real audio, the boundaries and the energy are not
+Rust tests              231 -> 233, all pass; golden 27/27
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · The Songs folder, indexed and searchable
 
 ### Changed

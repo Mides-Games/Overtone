@@ -930,8 +930,10 @@ mod tests {
         // this replaces judged a re-draw of the training track -- same hit
         // times, same class order, same neighbours -- and read 0.906; held
         // out, those templates read 0.485. Trained on varied arrangements
-        // they read 0.650 (92 of 280 wrong). That is the honest number, and
-        // still synthetic.
+        // they read 0.650 (92 of 280 wrong) when this test landed, and 0.723
+        // (72 of 280) after the flam, sustain-window, HPSS-kernel and
+        // percussive-ratio fixes since. That is the honest number, and still
+        // synthetic.
         let rows = held_out_rows();
         let templates = calibrated();
         let (before, _) = macro_f1(&initial_templates(), &rows);
@@ -943,9 +945,8 @@ mod tests {
         );
         assert!(after >= before, "calibration must not regress {before:.3}");
         // The macro bar alone lets a whole class reach zero. Known weak,
-        // measured: Clap 0.13 (its flams need the first 30 ms after the
-        // attack, and the sub-attack window starts 10 ms early), the hats
-        // ~0.4 and Keys 0.44 in dense overlap, Kick and Snare ~0.5.
+        // measured in dense overlap: Clap 0.15, the closed hat 0.40, the
+        // open hat 0.50, Kick 0.57 and Keys 0.63.
         for (class, f1) in &per_class {
             assert!(*f1 >= 0.10, "{class:?} collapsed to {f1:.2}");
         }

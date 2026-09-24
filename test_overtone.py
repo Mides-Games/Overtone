@@ -3386,5 +3386,179 @@ class CliFlagTests(unittest.TestCase):
         self.assertEqual(batch.call_args.kwargs["engine"], "legacy")
 
 
+def _eighths(bpm=150.0, start=1.0, stop=61.0, jitter_ms=1.5, seed=1):
+    """Attacks on the 8ths of a steady grid, beats twice as loud, a little jitter."""
+    beat = 60.0 / bpm
+    times = np.arange(start, stop, beat / 2)
+    weights = np.where(np.arange(times.size) % 2 == 0, 1.0, 0.5)
+    times = times + np.random.default_rng(seed).normal(0.0, jitter_ms / 1000.0, times.size)
+    return times, weights
+
+
+class ReferenceTimingTests(unittest.TestCase):
+    """Proposal P1: any map's red lines graded against the attacks."""
+
+    @staticmethod
+    def _grade(reds, times, weights, duration=61.0):
+        from overtone import grade_reference_timing
+        report = grade_reference_timing({"timing": {"reds": reds}}, times, weights, duration)
+        json.dumps(report)
+        return report
+
+    def test_a_true_map_is_ok_and_a_late_map_is_one_shift(self):
+        times, weights = _eighths()
+        report = self._grade([(1000.0, 150.0)], times, weights)
+        line = report["lines"][0]
+        self.assertEqual((line["verdict"], line["issues"], line["divisor"]), ("ok", [], 2))
+        self.assertEqual((line["offset_ms"], line["bpm"]), (1000.0, 150.0))  # the line itself
+        self.assertLess(abs(line["drift_ms"]), 1.0)
+        self.assertGreater(line["share"], 0.95)
+        self.assertEqual(report["findings"], [])
+        late = self._grade([(1010.0, 150.0)], times, weights)
+        # The attacks sit 10 ms before the line: a negative offset, said once
+        # for the map; the line agrees with the map's own shift.
+        self.assertEqual(late["lines"][0]["verdict"], "ok")
+        self.assertAlmostEqual(late["lines"][0]["offset_error_ms"], -10.0, delta=0.5)
+        self.assertEqual([f["key"] for f in late["findings"]], ["ref_shift"])
+        self.assertAlmostEqual(late["common_offset_ms"], -10.0, delta=0.5)
+
+    def test_a_bpm_slightly_off_drifts_and_the_fit_says_by_how_much(self):
+        times, weights = _eighths()
+        for bpm in (150.1, 151.0, 155.0):
+            with self.subTest(bpm=bpm):
+                line = self._grade([(1000.0, bpm)], times, weights)["lines"][0]
+                self.assertIn("drift", line["issues"])
+                self.assertAlmostEqual(line["fitted_bpm"], 150.0, delta=0.01)
+                # The map's 8th is short by (1 - 150/bpm) of the true one, over
+                # every 8th of the span up to its last attack.
+                atoms = (times[-1] - 1.0) / (30.0 / bpm)
+                expected = atoms * (0.2 - 30.0 / bpm) * 1000.0
+                self.assertAlmostEqual(line["drift_ms"], expected, delta=0.02 * expected)
+
+    def test_a_shuffle_reads_at_a_third_and_an_octave_is_not_an_error(self):
+        beat = 0.6
+        on = np.arange(1.0, 61.0, beat)
+        times = np.sort(np.r_[on, on + 2 * beat / 3])
+        line = self._grade([(1000.0, 100.0)], times, np.ones(times.size))["lines"][0]
+        self.assertEqual((line["verdict"], line["divisor"]), ("ok", 3))
+        times, weights = _eighths()
+        for bpm in (75.0, 300.0):
+            with self.subTest(bpm=bpm):
+                line = self._grade([(1000.0, bpm)], times, weights)["lines"][0]
+                self.assertEqual(line["verdict"], "ok")
+                self.assertAlmostEqual(line["fitted_bpm"], bpm, delta=0.01)
+
+    def test_a_line_that_leaves_the_maps_shift_is_flagged(self):
+        times, weights = _eighths()
+        # The last line placed 12 ms late; the other two are the majority.
+        report = self._grade([(1000.0, 150.0), (21000.0, 150.0), (41012.0, 150.0)],
+                             times, weights)
+        self.assertEqual([line["verdict"] for line in report["lines"]], ["ok", "ok", "check"])
+        last = report["lines"][2]
+        self.assertEqual(last["issues"], ["offset"])
+        self.assertAlmostEqual(last["offset_error_ms"], -12.0, delta=1.0)
+        self.assertAlmostEqual(last["relative_ms"], -12.0, delta=1.0)
+        self.assertLess(last["offset_se_ms"], 1.0)
+        self.assertEqual(report["counts"], {"ok": 2, "check": 1, "weak": 0, "too_few": 0})
+        self.assertEqual(report["findings"], [])
+
+    def test_two_lines_apart_are_a_split_not_a_verdict(self):
+        times, weights = _eighths()
+        # The median takes one side; which line is right needs an ear.
+        report = self._grade([(1000.0, 150.0), (41012.0, 150.0)], times, weights)
+        self.assertEqual(sum(line["verdict"] == "check" for line in report["lines"]), 1)
+        self.assertEqual([f["key"] for f in report["findings"]], ["ref_split"])
+
+    def test_loose_attacks_widen_the_error_instead_of_raising_a_flag(self):
+        # 12 ms of jitter and 40 attacks: a 10 ms drift is inside the noise.
+        # A flat 5 ms bar would flag it; two standard errors do not.
+        times, weights = _eighths(stop=9.0, jitter_ms=12.0, seed=3)
+        line = self._grade([(1000.0, 150.0)], times, weights, duration=9.0)["lines"][0]
+        self.assertGreater(abs(line["drift_ms"]), 5.0)
+        self.assertGreater(line["drift_se_ms"], 4.0)
+        self.assertEqual(line["issues"], [])
+
+    def test_a_shift_every_line_shares_flags_no_line(self):
+        times, weights = _eighths()
+        report = self._grade([(1025.0, 150.0), (31025.0, 150.0)], times, weights)
+        self.assertEqual([line["verdict"] for line in report["lines"]], ["ok", "ok"])
+        self.assertEqual([f["key"] for f in report["findings"]], ["ref_shift"])
+        self.assertAlmostEqual(float(report["findings"][0]["values"]["ms"]), -25.0, delta=1.0)
+
+    def test_too_few_weak_and_missing_evidence_are_said_not_guessed(self):
+        times, weights = _eighths(stop=2.0)
+        self.assertEqual(self._grade([(1000.0, 150.0)], times, weights)["lines"][0]["verdict"],
+                         "too_few")
+        rng = np.random.default_rng(7)
+        noise = np.sort(rng.uniform(1.0, 61.0, 200))
+        self.assertEqual(self._grade([(1000.0, 150.0)], noise, np.ones(200))["lines"][0]["verdict"],
+                         "weak")
+        self.assertEqual(self._grade([], *_eighths()), {"ok": False, "reason": "no_red_lines"})
+        self.assertEqual(self._grade([(1000.0, 150.0)], np.zeros(0), np.zeros(0)),
+                         {"ok": False, "reason": "no_attacks"})
+
+    def test_attacks_before_the_first_line_are_counted(self):
+        times, weights = _eighths(start=0.2)
+        report = self._grade([(1000.0, 150.0)], times, weights)
+        self.assertEqual(report["findings"], [{"level": "info", "key": "ref_before",
+                                               "index": -1, "values": {"n": 4}}])
+
+    def test_a_map_loads_as_hand_placed_points_with_its_own_meter(self):
+        from overtone import reference_points
+        text = ("osu file format v14\r\n\r\n[TimingPoints]\r\n"
+                "1000,400,3,1,0,100,1,0\r\n2000,-50,4,1,0,100,0,0\r\n"
+                "30000,375,4,1,0,100,1,0\r\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = read_osu_beatmap(_write_osu(tmp, text))
+        points = reference_points(beatmap, np.arange(0.5, 60.0, 0.4))
+        self.assertEqual([(p.offset_ms, p.bpm, p.meter) for p in points],
+                         [(1000.0, 150.0, 3), (30000.0, 160.0, 4)])
+        self.assertTrue(all(p.manual and p.meter_known and p.confidence == 1.0 for p in points))
+        # Hand-placed: export snapping never moves them onto each other.
+        self.assertEqual(snap_timing_points(points), points)
+        with self.assertRaises(ValueError):
+            reference_points({"timing": {"reds": []}})
+
+    def test_same_audio_compares_bytes_not_names(self):
+        from overtone import same_audio
+        with tempfile.TemporaryDirectory() as tmp:
+            song = Path(tmp) / "mine" / "song.mp3"
+            song.parent.mkdir()
+            song.write_bytes(b"ID3" + bytes(range(200)))
+            folder = Path(tmp) / "set"
+            folder.mkdir()
+            osu = folder / "map.osu"
+            beatmap = {"general": {"AudioFilename": "audio.mp3"}}
+            self.assertIsNone(same_audio(osu, beatmap, song))        # map's audio missing
+            (folder / "audio.mp3").write_bytes(song.read_bytes())
+            self.assertTrue(same_audio(osu, beatmap, song))
+            (folder / "audio.mp3").write_bytes(b"ID3" + bytes(reversed(range(200))))
+            self.assertFalse(same_audio(osu, beatmap, song))         # same size, other bytes
+            self.assertIsNone(same_audio(osu, {"general": {}}, song))
+
+    def test_same_audio_maps_are_found_across_a_songs_folder(self):
+        from overtone import find_same_audio_maps
+        with tempfile.TemporaryDirectory() as tmp:
+            song = Path(tmp) / "song.ogg"
+            song.write_bytes(b"OggS" + bytes(range(100)))
+            songs = Path(tmp) / "Songs"
+            twin, other, bigger = songs / "1 A - B", songs / "2 C - D", songs / "3 E - F"
+            for folder in (twin, other, bigger):
+                folder.mkdir(parents=True)
+            (twin / "audio.ogg").write_bytes(song.read_bytes())
+            _write_osu(str(twin), "[General]\nAudioFilename: audio.ogg\n\n[Metadata]\nVersion:Hard\n",
+                       name="A - B (x) [Hard].osu")
+            _write_osu(str(twin), "[General]\nAudioFilename: other.ogg\n", name="A - B (x) [Alt].osu")
+            (other / "audio.ogg").write_bytes(b"OggS" + bytes(reversed(range(100))))
+            (bigger / "audio.ogg").write_bytes(b"OggS" + bytes(300))
+            report = find_same_audio_maps(song, songs)
+        json.dumps(report)
+        self.assertEqual((report["scanned"], report["same_size"]), (3, 2))
+        self.assertEqual(len(report["matches"]), 1)
+        match = report["matches"][0]
+        self.assertTrue(match["audio"].endswith("audio.ogg"))
+        self.assertEqual([m["difficulty"] for m in match["beatmaps"]], ["Hard"])
+
+
 if __name__ == "__main__":
     unittest.main()

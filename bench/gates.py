@@ -22,6 +22,7 @@ So this file holds two gates:
     python bench/gates.py measures            # per-section bars and downbeats
     python bench/gates.py signatures          # time-signature regions over one bar
     python bench/gates.py robustness          # the audit's edge-case probes
+    python bench/gates.py reference           # hand-timed maps graded by the attacks
 
 Both exit non-zero on failure. Neither renders new audio for the main corpus —
 they reuse ``bench/audio/`` — but ``coverage`` has two fixtures of its own,
@@ -648,11 +649,93 @@ def robustness() -> int:
     return 1 if failures else 0
 
 
+# ---------------------------------------------------------------------------
+# Reference timing — a hand-timed map, graded against the audio's attacks
+# ---------------------------------------------------------------------------
+
+#: The two ways a hand-timed map goes wrong: a line placed late, and a BPM
+#: typed a little off, so the grid walks away from the music (0.1 % is 0.15
+#: BPM at 150, about 1 ms of drift per second of span).
+REFERENCE_SHIFT_MS = 10.0
+REFERENCE_TEMPO_ERROR = 1.001
+
+
+def reference() -> int:
+    """Each corpus case timed four ways and graded by ``grade_reference_timing``.
+
+    The true map (offsets rounded to whole ms, as a .osu stores them) must
+    come back with nothing to check. The whole map 10 ms late must read as
+    one shift of the map, within 1 ms, with no line flagged; on a case with
+    several lines, moving only the last one must flag that line and no other.
+    Every BPM 0.1 % high must flag every line for drift. Reuses
+    ``bench/audio/``; the attacks are the engine's own.
+    """
+    print(f"{'case':<18} {'lines':>5} {'true map':>9} {'worst ms':>8}  {'map late':>8}  "
+          f"{'one line':>8}  {'BPM +0.1 %':>10}  {'drift ms':>8}")
+    print("-" * 88)
+    failures = 0
+    for name, kwargs in bm.CASES.items():
+        path = bm.AUDIO_DIR / f"{name}.wav"
+        if not path.exists():
+            bm.build_track(path, seed=zlib.crc32(name.encode()), **kwargs)
+        y, sr = ta._load_audio(path, lambda _message: None)
+        times, weights, _env = ta._detect_attacks(y, sr, ta.FIT_HOP)
+        rows = [(float(round(t * 1000.0)), bpm) for t, bpm in bm.truth_of(kwargs)]
+
+        def grade(reds):
+            return ta.grade_reference_timing({"timing": {"reds": reds}}, times, weights,
+                                             kwargs["duration"])
+
+        def keys(report):
+            return {f["key"] for f in report["findings"]}
+
+        true = grade(rows)
+        worst = max((abs(line.get("offset_error_ms", np.nan)) for line in true["lines"]),
+                    default=float("nan"))
+        # Noise before the first line is a finding too, but not a timing one.
+        clean = (all(line["verdict"] == "ok" for line in true["lines"])
+                 and not keys(true) & {"ref_shift", "ref_split"})
+        late = grade([(o + REFERENCE_SHIFT_MS, b) for o, b in rows])
+        # Against what the true map reads: a shuffle's off-beats already pull
+        # its reading 2 ms, and the shift must come on top of that, whole.
+        shifted = (late["common_offset_ms"] is not None and true["common_offset_ms"] is not None
+                   and abs(late["common_offset_ms"] - true["common_offset_ms"]
+                           + REFERENCE_SHIFT_MS) <= 1.0
+                   and "ref_split" not in keys(late)
+                   and not any("offset" in line["issues"] for line in late["lines"]))
+        one = "n/a"
+        moved_ok = True
+        if len(rows) > 1:
+            moved = grade(rows[:-1] + [(rows[-1][0] + REFERENCE_SHIFT_MS, rows[-1][1])])
+            flagged = ["offset" in line["issues"] for line in moved["lines"]]
+            if len(rows) == 2:
+                # Two lines apart have no majority: one is flagged and the
+                # split is said, since the median cannot know which is right.
+                moved_ok = sum(flagged) == 1 and "ref_split" in keys(moved)
+                one = "split" if moved_ok else "missed"
+            else:
+                moved_ok = flagged == [False] * (len(rows) - 1) + [True]
+                one = "flagged" if moved_ok else "missed"
+        fast = grade([(o, b * REFERENCE_TEMPO_ERROR) for o, b in rows])
+        drifting = sum("drift" in line["issues"] for line in fast["lines"])
+        drift = min((abs(line.get("drift_ms", np.nan)) for line in fast["lines"]),
+                    default=float("nan"))
+        ok = clean and shifted and moved_ok and drifting == len(rows)
+        failures += not ok
+        verdicts = "/".join(line["verdict"] for line in true["lines"])
+        print(f"{name:<18} {len(rows):>5} {'clean' if clean else verdicts:>9} {worst:>8.2f}  "
+              f"{'one shift' if shifted else 'missed':>9}  {one:>8}  "
+              f"{drifting:>6}/{len(rows):<3}  {drift:>8.1f}{'' if ok else '  FAIL'}")
+    total = len(bm.CASES)
+    print(f"\nreference: {total - failures}/{total} cases graded as timed")
+    return 1 if failures else 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("gate",
                         choices=("bpm-snapshot", "coverage", "measures", "signatures",
-                                 "robustness"))
+                                 "robustness", "reference"))
     parser.add_argument("--only", nargs="*", metavar="CASE",
                         help="bpm-snapshot: run just these cases")
     parser.add_argument("--update", action="store_true",
@@ -665,6 +748,8 @@ def main() -> None:
 
     if args.gate == "robustness":
         raise SystemExit(robustness())
+    if args.gate == "reference":
+        raise SystemExit(reference())
     audio_dir = Path(args.dir)
     audio_dir.mkdir(parents=True, exist_ok=True)
     if args.gate == "bpm-snapshot":

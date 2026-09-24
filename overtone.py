@@ -4426,6 +4426,334 @@ def mapset_report(folder: str | os.PathLike[str]) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Reference timing (proposal P1): any map's red lines, graded by the attacks
+# ---------------------------------------------------------------------------
+
+#: The subdivisions of a red line's beat its attacks are read at, coarsest
+#: first. Straight music sits on 1/2 or 1/4, a shuffle on 1/3.
+REFERENCE_DIVISORS = (1, 2, 3, 4)
+#: A finer subdivision is taken only when it explains clearly more attack
+#: weight: 1/4 always catches what 1/2 does, so without this slack every
+#: span would read at 1/4 and resolve its offset to only an eighth of a beat.
+REFERENCE_DIVISOR_SLACK = 0.9
+#: Fewer attacks than this in a span cannot pin both an offset and a slope.
+REFERENCE_MIN_ATTACKS = 8
+#: The engine's own share gate: below it a grid explains too little of the
+#: attack weight to vouch for, or against, the red line.
+REFERENCE_MIN_SHARE = 0.40
+#: Past this a line's offset or its end-of-span drift is worth a look. It is
+#: the benchmark's 5 ms bar, the same one the compare card uses.
+REFERENCE_TOLERANCE_MS = MAP_OFFSET_TOLERANCE_MS
+#: An error is flagged only past this many of its own standard errors too.
+REFERENCE_SIGMAS = 2.0
+
+
+def _red_line_meter(line: str) -> int:
+    """The meter field of one red line; 4 when it is missing or unreadable."""
+    fields = line.strip().split(",")
+    try:
+        meter = int(fields[2])
+    except (ValueError, IndexError):
+        return 4
+    return meter if meter > 0 else 4
+
+
+def _beatmap_red_rows(beatmap: dict) -> list[tuple[float, float, int]]:
+    """Every red line as ``(offset_ms, bpm, meter)``, sorted by offset."""
+    lines = next((s.get("lines", []) for s in beatmap.get("sections", [])
+                  if s.get("name") == "TimingPoints"), None)
+    if lines is None:
+        # A beatmap built by hand (tests, callers) may carry only the view.
+        return sorted((float(o), float(b), 4) for o, b in beatmap.get("timing", {}).get("reds", []))
+    rows = []
+    for line in lines:
+        red = _parse_red_line(line)
+        if red is not None:
+            rows.append((red[0], red[1], _red_line_meter(line)))
+    return sorted(rows)
+
+
+#: The first window a span is locked in, in beats of the map. The map's grid
+#: is best known at its own red line, so the fit starts there and grows
+#: forward; started mid-span, a BPM 1 % off has already walked a beat away.
+REFERENCE_LOCK_BEATS = 8
+#: How far the fit may move the map's beat. A typed BPM is off by tenths or
+#: a few percent; a fit that wanders further has found another pulse (on one
+#: real song it shrank each pass until the least squares overflowed), so the
+#: last fit inside the band is kept and the share says how little it explains.
+REFERENCE_PERIOD_BAND = (0.8, 1.25)
+
+
+def _forward_fit(times: np.ndarray, weights: np.ndarray, period: float,
+                 phase: float, start: float, stop: float, lock: float) -> tuple[float, float]:
+    """Lock the phase on the span's first window, then refit on windows that
+    double forward from the start, so beat indices never slip."""
+    lo, hi = (period * r for r in REFERENCE_PERIOD_BAND)
+    span = lock
+    first = (times >= start) & (times <= start + span)
+    phase = _recentre_phase(times[first], weights[first], period, phase)
+    while True:
+        window = (times >= start) & (times <= min(stop, start + span))
+        if int(window.sum()) >= 8:
+            fitted, moved, _ = _refine_grid(times[window], weights[window], period, phase)
+            if not lo <= fitted <= hi:
+                return period, phase
+            period, phase = fitted, moved
+        if start + span >= stop:
+            return period, phase
+        span *= 2.0
+
+
+def _grade_span(times: np.ndarray, weights: np.ndarray, offset_s: float,
+                beat_s: float, end_s: float) -> dict:
+    """Fit one red line's span at each divisor and keep the coarsest that
+    explains the attacks; errors are measured against the map's own grid."""
+    fits = []
+    for divisor in REFERENCE_DIVISORS:
+        atom = beat_s / divisor
+        period, phase = _forward_fit(times, weights, atom, offset_s, offset_s, end_s,
+                                     REFERENCE_LOCK_BEATS * beat_s)
+        share, _coverage, rms = _grid_quality(times, weights, period, phase)
+        fits.append((divisor, atom, period, phase, share, rms))
+    top = max(fit[4] for fit in fits)
+    divisor, atom, period, phase, share, rms = next(
+        fit for fit in fits if fit[4] >= REFERENCE_DIVISOR_SLACK * top)
+    # The fitted tick nearest the red line, as an error in the map's frame:
+    # E(k) = E0 + k * (period - atom) along the span.
+    tick = phase + np.round((offset_s - phase) / period) * period
+    atoms = (end_s - offset_s) / atom
+    # Standard errors of a straight line through the inliers, sampled at the
+    # red line and across the span: few attacks, or loose ones, cannot
+    # vouch for a 5 ms error, and saying so is the point.
+    k = np.round((times - phase) / period)
+    inlier = np.abs(times - (phase + k * period)) <= max(0.12 * period, 0.006)
+    x = times[inlier] - offset_s
+    n = int(x.size)
+    sxx = float(np.sum((x - x.mean()) ** 2)) if n else 0.0
+    # Infinity is not JSON: an error with no spread to measure reads as null.
+    offset_se = drift_se = None
+    if n >= 3 and sxx > 0:
+        sigma = rms / 1000.0
+        offset_se = float(sigma * np.sqrt(1.0 / n + x.mean() ** 2 / sxx)) * 1000.0
+        drift_se = float(sigma * (end_s - offset_s) / np.sqrt(sxx)) * 1000.0
+    return {"divisor": divisor, "share": share, "residual_ms": rms, "inliers": n,
+            "offset_error_ms": float(tick - offset_s) * 1000.0,
+            "drift_ms": atoms * (period - atom) * 1000.0,
+            "offset_se_ms": offset_se, "drift_se_ms": drift_se,
+            "fitted_bpm": 60.0 / (period * divisor)}
+
+
+def grade_reference_timing(beatmap: dict, attack_times: np.ndarray,
+                           attack_weights: np.ndarray,
+                           duration_s: float | None = None) -> dict:
+    """Grade each red line of any .osu against the audio's attacks (P19).
+
+    Every red line governs its span, up to the next red line (the last one up
+    to its last attack). The attacks in a span are fitted with the engine's
+    own tools, started from the map's grid: the phase goes to the densest
+    cluster of attacks (``_recentre_phase``), then least squares
+    (``_refine_grid``) follows the tempo the attacks keep, on windows that
+    double forward from the red line. That is read at 1/1, 1/2, 1/3 and 1/4
+    of the map's beat, and the coarsest subdivision that explains nearly as
+    much weight as the best is kept.
+
+    Per line: ``share`` of attack weight on the fitted grid, ``residual_ms``
+    around it, ``offset_error_ms`` (positive: the attacks sit after the line,
+    measured modulo one subdivision), ``drift_ms`` (how far the map's grid has
+    walked from the attacks by the span's end) and ``fitted_bpm``. The map's
+    common shift is the median offset, weighted by attacks; it is reported
+    once (``ref_shift``) rather than on every line. A line whose offset leaves
+    it (``relative_ms``), or whose drift grows, by more than 5 ms and more than
+    two of its own standard errors is ``check``, with ``issues`` saying which. Lines with too few attacks, or a grid that
+    explains too little, are ``too_few`` or ``weak`` instead of guessed.
+    Nothing is changed and everything is plain JSON types.
+    """
+    rows = _beatmap_red_rows(beatmap)
+    times = np.asarray(attack_times, dtype=np.float64)
+    weights = np.asarray(attack_weights, dtype=np.float64)
+    if not rows:
+        return {"ok": False, "reason": "no_red_lines"}
+    if times.size == 0:
+        return {"ok": False, "reason": "no_attacks"}
+    order = np.argsort(times)
+    times, weights = times[order], weights[order]
+
+    lines: list[dict] = []
+    for n, (offset_ms, bpm, meter) in enumerate(rows):
+        start_s = offset_ms / 1000.0
+        beat_s = 60.0 / bpm
+        # An attack up to half the finest subdivision early still belongs to
+        # the line it opens, not to the one before.
+        slack = 0.5 * beat_s / max(REFERENCE_DIVISORS)
+        last = n + 1 == len(rows)
+        lo = start_s - slack
+        hi = np.inf if last else rows[n + 1][0] / 1000.0 - slack
+        inside = (times >= lo) & (times < hi)
+        span_t, span_w = times[inside], weights[inside]
+        end_s = rows[n + 1][0] / 1000.0 if not last else (
+            float(span_t[-1]) if span_t.size else start_s)
+        if duration_s is not None and last:
+            end_s = min(end_s, float(duration_s))
+        line = {"index": n, "offset_ms": offset_ms, "bpm": bpm, "meter": meter,
+                "end_ms": end_s * 1000.0, "attacks": int(span_t.size),
+                "verdict": "too_few", "issues": []}
+        if span_t.size >= REFERENCE_MIN_ATTACKS and end_s > start_s:
+            line.update(_grade_span(span_t, span_w, start_s, beat_s, end_s))
+            line["verdict"] = "weak" if line["share"] < REFERENCE_MIN_SHARE else "ok"
+        lines.append(line)
+
+    # Offsets are judged against the map's own common shift, not against
+    # zero: on real songs every line of a ranked map reads 12-46 ms before
+    # the attacks, MP3 and OGG alike, and that is not explained yet (roadmap,
+    # Phase 22). The shift is reported once; a line that leaves it is flagged.
+    graded = [line for line in lines if line["verdict"] == "ok"]
+    common = (_weighted_median(np.array([line["offset_error_ms"] for line in graded]),
+                               np.array([float(line["attacks"]) for line in graded]))
+              if graded else None)
+
+    def beyond(error: float, se: float | None) -> bool:
+        # Past 5 ms and past twice its own standard error: a real error, not
+        # the spread of a few loose attacks. No spread measured, no verdict.
+        return se is not None and abs(error) > max(REFERENCE_TOLERANCE_MS,
+                                                   REFERENCE_SIGMAS * se)
+
+    for line in graded:
+        line["relative_ms"] = line["offset_error_ms"] - common
+        if beyond(line["relative_ms"], line["offset_se_ms"]):
+            line["issues"].append("offset")
+        if beyond(line["drift_ms"], line["drift_se_ms"]):
+            line["issues"].append("drift")
+        if line["issues"]:
+            line["verdict"] = "check"
+    findings: list[dict] = []
+    if common is not None and abs(common) > REFERENCE_TOLERANCE_MS:
+        findings.append({"level": "info", "key": "ref_shift", "index": -1,
+                         "values": {"ms": f"{common:+.1f}"}})
+    # Two lines 10 ms apart have no majority: the median takes one side and
+    # flags the other, which may be the right one. Say that no side won.
+    # Lines vote, not attacks: each is one decision of the mapper's.
+    agree = sum(1 for line in graded if "offset" not in line["issues"])
+    if len(graded) > 1 and 2 * agree <= len(graded):
+        findings.append({"level": "warn", "key": "ref_split", "index": -1,
+                         "values": {"n": len(graded)}})
+    first_s, first_beat = rows[0][0] / 1000.0, 60.0 / rows[0][1]
+    early = int(np.sum(times < first_s - 0.5 * first_beat / max(REFERENCE_DIVISORS)))
+    if early:
+        findings.append({"level": "info", "key": "ref_before", "index": -1,
+                         "values": {"n": early}})
+    counts = {verdict: sum(1 for line in lines if line["verdict"] == verdict)
+              for verdict in ("ok", "check", "weak", "too_few")}
+    return {"ok": True, "lines": lines, "common_offset_ms": common,
+            "counts": counts, "findings": findings}
+
+
+def reference_points(beatmap: dict, beats: np.ndarray | None = None) -> list[TimingPoint]:
+    """A map's red lines as the working timing: the mapper vouches for them.
+
+    Each becomes a hand-placed point (confidence 1.0, ``manual`` so export
+    snapping never moves it) carrying the line's own meter as a known bar.
+    Raises ``ValueError`` when the map has no red lines to load.
+    """
+    rows = _beatmap_red_rows(beatmap)
+    if not rows:
+        raise ValueError("This map has no red lines to load.")
+    beats = np.zeros(0) if beats is None else np.asarray(beats, dtype=np.float64)
+    return [TimingPoint(offset, bpm, 1.0, _nearest_beat_index(beats, offset),
+                        meter, True, manual=True) for offset, bpm, meter in rows]
+
+
+def _file_digest(path: Path) -> str:
+    import hashlib
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def same_audio(osu_path: str | os.PathLike[str], beatmap: dict,
+               audio_path: str | os.PathLike[str]) -> bool | None:
+    """Whether a map's AudioFilename holds the same bytes as ``audio_path``.
+
+    None when either file is missing: a name alone proves nothing, since two
+    encodes of one song share names and offsets do not transfer between them.
+    """
+    named = str((beatmap.get("general") or {}).get("AudioFilename", "")).strip()
+    mine, theirs = Path(audio_path), Path(osu_path).parent / named
+    if not named or not mine.is_file() or not theirs.is_file():
+        return None
+    try:
+        if mine.stat().st_size != theirs.stat().st_size:
+            return False
+        return _file_digest(mine) == _file_digest(theirs)
+    except OSError:
+        return None
+
+
+def find_same_audio_maps(audio_path: str | os.PathLike[str],
+                         root: str | os.PathLike[str]) -> dict:
+    """Every beatmap under ``root`` whose audio is byte for byte this file.
+
+    Walks ``root`` and one level of folders below it, the shape of an osu!
+    Songs folder. Only audio files of the same size are hashed, so a whole
+    Songs folder costs a directory listing plus a hash or two. Each match
+    lists the .osu files in its folder that name that audio. Plain types.
+    """
+    audio = Path(audio_path)
+    base = Path(root)
+    if not audio.is_file():
+        raise ValueError(f"{audio} is not a file.")
+    if not base.is_dir():
+        raise ValueError(f"{base} is not a folder.")
+    size = audio.stat().st_size
+    want: str | None = None
+    # os.scandir, not Path.iterdir: on Windows each entry carries its size, so
+    # a 4,800-set Songs folder (59,000 audio files with the hitsound samples)
+    # costs a listing, not a stat per file. iterdir took 9-21 s on one.
+    try:
+        with os.scandir(base) as entries:
+            folders = [base] + sorted(Path(e.path) for e in entries if e.is_dir())
+    except OSError as exc:
+        raise ValueError(f"Could not list {base}: {exc}") from exc
+    scanned = same_size = 0
+    matches: list[dict] = []
+    for folder in folders:
+        try:
+            with os.scandir(folder) as entries:
+                files = sorted((e for e in entries if e.is_file()), key=lambda e: e.name)
+        except OSError:
+            continue
+        for entry in files:
+            if os.path.splitext(entry.name)[1].lower() not in AUDIO_EXTENSIONS:
+                continue
+            scanned += 1
+            try:
+                if entry.stat().st_size != size:
+                    continue
+                same_size += 1
+                want = want or _file_digest(audio)
+                if _file_digest(Path(entry.path)) != want:
+                    continue
+            except OSError:
+                continue
+            candidate = Path(entry.path)
+            beatmaps = []
+            for osu in (Path(e.path) for e in files if e.name.lower().endswith(".osu")):
+                try:
+                    beatmap = read_osu_beatmap(osu)
+                except (ValueError, OSError):
+                    continue
+                named = str(beatmap["general"].get("AudioFilename", "")).strip()
+                if named.lower() == candidate.name.lower():
+                    beatmaps.append({"path": str(osu),
+                                     "difficulty": _mapset_difficulty_name(osu, beatmap)})
+            matches.append({"folder": str(folder), "audio": str(candidate),
+                            "beatmaps": beatmaps})
+    return {"root": str(base), "scanned": scanned, "same_size": same_size,
+            "matches": matches}
+
+
+# ---------------------------------------------------------------------------
 # Settings persistence
 # ---------------------------------------------------------------------------
 
@@ -4435,7 +4763,7 @@ CONFIG_TYPES: dict[str, tuple[type, ...]] = {
     "cfg_version": (int,), "file": (str,), "language": (str,), "pulse": (str,),
     "delta": (int, float, str), "persistence": (int, float, str),
     "confidence": (int, float, str), "prefer_map_bpm": (bool,), "refine_beats": (bool,),
-    "recent": (list,),
+    "recent": (list,), "songs_folder": (str,),
 }
 
 

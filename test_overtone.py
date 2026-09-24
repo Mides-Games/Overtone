@@ -2033,33 +2033,38 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), self.LEGACY_OSU)
 
     def test_config_tolerates_garbage(self):
+        from unittest import mock
         import overtone
-        with tempfile.TemporaryDirectory() as tmp:
-            original = overtone.CONFIG_PATH
-            overtone.CONFIG_PATH = Path(tmp) / "cfg.json"
-            try:
-                overtone.CONFIG_PATH.write_text("[1, 2, 3]", encoding="utf-8")
-                self.assertEqual(overtone.load_config(), {})
-                overtone.CONFIG_PATH.write_text("{not json", encoding="utf-8")
-                self.assertEqual(overtone.load_config(), {})
-                overtone.save_config({"language": "English"})
-                self.assertEqual(overtone.load_config(), {"language": "English"})
-                # An unserialisable value must not raise, and must not corrupt
-                # the file that is already there.
-                overtone.save_config({"bad": object()})
-                self.assertEqual(overtone.load_config(), {"language": "English"})
-                # Hand-edited values of the wrong type used to crash the classic
-                # window on every launch. They are dropped; the rest is kept.
-                overtone.CONFIG_PATH.write_text(json.dumps({
-                    "cfg_version": "2", "prefer_map_bpm": "on", "refine_beats": None,
-                    "delta": True, "language": 5, "recent": ["a.mp3", 7, None],
-                    "file": "song.mp3", "persistence": "12", "theme": {"kept": 1}}),
-                    encoding="utf-8")
-                self.assertEqual(overtone.load_config(), {
-                    "recent": ["a.mp3"], "file": "song.mp3", "persistence": "12",
-                    "theme": {"kept": 1}})
-            finally:
-                overtone.CONFIG_PATH = original
+        # Both paths: an unreadable config falls through to the pre-rename
+        # one, so leaving LEGACY_CONFIG_PATH real made "{not json" read back
+        # whatever ~/.timing_analyzer.json holds on the developer's machine.
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "cfg.json"), \
+                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "legacy.json"):
+            overtone.CONFIG_PATH.write_text("[1, 2, 3]", encoding="utf-8")
+            self.assertEqual(overtone.load_config(), {})
+            overtone.CONFIG_PATH.write_text("{not json", encoding="utf-8")
+            self.assertEqual(overtone.load_config(), {})
+            overtone.save_config({"language": "English"})
+            self.assertEqual(overtone.load_config(), {"language": "English"})
+            # An unserialisable value must not raise, and must not corrupt
+            # the file that is already there.
+            overtone.save_config({"bad": object()})
+            self.assertEqual(overtone.load_config(), {"language": "English"})
+            # Hand-edited values of the wrong type used to crash the classic
+            # window on every launch. They are dropped; the rest is kept.
+            overtone.CONFIG_PATH.write_text(json.dumps({
+                "cfg_version": "2", "prefer_map_bpm": "on", "refine_beats": None,
+                "delta": True, "language": 5, "recent": ["a.mp3", 7, None],
+                "file": "song.mp3", "persistence": "12", "theme": {"kept": 1}}),
+                encoding="utf-8")
+            self.assertEqual(overtone.load_config(), {
+                "recent": ["a.mp3"], "file": "song.mp3", "persistence": "12",
+                "theme": {"kept": 1}})
+            # Without a config of its own, the pre-rename file is read.
+            overtone.CONFIG_PATH.unlink()
+            overtone.LEGACY_CONFIG_PATH.write_text('{"language": "Español"}', encoding="utf-8")
+            self.assertEqual(overtone.load_config(), {"language": "Español"})
 
     def test_ctrl_c_in_a_field_copies_the_field(self):
         import tkinter

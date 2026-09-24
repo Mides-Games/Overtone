@@ -696,6 +696,15 @@ class PlaybackBridgeTests(_IsolatedConfig):
         self.assertEqual(clicks["accent"][:5], [1, 0, 0, 0, 1])
         self.assertEqual(clicks["t"].count(5.0), 1)
 
+    def test_the_payload_carries_the_attacks_scaled_to_the_strongest(self) -> None:
+        analysis = _analysis([ta.TimingPoint(1000.0, 120.0, 0.9, 0)])
+        self.assertEqual(web.analysis_payload(analysis)["attacks"], {"t": [], "w": []})
+        analysis.attack_times = np.array([1.000004, 1.5, 2.0])
+        analysis.attack_weights = np.array([2.0, 1.0, 4.0])
+        attacks = web.analysis_payload(analysis)["attacks"]
+        json.dumps(attacks)
+        self.assertEqual(attacks, {"t": [1.0, 1.5, 2.0], "w": [0.5, 0.25, 1.0]})
+
     def test_the_song_arrives_in_chunks_byte_for_byte(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             song = Path(tmp) / "song.mp3"

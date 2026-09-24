@@ -136,7 +136,21 @@ def analysis_payload(analysis: ta.Analysis) -> dict:
         # The live click plays the schedule the WAV export writes, and the
         # payload is rebuilt on every edit, so the click follows the edits.
         "clicks": _clicks(analysis),
+        # What red lines snap to when dragged, and what the drift lane plots.
+        "attacks": _attacks_payload(analysis),
     }
+
+
+def _attacks_payload(analysis: ta.Analysis) -> dict:
+    """The detected attacks, to 0.01 ms, with weights scaled to the strongest.
+    Empty for a fallback result, which keeps none."""
+    times = np.asarray(getattr(analysis, "attack_times", []), dtype=np.float64)
+    weights = np.asarray(getattr(analysis, "attack_weights", []), dtype=np.float64)
+    if times.size == 0 or weights.size != times.size:
+        return {"t": [], "w": []}
+    peak = float(weights.max()) if weights.size else 0.0
+    scaled = weights / peak if peak > 0 else np.zeros_like(weights)
+    return {"t": times.round(5).tolist(), "w": scaled.round(3).tolist()}
 
 
 def _clicks(analysis: ta.Analysis) -> dict:

@@ -20,6 +20,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import sys
 import threading
 from pathlib import Path
@@ -49,6 +50,10 @@ PULSE_FACTORS = {"auto": 0.0, "/4": 0.25, "/2": 0.5, "x1": 1.0, "x2": 2.0, "x4":
 AUDIO_MIME = {".wav": "audio/wav", ".flac": "audio/flac", ".ogg": "audio/ogg",
               ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac",
               ".opus": "audio/ogg", ".aiff": "audio/aiff"}
+#: .osu offsets as whole ms (stable) up to this many decimals (lazer).
+MAX_OFFSET_DECIMALS = 3
+#: The interface's scale, as a factor of its designed size.
+UI_SCALE_RANGE = (0.8, 1.5)
 #: A tap calibration past this is not latency but taps that missed the click.
 TAP_LATENCY_LIMIT_MS = 250.0
 #: The trace needs the shape of the onset envelope, not its 40 k frames.
@@ -94,8 +99,9 @@ def _warnings(analysis: ta.Analysis) -> list[dict]:
     return notes
 
 
-def analysis_payload(analysis: ta.Analysis) -> dict:
-    """Everything the frontend draws, as plain JSON types.
+def analysis_payload(analysis: ta.Analysis, click: dict | None = None) -> dict:
+    """Everything the frontend draws, as plain JSON types. ``click`` carries
+    the metronome settings (``subdivision``, ``accent``) the clicks follow.
 
     Points are snapped exactly as the Tk table and the exporters snap them, so
     what the user reads is what gets written to the .osu.
@@ -135,7 +141,7 @@ def analysis_payload(analysis: ta.Analysis) -> dict:
         "warnings": _warnings(analysis),
         # The live click plays the schedule the WAV export writes, and the
         # payload is rebuilt on every edit, so the click follows the edits.
-        "clicks": _clicks(analysis),
+        "clicks": _clicks(analysis, click or {}),
         # What red lines snap to when dragged, and what the drift lane plots.
         "attacks": _attacks_payload(analysis),
     }
@@ -153,15 +159,16 @@ def _attacks_payload(analysis: ta.Analysis) -> dict:
     return {"t": times.round(5).tolist(), "w": scaled.round(3).tolist()}
 
 
-def _clicks(analysis: ta.Analysis) -> dict:
+def _clicks(analysis: ta.Analysis, click: dict) -> dict:
     """The click schedule as two flat lists: seconds (to the microsecond)
-    and whether each one is accented."""
+    and each click's level (2 bar, 1 beat, 0 subdivision)."""
     try:
-        schedule = ta.click_schedule(analysis)
+        schedule = ta.click_schedule(analysis, subdivision=int(click.get("subdivision", 1)),
+                                     accent=bool(click.get("accent", True)))
     except (ValueError, TypeError, AttributeError):
         schedule = []
-    return {"t": [round(t, 6) for t, _accent in schedule],
-            "accent": [1 if accent else 0 for _t, accent in schedule]}
+    return {"t": [round(t, 6) for t, _level in schedule],
+            "level": [level for _t, level in schedule]}
 
 
 def _default_songs() -> Path:
@@ -177,6 +184,13 @@ def _wav_bytes(path: Path) -> bytes:
     buffer = io.BytesIO()
     ta.sf.write(buffer, y, sr, format="WAV", subtype="PCM_16")
     return buffer.getvalue()
+
+
+def _default_output() -> Path:
+    """Documents / Overtone: where exports go unless told otherwise, never next
+    to the app (the output-file policy, roadmap 14.4b). Read when asked."""
+    home = Path(os.environ.get("USERPROFILE") or Path.home())
+    return home / "Documents" / "Overtone"
 
 
 def _open_link(link: str) -> None:
@@ -262,7 +276,7 @@ class Api:
         self._future.append(list(self._analysis.points))
         self._analysis.points = self._history.pop()
         self._prune_locks()
-        return {"ok": True, "result": analysis_payload(self._analysis),
+        return {"ok": True, "result": self._payload(),
                 "selected": -1, "locks": self._lock_offsets(), **self.history_state()}
 
     def redo(self) -> dict:
@@ -274,7 +288,7 @@ class Api:
         self._history.append(list(self._analysis.points))
         self._analysis.points = self._future.pop()
         self._prune_locks()
-        return {"ok": True, "result": analysis_payload(self._analysis),
+        return {"ok": True, "result": self._payload(),
                 "selected": -1, "locks": self._lock_offsets(), **self.history_state()}
 
     # -- state -----------------------------------------------------------
@@ -418,7 +432,7 @@ class Api:
         self._analysis = rebuilt
         for lock in self._locked:
             lock["bpm"] *= rebuilt.subdivision / analysis.subdivision
-        return {"ok": True, "result": analysis_payload(self._analysis),
+        return {"ok": True, "result": self._payload(),
                 "locks": self._lock_offsets(), **self.history_state()}
 
     # -- point locks (Phase 4: a verified point survives edits and re-analysis)
@@ -478,7 +492,7 @@ class Api:
         else:
             selected = min(range(len(points)),
                            key=lambda n: abs(points[n].offset_ms - seek))
-        return {"ok": True, "result": analysis_payload(self._analysis),
+        return {"ok": True, "result": self._payload(),
                 "selected": selected, "locks": self._lock_offsets(),
                 **self.history_state()}
 
@@ -566,12 +580,13 @@ class Api:
     def osu_text(self) -> dict:
         if self._analysis is None:
             return {"ok": False, "key": "first"}
-        return {"ok": True, "text": ta.osu_timing_text(self._analysis)}
+        return {"ok": True, "text": ta.osu_timing_text(
+            self._analysis, decimals=self._settings()["offset_decimals"])}
 
     def save_csv(self) -> dict:
         if self._analysis is None:
             return {"ok": False, "key": "first"}
-        target = self._save_dialog("overtone-timing.csv", CSV_TYPES)
+        target = self._export_target("overtone-timing.csv", CSV_TYPES)
         if not target:
             return {"ok": False, "key": "cancelled"}
         try:
@@ -583,11 +598,13 @@ class Api:
     def save_click(self) -> dict:
         if self._analysis is None:
             return {"ok": False, "key": "first"}
-        target = self._save_dialog("overtone-click.wav", WAV_TYPES)
+        target = self._export_target("overtone-click.wav", WAV_TYPES)
         if not target:
             return {"ok": False, "key": "cancelled"}
         try:
-            ta.export_click_track(self._analysis, target)
+            s = self._settings()
+            ta.export_click_track(self._analysis, target, subdivision=s["click_subdivision"],
+                                  accent=s["click_accent"])
         except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "path": target}
@@ -597,11 +614,12 @@ class Api:
             return {"ok": False, "key": "first"}
         audio = self._cfg.get("file") or self._analysis.source
         stem = Path(str(audio)).stem or "overtone"
-        target = self._save_dialog(f"{stem}.osz", OSZ_TYPES)
+        target = self._export_target(f"{stem}.osz", OSZ_TYPES)
         if not target:
             return {"ok": False, "key": "cancelled"}
         try:
-            info = ta.export_osz(self._analysis, target, audio_path=audio)
+            info = ta.export_osz(self._analysis, target, audio_path=audio,
+                                 decimals=self._settings()["offset_decimals"])
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "path": target, "points": info["points"]}
@@ -669,7 +687,9 @@ class Api:
         if not Path(str(osu_path)).is_file():
             return {"ok": False, "key": "bad_file"}
         try:
-            summary = ta.inject_osu_timing_points(osu_path, self._analysis, dry_run=True)
+            summary = ta.inject_osu_timing_points(
+                osu_path, self._analysis, dry_run=True,
+                decimals=self._settings()["offset_decimals"])
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "summary": summary}
@@ -681,7 +701,9 @@ class Api:
         if not Path(str(osu_path)).is_file():
             return {"ok": False, "key": "bad_file"}
         try:
-            summary = ta.inject_osu_timing_points(osu_path, self._analysis, backup=True)
+            summary = ta.inject_osu_timing_points(
+                osu_path, self._analysis, backup=True,
+                decimals=self._settings()["offset_decimals"])
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "summary": summary}
@@ -942,6 +964,126 @@ class Api:
                 "click_volume": min(1.0, max(0.0, _number(cfg.get("click_volume"), 0.6, float))),
                 "tap_latency_ms": latency if abs(latency) <= TAP_LATENCY_LIMIT_MS else 0.0}
 
+    # -- settings (Phase 20): every option in one place -------------------
+    def _settings(self) -> dict:
+        """The saved settings, each checked: a hand-edited config falls back
+        to the default for that one value, never to a crash."""
+        cfg = self._cfg
+        decimals = _number(cfg.get("offset_decimals"), 0, int)
+        subdivision = _number(cfg.get("click_subdivision"), 1, int)
+        scale = _number(cfg.get("ui_scale"), 1.0, float)
+        folder = cfg.get("output_folder")
+        return {
+            "output_folder": folder if isinstance(folder, str) and folder.strip() else "",
+            "export_ask": cfg.get("export_ask", True) is not False,
+            "offset_decimals": decimals if 0 <= decimals <= MAX_OFFSET_DECIMALS else 0,
+            "click_subdivision": subdivision if subdivision in ta.CLICK_SUBDIVISIONS else 1,
+            "click_accent": cfg.get("click_accent", True) is not False,
+            "ui_scale": scale if UI_SCALE_RANGE[0] <= scale <= UI_SCALE_RANGE[1] else 1.0,
+            "reduced_motion": cfg.get("reduced_motion") is True,
+        }
+
+    def settings(self) -> dict:
+        return {"ok": True, "settings": self._settings(),
+                "output_default": str(_default_output()), "cache": self._cache_info()}
+
+    def set_settings(self, changes: dict) -> dict:
+        """Change some settings; every value is checked before any is kept."""
+        if not isinstance(changes, dict):
+            return {"ok": False, "key": "bad_values"}
+        clean: dict = {}
+        try:
+            for key, value in changes.items():
+                if key == "output_folder":
+                    value = str(value or "").strip()
+                    if value and not Path(value).is_dir():
+                        return {"ok": False, "key": "bad_folder"}
+                elif key in ("export_ask", "click_accent", "reduced_motion"):
+                    if not isinstance(value, bool):
+                        return {"ok": False, "key": "bad_values"}
+                elif key == "offset_decimals":
+                    value = int(value)
+                    if not 0 <= value <= MAX_OFFSET_DECIMALS:
+                        return {"ok": False, "key": "bad_values"}
+                elif key == "click_subdivision":
+                    value = int(value)
+                    if value not in ta.CLICK_SUBDIVISIONS:
+                        return {"ok": False, "key": "bad_values"}
+                elif key == "ui_scale":
+                    value = float(value)
+                    if not (np.isfinite(value) and UI_SCALE_RANGE[0] <= value <= UI_SCALE_RANGE[1]):
+                        return {"ok": False, "key": "bad_values"}
+                else:
+                    return {"ok": False, "key": "bad_values"}
+                clean[key] = value
+        except (TypeError, ValueError):
+            return {"ok": False, "key": "bad_values"}
+        self._cfg.update(clean)
+        self._persist()
+        reply = self.settings()
+        # The click follows its settings at once, as it follows the edits.
+        if self._analysis is not None and {"click_subdivision", "click_accent"} & clean.keys():
+            reply["result"] = self._payload()
+        return reply
+
+    def pick_output_folder(self) -> dict:
+        folder = self.pick_folder()
+        if not folder:
+            return {"ok": False, "key": "cancelled"}
+        return self.set_settings({"output_folder": folder})
+
+    def _payload(self) -> dict:
+        s = self._settings()
+        return analysis_payload(self._analysis, {"subdivision": s["click_subdivision"],
+                                                 "accent": s["click_accent"]})
+
+    def _cache_info(self) -> dict:
+        entries = list(self._cache_dir().glob("*.pickle"))
+        size = 0
+        for entry in entries:
+            try:
+                size += entry.stat().st_size
+            except OSError:
+                pass
+        return {"entries": len(entries), "bytes": size, "path": str(self._cache_dir()),
+                "limit_entries": self.CACHE_ENTRIES, "limit_bytes": self.CACHE_BYTES}
+
+    def cache_clear(self) -> dict:
+        """Forget every cached analysis; the next one of each song runs again."""
+        for entry in self._cache_dir().glob("*.pickle"):
+            try:
+                entry.unlink()
+            except OSError:
+                pass
+        return {"ok": True, "cache": self._cache_info()}
+
+    def _song_folder_name(self) -> str:
+        """The song's name for its output folder: the osu! folder's "Artist -
+        Title" when the audio sits in one, else the audio's own name."""
+        source = Path(str(self._analysis.source))
+        folder = re.sub(r"^\d+\s+", "", source.parent.name)
+        name = folder if " - " in folder else source.stem
+        return ta._safe_component(name, "Overtone export")
+
+    def _export_target(self, filename: str, file_types) -> str | None:
+        """Where an export goes: the output folder's folder for this song.
+        Asked for, the save dialog opens there; not asked, the file lands
+        there under a free name, never over an earlier export."""
+        s = self._settings()
+        root = Path(s["output_folder"]) if s["output_folder"] else _default_output()
+        folder = root / self._song_folder_name()
+        if s["export_ask"]:
+            root.mkdir(parents=True, exist_ok=True)
+            return self._save_dialog(filename, file_types, folder if folder.is_dir() else root)
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / filename
+        stem, suffix = target.stem, target.suffix
+        for n in range(2, 1000):
+            if not target.exists():
+                break
+            target = folder / f"{stem} ({n}){suffix}"
+        return str(target)
+
     # -- mod report: every finding as an osu! editor timestamp -------------
     def mod_report(self, osu_path: str) -> dict:
         """Every finding about one difficulty, as the lines a modder posts.
@@ -978,12 +1120,13 @@ class Api:
         return {"ok": True}
 
     # -- helpers (not exposed: underscored) ----------------------------------
-    def _save_dialog(self, filename: str, file_types) -> str | None:
+    def _save_dialog(self, filename: str, file_types, directory: Path | None = None) -> str | None:
         import webview
         if self._window is None:
             return None
         chosen = self._window.create_file_dialog(
-            webview.SAVE_DIALOG, save_filename=filename, file_types=file_types)
+            webview.SAVE_DIALOG, directory=str(directory or ""), save_filename=filename,
+            file_types=file_types)
         if not chosen:
             return None
         return chosen[0] if isinstance(chosen, (list, tuple)) else str(chosen)
@@ -1007,7 +1150,7 @@ class Api:
             self._assisted = None       # a fit belongs to the song it was made on
             self._history.clear()
             self._future.clear()
-            self._emit("onResult", analysis_payload(result))
+            self._emit("onResult", self._payload())
         except Exception as exc:  # noqa: BLE001 -- the UI shows the message
             self._emit("onError", str(exc))
         finally:

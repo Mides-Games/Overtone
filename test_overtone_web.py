@@ -693,7 +693,7 @@ class PlaybackBridgeTests(_IsolatedConfig):
         want = ta.click_schedule(analysis)
         self.assertEqual(len(clicks["t"]), len(want))
         self.assertEqual(clicks["t"][:3], [1.0, 1.5, 2.0])
-        self.assertEqual(clicks["accent"][:5], [1, 0, 0, 0, 1])
+        self.assertEqual(clicks["level"][:5], [2, 1, 1, 1, 2])
         self.assertEqual(clicks["t"].count(5.0), 1)
 
     def test_the_payload_carries_the_attacks_scaled_to_the_strongest(self) -> None:
@@ -761,6 +761,82 @@ class PlaybackBridgeTests(_IsolatedConfig):
         # A hand-edited config past the limit is ignored, not trusted.
         api._cfg["tap_latency_ms"] = 900
         self.assertEqual(api.state()["playback"]["tap_latency_ms"], 0.0)
+
+
+class SettingsBridgeTests(_IsolatedConfig):
+    """Settings: every option checked, remembered, and used by the exports."""
+
+    def test_defaults_come_back_and_a_hand_edited_config_falls_back_per_value(self) -> None:
+        api = web.Api()
+        reply = api.settings()
+        json.dumps(reply)
+        self.assertEqual(reply["settings"], {
+            "output_folder": "", "export_ask": True, "offset_decimals": 0,
+            "click_subdivision": 1, "click_accent": True, "ui_scale": 1.0,
+            "reduced_motion": False})
+        self.assertTrue(reply["output_default"].endswith(str(Path("Documents") / "Overtone")))
+        api._cfg.update({"offset_decimals": 9, "click_subdivision": 5, "ui_scale": "huge",
+                         "export_ask": "no", "output_folder": 7})
+        s = api.settings()["settings"]
+        self.assertEqual((s["offset_decimals"], s["click_subdivision"], s["ui_scale"],
+                          s["export_ask"], s["output_folder"]), (0, 1, 1.0, True, ""))
+
+    def test_each_value_is_checked_before_any_is_kept(self) -> None:
+        api = web.Api()
+        for bad in ({"offset_decimals": 4}, {"click_subdivision": 5}, {"ui_scale": 3},
+                    {"export_ask": "yes"}, {"output_folder": "C:/does/not/exist"},
+                    {"nonsense": 1}, {"offset_decimals": 2, "ui_scale": float("nan")}):
+            with self.subTest(bad=bad):
+                self.assertFalse(api.set_settings(bad)["ok"])
+        self.assertEqual(self.saved, [])
+        with tempfile.TemporaryDirectory() as tmp:
+            reply = api.set_settings({"offset_decimals": 2, "output_folder": tmp,
+                                      "reduced_motion": True})
+        self.assertEqual((reply["settings"]["offset_decimals"], reply["settings"]["output_folder"],
+                          reply["settings"]["reduced_motion"]), (2, tmp, True))
+        self.assertEqual(self.saved[-1]["offset_decimals"], 2)
+
+    def test_click_settings_rebuild_the_payloads_clicks(self) -> None:
+        api = _api_with_points()
+        reply = api.set_settings({"click_subdivision": 2, "click_accent": False})
+        clicks = reply["result"]["clicks"]
+        self.assertEqual(clicks["t"][:3], [1.0, 1.25, 1.5])
+        self.assertEqual(clicks["level"][:3], [1, 0, 1])
+        self.assertNotIn("result", api.set_settings({"reduced_motion": True}))
+
+    def test_exports_land_in_the_songs_output_folder_without_asking(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = _api_with_points()
+            api._analysis.source = str(Path(tmp) / "2438 Band - Song" / "audio.mp3")
+            api.set_settings({"output_folder": tmp, "export_ask": False, "offset_decimals": 1})
+            first, second = api.save_csv(), api.save_csv()
+            folder = Path(tmp) / "Band - Song"
+            self.assertEqual(Path(first["path"]), folder / "overtone-timing.csv")
+            self.assertEqual(Path(second["path"]), folder / "overtone-timing (2).csv")
+            self.assertTrue(Path(second["path"]).is_file())
+        # Decimals reach the .osu text.
+        first_red = next(line for line in api.osu_text()["text"].splitlines()
+                         if line and not line.startswith("//"))
+        self.assertEqual(first_red.split(",")[0], "1000.0")
+
+    def test_asked_exports_open_the_dialog_in_the_output_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = _api_with_points()
+            api.set_settings({"output_folder": tmp})
+            window = mock.Mock()
+            window.create_file_dialog.return_value = None
+            api._window = window
+            self.assertEqual(api.save_csv()["key"], "cancelled")
+            self.assertEqual(window.create_file_dialog.call_args.kwargs["directory"], tmp)
+
+    def test_the_cache_reports_its_size_and_clears(self) -> None:
+        api = web.Api()
+        entry = api._cache_dir() / "abc.pickle"
+        entry.write_bytes(b"x" * 1234)
+        info = api.settings()["cache"]
+        self.assertEqual((info["entries"], info["bytes"]), (1, 1234))
+        self.assertEqual(api.cache_clear()["cache"]["entries"], 0)
+        self.assertFalse(entry.exists())
 
 
 class ModReportBridgeTests(_IsolatedConfig):

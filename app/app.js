@@ -47,7 +47,7 @@ const I18N = {
     empty_title: "Time a song in one click",
     empty_body: "Open an audio file and Overtone finds every BPM change, offset and bar line.",
     stat_global: "Global BPM", stat_points: "Timing points", stat_beats: "Beats", stat_stability: "Stability", stat_engine: "Engine",
-    trace_title: "Tempo map", trace_sub: "Local BPM over time · click to select the governing red line",
+    trace_title: "Tempo map", trace_sub: "Wheel to zoom · drag to pan · drag a red line to move it (it snaps to an attack; Alt moves it freely) · click selects, double-click plays",
     no_song: "No song open", no_song_hint: "Open an audio file to start", analyze_last: "Analyze the last song",
     k_open: "open", k_analyze: "analyze", table_hint: "↑ ↓ to move", f_preset: "Preset",
     d_song: "Song", d_point: "Timing point", d_offset: "Offset", d_beat: "Beat length", d_meter: "Meter",
@@ -56,7 +56,7 @@ const I18N = {
     d_pulse: "Pulse", d_sections: "Grid sections", d_hint: "Select a timing point in the list or on the tempo map to inspect it.",
     d_meter_known: "Bar found in the accents: this red line sits on a downbeat.",
     d_meter_guess: "No bar evidence: the red line sits on a beat, and the meter is the analysis default.",
-    lg_tempo: "tempo", lg_points: "timing points", lg_onsets: "onsets",
+    lg_tempo: "tempo", lg_points: "timing points", lg_onsets: "onsets", lg_ghost: "map lines",
     table_title: "Timing points", col_offset: "Offset (ms)", col_beat: "Beat (ms)", col_meter: "Meter", col_conf: "Confidence",
     detection: "Detection settings", preset_variable: "Variable tempo", preset_steady: "Steady",
     f_delta: "Min change (BPM)", f_persist: "Confirm beats", f_conf: "Min confidence (%)", f_pulse: "Pulse (octave)", auto: "Auto",
@@ -200,6 +200,7 @@ const I18N = {
     pb_failed: "The song could not be played: {detail}",
     no_audio_staged: "The song is not loaded; press play again.",
     pb_rate: "Speed: slower lowers the pitch, so every attack stays exactly in place",
+    lane_wave: "wave", tl_zoom: "{a} – {b}", tl_fit: "Show all", lg_drift: "drift",
     tap_btn: "Tap (T)", tap_calibrate: "Calibrate to these taps", tap_assist: "Use for assisted timing", tap_clear: "Clear",
     tap_hint: "Play, then tap T on each beat: to check the timing by ear, to calibrate your taps (tap to the click alone), or to seed assisted timing (start on a downbeat).",
     tap_info: "{n} taps · {bpm} BPM · {where}",
@@ -261,7 +262,7 @@ const I18N = {
     empty_title: "Timea una canción con un clic",
     empty_body: "Abre un audio y Overtone encuentra cada cambio de BPM, offset y línea de compás.",
     stat_global: "BPM global", stat_points: "Timing points", stat_beats: "Beats", stat_stability: "Estabilidad", stat_engine: "Motor",
-    trace_title: "Mapa de tempo", trace_sub: "BPM local en el tiempo · clic para elegir la línea roja que lo gobierna",
+    trace_title: "Mapa de tempo", trace_sub: "Rueda para acercar · arrastrá para desplazarte · arrastrá una línea roja para moverla (se imanta a un ataque; con Alt, libre) · clic elige, doble clic reproduce",
     no_song: "Ninguna canción abierta", no_song_hint: "Abrí un archivo de audio para empezar", analyze_last: "Analizar la última canción",
     k_open: "abrir", k_analyze: "analizar", table_hint: "↑ ↓ para moverte", f_preset: "Preajuste",
     d_song: "Canción", d_point: "Timing point", d_offset: "Offset", d_beat: "Duración del beat", d_meter: "Compás",
@@ -270,7 +271,7 @@ const I18N = {
     d_pulse: "Pulso", d_sections: "Secciones de rejilla", d_hint: "Elegí un timing point en la lista o en el mapa de tempo para inspeccionarlo.",
     d_meter_known: "Compás hallado en los acentos: esta línea roja cae en un downbeat.",
     d_meter_guess: "Sin evidencia de compás: la línea roja cae en un beat y el compás es el valor por defecto.",
-    lg_tempo: "tempo", lg_points: "timing points", lg_onsets: "ataques",
+    lg_tempo: "tempo", lg_points: "timing points", lg_onsets: "ataques", lg_ghost: "líneas del mapa",
     table_title: "Timing points", col_offset: "Offset (ms)", col_beat: "Beat (ms)", col_meter: "Compás", col_conf: "Confianza",
     detection: "Ajustes de detección", preset_variable: "Tempo variable", preset_steady: "Estable",
     f_delta: "Cambio mínimo (BPM)", f_persist: "Beats de confirmación", f_conf: "Confianza mínima (%)", f_pulse: "Pulso (octava)", auto: "Auto",
@@ -414,6 +415,7 @@ const I18N = {
     pb_failed: "No se pudo reproducir la canción: {detail}",
     no_audio_staged: "La canción no está cargada; volvé a darle play.",
     pb_rate: "Velocidad: más lento baja el tono, así cada ataque queda exactamente en su lugar",
+    lane_wave: "onda", tl_zoom: "{a} – {b}", tl_fit: "Ver todo", lg_drift: "deriva",
     tap_btn: "Tap (T)", tap_calibrate: "Calibrar con estos taps", tap_assist: "Usar para timing asistido", tap_clear: "Borrar",
     tap_hint: "Reproducí y tocá T en cada beat: para revisar el timing a oído, para calibrar tus taps (tocá solo con el click) o para arrancar el timing asistido (empezá en un tiempo fuerte).",
     tap_info: "{n} taps · {bpm} BPM · {where}",
@@ -490,7 +492,7 @@ function setView(view) {
   renderNeedSong();
   if (changed) $("content").scrollTop = 0;
   // The canvas measures its box: it can only be drawn while visible.
-  if (view === "timing" && S.result) drawTrace();
+  if (view === "timing" && S.result) { drawTrace(); waveLoad(); }
 }
 
 function renderNeedSong() {
@@ -780,6 +782,7 @@ function renderResult(r) {
   renderAssist();
   renderReport();
   renderTaps();
+  if (S.view === "timing") waveLoad();
 }
 
 function renderDetail() {
@@ -1550,6 +1553,7 @@ async function pbLoad() {
         P.buffer = await ctx.decodeAudioData(await pbFetch("wav"));
       }
       P.bufferFor = path;
+      waveBuild();
       $("pbStatus").textContent = t("pb_hint");
       return true;
     } catch (err) {
@@ -2027,6 +2031,8 @@ const C = {
   plot: "#0e1320", grid: "#1a2233", gridText: "#606b80", tempo: "#7f9df0", fill: "rgba(127,157,240,0.10)",
   onset: "#1e2739", red: "#e0606c", redSoft: "rgba(224,96,108,0.16)", section: "rgba(255,255,255,0.018)",
   selected: "rgba(79,192,138,0.08)", cursor: "rgba(232,236,242,0.35)",
+  beat: "rgba(255,255,255,0.07)", beatBar: "rgba(255,255,255,0.17)", wave: "#3a4a6b",
+  ghost: "rgba(238,178,76,0.75)", driftOk: "#4fc08a", driftWarn: "#eeb24c", driftBad: "#e0606c",
 };
 const PAD = { l: 52, r: 18, t: 34, b: 30 };
 let geom = null;
@@ -2043,6 +2049,85 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
 
+// The tempo map is a timeline: a visible window of the song (zoom, pan), the
+// local tempo on top, then the waveform and the drift lane under it.
+const LANES = { wave: 58, drift: 46, gap: 10 };
+const TL_MIN_SPAN = 0.5;          // seconds: the closest zoom
+const TL_SNAP_PX = 6;             // a dragged red line snaps to an attack this close
+const DRIFT_MS = 30;              // the drift lane's half height
+const VIEW = { a: 0, b: 0, for: null };
+const WAVE = { for: null, bin: 256, rate: 0, min: null, max: null };
+let DRIFT = { for: null, dev: null };
+const TL = { drag: null, moved: false, suppressClick: false };
+
+function tlView(r) {
+  const dur = Math.max(r.duration, 1e-3);
+  if (VIEW.for !== r.path) { VIEW.a = 0; VIEW.b = dur; VIEW.for = r.path; }
+  const span = Math.min(Math.max(VIEW.b - VIEW.a, TL_MIN_SPAN), dur);
+  VIEW.a = Math.min(Math.max(VIEW.a, 0), dur - span);
+  VIEW.b = VIEW.a + span;
+  return VIEW;
+}
+
+function tlFit() { VIEW.a = 0; VIEW.b = S.result ? S.result.duration : 0; drawTrace(); }
+
+// Min/max of every 256 samples, built once per song from the decoded audio:
+// a column of the waveform then reduces a few bins, not a few thousand samples.
+function waveBuild() {
+  const buf = P.buffer;
+  if (!buf || WAVE.for === P.bufferFor) return;
+  const chans = [];
+  for (let c = 0; c < Math.min(buf.numberOfChannels, 2); c++) chans.push(buf.getChannelData(c));
+  const n = Math.ceil(buf.length / WAVE.bin), mn = new Float32Array(n), mx = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let lo = 0, hi = 0;
+    const end = Math.min(buf.length, (i + 1) * WAVE.bin);
+    for (const ch of chans) for (let j = i * WAVE.bin; j < end; j++) { const v = ch[j]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    mn[i] = lo; mx[i] = hi;
+  }
+  let peak = 1e-9;
+  for (let i = 0; i < n; i++) peak = Math.max(peak, -mn[i], mx[i]);
+  for (let i = 0; i < n; i++) { mn[i] /= peak; mx[i] /= peak; }
+  Object.assign(WAVE, { for: P.bufferFor, rate: buf.sampleRate, min: mn, max: mx });
+}
+
+async function waveLoad() {
+  const r = S.result;
+  if (!r || WAVE.for === r.path || !api()) return;
+  if (await pbLoad()) { waveBuild(); drawTrace(); }
+}
+
+// How far each attack sits from the nearest tick (1/1, 1/2, 1/3, 1/4) of the
+// red line governing it: the grid osu! will play, in ms, once per payload.
+function driftFor(r) {
+  if (DRIFT.for === r) return DRIFT.dev;
+  const at = (r.attacks && r.attacks.t) || [], dev = new Float32Array(at.length);
+  const pts = r.points;
+  let g = 0;
+  for (let i = 0; i < at.length; i++) {
+    const s = at[i];
+    while (g + 1 < pts.length && pts[g + 1].offset_ms / 1000 <= s + 1e-9) g++;
+    const p = pts[g];
+    if (!p || !(p.bpm > 0)) { dev[i] = NaN; continue; }
+    const beat = 60 / p.bpm, pos = (s - p.offset_ms / 1000) / beat;
+    let best = Infinity;
+    for (const d of [1, 2, 3, 4]) {
+      const off = (s - (p.offset_ms / 1000 + (Math.round(pos * d) / d) * beat)) * 1000;
+      if (Math.abs(off) < Math.abs(best)) best = off;
+    }
+    dev[i] = best;
+  }
+  DRIFT = { for: r, dev };
+  return dev;
+}
+
+// The loaded map's red lines, drawn as ghosts beside the working ones.
+function ghostLines() {
+  if (S.ref && S.ref.report && S.ref.report.ok) return S.ref.report.lines.map((l) => l.offset_ms / 1000);
+  if (S.compare && S.compare.report) return S.compare.report.sections.map((s) => s.map_offset_ms / 1000);
+  return [];
+}
+
 function drawTrace(hoverX) {
   const r = S.result, canvas = $("trace");
   if (!r) return;
@@ -2056,12 +2141,15 @@ function drawTrace(hoverX) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
 
-  const x0 = PAD.l, x1 = W - PAD.r, y0 = PAD.t, y1 = H - PAD.b;
-  const dur = Math.max(r.duration, 1e-3);
-  const X = (s) => x0 + (s / dur) * (x1 - x0);
+  const v = tlView(r), span = v.b - v.a, dur = Math.max(r.duration, 1e-3);
+  const x0 = PAD.l, x1 = W - PAD.r;
+  const yD1 = H - PAD.b, yD0 = yD1 - LANES.drift, yW1 = yD0 - LANES.gap, yW0 = yW1 - LANES.wave;
+  const y0 = PAD.t, y1 = yW0 - LANES.gap;
+  const X = (s) => x0 + ((s - v.a) / span) * (x1 - x0);
+  const Sx = (x) => v.a + ((x - x0) / (x1 - x0)) * span;
 
   // y range: robust to the few wild local fits at a section edge
-  const vals = r.trace.bpm.filter((v) => v > 0).slice().sort((a, b) => a - b);
+  const vals = r.trace.bpm.filter((b) => b > 0).slice().sort((a, b) => a - b);
   const pts = r.points.map((p) => p.bpm);
   let lo = vals.length ? vals[Math.floor(vals.length * 0.02)] : Math.min(...pts);
   let hi = vals.length ? vals[Math.floor(vals.length * 0.98)] : Math.max(...pts);
@@ -2069,55 +2157,103 @@ function drawTrace(hoverX) {
   if (hi - lo < 4) { const mid = (hi + lo) / 2; lo = mid - 2; hi = mid + 2; }
   const padY = (hi - lo) * 0.12; lo -= padY; hi += padY;
   const Y = (b) => y1 - ((b - lo) / (hi - lo)) * (y1 - y0);
-  geom = { x0, x1, y0, y1, dur, X, Y, lo, hi };
+  geom = { x0, x1, y0, y1, yW0, yW1, yD0, yD1, dur, X, S: Sx, Y, lo, hi };
 
-  // plot background
+  const plotTop = y0 - 22;
+  const panels = [[plotTop, y1], [yW0, yW1], [yD0, yD1]];
   ctx.fillStyle = C.plot;
-  roundRect(ctx, x0, y0 - 22, x1 - x0, y1 - y0 + 22, 14); ctx.fill();
-  ctx.save(); roundRect(ctx, x0, y0 - 22, x1 - x0, y1 - y0 + 22, 14); ctx.clip();
+  for (const [a, b] of panels) { roundRect(ctx, x0, a, x1 - x0, b - a, 12); ctx.fill(); }
+  const clipAll = () => { ctx.beginPath(); for (const [a, b] of panels) ctx.rect(x0, a, x1 - x0, b - a); ctx.clip(); };
 
-  // section shading (alternating) and the selected point's span
+  // section shading (alternating) and the selected point's span, through every lane
+  ctx.save(); clipAll();
   const bounds = r.points.map((p) => p.offset_ms / 1000).concat([dur]);
   r.points.forEach((p, i) => {
     const a = X(bounds[i]), b = X(bounds[i + 1]);
-    if (i === S.selected) { ctx.fillStyle = C.selected; ctx.fillRect(a, y0 - 22, b - a, y1 - y0 + 22); }
-    else if (i % 2 === 1) { ctx.fillStyle = C.section; ctx.fillRect(a, y0 - 22, b - a, y1 - y0 + 22); }
+    if (b < x0 || a > x1) return;
+    if (i === S.selected) { ctx.fillStyle = C.selected; ctx.fillRect(a, plotTop, b - a, yD1 - plotTop); }
+    else if (i % 2 === 1) { ctx.fillStyle = C.section; ctx.fillRect(a, plotTop, b - a, yD1 - plotTop); }
   });
 
-  // onset bed along the bottom third
-  const on = r.onset.v, span = r.onset.span_s || dur;
-  if (on.length) {
-    ctx.fillStyle = C.onset;
-    const bedH = (y1 - y0) * 0.26, bw = Math.max((x1 - x0) / on.length, 1);
-    for (let i = 0; i < on.length; i++) {
-      const h = on[i] * bedH;
-      if (h < 0.6) continue;
-      ctx.fillRect(X((i / on.length) * span), y1 - h, bw * 0.8, h);
+  // the beat grid, once beats are far enough apart to read
+  const ct = (r.clicks && r.clicks.t) || [], ca = (r.clicks && r.clicks.accent) || [];
+  const pxPerBeat = ct.length > 1 ? ((x1 - x0) / span) * (ct[Math.min(1, ct.length - 1)] - ct[0]) : 0;
+  if (pxPerBeat >= 7) {
+    for (let i = lowerBound(ct, v.a); i < ct.length && ct[i] <= v.b; i++) {
+      const x = Math.round(X(ct[i])) + 0.5;
+      ctx.strokeStyle = ca[i] === 1 ? C.beatBar : C.beat; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, plotTop); ctx.lineTo(x, yW1); ctx.stroke();
     }
   }
+
+  // waveform, or the onset envelope until the song is decoded
+  const wmid = (yW0 + yW1) / 2, wh = (yW1 - yW0) / 2 - 4;
+  if (WAVE.for === r.path && WAVE.min) {
+    ctx.fillStyle = C.wave;
+    const perBin = WAVE.bin / WAVE.rate;
+    for (let px = Math.floor(x0); px < x1; px++) {
+      const i0 = Math.max(0, Math.floor(Sx(px) / perBin)), i1 = Math.min(WAVE.min.length, Math.max(i0 + 1, Math.ceil(Sx(px + 1) / perBin)));
+      if (i0 >= WAVE.min.length) break;
+      let mn = 0, mx = 0;
+      for (let i = i0; i < i1; i++) { if (WAVE.min[i] < mn) mn = WAVE.min[i]; if (WAVE.max[i] > mx) mx = WAVE.max[i]; }
+      ctx.fillRect(px, wmid - mx * wh, 1, Math.max(1, (mx - mn) * wh));
+    }
+  } else {
+    const on = r.onset.v, ospan = r.onset.span_s || dur;
+    if (on.length) {
+      ctx.fillStyle = C.onset;
+      for (let i = 0; i < on.length; i++) {
+        const x = X((i / on.length) * ospan);
+        if (x < x0 - 2 || x > x1) continue;
+        const h = on[i] * wh;
+        if (h >= 0.6) ctx.fillRect(x, wmid - h, Math.max(((x1 - x0) / on.length) * (dur / span), 1), 2 * h);
+      }
+    }
+  }
+
+  // drift lane: each attack's distance from the grid osu! will play
+  const dmid = (yD0 + yD1) / 2, dh = (yD1 - yD0) / 2 - 4;
+  ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x0, Math.round(dmid) + 0.5); ctx.lineTo(x1, Math.round(dmid) + 0.5); ctx.stroke();
+  const dev = driftFor(r), at = (r.attacks && r.attacks.t) || [], aw = (r.attacks && r.attacks.w) || [];
+  for (let i = lowerBound(at, v.a); i < at.length && at[i] <= v.b; i++) {
+    const d = dev[i];
+    if (!Number.isFinite(d)) continue;
+    const ad = Math.abs(d);
+    ctx.fillStyle = ad <= 5 ? C.driftOk : ad <= 15 ? C.driftWarn : C.driftBad;
+    ctx.globalAlpha = 0.35 + 0.65 * (aw[i] || 0);
+    const y = dmid - (Math.max(-DRIFT_MS, Math.min(DRIFT_MS, d)) / DRIFT_MS) * dh;
+    ctx.beginPath(); ctx.arc(X(at[i]), y, 1.4 + 1.4 * (aw[i] || 0), 0, 2 * Math.PI); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
 
   // horizontal grid + labels
   ctx.font = `11px ${getComputedStyle(document.body).getPropertyValue("--mono")}`;
   const ystep = niceStep(hi - lo, 4);
-  ctx.textAlign = "right"; ctx.textBaseline = "middle";
-  for (let v = Math.ceil(lo / ystep) * ystep; v <= hi; v += ystep) {
-    const y = Y(v);
+  ctx.save(); roundRect(ctx, x0, plotTop, x1 - x0, y1 - plotTop, 12); ctx.clip();
+  for (let b = Math.ceil(lo / ystep) * ystep; b <= hi; b += ystep) {
+    const y = Y(b);
     ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(x0, Math.round(y) + 0.5); ctx.lineTo(x1, Math.round(y) + 0.5); ctx.stroke();
   }
   ctx.restore();
   ctx.fillStyle = C.gridText; ctx.textAlign = "right"; ctx.textBaseline = "middle";
-  for (let v = Math.ceil(lo / ystep) * ystep; v <= hi; v += ystep) ctx.fillText(Number.isInteger(v) ? v : v.toFixed(1), x0 - 10, Y(v));
+  for (let b = Math.ceil(lo / ystep) * ystep; b <= hi; b += ystep) ctx.fillText(Number.isInteger(b) ? b : b.toFixed(1), x0 - 10, Y(b));
+  ctx.fillText(t("lane_wave"), x0 - 10, wmid);
+  ctx.fillText(`±${DRIFT_MS}`, x0 - 10, dmid);
 
-  // time axis
+  // time axis, over the visible window
   ctx.textAlign = "center"; ctx.textBaseline = "top";
-  const tstep = niceStep(dur, Math.max(4, Math.floor((x1 - x0) / 110)));
-  for (let s = 0; s <= dur + 1e-6; s += tstep) ctx.fillText(mmss(s), X(s), y1 + 10);
+  const tstep = niceStep(span, Math.max(4, Math.floor((x1 - x0) / 110)));
+  for (let s = Math.ceil(v.a / tstep) * tstep; s <= v.b + 1e-6; s += tstep) {
+    ctx.fillText(span < 30 ? fmtTime(s) : mmss(s), X(s), yD1 + 8);
+  }
 
   // tempo curve with a soft fill
   const tt = r.trace.t, bb = r.trace.bpm;
   if (tt.length > 1 && bb.length === tt.length) {
-    ctx.save(); roundRect(ctx, x0, y0 - 22, x1 - x0, y1 - y0 + 22, 14); ctx.clip();
+    ctx.save(); roundRect(ctx, x0, plotTop, x1 - x0, y1 - plotTop, 12); ctx.clip();
     ctx.beginPath();
     let started = false;
     for (let i = 0; i < tt.length; i++) {
@@ -2131,14 +2267,27 @@ function drawTrace(hoverX) {
     ctx.restore();
   }
 
+  // the compared map's red lines, as ghosts
+  ctx.save(); clipAll();
+  ctx.strokeStyle = C.ghost; ctx.lineWidth = 1.25; ctx.setLineDash([3, 4]);
+  for (const s of ghostLines()) {
+    const x = Math.round(X(s)) + 0.5;
+    ctx.beginPath(); ctx.moveTo(x, plotTop + 22); ctx.lineTo(x, yD1); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+
   // red lines with value chips (staggered when they would overlap)
   ctx.textAlign = "left"; ctx.textBaseline = "middle";
-  let lastRight = [-1e9, -1e9];
+  const lastRight = [-1e9, -1e9];
+  const dragging = TL.drag && TL.drag.kind === "line" && TL.moved ? TL.drag : null;
   r.points.forEach((p, i) => {
-    const x = Math.round(X(p.offset_ms / 1000)) + 0.5;
-    ctx.strokeStyle = C.red; ctx.lineWidth = i === S.selected ? 2 : 1.25;
-    ctx.beginPath(); ctx.moveTo(x, y0 - 22); ctx.lineTo(x, y1); ctx.stroke();
-    const label = p.bpm.toFixed(p.bpm % 1 ? 2 : 0);
+    const s = dragging && dragging.i === i ? dragging.to : p.offset_ms / 1000;
+    const x = Math.round(X(s)) + 0.5;
+    if (x < x0 - 60 || x > x1 + 1) return;
+    ctx.strokeStyle = C.red; ctx.lineWidth = i === S.selected || (dragging && dragging.i === i) ? 2 : 1.25;
+    ctx.beginPath(); ctx.moveTo(x, plotTop); ctx.lineTo(x, yD1); ctx.stroke();
+    const label = dragging && dragging.i === i ? `${(s * 1000).toFixed(1)} ms` : p.bpm.toFixed(p.bpm % 1 ? 2 : 0);
     const w = ctx.measureText(label).width + 16;
     const row = x > lastRight[0] + 4 ? 0 : (x > lastRight[1] + 4 ? 1 : 0);
     lastRight[row] = x + w;
@@ -2150,10 +2299,87 @@ function drawTrace(hoverX) {
   // hover cursor
   if (hoverX !== undefined && hoverX >= x0 && hoverX <= x1) {
     ctx.strokeStyle = C.cursor; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
-    ctx.beginPath(); ctx.moveTo(hoverX + 0.5, y0 - 22); ctx.lineTo(hoverX + 0.5, y1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(hoverX + 0.5, plotTop); ctx.lineTo(hoverX + 0.5, yD1); ctx.stroke();
     ctx.setLineDash([]);
   }
+  $("tlZoom").textContent = span < dur - 1e-6 ? t("tl_zoom", { a: fmtTime(v.a), b: fmtTime(v.b) }) : "";
+  $("tlFit").hidden = !(span < dur - 1e-6);
   pbDraw();  // the playhead layer follows the map's geometry
+}
+
+// -- timeline interaction: wheel zooms at the cursor, drag pans, a red line
+// -- drags (snapping to the nearest attack; Alt moves it freely)
+function tlX(ev) { return ev.clientX - $("trace").getBoundingClientRect().left; }
+
+function tlLineAt(x) {
+  if (!S.result || !geom) return -1;
+  let best = -1, bd = TL_SNAP_PX + 1;
+  S.result.points.forEach((p, i) => {
+    const d = Math.abs(geom.X(p.offset_ms / 1000) - x);
+    if (d < bd) { bd = d; best = i; }
+  });
+  return best;
+}
+
+function tlSnap(s, free) {
+  const at = (S.result.attacks && S.result.attacks.t) || [];
+  if (free || !at.length) return s;
+  const i = lowerBound(at, s);
+  let best = s, bd = Infinity;
+  for (const j of [i - 1, i]) {
+    if (j < 0 || j >= at.length) continue;
+    const d = Math.abs(geom.X(at[j]) - geom.X(s));
+    if (d <= TL_SNAP_PX && d < bd) { bd = d; best = at[j]; }
+  }
+  return best;
+}
+
+function tlDown(ev) {
+  if (ev.button !== 0 || !S.result || !geom) return;
+  const x = tlX(ev), i = tlLineAt(x);
+  TL.moved = false;
+  TL.drag = i >= 0 && !(S.locks || []).includes(S.result.points[i].offset_ms)
+    ? { kind: "line", i, x0: x, to: S.result.points[i].offset_ms / 1000 }
+    : { kind: "pan", x0: x, a: VIEW.a, b: VIEW.b };
+}
+
+function tlMove(ev) {
+  if (!TL.drag || !geom) return;
+  const x = tlX(ev), dx = x - TL.drag.x0;
+  if (Math.abs(dx) > 3) TL.moved = true;
+  if (!TL.moved) return;
+  if (TL.drag.kind === "pan") {
+    const ds = (dx / (geom.x1 - geom.x0)) * (TL.drag.b - TL.drag.a);
+    VIEW.a = TL.drag.a - ds; VIEW.b = TL.drag.b - ds;
+    $("trace").style.cursor = "grabbing";
+  } else {
+    TL.drag.to = tlSnap(geom.S(x), ev.altKey);
+  }
+  $("tip").hidden = true;
+  drawTrace();
+}
+
+async function tlUp() {
+  const drag = TL.drag;
+  TL.drag = null;
+  $("trace").style.cursor = "";
+  if (!drag) return;
+  if (TL.moved) TL.suppressClick = true;
+  if (drag.kind !== "line" || !TL.moved || !api()) { drawTrace(); return; }
+  const p = S.result.points[drag.i];
+  const reply = await api().edit_apply(drag.i, Math.round(drag.to * 1e6) / 1000, p.bpm);
+  if (!reply.ok) { editFailure(reply); drawTrace(); return; }
+  showEditResult(reply, t("edited", { n: drag.i + 1, bpm: p.bpm.toFixed(3), ms: (drag.to * 1000).toFixed(1) }));
+}
+
+function tlWheel(ev) {
+  if (!S.result || !geom) return;
+  ev.preventDefault();
+  const s = geom.S(tlX(ev)), dur = S.result.duration, span = VIEW.b - VIEW.a;
+  const next = Math.min(Math.max(span * Math.exp(ev.deltaY * 0.0015), TL_MIN_SPAN), dur);
+  VIEW.a = s - (s - VIEW.a) * (next / span);
+  VIEW.b = VIEW.a + next;
+  drawTrace();
 }
 
 function governing(r, s) {
@@ -2166,8 +2392,10 @@ function onTraceMove(ev) {
   const r = S.result; if (!r || !geom) return;
   const rect = $("trace").getBoundingClientRect(), x = ev.clientX - rect.left;
   const tip = $("tip");
+  if (TL.drag) return;
+  $("trace").style.cursor = tlLineAt(x) >= 0 ? "ew-resize" : "";
   if (x < geom.x0 || x > geom.x1) { tip.hidden = true; drawTrace(); return; }
-  const s = ((x - geom.x0) / (geom.x1 - geom.x0)) * geom.dur;
+  const s = geom.S(x);
   let j = 0, best = Infinity;
   r.trace.t.forEach((tt, i) => { const d = Math.abs(tt - s); if (d < best) { best = d; j = i; } });
   const g = r.points[governing(r, s)];
@@ -2287,8 +2515,7 @@ function wire() {
   });
   $("trace").addEventListener("dblclick", (e) => {
     if (!S.result || !geom) return;
-    const x = e.clientX - $("trace").getBoundingClientRect().left;
-    pbPlay(Math.max(0, ((x - geom.x0) / (geom.x1 - geom.x0)) * geom.dur));
+    pbPlay(Math.max(0, geom.S(tlX(e))));
   });
   ["asFirst", "asSecond", "asBars", "asMeter"].forEach((id) => {
     $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); assistFit(); } });
@@ -2303,9 +2530,15 @@ function wire() {
   $("trace").addEventListener("mouseleave", () => { $("tip").hidden = true; drawTrace(); });
   $("trace").addEventListener("click", (e) => {
     if (!S.result || !geom) return;
-    const x = e.clientX - $("trace").getBoundingClientRect().left;
-    selectPoint(governing(S.result, ((x - geom.x0) / (geom.x1 - geom.x0)) * geom.dur));
+    // The click that ends a drag or a pan selects nothing.
+    if (TL.suppressClick) { TL.suppressClick = false; return; }
+    selectPoint(governing(S.result, geom.S(tlX(e))));
   });
+  $("trace").addEventListener("mousedown", tlDown);
+  window.addEventListener("mousemove", tlMove);
+  window.addEventListener("mouseup", tlUp);
+  $("trace").addEventListener("wheel", tlWheel, { passive: false });
+  $("tlFit").onclick = tlFit;
   document.querySelectorAll("#pulseSwitch button").forEach((b) => b.onclick = () => {
     document.querySelectorAll("#pulseSwitch button").forEach((o) => o.classList.toggle("on", o === b));
   });

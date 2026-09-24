@@ -3722,6 +3722,52 @@ class ClickScheduleTests(unittest.TestCase):
                                np.max(np.abs(y[first:first + 400])), places=3)
 
 
+class LogoIconTests(unittest.TestCase):
+    """The committed window icon: every size Windows asks for, readable by the
+    title bar's .NET, and drawn for its own size."""
+
+    @staticmethod
+    def _entries():
+        import struct
+        data = (Path(__file__).resolve().parent / "assets" / "logo.ico").read_bytes()
+        _, kind, count = struct.unpack("<HHH", data[:6])
+        entries = {}
+        for k in range(count):
+            w, _h, _c, _r, _p, bpp, size, off = struct.unpack("<BBBBHHII", data[6 + 16 * k:22 + 16 * k])
+            entries[w or 256] = (bpp, data[off:off + size])
+        return kind, entries
+
+    def test_every_windows_size_is_there_and_small_ones_are_bmp(self):
+        kind, entries = self._entries()
+        self.assertEqual(kind, 1)
+        self.assertEqual(sorted(entries), [16, 20, 24, 32, 40, 48, 64, 256])
+        for size, (bpp, body) in entries.items():
+            with self.subTest(size=size):
+                self.assertEqual(bpp, 32)
+                # .NET Framework's Icon, which the title bar goes through, does
+                # not read PNG frames: it fell back from 256 to 64 when tried.
+                self.assertEqual(body[:4] == b"\x89PNG", size == 256)
+
+    def test_the_16_px_frame_is_drawn_for_16_px(self):
+        import struct
+        _kind, entries = self._entries()
+        body = entries[16][1]
+        self.assertEqual(struct.unpack("<IiiHH", body[:16])[1:5], (16, 32, 1, 32))
+        rows = body[40:40 + 16 * 16 * 4]
+
+        def pixel(x, y):  # rows are stored bottom-up as BGRA
+            i = ((15 - y) * 16 + x) * 4
+            b, g, r, a = rows[i:i + 4]
+            return r, g, b, a
+        # Scaled from 256, the corner radius was larger than the icon and the
+        # frame was a red corner fragment. Now: transparent rounded corners,
+        # the panel colour, and the red line where it belongs.
+        self.assertLess(pixel(0, 0)[3], 64)          # antialiased, mostly clear
+        self.assertLess(pixel(15, 15)[3], 64)
+        self.assertEqual(pixel(13, 8), (0x15, 0x1C, 0x29, 255))
+        self.assertEqual(pixel(6, 8)[:3], (0xE0, 0x60, 0x6C))
+
+
 class ModReportTests(unittest.TestCase):
     """Proposal P2: every finding about a difficulty as an editor timestamp."""
 

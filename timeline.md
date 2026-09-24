@@ -16,6 +16,34 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · A window icon that reads at 16 px
+
+### Fixed
+
+- **The icon was broken at every size but 256.** `assets/logo.py` drew each size with the
+  256-px geometry: corner radius, stroke widths and the red line in absolute pixels.
+  - At 16 px the radius was larger than the icon, and the title bar and small taskbar
+    icons showed a red corner fragment.
+  - At 32 px the mark came out cropped.
+
+  Every size is now drawn at its own size, from geometry scaled to it. Below 32 px the
+  mark is simpler: the fundamental alone, thicker, and a red line on whole pixels.
+- **Frames Windows' title bar could not read.** The small entries were PNG-compressed, and
+  .NET Framework's `System.Drawing.Icon` (pywebview sets the window icon through it) does
+  not read PNG frames: asked for 256, it fell back to 64. Entries under 256 are 32-bit BMP
+  now, and the .ico holds 16/20/24/32/40/48/64/256, every size Windows asks for at 100-200 %.
+
+### Measured
+
+```
+.NET Icon(path, 16/20/24/32/48)  each loads at its size: red line pixel (224, 96, 108),
+                                 panel (21, 28, 41) at 16-24
+LogoIconTests (2 new)            fail on the old .ico, pass on the new one
+Python unittest                  332 -> 334, all pass
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Settings, in one place
 
 ### Changed

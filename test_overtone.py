@@ -841,6 +841,67 @@ class ClassicWindowEditGuardTests(unittest.TestCase):
             self.assertEqual(app.analysis.points[1].offset_ms, edited)
 
 
+def _classic_app(test, tmp):
+    """The Tk window on a throwaway config, hidden, or skip without a display."""
+    from unittest import mock
+    import overtone
+    for name in ("CONFIG_PATH", "LEGACY_CONFIG_PATH"):
+        patcher = mock.patch.object(overtone, name, Path(tmp) / f"{name}.json")
+        patcher.start()
+        test.addCleanup(patcher.stop)
+    try:
+        app = TimingAnalyzerApp()
+    except Exception as exc:  # no display
+        test.skipTest(f"Tk unavailable: {exc}")
+    test.addCleanup(app.root.destroy)
+    app.root.attributes("-alpha", 0.0)
+    app.root.geometry("1120x760+-3000+-3000")
+    return app
+
+
+def _grid_analysis(offsets_bpms):
+    """A 30 s analysis at 120 BPM carrying the given (offset_ms, bpm) points."""
+    points = [TimingPoint(float(ms), float(bpm), 0.9, n) for n, (ms, bpm) in enumerate(offsets_bpms)]
+    return Analysis("synthetic.wav", 30.0, np.arange(60) * 0.5, np.full(60, 120.0), points,
+                    HOP, 44100, 1.0, 120.0, 1.0, "4/4", np.zeros(4000, dtype=np.float32))
+
+
+class ClassicWindowSpanishTests(unittest.TestCase):
+    """With Español selected, the classic window still showed English: the
+    language label, the trace title and hover, and the refusal to delete §1."""
+
+    def test_spanish_reaches_the_label_trace_hover_and_delete(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            app = _classic_app(self, tmp)
+            app.language.set("Español")
+            app._translate()
+            self.assertEqual(app.widgets["language_lbl"].cget("text"), "Idioma")
+
+            app.analysis = _grid_analysis([(1000.0, 120.0), (11000.0, 140.0)])
+            app._render_results()
+            app.root.geometry("1120x1000+-3000+-3000")  # room for the trace
+            app.root.update()
+            app._draw_preview()
+            canvas = app.preview
+            texts = [canvas.itemcget(i, "text") for i in canvas.find_all()
+                     if canvas.type(i) == "text"]
+            self.assertIn("CURVA DE TEMPO", texts)
+            self.assertNotIn("TEMPO TRACE", texts)
+
+            g = app._trace_geometry()
+            app._trace_hover(SimpleNamespace(x=(g["l"] + g["r"]) / 2,
+                                             y=(g["top"] + g["bottom"]) / 2))
+            hover = [canvas.itemcget(i, "text") for i in canvas.find_withtag("hover")
+                     if canvas.type(i) == "text"]
+            self.assertTrue(any(text.startswith("confianza") for text in hover), hover)
+
+            app.selected_section = 0
+            app.edit_delete()
+            self.assertEqual(app.status.get(), TimingAnalyzerApp.TEXT["Español"]["first_locked"])
+            self.assertEqual(len(app.analysis.points), 2)
+
+
 class NoPulseRefusalTests(unittest.TestCase):
     """White noise must not return a BPM (CLAUDE.md rule 2).
 

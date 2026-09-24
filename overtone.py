@@ -4162,6 +4162,8 @@ class TimingAnalyzerApp:
             "injected": "Injected {added} red lines ({replaced} replaced, {greens} greens kept). Backup saved.",
             "all_audio": "Audio files", "all": "All files",
             "language": "Language", "file": "Audio file",
+            "trace_title": "TEMPO TRACE",
+            "trace_beat": "beat  {ms} ms", "trace_conf": "conf  {pct}",
             "trace_empty": "Analyze an audio file to preview its tempo trace",
             "section": "§{n}  {bpm} BPM @ {ms}",
             "menu_file": "File", "menu_export": "Export", "menu_help": "Help",
@@ -4213,6 +4215,8 @@ class TimingAnalyzerApp:
             "injected": "Inyectadas {added} líneas rojas ({replaced} reemplazadas, {greens} verdes intactas). Backup guardado.",
             "all_audio": "Archivos de audio", "all": "Todos los archivos",
             "language": "Idioma", "file": "Archivo de audio",
+            "trace_title": "CURVA DE TEMPO",
+            "trace_beat": "beat  {ms} ms", "trace_conf": "confianza  {pct}",
             "trace_empty": "Analiza un audio para ver su curva de tempo",
             "section": "§{n}  {bpm} BPM @ {ms}",
             "menu_file": "Archivo", "menu_export": "Exportar", "menu_help": "Ayuda",
@@ -4679,6 +4683,10 @@ class TimingAnalyzerApp:
                     cap.configure(text=self.tr(key))  # type: ignore[union-attr]
                 except Exception:
                     pass
+        try:
+            self.widgets["language_lbl"].configure(text=self.tr("language"))  # type: ignore[union-attr]
+        except Exception:
+            pass
         heads = {"n": "#", "offset": self.tr("offset"), "bpm": "BPM",
                  "beatlen": self.tr("beatlen"), "confidence": self.tr("confidence")}
         for col, text in heads.items():
@@ -4965,6 +4973,10 @@ class TimingAnalyzerApp:
         if not self.analysis or self.selected_section is None:
             self.status.set(self.tr("no_selection"))
             return
+        if self.selected_section == 0:
+            # delete_timing_point refuses it too, but in English only.
+            self.status.set(self.tr("first_locked"))
+            return
         try:
             n = self.selected_section + 1
             self.analysis.points = delete_timing_point(self.analysis.points, self.selected_section)
@@ -5242,7 +5254,7 @@ class TimingAnalyzerApp:
         g = self._trace_geometry()
 
         canvas.create_text(14, 13, anchor="w", fill=C["muted"],
-                           font=("Segoe UI Semibold", 9), text="TEMPO TRACE")
+                           font=("Segoe UI Semibold", 9), text=self.tr("trace_title"))
 
         scales = self._trace_scales()
         if scales is None:
@@ -5378,8 +5390,8 @@ class TimingAnalyzerApp:
         lines = [
             self._mmss(at),
             f"{point.bpm:.3f} BPM",
-            f"beat  {beat_ms:.3f} ms",
-            f"conf  {point.confidence:.0%}",
+            self.tr("trace_beat", ms=f"{beat_ms:.3f}"),
+            self.tr("trace_conf", pct=f"{point.confidence:.0%}"),
         ]
         box_w, box_h = 118, 14 * len(lines) + 10
         bx = event.x + 10

@@ -4,8 +4,8 @@ Findings from the 2026-09-22 audit that its own verifiers confirmed (three votes
 high severity, one for medium and low). The five leads the roadmap listed as "to verify"
 were re-probed and fixed on 2026-09-23 (PRs #22–#26); the four bugs reproduced before that
 were fixed in PRs #17–#20; the six high findings below were fixed the same day (PRs
-#29–#34); twenty-seven medium ones since (PRs #36–#38, #40–#43, #45–#48, #50–#55,
-and one #20 had fixed already). **Open: 59 — none high, 19 medium, 40 low.** Nothing still open has been re-probed yet: each gets a probe before its
+#29–#34); thirty-one medium ones since (PRs #36–#38, #40–#43, #45–#48, #50–#61,
+and one #20 had fixed already). **Open: 55 — none high, 15 medium, 40 low.** Nothing still open has been re-probed yet: each gets a probe before its
 fix, and some may turn out to be fixed already (the ×2 / ÷2 edit guard, for one, landed in
 PR #20).
 
@@ -48,20 +48,21 @@ landed with a test that fails on the old code.
 | Rust hour cap assumed 44.1 kHz stereo; no tests of the load contract (two findings) | 30 min at 96 kHz stereo: refused at 27.6 min -> accepted; every clause tested | #53 |
 | Bench modes passed on missing audio; "analyse" timed attacks only (three findings) | missing fixture -> exit 1 naming its script; corpus 4.2 s end to end vs Python 18.5 s (not 2.5 s vs 21.6) | #54 |
 | DSP contract and bandpass doc described what the code does not do (three findings) | peak distance 9 frames, dedupe keeps the earlier, own-band re-timing recorded as rejected | #55 |
+| `meter_segments` kept or dropped a one-window region on float rounding | 4-bar 3/4 interlude, 37 start offsets: found 0/37 at a 1.2 s bar -> 37/37 | #57 |
+| Peak picking broke equal-height ties rightmost-first and claimed scipy did | tied pairs [25, 44] -> [20, 40]; scipy's own order is unstable, so the rule is pinned | #58 |
+| The golden gate never read the envelope; weights only by correlation | a symmetric Hann window now fails 24/24 (sum 4.7-6.6 off) where it passed | #59 |
+| The golden gate never exercised a proven bar or the measure grid | confidence and bar compared (#60); three bar fixtures added, 8 proven-bar red lines, Rust 27/27 | #60, #61 |
 
-## Medium (19)
+## Medium (15)
 
 | Area | Where | Finding | What goes wrong |
 |---|---|---|---|
-| py-engine | `timing_analyzer.py:1540` | meter_segments keeps or drops a one-window run depending on float rounding | A time-signature region exactly one window (4 bars) long, such as a 4-bar 3/4 interlude in a 4/4 song, is reported or silently merged into its neighbour depending on where the song starts and the bar length. The resulti… |
 | rust-core-audio-bench | `Cargo.toml:15` | v4 cannot open AIFF or Opus, both of which v3 opens and its file dialog advertises | A user loads song.aiff or song.opus, which v3 analyses directly. v4 fails in `probe` (AIFF: unsupported format) or in `make_audio_decoder` (Opus: unsupported codec) and returns Error::Decode. That is a parity regression… |
 | rust-core-audio-bench | `resample.rs:78` | Resampler calls sin() 65 times per output sample and its speed is not measured | A 6-minute 48 kHz file, common for video-sourced audio, needs 15.9 M outputs × 65 taps = 1.03e9 f64 sin() evaluations on one thread before analysis starts. That cost is not measured anywhere, so the speed claims do not… |
 | rust-dsp-new | `classify.rs:22` | Classify cannot label a chorus that shares the verse's chords; the known-approximations list only mentions quiet sections | In a typical I–V–vi–IV pop song where verse and chorus share the progression and the chorus is only louder, all repeated sections come out Verse and nothing is labelled Chorus. Per-section hitsound profiles then never s… |
 | rust-dsp-new | `hpss.rs:17` | HPSS time kernel (17 frames) barely exceeds the 16-hop STFT window, so transients leak into the harmonic output | A kick drum's low-frequency body, where nearly all of its energy sits, ends up about two-thirds in `harmonic`. The hitsound 'percussive ratio' feature (docs/06 section 2, Source) under-reads exactly the hits it is meant… |
 | rust-dsp-new | `structure.rs:45` | structure, classify, multiband and HPSS materialise the full-track linear spectrogram that stft.rs says must never be built | On a 6-minute track, structure::analyze and classify::classify each allocate about 1.0 GB, and HPSS peaks at about 5 GB. On a permitted 1-hour mix, structure needs about 10 GB and HPSS about 50 GB, which is an out-of-me… |
 | rust-dsp-new | `structure.rs:48` | Structure's chroma windows (172 frames = 0.49923 s) drift against the 0.5 s RMS windows and the reported boundary times | On any track longer than about 3 minutes, harmony-driven boundaries are reported one to two 0.5 s windows late. Chroma and energy also describe different moments for the same window, which blurs novelty peaks where both… |
-| rust-dsp-parity | `main.rs:131` | The golden gate never compares the envelope: envelope_sum is dumped but not read, and weights are checked only by Pearson correlation | An envelope-contract regression (window, mel norm, top_db or percentile method) passes the attack stage on most fixtures. When the gate does fail (here noisy-140, secs-2, very-noisy-132 and shuffle-96), it reports attac… |
-| rust-dsp-parity | `peaks.rs:79` | select_by_distance breaks equal-height ties by a fixed rightmost-wins rule; scipy's order is effectively arbitrary | The p99.5 normalisation plus clip(0, 1.5) produces exact ties at 1.5. bench/audio/_ambient.wav already has 15 clipped plateaus, each 3–6 frames long. If one frame inside such a plateau dips below 1.5, it splits into two… |
 | rust-hitsound | `role.rs:16` | Metrical ladder gives real 16ths (division 4) the 8th off-beat weight 0.25; '16ths 0.10' applies only to 1/6 and 1/8 | A 1/4 stream, the most common osu! stream snap, gets the same metrical weight as 8th off-beats, so the ghost-note cue that doc §4 calls 'the single most useful non-audio signal' never fires for 16ths. Only sextuplets an… |
 | rust-hitsound | `role.rs:132` | Unknown meter or no section is scored as a downbeat: weight 1.0, division 1, residual 0.0 ms | An untimed intro, or any track where the bar was not proven, gets every attack labelled 'downbeat, on the 1/1 grid, residual 0.0 ms'. That is the maximum metrical weight plus invented precision, which conflicts with CLA… |
 | rust-hitsound | `template.rs:155` | Pitch/formant 'sustain window' 20–300 ms is truncated to 20–113 ms (4096 samples) and unwindowed | A 5 Hz vibrato vowel (200 ms period, as rendered in corpus.rs:302-329) is read over less than half a vibrato cycle, which is exactly what the comment says the long window prevents. Harmonicity comes out low, f0 is zeroe… |
@@ -71,7 +72,6 @@ landed with a test that fails on the old code.
 | rust-tempo-density-elastic | `elastic.rs:218` | Elastic outlier filter uses the upper median on even-length windows; np.median averages the two middle values | On a steep ramp or a track whose second or second-to-last local window disagrees with its neighbours by 13-15 %, Rust drops (or keeps) a curve sample the prototype keeps (or drops). The period(t) curve is then fitted on… |
 | rust-tempo-density-elastic | `elastic.rs:387` | Elastic IRLS: a ladder break drops the whole degree in Rust; the prototype keeps the last model and scores it | The step-tempo fixtures change-128-142 and secs-2 (and any real track whose degree-1 ladder runs out of inliers at a tight tolerance) come out as a curved degree-2 model where the prototype reports degree 1. A lower deg… |
 | rust-tempo-density-elastic | `elastic.rs:488` | Rust fit_curve takes the square root of the quality weights twice, so it does not match np.polyfit(w=sqrt(q)) | Any track whose local windows differ in quality gets a different period(t) curve, so the integrated grid and the beat indices differ from the prototype. Least squares cannot recover a slipped index. The extreme ramp's r… |
-| rust-tempo-sections | `points.rs:7` | Golden gate never exercises the measure-grid path or the proven-bar branch for later sections, and no gate compares point confidence or meter | The known-bar offset formula, the settle_meter_boundary walk or section_confidence's weights could drift in Rust. As long as no corpus point crosses the 0.75 threshold, both gates stay 24/24 green while the .osu meter f… |
 
 ## Low (40)
 

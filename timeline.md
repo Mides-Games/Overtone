@@ -16,6 +16,46 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-23 · One-window signatures, the peak tie rule, the golden gate's blind spots
+
+### Fixed
+
+- **A one-window signature region** (#57, Python and Rust) was compared with exactly its
+  own length in seconds and kept or dropped by the last bit. Runs are counted in whole
+  windows; a single window is four bars, which the rule says is enough.
+- **Peak picking's tie rule** (#58, Rust). Of two equal peaks within the distance the
+  rightmost always won, and the comment said scipy did the same. scipy's order comes from
+  an unstable `np.argsort` and follows no rule (`RLRLRLLRRR...` on one envelope), so exact
+  parity is out of reach: the earlier peak now wins, pinned by a test. A golden diff on
+  an exactly tied case in future is v3's nondeterminism, not a regression.
+
+### Hardening
+
+- **The golden gate reads the envelope and every weight** (#59): envelope sum within
+  2e-3 (measured noise at most 0.00098) and each matched weight within 2e-5 (measured
+  5.4e-6, the stored rounding). Correlation alone had passed a symmetric Hann window.
+- **And each red line's bar** (#60): confidence, meter and meter_known are dumped and
+  compared in both checks. The 24 vectors were re-dumped for the fields; long-6min's
+  5th-decimal weight drift from #38 went in with them.
+- **Three fixtures with a proven bar** (#61): `downbeat-4-4`, `downbeat-4-then-3` and
+  `signature-changes`, rendered by the gates' own builders — 8 red lines on a proven bar
+  and the measure-grid path, none of which the corpus reached. v3's two bar-branch unit
+  tests are ported to Rust by name.
+
+### Measured
+
+```
+4-bar 3/4 interlude, 37 start offsets      found 0/37 (1.2 s), 0/37 (1.6 s), 32/37 (1.875 s) -> 37/37
+tied peak pairs, distance 9 (Rust)         kept [25, 44] -> [20, 40]
+symmetric Hann injected into stft.rs       golden passed -> fails 24/24 (sum 4.7-6.6 off)
+red lines with a proven bar under the gate 0 of 34 -> 8 of 42; Rust matches 27/27 vectors
+gates: 239/239 Python; benchmark 24/24, 0.0000 BPM / 0.16 ms; bpm-snapshot unchanged;
+golden 27/27; coverage, measures, signatures green; cargo test 201/201; overtone-bench
+golden 27/27, nogrid 3/3
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-23 · Rust parity, the audio contract, bench honesty
 
 Eleven more medium findings in four PRs, after #50 and #51 above.

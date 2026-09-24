@@ -3,9 +3,11 @@
 //! Public drum-transcription datasets are mostly research-only, which makes
 //! shipping weights trained on them a licensing question nobody wants. The
 //! answer is the one the tempo benchmark already uses: synthesise, and emit
-//! the label of every hit placed alongside the audio. Tempo, velocity, mix
-//! balance and overlap density vary per render; the seed fixes everything,
-//! so a rerun reproduces a run bit-for-bit.
+//! the label of every hit placed alongside the audio. [`render`] keeps one
+//! schedule -- the classes cycle in order at a fixed spacing -- and varies
+//! only velocity, pitch and decay; [`render_shuffled`] also varies the class
+//! order, the spacing and the level, which is what a held-out evaluation
+//! needs. The seed fixes everything, so a rerun reproduces a run bit-for-bit.
 //!
 //! Eight classes (seven drums plus `other` as sustained chord stabs —
 //! `other` is a real class that fires often, and an attack the engine
@@ -108,6 +110,46 @@ pub fn render(
         });
         t += spacing_s;
         k += 1;
+    }
+    peak_normalise(&mut samples);
+    CorpusTrack { samples, sr, hits }
+}
+
+/// Like [`render`], but with a schedule of its own: each cycle plays the
+/// classes in a seeded random order, each gap is drawn from `spacing_s`
+/// (lo, hi), and velocity spans 0.5-1.0. Two seeds give two different
+/// arrangements -- which [`render`] never does: its hits land at the same
+/// times, in the same order, after the same neighbours, whatever the seed.
+pub fn render_shuffled(
+    sr: u32,
+    duration_s: f64,
+    spacing_s: (f64, f64),
+    classes: &[HitClass],
+    seed: u64,
+) -> CorpusTrack {
+    let n = (duration_s * sr as f64) as usize;
+    let mut samples = vec![0.0f32; n];
+    let mut rng = Rng::new(seed);
+    let mut hits = Vec::new();
+    let mut order: Vec<HitClass> = Vec::new();
+    let mut t = 0.5;
+    while t < duration_s - 0.5 {
+        if order.is_empty() {
+            order = classes.to_vec();
+            for i in (1..order.len()).rev() {
+                let j = ((rng.next_f64() * (i + 1) as f64) as usize).min(i);
+                order.swap(i, j);
+            }
+        }
+        let class = order.pop().expect("refilled above");
+        let velocity = 0.5 + 0.5 * rng.next_f64();
+        place(&mut samples, sr, t, class, velocity, &mut rng);
+        hits.push(Hit {
+            class,
+            time_s: t,
+            velocity,
+        });
+        t += spacing_s.0 + (spacing_s.1 - spacing_s.0) * rng.next_f64();
     }
     peak_normalise(&mut samples);
     CorpusTrack { samples, sr, hits }

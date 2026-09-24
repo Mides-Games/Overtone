@@ -810,8 +810,18 @@ mod tests {
         static CACHE: OnceLock<Vec<Template>> = OnceLock::new();
         CACHE
             .get_or_init(|| {
-                let train = crate::corpus::render(44_100, 16.0, 0.3, &HitClass::ALL, 11);
-                let train_rows = extract_track(&train);
+                let train_rows: Vec<(HitClass, Features)> = (11u64..15)
+                    .flat_map(|seed| {
+                        let track = crate::corpus::render_shuffled(
+                            44_100,
+                            24.0,
+                            (0.22, 0.45),
+                            &HitClass::ALL,
+                            seed,
+                        );
+                        extract_track(&track)
+                    })
+                    .collect();
                 let mut templates = initial_templates();
                 calibrate(&mut templates, &train_rows, 2000, 0.5, 1e-4);
                 templates
@@ -819,44 +829,53 @@ mod tests {
             .clone()
     }
 
+    /// Held-out evaluation rows: arrangements the training render never
+    /// had (shuffled class order, 0.22-0.45 s gaps, velocity 0.5-1.0), four
+    /// seeds pooled. Cached like the templates.
+    fn held_out_rows() -> Vec<(HitClass, Features)> {
+        use std::sync::OnceLock;
+        static CACHE: OnceLock<Vec<(HitClass, Features)>> = OnceLock::new();
+        CACHE
+            .get_or_init(|| {
+                (21u64..25)
+                    .flat_map(|seed| {
+                        let track = crate::corpus::render_shuffled(
+                            44_100,
+                            24.0,
+                            (0.22, 0.45),
+                            &HitClass::ALL,
+                            seed,
+                        );
+                        extract_track(&track)
+                    })
+                    .collect()
+            })
+            .clone()
+    }
+
     #[test]
-    fn calibration_separates_the_corpus() {
-        // Train on one seed, test on another: same recipes, different draws.
-        // 16 s tracks keep per-class support at 6-7 hits, so one flip moves
-        // macro F1 ~0.02 and the gate bar below has real margin.
-        let test = crate::corpus::render(44_100, 16.0, 0.3, &HitClass::ALL, 12);
-        let test_rows = extract_track(&test);
+    fn calibration_generalises_to_arrangements_it_never_saw() {
+        // Trained on four shuffled arrangements (seeds 11-14), judged on four
+        // others (21-24): class order, gaps and levels all differ. The test
+        // this replaces judged a re-draw of the training track -- same hit
+        // times, same class order, same neighbours -- and read 0.906; held
+        // out, those templates read 0.485. Trained on varied arrangements
+        // they read 0.650 (92 of 280 wrong). That is the honest number, and
+        // still synthetic.
+        let rows = held_out_rows();
         let templates = calibrated();
-        let (before, _) = macro_f1(&initial_templates(), &test_rows);
-        let (after, per_class) = macro_f1(&templates, &test_rows);
-        eprintln!("F1 {before:.3} -> {after:.3}: {per_class:.2?}");
-        for (truth, features) in &test_rows {
-            let mut scored = classify(&templates, features);
-            scored.sort_by(|a, b| b.1.total_cmp(&a.1));
-            let best = scored[0].0;
-            if best != *truth {
-                eprintln!(
-                    "  miss {truth:?} -> {best:?} top3 {scored:.2?} formant {:.2} harm {:.2} f0 {:.0} sust {:.3} perc {:.2} sub {:.2} cent {:.0}",
-                    features.formant,
-                    features.harmonicity,
-                    features.f0_hz,
-                    features.temporal.sustain_s,
-                    features.percussive_ratio,
-                    features.spectral.band_ratios[0],
-                    features.spectral.centroid,
-                );
-            }
-        }
-        // Bar 0.80 against measured 0.85 on dense overlapping tracks: a
-        // single class collapsing to zero costs ~0.06 of macro, so the bar
-        // catches it with a two-flip margin elsewhere. The known-hard pair
-        // is cymbal/other in dense mixes — docs §12 predicts exactly this,
-        // and sequence context (not sharper templates) is the fix.
-        assert!(
-            after >= 0.80,
-            "macro F1 {after:.3} (per class {per_class:.2?})"
-        );
+        let (before, _) = macro_f1(&initial_templates(), &rows);
+        let (after, per_class) = macro_f1(&templates, &rows);
+        eprintln!("held-out F1 {before:.3} -> {after:.3}: {per_class:.2?}");
+        assert!(after >= 0.60, "macro F1 {after:.3} (per class {per_class:.2?})");
         assert!(after >= before, "calibration must not regress {before:.3}");
+        // The macro bar alone lets a whole class reach zero. Known weak,
+        // measured: Clap 0.13 (its flams need the first 30 ms after the
+        // attack, and the sub-attack window starts 10 ms early), the hats
+        // ~0.4 and Keys 0.44 in dense overlap, Kick and Snare ~0.5.
+        for (class, f1) in &per_class {
+            assert!(*f1 >= 0.10, "{class:?} collapsed to {f1:.2}");
+        }
     }
 
     #[test]
@@ -872,21 +891,22 @@ mod tests {
         // as the weakest classifier and ML territory (§12) — the dense
         // gate keeps measuring it honestly instead.
         //
-        // Only Kick and Snare are judged here, and that narrowness is the
-        // point: hand-set weights must separate clean hits where the
-        // design is unambiguous, and stay silent where it is not.
-        // Excluded with measured reasons: Vocal (HPS under-reads vibrato
-        // vowels; doc §12 flags it ML territory), Cymbal (needs fitted
-        // weights against snare breadth; dense: 0.73), Tom (sustained
-        // mid-low harmonic reads guitar-like until fitting; dense: 0.86+),
-        // Other (timbrally a power chord minus context; needs Viterbi).
-        // HPS subharmonic fragility on real material is an open issue
-        // behind several of the above — the dense gate absorbs it today
-        // via other terms, and it needs a proper fix (smoothed spectrum
-        // or longer pitch window) before pitch can carry more weight.
-        let classes = [HitClass::Kick, HitClass::Snare];
-        // 5 s fits exactly two hits at 3 s spacing (0.5, 3.5).
-        let track = crate::corpus::render(44_100, 5.0, 3.0, &classes, 5);
+        // Judged: the five classes the hand-set weights separate on clean
+        // hits. Excluded, each with what it reads as (measured, all 13 at
+        // 3 s spacing): Clap -> Cymbal, HatClosed -> Snare, HatOpen ->
+        // Snare, Ride -> Snare, Tom -> Guitar, Other -> Guitar, Keys ->
+        // Guitar, Vocal -> Snare. Their shapes only separate once the
+        // weights are fitted (the held-out gate), or need context (Other,
+        // doc §12's Viterbi) or pitch that holds up on vibrato (Vocal).
+        let classes = [
+            HitClass::Kick,
+            HitClass::Snare,
+            HitClass::Cymbal,
+            HitClass::Bass,
+            HitClass::Guitar,
+        ];
+        // 16 s fits exactly five hits at 3 s spacing (0.5 ... 12.5).
+        let track = crate::corpus::render(44_100, 16.0, 3.0, &classes, 5);
         assert_eq!(track.hits.len(), classes.len());
         let rows = extract_track(&track);
         for ((truth, features), want) in rows.iter().zip(classes.iter()) {

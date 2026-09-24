@@ -522,6 +522,113 @@ class SnapBridgeTests(_IsolatedConfig):
         self.assertEqual(_api_with_points().snap("C:/does/not/exist.osu")["key"], "bad_file")
 
 
+class ReferenceBridgeTests(_IsolatedConfig):
+    """Reference timing: grade any map, load it as the working timing, find
+    other maps of the same audio."""
+
+    MAP = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+           "[TimingPoints]", "1000,400,3,1,0,100,1,0", "31000,400,4,1,0,100,1,0", ""]
+
+    def _setup(self, tmp: str, same_bytes: bool = True):
+        song = Path(tmp) / "song" / "audio.mp3"
+        song.parent.mkdir()
+        song.write_bytes(b"ID3" + bytes(range(256)))
+        folder = Path(tmp) / "set"
+        folder.mkdir()
+        (folder / "audio.mp3").write_bytes(song.read_bytes() if same_bytes
+                                           else b"ID3" + bytes(reversed(range(256))))
+        osu = folder / "map.osu"
+        osu.write_text("\n".join(self.MAP), encoding="utf-8")
+        api = _api_with_points()
+        api._analysis.source = str(song)
+        beat = 0.4
+        api._analysis.attack_times = np.arange(1.0, 60.0, beat / 2)
+        api._analysis.attack_weights = np.where(
+            np.arange(api._analysis.attack_times.size) % 2 == 0, 1.0, 0.5)
+        return api, str(osu)
+
+    def test_grade_reads_the_songs_attacks_and_names_the_audio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api, osu = self._setup(tmp)
+            reply = api.reference_grade(osu)
+            other = self._setup(tempfile.mkdtemp(dir=tmp), same_bytes=False)
+            differs = other[0].reference_grade(other[1])["same_audio"]
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        self.assertEqual((reply["file"], reply["same_audio"], differs), ("map.osu", True, False))
+        lines = reply["report"]["lines"]
+        self.assertEqual([line["verdict"] for line in lines], ["ok", "ok"])
+        self.assertEqual([line["meter"] for line in lines], [3, 4])
+        self.assertFalse(api._busy.locked())
+
+    def test_attacks_are_detected_once_when_the_engine_kept_none(self) -> None:
+        from test_overtone import _drum_track
+        with tempfile.TemporaryDirectory() as tmp:
+            api, osu = self._setup(tmp)
+            wav = Path(tmp) / "legacy.wav"
+            _drum_track(wav, [(1.0, 150.0)], duration=20.0)
+            api._analysis.source = str(wav)
+            api._analysis.attack_times = np.zeros(0)
+            api._analysis.attack_weights = np.zeros(0)
+            with mock.patch.object(ta, "_detect_attacks", wraps=ta._detect_attacks) as detect:
+                first = api.reference_grade(osu)
+                api.reference_grade(osu)
+        self.assertTrue(first["ok"])
+        self.assertEqual(detect.call_count, 1)
+        self.assertEqual(first["report"]["lines"][0]["verdict"], "ok")
+
+    def test_grade_waits_for_a_running_analysis(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api, osu = self._setup(tmp)
+            api._busy.acquire()
+            try:
+                self.assertEqual(api.reference_grade(osu)["key"], "busy")
+            finally:
+                api._busy.release()
+
+    def test_load_makes_the_map_the_working_timing_in_one_undo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api, osu = self._setup(tmp)
+            reply = api.reference_load(osu)
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["loaded"], 2)
+        points = reply["result"]["points"]
+        self.assertEqual([(p["offset_ms"], p["bpm"], p["meter"]) for p in points],
+                         [(1000.0, 150.0, 3), (31000.0, 150.0, 4)])
+        self.assertTrue(all(p["confidence"] == 1.0 for p in points))
+        self.assertTrue(reply["undo"])
+        back = api.undo()
+        self.assertEqual([p["offset_ms"] for p in back["result"]["points"]], [1000.0, 9000.0])
+
+    def test_load_keeps_a_locked_point(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api, osu = self._setup(tmp)
+            api.set_locked(1, True)                     # 9000 ms, 150 BPM
+            reply = api.reference_load(osu)
+        self.assertEqual([p["offset_ms"] for p in reply["result"]["points"]],
+                         [1000.0, 9000.0, 31000.0])
+        self.assertEqual(reply["locks"], [9000.0])
+
+    def test_find_needs_a_songs_folder_and_remembers_the_one_chosen(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api, _osu = self._setup(tmp)
+            self.assertEqual(api.reference_find()["key"], "no_songs")
+            reply = api.reference_find(tmp)
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        folders = [Path(m["folder"]).name for m in reply["report"]["matches"]]
+        self.assertEqual(sorted(folders), ["set", "song"])
+        self.assertEqual(self.saved[-1]["songs_folder"], tmp)
+
+    def test_reference_needs_a_result_and_a_real_file(self) -> None:
+        for call in ("reference_grade", "reference_load"):
+            with self.subTest(call=call):
+                self.assertEqual(getattr(web.Api(), call)("C:/x.osu")["key"], "first")
+                self.assertEqual(getattr(_api_with_points(), call)("C:/does/not/exist.osu")["key"],
+                                 "bad_file")
+        self.assertEqual(web.Api().reference_find()["key"], "first")
+
+
 class EngineChoiceTests(_IsolatedConfig):
     """The Rust engine is opt-in, falls back to v3, and says when it did."""
 

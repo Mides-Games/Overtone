@@ -130,6 +130,12 @@ def analysis_payload(analysis: ta.Analysis) -> dict:
     }
 
 
+def _default_songs() -> Path:
+    """Where osu! (stable) keeps its songs when installed with the defaults.
+    Read when asked, so a test that moves LOCALAPPDATA moves it too."""
+    return Path(os.environ.get("LOCALAPPDATA", str(HERE))) / "osu!" / "Songs"
+
+
 def _logo_uri() -> str:
     try:
         return "data:image/png;base64," + base64.b64encode(LOGO_PNG.read_bytes()).decode("ascii")
@@ -172,6 +178,9 @@ class Api:
         #: Value-based on purpose — neighbours can come and go without
         #: shifting anything, and undo/redo re-match by offset.
         self._locked: list[dict] = []
+        #: (source, times, weights) detected for a reference grade when the
+        #: engine that answered kept no attacks.
+        self._ref_attacks: tuple | None = None
         if initial_file:
             self._cfg["file"] = initial_file
 
@@ -684,6 +693,83 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "suggestions": suggestions, "file": Path(osu_path).name}
 
+    # -- reference timing: any map's red lines, graded by the attacks -------
+    def _attacks(self) -> tuple[np.ndarray, np.ndarray]:
+        """The analysed song's attacks. The fallback tracker keeps none, and
+        those are the songs a hand-timed reference is for, so they are
+        detected here once per song instead of refusing."""
+        analysis = self._analysis
+        times = np.asarray(analysis.attack_times, dtype=np.float64)
+        if times.size:
+            return times, np.asarray(analysis.attack_weights, dtype=np.float64)
+        source = str(analysis.source)
+        if self._ref_attacks is None or self._ref_attacks[0] != source:
+            y, sr = ta._load_audio(source, lambda _message: None)
+            found, weights, _env = ta._detect_attacks(y, sr, ta.FIT_HOP)
+            self._ref_attacks = (source, found, weights)
+        return self._ref_attacks[1], self._ref_attacks[2]
+
+    def reference_grade(self, osu_path: str) -> dict:
+        """Grade each red line of any .osu against the song's attacks. Read
+        only; says whether the map's audio is this exact file."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not Path(str(osu_path)).is_file():
+            return {"ok": False, "key": "bad_file"}
+        # Detecting attacks decodes the song: one heavy job at a time.
+        if not self._busy.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        try:
+            beatmap = ta.read_osu_beatmap(osu_path)
+            times, weights = self._attacks()
+            report = ta.grade_reference_timing(beatmap, times, weights,
+                                               float(self._analysis.duration))
+            same = ta.same_audio(osu_path, beatmap, self._analysis.source)
+        except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            self._busy.release()
+        return {"ok": True, "report": report, "same_audio": same,
+                "path": str(osu_path), "file": Path(osu_path).name}
+
+    def reference_load(self, osu_path: str) -> dict:
+        """Make a map's red lines the working timing, as hand-placed points.
+        One undo step; locked points stay, as they do through re-analysis."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not Path(str(osu_path)).is_file():
+            return {"ok": False, "key": "bad_file"}
+        try:
+            points = ta.reference_points(ta.read_osu_beatmap(osu_path), self._analysis.beats)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        self._push_history()
+        self._analysis.points = self._merge_locks(points, self._analysis.beats)
+        reply = self._edited(0, None)
+        reply["loaded"] = len(points)
+        return reply
+
+    def reference_find(self, folder: str = "") -> dict:
+        """Maps anywhere under a Songs folder whose audio is this exact file.
+
+        With no folder, the one used last, else osu!'s default install; the
+        folder is remembered. Only same-size audio is hashed, so a whole
+        Songs folder costs a listing and a hash or two.
+        """
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        root = str(folder or self._cfg.get("songs_folder") or _default_songs())
+        if not Path(root).is_dir():
+            return {"ok": False, "key": "no_songs"}
+        try:
+            report = ta.find_same_audio_maps(self._analysis.source, root)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        if folder:
+            self._cfg["songs_folder"] = root
+            self._persist()
+        return {"ok": True, "report": report}
+
     # -- helpers (not exposed: underscored) ----------------------------------
     def _save_dialog(self, filename: str, file_types) -> str | None:
         import webview
@@ -709,21 +795,7 @@ class Api:
                 # but the path on the payload must be this file's.
                 result.source = path
             if self._locked:
-                # Verified red lines survive re-analysis: re-merge them as
-                # hand-placed points (confidence 1.0, bar preserved), skipping
-                # any the fresh map already found so locks never duplicate.
-                points = list(result.points)
-                beats = np.asarray(result.beats, dtype=np.float64)
-                for lock in self._locked:
-                    if any(abs(p.offset_ms - lock["offset_ms"]) < 1.0 for p in points):
-                        continue
-                    idx = (int(np.argmin(np.abs(beats * 1000.0 - lock["offset_ms"])))
-                           if beats.size else 0)
-                    points.append(ta.TimingPoint(
-                        lock["offset_ms"], lock["bpm"], 1.0, idx,
-                        lock["meter"], lock["meter_known"], manual=True))
-                points.sort(key=lambda p: p.offset_ms)
-                result.points = points
+                result.points = self._merge_locks(result.points, result.beats)
             self._analysis = result
             self._history.clear()
             self._future.clear()
@@ -732,6 +804,24 @@ class Api:
             self._emit("onError", str(exc))
         finally:
             self._busy.release()
+
+    def _merge_locks(self, points, beats) -> list:
+        """Verified red lines survive a new point list (re-analysis, a loaded
+        reference): re-merge them as hand-placed points (confidence 1.0, bar
+        preserved), skipping any the new list already has so locks never
+        duplicate."""
+        points = list(points)
+        beats = np.asarray(beats, dtype=np.float64)
+        for lock in self._locked:
+            if any(abs(p.offset_ms - lock["offset_ms"]) < 1.0 for p in points):
+                continue
+            idx = (int(np.argmin(np.abs(beats * 1000.0 - lock["offset_ms"])))
+                   if beats.size else 0)
+            points.append(ta.TimingPoint(
+                lock["offset_ms"], lock["bpm"], 1.0, idx,
+                lock["meter"], lock["meter_known"], manual=True))
+        points.sort(key=lambda p: p.offset_ms)
+        return points
 
     def _emit_progress(self, message: str) -> None:
         self._emit("onProgress", message)

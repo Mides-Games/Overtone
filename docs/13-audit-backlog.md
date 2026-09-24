@@ -4,8 +4,9 @@ Findings from the 2026-09-22 audit that its own verifiers confirmed (three votes
 high severity, one for medium and low). The five leads the roadmap listed as "to verify"
 were re-probed and fixed on 2026-09-23 (PRs #22–#26); the four bugs reproduced before that
 were fixed in PRs #17–#20; the six high findings below were fixed the same day (PRs
-#29–#34); thirty-seven medium ones since (PRs #36–#38, #40–#43, #45–#48, #50–#61,
-#63–#66, and one #20 had fixed already). **Open: 49 — none high, 9 medium, 40 low.** Nothing still open has been re-probed yet: each gets a probe before its
+#29–#34); forty-five medium ones since (PRs #36–#38, #40–#43, #45–#48, #50–#61,
+#63–#66, #69, #71–#77, and one #20 had fixed already), the Opus half of one still open.
+**Open: 41 — none high, 1 medium, 40 low.** Nothing still open has been re-probed yet: each gets a probe before its
 fix, and some may turn out to be fixed already (the ×2 / ÷2 edit guard, for one, landed in
 PR #20).
 
@@ -56,20 +57,19 @@ landed with a test that fails on the old code.
 | Hitsound sub-attack and decay windows off spec | flams counted after the attack (0.650 -> 0.658); the spec's decay window collapsed Clap to 0.00, so the doc now states the measured one | #64 |
 | Hitsound pitch window cut to 93 ms, unwindowed | whole 20-300 ms, Hann: 0.658 -> 0.679, Vocal 0.74 -> 0.86, Keys 0.40 -> 0.67 | #65 |
 | Hitsound role: 16ths on the 8th weight; no grid scored as a downbeat (two findings) | 16th 0.25 -> 0.10; no grid -> None; unproven bar -> 0.5; bar per section | #66 |
+| Elastic grid diverged from its prototype: upper median, a ladder break dropped the degree, polyfit weights rooted twice (three findings) | change-128-142 and secs-2 degree 2 -> 1; worst invented drift 29.6 % -> 4.9 %; every case the prototype runs reads its digits | #69 |
+| Structure, classify, band flux and HPSS built the whole-track linear spectrogram | structure mode peak 204 -> 23 MB on 60 s, 81-88 MB at six minutes; hitsound HPSS separates only the frames it reads, bit-identical | #71, #73 |
+| Structure's chroma windows drifted against its 0.5 s energy windows | Am -> F at 240 s: boundary 240.5 -> 240.0 s | #72 |
+| HPSS time kernel barely past the STFT window: isolated hits read as sustained | click 0.885 -> 1.00 percussive; with every template expecting it, held-out F1 0.679 -> 0.723 (chosen on a validation set: 0.677 -> 0.707) | #74 |
+| A chorus on the verse's chords was labelled Verse | V C V C at +6 dB: all Verse -> V C V C; 0 of 39 fixtures' labels moved | #75 |
+| Resampler evaluated 65 sin() per output sample; its speed was never measured | six minutes at 48 kHz: 12.25 -> 0.73 s | #76 |
+| v4 could not open AIFF or Opus | AIFF decodes to the WAV's samples; Opus refused by name (the decoder is still open, below) | #77 |
 
-## Medium (9)
+## Medium (1)
 
 | Area | Where | Finding | What goes wrong |
 |---|---|---|---|
-| rust-core-audio-bench | `Cargo.toml:15` | v4 cannot open AIFF or Opus, both of which v3 opens and its file dialog advertises | A user loads song.aiff or song.opus, which v3 analyses directly. v4 fails in `probe` (AIFF: unsupported format) or in `make_audio_decoder` (Opus: unsupported codec) and returns Error::Decode. That is a parity regression… |
-| rust-core-audio-bench | `resample.rs:78` | Resampler calls sin() 65 times per output sample and its speed is not measured | A 6-minute 48 kHz file, common for video-sourced audio, needs 15.9 M outputs × 65 taps = 1.03e9 f64 sin() evaluations on one thread before analysis starts. That cost is not measured anywhere, so the speed claims do not… |
-| rust-dsp-new | `classify.rs:22` | Classify cannot label a chorus that shares the verse's chords; the known-approximations list only mentions quiet sections | In a typical I–V–vi–IV pop song where verse and chorus share the progression and the chorus is only louder, all repeated sections come out Verse and nothing is labelled Chorus. Per-section hitsound profiles then never s… |
-| rust-dsp-new | `hpss.rs:17` | HPSS time kernel (17 frames) barely exceeds the 16-hop STFT window, so transients leak into the harmonic output | A kick drum's low-frequency body, where nearly all of its energy sits, ends up about two-thirds in `harmonic`. The hitsound 'percussive ratio' feature (docs/06 section 2, Source) under-reads exactly the hits it is meant… |
-| rust-dsp-new | `structure.rs:45` | structure, classify, multiband and HPSS materialise the full-track linear spectrogram that stft.rs says must never be built | On a 6-minute track, structure::analyze and classify::classify each allocate about 1.0 GB, and HPSS peaks at about 5 GB. On a permitted 1-hour mix, structure needs about 10 GB and HPSS about 50 GB, which is an out-of-me… |
-| rust-dsp-new | `structure.rs:48` | Structure's chroma windows (172 frames = 0.49923 s) drift against the 0.5 s RMS windows and the reported boundary times | On any track longer than about 3 minutes, harmony-driven boundaries are reported one to two 0.5 s windows late. Chroma and energy also describe different moments for the same window, which blurs novelty peaks where both… |
-| rust-tempo-density-elastic | `elastic.rs:218` | Elastic outlier filter uses the upper median on even-length windows; np.median averages the two middle values | On a steep ramp or a track whose second or second-to-last local window disagrees with its neighbours by 13-15 %, Rust drops (or keeps) a curve sample the prototype keeps (or drops). The period(t) curve is then fitted on… |
-| rust-tempo-density-elastic | `elastic.rs:387` | Elastic IRLS: a ladder break drops the whole degree in Rust; the prototype keeps the last model and scores it | The step-tempo fixtures change-128-142 and secs-2 (and any real track whose degree-1 ladder runs out of inliers at a tight tolerance) come out as a curved degree-2 model where the prototype reports degree 1. A lower deg… |
-| rust-tempo-density-elastic | `elastic.rs:488` | Rust fit_curve takes the square root of the quality weights twice, so it does not match np.polyfit(w=sqrt(q)) | Any track whose local windows differ in quality gets a different period(t) curve, so the integrated grid and the beat indices differ from the prototype. Least squares cannot recover a slipped index. The extreme ramp's r… |
+| rust-core-audio-bench | `Cargo.toml:15` | v4 cannot decode Opus, which v3 opens (AIFF opens since #77) | An Opus file, in Ogg, WebM or MP4, is refused by name with what to convert it to (#77). Decoding it needs a new dependency -- the mature decoder binds libopus, a C build on every Windows machine -- which is a decision, not a fix. |
 
 ## Low (40)
 

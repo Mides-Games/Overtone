@@ -21,9 +21,17 @@
 
 use crate::multiband::{self, BANDS};
 
-/// Reflection padding for filtfilt edges, in samples. Biquad ringing at
-/// these Qs dies within dozens of samples; a thousand is plenty.
-pub const EDGE_PAD: usize = 1024;
+/// Reflection padding for filtfilt edges, in samples. Each pass starts from
+/// rest, so the reflection opens with a step the filter rings on, and the
+/// pad is where that ringing must die before the signal starts. The slowest
+/// section sets it: band 0 (40-89 Hz, pole radius 0.9965 at 44.1 kHz) decays
+/// with a 285-sample time constant, and its impulse response stays above
+/// 1e-3 of its peak for 1,992 samples; the top band rings out in about 20.
+/// Measured on audio cut mid-note, band 0 kept 6.5 % of its RMS as edge
+/// transient with a 1,024-sample pad, 0.07 % with 2,048 and under 1e-6
+/// with 4,096. Inputs shorter than four pads are padded by a quarter of
+/// their length.
+pub const EDGE_PAD: usize = 4096;
 
 /// One RBJ section (bandpass or gentle lowpass). Coefficients stay
 /// private; design through [`design_bank`] or [`Biquad::lowpass`].
@@ -111,10 +119,16 @@ pub fn design_bank(sr: u32) -> Vec<Biquad> {
 /// on the reversed output — with reflected edges so the ends do not ring
 /// into the music.
 pub fn filtfilt(section: &Biquad, y: &[f32]) -> Vec<f32> {
+    filtfilt_padded(section, y, EDGE_PAD)
+}
+
+/// [`filtfilt`] with an explicit reflection pad, capped at a quarter of the
+/// input.
+fn filtfilt_padded(section: &Biquad, y: &[f32], pad: usize) -> Vec<f32> {
     if y.len() < 8 {
         return y.to_vec();
     }
-    let pad = EDGE_PAD.min(y.len() / 4).max(4);
+    let pad = pad.min(y.len() / 4).max(4);
     let mut ext = Vec::with_capacity(y.len() + 2 * pad);
     for i in (1..=pad).rev() {
         ext.push(2.0 * y[0] as f64 - y[i.min(y.len() - 1)] as f64);
@@ -191,6 +205,42 @@ mod tests {
         let out_of_band = sine(sr, 2.0, 5000.0);
         let ratio = rms(&filtfilt(&section, &out_of_band)) / rms(&out_of_band);
         assert!(ratio < 0.05, "out-of-band leaks at {ratio}");
+    }
+
+    #[test]
+    fn audio_cut_mid_note_carries_no_edge_transient() {
+        // A chunk, or a track cut mid-note, starts and ends on a non-zero
+        // sample: the reflection opens with a step and every band rings on
+        // it. The reference pads by a quarter of the input, 77 time
+        // constants of band 0, so it holds the signal's response alone.
+        let sr = 44_100;
+        let mut seed = 7u64;
+        let y: Vec<f32> = (0..2 * sr as usize)
+            .map(|i| {
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                let noise = ((seed >> 33) as f64 / (1u64 << 31) as f64) - 0.5;
+                let t = i as f64 / sr as f64 + 2.0;
+                (0.5 * (2.0 * std::f64::consts::PI * 60.0 * t + 0.3).sin()
+                    + 0.3 * (2.0 * std::f64::consts::PI * 150.0 * t).sin()
+                    + 0.1 * noise) as f32
+            })
+            .collect();
+        let worst = |section: &Biquad, pad: usize| {
+            let reference = filtfilt_padded(section, &y, y.len() / 4);
+            let err = filtfilt_padded(section, &y, pad)
+                .iter()
+                .zip(&reference)
+                .map(|(a, b)| (a - b).abs() as f64)
+                .fold(0.0f64, f64::max);
+            err / rms(&reference)
+        };
+        for (b, section) in design_bank(sr).iter().enumerate() {
+            let rel = worst(section, EDGE_PAD);
+            assert!(rel < 1e-5, "band {b}: edge transient {rel:.1e} of RMS");
+        }
+        // The 1,024 samples once called plenty: band 0 kept 6.5 % of RMS.
+        let old = worst(&design_bank(sr)[0], 1024);
+        assert!(old > 0.01, "band 0 at 1024: {old:.1e}");
     }
 
     #[test]

@@ -44,7 +44,23 @@ where
     T: Send,
     F: Fn(&[f64]) -> T + Sync,
 {
-    let frames = frame_count(y.len(), hop);
+    map_frame_range(y, n_fft, hop, 0..frame_count(y.len(), hop), reduce)
+}
+
+/// [`map_frames`] over the frames in `frames` only: the same spectra the
+/// whole-track transform has there, edges and padding included, for a
+/// caller that reads a few frames around one moment.
+pub fn map_frame_range<T, F>(
+    y: &[f32],
+    n_fft: usize,
+    hop: usize,
+    frames: std::ops::Range<usize>,
+    reduce: F,
+) -> Vec<T>
+where
+    T: Send,
+    F: Fn(&[f64]) -> T + Sync,
+{
     let pad = n_fft / 2;
     let window = hann_periodic(n_fft);
     let bins = n_fft / 2 + 1;
@@ -52,7 +68,7 @@ where
     let mut planner = RealFftPlanner::<f64>::new();
     let fft = planner.plan_fft_forward(n_fft);
 
-    (0..frames)
+    frames
         .into_par_iter()
         .map_init(
             || {

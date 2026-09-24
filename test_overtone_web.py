@@ -168,7 +168,9 @@ class ApiTests(_IsolatedConfig):
                                   "pulse": "/2", "prefer_map_bpm": False, "refine_beats": True})
         self.assertEqual(params, {"min_delta": 1.5, "persistence": 12, "min_confidence": 0.75,
                                   "prefer_map_bpm": False, "refine_beats": True,
-                                  "force_subdivision": 0.5})
+                                  "force_subdivision": 0.5,
+                                  # Not a Tk argument: which engine runs, v3 unless asked.
+                                  "engine": "python"})
         with self.assertRaises(ValueError):
             web.Api._params({"delta": 1.5, "persistence": 12, "confidence": 150})
 

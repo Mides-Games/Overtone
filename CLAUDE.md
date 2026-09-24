@@ -25,13 +25,15 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (239 on 2026-09-23)
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (279 on 2026-09-24)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
 .venv/Scripts/python.exe bench/gates.py coverage               # density signal present
 .venv/Scripts/python.exe bench/gates.py measures               # bars read and anchored
 .venv/Scripts/python.exe bench/gates.py signatures             # signature regions, one bar
+.venv/Scripts/python.exe bench/gates.py robustness             # edge cases end cleanly
+.venv/Scripts/python.exe bench/facts.py                        # stated counts match the source
 ```
 
 The last three exist because the benchmark cannot see them. `bpm-snapshot` pins the
@@ -44,7 +46,7 @@ never re-baseline to make a red gate green.
 And the Rust side:
 
 ```bash
-cargo test --workspace                                 # all pass (214 on 2026-09-23)
+cargo test --workspace                                 # all pass (231 on 2026-09-24)
 cargo run --release -q -p overtone-bench -- golden     # 27/27 attack for attack
 cargo run --release -q -p overtone-bench -- nogrid     # noise, pads, silence refused
 cargo run --release -q -p overtone-bench -- density    # 4/4 changes, 0 false positives
@@ -101,6 +103,7 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
 ```
 overtone.py               v3 engine + classic Tk GUI + CLI  (to move to reference/python-v3)
 overtone_web.py           web shell host: pywebview window + JSON bridge to the engine
+overtone_rust.py          the v4 engine through overtone-cli, as v3's Analysis (opt-in)
 app/                      web shell frontend (HTML/CSS/JS, no network)
 Overtone.bat              double-click launcher
 test_overtone.py          engine, I/O and classic-window tests
@@ -111,6 +114,7 @@ bench/benchmark.py        synthetic accuracy harness, exact ground truth
 bench/gates.py            octave snapshot, density-change and measure gates
                           (the things the accuracy benchmark cannot see)
 bench/golden.py           per-stage golden vectors; the harness Rust gets pointed at
+bench/facts.py            the counts and lists the docs state, checked against the source
 bench/golden/             27 committed vector files: the 24-case corpus plus the
                           proven-bar and signature fixtures from bench/gates.py
 bench/bpm_snapshot.json   pinned absolute BPM per fixture
@@ -125,6 +129,7 @@ crates/                   the v4 Rust workspace
                             points, density, elastic grid, 2-D coherence map
   overtone-hitsound/        per-attack features, instrument templates, musical role
   overtone-bench/           golden-vector diff against the Python engine
+  overtone-cli/             `overtone-cli analyze`: the v4 engine as one command
 docs/                     audit, stack evaluation, architecture, UI, DSP, hitsounds,
                           roadmap, ML evaluation, naming, precision plan, MSI
                           distribution, comfort features

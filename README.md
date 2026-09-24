@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-239%20Python%20%C2%B7%20214%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-279%20Python%20%C2%B7%20231%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -18,13 +18,13 @@ sections within 0.05 BPM and 5 ms     24 / 24
 
 ---
 
-## Where it stands — 2026-09-23
+## Where it stands — 2026-09-24
 
 | Area | State |
 |---|---|
 | **Timing engine** (Python) | ✅ Works. Exact on the synthetic corpus; refuses audio with no pulse |
-| **Timing engine** (Rust v4) | ✅ At parity with Python, attack for attack and red line for red line; about 4× faster end to end on the corpus — 🦀 not used by the app yet |
-| **App** (web window) | ✅ Analyse, edit, undo, lock, export, inject, compare with a map, alignment, density, suggestions — in English and Spanish |
+| **Timing engine** (Rust v4) | ✅ At parity with Python, attack for attack and red line for red line; about 4× faster end to end on the corpus. In the app as an opt-in (Settings → Rust engine); Python takes over, and says so, where Rust has no answer |
+| **App** (web window) | ✅ Sections for Library, Timing, Map check, Mapset and Export; analyse, edit, undo, lock, export, inject, compare with a map, alignment, density, snap audit, suggestions, mapset check — in English and Spanish |
 | **osu! files** | ✅ Full reader; writer keeps every byte you did not ask to change |
 | **Hitsounds** | 🦀 Half built in Rust (features, 13 instrument classes, musical role); no decision or editor yet |
 | **Playback inside the app** | 📋 Planned |
@@ -140,6 +140,8 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Timing validation: duplicates, short sections, impossible changes, suspicious offsets, octave | ✅ | Shown as banners, never auto-fixed |
 | Alignment report | ✅ | |
 | Density analysis | ✅ | |
+| Snap audit: objects off the map's own grid, and what an inject would unsnap | ✅ | Object starts |
+| Mapset check: red lines, audio settings and metadata across difficulties | ✅ | Read only, never fixes |
 | Timing suggestions | ✅ | |
 | Apply a suggestion to the `.osu` | 📋 | P9 |
 | Hitsound validation | 📋 | P7 |
@@ -175,7 +177,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | `--json` machine-readable output | ✅ | |
 | Whole folders | ✅ | |
 | Unified command set (`analyze · timing · hitsound · validate …`) | 📋 | P8 |
-| Rust engine as a JSON sidecar | 📋 | P22 |
+| Rust engine as a JSON sidecar (`overtone-cli analyze --json` / `--full`) | ✅ | Exit codes: 0 grid, 3 refused, 1 unreadable, 2 usage |
 
 ### Distribution
 
@@ -275,14 +277,16 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 239 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 279 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage
 .venv/Scripts/python.exe bench/gates.py coverage       # density changes inside a section
 .venv/Scripts/python.exe bench/gates.py measures       # bars read and anchored
 .venv/Scripts/python.exe bench/gates.py signatures     # signature regions over one bar
-cargo test --workspace                                 # 214 tests
+.venv/Scripts/python.exe bench/gates.py robustness     # the audit's edge-case probes
+.venv/Scripts/python.exe bench/facts.py                # the numbers these docs state
+cargo test --workspace                                 # 231 tests
 cargo run --release -q -p overtone-bench -- golden     # Rust vs Python, attack for attack
 ```
 
@@ -316,8 +320,8 @@ timed decoding and attack detection only.
 - **Swing and shuffle**: BPM and offset are exact, but the grid residual is large — that
   number is telling the truth about the music.
 - **Offsets export as whole milliseconds** (the `.osu` format); the fit is sub-millisecond.
-- **41 audit findings are still open**, none high (all six high ones were fixed on
-  2026-09-23) — [`docs/13-audit-backlog.md`](docs/13-audit-backlog.md).
+- **Every audit finding is closed** — fixed, found already fixed, or decided (Opus stays
+  refused) — [`docs/13-audit-backlog.md`](docs/13-audit-backlog.md).
 - **Always check the first beat and every transition in the osu! editor.**
 
 ---

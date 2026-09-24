@@ -1372,6 +1372,8 @@ def main(argv: list[str] | None = None) -> None:
     args = list(sys.argv[1:] if argv is None else argv)
     files = [a for a in args if not a.startswith("--")]
     api = Api(files[0] if files else "", autorun=bool(files))
+    # Before the window exists: the taskbar reads the id when the window opens.
+    ta.claim_taskbar_identity()
     window = webview.create_window(
         "Overtone", url=str(APP_DIR / "index.html"), js_api=api,
         width=1320, height=880, min_size=(960, 640), background_color="#0B0F17")

@@ -32,6 +32,10 @@ later costs more than writing it down now.
   .NET Framework's `System.Drawing.Icon` (pywebview sets the window icon through it) does
   not read PNG frames: asked for 256, it fell back to 64. Entries under 256 are 32-bit BMP
   now, and the .ico holds 16/20/24/32/40/48/64/256, every size Windows asks for at 100-200 %.
+- **The taskbar showed the Python logo.** Windows groups a window under its process's
+  application id, and a process without one falls under its executable: `pythonw.exe`.
+  Both windows now claim `Overtone.TimingWorkbench` before they open, and the taskbar
+  takes the window's own icon.
 
 ### Measured
 
@@ -39,7 +43,7 @@ later costs more than writing it down now.
 .NET Icon(path, 16/20/24/32/48)  each loads at its size: red line pixel (224, 96, 108),
                                  panel (21, 28, 41) at 16-24
 LogoIconTests (2 new)            fail on the old .ico, pass on the new one
-Python unittest                  332 -> 334, all pass
+Python unittest                  332 -> 335, all pass
 ```
 
 ---

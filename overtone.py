@@ -5243,6 +5243,30 @@ def mod_report(beatmap: dict, attack_times: np.ndarray, attack_weights: np.ndarr
 
 
 # ---------------------------------------------------------------------------
+# Taskbar identity
+# ---------------------------------------------------------------------------
+
+#: The taskbar groups windows by application id. A process without one is
+#: grouped under its executable, pythonw.exe, and shows the Python logo
+#: instead of the window's own icon.
+APP_USER_MODEL_ID = "Overtone.TimingWorkbench"
+
+
+def claim_taskbar_identity() -> bool:
+    """Give this process Overtone's own taskbar identity, so the taskbar shows
+    the window's icon, not python.exe's. Call before the first window opens.
+    True when Windows took it; False elsewhere or when it refused."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        result = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+    except (AttributeError, OSError):
+        return False
+    return result == 0      # S_OK
+
+
+# ---------------------------------------------------------------------------
 # Settings persistence
 # ---------------------------------------------------------------------------
 
@@ -5439,6 +5463,7 @@ class TimingAnalyzerApp:
         from tkinter import ttk
         self.tk, self.ttk = tk, ttk
         cfg = load_config()
+        claim_taskbar_identity()
         self.root = tk.Tk()
         # 1070: the Results header needs 1061 px in Spanish once its buttons
         # size to their labels (measured off-screen); at 1020 CSV was cut.

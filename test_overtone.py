@@ -6,6 +6,7 @@ segmentation and gap-filling helpers are still covered — they remain in the
 fallback path used for rubato and non-percussive audio.
 """
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -3766,6 +3767,21 @@ class LogoIconTests(unittest.TestCase):
         self.assertLess(pixel(15, 15)[3], 64)
         self.assertEqual(pixel(13, 8), (0x15, 0x1C, 0x29, 255))
         self.assertEqual(pixel(6, 8)[:3], (0xE0, 0x60, 0x6C))
+
+
+class TaskbarIdentityTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "win32", "a Windows taskbar setting")
+    def test_the_process_takes_overtones_own_taskbar_id(self):
+        # Run in a child so this test process keeps its own identity.
+        import subprocess
+        code = ("import ctypes, overtone as ta\n"
+                "ok = ta.claim_taskbar_identity()\n"
+                "p = ctypes.c_wchar_p()\n"
+                "ctypes.windll.shell32.GetCurrentProcessExplicitAppUserModelID(ctypes.byref(p))\n"
+                "print(ok, p.value)\n")
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                             cwd=str(Path(__file__).resolve().parent), timeout=120)
+        self.assertEqual(out.stdout.split(), ["True", "Overtone.TimingWorkbench"], out.stderr)
 
 
 class ModReportTests(unittest.TestCase):

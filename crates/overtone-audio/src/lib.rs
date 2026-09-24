@@ -24,9 +24,13 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::units::TimeBase;
 
-/// Decoded audio, exactly as the file holds it: interleaved, native rate.
+/// Decoded audio at the file's native rate, downmixed to mono packet by packet
+/// as it is read: every channel of an hour at 96 kHz would take gigabytes, and
+/// the mean of each frame is all the engine uses (v3's `np.mean(y, axis=1)`).
 pub struct Decoded {
+    /// Mono samples at `sample_rate`.
     pub samples: Vec<f32>,
+    /// Channels in the file (of the last packet decoded).
     pub channels: usize,
     pub sample_rate: u32,
     /// Frames of packets the decoder rejected, replaced by silence of the
@@ -50,6 +54,14 @@ fn packet_frames(
         }
         _ => fallback,
     }
+}
+
+/// True once `mono_samples` at `rate` run past the hour, plus a second of
+/// slack: the in-decode guard for files whose container states no duration.
+/// It counted interleaved samples against 44.1 kHz stereo, whatever the file,
+/// so a 30-minute 96 kHz stereo FLAC was refused at 27.6 minutes.
+fn past_the_hour(mono_samples: usize, rate: u32) -> bool {
+    rate > 0 && mono_samples > (MAX_AUDIO_SECONDS as usize + 1) * rate as usize
 }
 
 /// Decode any container Symphonia understands.
@@ -123,9 +135,10 @@ pub fn decode(path: &Path) -> Result<Decoded> {
                 }
                 scratch.clear();
                 copy_interleaved(&buffer, &mut scratch);
-                last_frames = scratch.len() / channels.max(1);
-                samples.extend_from_slice(&scratch);
-                if samples.len() > (MAX_AUDIO_SECONDS as usize + 1) * TARGET_SR as usize * 2 {
+                let mono = downmix(&scratch, channels);
+                last_frames = mono.len();
+                samples.extend_from_slice(&mono);
+                if past_the_hour(samples.len(), sample_rate) {
                     return Err(Error::TooLong);
                 }
             }
@@ -134,7 +147,7 @@ pub fn decode(path: &Path) -> Result<Decoded> {
             // Dropped, one bad MP3 frame put every later red line 26 ms early.
             Err(symphonia::core::errors::Error::DecodeError(_)) => {
                 let frames = packet_frames(packet.dur.get(), time_base, sample_rate, last_frames);
-                samples.resize(samples.len() + frames * channels, 0.0);
+                samples.resize(samples.len() + frames, 0.0);
                 concealed_frames += frames as u64;
             }
             Err(e) => return Err(Error::Decode(e.to_string())),
@@ -142,7 +155,7 @@ pub fn decode(path: &Path) -> Result<Decoded> {
     }
 
     // Silence standing in for every packet is not audio either.
-    let concealed_all = concealed_frames as usize * channels == samples.len();
+    let concealed_all = concealed_frames as usize == samples.len();
     if samples.is_empty() || channels == 0 || sample_rate == 0 || concealed_all {
         return Err(Error::Decode("decoded no audio".into()));
     }
@@ -161,9 +174,15 @@ fn copy_interleaved(buffer: &GenericAudioBufferRef<'_>, out: &mut Vec<f32>) {
 /// Mono, 44.1 kHz, peak-normalised to 0.99 — the engine's input contract.
 pub fn load(path: &Path) -> Result<(Vec<f32>, u32)> {
     let decoded = decode(path)?;
-    let mut mono = downmix(&decoded.samples, decoded.channels);
-    if decoded.sample_rate != TARGET_SR {
-        mono = resample::resample(&mono, decoded.sample_rate, TARGET_SR);
+    finish(decoded.samples, decoded.sample_rate)
+}
+
+/// The rest of the contract on decoded mono audio, in v3 `_load_audio`'s
+/// order: resample, scrub NaN/Inf, at least two seconds, at most an hour,
+/// peak 0.99.
+fn finish(mut mono: Vec<f32>, rate: u32) -> Result<(Vec<f32>, u32)> {
+    if rate != TARGET_SR {
+        mono = resample::resample(&mono, rate, TARGET_SR);
     }
     for sample in &mut mono {
         if !sample.is_finite() {
@@ -285,6 +304,45 @@ mod tests {
         let (before, after) = (click_starts(&clean.samples), click_starts(&corrupt.samples));
         assert_eq!(before.len(), 16);
         assert_eq!(after, before, "clicks moved");
+    }
+
+    #[test]
+    fn the_load_contract_holds() {
+        let sr = TARGET_SR as usize;
+        // At least two seconds.
+        assert!(matches!(finish(vec![0.1; 2 * sr - 1], TARGET_SR), Err(Error::TooShort)));
+        assert!(finish(vec![0.1; 2 * sr], TARGET_SR).is_ok());
+        // Non-finite samples are zeroed before the peak is taken, and the peak
+        // lands on 0.99 whatever the level.
+        let mut y = vec![0.0f32; 3 * sr];
+        y[10] = f32::NAN;
+        y[20] = f32::INFINITY;
+        y[30] = f32::NEG_INFINITY;
+        y[40] = -0.25;
+        y[50] = 0.1;
+        let (out, rate) = finish(y, TARGET_SR).unwrap();
+        assert_eq!(rate, TARGET_SR);
+        assert!(out.iter().all(|v| v.is_finite()));
+        assert_eq!(out[10], 0.0);
+        let peak = out.iter().fold(0.0f32, |m, &v| m.max(v.abs()));
+        assert!((peak - 0.99).abs() < 1e-6, "peak {peak}");
+        assert!((out[40] + 0.99).abs() < 1e-6);
+        // A rate other than 44.1 kHz comes out at 44.1 kHz.
+        let (out, rate) = finish(vec![0.1; 3 * 48_000], 48_000).unwrap();
+        assert_eq!(rate, TARGET_SR);
+        assert!((out.len() as i64 - 3 * sr as i64).abs() <= 2, "{}", out.len());
+    }
+
+    #[test]
+    fn the_hour_is_an_hour_at_any_rate() {
+        // The in-decode guard counted interleaved samples against 44.1 kHz
+        // stereo: 30 minutes at 96 kHz stereo tripped it at 27.6 minutes.
+        assert!(!past_the_hour(1800 * 96_000, 96_000));
+        assert!(!past_the_hour(3599 * 48_000, 48_000));
+        assert!(!past_the_hour(3600 * 192_000, 192_000));
+        assert!(past_the_hour(3602 * 44_100, 44_100));
+        assert!(past_the_hour(3602 * 48_000, 48_000));
+        assert!(!past_the_hour(usize::MAX / 2, 0), "no rate yet: no verdict");
     }
 
     #[test]

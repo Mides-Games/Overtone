@@ -345,7 +345,9 @@ mod tests {
         let second = proto_score(0.9002, 0.4, 0.9);
         assert_eq!(first, 0.45);
         assert_eq!(second, first);
-        assert!(0.9002f64 - 0.4 > 0.9 - 0.4);
+        // Raw, the second product is larger, and would have won.
+        let raw = [(0.9f64, 0.4, 0.9), (0.9002, 0.4, 0.9)].map(|(out, inn, par)| (out - inn) * par);
+        assert!(raw[1] > raw[0]);
     }
 
     #[test]

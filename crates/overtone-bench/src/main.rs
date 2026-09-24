@@ -627,6 +627,13 @@ fn density_truth(name: &str) -> Option<(f64, f64)> {
     }
 }
 
+/// Golden fixtures whose beat tempo steps with the time signature over a
+/// constant bar (300 -> 150 -> 200 BPM in beats). The density and map gates
+/// have no truth for them, and read those real steps as false changes; the
+/// signatures gate judges them. Added with the proven-bar golden fixtures,
+/// they made both gates fail until this list existed.
+const SIGNATURE_FIXTURES: [&str; 1] = ["signature-changes"];
+
 /// Density cases rendered outside the 24-case corpus.
 const DENSITY_EXTRAS: [&str; 3] = ["halftime-175-87.5", "halftime-150-75", "doubletime-110-220"];
 /// Real density changes the density gate is documented to find (4/4).
@@ -674,6 +681,10 @@ fn density_mode(root: &Path, only: &[String]) -> Result<()> {
     let mut misses: Vec<String> = Vec::new();
     let mut missing = 0usize;
     for name in &names {
+        if SIGNATURE_FIXTURES.contains(&name.as_str()) {
+            println!("{name:<20}  (signature steps: judged by `gates.py signatures`)");
+            continue;
+        }
         let audio = root.join("bench/audio").join(format!("{name}.wav"));
         if !audio.is_file() {
             println!("{name:<20}  MISSING — {}", render_hint(name));
@@ -792,7 +803,7 @@ fn elastic_is_steps(name: &str) -> bool {
     matches!(
         name,
         "change-128-142" | "secs-2" | "secs-3" | "three-sections"
-    )
+    ) || SIGNATURE_FIXTURES.contains(&name)
 }
 
 fn elastic_mode(root: &Path, only: &[String]) -> Result<()> {
@@ -978,6 +989,10 @@ fn map_mode(root: &Path, only: &[String]) -> Result<()> {
     let mut failures = 0usize;
     for name in &names {
         if !only.is_empty() && !only.contains(name) {
+            continue;
+        }
+        if SIGNATURE_FIXTURES.contains(&name.as_str()) {
+            println!("{name:<20}  (signature steps: judged by `gates.py signatures`)");
             continue;
         }
         let audio = root.join("bench/audio").join(format!("{name}.wav"));

@@ -10,8 +10,9 @@
 //! snapping belongs to the tempo layer, which owns grids; this crate is
 //! tempoless, so boundaries sit on the 0.5 s feature grid. And timbre
 //! (MFCC) does not enter the similarity: harmony plus dynamics segment
-//! phrases, timbre labels them — that labelling is section classification,
-//! a separate row.
+//! phrases, so a change of instrumentation over the same chords at the
+//! same level is not a boundary this reads. Section classification
+//! ([`crate::classify`]) labels the phrases from chroma and energy too.
 
 use crate::{chroma, stft};
 

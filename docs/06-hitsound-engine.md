@@ -156,7 +156,7 @@ Independent of instrument, and it carries as much weight in the decision.
 |---|---|
 | Grid position | subdivision of the beat: 1/1, 1/2, 1/3, 1/4, 1/6, 1/8 — from the fitted grid, exactly |
 | Metrical weight | downbeat > beat 3 > beats 2 and 4 > off-beats > 16ths |
-| Phrase position | bar 1 of 4/8/16 (phrase start) and last bar (phrase end), from a self-similarity novelty curve over chroma + MFCC |
+| Phrase position | bar 1 of 4/8/16 (phrase start) and last bar (phrase end), from a self-similarity novelty curve over chroma + windowed energy. MFCC is built but not in it: a change of instrumentation alone, same chords at the same level, is not a signal it reads |
 | Section boundary | distance to the nearest tempo-section or structural boundary |
 | Local energy | RMS percentile in a 2 s window — accents are relative, not absolute |
 | Accent | attack weight relative to the local distribution |

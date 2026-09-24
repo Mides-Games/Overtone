@@ -2,9 +2,11 @@
 //!
 //! Log mel energies through a DCT-II, per frame. Chroma hears *which notes*;
 //! MFCC hears *what sounds like what* — the verse playing the same chords
-//! with different instrumentation still looks different. Kept for the
-//! structure and hitsound stages that need timbre similarity; the novelty
-//! curve itself runs on chroma plus energy.
+//! with different instrumentation still looks different. Nothing calls it
+//! yet: the structure novelty runs on chroma plus energy, section labels on
+//! the same two, and the hitsound features on their own spectra. So a
+//! change of instrumentation alone (same chords, same level) is read by no
+//! stage; this is here for the one that takes it up.
 //!
 //! Conventions: 20 mel bands (wide enough to be cheap, narrow enough to
 //! resolve formants), natural log with a 1e-10 floor, orthonormal DCT-II,

@@ -4,7 +4,10 @@
 //! filter along time keeps it and erases transients. A click is a vertical
 //! line — a median filter along frequency keeps it and erases partials.
 //! Soft Wiener masks (`power = 2`) split each bin between the two, so the
-//! decomposition is conservative by construction: H + P == S everywhere.
+//! decomposition is conservative by construction: H + P == S in every bin
+//! where either median is non-zero, at any level. Where both are zero (an
+//! isolated blip in a sea of zeros, neither a line nor a transient) the bin
+//! is erased from both, as librosa's `softmask` does.
 //!
 //! The hitsound engine wants harmonic, percussive *and* residual; the
 //! residual needs margin design this step deliberately skips (a complementary
@@ -66,10 +69,15 @@ pub fn separate_with(power: &[Vec<f64>], kernel_time: usize, kernel_freq: usize)
             .zip(p_row.iter_mut())
             .zip(s_row.iter().zip(hm_row.iter()).zip(pm_row.iter()))
         {
-            // Wiener masks, power 2: conservative, H + P == S.
-            let denom = (hm * hm + pm * pm).max(1e-12);
-            *h = s * hm * hm / denom;
-            *p = s * pm * pm / denom;
+            // Wiener masks, power 2, on the medians scaled by the larger:
+            // an absolute floor on `hm² + pm²` (it was 1e-12) took energy
+            // out of every bin whose medians sat below ~1e-6 power.
+            let z = hm.max(pm);
+            if z > 0.0 {
+                let (wh, wp) = ((hm / z).powi(2), (pm / z).powi(2));
+                *h = s * wh / (wh + wp);
+                *p = s * wp / (wh + wp);
+            }
         }
     }
     Separation {
@@ -292,30 +300,49 @@ mod tests {
         assert!(snare > 0.80, "40 ms snare {snare:.3}");
     }
 
-    #[test]
-    fn masks_are_conservative() {
-        // H + P == S bin for bin: energy is split, never created. Bins
-        // holding less than a millionth of the peak are skipped: an isolated
-        // blip in a sea of zeros is erased by *both* medians (correctly —
-        // it is neither a line nor a transient), and relative error against
-        // ~zero measures nothing.
-        let y = mix(44_100, 2.5);
-        let spec = stft::power_spectrogram(&y, 2048, 128);
-        let peak = spec.iter().flatten().copied().fold(0.0f64, f64::max);
+    /// Worst `|H + P - S| / S` over every bin either median reached. Bins
+    /// neither reached (an isolated blip in a sea of zeros, neither a line
+    /// nor a transient) must be erased from both.
+    fn worst_imbalance(y: &[f32]) -> f64 {
+        let spec = stft::power_spectrogram(y, 2048, 128);
         let sep = separate(&spec);
+        let harm_med = median_axis_time(&spec, KERNEL_TIME);
+        let perc_med = median_axis_freq(&spec, KERNEL_FREQ);
         let mut worst = 0.0f64;
-        for (s_row, (h_row, p_row)) in spec
-            .iter()
-            .zip(sep.harmonic.iter().zip(sep.percussive.iter()))
-            .step_by(37)
-        {
-            for ((&s, &h), &p) in s_row.iter().zip(h_row.iter()).zip(p_row.iter()) {
-                if s > 1e-6 * peak {
-                    worst = worst.max((h + p - s).abs() / s);
+        for f in 0..spec.len() {
+            for b in 0..spec[f].len() {
+                let (s, h, p) = (spec[f][b], sep.harmonic[f][b], sep.percussive[f][b]);
+                if harm_med[f][b] > 0.0 || perc_med[f][b] > 0.0 {
+                    if s > 0.0 {
+                        worst = worst.max((h + p - s).abs() / s);
+                    }
+                } else {
+                    assert_eq!((h, p), (0.0, 0.0), "frame {f} bin {b}");
                 }
             }
         }
-        assert!(worst < 1e-9, "created energy: {worst}");
+        worst
+    }
+
+    #[test]
+    fn masks_are_conservative() {
+        // H + P == S bin for bin: energy is split, never created or lost,
+        // down to the weakest bin. A 1e-12 floor on the mask denominator
+        // lost energy in every bin whose medians sat below ~1e-6 power,
+        // which the test skipped as "less than a millionth of the peak".
+        let worst = worst_imbalance(&mix(44_100, 2.5));
+        assert!(worst < 1e-9, "energy created or lost: {worst}");
+    }
+
+    #[test]
+    fn a_quiet_passage_splits_as_conservatively_as_a_loud_one() {
+        // The same mix 80 dB down: a fade, dither, the band above an MP3's
+        // lowpass. The masks read ratios of the medians, so the level must
+        // not matter. With the floor, 99.5 % of its bins lost energy, some
+        // all of it, and P / S read 0.0413 against 0.0418 at full level.
+        let quiet: Vec<f32> = mix(44_100, 2.5).iter().map(|v| v * 1e-4).collect();
+        let worst = worst_imbalance(&quiet);
+        assert!(worst < 1e-9, "energy created or lost: {worst}");
     }
 
     #[test]

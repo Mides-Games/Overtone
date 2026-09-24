@@ -81,8 +81,10 @@ where
             |(input, output, power), frame| {
                 // Frame `frame` reads padded samples `frame * hop ..` on, that
                 // is signal samples from `frame * hop - n_fft / 2`. Outside
-                // the signal is librosa's constant zero padding, including
-                // past the end on the last few frames.
+                // the signal is librosa's constant zero padding: the first
+                // frames start in the left pad, the last few end in the right
+                // one. None reads past it, since the last starts at
+                // `(len / hop) * hop <= len`.
                 let start = frame * hop;
                 for (i, slot) in input.iter_mut().enumerate() {
                     let sample = (start + i)
@@ -128,8 +130,10 @@ mod tests {
     #[test]
     fn frames_read_the_padding_exactly_as_a_padded_copy() {
         // The implementation map_frames replaced: an explicit zero-padded
-        // f64 copy of the whole signal. A length that is not a multiple of
-        // the hop runs the last frames past the end of the padding too.
+        // f64 copy of the whole signal. The copy is indexed directly: the
+        // last frame starts at `(len / hop) * hop <= len` and so ends inside
+        // the right-hand padding, even at a length that is not a multiple
+        // of the hop (10,001 here: frame 78 ends at 12,031 of 12,049).
         let y: Vec<f32> = (0..10_001)
             .map(|i| ((i as f64 * 0.37).sin() * 0.8 + (i as f64 * 0.011).cos() * 0.1) as f32)
             .collect();
@@ -146,7 +150,7 @@ mod tests {
         assert_eq!(got.len(), frame_count(y.len(), hop));
         for (frame, row) in got.iter().enumerate() {
             for (i, slot) in input.iter_mut().enumerate() {
-                *slot = padded.get(frame * hop + i).copied().unwrap_or(0.0) * window[i];
+                *slot = padded[frame * hop + i] * window[i];
             }
             fft.process(&mut input, &mut output).unwrap();
             let want: Vec<f64> = output.iter().map(|c| c.re * c.re + c.im * c.im).collect();

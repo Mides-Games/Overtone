@@ -30,7 +30,10 @@
 use crate::chroma;
 
 /// Cosine similarity at or above which two segments count as repetitions.
-/// Same-chord repeats score ~1.0; triads a fourth apart ~0.3–0.5.
+/// Measured on the tests' sustained triads: C major against itself at twice
+/// the level 1.000; against F or G major, a fourth apart either way, 0.23 to
+/// 0.38; against E minor, which shares two of its three notes and is the
+/// closest different chord, 0.55. The margin below the bar is about 0.35.
 pub const REPEAT_COSINE: f64 = 0.90;
 /// Power ratio (mean square) between the quietest loud member and the
 /// loudest quiet member at which one repetition group splits in two. 2.0
@@ -379,6 +382,39 @@ mod tests {
             kinds(&concat(&parts), sr, &[12.0, 24.0, 36.0]),
             vec![SectionKind::Verse; 4]
         );
+    }
+
+    #[test]
+    fn repeat_cosine_keeps_its_margin() {
+        // The separation REPEAT_COSINE's doc states, on the same triads and
+        // the same segment-mean chroma classify reads.
+        let sr = 44_100;
+        let signature = |y: &[f32]| {
+            let frames =
+                crate::stft::map_frames(y, 2048, 128, |p| chroma::chroma_frame(p, sr, 2048));
+            let mut mean = [0.0f64; 12];
+            for frame in &frames {
+                for (acc, &v) in mean.iter_mut().zip(frame) {
+                    *acc += v / frames.len() as f64;
+                }
+            }
+            mean
+        };
+        let c_major = signature(&chord(sr, 261.63, true, 0.3, 12.0));
+        let against = |root: f64, major: bool, amp: f64| {
+            let other = signature(&chord(sr, root, major, amp, 12.0));
+            let dot: f64 = c_major.iter().zip(&other).map(|(a, b)| a * b).sum();
+            let norm = |v: &[f64; 12]| v.iter().map(|x| x * x).sum::<f64>().sqrt();
+            dot / (norm(&c_major) * norm(&other))
+        };
+        // Measured 1.000; F3 0.234, F4 0.339, G3 0.382; E minor 0.548.
+        assert!(against(261.63, true, 0.6) > 0.99);
+        for root in [174.61, 349.23, 196.0] {
+            let cos = against(root, true, 0.3);
+            assert!(cos < 0.45, "a fourth apart ({root} Hz) scored {cos:.3}");
+        }
+        let e_minor = against(329.63, false, 0.3);
+        assert!(e_minor < 0.65, "E minor scored {e_minor:.3}");
     }
 
     #[test]

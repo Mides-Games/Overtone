@@ -44,11 +44,12 @@ pub const SAMPLE_MAX_RMS_RATIO: f64 = 0.05;
 /// A higher degree must cut the weighted RMS by this fraction or the lower
 /// degree wins. This is what stops the model bending to fit jitter.
 ///
-/// Note the cliff this creates: on step-tempo fixtures the prototype sits
-/// ~3 % from the threshold (13.479 vs 13.099 on change-128-142), so float
-/// summation order alone can flip the digit — the port reproduces the
-/// residuals to three decimals and still lands on the other side twice.
-/// Gate the residuals and the selector outcome there, never the digit.
+/// Step-tempo fixtures sit near this cliff, so gate the residuals and the
+/// selector outcome there, not the degree. The port used to land on the
+/// other side of the prototype on change-128-142 and secs-2 (degree 2 at
+/// 13.4 ms against 1 at 15.4 and 12.5). That was blamed on float summation
+/// order. The real cause was that it dropped a degree whose tolerance
+/// ladder broke off early, where the prototype keeps that degree's model.
 pub const DEGREE_GAIN: f64 = 0.15;
 pub const MAX_DEGREE: usize = 3;
 
@@ -211,11 +212,7 @@ pub fn sample_tempo(times: &[f64], weights: &[f32]) -> (Vec<f64>, Vec<f64>, Vec<
     // Outliers against a locally smooth estimate, not a global constant.
     if periods.len() >= 5 {
         for (i, keep_i) in keep.iter_mut().enumerate() {
-            let lo = i.saturating_sub(2);
-            let hi = (i + 3).min(periods.len());
-            let mut window = periods[lo..hi].to_vec();
-            window.sort_by(f64::total_cmp);
-            let smooth = window[window.len() / 2];
+            let smooth = local_median(&periods, i);
             if (periods[i] / smooth.max(1e-9)).log2().abs() >= 0.2 {
                 *keep_i = false;
             }
@@ -230,6 +227,24 @@ pub fn sample_tempo(times: &[f64], weights: &[f32]) -> (Vec<f64>, Vec<f64>, Vec<
         }
     }
     (c, p, q)
+}
+
+/// `np.median` of the five samples centred on `i`, clipped at the ends. The
+/// clipped windows next to an edge hold four, whose median is the mean of
+/// the two middle values; it took the upper one, so the second and
+/// second-to-last samples were judged against a different reference than
+/// the prototype's.
+fn local_median(periods: &[f64], i: usize) -> f64 {
+    let lo = i.saturating_sub(2);
+    let hi = (i + 3).min(periods.len());
+    let mut window = periods[lo..hi].to_vec();
+    window.sort_by(f64::total_cmp);
+    let mid = window.len() / 2;
+    if window.len() % 2 == 0 {
+        0.5 * (window[mid - 1] + window[mid])
+    } else {
+        window[mid]
+    }
 }
 
 /// Weighted `period(t)` polynomial, lowest degree that earns its place.
@@ -362,7 +377,11 @@ pub fn fit_with_degree(
         let Some(mut model) = wls(&k_all, times, &w_all, degree, k0, scale) else {
             continue;
         };
-        let mut alive = true;
+        // A break in the tolerance ladder ends the tightening, not the
+        // degree: the model reached so far is still checked and scored, as
+        // in the prototype. Dropping the degree let degree 2 win steps where
+        // degree 1 should (change-128-142, secs-2) without clearing
+        // DEGREE_GAIN.
         for &ratio in &fit::TOLERANCES {
             let mut inliers = Vec::with_capacity(times.len());
             for (i, &t) in times.iter().enumerate() {
@@ -371,20 +390,13 @@ pub fn fit_with_degree(
                 inliers.push(resid <= (ratio * period).max(0.006));
             }
             if inliers.iter().filter(|&&b| b).count() < degree + 8 {
-                alive = false;
                 break;
             }
             let (ki, ti, wi) = select(&k_all, times, &w_all, &inliers);
             match wls(&ki, &ti, &wi, degree, k0, scale) {
                 Some(nxt) => model = nxt,
-                None => {
-                    alive = false;
-                    break;
-                }
+                None => break,
             }
-        }
-        if !alive {
-            continue;
         }
         let k_lo = k_all.iter().copied().fold(f64::INFINITY, f64::min) as i64 - 4;
         let k_hi = k_all.iter().copied().fold(f64::NEG_INFINITY, f64::max) as i64 + 4;
@@ -482,8 +494,10 @@ fn wls(k: &[f64], t: &[f64], w: &[f64], degree: usize, k0: f64, scale: f64) -> O
 }
 
 /// Weighted polynomial fit of `y` over the abscissa `u`, lowest power first.
-/// Weights enter as `sqrt` (the same `w` the caller passes to `weighted_rms`
-/// squared), matching `np.polyfit(u, y, deg, w=...)`.
+/// Each row is multiplied by its weight, as `np.polyfit(u, y, deg, w=...)`
+/// does, so the fit minimises `sum(w^2 r^2)`; fit_curve passes sqrt(quality)
+/// as the prototype does. The row weight was the square root of `w`, which
+/// minimised `sum(sqrt(quality) r^2)` instead.
 /// Index loops on purpose: the matrix steps read one row of `a` while
 /// writing another, which iterators can only say through split borrows.
 #[allow(clippy::needless_range_loop)]
@@ -494,7 +508,7 @@ fn polyfit(u: &[f64], y: &[f64], w: &[f64], degree: usize) -> Option<Vec<f64>> {
     let n = degree + 1;
     let mut a = vec![vec![0.0; n + 1]; n];
     for ((&ui, &yi), &wi) in u.iter().zip(y.iter()).zip(w.iter()) {
-        let sw = wi.max(0.0).sqrt();
+        let sw = wi.max(0.0);
         let mut pow = 1.0;
         let mut row = vec![0.0; n];
         for cell in row.iter_mut() {
@@ -723,6 +737,63 @@ mod tests {
         let (times, weights) = exact_grid(0.5, 0.0, 5.0);
         assert!(times.len() < 16);
         assert!(fit(&times, &weights).is_none());
+    }
+
+    #[test]
+    fn the_edge_median_averages_its_two_middle_values() {
+        let periods = [1.0, 2.0, 3.0, 10.0, 20.0, 30.0];
+        // i = 1 sees [1, 2, 3, 10]: np.median says 2.5, the upper middle 3.
+        assert_eq!(local_median(&periods, 1), 2.5);
+        // i = 4 sees [3, 10, 20, 30]: 15, not 20.
+        assert_eq!(local_median(&periods, 4), 15.0);
+        // Interior windows hold five and are unchanged.
+        assert_eq!(local_median(&periods, 2), 3.0);
+        // The edge itself holds three.
+        assert_eq!(local_median(&periods, 0), 2.0);
+    }
+
+    #[test]
+    fn polyfit_weights_rows_as_np_polyfit_does() {
+        // np.polyfit(u, y, deg, w=w)[::-1]. The old row weight sqrt(w)
+        // gave [1.01295, 0.98653] and [1.04023, 0.80000, 0.18391].
+        let u = [0.0, 0.25, 0.5, 0.75, 1.0];
+        let y = [1.0, 1.3, 1.1, 1.8, 2.0];
+        let w = [1.0, 3.0, 0.5, 2.0, 1.0];
+        let expected: [&[f64]; 2] = [
+            &[1.0420829805249796, 0.9856054191363246],
+            &[1.024456753302088, 1.089305496378357, -0.10123561994035428],
+        ];
+        for (degree, want) in [1usize, 2].into_iter().zip(expected) {
+            let got = polyfit(&u, &y, &w, degree).expect("well posed");
+            for (g, e) in got.iter().zip(want) {
+                assert!((g - e).abs() < 1e-9, "degree {degree}: {got:?} vs {want:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_degree_whose_tolerance_ladder_breaks_still_competes() {
+        // On an exact 128 -> 142 step, degree 1's residuals are too wide for
+        // the tight end of the ladder. The prototype stops tightening and
+        // still scores it; the port dropped it, and let a higher degree win
+        // without having to clear DEGREE_GAIN.
+        let a1 = 60.0 / 128.0;
+        let change = 0.4 + 64.0 * a1;
+        let (mut times, mut weights) = exact_grid(a1, 0.4, change);
+        let (t2, w2) = exact_grid(60.0 / 142.0, change, 60.0);
+        times.extend(t2.iter().skip(1));
+        weights.extend(w2.iter().skip(1));
+        let (_, report) = fit(&times, &weights).expect("steps must fit");
+        let one = report
+            .degrees
+            .iter()
+            .find(|(d, _)| *d == 1)
+            .map(|(_, r)| r.rms_ms);
+        assert!(
+            matches!(one, Some(Some(_))),
+            "degree 1 must be scored: {:?}",
+            report.degrees
+        );
     }
 
     #[test]

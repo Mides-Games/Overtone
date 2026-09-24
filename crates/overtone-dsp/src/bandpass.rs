@@ -261,9 +261,9 @@ mod tests {
     }
 
     #[test]
-    fn band_limited_retiming_beats_full_band_under_a_hat() {
+    fn under_a_hat_the_lowpass_halves_the_smear_and_the_bank_loses() {
         // B.6's core claim: a hat landing on a kick moves the full-band
-        // 20 % rise the walker looks for. Kick onset at 1.0 s, hat 5 ms
+        // 20 % rise the walker looks for. Kick onset at 1.0 s, hat 3 ms
         // later and louder; the coarse time arrives 8 ms late as usual.
         let sr = 44_100;
         let mut y = vec![0.0f32; (3.0 * sr as f64) as usize];
@@ -287,26 +287,30 @@ mod tests {
         }
         let truth = 1.0;
         let coarse = truth + 0.008;
-        let full = crate::retime::retime(&y, sr, &[coarse])[0];
+        let error = |signal: &[f32]| crate::retime::retime(signal, sr, &[coarse])[0] - truth;
+        // Measured: full band +1.86 ms, gentle lowpass +0.96 ms (0.52 of
+        // the smear), the bank's band 0 +9.07 ms, bands 0-2 summed -4.54 ms.
+        let full = error(&y);
         // Full-band must demonstrably smear, or this test proves nothing.
+        assert!(full > 0.001, "no smear to fix: full {full:.5}");
+        let lowpassed = error(&filtfilt(&Biquad::lowpass(800.0, 0.5, sr as f64), &y));
+        // Halves the smear: a change keeping less than 40 % of the gain
+        // (1.4 ms, say) must fail here, not just one that loses all of it.
         assert!(
-            full - truth > 0.001,
-            "no smear to fix: full {full:.5} vs truth {truth}"
+            lowpassed.abs() < 0.6 * full,
+            "lowpassed {lowpassed:.5} vs full {full:.5}"
         );
-        let gentle = Biquad::lowpass(800.0, 0.5, sr as f64);
-        let lowpassed = filtfilt(&gentle, &y);
-        let fixed = crate::retime::retime(&lowpassed, sr, &[coarse])[0];
-        // Halves the smear with headroom: 0.96 ms vs 1.86 ms measured.
-        // Tried and dropped: narrow band 0 (+9 ms late — ringing outlasts
-        // the smear) and a 0-2 submix (−4.5 ms early — skirt pre-ring).
-        assert!(
-            (fixed - truth).abs() < 0.0015,
-            "lowpassed {fixed:.5} vs truth {truth}"
-        );
-        assert!(
-            fixed < full,
-            "lowpassed {fixed:.5} should beat full {full:.5}"
-        );
+        // Why B.6 was dropped as specified. The attack's own band rings
+        // longer than the smear it removes...
+        let bands = band_waveforms(&y, sr);
+        let own_band = error(&bands[0]);
+        assert!(own_band > 0.005, "band 0 {own_band:.5}");
+        // ...and a submix of the low bands pre-rings through its skirts.
+        let submix: Vec<f32> = (0..y.len())
+            .map(|i| bands[0][i] + bands[1][i] + bands[2][i])
+            .collect();
+        let low_bands = error(&submix);
+        assert!(low_bands < -0.003, "bands 0-2 {low_bands:.5}");
     }
 
     #[test]

@@ -24,21 +24,22 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | osu! files | **works** — full reader, byte-identical writer, atomic write + backup |
 | Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks |
 | Hitsound engine | **half built, Rust only** — features, 13 instrument classes, musical role; no decision, editor or export; not in the app |
-| Playback | **missing** — no audio or live click inside the app |
+| Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop; no tapping or slow loop yet |
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **316** Python (223 engine + 93 web shell) · **231** Rust.
+Tests: **323** Python (226 engine + 97 web shell) · **231** Rust.
 
 ### What is pending, in order
 
 The audit backlog is closed: every finding fixed, recorded as already fixed, or decided
 ([`13-audit-backlog.md`](13-audit-backlog.md)). The Rust engine is in the app, opt-in.
 
-1. **Playback in the app** (Phase 4) — hear the song with the click, scrub, loop; then tap
-   tempo and tapped downbeats for Assisted timing. The first five sidebar modes of
-   [Phase 19](#phase-19--app-sections) are in: Mapset, Snap audit, Reference timing,
-   Assisted timing (marks typed in ms) and the Report.
+1. **The rest of playback** (Phase 4) — play, pause, seek, the live click, the playhead,
+   section loop and play-from-line are in; next tap tempo (and tapped downbeats for
+   Assisted timing), the slow loop with pitch kept, and the tap-along check. The first
+   five sidebar modes of [Phase 19](#phase-19--app-sections) are in: Mapset, Snap audit,
+   Reference timing, Assisted timing (marks typed in ms) and the Report.
 2. **The next sidebar modes** (Phase 19) — Structure, Evidence, Write history, Audio swap.
 3. **Timeline** (Phase 3) — waveform, zoom, drag red lines.
 4. **Settings** (Phase 20) — every option in one place.
@@ -260,21 +261,21 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
-| Transport | play/pause/seek inside the app | med | **high** | audio | no | no | **P1** | todo |
-| Live click track | click synthesised against the *current* timing points | med | **high** | transport | no | no | **P1** | todo — click exported as a WAV only |
-| Playhead sync | position on the timeline at 60 Hz | low | high | transport | no | no | **P1** | todo |
-| Scrub + loop | scrubbing, loop selection, loop section | med | high | transport | no | no | P1 | todo |
-| Play from beat / point | click a beat or red line to play from it | low | med | transport | no | no | P2 | todo |
+| Transport | play/pause/seek inside the app | med | **high** | audio | no | no | **P1** | **done** — WebAudio, Space to play/pause, position bar |
+| Live click track | click synthesised against the *current* timing points | med | **high** | transport | no | no | **P1** | **done** — ``click_schedule``, the WAV export's own; scheduled 150 ms ahead, so an edit is heard on the next beat |
+| Playhead sync | position on the timeline at 60 Hz | low | high | transport | no | no | **P1** | **done** — its own layer over the tempo map |
+| Scrub + loop | scrubbing, loop selection, loop section | med | high | transport | no | no | P1 | partial — seek bar and loop section (sample-exact, the click folded into it); no drawn selection to loop, no audible scrub |
+| Play from beat / point | click a beat or red line to play from it | low | med | transport | no | no | P2 | **done** — from the selected red line, or double-click the map |
 | Grid editor | edit offset/BPM, ±1 ms nudge, ×2/÷2 | med | **high** | P1 | no | no | **P1** | **done** (web shell) |
 | Add / delete / split / merge | with recalculation | med | high | editor | no | no | **P1** | partial — add and delete; no split/merge |
 | **Lock timing point** | protect a verified point from re-analysis | low | high | editor | no | no | P1 | **done** |
 | Undo/redo | one stack per song | med | high | editor | no | no | P1 | **done** (web shell) |
 | Click-accent meter fix | accent on the detected meter — closes audit **F-03** | trivial | low | click | no | no | P1 | **done** |
-| In-app preview | play song + click from the selected red line (WebAudio in the shell) | med | **high** | transport | no | no | **P1** | todo |
+| In-app preview | play song + click from the selected red line (WebAudio in the shell) | med | **high** | transport | no | no | **P1** | **done** |
 | Slow section loop | 4-bar loop of song + click at 100 / 75 / 50 %, pitch kept | med | high | transport | no | no | P1 | todo |
 | Tap-along check | tap along inside the app; show how far each tap lands from the grid | low | med | transport | no | no | P2 | todo |
 | Percussion-only audition | hear just the percussive part (HPSS) to judge timing | med | med | P2 HPSS | no | no | P2 | todo |
-| Latency calibration | measure output latency once so the click lines up with the audio | low | med | transport | no | no | P2 | todo |
+| Latency calibration | measure output latency once so the click lines up with the audio | low | med | transport | no | no | P2 | not needed for listening — the song and the click share one AudioContext and one clock (measured within 0.25 ms); still needed for tapping |
 
 ---
 
@@ -427,7 +428,7 @@ presentation and I/O layers, not the engine, so they run in parallel with the re
 | Phase | Adds | Status |
 |---:|---|---|
 | 12 | Modern UI | **superseded** — the web shell (Phase 3) replaced the PySide6 plan |
-| 13 | Audio playback — transport, live click, scrubbing, MIDI tap | todo (same as Phase 4 transport) |
+| 13 | Audio playback — transport, live click, scrubbing, MIDI tap | partial — Phase 4 transport, live click and loop; no scrub audio, no MIDI tap |
 | 14 | Project system — project file, auto-save, undo, **organised output folders**, batch | partial — undo/redo and result cache; no project file, no output folders |
 | 15 | Deep osu! integration — Songs browser, lazer, editor round-trip, sample library | partial — folder import; no Songs browser, no lazer |
 | 16 | Localization + accessibility | partial — English/Spanish; no screen-reader work |
@@ -613,7 +614,7 @@ P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─�
                            ├─► P4 playback ✗ / editor ✓
                            └─► P5 osu! ✓ ─────────────► P8 automation (half) ─► P9 (suggestions ✓)
 
-Next: playback (then tap tempo) ─► timeline ─► settings
+Next: tap tempo and slow loop ─► timeline ─► settings
       ─► map tools ─► hitsounds ─► Phase 10 ─► installer
 ```
 

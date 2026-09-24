@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-316%20Python%20%C2%B7%20231%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-323%20Python%20%C2%B7%20231%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -27,7 +27,7 @@ sections within 0.05 BPM and 5 ms     24 / 24
 | **App** (web window) | ✅ Sections for Library, Timing, Map check, Mapset, Report and Export; analyse, edit, undo, lock, export, inject, compare with a map, alignment, density, snap audit, suggestions, mapset check, reference timing, assisted timing, mod report — in English and Spanish |
 | **osu! files** | ✅ Full reader; writer keeps every byte you did not ask to change |
 | **Hitsounds** | 🦀 Half built in Rust (features, 13 instrument classes, musical role); no decision or editor yet |
-| **Playback inside the app** | 📋 Planned |
+| **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, section loop; tapping and the slow loop are planned |
 | **Accuracy on real, live-played songs** | 📋 Planned — today ~5 % of a ranked map's red lines land within 5 ms |
 | **Installer** (MSI) | 📋 Planned |
 
@@ -111,9 +111,9 @@ Nothing here claims a number that was not measured. Targets are marked as target
 |---|:--:|---|
 | Click track export (accent on the detected meter) | ✅ | Listen to it against the song — the final arbiter |
 | Tap tempo | ✅ | Classic window |
-| Play song + click inside the app | 📋 | P4 |
+| Play song + click inside the app | ✅ | One clock for both: attacks and clicks within 0.25 ms, measured; the click follows edits while playing |
 | Slow 4-bar loop at 75 / 50 % | 📋 | P4 |
-| Scrub, loop, playhead | 📋 | P4 |
+| Seek, section loop, playhead, play from a red line | ✅ | Space plays and pauses; double-click the tempo map to play from there |
 | Tap-along check, latency calibration, metronome options | 📋 | P4 / P20 |
 
 ### osu! files
@@ -280,7 +280,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 316 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 323 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage

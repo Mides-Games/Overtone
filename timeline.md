@@ -16,6 +16,69 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · Playback in the app, and a click track that clicked changes twice
+
+Phase 4's first half: the song with a live click from the current red lines, inside the
+app. Tapping and the slow loop are next.
+
+### Changed
+
+- **Transport** under the tempo map:
+  - play and pause (Space), a position bar, play from the selected red line;
+  - double-click the map to play from there;
+  - loop the section under the playhead;
+  - song and click levels, remembered;
+  - a playhead drawn on its own layer over the map.
+- **One clock.** The song and the click leave through one AudioContext, and every time
+  derives from its clock. Clicks are scheduled 150 ms ahead from the payload's
+  `click_schedule`, read on every tick, so an edit is heard on the next beat. The loop is
+  the buffer source's own, and the click is folded into it.
+- **The song reaches the page** as its own bytes, in 1 MiB chunks, for the browser to
+  decode. Where the browser cannot (AIFF), it gets Overtone's own decode as a WAV. The page
+  names no path; only the analysed file is served.
+- **No click latency offset**, though the roadmap planned a calibration. The click cannot
+  drift from a song on the same clock. Latency matters for tapping, and is left for it.
+
+### Fixed
+
+- **Each change of tempo clicked twice** in the exported click track, and so it would have
+  in the app. Each red line clicked up to and onto the next line, which then clicked its
+  own first beat. On the old grid that made one tone at double level: peak 0.90 against
+  0.45 elsewhere. Off it, two clicks milliseconds apart. `click_schedule` stops each line
+  short of the next.
+- **A NaN level passed as silence**: `max(0.0, nan)` is 0.0 in Python, so clamping ran
+  before the finiteness check. The check comes first now.
+- Two slips caught in the browser. The play/pause icons are SVG, which has no `.hidden`
+  property, so they never switched. The playhead did not redraw after a stop in a hidden
+  window, where animation frames pause.
+
+### Measured
+
+Played in the built-in browser on the real bridge (a local harness, not committed). The
+output was recorded sample by sample with an AudioWorklet: song on one channel, click on
+the other.
+
+```
+secs-3 from 20 s for 8 s, across its 145 -> 152 BPM change
+  19 clicks against the schedule          0.03-0.07 ms
+  drum attacks against the clicks         -0.17..+0.11 ms, median -0.13
+section loop 24.31-46.02 s, from 45 s across the wrap
+  clicks                                  45.231, 45.626, then 24.310, no double at the seam
+  attacks against clicks, 9 beats         -0.23..+0.04 ms
+152 BPM line edited to 160 while playing  playback went on; next beats 0.375 s apart (60/160)
+Space pause at 39.37 s, Space again       resumed from 39.37 s
+AIFF excerpt                              browser refused it, Overtone's WAV played (20 s)
+Python unittest                           316 -> 323, all pass
+benchmark.py 24/24 · bpm-snapshot · golden.py 27/27 · coverage · measures · signatures
+robustness · reference 24/24 · assisted 70/70 · facts
+```
+
+These checks played through the PC's speakers, and the person at the PC asked about it.
+Later checks ran with the context suspended and the output disconnected, and the checks
+after that were silent.
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · The Report section, and a snap tolerance that was two constants
 
 The last of the first five sidebar modes. Building it on real maps found a snap audit that

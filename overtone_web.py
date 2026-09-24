@@ -136,6 +136,15 @@ def _default_songs() -> Path:
     return Path(os.environ.get("LOCALAPPDATA", str(HERE))) / "osu!" / "Songs"
 
 
+def _open_link(link: str) -> None:
+    """Hand a local protocol link (``osu://``) to the program registered for it.
+    Raises OSError when none is, so the UI can say osu! is not installed."""
+    if sys.platform == "win32":
+        os.startfile(link)  # noqa: S606 -- a validated osu:// link, nothing else
+    else:
+        raise OSError("Opening osu! links is supported on Windows only.")
+
+
 def _logo_uri() -> str:
     try:
         return "data:image/png;base64," + base64.b64encode(LOGO_PNG.read_bytes()).decode("ascii")
@@ -802,6 +811,41 @@ class Api:
         self._push_history()
         self._analysis.points = self._merge_locks(points, self._analysis.beats)
         return self._edited(None, fit["offset_ms"])
+
+    # -- mod report: every finding as an osu! editor timestamp -------------
+    def mod_report(self, osu_path: str) -> dict:
+        """Every finding about one difficulty, as the lines a modder posts.
+        Read only; the attacks are the ones reference timing uses."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not Path(str(osu_path)).is_file():
+            return {"ok": False, "key": "bad_file"}
+        if not self._busy.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        try:
+            beatmap = ta.read_osu_beatmap(osu_path)
+            times, weights = self._attacks()
+            report = ta.mod_report(beatmap, times, weights, float(self._analysis.duration),
+                                   self._analysis)
+        except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            self._busy.release()
+        return {"ok": True, "report": report, "file": Path(osu_path).name,
+                "difficulty": ta._mapset_difficulty_name(Path(osu_path), beatmap)}
+
+    def open_in_editor(self, stamp: str) -> dict:
+        """Open the local osu! editor at a timestamp through its ``osu://`` link.
+        Only a well-formed timestamp reaches the shell; nothing leaves the PC."""
+        try:
+            link = ta.mod_editor_link(str(stamp))
+        except ValueError:
+            return {"ok": False, "key": "bad_stamp"}
+        try:
+            _open_link(link)
+        except OSError as exc:
+            return {"ok": False, "key": "no_osu", "detail": str(exc)}
+        return {"ok": True}
 
     # -- helpers (not exposed: underscored) ----------------------------------
     def _save_dialog(self, filename: str, file_types) -> str | None:

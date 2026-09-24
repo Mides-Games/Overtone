@@ -683,6 +683,38 @@ class AssistedBridgeTests(_IsolatedConfig):
             api._busy.release()
 
 
+class ModReportBridgeTests(_IsolatedConfig):
+    """The mod report: gathered lines for one difficulty, editor links."""
+
+    def test_report_names_the_difficulty_and_is_plain_json(self) -> None:
+        api = AssistedBridgeTests._api()
+        lines = ["osu file format v14", "", "[Metadata]", "Version:Insane", "",
+                 "[TimingPoints]", "1000,400,4,1,0,100,1,0", "", "[HitObjects]",
+                 "64,192,1205,5,0,0:0:0:0:"]
+        with tempfile.TemporaryDirectory() as tmp:
+            osu = Path(tmp) / "map.osu"
+            osu.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            reply = api.mod_report(str(osu))
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        self.assertEqual((reply["file"], reply["difficulty"]), ("map.osu", "Insane"))
+        self.assertIn("00:01:205 (1) - unsnapped", reply["report"]["text"])
+        self.assertFalse(api._busy.locked())
+
+    def test_only_a_timestamp_reaches_the_shell(self) -> None:
+        opened = []
+        with mock.patch.object(web, "_open_link", side_effect=opened.append):
+            self.assertTrue(web.Api().open_in_editor("01:02:345 (1,2)")["ok"])
+            self.assertEqual(web.Api().open_in_editor("01:02:345 & del *")["key"], "bad_stamp")
+        self.assertEqual(opened, ["osu://edit/01:02:345%20(1,2)"])
+        with mock.patch.object(web, "_open_link", side_effect=OSError("no handler")):
+            self.assertEqual(web.Api().open_in_editor("00:00:001")["key"], "no_osu")
+
+    def test_report_needs_a_result_a_file_and_no_running_analysis(self) -> None:
+        self.assertEqual(web.Api().mod_report("C:/x.osu")["key"], "first")
+        self.assertEqual(_api_with_points().mod_report("C:/does/not/exist.osu")["key"], "bad_file")
+
+
 class EngineChoiceTests(_IsolatedConfig):
     """The Rust engine is opt-in, falls back to v3, and says when it did."""
 

@@ -49,21 +49,18 @@ pub fn band_flux(y: &[f32], sr: u32, hop: usize, n_fft: usize) -> Vec<Vec<f32>> 
         *range = (lo, hi.max(lo + 1));
     }
 
-    let spec = stft::power_spectrogram(y, n_fft, hop);
-    let frames = spec.len();
+    // Band energies straight from each frame's power spectrum, never the
+    // whole spectrogram; then the global dB floor.
+    let mut energy: Vec<Vec<f64>> = stft::map_frames(y, n_fft, hop, |row| {
+        ranges
+            .iter()
+            .map(|&(lo, hi)| row[lo..hi].iter().sum::<f64>())
+            .collect()
+    });
+    let frames = energy.len();
     if frames < 2 {
         return Vec::new();
     }
-    // Band energies, then the global dB floor.
-    let mut energy: Vec<Vec<f64>> = spec
-        .iter()
-        .map(|row| {
-            ranges
-                .iter()
-                .map(|&(lo, hi)| row[lo..hi].iter().sum::<f64>())
-                .collect()
-        })
-        .collect();
     db_floor(&mut energy);
 
     // Rectified differences, front-padded like the default envelope so a

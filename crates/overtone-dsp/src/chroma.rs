@@ -33,50 +33,55 @@ fn class_of(freq: f64) -> usize {
 /// Gaussian fit, near-exact for the Hann window), carrying its lobe's
 /// magnitude.
 pub fn chroma(power: &[Vec<f64>], sr: u32, n_fft: usize) -> Vec<[f64; CLASSES]> {
-    let bin_hz = sr as f64 / n_fft as f64;
-    let resolved_hz = bin_hz / (2f64.powf(1.0 / 12.0) - 1.0);
     power
         .iter()
-        .map(|row| {
-            let mut classes = [0.0f64; CLASSES];
-            for (bin, &energy) in row.iter().enumerate().skip(1) {
-                if energy <= 0.0 {
-                    continue;
-                }
-                let freq = bin as f64 * bin_hz;
-                if freq >= resolved_hz {
-                    classes[class_of(freq)] += energy.sqrt();
-                    continue;
-                }
-                let (left, right) = (row[bin - 1], row.get(bin + 1).copied().unwrap_or(0.0));
-                if energy <= left || energy < right {
-                    continue; // lobe tail: its peak carries it
-                }
-                let offset = if left > 0.0 && right > 0.0 {
-                    let (a, b, c) = (left.ln(), energy.ln(), right.ln());
-                    let curve = a - 2.0 * b + c;
-                    if curve < 0.0 {
-                        (0.5 * (a - c) / curve).clamp(-0.5, 0.5)
-                    } else {
-                        0.0
-                    }
-                } else {
-                    0.0
-                };
-                let peak_hz = (bin as f64 + offset) * bin_hz;
-                if peak_hz > 0.0 {
-                    classes[class_of(peak_hz)] += left.sqrt() + energy.sqrt() + right.sqrt();
-                }
-            }
-            let total: f64 = classes.iter().sum();
-            if total > 0.0 {
-                for value in &mut classes {
-                    *value /= total;
-                }
-            }
-            classes
-        })
+        .map(|row| chroma_frame(row, sr, n_fft))
         .collect()
+}
+
+/// One frame of [`chroma`], from that frame's `n_fft/2 + 1` power bins. A
+/// whole track passes it to [`crate::stft::map_frames`], so only the twelve
+/// classes of each frame are ever held.
+pub fn chroma_frame(row: &[f64], sr: u32, n_fft: usize) -> [f64; CLASSES] {
+    let bin_hz = sr as f64 / n_fft as f64;
+    let resolved_hz = bin_hz / (2f64.powf(1.0 / 12.0) - 1.0);
+    let mut classes = [0.0f64; CLASSES];
+    for (bin, &energy) in row.iter().enumerate().skip(1) {
+        if energy <= 0.0 {
+            continue;
+        }
+        let freq = bin as f64 * bin_hz;
+        if freq >= resolved_hz {
+            classes[class_of(freq)] += energy.sqrt();
+            continue;
+        }
+        let (left, right) = (row[bin - 1], row.get(bin + 1).copied().unwrap_or(0.0));
+        if energy <= left || energy < right {
+            continue; // lobe tail: its peak carries it
+        }
+        let offset = if left > 0.0 && right > 0.0 {
+            let (a, b, c) = (left.ln(), energy.ln(), right.ln());
+            let curve = a - 2.0 * b + c;
+            if curve < 0.0 {
+                (0.5 * (a - c) / curve).clamp(-0.5, 0.5)
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
+        let peak_hz = (bin as f64 + offset) * bin_hz;
+        if peak_hz > 0.0 {
+            classes[class_of(peak_hz)] += left.sqrt() + energy.sqrt() + right.sqrt();
+        }
+    }
+    let total: f64 = classes.iter().sum();
+    if total > 0.0 {
+        for value in &mut classes {
+            *value /= total;
+        }
+    }
+    classes
 }
 
 #[cfg(test)]

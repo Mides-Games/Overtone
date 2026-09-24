@@ -73,8 +73,10 @@ pub fn classify(y: &[f32], sr: u32, boundaries: &[f64]) -> Vec<LabeledSection> {
 
     // Segment-mean chroma plus mean energy, on the structure grid.
     let n_fft = 2048;
-    let spec = crate::stft::power_spectrogram(y, n_fft, 128);
-    let chroma = chroma::chroma(&spec, sr, n_fft);
+    // Reduced frame by frame, as in structure: never the whole spectrogram.
+    let chroma = crate::stft::map_frames(y, n_fft, 128, |power| {
+        chroma::chroma_frame(power, sr, n_fft)
+    });
     // Segment seconds to STFT frame indices (128 hop).
     let to_frame = |t: f64| t * sr as f64 / 128.0;
     let mut signatures: Vec<[f64; 12]> = Vec::new();

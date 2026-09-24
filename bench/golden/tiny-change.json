@@ -960,11 +960,15 @@
    {
     "bpm": 199.99995,
     "confidence": 0.99529,
+    "meter": 4,
+    "meter_known": false,
     "offset_ms": 500.1384
    },
    {
     "bpm": 203.500007,
     "confidence": 0.9952,
+    "meter": 4,
+    "meter_known": false,
     "offset_ms": 32000.1462
    }
   ],

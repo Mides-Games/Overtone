@@ -93,6 +93,12 @@ struct GoldenPoint {
     offset_ms: f64,
     #[serde(default)]
     bpm: f64,
+    #[serde(default)]
+    confidence: f64,
+    #[serde(default)]
+    meter: usize,
+    #[serde(default)]
+    meter_known: bool,
 }
 
 /// One constant-tempo region as the Python dump writes it.
@@ -540,13 +546,21 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
     } else {
         let mut worst_off = 0.0f64;
         let mut worst_bpm = 0.0f64;
+        let mut worst_conf = 0.0f64;
+        let mut meters_differ = 0usize;
         for (got, want) in pipeline.points.iter().zip(golden.result.points.iter()) {
             worst_off = worst_off.max((got.offset.get() - want.offset_ms).abs());
             worst_bpm = worst_bpm.max((got.bpm.get() - want.bpm).abs());
+            // Confidence and the proven bar were never compared: a red line
+            // could lose its bar, or its confidence, with the gate green.
+            worst_conf = worst_conf.max((got.confidence - want.confidence).abs());
+            if got.meter as usize != want.meter || got.meter_known != want.meter_known {
+                meters_differ += 1;
+            }
         }
-        if worst_off > 0.05 || worst_bpm > 1e-3 {
+        if worst_off > 0.05 || worst_bpm > 1e-3 || worst_conf > 1e-3 || meters_differ > 0 {
             points_diff = Some(format!(
-                "points: worst offset {worst_off:.4}ms, worst bpm {worst_bpm:.6}"
+                "points: worst offset {worst_off:.4}ms, worst bpm {worst_bpm:.6},                  worst confidence {worst_conf:.5}, {meters_differ} meter(s) differ"
             ));
         }
     }

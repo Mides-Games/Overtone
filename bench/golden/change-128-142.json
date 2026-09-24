@@ -799,11 +799,15 @@
    {
     "bpm": 128.0,
     "confidence": 0.99696,
+    "meter": 4,
+    "meter_known": false,
     "offset_ms": 400.1267
    },
    {
     "bpm": 141.999992,
     "confidence": 0.99665,
+    "meter": 4,
+    "meter_known": false,
     "offset_ms": 30400.1268
    }
   ],

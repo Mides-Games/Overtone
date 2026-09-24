@@ -823,16 +823,22 @@
    {
     "bpm": 144.999943,
     "confidence": 0.99658,
+    "meter": 4,
+    "meter_known": false,
     "offset_ms": 310.138
    },
    {
     "bpm": 151.999878,
     "confidence": 0.9964,
+    "meter": 4,
+    "meter_known": false,
     "offset_ms": 24310.1474
    },
    {
     "bpm": 145.000104,
     "confidence": 0.99659,
+    "meter": 4,
+    "meter_known": false,
     "offset_ms": 46020.6911
    }
   ],

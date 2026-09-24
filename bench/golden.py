@@ -50,6 +50,7 @@ TOL = {
     "offset_ms": 0.05,
     "bpm": 0.001,
     "residual_ms": 0.05,
+    "confidence": 1e-3,
 }
 
 
@@ -175,7 +176,9 @@ def capture(name: str, audio_dir: Path, engine: str) -> dict:
         "fit_residual_ms": round(float(analysis.fit_residual_ms), 4),
         "points": [{"offset_ms": round(float(p.offset_ms), 4),
                     "bpm": round(float(p.bpm), 6),
-                    "confidence": round(float(p.confidence), 5)}
+                    "confidence": round(float(p.confidence), 5),
+                    "meter": int(p.meter),
+                    "meter_known": bool(p.meter_known)}
                    for p in ta.snap_timing_points(analysis.points)],
     }
     log["case"] = name
@@ -257,6 +260,13 @@ def compare(got: dict, want: dict) -> list[str]:
             _cmp_scalar(f"result.points[{i}].offset_ms", g["offset_ms"], w["offset_ms"],
                         TOL["offset_ms"], out)
             _cmp_scalar(f"result.points[{i}].bpm", g["bpm"], w["bpm"], TOL["bpm"], out)
+            # Confidence, meter and whether the bar was proven were dumped (or
+            # not) but never compared: a red line could lose its bar unseen.
+            _cmp_scalar(f"result.points[{i}].confidence", g["confidence"],
+                        w["confidence"], TOL["confidence"], out)
+            for key in ("meter", "meter_known"):
+                if g.get(key) != w.get(key):
+                    out.append(f"result.points[{i}].{key}: {w.get(key)} -> {g.get(key)}")
     return out
 
 

@@ -717,6 +717,8 @@
    {
     "bpm": 139.999994,
     "confidence": 0.99722,
+    "meter": 4,
+    "meter_known": false,
     "offset_ms": 182.5223
    }
   ],

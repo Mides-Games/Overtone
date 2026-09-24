@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-323%20Python%20%C2%B7%20231%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-324%20Python%20%C2%B7%20231%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -27,7 +27,7 @@ sections within 0.05 BPM and 5 ms     24 / 24
 | **App** (web window) | ✅ Sections for Library, Timing, Map check, Mapset, Report and Export; analyse, edit, undo, lock, export, inject, compare with a map, alignment, density, snap audit, suggestions, mapset check, reference timing, assisted timing, mod report — in English and Spanish |
 | **osu! files** | ✅ Full reader; writer keeps every byte you did not ask to change |
 | **Hitsounds** | 🦀 Half built in Rust (features, 13 instrument classes, musical role); no decision or editor yet |
-| **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, section loop; tapping and the slow loop are planned |
+| **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, section loop at 100/75/50 %, taps |
 | **Accuracy on real, live-played songs** | 📋 Planned — today ~5 % of a ranked map's red lines land within 5 ms |
 | **Installer** (MSI) | 📋 Planned |
 
@@ -93,7 +93,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Suggestions: red lines the map is missing | ✅ | Shown on the tempo map; applying one is P9 |
 | Reference timing: grade any map's red lines against the attacks | ✅ | Offset, drift and fitted BPM per line, each with its standard error; load a map as the working timing; find every map of the same audio in a Songs folder |
 | Mod report: every finding as osu! editor timestamps | ✅ | Red lines to check, missing red lines, unsnapped objects, objects away from the music; copy all, or open the editor at a timestamp |
-| Assisted timing: two marked downbeats fit the grid | ✅ | Where detection fails: marks snap to attacks, the grid grows across breakdowns but not tempo changes, refusals say why. Marks are typed in ms; tapping them is P4 |
+| Assisted timing: two marked downbeats fit the grid | ✅ | Where detection fails: marks snap to attacks, the grid grows across breakdowns but not tempo changes, refusals say why. Marks are typed in ms, or tapped from a downbeat |
 | Detection settings drawer, presets | ✅ | Shared with the classic window |
 | English / Spanish | ✅ | |
 | Dark window caption, generated app icon | ✅ | |
@@ -110,11 +110,12 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Feature | Status | Notes |
 |---|:--:|---|
 | Click track export (accent on the detected meter) | ✅ | Listen to it against the song — the final arbiter |
-| Tap tempo | ✅ | Classic window |
+| Tap tempo | ✅ | In the app (T) and the classic window |
 | Play song + click inside the app | ✅ | One clock for both: attacks and clicks within 0.25 ms, measured; the click follows edits while playing |
-| Slow 4-bar loop at 75 / 50 % | 📋 | P4 |
+| Section loop at 75 / 50 % | ✅ | Resampled, so the pitch drops and every attack stays exactly in place; a pitch-kept stretch moved attacks ~24 ms |
 | Seek, section loop, playhead, play from a red line | ✅ | Space plays and pauses; double-click the tempo map to play from there |
-| Tap-along check, latency calibration, metronome options | 📋 | P4 / P20 |
+| Tap-along check, tap latency calibration | ✅ | How far your taps land from the click; calibrate once, remembered |
+| Metronome options (sound, subdivisions) | 📋 | P20 |
 
 ### osu! files
 
@@ -280,7 +281,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 323 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 324 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage

@@ -24,24 +24,23 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | osu! files | **works** — full reader, byte-identical writer, atomic write + backup |
 | Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks |
 | Hitsound engine | **half built, Rust only** — features, 13 instrument classes, musical role; no decision, editor or export; not in the app |
-| Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop; no tapping or slow loop yet |
+| Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency |
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **323** Python (226 engine + 97 web shell) · **231** Rust.
+Tests: **324** Python (226 engine + 98 web shell) · **231** Rust.
 
 ### What is pending, in order
 
 The audit backlog is closed: every finding fixed, recorded as already fixed, or decided
 ([`13-audit-backlog.md`](13-audit-backlog.md)). The Rust engine is in the app, opt-in.
 
-1. **The rest of playback** (Phase 4) — play, pause, seek, the live click, the playhead,
-   section loop and play-from-line are in; next tap tempo (and tapped downbeats for
-   Assisted timing), the slow loop with pitch kept, and the tap-along check. The first
-   five sidebar modes of [Phase 19](#phase-19--app-sections) are in: Mapset, Snap audit,
-   Reference timing, Assisted timing (marks typed in ms) and the Report.
+1. **Timeline** (Phase 3) — waveform, zoom, drag red lines. Playback (Phase 4) is in
+   but for the percussion-only audition, and the first five sidebar modes of
+   [Phase 19](#phase-19--app-sections): Mapset, Snap audit, Reference timing, Assisted
+   timing (typed or tapped) and the Report.
 2. **The next sidebar modes** (Phase 19) — Structure, Evidence, Write history, Audio swap.
-3. **Timeline** (Phase 3) — waveform, zoom, drag red lines.
+3. **Percussion-only audition** (Phase 4) — hear the percussive part alone.
 4. **Settings** (Phase 20) — every option in one place.
 5. **Map tools** (Phase 21) — kiai, preview point, SV normaliser, inject into every difficulty.
 6. **Hitsounds** (Phase 6) — decision, editor, export; then its own section.
@@ -272,10 +271,10 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Undo/redo | one stack per song | med | high | editor | no | no | P1 | **done** (web shell) |
 | Click-accent meter fix | accent on the detected meter — closes audit **F-03** | trivial | low | click | no | no | P1 | **done** |
 | In-app preview | play song + click from the selected red line (WebAudio in the shell) | med | **high** | transport | no | no | **P1** | **done** |
-| Slow section loop | 4-bar loop of song + click at 100 / 75 / 50 %, pitch kept | med | high | transport | no | no | P1 | todo |
-| Tap-along check | tap along inside the app; show how far each tap lands from the grid | low | med | transport | no | no | P2 | todo |
+| Slow section loop | 4-bar loop of song + click at 100 / 75 / 50 %, pitch kept | med | high | transport | no | no | P1 | **done**, pitch not kept, by measurement — the section loop at 100/75/50 %, resampled: every attack exactly at t / rate. A pitch-kept stretch (librosa's phase vocoder) put attacks a median 23-24 ms late |
+| Tap-along check | tap along inside the app; show how far each tap lands from the grid | low | med | transport | no | no | P2 | **done** — T or the Tap button: taps placed at the sample then sounding (getOutputTimestamp; mapping within -1.1..+0.4 ms, measured), tempo of the run, offset from the click |
 | Percussion-only audition | hear just the percussive part (HPSS) to judge timing | med | med | P2 HPSS | no | no | P2 | todo |
-| Latency calibration | measure output latency once so the click lines up with the audio | low | med | transport | no | no | P2 | not needed for listening — the song and the click share one AudioContext and one clock (measured within 0.25 ms); still needed for tapping |
+| Latency calibration | measure output latency once so the click lines up with the audio | low | med | transport | no | no | P2 | not needed for listening — the song and the click share one AudioContext and one clock (measured within 0.25 ms). For tapping: **done** — the person's own latency, measured against the click and remembered |
 
 ---
 
@@ -470,7 +469,7 @@ number and confidence. Every write goes through the atomic writer and keeps a ba
 | Mapset check | every difficulty of a folder side by side: red lines, AudioFilename, PreviewTime, lead-in, metadata, kiai spans, density; differences listed, never auto-fixed | low | **high** | P5 reader, folder import | no | no | **P1** | **done** — `mapset_report`, own section |
 | Snap audit | objects off the map's own grid (divisor, ms off), objects before the first red line or past the audio, and how many would go unsnapped if the detected timing were injected | low | **high** | P5 reader | no | no | **P1** | **done** — `snap_audit`, a Map check card |
 | Reference timing | grade each red line of any `.osu` against the attacks (share, residual, drift at span end), load it as the working timing, find same-audio maps by content hash | med | **high** | P5 reader, attacks | no | no | **P1** | **done** — `grade_reference_timing`, a Map check card; offsets judged against the map's own shift, each error with its standard error; attacks detected when the fallback kept none; `gates.py reference` 24/24 |
-| Assisted timing | tap tempo in the app; tap or mark two downbeats and the grid fit starts from there, with residual and share, or refuses. The precision plan's escape valve, which had no row | med | **high** | IRLS fit, P4 transport | no | no | **P1** | **done** without tapping — `assisted_grid`, a Timing card: two downbeats typed in ms, marks snapped to attacks, growth across gaps and not across changes, refusals with the reason; `gates.py assisted` 70/70; on 30 ranked maps median 0.004 BPM off the map. Tap tempo waits for playback (P4) |
+| Assisted timing | tap tempo in the app; tap or mark two downbeats and the grid fit starts from there, with residual and share, or refuses. The precision plan's escape valve, which had no row | med | **high** | IRLS fit, P4 transport | no | no | **P1** | **done** without tapping — `assisted_grid`, a Timing card: two downbeats typed in ms, marks snapped to attacks, growth across gaps and not across changes, refusals with the reason; `gates.py assisted` 70/70; on 30 ranked maps median 0.004 BPM off the map. Marks can be tapped: a run of taps from a downbeat fills them |
 | Structure view | phrase boundaries snapped to the nearest proven downbeat, labelled with the evidence for each label, over the energy lane; home for the kiai, preview, bookmark and break proposals | med | **high** | P2 structure + classify, P22 | no | no | **P1** | todo |
 | Mod report | every finding as osu! editor timestamps (`mm:ss:mmm (combo) - ...`) with its number and confidence, copyable as text; each opens the local osu! editor | low | high | P7 findings | no | no | P2 | **done** — `mod_report`, the Report section: reference, suggestions, snap audit and alignment in time order, combo numbers, `osu://edit/` links from validated timestamps; 0.31 s per map |
 | Write history and restore | a log of every `.osu` write and its backup; see the timing diff against the backup and restore atomically, keeping the current file as a new backup | low | med | writer | no | no | P2 | todo |
@@ -602,6 +601,7 @@ Tk layout are left out) plus the map tools, options and exports above.
 | **Chorus / verse detection** as a headline | **Keep, demote.** Useful for per-section hitsound profiles, not its own phase |
 | **PySide6 desktop UI** (old Phase 12 plan) | **Superseded** by the web shell, which survives the move to Tauri |
 | **SuperFlux**, **tempogram from the coherence map** | **Rejected on measurement** (Phase 2) |
+| **A pitch-kept slow loop** | **Rejected on measurement** (Phase 4): it exists to judge attacks, and the phase vocoder moved them a median 23-24 ms; the loop is resampled instead, pitch and all |
 | **Cloud anything** | **Never.** Offline is a product property |
 
 ---
@@ -614,7 +614,7 @@ P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─�
                            ├─► P4 playback ✗ / editor ✓
                            └─► P5 osu! ✓ ─────────────► P8 automation (half) ─► P9 (suggestions ✓)
 
-Next: tap tempo and slow loop ─► timeline ─► settings
+Next: timeline ─► settings ─► map tools
       ─► map tools ─► hitsounds ─► Phase 10 ─► installer
 ```
 

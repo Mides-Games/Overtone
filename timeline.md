@@ -16,6 +16,59 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · Taps, the slow loop, and why its pitch drops
+
+The rest of Phase 4, but for the percussion-only audition.
+
+### Changed
+
+- **Speed**: 100 / 75 / 50 %, for the song and the section loop; the click keeps its own
+  pitch and lands at t / rate.
+- **Taps** (T, or the Tap button, taken on pointerdown). Each tap is placed at the song
+  time that was sounding when the key went down. `getOutputTimestamp` ties the page's
+  clock to the sample leaving the speakers, so the output latency drops out. The tap row
+  shows:
+  - how many taps;
+  - the tempo of the last unbroken run: beats numbered from the median gap, then a
+    least-squares line through them;
+  - how far the taps land from the click.
+- **Tap latency calibration.** Key travel, the hand and the ear are the person's own delay.
+  "Calibrate to these taps" measures it against the click and remembers it, up to 250 ms.
+- **Assisted timing from taps.** A run that starts on a downbeat becomes the card's marks,
+  and the card fits.
+
+### Rejected / tried and dropped
+
+- **A pitch-kept slow loop**, as the roadmap asked. The loop is for judging attacks, and a
+  pitch-kept stretch moves them. librosa's phase vocoder, on 12 s of secs-3, put strong
+  attacks a median 23-24 ms late at 75 % and at 50 %, and lost some at 75 % (p90 262 ms).
+  The loop is resampled instead: the pitch drops, and every attack stays exactly at
+  t / rate, crisp. A WSOLA stretch keeps attacks sharper but moves each one by up to its
+  search window; it was not measured.
+
+### Measured
+
+These were measured silently. Everything bound for the speakers went through a gain of
+0, and the signal was recorded sample by sample before it.
+
+```
+50 % from 20 s, 4.5 s of real time     song advanced 2.22 s; clicks 0.014-0.032 ms off
+                                       the schedule; attacks against clicks -0.19..-0.13 ms
+12 synthetic taps, 20 ms late          read 26.4 ms: the test's timers fire 5.8 ms late on
+                                       average; against each event's true time the
+                                       mapping errs -1.07..+0.41 ms; tempo 145.016 (145)
+after "Calibrate", 12 more             +0.46 ms (sd 5.9)
+"Use for assisted timing"              marks 8593 / 11895 ms, 2 bars -> 145.000 BPM,
+                                       red line at 310 ms (the true start)
+phase vocoder, strong attacks          median 23-24 ms late at 75 % and 50 %; p90 262 ms
+                                       at 75 % (attacks lost)
+Python unittest                        323 -> 324, all pass
+benchmark.py 24/24 · bpm-snapshot · golden.py 27/27 · coverage · measures · signatures
+robustness · reference 24/24 · assisted 70/70 · facts
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Playback in the app, and a click track that clicked changes twice
 
 Phase 4's first half: the song with a live click from the current red lines, inside the

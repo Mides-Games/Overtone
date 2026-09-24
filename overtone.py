@@ -2476,21 +2476,32 @@ def export_csv(analysis: Analysis, destination: str | os.PathLike[str]) -> None:
 MAX_CLICKS_PER_LINE = 20000
 
 
-def click_schedule(analysis: Analysis, duration: float | None = None) -> list[tuple[float, bool]]:
-    """Every metronome click the red lines imply, as ``(seconds, accented)``.
+#: Click levels: the first beat of a bar, any other beat, a subdivision.
+CLICK_BAR, CLICK_BEAT, CLICK_SUB = 2, 1, 0
+#: Subdivisions a click may add between beats (1 = beats only).
+CLICK_SUBDIVISIONS = (1, 2, 3, 4)
+
+
+def click_schedule(analysis: Analysis, duration: float | None = None,
+                   subdivision: int = 1, accent: bool = True) -> list[tuple[float, int]]:
+    """Every metronome click the red lines imply, as ``(seconds, level)``.
 
     One source for the exported click track and the app's live click, so what
     is heard in the app is what the WAV holds. Each red line clicks from its
     offset up to, not onto, the next line: the next line clicks its own first
     beat. It used to click onto it too, so every change of tempo clicked twice
     (at once when the change fell on the old grid, milliseconds apart when it
-    did not). Accents fall on the line's own bar when it proved one, else on
-    the song's meter (audit F-03: a waltz must not click in 4).
+    did not). The first beat of a bar is ``CLICK_BAR`` (unless ``accent`` is
+    off), on the line's own bar when it proved one, else on the song's meter
+    (audit F-03: a waltz must not click in 4). ``subdivision`` adds that many
+    evenly spaced ``CLICK_SUB`` clicks per beat, 2 for eighths, 4 for sixteenths.
     """
+    if subdivision not in CLICK_SUBDIVISIONS:
+        raise ValueError(f"Click subdivision must be one of {CLICK_SUBDIVISIONS}.")
     points = snap_timing_points(list(getattr(analysis, "points", None) or []))
     if duration is None:
         duration = float(min(max(analysis.duration, 1.0), MAX_CLICK_SECONDS))
-    clicks: list[tuple[float, bool]] = []
+    clicks: list[tuple[float, int]] = []
     for s, point in enumerate(points):
         if not np.isfinite(point.bpm) or point.bpm <= 0 or not np.isfinite(point.offset_ms):
             continue
@@ -2506,21 +2517,28 @@ def click_schedule(analysis: Analysis, duration: float | None = None) -> list[tu
                 bar = max(1, min(16, int(str(getattr(analysis, "meter", "4/4")).split("/")[0])))
             except (ValueError, TypeError):
                 bar = 4
-        for k in range(MAX_CLICKS_PER_LINE):
-            t = start + k * beat_len
+        for k in range(MAX_CLICKS_PER_LINE * subdivision):
+            t = start + k * beat_len / subdivision
             # The song's last line clicks to the end of the audio, inclusive.
             if (t > end + 1e-6) if last else (t >= end - 1e-6):
                 break
-            clicks.append((t, k % bar == 0))
+            if k % subdivision:
+                level = CLICK_SUB
+            elif accent and (k // subdivision) % bar == 0:
+                level = CLICK_BAR
+            else:
+                level = CLICK_BEAT
+            clicks.append((t, level))
     return clicks
 
 
 def export_click_track(analysis: Analysis, destination: str | os.PathLike[str],
-                       sr: int = 44100) -> None:
+                       sr: int = 44100, subdivision: int = 1, accent: bool = True) -> None:
     """Write a metronome WAV aligned to the detected red lines.
 
     Import it as a second track (or whistle-test it against the song) to
-    *hear* whether the timing map drifts. Accent = section start / downbeat.
+    *hear* whether the timing map drifts. The bar's first beat is the high
+    tone, other beats the middle one, subdivisions a soft low one.
     """
     if not analysis.points:
         raise ValueError("Analyze audio first — there are no timing points.")
@@ -2542,14 +2560,16 @@ def export_click_track(analysis: Analysis, destination: str | os.PathLike[str],
     length = max(1, int(0.045 * sr))
     decay = np.exp(-np.arange(length) / (0.008 * sr))
     steps = np.arange(length) / sr
-    tones = {True: (np.sin(2 * np.pi * 2093.0 * steps) * decay).astype(np.float32),
-             False: (np.sin(2 * np.pi * 1568.0 * steps) * decay * 0.7).astype(np.float32)}
+    # The app's live click uses the same three tones and levels.
+    tones = {CLICK_BAR: (np.sin(2 * np.pi * 2093.0 * steps) * decay).astype(np.float32),
+             CLICK_BEAT: (np.sin(2 * np.pi * 1568.0 * steps) * decay * 0.7).astype(np.float32),
+             CLICK_SUB: (np.sin(2 * np.pi * 1318.5 * steps) * decay * 0.4).astype(np.float32)}
 
-    for time_s, accent in click_schedule(analysis, duration):
+    for time_s, level in click_schedule(analysis, duration, subdivision, accent):
         idx = int(time_s * sr)
         if not 0 <= idx < total:
             continue
-        tone = tones[accent]
+        tone = tones[level]
         end = min(total, idx + length)
         click[idx:end] += tone[:end - idx]
     peak = float(np.max(np.abs(click)))
@@ -5234,6 +5254,9 @@ CONFIG_TYPES: dict[str, tuple[type, ...]] = {
     "confidence": (int, float, str), "prefer_map_bpm": (bool,), "refine_beats": (bool,),
     "recent": (list,), "songs_folder": (str,),
     "song_volume": (int, float), "click_volume": (int, float), "tap_latency_ms": (int, float),
+    "output_folder": (str,), "export_ask": (bool,), "offset_decimals": (int,),
+    "click_subdivision": (int,), "click_accent": (bool,), "ui_scale": (int, float),
+    "reduced_motion": (bool,),
 }
 
 

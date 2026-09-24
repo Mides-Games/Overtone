@@ -3690,9 +3690,22 @@ class ClickScheduleTests(unittest.TestCase):
         from overtone import click_schedule
         clicks = click_schedule(self._analysis(
             [TimingPoint(0.0, 60.0, 1.0, 0, meter=3, meter_known=True)]))
-        self.assertEqual([a for _t, a in clicks[:7]], [True, False, False] * 2 + [True])
+        self.assertEqual([a for _t, a in clicks[:7]], [2, 1, 1] * 2 + [2])
         waltz = click_schedule(self._analysis([TimingPoint(0.0, 60.0, 1.0, 0)], meter="3/4"))
-        self.assertEqual([a for _t, a in waltz[:4]], [True, False, False, True])
+        self.assertEqual([a for _t, a in waltz[:4]], [2, 1, 1, 2])
+        flat = click_schedule(self._analysis([TimingPoint(0.0, 60.0, 1.0, 0)]), accent=False)
+        self.assertEqual({a for _t, a in flat}, {1})
+
+    def test_subdivisions_fill_each_beat_and_stop_at_the_next_line(self):
+        from overtone import click_schedule
+        clicks = click_schedule(self._analysis([TimingPoint(1000.0, 120.0, 1.0, 0),
+                                                TimingPoint(2000.0, 150.0, 1.0, 2)]),
+                                subdivision=4)
+        head = [(round(t, 4), a) for t, a in clicks[:9]]
+        self.assertEqual(head, [(1.0, 2), (1.125, 0), (1.25, 0), (1.375, 0), (1.5, 1),
+                                (1.625, 0), (1.75, 0), (1.875, 0), (2.0, 2)])
+        with self.assertRaises(ValueError):
+            click_schedule(self._analysis([TimingPoint(0.0, 60.0, 1.0, 0)]), subdivision=5)
 
     def test_the_exported_wav_holds_one_click_per_scheduled_beat(self):
         import soundfile as sf

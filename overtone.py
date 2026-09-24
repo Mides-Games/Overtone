@@ -2354,7 +2354,8 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
 def analyze_batch(folder: str | os.PathLike[str], min_delta: float = 1.5,
                   persistence: int = 12, prefer_map_bpm: bool = True,
                   min_confidence: float = 0.75, force_subdivision: float = 0.0,
-                  refine_beats: bool = True, progress=None) -> list[dict]:
+                  refine_beats: bool = True, progress=None,
+                  engine: str = "auto") -> list[dict]:
     """Analyze every audio file in a folder; one bad file never stops the rest.
 
     Phase 8 batch entry point (single flat folder — osu! song folders are
@@ -2375,7 +2376,7 @@ def analyze_batch(folder: str | os.PathLike[str], min_delta: float = 1.5,
         try:
             analysis = analyze_audio(str(root / name), min_delta, persistence,
                                      prefer_map_bpm, min_confidence, progress,
-                                     force_subdivision, refine_beats)
+                                     force_subdivision, refine_beats, engine)
         except (ValueError, RuntimeError, OSError) as exc:
             rows.append({"file": name, "ok": False, "global_bpm": 0.0,
                          "points": 0, "duration": 0.0, "error": str(exc)})
@@ -5501,20 +5502,37 @@ def main() -> None:
         red lines (or the JSON), so `> timing.txt` holds nothing else."""
         print(message, file=sys.stderr)
 
+    # A flag that cannot act is refused, never dropped: --inject with the
+    # audio forgotten opened the window, and --title without --osz wrote
+    # nothing anywhere, both without a word.
+    given = sorted("--" + name.replace("_", "-") for name, value in vars(args).items()
+                   if name != "audio" and value != parser.get_default(name))
     if not args.audio:
+        if given:
+            parser.error(f"{', '.join(given)} {'needs' if len(given) == 1 else 'need'} an "
+                         "audio file to analyze; with no arguments at all the window opens")
         TimingAnalyzerApp().start()
         return
+    metadata = [flag for flag in ("--artist", "--title", "--creator") if flag in given]
+    if metadata and not args.osz:
+        parser.error(f"{', '.join(metadata)} only {'names' if len(metadata) == 1 else 'name'} "
+                     "what --osz writes; add --osz OUT.osz")
+    if args.no_backup and not args.inject:
+        parser.error("--no-backup only applies to --inject; nothing else makes a backup")
     if not 0 <= args.decimal_offsets <= 6:
         note("Error: --decimal-offsets must be between 0 and 6")
         raise SystemExit(2)
     force = 0.0 if args.subdivision == "auto" else float(args.subdivision)
     if Path(args.audio).is_dir():
-        if args.click or args.osz or args.inject or args.stats:
-            note("Error: --click/--osz/--inject/--stats need a single audio file, not a folder")
+        single = [flag for flag in ("--click", "--osz", "--inject", "--stats", "--decimal-offsets")
+                  if flag in given]
+        if single:
+            note(f"Error: {'/'.join(single)} need a single audio file, not a folder")
             raise SystemExit(2)
         try:
             rows = analyze_batch(args.audio, args.delta, args.persistence, not args.no_map_preference,
-                                 args.min_confidence / 100, force, refine_beats=not args.no_refine)
+                                 args.min_confidence / 100, force, refine_beats=not args.no_refine,
+                                 engine=args.engine)
         except ValueError as exc:
             note(f"Error: {exc}")
             raise SystemExit(1)

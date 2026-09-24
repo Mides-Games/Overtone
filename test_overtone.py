@@ -3016,5 +3016,41 @@ class CliOutputTests(unittest.TestCase):
         self.assertIn("Error:", err)
 
 
+class CliFlagTests(unittest.TestCase):
+    """A flag that cannot act is refused: --inject with the audio forgotten
+    opened the window, and --title without --osz wrote nothing, both silently."""
+
+    def test_flags_without_audio_do_not_open_the_window(self):
+        code, out, err = _run_cli(["--inject", "map.osu"])
+        self.assertEqual(code, 2)
+        self.assertIn("--inject needs an audio file", err)
+        self.assertNotIn("<GUI opened>", err)
+        code, out, err = _run_cli([])
+        self.assertIn("<GUI opened>", err)          # no arguments at all still opens it
+
+    def test_flags_that_need_another_flag_say_so(self):
+        analysis = _grid_analysis([(1000.0, 120.0)])
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = str(Path(tmp) / "song.wav")
+            for argv, words in (([audio, "--title", "X", "--artist", "Y"], "--osz"),
+                                ([audio, "--no-backup"], "--inject")):
+                with self.subTest(argv=argv[1:]):
+                    code, out, err = _run_cli(argv, analysis)
+                    self.assertEqual((code, out), (2, ""))
+                    self.assertIn(words, err)
+
+    def test_a_folder_refuses_offsets_and_honours_the_engine(self):
+        from unittest import mock
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out, err = _run_cli([tmp, "--decimal-offsets", "3"])
+            self.assertEqual(code, 2)
+            self.assertIn("--decimal-offsets need a single audio file", err)
+            with mock.patch.object(overtone, "analyze_batch", return_value=[]) as batch:
+                code, out, err = _run_cli([tmp, "--engine", "legacy", "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(batch.call_args.kwargs["engine"], "legacy")
+
+
 if __name__ == "__main__":
     unittest.main()

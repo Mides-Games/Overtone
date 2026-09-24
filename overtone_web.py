@@ -572,6 +572,20 @@ class Api:
                 "file": self._file_info(scan["audio"]),
                 "beatmaps": scan["beatmaps"]}
 
+    def mapset_check(self, folder: str) -> dict:
+        """Every difficulty of a beatmap folder side by side, for the Mapset view.
+
+        Read only and independent of the analysis: a set can be checked
+        before any song is analysed, and nothing is remembered or written.
+        """
+        if not Path(str(folder)).is_dir():
+            return {"ok": False, "key": "bad_folder"}
+        try:
+            report = ta.mapset_report(folder)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "report": report, "folder": Path(str(folder)).name}
+
     def inject_preview(self, osu_path: str) -> dict:
         """Dry run first, like the Tk GUI's confirmation dialog data."""
         if self._analysis is None:

@@ -166,6 +166,22 @@ const I18N = {
     ref_found_none: "No map under {root} uses this exact audio ({s} audio files checked).",
     ref_grade: "Grade",
     no_songs: "Choose your osu! Songs folder.",
+    as_title: "Assisted timing",
+    as_sub: "Where detection is wrong, mark two downbeats: the grid is fitted from there, or refused with the reason.",
+    as_first: "First downbeat (ms)", as_second: "A later downbeat (ms)", as_bars: "Bars between", as_meter: "Beats per bar",
+    as_fit: "Fit", as_add: "Add to timing",
+    as_facts: "<b>{bpm}</b> BPM · red line at <b>{offset}</b> ms · holds <b>{from}–{to}</b> s ({bars} bars) · read at 1/{div} · {share}% on grid",
+    as_moved: "Your marks moved {a} and {b} ms onto the attacks.",
+    as_short: "The grid held only {bars} bars: its BPM can be tenths off. Mark downbeats further apart, or check by ear.",
+    as_add_hint: "Adds one hand-placed red line; detected lines inside {from}–{to} s are replaced, except near its end, where a line is most likely the change that ended it. Undo brings them back.",
+    as_added: "Added {bpm} BPM at {offset} ms.",
+    as_bad_marks: "Enter two downbeats, the second after the first, and whole numbers of bars and beats.",
+    as_bpm_range: "Those marks make {bpm} BPM, outside 40–400: check the bars between them.",
+    as_too_few: "Only {n} attacks around the marks: mark downbeats where the music plays.",
+    as_weak: "The attacks do not follow that grid ({share} on it): check the marks and the bars between them.",
+    as_chance: "Random attacks would fit that grid as well: there is no grid here to time.",
+    as_no_attacks: "No attacks were found in this song.",
+    no_fit: "Fit a grid first.",
     import_folder: "Import beatmap folder…",
     imported: "Folder: {audio} + {n} {difficulties}.",
     difficulties: "difficulties",
@@ -337,6 +353,22 @@ const I18N = {
     ref_found_none: "Ningún mapa en {root} usa exactamente este audio ({s} archivos de audio revisados).",
     ref_grade: "Calificar",
     no_songs: "Elegí tu carpeta Songs de osu!.",
+    as_title: "Timing asistido",
+    as_sub: "Donde la detección se equivoca, marcá dos tiempos fuertes: el grid se ajusta desde ahí, o se rechaza con el motivo.",
+    as_first: "Primer tiempo fuerte (ms)", as_second: "Un tiempo fuerte posterior (ms)", as_bars: "Compases entre ambos", as_meter: "Tiempos por compás",
+    as_fit: "Ajustar", as_add: "Agregar al timing",
+    as_facts: "<b>{bpm}</b> BPM · línea roja en <b>{offset}</b> ms · se sostiene de <b>{from}–{to}</b> s ({bars} compases) · leído a 1/{div} · {share}% en la grilla",
+    as_moved: "Tus marcas se movieron {a} y {b} ms hasta los ataques.",
+    as_short: "El grid se sostuvo solo {bars} compases: su BPM puede errar por décimas. Marcá tiempos fuertes más separados, o revisalo a oído.",
+    as_add_hint: "Agrega una línea roja puesta a mano; se reemplazan las líneas detectadas dentro de {from}–{to} s, salvo cerca del final, donde una línea es casi seguro el cambio que lo terminó. Deshacer las recupera.",
+    as_added: "Agregado {bpm} BPM en {offset} ms.",
+    as_bad_marks: "Ingresá dos tiempos fuertes, el segundo después del primero, y números enteros de compases y tiempos.",
+    as_bpm_range: "Esas marcas dan {bpm} BPM, fuera de 40–400: revisá los compases entre ellas.",
+    as_too_few: "Solo hay {n} ataques cerca de las marcas: marcá tiempos fuertes donde suena la música.",
+    as_weak: "Los ataques no siguen ese grid ({share} sobre él): revisá las marcas y los compases entre ellas.",
+    as_chance: "Ataques al azar encajarían igual de bien en ese grid: acá no hay un grid para timear.",
+    as_no_attacks: "No se encontraron ataques en esta canción.",
+    no_fit: "Primero ajustá un grid.",
     import_folder: "Importar carpeta…",
     imported: "Carpeta: {audio} + {n} {difficulties}.",
     difficulties: "dificultades",
@@ -347,7 +379,7 @@ const I18N = {
   },
 };
 
-const S = { lang: "en", view: "library", mapset: null, file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, snap: null, ref: null, refFind: null, recent: [] };
+const S = { lang: "en", view: "library", mapset: null, file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, snap: null, ref: null, refFind: null, assist: null, recent: [] };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
@@ -506,7 +538,7 @@ function setBusy(busy, message) {
 
 function syncActions() {
   const on = !!S.result && !S.busy;
-  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn", "cmpPick", "alignPick", "denPick", "snapPick", "refPick", "refFind"].forEach((id) => { $(id).disabled = !on; });
+  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn", "cmpPick", "alignPick", "denPick", "snapPick", "refPick", "refFind", "asFit"].forEach((id) => { $(id).disabled = !on; });
   if (!on) {
     $("undoBtn").disabled = true;
     $("redoBtn").disabled = true;
@@ -645,7 +677,7 @@ function showResult(result) {
   S.snap = null;
   // A grade depends on the map and the song's attacks, not on the point list:
   // it stays through edits and goes with the song.
-  if (!sameSong) { S.ref = null; S.refFind = null; }
+  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; }
   if (!sameSong) S.comparePath = null;  // a map belongs to one song
   setView(S.view);  // lifts the "analyze first" panel off the current view
   syncActions();
@@ -691,6 +723,7 @@ function renderResult(r) {
   renderDensity();
   renderSnap();
   renderRef();
+  renderAssist();
 }
 
 function renderDetail() {
@@ -1342,6 +1375,59 @@ function renderRef() {
   });
 }
 
+// ------------------------------------------------------------------ assisted timing
+// Two marked downbeats seed the grid; the answer (or the refusal) is read
+// only until "Add to timing", which is one undo step.
+async function assistFit() {
+  if (!api() || !S.result || S.busy) return;
+  const first = parseFloat($("asFirst").value), second = parseFloat($("asSecond").value);
+  const bars = parseInt($("asBars").value, 10), meter = parseInt($("asMeter").value, 10);
+  const reply = await api().assisted_fit(first, second, bars, meter);
+  if (!reply.ok) { editFailure(reply); return; }
+  S.assist = reply.fit;
+  renderAssist();
+}
+
+async function assistAdd() {
+  if (!api() || !S.result || S.busy || !S.assist || !S.assist.ok) return;
+  const fit = S.assist;
+  const reply = await api().assisted_apply();
+  if (!reply.ok) { editFailure(reply); return; }
+  S.assist = null;
+  S.locks = reply.locks || [];
+  showEditResult(reply, t("as_added", { bpm: fit.bpm.toFixed(3), offset: fit.offset_ms.toFixed(0) }));
+}
+
+function renderAssist() {
+  const box = $("asResult"), fit = S.assist;
+  if (!fit) { box.innerHTML = ""; return; }
+  if (!fit.ok) {
+    box.innerHTML = `<div class="warnings" style="margin-top:14px"><div class="banner">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div>${t(`as_${fit.reason}`, fit.values)}</div></div></div>`;
+    return;
+  }
+  const span = { from: (fit.start_ms / 1000).toFixed(1), to: (fit.end_ms / 1000).toFixed(1) };
+  const notes = [t("as_moved", { a: `${fit.first_shift_ms >= 0 ? "+" : ""}${fit.first_shift_ms.toFixed(0)}`,
+                                 b: `${fit.second_shift_ms >= 0 ? "+" : ""}${fit.second_shift_ms.toFixed(0)}` })];
+  const short = fit.short ? `<div class="warnings" style="margin-top:12px"><div class="banner">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div>${t("as_short", { bars: Math.floor(fit.bars_held) })}</div></div></div>` : "";
+  box.innerHTML = `
+    <div class="assist-facts">${t("as_facts", { bpm: fit.bpm.toFixed(3), offset: fit.offset_ms.toFixed(0), ...span,
+                                                bars: Math.floor(fit.bars_held), div: fit.divisor,
+                                                share: Math.round(fit.share * 100) })}</div>
+    ${short}
+    ${notes.map((n) => `<div class="card-sub" style="margin-top:8px">${n}</div>`).join("")}
+    <div class="card-head" style="padding-left:0">
+      <span class="card-sub">${t("as_add_hint", span)}</span>
+      <div class="spacer"></div>
+      <button class="btn small" id="asAdd"><span>${t("as_add")}</span></button>
+    </div>`;
+  $("asAdd").onclick = assistAdd;
+  $("asAdd").disabled = S.busy;
+}
+
 // ------------------------------------------------------------------ mapset
 // Read only and independent of the analysis: one folder, every difficulty.
 const esc = (value) => String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -1705,6 +1791,10 @@ function wire() {
   $("snapPick").onclick = snapOsu;
   $("refPick").onclick = refPick;
   $("refFind").onclick = refFind;
+  $("asFit").onclick = assistFit;
+  ["asFirst", "asSecond", "asBars", "asMeter"].forEach((id) => {
+    $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); assistFit(); } });
+  });
   $("msPick").onclick = pickMapset;
   $("msRecheck").onclick = () => { if (S.mapset) runMapset(S.mapset.path, false); };
   $("undoBtn").onclick = undo;

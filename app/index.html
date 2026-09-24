@@ -199,6 +199,37 @@
           </div>
           <div class="card detail-card" id="detail"></div>
         </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="as_title">Assisted timing</div>
+              <div class="card-sub" data-i18n="as_sub">Where detection is wrong, mark two downbeats: the grid is fitted from there, or refused with the reason.</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="assist-form">
+              <div class="field">
+                <label for="asFirst" data-i18n="as_first">First downbeat (ms)</label>
+                <input class="input num" id="asFirst" type="number" step="1" min="0">
+              </div>
+              <div class="field">
+                <label for="asSecond" data-i18n="as_second">A later downbeat (ms)</label>
+                <input class="input num" id="asSecond" type="number" step="1" min="0">
+              </div>
+              <div class="field">
+                <label for="asBars" data-i18n="as_bars">Bars between</label>
+                <input class="input num" id="asBars" type="number" step="1" min="1" value="1">
+              </div>
+              <div class="field">
+                <label for="asMeter" data-i18n="as_meter">Beats per bar</label>
+                <input class="input num" id="asMeter" type="number" step="1" min="1" value="4">
+              </div>
+              <button class="btn small primary" id="asFit"><span data-i18n="as_fit">Fit</span></button>
+            </div>
+            <div id="asResult"></div>
+          </div>
+        </div>
       </section>
 
       <!-- map check: one difficulty against the analysed song -->

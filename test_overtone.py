@@ -1407,6 +1407,9 @@ class GridMathTests(unittest.TestCase):
         best = min(candidates, key=lambda c: abs(c[0] - period))
         self.assertAlmostEqual(best[0], period, places=3)
         self.assertAlmostEqual(best[1] % period, phase % period, places=2)
+        # Fastest first, as the docstring says (it used to say slowest).
+        periods = [c[0] for c in candidates]
+        self.assertEqual(periods, sorted(periods))
 
     def test_least_squares_beats_interval_differencing(self):
         rng = np.random.default_rng(3)

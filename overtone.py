@@ -897,11 +897,14 @@ def _coherence_curve(times: np.ndarray, weights: np.ndarray,
 def _atomic_grid_candidates(times: np.ndarray, weights: np.ndarray,
                             period_range: tuple[float, float] = (0.055, 1.35),
                             keep: int = 10) -> list[tuple[float, float, float]]:
-    """Candidate atomic pulses as [(period, phase, coherence)], slowest first.
+    """Candidate atomic pulses as [(period, phase, coherence)], shortest period first.
 
     ``R`` is high at the atomic pulse *and at every multiple of it*, and low at
     sub-multiples — so the fundamental is the slowest strong peak, which is
-    exactly what we want to hand to the least-squares stage.
+    exactly what we want to hand to the least-squares stage. The ``keep``
+    slowest strong peaks are kept, each joined by its 2-4x multiples (up to
+    1.6 times the range's slowest period), and the whole list is sorted by
+    ascending period: fastest first, so ``[0]`` is not the fundamental.
     """
     if times.size < 8:
         return []

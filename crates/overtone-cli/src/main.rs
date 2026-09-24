@@ -5,7 +5,14 @@
 //! overtone-cli analyze song.mp3              # [TimingPoints] lines
 //! overtone-cli analyze song.mp3 --json       # v3's report shape
 //! overtone-cli analyze song.mp3 --decimals 3 # lazer keeps fractional ms
+//! overtone-cli analyze song.mp3 --full       # + the evidence an app needs
 //! ```
+//!
+//! `--full` adds what v3's `Analysis` carries beside the red lines: the
+//! fitting envelope and its hop, the attacks and their weights, the beat
+//! grid, the local BPM curve, the bar, and the red lines before export
+//! snapping. With it the app can build the same result object from either
+//! engine.
 //!
 //! stdout carries the result and nothing else; progress and errors go to
 //! stderr, so a caller can pipe the red lines straight into a file.
@@ -28,13 +35,14 @@ use std::time::Instant;
 use overtone_core::Diagnostic;
 use serde_json::{json, Value};
 
-const USAGE: &str = "usage: overtone-cli analyze <audio> [--json] [--decimals N] \
+const USAGE: &str = "usage: overtone-cli analyze <audio> [--json | --full] [--decimals N] \
 [--min-delta BPM] [--persistence BEATS] [--min-confidence C] [--no-map-bpm]";
 
 /// The v3 CLI's defaults, which the golden vectors were dumped with.
 struct Options {
     audio: PathBuf,
     json: bool,
+    full: bool,
     decimals: u32,
     min_delta: f64,
     persistence: usize,
@@ -52,6 +60,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
     let mut options = Options {
         audio: PathBuf::new(),
         json: false,
+        full: false,
         decimals: 0,
         min_delta: 1.5,
         persistence: 12,
@@ -67,6 +76,10 @@ fn parse(args: &[String]) -> Result<Options, String> {
         };
         match arg.as_str() {
             "--json" => options.json = true,
+            "--full" => {
+                options.json = true;
+                options.full = true;
+            }
             "--no-map-bpm" => options.prefer_map_bpm = false,
             "--decimals" => {
                 options.decimals = number(&value(arg)?, arg)?;
@@ -195,6 +208,8 @@ fn analyze(options: &Options) -> ExitCode {
                 "start_s": s.start.get(),
                 "end_s": s.end.get(),
                 "bpm": if s.period > 0.0 { 60.0 / s.period } else { 0.0 },
+                "period_s": s.period,
+                "phase_s": s.phase,
                 "residual_ms": s.residual_ms,
                 "coverage": s.coverage,
                 "inliers": s.inliers,
@@ -203,6 +218,28 @@ fn analyze(options: &Options) -> ExitCode {
             "version": overtone_tempo::VERSION,
             "timings_s": {"decode": decode_s, "attacks": attacks_s, "tempo": tempo_s},
         });
+        let mut report = report;
+        if options.full {
+            report["evidence"] = json!({
+                "hop": overtone_core::FIT_HOP,
+                "sample_rate": sr,
+                "onset": env,
+                "attack_times": times,
+                "attack_weights": weights,
+                "beats": out.beats,
+                "local_bpms": out.local_bpms,
+                "meter_beats": out.meter_beats,
+                "downbeat_class": out.downbeat,
+                "points": out.points.iter().map(|p| json!({
+                    "offset_ms": p.offset.get(),
+                    "bpm": p.bpm.get(),
+                    "confidence": p.confidence,
+                    "section": p.section,
+                    "meter": p.meter,
+                    "meter_known": p.meter_known,
+                })).collect::<Vec<_>>(),
+            });
+        }
         println!("{report}");
     } else if !refused {
         println!(

@@ -216,3 +216,31 @@ fn odd_rates_short_audio_and_junk_end_cleanly() {
         assert!(String::from_utf8_lossy(&out.stderr).contains("cannot load"));
     }
 }
+
+#[test]
+fn full_carries_the_evidence_an_analysis_object_needs() {
+    let dir = scratch("full");
+    let path = dir.join("clicks-150.wav");
+    write_wav(&path, &clicks(150.0, 30.0));
+    let out = run(&["analyze", path.to_str().unwrap(), "--full"]);
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert_eq!(out.status.code(), Some(0));
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let evidence = &report["evidence"];
+    assert_eq!(evidence["hop"], 128);
+    assert_eq!(evidence["sample_rate"], 44_100);
+    let len = |key: &str| evidence[key].as_array().unwrap().len();
+    // The fitting envelope has librosa's centred frame count: 1 + n / hop.
+    assert_eq!(len("onset"), 1 + 30 * 44_100 / 128);
+    assert_eq!(len("attack_times"), len("attack_weights"));
+    assert!(len("attack_times") >= 70, "{} attacks", len("attack_times"));
+    assert!(len("beats") >= 70);
+    assert_eq!(len("local_bpms"), len("beats"));
+    assert!(len("points") >= 1);
+    // Sections now say where their grid is, not only its tempo.
+    let section = &report["sections"][0];
+    let period = section["period_s"].as_f64().unwrap();
+    assert!((60.0 / period - 150.0).abs() < 0.05, "period {period}");
+    assert!(section["phase_s"].is_number());
+}

@@ -70,9 +70,11 @@ pub fn retime(y: &[f32], sr: u32, times: &[f64]) -> Vec<f64> {
             continue;
         }
 
+        // .rev(): the first of equal maxima, as v3's np.argmax.
         let top = energy
             .iter()
             .enumerate()
+            .rev()
             .max_by(|a, b| a.1.total_cmp(b.1))
             .map(|(i, _)| i)
             .unwrap_or(0);

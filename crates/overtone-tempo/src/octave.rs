@@ -192,9 +192,11 @@ pub fn tempo_hints(env: &[f32], sr: u32, hop: usize) -> Vec<(f64, f64)> {
     }
     // librosa's tempo prior: log-normal in log2 space, centred on 120 BPM.
     let prior = |bpm: f64| (-0.5 * (bpm / 120.0).log2().powi(2)).exp();
+    // .rev(): max_by keeps the last of equal maxima; v3's np.argmax the first.
     let best = picked
         .iter()
         .copied()
+        .rev()
         .max_by(|&a, &b| {
             (masked[a] * prior(masked_freqs[a])).total_cmp(&(masked[b] * prior(masked_freqs[b])))
         })
@@ -205,7 +207,8 @@ pub fn tempo_hints(env: &[f32], sr: u32, hop: usize) -> Vec<(f64, f64)> {
     // fast track can still be read fast.
     let prominences = prominence_of(&masked, &picked);
     let mut order: Vec<usize> = (0..picked.len()).collect();
-    order.sort_by(|&a, &b| prominences[b].total_cmp(&prominences[a]));
+    // Ties in descending index, as v3's np.argsort(...)[::-1] leaves them.
+    order.sort_by(|&a, &b| prominences[b].total_cmp(&prominences[a]).then(b.cmp(&a)));
     for &i in order.iter().take(5) {
         hints.push((masked_freqs[picked[i]], masked[picked[i]]));
     }
@@ -296,9 +299,11 @@ pub fn beat_from_atoms(
                 }
             })
             .collect();
+        // .rev(): max_by keeps the last of equal maxima; np.argmax the first.
         let (r, &top) = means
             .iter()
             .enumerate()
+            .rev()
             .max_by(|a, b| a.1.total_cmp(b.1))
             .expect("m >= 1");
         let low = means.iter().copied().fold(f64::INFINITY, f64::min);
@@ -346,7 +351,9 @@ pub fn phase_class(times: &[f64], weights: &[f32], grid: Grid, m: usize) -> usiz
     if seen < 4 {
         return 0;
     }
+    // .rev(): the first of equal classes, as np.argmax and sections::phase_class.
     (0..m)
+        .rev()
         .max_by(|&a, &b| {
             let mean = |c: usize| {
                 if counts[c] > 0 {
@@ -412,9 +419,11 @@ pub fn meter_from_grid(times: &[f64], weights: &[f32], grid: Grid) -> (&'static 
                 }
             })
             .collect();
+        // .rev(): max_by keeps the last of equal maxima; np.argmax the first.
         let (r, &top) = means
             .iter()
             .enumerate()
+            .rev()
             .max_by(|a, b| a.1.total_cmp(b.1))
             .expect("meter >= 1");
         let mean_of_means = means.iter().sum::<f64>() / meter as f64;
@@ -602,6 +611,28 @@ mod tests {
         let (times, weights) = cycles(&[1.0, 1.0, 1.5, 1.0]);
         assert_eq!(meter_from_grid(&times, &weights, grid), ("4/4", 2, 4));
         let (times, weights) = cycles(&[1.5, 1.0, 1.0]);
+        assert_eq!(meter_from_grid(&times, &weights, grid), ("3/4", 0, 3));
+    }
+
+    #[test]
+    fn ties_go_to_the_first_class_as_in_v3() {
+        // Iterator::max_by keeps the last of equal maxima, np.argmax the
+        // first. Expected values are v3's own answers on the same input.
+        let times: Vec<f64> = (0..300).map(|k| k as f64 * 0.2).collect();
+        let ones = vec![1.0f32; times.len()];
+        let grid = Grid {
+            period: 0.2,
+            phase: 0.0,
+        };
+        assert_eq!(beat_from_atoms(&times, &ones, grid, &[(150.0, 1.0)], true), (2, 0));
+        assert_eq!(beat_from_atoms(&times, &ones, grid, &[(75.0, 1.0)], true), (4, 0));
+        assert_eq!(phase_class(&times, &ones, grid, 4), 0);
+        // Two strongest classes tied in a 3-beat bar: v3 says ('3/4', 0, 3).
+        let (times, weights) = cycles(&[2.0, 2.0, 0.5]);
+        let grid = Grid {
+            period: 0.25,
+            phase: 0.5,
+        };
         assert_eq!(meter_from_grid(&times, &weights, grid), ("3/4", 0, 3));
     }
 

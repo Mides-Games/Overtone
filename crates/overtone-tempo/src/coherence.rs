@@ -123,9 +123,11 @@ pub fn candidates(times: &[f64], weights: &[f32], keep: usize) -> Vec<Candidate>
     let curve = sweep(&times, &weights, &freqs);
     let mut picked = peaks::find_peaks(&curve, 2, None, None);
     if picked.is_empty() {
+        // .rev(): the first of equal maxima, as np.argmax.
         let best = curve
             .iter()
             .enumerate()
+            .rev()
             .max_by(|a, b| a.1.total_cmp(b.1))
             .map(|(i, _)| i);
         picked = best.into_iter().collect();

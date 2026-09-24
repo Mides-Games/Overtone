@@ -634,7 +634,8 @@ fn density_mode(root: &Path, only: &[String]) -> Result<()> {
         if should_fire {
             expected += 1;
         }
-        let best = hints.iter().max_by(|a, b| a.score.total_cmp(&b.score));
+        // .rev(): the first of equal scores, as the prototype's max().
+        let best = hints.iter().rev().max_by(|a, b| a.score.total_cmp(&b.score));
         if let Some(found) = best {
             println!(
                 "{:<20} {:>6}  {:>6}  {:>7.1}s  {:>5.2}/{:<5.2}  {:>5.2}/{:<5.2}",

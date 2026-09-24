@@ -164,7 +164,8 @@ fn scan_section(
         if runs.is_empty() || runs.iter().all(|&(a, b)| b - a >= rows.len() - 1) {
             continue;
         }
-        let &(a, b) = runs.iter().max_by_key(|&&(a, b)| b - a).unwrap();
+        // .rev(): the first of equally long runs, as the prototype's max().
+        let &(a, b) = runs.iter().rev().max_by_key(|&&(a, b)| b - a).unwrap();
         let covs: Vec<f64> = rows.iter().map(|&(_, c, _, _)| c).collect();
         let outside: Vec<f64> = covs[..a].iter().chain(covs[b..].iter()).copied().collect();
         if outside.is_empty() {

@@ -319,8 +319,10 @@ pub fn points_from_meter(
     if sections.is_empty() || times.len() < 16 || factor != 1.0 {
         return None;
     }
+    // .rev(): the first of equally long sections, as v3's max() keeps it.
     let primary = sections
         .iter()
+        .rev()
         .max_by(|a, b| (a.end.get() - a.start.get()).total_cmp(&(b.end.get() - b.start.get())))?;
     let (bar, bar_phase, _, _) = detect_bar(times, weights, primary.period, primary.phase)?;
     // The bar is measured on one section and applied to the whole track, so
@@ -506,8 +508,10 @@ pub fn assemble_points(
         .filter(|p| p.confidence >= min_confidence)
         .collect();
     if kept.is_empty() && !points.is_empty() {
+        // .rev(): the first of equally confident points, as v3's max().
         let best = points
             .iter()
+            .rev()
             .max_by(|a, b| a.confidence.total_cmp(&b.confidence))
             .unwrap();
         kept.push(*best);

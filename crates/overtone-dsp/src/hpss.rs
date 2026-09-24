@@ -14,9 +14,13 @@ use rayon::prelude::*;
 
 use crate::stft;
 
-/// Median kernel along time, in frames. 17 frames at hop 128 is ~50 ms:
-/// long enough to bridge a transient, short enough to follow articulation.
-pub const KERNEL_TIME: usize = 17;
+/// Median kernel along time, in frames. 33 frames at hop 128 is ~96 ms. A
+/// transient is smeared across the 16 hops of the 2048-sample window, so
+/// the kernel must be more than twice that for the smear to stay a minority
+/// that cannot become the median. At 17 it barely exceeded the window, and
+/// isolated hits read as sustained: a 2 ms click 0.885 percussive, a
+/// 40 ms noise snare 0.55, a kick's body 0.12.
+pub const KERNEL_TIME: usize = 33;
 /// Median kernel along frequency, in bins. 17 bins at 2048-point FFT is
 /// ~370 Hz: wide enough to erase a partial, narrow enough to keep formants.
 pub const KERNEL_FREQ: usize = 17;
@@ -244,6 +248,48 @@ mod tests {
         assert!(separate_frames(&y, 2048, 128, total + 1..total + 9)
             .harmonic
             .is_empty());
+    }
+
+    /// Isolated hits every 0.5 s, and the percussive share over the eight
+    /// frames around each that the hitsound feature reads.
+    fn hit_share(decay_s: f64) -> f64 {
+        let sr = 44_100u32;
+        let mut y = vec![0.0f32; 4 * sr as usize];
+        let mut seed = 99u64;
+        let mut hits = Vec::new();
+        let mut t0 = 0.3;
+        while t0 < 3.6 {
+            let start = (t0 * sr as f64) as usize;
+            for i in 0..(0.4 * sr as f64) as usize {
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                let noise = ((seed >> 33) as f64 / (1u64 << 31) as f64) - 0.5;
+                let t = i as f64 / sr as f64;
+                y[start + i] += (1.6 * noise * (-t / decay_s).exp()) as f32;
+            }
+            hits.push((t0 * sr as f64 / 128.0).round() as usize);
+            t0 += 0.5;
+        }
+        let (mut p, mut all) = (0.0, 0.0);
+        for frame in hits {
+            let sep = separate_frames(&y, 2048, 128, frame - 4..frame + 4);
+            for (h_row, p_row) in sep.harmonic.iter().zip(&sep.percussive) {
+                for (h, pp) in h_row.iter().zip(p_row) {
+                    p += pp;
+                    all += h + pp;
+                }
+            }
+        }
+        p / all
+    }
+
+    #[test]
+    fn an_isolated_hit_reads_as_percussive() {
+        // With a 17-frame time kernel, barely past the 16-hop window a
+        // transient smears over, a click read 0.885 and a snare 0.55.
+        let click = hit_share(0.002);
+        let snare = hit_share(0.040);
+        assert!(click > 0.99, "2 ms click {click:.3}");
+        assert!(snare > 0.80, "40 ms snare {snare:.3}");
     }
 
     #[test]

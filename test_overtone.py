@@ -1629,10 +1629,11 @@ class SnapAuditTests(unittest.TestCase):
         report = snap_audit(self.beatmap(), analysis)
         moved = report["with_detected_timing"]
         # 10 ms later, 120 BPM throughout: every snapped object moves off
-        # except the ones a 1/16 tick still catches within 1 ms; none of
-        # them is 1300, so nothing comes back on.
+        # except the ones a fine tick still catches within 2 ms. 1300, off
+        # the map's grid, lands 1.7 ms from a 1/12 tick of the shifted one
+        # and comes back on.
         self.assertGreater(len(moved["would_unsnap"]), 0)
-        self.assertEqual(moved["would_snap"], 0)
+        self.assertEqual(moved["would_snap"], 1)
         self.assertNotIn(1300.0, [m["time_ms"] for m in moved["would_unsnap"]])
 
     def test_no_red_lines_is_said_not_guessed(self):
@@ -1640,6 +1641,22 @@ class SnapAuditTests(unittest.TestCase):
 
         report = snap_audit({"timing": {"reds": []}, "hitobjects": [{"time": 5.0}]})
         self.assertEqual((report["ok"], report["reason"]), (False, "no_red_lines"))
+
+    def test_rounding_up_to_2_ms_is_snapped_and_export_keeps_1_ms(self):
+        from overtone import snap_audit
+
+        # 61 ranked maps put 272 objects 1-2 ms from a tick: whole-ms objects on a
+        # fractional beat. 1.5 ms is snapped, 2.5 ms is not.
+        beatmap = {"timing": {"reds": [(1000.0, 180.0)]},
+                   "hitobjects": [{"time": 1335.0, "kind": "circle"},     # 1/1 at 1333.33
+                                  {"time": 1669.0, "kind": "circle"}]}    # 1/1 at 1666.67
+        report = snap_audit(beatmap)
+        self.assertEqual([o["time_ms"] for o in report["unsnapped"]], [1669.0])
+        # Export snapping keeps its own 1 ms: a detected change 1.5 ms off the
+        # previous grid stays where the music put it. (Both once shared one
+        # name, and the audit's definition silently set export's too.)
+        points = [TimingPoint(1000.0, 180.0, 0.9, 0), TimingPoint(21001.5, 181.0, 0.9, 60)]
+        self.assertEqual(snap_timing_points(points)[1].offset_ms, 21001.5)
 
 
 class NoiseBeforeTheMusicTests(unittest.TestCase):

@@ -4063,14 +4063,19 @@ def density_report(beatmap: dict, bucket_s: float = 5.0) -> dict:
 
 #: The snap divisors osu!'s editor offers, coarsest first.
 SNAP_DIVISORS = (1, 2, 3, 4, 6, 8, 12, 16)
-#: osu! stores whole milliseconds, so a snapped object sits up to 1 ms from
-#: its exact tick; past that it is off the grid.
-SNAP_TOLERANCE_MS = 1.0
+#: How far an object may sit from its exact tick and still count as snapped.
+#: osu! stores whole milliseconds against a red line whose beat is fractional,
+#: so a snapped object can sit past 1 ms: on 61 ranked maps, 272 of 30,553
+#: objects sat 1-2 ms from a tick and 5 past 2 ms. At 1 ms the audit flagged
+#: those 272 as unsnapped. A name of its own: it once shared
+#: SNAP_TOLERANCE_MS with export snapping, and the later definition silently
+#: set both.
+OBJECT_SNAP_TOLERANCE_MS = 2.0
 
 
 def _snap_of(time_ms: float, reds: list[tuple[float, float]]) -> dict:
     """Where one time sits on a red-line grid: the coarsest divisor it hits
-    within SNAP_TOLERANCE_MS, or the nearest tick it misses."""
+    within OBJECT_SNAP_TOLERANCE_MS, or the nearest tick it misses."""
     governing = reds[0]
     for red in reds:
         if red[0] <= time_ms + 1e-9:
@@ -4082,7 +4087,7 @@ def _snap_of(time_ms: float, reds: list[tuple[float, float]]) -> dict:
     for divisor in SNAP_DIVISORS:
         tick = round(position * divisor) / divisor
         off = time_ms - (offset + tick * beat_ms)
-        if abs(off) <= SNAP_TOLERANCE_MS:
+        if abs(off) <= OBJECT_SNAP_TOLERANCE_MS:
             return {"divisor": divisor, "off_ms": off, "snapped": True}
         if best is None or abs(off) < abs(best["off_ms"]) - 1e-9:
             best = {"divisor": divisor, "off_ms": off, "snapped": False}
@@ -4096,7 +4101,7 @@ def snap_audit(beatmap: dict, analysis: Analysis | None = None,
 
     Every object start is placed on the red line governing it at the snap
     divisors the editor offers (1/1 to 1/16). An object on none of them within
-    SNAP_TOLERANCE_MS is listed with the nearest tick and how far it misses.
+    OBJECT_SNAP_TOLERANCE_MS is listed with the nearest tick and how far it misses.
     Objects before the first red line and, given the audio length, past its
     end are listed too. With an analysis, the same audit runs against the red
     lines an inject would write, and the report says how many objects that

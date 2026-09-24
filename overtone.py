@@ -2029,6 +2029,14 @@ def _load_audio(path: str | os.PathLike[str],
                 say: Callable[[str], None]) -> tuple[np.ndarray, int]:
     """Decode to mono float32 at 44.1 kHz, peak-normalized."""
     say("Loading and normalizing audio…")
+    # A missing or empty file is not a codec problem. All three used to read
+    # "Could not decode audio ... install FFmpeg", which sends the user off to
+    # install a program that cannot help.
+    name = os.path.basename(os.fspath(path))
+    if not os.path.isfile(path):
+        raise RuntimeError(f"No audio file at {os.fspath(path)}.")
+    if os.path.getsize(path) == 0:
+        raise RuntimeError(f"{name} is empty (0 bytes).")
     try:
         # Ask libsndfile for the header first: a mistyped path to a multi-hour
         # file should cost nothing, not gigabytes of decoded samples.
@@ -2054,9 +2062,16 @@ def _load_audio(path: str | os.PathLike[str],
         try:
             y, sr = librosa.load(path, sr=TARGET_SR, mono=True, res_type="soxr_hq")
         except Exception as exc:
+            if Path(name).suffix.lower() in (".mp3", ".m4a", ".aac", ".mp4", ".wma"):
+                raise RuntimeError(
+                    "Could not decode audio. For MP3/M4A/AAC install FFmpeg and add it to "
+                    "PATH; WAV/FLAC/OGG open directly."
+                ) from exc
+            # WAV, FLAC, OGG and AIFF need no FFmpeg: this file is damaged or
+            # is not the audio its name says.
             raise RuntimeError(
-                "Could not decode audio. For MP3/M4A/AAC install FFmpeg and add it to PATH; "
-                "WAV/FLAC/OGG should open directly."
+                f"Could not decode {name}: it is not audio this program can read, "
+                "or it is damaged."
             ) from exc
     y = np.asarray(y, dtype=np.float32).reshape(-1)
     if not np.all(np.isfinite(y)):

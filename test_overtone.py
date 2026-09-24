@@ -1325,6 +1325,46 @@ class BoundedMemoryTests(unittest.TestCase):
         self.assertLess(tracker / 2**20, 400)
 
 
+class LoadErrorMessageTests(unittest.TestCase):
+    """A missing, empty or junk file says which it is (roadmap Phase 22).
+
+    All three read "Could not decode audio ... install FFmpeg", which is the
+    wrong advice for every one of them.
+    """
+
+    def test_missing_empty_and_junk_files_each_get_their_own_message(self):
+        import overtone as ta
+
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            empty = folder / "empty.wav"
+            empty.write_bytes(b"")
+            junk = folder / "notes.wav"
+            junk.write_text("not audio at all")
+            cases = {
+                folder / "missing.wav": "No audio file at",
+                empty: "empty.wav is empty (0 bytes)",
+                junk: "Could not decode notes.wav: it is not audio",
+                folder: "No audio file at",
+            }
+            for path, message in cases.items():
+                with self.subTest(path=path.name):
+                    with self.assertRaises(RuntimeError) as caught:
+                        ta.analyze_audio(str(path))
+                    self.assertIn(message, str(caught.exception))
+                    self.assertNotIn("FFmpeg", str(caught.exception))
+
+    def test_a_compressed_file_that_fails_still_points_at_ffmpeg(self):
+        import overtone as ta
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = Path(tmp) / "song.mp3"
+            fake.write_bytes(b"ID3" + bytes(64))
+            with self.assertRaises(RuntimeError) as caught:
+                ta.analyze_audio(str(fake))
+            self.assertIn("FFmpeg", str(caught.exception))
+
+
 class NoiseBeforeTheMusicTests(unittest.TestCase):
     """The first red line starts where the grid starts, not at the first noise.
 

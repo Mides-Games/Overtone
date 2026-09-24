@@ -182,6 +182,17 @@ const I18N = {
     as_chance: "Random attacks would fit that grid as well: there is no grid here to time.",
     as_no_attacks: "No attacks were found in this song.",
     no_fit: "Fit a grid first.",
+    nav_report: "Report",
+    report_sub: "Every finding about one difficulty as osu! editor timestamps, ready to paste into a mod post. A timestamp opens the editor there. Read only: nothing is written.",
+    rp_title: "Mod report", rp_pick: "Choose .osu…", rp_copy: "Copy all",
+    rp_empty: "Choose the .osu of a difficulty to gather every finding about it: red lines to check, red lines it is missing, unsnapped objects and objects away from the music.",
+    rp_counts: "{n} findings", rp_none: "Nothing to report on this difficulty.",
+    rp_src_reference: "Red lines", rp_src_suggestion: "Missing red lines", rp_src_snap: "Snapping", rp_src_alignment: "Away from the music",
+    rp_hint: "The lines are in English, as mod posts are. Untick a group to leave it out of the copy.",
+    rp_copied: "Report copied: paste it into your mod post.",
+    rp_open: "Open in the osu! editor",
+    bad_stamp: "That is not an editor timestamp.",
+    no_osu: "osu! did not open — is it installed? ({detail})",
     import_folder: "Import beatmap folder…",
     imported: "Folder: {audio} + {n} {difficulties}.",
     difficulties: "difficulties",
@@ -369,6 +380,17 @@ const I18N = {
     as_chance: "Ataques al azar encajarían igual de bien en ese grid: acá no hay un grid para timear.",
     as_no_attacks: "No se encontraron ataques en esta canción.",
     no_fit: "Primero ajustá un grid.",
+    nav_report: "Reporte",
+    report_sub: "Cada hallazgo sobre una dificultad como timestamps del editor de osu!, listo para pegar en un mod. Un timestamp abre el editor ahí. Solo lectura: no se escribe nada.",
+    rp_title: "Reporte de mod", rp_pick: "Elegir .osu…", rp_copy: "Copiar todo",
+    rp_empty: "Elegí el .osu de una dificultad para juntar cada hallazgo sobre ella: líneas rojas a revisar, líneas rojas que le faltan, objetos sin snap y objetos lejos de la música.",
+    rp_counts: "{n} hallazgos", rp_none: "Nada que reportar en esta dificultad.",
+    rp_src_reference: "Líneas rojas", rp_src_suggestion: "Líneas rojas faltantes", rp_src_snap: "Snap", rp_src_alignment: "Lejos de la música",
+    rp_hint: "Las líneas van en inglés, como los mods. Destildá un grupo para dejarlo fuera de la copia.",
+    rp_copied: "Reporte copiado: pegalo en tu mod.",
+    rp_open: "Abrir en el editor de osu!",
+    bad_stamp: "Eso no es un timestamp del editor.",
+    no_osu: "osu! no se abrió — ¿está instalado? ({detail})",
     import_folder: "Importar carpeta…",
     imported: "Carpeta: {audio} + {n} {difficulties}.",
     difficulties: "dificultades",
@@ -379,7 +401,7 @@ const I18N = {
   },
 };
 
-const S = { lang: "en", view: "library", mapset: null, file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, snap: null, ref: null, refFind: null, assist: null, recent: [] };
+const S = { lang: "en", view: "library", mapset: null, file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, snap: null, ref: null, refFind: null, assist: null, report: null, recent: [] };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
@@ -413,8 +435,8 @@ function translate() {
 // One analysed song is shared by every view: switching only changes what is
 // visible, never the session. Views that read the analysis show the
 // "analyze first" panel until there is one, instead of blank space.
-const VIEWS = ["library", "timing", "mapcheck", "mapset", "export"];
-const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", mapcheck: "nav_mapcheck", mapset: "nav_mapset", export: "nav_export" };
+const VIEWS = ["library", "timing", "mapcheck", "mapset", "report", "export"];
+const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", mapcheck: "nav_mapcheck", mapset: "nav_mapset", report: "nav_report", export: "nav_export" };
 
 function needsResult(view) {
   const section = document.querySelector(`.content > [data-view="${view}"]`);
@@ -538,7 +560,7 @@ function setBusy(busy, message) {
 
 function syncActions() {
   const on = !!S.result && !S.busy;
-  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn", "cmpPick", "alignPick", "denPick", "snapPick", "refPick", "refFind", "asFit"].forEach((id) => { $(id).disabled = !on; });
+  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn", "cmpPick", "alignPick", "denPick", "snapPick", "refPick", "refFind", "asFit", "rpPick", "rpCopy"].forEach((id) => { $(id).disabled = !on; });
   if (!on) {
     $("undoBtn").disabled = true;
     $("redoBtn").disabled = true;
@@ -677,7 +699,7 @@ function showResult(result) {
   S.snap = null;
   // A grade depends on the map and the song's attacks, not on the point list:
   // it stays through edits and goes with the song.
-  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; }
+  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; }
   if (!sameSong) S.comparePath = null;  // a map belongs to one song
   setView(S.view);  // lifts the "analyze first" panel off the current view
   syncActions();
@@ -724,6 +746,7 @@ function renderResult(r) {
   renderSnap();
   renderRef();
   renderAssist();
+  renderReport();
 }
 
 function renderDetail() {
@@ -854,19 +877,23 @@ async function copyOsu() {
   if (!api() || !S.result) return;
   const reply = await api().osu_text();
   if (!reply.ok) { editFailure(reply); return; }
+  copyText(reply.text, "copied");
+}
+
+async function copyText(text, doneKey) {
   try {
-    await navigator.clipboard.writeText(reply.text);
-    toast(t("copied"));
+    await navigator.clipboard.writeText(text);
+    toast(t(doneKey));
     return;
   } catch (err) {
     // A local file page may not get the async clipboard; the legacy path works.
     const box = document.createElement("textarea");
-    box.value = reply.text;
+    box.value = text;
     document.body.appendChild(box);
     box.select();
     try {
       if (!document.execCommand("copy")) throw new Error("execCommand");
-      toast(t("copied"));
+      toast(t(doneKey));
     } catch (err2) {
       toast(t("clipboard_failed", { detail: String((err2 && err2.message) || err) }), true);
     }
@@ -1428,6 +1455,75 @@ function renderAssist() {
   $("asAdd").disabled = S.busy;
 }
 
+// ------------------------------------------------------------------ mod report
+// One difficulty, every finding, in time order as a mod post lists them.
+const RP_SOURCES = ["reference", "suggestion", "snap", "alignment"];
+
+async function reportPick() {
+  if (!api() || !S.result || S.busy) return;
+  const target = await api().pick_osu(S.lastFolder || "");
+  if (!target) return;
+  const reply = await api().mod_report(target);
+  if (!reply.ok) { editFailure(reply); return; }
+  S.report = { file: reply.file, difficulty: reply.difficulty, report: reply.report,
+               hidden: S.report ? S.report.hidden : [] };
+  renderReport();
+}
+
+function reportShown() {
+  const rp = S.report;
+  return rp ? rp.report.items.filter((i) => !rp.hidden.includes(i.source)) : [];
+}
+
+async function openStamp(stamp) {
+  if (!api()) return;
+  const reply = await api().open_in_editor(stamp);
+  if (!reply.ok) toast(t(reply.key, { detail: reply.detail || "" }), true);
+}
+
+function renderReport() {
+  const body = $("rpBody"), rp = S.report, pill = $("rpCount");
+  $("rpCopy").hidden = !rp || !rp.report.items.length;
+  if (!rp) {
+    pill.hidden = true;
+    $("rpFile").textContent = "";
+    body.innerHTML = `<div class="card-sub">${t("rp_empty")}</div>`;
+    return;
+  }
+  $("rpFile").textContent = rp.difficulty ? `${rp.file} · ${rp.difficulty}` : rp.file;
+  const items = rp.report.items;
+  pill.hidden = false;
+  pill.textContent = t("rp_counts", { n: items.length });
+  if (!items.length) { body.innerHTML = `<div class="card-sub">${t("rp_none")}</div>`; return; }
+  const filters = RP_SOURCES.filter((s) => rp.report.counts[s]).map((s) => `
+    <label class="check"><input type="checkbox" data-rp-source="${s}" ${rp.hidden.includes(s) ? "" : "checked"}>
+      <span>${t(`rp_src_${s}`)} <span class="muted">${rp.report.counts[s]}</span></span></label>`).join("");
+  const rows = reportShown().map((i) => `
+    <tr>
+      <td class="num">${i.time_ms === null ? `<span class="muted">${esc(i.stamp)}</span>`
+        : `<button class="link" data-stamp="${esc(i.stamp)}" title="${t("rp_open")}">${esc(i.stamp)}</button>`}</td>
+      <td class="txt">${esc(i.text)}</td>
+      <td><span class="pill ${i.level === "warn" ? "amber" : ""}">${t(`rp_src_${i.source}`)}</span></td>
+    </tr>`).join("");
+  body.innerHTML = `
+    <div class="rp-filters">${filters}</div>
+    <div class="table-scroll" style="margin-top:10px"><table><tbody>${rows}</tbody></table></div>
+    <div class="card-sub" style="margin-top:10px">${t("rp_hint")}</div>`;
+  body.querySelectorAll("[data-stamp]").forEach((b) => { b.onclick = () => openStamp(b.dataset.stamp); });
+  body.querySelectorAll("[data-rp-source]").forEach((box) => {
+    box.onchange = () => {
+      const s = box.dataset.rpSource;
+      rp.hidden = box.checked ? rp.hidden.filter((h) => h !== s) : [...rp.hidden, s];
+      renderReport();
+    };
+  });
+}
+
+function copyReport() {
+  const lines = reportShown().map((i) => `${i.stamp} - ${i.text}`);
+  if (lines.length) copyText(lines.join("\n"), "rp_copied");
+}
+
 // ------------------------------------------------------------------ mapset
 // Read only and independent of the analysis: one folder, every difficulty.
 const esc = (value) => String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -1792,6 +1888,8 @@ function wire() {
   $("refPick").onclick = refPick;
   $("refFind").onclick = refFind;
   $("asFit").onclick = assistFit;
+  $("rpPick").onclick = reportPick;
+  $("rpCopy").onclick = copyReport;
   ["asFirst", "asSecond", "asBars", "asMeter"].forEach((id) => {
     $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); assistFit(); } });
   });

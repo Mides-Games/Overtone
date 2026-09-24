@@ -67,6 +67,29 @@ struct Golden {
     result: GoldenResult,
 }
 
+impl Golden {
+    /// Stages this vector does not carry. Every stage parses with a default,
+    /// so a dump that skipped one read as an empty stage, and an empty stage
+    /// compares equal to a Rust stage that is also empty: a skipped stage
+    /// passed. Every golden fixture has a grid (the refusals live in
+    /// `nogrid`), so each stage must be there.
+    fn missing_stages(&self) -> Vec<&'static str> {
+        [
+            ("candidates", self.candidates.is_empty()),
+            ("seeds", self.seeds.is_empty()),
+            ("octave", self.octave.is_none()),
+            ("atom_sections", self.atom_sections.is_empty()),
+            ("beat_sections", self.beat_sections.is_empty()),
+            ("settled_sections", self.settled_sections.is_empty()),
+            ("meter", self.meter.is_none()),
+            ("result.points", self.result.points.is_empty()),
+        ]
+        .into_iter()
+        .filter_map(|(stage, absent)| absent.then_some(stage))
+        .collect()
+    }
+}
+
 /// v3's global meter reading on the first settled section.
 #[derive(Deserialize, Default)]
 struct GoldenMeter {
@@ -400,6 +423,14 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
         .with_context(|| format!("reading {}", vector_path.display()))?;
     let golden: Golden = serde_json::from_str(&text)
         .with_context(|| format!("parsing {}", vector_path.display()))?;
+    let missing = golden.missing_stages();
+    if !missing.is_empty() {
+        bail!(
+            "{} carries no {} stage; a skipped stage fails rather than passing unseen",
+            vector_path.display(),
+            missing.join(", ")
+        );
+    }
 
     let audio = root.join("bench/audio").join(format!("{name}.wav"));
     if !audio.exists() {
@@ -1487,5 +1518,54 @@ fn main() -> Result<()> {
     } else {
         println!("{failures}/{} cases diverge.", names.len());
         bail!("golden-vector check failed");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ATTACKS: &str = r#""attacks": {"count": 0, "times_s": [], "weights": [],
+        "envelope_frames": 0, "envelope_sum": 0.0}"#;
+
+    #[test]
+    fn a_vector_without_a_stage_names_it() {
+        let bare: Golden = serde_json::from_str(&format!("{{\"case\": \"x\", {ATTACKS}}}"))
+            .expect("every stage is optional to the parser");
+        assert_eq!(
+            bare.missing_stages(),
+            [
+                "candidates",
+                "seeds",
+                "octave",
+                "atom_sections",
+                "beat_sections",
+                "settled_sections",
+                "meter",
+                "result.points"
+            ]
+        );
+    }
+
+    #[test]
+    fn every_committed_vector_carries_every_stage() {
+        let root = repo_root().expect("the repository root");
+        let mut seen = 0;
+        for entry in std::fs::read_dir(root.join("bench/golden")).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let golden: Golden =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            assert!(
+                golden.missing_stages().is_empty(),
+                "{}: {:?}",
+                path.display(),
+                golden.missing_stages()
+            );
+            seen += 1;
+        }
+        assert_eq!(seen, 27);
     }
 }

@@ -186,12 +186,23 @@
             <input type="range" class="pb-seek" id="pbSeek" min="0" max="1000" step="1" value="0" data-i18n-aria="pb_seek" aria-label="Position">
             <label class="check"><input type="checkbox" id="pbClick" checked><span data-i18n="pb_click">Click</span></label>
             <label class="check"><input type="checkbox" id="pbLoop"><span data-i18n="pb_loop">Loop section</span></label>
+            <div class="segmented" id="pbRate" data-i18n-title="pb_rate" title="Speed: slower lowers the pitch, so every attack stays exactly in place">
+              <button data-rate="1" class="on">100%</button><button data-rate="0.75">75%</button><button data-rate="0.5">50%</button>
+            </div>
             <span class="pb-levels">
               <label class="pb-level"><span data-i18n="pb_song">Song</span><input type="range" id="pbSongVol" min="0" max="100" step="1"></label>
               <label class="pb-level"><span data-i18n="pb_click_vol">Click</span><input type="range" id="pbClickVol" min="0" max="100" step="1"></label>
             </span>
           </div>
           <div class="card-sub pb-status" id="pbStatus" data-i18n="pb_hint">Space plays and pauses · double-click the tempo map to play from there</div>
+          <div class="taps">
+            <button class="btn small" id="tapBtn"><span data-i18n="tap_btn">Tap (T)</span></button>
+            <span class="card-sub" id="tapInfo"></span>
+            <div class="spacer"></div>
+            <button class="btn small" id="tapCalibrate" hidden><span data-i18n="tap_calibrate">Calibrate to these taps</span></button>
+            <button class="btn small" id="tapAssist" hidden><span data-i18n="tap_assist">Use for assisted timing</span></button>
+            <button class="btn small" id="tapClear" hidden><span data-i18n="tap_clear">Clear</span></button>
+          </div>
         </div>
 
         <div class="split">

@@ -199,6 +199,16 @@ const I18N = {
     pb_loading: "Loading the song… {n}/{of}",
     pb_failed: "The song could not be played: {detail}",
     no_audio_staged: "The song is not loaded; press play again.",
+    pb_rate: "Speed: slower lowers the pitch, so every attack stays exactly in place",
+    tap_btn: "Tap (T)", tap_calibrate: "Calibrate to these taps", tap_assist: "Use for assisted timing", tap_clear: "Clear",
+    tap_hint: "Play, then tap T on each beat: to check the timing by ear, to calibrate your taps (tap to the click alone), or to seed assisted timing (start on a downbeat).",
+    tap_info: "{n} taps · {bpm} BPM · {where}",
+    tap_after: "you tap {ms} ms after the click (± {sd})",
+    tap_before: "you tap {ms} ms before the click (± {sd})",
+    tap_play_first: "Play the song first, then tap along.",
+    tap_calibrated: "Calibrated: your taps are taken {ms} ms earlier from now on.",
+    tap_assist_need: "Tap at least {n} beats in a row, starting on a downbeat.",
+    bad_latency: "Those taps are too far from the click to be latency.",
     import_folder: "Import beatmap folder…",
     imported: "Folder: {audio} + {n} {difficulties}.",
     difficulties: "difficulties",
@@ -403,6 +413,16 @@ const I18N = {
     pb_loading: "Cargando la canción… {n}/{of}",
     pb_failed: "No se pudo reproducir la canción: {detail}",
     no_audio_staged: "La canción no está cargada; volvé a darle play.",
+    pb_rate: "Velocidad: más lento baja el tono, así cada ataque queda exactamente en su lugar",
+    tap_btn: "Tap (T)", tap_calibrate: "Calibrar con estos taps", tap_assist: "Usar para timing asistido", tap_clear: "Borrar",
+    tap_hint: "Reproducí y tocá T en cada beat: para revisar el timing a oído, para calibrar tus taps (tocá solo con el click) o para arrancar el timing asistido (empezá en un tiempo fuerte).",
+    tap_info: "{n} taps · {bpm} BPM · {where}",
+    tap_after: "tocás {ms} ms después del click (± {sd})",
+    tap_before: "tocás {ms} ms antes del click (± {sd})",
+    tap_play_first: "Primero reproducí la canción, después tocá al ritmo.",
+    tap_calibrated: "Calibrado: desde ahora tus taps se toman {ms} ms antes.",
+    tap_assist_need: "Tocá al menos {n} beats seguidos, empezando en un tiempo fuerte.",
+    bad_latency: "Esos taps están demasiado lejos del click para ser latencia.",
     import_folder: "Importar carpeta…",
     imported: "Carpeta: {audio} + {n} {difficulties}.",
     difficulties: "dificultades",
@@ -759,6 +779,7 @@ function renderResult(r) {
   renderRef();
   renderAssist();
   renderReport();
+  renderTaps();
 }
 
 function renderDetail() {
@@ -1477,7 +1498,7 @@ function renderAssist() {
 const P = {
   ctx: null, buffer: null, bufferFor: null, loading: null, source: null,
   song: null, click: null, playing: false, startCtx: 0, startPos: 0, pos: 0,
-  sched: 0, timer: 0, raf: 0, loop: null,
+  sched: 0, timer: 0, raf: 0, loop: null, rate: 1,
   levels: { song_volume: 0.8, click_volume: 0.6 },
 };
 const PB_LOOKAHEAD = 0.15, PB_TICK_MS = 25, PB_LEAD = 0.06;
@@ -1542,11 +1563,13 @@ async function pbLoad() {
   return P.loading;
 }
 
-// Song position `elapsed` seconds after start, folded into the loop.
+// Song position `elapsed` seconds after start, at the playing rate, folded
+// into the loop.
 function pbSongAt(elapsed) {
-  if (!P.loop) return P.startPos + elapsed;
+  const ahead = elapsed * P.rate;
+  if (!P.loop) return P.startPos + ahead;
   const { a, b } = P.loop, L = b - a;
-  return a + ((((P.startPos - a + elapsed) % L) + L) % L);
+  return a + ((((P.startPos - a + ahead) % L) + L) % L);
 }
 
 function pbPosition() {
@@ -1577,11 +1600,12 @@ function pbTick() {
   const until = P.ctx.currentTime - P.startCtx + PB_LOOKAHEAD;
   while (P.sched < until) {
     const s0 = pbSongAt(P.sched);
-    // Up to the loop's end at most, so a window never spans the wrap.
-    const room = P.loop ? P.loop.b - s0 : Infinity;
+    // Up to the loop's end at most, so a window never spans the wrap. Song
+    // time runs at the playing rate; the clicks keep their own pitch.
+    const room = P.loop ? (P.loop.b - s0) / P.rate : Infinity;
     const len = Math.min(until - P.sched, room);
-    for (let i = lowerBound(clicks.t, s0); i < clicks.t.length && clicks.t[i] < s0 + len; i++) {
-      pbClickAt(P.startCtx + P.sched + (clicks.t[i] - s0), clicks.accent[i] === 1);
+    for (let i = lowerBound(clicks.t, s0); i < clicks.t.length && clicks.t[i] < s0 + len * P.rate; i++) {
+      pbClickAt(P.startCtx + P.sched + (clicks.t[i] - s0) / P.rate, clicks.accent[i] === 1);
     }
     P.sched += len > 1e-9 ? len : 1e-6;
   }
@@ -1608,6 +1632,10 @@ async function pbPlay(from) {
   const source = ctx.createBufferSource();
   source.buffer = P.buffer;
   if (P.loop) { source.loop = true; source.loopStart = P.loop.a; source.loopEnd = P.loop.b; }
+  // Slower by resampling, so the pitch drops with it: every attack stays
+  // exactly at t / rate, and crisp. A pitch-kept stretch moved attacks ~24 ms.
+  P.rate = pbRate();
+  source.playbackRate.value = P.rate;
   source.connect(P.song);
   P.startCtx = ctx.currentTime + PB_LEAD;
   P.startPos = pos;
@@ -1688,6 +1716,8 @@ function pbReset() {
   // A new song: its buffer, position and loop are the old song's no more.
   pbStop();
   P.buffer = null; P.bufferFor = null; P.pos = 0; P.loop = null;
+  TAP.taps = [];
+  renderTaps();
   pbDraw();
 }
 
@@ -1695,6 +1725,105 @@ function pbLevels() {
   P.levels = { song_volume: +$("pbSongVol").value / 100, click_volume: +$("pbClickVol").value / 100 };
   pbApplyLevels();
   if (api()) api().set_playback(P.levels);
+}
+
+function pbRate() {
+  const on = document.querySelector("#pbRate button.on");
+  return on ? parseFloat(on.dataset.rate) || 1 : 1;
+}
+
+// ------------------------------------------------------------------ taps
+// A tap lands at the song time that was *sounding* when the key went down.
+// getOutputTimestamp ties the page's clock to the sample leaving the
+// speakers, so the output latency drops out; what is left (key travel, the
+// hand, the ear) is this person's own, and calibrates away against the click.
+const TAP = { taps: [], latency: 0 };
+// Taps further apart than this (song seconds) start a new run: a pause, a
+// loop's wrap or a seek between them breaks the count of beats.
+const TAP_MAX_GAP = 2.0;
+
+function tapHeardCtx(ev) {
+  const ctx = P.ctx, ts = ctx.getOutputTimestamp ? ctx.getOutputTimestamp() : null;
+  if (ts && ts.performanceTime > 0) return ts.contextTime + (ev.timeStamp - ts.performanceTime) / 1000;
+  // No output timestamp: the context's own latency figures, and the event's age.
+  return ctx.currentTime - (ctx.outputLatency || 0) - (ctx.baseLatency || 0)
+    - (performance.now() - ev.timeStamp) / 1000;
+}
+
+function tapNow(ev) {
+  if (!P.playing) { toast(t("tap_play_first")); return; }
+  TAP.taps.push(pbSongAt(tapHeardCtx(ev) - P.startCtx - TAP.latency / 1000));
+  renderTaps();
+}
+
+function tapStats() {
+  const taps = TAP.taps, r = S.result;
+  if (!r || !taps.length) return null;
+  const clicks = r.clicks.t;
+  // Each tap against the nearest click of the current timing, in ms.
+  const offs = taps.map((s) => {
+    const i = lowerBound(clicks, s);
+    const near = [clicks[i - 1], clicks[i]].filter((v) => v !== undefined)
+      .reduce((b, v) => (Math.abs(s - v) < Math.abs(s - b) ? v : b), Infinity);
+    return (s - near) * 1000;
+  }).filter((v) => Number.isFinite(v));
+  const mean = offs.reduce((a, b) => a + b, 0) / Math.max(offs.length, 1);
+  const sd = Math.sqrt(offs.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(offs.length - 1, 1));
+  // The tempo of the last unbroken run: beats numbered from the median gap,
+  // then a least-squares line through them, so one early tap cannot set it.
+  const run = [taps[taps.length - 1]];
+  for (let i = taps.length - 2; i >= 0; i--) {
+    const gap = run[0] - taps[i];
+    if (gap > 0 && gap < TAP_MAX_GAP) run.unshift(taps[i]); else break;
+  }
+  let bpm = null;
+  if (run.length >= 4) {
+    const gaps = run.slice(1).map((v, i) => v - run[i]).sort((a, b) => a - b);
+    const g = gaps[gaps.length >> 1];
+    const k = run.map((v) => Math.round((v - run[0]) / g));
+    const km = k.reduce((a, b) => a + b, 0) / k.length, tm = run.reduce((a, b) => a + b, 0) / run.length;
+    const sxx = k.reduce((a, v) => a + (v - km) ** 2, 0);
+    const beat = sxx > 0 ? k.reduce((a, v, i) => a + (v - km) * (run[i] - tm), 0) / sxx : 0;
+    if (beat > 0) bpm = 60 / beat;
+  }
+  return { n: taps.length, mean, sd, bpm, run };
+}
+
+function renderTaps() {
+  const st = tapStats();
+  $("tapCalibrate").hidden = !st || st.n < 4;
+  $("tapClear").hidden = !st;
+  $("tapAssist").hidden = !st || st.run.length <= (parseInt($("asMeter").value, 10) || 4);
+  if (!st) { $("tapInfo").textContent = t("tap_hint"); return; }
+  const side = st.mean >= 0 ? "tap_after" : "tap_before";
+  $("tapInfo").textContent = t("tap_info", {
+    n: st.n, bpm: st.bpm ? st.bpm.toFixed(2) : "—",
+    where: t(side, { ms: Math.abs(st.mean).toFixed(1), sd: st.sd.toFixed(1) }),
+  });
+}
+
+async function tapCalibrate() {
+  const st = tapStats();
+  if (!api() || !st || st.n < 4) return;
+  // The taps were already corrected by the old latency: the new one adds to it.
+  const reply = await api().set_tap_latency(TAP.latency + st.mean);
+  if (!reply.ok) { toast(t(reply.key), true); return; }
+  TAP.latency = reply.playback.tap_latency_ms;
+  TAP.taps = [];
+  renderTaps();
+  toast(t("tap_calibrated", { ms: TAP.latency.toFixed(1) }));
+}
+
+function tapAssist() {
+  const st = tapStats(), meter = parseInt($("asMeter").value, 10) || 4;
+  if (!st) return;
+  const bars = Math.floor((st.run.length - 1) / meter);
+  if (bars < 1) { toast(t("tap_assist_need", { n: meter + 1 }), true); return; }
+  $("asFirst").value = String(Math.round(st.run[0] * 1000));
+  $("asSecond").value = String(Math.round(st.run[bars * meter] * 1000));
+  $("asBars").value = String(bars);
+  assistFit();
+  $("asResult").closest(".card").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 // ------------------------------------------------------------------ mod report
@@ -1710,6 +1839,7 @@ async function reportPick() {
   S.report = { file: reply.file, difficulty: reply.difficulty, report: reply.report,
                hidden: S.report ? S.report.hidden : [] };
   renderReport();
+  renderTaps();
 }
 
 function reportShown() {
@@ -2142,6 +2272,15 @@ function wire() {
   $("pbSeek").addEventListener("input", () => { if (S.result) pbSeek((+$("pbSeek").value / 1000) * S.result.duration); });
   $("pbClick").addEventListener("change", pbApplyLevels);
   $("pbLoop").addEventListener("change", () => { if (P.playing) pbPlay(pbPosition()); });
+  document.querySelectorAll("#pbRate button").forEach((b) => b.onclick = () => {
+    document.querySelectorAll("#pbRate button").forEach((o) => o.classList.toggle("on", o === b));
+    if (P.playing) pbPlay(pbPosition());
+  });
+  // pointerdown, not click: the tap is when the finger lands, not when it lifts.
+  $("tapBtn").addEventListener("pointerdown", tapNow);
+  $("tapCalibrate").onclick = tapCalibrate;
+  $("tapAssist").onclick = tapAssist;
+  $("tapClear").onclick = () => { TAP.taps = []; renderTaps(); };
   ["pbSongVol", "pbClickVol"].forEach((id) => {
     $(id).addEventListener("input", () => { P.levels = { song_volume: +$("pbSongVol").value / 100, click_volume: +$("pbClickVol").value / 100 }; pbApplyLevels(); });
     $(id).addEventListener("change", pbLevels);
@@ -2191,6 +2330,12 @@ function wire() {
       pbToggle();
       return;
     }
+    if ((e.key === "t" || e.key === "T") && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat
+        && S.result && !(e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) {
+      e.preventDefault();
+      tapNow(e);
+      return;
+    }
     // Typing an offset or a detection value must not trigger shortcuts:
     // Enter inside the point editor would otherwise start a full analysis.
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
@@ -2220,7 +2365,11 @@ async function boot() {
   const st = await api().state();
   S.lang = st.language; S.presets = st.presets;
   S.recent = st.recent || [];
-  if (st.playback) P.levels = st.playback;
+  if (st.playback) {
+    P.levels = { song_volume: st.playback.song_volume, click_volume: st.playback.click_volume };
+    TAP.latency = st.playback.tap_latency_ms || 0;
+  }
+  renderTaps();
   $("pbSongVol").value = String(Math.round(P.levels.song_volume * 100));
   $("pbClickVol").value = String(Math.round(P.levels.click_volume * 100));
   S.rustAvailable = !!st.rust_available;

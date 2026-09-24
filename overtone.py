@@ -5233,6 +5233,7 @@ CONFIG_TYPES: dict[str, tuple[type, ...]] = {
     "delta": (int, float, str), "persistence": (int, float, str),
     "confidence": (int, float, str), "prefer_map_bpm": (bool,), "refine_beats": (bool,),
     "recent": (list,), "songs_folder": (str,),
+    "song_volume": (int, float), "click_volume": (int, float),
 }
 
 

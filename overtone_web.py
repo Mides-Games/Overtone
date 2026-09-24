@@ -45,6 +45,10 @@ OSZ_TYPES = ("osu! beatmap package (*.osz)", "All files (*.*)")
 #: after the analysis would leave all three pointing at nothing.
 DROP_DIR = Path(os.environ.get("LOCALAPPDATA", str(HERE))) / "Overtone" / "drops"
 PULSE_FACTORS = {"auto": 0.0, "/4": 0.25, "/2": 0.5, "x1": 1.0, "x2": 2.0, "x4": 4.0}
+#: What the page is told a song is, so WebAudio knows how to decode it.
+AUDIO_MIME = {".wav": "audio/wav", ".flac": "audio/flac", ".ogg": "audio/ogg",
+              ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac",
+              ".opus": "audio/ogg", ".aiff": "audio/aiff"}
 #: The trace needs the shape of the onset envelope, not its 40 k frames.
 ONSET_BINS = 1600
 LOOSE_RESIDUAL_MS = 5.0
@@ -127,13 +131,36 @@ def analysis_payload(analysis: ta.Analysis) -> dict:
         "onset": {"span_s": float(onset.size * frame_s),
                   "v": (pooled / peak).round(3).tolist() if peak > 0 else []},
         "warnings": _warnings(analysis),
+        # The live click plays the schedule the WAV export writes, and the
+        # payload is rebuilt on every edit, so the click follows the edits.
+        "clicks": _clicks(analysis),
     }
+
+
+def _clicks(analysis: ta.Analysis) -> dict:
+    """The click schedule as two flat lists: seconds (to the microsecond)
+    and whether each one is accented."""
+    try:
+        schedule = ta.click_schedule(analysis)
+    except (ValueError, TypeError, AttributeError):
+        schedule = []
+    return {"t": [round(t, 6) for t, _accent in schedule],
+            "accent": [1 if accent else 0 for _t, accent in schedule]}
 
 
 def _default_songs() -> Path:
     """Where osu! (stable) keeps its songs when installed with the defaults.
     Read when asked, so a test that moves LOCALAPPDATA moves it too."""
     return Path(os.environ.get("LOCALAPPDATA", str(HERE))) / "osu!" / "Songs"
+
+
+def _wav_bytes(path: Path) -> bytes:
+    """Overtone's own decode of a song as a 16-bit mono WAV, in memory."""
+    import io
+    y, sr = ta._load_audio(path, lambda _message: None)
+    buffer = io.BytesIO()
+    ta.sf.write(buffer, y, sr, format="WAV", subtype="PCM_16")
+    return buffer.getvalue()
 
 
 def _open_link(link: str) -> None:
@@ -192,6 +219,8 @@ class Api:
         self._ref_attacks: tuple | None = None
         #: The last assisted fit that was answered, waiting for "Add to timing".
         self._assisted: dict | None = None
+        #: The song's bytes while the page fetches them for playback.
+        self._audio_bytes: bytes | None = None
         if initial_file:
             self._cfg["file"] = initial_file
 
@@ -266,6 +295,7 @@ class Api:
             # analysed straight away; the user asked for exactly that file.
             "autorun": autorun,
             "recent": self._recent(),
+            "playback": self._playback(),
         }
 
     #: How many recent files the empty state offers back.
@@ -811,6 +841,75 @@ class Api:
         self._push_history()
         self._analysis.points = self._merge_locks(points, self._analysis.beats)
         return self._edited(None, fit["offset_ms"])
+
+    # -- playback: the analysed song's bytes, handed to WebAudio ------------
+    #: Bytes per chunk: one bridge call must stay small enough to be quick.
+    AUDIO_CHUNK = 1 << 20
+
+    def audio_open(self, kind: str = "file") -> dict:
+        """Stage the analysed song for the page to fetch in chunks.
+
+        ``file`` is the song as it is on disk, for the browser to decode.
+        ``wav`` is Overtone's own decode as 16-bit mono WAV, for a format the
+        browser cannot read (AIFF). Only the analysed file is ever served:
+        the page names no path.
+        """
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        source = Path(str(self._analysis.source))
+        try:
+            if kind == "wav":
+                payload = _wav_bytes(source)
+                mime = "audio/wav"
+            else:
+                size = source.stat().st_size
+                if size > ta.MAX_OSZ_AUDIO_BYTES:
+                    return {"ok": False, "key": "too_big"}
+                payload = source.read_bytes()
+                mime = AUDIO_MIME.get(source.suffix.lower(), "application/octet-stream")
+        except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        self._audio_bytes = payload
+        chunks = (len(payload) + self.AUDIO_CHUNK - 1) // self.AUDIO_CHUNK
+        return {"ok": True, "size": len(payload), "chunks": chunks, "mime": mime,
+                "path": str(source)}
+
+    def audio_chunk(self, index: int) -> dict:
+        """One staged chunk as base64."""
+        payload = self._audio_bytes
+        try:
+            index = int(index)
+        except (TypeError, ValueError):
+            return {"ok": False, "key": "bad_values"}
+        if payload is None or not 0 <= index * self.AUDIO_CHUNK < max(len(payload), 1):
+            return {"ok": False, "key": "no_audio_staged"}
+        piece = payload[index * self.AUDIO_CHUNK:(index + 1) * self.AUDIO_CHUNK]
+        return {"ok": True, "data": base64.b64encode(piece).decode("ascii")}
+
+    def audio_close(self) -> None:
+        """Drop the staged bytes once the page has decoded them."""
+        self._audio_bytes = None
+
+    def set_playback(self, prefs: dict) -> dict:
+        """Remember the song and click levels. There is no latency offset: the
+        song and the click leave through one AudioContext, so they cannot drift
+        apart; calibrating latency matters for tapping, not for listening."""
+        try:
+            raw = {key: float(prefs[key]) for key in ("song_volume", "click_volume")}
+        except (KeyError, TypeError, ValueError):
+            return {"ok": False, "key": "bad_values"}
+        # Before clamping: max(0.0, nan) is 0.0, and a NaN would pass as silence.
+        if not all(np.isfinite(v) for v in raw.values()):
+            return {"ok": False, "key": "bad_values"}
+        clean = {key: min(1.0, max(0.0, value)) for key, value in raw.items()}
+        self._cfg.update(clean)
+        self._persist()
+        return {"ok": True, "playback": clean}
+
+    def _playback(self) -> dict:
+        cfg = self._cfg
+        return {"song_volume": min(1.0, max(0.0, _number(cfg.get("song_volume"), 0.8, float))),
+                "click_volume": min(1.0, max(0.0, _number(cfg.get("click_volume"), 0.6, float)))}
 
     # -- mod report: every finding as an osu! editor timestamp -------------
     def mod_report(self, osu_path: str) -> dict:

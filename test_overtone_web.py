@@ -683,6 +683,64 @@ class AssistedBridgeTests(_IsolatedConfig):
             api._busy.release()
 
 
+class PlaybackBridgeTests(_IsolatedConfig):
+    """Playback: the click the page plays, the song's bytes, the levels."""
+
+    def test_the_payload_carries_the_click_the_wav_export_writes(self) -> None:
+        analysis = _analysis([ta.TimingPoint(1000.0, 120.0, 0.9, 0),
+                              ta.TimingPoint(5000.0, 150.0, 0.9, 8)])
+        clicks = web.analysis_payload(analysis)["clicks"]
+        want = ta.click_schedule(analysis)
+        self.assertEqual(len(clicks["t"]), len(want))
+        self.assertEqual(clicks["t"][:3], [1.0, 1.5, 2.0])
+        self.assertEqual(clicks["accent"][:5], [1, 0, 0, 0, 1])
+        self.assertEqual(clicks["t"].count(5.0), 1)
+
+    def test_the_song_arrives_in_chunks_byte_for_byte(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            song = Path(tmp) / "song.mp3"
+            data = bytes(range(256)) * 9000                  # 2.2 MB: three chunks
+            song.write_bytes(data)
+            api = _api_with_points()
+            api._analysis.source = str(song)
+            opened = api.audio_open("file")
+            self.assertEqual((opened["size"], opened["chunks"], opened["mime"]),
+                             (len(data), 3, "audio/mpeg"))
+            got = b"".join(__import__("base64").b64decode(api.audio_chunk(i)["data"])
+                           for i in range(opened["chunks"]))
+            self.assertEqual(got, data)
+            self.assertEqual(api.audio_chunk(3)["key"], "no_audio_staged")
+            api.audio_close()
+            self.assertEqual(api.audio_chunk(0)["key"], "no_audio_staged")
+
+    def test_a_format_the_browser_cannot_read_comes_as_overtones_own_wav(self) -> None:
+        from test_overtone import _drum_track
+        with tempfile.TemporaryDirectory() as tmp:
+            song = Path(tmp) / "song.wav"
+            _drum_track(song, [(0.5, 120.0)], duration=3.0)
+            api = _api_with_points()
+            api._analysis.source = str(song)
+            opened = api.audio_open("wav")
+            wav = b"".join(__import__("base64").b64decode(api.audio_chunk(i)["data"])
+                           for i in range(opened["chunks"]))
+        self.assertEqual((wav[:4], wav[8:12], opened["mime"]), (b"RIFF", b"WAVE", "audio/wav"))
+        import io
+        y, sr = ta.sf.read(io.BytesIO(wav))
+        self.assertEqual(sr, ta.TARGET_SR)
+        self.assertAlmostEqual(len(y) / sr, 3.0, delta=0.05)
+
+    def test_levels_are_clamped_remembered_and_offered_back(self) -> None:
+        api = web.Api()
+        self.assertEqual(api.state()["playback"], {"song_volume": 0.8, "click_volume": 0.6})
+        reply = api.set_playback({"song_volume": 2, "click_volume": -1})
+        self.assertEqual(reply["playback"], {"song_volume": 1.0, "click_volume": 0.0})
+        self.assertEqual((self.saved[-1]["song_volume"], self.saved[-1]["click_volume"]), (1.0, 0.0))
+        self.assertEqual(api.set_playback({"song_volume": "loud"})["key"], "bad_values")
+        self.assertEqual(api.set_playback({"song_volume": float("nan"), "click_volume": 1})["key"],
+                         "bad_values")
+        self.assertEqual(web.Api().audio_open()["key"], "first")
+
+
 class ModReportBridgeTests(_IsolatedConfig):
     """The mod report: gathered lines for one difficulty, editor links."""
 

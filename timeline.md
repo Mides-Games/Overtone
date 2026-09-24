@@ -16,7 +16,7 @@ later costs more than writing it down now.
 
 ---
 
-## v4.0.0-dev — 2026-09-24 · The Songs folder, indexed in SQLite
+## v4.0.0-dev — 2026-09-24 · The Songs folder, indexed and searchable
 
 ### Changed
 
@@ -34,6 +34,12 @@ later costs more than writing it down now.
     drops the rows of files that are gone. It commits every 100 folders, so a scan
     stopped halfway resumes from there.
   - Same-audio lookup: audio of the same size, hashed once and the hash kept.
+- **The Songs browser** in Library: Scan / Rescan with folder progress, search as you
+  type, and a set opens like Import folder does. English and Spanish.
+- **Maps of this song, from the index.** Reference timing's same-audio search answers from
+  the index when it covers the Songs folder and finds a map. When it finds none, the
+  folder is walked as before, so a map added after the last scan is still found; a listed
+  `.osu` deleted since the scan is left out.
 
 ### Hardening
 
@@ -58,7 +64,12 @@ full scan, warm                     13.3-18.5 s over 5 runs (26.6 s before the r
 rescan, nothing changed             0.83-1.04 s
 search, 7 queries                   4.7-65 ms median; "a", which matches nearly every map, 65 ms
 index file                          25 MB
-Python unittest                     335 -> 342, all pass
+same-audio, 6 songs (3 sharing a    walk 1,042-1,515 ms; index 21-167 ms the first time
+  size with another audio file)     (hashing), 2.9-4.9 ms after; same matches for all 6
+browser harness                     scan with progress, search, open a set, EN and ES.
+                                    Its own event polling slowed its scans (74 s, 30 s):
+                                    a harness number, not the app's
+Python unittest                     335 -> 346, all pass
 ```
 
 ### Rejected / tried and dropped

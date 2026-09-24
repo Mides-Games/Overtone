@@ -21,6 +21,7 @@ import base64
 import json
 import os
 import re
+import sqlite3
 import sys
 import threading
 from pathlib import Path
@@ -28,6 +29,7 @@ from pathlib import Path
 import numpy as np
 
 import overtone as ta
+import overtone_library
 import overtone_rust
 
 HERE = Path(__file__).resolve().parent
@@ -251,6 +253,8 @@ class Api:
         self._assisted: dict | None = None
         #: The song's bytes while the page fetches them for playback.
         self._audio_bytes: bytes | None = None
+        #: Held while the library index scans, so two scans never interleave.
+        self._scanning = threading.Lock()
         if initial_file:
             self._cfg["file"] = initial_file
 
@@ -840,14 +844,89 @@ class Api:
         root = str(folder or self._cfg.get("songs_folder") or _default_songs())
         if not Path(root).is_dir():
             return {"ok": False, "key": "no_songs"}
+        report = self._indexed_same_audio(root)
         try:
-            report = ta.find_same_audio_maps(self._analysis.source, root)
+            if report is None:
+                report = ta.find_same_audio_maps(self._analysis.source, root)
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         if folder:
             self._cfg["songs_folder"] = root
             self._persist()
         return {"ok": True, "report": report}
+
+    def _indexed_same_audio(self, root: str) -> dict | None:
+        """The library index's answer, when it covers ``root`` and found maps.
+
+        An index is as old as its last scan, so it only ever answers yes:
+        when it finds nothing, the folder is walked, and a map added since
+        the scan is still found.
+        """
+        library = overtone_library.Library()
+        try:
+            if not library.path.is_file() or not library.covers(root):
+                return None
+            report = library.same_audio_maps(self._analysis.source)
+        except (ValueError, OSError, sqlite3.Error):
+            return None
+        return report if any(m["beatmaps"] for m in report["matches"]) else None
+
+    # -- library index: the Songs folder, searchable ------------------------
+    def _songs_root(self, folder: str = "") -> str:
+        return str(folder or self._cfg.get("songs_folder") or _default_songs())
+
+    def library_state(self) -> dict:
+        """Where the Songs folder is and what the index holds of it."""
+        root = self._songs_root()
+        library = overtone_library.Library()
+        try:
+            index = library.stats()
+            current = library.covers(root)
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "songs": root, "songs_found": Path(root).is_dir(),
+                "index": index, "current": current, "scanning": self._scanning.locked()}
+
+    def library_scan(self, folder: str = "") -> dict:
+        """Bring the index in step with the Songs folder (the remembered one,
+        else osu!'s default). Unchanged maps are skipped, so a rescan costs a
+        folder listing; the first scan reads every header. The page hears
+        ``onLibraryProgress`` as folders are done."""
+        root = self._songs_root(folder)
+        if not Path(root).is_dir():
+            return {"ok": False, "key": "no_songs"}
+        if not self._scanning.acquire(blocking=False):
+            return {"ok": False, "key": "scan_running"}
+        try:
+            report = overtone_library.Library().scan(
+                root, lambda done, total: self._emit("onLibraryProgress",
+                                                     {"done": done, "total": total}))
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            self._scanning.release()
+        if folder:
+            self._cfg["songs_folder"] = root
+            self._persist()
+        return {"ok": True, "report": report}
+
+    def library_search(self, text: str = "") -> dict:
+        """Maps matching every word typed, grouped by set, best first."""
+        try:
+            result = overtone_library.Library().search(str(text or ""))
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "result": result}
+
+    def library_reset(self) -> dict:
+        """Forget the index; the next scan rebuilds it from the folder."""
+        if self._scanning.locked():
+            return {"ok": False, "key": "scan_running"}
+        try:
+            overtone_library.Library().reset()
+        except OSError as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return self.library_state()
 
     # -- assisted timing: two marked downbeats seed the grid ---------------
     def assisted_fit(self, first_ms: float, second_ms: float, bars: int, meter: int) -> dict:

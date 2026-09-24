@@ -629,6 +629,76 @@ class ReferenceBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().reference_find()["key"], "first")
 
 
+class LibraryBridgeTests(_IsolatedConfig):
+    """The Songs browser: scan, search, and same-audio from the index."""
+
+    def _songs(self, tmp: str) -> Path:
+        songs = Path(tmp) / "Songs"
+        folder = songs / "1 Band - Song"
+        folder.mkdir(parents=True)
+        (folder / "audio.mp3").write_bytes(b"ID3" + bytes(range(256)))
+        (folder / "map.osu").write_text("\n".join(ReferenceBridgeTests.MAP[:5] + [
+            "[Metadata]", "Title:Song", "Artist:Band", "Version:Hard", ""]
+            + ReferenceBridgeTests.MAP[5:]), encoding="utf-8")
+        return songs
+
+    def test_state_before_any_scan_says_nothing_is_indexed(self) -> None:
+        reply = web.Api().library_state()
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        self.assertEqual((reply["index"]["beatmaps"], reply["current"], reply["scanning"]),
+                         (0, False, False))
+        self.assertEqual(web.Api().library_scan()["key"], "no_songs")
+
+    def test_scan_then_search_and_the_folder_is_remembered(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = self._songs(tmp)
+            api = web.Api()
+            reply = api.library_scan(str(songs))
+            found = api.library_search("band")
+            state = api.library_state()
+        json.dumps([reply, found, state])
+        self.assertTrue(reply["ok"])
+        self.assertEqual((reply["report"]["sets"], reply["report"]["beatmaps"]), (1, 1))
+        self.assertEqual(self.saved[-1]["songs_folder"], str(songs))
+        self.assertEqual([s["name"] for s in found["result"]["sets"]], ["1 Band - Song"])
+        self.assertTrue(state["current"])
+
+    def test_one_scan_at_a_time_and_no_reset_during_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = self._songs(tmp)
+            api = web.Api()
+            api._scanning.acquire()
+            try:
+                self.assertEqual(api.library_scan(str(songs))["key"], "scan_running")
+                self.assertEqual(api.library_reset()["key"], "scan_running")
+            finally:
+                api._scanning.release()
+            api.library_scan(str(songs))
+            reset = api.library_reset()
+        self.assertEqual(reset["index"]["beatmaps"], 0)
+
+    def test_same_audio_answers_from_the_index_and_walks_when_it_finds_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = self._songs(tmp)
+            api = _api_with_points()
+            api._analysis.source = str(songs / "1 Band - Song" / "audio.mp3")
+            api.library_scan(str(songs))
+            indexed = api.reference_find(str(songs))
+            late = songs / "2 Late - Add"          # added after the scan
+            late.mkdir()
+            (late / "audio.mp3").write_bytes(b"ID3" + bytes(range(256)))
+            (late / "map.osu").write_text("\n".join(ReferenceBridgeTests.MAP), encoding="utf-8")
+            (songs / "1 Band - Song" / "map.osu").unlink()
+            walked = api.reference_find(str(songs))
+        self.assertTrue(indexed["report"]["indexed"])
+        self.assertEqual([Path(m["folder"]).name for m in indexed["report"]["matches"]],
+                         ["1 Band - Song"])
+        self.assertNotIn("indexed", walked["report"])
+        self.assertEqual([Path(m["folder"]).name for m in walked["report"]["matches"]
+                          if m["beatmaps"]], ["2 Late - Add"])
+
+
 class AssistedBridgeTests(_IsolatedConfig):
     """Assisted timing: fit from two marks, then add the line in one undo."""
 

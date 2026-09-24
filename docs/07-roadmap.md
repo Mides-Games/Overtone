@@ -20,7 +20,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 |---|---|
 | Timing engine (Python v3) | **works** — 24/24 corpus, median 0.0000 BPM / 0.16 ms, all gates green |
 | Timing engine (Rust v4) | **at parity, in the app** — matches v3 attack for attack and red line for red line on 27/27, ~4x faster end to end; Settings → Rust engine runs it through `overtone-cli`, and v3 takes over (with a note) where it has no answer |
-| App (web shell) | **usable** — sidebar sections (Library, Timing, Map check, Mapset, Report, Export, Settings); analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject, compare with a map, alignment, density, snap audit, suggestions, mapset check, reference timing, assisted timing, mod report, folder import, recents, EN/ES |
+| App (web shell) | **usable** — sidebar sections (Library, Timing, Map check, Mapset, Report, Export, Settings); analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject, compare with a map, alignment, density, snap audit, suggestions, mapset check, reference timing, assisted timing, mod report, folder import, recents, osu! Songs browser, EN/ES |
 | osu! files | **works** — full reader, byte-identical writer, atomic write + backup |
 | Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks |
 | Hitsound engine | **half built, Rust only** — features, 13 instrument classes, musical role; no decision, editor or export; not in the app |
@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **342** Python (237 engine + 105 web shell) · **231** Rust.
+Tests: **346** Python (237 engine + 109 web shell) · **231** Rust.
 
 ### What is pending, in order
 
@@ -40,8 +40,9 @@ The audit backlog is closed: every finding fixed, recorded as already fixed, or 
    interface size, cache), the timeline (Phase 3), playback (Phase 4, but for the
    percussion-only audition) and the first five sidebar modes of
    [Phase 19](#phase-19--app-sections).
-2. **Other languages** (Phase 24) — first SQL: a SQLite library index of the Songs
-   folder (search, same-audio lookup, library health); then TypeScript and a C# lazer gate.
+2. **Other languages** (Phase 24) — SQL is in: the SQLite library index behind the Songs
+   browser and same-audio lookup. Next TypeScript (needs Node.js) and a C# lazer gate
+   (needs the .NET SDK).
 3. **Percussion-only audition** (Phase 4) — hear the percussive part alone.
 4. **Map tools** (Phase 21) — kiai, preview point, SV normaliser, inject into every difficulty.
 5. **Hitsounds** (Phase 6) — decision, editor, export; then its own section.
@@ -430,7 +431,7 @@ presentation and I/O layers, not the engine, so they run in parallel with the re
 | 12 | Modern UI | **superseded** — the web shell (Phase 3) replaced the PySide6 plan |
 | 13 | Audio playback — transport, live click, scrubbing, MIDI tap | partial — Phase 4 transport, live click and loop; no scrub audio, no MIDI tap |
 | 14 | Project system — project file, auto-save, undo, **organised output folders**, batch | partial — undo/redo and result cache; no project file, no output folders |
-| 15 | Deep osu! integration — Songs browser, lazer, editor round-trip, sample library | partial — folder import; no Songs browser, no lazer |
+| 15 | Deep osu! integration — Songs browser, lazer, editor round-trip, sample library | partial — folder import, Songs browser; no lazer |
 | 16 | Localization + accessibility | partial — English/Spanish; no screen-reader work |
 | 17 | Plugins + reports | todo |
 | 18 | Advanced input — multi-monitor, loopback capture, video preview, MIDI | todo |
@@ -448,7 +449,7 @@ loaded song. Today everything lives in the Timing view.
 | Section | What it holds | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Session model | one loaded song shared by every section through events | med | **high** | shell | no | no | **P1** | **done** — one song shared by every section |
-| Library | home: open audio or a beatmap folder, recents, osu! Songs browser with search | med | **high** | P5 reader | no | no | **P1** | partial — recents, folder import |
+| Library | home: open audio or a beatmap folder, recents, osu! Songs browser with search | med | **high** | P5 reader | no | no | **P1** | **done** — recents, folder import, Songs browser on a SQLite + FTS5 index (Phase 24): search as you type, rescan reads only what changed |
 | Timing | tempo map, points, editor, verdict | — | — | — | no | no | **P1** | **done** |
 | Map check | compare, alignment, validation, density and suggestions for the loaded difficulty | med | **high** | P5, P7 | no | no | **P1** | **done** — own section: compare, alignment, density, snap audit, suggestions |
 | Hitsounds | instrument lanes, per-object sound, exported hitsound difficulty | high | **high** | P6 | no | no | P1 | todo |
@@ -544,7 +545,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Video offset | match the video's own audio track to the song | med | low | decode | no | no | P3 | todo |
 | Other games | export timing to Quaver (`.qua`) and StepMania (`.sm`/`.ssc`) | low | med | writer | no | no | P2 | todo |
 | Import other formats | read Quaver / StepMania timing to compare against | low | low | reader | no | no | P3 | todo |
-| Library health check | scan a Songs folder and list maps whose timing disagrees with their audio | med | med | batch, compare | no | no | P2 | todo |
+| Library health check | scan a Songs folder and list maps whose timing disagrees with their audio | med | med | batch, compare, library index | no | no | P2 | todo — the index lists the maps |
 | Sample kit analysis | classify a skin's samples and suggest a mapping | med | low | P6 | no | no | P3 | todo |
 
 ---
@@ -597,7 +598,7 @@ project's rules (offline, one-line local gates), and how each stays in step with
 
 | Language | Feature | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
-| **SQL** (SQLite + FTS5) | library index of the Songs folder: search, same-audio lookup, library health, ground for fingerprint reuse | low | **high** | Python's `sqlite3` (installed) | no | no | **P1** | todo — first |
+| **SQL** (SQLite + FTS5) | library index of the Songs folder: search, same-audio lookup, library health, ground for fingerprint reuse | low | **high** | Python's `sqlite3` (installed) | no | no | **P1** | **done** — `overtone_library.py` + `library.sql`: search, same-audio in 3-5 ms; library health next |
 | **TypeScript** | the web shell type-checked against the bridge (`@ts-check` + JSDoc, `tsc --noEmit`), payload types generated from Python | med | high | Node.js (dev only, not installed) | no | no | P1 | todo — after Node |
 | **C#** | osu!lazer compatibility gate: lazer's own `osu.Game` decoder reads every `.osu` Overtone writes | med | high | .NET 8 SDK (dev only, not installed) | no | no | P2 | todo |
 | **WGSL** (WebGPU) | spectrogram layer computed on the GPU | med | low-med | WebView2 WebGPU | no | **yes** | P3 | todo |

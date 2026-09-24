@@ -104,6 +104,25 @@ const I18N = {
     inject_warn: "\nThe .osu audio ({osu}) differs from the analyzed file ({src}).",
     drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
     recent: "Recent",
+    songs_title: "osu! Songs",
+    songs_scan: "Scan",
+    songs_rescan: "Rescan",
+    songs_scanning: "Scanning…",
+    songs_pick: "Folder…",
+    songs_search: "Search artist, title, mapper, difficulty, tags",
+    songs_listing: "Listing the folder…",
+    songs_progress: "{done} / {total} folders",
+    songs_none: "Not indexed yet: Scan reads {root} once.",
+    songs_missing: "No Songs folder at {root}: choose one.",
+    songs_info: "{n} maps in {s} sets · scanned {when}",
+    songs_other: "Index of {root} ({n} maps): Rescan for the current folder.",
+    songs_scanned: "Library: {n} maps in {s} sets ({changed} read, {removed} gone) in {sec} s.",
+    songs_nothing: "No map matches “{q}”.",
+    songs_limited: "The first {n} maps: type more to narrow them.",
+    songs_diff: "diff",
+    songs_diffs: "diffs",
+    scan_running: "A scan is already running.",
+    ref_indexed: "From the library index, scanned {when}.",
     cmp_title: "Map vs detected", cmp_pick: "Choose .osu…",
     cmp_empty: "Choose the .osu you mapped to compare it against this detection.",
     cmp_sections: "{n} sections",
@@ -336,6 +355,25 @@ const I18N = {
     inject_warn: "\nEl audio del .osu ({osu}) difiere del analizado ({src}).",
     drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
     recent: "Recientes",
+    songs_title: "Songs de osu!",
+    songs_scan: "Escanear",
+    songs_rescan: "Reescanear",
+    songs_scanning: "Escaneando…",
+    songs_pick: "Carpeta…",
+    songs_search: "Buscá artista, título, mapper, dificultad, tags",
+    songs_listing: "Listando la carpeta…",
+    songs_progress: "{done} / {total} carpetas",
+    songs_none: "Sin índice todavía: Escanear lee {root} una vez.",
+    songs_missing: "No hay carpeta Songs en {root}: elegí una.",
+    songs_info: "{n} mapas en {s} sets · escaneado {when}",
+    songs_other: "Índice de {root} ({n} mapas): reescaneá para la carpeta actual.",
+    songs_scanned: "Biblioteca: {n} mapas en {s} sets ({changed} leídos, {removed} quitados) en {sec} s.",
+    songs_nothing: "Ningún mapa coincide con “{q}”.",
+    songs_limited: "Los primeros {n} mapas: escribí más para acotar.",
+    songs_diff: "dific.",
+    songs_diffs: "dific.",
+    scan_running: "Ya hay un escaneo en curso.",
+    ref_indexed: "Del índice de la biblioteca, escaneado {when}.",
     cmp_title: "Mapa vs detección", cmp_pick: "Elegir .osu…",
     cmp_empty: "Elegí el .osu que mapeaste para compararlo con esta detección.",
     cmp_sections: "{n} secciones",
@@ -493,6 +531,7 @@ function translate() {
   document.querySelectorAll("#langSwitch button").forEach((b) => b.classList.toggle("on", b.dataset.lang === S.lang));
   renderSong();
   renderRecents();
+  renderSongs();
   renderNeedSong();
   renderMapset();
   if (S.result) renderResult(S.result);
@@ -696,7 +735,11 @@ async function openAudio() {
 async function importFolder() {
   if (!api() || S.busy) return;
   const folder = await api().pick_folder();
-  if (!folder) return;
+  if (folder) await importFolderPath(folder);
+}
+
+async function importFolderPath(folder) {
+  if (!api() || S.busy) return;
   const reply = await api().import_folder(folder);
   if (!reply.ok) {
     toast(reply.key === "error" ? t("error", { detail: reply.detail || "" }) : t(reply.key), true);
@@ -729,6 +772,7 @@ async function rescale(mult) {
 
 window.overtone = {
   onProgress(message) { $("progressText").textContent = message; },
+  onLibraryProgress(progress) { SONGS.progress = progress; renderSongs(); },
   onResult(result) {
     setBusy(false);
     // A dragged file has no remembered entry yet: the staged copy Python
@@ -1028,6 +1072,106 @@ async function refreshRecents() {
     S.recent = [];
   }
   renderRecents();
+}
+
+// ------------------------------------------------------------------ songs browser
+// The library index (overtone_library.py) answers as you type. A scan brings
+// it in step with the Songs folder; only the first one reads every header.
+const SONGS = { state: null, result: null, query: "", timer: 0, scanning: false, progress: null };
+
+function when(iso) {
+  const date = iso ? new Date(iso) : null;
+  return date && !isNaN(date) ? date.toLocaleString(S.lang, { dateStyle: "medium", timeStyle: "short" }) : "—";
+}
+
+async function songsLoad() {
+  if (!api()) return;
+  const reply = await api().library_state();
+  SONGS.state = reply.ok ? reply : null;
+  if (reply.ok && reply.index.beatmaps) await songsSearch();
+  else renderSongs();
+}
+
+async function songsSearch() {
+  const reply = await api().library_search(SONGS.query);
+  if (!reply.ok) toast(t("error", { detail: reply.detail || "" }), true);
+  SONGS.result = reply.ok ? reply.result : null;
+  renderSongs();
+}
+
+async function songsScan(folder = "") {
+  if (!api() || SONGS.scanning) return;
+  SONGS.scanning = true;
+  SONGS.progress = null;
+  renderSongs();
+  let reply;
+  try {
+    reply = await api().library_scan(folder);
+  } finally {
+    SONGS.scanning = false;
+  }
+  if (!reply.ok && reply.key === "no_songs") {
+    toast(t("no_songs"));
+    const picked = await api().pick_folder();
+    if (picked) { songsScan(picked); return; }
+  } else if (!reply.ok) {
+    toast(reply.key === "error" ? t("error", { detail: reply.detail || "" }) : t(reply.key), true);
+  } else {
+    const r = reply.report;
+    toast(t("songs_scanned", { n: r.beatmaps, s: r.sets, changed: r.added + r.updated,
+                               removed: r.removed, sec: r.seconds.toFixed(1) }));
+  }
+  await songsLoad();
+}
+
+async function songsPick() {
+  if (!api() || SONGS.scanning) return;
+  const folder = await api().pick_folder();
+  if (folder) songsScan(folder);
+}
+
+function songBpm(set) {
+  const bpms = set.beatmaps.map((b) => b.first_bpm).filter((v) => v !== null);
+  if (!bpms.length) return "";
+  const lo = Math.round(Math.min(...bpms)), hi = Math.round(Math.max(...bpms));
+  return ` · ${lo === hi ? lo : `${lo}–${hi}`} BPM`;
+}
+
+function renderSongs() {
+  const st = SONGS.state, idx = st && st.index, indexed = !!(idx && idx.beatmaps);
+  $("songsQuery").placeholder = t("songs_search");
+  $("songsQuery").hidden = !indexed;
+  $("songsScanText").textContent = t(SONGS.scanning ? "songs_scanning" : indexed ? "songs_rescan" : "songs_scan");
+  $("songsScan").disabled = SONGS.scanning;
+  $("songsPick").disabled = SONGS.scanning;
+  let info = "";
+  if (SONGS.scanning) {
+    info = SONGS.progress ? t("songs_progress", SONGS.progress) : t("songs_listing");
+  } else if (st && !indexed) {
+    info = t(st.songs_found ? "songs_none" : "songs_missing", { root: esc(st.songs) });
+  } else if (st) {
+    info = t(st.current ? "songs_info" : "songs_other",
+             { n: idx.beatmaps, s: idx.sets, when: esc(when(idx.scanned_at)), root: esc(idx.root) });
+  }
+  $("songsInfo").innerHTML = info;
+  $("songsInfo").title = $("songsInfo").textContent;
+  const res = SONGS.result;
+  if (!indexed || !res) { $("songsList").innerHTML = ""; return; }
+  if (!res.sets.length) {
+    $("songsList").innerHTML = `<div class="card-sub">${t("songs_nothing", { q: esc(res.query) })}</div>`;
+    return;
+  }
+  $("songsList").innerHTML = res.sets.map((set, i) => {
+    const unicode = [set.artist_unicode, set.title_unicode].filter(Boolean).join(" - ");
+    return `
+    <button class="recent-item" data-song="${i}" title="${esc(unicode || set.folder)}">
+      <span>
+        <span class="name">${esc(set.artist)} - ${esc(set.title)} <span class="muted">(${esc(set.creator)})</span></span>
+        <span class="diffs">${set.beatmaps.map((b) => esc(b.version)).join(" · ")}</span>
+      </span>
+      <span class="meta num">${set.beatmaps.length} ${t(set.beatmaps.length === 1 ? "songs_diff" : "songs_diffs")}${songBpm(set)}</span>
+    </button>`;
+  }).join("") + (res.limited ? `<div class="card-sub">${t("songs_limited", { n: res.beatmaps })}</div>` : "");
 }
 
 async function dropAnalyze(file) {
@@ -1391,7 +1535,8 @@ function renderRefFind() {
   const maps = found.matches.flatMap((m) => m.beatmaps.map((b) => ({ ...b, folder: m.folder })));
   const root = esc(found.root);
   if (!maps.length) return `<div class="card-sub">${t("ref_found_none", { root, s: found.scanned })}</div>`;
-  return `<div class="card-sub">${t("ref_found", { n: maps.length, root })}</div>
+  const indexed = found.indexed ? ` <span class="muted">${t("ref_indexed", { when: esc(when(found.scanned_at)) })}</span>` : "";
+  return `<div class="card-sub">${t("ref_found", { n: maps.length, root })}${indexed}</div>
     <div class="stack" style="gap:6px;margin:8px 0 12px">${maps.map((b, i) => `
       <div class="recent-item" style="cursor:default">
         <span class="name">${esc(b.difficulty)} <span class="muted">· ${esc(b.folder.split(/[\\/]/).pop())}</span></span>
@@ -2584,6 +2729,17 @@ function wire() {
   $("halfBtn").onclick = () => rescale(0.5);
   $("doubleBtn").onclick = () => rescale(2);
   $("rows").onclick = (e) => { const tr = e.target.closest("tr"); if (tr) selectPoint(+tr.dataset.i); };
+  $("songsScan").onclick = () => songsScan();
+  $("songsPick").onclick = songsPick;
+  $("songsQuery").oninput = () => {
+    clearTimeout(SONGS.timer);
+    SONGS.timer = setTimeout(() => { SONGS.query = $("songsQuery").value; songsSearch(); }, 120);
+  };
+  $("songsList").onclick = (e) => {
+    const btn = e.target.closest("[data-song]");
+    const set = btn && SONGS.result && SONGS.result.sets[+btn.dataset.song];
+    if (set) importFolderPath(set.folder);
+  };
   $("recentList").onclick = (e) => {
     const btn = e.target.closest("[data-recent]");
     if (btn && S.recent[+btn.dataset.recent]) setFile(S.recent[+btn.dataset.recent]);
@@ -2727,6 +2883,7 @@ async function boot() {
   }
   renderTaps();
   stLoad();
+  songsLoad();
   $("pbSongVol").value = String(Math.round(P.levels.song_volume * 100));
   $("pbClickVol").value = String(Math.round(P.levels.click_volume * 100));
   S.rustAvailable = !!st.rust_available;

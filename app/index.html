@@ -110,6 +110,17 @@
           <div class="recents-title" data-i18n="recent">Recent</div>
           <div class="stack" id="recentList" style="gap:8px"></div>
         </div>
+        <!-- the osu! Songs folder, from the library index (overtone_library.py) -->
+        <div class="songs" id="songs">
+          <div class="songs-head">
+            <div class="recents-title" data-i18n="songs_title">osu! Songs</div>
+            <span class="songs-info" id="songsInfo"></span>
+            <button class="btn small" id="songsPick"><span data-i18n="songs_pick">Folder…</span></button>
+            <button class="btn small" id="songsScan"><span id="songsScanText">Scan</span></button>
+          </div>
+          <input class="input" id="songsQuery" type="search" autocomplete="off" spellcheck="false" hidden>
+          <div class="stack songs-list" id="songsList"></div>
+        </div>
       </section>
 
       <!-- shown instead of a view that needs the analysed song -->

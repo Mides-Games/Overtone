@@ -277,7 +277,7 @@ instantly and exactly; the click track is the arbiter.
 .venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 238 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
-.venv/Scripts/python.exe bench/golden.py check         # 24/24 stage by stage
+.venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage
 .venv/Scripts/python.exe bench/gates.py coverage       # density changes inside a section
 .venv/Scripts/python.exe bench/gates.py measures       # bars read and anchored
 .venv/Scripts/python.exe bench/gates.py signatures     # signature regions over one bar

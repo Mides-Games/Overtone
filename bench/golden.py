@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import benchmark as bm  # noqa: E402
+import gates  # noqa: E402
 import overtone as ta  # noqa: E402
 
 GOLDEN_DIR = Path(__file__).resolve().parent / "golden"
@@ -161,10 +162,24 @@ def _recording():
             setattr(ta, name, fn)
 
 
+#: Fixtures from the measure and signature gates, for paths the 24-case corpus
+#: never reaches: not one of its 34 red lines has a proven bar, and the
+#: measure-grid path (points_from_meter) returns None on all of them.
+EXTRA_CASES = {
+    "downbeat-4-4": lambda path: gates.build_measures(path, **gates.MEASURE_CASES["downbeat-4-4"]),
+    "downbeat-4-then-3": lambda path: gates.build_measures(
+        path, **gates.MEASURE_CASES["downbeat-4-then-3"]),
+    "signature-changes": gates.build_signatures,
+}
+
+
 def capture(name: str, audio_dir: Path, engine: str) -> dict:
     path = audio_dir / f"{name}.wav"
     if not path.exists():
-        bm.build_track(path, seed=zlib.crc32(name.encode()), **bm.CASES[name])
+        if name in EXTRA_CASES:
+            EXTRA_CASES[name](path)
+        else:
+            bm.build_track(path, seed=zlib.crc32(name.encode()), **bm.CASES[name])
     with _recording() as log:
         analysis = ta.analyze_audio(str(path), engine=engine)
     log["result"] = {
@@ -330,8 +345,8 @@ def main() -> None:
     parser.add_argument("--dir", default=str(bm.AUDIO_DIR))
     args = parser.parse_args()
 
-    names = args.only or list(bm.CASES)
-    unknown = [n for n in names if n not in bm.CASES]
+    names = args.only or list(bm.CASES) + list(EXTRA_CASES)
+    unknown = [n for n in names if n not in bm.CASES and n not in EXTRA_CASES]
     if unknown:
         print(f"Unknown case(s): {', '.join(unknown)}")
         raise SystemExit(2)

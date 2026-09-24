@@ -28,7 +28,7 @@ Repository conventions for any AI agent or contributor working here.
 .venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (238 on 2026-09-23)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
-.venv/Scripts/python.exe bench/golden.py check                 # 24/24 stage for stage
+.venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
 .venv/Scripts/python.exe bench/gates.py coverage               # density signal present
 .venv/Scripts/python.exe bench/gates.py measures               # bars read and anchored
 .venv/Scripts/python.exe bench/gates.py signatures             # signature regions, one bar
@@ -45,13 +45,13 @@ And the Rust side:
 
 ```bash
 cargo test --workspace                                 # all pass (197 on 2026-09-23)
-cargo run --release -q -p overtone-bench -- golden     # 24/24 attack for attack
+cargo run --release -q -p overtone-bench -- golden     # 27/27 attack for attack
 ```
 
 The golden check is the gate that matters during the port: it diffs the Rust
 engine against v3 **stage by stage** on the committed vectors, so a divergence
-names its own stage. Current state: all 24 fixtures match every attack within
-0.0001 ms, every anchor seed within 2.6e-7 s of period, and **every octave
+names its own stage. Current state: all 27 vectors -- including 8 red lines on a
+proven bar and the measure-grid path -- match every attack within 0.0001 ms, every anchor seed within 2.6e-7 s of period, and **every octave
 decision exactly** — which is the stage audit finding F-07 says nothing in v3
 tests. The whole pipeline over the corpus -- decode, attacks and tempo -- takes
 about 4.2 s against about 18.5 s for Python's `analyze_audio` (both measured on
@@ -102,7 +102,8 @@ bench/benchmark.py        synthetic accuracy harness, exact ground truth
 bench/gates.py            octave snapshot, density-change and measure gates
                           (the things the accuracy benchmark cannot see)
 bench/golden.py           per-stage golden vectors; the harness Rust gets pointed at
-bench/golden/             24 committed vector files, 362 KB
+bench/golden/             27 committed vector files: the 24-case corpus plus the
+                          proven-bar and signature fixtures from bench/gates.py
 bench/bpm_snapshot.json   pinned absolute BPM per fixture
 requirements.lock         exact versions behind the measured baseline
 proto/                    Python prototypes of the riskiest v4 algorithms,

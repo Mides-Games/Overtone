@@ -1036,6 +1036,31 @@ mod tests {
     }
 
     #[test]
+    fn a_proven_bar_anchors_the_red_line_to_a_downbeat() {
+        // v3's test of the same name. The second section's downbeat sits two
+        // beats after its start, so a beat-anchored line would land on the
+        // wrong beat of the bar: downbeats at 9.5, 11.5, 13.5 ... -> 11.5.
+        let sections = vec![section_of(0.0, 10.0, 0.5, 0.0), section_of(10.0, 20.0, 0.5, 9.0)];
+        let measures = vec![("4/4".to_string(), 0, 4), ("4/4".to_string(), 1, 4)];
+        let points = points_from_sections(&sections, 0.0, 4, 0, 4, 1.0, Some(&measures));
+        assert_eq!(points.len(), 2);
+        assert!((points[1].offset.get() - 11_500.0).abs() < 1e-6);
+        assert!(points[1].meter_known);
+        assert_eq!(points[1].meter, 4);
+    }
+
+    #[test]
+    fn no_evidence_keeps_the_old_beat_anchoring() {
+        // v3's test of the same name: with no proven bar the line goes to the
+        // first beat at or after the start (beats 9.0, 9.5, 10.0 -> 10.0).
+        let sections = vec![section_of(0.0, 10.0, 0.5, 0.0), section_of(10.0, 20.0, 0.5, 9.0)];
+        let measures = vec![("4/4".to_string(), 0, 1), ("4/4".to_string(), 0, 1)];
+        let points = points_from_sections(&sections, 0.0, 4, 0, 1, 1.0, Some(&measures));
+        assert!((points[1].offset.get() - 10_000.0).abs() < 1e-6);
+        assert!(!points[1].meter_known);
+    }
+
+    #[test]
     fn noise_before_the_music_does_not_start_the_grid() {
         // A beat grid from 0.42 s at 132 BPM, and one attack at 27 ms that is
         // 0.136 of a beat off it -- noise at the start of the file. It was the

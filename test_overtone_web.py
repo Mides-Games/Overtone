@@ -568,6 +568,48 @@ class FolderImportTests(_IsolatedConfig):
         self.assertIsNone(api.pick_folder())
 
 
+class MapsetBridgeTests(_IsolatedConfig):
+    def _set(self, tmp: str) -> Path:
+        root = Path(tmp) / "123 Artist - Title"
+        root.mkdir()
+        for version, audio in (("Easy", "song.mp3"), ("Hard", "song.mp3"), ("Insane", "other.mp3")):
+            (root / f"map [{version}].osu").write_text(
+                f"[General]\nAudioFilename: {audio}\n\n[Metadata]\nVersion:{version}\n\n"
+                "[TimingPoints]\n1000,400,4,1,0,100,1,0\n", encoding="utf-8")
+        (root / "map [Broken].osu").write_bytes(b"\xff\xfe\x00")
+        return root
+
+    def test_mapset_check_reports_every_difficulty_without_an_analysis(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reply = web.Api().mapset_check(str(self._set(tmp)))
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["folder"], "123 Artist - Title")
+        report = reply["report"]
+        self.assertEqual(len(report["difficulties"]), 4)
+        self.assertEqual(report["unreadable"], 1)
+        audio = next(f for f in report["fields"] if f["field"] == "AudioFilename")
+        self.assertEqual([d["difficulty"] for d in audio["differences"]], ["Insane"])
+        json.dumps(reply)
+
+    def test_mapset_check_is_read_only_and_remembers_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._set(tmp)
+            before = {p.name: p.read_bytes() for p in root.iterdir()}
+            api = web.Api()
+            api.mapset_check(str(root))
+            after = {p.name: p.read_bytes() for p in root.iterdir()}
+        self.assertEqual(before, after)
+        self.assertEqual(self.saved, [])
+        self.assertNotIn("file", api._cfg)
+
+    def test_mapset_check_refuses_a_non_folder(self) -> None:
+        self.assertEqual(web.Api().mapset_check("C:/does/not/exist")["key"], "bad_folder")
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text("[General]\n", encoding="utf-8")
+            self.assertEqual(web.Api().mapset_check(str(target))["key"], "bad_folder")
+
+
 class RecentTests(_IsolatedConfig):
     OPTIONS = {"delta": 1.5, "persistence": 12, "confidence": 75, "pulse": "auto",
                "prefer_map_bpm": True, "refine_beats": True}

@@ -4066,6 +4066,237 @@ def _nearest_sorted(values: np.ndarray, target: float) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Mapset check (proposal P1): what every difficulty of one set must share
+# ---------------------------------------------------------------------------
+
+#: Beat lengths closer than this are one number written twice (a float
+#: round-trip in some editor); offsets are compared exactly as written.
+MAPSET_BEAT_TOLERANCE_MS = 1e-6
+#: Fields the difficulties of one set must agree on, by .osu section.
+MAPSET_AUDIO_FIELDS = ("AudioFilename", "PreviewTime", "AudioLeadIn")
+MAPSET_METADATA_FIELDS = ("Artist", "ArtistUnicode", "Title", "TitleUnicode",
+                          "Creator", "Source", "Tags")
+#: osu!'s value for a [General] number that is left out, so a missing
+#: AudioLeadIn and an explicit 0 read as the same setting.
+_MAPSET_GENERAL_DEFAULTS = {"PreviewTime": -1.0, "AudioLeadIn": 0.0}
+
+
+def _mapset_difficulty_name(path: Path, beatmap: dict | None) -> str:
+    """The difficulty name: ``Version`` when the map has one, else the file's."""
+    version = str(((beatmap or {}).get("metadata") or {}).get("Version", "")).strip()
+    if version:
+        return version
+    bracket = re.search(r"\[([^\]]+)\]\s*$", path.stem)
+    return bracket.group(1) if bracket else path.stem
+
+
+def _mapset_timing_lines(beatmap: dict) -> list[dict]:
+    """Every timing line with usable numbers, red or green, in file order.
+
+    The parsed ``timing`` view keeps reds as ``(offset, bpm)`` only; this
+    check needs the beat length as written, the meter and the kiai bit, so it
+    reads the raw section. Lines without numbers are skipped, never fatal.
+    """
+    section = next((s for s in beatmap.get("sections", [])
+                    if s.get("name") == "TimingPoints"), None)
+    lines: list[dict] = []
+    for raw in (section or {}).get("lines", []):
+        text = str(raw).strip()
+        if not text or text.startswith("//"):
+            continue
+        fields = text.split(",")
+        try:
+            time_ms = float(fields[0])
+            beat_length = float(fields[1])
+        except (ValueError, IndexError):
+            continue
+        if not (np.isfinite(time_ms) and np.isfinite(beat_length)):
+            continue
+        meter: int | str = 4
+        if len(fields) > 2 and fields[2].strip():
+            try:
+                meter = int(fields[2])
+            except ValueError:
+                meter = fields[2].strip()  # compared as written, not guessed
+        try:
+            effects = int(fields[7]) if len(fields) > 7 and fields[7].strip() else 0
+        except ValueError:
+            effects = 0
+        lines.append({"time": time_ms, "beat_length": beat_length, "meter": meter,
+                      "red": _is_red_line(text) and beat_length > 0,
+                      "kiai": bool(effects & 1)})
+    return lines
+
+
+def _mapset_kiai_spans(lines: list[dict]) -> list[dict]:
+    """Kiai on/off spans; ``end_ms`` None means kiai runs to the end of the map."""
+    spans: list[dict] = []
+    active, start = False, 0.0
+    for line in sorted(lines, key=lambda item: item["time"]):  # stable: file order at ties
+        if line["kiai"] == active:
+            continue
+        if line["kiai"]:
+            start = line["time"]
+        elif line["time"] > start:
+            spans.append({"start_ms": start, "end_ms": line["time"]})
+        active = line["kiai"]
+    if active:
+        spans.append({"start_ms": start, "end_ms": None})
+    return spans
+
+
+def _mapset_red_differences(reference: list[dict], other: list[dict]) -> list[dict]:
+    """How ``other``'s red lines differ from ``reference``'s, one entry each.
+
+    Lines pair on an identical offset first; a leftover within half a
+    reference beat of a leftover is the same line moved (``offset``). Paired
+    lines then compare beat length (within ``MAPSET_BEAT_TOLERANCE_MS``) and
+    meter. Whatever stays unpaired is ``missing`` from, or ``extra`` in,
+    ``other``. Sorted by offset.
+    """
+    ref_left, other_left = list(reference), list(other)
+    pairs: list[tuple[dict, dict]] = []
+    diffs: list[dict] = []
+    for red in reference:
+        match = next((o for o in other_left if o["time"] == red["time"]), None)
+        if match is not None:
+            other_left.remove(match)
+            ref_left.remove(red)
+            pairs.append((red, match))
+    for red in sorted(ref_left, key=lambda item: item["time"]):
+        near = min(other_left, key=lambda o: abs(o["time"] - red["time"]), default=None)
+        if near is None or abs(near["time"] - red["time"]) > 0.5 * red["beat_length"]:
+            continue
+        other_left.remove(near)
+        ref_left.remove(red)
+        pairs.append((red, near))
+        diffs.append({"offset_ms": red["time"], "kind": "offset",
+                      "expected": red["time"], "found": near["time"]})
+    for red, found in pairs:
+        if abs(red["beat_length"] - found["beat_length"]) > MAPSET_BEAT_TOLERANCE_MS:
+            diffs.append({"offset_ms": red["time"], "kind": "beat_length",
+                          "expected": red["beat_length"], "found": found["beat_length"]})
+        if red["meter"] != found["meter"]:
+            diffs.append({"offset_ms": red["time"], "kind": "meter",
+                          "expected": red["meter"], "found": found["meter"]})
+    diffs += [{"offset_ms": red["time"], "kind": "missing", "expected": red["time"],
+               "found": None} for red in ref_left]
+    diffs += [{"offset_ms": extra["time"], "kind": "extra", "expected": None,
+               "found": extra["time"]} for extra in other_left]
+    return sorted(diffs, key=lambda d: d["offset_ms"])
+
+
+def _mapset_field_key(field_name: str, value: str | None):
+    """What two values of one field must share to count as the same setting."""
+    if field_name in _MAPSET_GENERAL_DEFAULTS:
+        if value is None or not value.strip():
+            return _MAPSET_GENERAL_DEFAULTS[field_name]
+        try:
+            number = float(value)
+        except ValueError:
+            return value
+        return number if np.isfinite(number) else value
+    if field_name == "Tags" and value is not None:
+        return frozenset(value.split())  # order and spacing carry no meaning
+    return value
+
+
+def mapset_report(folder: str | os.PathLike[str]) -> dict:
+    """Every difficulty of one beatmap folder, checked for what must match.
+
+    Read only: differences are listed, never fixed. Compared across
+    difficulties: red lines (offset exactly as written, beat length within
+    ``MAPSET_BEAT_TOLERANCE_MS``, meter), ``AudioFilename``/``PreviewTime``/
+    ``AudioLeadIn`` (osu!'s defaults stand in for a missing number) and the
+    metadata in ``MAPSET_METADATA_FIELDS`` (tags as a set of words). Reported
+    per difficulty for information: kiai spans, and object density from
+    ``density_report`` -- objects per second, not a star rating.
+
+    Red lines are compared against one reference difficulty: the one the
+    most others match exactly (first in file order on a tie), so a single
+    odd difficulty is the one that shows up, not everything compared to it.
+    Fields use the value most difficulties share. A file that cannot be read
+    is reported with the reason and left out of the comparison; it never
+    stops the rest. Raises ``ValueError`` only when ``folder`` is not a
+    folder. Plain JSON types throughout.
+    """
+    scan = scan_beatmap_folder(folder)
+    difficulties: list[dict] = []
+    parsed: list[tuple[dict, dict, list[dict]]] = []
+    for name in scan["beatmaps"]:
+        path = Path(name)
+        entry: dict = {"file": path.name}
+        try:
+            beatmap = read_osu_beatmap(path)
+            lines = _mapset_timing_lines(beatmap)
+            density = density_report(beatmap)
+        except (ValueError, OSError, TypeError, KeyError) as exc:
+            entry.update({"difficulty": _mapset_difficulty_name(path, None),
+                          "readable": False, "detail": str(exc)})
+            difficulties.append(entry)
+            continue
+        reds = [line for line in lines if line["red"]]
+        entry.update({
+            "difficulty": _mapset_difficulty_name(path, beatmap), "readable": True,
+            "reference": False, "red_lines": len(reds),
+            "kiai": _mapset_kiai_spans(lines),
+            "density": {"objects": density["objects"],
+                        "mean_per_second": density["mean_per_second"],
+                        "peak_per_second": density["peak_per_second"]},
+            "checks": {"red_lines": 0, "audio": [], "metadata": []},
+        })
+        difficulties.append(entry)
+        parsed.append((entry, beatmap, reds))
+
+    reference = None
+    red_differences: list[dict] = []
+    if parsed:
+        def agreeing(candidate: list[dict]) -> int:
+            return sum(1 for _e, _b, reds in parsed
+                       if not _mapset_red_differences(candidate, reds))
+        ref_index = max(range(len(parsed)), key=lambda n: (agreeing(parsed[n][2]), -n))
+        ref_entry, _ref_map, ref_reds = parsed[ref_index]
+        reference = ref_entry["file"]
+        ref_entry["reference"] = True
+        for entry, _beatmap, reds in parsed:
+            if entry is ref_entry:
+                continue
+            found = _mapset_red_differences(ref_reds, reds)
+            entry["checks"]["red_lines"] = len(found)
+            red_differences += [{"file": entry["file"], "difficulty": entry["difficulty"],
+                                 **diff} for diff in found]
+        # The reference's value breaks ties, so it goes first.
+        parsed = [parsed[ref_index]] + parsed[:ref_index] + parsed[ref_index + 1:]
+
+    fields: list[dict] = []
+    for section, names, check in (("General", MAPSET_AUDIO_FIELDS, "audio"),
+                                  ("Metadata", MAPSET_METADATA_FIELDS, "metadata")):
+        for field_name in names:
+            values = [(entry, (beatmap.get(section.lower()) or {}).get(field_name))
+                      for entry, beatmap, _reds in parsed]
+            keys = [_mapset_field_key(field_name, value) for _entry, value in values]
+            common = max(dict.fromkeys(keys), key=keys.count) if keys else None
+            shown = next((value for (_entry, value), key in zip(values, keys)
+                          if key == common), None)
+            odd = []
+            for (entry, value), key in zip(values, keys):
+                if key != common:
+                    entry["checks"][check].append(field_name)
+                    odd.append({"file": entry["file"], "difficulty": entry["difficulty"],
+                                "value": value})
+            fields.append({"section": section, "field": field_name,
+                           "identical": not odd, "value": shown, "differences": odd})
+
+    unreadable = sum(1 for entry in difficulties if not entry["readable"])
+    field_differences = sum(len(f["differences"]) for f in fields)
+    return {"folder": scan["folder"], "reference": reference,
+            "difficulties": difficulties, "red_lines": red_differences,
+            "fields": fields, "unreadable": unreadable,
+            "differences": len(red_differences) + field_differences,
+            "consistent": not red_differences and not field_differences and not unreadable}
+
+
+# ---------------------------------------------------------------------------
 # Settings persistence
 # ---------------------------------------------------------------------------
 

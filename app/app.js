@@ -5,6 +5,44 @@
 const I18N = {
   en: {
     tagline: "Timing for osu! maps", nav_timing: "Timing", offline: "offline, nothing leaves this PC",
+    nav_sections: "Sections", nav_library: "Library", nav_mapcheck: "Map check", nav_export: "Export", nav_settings: "Settings",
+    close: "Close",
+    need_title: "Nothing analyzed yet",
+    need_body: "{view} works on the analyzed song, the same one every section shares. Open an audio file and analyze it.",
+    need_busy: "Analyzing… {view} fills in as soon as it finishes.",
+    need_analyze: "Analyze {name}", need_library: "Go to Library",
+    mapcheck_sub: "One difficulty you mapped, checked against this analysis. Read only: nothing is written.",
+    export_sub: "Everything here writes the current timing points, edits included.",
+    exp_osu_t: "osu! timing points", exp_osu_d: "The red lines as [TimingPoints] text, ready to paste into a .osu.",
+    exp_csv_t: "CSV table", exp_csv_d: "Offset, BPM, beat and confidence per point, for a spreadsheet.",
+    exp_click_t: "Click track", exp_click_d: "A metronome WAV on these red lines, to hear any drift against the song.",
+    exp_osz_t: ".osz package", exp_osz_d: "The audio plus a new beatmap carrying this timing.",
+    exp_inject_t: "Inject into a .osu", exp_inject_d: "Replaces the red lines of a difficulty you already have. You confirm first, and a backup is kept.",
+    nav_mapset: "Mapset",
+    mapset_sub: "Every difficulty of one beatmap folder side by side: red lines, audio settings and metadata that must match. Read only: differences are listed, never fixed.",
+    ms_title: "Difficulties", ms_pick: "Choose beatmap folder…", ms_recheck: "Check again",
+    ms_empty: "Choose a beatmap folder, or import one in the Library, to compare its difficulties.",
+    ms_no_maps: "That folder has no .osu files.",
+    ms_count: "{n} difficulties", ms_all_match: "everything matches", ms_to_check: "{n} to check", ms_unreadable_n: "{n} unreadable",
+    ms_t_diff: "Difficulty", ms_t_reds: "Red lines", ms_t_audio: "Audio", ms_t_meta: "Metadata", ms_t_kiai: "Kiai",
+    ms_t_objects: "Objects", ms_t_rate: "Per second (mean · peak)",
+    ms_reference: "reference", ms_match: "same", ms_differ: "{n} differ",
+    ms_unreadable: "Could not read this file: {detail}",
+    ms_kiai_none: "none", ms_kiai_end: "end",
+    ms_density_note: "Objects per second over 5 s windows, to compare difficulties with each other. Not a star rating.",
+    ms_red_title: "Red lines",
+    ms_red_ref: "Compared with {ref}, the difficulty most others match.",
+    ms_red_same: "Every difficulty has the same red lines.",
+    ms_t_offset: "Offset (ms)", ms_t_what: "What differs",
+    ms_d_offset: "Moved to {found} ms; the reference has it at {expected} ms.",
+    ms_d_beat_length: "Beat length {found} ms instead of {expected} ms.",
+    ms_d_meter: "Meter {found}/4 instead of {expected}/4.",
+    ms_d_missing: "Missing: the reference has a red line here.",
+    ms_d_extra: "Extra: the reference has no red line here.",
+    ms_fields_title: "Audio and metadata",
+    ms_fields_hint: "Each field shows the value most difficulties have.",
+    ms_t_field: "Field", ms_t_value: "Value", ms_t_differs: "Different in",
+    ms_same_all: "same in all", ms_not_set: "(not set)", ms_empty_value: "(empty)",
     open: "Open audio", analyze: "Analyze", analyzing: "Analyzing…",
     empty_title: "Time a song in one click",
     empty_body: "Open an audio file and Overtone finds every BPM change, offset and bar line.",
@@ -48,7 +86,7 @@ const I18N = {
     undo: "Undo", redo: "Redo",
     no_undo: "Nothing to undo.", no_redo: "Nothing to redo.",
     undone: "Undone.", redone: "Redone.",
-    actions_copy: "Copy .osu", actions_csv: "CSV", actions_click: "Click track", actions_osz: ".osz package", actions_inject: "Inject .osu…",
+    actions_copy: "Copy .osu", actions_csv: "Save CSV…", actions_click: "Save click track…", actions_osz: "Save .osz…", actions_inject: "Inject .osu…",
     e_offset: "Offset (ms)", e_bpm: "BPM", e_apply: "Apply", e_add: "Add", e_delete: "Delete",
     edited: "Point #{n}: {bpm} BPM · {ms} ms", added: "Added {bpm} BPM at {ms} ms", deleted: "Deleted point #{n}",
     section_rescaled: "Section #{n}: {bpm} BPM",
@@ -100,6 +138,44 @@ const I18N = {
   },
   es: {
     tagline: "Timing para mapas de osu!", nav_timing: "Timing", offline: "sin conexión, nada sale de esta PC",
+    nav_sections: "Secciones", nav_library: "Biblioteca", nav_mapcheck: "Revisar mapa", nav_export: "Exportar", nav_settings: "Ajustes",
+    close: "Cerrar",
+    need_title: "Todavía no hay nada analizado",
+    need_body: "{view} trabaja sobre la canción analizada, la misma que comparten todas las secciones. Abrí un audio y analizalo.",
+    need_busy: "Analizando… {view} se completa apenas termine.",
+    need_analyze: "Analizar {name}", need_library: "Ir a la Biblioteca",
+    mapcheck_sub: "Una dificultad que mapeaste, contrastada con este análisis. Solo lectura: no se escribe nada.",
+    export_sub: "Todo lo de acá escribe los timing points actuales, ediciones incluidas.",
+    exp_osu_t: "Timing points de osu!", exp_osu_d: "Las líneas rojas como texto de [TimingPoints], listas para pegar en un .osu.",
+    exp_csv_t: "Tabla CSV", exp_csv_d: "Offset, BPM, beat y confianza por punto, para una planilla.",
+    exp_click_t: "Pista de clic", exp_click_d: "Un WAV de metrónomo sobre estas líneas rojas, para oír si derivan contra la canción.",
+    exp_osz_t: "Paquete .osz", exp_osz_d: "El audio más un beatmap nuevo con este timing.",
+    exp_inject_t: "Inyectar en un .osu", exp_inject_d: "Reemplaza las líneas rojas de una dificultad que ya tenés. Confirmás antes y se guarda un respaldo.",
+    nav_mapset: "Mapset",
+    mapset_sub: "Todas las dificultades de una carpeta, lado a lado: líneas rojas, ajustes de audio y metadatos que deben coincidir. Solo lectura: las diferencias se listan, nunca se corrigen.",
+    ms_title: "Dificultades", ms_pick: "Elegir carpeta…", ms_recheck: "Revisar de nuevo",
+    ms_empty: "Elegí una carpeta de beatmap, o importala en la Biblioteca, para comparar sus dificultades.",
+    ms_no_maps: "Esa carpeta no tiene archivos .osu.",
+    ms_count: "{n} dificultades", ms_all_match: "todo coincide", ms_to_check: "{n} para revisar", ms_unreadable_n: "{n} ilegibles",
+    ms_t_diff: "Dificultad", ms_t_reds: "Líneas rojas", ms_t_audio: "Audio", ms_t_meta: "Metadatos", ms_t_kiai: "Kiai",
+    ms_t_objects: "Objetos", ms_t_rate: "Por segundo (media · pico)",
+    ms_reference: "referencia", ms_match: "igual", ms_differ: "{n} difieren",
+    ms_unreadable: "No se pudo leer este archivo: {detail}",
+    ms_kiai_none: "ninguno", ms_kiai_end: "fin",
+    ms_density_note: "Objetos por segundo en ventanas de 5 s, para comparar dificultades entre sí. No es un star rating.",
+    ms_red_title: "Líneas rojas",
+    ms_red_ref: "Comparadas con {ref}, la dificultad con la que más coinciden las demás.",
+    ms_red_same: "Todas las dificultades tienen las mismas líneas rojas.",
+    ms_t_offset: "Offset (ms)", ms_t_what: "Qué difiere",
+    ms_d_offset: "Movida a {found} ms; la referencia la tiene en {expected} ms.",
+    ms_d_beat_length: "Beat de {found} ms en vez de {expected} ms.",
+    ms_d_meter: "Compás {found}/4 en vez de {expected}/4.",
+    ms_d_missing: "Falta: la referencia tiene una línea roja acá.",
+    ms_d_extra: "Sobra: la referencia no tiene una línea roja acá.",
+    ms_fields_title: "Audio y metadatos",
+    ms_fields_hint: "Cada campo muestra el valor que tiene la mayoría de las dificultades.",
+    ms_t_field: "Campo", ms_t_value: "Valor", ms_t_differs: "Distinto en",
+    ms_same_all: "igual en todas", ms_not_set: "(sin definir)", ms_empty_value: "(vacío)",
     open: "Abrir audio", analyze: "Analizar", analyzing: "Analizando…",
     empty_title: "Timea una canción con un clic",
     empty_body: "Abre un audio y Overtone encuentra cada cambio de BPM, offset y línea de compás.",
@@ -143,7 +219,7 @@ const I18N = {
     undo: "Deshacer", redo: "Rehacer",
     no_undo: "Nada que deshacer.", no_redo: "Nada que rehacer.",
     undone: "Deshecho.", redone: "Rehecho.",
-    actions_copy: "Copiar .osu", actions_csv: "CSV", actions_click: "Pista de clic", actions_osz: "Paquete .osz", actions_inject: "Inyectar .osu…",
+    actions_copy: "Copiar .osu", actions_csv: "Guardar CSV…", actions_click: "Guardar pista de clic…", actions_osz: "Guardar .osz…", actions_inject: "Inyectar .osu…",
     e_offset: "Offset (ms)", e_bpm: "BPM", e_apply: "Aplicar", e_add: "Añadir", e_delete: "Borrar",
     edited: "Punto #{n}: {bpm} BPM · {ms} ms", added: "Añadido {bpm} BPM en {ms} ms", deleted: "Borrado el punto #{n}",
     section_rescaled: "Sección #{n}: {bpm} BPM",
@@ -195,7 +271,7 @@ const I18N = {
   },
 };
 
-const S = { lang: "en", file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, recent: [] };
+const S = { lang: "en", view: "library", mapset: null, file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, recent: [] };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
@@ -209,11 +285,61 @@ function t(key, values) {
 function translate() {
   document.documentElement.lang = S.lang;
   document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  // Icon-only controls (and nav items once the rail collapses) carry their
+  // name in title/aria-label, so those follow the language too.
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => {
+    el.title = t(el.dataset.i18nTitle);
+    el.setAttribute("aria-label", el.title);
+  });
+  document.querySelectorAll("[data-i18n-aria]").forEach((el) => el.setAttribute("aria-label", t(el.dataset.i18nAria)));
   document.querySelectorAll("#langSwitch button").forEach((b) => b.classList.toggle("on", b.dataset.lang === S.lang));
   renderSong();
   renderRecents();
+  renderNeedSong();
+  renderMapset();
   if (S.result) renderResult(S.result);
   if (S.busy) $("analyzeText").textContent = t("analyzing");
+}
+
+// ------------------------------------------------------------------ views
+// One analysed song is shared by every view: switching only changes what is
+// visible, never the session. Views that read the analysis show the
+// "analyze first" panel until there is one, instead of blank space.
+const VIEWS = ["library", "timing", "mapcheck", "mapset", "export"];
+const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", mapcheck: "nav_mapcheck", mapset: "nav_mapset", export: "nav_export" };
+
+function needsResult(view) {
+  const section = document.querySelector(`.content > [data-view="${view}"]`);
+  return !!section && section.hasAttribute("data-needs-result");
+}
+
+function setView(view) {
+  if (!VIEWS.includes(view)) return;
+  const changed = S.view !== view;
+  S.view = view;
+  document.querySelectorAll("#nav [data-view]").forEach((b) => {
+    const on = b.dataset.view === view;
+    b.classList.toggle("active", on);
+    if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  });
+  const blocked = needsResult(view) && !S.result;
+  document.querySelectorAll(".content > [data-view]").forEach((sec) => { sec.hidden = blocked || sec.dataset.view !== view; });
+  $("needSong").hidden = !blocked;
+  renderNeedSong();
+  if (changed) $("content").scrollTop = 0;
+  // The canvas measures its box: it can only be drawn while visible.
+  if (view === "timing" && S.result) drawTrace();
+}
+
+function renderNeedSong() {
+  const view = t(VIEW_LABEL[S.view] || "nav_timing");
+  $("needBody").textContent = t(S.busy ? "need_busy" : "need_body", { view });
+  const ready = !!S.file && !S.busy;
+  $("needAnalyze").hidden = !ready;
+  if (ready) $("needAnalyzeText").textContent = t("need_analyze", { name: S.file.name });
+  // One primary action: Analyze once a song is open, Open audio before.
+  $("needOpen").classList.toggle("primary", !ready);
+  $("needOpen").disabled = S.busy;
 }
 
 let toastTimer = 0;
@@ -232,6 +358,7 @@ function setFile(info) {
   renderSong();
   $("analyzeBtn").disabled = !S.file || S.busy;
   $("emptyAnalyze").hidden = !S.file;
+  renderNeedSong();
 }
 
 function renderSong() {
@@ -296,6 +423,7 @@ function setBusy(busy, message) {
   $("progress").hidden = !busy;
   if (message !== undefined) $("progressText").textContent = message;
   syncActions();
+  renderNeedSong();
 }
 
 function syncActions() {
@@ -375,6 +503,9 @@ async function importFolder() {
     return;
   }
   S.lastFolder = reply.folder;
+  // The difficulties it lists are the Mapset view's input: check them now,
+  // quietly, so the view is ready when the user opens it.
+  runMapset(reply.folder, true);
   if (reply.file) {
     setFile(reply.file);
     refreshRecents();
@@ -409,6 +540,9 @@ window.overtone = {
     }
     S.selected = -1;
     showResult(result);
+    // A finished analysis lands on Timing, unless the user is already on a
+    // view that was waiting for it (Map check, Export): that one fills in.
+    if (!needsResult(S.view)) setView("timing");
     syncHistory();
     syncLocks();
     refreshRecents();
@@ -431,8 +565,7 @@ function showResult(result) {
   S.align = null;
   S.density = null;
   if (!sameSong) S.comparePath = null;  // a map belongs to one song
-  $("empty").hidden = true;
-  $("results").hidden = false;
+  setView(S.view);  // lifts the "analyze first" panel off the current view
   syncActions();
   renderResult(result);
   // Same song, new point list (edit, undo, redo, pulse): recompare so the
@@ -930,6 +1063,132 @@ function renderDensity() {
     </div>`;
 }
 
+// ------------------------------------------------------------------ mapset
+// Read only and independent of the analysis: one folder, every difficulty.
+const esc = (value) => String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// Enough digits to show any difference past the 1e-6 ms tolerance, no float noise.
+const exact = (x) => (typeof x === "number" ? String(+x.toFixed(9)) : String(x));
+
+async function pickMapset() {
+  if (!api()) return;
+  const folder = await api().pick_folder();
+  if (folder) runMapset(folder, false);
+}
+
+async function runMapset(folder, quiet) {
+  if (!api() || !folder) return;
+  const reply = await api().mapset_check(folder);
+  if (!reply.ok) { if (!quiet) editFailure(reply); return; }
+  S.mapset = { path: folder, name: reply.folder, report: reply.report };
+  renderMapset();
+}
+
+function msValue(value) {
+  if (value === null || value === undefined) return `<span class="card-sub">${t("ms_not_set")}</span>`;
+  if (value === "") return `<span class="card-sub">${t("ms_empty_value")}</span>`;
+  return esc(value);
+}
+
+function msKiai(spans) {
+  if (!spans.length) return `<span class="card-sub">${t("ms_kiai_none")}</span>`;
+  const shown = spans.slice(0, 3).map((s) => `${mmss(s.start_ms / 1000)}–${s.end_ms === null ? t("ms_kiai_end") : mmss(s.end_ms / 1000)}`);
+  const rest = spans.length - shown.length;
+  return shown.join(", ") + (rest > 0 ? ` ${t("align_more", { n: rest })}` : "");
+}
+
+function msCheck(list) {
+  return list.length ? `<span class="pill amber">${esc(list.join(", "))}</span>` : `<span class="pill accent">${t("ms_match")}</span>`;
+}
+
+function renderMapset() {
+  const ms = S.mapset, body = $("msBody");
+  $("msRecheck").hidden = !ms;
+  $("msRedCard").hidden = $("msFieldCard").hidden = true;
+  $("msCount").hidden = $("msVerdict").hidden = true;
+  if (!ms) {
+    $("msFolder").textContent = "";
+    body.innerHTML = `<div class="card-sub">${t("ms_empty")}</div>`;
+    return;
+  }
+  const r = ms.report;
+  $("msFolder").textContent = ms.name;
+  $("msFolder").title = ms.path;
+  if (!r.difficulties.length) {
+    body.innerHTML = `<div class="card-sub">${t("ms_no_maps")}</div>`;
+    return;
+  }
+  $("msCount").hidden = false;
+  $("msCount").textContent = t("ms_count", { n: r.difficulties.length });
+  const verdict = $("msVerdict");
+  verdict.hidden = false;
+  verdict.className = `pill ${r.consistent ? "accent" : "amber"}`;
+  verdict.textContent = r.consistent ? t("ms_all_match")
+    : [r.differences ? t("ms_to_check", { n: r.differences }) : "",
+       r.unreadable ? t("ms_unreadable_n", { n: r.unreadable }) : ""].filter(Boolean).join(" · ");
+
+  const rows = r.difficulties.map((d) => {
+    const name = `<td class="txt" title="${esc(d.file)}">${esc(d.difficulty)}${d.reference ? ` <span class="pill blue">${t("ms_reference")}</span>` : ""}</td>`;
+    if (!d.readable) return `<tr>${name}<td class="txt neg" colspan="6">${esc(t("ms_unreadable", { detail: d.detail }))}</td></tr>`;
+    const reds = d.checks.red_lines ? `<span class="pill amber">${t("ms_differ", { n: d.checks.red_lines })}</span>`
+      : (d.reference ? "" : `<span class="pill accent">${t("ms_match")}</span>`);
+    return `<tr>${name}
+      <td><span class="num">${d.red_lines}</span> ${reds}</td>
+      <td>${msCheck(d.checks.audio)}</td>
+      <td>${msCheck(d.checks.metadata)}</td>
+      <td class="num">${msKiai(d.kiai)}</td>
+      <td class="num">${d.density.objects}</td>
+      <td class="num">${d.density.mean_per_second.toFixed(2)} · ${d.density.peak_per_second.toFixed(2)}</td>
+    </tr>`;
+  }).join("");
+  body.innerHTML = `
+    <div class="table-scroll">
+      <table class="ms-table">
+        <thead><tr>
+          <th class="txt">${t("ms_t_diff")}</th><th>${t("ms_t_reds")}</th><th>${t("ms_t_audio")}</th>
+          <th>${t("ms_t_meta")}</th><th>${t("ms_t_kiai")}</th><th>${t("ms_t_objects")}</th><th>${t("ms_t_rate")}</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="card-sub" style="margin-top:10px">${t("ms_density_note")}</div>`;
+
+  const readable = r.difficulties.filter((d) => d.readable);
+  if (readable.length < 2) return;  // nothing to compare against
+
+  const ref = r.difficulties.find((d) => d.reference);
+  $("msRedCard").hidden = false;
+  $("msRedHint").textContent = ref ? t("ms_red_ref", { ref: ref.difficulty }) : "";
+  $("msRedBody").innerHTML = !r.red_lines.length ? `<div class="card-sub">${t("ms_red_same")}</div>` : `
+    <div class="table-scroll">
+      <table class="ms-table">
+        <thead><tr><th class="txt">${t("ms_t_diff")}</th><th>${t("ms_t_offset")}</th><th class="txt">${t("ms_t_what")}</th></tr></thead>
+        <tbody>${r.red_lines.map((x) => `
+          <tr>
+            <td class="txt" title="${esc(x.file)}">${esc(x.difficulty)}</td>
+            <td class="num">${exact(x.offset_ms)}</td>
+            <td class="txt">${esc(t("ms_d_" + x.kind, { found: exact(x.found), expected: exact(x.expected) }))}</td>
+          </tr>`).join("")}</tbody>
+      </table>
+    </div>`;
+
+  $("msFieldCard").hidden = false;
+  $("msFieldHint").textContent = t("ms_fields_hint");
+  // Ten fixed rows: no inner scroll box, the view scrolls.
+  $("msFieldBody").innerHTML = `
+    <div>
+      <table class="ms-table">
+        <thead><tr><th class="txt">${t("ms_t_field")}</th><th class="txt">${t("ms_t_value")}</th><th class="txt">${t("ms_t_differs")}</th></tr></thead>
+        <tbody>${r.fields.map((f) => `
+          <tr>
+            <td class="txt">${f.field}</td>
+            <td class="txt wrap">${msValue(f.value)}</td>
+            <td class="txt wrap">${f.identical ? `<span class="pill accent">${t("ms_same_all")}</span>`
+              : f.differences.map((x) => `<div><b title="${esc(x.file)}">${esc(x.difficulty)}</b>: <span class="neg">${msValue(x.value)}</span></div>`).join("")}</td>
+          </tr>`).join("")}</tbody>
+      </table>
+    </div>`;
+}
+
 // ------------------------------------------------------------------ tempo trace
 const C = {
   plot: "#0e1320", grid: "#1a2233", gridText: "#606b80", tempo: "#7f9df0", fill: "rgba(127,157,240,0.10)",
@@ -956,6 +1215,7 @@ function drawTrace(hoverX) {
   if (!r) return;
   const wrap = $("traceWrap"), dpr = window.devicePixelRatio || 1;
   const W = wrap.clientWidth, H = wrap.clientHeight;
+  if (!W || !H) return;  // Timing is not the visible view; setView redraws it
   if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
   }
@@ -1101,14 +1361,32 @@ function selectPoint(i, toggle = true) {
   drawTrace();
 }
 
+let drawerOpener = null;
 function openDrawer(open) {
-  $("drawer").classList.toggle("open", open);
-  $("drawer").setAttribute("aria-hidden", String(!open));
+  const drawer = $("drawer"), wasOpen = drawer.classList.contains("open");
+  drawer.classList.toggle("open", open);
+  drawer.setAttribute("aria-hidden", String(!open));
+  // Closed, it is only slid off screen: inert keeps Tab out of it.
+  drawer.inert = !open;
   $("scrim").hidden = !open;
+  if (open && !wasOpen) {
+    drawerOpener = document.activeElement;
+    $("closeDrawer").focus();
+  } else if (!open && wasOpen && drawerOpener && drawerOpener.focus) {
+    drawerOpener.focus();
+    drawerOpener = null;
+  }
 }
 
 // ------------------------------------------------------------------ wiring
+let focusByKey = false;
+
 function wire() {
+  document.querySelectorAll("#nav [data-view]").forEach((b) => { b.onclick = () => setView(b.dataset.view); });
+  $("navSettings").onclick = () => openDrawer(true);
+  $("needOpen").onclick = openAudio;
+  $("needAnalyze").onclick = analyze;
+  $("needLibrary").onclick = () => setView("library");
   $("openBtn").onclick = openAudio;
   $("emptyOpen").onclick = (e) => { e.stopPropagation(); openAudio(); };
   $("importBtn").onclick = (e) => { e.stopPropagation(); importFolder(); };
@@ -1134,6 +1412,7 @@ function wire() {
     if (!btn || !S.result) return;
     const i = +btn.dataset.show;
     if (!(i >= 0 && i < S.result.points.length)) return;
+    setView("timing");  // the tempo map and the point live in Timing
     selectPoint(i, false);
     document.querySelector(".trace-card").scrollIntoView({ behavior: "smooth", block: "center" });
   });
@@ -1144,6 +1423,8 @@ function wire() {
   $("cmpPick").onclick = compareOsu;
   $("alignPick").onclick = alignOsu;
   $("denPick").onclick = densityOsu;
+  $("msPick").onclick = pickMapset;
+  $("msRecheck").onclick = () => { if (S.mapset) runMapset(S.mapset.path, false); };
   $("undoBtn").onclick = undo;
   $("redoBtn").onclick = redo;
   $("injectBtn").onclick = injectOsu;
@@ -1168,12 +1449,22 @@ function wire() {
     S.lang = b.dataset.lang; translate(); if (api()) api().set_language(S.lang);
   });
   window.addEventListener("resize", () => drawTrace());
+  // How the focused control got focus: Tab means the user is driving the
+  // keyboard, a click means the button merely kept focus afterwards.
+  document.addEventListener("mousedown", () => { focusByKey = false; }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Tab") focusByKey = true; }, true);
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { openDrawer(false); return; }
     // Typing an offset or a detection value must not trigger shortcuts:
     // Enter inside the point editor would otherwise start a full analysis.
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
-    if (S.result && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+    // Enter on a button reached with Tab (a nav item, an export) presses that
+    // button; it must not be swallowed by the analyze shortcut below. A button
+    // that only kept focus after a mouse click (Open audio) does not count,
+    // so "open, then Enter to analyze" still works.
+    if (e.key === "Enter" && focusByKey && e.target.closest && e.target.closest("button, a")) return;
+    // The arrows walk the points table, so only where the table is.
+    if (S.result && S.view === "timing" && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
       e.preventDefault();
       const n = S.result.points.length, step = e.key === "ArrowDown" ? 1 : -1;
       selectPoint(Math.max(0, Math.min(n - 1, (S.selected < 0 ? (step > 0 ? -1 : n) : S.selected) + step)), false);
@@ -1198,6 +1489,7 @@ async function boot() {
   applyOptions(st.options);
   setFile(st.file);
   translate();
+  setView(S.view);  // Library until an analysis finishes
   syncActions();
   syncLocks();
   if (st.autorun && S.file) analyze();

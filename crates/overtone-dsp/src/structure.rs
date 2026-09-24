@@ -162,20 +162,7 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
         Vec::new()
     };
     found.sort_unstable();
-    let mut merged: Vec<usize> = Vec::new();
-    let merge_win = (MERGE_S / WIN_S).round() as usize;
-    for i in found {
-        if let Some(&last) = merged.last() {
-            if i - last < merge_win {
-                if novelty[i] > novelty[last] {
-                    merged.pop();
-                } else {
-                    continue;
-                }
-            }
-        }
-        merged.push(i);
-    }
+    let mut merged = merge_close(&found, &novelty, (MERGE_S / WIN_S).round() as usize);
     // The track start is a boundary only if the music starts there; a
     // leading silence is not a phrase. Drop index-0 artefacts.
     merged.retain(|&i| i > 1);
@@ -184,6 +171,27 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
         energy: rms,
         energy_hop: win_s,
     }
+}
+
+/// Keep the strongest of any peaks closer than `window`, strongest first:
+/// a peak is dropped only when a stronger kept one lies within `window` of
+/// it. Ties go to the earlier peak. `peaks` ascend; so does the result.
+///
+/// A left-to-right chain that compared each peak with the last kept one
+/// let a middle peak knock out its left neighbour and then lose to its
+/// right one, dropping a boundary a whole window from anything kept.
+fn merge_close(peaks: &[usize], novelty: &[f64], window: usize) -> Vec<usize> {
+    let mut by_strength = peaks.to_vec();
+    // Stable: equal novelty keeps ascending order, so the earlier wins.
+    by_strength.sort_by(|&a, &b| novelty[b].total_cmp(&novelty[a]));
+    let mut kept: Vec<usize> = Vec::new();
+    for i in by_strength {
+        if kept.iter().all(|&k| k.abs_diff(i) >= window) {
+            kept.push(i);
+        }
+    }
+    kept.sort_unstable();
+    kept
 }
 
 #[cfg(test)]
@@ -303,6 +311,23 @@ mod tests {
             "boundary {} vs 240.0",
             late[0]
         );
+    }
+
+    #[test]
+    fn merging_never_drops_a_peak_far_from_every_kept_one() {
+        // Peaks 3 s apart, each stronger than the last: 10 and 22 are 6 s
+        // apart, past MERGE_S, and both are boundaries. The chain let 16
+        // knock out 10, then lost 16 to 22, and kept only 22.
+        let mut novelty = vec![0.0; 40];
+        novelty[10] = 0.5;
+        novelty[16] = 0.7;
+        novelty[22] = 1.0;
+        let window = (MERGE_S / WIN_S).round() as usize;
+        assert_eq!(merge_close(&[10, 16, 22], &novelty, window), vec![10, 22]);
+        // Closer than the window, the stronger stays; at a tie the earlier.
+        assert_eq!(merge_close(&[10, 16], &novelty, window), vec![16]);
+        novelty[16] = 0.5;
+        assert_eq!(merge_close(&[10, 16], &novelty, window), vec![10]);
     }
 
     #[test]

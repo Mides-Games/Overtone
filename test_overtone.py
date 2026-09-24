@@ -1365,6 +1365,78 @@ class LoadErrorMessageTests(unittest.TestCase):
             self.assertIn("FFmpeg", str(caught.exception))
 
 
+class RustSidecarTests(unittest.TestCase):
+    """The v4 engine through overtone-cli builds v3's own Analysis (Phase 22)."""
+
+    REPORT = {
+        "source": "song.wav", "duration": 10.0, "global_bpm": 150.0, "stability": 0.99,
+        "meter": "4/4", "residual_ms": 0.4,
+        "sections": [{"start_s": 0.5, "end_s": 9.8, "bpm": 150.0, "period_s": 0.4,
+                      "phase_s": 0.5, "residual_ms": 0.4, "coverage": 0.97, "inliers": 24}],
+        "evidence": {"hop": 128, "sample_rate": 44100, "onset": [0.0, 1.0, 0.5],
+                     "attack_times": [0.5, 0.9], "attack_weights": [1.0, 0.6],
+                     "beats": [0.5, 0.9, 1.3], "local_bpms": [150.0, 150.0, 150.0],
+                     "meter_beats": 4, "downbeat_class": 0,
+                     "points": [{"offset_ms": 500.25, "bpm": 150.0, "confidence": 0.98,
+                                 "section": 0, "meter": 4, "meter_known": True}]},
+    }
+
+    def test_a_report_becomes_the_analysis_v3_would_store(self):
+        import overtone_rust as rs
+
+        analysis = rs.analysis_from_report(self.REPORT)
+        self.assertEqual(analysis.engine, "precision")
+        self.assertEqual((analysis.hop_length, analysis.sample_rate), (128, 44100))
+        self.assertEqual(analysis.onset.dtype, np.float32)
+        np.testing.assert_allclose(analysis.base_frames, np.array([0.5, 0.9, 1.3]) * 44100 / 128)
+        point = analysis.points[0]
+        self.assertEqual((point.offset_ms, point.beat_index, point.meter, point.meter_known),
+                         (500.25, 0, 4, True))
+        section = analysis.sections[0]
+        self.assertEqual((section.period, section.phase, section.inliers), (0.4, 0.5, 24))
+        self.assertIn("500,400.000000000000,4", osu_timing_text(analysis))
+
+    def test_without_a_binary_it_says_so(self):
+        from unittest import mock
+
+        import overtone_rust as rs
+
+        self.assertIsNone(rs.find_cli([Path("no/such/overtone-cli.exe")]))
+        with mock.patch.object(rs, "find_cli", return_value=None):
+            with self.assertRaises(rs.SidecarUnavailable):
+                rs.analyze("song.wav")
+
+    def test_the_rust_engine_reads_what_v3_reads(self):
+        import overtone as ta
+        import overtone_rust as rs
+
+        if rs.find_cli() is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        sr = 44_100
+        y = np.zeros(20 * sr, dtype=np.float32)
+        rng = np.random.default_rng(3)
+        burst = np.exp(-np.arange(1300) / 180.0) * (rng.random(1300) - 0.5)
+        for k, t in enumerate(np.arange(0.5, 19.5, 0.4)):
+            start = int(t * sr)
+            y[start:start + 1300] += (0.9 if k % 4 == 0 else 0.5) * burst
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "clicks.wav"
+            ta.sf.write(str(path), y, sr, subtype="PCM_16")
+            ours, theirs = rs.analyze(path), ta.analyze_audio(str(path))
+            noise = Path(tmp) / "noise.wav"
+            ta.sf.write(str(noise), (rng.random(10 * sr) - 0.5).astype(np.float32), sr,
+                        subtype="PCM_16")
+            with self.assertRaises(rs.SidecarRefused) as refused:
+                rs.analyze(noise)
+        self.assertEqual(theirs.engine, "precision")
+        self.assertAlmostEqual(ours.global_bpm, theirs.global_bpm, places=6)
+        np.testing.assert_allclose(ours.beats, theirs.beats, atol=1e-6)
+        rows = [line.split(",")[0] for line in osu_timing_text(ours).splitlines()[1:]]
+        self.assertEqual(rows, [line.split(",")[0]
+                                for line in osu_timing_text(theirs).splitlines()[1:]])
+        self.assertIn("No rhythmic pulse", str(refused.exception))
+
+
 class NoiseBeforeTheMusicTests(unittest.TestCase):
     """The first red line starts where the grid starts, not at the first noise.
 

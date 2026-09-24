@@ -40,11 +40,13 @@ The audit backlog is closed: every finding fixed, recorded as already fixed, or 
    interface size, cache), the timeline (Phase 3), playback (Phase 4, but for the
    percussion-only audition) and the first five sidebar modes of
    [Phase 19](#phase-19--app-sections).
-2. **Percussion-only audition** (Phase 4) — hear the percussive part alone.
-3. **Map tools** (Phase 21) — kiai, preview point, SV normaliser, inject into every difficulty.
-4. **Hitsounds** (Phase 6) — decision, editor, export; then its own section.
-5. **Real-audio accuracy** (Phase 10) — build Corpus B first, then one sub-phase at a time.
-6. **Installer** (Phase 10.13) — MSI + portable ZIP.
+2. **Other languages** (Phase 24) — first SQL: a SQLite library index of the Songs
+   folder (search, same-audio lookup, library health); then TypeScript and a C# lazer gate.
+3. **Percussion-only audition** (Phase 4) — hear the percussive part alone.
+4. **Map tools** (Phase 21) — kiai, preview point, SV normaliser, inject into every difficulty.
+5. **Hitsounds** (Phase 6) — decision, editor, export; then its own section.
+6. **Real-audio accuracy** (Phase 10) — build Corpus B first, then one sub-phase at a time.
+7. **Installer** (Phase 10.13) — MSI + portable ZIP.
 
 ### Bugs fixed on 2026-09-23
 
@@ -584,6 +586,25 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 Sources: the 2026-09-22 review passes (128 proposals, each checked against the
 code by a skeptical judge; the ones already built or only relevant to the old
 Tk layout are left out) plus the map tools, options and exports above.
+
+---
+
+## Phase 24 — Other languages
+
+Features better served by another language than Python, Rust or JavaScript, evaluated one
+at a time in [`14-other-languages.md`](14-other-languages.md): value, viability on this
+project's rules (offline, one-line local gates), and how each stays in step with the rest.
+
+| Language | Feature | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| **SQL** (SQLite + FTS5) | library index of the Songs folder: search, same-audio lookup, library health, ground for fingerprint reuse | low | **high** | Python's `sqlite3` (installed) | no | no | **P1** | todo — first |
+| **TypeScript** | the web shell type-checked against the bridge (`@ts-check` + JSDoc, `tsc --noEmit`), payload types generated from Python | med | high | Node.js (dev only, not installed) | no | no | P1 | todo — after Node |
+| **C#** | osu!lazer compatibility gate: lazer's own `osu.Game` decoder reads every `.osu` Overtone writes | med | high | .NET 8 SDK (dev only, not installed) | no | no | P2 | todo |
+| **WGSL** (WebGPU) | spectrogram layer computed on the GPU | med | low-med | WebView2 WebGPU | no | **yes** | P3 | todo |
+| **Lua** | user rules for the mod report, sandboxed | med | low-med | `lupa` or `mlua` | no | no | P3 | todo |
+| WiX (XML) | the MSI (Phase 10.13) | med | med | WiX toolset | no | no | — | as planned |
+
+Rejected: C++, Go, Java, Kotlin, Cython, Julia, R — the reasons are in the document.
 
 ---
 

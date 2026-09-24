@@ -136,7 +136,8 @@ crates/                   the v4 Rust workspace
   overtone-cli/             `overtone-cli analyze`: the v4 engine as one command
 docs/                     audit, stack evaluation, architecture, UI, DSP, hitsounds,
                           roadmap, ML evaluation, naming, precision plan, MSI
-                          distribution, comfort features
+                          distribution, comfort features, audit backlog,
+                          other languages
 WORKFLOW.md               the per-task routine: program, test, measure, commit, audit
 timeline.md               engineering log
 ```

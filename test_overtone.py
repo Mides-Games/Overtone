@@ -1172,6 +1172,19 @@ class LegacyPulseFactorTests(unittest.TestCase):
         half = rebuild_with_subdivision(self.auto, 0.5)
         self.assertAlmostEqual(half.global_bpm, 100.0, delta=1.0)
 
+    def test_global_bpm_is_the_measured_median(self):
+        # It was averaged with a tempogram bin, a few tenths of a BPM coarse:
+        # odd-222.22 read 222.88 against a median of 222.15, and pressing the
+        # same pulse again (a rebuild, which never averaged) moved it.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "click150.wav"
+            _click_track(path, 150.0, duration=20.0)
+            analysis = analyze_audio(path, engine="legacy")
+        self.assertEqual(analysis.subdivision, 1.0)
+        self.assertEqual(analysis.global_bpm, float(np.median(analysis.local_bpms)))
+        again = rebuild_with_subdivision(analysis, analysis.subdivision)
+        self.assertEqual(again.global_bpm, analysis.global_bpm)
+
 
 class OneWindowSignatureTests(unittest.TestCase):
     """A signature region exactly one window long is a region, wherever the song starts.

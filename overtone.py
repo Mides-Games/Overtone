@@ -2284,13 +2284,11 @@ def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
     if not points and candidates:
         points = [max(candidates, key=lambda p: p.confidence)]
 
+    # The median of the measured beats, as rebuild_with_subdivision reports it.
+    # Averaging it with a nearby tempogram guide was tried: a guide is a bin a
+    # few tenths of a BPM wide, and on 16 single-tempo corpus cases the average
+    # was further from the truth 14 times (median error 0.39 against 0.17 BPM).
     global_bpm = float(np.median(local_v)) if len(local_v) else 0.0
-    if guides:
-        for tempo_hint, _w in guides[:3]:
-            for mult in (0.5, 1.0, 2.0):
-                if abs(tempo_hint * mult - global_bpm) <= max(2.0, global_bpm * 0.02):
-                    global_bpm = float((global_bpm + tempo_hint * mult) / 2.0)
-                    break
     return Analysis(str(path), y.size / sr, beats_v, local_v, points, hop, sr,
                     subdivision, global_bpm, _stability(local_v),
                     _guess_meter(beats_v, onset, sr, hop), onset, beat_frames_raw)

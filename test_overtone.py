@@ -1852,6 +1852,39 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
             finally:
                 overtone.CONFIG_PATH = original
 
+    def test_ctrl_c_in_a_field_copies_the_field(self):
+        import tkinter
+        from unittest import mock
+        import overtone
+        try:
+            tkinter.Tk().destroy()
+        except tkinter.TclError as exc:
+            self.skipTest(f"Tk unavailable: {exc}")
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"), \
+                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
+            app = TimingAnalyzerApp()
+            try:
+                app.root.attributes("-alpha", 0.0)
+                app.root.geometry("1120x760+-3000+-3000")
+                app.root.update()
+                # A mock, so the test never touches the real clipboard; nothing
+                # is selected in the field, so its own copy leaves it alone too.
+                with mock.patch.object(app, "copy_osu") as copy_osu:
+                    for field in (app.edit_offset, app.edit_bpm):
+                        field.focus_force()
+                        app.root.update()
+                        field.event_generate("<Control-c>")
+                        app.root.update()
+                    self.assertEqual(copy_osu.call_count, 0)
+                    app.table.focus_force()
+                    app.root.update()
+                    app.table.event_generate("<Control-c>")
+                    app.root.update()
+                    self.assertEqual(copy_osu.call_count, 1)
+            finally:
+                app.root.destroy()
+
     def test_the_classic_window_opens_on_a_badly_typed_config(self):
         import tkinter
         from unittest import mock

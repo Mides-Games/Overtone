@@ -4619,7 +4619,7 @@ class TimingAnalyzerApp:
         self.menu_help.delete(0, "end")
         self.menu_help.add_command(label=self.tr("about"), command=self._about)
         self.root.bind("<Control-o>", lambda _e: self.choose())
-        self.root.bind("<Control-c>", lambda _e: self.copy_osu())
+        self.root.bind("<Control-c>", self._copy_shortcut)
         self.root.bind("<F5>", lambda _e: self.run())
 
     # -- text / state ----------------------------------------------------
@@ -5041,6 +5041,21 @@ class TimingAnalyzerApp:
                 self.status.set(self.tr("error", value=str(exc)))
                 return
             self.status.set(self.tr("click_saved", path=target))
+
+    #: Widgets whose own Ctrl+C copies what the user selected in them.
+    TEXT_WIDGETS = ("Entry", "TEntry", "Text", "Spinbox", "TSpinbox", "TCombobox")
+
+    def _copy_shortcut(self, event) -> None:
+        """Ctrl+C copies the timing block -- unless it was pressed in a text field.
+
+        Bound on the window, it ran after the field's own copy and replaced
+        the offset the user had just selected with the whole [TimingPoints]
+        block (and, before any analysis, the status with "Analyze first").
+        """
+        widget = getattr(event, "widget", None)
+        if widget is not None and widget.winfo_class() in self.TEXT_WIDGETS:
+            return
+        self.copy_osu()
 
     def copy_osu(self) -> None:
         if not self.analysis:

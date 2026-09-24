@@ -1577,6 +1577,19 @@ class ExportHardeningTests(unittest.TestCase):
         from types import SimpleNamespace
         return SimpleNamespace(source="song.mp3", points=points, meter=meter)
 
+    def test_csv_carries_the_snapped_offsets(self):
+        # 0.4 ms off the first section's grid: the table, .osu and click
+        # track join it to 11000 ms; the CSV wrote the raw 11000.400.
+        import csv
+        from overtone import export_csv
+        analysis = _grid_analysis([(1000.0, 120.0), (11000.4, 140.0)])
+        with tempfile.TemporaryDirectory() as tmp:
+            export_csv(analysis, Path(tmp) / "timing.csv")
+            with open(Path(tmp) / "timing.csv", encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+        self.assertEqual([row["offset_ms"] for row in rows], ["1000.000", "11000.000"])
+        self.assertIn("\n11000,", osu_timing_text(analysis))
+
     def test_offsets_are_whole_milliseconds_by_default(self):
         text = osu_timing_text(self._analysis([TimingPoint(353.4137, 225.0, 1.0, 0)]))
         self.assertIn("\n353,", text)

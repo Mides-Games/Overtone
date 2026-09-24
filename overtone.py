@@ -2447,10 +2447,12 @@ def rebuild_with_subdivision(analysis: Analysis, factor: float,
 # ---------------------------------------------------------------------------
 
 def export_csv(analysis: Analysis, destination: str | os.PathLike[str]) -> None:
+    """The red lines as the table, .osu, .osz and click track have them: snapped."""
     with open(destination, "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["offset_ms", "bpm", "beat_index", "confidence"])
-        writer.writerows((f"{p.offset_ms:.3f}", f"{p.bpm:.6f}", p.beat_index, f"{p.confidence:.3f}") for p in analysis.points)
+        writer.writerows((f"{p.offset_ms:.3f}", f"{p.bpm:.6f}", p.beat_index, f"{p.confidence:.3f}")
+                         for p in snap_timing_points(analysis.points))
 
 
 def export_click_track(analysis: Analysis, destination: str | os.PathLike[str],

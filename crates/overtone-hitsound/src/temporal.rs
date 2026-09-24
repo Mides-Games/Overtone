@@ -22,7 +22,11 @@ pub const CHORD_FLOOR_HZ: f64 = 100.0;
 pub struct Temporal {
     /// Seconds from 10 % to 90 % of peak, forward from the attack.
     pub rise_s: f64,
-    /// Decay constant from a log-linear fit over 20–200 ms, in seconds.
+    /// Decay constant from a log-linear fit over +10 to +120 ms after the
+    /// attack (20 ms into the 130 ms analysis window, to its end), in
+    /// seconds. The design doc says 20-200 ms; measured on held-out dense
+    /// arrangements, reading that far collapsed Clap's F1 to 0.00 (macro
+    /// 0.659): past ~100 ms the fit reads the neighbours' tails, not the hit.
     /// Infinite when nothing decays (sustain pedal down, analytically).
     pub decay_tau_s: f64,
     /// Seconds above 10 % of peak, looking 500 ms past the attack.
@@ -30,7 +34,8 @@ pub struct Temporal {
     pub sustain_s: f64,
     /// Fraction of sign changes in the window.
     pub zcr: f64,
-    /// Envelope peaks above 30 % of max in the first 30 ms, ≥ 2 ms apart.
+    /// Envelope peaks above 30 % of max in the first 30 ms after the attack,
+    /// ≥ 2 ms apart.
     pub sub_attacks: usize,
     /// Cosine distance between pre-window and attack chroma: a chord change
     /// scores high, a drum hit near zero.
@@ -166,7 +171,10 @@ pub fn analyze(y: &[f32], sr: u32, attack_s: f64) -> Temporal {
             slow[i] = running / wide.min(i + 1) as f64;
         }
         let slow_peak = slow.iter().copied().fold(0.0f64, f64::max);
-        let first_30ms = ((0.030 * sr as f64) as usize).min(slow.len());
+        // The first 30 ms after the attack, keeping the -10 ms pre-roll in
+        // front so a flam right at the onset is not an edge (edges are never
+        // peaks). Counted from the window start, it covered only +20 ms.
+        let first_30ms = (((0.030 - WIN_START_S) * sr as f64) as usize).min(slow.len());
         let distance = ((0.002 * sr as f64).round() as usize).max(1);
         overtone_dsp::peaks::find_peaks(
             &slow[..first_30ms],

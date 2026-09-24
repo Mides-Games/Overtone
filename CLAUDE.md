@@ -46,7 +46,13 @@ And the Rust side:
 ```bash
 cargo test --workspace                                 # all pass (202 on 2026-09-23)
 cargo run --release -q -p overtone-bench -- golden     # 27/27 attack for attack
+cargo run --release -q -p overtone-bench -- nogrid     # noise, pads, silence refused
+cargo run --release -q -p overtone-bench -- density    # 4/4 changes, 0 false positives
+cargo run --release -q -p overtone-bench -- elastic    # no invented curvature
+cargo run --release -q -p overtone-bench -- map        # no false changes
 ```
+
+Every mode reads the golden vectors, so a new golden fixture must pass all five.
 
 The golden check is the gate that matters during the port: it diffs the Rust
 engine against v3 **stage by stage** on the committed vectors, so a divergence

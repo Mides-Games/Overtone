@@ -4223,7 +4223,6 @@ class TimingAnalyzerApp:
     }
 
     ACCENT = "#6EE7B7"
-    ACCENT2 = "#7C5CFF"
 
     #: Detection presets. VARIABLE is the default: tuned for songs whose BPM
     #: changes often (short sections, quick transitions). STEADY trades recall
@@ -4379,7 +4378,7 @@ class TimingAnalyzerApp:
         # keeps the outline but drops the fill so it does not shout.
         # Padding tuned so the widest button row (Results: Export / Copy .osu /
         # Click track / ÷2 / ×2 / Inject / Details) still fits at the default
-        # 1180 px window -- a taller value was tried and cropped "Export" to
+        # 1120 px window -- a taller value was tried and cropped "Export" to
         # "E>". A shorter one loses the pill shape. This is the compromise.
         style.configure("TButton", background=panel2, foreground=fg,
                         bordercolor=border, focuscolor=border,
@@ -4449,7 +4448,7 @@ class TimingAnalyzerApp:
         root = ttk.Frame(self.root, padding=(22, 18), style="TFrame")
         root.pack(fill="both", expand=True)
 
-        # Header: pink dot + title + version pill + language
+        # Header: accent dot + title + version pill + language
         header = ttk.Frame(root)
         header.pack(fill="x", pady=(0, 2))
         dot = tk.Canvas(header, width=26, height=26, bg=self.C["bg"], highlightthickness=0)

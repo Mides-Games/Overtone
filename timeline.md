@@ -16,6 +16,65 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · The Report section, and a snap tolerance that was two constants
+
+The last of the first five sidebar modes. Building it on real maps found a snap audit that
+flagged ranked maps' rounding, and a constant defined twice.
+
+### Changed
+
+- **Report** (new sidebar section). Choose a `.osu`, and every finding about that difficulty
+  is listed in time order, as a modder posts them:
+  - red lines to check, with their error;
+  - map-wide notes (the common shift, a split with no majority) under "General";
+  - tempo changes the map has no red line for;
+  - objects off the map's grid, before its first red line or past the audio;
+  - objects away from any attack.
+
+  Timestamps carry the combo numbers the editor counts, and each one opens the local osu!
+  editor through `osu://edit/`. The link is built only from a validated timestamp, so
+  nothing else reaches the shell. A group can be left out, and "Copy all" copies what is
+  shown. The lines are English, as mod posts are.
+
+### Fixed
+
+- **`SNAP_TOLERANCE_MS` was defined twice**, once for export snapping and once for the snap
+  audit, and the later definition silently set both. Raising the audit's would have moved
+  exported red lines. The audit's is now `OBJECT_SNAP_TOLERANCE_MS`, and a test pins export
+  snapping to its own 1 ms.
+- **The snap audit called ranked maps' rounding unsnapped.** osu! stores whole milliseconds
+  against a red line whose beat is fractional, and a Monstrata map showed five objects
+  1.1-1.2 ms off. On 61 ranked maps, 272 of 30,553 objects sat 1-2 ms from a tick and 5 past
+  2 ms. The audit's tolerance is now 2 ms.
+- **"ms from the nearest sound"** read 4941 ms on a soft intro. That is what the detector
+  missed, not where the music is. It now says "from the nearest attack Overtone detects".
+
+### Measured
+
+```
+61 ranked maps, 30,553 objects     from the nearest editor tick: <= 1 ms 30,276,
+                                   1-2 ms 272, > 2 ms 5
+30 random ranked maps, a report    0.31 s median (1.13 s max), attacks given
+  lines per map                    median 15.5 for a median 480 objects
+  General shift line               30/30 maps (the +26 ms reference timing measured)
+  snapping                         4 maps: 532 on an Aspire map (6e302 BPM on purpose),
+                                   1 real one (-2.5 ms), 0 elsewhere after the 2 ms bar
+  away from any attack             median 12.5, max 150
+Python unittest                    308 -> 316, all pass
+benchmark.py                       24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · coverage · measures · signatures · robustness
+reference 24/24 · assisted 70/70 · facts
+```
+
+The section was exercised in the built-in browser against replies frozen from the real
+bridge. The data was secs-3 with its last line moved and five objects added:
+- 5 findings in time order;
+- a timestamp sent "00:00:150 (1)" to the editor link;
+- unticking a group removed its row;
+- Spanish rendered, with no console errors.
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Assisted timing: two marked downbeats, the grid from the attacks
 
 The precision plan's escape valve, which had no row until the sidebar modes. The marks are

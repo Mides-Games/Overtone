@@ -20,7 +20,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 |---|---|
 | Timing engine (Python v3) | **works** — 24/24 corpus, median 0.0000 BPM / 0.16 ms, all gates green |
 | Timing engine (Rust v4) | **at parity, in the app** — matches v3 attack for attack and red line for red line on 27/27, ~4x faster end to end; Settings → Rust engine runs it through `overtone-cli`, and v3 takes over (with a note) where it has no answer |
-| App (web shell) | **usable** — sidebar sections (Library, Timing, Map check, Mapset, Export, Settings); analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject, compare with a map, alignment, density, snap audit, suggestions, mapset check, reference timing, folder import, recents, EN/ES |
+| App (web shell) | **usable** — sidebar sections (Library, Timing, Map check, Mapset, Report, Export, Settings); analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject, compare with a map, alignment, density, snap audit, suggestions, mapset check, reference timing, assisted timing, mod report, folder import, recents, EN/ES |
 | osu! files | **works** — full reader, byte-identical writer, atomic write + backup |
 | Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks |
 | Hitsound engine | **half built, Rust only** — features, 13 instrument classes, musical role; no decision, editor or export; not in the app |
@@ -28,17 +28,18 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **308** Python (218 engine + 90 web shell) · **231** Rust.
+Tests: **316** Python (223 engine + 93 web shell) · **231** Rust.
 
 ### What is pending, in order
 
 The audit backlog is closed: every finding fixed, recorded as already fixed, or decided
 ([`13-audit-backlog.md`](13-audit-backlog.md)). The Rust engine is in the app, opt-in.
 
-1. **The next sidebar modes** ([Phase 19](#phase-19--app-sections)) — sections, Mapset, Snap
-   audit, Reference timing and Assisted timing (marks typed in ms) are in; next the Mod
-   report, and tap tempo once playback exists.
-2. **Playback in the app** (Phase 4) — hear the song with the click, scrub, loop.
+1. **Playback in the app** (Phase 4) — hear the song with the click, scrub, loop; then tap
+   tempo and tapped downbeats for Assisted timing. The first five sidebar modes of
+   [Phase 19](#phase-19--app-sections) are in: Mapset, Snap audit, Reference timing,
+   Assisted timing (marks typed in ms) and the Report.
+2. **The next sidebar modes** (Phase 19) — Structure, Evidence, Write history, Audio swap.
 3. **Timeline** (Phase 3) — waveform, zoom, drag red lines.
 4. **Settings** (Phase 20) — every option in one place.
 5. **Map tools** (Phase 21) — kiai, preview point, SV normaliser, inject into every difficulty.
@@ -470,7 +471,7 @@ number and confidence. Every write goes through the atomic writer and keeps a ba
 | Reference timing | grade each red line of any `.osu` against the attacks (share, residual, drift at span end), load it as the working timing, find same-audio maps by content hash | med | **high** | P5 reader, attacks | no | no | **P1** | **done** — `grade_reference_timing`, a Map check card; offsets judged against the map's own shift, each error with its standard error; attacks detected when the fallback kept none; `gates.py reference` 24/24 |
 | Assisted timing | tap tempo in the app; tap or mark two downbeats and the grid fit starts from there, with residual and share, or refuses. The precision plan's escape valve, which had no row | med | **high** | IRLS fit, P4 transport | no | no | **P1** | **done** without tapping — `assisted_grid`, a Timing card: two downbeats typed in ms, marks snapped to attacks, growth across gaps and not across changes, refusals with the reason; `gates.py assisted` 70/70; on 30 ranked maps median 0.004 BPM off the map. Tap tempo waits for playback (P4) |
 | Structure view | phrase boundaries snapped to the nearest proven downbeat, labelled with the evidence for each label, over the energy lane; home for the kiai, preview, bookmark and break proposals | med | **high** | P2 structure + classify, P22 | no | no | **P1** | todo |
-| Mod report | every finding as osu! editor timestamps (`mm:ss:mmm (combo) - ...`) with its number and confidence, copyable as text; each opens the local osu! editor | low | high | P7 findings | no | no | P2 | todo |
+| Mod report | every finding as osu! editor timestamps (`mm:ss:mmm (combo) - ...`) with its number and confidence, copyable as text; each opens the local osu! editor | low | high | P7 findings | no | no | P2 | **done** — `mod_report`, the Report section: reference, suggestions, snap audit and alignment in time order, combo numbers, `osu://edit/` links from validated timestamps; 0.31 s per map |
 | Write history and restore | a log of every `.osu` write and its backup; see the timing diff against the backup and restore atomically, keeping the current file as a new backup | low | med | writer | no | no | P2 | todo |
 | Evidence view | the engine's alternatives for the open song: coherence candidates, octave margin, per-section residual and coverage, half-time hints, why the fallback ran; each one click from ×2 / ÷2 | med | med | payload fields or P22 | no | no | P2 | todo |
 | Ramp and live timing | the elastic tempo curve turned into the fewest red lines that keep every attack within a chosen drift (ms) or one line per N bars, with the count-versus-drift trade-off shown | high | high | P22, elastic grid | no | no | P2 | todo |
@@ -612,7 +613,7 @@ P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─�
                            ├─► P4 playback ✗ / editor ✓
                            └─► P5 osu! ✓ ─────────────► P8 automation (half) ─► P9 (suggestions ✓)
 
-Next: sidebar modes (mod report) ─► playback ─► timeline ─► settings
+Next: playback (then tap tempo) ─► timeline ─► settings
       ─► map tools ─► hitsounds ─► Phase 10 ─► installer
 ```
 

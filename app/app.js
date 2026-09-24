@@ -143,6 +143,29 @@ const I18N = {
     snap_no_reds: "This map has no red lines to snap to.",
     snap_unparsed: "{n} line(s) in [HitObjects] could not be read.",
     snap_starts: "Object starts only; slider, spinner and hold ends are not checked.",
+    ref_title: "Reference timing", ref_pick: "Grade a .osu…", ref_find: "Maps of this song…",
+    ref_empty: "Choose any .osu of this song, hand-timed or ranked, to grade each red line against the attacks Overtone hears. Useful where detection is weakest: live bands, rubato, drift.",
+    ref_counts: "{ok} ok · {check} to check · {weak} weak · {few} too few",
+    ref_t_line: "#", ref_t_offset: "Offset", ref_t_bpm: "BPM", ref_t_div: "Read at", ref_t_share: "On grid",
+    ref_t_off: "vs map (ms)", ref_t_drift: "Drift at end (ms)", ref_t_fit: "Fitted BPM", ref_t_verdict: "",
+    ref_ok: "ok", ref_check: "check", ref_weak: "weak", ref_too_few: "too few",
+    ref_offset: "offset", ref_drift: "drift",
+    ref_shift_f: "Every line reads {ms} ms from the attacks, so the table shows each line against that shift. On real songs Overtone has read +12 to +46 ms (median +26) on all 30 ranked maps tested, MP3 and OGG alike, and why is not known yet: check the offset by ear before moving the whole map.",
+    ref_split_f: "These {n} lines do not agree on one offset, and no majority decides which ones are right: check them by ear.",
+    ref_before_f: "{n} attacks come before the first red line.",
+    ref_same: "Same audio as the analyzed file, byte for byte.",
+    ref_other: "This map's audio is not the analyzed file byte for byte: offsets may not carry over between two encodes.",
+    ref_unknown: "The map's audio file was not found next to it, so it could not be compared.",
+    ref_no_reds: "This map has no red lines to grade.",
+    ref_no_attacks: "No attacks were found in this song to grade against.",
+    ref_hint: "Positive: the music comes after the red line. ± is two standard errors: a line is flagged past 5 ms and past its own ±.",
+    ref_load: "Use as working timing",
+    ref_load_confirm: "Replace the {n} working timing points with the {m} red lines of {file}? Undo brings them back.",
+    ref_loaded: "Loaded {n} red lines from {file}.",
+    ref_found: "{n} map(s) share this audio under {root}.",
+    ref_found_none: "No map under {root} uses this exact audio ({s} audio files checked).",
+    ref_grade: "Grade",
+    no_songs: "Choose your osu! Songs folder.",
     import_folder: "Import beatmap folder…",
     imported: "Folder: {audio} + {n} {difficulties}.",
     difficulties: "difficulties",
@@ -291,6 +314,29 @@ const I18N = {
     snap_no_reds: "Este mapa no tiene líneas rojas con las que ajustar.",
     snap_unparsed: "No se pudieron leer {n} línea(s) de [HitObjects].",
     snap_starts: "Solo el inicio de cada objeto; no se revisan los finales de sliders, spinners ni holds.",
+    ref_title: "Timing de referencia", ref_pick: "Calificar un .osu…", ref_find: "Mapas de esta canción…",
+    ref_empty: "Elegí cualquier .osu de esta canción, timeado a mano o rankeado, para calificar cada línea roja contra los ataques que Overtone escucha. Sirve donde la detección flaquea: bandas en vivo, rubato, deriva.",
+    ref_counts: "{ok} ok · {check} a revisar · {weak} débiles · {few} con pocos ataques",
+    ref_t_line: "#", ref_t_offset: "Offset", ref_t_bpm: "BPM", ref_t_div: "Leído a", ref_t_share: "En la grilla",
+    ref_t_off: "vs mapa (ms)", ref_t_drift: "Deriva al final (ms)", ref_t_fit: "BPM ajustado", ref_t_verdict: "",
+    ref_ok: "ok", ref_check: "revisar", ref_weak: "débil", ref_too_few: "pocos ataques",
+    ref_offset: "offset", ref_drift: "deriva",
+    ref_shift_f: "Todas las líneas quedan a {ms} ms de los ataques, así que la tabla muestra cada línea respecto de ese corrimiento. En canciones reales Overtone leyó de +12 a +46 ms (mediana +26) en los 30 mapas rankeados probados, en MP3 y en OGG, y todavía no se sabe por qué: revisá el offset a oído antes de mover todo el mapa.",
+    ref_split_f: "Estas {n} líneas no coinciden en un mismo offset y no hay mayoría que decida cuáles están bien: revisalas a oído.",
+    ref_before_f: "{n} ataques suenan antes de la primera línea roja.",
+    ref_same: "Mismo audio que el archivo analizado, byte por byte.",
+    ref_other: "El audio de este mapa no es el archivo analizado byte por byte: los offsets pueden no trasladarse entre dos codificaciones.",
+    ref_unknown: "No se encontró el audio del mapa junto a él, así que no se pudo comparar.",
+    ref_no_reds: "Este mapa no tiene líneas rojas para calificar.",
+    ref_no_attacks: "No se encontraron ataques en esta canción contra los que calificar.",
+    ref_hint: "Positivo: la música llega después de la línea roja. ± son dos errores estándar: una línea se marca pasados 5 ms y pasado su propio ±.",
+    ref_load: "Usar como timing de trabajo",
+    ref_load_confirm: "¿Reemplazar los {n} timing points de trabajo por las {m} líneas rojas de {file}? Deshacer los recupera.",
+    ref_loaded: "Cargadas {n} líneas rojas de {file}.",
+    ref_found: "{n} mapa(s) usan este audio en {root}.",
+    ref_found_none: "Ningún mapa en {root} usa exactamente este audio ({s} archivos de audio revisados).",
+    ref_grade: "Calificar",
+    no_songs: "Elegí tu carpeta Songs de osu!.",
     import_folder: "Importar carpeta…",
     imported: "Carpeta: {audio} + {n} {difficulties}.",
     difficulties: "dificultades",
@@ -301,7 +347,7 @@ const I18N = {
   },
 };
 
-const S = { lang: "en", view: "library", mapset: null, file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, snap: null, recent: [] };
+const S = { lang: "en", view: "library", mapset: null, file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, snap: null, ref: null, refFind: null, recent: [] };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
@@ -460,7 +506,7 @@ function setBusy(busy, message) {
 
 function syncActions() {
   const on = !!S.result && !S.busy;
-  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn", "cmpPick", "alignPick", "denPick"].forEach((id) => { $(id).disabled = !on; });
+  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn", "cmpPick", "alignPick", "denPick", "snapPick", "refPick", "refFind"].forEach((id) => { $(id).disabled = !on; });
   if (!on) {
     $("undoBtn").disabled = true;
     $("redoBtn").disabled = true;
@@ -597,6 +643,9 @@ function showResult(result) {
   S.align = null;
   S.density = null;
   S.snap = null;
+  // A grade depends on the map and the song's attacks, not on the point list:
+  // it stays through edits and goes with the song.
+  if (!sameSong) { S.ref = null; S.refFind = null; }
   if (!sameSong) S.comparePath = null;  // a map belongs to one song
   setView(S.view);  // lifts the "analyze first" panel off the current view
   syncActions();
@@ -641,6 +690,7 @@ function renderResult(r) {
   renderAlign();
   renderDensity();
   renderSnap();
+  renderRef();
 }
 
 function renderDetail() {
@@ -1155,6 +1205,143 @@ function renderSnap() {
     <div class="card-sub" style="margin-top:10px">${t("snap_starts")}</div>`;
 }
 
+// ------------------------------------------------------------------ reference timing
+// Any map of this song, graded line by line against the attacks. Read only
+// until "Use as working timing", which is one undo step.
+const REF_STR = { ref_shift: "ref_shift_f", ref_split: "ref_split_f", ref_before: "ref_before_f" };
+
+async function refPick() {
+  if (!api() || !S.result || S.busy) return;
+  const target = await api().pick_osu(S.lastFolder || "");
+  if (target) refGrade(target);
+}
+
+async function refGrade(target) {
+  if (!api() || !S.result || S.busy) return;
+  const reply = await api().reference_grade(target);
+  if (!reply.ok) { editFailure(reply); return; }
+  S.ref = { path: reply.path, file: reply.file, report: reply.report, same: reply.same_audio };
+  renderRef();
+}
+
+async function refFind() {
+  if (!api() || !S.result || S.busy) return;
+  let reply = await api().reference_find("");
+  if (!reply.ok && reply.key === "no_songs") {
+    toast(t("no_songs"));
+    const folder = await api().pick_folder();
+    if (!folder) return;
+    reply = await api().reference_find(folder);
+  }
+  if (!reply.ok) { editFailure(reply); return; }
+  S.refFind = reply.report;
+  renderRef();
+}
+
+async function refLoad() {
+  if (!api() || !S.result || S.busy || !S.ref || !S.ref.report.ok) return;
+  if (!confirm(t("ref_load_confirm", { n: S.result.points.length, m: S.ref.report.lines.length,
+                                       file: S.ref.file }))) return;
+  const reply = await api().reference_load(S.ref.path);
+  if (!reply.ok) { editFailure(reply); return; }
+  S.locks = reply.locks || [];
+  showEditResult(reply, t("ref_loaded", { n: reply.loaded, file: S.ref.file }));
+}
+
+// "12.3 ±1.4": the error and two of its standard errors, or just the error
+// when there was no spread to measure.
+function withSe(value, se) {
+  const v = `${value >= 0 ? "+" : ""}${value.toFixed(1)}`;
+  return se === null || se === undefined ? v : `${v} <span class="muted">±${(2 * se).toFixed(1)}</span>`;
+}
+
+function renderRefFind() {
+  const found = S.refFind;
+  if (!found) return "";
+  const maps = found.matches.flatMap((m) => m.beatmaps.map((b) => ({ ...b, folder: m.folder })));
+  const root = esc(found.root);
+  if (!maps.length) return `<div class="card-sub">${t("ref_found_none", { root, s: found.scanned })}</div>`;
+  return `<div class="card-sub">${t("ref_found", { n: maps.length, root })}</div>
+    <div class="stack" style="gap:6px;margin:8px 0 12px">${maps.map((b, i) => `
+      <div class="recent-item" style="cursor:default">
+        <span class="name">${esc(b.difficulty)} <span class="muted">· ${esc(b.folder.split(/[\\/]/).pop())}</span></span>
+        <button class="btn small" data-ref-grade="${i}">${t("ref_grade")}</button>
+      </div>`).join("")}</div>`;
+}
+
+function renderRef() {
+  const body = $("refBody"), ref = S.ref, pill = $("refCount");
+  const found = renderRefFind();
+  if (!ref) {
+    pill.hidden = true;
+    $("refFile").textContent = "";
+    body.innerHTML = `${found}<div class="card-sub">${t("ref_empty")}</div>`;
+  } else {
+    const { report, file } = ref;
+    $("refFile").textContent = file;
+    if (!report.ok) {
+      pill.hidden = true;
+      body.innerHTML = `${found}<div class="card-sub">${t(report.reason === "no_attacks" ? "ref_no_attacks" : "ref_no_reds")}</div>`;
+    } else {
+      const c = report.counts;
+      pill.hidden = false;
+      pill.textContent = t("ref_counts", { ok: c.ok, check: c.check, weak: c.weak, few: c.too_few });
+      const audio = ref.same === true ? ["info", "ref_same"] : ref.same === false ? ["", "ref_other"] : ["info", "ref_unknown"];
+      const notes = [...report.findings.map((f) => [f.level === "info" ? "info" : "", t(REF_STR[f.key] || "error", f.values)]),
+                     [audio[0], t(audio[1])]];
+      const banners = notes.map(([level, text]) => `
+        <div class="banner ${level}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          <div>${text}</div>
+        </div>`).join("");
+      const verdict = (l) => {
+        const cls = l.verdict === "ok" ? "accent" : l.verdict === "check" ? "amber" : "";
+        const why = l.issues.map((k) => t(`ref_${k}`)).join(", ");
+        return `<span class="pill ${cls}">${t(`ref_${l.verdict}`)}${why ? ` · ${why}` : ""}</span>`;
+      };
+      const rows = report.lines.map((l) => {
+        const graded = l.verdict === "ok" || l.verdict === "check";
+        const measured = l.share !== undefined;
+        return `<tr>
+          <td><span class="idx">${l.index + 1}</span></td>
+          <td class="num">${l.offset_ms.toFixed(0)}</td>
+          <td class="num">${l.bpm.toFixed(3)}</td>
+          <td class="num">${measured ? `1/${l.divisor}` : "—"}</td>
+          <td class="num">${measured ? `${Math.round(l.share * 100)}%` : `${l.attacks}`}</td>
+          <td class="num ${l.issues.includes("offset") ? "neg" : ""}">${graded ? withSe(l.relative_ms, l.offset_se_ms) : "—"}</td>
+          <td class="num ${l.issues.includes("drift") ? "neg" : ""}">${graded ? withSe(l.drift_ms, l.drift_se_ms) : "—"}</td>
+          <td class="num">${graded ? l.fitted_bpm.toFixed(3) : "—"}</td>
+          <td>${verdict(l)}</td>
+        </tr>`;
+      }).join("");
+      body.innerHTML = `
+        ${found}
+        <div class="warnings">${banners}</div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr>
+              <th>${t("ref_t_line")}</th><th>${t("ref_t_offset")}</th><th>${t("ref_t_bpm")}</th>
+              <th>${t("ref_t_div")}</th><th>${t("ref_t_share")}</th><th>${t("ref_t_off")}</th>
+              <th>${t("ref_t_drift")}</th><th>${t("ref_t_fit")}</th><th>${t("ref_t_verdict")}</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div class="card-head" style="padding-left:0">
+          <span class="card-sub">${t("ref_hint")}</span>
+          <div class="spacer"></div>
+          <button class="btn small" id="refLoad"><span>${t("ref_load")}</span></button>
+        </div>`;
+      $("refLoad").onclick = refLoad;
+      $("refLoad").disabled = S.busy;
+    }
+  }
+  body.querySelectorAll("[data-ref-grade]").forEach((btn) => {
+    const maps = S.refFind.matches.flatMap((m) => m.beatmaps);
+    btn.onclick = () => refGrade(maps[+btn.dataset.refGrade].path);
+  });
+}
+
 // ------------------------------------------------------------------ mapset
 // Read only and independent of the analysis: one folder, every difficulty.
 const esc = (value) => String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -1516,6 +1703,8 @@ function wire() {
   $("alignPick").onclick = alignOsu;
   $("denPick").onclick = densityOsu;
   $("snapPick").onclick = snapOsu;
+  $("refPick").onclick = refPick;
+  $("refFind").onclick = refFind;
   $("msPick").onclick = pickMapset;
   $("msRecheck").onclick = () => { if (S.mapset) runMapset(S.mapset.path, false); };
   $("undoBtn").onclick = undo;

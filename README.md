@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-232%20Python%20%C2%B7%20193%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-236%20Python%20%C2%B7%20193%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -274,7 +274,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 232 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 236 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 24/24 stage by stage
@@ -314,7 +314,7 @@ analysis — a like-for-like full-pipeline timing is still [on the backlog](docs
 - **Swing and shuffle**: BPM and offset are exact, but the grid residual is large — that
   number is telling the truth about the music.
 - **Offsets export as whole milliseconds** (the `.osu` format); the fit is sub-millisecond.
-- **78 audit findings are still open**, none high (all six high ones were fixed on
+- **72 audit findings are still open**, none high (all six high ones were fixed on
   2026-09-23) — [`docs/13-audit-backlog.md`](docs/13-audit-backlog.md).
 - **Always check the first beat and every transition in the osu! editor.**
 

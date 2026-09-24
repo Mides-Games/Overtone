@@ -16,6 +16,46 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-23 · The classic window's config, clipboard, CSV and .osz
+
+Four medium findings from the classic window and the file writers (five backlog rows —
+two described the same config crash), each reproduced first and each with a test that
+fails on the old code. No engine code changed; the benchmark and golden vectors are
+untouched.
+
+### Fixed
+
+- **A badly typed `~/.overtone.json` crashed the classic window at every launch** (#45).
+  `load_config` checked only that the file held a dict. Each known key now has a type; a
+  wrong one is dropped so the reader's default applies, `recent` keeps its strings, a
+  bool is never taken for a number, unknown keys pass through.
+- **Ctrl+C in a text field replaced the clipboard with the timing block** (#46). The
+  shortcut, bound on the window, ran after the field's own copy. It now skips text
+  fields; the web shell already did.
+- **CSV export failed silently** (#47) on a locked file: the error went to stderr. It
+  now reports in the status bar and does not count hand edits as exported.
+- **`.osz` audio lost its extension** (#48) on names over 80 characters or with "...".
+  Stem and extension are sanitised apart, and trimmed again after the cut.
+- Re-probed: **×2 / ÷2 discarding hand edits** was already fixed by #20.
+
+### Measured
+
+```
+config {"cfg_version": "2", "prefer_map_bpm": "on"}   TypeError at launch -> opens, defaults
+Ctrl+C in the offset / BPM fields                     copy_osu 2 calls -> 0 (table: still 1)
+CSV to an unwritable path                             FileNotFoundError -> "Error: ..." status
+.osz audio "…Club Mix).wav" / "Title....wav"          "…(Extended Club " / "Title_wav" -> ".wav" kept
+gates: 236/236 Python; benchmark 24/24, 0.0000 BPM / 0.16 ms; bpm-snapshot and golden
+unchanged; coverage, measures, signatures green
+```
+
+### Not measured
+
+- On a real display with a real clipboard: the Ctrl+C test mocks `copy_osu` and selects
+  nothing, so it never writes to the clipboard of the machine running it.
+
+---
+
 ## v4.0.0-dev — 2026-09-23 · Long mixes, the fallback's pulse factor, scattered clicks
 
 Three more medium findings, each reproduced before its fix and each with a test that

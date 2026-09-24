@@ -4,8 +4,9 @@ Findings from the 2026-09-22 audit that its own verifiers confirmed (three votes
 high severity, one for medium and low). The five leads the roadmap listed as "to verify"
 were re-probed and fixed on 2026-09-23 (PRs #22–#26); the four bugs reproduced before that
 were fixed in PRs #17–#20; the six high findings below were fixed the same day (PRs
-#29–#34); eight medium ones since (PRs #36–#38, #40–#43). **Open: 78 — none high,
-38 medium (four of them found while fixing others), 40 low.** Nothing still open has been re-probed yet: each gets a probe before its
+#29–#34); fourteen medium ones since (PRs #36–#38, #40–#43, #45–#48, and one #20 had
+fixed already). **Open: 72 — none high, 32 medium (four of them found while fixing
+others), 40 low.** Nothing still open has been re-probed yet: each gets a probe before its
 fix, and some may turn out to be fixed already (the ×2 / ÷2 edit guard, for one, landed in
 PR #20).
 
@@ -37,20 +38,19 @@ landed with a test that fails on the old code.
 | `_grow_sections` stops after 64 passes on a long mix | 15-minute grid: coverage ended at 576.5 s -> reaches the last attack | #41 |
 | The fallback tracker ignored ÷2 / ÷4 and read x1 as "force" (two findings) | kit read at 199.5: ÷2 ignored -> 99.8 BPM, on the first kick | #42 |
 | The fallback tracker answered scattered clicks | 12/240 random renders -> 1/240; 0 of 55 real songs refused | #43 |
+| A wrongly typed value in `~/.overtone.json` crashed the classic window at every launch (two findings) | `"cfg_version": "2"` raised TypeError -> opens with defaults | #45 |
+| Ctrl+C in a text field replaced the clipboard with the timing block | copy_osu from the offset and BPM fields: 2 calls -> 0 | #46 |
+| CSV export failed silently on a locked file | FileNotFoundError out of the callback -> "Error: ..." in the status bar | #47 |
+| `.osz` audio lost its extension on long names or "..." | "(Extended Club " / "Title_wav" -> ".wav" kept, matches AudioFilename | #48 |
+| ×2 / ÷2 silently discarded hand edits | already fixed by #20 (asks first); re-probed 2026-09-23, covered by `ClassicWindowEditGuardTests` | #20 |
 
-## Medium (38)
+## Medium (32)
 
 | Area | Where | Finding | What goes wrong |
 |---|---|---|---|
 | py-engine + rust-tempo | `_points_from_sections` (new, 2026-09-23) | With no bar claimed, the first red line follows the first attack, even noise before the music | Found while fixing #40: `very-noisy-132` has noise from 0 s, an attack at 27 ms, and music from 420 ms; its first red line lands on the grid beat before the music (-34.65 ms). On the grid, but one beat from the 1. |
 | py-engine | `_legacy_analysis` (new, 2026-09-23) | x2 on the fallback tracker gives an unrelated BPM when nothing sounds between its beats | Found while fixing #42: a bare 120 BPM click at x2 reads 186 BPM, a 100 BPM kit read at 199.5 reads 519. The inserted midpoints are snapped to the nearest transient, which is the next beat. |
 | py-engine | `timing_analyzer.py:1540` | meter_segments keeps or drops a one-window run depending on float rounding | A time-signature region exactly one window (4 bars) long, such as a 4-bar 3/4 interlude in a 4/4 song, is reported or silently merged into its neighbour depending on where the song starts and the bar length. The resulti… |
-| py-gui | `timing_analyzer.py:2825` | A wrongly typed value in ~/.overtone.json crashes the GUI on every launch | The user hand-edits the config to `"cfg_version": "2"` or `"prefer_map_bpm": "on"`. `TimingAnalyzerApp()` raises in `__init__` before the window appears, and every later launch fails the same way until the user finds an… |
-| py-gui | `timing_analyzer.py:3227` | Window-wide <Control-c> binding overwrites the clipboard when the user copies from any entry | After an analysis, the user selects the offset `12345.6` in the editor's ms field (or the audio path in the Source entry) and presses Ctrl+C to paste it into the osu! editor. The clipboard ends up holding the whole `//… |
-| py-gui | `timing_analyzer.py:3389` | ×2 / ÷2 silently discards every manual Apply/Add/Delete/Nudge edit | A mapper analyses a song, fixes §3 by hand (Apply 175 BPM), adds a red line at a transition and deletes a spurious §5. They then notice the global octave is half and press ×2. All three edits vanish, the table shows the… |
-| py-gui | `timing_analyzer.py:3614` | Export CSV has no error handling; a locked or unwritable target fails silently | On Windows the user re-exports timing.csv while it is open in Excel, which locks it. `open(..., 'w')` raises PermissionError. The exception escapes the Tk callback and goes to report_callback_exception, which prints to… |
-| py-io | `timing_analyzer.py:2504` | .osz audio entry loses its file extension (and can end in a space) when the name is long or has '...' before the suffix | Exporting a song whose filename is over 80 characters, or whose title ends in '...', produces an .osz whose audio has no .mp3/.ogg extension. Windows strips the trailing space on extraction and osu!'s parser trims the A… |
-| py-io | `timing_analyzer.py:2825` | A hand-edited config with a wrong-typed value still crashes the GUI at startup | The user edits ~/.overtone.json and quotes the version ("cfg_version": "2") or writes a non-Tcl boolean. TimingAnalyzerApp.__init__ then raises before the window opens, on every launch, until the file is deleted by hand… |
 | rust-core-audio-bench | `Cargo.toml:15` | v4 cannot open AIFF or Opus, both of which v3 opens and its file dialog advertises | A user loads song.aiff or song.opus, which v3 analyses directly. v4 fails in `probe` (AIFF: unsupported format) or in `make_audio_decoder` (Opus: unsupported codec) and returns Error::Decode. That is a parity regression… |
 | rust-core-audio-bench | `lib.rs:104` | In-loop TooLong guard assumes 44.1 kHz stereo and refuses valid files well under an hour | A 30-minute 96 kHz stereo FLAC passes the metadata check at line 72 (1800 s < 3600 s). The loop then aborts at 27.6 minutes of decoded audio with 'audio is longer than 60 minutes; trim it first'. Computed trip points: 4… |
 | rust-core-audio-bench | `lib.rs:167` | No tests cover the load contract (minimum 2 s, 1-hour cap, NaN/Inf scrub, 0.99 peak normalisation) | The rate- and channel-blind cap in `decode` (line 104) shipped because nothing tests TooLong. A reorder that normalised before the scrub, or a change to the 2 s threshold, would also pass `cargo test`. The golden gate w… |

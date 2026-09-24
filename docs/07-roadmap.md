@@ -28,22 +28,22 @@ plugged into the app.**
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **232** Python (163 engine + 69 web shell) · **193** Rust.
+Tests: **236** Python (167 engine + 69 web shell) · **193** Rust.
 
 ### What is pending, in order
 
 1. **Audit backlog, medium findings** ([`13-audit-backlog.md`](13-audit-backlog.md)) — the six
-   high ones are fixed, and so are eight medium ones (#36–#38, #40–#43): backups, the
-   Rust decoder, memory, the weak downbeat, long mixes, the fallback's pulse factor and
-   scattered clicks. **Next**, in this order, each re-probed before its fix (some may be
-   fixed already — the ×2 / ÷2 edit guard landed in #20):
-   1. The GUI and I/O findings: a wrongly typed `~/.overtone.json` crashes the classic
-      window at launch; Ctrl+C anywhere overwrites the clipboard; CSV export fails
-      silently on a locked file; `.osz` audio entries lose their extension.
-   2. Two found on 2026-09-23: x2 on the fallback tracker with nothing between its
+   high ones are fixed, and so are fourteen medium ones: backups, the Rust decoder,
+   memory, the weak downbeat, long mixes, the fallback's pulse factor and scattered
+   clicks (#36–#38, #40–#43), and the config crash, Ctrl+C, CSV errors and `.osz` names
+   (#45–#48). **Next**, each re-probed before its fix:
+   1. Two found on 2026-09-23: x2 on the fallback tracker with nothing between its
       beats reads an unrelated BPM; with no bar claimed, the first red line follows noise
       before the music.
-   3. The rest of the medium findings, then the 40 low.
+   2. The rest of the 32 medium findings — Rust audio (AIFF/Opus, the hour cap at other
+      rates, the load contract's tests, resampler speed), bench honesty (what "analyse"
+      times, modes that pass on missing audio), `meter_segments` rounding, stale docs —
+      then the 40 low.
 2. **Playback in the app** (Phase 4) — hear the song with the click, scrub, loop.
 3. **Plug the Rust engine into the app** (Phase 22) — the ~9x speed-up reaches the user.
 4. **Timeline** (Phase 3) — waveform, zoom, drag red lines.
@@ -92,10 +92,11 @@ fails on the old code; Python and Rust were fixed together where both apply.
 
 Since then: `.bak` atomicity (#36), dropped packets in the Rust decoder (#37), the
 engine's memory — one 5-minute song peaked at 3.7 GB, 0.55 GB now (#38) — the weak
-downbeat (#40), long mixes (#41), the fallback's pulse factor (#42) and scattered clicks
-in the fallback (#43).
+downbeat (#40), long mixes (#41), the fallback's pulse factor (#42), scattered clicks
+in the fallback (#43), the config crash (#45), Ctrl+C in fields (#46), CSV errors (#47)
+and `.osz` audio names (#48).
 
-Still open — 78 findings nobody has re-probed yet (none high, 38 medium, 40 low) — in
+Still open — 72 findings nobody has re-probed yet (none high, 32 medium, 40 low) — in
 [`13-audit-backlog.md`](13-audit-backlog.md).
 
 ---

@@ -16,6 +16,89 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · Assisted timing: two marked downbeats, the grid from the attacks
+
+The precision plan's escape valve, which had no row until the sidebar modes. The marks are
+typed in ms for now; tapping them waits for playback (Phase 4).
+
+### Changed
+
+- **Assisted timing** (Timing card). Where the detector refuses, or reads the wrong octave
+  or bar, the user supplies what it cannot know: where a bar starts and how many bars lie
+  between two marks. That fixes the beat and the downbeat, and the attacks do the rest:
+  - each mark snaps to the strongest attack near it;
+  - the seed is fitted as a reference line is;
+  - it grows both ways as the engine grows a section. It crosses a stretch with no grid
+    when the same grid comes back, and stops at one that holds a grid of its own.
+
+  The card answers with the BPM, the red line, the span it holds and in how many bars, and
+  how far the marks moved. A grid under 16 bars carries a warning that its BPM can be tenths
+  off. It refuses marks out of order, a tempo outside 40-400 BPM, too few attacks, a weak
+  grid, or one chance explains, and says which. "Add to timing" replaces the detected lines
+  inside the span, except in its last 8 beats, where a line is most likely the change. It is
+  one undo step and keeps locked points.
+
+### Fixed
+
+Each was a measured failure of a first version, fixed before it landed:
+
+- **Unsnapped marks at 300 BPM.** One bar is 0.8 s there, and marks 15 ms late and 20 ms
+  early made the seed 4.6 % fast. The index slipped and a clean track was refused.
+- **A swung song never grew past its marks.** Read at the beat, it puts only 0.54-0.57 of
+  its weight on the grid, under the engine's 0.55 growth bar. Growth now asks for 0.8 of
+  the seed's own share, between the 0.40 share gate and 0.55.
+- **Stopping at the first loose chunk** covered a median 31 % of a ranked map's line.
+- **Skipping loose chunks without looking** ran secs-3's first 145 BPM line across its
+  152 BPM section. The engine's seed search now tells a gap from a change.
+- **The span's edge** ran up to 1.2 s past a 150 -> 120 BPM change. It is now settled on the
+  attacks of the last two steps.
+- **Adding the line** dropped secs-3's next red line, 0.4 s inside the span's end.
+
+### Hardening
+
+- **`gates.py assisted`**: every section of every corpus case is marked the way a person
+  would, a quarter into the section, one and four bars apart, each mark 15-20 ms off.
+  - The grid must come back within the benchmark's bar and cover the section.
+  - It must stop within a beat of where its grid and the neighbour's part: about six beats
+    at 200 -> 203.5 BPM, and never for an octave, which is the same grid (F-11).
+  - Noise, pads and silence must be refused.
+
+### Measured
+
+```
+gates.py assisted                   70/70; worst 0.0038 BPM, 2.26 ms (shuffle-96), coverage
+                                    96.1 % or more; noise, pads, silence refused
+30 random ranked maps, local Songs  marked on each map's longest red line, 15-20 ms off
+  one bar apart                     answered 18/30, median |dBPM| 0.0034, within 0.05 78 %
+  four bars apart                   answered 26/30, median |dBPM| 0.0037, within 0.05 92 %
+  coverage of the map's line        median 92-93 % (31-39 % before gaps were crossed)
+  offset against the map            median +27.6 ms, the shift reference timing measured
+  by bars held                      every fit of <= 11 bars off by 0.25-1.9 BPM, every fit
+                                    of >= 22 bars within 0.043
+Python unittest                     298 -> 308, all pass
+benchmark.py                        24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · coverage · measures · signatures · robustness
+reference 24/24 · facts
+```
+
+The card was exercised in the built-in browser against replies frozen from the real bridge
+on secs-3, marked four bars apart in its 152 BPM section. It put the red line at 24310 ms
+(the true start), held 23.9-46.4 s (14 bars) and called the grid short. Marks 50 ms apart
+were refused as 4800 BPM. Adding the line kept the 145 BPM line after it. Spanish rendered,
+with no console errors.
+
+### Rejected / tried and dropped
+
+- **The least-squares standard error of the BPM, shown as ±.** On the 30 ranked maps it put
+  nearly every fit, good ones included, past two of its own errors. Real attacks are not
+  independent, and a mapper's "190" is not exact to a thousandth either. The bars held
+  predict the error; the ± did not.
+- **The engine's chance bar (10^-6).** It suits a search that tries thousands of grids and
+  keeps the best. Here the user proposes one, so one in a thousand is the same bar. Marks on
+  white noise score 0 to -1, and ranked songs with a short span were refused at -3.0 to -5.7.
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Reference timing, and what 30 ranked maps say about offsets
 
 The next sidebar mode on the roadmap: any map of the song, graded line by line against the

@@ -25,7 +25,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (298 on 2026-09-24)
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (308 on 2026-09-24)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -34,6 +34,7 @@ Repository conventions for any AI agent or contributor working here.
 .venv/Scripts/python.exe bench/gates.py signatures             # signature regions, one bar
 .venv/Scripts/python.exe bench/gates.py robustness             # edge cases end cleanly
 .venv/Scripts/python.exe bench/gates.py reference              # maps graded as timed
+.venv/Scripts/python.exe bench/gates.py assisted               # marked downbeats fit
 .venv/Scripts/python.exe bench/facts.py                        # stated counts match the source
 ```
 

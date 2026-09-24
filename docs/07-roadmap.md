@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **298** Python (212 engine + 86 web shell) · **231** Rust.
+Tests: **308** Python (218 engine + 90 web shell) · **231** Rust.
 
 ### What is pending, in order
 
@@ -36,7 +36,8 @@ The audit backlog is closed: every finding fixed, recorded as already fixed, or 
 ([`13-audit-backlog.md`](13-audit-backlog.md)). The Rust engine is in the app, opt-in.
 
 1. **The next sidebar modes** ([Phase 19](#phase-19--app-sections)) — sections, Mapset, Snap
-   audit and Reference timing are in; next Assisted timing and the Mod report.
+   audit, Reference timing and Assisted timing (marks typed in ms) are in; next the Mod
+   report, and tap tempo once playback exists.
 2. **Playback in the app** (Phase 4) — hear the song with the click, scrub, loop.
 3. **Timeline** (Phase 3) — waveform, zoom, drag red lines.
 4. **Settings** (Phase 20) — every option in one place.
@@ -413,7 +414,7 @@ they do not ship; WiX is MS-RL with a maintenance-fee EULA; Tempora is CC BY-NC-
 code is never copied — only its ideas are reimplemented.
 
 **Escape valve.** Some tracks will stay unresolvable (real rubato, aesthetic timing
-choices). For those, an assisted mode — the user taps two downbeats — rebuilds the rest.
+choices). For those, an assisted mode — the user marks two downbeats — rebuilds the rest. 2026-09-24 as Assisted timing (Phase 19), with the marks typed in ms until playback them be tapped.
 
 ---
 
@@ -467,7 +468,7 @@ number and confidence. Every write goes through the atomic writer and keeps a ba
 | Mapset check | every difficulty of a folder side by side: red lines, AudioFilename, PreviewTime, lead-in, metadata, kiai spans, density; differences listed, never auto-fixed | low | **high** | P5 reader, folder import | no | no | **P1** | **done** — `mapset_report`, own section |
 | Snap audit | objects off the map's own grid (divisor, ms off), objects before the first red line or past the audio, and how many would go unsnapped if the detected timing were injected | low | **high** | P5 reader | no | no | **P1** | **done** — `snap_audit`, a Map check card |
 | Reference timing | grade each red line of any `.osu` against the attacks (share, residual, drift at span end), load it as the working timing, find same-audio maps by content hash | med | **high** | P5 reader, attacks | no | no | **P1** | **done** — `grade_reference_timing`, a Map check card; offsets judged against the map's own shift, each error with its standard error; attacks detected when the fallback kept none; `gates.py reference` 24/24 |
-| Assisted timing | tap tempo in the app; tap or mark two downbeats and the grid fit starts from there, with residual and share, or refuses. The precision plan's escape valve, which had no row | med | **high** | IRLS fit, P4 transport | no | no | **P1** | todo |
+| Assisted timing | tap tempo in the app; tap or mark two downbeats and the grid fit starts from there, with residual and share, or refuses. The precision plan's escape valve, which had no row | med | **high** | IRLS fit, P4 transport | no | no | **P1** | **done** without tapping — `assisted_grid`, a Timing card: two downbeats typed in ms, marks snapped to attacks, growth across gaps and not across changes, refusals with the reason; `gates.py assisted` 70/70; on 30 ranked maps median 0.004 BPM off the map. Tap tempo waits for playback (P4) |
 | Structure view | phrase boundaries snapped to the nearest proven downbeat, labelled with the evidence for each label, over the energy lane; home for the kiai, preview, bookmark and break proposals | med | **high** | P2 structure + classify, P22 | no | no | **P1** | todo |
 | Mod report | every finding as osu! editor timestamps (`mm:ss:mmm (combo) - ...`) with its number and confidence, copyable as text; each opens the local osu! editor | low | high | P7 findings | no | no | P2 | todo |
 | Write history and restore | a log of every `.osu` write and its backup; see the timing diff against the backup and restore atomically, keeping the current file as a new backup | low | med | writer | no | no | P2 | todo |
@@ -578,6 +579,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | `.gitattributes` | `.osu` fixtures keep their CRLF | trivial | low | — | no | no | P3 | **done** |
 | Layout-fit check | no control clipped at the minimum window size | low | med | GUI | no | no | P2 | **done** — classic toolbar |
 | Reference gate | a hand-timed map graded as timed: the true map clean, a late map one shift, a moved line flagged alone, a BPM 0.1 % off drifting | low | high | reference timing | no | no | P1 | **done** — `gates.py reference` 24/24 |
+| Assisted gate | every corpus section marked like a person would, one and four bars apart: the grid within the benchmark's bar, covering the section, stopping where the next grid parts; noise, pads and silence refused | low | high | assisted timing | no | no | P1 | **done** — `gates.py assisted` 70/70 |
 
 Sources: the 2026-09-22 review passes (128 proposals, each checked against the
 code by a skeptical judge; the ones already built or only relevant to the old
@@ -610,7 +612,7 @@ P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─�
                            ├─► P4 playback ✗ / editor ✓
                            └─► P5 osu! ✓ ─────────────► P8 automation (half) ─► P9 (suggestions ✓)
 
-Next: sidebar modes (assisted timing, mod report) ─► playback ─► timeline ─► settings
+Next: sidebar modes (mod report) ─► playback ─► timeline ─► settings
       ─► map tools ─► hitsounds ─► Phase 10 ─► installer
 ```
 

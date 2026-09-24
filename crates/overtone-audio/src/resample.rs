@@ -47,19 +47,100 @@ fn sinc(x: f64) -> f64 {
     }
 }
 
+const HALF_TAPS: isize = 32; // 65 taps, centre included
+const TAPS: usize = (2 * HALF_TAPS + 1) as usize;
+const BETA: f64 = 9.0; // ~ -80 dB sidelobes
+/// Largest filter bank built, in phases: 16384 x 65 f64 is 8.5 MB. A rate
+/// pair whose reduced ratio needs more (near-coprime rates such as 44101)
+/// is computed directly instead.
+const MAX_PHASES: usize = 1 << 14;
+
+fn gcd(mut a: u32, mut b: u32) -> u32 {
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    a
+}
+
 /// Resample `y` from `from_sr` to `to_sr`. Returns `y` unchanged when the
 /// rates already match, which is the common case and must cost nothing.
+///
+/// Output sample `n` sits at input position `n * from / to`. With the ratio
+/// reduced to `down / up`, its fractional part takes only `up` values (147
+/// for 48 -> 44.1 kHz), so the kernel is built once per phase and each
+/// output is 65 multiply-adds. Evaluating it per sample cost 65 `sin()`
+/// calls, about 12 s for six minutes of audio at any common rate.
 pub fn resample(y: &[f32], from_sr: u32, to_sr: u32) -> Vec<f32> {
     if from_sr == to_sr || y.is_empty() {
         return y.to_vec();
     }
-    const HALF_TAPS: isize = 32; // 64-tap kernel
-    const BETA: f64 = 9.0; // ~ -80 dB sidelobes
+    let g = gcd(from_sr, to_sr);
+    let (up, down) = ((to_sr / g) as usize, (from_sr / g) as usize);
+    if up > MAX_PHASES {
+        return resample_direct(y, from_sr, to_sr);
+    }
+    let ratio = to_sr as f64 / from_sr as f64;
+    let cutoff = 0.95 * ratio.min(1.0);
+    let window = kaiser(TAPS, BETA);
+    // bank[p * TAPS + k]: tap k - HALF_TAPS at fractional offset p / up.
+    let mut bank = vec![0.0f64; up * TAPS];
+    let mut sums = vec![0.0f64; up];
+    for (p, (row, sum)) in bank.chunks_exact_mut(TAPS).zip(sums.iter_mut()).enumerate() {
+        let frac = p as f64 / up as f64;
+        for (k, w) in row.iter_mut().enumerate() {
+            let distance = frac - (k as isize - HALF_TAPS) as f64;
+            *w = window[k] * cutoff * sinc(cutoff * distance);
+        }
+        *sum = row.iter().sum();
+    }
 
+    let len = y.len();
+    let half = HALF_TAPS as usize;
+    let out_len = ((len as f64) * ratio).round() as usize;
+    let mut out = Vec::with_capacity(out_len);
+    for n in 0..out_len {
+        let position = n * down;
+        let (base, phase) = (position / up, position % up);
+        let row = &bank[phase * TAPS..(phase + 1) * TAPS];
+        let (acc, norm) = if base >= half && base + half < len {
+            let acc: f64 = row
+                .iter()
+                .zip(&y[base - half..=base + half])
+                .map(|(&w, &v)| w * v as f64)
+                .sum();
+            (acc, sums[phase])
+        } else {
+            // Near the ends some taps fall outside the signal: normalise by
+            // the realised kernel sum, as the direct path does.
+            let (mut acc, mut norm) = (0.0f64, 0.0f64);
+            for (k, &w) in row.iter().enumerate() {
+                let Some(index) = (base + k).checked_sub(half) else {
+                    continue;
+                };
+                if let Some(&v) = y.get(index) {
+                    acc += w * v as f64;
+                    norm += w;
+                }
+            }
+            (acc, norm)
+        };
+        out.push(if norm.abs() > 1e-12 {
+            (acc / norm) as f32
+        } else {
+            0.0
+        });
+    }
+    out
+}
+
+/// The kernel evaluated afresh for every output sample: exact for any rate
+/// pair, and 65 `sin()` calls a sample. The fallback for ratios too fine to
+/// tabulate, and the reference the filter bank is tested against.
+fn resample_direct(y: &[f32], from_sr: u32, to_sr: u32) -> Vec<f32> {
     let ratio = to_sr as f64 / from_sr as f64;
     // Anti-alias cutoff: below Nyquist of whichever rate is lower.
     let cutoff = 0.95 * ratio.min(1.0);
-    let window = kaiser((2 * HALF_TAPS + 1) as usize, BETA);
+    let window = kaiser(TAPS, BETA);
 
     let out_len = ((y.len() as f64) * ratio).round() as usize;
     let mut out = Vec::with_capacity(out_len);
@@ -140,6 +221,31 @@ mod tests {
         let out = resample(&y, 22_050, 44_100);
         let peak = out.iter().fold(0.0f32, |m, &v| m.max(v.abs()));
         assert!((0.9..1.1).contains(&peak), "peak {peak}");
+    }
+
+    #[test]
+    fn the_filter_bank_matches_the_kernel_evaluated_per_sample() {
+        // Common rates, a near-coprime one that still tabulates (44056:
+        // 11025 phases), and short inputs where every sample is an edge.
+        let y: Vec<f32> = (0..30_011)
+            .map(|i| ((i as f64 * 0.113).sin() * 0.6 + (i as f64 * 0.0021).cos() * 0.3) as f32)
+            .collect();
+        for from in [48_000u32, 96_000, 32_000, 22_050, 44_056, 8_000] {
+            for input in [&y[..], &y[..40]] {
+                let bank = resample(input, from, 44_100);
+                let direct = resample_direct(input, from, 44_100);
+                assert_eq!(bank.len(), direct.len(), "{from}");
+                let worst = bank
+                    .iter()
+                    .zip(&direct)
+                    .map(|(a, b)| (a - b).abs())
+                    .fold(0.0f32, f32::max);
+                assert!(worst < 1e-6, "{from} Hz, {} in: {worst:e}", input.len());
+            }
+        }
+        // Too fine to tabulate: 44101 / 44100 needs 44100 phases.
+        let fine = resample(&y[..2_000], 44_101, 44_100);
+        assert_eq!(fine, resample_direct(&y[..2_000], 44_101, 44_100));
     }
 
     #[test]

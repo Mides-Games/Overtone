@@ -6,7 +6,8 @@ Test counts, the crate list and the golden fixture count are written into
 CLAUDE.md, AGENTS.md, README.md and the roadmap by hand, and drift the moment
 a test lands: the audit found CLAUDE.md still saying 75 Rust tests long after
 that stopped being true. This reads the numbers from the source instead and names every
-document that disagrees. It runs no analysis and imports nothing heavy.
+document that disagrees. It also holds the library index's two sides together:
+the schema version library.sql states and the one overtone_library.py reads. It runs no analysis and imports nothing heavy.
 
 Counts are static: a Rust test is a `#[test]` attribute, a Python test a
 `def test_` method. Both suites have neither parametrised nor inherited tests,
@@ -45,6 +46,16 @@ def workspace_members() -> list[str]:
 
 def golden_vectors() -> int:
     return len(list((ROOT / "bench" / "golden").glob("*.json")))
+
+
+def library_schema() -> tuple[int | None, int | None]:
+    """The schema version library.sql states, and the one overtone_library.py
+    reads. Two languages describe one database; this is where they meet."""
+    sql = re.search(r"^--\s*schema-version:\s*(\d+)",
+                    (ROOT / "library.sql").read_text(encoding="utf-8"), re.M)
+    code = re.search(r"^SCHEMA_VERSION = (\d+)",
+                     (ROOT / "overtone_library.py").read_text(encoding="utf-8"), re.M)
+    return (int(sql.group(1)) if sql else None), (int(code.group(1)) if code else None)
 
 
 def main() -> int:
@@ -96,6 +107,12 @@ def main() -> int:
     expect("roadmap", "engine tests", [m[1] for m in line], engine)
     expect("roadmap", "web shell tests", [m[2] for m in line], web)
     expect("roadmap", "Rust tests", [m[3] for m in line], rust)
+
+    sql_version, code_version = library_schema()
+    print(f"library schema: library.sql v{sql_version}, overtone_library.py v{code_version}")
+    if sql_version is None or sql_version != code_version:
+        problems.append(f"library.sql states schema {sql_version}, "
+                        f"overtone_library.py reads {code_version}")
 
     members = workspace_members()
     if members != crates:

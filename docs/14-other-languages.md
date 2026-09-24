@@ -62,6 +62,11 @@ size and time.
 
 **Verdict: build first.** P1.
 
+**Built (2026-09-24).** `overtone_library.py` with `library.sql`. Measured on a 4,797-set
+Songs folder (25,171 maps): a warm full scan in 13-18 s, a rescan in about 1 s, search in
+5-65 ms, and same-audio in 3-5 ms against the walk's 1.0-1.5 s. The first read of the
+folder took 437 s, once, unexplained (`timeline.md`). The library health check is next.
+
 ### 2. TypeScript: the web shell, type-checked against the bridge
 
 **What it adds.** `app/app.js` is 2,588 lines calling a bridge whose replies are plain

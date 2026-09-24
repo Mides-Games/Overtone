@@ -25,7 +25,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (335 on 2026-09-24)
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (342 on 2026-09-24)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -35,7 +35,7 @@ Repository conventions for any AI agent or contributor working here.
 .venv/Scripts/python.exe bench/gates.py robustness             # edge cases end cleanly
 .venv/Scripts/python.exe bench/gates.py reference              # maps graded as timed
 .venv/Scripts/python.exe bench/gates.py assisted               # marked downbeats fit
-.venv/Scripts/python.exe bench/facts.py                        # stated counts match the source
+.venv/Scripts/python.exe bench/facts.py                        # stated counts and schema match the source
 ```
 
 Every gate after the benchmark checks something the benchmark cannot see. `bpm-snapshot` pins the
@@ -108,6 +108,8 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
 overtone.py               v3 engine, osu! I/O, classic Tk GUI + CLI (the app's default)
 overtone_web.py           web shell host: pywebview window + JSON bridge to the engine
 overtone_rust.py          the v4 engine through overtone-cli, as v3's Analysis (opt-in)
+overtone_library.py       the library index: a Songs folder in SQLite, searched (FTS5)
+library.sql               the index's schema, versioned; facts.py checks the version
 app/                      web shell frontend (HTML/CSS/JS, no network)
 Overtone.bat              double-click launcher
 test_overtone.py          engine, I/O and classic-window tests
@@ -118,7 +120,8 @@ bench/benchmark.py        synthetic accuracy harness, exact ground truth
 bench/gates.py            octave snapshot, density-change and measure gates
                           (the things the accuracy benchmark cannot see)
 bench/golden.py           per-stage golden vectors; the harness Rust gets pointed at
-bench/facts.py            the counts and lists the docs state, checked against the source
+bench/facts.py            the counts and lists the docs state, checked against the source,
+                          and library.sql's schema version against the code's
 bench/golden/             27 committed vector files: the 24-case corpus plus the
                           proven-bar and signature fixtures from bench/gates.py
 bench/bpm_snapshot.json   pinned absolute BPM per fixture

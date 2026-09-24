@@ -3578,6 +3578,157 @@ class ReferenceTimingTests(unittest.TestCase):
         self.assertEqual([m["difficulty"] for m in match["beatmaps"]], ["Hard"])
 
 
+class LibraryIndexTests(unittest.TestCase):
+    """Phase 24, SQL: the Songs folder in SQLite, searched and kept in step."""
+
+    def setUp(self) -> None:
+        import overtone_library
+        self.ol = overtone_library
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.tmp = Path(scratch.name)
+        self.songs = self.tmp / "Songs"
+        self.library = overtone_library.Library(self.tmp / "index" / "library.sqlite3")
+
+    def _set(self, folder: str, audio: bytes, diffs, artist="Band", title="Song",
+             unicode_title="Song", tags="drum bass electronic") -> Path:
+        path = self.songs / folder
+        path.mkdir(parents=True)
+        (path / "audio.ogg").write_bytes(audio)
+        for version in diffs:
+            text = _mapset_osu(version, audio="audio.ogg", tags=tags, objects=(1000, 1500, 2000))
+            text = (text.replace("Artist:Band", f"Artist:{artist}")
+                        .replace("Title:Song", f"Title:{title}")
+                        .replace("TitleUnicode:Song", f"TitleUnicode:{unicode_title}"))
+            (path / f"{artist} - {title} (Mapper) [{version}].osu").write_text(
+                text, encoding="utf-8", newline="")
+        return path
+
+    def test_the_schema_file_states_the_version_the_code_reads(self):
+        self.assertEqual(self.ol.schema_file_version(), self.ol.SCHEMA_VERSION)
+        self.assertEqual(sorted(self.ol.MIGRATIONS), list(range(2, self.ol.SCHEMA_VERSION + 1)))
+        with self.assertRaises(ValueError):
+            self.ol.schema_file_version("CREATE TABLE t (x);")
+
+    def test_a_header_reads_like_the_full_parser_without_the_objects(self):
+        from overtone import read_osu_beatmap
+        text = _mapset_osu("Insane", reds=((500, 333.333, 4), (60000, 250.0, 3)),
+                           kiai=((20000, True),), objects=(1000, 1200, 1400, 1600))
+        text = text.replace("[TimingPoints]", "[Events]\r\n//Storyboard\r\n"
+                            "Sprite,Foreground,Centre,\"sb\\x[HitObjects].png\",320,240\r\n"
+                            "\r\n[TimingPoints]")
+        path = self.tmp / "map.osu"
+        path.write_text(text, encoding="utf-8", newline="")
+        header = self.ol.read_osu_header(path)
+        full = read_osu_beatmap(path)
+        self.assertEqual(header["objects"], len(full["hitobjects"]))
+        self.assertEqual(header["red_lines"], len(full["timing"]["reds"]))
+        self.assertAlmostEqual(header["first_bpm"], full["timing"]["reds"][0][1], places=3)
+        self.assertEqual((header["version"], header["audio_file"], header["mode"]),
+                         ("Insane", "song.mp3", 0))
+
+    def test_red_lines_are_counted_as_the_parser_reads_them(self):
+        from overtone import _parse_red_line
+        lines = ["1000,500,4,2,0,60,1,0", "2000,-100,4,2,0,60,0,0", "3000,400",
+                 "4000,-50", "5000,400,4,2,0,60,0,0", "6000,-400,4,2,0,60,1,0",
+                 "7000,nan,4,2,0,60,1,0", "x,400,4,2,0,60,1,0", "8000,0,4,2,0,60,1,0",
+                 "// comment", "", " 9000 , 300 ,4,2,0,60, 1 ,0"]
+        want = [red for line in lines if (red := _parse_red_line(line)) is not None]
+        count, first = self.ol._red_lines(lines)
+        self.assertEqual(count, len(want))
+        self.assertEqual(first, want[0][1])
+
+    def test_a_scan_indexes_every_set_and_search_finds_them(self):
+        self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
+        self._set("2 Néko - Kaze", b"OggS" + bytes(200), ["Insane"], artist="Néko",
+                  title="Kaze", unicode_title="風の歌", tags="vocaloid")
+        (self.songs / "not a set").mkdir()
+        seen = []
+        report = self.library.scan(self.songs, progress=lambda done, total: seen.append(total))
+        json.dumps(report)
+        self.assertEqual((report["sets"], report["beatmaps"], report["audio"]), (2, 3, 2))
+        self.assertEqual((report["added"], report["failed"]), (3, 0))
+        self.assertEqual(seen[-1], report["folders"])
+        found = self.library.search("neko")                  # accents ignored
+        self.assertEqual([s["name"] for s in found["sets"]], ["2 Néko - Kaze"])
+        self.assertEqual(found["sets"][0]["beatmaps"][0]["objects"], 3)
+        self.assertEqual(self.library.search("風の歌")["beatmaps"], 1)
+        self.assertEqual(self.library.search("voc")["beatmaps"], 1)       # a prefix
+        self.assertEqual(self.library.search("band hard")["beatmaps"], 1)  # every word
+        self.assertEqual(self.library.search("")["beatmaps"], 3)
+        for text in ('"', "AND", "-x", "title:", "a OR b", "(*)"):   # never FTS5 syntax
+            with self.subTest(text=text):
+                self.assertIn("sets", self.library.search(text))
+        self.assertTrue(self.library.covers(self.songs))
+        self.assertFalse(self.library.covers(self.tmp))
+
+    def test_a_rescan_reads_only_what_changed_and_forgets_what_is_gone(self):
+        first = self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
+        second = self._set("2 Other - Tune", b"OggS" + bytes(200), ["Normal"],
+                           artist="Other", title="Tune")
+        self.library.scan(self.songs)
+        again = self.library.scan(self.songs)
+        self.assertEqual((again["unchanged"], again["added"], again["updated"]), (3, 0, 0))
+        easy = next(first.glob("*Easy*.osu"))
+        easy.write_text(easy.read_text(encoding="utf-8").replace("Version:Easy", "Version:Cup"),
+                        encoding="utf-8", newline="")
+        stat = easy.stat()
+        import os
+        os.utime(easy, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+        next(first.glob("*Hard*.osu")).unlink()
+        for file in second.iterdir():
+            file.unlink()
+        second.rmdir()
+        report = self.library.scan(self.songs)
+        self.assertEqual((report["updated"], report["removed"], report["unchanged"]), (1, 2, 0))
+        self.assertEqual((report["sets"], report["beatmaps"], report["audio"]), (1, 1, 1))
+        self.assertEqual(self.library.search("cup")["beatmaps"], 1)
+        self.assertEqual(self.library.search("easy")["beatmaps"], 0)   # the old text is gone
+        self.assertEqual(self.library.search("tune")["beatmaps"], 0)
+
+    def test_same_audio_comes_from_the_index_and_keeps_its_hashes(self):
+        from overtone import find_same_audio_maps
+        audio = b"OggS" + bytes(range(100))
+        song = self.tmp / "song.ogg"
+        song.write_bytes(audio)
+        self._set("1 A - B", audio, ["Hard"])
+        self._set("2 C - D", b"OggS" + bytes(reversed(range(100))), ["Easy"])   # same size
+        self._set("3 E - F", b"OggS" + bytes(300), ["Normal"])
+        self.library.scan(self.songs)
+        report = self.library.same_audio_maps(song)
+        walked = find_same_audio_maps(song, self.songs)
+        json.dumps(report)
+        self.assertTrue(report["indexed"])
+        self.assertEqual(report["same_size"], 2)
+        self.assertEqual([(m["audio"], [b["difficulty"] for b in m["beatmaps"]])
+                          for m in report["matches"]],
+                         [(m["audio"], [b["difficulty"] for b in m["beatmaps"]])
+                          for m in walked["matches"]])
+        import sqlite3
+        from contextlib import closing
+        with closing(sqlite3.connect(self.library.path)) as db:
+            hashed = db.execute("SELECT COUNT(*) FROM audio WHERE sha256 IS NOT NULL").fetchone()[0]
+        self.assertEqual(hashed, 2)
+
+    def test_an_index_from_a_newer_schema_or_no_database_is_refused(self):
+        import sqlite3
+        from contextlib import closing
+        self.library.stats()
+        with closing(sqlite3.connect(self.library.path)) as db:
+            db.execute(f"PRAGMA user_version = {self.ol.SCHEMA_VERSION + 1}")
+        with self.assertRaises(ValueError):
+            self.library.stats()
+        self.library.reset()
+        self.assertFalse(self.library.path.exists())
+        self.assertEqual(self.library.stats()["beatmaps"], 0)   # rebuilt empty
+        self.library.reset()
+        self.library.path.write_bytes(b"not a database, just bytes" * 40)
+        with self.assertRaises(ValueError):
+            self.library.stats()
+        with self.assertRaises(ValueError):
+            self.library.scan(self.tmp / "missing")
+
+
 class AssistedTimingTests(unittest.TestCase):
     """Proposal P1: two marked downbeats seed the grid, the attacks do the rest."""
 

@@ -16,6 +16,65 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · The Songs folder, indexed in SQLite
+
+### Changed
+
+- **A second language joins, SQL, for the library index** (Phase 24; the first pick of
+  `docs/14-other-languages.md`). `overtone_library.py` keeps every beatmap of an osu! Songs
+  folder in one SQLite file under `%LOCALAPPDATA%\Overtone`: set, difficulty, artist and
+  title (romanised and Unicode), creator, source, tags, mode, audio file, red line count,
+  first BPM and object count.
+  - The schema is `library.sql`, one file with its version on a comment line. The code
+    refuses a database from a newer schema, and `facts.py` fails when the file and the
+    code disagree.
+  - FTS5 full-text search: every word typed, each as a prefix, accents ignored. What the
+    user types is quoted, never read as FTS5 syntax.
+  - A rescan reads only the `.osu` files whose size or modification time changed, and
+    drops the rows of files that are gone. It commits every 100 folders, so a scan
+    stopped halfway resumes from there.
+  - Same-audio lookup: audio of the same size, hashed once and the hash kept.
+
+### Hardening
+
+- The index is derived data: the Songs folder stays the truth, and deleting the file
+  loses only the next scan's time. A file that is not a database is refused with a
+  message, not a crash.
+- The header reader decodes [General], [Metadata] and [TimingPoints] only. Storyboards in
+  [Events] are skipped, hit objects only counted, and undecodable bytes become U+FFFD
+  instead of hiding the map.
+
+### Measured
+
+On `C:\osu!\Songs`, read only: 4,799 folders, 4,797 sets, 25,171 maps, 705 MB of `.osu`.
+
+```
+header reader vs read_osu_beatmap   25,171 / 25,171 maps agree: artist, title, difficulty,
+                                    tags, audio file, red lines, first BPM, objects
+first scan, first read of the files 437 s, once. Not explained: C: is an SSD and warm reads
+                                    of all 705 MB take 3-4 s; a per-file first-open cost
+                                    (antivirus?) is a guess, not measured
+full scan, warm                     13.3-18.5 s over 5 runs (26.6 s before the rework below)
+rescan, nothing changed             0.83-1.04 s
+search, 7 queries                   4.7-65 ms median; "a", which matches nearly every map, 65 ms
+index file                          25 MB
+Python unittest                     335 -> 342, all pass
+```
+
+### Rejected / tried and dropped
+
+- **`^`-anchored multiline regexes** for section headers and object lines. They give the
+  regex engine no literal to jump to, so it tries every position of 705 MB. Anchored on
+  `\n`, and with `[HitObjects]` found by a plain byte search, the header pass went from
+  20.2-23.4 s to 10.1-11.6 s.
+- **`_parse_red_line` per timing line**, a numpy scalar per line on about a hundred lines a
+  map. The one-pass counter drops green lines on their flag first; it halved that
+  function's profile share, but the wall time moved within noise. It stays because it is
+  exact (a test holds it to the parser on the edge cases) and it is the loop that grows
+  with the maps.
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · A window icon that reads at 16 px
 
 ### Fixed

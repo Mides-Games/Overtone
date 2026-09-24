@@ -363,6 +363,22 @@ class ManualEditTests(unittest.TestCase):
         out = nudge_timing_point(points, beats, 1, 4.0)
         self.assertAlmostEqual(out[1].offset_ms, 5004.0)
 
+    def test_nudge_moves_a_line_before_zero_the_way_it_was_asked(self):
+        # Every negative offset came out as 0, so -1 ms on -20 moved it +20.
+        beats = np.arange(-0.02, 20.0, 0.5)
+        points = [TimingPoint(-20.0, 120.0, 0.9, 0), TimingPoint(5000.0, 140.0, 0.9, 10)]
+        self.assertEqual(nudge_timing_point(points, beats, 0, -1.0)[0].offset_ms, -21.0)
+        self.assertEqual(nudge_timing_point(points, beats, 0, 5.0)[0].offset_ms, -15.0)
+        self.assertEqual(nudge_timing_point(points, beats, 0, 30.0)[0].offset_ms, 10.0)
+        # From at or after zero, a nudge still stops at zero.
+        start = [TimingPoint(3.0, 120.0, 0.9, 0)]
+        self.assertEqual(nudge_timing_point(start, beats, 0, -5.0)[0].offset_ms, 0.0)
+
+    def test_nudge_refreshes_the_beat_index(self):
+        beats = np.arange(0.0, 20.0, 0.5)
+        points = [TimingPoint(1000.0, 120.0, 0.9, 2), TimingPoint(5000.0, 140.0, 0.9, 10)]
+        self.assertEqual(nudge_timing_point(points, beats, 1, 1000.0)[1].beat_index, 12)
+
     def test_rescale_section(self):
         _, points = _two_points()
         out = rescale_section(points, 0, 2.0)

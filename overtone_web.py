@@ -453,7 +453,7 @@ class Api:
         return self._edited(index, None)
 
     def edit_nudge(self, index: int, delta_ms: float) -> dict:
-        """Shift one point's offset, clamped at 0 ms."""
+        """Shift one point's offset; it stops at 0 ms coming from after it."""
         if self._analysis is None:
             return {"ok": False, "key": "first"}
         if self._is_locked(index):

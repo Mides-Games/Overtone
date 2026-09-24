@@ -2833,14 +2833,23 @@ def delete_timing_point(points: list[TimingPoint], index: int) -> list[TimingPoi
 
 def nudge_timing_point(points: list[TimingPoint], beats: np.ndarray, index: int,
                        delta_ms: float) -> list[TimingPoint]:
-    """Shift one point's offset, clamped at 0 ms, beat index refreshed."""
+    """Shift one point's offset by ``delta_ms``, beat index refreshed.
+
+    A nudge stops at 0 ms rather than carry a point from the audio into the
+    time before it. A point already before 0 ms (an anacrusis, or audio that
+    opens on its first beat) moves by exactly ``delta_ms``: clamping it too
+    turned a -1 ms nudge on a line at -20 ms into a +20 ms jump.
+    """
     if not 0 <= index < len(points):
         raise ValueError("No timing point at that index.")
     old = points[index]
-    offset = max(0.0, old.offset_ms + delta_ms)
+    offset = old.offset_ms + delta_ms
+    if old.offset_ms >= 0.0 > offset:
+        offset = 0.0
     merged = list(points)
     merged[index] = TimingPoint(offset, old.bpm, old.confidence,
-                                old.beat_index, old.meter, old.meter_known, manual=True)
+                                _nearest_beat_index(beats, offset),
+                                old.meter, old.meter_known, manual=True)
     merged.sort(key=lambda p: p.offset_ms)
     return merged
 

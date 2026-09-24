@@ -5,8 +5,8 @@ high severity, one for medium and low). The five leads the roadmap listed as "to
 were re-probed and fixed on 2026-09-23 (PRs #22–#26); the four bugs reproduced before that
 were fixed in PRs #17–#20; the six high findings below were fixed the same day (PRs
 #29–#34); forty-five medium ones since (PRs #36–#38, #40–#43, #45–#48, #50–#61,
-#63–#66, #69, #71–#77, and one #20 had fixed already), the Opus half of one still open.
-**Open: 41 — none high, 1 medium, 40 low.** Nothing still open has been re-probed yet: each gets a probe before its
+#63–#66, #69, #71–#77, and one #20 had fixed already), and the Opus half of the last
+closed by decision: it stays refused. **Open: 40 — none high, none medium, all low.** Nothing still open has been re-probed yet: each gets a probe before its
 fix, and some may turn out to be fixed already (the ×2 / ÷2 edit guard, for one, landed in
 PR #20).
 
@@ -63,13 +63,8 @@ landed with a test that fails on the old code.
 | HPSS time kernel barely past the STFT window: isolated hits read as sustained | click 0.885 -> 1.00 percussive; with every template expecting it, held-out F1 0.679 -> 0.723 (chosen on a validation set: 0.677 -> 0.707) | #74 |
 | A chorus on the verse's chords was labelled Verse | V C V C at +6 dB: all Verse -> V C V C; 0 of 39 fixtures' labels moved | #75 |
 | Resampler evaluated 65 sin() per output sample; its speed was never measured | six minutes at 48 kHz: 12.25 -> 0.73 s | #76 |
-| v4 could not open AIFF or Opus | AIFF decodes to the WAV's samples; Opus refused by name (the decoder is still open, below) | #77 |
-
-## Medium (1)
-
-| Area | Where | Finding | What goes wrong |
-|---|---|---|---|
-| rust-core-audio-bench | `Cargo.toml:15` | v4 cannot decode Opus, which v3 opens (AIFF opens since #77) | An Opus file, in Ogg, WebM or MP4, is refused by name with what to convert it to (#77). Decoding it needs a new dependency -- the mature decoder binds libopus, a C build on every Windows machine -- which is a decision, not a fix. |
+| v4 could not open AIFF or Opus | AIFF decodes to the WAV's samples; Opus refused by name | #77 |
+| v4 cannot decode Opus | decided 2026-09-23: it stays refused, with what to convert it to. A decoder means libopus, a C build on every Windows machine | decision |
 
 ## Low (40)
 

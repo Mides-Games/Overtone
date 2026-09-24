@@ -34,10 +34,8 @@ Tests: **239** Python (170 engine + 69 web shell) · **214** Rust.
 
 1. **Audit backlog** ([`13-audit-backlog.md`](13-audit-backlog.md)) — the six high
    findings are fixed, and so are forty-five medium ones (#36–#38, #40–#43, #45–#48,
-   #50–#61, #63–#66, #69, #71–#77). **Next**, each re-probed before its fix:
-   1. Opus: v4 refuses it by name; decoding it needs a dependency decision (libopus
-      is a C build).
-   2. The 40 low findings.
+   #50–#61, #63–#66, #69, #71–#77); Opus stays refused by decision. **Next**: the 40
+   low findings, each re-probed before its fix.
 2. **Playback in the app** (Phase 4) — hear the song with the click, scrub, loop.
 3. **Plug the Rust engine into the app** (Phase 22) — the ~4x speed-up reaches the user.
 4. **Timeline** (Phase 3) — waveform, zoom, drag red lines.
@@ -510,7 +508,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 
 | Item | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
-| Rust engine in the app | `overtone-cli analyze --json` sidecar, opt-in, v3 as fallback | med | **high** | P1 | no | no | **P1** | todo |
+| Rust engine in the app | `overtone-cli analyze --json` sidecar, opt-in, v3 as fallback; `.opus` goes to v3 or is refused (v4 has no decoder, by decision) | med | **high** | P1 | no | no | **P1** | todo |
 | Fallback re-timing | re-time the fallback tracker's beats at sample resolution (they land 5–35 ms late) | med | **high** | — | no | no | P1 | todo |
 | Real-MP3 offset bias | measure the ~20–26 ms attack-vs-map bias on real MP3s before trusting absolute offsets | med | **high** | Corpus B | no | no | P1 | todo |
 | Envelope memory bound | mel in chunks: ~2.65 → ~0.74 GB peak on long tracks; no silent MemoryError fallback | med | high | — | no | no | P1 | todo |

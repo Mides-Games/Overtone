@@ -215,7 +215,8 @@ Then double-click **`Overtone.bat`**, or from a terminal:
 
 WAV, FLAC, OGG and most MP3s open directly (libsndfile 1.2); the odd MP3 it cannot read
 (one of the songs tested) and M4A / AAC need FFmpeg on `PATH` for the Python engine. The
-Rust engine decodes all of them in-process, AIFF too; Opus it refuses by name for now.
+Rust engine decodes all of them in-process, AIFF too; Opus it refuses by name, by
+decision: its decoder would be a C build.
 
 Command-line flags:
 

@@ -80,6 +80,8 @@ closed hats' expense.
 - **Kernels past 33.** Validation 0.668-0.674 (41-65 frames), held out falling to 0.657 at
   129: short tonal notes start reading as percussive.
 - **Rayon in the resampler.** 0.7 s for six minutes did not call for a new dependency.
+- **An Opus decoder in v4.** The mature one binds libopus, a C build on every Windows
+  machine. Decided 2026-09-23: Opus stays refused by name, with what to convert it to.
 
 ### Not measured
 

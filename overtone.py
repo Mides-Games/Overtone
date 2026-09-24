@@ -5056,6 +5056,157 @@ def apply_assisted_grid(points: list[TimingPoint], fit: dict,
 
 
 # ---------------------------------------------------------------------------
+# Mod report (proposal P2): every finding as an osu! editor timestamp
+# ---------------------------------------------------------------------------
+
+#: A timestamp the osu! editor understands: minutes (any number), seconds and
+#: milliseconds, then the combo numbers of the objects it names, if any.
+MOD_STAMP = re.compile(r"^\d{2,}:\d{2}:\d{3}( \(\d+(,\d+)*\))?$")
+#: The order sources are listed in when two findings share a moment.
+MOD_SOURCES = ("reference", "suggestion", "snap", "alignment")
+
+
+def mod_timestamp(time_ms: float, combo: list[int] | None = None) -> str:
+    """``mm:ss:mmm (1,2)`` as modders write it; times before 0 clamp to 0."""
+    whole = int(round(max(0.0, float(time_ms))))
+    minutes, rest = divmod(whole, 60000)
+    seconds, millis = divmod(rest, 1000)
+    stamp = f"{minutes:02d}:{seconds:02d}:{millis:03d}"
+    return f"{stamp} ({','.join(str(n) for n in combo)})" if combo else stamp
+
+
+def mod_editor_link(stamp: str) -> str:
+    """The ``osu://edit/`` link that opens the local editor at a timestamp.
+
+    Only a well-formed timestamp becomes a link: it is handed to the shell.
+    """
+    if not MOD_STAMP.match(stamp or ""):
+        raise ValueError(f"Not an osu! editor timestamp: {stamp!r}")
+    return "osu://edit/" + stamp.replace(" ", "%20")
+
+
+def _combo_numbers(objects: list[dict]) -> dict[float, int]:
+    """Each object's number inside its combo, keyed by time, as the editor
+    counts them: a new-combo object is 1, the next ones count up."""
+    numbers: dict[float, int] = {}
+    count = 0
+    for obj in sorted((o for o in objects if "time" in o), key=lambda o: o["time"]):
+        count = 1 if (obj.get("new_combo") or count == 0) else count + 1
+        numbers.setdefault(float(obj["time"]), count)
+    return numbers
+
+
+def _mod_text(item: dict) -> str:
+    """The English line a modder would post for one finding."""
+    key, v = item["key"], item["values"]
+    if key == "ref_offset":
+        return (f"red line sits {v['ms']} ms from the rest of the map's offset "
+                f"(±{v['se']} ms): check it by ear")
+    if key == "ref_drift":
+        return (f"by here the red line's grid is {v['ms']} ms off the music (±{v['se']} ms), "
+                f"the attacks fit {v['bpm']} BPM")
+    if key == "ref_weak":
+        return f"the music does not follow this red line's grid ({v['share']}% of the attacks on it)"
+    if key == "missing_line":
+        return f"the tempo changes here to {v['bpm']} BPM and the map has no red line for it"
+    if key == "unsnapped":
+        return f"unsnapped: {v['ms']} ms off the nearest 1/{v['divisor']} tick"
+    if key == "before_red":
+        return "object before the first red line"
+    if key == "past_audio":
+        return "object after the audio ends"
+    if key == "ref_split":
+        return (f"the {v['n']} red lines do not agree on one offset and no majority says "
+                "which are right: check them by ear")
+    if key == "ref_shift":
+        return (f"every red line sits {v['ms']} ms from the attacks; Overtone reads real songs "
+                "about +26 ms here and why is not known, so check the offset by ear first")
+    if key == "off_attack":
+        # What is measured: quiet passages may hold sounds too soft to detect.
+        return f"{v['ms']} ms from the nearest attack Overtone detects"
+    return f"{key} {v}"
+
+
+def mod_report(beatmap: dict, attack_times: np.ndarray, attack_weights: np.ndarray,
+               duration_s: float | None = None, analysis: Analysis | None = None) -> dict:
+    """Every finding about one difficulty, as the lines a modder would post.
+
+    Gathers what the other checks already measure and nothing new:
+    ``grade_reference_timing`` (red lines to check, with their error),
+    ``suggest_missing_lines`` (tempo changes the map has no red line for;
+    needs an analysis), ``snap_audit`` (objects off the map's own grid, before
+    its first red line or past the audio) and ``alignment_report`` (objects
+    away from any attack). Each item carries its time, an editor timestamp
+    with the combo numbers of the objects it names, the number behind it, a
+    level and the English line; ``text`` is the whole report, ready to paste.
+    Plain JSON types. Nothing is changed.
+    """
+    objects = [o for o in beatmap.get("hitobjects", []) if "time" in o]
+    combos = _combo_numbers(objects)
+    items: list[dict] = []
+
+    def add(source: str, level: str, key: str, time_ms: float | None, values: dict,
+            on_object: bool = False) -> None:
+        # No time: a finding about the whole map, posted under "General".
+        if time_ms is None:
+            items.append({"source": source, "level": level, "key": key, "time_ms": None,
+                          "stamp": "General", "values": values})
+            return
+        combo = [combos[float(time_ms)]] if on_object and float(time_ms) in combos else None
+        items.append({"source": source, "level": level, "key": key, "time_ms": float(time_ms),
+                      "stamp": mod_timestamp(time_ms, combo), "values": values})
+
+    times = np.asarray(attack_times, dtype=np.float64)
+    weights = np.asarray(attack_weights, dtype=np.float64)
+    graded = grade_reference_timing(beatmap, times, weights, duration_s)
+    for finding in graded.get("findings", []):
+        if finding["key"] in ("ref_split", "ref_shift"):
+            add("reference", finding["level"], finding["key"], None, finding["values"])
+    for line in graded.get("lines", []):
+        if "offset" in line["issues"]:
+            add("reference", "warn", "ref_offset", line["offset_ms"],
+                {"ms": f"{line['relative_ms']:+.1f}", "se": f"{2 * line['offset_se_ms']:.1f}"})
+        if "drift" in line["issues"]:
+            add("reference", "warn", "ref_drift", line["end_ms"],
+                {"ms": f"{line['drift_ms']:+.1f}", "se": f"{2 * line['drift_se_ms']:.1f}",
+                 "bpm": f"{line['fitted_bpm']:.3f}"})
+        if line["verdict"] == "weak":
+            add("reference", "warn", "ref_weak", line["offset_ms"],
+                {"share": f"{100 * line['share']:.0f}"})
+
+    if analysis is not None:
+        for suggestion in suggest_missing_lines(analysis, beatmap):
+            add("suggestion", "info", "missing_line", suggestion["offset_ms"],
+                {"bpm": f"{suggestion['bpm']:.3f}"})
+
+    audit = snap_audit(beatmap, duration_s=duration_s)
+    if audit.get("ok"):
+        for obj in audit["unsnapped"]:
+            add("snap", "warn", "unsnapped", obj["time_ms"],
+                {"ms": f"{obj['off_ms']:+.1f}", "divisor": obj["nearest_divisor"]}, True)
+        for time_ms in audit["before_first_red"]:
+            add("snap", "warn", "before_red", time_ms, {}, True)
+        for time_ms in audit["past_audio"] or []:
+            add("snap", "warn", "past_audio", time_ms, {}, True)
+
+    if times.size:
+        from types import SimpleNamespace
+        aligned = alignment_report(SimpleNamespace(attack_times=times, attack_weights=weights),
+                                   beatmap)
+        for obj in aligned["offenders"]:
+            add("alignment", "info", "off_attack", obj["time"], {"ms": f"{obj['ms']:.1f}"}, True)
+
+    items.sort(key=lambda item: (item["time_ms"] is not None, item["time_ms"] or 0.0,
+                                 MOD_SOURCES.index(item["source"])))
+    for item in items:
+        item["text"] = _mod_text(item)
+    counts = {source: sum(1 for item in items if item["source"] == source)
+              for source in MOD_SOURCES}
+    return {"items": items, "counts": counts,
+            "text": "\n".join(f"{item['stamp']} - {item['text']}" for item in items)}
+
+
+# ---------------------------------------------------------------------------
 # Settings persistence
 # ---------------------------------------------------------------------------
 

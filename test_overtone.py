@@ -3667,5 +3667,72 @@ class AssistedTimingTests(unittest.TestCase):
             apply_assisted_grid(points, {"ok": False})
 
 
+class ModReportTests(unittest.TestCase):
+    """Proposal P2: every finding about a difficulty as an editor timestamp."""
+
+    MAP = ("osu file format v14\r\n\r\n[General]\r\nAudioFilename: a.mp3\r\n\r\n"
+           "[TimingPoints]\r\n1000,400,4,1,0,100,1,0\r\n21000,400,4,1,0,100,1,0\r\n"
+           "41012,400,4,1,0,100,1,0\r\n\r\n"
+           "[HitObjects]\r\n"
+           "256,192,600,5,0,0:0:0:0:\r\n"        # before the first red line, new combo
+           "256,192,1000,1,0,0:0:0:0:\r\n"       # 2
+           "256,192,1205,1,0,0:0:0:0:\r\n"       # 3: 5 ms off the 1/2 tick at 1200
+           "256,192,1400,5,0,0:0:0:0:\r\n"       # new combo: 1
+           "256,192,1500,1,0,0:0:0:0:\r\n")      # 2: on 1/4, between the 8ths
+
+    def _report(self, analysis=None):
+        from overtone import mod_report
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = read_osu_beatmap(_write_osu(tmp, self.MAP))
+        times, weights = _eighths()
+        report = mod_report(beatmap, times, weights, 61.0, analysis)
+        json.dumps(report)
+        return report
+
+    def test_timestamps_read_as_the_editor_writes_them(self):
+        from overtone import mod_timestamp, mod_editor_link
+        self.assertEqual(mod_timestamp(83456.4), "01:23:456")
+        self.assertEqual(mod_timestamp(3_723_004, [1, 2]), "62:03:004 (1,2)")
+        self.assertEqual(mod_timestamp(-40), "00:00:000")
+        self.assertEqual(mod_editor_link("01:23:456 (1,2)"), "osu://edit/01:23:456%20(1,2)")
+        for bad in ("01:23:456 & calc", "1:2:3", "", "01:23:456 (1;2)"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                mod_editor_link(bad)
+
+    def test_every_source_lands_in_time_order_with_combo_numbers(self):
+        report = self._report()
+        lines = report["text"].splitlines()
+        self.assertEqual(lines[0], "00:00:600 (1) - object before the first red line")
+        self.assertIn("00:01:205 (3) - unsnapped: +5.0 ms off the nearest 1/2 tick", lines)
+        # The third red line is 12 ms late against the other two: one to check.
+        self.assertTrue(any(line.startswith("00:41:012 - red line sits -12.") for line in lines))
+        # 1500 is on the map's 1/4 but about 100 ms from the 8ths the music plays.
+        self.assertTrue(any(line.startswith("00:01:500 (2) - 9") and
+                            line.endswith("ms from the nearest attack Overtone detects")
+                            for line in lines))
+        self.assertEqual([i["time_ms"] for i in report["items"]],
+                         sorted(i["time_ms"] for i in report["items"]))
+        self.assertEqual(report["counts"]["snap"], 2)
+        self.assertEqual(len(lines), sum(report["counts"].values()))
+
+    def test_map_wide_findings_come_first_under_general(self):
+        from overtone import mod_report
+        times, weights = _eighths()
+        # Two lines 12 ms apart: no majority, said once for the map.
+        beatmap = {"timing": {"reds": [(1000.0, 150.0), (41012.0, 150.0)]}, "hitobjects": []}
+        report = mod_report(beatmap, times, weights, 61.0)
+        self.assertTrue(report["text"].startswith("General - the 2 red lines do not agree"))
+        self.assertEqual(report["items"][0]["time_ms"], None)
+
+    def test_missing_red_lines_come_from_the_analysis(self):
+        analysis = Analysis("x.wav", 61.0, np.zeros(0), np.zeros(0),
+                            [TimingPoint(1000.0, 150.0, 1.0, 0), TimingPoint(50000.0, 160.0, 1.0, 0)],
+                            128, 44100, 1.0)
+        items = [i for i in self._report(analysis)["items"] if i["source"] == "suggestion"]
+        self.assertEqual([(i["stamp"], i["values"]["bpm"]) for i in items],
+                         [("00:50:000", "160.000")])
+        self.assertEqual(self._report()["counts"]["suggestion"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

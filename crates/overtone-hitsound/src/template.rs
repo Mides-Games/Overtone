@@ -92,9 +92,8 @@ impl Features {
     }
 }
 
-/// Assemble every feature for the attack at `attack_s`. `harmonic` and
-/// `percussive` come from one full-track HPSS; `frame_of` maps seconds to
-/// spectrogram frames (hop 128).
+/// Assemble every feature for the attack at `attack_s`, from the audio
+/// alone: the percussive ratio separates just the frames it reads.
 pub fn extract(y: &[f32], sr: u32, attack_s: f64) -> Features {
     let spectral = crate::spectral::analyze(y, sr, attack_s);
     let temporal = crate::temporal::analyze(y, sr, attack_s);
@@ -234,6 +233,12 @@ impl Template {
 
 /// Initial templates: shapes from acoustics, weights at 1-ish starting
 /// points. Calibration moves the weights; it never invents a term.
+///
+/// The percussive ratio follows the physics: every drum expects a
+/// percussive attack (the snare's shape for dry hits, the ride's for struck
+/// metal that rings on) and every tonal source a harmonic one (the
+/// guitar's). Only some classes had the term while HPSS read isolated hits
+/// as sustained, and there the drums had nothing to gain from it.
 pub fn initial_templates() -> Vec<Template> {
     use Feature::*;
     vec![
@@ -265,6 +270,14 @@ pub fn initial_templates() -> Vec<Template> {
                     feature: F0Hz,
                     response: Response::Band(40.0, 60.0, 100.0),
                     weight: 0.7,
+                },
+                // A drum, as percussive as the snare: the same shape, so
+                // between the two the spectrum decides. It had no such term
+                // while HPSS read a kick's body as sustained (0.12).
+                Term {
+                    feature: PercussiveRatio,
+                    response: Response::Rising(0.45, 0.75),
+                    weight: 1.0,
                 },
             ],
         },
@@ -379,6 +392,11 @@ pub fn initial_templates() -> Vec<Template> {
                     response: Response::Rising(0.10, 0.25),
                     weight: 0.5,
                 },
+                Term {
+                    feature: PercussiveRatio,
+                    response: Response::Rising(0.45, 0.75),
+                    weight: 1.0,
+                },
             ],
         },
         Template {
@@ -403,6 +421,11 @@ pub fn initial_templates() -> Vec<Template> {
                 Term {
                     feature: CentroidHz,
                     response: Response::Rising(3000.0, 6000.0),
+                    weight: 0.6,
+                },
+                Term {
+                    feature: PercussiveRatio,
+                    response: Response::Rising(0.35, 0.60),
                     weight: 0.6,
                 },
             ],
@@ -430,6 +453,11 @@ pub fn initial_templates() -> Vec<Template> {
                     feature: DecayTauS,
                     response: Response::Band(0.06, 0.12, 0.30),
                     weight: 0.6,
+                },
+                Term {
+                    feature: PercussiveRatio,
+                    response: Response::Rising(0.45, 0.75),
+                    weight: 1.0,
                 },
             ],
         },
@@ -474,6 +502,11 @@ pub fn initial_templates() -> Vec<Template> {
                 Term {
                     feature: Harmonicity,
                     response: Response::Falling(0.25, 0.55),
+                    weight: 0.6,
+                },
+                Term {
+                    feature: PercussiveRatio,
+                    response: Response::Rising(0.35, 0.60),
                     weight: 0.6,
                 },
             ],
@@ -538,6 +571,11 @@ pub fn initial_templates() -> Vec<Template> {
                     response: Response::Rising(0.40, 0.70),
                     weight: 0.7,
                 },
+                Term {
+                    feature: PercussiveRatio,
+                    response: Response::Falling(0.20, 0.50),
+                    weight: 0.7,
+                },
             ],
         },
         Template {
@@ -600,6 +638,11 @@ pub fn initial_templates() -> Vec<Template> {
                     response: Response::Band(0.15, 0.30, 0.60),
                     weight: 0.6,
                 },
+                Term {
+                    feature: PercussiveRatio,
+                    response: Response::Falling(0.20, 0.50),
+                    weight: 0.7,
+                },
             ],
         },
         Template {
@@ -630,6 +673,11 @@ pub fn initial_templates() -> Vec<Template> {
                     feature: F0Hz,
                     response: Response::Band(150.0, 260.0, 400.0),
                     weight: 0.5,
+                },
+                Term {
+                    feature: PercussiveRatio,
+                    response: Response::Falling(0.20, 0.50),
+                    weight: 0.7,
                 },
             ],
         },

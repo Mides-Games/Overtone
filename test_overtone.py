@@ -1438,6 +1438,68 @@ class RustSidecarTests(unittest.TestCase):
         self.assertIn("No rhythmic pulse", str(refused.exception))
 
 
+class SnapAuditTests(unittest.TestCase):
+    """Objects off the map's own grid, and what an inject would unsnap."""
+
+    MAP = ("osu file format v14\r\n\r\n[General]\r\nAudioFilename: a.mp3\r\n\r\n"
+           "[TimingPoints]\r\n1000,500,4,1,0,100,1,0\r\n5000,400,4,1,0,100,1,0\r\n\r\n"
+           "[HitObjects]\r\n"
+           "256,192,500,1,0,0:0:0:0:\r\n"      # before the first red line, on 1/1
+           "256,192,1000,1,0,0:0:0:0:\r\n"     # 1/1
+           "256,192,1250,1,0,0:0:0:0:\r\n"     # 1/2
+           "256,192,1167,1,0,0:0:0:0:\r\n"     # 1/3: 1166.67, rounded
+           "256,192,1125,1,0,0:0:0:0:\r\n"     # 1/4
+           "256,192,1300,1,0,0:0:0:0:\r\n"     # off: nearest tick 1/12 at 1291.67
+           "256,192,5200,1,0,0:0:0:0:\r\n"     # second red line (150 BPM): 1/2
+           "256,192,70000,1,0,0:0:0:0:\r\n"    # past a 60 s audio, 1/2 of line two
+           "broken line\r\n")
+
+    def beatmap(self) -> dict:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(self.MAP.encode("utf-8"))
+            return read_osu_beatmap(path)
+
+    def test_objects_are_placed_on_their_own_red_line(self):
+        from overtone import snap_audit
+
+        report = snap_audit(self.beatmap(), duration_s=60.0)
+        self.assertTrue(report["ok"])
+        self.assertEqual((report["objects"], report["unparsed"], report["red_lines"]), (8, 1, 2))
+        self.assertEqual(len(report["unsnapped"]), 1)
+        off = report["unsnapped"][0]
+        self.assertEqual((off["time_ms"], off["nearest_divisor"]), (1300.0, 12))
+        self.assertAlmostEqual(off["off_ms"], round(1300 - (1000 + 7 / 12 * 500), 3))
+        self.assertEqual(report["by_divisor"]["1"], 2)   # 500 and 1000
+        # 1250; 5200 and 70000 on the second line's 400 ms beat (162.5 beats in)
+        self.assertEqual(report["by_divisor"]["2"], 3)
+        self.assertEqual(report["by_divisor"]["3"], 1)
+        self.assertEqual(report["by_divisor"]["4"], 1)
+        self.assertEqual(report["before_first_red"], [500.0])
+        self.assertEqual(report["past_audio"], [70000.0])
+        json.dumps(report)
+
+    def test_a_shifted_detection_says_what_an_inject_would_unsnap(self):
+        from overtone import snap_audit
+
+        analysis = Analysis("x.wav", 60.0, np.zeros(0), np.zeros(0),
+                            [TimingPoint(1010.0, 120.0, 1.0, 0)], 128, 44100, 1.0)
+        report = snap_audit(self.beatmap(), analysis)
+        moved = report["with_detected_timing"]
+        # 10 ms later, 120 BPM throughout: every snapped object moves off
+        # except the ones a 1/16 tick still catches within 1 ms; none of
+        # them is 1300, so nothing comes back on.
+        self.assertGreater(len(moved["would_unsnap"]), 0)
+        self.assertEqual(moved["would_snap"], 0)
+        self.assertNotIn(1300.0, [m["time_ms"] for m in moved["would_unsnap"]])
+
+    def test_no_red_lines_is_said_not_guessed(self):
+        from overtone import snap_audit
+
+        report = snap_audit({"timing": {"reds": []}, "hitobjects": [{"time": 5.0}]})
+        self.assertEqual((report["ok"], report["reason"]), (False, "no_red_lines"))
+
+
 class NoiseBeforeTheMusicTests(unittest.TestCase):
     """The first red line starts where the grid starts, not at the first noise.
 

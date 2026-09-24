@@ -4022,6 +4022,96 @@ def density_report(beatmap: dict, bucket_s: float = 5.0) -> dict:
             **totals}
 
 
+#: The snap divisors osu!'s editor offers, coarsest first.
+SNAP_DIVISORS = (1, 2, 3, 4, 6, 8, 12, 16)
+#: osu! stores whole milliseconds, so a snapped object sits up to 1 ms from
+#: its exact tick; past that it is off the grid.
+SNAP_TOLERANCE_MS = 1.0
+
+
+def _snap_of(time_ms: float, reds: list[tuple[float, float]]) -> dict:
+    """Where one time sits on a red-line grid: the coarsest divisor it hits
+    within SNAP_TOLERANCE_MS, or the nearest tick it misses."""
+    governing = reds[0]
+    for red in reds:
+        if red[0] <= time_ms + 1e-9:
+            governing = red
+    offset, bpm = governing
+    beat_ms = 60000.0 / bpm
+    position = (time_ms - offset) / beat_ms
+    best = None
+    for divisor in SNAP_DIVISORS:
+        tick = round(position * divisor) / divisor
+        off = time_ms - (offset + tick * beat_ms)
+        if abs(off) <= SNAP_TOLERANCE_MS:
+            return {"divisor": divisor, "off_ms": off, "snapped": True}
+        if best is None or abs(off) < abs(best["off_ms"]) - 1e-9:
+            best = {"divisor": divisor, "off_ms": off, "snapped": False}
+    return best
+
+
+def snap_audit(beatmap: dict, analysis: Analysis | None = None,
+               duration_s: float | None = None) -> dict:
+    """Objects off the map's own grid, and what a new timing would unsnap
+    (Phase 7, "Snap audit").
+
+    Every object start is placed on the red line governing it at the snap
+    divisors the editor offers (1/1 to 1/16). An object on none of them within
+    SNAP_TOLERANCE_MS is listed with the nearest tick and how far it misses.
+    Objects before the first red line and, given the audio length, past its
+    end are listed too. With an analysis, the same audit runs against the red
+    lines an inject would write, and the report says how many objects that
+    would move off the grid and how many it would put back on — the question
+    to ask before injecting. Starts only, like the alignment check: slider
+    ends follow from length and slider velocity, and spinner and hold ends are
+    not audited yet. Nothing is changed. All plain JSON types.
+    """
+    reds = sorted(beatmap.get("timing", {}).get("reds", []))
+    objects = [o for o in beatmap.get("hitobjects", []) if "time" in o]
+    unparsed = sum(1 for o in beatmap.get("hitobjects", []) if "time" not in o)
+    if not reds:
+        return {"ok": False, "reason": "no_red_lines", "objects": len(objects),
+                "unparsed": unparsed}
+    audited, histogram = [], {str(d): 0 for d in SNAP_DIVISORS}
+    for obj in objects:
+        snap = _snap_of(float(obj["time"]), reds)
+        audited.append((obj, snap))
+        if snap["snapped"]:
+            histogram[str(snap["divisor"])] += 1
+    unsnapped = [{"time_ms": float(obj["time"]), "kind": obj.get("kind", "unparsed"),
+                  "nearest_divisor": snap["divisor"], "off_ms": round(snap["off_ms"], 3)}
+                 for obj, snap in audited if not snap["snapped"]]
+    report = {
+        "ok": True,
+        "objects": len(objects),
+        "unparsed": unparsed,
+        "red_lines": len(reds),
+        "snapped": len(objects) - len(unsnapped),
+        "by_divisor": histogram,
+        "unsnapped": unsnapped,
+        "before_first_red": [float(o["time"]) for o in objects if o["time"] < reds[0][0]],
+        "past_audio": ([float(o["time"]) for o in objects if o["time"] > duration_s * 1000.0]
+                       if duration_s is not None else None),
+    }
+    if analysis is not None:
+        detected = [(p.offset_ms, p.bpm) for p in snap_timing_points(analysis.points)
+                    if np.isfinite(p.offset_ms) and p.bpm > 0]
+        if detected:
+            detected.sort()
+            would_unsnap, would_snap = [], 0
+            for obj, snap in audited:
+                after = _snap_of(float(obj["time"]), detected)
+                if snap["snapped"] and not after["snapped"]:
+                    would_unsnap.append({"time_ms": float(obj["time"]),
+                                         "nearest_divisor": after["divisor"],
+                                         "off_ms": round(after["off_ms"], 3)})
+                elif after["snapped"] and not snap["snapped"]:
+                    would_snap += 1
+            report["with_detected_timing"] = {"would_unsnap": would_unsnap,
+                                              "would_snap": would_snap}
+    return report
+
+
 def suggest_missing_lines(analysis: Analysis, beatmap: dict,
                           tolerance_beats: float = 1.0) -> list[dict]:
     """Detected sections with no nearby map red (Phase 9: timing suggestions).

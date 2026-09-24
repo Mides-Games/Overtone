@@ -74,7 +74,10 @@ fn phase_at(times: &[f64], weights: &[f32], f: f64) -> f64 {
     sin_sum.atan2(cos_sum) / omega
 }
 
-/// Candidate atomic pulses, slowest first.
+/// Candidate atomic pulses in ascending period: fastest first. Of the
+/// strong peaks the *slowest* `keep` are kept, then widened, and the widened
+/// list is sorted by period -- v3 `_coherence_candidates` does the same,
+/// though both used to say "slowest first".
 ///
 /// `R` is high at the atomic pulse *and at every multiple of it*, so the
 /// candidate list is deliberately widened to ×1..×4 of each peak: the slower
@@ -244,7 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn candidates_are_slowest_first() {
+    fn candidates_come_back_in_ascending_period() {
         let (times, weights) = grid(0.25, 0.0, 200);
         let found = candidates(&times, &weights, 10);
         assert!(found.windows(2).all(|w| w[0].period <= w[1].period));

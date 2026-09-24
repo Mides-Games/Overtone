@@ -6,7 +6,10 @@
 //! by nature (the learned labeller stays a Phase 9 experiment):
 //!
 //! 1. Segments sharing harmonic material (segment-mean chroma cosine at or
-//!    above [`REPEAT_COSINE`]) belong to one repetition group.
+//!    above [`REPEAT_COSINE`]) belong to one repetition group. A group whose
+//!    members fall into a loud and a quiet family, at least two in each and
+//!    [`SPLIT_POWER_RATIO`] apart, is two groups: a chorus on the verse's
+//!    progression, which pop writes all the time.
 //! 2. The loudest repeated group is the **Chorus** — but only when at least
 //!    two groups repeat, because chorus-ness is relative (louder *than the
 //!    verse*). A single repeated family defaults to **Verse**; crowning it
@@ -19,14 +22,21 @@
 //! 5. A track with a single segment is a **Verse**: the neutral default.
 //!
 //! Known approximations, recorded not hidden: a long opening maps to
-//! Bridge, and two different quiet sections sharing chords merge into one
-//! Verse group. Both need intent (or lyrics) no audio statistic carries.
+//! Bridge; two different sections sharing chords *and* level merge into one
+//! Verse group; and a single loud repeat of the verse's chords stays Verse,
+//! since one member cannot make a family. They need intent (or lyrics) no
+//! audio statistic carries.
 
 use crate::chroma;
 
 /// Cosine similarity at or above which two segments count as repetitions.
 /// Same-chord repeats score ~1.0; triads a fourth apart ~0.3–0.5.
 pub const REPEAT_COSINE: f64 = 0.90;
+/// Power ratio (mean square) between the quietest loud member and the
+/// loudest quiet member at which one repetition group splits in two. 2.0
+/// is 3 dB; pop choruses sit roughly 3-6 dB over their verses, and a verse
+/// played a little unevenly stays well under it.
+pub const SPLIT_POWER_RATIO: f64 = 2.0;
 /// A unique opening longer than this is a section, not an introduction.
 pub const INTRO_MAX_S: f64 = 12.0;
 
@@ -140,6 +150,7 @@ pub fn classify(y: &[f32], sr: u32, boundaries: &[f64]) -> Vec<LabeledSection> {
             }
         }
     }
+    split_by_level(&mut group, &energies);
     let mut group_energy: std::collections::HashMap<usize, (f64, usize)> =
         std::collections::HashMap::new();
     for (i, &g) in group.iter().enumerate() {
@@ -197,6 +208,43 @@ pub fn classify(y: &[f32], sr: u32, boundaries: &[f64]) -> Vec<LabeledSection> {
             LabeledSection { start, end, kind }
         })
         .collect()
+}
+
+/// Split each repetition group whose members fall into a quiet and a loud
+/// family, at least two in each and [`SPLIT_POWER_RATIO`] apart. Harmony
+/// alone put a chorus that shares the verse's progression into the verse's
+/// group, and rule 2 then never saw two repeated groups: every repeat came
+/// out Verse. The loud family takes a fresh group id; ids up to the segment
+/// count are indices, so ids from there on cannot collide.
+fn split_by_level(group: &mut [usize], energies: &[f64]) {
+    let n = group.len();
+    let mut ids = group.to_vec();
+    ids.sort_unstable();
+    ids.dedup();
+    let mut fresh = n;
+    for id in ids {
+        let mut members: Vec<usize> = (0..n).filter(|&i| group[i] == id).collect();
+        if members.len() < 4 {
+            continue;
+        }
+        members.sort_by(|&a, &b| energies[a].total_cmp(&energies[b]));
+        // The widest step in level that leaves two or more on each side.
+        let mut best: Option<(usize, f64)> = None;
+        for k in 2..=members.len() - 2 {
+            let ratio = energies[members[k]] / energies[members[k - 1]].max(1e-12);
+            if best.is_none_or(|(_, r)| ratio > r) {
+                best = Some((k, ratio));
+            }
+        }
+        if let Some((k, ratio)) = best {
+            if ratio >= SPLIT_POWER_RATIO {
+                for &i in &members[k..] {
+                    group[i] = fresh;
+                }
+                fresh += 1;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -287,6 +335,49 @@ mod tests {
         assert_eq!(
             kinds(&y, sr, &[12.0, 24.0]),
             vec![SectionKind::Verse, SectionKind::Verse, SectionKind::Outro]
+        );
+    }
+
+    #[test]
+    fn a_chorus_on_the_verse_chords_is_still_a_chorus() {
+        // V C V C over one progression, the chorus 6 dB louder: harmony
+        // puts all four in one group, so rule 2 never saw two repeated
+        // groups and all four came out Verse.
+        let sr = 44_100;
+        let verse = chord(sr, 261.63, true, 0.3, 12.0);
+        let chorus = chord(sr, 261.63, true, 0.6, 12.0);
+        let y = concat(&[verse.clone(), chorus.clone(), verse, chorus]);
+        assert_eq!(
+            kinds(&y, sr, &[12.0, 24.0, 36.0]),
+            vec![
+                SectionKind::Verse,
+                SectionKind::Chorus,
+                SectionKind::Verse,
+                SectionKind::Chorus,
+            ]
+        );
+    }
+
+    #[test]
+    fn a_verse_played_a_little_unevenly_stays_one_verse() {
+        // The same four repeats within 1 dB of each other, and one loud
+        // repeat (6 dB) with no second loud one to pair with: no split.
+        let sr = 44_100;
+        let parts: Vec<Vec<f32>> = [0.30, 0.33, 0.30, 0.33]
+            .iter()
+            .map(|&amp| chord(sr, 261.63, true, amp, 12.0))
+            .collect();
+        assert_eq!(
+            kinds(&concat(&parts), sr, &[12.0, 24.0, 36.0]),
+            vec![SectionKind::Verse; 4]
+        );
+        let parts: Vec<Vec<f32>> = [0.3, 0.3, 0.3, 0.6]
+            .iter()
+            .map(|&amp| chord(sr, 261.63, true, amp, 12.0))
+            .collect();
+        assert_eq!(
+            kinds(&concat(&parts), sr, &[12.0, 24.0, 36.0]),
+            vec![SectionKind::Verse; 4]
         );
     }
 

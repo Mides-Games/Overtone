@@ -182,6 +182,23 @@ const I18N = {
     as_chance: "Random attacks would fit that grid as well: there is no grid here to time.",
     as_no_attacks: "No attacks were found in this song.",
     no_fit: "Fit a grid first.",
+    settings_sub: "Saved on this PC as you change them.",
+    st_output: "Exports", st_folder: "Output folder", st_folder_default: "Use the default", st_folder_pick: "Choose folder…",
+    st_folder_is_default: "{path} (the default)",
+    st_ask: "Ask where to save each export (the dialog opens in the song's folder)",
+    st_decimals: "Offset precision",
+    st_decimals_hint: "osu!stable reads whole milliseconds; osu!lazer keeps decimals. Used by copy, .osz and inject.",
+    st_click: "Click", st_sub: "Clicks per beat",
+    st_sub_hint: "Extra soft clicks between beats, in the app and in the exported click track.",
+    st_accent: "Accent the first beat of each bar",
+    st_look: "Appearance", st_scale: "Interface size", st_motion: "Reduce motion",
+    st_detect: "Detection and engine",
+    st_detect_hint: "Change detection, pulse and the Rust engine in the panel the toolbar opens too.",
+    st_detect_open: "Detection settings…",
+    st_storage: "Cache and backups", st_cache: "Result cache", st_cache_clear: "Clear cache",
+    st_cache_info: "{n} analyses · {mb} MB (keeps the latest {max}) · {path}",
+    st_cache_cleared: "Cache cleared: each song is analysed again next time.",
+    st_backups: "Backups: before any .osu is written, the bytes it replaces are kept beside it. The first is map.osu.bak and is never touched again; later ones are .bak2, .bak3…, so every earlier state survives.",
     nav_report: "Report",
     report_sub: "Every finding about one difficulty as osu! editor timestamps, ready to paste into a mod post. A timestamp opens the editor there. Read only: nothing is written.",
     rp_title: "Mod report", rp_pick: "Choose .osu…", rp_copy: "Copy all",
@@ -397,6 +414,23 @@ const I18N = {
     as_chance: "Ataques al azar encajarían igual de bien en ese grid: acá no hay un grid para timear.",
     as_no_attacks: "No se encontraron ataques en esta canción.",
     no_fit: "Primero ajustá un grid.",
+    settings_sub: "Se guardan en esta PC a medida que los cambiás.",
+    st_output: "Exportaciones", st_folder: "Carpeta de salida", st_folder_default: "Usar la predeterminada", st_folder_pick: "Elegir carpeta…",
+    st_folder_is_default: "{path} (la predeterminada)",
+    st_ask: "Preguntar dónde guardar cada exportación (el diálogo abre en la carpeta de la canción)",
+    st_decimals: "Precisión del offset",
+    st_decimals_hint: "osu!stable lee milisegundos enteros; osu!lazer guarda decimales. Se usa al copiar, en el .osz y al inyectar.",
+    st_click: "Click", st_sub: "Clicks por beat",
+    st_sub_hint: "Clicks suaves extra entre beats, en la app y en el click track exportado.",
+    st_accent: "Acentuar el primer tiempo de cada compás",
+    st_look: "Apariencia", st_scale: "Tamaño de la interfaz", st_motion: "Reducir el movimiento",
+    st_detect: "Detección y motor",
+    st_detect_hint: "La detección, el pulso y el motor Rust se cambian en el panel que también abre la barra superior.",
+    st_detect_open: "Ajustes de detección…",
+    st_storage: "Caché y backups", st_cache: "Caché de resultados", st_cache_clear: "Vaciar caché",
+    st_cache_info: "{n} análisis · {mb} MB (guarda los últimos {max}) · {path}",
+    st_cache_cleared: "Caché vaciada: cada canción se vuelve a analizar la próxima vez.",
+    st_backups: "Backups: antes de escribir un .osu, los bytes que reemplaza se guardan a su lado. El primero es map.osu.bak y nunca se vuelve a tocar; los siguientes son .bak2, .bak3…, así sobrevive cada estado anterior.",
     nav_report: "Reporte",
     report_sub: "Cada hallazgo sobre una dificultad como timestamps del editor de osu!, listo para pegar en un mod. Un timestamp abre el editor ahí. Solo lectura: no se escribe nada.",
     rp_title: "Reporte de mod", rp_pick: "Elegir .osu…", rp_copy: "Copiar todo",
@@ -469,8 +503,8 @@ function translate() {
 // One analysed song is shared by every view: switching only changes what is
 // visible, never the session. Views that read the analysis show the
 // "analyze first" panel until there is one, instead of blank space.
-const VIEWS = ["library", "timing", "mapcheck", "mapset", "report", "export"];
-const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", mapcheck: "nav_mapcheck", mapset: "nav_mapset", report: "nav_report", export: "nav_export" };
+const VIEWS = ["library", "timing", "mapcheck", "mapset", "report", "export", "settings"];
+const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", mapcheck: "nav_mapcheck", mapset: "nav_mapset", report: "nav_report", export: "nav_export", settings: "nav_settings" };
 
 function needsResult(view) {
   const section = document.querySelector(`.content > [data-view="${view}"]`);
@@ -1588,11 +1622,15 @@ function lowerBound(arr, x) {
   return lo;
 }
 
-function pbClickAt(when, accent) {
+// The WAV export's three tones, by level: 2 the bar's first beat, 1 a beat,
+// 0 a subdivision. 8 ms decay, 45 ms long.
+const PB_TONES = { 2: [2093, 1], 1: [1568, 0.7], 0: [1318.5, 0.4] };
+
+function pbClickAt(when, level) {
   const ctx = P.ctx, osc = ctx.createOscillator(), env = ctx.createGain();
-  // The WAV export's tones: C7 accented, G6 otherwise, 8 ms decay, 45 ms long.
-  osc.frequency.value = accent ? 2093 : 1568;
-  env.gain.setValueAtTime(accent ? 1 : 0.7, when);
+  const [freq, gain] = PB_TONES[level] || PB_TONES[1];
+  osc.frequency.value = freq;
+  env.gain.setValueAtTime(gain, when);
   env.gain.setTargetAtTime(0.0001, when, 0.008);
   osc.connect(env); env.connect(P.click);
   osc.start(when); osc.stop(when + 0.045);
@@ -1600,7 +1638,7 @@ function pbClickAt(when, accent) {
 
 function pbTick() {
   if (!P.playing || !S.result) return;
-  const clicks = S.result.clicks || { t: [], accent: [] };
+  const clicks = S.result.clicks || { t: [], level: [] };
   const until = P.ctx.currentTime - P.startCtx + PB_LOOKAHEAD;
   while (P.sched < until) {
     const s0 = pbSongAt(P.sched);
@@ -1609,7 +1647,7 @@ function pbTick() {
     const room = P.loop ? (P.loop.b - s0) / P.rate : Infinity;
     const len = Math.min(until - P.sched, room);
     for (let i = lowerBound(clicks.t, s0); i < clicks.t.length && clicks.t[i] < s0 + len * P.rate; i++) {
-      pbClickAt(P.startCtx + P.sched + (clicks.t[i] - s0) / P.rate, clicks.accent[i] === 1);
+      pbClickAt(P.startCtx + P.sched + (clicks.t[i] - s0) / P.rate, clicks.level[i]);
     }
     P.sched += len > 1e-9 ? len : 1e-6;
   }
@@ -1900,6 +1938,82 @@ function copyReport() {
   if (lines.length) copyText(lines.join("\n"), "rp_copied");
 }
 
+// ------------------------------------------------------------------ settings
+// Every option in one place (Phase 20). Each change is sent at once; the
+// bridge checks it and answers with the settings as kept.
+const ST = { settings: null, cache: null, outputDefault: "" };
+
+function stApply() {
+  const s = ST.settings;
+  if (!s) return;
+  document.documentElement.style.zoom = String(s.ui_scale);
+  document.body.classList.toggle("reduce-motion", s.reduced_motion);
+  if (S.result) drawTrace();
+}
+
+function stRender() {
+  const s = ST.settings;
+  if (!s) return;
+  $("stFolder").textContent = s.output_folder || t("st_folder_is_default", { path: ST.outputDefault });
+  $("stFolderDefault").hidden = !s.output_folder;
+  $("stAsk").checked = s.export_ask;
+  document.querySelectorAll("#stDecimals button").forEach((b) => b.classList.toggle("on", +b.dataset.v === s.offset_decimals));
+  document.querySelectorAll("#stSub button").forEach((b) => b.classList.toggle("on", +b.dataset.v === s.click_subdivision));
+  $("stAccent").checked = s.click_accent;
+  $("stScale").value = String(Math.round(s.ui_scale * 100));
+  $("stScaleValue").textContent = `${Math.round(s.ui_scale * 100)}%`;
+  $("stMotion").checked = s.reduced_motion;
+  const c = ST.cache;
+  if (c) {
+    $("stCache").textContent = t("st_cache_info", { n: c.entries, mb: (c.bytes / 1048576).toFixed(1),
+                                                    max: c.limit_entries, path: c.path });
+  }
+}
+
+function stTake(reply) {
+  ST.settings = reply.settings;
+  ST.cache = reply.cache || ST.cache;
+  ST.outputDefault = reply.output_default || ST.outputDefault;
+  stApply();
+  stRender();
+  // Click settings changed: the same song, with its clicks rebuilt.
+  if (reply.result) showResult(reply.result);
+}
+
+async function stLoad() {
+  if (!api()) return;
+  const reply = await api().settings();
+  if (reply.ok) stTake(reply);
+}
+
+async function stSet(changes) {
+  if (!api()) return;
+  const reply = await api().set_settings(changes);
+  if (!reply.ok) { toast(t(reply.key), true); stRender(); return; }
+  stTake(reply);
+}
+
+function stWire() {
+  $("stFolderPick").onclick = async () => {
+    const reply = await api().pick_output_folder();
+    if (reply.ok) stTake(reply);
+    else if (reply.key !== "cancelled") toast(t(reply.key), true);
+  };
+  $("stFolderDefault").onclick = () => stSet({ output_folder: "" });
+  $("stAsk").onchange = () => stSet({ export_ask: $("stAsk").checked });
+  document.querySelectorAll("#stDecimals button").forEach((b) => b.onclick = () => stSet({ offset_decimals: +b.dataset.v }));
+  document.querySelectorAll("#stSub button").forEach((b) => b.onclick = () => stSet({ click_subdivision: +b.dataset.v }));
+  $("stAccent").onchange = () => stSet({ click_accent: $("stAccent").checked });
+  $("stScale").oninput = () => { $("stScaleValue").textContent = `${$("stScale").value}%`; };
+  $("stScale").onchange = () => stSet({ ui_scale: +$("stScale").value / 100 });
+  $("stMotion").onchange = () => stSet({ reduced_motion: $("stMotion").checked });
+  $("stDetect").onclick = () => openDrawer(true);
+  $("stCacheClear").onclick = async () => {
+    const reply = await api().cache_clear();
+    if (reply.ok) { ST.cache = reply.cache; stRender(); toast(t("st_cache_cleared")); }
+  };
+}
+
 // ------------------------------------------------------------------ mapset
 // Read only and independent of the analysis: one folder, every difficulty.
 const esc = (value) => String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -2176,12 +2290,15 @@ function drawTrace(hoverX) {
   });
 
   // the beat grid, once beats are far enough apart to read
-  const ct = (r.clicks && r.clicks.t) || [], ca = (r.clicks && r.clicks.accent) || [];
-  const pxPerBeat = ct.length > 1 ? ((x1 - x0) / span) * (ct[Math.min(1, ct.length - 1)] - ct[0]) : 0;
+  const ct = (r.clicks && r.clicks.t) || [], cl = (r.clicks && r.clicks.level) || [];
+  const beats = [];
+  for (let i = 0; i < ct.length && beats.length < 2; i++) if (cl[i] >= 1) beats.push(ct[i]);
+  const pxPerBeat = beats.length > 1 ? ((x1 - x0) / span) * (beats[1] - beats[0]) : 0;
   if (pxPerBeat >= 7) {
     for (let i = lowerBound(ct, v.a); i < ct.length && ct[i] <= v.b; i++) {
+      if (!(cl[i] >= 1)) continue;
       const x = Math.round(X(ct[i])) + 0.5;
-      ctx.strokeStyle = ca[i] === 1 ? C.beatBar : C.beat; ctx.lineWidth = 1;
+      ctx.strokeStyle = cl[i] === 2 ? C.beatBar : C.beat; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(x, plotTop); ctx.lineTo(x, yW1); ctx.stroke();
     }
   }
@@ -2309,7 +2426,13 @@ function drawTrace(hoverX) {
 
 // -- timeline interaction: wheel zooms at the cursor, drag pans, a red line
 // -- drags (snapping to the nearest attack; Alt moves it freely)
-function tlX(ev) { return ev.clientX - $("trace").getBoundingClientRect().left; }
+// The pointer in the canvas's own pixels. Under the interface-size setting
+// (CSS zoom) the client rect is scaled and the canvas is not: at 120 % the
+// pointer landed 20 % off, and a red line could not be caught.
+function tlX(ev) {
+  const rect = $("trace").getBoundingClientRect(), width = $("traceWrap").clientWidth;
+  return (ev.clientX - rect.left) * (rect.width ? width / rect.width : 1);
+}
 
 function tlLineAt(x) {
   if (!S.result || !geom) return -1;
@@ -2390,7 +2513,7 @@ function governing(r, s) {
 
 function onTraceMove(ev) {
   const r = S.result; if (!r || !geom) return;
-  const rect = $("trace").getBoundingClientRect(), x = ev.clientX - rect.left;
+  const x = tlX(ev);
   const tip = $("tip");
   if (TL.drag) return;
   $("trace").style.cursor = tlLineAt(x) >= 0 ? "ew-resize" : "";
@@ -2445,7 +2568,7 @@ let focusByKey = false;
 
 function wire() {
   document.querySelectorAll("#nav [data-view]").forEach((b) => { b.onclick = () => setView(b.dataset.view); });
-  $("navSettings").onclick = () => openDrawer(true);
+  stWire();
   $("needOpen").onclick = openAudio;
   $("needAnalyze").onclick = analyze;
   $("needLibrary").onclick = () => setView("library");
@@ -2603,6 +2726,7 @@ async function boot() {
     TAP.latency = st.playback.tap_latency_ms || 0;
   }
   renderTaps();
+  stLoad();
   $("pbSongVol").value = String(Math.round(P.levels.song_volume * 100));
   $("pbClickVol").value = String(Math.round(P.levels.click_volume * 100));
   S.rustAvailable = !!st.rust_available;

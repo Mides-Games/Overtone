@@ -44,7 +44,7 @@
         <span class="nav-label" data-i18n="nav_export">Export</span>
       </button>
       <div class="nav-sep" role="presentation"></div>
-      <button type="button" class="nav-item" id="navSettings" data-i18n-title="nav_settings" title="Settings" aria-haspopup="dialog" aria-controls="drawer">
+      <button type="button" class="nav-item" data-view="settings" data-i18n-title="nav_settings" title="Settings">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
         <span class="nav-label" data-i18n="nav_settings">Settings</span>
       </button>
@@ -388,6 +388,88 @@
             <button class="btn small" id="rpPick"><span data-i18n="rp_pick">Choose .osu…</span></button>
           </div>
           <div class="card-body" id="rpBody"></div>
+        </div>
+      </section>
+
+      <!-- settings: every option in one place; needs no analysis -->
+      <section class="view" id="viewSettings" data-view="settings" hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_settings">Settings</h2>
+          <div class="view-sub" data-i18n="settings_sub">Saved on this PC as you change them.</div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head"><div class="card-title" data-i18n="st_output">Exports</div></div>
+          <div class="card-body stack settings-body">
+            <div class="setting">
+              <div><div class="setting-name" data-i18n="st_folder">Output folder</div>
+                <div class="card-sub num" id="stFolder"></div></div>
+              <div class="spacer"></div>
+              <button class="btn small" id="stFolderDefault"><span data-i18n="st_folder_default">Use the default</span></button>
+              <button class="btn small" id="stFolderPick"><span data-i18n="st_folder_pick">Choose folder…</span></button>
+            </div>
+            <label class="check"><input type="checkbox" id="stAsk"><span data-i18n="st_ask">Ask where to save each export (the dialog opens in the song's folder)</span></label>
+            <div class="setting">
+              <div><div class="setting-name" data-i18n="st_decimals">Offset precision</div>
+                <div class="card-sub" data-i18n="st_decimals_hint">osu!stable reads whole milliseconds; osu!lazer keeps decimals. Used by copy, .osz and inject.</div></div>
+              <div class="spacer"></div>
+              <div class="segmented" id="stDecimals">
+                <button data-v="0">1 ms</button><button data-v="1">0.1</button><button data-v="2">0.01</button><button data-v="3">0.001</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head"><div class="card-title" data-i18n="st_click">Click</div></div>
+          <div class="card-body stack settings-body">
+            <div class="setting">
+              <div><div class="setting-name" data-i18n="st_sub">Clicks per beat</div>
+                <div class="card-sub" data-i18n="st_sub_hint">Extra soft clicks between beats, in the app and in the exported click track.</div></div>
+              <div class="spacer"></div>
+              <div class="segmented" id="stSub">
+                <button data-v="1">1/1</button><button data-v="2">1/2</button><button data-v="3">1/3</button><button data-v="4">1/4</button>
+              </div>
+            </div>
+            <label class="check"><input type="checkbox" id="stAccent"><span data-i18n="st_accent">Accent the first beat of each bar</span></label>
+          </div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head"><div class="card-title" data-i18n="st_look">Appearance</div></div>
+          <div class="card-body stack settings-body">
+            <div class="setting">
+              <div class="setting-name" data-i18n="st_scale">Interface size</div>
+              <div class="spacer"></div>
+              <input type="range" id="stScale" min="80" max="150" step="5" class="pb-seek" style="flex:0 1 220px">
+              <span class="num" id="stScaleValue" style="min-width:44px;text-align:right"></span>
+            </div>
+            <label class="check"><input type="checkbox" id="stMotion"><span data-i18n="st_motion">Reduce motion</span></label>
+          </div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head"><div class="card-title" data-i18n="st_detect">Detection and engine</div></div>
+          <div class="card-body settings-body">
+            <div class="setting">
+              <div class="card-sub" data-i18n="st_detect_hint">Change detection, pulse and the Rust engine in the panel the toolbar opens too.</div>
+              <div class="spacer"></div>
+              <button class="btn small" id="stDetect"><span data-i18n="st_detect_open">Detection settings…</span></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head"><div class="card-title" data-i18n="st_storage">Cache and backups</div></div>
+          <div class="card-body stack settings-body">
+            <div class="setting">
+              <div><div class="setting-name" data-i18n="st_cache">Result cache</div>
+                <div class="card-sub num" id="stCache"></div></div>
+              <div class="spacer"></div>
+              <button class="btn small" id="stCacheClear"><span data-i18n="st_cache_clear">Clear cache</span></button>
+            </div>
+            <div class="card-sub" data-i18n="st_backups">Backups: before any .osu is written, the bytes it replaces are kept beside it. The first is map.osu.bak and is never touched again; later ones are .bak2, .bak3…, so every earlier state survives.</div>
+          </div>
         </div>
       </section>
 

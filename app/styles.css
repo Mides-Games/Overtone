@@ -365,6 +365,14 @@ kbd {
 .cmp-card .card-body { padding-top: 12px; }
 .neg { color: var(--amber); }
 .muted { color: var(--dim); }
+.settings-body { gap: 14px; }
+.setting { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.setting-name { font-weight: 600; font-size: 13px; }
+/* Reduced motion: the setting, or the system's own preference. */
+body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after {
+  transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; } }
 .assist-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 12px; align-items: end; }
 .assist-form .btn { height: 36px; }
 .assist-facts { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; }

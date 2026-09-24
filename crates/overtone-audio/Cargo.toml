@@ -11,4 +11,4 @@ workspace = true
 
 [dependencies]
 overtone-core = { version = "4.0.0-dev", path = "../overtone-core" }
-symphonia = { version = "0.6.1", features = ["mp3", "aac", "isomp4", "flac", "vorbis", "alac"] }
+symphonia = { version = "0.6.1", features = ["mp3", "aac", "isomp4", "flac", "vorbis", "alac", "aiff"] }

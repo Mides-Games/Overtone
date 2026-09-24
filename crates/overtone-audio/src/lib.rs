@@ -1,9 +1,12 @@
 //! Audio loading for Overtone: decode, downmix, resample, normalise.
 //!
-//! Decoding is Symphonia, in-process, for WAV, FLAC, MP3, AAC, ALAC, Vorbis
-//! and MP4/M4A. That is the one clear product win of the rewrite over v3,
-//! which asks the user to install FFmpeg and put it on `PATH` for anything
-//! compressed (audit F-06).
+//! Decoding is Symphonia, in-process, for WAV, AIFF, FLAC, MP3, AAC, ALAC,
+//! Vorbis and MP4/M4A. That is the one clear product win of the rewrite over
+//! v3, which asks the user to install FFmpeg and put it on `PATH` for
+//! anything compressed (audit F-06). Opus is the one format v3 opens that
+//! this does not: Symphonia 0.6 has no Opus decoder, so an Opus track is
+//! refused by name, with what to convert it to, rather than as an unknown
+//! codec.
 //!
 //! The load contract is v3's, preserved deliberately: mono, 44.1 kHz, peak
 //! normalised to 0.99, at least two seconds, at most an hour, and NaN/Inf
@@ -17,6 +20,7 @@ use std::path::Path;
 
 use overtone_core::{Error, Result, MAX_AUDIO_SECONDS, TARGET_SR};
 use symphonia::core::audio::GenericAudioBufferRef;
+use symphonia::core::codecs::audio::well_known::CODEC_ID_OPUS;
 use symphonia::core::codecs::audio::AudioDecoderOptions;
 use symphonia::core::formats::probe::Hint;
 use symphonia::core::formats::{FormatOptions, TrackType};
@@ -64,6 +68,10 @@ fn past_the_hour(mono_samples: usize, rate: u32) -> bool {
     rate > 0 && mono_samples > (MAX_AUDIO_SECONDS as usize + 1) * rate as usize
 }
 
+/// Why an Opus file is refused, and what to do about it.
+pub const OPUS_UNSUPPORTED: &str =
+    "Opus audio is not supported yet: convert it to FLAC, WAV, MP3 or Ogg Vorbis";
+
 /// Decode any container Symphonia understands.
 pub fn decode(path: &Path) -> Result<Decoded> {
     let file = File::open(path)?;
@@ -108,6 +116,11 @@ pub fn decode(path: &Path) -> Result<Decoded> {
         }
     }
 
+    // Ogg, WebM and MP4 all carry Opus, and all three containers open; only
+    // the decoder is missing, and "unsupported codec" would not say which.
+    if params.codec == CODEC_ID_OPUS {
+        return Err(Error::Decode(OPUS_UNSUPPORTED.into()));
+    }
     let mut decoder = symphonia::default::get_codecs()
         .make_audio_decoder(&params, &AudioDecoderOptions::default())
         .map_err(|e| Error::Decode(e.to_string()))?;
@@ -304,6 +317,150 @@ mod tests {
         let (before, after) = (click_starts(&clean.samples), click_starts(&corrupt.samples));
         assert_eq!(before.len(), 16);
         assert_eq!(after, before, "clicks moved");
+    }
+
+    fn scratch_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("overtone-audio-{tag}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Three seconds of 16-bit stereo, two different tones, as frames.
+    fn stereo_frames() -> Vec<[i16; 2]> {
+        (0..3 * 44_100)
+            .map(|i| {
+                let t = i as f64 / 44_100.0;
+                let l = (0.5 * (std::f64::consts::TAU * 440.0 * t).sin() * 32767.0) as i16;
+                let r = (0.3 * (std::f64::consts::TAU * 660.0 * t).sin() * 32767.0) as i16;
+                [l, r]
+            })
+            .collect()
+    }
+
+    fn wav_bytes(frames: &[[i16; 2]]) -> Vec<u8> {
+        let data = (frames.len() * 4) as u32;
+        let mut b = Vec::new();
+        b.extend_from_slice(b"RIFF");
+        b.extend_from_slice(&(36 + data).to_le_bytes());
+        b.extend_from_slice(b"WAVEfmt ");
+        b.extend_from_slice(&16u32.to_le_bytes());
+        b.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        b.extend_from_slice(&2u16.to_le_bytes());
+        b.extend_from_slice(&44_100u32.to_le_bytes());
+        b.extend_from_slice(&(44_100u32 * 4).to_le_bytes());
+        b.extend_from_slice(&4u16.to_le_bytes());
+        b.extend_from_slice(&16u16.to_le_bytes());
+        b.extend_from_slice(b"data");
+        b.extend_from_slice(&data.to_le_bytes());
+        for frame in frames {
+            for s in frame {
+                b.extend_from_slice(&s.to_le_bytes());
+            }
+        }
+        b
+    }
+
+    fn aiff_bytes(frames: &[[i16; 2]]) -> Vec<u8> {
+        let data = (frames.len() * 4) as u32;
+        let mut b = Vec::new();
+        b.extend_from_slice(b"FORM");
+        b.extend_from_slice(&(4 + 26 + 16 + data).to_be_bytes());
+        b.extend_from_slice(b"AIFFCOMM");
+        b.extend_from_slice(&18u32.to_be_bytes());
+        b.extend_from_slice(&2u16.to_be_bytes());
+        b.extend_from_slice(&(frames.len() as u32).to_be_bytes());
+        b.extend_from_slice(&16u16.to_be_bytes());
+        // 44100 as an 80-bit extended float: exponent 16383 + 15, then the
+        // mantissa with its explicit leading one.
+        b.extend_from_slice(&[0x40, 0x0E, 0xAC, 0x44, 0, 0, 0, 0, 0, 0]);
+        b.extend_from_slice(b"SSND");
+        b.extend_from_slice(&(8 + data).to_be_bytes());
+        b.extend_from_slice(&[0; 8]); // offset, block size
+        for frame in frames {
+            for s in frame {
+                b.extend_from_slice(&s.to_be_bytes());
+            }
+        }
+        b
+    }
+
+    #[test]
+    fn aiff_decodes_to_what_the_same_wav_does() {
+        // v3 opens AIFF through libsndfile and its file dialog offers it;
+        // v4 refused it at the probe.
+        let frames = stereo_frames();
+        let dir = scratch_dir("aiff");
+        let (wav, aiff) = (dir.join("tone.wav"), dir.join("tone.aiff"));
+        std::fs::write(&wav, wav_bytes(&frames)).unwrap();
+        std::fs::write(&aiff, aiff_bytes(&frames)).unwrap();
+        let from_wav = decode(&wav).unwrap();
+        let from_aiff = decode(&aiff);
+        std::fs::remove_dir_all(&dir).ok();
+        let from_aiff = from_aiff.unwrap();
+        assert_eq!(from_aiff.channels, 2);
+        assert_eq!(from_aiff.sample_rate, 44_100);
+        assert_eq!(from_aiff.samples, from_wav.samples);
+    }
+
+    /// One Ogg page around `packet` (under 255 bytes), with its CRC.
+    fn ogg_page(packet: &[u8], flags: u8, granule: u64, sequence: u32) -> Vec<u8> {
+        let mut page = Vec::new();
+        page.extend_from_slice(b"OggS");
+        page.push(0);
+        page.push(flags);
+        page.extend_from_slice(&granule.to_le_bytes());
+        page.extend_from_slice(&0x0E7Au32.to_le_bytes()); // stream serial
+        page.extend_from_slice(&sequence.to_le_bytes());
+        page.extend_from_slice(&[0; 4]); // CRC, filled below
+        page.push(1);
+        page.push(packet.len() as u8);
+        page.extend_from_slice(packet);
+        // Ogg's CRC-32: polynomial 0x04C11DB7, unreflected, zero start.
+        let mut crc = 0u32;
+        for &byte in &page {
+            crc ^= (byte as u32) << 24;
+            for _ in 0..8 {
+                crc = if crc & 0x8000_0000 != 0 {
+                    (crc << 1) ^ 0x04C1_1DB7
+                } else {
+                    crc << 1
+                };
+            }
+        }
+        page[22..26].copy_from_slice(&crc.to_le_bytes());
+        page
+    }
+
+    #[test]
+    fn opus_is_refused_by_name() {
+        // An Ogg Opus stream: identification header, comment header and
+        // one 20 ms packet. The container opens; Symphonia has no Opus
+        // decoder, which used to surface as an anonymous codec error.
+        let mut head = b"OpusHead".to_vec();
+        head.push(1); // version
+        head.push(1); // channels
+        head.extend_from_slice(&312u16.to_le_bytes()); // pre-skip
+        head.extend_from_slice(&48_000u32.to_le_bytes());
+        head.extend_from_slice(&0i16.to_le_bytes()); // output gain
+        head.push(0); // channel mapping family
+        let mut tags = b"OpusTags".to_vec();
+        tags.extend_from_slice(&4u32.to_le_bytes());
+        tags.extend_from_slice(b"test");
+        tags.extend_from_slice(&0u32.to_le_bytes());
+        let mut file = ogg_page(&head, 0x02, 0, 0);
+        file.extend(ogg_page(&tags, 0x00, 0, 1));
+        file.extend(ogg_page(&[0xF8, 0xFF, 0xFE], 0x04, 312 + 960, 2));
+
+        let dir = scratch_dir("opus");
+        let path = dir.join("voice.opus");
+        std::fs::write(&path, file).unwrap();
+        let result = decode(&path);
+        std::fs::remove_dir_all(&dir).ok();
+        match result {
+            Err(Error::Decode(message)) => assert_eq!(message, OPUS_UNSUPPORTED),
+            Err(other) => panic!("wrong refusal: {other}"),
+            Ok(_) => panic!("Opus decoded, so this test and the doc are stale"),
+        }
     }
 
     #[test]

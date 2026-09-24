@@ -194,18 +194,11 @@ pub fn merge_sections(
     if sections.is_empty() {
         return Vec::new();
     }
-    let bpm_of = |s: &GridSection| {
-        if s.period > 0.0 {
-            60.0 / s.period
-        } else {
-            0.0
-        }
-    };
     let mut merged: Vec<GridSection> = vec![sections[0]];
     for section in sections.iter().skip(1) {
         let last = merged.len() - 1;
         let previous = merged[last];
-        let same = (section_bpm(section) - bpm_of(&previous)).abs() < min_delta;
+        let same = (section_bpm(section) - section_bpm(&previous)).abs() < min_delta;
         let tiny = section.end.get() - section.start.get() < persistence as f64 * section.period;
         if same || tiny {
             let fused = refit_span(
@@ -477,7 +470,6 @@ pub fn phase_class(times: &[f64], weights: &[f32], period: f64, phase: f64, m: u
     if m <= 1 || period <= 0.0 {
         return 0;
     }
-    let mut classes: Vec<(f64, usize)> = Vec::new();
     let mut counts = vec![0usize; m];
     let mut totals = vec![0.0f64; m];
     for (&t, &w) in times.iter().zip(weights.iter()) {
@@ -489,7 +481,6 @@ pub fn phase_class(times: &[f64], weights: &[f32], period: f64, phase: f64, m: u
         let c = k.rem_euclid(m as f64) as usize % m;
         counts[c] += 1;
         totals[c] += w as f64;
-        let _ = &mut classes;
     }
     let total_inliers: usize = counts.iter().sum();
     if total_inliers < 4 {

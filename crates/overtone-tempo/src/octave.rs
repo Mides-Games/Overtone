@@ -330,43 +330,6 @@ pub fn beat_from_atoms(
     (best.0, best.1)
 }
 
-/// Which atom class inside a beat carries the accents (0 when unclear).
-pub fn phase_class(times: &[f64], weights: &[f32], grid: Grid, m: usize) -> usize {
-    if m <= 1 {
-        return 0;
-    }
-    let mut totals = vec![0.0f64; m];
-    let mut counts = vec![0usize; m];
-    let mut seen = 0usize;
-    for (i, &t) in times.iter().enumerate() {
-        let k = ((t - grid.phase) / grid.period).round();
-        if (t - (grid.phase + k * grid.period)).abs() > 0.15 * grid.period {
-            continue;
-        }
-        let class = (k as i64).rem_euclid(m as i64) as usize;
-        totals[class] += weights[i] as f64;
-        counts[class] += 1;
-        seen += 1;
-    }
-    if seen < 4 {
-        return 0;
-    }
-    // .rev(): the first of equal classes, as np.argmax and sections::phase_class.
-    (0..m)
-        .rev()
-        .max_by(|&a, &b| {
-            let mean = |c: usize| {
-                if counts[c] > 0 {
-                    totals[c] / counts[c] as f64
-                } else {
-                    0.0
-                }
-            };
-            mean(a).total_cmp(&mean(b))
-        })
-        .unwrap_or(0)
-}
-
 /// A 4-beat bar's downbeat must also out-weigh the beat half a bar away — v3
 /// `HALF_BAR_CONTRAST`. The onset envelope favours broadband hits, so a snare
 /// on 2 and 4 (or, at double tempo, on every other "beat") can out-weigh the
@@ -632,7 +595,10 @@ mod tests {
             beat_from_atoms(&times, &ones, grid, &[(75.0, 1.0)], true),
             (4, 0)
         );
-        assert_eq!(phase_class(&times, &ones, grid, 4), 0);
+        assert_eq!(
+            crate::sections::phase_class(&times, &ones, grid.period, grid.phase, 4),
+            0
+        );
         // Two strongest classes tied in a 3-beat bar: v3 says ('3/4', 0, 3).
         let (times, weights) = cycles(&[2.0, 2.0, 0.5]);
         let grid = Grid {
@@ -666,15 +632,7 @@ mod tests {
     #[test]
     fn phase_class_locates_the_accent() {
         let (times, weights) = accented(0.2, 4, 400, 2);
-        let class = phase_class(
-            &times,
-            &weights,
-            Grid {
-                period: 0.2,
-                phase: 0.0,
-            },
-            4,
-        );
+        let class = crate::sections::phase_class(&times, &weights, 0.2, 0.0, 4);
         assert_eq!(class, 2);
     }
 }

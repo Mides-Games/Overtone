@@ -16,6 +16,53 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · The tempo map becomes a timeline
+
+Phase 3's timeline rows, on the canvas the app already had.
+
+### Changed
+
+- **Zoom and pan.** The wheel zooms at the cursor, down to half a second. Dragging pans,
+  and "Show all" resets the view.
+- **Two lanes under the tempo curve.**
+  - The waveform, built from the audio the page already decodes for playback: min/max per
+    256 samples, once per song.
+  - A drift lane: each attack's distance from the nearest 1/1-1/4 tick of the red line
+    governing it, green within 5 ms, amber within 15, red past.
+- **The beat grid** appears once beats are 7 px apart, bars brighter.
+- **Drag a red line.** It snaps to an attack within 6 px, and Alt moves it freely. The drag
+  goes through the editor's own `edit_apply`, so it is one undo, and a locked line stays.
+- **The compared map's red lines** appear as dashed ghosts: from the reference card, else
+  the compare card.
+- **The payload carries the detected attacks**, which the snap and the drift lane read.
+
+### Rejected / tried and dropped
+
+- **Double-click to add a red line**, as the roadmap row had it. Double-click already plays
+  from that point, and the editor adds.
+- **A binary transport** for the waveform. The song already reaches the page once, as
+  base64 chunks, for playback, and the page builds its own peaks from it.
+
+### Measured
+
+These ran in the built-in browser on the real bridge, silently: the audio graph was routed
+through a gain of 0.
+
+```
+wheel -500 at x=400        span 68 -> 32.121 s (exp(-0.75)), time under the cursor unchanged
+pan 100 px                 -3.6668 s as computed; the click ending it selected nothing
+drag 40 ms, no attack      24310.1 -> 24349.7 ms
+dropped 3 px from attack   exactly 24704.74 ms, the attack
+Alt                        free, within one pixel (1.7 ms at that zoom)
+secs-3 drift lane          333 of 342 attacks within 5 ms; 9 weak ones (~0.2) at +28.3 ms
+                           every 6.6 s: the generator's ornaments, not a timing error
+Python unittest            324 -> 325, all pass
+benchmark.py 24/24 · bpm-snapshot · golden.py 27/27 · coverage · measures · signatures
+robustness · reference 24/24 · assisted 70/70 · facts
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Taps, the slow loop, and why its pitch drops
 
 The rest of Phase 4, but for the percussion-only audition.

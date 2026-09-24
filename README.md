@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-324%20Python%20%C2%B7%20231%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-325%20Python%20%C2%B7%20231%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -79,7 +79,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Open audio, drag and drop, beatmap folder import, recent files | ✅ | A file dropped on `Overtone.bat` opens straight into analysis |
 | Analysis on a background thread with stage messages | ✅ | |
 | Stats strip: global BPM, points, beats, stability, engine, residual | ✅ | |
-| Tempo map: local BPM, onset bed, sections, red lines, hover readout | ✅ | Click to select the governing red line |
+| Timeline: local BPM, waveform, drift lane, sections, red lines, hover readout | ✅ | Wheel zooms at the cursor, drag pans; click selects the governing red line |
 | Timing-point list with a detail panel | ✅ | ↑ / ↓ to move; the panel explains the selected point |
 | Honesty banners | ✅ | Fallback engine, a first red line long after the music starts, loose grids, validation findings |
 | Point editor: apply, add, delete, ±1 ms nudge, per-section ×2 / ÷2 | ✅ | |
@@ -99,8 +99,8 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Dark window caption, generated app icon | ✅ | |
 | Verdict strip | 🟡 | Engine pill and banners; one-line verdict is P3 |
 | Progress panel | 🟡 | Stage names; timings and cancel are P3 |
-| Zoom and pan, drag red lines, waveform, drift lane | 📋 | P3 |
-| Map red lines drawn as ghosts on the tempo map | 📋 | P3 |
+| Drag red lines on the timeline | ✅ | Snaps to the nearest attack (Alt: free); one undo |
+| Map red lines drawn as ghosts on the timeline | ✅ | From the reference or compare card |
 | Command palette, full keyboard map | 📋 | P3 |
 | Sections: Hitsounds, Audio, full Settings | 📋 | P19 — Library, Timing, Map check, Mapset, Report and Export exist |
 | Light theme, UI scale | 📋 | P20 |
@@ -281,7 +281,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 324 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 325 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage

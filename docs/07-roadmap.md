@@ -28,24 +28,24 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **324** Python (226 engine + 98 web shell) · **231** Rust.
+Tests: **325** Python (226 engine + 99 web shell) · **231** Rust.
 
 ### What is pending, in order
 
 The audit backlog is closed: every finding fixed, recorded as already fixed, or decided
 ([`13-audit-backlog.md`](13-audit-backlog.md)). The Rust engine is in the app, opt-in.
 
-1. **Timeline** (Phase 3) — waveform, zoom, drag red lines. Playback (Phase 4) is in
-   but for the percussion-only audition, and the first five sidebar modes of
-   [Phase 19](#phase-19--app-sections): Mapset, Snap audit, Reference timing, Assisted
-   timing (typed or tapped) and the Report.
+1. **Settings** (Phase 20) — every option in one place. The timeline (Phase 3) is in:
+   waveform, zoom and pan, drag red lines, the drift lane and the map's lines as ghosts;
+   so is playback (Phase 4) but for the percussion-only audition, and the first five
+   sidebar modes of [Phase 19](#phase-19--app-sections): Mapset, Snap audit, Reference
+   timing, Assisted timing (typed or tapped) and the Report.
 2. **The next sidebar modes** (Phase 19) — Structure, Evidence, Write history, Audio swap.
 3. **Percussion-only audition** (Phase 4) — hear the percussive part alone.
-4. **Settings** (Phase 20) — every option in one place.
-5. **Map tools** (Phase 21) — kiai, preview point, SV normaliser, inject into every difficulty.
-6. **Hitsounds** (Phase 6) — decision, editor, export; then its own section.
-7. **Real-audio accuracy** (Phase 10) — build Corpus B first, then one sub-phase at a time.
-8. **Installer** (Phase 10.13) — MSI + portable ZIP.
+4. **Map tools** (Phase 21) — kiai, preview point, SV normaliser, inject into every difficulty.
+5. **Hitsounds** (Phase 6) — decision, editor, export; then its own section.
+6. **Real-audio accuracy** (Phase 10) — build Corpus B first, then one sub-phase at a time.
+7. **Installer** (Phase 10.13) — MSI + portable ZIP.
 
 ### Bugs fixed on 2026-09-23
 
@@ -228,10 +228,10 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Shell + tokens | window, theme, typography, bridge | med | **high** | P1 | no | no | **P1** | **done** — pywebview now, Tauri later |
-| Binary transport | fast channel for peaks/envelope/attacks | med | **high** | shell | no | no | **P1** | todo — JSON bridge today |
-| Peak pyramid | LOD min/max waveform, computed once, cached | low | **high** | audio | no | no | **P1** | todo |
-| **Timeline** | waveform · onsets · grid · attacks · sections · red lines | **high** | **high** | transport | no | opt | **P1** | partial — canvas tempo map with onsets, sections and red lines; no waveform |
-| Zoom / scroll / select | cursor-anchored zoom, range selection, keyboard nav | med | **high** | timeline | no | no | **P1** | partial — click and ↑/↓ select; no zoom |
+| Binary transport | fast channel for peaks/envelope/attacks | med | **high** | shell | no | no | **P1** | not needed so far — the song travels once as base64 chunks and the page builds its own peaks; attacks and clicks ride the JSON payload |
+| Peak pyramid | LOD min/max waveform, computed once, cached | low | **high** | audio | no | no | **P1** | **done** — min/max per 256 samples, built once from the decoded song in the page |
+| **Timeline** | waveform · onsets · grid · attacks · sections · red lines | **high** | **high** | transport | no | opt | **P1** | **done** — tempo curve, waveform lane, drift lane, beat grid when zoomed, sections, red lines, map ghosts |
+| Zoom / scroll / select | cursor-anchored zoom, range selection, keyboard nav | med | **high** | timeline | no | no | **P1** | **done** for zoom and select — cursor-anchored wheel zoom, ↑/↓; no range selection yet |
 | Tempo curve layer | local BPM over time | med | high | timeline | no | no | **P1** | **done** |
 | Hover readout | time, tempo, governing red line | low | high | timeline | no | no | **P1** | **done** |
 | Stat cards | BPM, points, beats, stability, engine, residual | low | med | shell | no | no | P1 | **done** |
@@ -241,10 +241,10 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Confidence ribbon | per-section confidence under the ruler | low | med | timeline | no | no | P2 | todo — per-point bars in the list only |
 | Spectrogram layer | optional spectral energy | med | low-med | STFT | no | yes | P3 | todo |
 | Light theme | full token counterpart | low | low | tokens | no | no | P3 | todo |
-| Zoom and pan | wheel zoom anchored at the cursor, drag to pan; beat grid and attack ticks when zoomed in | med | **high** | timeline | no | no | **P1** | todo |
-| Drag red lines | click to select, drag to move (snapped to attacks), double-click to add | med | **high** | zoom | no | no | **P1** | todo |
-| Drift lane | how far each attack sits from the grid osu! will play | med | high | timeline | no | no | P1 | todo |
-| Map red lines as ghosts | the loaded .osu's red lines drawn beside the detected ones | low | high | compare | no | no | P1 | todo |
+| Zoom and pan | wheel zoom anchored at the cursor, drag to pan; beat grid and attack ticks when zoomed in | med | **high** | timeline | no | no | **P1** | **done** — beat grid, bars brighter; attacks show in the drift lane |
+| Drag red lines | click to select, drag to move (snapped to attacks), double-click to add | med | **high** | zoom | no | no | **P1** | **done** but adding — snaps within 6 px, Alt frees it, one undo; double-click plays instead, and the editor adds |
+| Drift lane | how far each attack sits from the grid osu! will play | med | high | timeline | no | no | P1 | **done** — nearest 1/1-1/4 tick of the governing line, ±30 ms, green ≤5, amber ≤15 |
+| Map red lines as ghosts | the loaded .osu's red lines drawn beside the detected ones | low | high | compare | no | no | P1 | **done** — from the reference card, else the compare card |
 | Verdict strip | which engine answered, its residual, and whether to trust it, in one line | low | high | shell | no | no | P1 | partial — banners + engine pill |
 | Snap indicator | say when export snapping moved an offset, so a ±1 ms nudge is not silently undone | low | med | editor | no | no | P2 | todo |
 | Uncovered-intro shading | hatch the audio before the first red line | low | med | timeline | no | no | P2 | partial — banner only |
@@ -614,7 +614,7 @@ P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─�
                            ├─► P4 playback ✗ / editor ✓
                            └─► P5 osu! ✓ ─────────────► P8 automation (half) ─► P9 (suggestions ✓)
 
-Next: timeline ─► settings ─► map tools
+Next: settings ─► map tools ─► hitsounds
       ─► map tools ─► hitsounds ─► Phase 10 ─► installer
 ```
 

@@ -2887,8 +2887,9 @@ def _safe_component(text: str, fallback: str) -> str:
     """
     cleaned = " ".join(str(text).translate(_UNSAFE_FILENAME).split())
     cleaned = re.sub(r"\.{2,}", "_", cleaned)
-    cleaned = cleaned.strip(". ")
-    return cleaned[:80] or fallback
+    # Trimmed again after the cut: 80 characters can end in a space or a dot,
+    # which Windows drops on extraction.
+    return cleaned.strip(". ")[:80].rstrip(". ") or fallback
 
 
 def osu_beatmap_text(analysis: "Analysis", audio_filename: str,
@@ -3007,7 +3008,10 @@ def export_osz(analysis: "Analysis", destination: str | os.PathLike[str],
     creator = _safe_component(meta.get("creator", "Overtone"), "Overtone")
     version = _safe_component(meta.get("version", "Timing"), "Timing")
 
-    audio_name = _safe_component(source.name, "audio" + source.suffix)
+    # Stem and extension apart: through _safe_component whole, a name over 80
+    # characters lost its ".mp3", and "Title....mp3" came out "Title_mp3".
+    suffix = re.sub(r"[^.a-z0-9]", "", source.suffix.lower())
+    audio_name = _safe_component(source.stem, "audio") + suffix
     osu_name = f"{artist} - {title} ({creator}) [{version}].osu"
     text = osu_beatmap_text(analysis, audio_name, meta, decimals)
 

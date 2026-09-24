@@ -1570,6 +1570,25 @@ class OszExportTests(unittest.TestCase):
             self.assertIn(f"AudioFilename: {written['audio']}", text)
             self.assertEqual(written["points"], 2)
 
+    def test_the_audio_keeps_its_extension_whatever_its_name(self):
+        import zipfile
+        long_name = ("Some Artist Name feat. Another Artist - A Rather Long Song "
+                     "Title (Extended Club Mix)")
+        for stem in (long_name, "Title...", "Hmm...."):
+            with self.subTest(stem=stem), tempfile.TemporaryDirectory() as tmp:
+                audio = self._audio(Path(tmp) / f"{stem}.wav")
+                out = Path(tmp) / "map.osz"
+                written = export_osz(self._analysis(), out, audio)
+                name = written["audio"]
+                self.assertTrue(name.endswith(".wav"), name)
+                self.assertEqual(name, name.strip())
+                self.assertNotIn("..", name)
+                with zipfile.ZipFile(out) as archive:
+                    self.assertIn(name, archive.namelist())
+                    osu = next(n for n in archive.namelist() if n.endswith(".osu"))
+                    self.assertIn(f"AudioFilename: {name}\n",
+                                  archive.read(osu).decode("utf-8").replace("\r\n", "\n"))
+
     def test_the_beatmap_has_every_section_osu_expects(self):
         text = osu_beatmap_text(self._analysis(), "song.mp3")
         self.assertTrue(text.startswith("osu file format v14"))

@@ -140,7 +140,7 @@ crates/                   the v4 Rust workspace
 docs/                     audit, stack evaluation, architecture, UI, DSP, hitsounds,
                           roadmap, ML evaluation, naming, precision plan, MSI
                           distribution, comfort features, audit backlog,
-                          other languages
+                          other languages, hitsound plan
 WORKFLOW.md               the per-task routine: program, test, measure, commit, audit
 timeline.md               engineering log
 ```

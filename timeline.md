@@ -16,6 +16,28 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · Hitsounds first: the plan
+
+### Changed
+
+- **Hitsounds move to the top of the pending list**, as the most requested feature.
+  `docs/15-hitsound-plan.md` lists what exists, the seven prerequisites that must land
+  first (P-1 to P-7) and five steps that each ship alone, from a hitsound copier that needs
+  no audio analysis to the decision engine, which needs everything else.
+- Two corrections to `06-hitsound-engine.md`, recorded in the plan: slider ticks take no
+  additions (the format has no field for it), and profiles are JSON (a dependency already
+  in the build) rather than TOML.
+
+### Measured
+
+```
+local Songs folder, 400 standard   additions on > 5 % of objects: 376 maps (94 %);
+maps of 200+ objects (of 18,179)   sliders with per-edge sounds: 377 (94 %);
+                                   a custom sample index on an object: none
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Structure, a sidebar section
 
 ### Changed

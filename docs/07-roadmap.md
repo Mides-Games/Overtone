@@ -35,17 +35,22 @@ Tests: **353** Python (241 engine + 112 web shell) · **233** Rust.
 The audit backlog is closed: every finding fixed, recorded as already fixed, or decided
 ([`13-audit-backlog.md`](13-audit-backlog.md)). The Rust engine is in the app, opt-in.
 
-1. **The next sidebar modes** (Phase 19) — Evidence, Write history, Audio swap.
+1. **Hitsounds** (Phase 6) — the most requested feature, first since 2026-09-24. The plan
+   is [`15-hitsound-plan.md`](15-hitsound-plan.md): prerequisites P-1 to P-7 (sound events
+   from the map, a hitsound field writer, sample playback, evidence through the CLI,
+   object-attack matching, a real-map evaluation, an object lane), then H1 the hitsound
+   copier, H2 the Hitsounds section, H3 a consistency check, H4 the decision engine, H5 the
+   editor and export.
+2. **The next sidebar modes** (Phase 19) — Evidence, Write history, Audio swap.
    In since 2026-09-24: Settings (Phase 20: output folder, offset precision, click,
    interface size, cache), the timeline (Phase 3), playback (Phase 4, but for the
    percussion-only audition) and the first six sidebar modes of
    [Phase 19](#phase-19--app-sections).
-2. **Other languages** (Phase 24) — SQL is in: the SQLite library index behind the Songs
+3. **Other languages** (Phase 24) — SQL is in: the SQLite library index behind the Songs
    browser and same-audio lookup. Next TypeScript (needs Node.js) and a C# lazer gate
    (needs the .NET SDK).
-3. **Percussion-only audition** (Phase 4) — hear the percussive part alone.
-4. **Map tools** (Phase 21) — kiai, preview point, SV normaliser, inject into every difficulty.
-5. **Hitsounds** (Phase 6) — decision, editor, export; then its own section.
+4. **Percussion-only audition** (Phase 4) — hear the percussive part alone.
+5. **Map tools** (Phase 21) — kiai, preview point, SV normaliser, inject into every difficulty.
 6. **Real-audio accuracy** (Phase 10) — build Corpus B first, then one sub-phase at a time.
 7. **Installer** (Phase 10.13) — MSI + portable ZIP.
 
@@ -309,10 +314,20 @@ were what was missing.
 ## Phase 6 — Hitsound engine
 
 All of [`06-hitsound-engine.md`](06-hitsound-engine.md). **Rust only; nothing of it is in
-the app yet.**
+the app yet.** The order of work, and what has to land first, is
+[`15-hitsound-plan.md`](15-hitsound-plan.md): the prerequisite rows below (P-1 to P-7), then
+the copier, the section, the check, the decision engine, the editor.
 
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| P-1 Sound events from the map | every object as the sounds it makes (edges, body, spinner end), resolved against the timing points | med | **high** | P5 reader | no | no | **P1** | todo — first |
+| P-2 Hitsound field writer | only `hitSound`/`edgeSounds`/`edgeSets`/`hitSample` change; zero-change write byte-identical | med | **high** | P5 writer | no | no | **P1** | todo |
+| P-3 Sample playback | samples found as osu! finds them, Overtone's own synthesised defaults, on the playback clock | med | **high** | P4 playback | no | no | **P1** | todo |
+| P-4 Evidence through the CLI | class probabilities with terms, and role, per attack; calibrated weights baked in | med | **high** | templates, role | no | no | **P1** | todo |
+| P-5 Object-attack matching | each sound event's nearest attack, "no attack" as a state | low | high | P-1 | no | no | **P1** | todo |
+| P-6 Real-map evaluation | agreement with mappers' own hitsounds on local maps, against simple baselines | med | **high** | library index, P-1 | no | no | **P1** | todo |
+| P-7 Object lane | objects and their sounds on the timeline | low | high | P3 timeline, P-1 | no | no | **P1** | todo |
+| H1 Hitsound copier | one difficulty's hitsounds onto others, by time, with a preview | low | **high** | P-1, P-2 | no | no | **P1** | todo — the first thing that ships |
 | Per-attack features | 7 bands, centroid/rolloff/flatness/crest, rise/decay | med | **high** | P2 HPSS | no | no | **P1** | **done** |
 | Harmonicity + pitch | HPS pitch, formants | med | high | features | no | no | **P1** | **done** — inharmonicity deferred |
 | Instrument templates | 13 scored classes, explainable | high | **high** | features | no | no | **P1** | **done** — held-out F1 0.723 on synthetic arrangements it never saw (the old 0.91 judged a re-draw of its training track); Clap 0.15, closed hats 0.40 weakest |

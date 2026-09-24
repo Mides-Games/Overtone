@@ -352,6 +352,8 @@ timed decoding and attack detection only.
 | [11 · MSI distribution](docs/11-msi-distribution.md) | One self-contained installer |
 | [12 · Comfort features](docs/12-comfort-features.md) | Playback, projects, osu! integration, i18n, plugins |
 | [13 · Audit backlog](docs/13-audit-backlog.md) | Confirmed findings still open |
+| [14 · Other languages](docs/14-other-languages.md) | Which features another language serves better, and how they stay in step |
+| [15 · Hitsound plan](docs/15-hitsound-plan.md) | What hitsounds need first, and what ships in which order |
 | [timeline.md](timeline.md) | Engineering log, with what was tried and dropped |
 
 ---

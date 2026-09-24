@@ -1339,7 +1339,10 @@ fn main() -> Result<()> {
         return Ok(());
     }
     if mode != "golden" {
-        bail!("usage: overtone-bench (golden | density | elastic) [--only CASE...] | candidates <case>");
+        bail!(
+            "usage: overtone-bench (golden | density | elastic | map) [--only CASE...] \r
+             | nogrid | resample | structure <case> | candidates <case>"
+        );
     }
     let only: Vec<String> = args
         .iter()

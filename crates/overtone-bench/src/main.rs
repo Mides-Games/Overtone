@@ -117,6 +117,8 @@ struct GoldenSection {
     #[serde(default)]
     bpm: f64,
     #[serde(default)]
+    inliers: usize,
+    #[serde(default)]
     residual_ms: f64,
 }
 
@@ -158,6 +160,12 @@ const WEIGHT_TOL: f64 = 2e-5;
 /// 5 ms is the benchmark's own offset tolerance.
 const BOUNDARY_TOL_S: f64 = 5e-3;
 
+/// A grown region ends on an attack time where a tempo step falls on its
+/// edge (secs-3, three-sections, change-128-142), and whether `t <= end`
+/// keeps that attack is a float tie: v3 drops it, Rust keeps it. One count;
+/// before growth counted the refinement's own mask it was up to 62.
+const INLIER_TOL: usize = 1;
+
 struct SectionDiff {
     name: &'static str,
     expected: usize,
@@ -167,6 +175,9 @@ struct SectionDiff {
     worst_bpm_err: f64,
     worst_residual_err: f64,
     worst_boundary_err: f64,
+    /// Attacks on the grid, counted as v3 counts them at that stage. Never
+    /// compared until the audit found growth counting another way.
+    worst_inliers_err: usize,
 }
 
 impl SectionDiff {
@@ -177,6 +188,7 @@ impl SectionDiff {
             && self.worst_bpm_err <= 1e-3
             && self.worst_residual_err <= 0.05
             && self.worst_boundary_err <= BOUNDARY_TOL_S
+            && self.worst_inliers_err <= INLIER_TOL
     }
 
     fn describe(&self) -> Option<String> {
@@ -202,6 +214,9 @@ impl SectionDiff {
         if self.worst_boundary_err > BOUNDARY_TOL_S {
             bits.push(format!("boundary {:.3}s off", self.worst_boundary_err));
         }
+        if self.worst_inliers_err > INLIER_TOL {
+            bits.push(format!("inliers off by {}", self.worst_inliers_err));
+        }
         if bits.is_empty() {
             None
         } else {
@@ -224,6 +239,7 @@ fn diff_sections(
         worst_bpm_err: 0.0,
         worst_residual_err: 0.0,
         worst_boundary_err: 0.0,
+        worst_inliers_err: 0,
     };
     if got.len() != want.len() {
         return diff;
@@ -242,6 +258,7 @@ fn diff_sections(
             .worst_boundary_err
             .max((g.start.get() - w.start_s).abs())
             .max((g.end.get() - w.end_s).abs());
+        diff.worst_inliers_err = diff.worst_inliers_err.max(g.inliers.abs_diff(w.inliers));
     }
     diff
 }

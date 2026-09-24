@@ -188,7 +188,7 @@ fn scan_section(
             .map(|&(_, _, p, _)| p)
             .collect();
         let parity_out = par_rows.iter().sum::<f64>() / par_rows.len() as f64;
-        let score = (mean_out - mean_in) * parity_in;
+        let score = proto_score(mean_out, mean_in, parity_in);
         let candidate = PulseHint {
             section: index,
             subdivision: sub,
@@ -219,6 +219,15 @@ fn scan_section(
         }
     }
     best
+}
+
+/// The prototype's score: coverage and parity rounded to three decimals,
+/// then their product rounded again, and the subdivisions compared on that
+/// (the first of equal scores stays). The port compared the raw product, so
+/// two subdivisions within rounding of each other could pick the other one.
+fn proto_score(mean_out: f64, mean_in: f64, parity_in: f64) -> f64 {
+    let round3 = |x: f64| (x * 1000.0).round() / 1000.0;
+    round3((round3(mean_out) - round3(mean_in)) * round3(parity_in))
 }
 
 fn windowed(
@@ -326,6 +335,17 @@ mod tests {
             "boundary {} vs truth {change}",
             hints[0].boundary_s
         );
+    }
+
+    #[test]
+    fn scores_compare_as_the_prototype_rounds_them() {
+        // Raw 0.4500 against 0.45018: the prototype rounds both to 0.450 and
+        // keeps the first subdivision; raw, the second would win.
+        let first = proto_score(0.9, 0.4, 0.9);
+        let second = proto_score(0.9002, 0.4, 0.9);
+        assert_eq!(first, 0.45);
+        assert_eq!(second, first);
+        assert!(0.9002f64 - 0.4 > 0.9 - 0.4);
     }
 
     #[test]

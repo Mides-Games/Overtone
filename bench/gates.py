@@ -23,6 +23,7 @@ So this file holds two gates:
     python bench/gates.py signatures          # time-signature regions over one bar
     python bench/gates.py robustness          # the audit's edge-case probes
     python bench/gates.py reference           # hand-timed maps graded by the attacks
+    python bench/gates.py assisted            # two marked downbeats seed the grid
 
 Both exit non-zero on failure. Neither renders new audio for the main corpus —
 they reuse ``bench/audio/`` — but ``coverage`` has two fixtures of its own,
@@ -731,11 +732,111 @@ def reference() -> int:
     return 1 if failures else 0
 
 
+# ---------------------------------------------------------------------------
+# Assisted timing — two marked downbeats, the grid from the attacks
+# ---------------------------------------------------------------------------
+
+#: A person's marks, off the true downbeats as a hand in the editor would be.
+ASSISTED_MARK_ERRORS_MS = (15.0, -20.0)
+#: How far an assisted span may cross into a neighbouring section. Attacks cannot
+#: tell two grids apart until they part by the growth's tolerance, 11 % of a
+#: subdivision: at 200 -> 203.5 BPM that takes about six beats. So the span may
+#: run that far past a change, plus one beat; into a neighbour an octave away
+#: (175 -> 87.5) the grid is the same one and runs on, as F-11 describes.
+ASSISTED_OVERSHOOT_BEATS = 1.0
+ASSISTED_PART_TOLERANCE = 0.11
+
+
+def assisted() -> int:
+    """Every section of every corpus case, marked the way a person would.
+
+    Two downbeats a quarter into the section (clear of the drops in its
+    middle), one bar apart and then four, each mark 15-20 ms off. The grid must
+    come back within the benchmark's bar (0.05 BPM, 5 ms off the true beats),
+    cover the section, and stop within a beat of where its grid and the
+    neighbour's part. White noise, pads and silence, marked the
+    same way, must be refused.
+    """
+    print(f"{'case':<18} {'sec':>3} {'bars':>4}  {'bpm err':>8} {'ms err':>7} "
+          f"{'covers':>7} {'over s':>6}  verdict")
+    print("-" * 72)
+    failures = 0
+    rows = 0
+    for name, kwargs in bm.CASES.items():
+        path = bm.AUDIO_DIR / f"{name}.wav"
+        if not path.exists():
+            bm.build_track(path, seed=zlib.crc32(name.encode()), **kwargs)
+        y, sr = ta._load_audio(path, lambda _message: None)
+        times, weights, _env = ta._detect_attacks(y, sr, ta.FIT_HOP)
+        truth = bm.truth_of(kwargs)
+        ends = [t for t, _bpm in truth[1:]] + [kwargs["duration"]]
+        for n, ((start, bpm), end) in enumerate(zip(truth, ends)):
+            beat = 60.0 / bpm
+            for bars in (1, 4):
+                rows += 1
+                # Whole bars into the section, so the marks sit on true downbeats.
+                span_beats = int((end - start) / beat)
+                k = 4 * max(0, (span_beats // 4) // 4)
+                first = start + k * beat
+                second = first + 4 * bars * beat
+                if second > end - beat:
+                    print(f"{name:<18} {n + 1:>3} {bars:>4}  section too short for these marks")
+                    continue
+                fit = ta.assisted_grid(times, weights,
+                                       first * 1000.0 + ASSISTED_MARK_ERRORS_MS[0],
+                                       second * 1000.0 + ASSISTED_MARK_ERRORS_MS[1], bars, 4)
+                if not fit["ok"]:
+                    failures += 1
+                    print(f"{name:<18} {n + 1:>3} {bars:>4}  REFUSED {fit['reason']}  FAIL")
+                    continue
+                ratio = fit["bpm"] / bpm
+                bpm_err = abs(fit["bpm"] - bpm)
+                phase = (fit["offset_ms"] / 1000.0 - start) / beat
+                ms_err = abs(phase - round(phase)) * beat * 1000.0
+                lo, hi = fit["start_ms"] / 1000.0, fit["end_ms"] / 1000.0
+                covers = (min(hi, end) - max(lo, start)) / (end - start)
+                over = max(0.0, start - lo, hi - end)
+                allowed = ASSISTED_OVERSHOOT_BEATS * beat
+                neighbours = [truth[i][1] for i in (n - 1, n + 1) if 0 <= i < len(truth)]
+                for other in neighbours:
+                    octave = 2.0 ** round(float(np.log2(other / bpm)))
+                    rel = abs(other / (octave * bpm) - 1.0)
+                    part = np.inf if rel < 1e-9 else ASSISTED_PART_TOLERANCE / rel
+                    allowed = max(allowed, (ASSISTED_OVERSHOOT_BEATS + part) * beat)
+                ok = (abs(ratio - 1.0) < 0.01 and bpm_err <= bm.BPM_TOLERANCE
+                      and ms_err <= bm.OFFSET_TOLERANCE_MS and covers >= 0.9
+                      and over <= allowed + 1e-6)
+                failures += not ok
+                print(f"{name:<18} {n + 1:>3} {bars:>4}  {bpm_err:8.4f} {ms_err:7.2f} "
+                      f"{covers:7.1%} {over:6.2f}  {'ok' if ok else 'FAIL'}")
+
+    print("\n-- no pulse: marks must be refused --")
+    for label, audio in (("white noise", "_noise.wav"), ("pads", "_ambient.wav")):
+        path = bm.AUDIO_DIR / audio
+        if not path.exists():
+            print(f"  {label:<12} missing {audio}: run bench/benchmark.py first  FAIL")
+            failures += 1
+            continue
+        y, sr = ta._load_audio(path, lambda _message: None)
+        times, weights, _env = ta._detect_attacks(y, sr, ta.FIT_HOP)
+        fit = ta.assisted_grid(times, weights, 2000.0, 3600.0, 1, 4)
+        refused = not fit["ok"]
+        failures += not refused
+        print(f"  {label:<12} {'refused: ' + fit['reason'] if refused else 'ANSWERED'}"
+              f"{'' if refused else '  FAIL'}")
+    silent = ta.assisted_grid(np.zeros(0), np.zeros(0), 2000.0, 3600.0, 1, 4)
+    failures += silent["ok"]
+    print(f"  {'silence':<12} {'refused: ' + silent['reason'] if not silent['ok'] else 'ANSWERED  FAIL'}")
+    print(f"\nassisted: {'ok' if not failures else f'{failures} failure(s)'} "
+          f"({rows} marked sections)")
+    return 1 if failures else 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("gate",
                         choices=("bpm-snapshot", "coverage", "measures", "signatures",
-                                 "robustness", "reference"))
+                                 "robustness", "reference", "assisted"))
     parser.add_argument("--only", nargs="*", metavar="CASE",
                         help="bpm-snapshot: run just these cases")
     parser.add_argument("--update", action="store_true",
@@ -750,6 +851,8 @@ def main() -> None:
         raise SystemExit(robustness())
     if args.gate == "reference":
         raise SystemExit(reference())
+    if args.gate == "assisted":
+        raise SystemExit(assisted())
     audio_dir = Path(args.dir)
     audio_dir.mkdir(parents=True, exist_ok=True)
     if args.gate == "bpm-snapshot":

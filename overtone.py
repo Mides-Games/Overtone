@@ -4754,6 +4754,303 @@ def find_same_audio_maps(audio_path: str | os.PathLike[str],
 
 
 # ---------------------------------------------------------------------------
+# Assisted timing (proposal P1): two marked downbeats seed the grid
+# ---------------------------------------------------------------------------
+
+#: Tempos an assisted grid may take, wider than osu!'s usual range: the user
+#: says where the bars are, so a 70 BPM ballad is a fact, not an octave error.
+ASSISTED_BPM_RANGE = (40.0, 400.0)
+#: How far past the second mark the seed window reaches at least, in beats:
+#: two marks one bar apart hold too few attacks to fit a slope on.
+ASSISTED_SEED_BEATS = 8
+#: Growth past the marks, as the engine grows a section: a chunk must put this
+#: much of its weight on the grid, within this fraction of a subdivision. The
+#: engine's 0.55 assumes a grid that explains nearly every attack; a swung song
+#: read at the beat puts only 0.54-0.57 on it, even beside the marks, and never
+#: grew past them. So a chunk must fit about as well as the seed did: 0.8 of the
+#: seed's share, between the share gate and the engine's bar.
+ASSISTED_GROW_SHARE = 0.55
+ASSISTED_GROW_RATIO = 0.8
+ASSISTED_GROW_RMS = 0.09
+#: A mark snaps to the strongest attack within a quarter beat of it, and never
+#: further than a hand in the editor is off.
+ASSISTED_SNAP_BEATS = 0.25
+ASSISTED_SNAP_S = 0.060
+#: The longest stretch the grid may be lost in and still continue, as long as
+#: the same grid comes back after it: a breakdown of 16 bars at 128 BPM.
+ASSISTED_GAP_S = 30.0
+#: Where growth stops, this much further is searched for a grid of its own; a
+#: period within this fraction of ours, up to an octave, is ours.
+ASSISTED_CHANGE_WINDOW_S = 12.0
+ASSISTED_SAME_GRID = 0.005
+#: A grid that held fewer bars than this is answered but called short. Marked
+#: on 30 ranked maps, every fit that held 11 bars or fewer missed the map's BPM
+#: by 0.25-1.9, and every one that held 22 or more came within 0.043. The
+#: least-squares standard error was tried and dropped: it put nearly every fit,
+#: good ones included, past two of its own errors.
+ASSISTED_MIN_BARS = 16
+#: Adding the line keeps detected lines this close to the span's end.
+ASSISTED_EDGE_BEATS = 8
+#: The engine refuses a grid chance explains at 10**-6 because its seed search
+#: tries thousands of grids and keeps the best. Here the user proposed one, so
+#: one in a thousand is the same bar. Marks on white noise score 0 to -1.
+ASSISTED_CHANCE_LOG10P = -3.0
+
+
+def _snap_mark(times: np.ndarray, weights: np.ndarray, mark: float, reach: float) -> float:
+    """The strongest attack within ``reach`` of a mark, or the mark itself."""
+    near = np.abs(times - mark) <= reach
+    if not near.any():
+        return mark
+    candidates = np.flatnonzero(near)
+    return float(times[candidates[int(np.argmax(weights[candidates]))]])
+
+
+def _chunk_fits(times: np.ndarray, weights: np.ndarray, period: float, phase: float,
+                a: float, b: float, min_share: float) -> bool | None:
+    """Whether the attacks in (a, b] land on the grid; None when too few to say."""
+    chunk = (times > a) & (times <= b)
+    if int(chunk.sum()) < 3:
+        return None
+    share, _coverage, rms = _grid_quality(times[chunk], weights[chunk], period, phase,
+                                          tol_ratio=0.11)
+    return share >= min_share and rms <= ASSISTED_GROW_RMS * period * 1000.0
+
+
+def _another_grid(times: np.ndarray, weights: np.ndarray, period: float,
+                  lo: float, hi: float) -> bool:
+    """Whether a stretch the grid does not fit holds a grid of its own.
+
+    The engine's seed search is run on it. A grid that explains the stretch as
+    well as growth demands, at a tempo other than ours up to an octave, is a
+    tempo change; anything less is a gap (a breakdown, a bar of vocals) that
+    the same grid may resume after. Skipping gaps alone ran secs-3's first
+    145 BPM line across its 152 BPM section into the 145 after it.
+    """
+    fresh = _seed_grid(times, weights, lo, hi, prior_period=period, widths=(12.0, 7.0, 4.5))
+    if fresh is None:
+        return False
+    other, other_phase = fresh
+    window = (times >= lo) & (times <= hi)
+    share, _coverage, _rms = _grid_quality(times[window], weights[window], other, other_phase)
+    if share < ASSISTED_GROW_SHARE:
+        return False
+    ratio = other / period
+    ratio /= 2.0 ** round(float(np.log2(ratio)))
+    return abs(ratio - 1.0) > ASSISTED_SAME_GRID
+
+
+def _grow_assisted(times: np.ndarray, weights: np.ndarray, period: float, phase: float,
+                   lo: float, hi: float, forward: bool,
+                   min_share: float) -> tuple[float, float, float]:
+    """Extend a seeded grid one way while fresh chunks keep landing on it,
+    refitting on everything covered so far. Returns (period, phase, edge).
+
+    A chunk that does not fit (a breakdown, a bar of vocals alone) ends the
+    span only if the grid does not come back within ``ASSISTED_GAP_S``: on 30
+    ranked maps, stopping at the first one covered a median 31 % of the line.
+    """
+    band = (period * REFERENCE_PERIOD_BAND[0], period * REFERENCE_PERIOD_BAND[1])
+    finish = float(times[-1]) if forward else float(times[0])
+    edge = hi if forward else lo
+    while (edge < finish) if forward else (edge > finish):
+        step = max(2.0, 4.0 * period)
+        nxt = min(finish, edge + step) if forward else max(finish, edge - step)
+        a, b = (edge, nxt) if forward else (nxt - 1e-9, edge - 1e-9)
+        fits = _chunk_fits(times, weights, period, phase, a, b, min_share)
+        if fits is False:
+            # A stretch that holds another grid is a tempo change: stop there.
+            window = ((edge, min(finish, edge + ASSISTED_CHANGE_WINDOW_S)) if forward
+                      else (max(finish, edge - ASSISTED_CHANGE_WINDOW_S), edge))
+            if _another_grid(times, weights, period, *window):
+                break
+            # One with no grid is a gap: resume where the same grid holds again.
+            resume = None
+            probe = nxt
+            while resume is None and abs(probe - edge) <= ASSISTED_GAP_S and (
+                    (probe < finish) if forward else (probe > finish)):
+                after = min(finish, probe + step) if forward else max(finish, probe - step)
+                pa, pb = (probe, after) if forward else (after - 1e-9, probe - 1e-9)
+                if _chunk_fits(times, weights, period, phase, pa, pb, min_share):
+                    resume = after
+                probe = after
+            if resume is None:
+                break
+            nxt, fits = resume, True
+        if fits:
+            if forward:
+                whole = (times >= lo - 0.5 * period) & (times <= nxt)
+            else:
+                whole = (times >= nxt) & (times <= hi + 0.5 * period)
+            fitted, moved, _ = _refine_grid(times[whole], weights[whole], period, phase)
+            if not band[0] <= fitted <= band[1]:
+                break
+            period, phase = fitted, moved
+        edge = nxt
+        if forward:
+            hi = edge
+        else:
+            lo = edge
+    return period, phase, _settle_edge(times, weights, period, phase, edge, forward)
+
+
+def _settle_edge(times: np.ndarray, weights: np.ndarray, period: float, phase: float,
+                 edge: float, forward: bool) -> float:
+    """Where the grid really stops, inside the last chunk that passed.
+
+    A chunk passes with most, not all, of its weight on the grid, so the last
+    one can carry up to a step of the next tempo: at a 150 -> 120 BPM change at 31 s
+    the span ran to 32.2 s, and adding the line would have dropped the real
+    change. The attacks of the last two steps are scored +weight on the grid
+    and -weight off it; the edge is the attack that closes the best-scoring
+    run from the inside.
+    """
+    reach = 2.0 * max(2.0, 4.0 * period)
+    if forward:
+        region = (times > edge - reach) & (times <= edge)
+    else:
+        region = (times >= edge) & (times < edge + reach)
+    t, w = times[region], weights[region]
+    if t.size == 0:
+        return edge
+    k = np.round((t - phase) / period)
+    on = np.abs(t - (phase + k * period)) <= max(0.11 * period, 0.006)
+    signed = np.where(on, w, -w)
+    if not forward:
+        t, signed = t[::-1], signed[::-1]
+    run = np.cumsum(signed)
+    best = int(np.argmax(run))
+    return float(t[best]) if run[best] > 0 else edge
+
+
+def assisted_grid(attack_times: np.ndarray, attack_weights: np.ndarray,
+                  first_ms: float, second_ms: float, bars: int = 1,
+                  meter: int = 4) -> dict:
+    """One red line from two downbeats the user marked (P19, assisted timing).
+
+    Where the detector refuses or reads the wrong octave or bar, the user
+    knows two things it does not: where a bar starts, and how many bars lie
+    between two marks. That fixes the beat, ``(second - first) / (bars *
+    meter)``, and the downbeat. Each mark first snaps to the strongest attack
+    near it. The attacks then do the rest: the seed is fitted around the marks
+    exactly as a reference line is (the coarsest of 1/1-1/4 that explains
+    them), and grows backward and forward while fresh chunks keep landing on
+    it, as the engine grows a section. It crosses a stretch with no grid (a
+    breakdown) when the same grid comes back, and stops at one that holds a
+    grid of its own (a tempo change). The red line goes on the first downbeat
+    of the span; how far each mark moved is reported, and a grid that held
+    fewer than 16 bars is answered but marked ``short``.
+
+    Refuses instead of guessing: marks out of order, a tempo outside 40-400
+    BPM, too few attacks around the marks, a grid that explains too little of
+    them, or one chance explains as well. The number of bars between the marks
+    is the user's: two marks one bar apart called two bars read at double
+    tempo, consistently, and nothing in the attacks can say otherwise.
+    Plain JSON types.
+    """
+    times = np.asarray(attack_times, dtype=np.float64)
+    weights = np.asarray(attack_weights, dtype=np.float64)
+
+    def refuse(reason: str, **values) -> dict:
+        return {"ok": False, "reason": reason, "values": values}
+
+    try:
+        first_s, second_s = float(first_ms) / 1000.0, float(second_ms) / 1000.0
+        bars, meter = int(bars), int(meter)
+    except (TypeError, ValueError):
+        return refuse("bad_marks")
+    if not (np.isfinite(first_s) and np.isfinite(second_s)) or second_s <= first_s:
+        return refuse("bad_marks")
+    if bars < 1 or meter < 1:
+        return refuse("bad_marks")
+    if times.size == 0:
+        return refuse("no_attacks")
+    order = np.argsort(times)
+    times, weights = times[order], weights[order]
+    # Each mark goes to the strongest attack near it before the beat is taken
+    # from them, as the editor snaps a click. At 300 BPM one bar is 0.8 s, and
+    # marks 15 ms late and 20 ms early made the seed 4.6 % fast: enough to slip
+    # an index over the seed window and refuse a clean track.
+    reach = min(ASSISTED_SNAP_BEATS * (second_s - first_s) / (bars * meter), ASSISTED_SNAP_S)
+    marked = (first_s, second_s)
+    first_s, second_s = (_snap_mark(times, weights, mark, reach) for mark in marked)
+    if second_s <= first_s:
+        return refuse("bad_marks")
+    beat_s = (second_s - first_s) / (bars * meter)
+    seed_bpm = 60.0 / beat_s
+    if not ASSISTED_BPM_RANGE[0] <= seed_bpm <= ASSISTED_BPM_RANGE[1]:
+        return refuse("bpm_range", bpm=f"{seed_bpm:.1f}")
+
+    slack = 0.5 * beat_s / max(REFERENCE_DIVISORS)
+    seed_hi = max(second_s, first_s + ASSISTED_SEED_BEATS * beat_s)
+    seed = (times >= first_s - slack) & (times <= seed_hi + slack)
+    if int(seed.sum()) < REFERENCE_MIN_ATTACKS:
+        return refuse("too_few", n=int(seed.sum()))
+    grade = _grade_span(times[seed], weights[seed], first_s, beat_s, seed_hi)
+    if grade["share"] < REFERENCE_MIN_SHARE:
+        return refuse("weak", share=f"{grade['share']:.2f}")
+    divisor = grade["divisor"]
+    period = 60.0 / (grade["fitted_bpm"] * divisor)
+    phase = first_s + grade["offset_error_ms"] / 1000.0
+
+    min_share = min(ASSISTED_GROW_SHARE,
+                    max(REFERENCE_MIN_SHARE, ASSISTED_GROW_RATIO * grade["share"]))
+    period, phase, lo = _grow_assisted(times, weights, period, phase,
+                                       first_s, seed_hi, False, min_share)
+    period, phase, hi = _grow_assisted(times, weights, period, phase,
+                                       lo, seed_hi, True, min_share)
+    span = (times >= lo - 0.5 * period) & (times <= hi + 0.5 * period)
+    share, _coverage, rms = _grid_quality(times[span], weights[span], period, phase)
+    # The engine's own test: a grid that chance explains as well is no grid,
+    # whoever seeded it. Marks on white noise found a 157 BPM "grid" at 0.41.
+    chance = _pulse_log10p(times[span], period, phase)
+    if chance > ASSISTED_CHANCE_LOG10P:
+        return refuse("chance", log10p=f"{chance:.1f}")
+
+    beat = period * divisor
+    bar = beat * meter
+    downbeat = phase + np.round((first_s - phase) / period) * period
+    # The red line opens the span on a downbeat: whole bars back from the mark,
+    # never before the first attack the grid holds.
+    offset = downbeat - np.floor((downbeat - (lo - 0.5 * period)) / bar) * bar
+    second_tick = downbeat + bars * bar
+    held = (hi - lo) / bar
+    return {"ok": True, "offset_ms": float(offset) * 1000.0, "bpm": 60.0 / beat,
+            "bars_held": float(held), "short": bool(held < ASSISTED_MIN_BARS),
+            "meter": meter, "divisor": divisor, "seed_bpm": seed_bpm,
+            "share": share, "residual_ms": rms,
+            "start_ms": float(lo) * 1000.0, "end_ms": float(hi) * 1000.0,
+            "first_shift_ms": float(downbeat - marked[0]) * 1000.0,
+            "second_shift_ms": float(second_tick - marked[1]) * 1000.0}
+
+
+def apply_assisted_grid(points: list[TimingPoint], fit: dict,
+                        beats: np.ndarray | None = None) -> list[TimingPoint]:
+    """The working timing with an assisted red line added.
+
+    Points inside the span the grid holds are dropped: there the user's marks
+    and the attacks agree on one tempo, so a detected line in between would
+    only contradict it. Points outside stay, hand-placed ones included, and so
+    do points in the span's last ``ASSISTED_EDGE_BEATS``: the end is known to a
+    few beats (the grids of two close tempos agree that long), and a line
+    there is most likely the change that ended it. On secs-3 the span ran
+    0.4 s past the 152 -> 145 change and dropped its red line. The new line is
+    hand-placed with its meter known.
+    """
+    if not fit.get("ok"):
+        raise ValueError("That grid was refused; there is nothing to add.")
+    start, end = float(fit["start_ms"]), float(fit["end_ms"])
+    offset = float(fit["offset_ms"])
+    edge = end - ASSISTED_EDGE_BEATS * 60000.0 / float(fit["bpm"])
+    beats = np.zeros(0) if beats is None else np.asarray(beats, dtype=np.float64)
+    kept = [p for p in points if not (min(start, offset) - 1.0 <= p.offset_ms < edge)]
+    kept.append(TimingPoint(offset, float(fit["bpm"]), 1.0, _nearest_beat_index(beats, offset),
+                            int(fit["meter"]), True, manual=True))
+    kept.sort(key=lambda p: p.offset_ms)
+    return kept
+
+
+# ---------------------------------------------------------------------------
 # Settings persistence
 # ---------------------------------------------------------------------------
 

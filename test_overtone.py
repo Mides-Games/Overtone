@@ -3560,5 +3560,95 @@ class ReferenceTimingTests(unittest.TestCase):
         self.assertEqual([m["difficulty"] for m in match["beatmaps"]], ["Hard"])
 
 
+class AssistedTimingTests(unittest.TestCase):
+    """Proposal P1: two marked downbeats seed the grid, the attacks do the rest."""
+
+    @staticmethod
+    def _fit(times, weights, first, second, bars=1, meter=4):
+        from overtone import assisted_grid
+        fit = assisted_grid(times, weights, first, second, bars, meter)
+        json.dumps(fit)
+        return fit
+
+    def test_two_sloppy_marks_give_the_whole_grid(self):
+        times, weights = _eighths()          # 150 BPM from 1.0 s to 61 s
+        for first, second, bars in ((9020.0, 10575.0, 1), (9010.0, 15380.0, 4)):
+            with self.subTest(bars=bars):
+                fit = self._fit(times, weights, first, second, bars)
+                self.assertTrue(fit["ok"])
+                self.assertAlmostEqual(fit["bpm"], 150.0, delta=0.01)
+                self.assertAlmostEqual(fit["offset_ms"], 1000.0, delta=1.0)
+                self.assertLess(fit["start_ms"], 1010.0)
+                self.assertGreater(fit["end_ms"], 60500.0)
+                self.assertFalse(fit["short"])
+                # The marks moved onto the downbeats they meant.
+                self.assertAlmostEqual(fit["first_shift_ms"], 9000.0 - first, delta=1.0)
+                self.assertAlmostEqual(fit["second_shift_ms"],
+                                       9000.0 + bars * 1600.0 - second, delta=1.0)
+
+    def test_a_fast_bar_survives_sloppy_marks(self):
+        # 300 BPM: one bar is 0.8 s, so marks 35 ms apart from true are 4 % of
+        # the beat; they snap to the attacks before the beat is taken.
+        times = np.arange(0.2, 45.0, 0.2)
+        fit = self._fit(times, np.ones(times.size), 20215.0, 20980.0)
+        self.assertTrue(fit["ok"])
+        self.assertAlmostEqual(fit["bpm"], 300.0, delta=0.01)
+
+    def test_growth_crosses_a_breakdown_but_stops_at_a_tempo_change(self):
+        rng = np.random.default_rng(4)
+        steady, weights = _eighths(stop=25.0)
+        vocals = np.sort(rng.uniform(25.2, 35.0, 30))          # no grid for ten seconds
+        after, after_w = _eighths(start=35.0, stop=61.0)
+        times = np.r_[steady, vocals, after]
+        fit = self._fit(times, np.r_[weights, np.full(30, 0.5), after_w], 9000.0, 10600.0)
+        self.assertGreater(fit["end_ms"], 60000.0)
+        # 150 -> 156 -> 150 on the same grid: skipped as a gap, the middle
+        # section would vanish under the first line (secs-3 did, before).
+        change = np.r_[np.arange(1.0, 25.0, 0.2), np.arange(25.0, 37.0, 30.0 / 156.0),
+                       np.arange(37.0, 61.0, 0.2)]
+        fit = self._fit(change, np.ones(change.size), 5000.0, 6600.0)
+        self.assertAlmostEqual(fit["bpm"], 150.0, delta=0.01)
+        self.assertAlmostEqual(fit["end_ms"], 25000.0, delta=400.0)
+
+    def test_a_grid_that_held_few_bars_is_called_short(self):
+        times, weights = _eighths(start=1.0, stop=13.0)       # 7.5 bars
+        fit = self._fit(times, weights, 1000.0, 2600.0)
+        self.assertTrue(fit["ok"])
+        self.assertTrue(fit["short"])
+        self.assertLess(fit["bars_held"], 16)
+
+    def test_refusals_say_why(self):
+        times, weights = _eighths()
+        cases = {"bad_marks": (10600.0, 9000.0), "bpm_range": (9000.0, 9100.0)}
+        for reason, (first, second) in cases.items():
+            with self.subTest(reason=reason):
+                self.assertEqual(self._fit(times, weights, first, second)["reason"], reason)
+        sparse = np.array([1.0, 5.0, 9.0])
+        self.assertEqual(self._fit(sparse, np.ones(3), 1000.0, 2600.0)["reason"], "too_few")
+        self.assertEqual(self._fit(np.zeros(0), np.zeros(0), 1000.0, 2600.0)["reason"],
+                         "no_attacks")
+        for seed in range(1, 4):
+            noise = np.sort(np.random.default_rng(seed).uniform(1.0, 61.0, 300))
+            with self.subTest(noise=seed):
+                self.assertFalse(self._fit(noise, np.ones(300), 9000.0, 10600.0)["ok"])
+
+    def test_adding_the_line_replaces_only_what_it_covers(self):
+        from overtone import apply_assisted_grid
+        times, weights = _eighths()
+        fit = self._fit(times, weights, 9000.0, 10600.0)
+        fit["end_ms"] = 40000.0          # pretend the grid stopped at 40 s
+        # 39,600 ms sits a beat before that end: most likely the change that
+        # ended it (the end is known to a few beats), so it stays.
+        points = [TimingPoint(500.0, 120.0, 0.9, 0), TimingPoint(20000.0, 151.0, 0.9, 0),
+                  TimingPoint(39600.0, 160.0, 0.9, 0), TimingPoint(45000.0, 170.0, 0.9, 0)]
+        merged = apply_assisted_grid(points, fit)
+        self.assertEqual([p.offset_ms for p in merged],
+                         [500.0, fit["offset_ms"], 39600.0, 45000.0])
+        added = merged[1]
+        self.assertTrue(added.manual and added.meter_known and added.meter == 4)
+        with self.assertRaises(ValueError):
+            apply_assisted_grid(points, {"ok": False})
+
+
 if __name__ == "__main__":
     unittest.main()

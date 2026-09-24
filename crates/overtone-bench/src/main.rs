@@ -588,7 +588,8 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
         env_frames_expected: golden.attacks.envelope_frames,
         env_frames_found: env.len(),
         weight_correlation: correlation(&our_weights, &golden.attacks.weights),
-        env_sum_err: (env.iter().map(|&v| v as f64).sum::<f64>() - golden.attacks.envelope_sum).abs(),
+        env_sum_err: (env.iter().map(|&v| v as f64).sum::<f64>() - golden.attacks.envelope_sum)
+            .abs(),
         worst_weight_err,
         atom,
         beat,
@@ -707,7 +708,10 @@ fn density_mode(root: &Path, only: &[String]) -> Result<()> {
             expected += 1;
         }
         // .rev(): the first of equal scores, as the prototype's max().
-        let best = hints.iter().rev().max_by(|a, b| a.score.total_cmp(&b.score));
+        let best = hints
+            .iter()
+            .rev()
+            .max_by(|a, b| a.score.total_cmp(&b.score));
         if let Some(found) = best {
             println!(
                 "{:<20} {:>6}  {:>6}  {:>7.1}s  {:>5.2}/{:<5.2}  {:>5.2}/{:<5.2}",

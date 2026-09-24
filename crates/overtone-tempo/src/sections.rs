@@ -578,14 +578,21 @@ mod tests {
         let mut t = 0.5f64;
         while t < 900.0 {
             times.push(t);
-            let bpm = if ((t - 0.5) / 9.0).floor() as i64 % 2 == 0 { 120.0 } else { 127.0 };
+            let bpm = if ((t - 0.5) / 9.0).floor() as i64 % 2 == 0 {
+                120.0
+            } else {
+                127.0
+            };
             t += 60.0 / bpm;
         }
         let weights = vec![0.8f32; times.len()];
         let sections = grow_sections(&times, &weights, 0.5, 0.5, 1.5, 12);
         assert!(sections.len() > 64, "{} sections", sections.len());
         let last = sections.last().unwrap().end.get();
-        assert!(last > times[times.len() - 1] - 1.0, "last section ends at {last}");
+        assert!(
+            last > times[times.len() - 1] - 1.0,
+            "last section ends at {last}"
+        );
     }
 
     #[test]

@@ -424,7 +424,8 @@ pub fn points_from_sections(
             anchor + ((section.start.get() - 0.25 * period - anchor) / span - 1e-9).ceil() * span
         } else {
             let anchor = section.phase;
-            anchor + ((section.start.get() - 0.25 * period - anchor) / period - 1e-9).ceil() * period
+            anchor
+                + ((section.start.get() - 0.25 * period - anchor) / period - 1e-9).ceil() * period
         };
         let mut point = TimingPoint::new(
             offset * 1000.0,
@@ -836,7 +837,13 @@ mod tests {
         // phase, while its own phase came from a second seed that can sit a
         // whole atom away: the only red line landed on the off-beat, 250 ms
         // late at 120 BPM, on tracks that start on the eighth-note grid.
-        for &(bpm, start) in &[(120.0, 0.5), (120.0, 1.0), (120.0, 0.25), (150.0, 0.6), (150.0, 0.4)] {
+        for &(bpm, start) in &[
+            (120.0, 0.5),
+            (120.0, 1.0),
+            (120.0, 0.25),
+            (150.0, 0.6),
+            (150.0, 0.4),
+        ] {
             let (times, weights) = eighths(bpm, start, 40.0);
             let out = analyze_attacks(&times, &weights, &[], 44_100, 1.5, 12, true, 0.75);
             let first = out.points.first().expect("a red line");
@@ -929,15 +936,25 @@ mod tests {
         weights.insert(0, 0.8);
         let out = analyze_attacks(&times, &weights, &[], 44_100, 1.5, 12, true, 0.75);
         assert!(
-            !out.diagnostics.iter().any(|d| matches!(d, Diagnostic::StageFailed { .. })),
+            !out.diagnostics
+                .iter()
+                .any(|d| matches!(d, Diagnostic::StageFailed { .. })),
             "{:?}",
             out.diagnostics
         );
         let first = out.points.first().expect("a red line");
-        assert!((first.bpm.get() - 150.0).abs() < 0.01, "bpm {}", first.bpm.get());
+        assert!(
+            (first.bpm.get() - 150.0).abs() < 0.01,
+            "bpm {}",
+            first.bpm.get()
+        );
         let beat_ms = 400.0;
         let k = (first.offset.get() - 8000.0) / beat_ms;
-        assert!((k - k.round()).abs() * beat_ms < 2.0, "offset {}", first.offset.get());
+        assert!(
+            (k - k.round()).abs() * beat_ms < 2.0,
+            "offset {}",
+            first.offset.get()
+        );
     }
 
     #[test]
@@ -1040,7 +1057,10 @@ mod tests {
         // v3's test of the same name. The second section's downbeat sits two
         // beats after its start, so a beat-anchored line would land on the
         // wrong beat of the bar: downbeats at 9.5, 11.5, 13.5 ... -> 11.5.
-        let sections = vec![section_of(0.0, 10.0, 0.5, 0.0), section_of(10.0, 20.0, 0.5, 9.0)];
+        let sections = vec![
+            section_of(0.0, 10.0, 0.5, 0.0),
+            section_of(10.0, 20.0, 0.5, 9.0),
+        ];
         let measures = vec![("4/4".to_string(), 0, 4), ("4/4".to_string(), 1, 4)];
         let points = points_from_sections(&sections, 0.0, 4, 0, 4, 1.0, Some(&measures));
         assert_eq!(points.len(), 2);
@@ -1053,7 +1073,10 @@ mod tests {
     fn no_evidence_keeps_the_old_beat_anchoring() {
         // v3's test of the same name: with no proven bar the line goes to the
         // first beat at or after the start (beats 9.0, 9.5, 10.0 -> 10.0).
-        let sections = vec![section_of(0.0, 10.0, 0.5, 0.0), section_of(10.0, 20.0, 0.5, 9.0)];
+        let sections = vec![
+            section_of(0.0, 10.0, 0.5, 0.0),
+            section_of(10.0, 20.0, 0.5, 9.0),
+        ];
         let measures = vec![("4/4".to_string(), 0, 1), ("4/4".to_string(), 0, 1)];
         let points = points_from_sections(&sections, 0.0, 4, 0, 1, 1.0, Some(&measures));
         assert!((points[1].offset.get() - 10_000.0).abs() < 1e-6);

@@ -9,6 +9,7 @@
 //! ```text
 //! cargo run -p overtone-bench --release -- golden
 //! cargo run -p overtone-bench --release -- golden --only edm-174 shuffle-96
+//! cargo run -p overtone-bench --release -- structure long-6min
 //! ```
 //!
 //! Vectors come from `bench/golden/*.json`, produced by
@@ -653,6 +654,57 @@ fn render_hint(name: &str) -> &'static str {
     }
 }
 
+/// Phrase boundaries, section labels and band flux on one fixture: the
+/// whole-track spectral analyses, which have no gate of their own yet. The
+/// mode exists to be measured from outside -- peak memory is the process's
+/// peak working set, which safe Rust cannot read about itself -- and to show
+/// the boundaries on real audio. In PowerShell, after a release build:
+///
+/// ```text
+/// $p = Start-Process target\release\overtone-bench.exe 'structure','long-6min' -NoNewWindow -PassThru; $m = 0; while (!$p.HasExited) { $p.Refresh(); $m = [math]::Max($m, $p.PeakWorkingSet64); sleep -m 20 }; "{0:N0} MB" -f ($m / 1MB)
+/// ```
+fn structure_mode(root: &Path, name: &str) -> Result<()> {
+    let audio = root.join("bench/audio").join(format!("{name}.wav"));
+    if !audio.is_file() {
+        bail!("{name} is missing -- {}", render_hint(name));
+    }
+    let started = std::time::Instant::now();
+    let (y, sr) = overtone_audio::load(&audio).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let decode_s = started.elapsed().as_secs_f64();
+    let started = std::time::Instant::now();
+    let structure = overtone_dsp::structure::analyze(&y, sr);
+    let structure_s = started.elapsed().as_secs_f64();
+    let started = std::time::Instant::now();
+    let sections = overtone_dsp::classify::classify(&y, sr, &structure.boundaries);
+    let classify_s = started.elapsed().as_secs_f64();
+    let started = std::time::Instant::now();
+    let flux = overtone_dsp::multiband::band_flux(&y, sr, 128, 2048);
+    let flux_s = started.elapsed().as_secs_f64();
+
+    println!("{name}: {:.1} s of audio", y.len() as f64 / sr as f64);
+    let bounds: Vec<String> = structure
+        .boundaries
+        .iter()
+        .map(|b| format!("{b:.1}"))
+        .collect();
+    println!("boundaries  [{}]", bounds.join(", "));
+    let labels: Vec<String> = sections
+        .iter()
+        .map(|s| format!("{:?} {:.1}-{:.1}", s.kind, s.start, s.end))
+        .collect();
+    println!("sections    {}", labels.join(" | "));
+    println!(
+        "band flux   {} frames x {} bands",
+        flux.len(),
+        flux.first().map_or(0, Vec::len)
+    );
+    println!(
+        "decode {decode_s:.2}s + structure {structure_s:.2}s + classify {classify_s:.2}s \
+         + band flux {flux_s:.2}s"
+    );
+    Ok(())
+}
+
 fn density_mode(root: &Path, only: &[String]) -> Result<()> {
     let mut names = all_cases(root)?;
     // Required, not optional: skipped when absent, they let the gate pass
@@ -1188,6 +1240,10 @@ fn main() -> Result<()> {
     }
     if mode == "nogrid" {
         return nogrid_mode(&root);
+    }
+    if mode == "structure" {
+        let name = args.get(1).context("usage: structure <case>")?;
+        return structure_mode(&root, name);
     }
     if mode == "candidates" {
         // Debug aid: print the coherence candidates beside v3's, for one case.

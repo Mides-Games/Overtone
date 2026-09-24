@@ -31,6 +31,10 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8.5 12 2.5 2.5 5-5"/><path d="M20 12.5V18a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3h8"/></svg>
         <span class="nav-label" data-i18n="nav_mapcheck">Map check</span>
       </button>
+      <button type="button" class="nav-item" data-view="mapset" data-i18n-title="nav_mapset" title="Mapset">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 4.5-9 4.5-9-4.5z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></svg>
+        <span class="nav-label" data-i18n="nav_mapset">Mapset</span>
+      </button>
       <button type="button" class="nav-item" data-view="export" data-i18n-title="nav_export" title="Export">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>
         <span class="nav-label" data-i18n="nav_export">Export</span>
@@ -235,6 +239,45 @@
             <button class="btn small" id="denPick"><span data-i18n="den_pick">Check density…</span></button>
           </div>
           <div class="card-body" id="denBody"></div>
+        </div>
+      </section>
+
+      <!-- mapset: every difficulty of one folder, read only; needs no analysis -->
+      <section class="view" id="viewMapset" data-view="mapset" hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_mapset">Mapset</h2>
+          <div class="view-sub" data-i18n="mapset_sub">Every difficulty of one beatmap folder side by side: red lines, audio settings and metadata that must match. Read only: differences are listed, never fixed.</div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="ms_title">Difficulties</div>
+            <span class="pill" id="msCount" hidden></span>
+            <span class="pill" id="msVerdict" hidden></span>
+            <div class="spacer"></div>
+            <span class="card-sub" id="msFolder"></span>
+            <button class="btn small" id="msRecheck" hidden><span data-i18n="ms_recheck">Check again</span></button>
+            <button class="btn small" id="msPick"><span data-i18n="ms_pick">Choose beatmap folder…</span></button>
+          </div>
+          <div class="card-body" id="msBody"></div>
+        </div>
+
+        <div class="card cmp-card" id="msRedCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="ms_red_title">Red lines</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="msRedHint"></span>
+          </div>
+          <div class="card-body" id="msRedBody"></div>
+        </div>
+
+        <div class="card cmp-card" id="msFieldCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="ms_fields_title">Audio and metadata</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="msFieldHint"></span>
+          </div>
+          <div class="card-body" id="msFieldBody"></div>
         </div>
       </section>
 

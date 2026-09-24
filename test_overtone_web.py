@@ -494,6 +494,32 @@ class DensityBridgeTests(_IsolatedConfig):
         self.assertEqual(_api_with_points().density("C:/does/not/exist.osu")["key"], "bad_file")
 
 
+class SnapBridgeTests(_IsolatedConfig):
+    def _map(self, tmp: str) -> str:
+        # One red line at 1000 ms, 120 BPM; 1250 sits on 1/2, 1300 on nothing.
+        lines = ["osu file format v14", "", "[TimingPoints]", "1000,500,4,1,0,100,1,0",
+                 "", "[HitObjects]", "64,192,1250,1,0,0:0:0:0:", "64,192,1300,1,0,0:0:0:0:"]
+        beatmap = Path(tmp) / "map.osu"
+        beatmap.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return str(beatmap)
+
+    def test_snap_lists_the_object_off_the_grid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reply = _api_with_points().snap(self._map(tmp))
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["file"], "map.osu")
+        report = reply["report"]
+        self.assertEqual((report["objects"], report["snapped"]), (2, 1))
+        self.assertEqual(report["unsnapped"][0]["time_ms"], 1300.0)
+        # The loaded result's red lines are the ones an inject would write.
+        self.assertIn("with_detected_timing", report)
+        json.dumps(report)
+
+    def test_snap_needs_a_result_and_a_real_file(self) -> None:
+        self.assertEqual(web.Api().snap("C:/x.osu")["key"], "first")
+        self.assertEqual(_api_with_points().snap("C:/does/not/exist.osu")["key"], "bad_file")
+
+
 class SuggestBridgeTests(_IsolatedConfig):
     def _map(self, tmp: str, reds) -> str:
         lines = ["osu file format v14", "", "[TimingPoints]"]

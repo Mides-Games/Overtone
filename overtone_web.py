@@ -647,6 +647,20 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "report": report, "file": Path(osu_path).name}
 
+    def snap(self, osu_path: str) -> dict:
+        """The snap audit card: objects off the map's own grid and, with a
+        result, what injecting it would unsnap."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not Path(str(osu_path)).is_file():
+            return {"ok": False, "key": "bad_file"}
+        try:
+            report = ta.snap_audit(ta.read_osu_beatmap(osu_path), self._analysis,
+                                   float(self._analysis.duration))
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "report": report, "file": Path(osu_path).name}
+
     def suggest(self, osu_path: str) -> dict:
         """Detected sections the map lacks, for the suggestions list."""
         if self._analysis is None:

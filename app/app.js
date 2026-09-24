@@ -128,6 +128,16 @@ const I18N = {
     den_counts: "{o} objects · peak {p}/s · {s} stream · {j} jump",
     den_t_range: "Time", den_t_n: "Objects", den_t_rate: "Per second",
     den_t_stream: "Stream", den_t_jump: "Jump", den_t_single: "Single",
+    snap_title: "Snap audit", snap_pick: "Check snapping…",
+    snap_empty: "Choose a .osu to list the objects off its own grid, and what injecting the detected timing would unsnap.",
+    snap_counts: "{s}/{o} on the grid · {u} off",
+    snap_t_time: "Time (ms)", snap_t_kind: "Object", snap_t_div: "Nearest", snap_t_off: "Off (ms)",
+    snap_before: "Before the first red line:", snap_past: "Past the end of the audio:",
+    snap_inject: "Injecting the detected timing would unsnap {n} object(s) and put {m} back on the grid.",
+    snap_inject_none: "Injecting the detected timing would unsnap nothing.",
+    snap_no_reds: "This map has no red lines to snap to.",
+    snap_unparsed: "{n} line(s) in [HitObjects] could not be read.",
+    snap_starts: "Object starts only; slider, spinner and hold ends are not checked.",
     import_folder: "Import beatmap folder…",
     imported: "Folder: {audio} + {n} {difficulties}.",
     difficulties: "difficulties",
@@ -261,6 +271,16 @@ const I18N = {
     den_counts: "{o} objetos · pico {p}/s · {s} stream · {j} jump",
     den_t_range: "Tiempo", den_t_n: "Objetos", den_t_rate: "Por segundo",
     den_t_stream: "Stream", den_t_jump: "Jump", den_t_single: "Single",
+    snap_title: "Revisión de snap", snap_pick: "Revisar snap…",
+    snap_empty: "Elegí un .osu para ver los objetos fuera de su propia grilla y qué desajustaría inyectar el timing detectado.",
+    snap_counts: "{s}/{o} en la grilla · {u} fuera",
+    snap_t_time: "Tiempo (ms)", snap_t_kind: "Objeto", snap_t_div: "Más cercano", snap_t_off: "Desvío (ms)",
+    snap_before: "Antes de la primera línea roja:", snap_past: "Después del final del audio:",
+    snap_inject: "Inyectar el timing detectado desajustaría {n} objeto(s) y volvería a ajustar {m}.",
+    snap_inject_none: "Inyectar el timing detectado no desajustaría nada.",
+    snap_no_reds: "Este mapa no tiene líneas rojas con las que ajustar.",
+    snap_unparsed: "No se pudieron leer {n} línea(s) de [HitObjects].",
+    snap_starts: "Solo el inicio de cada objeto; no se revisan los finales de sliders, spinners ni holds.",
     import_folder: "Importar carpeta…",
     imported: "Carpeta: {audio} + {n} {difficulties}.",
     difficulties: "dificultades",
@@ -271,7 +291,7 @@ const I18N = {
   },
 };
 
-const S = { lang: "en", view: "library", mapset: null, file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, recent: [] };
+const S = { lang: "en", view: "library", mapset: null, file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, snap: null, recent: [] };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
@@ -564,6 +584,7 @@ function showResult(result) {
   S.compare = null;  // these cards belong to one map and one point list
   S.align = null;
   S.density = null;
+  S.snap = null;
   if (!sameSong) S.comparePath = null;  // a map belongs to one song
   setView(S.view);  // lifts the "analyze first" panel off the current view
   syncActions();
@@ -607,6 +628,7 @@ function renderResult(r) {
   renderCompare();
   renderAlign();
   renderDensity();
+  renderSnap();
 }
 
 function renderDetail() {
@@ -1062,6 +1084,65 @@ function renderDensity() {
     </div>`;
 }
 
+// ------------------------------------------------------------------ snap audit
+async function snapOsu() {
+  if (!api() || !S.result || S.busy) return;
+  const target = await api().pick_osu(S.lastFolder || "");
+  if (!target) return;
+  const reply = await api().snap(target);
+  if (!reply.ok) { editFailure(reply); return; }
+  S.snap = { file: reply.file, report: reply.report };
+  renderSnap();
+}
+
+function renderSnap() {
+  const body = $("snapBody"), snap = S.snap;
+  if (!snap) {
+    $("snapCount").hidden = true;
+    $("snapFile").textContent = "";
+    body.innerHTML = `<div class="card-sub">${t("snap_empty")}</div>`;
+    return;
+  }
+  const { report, file } = snap;
+  $("snapFile").textContent = file;
+  const pill = $("snapCount");
+  if (!report.ok) {
+    pill.hidden = true;
+    body.innerHTML = `<div class="card-sub">${t("snap_no_reds")}</div>`;
+    return;
+  }
+  pill.hidden = false;
+  pill.textContent = t("snap_counts", { s: report.snapped, o: report.objects,
+                                       u: report.unsnapped.length });
+  const ms = (list) => list.map((x) => x.toFixed(0)).join(", ");
+  const notes = [];
+  const moved = report.with_detected_timing;
+  if (moved) {
+    notes.push(moved.would_unsnap.length
+      ? t("snap_inject", { n: moved.would_unsnap.length, m: moved.would_snap })
+      : t("snap_inject_none"));
+  }
+  if (report.before_first_red.length) notes.push(`${t("snap_before")} ${ms(report.before_first_red)}`);
+  if (report.past_audio && report.past_audio.length) notes.push(`${t("snap_past")} ${ms(report.past_audio)}`);
+  if (report.unparsed) notes.push(t("snap_unparsed", { n: report.unparsed }));
+  const rows = report.unsnapped.slice(0, 200).map((o) => `
+    <tr>
+      <td class="num">${o.time_ms.toFixed(0)}</td>
+      <td>${esc(o.kind || "?")}</td>
+      <td class="num">1/${o.nearest_divisor}</td>
+      <td class="num neg">${o.off_ms.toFixed(1)}</td>
+    </tr>`).join("");
+  body.innerHTML = `
+    ${notes.map((n) => `<div class="card-sub">${n}</div>`).join("")}
+    ${rows ? `<div class="table-scroll" style="margin-top:8px">
+      <table>
+        <thead><tr><th>${t("snap_t_time")}</th><th>${t("snap_t_kind")}</th><th>${t("snap_t_div")}</th><th>${t("snap_t_off")}</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>` : ""}
+    <div class="card-sub" style="margin-top:10px">${t("snap_starts")}</div>`;
+}
+
 // ------------------------------------------------------------------ mapset
 // Read only and independent of the analysis: one folder, every difficulty.
 const esc = (value) => String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -1422,6 +1503,7 @@ function wire() {
   $("cmpPick").onclick = compareOsu;
   $("alignPick").onclick = alignOsu;
   $("denPick").onclick = densityOsu;
+  $("snapPick").onclick = snapOsu;
   $("msPick").onclick = pickMapset;
   $("msRecheck").onclick = () => { if (S.mapset) runMapset(S.mapset.path, false); };
   $("undoBtn").onclick = undo;

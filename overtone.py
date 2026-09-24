@@ -588,6 +588,10 @@ def _choose_subdivision(onset: np.ndarray, beat_frames: np.ndarray,
     ~1.4 BPM < min_delta), collapsing the whole map into one "constant"
     section. So an out-of-range base only needs moderate in-between attack
     evidence to double, while an in-range base still needs strong evidence.
+
+    It only ever keeps the tracked pulse or doubles / quadruples it. A lock
+    above 300 BPM is kept as it is; nothing here halves it, so ÷2 is the way
+    back from a double-time read.
     """
     if len(beat_frames) < 4:
         return 1
@@ -616,12 +620,6 @@ def _choose_subdivision(onset: np.ndarray, beat_frames: np.ndarray,
         score = support_ratio + range_bonus + guide_boost
         if support_ratio >= need and score > best_score:
             best_factor, best_score = factor, score
-    # Octave-down safety net: if the tracker locked onto double-time while the
-    # tempogram strongly prefers half, halve back — but only with evidence.
-    if best_factor == 1 and base_bpm > 300:
-        half_support = _subdivision_support(onset, beat_frames[::2], 1)
-        if half_support >= base_support * 0.9:
-            return 1  # keep grid; tempo halves naturally via local BPM median
     return best_factor
 
 

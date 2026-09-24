@@ -172,6 +172,14 @@ class SegmentationTests(unittest.TestCase):
         onset[midpoints] = 0.15
         self.assertEqual(_choose_subdivision(onset, beats, True), 1)
 
+    def test_a_lock_above_300_is_kept_not_halved(self):
+        # A branch here claimed to halve a double-time lock; it returned 1
+        # either way. The chooser never halves, so ÷2 is the user's way back.
+        onset = np.zeros(700)
+        beats = np.arange(10, 650, 30)  # ~344.5 BPM, every beat struck
+        onset[beats] = 1.0
+        self.assertEqual(_choose_subdivision(onset, beats, True), 1)
+
 
 class RobustnessTests(unittest.TestCase):
     def test_invalid_parameters_rejected_before_io(self):

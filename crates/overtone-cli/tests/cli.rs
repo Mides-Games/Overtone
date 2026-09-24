@@ -60,6 +60,37 @@ fn clicks(bpm: f64, seconds: f64) -> Vec<f32> {
     y
 }
 
+/// 16-bit mono PCM WAV at any rate.
+fn write_wav_at(path: &Path, samples: &[f32], rate: u32) {
+    write_wav(path, samples);
+    let mut bytes = std::fs::read(path).unwrap();
+    bytes[24..28].copy_from_slice(&rate.to_le_bytes());
+    bytes[28..32].copy_from_slice(&(rate * 2).to_le_bytes());
+    std::fs::write(path, bytes).unwrap();
+}
+
+/// Clicks at `bpm` rendered at `rate`, as [`clicks`] does at 44.1 kHz.
+fn clicks_at(bpm: f64, seconds: f64, rate: u32) -> Vec<f32> {
+    let sr = rate as f64;
+    let mut y = vec![0.0f32; (seconds * sr) as usize];
+    let mut seed = 7u64;
+    let mut k = 0usize;
+    loop {
+        let t = 0.5 + k as f64 * 60.0 / bpm;
+        if t > seconds - 0.2 {
+            break;
+        }
+        let gain = if k % 4 == 0 { 0.9 } else { 0.5 };
+        let start = (t * sr) as usize;
+        for i in 0..(0.03 * sr) as usize {
+            let decay = (-(i as f64) / (0.004 * sr)).exp() as f32;
+            y[start + i] += gain * decay * noise(&mut seed);
+        }
+        k += 1;
+    }
+    y
+}
+
 fn run(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_overtone-cli"))
         .args(args)
@@ -151,5 +182,37 @@ fn a_missing_file_and_a_bad_command_line_say_so() {
         assert_eq!(out.status.code(), Some(2), "{args:?}");
         assert!(out.stdout.is_empty(), "{args:?}");
         assert!(String::from_utf8_lossy(&out.stderr).contains("usage:"));
+    }
+}
+
+#[test]
+fn odd_rates_short_audio_and_junk_end_cleanly() {
+    // The gates.py robustness probes, through the v4 engine.
+    let dir = scratch("robust");
+    let mut reports = Vec::new();
+    for rate in [8_000u32, 96_000] {
+        let path = dir.join(format!("clicks-{rate}.wav"));
+        write_wav_at(&path, &clicks_at(150.0, 20.0, rate), rate);
+        reports.push((rate, run(&["analyze", path.to_str().unwrap(), "--json"])));
+    }
+    let short = dir.join("short.wav");
+    write_wav(&short, &clicks(150.0, 1.0));
+    let short_run = run(&["analyze", short.to_str().unwrap()]);
+    let junk = dir.join("notes.wav");
+    std::fs::write(&junk, "not audio at all").unwrap();
+    let junk_run = run(&["analyze", junk.to_str().unwrap()]);
+    std::fs::remove_dir_all(&dir).ok();
+
+    for (rate, out) in reports {
+        assert_eq!(out.status.code(), Some(0), "{rate} Hz");
+        let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        let bpm = report["global_bpm"].as_f64().unwrap();
+        assert!((bpm - 150.0).abs() < 0.05, "{rate} Hz read {bpm}");
+    }
+    // Exit 1 (could not load), with a message: not a panic (exit 101).
+    for out in [short_run, junk_run] {
+        assert_eq!(out.status.code(), Some(1));
+        assert!(out.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&out.stderr).contains("cannot load"));
     }
 }

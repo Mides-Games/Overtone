@@ -118,9 +118,13 @@ pub fn extract(
             .map(|i| if i < y.len() { y[i] as f64 } else { 0.0 })
             .collect()
     };
-    let mags = spectrum_of(&sus, n_fft);
-    let pitch = source::pitch(&mags, sr, n_fft);
-    let formant = source::formant_likeness(&mags, sr, n_fft);
+    // The whole 20-300 ms, Hann-windowed: at n_fft = 4096 the window was cut
+    // to its first 93 ms, rectangular. Averaging 4096-point frames instead
+    // (Welch) was measured too: held-out macro F1 0.666 against 0.679 here.
+    let n_sus = sus.len().next_power_of_two().max(n_fft);
+    let mags = spectrum_of(&sus, n_sus);
+    let pitch = source::pitch(&mags, sr, n_sus);
+    let formant = source::formant_likeness(&mags, sr, n_sus);
     // A pitch the harmonicity does not vouch for is noise reading tea
     // leaves (subharmonic ties on noisy spectra): zero it so band terms
     // stay neutral instead of firing at random. The design doc's own rule —
@@ -152,8 +156,10 @@ fn spectrum_of(samples: &[f64], n_fft: usize) -> Vec<f64> {
     let mut planner = RealFftPlanner::<f64>::new();
     let fft = planner.plan_fft_forward(n_fft);
     let mut input = fft.make_input_vec();
-    for (slot, &v) in input.iter_mut().zip(samples.iter()) {
-        *slot = v;
+    // Periodic Hann over the samples actually there; the rest is padding.
+    let len = samples.len().min(n_fft);
+    for (i, (slot, &v)) in input.iter_mut().zip(samples.iter()).enumerate() {
+        *slot = v * (0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / len as f64).cos());
     }
     let mut output = fft.make_output_vec();
     fft.process(&mut input, &mut output)

@@ -165,9 +165,13 @@ pub fn grow_sections_with(
             period: local_period,
             phase: local_phase,
         };
-        let (grid, _) = fit::refine(&w_times, &w_weights, grid);
+        // The inlier count is the refinement's own mask, as v3 keeps it; the
+        // quality pass counts at a looser tolerance. Only the golden gate
+        // reads it, and it never compared it until the audit.
+        let (grid, mask) = fit::refine(&w_times, &w_weights, grid);
         let q = fit::quality(&w_times, &w_weights, grid);
-        sections.push(section_of(start, end, grid, q));
+        let inliers = mask.iter().filter(|&&kept| kept).count();
+        sections.push(section_of(start, end, grid, fit::Quality { inliers, ..q }));
         prior = grid.period;
         phase = grid.phase;
         if end <= start + 1e-6 {

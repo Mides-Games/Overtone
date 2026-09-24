@@ -85,8 +85,12 @@ Three traps for the port, all of which will show up as a golden-vector mismatch:
 - **Slaney-normalised mel filters**, not HTK, not unit-norm. A different mel basis changes
   the median across bands and therefore every peak height.
 
-The fallback path (`_fast_onset_envelope`, a plain STFT flux with `nperseg=1024`) ports as
-`OnsetFn::Flux1024`; it exists so a mel-filter bug cannot take the whole tool down.
+v3 also has a fallback path: when the librosa call raises, `_onset_envelope` catches
+it and uses `_fast_onset_envelope`, a plain STFT flux with `nperseg=1024`. **It is not
+ported**, and there is no `OnsetFn` type to select one: v4 has the mel-flux envelope
+only. `overtone_dsp::envelope::onset_envelope` returns the envelope, not a `Result`, so
+there is no library error to fall back from, and a mel-filter bug surfaces in the golden
+gate, stage by stage, instead of being papered over at run time by a different envelope.
 
 ## A.3 Peak picking
 

@@ -74,9 +74,12 @@ fn select_by_distance<T: Sample>(peaks: &[usize], heights: &[T], distance: usize
         return keep;
     }
     let mut order: Vec<usize> = (0..peaks.len()).collect();
-    // Ascending by height, then walked in reverse: the same traversal scipy
-    // does, and it matters for ties.
-    order.sort_by(|&a, &b| cmp(&heights[a], &heights[b]));
+    // Walked tallest first, as scipy does. Equal heights are taken earliest
+    // first, so the earlier of two tied peaks wins: it is nearer the physical
+    // onset. scipy has no rule to copy here -- np.argsort is unstable past 16
+    // elements, and on a real envelope its tied winners came out
+    // RLRLRLLRRR... -- so the port picks one and pins it with a test.
+    order.sort_by(|&a, &b| cmp(&heights[a], &heights[b]).then(b.cmp(&a)));
     for &j in order.iter().rev() {
         if !keep[j] {
             continue;
@@ -188,6 +191,21 @@ mod tests {
         assert_eq!(local_maxima(&x), vec![2]);
         let x = [0.0, 1.0, 1.0, 0.0];
         assert_eq!(local_maxima(&x), vec![1]);
+    }
+
+    #[test]
+    fn of_two_equal_peaks_within_distance_the_earlier_wins() {
+        // Clipped hits 5 frames apart, distance 9: the rule is pinned because
+        // scipy has none (its tie order follows an unstable sort).
+        let mut x = vec![0.0f64; 60];
+        x[20] = 1.5;
+        x[25] = 1.5;
+        x[40] = 1.5;
+        x[44] = 1.5;
+        assert_eq!(find_peaks(&x, 9, None, None), vec![20, 40]);
+        // A taller later peak still wins over an earlier short one.
+        x[25] = 2.0;
+        assert_eq!(find_peaks(&x, 9, None, None), vec![25, 40]);
     }
 
     #[test]

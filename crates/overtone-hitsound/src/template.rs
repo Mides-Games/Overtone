@@ -56,6 +56,14 @@ pub struct Features {
 }
 
 impl Features {
+    /// Nothing audible in the attack window: every band ratio is zero, so
+    /// there is no energy from 20 Hz up (digital silence, or DC and rumble
+    /// alone). Every feature then reads as absence, and absence is what
+    /// several drum templates score.
+    pub fn is_silent(&self) -> bool {
+        self.spectral.band_ratios.iter().all(|&r| r == 0.0)
+    }
+
     pub fn value(&self, feature: Feature) -> f64 {
         match feature {
             Feature::SubRatio => self.spectral.band_ratios[0],
@@ -715,7 +723,18 @@ pub fn initial_templates() -> Vec<Template> {
 }
 
 /// Softmax classification: class probabilities in template order.
+///
+/// A [silent](Features::is_silent) attack is `Other` with probability 1
+/// when the set has an `Other` template: scoring nothing reads it as a
+/// sound that never decays and hands it to a drum. Without one it is
+/// scored like any attack.
 pub fn classify(templates: &[Template], features: &Features) -> Vec<(HitClass, f64)> {
+    if features.is_silent() && templates.iter().any(|t| t.class == HitClass::Other) {
+        return templates
+            .iter()
+            .map(|t| (t.class, if t.class == HitClass::Other { 1.0 } else { 0.0 }))
+            .collect();
+    }
     let scores: Vec<f64> = templates.iter().map(|t| t.score(features)).collect();
     let peak = scores.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let exps: Vec<f64> = scores.iter().map(|&s| (s - peak).exp()).collect();
@@ -972,9 +991,28 @@ mod tests {
     }
 
     #[test]
+    fn a_silent_attack_is_other() {
+        // Digital silence under an attack: nothing in the window to
+        // characterise, and no drum may be forced onto it. Scored, it read
+        // as a sound that never decays: Snare 0.27 with the hand-set
+        // weights and 0.40 calibrated, Other 0.04 and 0.02.
+        let y = vec![0.0f32; 44_100];
+        let features = extract(&y, 44_100, 0.5);
+        for (name, templates) in [
+            ("initial", initial_templates()),
+            ("calibrated", calibrated()),
+        ] {
+            let mut probs = classify(&templates, &features);
+            probs.sort_by(|a, b| b.1.total_cmp(&a.1));
+            assert_eq!(probs[0], (HitClass::Other, 1.0), "{name}: {probs:.2?}");
+        }
+    }
+
+    #[test]
     fn softmax_probabilities_sum_to_one() {
         let templates = initial_templates();
-        let y = vec![0.0f32; 44_100];
+        // A tone, not silence: silence never reaches the softmax.
+        let y: Vec<f32> = (0..44_100).map(|i| (i as f32 * 0.0627).sin()).collect();
         let features = Features {
             spectral: crate::spectral::analyze(&y, 44_100, 0.5),
             temporal: crate::temporal::analyze(&y, 44_100, 0.5),
@@ -983,8 +1021,13 @@ mod tests {
             formant: 0.0,
             percussive_ratio: 0.0,
         };
+        assert!(!features.is_silent());
         let probs = classify(&templates, &features);
         let total: f64 = probs.iter().map(|(_, p)| p).sum();
         assert!((total - 1.0).abs() < 1e-9);
+        assert!(
+            probs.iter().all(|&(_, p)| p > 0.0 && p < 1.0),
+            "{probs:.3?}"
+        );
     }
 }

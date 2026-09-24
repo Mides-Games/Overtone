@@ -10,16 +10,23 @@
 use overtone_core::GridSection;
 
 /// Metrical weight ladder for 4/4-ish bars. Downbeat first, half-bar next,
-/// quarter beats after, then subdivisions. Values are ordinals that the
-/// decision weights calibrate, not probabilities.
+/// quarter beats after, then subdivisions (doc §4: off-beats > 16ths).
+/// Values are ordinals that the decision weights calibrate, not
+/// probabilities. `bar_beats` of 1 means no bar was proven: every beat is
+/// then a plain beat, because nothing says which one is the 1.
 pub fn metrical_weight(beat_in_bar: i64, bar_beats: usize, division: u32) -> f64 {
-    if division > 4 {
-        return 0.10; // 16ths and finer: ghost-note territory.
+    if division >= 4 {
+        // 16ths (1/4 of a beat, osu! snap 1/4) and finer: ghost-note
+        // territory. It read `> 4`, which gave real 16ths the 8th weight.
+        return 0.10;
     }
     if division > 1 {
         return 0.25; // off-beats (8ths, triplets).
     }
-    let pos = beat_in_bar.rem_euclid(bar_beats.max(1) as i64);
+    if bar_beats <= 1 {
+        return 0.5;
+    }
+    let pos = beat_in_bar.rem_euclid(bar_beats as i64);
     if pos == 0 {
         1.0
     } else if bar_beats >= 4 && pos == (bar_beats / 2) as i64 {
@@ -65,12 +72,16 @@ const TIE_BEATS: f64 = 1e-9;
 /// Role of one attack in the music.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Role {
-    /// Beat subdivision the attack sits on (1, 2, 3, 4, 6 or 8).
-    pub division: u32,
-    /// Distance off that subdivision slot, in milliseconds.
-    pub grid_residual_ms: f64,
-    /// Metrical weight: downbeat 1.0 down to 16ths 0.10.
-    pub metrical_weight: f64,
+    /// Beat subdivision the attack sits on (1, 2, 3, 4, 6 or 8); `None`
+    /// outside every section, where there is no grid to sit on.
+    pub division: Option<u32>,
+    /// Distance off that subdivision slot, in milliseconds; `None` with no
+    /// grid.
+    pub grid_residual_ms: Option<f64>,
+    /// Metrical weight: downbeat 1.0 down to 16ths 0.10; beats of a section
+    /// whose bar was not proven are 0.5. `None` with no grid -- it read 1.0,
+    /// a downbeat, for every attack outside the sections.
+    pub metrical_weight: Option<f64>,
     /// Bars since the phrase start (fractional).
     pub bars_since_phrase_start: f64,
     /// Bars to the phrase end (fractional).
@@ -87,9 +98,13 @@ pub struct Role {
 
 /// Assemble the role of every attack.
 ///
-/// `sections` are beat-level fitted grids, `downbeat`/`bar_beats` the global
-/// meter reading, `phrase_edges` structure boundaries (plus track start/end
-/// are implied), `weights` the attack weights parallel to `times`.
+/// `sections` are beat-level fitted grids and `bars` their measures in
+/// parallel -- `(downbeat class, beats per bar)` per section, as the tempo
+/// engine's `section_measures` reads each one against its own phase, with 1
+/// beat meaning "no bar proven". `phrase_edges` are structure boundaries
+/// (track start and end are implied), `weights` the attack weights parallel
+/// to `times`. One global downbeat used to be applied to every section,
+/// though each section's class is counted from its own phase.
 #[allow(clippy::too_many_arguments)]
 pub fn analyze(
     y: &[f32],
@@ -97,8 +112,7 @@ pub fn analyze(
     times: &[f64],
     weights: &[f32],
     sections: &[GridSection],
-    downbeat: usize,
-    bar_beats: usize,
+    bars: &[(usize, usize)],
     phrase_edges: &[f64],
 ) -> Vec<Role> {
     debug_assert_eq!(
@@ -106,6 +120,7 @@ pub fn analyze(
         weights.len(),
         "attacks and weights run in parallel"
     );
+    debug_assert_eq!(sections.len(), bars.len(), "one bar per section");
     // Phrase edges with the track bounds implied on both sides, so the
     // first and last phrases measure against something real.
     let duration = y.len() as f64 / sr.max(1) as f64;
@@ -134,17 +149,20 @@ pub fn analyze(
         .iter()
         .enumerate()
         .map(|(idx, &t)| {
-            let section = section_at(sections, t);
-            let (division, grid_residual_ms, beat_in_bar, bar_len) = match section {
-                Some(s) if s.period > 0.0 => {
-                    let (d, r) = grid_position(t, s.period, s.phase);
-                    let beat = ((t - s.phase) / s.period).round() as i64;
-                    let bar = (s.period * bar_beats.max(1) as f64).max(1e-9);
-                    (d, r, beat - downbeat as i64, bar)
-                }
-                _ => (1, 0.0, 0, 1.0),
-            };
-            let metrical_weight = metrical_weight(beat_in_bar, bar_beats, division);
+            let (division, grid_residual_ms, metrical_weight, bar_len) =
+                match section_at(sections, t) {
+                    Some((n, s)) if s.period > 0.0 => {
+                        let (downbeat, bar_beats) = bars.get(n).copied().unwrap_or((0, 1));
+                        let (d, r) = grid_position(t, s.period, s.phase);
+                        let beat = ((t - s.phase) / s.period).round() as i64;
+                        let bar = (s.period * bar_beats.max(1) as f64).max(1e-9);
+                        let weight = metrical_weight(beat - downbeat as i64, bar_beats, d);
+                        (Some(d), Some(r), Some(weight), bar)
+                    }
+                    // No grid: no division, no residual, no metrical weight.
+                    // Phrase positions still need a length; a second stands in.
+                    _ => (None, None, None, 1.0),
+                };
 
             let (since, to) = phrase_position(t, &edges, bar_len);
 
@@ -199,13 +217,15 @@ pub fn analyze(
         .collect()
 }
 
-/// The section governing time `t`: the last one whose span contains it.
-fn section_at(sections: &[GridSection], t: f64) -> Option<GridSection> {
+/// The section governing time `t`, with its index: the last one whose span
+/// contains it.
+fn section_at(sections: &[GridSection], t: f64) -> Option<(usize, GridSection)> {
     sections
         .iter()
+        .enumerate()
         .rev()
-        .find(|s| t >= s.start.get() - 1e-9 && t <= s.end.get() + 1e-9)
-        .copied()
+        .find(|(_, s)| t >= s.start.get() - 1e-9 && t <= s.end.get() + 1e-9)
+        .map(|(n, s)| (n, *s))
 }
 
 /// Bars since the phrase start and to the phrase end, in units of `bar_len`
@@ -315,13 +335,19 @@ mod tests {
 
     #[test]
     fn metrical_weight_orders_downbeat_first() {
-        // 4/4, downbeat class 0: beat 0 > beat 2 > beats 1,3 > 8ths > 16ths.
+        // 4/4, downbeat class 0: beat 0 > beat 2 > beats 1,3 > 8ths and
+        // triplets > 16ths (division 4, osu! 1/4) and finer.
         assert_eq!(metrical_weight(0, 4, 1), 1.0);
         assert_eq!(metrical_weight(2, 4, 1), 0.7);
         assert_eq!(metrical_weight(1, 4, 1), 0.5);
         assert_eq!(metrical_weight(3, 4, 1), 0.5);
         assert_eq!(metrical_weight(0, 4, 2), 0.25);
+        assert_eq!(metrical_weight(0, 4, 3), 0.25);
+        assert_eq!(metrical_weight(0, 4, 4), 0.10);
         assert_eq!(metrical_weight(0, 4, 8), 0.10);
+        // No proven bar: no beat is the 1.
+        assert_eq!(metrical_weight(0, 1, 1), 0.5);
+        assert_eq!(metrical_weight(0, 1, 2), 0.25);
     }
 
     #[test]
@@ -345,15 +371,16 @@ mod tests {
         // which is zero when every neighbour carries the same weight.
         let weights: Vec<f32> = vec![1.0, 0.45, 1.0, 0.55, 1.0, 0.3, 0.9, 0.8, 1.0, 0.7, 0.6];
         let sections = vec![section(0.0, 4.0, period, 0.0)];
-        let roles = analyze(&y, sr, &times, &weights, &sections, 0, 4, &[0.0, 2.0, 4.0]);
+        let roles = analyze(&y, sr, &times, &weights, &sections, &[(0, 4)], &[0.0, 2.0, 4.0]);
         // t = 1.0 is beat 3 (index 4): heavier than beat 2, on the beat.
-        assert_eq!(roles[4].metrical_weight, 0.7);
-        assert_eq!(roles[4].division, 1);
+        assert_eq!(roles[4].metrical_weight, Some(0.7));
+        assert_eq!(roles[4].division, Some(1));
         // t = 0.5 is beat 2 (index 2): plain quarter weight.
-        assert_eq!(roles[2].metrical_weight, 0.5);
-        // Ghost 16th at 1.125: fine division, light weight.
-        assert_eq!(roles[5].division, 4);
-        assert_eq!(roles[5].metrical_weight, 0.25);
+        assert_eq!(roles[2].metrical_weight, Some(0.5));
+        // Ghost 16th at 1.125: 16th division, the 16th weight (it read 0.25,
+        // the 8th off-beat's).
+        assert_eq!(roles[5].division, Some(4));
+        assert_eq!(roles[5].metrical_weight, Some(0.10));
         // Kick accents above hats around them.
         assert!(roles[2].accent > roles[1].accent);
         // Section boundary distance: t = 0 sits on one.
@@ -362,5 +389,28 @@ mod tests {
         assert!((roles[4].bars_since_phrase_start - 0.5).abs() < 1e-9);
         // Density over ±2 s around t = 1: ten attacks (3.5 is out).
         assert!((roles[4].density - 10.0 / 4.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn no_grid_is_not_a_downbeat_and_each_section_has_its_own_bar() {
+        let sr = 44_100;
+        let y = vec![0.0f32; (8.0 * sr as f64) as usize];
+        let times = vec![0.5, 1.0, 5.25, 5.75, 7.9];
+        let weights = vec![1.0f32, 0.8, 1.0, 0.8, 1.0];
+        // Two sections with different phases and bars, and a gap after 7.0.
+        let sections = vec![section(0.0, 4.0, 0.5, 0.0), section(4.0, 7.0, 0.5, 0.25)];
+        // Section 0: downbeat class 1 of a 4-beat bar. Section 1: no bar.
+        let roles = analyze(&y, sr, &times, &weights, &sections, &[(1, 4), (0, 1)], &[]);
+        // 0.5 s is beat 1 of section 0, its downbeat class: the 1.
+        assert_eq!(roles[0].metrical_weight, Some(1.0));
+        // 1.0 s is beat 2: one past the downbeat.
+        assert_eq!(roles[1].metrical_weight, Some(0.5));
+        // Section 1 proved no bar: its beats are plain beats, not downbeats.
+        assert_eq!(roles[2].metrical_weight, Some(0.5));
+        assert_eq!(roles[3].metrical_weight, Some(0.5));
+        // 7.9 s is outside every section: no grid, no weight (it read 1.0).
+        assert_eq!(roles[4].division, None);
+        assert_eq!(roles[4].grid_residual_ms, None);
+        assert_eq!(roles[4].metrical_weight, None);
     }
 }

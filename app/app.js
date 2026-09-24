@@ -193,6 +193,12 @@ const I18N = {
     rp_open: "Open in the osu! editor",
     bad_stamp: "That is not an editor timestamp.",
     no_osu: "osu! did not open — is it installed? ({detail})",
+    pb_play: "Play / pause (Space)", pb_from_line: "From red line", pb_seek: "Position",
+    pb_click: "Click", pb_loop: "Loop section", pb_song: "Song", pb_click_vol: "Click",
+    pb_hint: "Space plays and pauses · double-click the tempo map to play from there · the click follows your edits",
+    pb_loading: "Loading the song… {n}/{of}",
+    pb_failed: "The song could not be played: {detail}",
+    no_audio_staged: "The song is not loaded; press play again.",
     import_folder: "Import beatmap folder…",
     imported: "Folder: {audio} + {n} {difficulties}.",
     difficulties: "difficulties",
@@ -391,6 +397,12 @@ const I18N = {
     rp_open: "Abrir en el editor de osu!",
     bad_stamp: "Eso no es un timestamp del editor.",
     no_osu: "osu! no se abrió — ¿está instalado? ({detail})",
+    pb_play: "Reproducir / pausar (Espacio)", pb_from_line: "Desde la línea roja", pb_seek: "Posición",
+    pb_click: "Click", pb_loop: "Repetir sección", pb_song: "Canción", pb_click_vol: "Click",
+    pb_hint: "Espacio reproduce y pausa · doble clic en el mapa de tempo para reproducir desde ahí · el click sigue tus ediciones",
+    pb_loading: "Cargando la canción… {n}/{of}",
+    pb_failed: "No se pudo reproducir la canción: {detail}",
+    no_audio_staged: "La canción no está cargada; volvé a darle play.",
     import_folder: "Importar carpeta…",
     imported: "Carpeta: {audio} + {n} {difficulties}.",
     difficulties: "dificultades",
@@ -699,7 +711,7 @@ function showResult(result) {
   S.snap = null;
   // A grade depends on the map and the song's attacks, not on the point list:
   // it stays through edits and goes with the song.
-  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; }
+  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; pbReset(); }
   if (!sameSong) S.comparePath = null;  // a map belongs to one song
   setView(S.view);  // lifts the "analyze first" panel off the current view
   syncActions();
@@ -1455,6 +1467,236 @@ function renderAssist() {
   $("asAdd").disabled = S.busy;
 }
 
+// ------------------------------------------------------------------ playback
+// The song and the click leave through one AudioContext, so they share one
+// clock and cannot drift apart. Every time below derives from it: the song
+// started at ctx time `startCtx` from song position `startPos`, and a click at
+// song time c plays at startCtx + (c - startPos), folded into the loop when
+// one is set. Clicks are read from the payload on every tick, so an edit is
+// heard on the next beat.
+const P = {
+  ctx: null, buffer: null, bufferFor: null, loading: null, source: null,
+  song: null, click: null, playing: false, startCtx: 0, startPos: 0, pos: 0,
+  sched: 0, timer: 0, raf: 0, loop: null,
+  levels: { song_volume: 0.8, click_volume: 0.6 },
+};
+const PB_LOOKAHEAD = 0.15, PB_TICK_MS = 25, PB_LEAD = 0.06;
+
+function pbContext() {
+  if (!P.ctx) {
+    P.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    P.song = P.ctx.createGain(); P.song.connect(P.ctx.destination);
+    P.click = P.ctx.createGain(); P.click.connect(P.ctx.destination);
+    pbApplyLevels();
+  }
+  return P.ctx;
+}
+
+function pbApplyLevels() {
+  if (!P.ctx) return;
+  P.song.gain.value = P.levels.song_volume;
+  P.click.gain.value = $("pbClick").checked ? P.levels.click_volume : 0;
+}
+
+async function pbFetch(kind) {
+  const opened = await api().audio_open(kind);
+  if (!opened.ok) throw new Error(opened.key === "error" ? opened.detail : t(opened.key));
+  const bytes = new Uint8Array(opened.size);
+  for (let i = 0; i < opened.chunks; i++) {
+    $("pbStatus").textContent = t("pb_loading", { n: i + 1, of: opened.chunks });
+    const chunk = await api().audio_chunk(i);
+    if (!chunk.ok) throw new Error(t(chunk.key));
+    const raw = atob(chunk.data);
+    for (let j = 0; j < raw.length; j++) bytes[i * (1 << 20) + j] = raw.charCodeAt(j);
+  }
+  api().audio_close();
+  return bytes.buffer;
+}
+
+async function pbLoad() {
+  const path = S.result && S.result.path;
+  if (!path) return false;
+  if (P.buffer && P.bufferFor === path) return true;
+  if (P.loading) return P.loading;
+  P.loading = (async () => {
+    const ctx = pbContext();
+    try {
+      try {
+        P.buffer = await ctx.decodeAudioData(await pbFetch("file"));
+      } catch (err) {
+        // The browser cannot read every format Overtone can (AIFF): take
+        // Overtone's own decode instead of refusing.
+        P.buffer = await ctx.decodeAudioData(await pbFetch("wav"));
+      }
+      P.bufferFor = path;
+      $("pbStatus").textContent = t("pb_hint");
+      return true;
+    } catch (err) {
+      P.buffer = null;
+      $("pbStatus").textContent = t("pb_failed", { detail: String((err && err.message) || err) });
+      return false;
+    } finally {
+      P.loading = null;
+    }
+  })();
+  return P.loading;
+}
+
+// Song position `elapsed` seconds after start, folded into the loop.
+function pbSongAt(elapsed) {
+  if (!P.loop) return P.startPos + elapsed;
+  const { a, b } = P.loop, L = b - a;
+  return a + ((((P.startPos - a + elapsed) % L) + L) % L);
+}
+
+function pbPosition() {
+  if (!P.playing || !P.ctx) return P.pos;
+  return pbSongAt(Math.max(0, P.ctx.currentTime - P.startCtx));
+}
+
+// First index of a sorted array whose value is >= x.
+function lowerBound(arr, x) {
+  let lo = 0, hi = arr.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid] < x) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+
+function pbClickAt(when, accent) {
+  const ctx = P.ctx, osc = ctx.createOscillator(), env = ctx.createGain();
+  // The WAV export's tones: C7 accented, G6 otherwise, 8 ms decay, 45 ms long.
+  osc.frequency.value = accent ? 2093 : 1568;
+  env.gain.setValueAtTime(accent ? 1 : 0.7, when);
+  env.gain.setTargetAtTime(0.0001, when, 0.008);
+  osc.connect(env); env.connect(P.click);
+  osc.start(when); osc.stop(when + 0.045);
+}
+
+function pbTick() {
+  if (!P.playing || !S.result) return;
+  const clicks = S.result.clicks || { t: [], accent: [] };
+  const until = P.ctx.currentTime - P.startCtx + PB_LOOKAHEAD;
+  while (P.sched < until) {
+    const s0 = pbSongAt(P.sched);
+    // Up to the loop's end at most, so a window never spans the wrap.
+    const room = P.loop ? P.loop.b - s0 : Infinity;
+    const len = Math.min(until - P.sched, room);
+    for (let i = lowerBound(clicks.t, s0); i < clicks.t.length && clicks.t[i] < s0 + len; i++) {
+      pbClickAt(P.startCtx + P.sched + (clicks.t[i] - s0), clicks.accent[i] === 1);
+    }
+    P.sched += len > 1e-9 ? len : 1e-6;
+  }
+  if (!P.loop && pbPosition() >= P.buffer.duration) { pbStop(); P.pos = 0; pbDraw(); }
+}
+
+function pbLoopFor(pos) {
+  // The section under the playhead: from its red line to the next one.
+  const r = S.result, i = governing(r, pos);
+  const a = r.points[i].offset_ms / 1000;
+  const b = i + 1 < r.points.length ? r.points[i + 1].offset_ms / 1000 : r.duration;
+  return b - a > 0.05 ? { a: Math.max(0, a), b: Math.min(b, P.buffer.duration) } : null;
+}
+
+async function pbPlay(from) {
+  if (!api() || !S.result) return;
+  if (!(await pbLoad())) return;
+  const ctx = pbContext();
+  if (ctx.state === "suspended") await ctx.resume();
+  pbStop();
+  let pos = Math.min(Math.max(0, from ?? P.pos), P.buffer.duration - 0.01);
+  P.loop = $("pbLoop").checked ? pbLoopFor(pos) : null;
+  if (P.loop && (pos < P.loop.a || pos >= P.loop.b)) pos = P.loop.a;
+  const source = ctx.createBufferSource();
+  source.buffer = P.buffer;
+  if (P.loop) { source.loop = true; source.loopStart = P.loop.a; source.loopEnd = P.loop.b; }
+  source.connect(P.song);
+  P.startCtx = ctx.currentTime + PB_LEAD;
+  P.startPos = pos;
+  P.sched = 0;
+  source.start(P.startCtx, pos);
+  P.source = source;
+  P.playing = true;
+  pbTick();
+  P.timer = setInterval(pbTick, PB_TICK_MS);
+  P.raf = requestAnimationFrame(pbFrame);
+  pbButtons();
+  pbDraw();
+}
+
+function pbStop() {
+  if (!P.playing) return;
+  P.pos = pbPosition();
+  P.playing = false;
+  clearInterval(P.timer);
+  cancelAnimationFrame(P.raf);
+  try { P.source.stop(); } catch (err) { /* already stopped */ }
+  P.source = null;
+  // Clicks already handed to the context would still sound: cut their bus.
+  if (P.click) {
+    P.click.disconnect();
+    P.click = P.ctx.createGain(); P.click.connect(P.ctx.destination);
+    pbApplyLevels();
+  }
+  pbButtons();
+  pbDraw();  // animation frames stop with the song, and in a hidden window
+}
+
+function pbToggle() { if (P.playing) pbStop(); else pbPlay(); }
+
+function pbSeek(pos) {
+  if (P.playing) pbPlay(pos);
+  else { P.pos = Math.max(0, pos); pbDraw(); }
+}
+
+function pbButtons() {
+  // SVG elements have no .hidden property: the attribute is what hides them.
+  $("pbPlayIcon").toggleAttribute("hidden", P.playing);
+  $("pbPauseIcon").toggleAttribute("hidden", !P.playing);
+}
+
+function pbFrame() {
+  pbDraw();
+  if (P.playing) P.raf = requestAnimationFrame(pbFrame);
+}
+
+function pbDraw() {
+  const canvas = $("playhead"), r = S.result;
+  if (!r) return;
+  const pos = pbPosition(), dur = Math.max(r.duration, 1e-3);
+  const m = Math.floor(pos / 60), s = pos - m * 60;
+  $("pbTime").textContent = `${m}:${s < 10 ? "0" : ""}${s.toFixed(3)}`;
+  if (document.activeElement !== $("pbSeek")) $("pbSeek").value = String(Math.round((pos / dur) * 1000));
+  const wrap = $("traceWrap"), dpr = window.devicePixelRatio || 1;
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  if (!W || !H || !geom) return;
+  if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (P.loop && P.playing) {
+    ctx.fillStyle = "rgba(79, 192, 138, 0.08)";
+    ctx.fillRect(geom.X(P.loop.a), geom.y0 - 22, geom.X(P.loop.b) - geom.X(P.loop.a), geom.y1 - geom.y0 + 22);
+  }
+  if (!P.playing && pos <= 0) return;
+  const x = Math.round(geom.X(Math.min(pos, dur))) + 0.5;
+  ctx.strokeStyle = "#e8ecf1"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(x, geom.y0 - 22); ctx.lineTo(x, geom.y1); ctx.stroke();
+}
+
+function pbReset() {
+  // A new song: its buffer, position and loop are the old song's no more.
+  pbStop();
+  P.buffer = null; P.bufferFor = null; P.pos = 0; P.loop = null;
+  pbDraw();
+}
+
+function pbLevels() {
+  P.levels = { song_volume: +$("pbSongVol").value / 100, click_volume: +$("pbClickVol").value / 100 };
+  pbApplyLevels();
+  if (api()) api().set_playback(P.levels);
+}
+
 // ------------------------------------------------------------------ mod report
 // One difficulty, every finding, in time order as a mod post lists them.
 const RP_SOURCES = ["reference", "suggestion", "snap", "alignment"];
@@ -1781,6 +2023,7 @@ function drawTrace(hoverX) {
     ctx.beginPath(); ctx.moveTo(hoverX + 0.5, y0 - 22); ctx.lineTo(hoverX + 0.5, y1); ctx.stroke();
     ctx.setLineDash([]);
   }
+  pbDraw();  // the playhead layer follows the map's geometry
 }
 
 function governing(r, s) {
@@ -1890,6 +2133,24 @@ function wire() {
   $("asFit").onclick = assistFit;
   $("rpPick").onclick = reportPick;
   $("rpCopy").onclick = copyReport;
+  $("pbPlay").onclick = pbToggle;
+  $("pbFromLine").onclick = () => {
+    if (!S.result) return;
+    const i = S.selected >= 0 ? S.selected : governing(S.result, pbPosition());
+    pbPlay(S.result.points[i].offset_ms / 1000);
+  };
+  $("pbSeek").addEventListener("input", () => { if (S.result) pbSeek((+$("pbSeek").value / 1000) * S.result.duration); });
+  $("pbClick").addEventListener("change", pbApplyLevels);
+  $("pbLoop").addEventListener("change", () => { if (P.playing) pbPlay(pbPosition()); });
+  ["pbSongVol", "pbClickVol"].forEach((id) => {
+    $(id).addEventListener("input", () => { P.levels = { song_volume: +$("pbSongVol").value / 100, click_volume: +$("pbClickVol").value / 100 }; pbApplyLevels(); });
+    $(id).addEventListener("change", pbLevels);
+  });
+  $("trace").addEventListener("dblclick", (e) => {
+    if (!S.result || !geom) return;
+    const x = e.clientX - $("trace").getBoundingClientRect().left;
+    pbPlay(Math.max(0, ((x - geom.x0) / (geom.x1 - geom.x0)) * geom.dur));
+  });
   ["asFirst", "asSecond", "asBars", "asMeter"].forEach((id) => {
     $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); assistFit(); } });
   });
@@ -1925,6 +2186,11 @@ function wire() {
   document.addEventListener("keydown", (e) => { if (e.key === "Tab") focusByKey = true; }, true);
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { openDrawer(false); return; }
+    if (e.key === " " && S.result && !(e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) {
+      e.preventDefault();
+      pbToggle();
+      return;
+    }
     // Typing an offset or a detection value must not trigger shortcuts:
     // Enter inside the point editor would otherwise start a full analysis.
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
@@ -1954,6 +2220,9 @@ async function boot() {
   const st = await api().state();
   S.lang = st.language; S.presets = st.presets;
   S.recent = st.recent || [];
+  if (st.playback) P.levels = st.playback;
+  $("pbSongVol").value = String(Math.round(P.levels.song_volume * 100));
+  $("pbClickVol").value = String(Math.round(P.levels.click_volume * 100));
   S.rustAvailable = !!st.rust_available;
   $("version").textContent = st.version;
   if (st.logo) $("logo").src = st.logo;

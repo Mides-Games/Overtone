@@ -173,8 +173,25 @@
           </div>
           <div class="trace-wrap" id="traceWrap">
             <canvas id="trace"></canvas>
+            <canvas id="playhead" class="playhead"></canvas>
             <div class="tooltip" id="tip" hidden></div>
           </div>
+          <div class="transport">
+            <button class="btn icon play" id="pbPlay" data-i18n-title="pb_play" title="Play / pause (Space)">
+              <svg id="pbPlayIcon" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 3.8v16.4a1 1 0 0 0 1.5.86l13.2-8.2a1 1 0 0 0 0-1.72L7.5 2.94A1 1 0 0 0 6 3.8z"/></svg>
+              <svg id="pbPauseIcon" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" hidden><rect x="5" y="4" width="5" height="16" rx="1.5"/><rect x="14" y="4" width="5" height="16" rx="1.5"/></svg>
+            </button>
+            <button class="btn small" id="pbFromLine"><span data-i18n="pb_from_line">From red line</span></button>
+            <span class="num pb-time" id="pbTime">0:00.000</span>
+            <input type="range" class="pb-seek" id="pbSeek" min="0" max="1000" step="1" value="0" data-i18n-aria="pb_seek" aria-label="Position">
+            <label class="check"><input type="checkbox" id="pbClick" checked><span data-i18n="pb_click">Click</span></label>
+            <label class="check"><input type="checkbox" id="pbLoop"><span data-i18n="pb_loop">Loop section</span></label>
+            <span class="pb-levels">
+              <label class="pb-level"><span data-i18n="pb_song">Song</span><input type="range" id="pbSongVol" min="0" max="100" step="1"></label>
+              <label class="pb-level"><span data-i18n="pb_click_vol">Click</span><input type="range" id="pbClickVol" min="0" max="100" step="1"></label>
+            </span>
+          </div>
+          <div class="card-sub pb-status" id="pbStatus" data-i18n="pb_hint">Space plays and pauses · double-click the tempo map to play from there</div>
         </div>
 
         <div class="split">

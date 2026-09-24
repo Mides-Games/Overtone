@@ -1,0 +1,21 @@
+[package]
+name = "overtone-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "overtone-cli"
+path = "src/main.rs"
+
+[dependencies]
+overtone-audio = { version = "4.0.0-dev", path = "../overtone-audio" }
+overtone-core = { version = "4.0.0-dev", path = "../overtone-core" }
+overtone-dsp = { version = "4.0.0-dev", path = "../overtone-dsp" }
+overtone-tempo = { version = "4.0.0-dev", path = "../overtone-tempo" }
+serde_json = "1.0.151"

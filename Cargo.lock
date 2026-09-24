@@ -136,6 +136,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "overtone-cli"
+version = "4.0.0-dev"
+dependencies = [
+ "overtone-audio",
+ "overtone-core",
+ "overtone-dsp",
+ "overtone-tempo",
+ "serde_json",
+]
+
+[[package]]
 name = "overtone-core"
 version = "4.0.0-dev"
 dependencies = [

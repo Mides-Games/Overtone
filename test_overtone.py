@@ -1148,6 +1148,18 @@ class LegacyPulseFactorTests(unittest.TestCase):
         self.assertEqual([(p.offset_ms, p.bpm) for p in same.points],
                          [(p.offset_ms, p.bpm) for p in self.auto.points])
 
+    def test_doubling_a_bare_click_doubles_it(self):
+        # Nothing sounds between the clicks, so the inserted beats have no
+        # attack of their own; they were dragged to the previous click's tail
+        # and x2 on a 120 BPM click read 186 BPM.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "click120.wav"
+            _click_track(path, 120.0, duration=20.0)
+            doubled = analyze_audio(path, engine="legacy", force_subdivision=2)
+            rebuilt = rebuild_with_subdivision(analyze_audio(path, engine="legacy"), 2.0)
+        self.assertAlmostEqual(doubled.global_bpm, 240.0, delta=2.0)
+        self.assertAlmostEqual(rebuilt.global_bpm, 240.0, delta=2.0)
+
     def test_halving_a_legacy_result_needs_no_reanalysis(self):
         half = rebuild_with_subdivision(self.auto, 0.5)
         self.assertAlmostEqual(half.global_bpm, 100.0, delta=1.0)

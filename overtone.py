@@ -316,7 +316,8 @@ def _track_beats_hybrid(onset: np.ndarray, sr: int, hop: int,
 
 def _refine_beats_to_transients(beat_frames: np.ndarray, onset: np.ndarray,
                                 sr: int, hop: int, radius_ms: float = 35.0,
-                                return_float: bool = False) -> np.ndarray:
+                                return_float: bool = False,
+                                hold_without_peak: bool = False) -> np.ndarray:
     """Re-anchor each beat to its strongest nearby transient.
 
     Parabolic interpolation gives sub-frame precision. With integer frames
@@ -326,6 +327,12 @@ def _refine_beats_to_transients(beat_frames: np.ndarray, onset: np.ndarray,
     ~2 % of tempo and would make 225 vs 222 BPM sections flip-flop.
     ``radius_ms`` widens after subdivision inserts, whose interpolated
     positions can sit far from the true attack.
+
+    ``hold_without_peak`` leaves a beat where it is when the loudest point in
+    its window is on the window's edge: that is the tail or the rise of a
+    neighbouring hit, not an attack of its own. Inserted beats need it -- on a
+    bare click track at x2 they were dragged to the previous click's tail and
+    120 BPM came out as 186.
     """
     if len(beat_frames) == 0 or len(onset) == 0:
         return np.asarray(beat_frames, dtype=float if return_float else int)
@@ -339,6 +346,9 @@ def _refine_beats_to_transients(beat_frames: np.ndarray, onset: np.ndarray,
             refined.append(float(center))
             continue
         best = lo + int(np.argmax(window))
+        if hold_without_peak and best in (lo, hi - 1):
+            refined.append(float(frame))
+            continue
         shift = 0.0
         if 0 < best < len(onset) - 1:
             a, b, c = float(onset[best - 1]), float(onset[best]), float(onset[best + 1])
@@ -2235,7 +2245,11 @@ def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
         beat_frames = _refine_beats_to_transients(
             beat_frames, onset, sr, hop,
             radius_ms=float(np.clip(0.30 * median_gap_s * 1000, 25, 90)),
-            return_float=True)
+            # Only when the user asked for more beats: on the tracker's own
+            # doubling, holding changed 9 of 27 real songs with no net gain
+            # against their ranked maps (within 10 ms 0.128 -> 0.125).
+            return_float=True,
+            hold_without_peak=subdivision > 1 and float(factor) not in (0.0, 1.0))
     beat_frames = _trim_leading_silence(beat_frames, onset)
     beat_frames = _fill_missed_beats(beat_frames)
     beat_times = np.asarray(beat_frames, dtype=np.float64) * hop / sr
@@ -2389,7 +2403,7 @@ def rebuild_with_subdivision(analysis: Analysis, factor: float,
     frames = _refine_beats_to_transients(
         frames, analysis.onset, analysis.sample_rate, analysis.hop_length,
         radius_ms=float(np.clip(0.30 * median_gap_s * 1000, 25, 90)),
-        return_float=True)
+        return_float=True, hold_without_peak=factor > 1)
     frames = _trim_leading_silence(frames, analysis.onset)
     frames = _fill_missed_beats(frames)
     beat_times = np.asarray(frames, dtype=np.float64) * analysis.hop_length / analysis.sample_rate

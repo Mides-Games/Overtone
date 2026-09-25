@@ -326,7 +326,7 @@ the copier, the section, the check, the decision engine, the editor.
 | P-4 Evidence through the CLI | class probabilities with terms, and role, per attack; calibrated weights baked in | med | **high** | templates, role | no | no | **P1** | todo |
 | P-5 Object-attack matching | each sound event's nearest attack, "no attack" as a state | low | high | P-1 | no | no | **P1** | todo |
 | P-6 Real-map evaluation | agreement with mappers' own hitsounds on local maps, against simple baselines | med | **high** | library index, P-1 | no | no | **P1** | todo |
-| P-7 Object lane | objects and their sounds on the timeline | low | high | P3 timeline, P-1 | no | no | **P1** | todo |
+| P-7 Object lane | objects and their sounds on the timeline | low | high | P3 timeline, P-1 | no | no | **P1** | **done** — objects and additions in rows, while a difficulty's hitsounds are picked |
 | H1 Hitsound copier | one difficulty's hitsounds onto others, by time, with a preview | low | **high** | P-1, P-2 | no | no | **P1** | **done** — `copy_hitsounds` + Mapset view card; 1,494 copies on 300 local mapsets, 0 errors, 95.3 % of sounds matched (median) |
 | Per-attack features | 7 bands, centroid/rolloff/flatness/crest, rise/decay | med | **high** | P2 HPSS | no | no | **P1** | **done** |
 | Harmonicity + pitch | HPS pitch, formants | med | high | features | no | no | **P1** | **done** — inharmonicity deferred |

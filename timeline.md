@@ -16,6 +16,30 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · Hitsounds P-7: the object lane
+
+### Changed
+
+- **An object lane on the timeline**, between the waveform and the drift lane, while a
+  difficulty is picked in "Hitsounds from": circles as marks, sliders and spinners as bars
+  from start to end, and under them each sound's additions in rows of their own
+  (whistle, finish, clap), with keys in the legend. It follows zoom and pan like the other
+  lanes, both themes, and goes away with "Off".
+
+### Measured
+
+```
+addition colours          dataviz validator, all pairs on the canvas plot: pass in both
+                          themes; green and yellow in the colour-blind warning band (6.9),
+                          carried by their rows and the legend; the light yellow 2.1:1
+a real map (Violin Dance) 946 objects (384 sliders) drawn; the lane zoomed to 60-68 s
+                          reads object by object; "Off" gives its height back
+Python unittest           379, all pass (the lane's data is held in the existing
+                          playback tests)
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Hitsounds P-3: hearing them, and warnings that fold
 
 ### Changed

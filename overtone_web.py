@@ -753,7 +753,11 @@ class Api:
         return {"ok": True, "file": name,
                 "events": {"t": [e["t"] for e in plan["events"]],
                            "keys": [e["keys"] for e in plan["events"]],
-                           "volume": [e["volume"] for e in plan["events"]]},
+                           "volume": [e["volume"] for e in plan["events"]],
+                           "adds": [e["adds"] for e in plan["events"]]},
+                "objects": {"t": [o["t"] for o in plan["objects"]],
+                            "end": [o["end"] for o in plan["objects"]],
+                            "kind": [o["kind"] for o in plan["objects"]]},
                 "samples": samples, "counts": plan["counts"]}
 
     # -- hitsound copier (Phase 6, H1) ---------------------------------------

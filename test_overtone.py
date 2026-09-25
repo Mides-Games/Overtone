@@ -4074,6 +4074,10 @@ class HitsoundSampleTests(unittest.TestCase):
         self.assertEqual([e["t"] for e in plan["events"]][-2:], [8.0, 8.5])    # head and tail
         self.assertEqual((plan["counts"]["missing_file"], plan["counts"]["slider_bodies"]), (1, 1))
         self.assertEqual(Path(plan["samples"]["overtone:soft-hitclap.wav"]["path"]).parent, DEFAULT_SAMPLE_DIR)
+        # The object lane: circles have no end, the slider spans head to tail.
+        self.assertEqual([(o["t"], o["end"], o["kind"]) for o in plan["objects"]][-2:],
+                         [(7.0, None, "circle"), (8.0, 8.5, "slider")])
+        self.assertEqual([e["adds"] for e in plan["events"]][:2], [8, 8])
         self.assertTrue(all(Path(s["path"]).is_file() for s in plan["samples"].values()
                             if s["source"] == "overtone"))
 

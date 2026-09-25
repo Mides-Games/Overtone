@@ -66,7 +66,7 @@ Each has an id, what it unblocks, and a size (S, M, L: relative effort, not a da
 | **P-4** | **Evidence through the CLI** | `overtone-cli hitsound-evidence <audio>`: per attack, class probabilities with each term's contribution, and its role. The calibrated weights baked in as constants, with a test that they equal a fresh fit (3.5 s per call otherwise) | H3 (audio half), H4 | M | todo |
 | **P-5** | **Object ↔ attack matching** | object-centric: each sound event's nearest attack by binary search, and "no attack here" as a state of its own (a sound over silence) | H3, H4 | S | todo |
 | **P-6** | **Real-map evaluation** | a local, read-only script over maps chosen from the library index: how often a proposal agrees with the mapper's own hitsounds, per addition, against simple baselines ("clap on 2 and 4", "finish on phrase starts"). The maps are never committed; the script and its numbers are | H3 thresholds, H4 tuning | M | todo |
-| **P-7** | **Object lane on the timeline** | objects and their sounds drawn under the waveform, selectable | H2, H5 | S-M | todo |
+| **P-7** | **Object lane on the timeline** | objects and their sounds drawn under the waveform, selectable | H2, H5 | S-M | **done** |
 
 ```
 P-1 ─┬─► H1 copier ◄── P-2

@@ -5342,9 +5342,11 @@ def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str]) -> dict:
     counted. Slider bodies (the looping slide) are not played yet; they are
     counted. Volume is the sound's, never under osu!'s 5 %.
 
-    Returns ``events`` in song time (seconds) with the ``keys`` they play
-    and a 0-1 ``volume``; ``samples``, each key's ``path`` and ``source``
-    (``file``, ``map`` or ``overtone``); and ``counts`` of each.
+    Returns ``events`` in song time (seconds) with the ``keys`` they play,
+    a 0-1 ``volume`` and their ``adds`` (the whistle/finish/clap bits);
+    ``objects`` with their start, end (None for a circle) and kind, for the
+    timeline's object lane (P-7); ``samples``, each key's ``path`` and
+    ``source`` (``file``, ``map`` or ``overtone``); and ``counts`` of each.
     """
     base = Path(folder)
     try:
@@ -5362,7 +5364,8 @@ def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str]) -> dict:
         counts[source] += 1
         return key
 
-    for event in sound_events(beatmap):
+    all_events = sound_events(beatmap)
+    for event in all_events:
         if event["part"] == "body":
             counts["slider_bodies"] += 1
             continue
@@ -5386,9 +5389,21 @@ def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str]) -> dict:
                 keys.append(use(found, "map") if found is not None
                             else use(DEFAULT_SAMPLE_DIR / f"{stem}.wav", "overtone"))
         events.append({"t": round(event["time"] / 1000.0, 6), "keys": keys,
-                       "volume": max(MIN_SAMPLE_VOLUME, min(100, event["volume"])) / 100.0})
+                       "volume": max(MIN_SAMPLE_VOLUME, min(100, event["volume"])) / 100.0,
+                       "adds": event["bits"] & (HIT_WHISTLE | HIT_FINISH | HIT_CLAP)})
     events.sort(key=lambda e: e["t"])
-    return {"events": events, "samples": samples, "counts": counts}
+    by_object: dict[int, list[dict]] = {}
+    for event in all_events:
+        by_object.setdefault(event["object"], []).append(event)
+    objects = []
+    for n, evs in by_object.items():
+        obj = beatmap["hitobjects"][n]
+        body = next((e for e in evs if e["part"] == "body"), None)
+        end = body["end"] if body else (evs[-1]["time"] if obj["kind"] == "spinner" else None)
+        objects.append({"t": round(float(obj["time"]) / 1000.0, 6), "kind": obj["kind"],
+                        "end": None if end is None else round(end / 1000.0, 6)})
+    objects.sort(key=lambda o: o["t"])
+    return {"events": events, "objects": objects, "samples": samples, "counts": counts}
 
 
 # ---------------------------------------------------------------------------

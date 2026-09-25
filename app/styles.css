@@ -80,6 +80,13 @@
   --chart-drift-bad: #ff5d6c;
   --chart-playhead: #efecf5;
   --chart-loop: rgba(63, 208, 220, 0.08);
+  /* the object lane: objects in neutral ink, each addition in its own row
+     and colour (dataviz: all pairs pass on --chart-plot; green and yellow in
+     the colour-blind warning band, carried by the rows and the legend) */
+  --chart-objects: #8f88a1;
+  --chart-whistle: #3987e5;
+  --chart-finish: #c98500;
+  --chart-clap: #008300;
 
   /* type scale: eight steps, nothing in between */
   --fs-1: 11.5px;   /* captions, meta, pills */
@@ -175,6 +182,10 @@
   --chart-drift-bad: #c42e3b;
   --chart-playhead: #1a1724;
   --chart-loop: rgba(10, 115, 127, 0.08);
+  --chart-objects: #8a8499;
+  --chart-whistle: #2a78d6;
+  --chart-finish: #eda100;
+  --chart-clap: #008300;
 
   --shadow-sm: 0 1px 2px rgba(26, 23, 36, 0.12);
   --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
@@ -617,6 +628,9 @@ tbody td .pill { white-space: nowrap; }
 .legend .key-onsets { background: var(--chart-onset-key); }
 .legend .key-ghost { background: var(--chart-ghost); }
 .legend .key-drift { background: var(--chart-drift-ok); }
+.legend .key-whistle { background: var(--chart-whistle); border-radius: 50%; }
+.legend .key-finish { background: var(--chart-finish); border-radius: 50%; }
+.legend .key-clap { background: var(--chart-clap); border-radius: 50%; }
 
 .tooltip {
   position: absolute; pointer-events: none;

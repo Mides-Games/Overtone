@@ -659,6 +659,8 @@ class HitsoundPlaybackBridgeTests(_IsolatedConfig):
         self.assertEqual(reply["events"]["keys"], [["overtone:soft-hitnormal.wav", "map:soft-hitclap.wav"]])
         self.assertEqual(base64.b64decode(reply["samples"]["map:soft-hitclap.wav"]["data"]), b"RIFFclap")
         self.assertEqual(reply["samples"]["overtone:soft-hitnormal.wav"]["source"], "overtone")
+        self.assertEqual((reply["events"]["adds"], reply["objects"]),
+                         ([8], {"t": [1.0], "end": [None], "kind": ["circle"]}))
 
     def test_an_ogg_stream_in_a_wav_header_is_unwrapped_and_nothing_else_is_touched(self) -> None:
         ogg = b"OggS" + bytes(20)

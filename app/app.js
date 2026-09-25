@@ -104,6 +104,7 @@ const I18N = {
     inject_warn: "\nThe .osu audio ({osu}) differs from the analyzed file ({src}).",
     drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
     recent: "Recent",
+    lane_objects: "objects", lg_whistle: "whistle", lg_finish: "finish", lg_clap: "clap",
     g_v_short_section: "{count} sections last less than a bar. Check them by ear.",
     g_v_octave_check: "{count} sections change tempo by an octave: half-time feel or octave mistakes? Your call.",
     g_v_dup_points: "{count} red lines are duplicates, a few ms from another.",
@@ -400,6 +401,7 @@ const I18N = {
     inject_warn: "\nEl audio del .osu ({osu}) difiere del analizado ({src}).",
     drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
     recent: "Recientes",
+    lane_objects: "objetos", lg_whistle: "whistle", lg_finish: "finish", lg_clap: "clap",
     g_v_short_section: "{count} secciones duran menos de un compás. Revisalas de oído.",
     g_v_octave_check: "{count} secciones cambian el tempo una octava: ¿half-time o errores de octava? Lo decidís vos.",
     g_v_dup_points: "{count} líneas rojas son duplicados, a pocos ms de otra.",
@@ -2012,11 +2014,17 @@ function pbClickAt(when, level) {
 
 // Hitsounds beside the song (Phase 6, P-3): one difficulty's sounds, found as
 // osu! finds its samples, scheduled on the playback clock like the click.
-const HSP = { file: "", events: null, buffers: {} };
+const HSP = { file: "", events: null, objects: null, buffers: {} };
+
+// The legend's addition keys show while a difficulty's object lane does.
+function hsLegend() {
+  document.querySelectorAll(".legend .hs-key").forEach((el) => { el.hidden = !HSP.objects; });
+}
 
 async function hsMaps() {
   const box = $("pbHs");
-  HSP.file = ""; HSP.events = null; HSP.buffers = {};
+  HSP.file = ""; HSP.events = null; HSP.objects = null; HSP.buffers = {};
+  hsLegend();
   let maps = [];
   if (api()) {
     const reply = await api().song_maps();
@@ -2028,7 +2036,9 @@ async function hsMaps() {
 }
 
 async function hsPick(file) {
-  HSP.file = file; HSP.events = null;
+  HSP.file = file; HSP.events = null; HSP.objects = null;
+  hsLegend();
+  if (S.result) drawTrace();
   const name = file ? $("pbHs").selectedOptions[0].textContent : "";
   if (!file) { $("pbStatus").textContent = t("pb_hint"); return; }
   $("pbStatus").textContent = t("pb_hs_loading", { name });
@@ -2044,6 +2054,9 @@ async function hsPick(file) {
   if (HSP.file !== file) return;             // another pick came in meanwhile
   HSP.buffers = buffers;
   HSP.events = reply.events;
+  HSP.objects = reply.objects;
+  hsLegend();
+  if (S.result) drawTrace();
   const c = reply.counts;
   $("pbStatus").textContent = t("pb_hs_ready", { name, n: c.sounds, map: c.map + c.file, own: c.overtone }) +
     (unreadable ? ` ${t("pb_hs_unreadable", { n: unreadable })}` : "");
@@ -2677,6 +2690,7 @@ const C_TOKENS = {
   selected: "selected", cursor: "cursor", beat: "beat", beatBar: "bar", wave: "wave",
   ghost: "ghost", driftOk: "drift-ok", driftWarn: "drift-warn", driftBad: "drift-bad",
   playhead: "playhead", loop: "loop",
+  objects: "objects", hsWhistle: "whistle", hsFinish: "finish", hsClap: "clap",
 };
 const C = {};
 function chartInk() {
@@ -2701,7 +2715,7 @@ function roundRect(ctx, x, y, w, h, r) {
 
 // The tempo map is a timeline: a visible window of the song (zoom, pan), the
 // local tempo on top, then the waveform and the drift lane under it.
-const LANES = { wave: 58, drift: 46, gap: 10 };
+const LANES = { wave: 58, objects: 44, drift: 46, gap: 10 };
 const TL_MIN_SPAN = 0.5;          // seconds: the closest zoom
 const TL_SNAP_PX = 6;             // a dragged red line snaps to an attack this close
 const DRIFT_MS = 30;              // the drift lane's half height
@@ -2793,7 +2807,12 @@ function drawTrace(hoverX) {
 
   const v = tlView(r), span = v.b - v.a, dur = Math.max(r.duration, 1e-3);
   const x0 = PAD.l, x1 = W - PAD.r;
-  const yD1 = H - PAD.b, yD0 = yD1 - LANES.drift, yW1 = yD0 - LANES.gap, yW0 = yW1 - LANES.wave;
+  // The object lane (P-7) sits between the waveform and the drift lane,
+  // only while a difficulty's hitsounds are picked.
+  const lane = !!(HSP.events && HSP.objects);
+  const yD1 = H - PAD.b, yD0 = yD1 - LANES.drift;
+  const yO1 = lane ? yD0 - LANES.gap : yD0, yO0 = lane ? yO1 - LANES.objects : yD0;
+  const yW1 = (lane ? yO0 : yD0) - LANES.gap, yW0 = yW1 - LANES.wave;
   const y0 = PAD.t, y1 = yW0 - LANES.gap;
   const X = (s) => x0 + ((s - v.a) / span) * (x1 - x0);
   const Sx = (x) => v.a + ((x - x0) / (x1 - x0)) * span;
@@ -2807,10 +2826,10 @@ function drawTrace(hoverX) {
   if (hi - lo < 4) { const mid = (hi + lo) / 2; lo = mid - 2; hi = mid + 2; }
   const padY = (hi - lo) * 0.12; lo -= padY; hi += padY;
   const Y = (b) => y1 - ((b - lo) / (hi - lo)) * (y1 - y0);
-  geom = { x0, x1, y0, y1, yW0, yW1, yD0, yD1, dur, X, S: Sx, Y, lo, hi };
+  geom = { x0, x1, y0, y1, yW0, yW1, yO0, yO1, yD0, yD1, dur, X, S: Sx, Y, lo, hi };
 
   const plotTop = y0 - 22;
-  const panels = [[plotTop, y1], [yW0, yW1], [yD0, yD1]];
+  const panels = [[plotTop, y1], [yW0, yW1], [yD0, yD1]].concat(lane ? [[yO0, yO1]] : []);
   ctx.fillStyle = C.plot;
   for (const [a, b] of panels) { roundRect(ctx, x0, a, x1 - x0, b - a, 12); ctx.fill(); }
   const clipAll = () => { ctx.beginPath(); for (const [a, b] of panels) ctx.rect(x0, a, x1 - x0, b - a); ctx.clip(); };
@@ -2864,6 +2883,31 @@ function drawTrace(hoverX) {
     }
   }
 
+  // object lane: the picked difficulty's objects, and under them each
+  // sound's additions in rows of their own (whistle, finish, clap)
+  if (lane) {
+    const top = yO0 + 6, barH = 8, ob = HSP.objects;
+    ctx.fillStyle = C.objects;
+    for (let i = 0; i < ob.t.length; i++) {
+      const a = ob.t[i], e = ob.end[i] ?? a;
+      if (e < v.a || a > v.b) continue;
+      const xa = X(a), xb = X(e);
+      if (ob.end[i] !== null) { roundRect(ctx, xa, top, Math.max(3, xb - xa), barH, 3); ctx.fill(); }
+      else ctx.fillRect(Math.round(xa) - 1, top - 1, 3, barH + 2);
+    }
+    const ev = HSP.events, rows = [[2, C.hsWhistle], [4, C.hsFinish], [8, C.hsClap]];
+    for (let i = lowerBound(ev.t, v.a); i < ev.t.length && ev.t[i] <= v.b; i++) {
+      const adds = ev.adds[i];
+      if (!adds) continue;
+      const x = X(ev.t[i]);
+      rows.forEach(([bit, colour], k) => {
+        if (!(adds & bit)) return;
+        ctx.fillStyle = colour;
+        ctx.beginPath(); ctx.arc(x, top + barH + 7 + k * 7, 2.4, 0, 2 * Math.PI); ctx.fill();
+      });
+    }
+  }
+
   // drift lane: each attack's distance from the grid osu! will play
   const dmid = (yD0 + yD1) / 2, dh = (yD1 - yD0) / 2 - 4;
   ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
@@ -2894,6 +2938,7 @@ function drawTrace(hoverX) {
   ctx.fillStyle = C.gridText; ctx.textAlign = "right"; ctx.textBaseline = "middle";
   for (let b = Math.ceil(lo / ystep) * ystep; b <= hi; b += ystep) ctx.fillText(Number.isInteger(b) ? b : b.toFixed(1), x0 - 10, Y(b));
   ctx.fillText(t("lane_wave"), x0 - 10, wmid);
+  if (lane) ctx.fillText(t("lane_objects"), x0 - 10, (yO0 + yO1) / 2);
   ctx.fillText(`±${DRIFT_MS}`, x0 - 10, dmid);
 
   // time axis, over the visible window

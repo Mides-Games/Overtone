@@ -378,6 +378,51 @@ fn hitsound_proposes_every_object_with_alternatives_and_terms() {
 }
 
 #[test]
+fn ramps_turns_a_click_track_into_one_line_and_refuses_bad_input() {
+    let dir = scratch("ramps");
+    let path = dir.join("clicks-150.wav");
+    write_wav(&path, &clicks(150.0, 30.0));
+    let out = run(&["ramps", path.to_str().unwrap()]);
+    let capped = run(&["ramps", path.to_str().unwrap(), "--max-lines", "1"]);
+    let missing = run(&["ramps", "no-such-file.wav"]);
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let lines = report["lines"].as_array().unwrap();
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    let bpm = lines[0]["bpm"].as_f64().unwrap();
+    assert!((bpm - 150.0).abs() < 0.5, "one line at {bpm}");
+    assert!(lines[0]["max_drift_ms"].as_f64().unwrap() <= 5.0);
+    let tradeoff = report["tradeoff"].as_array().unwrap();
+    assert_eq!(tradeoff.len(), 5);
+    assert!(tradeoff.iter().all(|row| row["lines"].as_u64().unwrap() == 1));
+    assert_eq!(report["recommend_ramps"], false);
+    assert_eq!(report["elastic"]["degree"].as_u64().unwrap(), 1);
+
+    assert_eq!(capped.status.code(), Some(0));
+    let capped_report: serde_json::Value = serde_json::from_slice(&capped.stdout).unwrap();
+    assert_eq!(capped_report["drift_ms"].as_f64().unwrap(), 1.0);
+
+    assert_eq!(missing.status.code(), Some(1));
+    for args in [
+        &["ramps"][..],
+        &["ramps", "a.wav", "b.wav"][..],
+        &["ramps", "a.wav", "--drift", "0"][..],
+        &["ramps", "a.wav", "--max-lines", "0"][..],
+        &["ramps", "a.wav", "--bogus"][..],
+    ] {
+        let bad = run(args);
+        assert_eq!(bad.status.code(), Some(2), "{args:?}");
+    }
+}
+
+#[test]
 fn hitsound_evidence_scores_every_attack_and_names_its_role() {
     let dir = scratch("evidence");
     let path = dir.join("clicks-150.wav");

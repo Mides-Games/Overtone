@@ -16,6 +16,39 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Ramps, engine half: the curve as red lines
+
+### Changed
+
+- **`ramps.rs` + `overtone-cli ramps`**: longest least-squares grids back to back
+  over the elastic beat indices, each keeping every covered attack within the
+  drift — greedy, which is optimal for fewest segments under monotone coverage.
+  `--drift` (default 5 ms) picks the rung, `--max-lines` takes the cheapest rung
+  that fits, and the trade-off table (1/2/5/10/20 ms) prices every rung. The
+  selector recommends ramps past degree 1 when the elastic residual beats the
+  piecewise one, or when it found no sections at all.
+
+### Fixed
+
+- **Grids fitted through ghost notes.** The first version demanded every attack
+  within drift of a beat, and off-beat 8ths snapped to their neighbour's index
+  read as zero drift for standing still: a 120→160 ramp came out as 70 doubled
+  lines of 3 attacks. Red lines anchor on strong attacks (half the peak and up,
+  the alignment report's own bar); ornaments ride between. Same run now reads
+  16 lines, 121 to 159 BPM.
+
+### Measured
+
+```
+ramp-120-160, 5 ms           16 red lines, first 121.1 BPM, last 159.4 BPM,
+                             worst drift 3.4 ms; tradeoff 31/23/16/11/8 lines
+click track                  1 line at the tempo, recommend false
+Rust tests                   256 -> 263, all pass, no warnings
+golden 27/27 · elastic · facts
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Audio swap: one shift for the mapset, in Mapset
 
 ### Changed

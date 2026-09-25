@@ -12,6 +12,8 @@
 //!                                          # and its musical role (JSON)
 //! overtone-cli hitsound song.mp3 map.osu  # per object: the proposed sound
 //!                       [--profile P.json] # with alternatives and terms (JSON)
+//! overtone-cli ramps song.mp3 [--drift MS] # the elastic curve as the fewest
+//!                       [--max-lines N]    # red lines within the drift (JSON)
 //! ```
 //!
 //! `--full` adds what v3's `Analysis` carries beside the red lines: the
@@ -56,9 +58,16 @@
 //! energy term. `--profile` reads another profile file; the baked
 //! `balanced` one decides otherwise.
 //!
+//! `ramps` turns the elastic tempo curve into the fewest red lines that
+//! keep every attack within the chosen drift: longest grids back to back,
+//! with the count-against-drift trade-off beside them so `--drift` is
+//! chosen seeing prices, and `--max-lines` caps the count by taking the
+//! cheapest drift that fits. It exits 0 with the lines even on constant
+//! tempo (one line); only audio too short to fit on refuses, with a note.
+//!
 //! Exit codes: 0 a grid was found (for `structure`, the audio was read; for
 //! `hitsound-evidence`, the evidence was printed; for `hitsound`, the map
-//! was proposed); 3
+//! was proposed; for `ramps`, the lines were fitted); 3
 //! the engine refused (no grid in this audio, reason on stderr and in
 //! `diagnostics`); 1 the file could not be loaded; 2 the command line is
 //! wrong.
@@ -74,7 +83,8 @@ const USAGE: &str = "usage: overtone-cli analyze <audio> [--json | --full] [--de
 [--min-delta BPM] [--persistence BEATS] [--min-confidence C] [--no-map-bpm]\n       \
 overtone-cli structure <audio>\n       \
 overtone-cli hitsound-evidence <audio>\n       \
-overtone-cli hitsound <audio> <map.osu> [--profile <path>]";
+overtone-cli hitsound <audio> <map.osu> [--profile <path>]\n       \
+overtone-cli ramps <audio> [--drift <ms>] [--max-lines <n>] [--decimals <n>]";
 
 /// The v3 CLI's defaults, which the golden vectors were dumped with.
 struct Options {
@@ -651,6 +661,181 @@ fn hitsound(args: &[String]) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// `ramps <audio>`: the elastic curve as the fewest red lines within the
+/// drift, with the trade-off beside them. Exit 1 when the audio cannot be
+/// read, 2 on a bad command, 3 when too few attacks fit anything.
+fn ramps(args: &[String]) -> ExitCode {
+    let mut audio: Option<PathBuf> = None;
+    let mut drift_ms = 5.0;
+    let mut max_lines: Option<usize> = None;
+    let mut decimals = 0u32;
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        let value = |rest: &mut std::slice::Iter<String>, flag: &str| {
+            rest.next().cloned().ok_or_else(|| format!("{flag} needs a value"))
+        };
+        let bad_number = |flag: &str, text: &str| {
+            eprintln!("overtone-cli: {flag} expects a number, got {text:?}\n{USAGE}");
+            true
+        };
+        match arg.as_str() {
+            "--drift" => {
+                let text = match value(&mut rest, arg) {
+                    Ok(text) => text,
+                    Err(message) => {
+                        eprintln!("overtone-cli: {message}\n{USAGE}");
+                        return ExitCode::from(2);
+                    }
+                };
+                drift_ms = match text.parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        bad_number(arg, &text);
+                        return ExitCode::from(2);
+                    }
+                };
+                if !(drift_ms > 0.0) {
+                    eprintln!("overtone-cli: --drift takes a positive number of ms\n{USAGE}");
+                    return ExitCode::from(2);
+                }
+            }
+            "--max-lines" => {
+                let text = match value(&mut rest, arg) {
+                    Ok(text) => text,
+                    Err(message) => {
+                        eprintln!("overtone-cli: {message}\n{USAGE}");
+                        return ExitCode::from(2);
+                    }
+                };
+                max_lines = match text.parse::<usize>() {
+                    Ok(v) => Some(v),
+                    Err(_) => {
+                        bad_number(arg, &text);
+                        return ExitCode::from(2);
+                    }
+                };
+                if max_lines == Some(0) {
+                    eprintln!("overtone-cli: --max-lines takes 1 or more\n{USAGE}");
+                    return ExitCode::from(2);
+                }
+            }
+            "--decimals" => {
+                let text = match value(&mut rest, arg) {
+                    Ok(text) => text,
+                    Err(message) => {
+                        eprintln!("overtone-cli: {message}\n{USAGE}");
+                        return ExitCode::from(2);
+                    }
+                };
+                decimals = match text.parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        bad_number(arg, &text);
+                        return ExitCode::from(2);
+                    }
+                };
+                if decimals > 6 {
+                    eprintln!("overtone-cli: --decimals goes up to 6\n{USAGE}");
+                    return ExitCode::from(2);
+                }
+            }
+            flag if flag.starts_with("--") => {
+                eprintln!("overtone-cli: unknown option {flag}\n{USAGE}");
+                return ExitCode::from(2);
+            }
+            path => {
+                if audio.replace(PathBuf::from(path)).is_some() {
+                    eprintln!("overtone-cli: ramps takes one audio file\n{USAGE}");
+                    return ExitCode::from(2);
+                }
+            }
+        }
+    }
+    let Some(audio) = audio else {
+        eprintln!("overtone-cli: ramps takes one audio file\n{USAGE}");
+        return ExitCode::from(2);
+    };
+    let song = match analyse_audio(&audio) {
+        Ok(song) => song,
+        Err(e) => {
+            eprintln!("overtone-cli: cannot load {}: {e}", audio.display());
+            println!("{}", json!({"source": source(&audio), "error": e}));
+            return ExitCode::from(1);
+        }
+    };
+    let started = Instant::now();
+    let fitted = overtone_tempo::elastic::fit(&song.times, &song.weights);
+    let elastic_s = started.elapsed().as_secs_f64();
+    let Some((elastic, report)) = fitted else {
+        println!(
+            "{}",
+            json!({"source": source(&audio), "lines": [],
+                   "error": "too few attacks to fit a curve on"})
+        );
+        return ExitCode::from(3);
+    };
+    let started = Instant::now();
+    let table = {
+        let (times, indices, weights) = overtone_tempo::ramps::strong(&song.times, &report.beat_indices, &song.weights);
+        overtone_tempo::ramps::tradeoff(&times, &indices, &weights)
+    };
+    let mut drift_ms = drift_ms;
+    if let Some(cap) = max_lines {
+        // The cheapest drift whose count fits the cap; past the table's
+        // coarsest rung the count stands, and the lines say which rung won.
+        if let Some(&(rung, _)) = table.iter().find(|&&(_, count)| count <= cap) {
+            drift_ms = rung;
+        }
+    }
+    let (times, indices, weights) =
+        overtone_tempo::ramps::strong(&song.times, &report.beat_indices, &song.weights);
+    let lines = overtone_tempo::ramps::segment(&times, &indices, &weights, drift_ms);
+    let ramps_s = started.elapsed().as_secs_f64();
+    let factor = 10f64.powi(decimals as i32);
+    let line_json = |line: &overtone_tempo::ramps::RampLine| {
+        json!({
+            "offset_s": line.offset_s,
+            "offset_ms": (line.offset_s * 1000.0 * factor).round() / factor,
+            "bpm": line.bpm,
+            "start_k": line.start_k,
+            "end_k": line.end_k,
+            "max_drift_ms": line.max_drift_ms,
+            "attacks": line.attacks,
+        })
+    };
+    let report_json = json!({
+        "source": source(&audio),
+        "duration": song.y.len() as f64 / song.sr as f64,
+        "drift_ms": drift_ms,
+        "attacks": song.times.len(),
+        "strong_attacks": times.len(),
+        "lines": lines.iter().map(line_json).collect::<Vec<_>>(),
+        "tradeoff": table.iter().map(|&(rung, count)| json!({"drift_ms": rung, "lines": count})).collect::<Vec<_>>(),
+        "elastic": {
+            "degree": elastic.degree(),
+            "rms_ms": report.rms_ms,
+            "bpm_first": report.curve_bpm_first,
+            "bpm_last": report.curve_bpm_last,
+        },
+        "piecewise": {
+            "sections": song.out.settled_sections.len(),
+            "residual_ms": song.out.fit_residual_ms,
+        },
+        "recommend_ramps": overtone_tempo::ramps::recommend(
+            elastic.degree(), report.rms_ms,
+            song.out.settled_sections.len(), song.out.fit_residual_ms),
+        "version": overtone_tempo::VERSION,
+        "timings_s": {"decode": song.decode_s, "attacks": song.attacks_s, "tempo": song.tempo_s,
+                      "structure": song.structure_s, "elastic": elastic_s, "ramps": ramps_s},
+    });
+    println!("{report_json}");
+    eprintln!(
+        "overtone-cli: {} red lines within {drift_ms} ms; elastic {elastic_s:.2} s + ramps {ramps_s:.2} s",
+        lines.len()
+    );
+    ExitCode::SUCCESS
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("structure") {
@@ -661,6 +846,9 @@ fn main() -> ExitCode {
     }
     if args.first().map(String::as_str) == Some("hitsound") {
         return hitsound(&args[1..]);
+    }
+    if args.first().map(String::as_str) == Some("ramps") {
+        return ramps(&args[1..]);
     }
     match parse(&args) {
         Ok(options) => analyze(&options),

@@ -16,6 +16,42 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · Hitsounds H2: the Hitsounds section
+
+### Changed
+
+- **A Hitsounds section** in the sidebar, read only, for one difficulty beside the song:
+  - a summary: sounds, whistles, finishes and claps (with their share), the sample sets
+    used, and how many samples come from the map and how many from Overtone;
+  - **where the additions fall**: for each addition, its share on each sixteenth of the
+    bar (1 e + a 2 e + a ...), read against the map's own red lines, one scale for the
+    three so they compare, and the fewest sixteenths holding 80 % of it in a sentence
+    ("clap 96 % on 2, 4"); sounds between sixteenths (triplets) and under another meter
+    counted apart;
+  - **every sound** with its time, bar and beat, part, additions, sets, index and volume,
+    filtered by addition, 200 at a time; ▶ plays that sound alone with the samples the
+    transport loaded, and a row puts the playhead a second before it.
+- `hitsound_report(beatmap)` behind it: each sound's bar and sixteenth, and the
+  distribution per addition.
+
+### Measured
+
+800 standard maps (200+ objects) from the local Songs folder:
+
+```
+errors                          0; 9.7 ms median a map, 146 ms at most
+claps on beats 2 and 4          4/4 maps with 20+ claps (726): median 57 %, quartiles
+                                41-73 %: the backbeat rule covers about half of what
+                                mappers do, the bar the decision engine will have to beat
+finishes on the downbeat        4/4 maps with 10+ finishes (685): median 55 %
+additions between sixteenths    1.7 % (triplet snaps, mostly); under another meter 0.6 %
+a real map (Violin Dance)       1,362 sounds; clap 96 % on 2, 4; finish 84 % on 1, 3;
+                                whistle mostly between sixteenths (542 of 755)
+Python unittest                 379 -> 382, all pass
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Hitsounds P-7: the object lane
 
 ### Changed

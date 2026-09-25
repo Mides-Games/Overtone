@@ -760,6 +760,22 @@ class Api:
                             "kind": [o["kind"] for o in plan["objects"]]},
                 "samples": samples, "counts": plan["counts"]}
 
+    def hitsound_report(self, file: str) -> dict:
+        """One difficulty beside the song, sound by sound: its place in the
+        bar and where each addition falls (H2). Read only."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        folder = Path(str(self._analysis.source)).parent
+        name = str(file or "")
+        path = folder / name
+        if Path(name).name != name or not name.lower().endswith(".osu") or not path.is_file():
+            return {"ok": False, "key": "bad_file"}
+        try:
+            report = ta.hitsound_report(ta.read_osu_beatmap(path))
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": name, "report": report}
+
     # -- hitsound copier (Phase 6, H1) ---------------------------------------
     @staticmethod
     def _copy_paths(folder: str, source: str, targets: list) -> tuple[Path, list[Path]] | dict:

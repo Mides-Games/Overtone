@@ -4082,6 +4082,50 @@ class HitsoundSampleTests(unittest.TestCase):
                             if s["source"] == "overtone"))
 
 
+class HitsoundReportTests(unittest.TestCase):
+    """Phase 6, H2: every sound's place in the bar, and where additions fall."""
+
+    def test_places_are_read_against_the_maps_own_red_lines(self):
+        from overtone import hitsound_report, read_osu_beatmap
+        # 120 BPM from 1000 ms: a beat is 500 ms, a bar 2 s; 3/4 from 9000 ms.
+        text = _copy_map(["256,192,1000,1,4,0:0:0:0:",     # bar 1, the downbeat: a finish
+                          "256,192,1500,1,8,0:0:0:0:",     # bar 1, beat 2: a clap
+                          "256,192,1250,1,2,0:0:0:0:",     # bar 1, 1+ (slot 2): a whistle
+                          "256,192,1190,1,2,0:0:0:0:",     # 0.38 beat: off the grid
+                          "256,192,2500,1,8,0:0:0:0:",     # bar 1, beat 4: a clap
+                          "256,192,3500,1,8,0:0:0:0:",     # bar 2, beat 2: a clap
+                          "256,192,500,1,0,0:0:0:0:",      # a beat before the first line: bar 0, beat 4
+                          "256,192,9500,1,8,0:0:0:0:"],    # the 3/4 line's beat 2
+                         timing="1000,500,4,2,0,70,1,0\n9000,500,3,2,0,70,1,0")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            report = hitsound_report(read_osu_beatmap(path))
+        json.dumps(report)
+        self.assertEqual(report["meter"], 4)
+        claps = report["additions"]["clap"]
+        self.assertEqual((claps["total"], claps["slots"][4], claps["slots"][12], claps["other_meter"]),
+                         (4, 2, 1, 1))
+        whistles = report["additions"]["whistle"]
+        self.assertEqual((whistles["total"], whistles["slots"][2], whistles["off_grid"]), (2, 1, 1))
+        self.assertEqual(report["additions"]["finish"]["slots"][0], 1)
+        by_time = {s["t"]: s for s in report["sounds"]}
+        self.assertEqual((by_time[1.5]["bar"], by_time[1.5]["slot"]), (1, 4))
+        self.assertEqual((by_time[3.5]["bar"], by_time[3.5]["slot"]), (2, 4))
+        self.assertEqual((by_time[0.5]["bar"], by_time[0.5]["slot"]), (0, 12))
+        self.assertEqual((by_time[9.5]["bar"], by_time[9.5]["slot"], by_time[9.5]["meter"]), (5, 4, 3))
+        self.assertEqual(report["sets"]["normal"]["soft"], 8)
+
+    def test_no_red_lines_places_nothing_and_does_not_fail(self):
+        from overtone import hitsound_report
+        beatmap = {"sections": [{"name": "TimingPoints", "lines": []}],
+                   "hitobjects": [{"kind": "circle", "time": 100.0, "hit_sound": 8, "hit_sample": {}}],
+                   "general": {}, "difficulty": {}}
+        report = hitsound_report(beatmap)
+        self.assertEqual((report["sounds"][0]["bar"], report["sounds"][0]["slot"]), (None, None))
+        self.assertEqual(report["additions"]["clap"]["total"], 1)
+
+
 class StructureViewTests(unittest.TestCase):
     """Phase 19, Structure: phrases on the song's proven bars, labels with why."""
 

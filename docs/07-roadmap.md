@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **379** Python (260 engine + 119 web shell) · **233** Rust.
+Tests: **382** Python (262 engine + 120 web shell) · **233** Rust.
 
 ### What is pending, in order
 
@@ -327,6 +327,7 @@ the copier, the section, the check, the decision engine, the editor.
 | P-5 Object-attack matching | each sound event's nearest attack, "no attack" as a state | low | high | P-1 | no | no | **P1** | todo |
 | P-6 Real-map evaluation | agreement with mappers' own hitsounds on local maps, against simple baselines | med | **high** | library index, P-1 | no | no | **P1** | todo |
 | P-7 Object lane | objects and their sounds on the timeline | low | high | P3 timeline, P-1 | no | no | **P1** | **done** — objects and additions in rows, while a difficulty's hitsounds are picked |
+| H2 Hitsounds section | one difficulty, read only: where each addition falls in the bar, every sound heard one by one | med | **high** | P-1, P-3, P-7 | no | no | **P1** | **done** — `hitsound_report`; on 800 local maps claps sit on 2 and 4 57 % of the time (median) |
 | H1 Hitsound copier | one difficulty's hitsounds onto others, by time, with a preview | low | **high** | P-1, P-2 | no | no | **P1** | **done** — `copy_hitsounds` + Mapset view card; 1,494 copies on 300 local mapsets, 0 errors, 95.3 % of sounds matched (median) |
 | Per-attack features | 7 bands, centroid/rolloff/flatness/crest, rise/decay | med | **high** | P2 HPSS | no | no | **P1** | **done** |
 | Harmonicity + pitch | HPS pitch, formants | med | high | features | no | no | **P1** | **done** — inharmonicity deferred |
@@ -338,7 +339,7 @@ the copier, the section, the check, the decision engine, the editor.
 | **Viterbi decision** | sequence labelling with consistency costs | high | **high** | all above | no | no | **P1** | todo |
 | Explanations | itemised terms + alternatives | med | **high** | decision | no | no | **P1** | todo |
 | Profiles | built-in + custom, as data | low | high | decision | no | no | **P1** | todo |
-| Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | todo |
+| Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | partial — the object lane (P-7); instrument lanes need P-4 |
 | Hitsound editor | change/remove/volume/sample | med | **high** | decision | no | no | **P1** | todo |
 | Sample bank | import skin/folder, audition samples | med | high | P4 playback | no | no | P1 | todo |
 | Sample recommendation | map samples to roles by their spectrum | med | med | bank | no | no | P2 | todo |

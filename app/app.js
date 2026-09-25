@@ -104,6 +104,21 @@ const I18N = {
     inject_warn: "\nThe .osu audio ({osu}) differs from the analyzed file ({src}).",
     drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
     recent: "Recent",
+    nav_hitsounds: "Hitsounds",
+    hsv_sub: "What one difficulty plays: where its additions fall in the bar, and every sound, to hear one by one. Read only: nothing is written.",
+    hsv_map: "Difficulty", hsv_none: "No difficulty beside this song plays its audio.",
+    hsv_sounds_n: "Sounds", hsv_sets: "Sample sets", hsv_samples: "Samples",
+    hsv_samples_v: "{map} the map's · {own} Overtone's",
+    hsv_where_title: "Where the additions fall",
+    hsv_where_note: "Share of each addition on each sixteenth of a {meter}/4 bar, read against the map's own red lines.",
+    hsv_top: "{pct} % on {slots}", hsv_none_add: "none",
+    hsv_between: "{n} between sixteenths (triplets and the like)", hsv_other_meter: "{n} under another meter",
+    hsv_sounds: "Sounds", hsv_all: "All", hsv_count: "{n} sounds",
+    hsv_t_time: "Time", hsv_t_place: "Bar · beat", hsv_t_part: "Part", hsv_t_sounds: "Sounds",
+    hsv_t_sets: "Sets", hsv_t_index: "Index", hsv_t_volume: "Volume",
+    hsv_play: "Hear this sound", hsv_more: "Show {n} more",
+    part_circle: "circle", part_head: "slider head", part_repeat: "slider repeat", part_tail: "slider tail",
+    part_spinner_end: "spinner end", part_hold: "hold",
     lane_objects: "objects", lg_whistle: "whistle", lg_finish: "finish", lg_clap: "clap",
     g_v_short_section: "{count} sections last less than a bar. Check them by ear.",
     g_v_octave_check: "{count} sections change tempo by an octave: half-time feel or octave mistakes? Your call.",
@@ -401,6 +416,21 @@ const I18N = {
     inject_warn: "\nEl audio del .osu ({osu}) difiere del analizado ({src}).",
     drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
     recent: "Recientes",
+    nav_hitsounds: "Hitsounds",
+    hsv_sub: "Lo que suena en una dificultad: dónde caen sus adiciones en el compás, y cada sonido, para escucharlos uno por uno. Solo lectura: no se escribe nada.",
+    hsv_map: "Dificultad", hsv_none: "Ninguna dificultad junto a esta canción usa su audio.",
+    hsv_sounds_n: "Sonidos", hsv_sets: "Sample sets", hsv_samples: "Samples",
+    hsv_samples_v: "{map} del mapa · {own} de Overtone",
+    hsv_where_title: "Dónde caen las adiciones",
+    hsv_where_note: "Proporción de cada adición en cada semicorchea de un compás de {meter}/4, leída contra las líneas rojas del propio mapa.",
+    hsv_top: "{pct} % en {slots}", hsv_none_add: "ninguna",
+    hsv_between: "{n} entre semicorcheas (tresillos y similares)", hsv_other_meter: "{n} bajo otro compás",
+    hsv_sounds: "Sonidos", hsv_all: "Todos", hsv_count: "{n} sonidos",
+    hsv_t_time: "Tiempo", hsv_t_place: "Compás · tiempo", hsv_t_part: "Parte", hsv_t_sounds: "Sonidos",
+    hsv_t_sets: "Sets", hsv_t_index: "Índice", hsv_t_volume: "Volumen",
+    hsv_play: "Escuchar este sonido", hsv_more: "Mostrar {n} más",
+    part_circle: "círculo", part_head: "cabeza de slider", part_repeat: "repetición de slider", part_tail: "cola de slider",
+    part_spinner_end: "fin de spinner", part_hold: "hold",
     lane_objects: "objetos", lg_whistle: "whistle", lg_finish: "finish", lg_clap: "clap",
     g_v_short_section: "{count} secciones duran menos de un compás. Revisalas de oído.",
     g_v_octave_check: "{count} secciones cambian el tempo una octava: ¿half-time o errores de octava? Lo decidís vos.",
@@ -625,6 +655,7 @@ function translate() {
   renderRecents();
   renderSongs();
   renderStructure();
+  if (HSV.report) renderHitsoundsView();
   renderNeedSong();
   renderMapset();
   if (typeof renderCopier === "function") renderCopier();
@@ -636,8 +667,8 @@ function translate() {
 // One analysed song is shared by every view: switching only changes what is
 // visible, never the session. Views that read the analysis show the
 // "analyze first" panel until there is one, instead of blank space.
-const VIEWS = ["library", "timing", "structure", "mapcheck", "mapset", "report", "export", "settings"];
-const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", structure: "nav_structure", mapcheck: "nav_mapcheck", mapset: "nav_mapset", report: "nav_report", export: "nav_export", settings: "nav_settings" };
+const VIEWS = ["library", "timing", "structure", "hitsounds", "mapcheck", "mapset", "report", "export", "settings"];
+const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", structure: "nav_structure", hitsounds: "nav_hitsounds", mapcheck: "nav_mapcheck", mapset: "nav_mapset", report: "nav_report", export: "nav_export", settings: "nav_settings" };
 
 function needsResult(view) {
   const section = document.querySelector(`.content > [data-view="${view}"]`);
@@ -661,6 +692,7 @@ function setView(view) {
   // The canvas measures its box: it can only be drawn while visible.
   if (view === "timing" && S.result) { drawTrace(); waveLoad(); }
   if (view === "structure" && S.result) stxLoad();
+  if (view === "hitsounds" && S.result) hsvLoad();
 }
 
 function renderNeedSong() {
@@ -1403,6 +1435,120 @@ function stxShow(i) {
   pbSeek(s.start_s);
 }
 
+// ------------------------------------------------------------------ hitsounds view
+// Phase 6, H2: one difficulty, read only. Where its additions fall in the bar
+// (a small multiple per addition, on one scale), and every sound, to hear
+// one by one with the samples the transport plays.
+const HSV = { file: "", report: null, filter: "all", shown: 200 };
+const HSV_ADDS = ["whistle", "finish", "clap"];
+const HSV_PAGE = 200;
+
+function slotLabel(slot, meter) {
+  if (slot === null || slot === undefined) return "—";
+  return `${Math.floor(slot / 4) + 1}${["", "e", "+", "a"][slot % 4]}`;
+}
+
+async function hsvLoad() {
+  const box = $("hsvMap");
+  if (!api() || !S.result) return;
+  if (!box.options.length || box.dataset.for !== S.result.path) {
+    const reply = await api().song_maps();
+    const maps = reply.ok ? reply.maps : [];
+    box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+    box.dataset.for = S.result.path;
+    box.disabled = !maps.length;
+    HSV.file = ""; HSV.report = null;
+    if (!maps.length) { renderHitsoundsView(); return; }
+    if (HSP.file && maps.some((m) => m.file === HSP.file)) box.value = HSP.file;
+  }
+  if (box.value && box.value !== HSV.file) await hsvPick(box.value);
+  else renderHitsoundsView();
+}
+
+async function hsvPick(file) {
+  HSV.file = file; HSV.report = null; HSV.shown = HSV_PAGE;
+  const reply = await api().hitsound_report(file);
+  if (HSV.file !== file) return;
+  if (!reply.ok) { editFailure(reply); return; }
+  HSV.report = reply.report;
+  renderHitsoundsView();
+  // The same difficulty in the transport: its samples load for the ▶ buttons.
+  if (HSP.file !== file) { $("pbHs").value = file; hsPick(file).then(renderHitsoundsView); }
+}
+
+function hsvChart(name, a, meter, peak) {
+  const n = a.slots.length, W = 300, H = 96, gap = 2, bw = (W - gap * (n - 1)) / n;
+  const bars = a.slots.map((c, k) => {
+    const share = a.total ? c / a.total : 0, h = peak ? (share / peak) * (H - 8) : 0;
+    const x = k * (bw + gap);
+    return `<rect class="bar" x="${x.toFixed(1)}" y="${(H - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(h, share ? 1 : 0).toFixed(1)}"><title>${slotLabel(k, meter)}: ${c} (${Math.round(share * 100)} %)</title></rect>`;
+  }).join("");
+  const labels = a.slots.map((_c, k) => k % 4 === 0
+    ? `<text class="beat" x="${(k * (bw + gap) + bw / 2).toFixed(1)}" y="${H + 14}" text-anchor="middle">${k / 4 + 1}</text>`
+    : (n <= 16 ? `<text class="sub" x="${(k * (bw + gap) + bw / 2).toFixed(1)}" y="${H + 14}" text-anchor="middle">${["", "e", "+", "a"][k % 4]}</text>` : "")).join("");
+  // The fewest sixteenths that hold 80 % of this addition, four at most.
+  const order = a.slots.map((c, k) => [c, k]).sort((x, y) => y[0] - x[0]);
+  let held = 0; const top = [];
+  for (const [c, k] of order) { if (!c || top.length === 4 || held >= 0.8 * a.total) break; top.push(k); held += c; }
+  const sum = a.total ? t("hsv_top", { pct: Math.round((held / a.total) * 100), slots: top.sort((x, y) => x - y).map((k) => slotLabel(k, meter)).join(", ") })
+                      : t("hsv_none_add");
+  const extra = [a.off_grid ? t("hsv_between", { n: a.off_grid }) : "", a.other_meter ? t("hsv_other_meter", { n: a.other_meter }) : ""].filter(Boolean).join(" · ");
+  return `<div class="hsv-chart k-${name}">
+    <div class="head"><span class="hsv-dot k-${name}"></span><b>${t("lg_" + name)}</b><span class="num">${a.total}</span><span class="sum">${esc(sum)}</span></div>
+    <svg viewBox="0 0 ${W} ${H + 18}" role="img" aria-label="${esc(t("lg_" + name) + ": " + sum)}">
+      ${bars}<line class="base" x1="0" x2="${W}" y1="${H + 0.5}" y2="${H + 0.5}"/>${labels}</svg>
+    ${extra ? `<div class="card-sub mt-s">${esc(extra)}</div>` : ""}</div>`;
+}
+
+function renderHitsoundsView() {
+  const r = HSV.report, box = $("hsvMap");
+  $("hsvWhereCard").hidden = $("hsvSoundsCard").hidden = !r;
+  if (!box.options.length) { $("hsvSummary").innerHTML = `<div class="card-sub">${t("hsv_none")}</div>`; return; }
+  if (!r) { $("hsvSummary").innerHTML = ""; return; }
+  const n = r.sounds.length, pct = (x) => (n ? Math.round((x / n) * 100) : 0);
+  const sets = r.sets.normal, setsText = ["normal", "soft", "drum"].filter((s) => sets[s]).map((s) => `${s} ${pct(sets[s])} %`).join(" · ");
+  const c = HSP.file === HSV.file && HSP.events ? HSP.counts : null;
+  const stat = (label, value, small) => `<div class="hsv-stat"><div class="label">${label}</div><div class="value">${value}${small ? `<small>${small}</small>` : ""}</div></div>`;
+  $("hsvSummary").innerHTML = `<div class="hsv-stats">
+      ${stat(t("hsv_sounds_n"), n)}
+      ${HSV_ADDS.map((a) => stat(t("lg_" + a), r.additions[a].total, `${pct(r.additions[a].total)} %`)).join("")}
+      ${stat(t("hsv_sets"), `<span class="card-sub">${esc(setsText)}</span>`)}
+      ${c ? stat(t("hsv_samples"), `<span class="card-sub">${esc(t("hsv_samples_v", { map: c.map + c.file, own: c.overtone }))}</span>`) : ""}
+    </div>`;
+  const peak = Math.max(1e-9, ...HSV_ADDS.flatMap((a) => r.additions[a].slots.map((x) => (r.additions[a].total ? x / r.additions[a].total : 0))));
+  $("hsvWhere").innerHTML = HSV_ADDS.map((a) => hsvChart(a, r.additions[a], r.meter, peak)).join("");
+  $("hsvWhereNote").textContent = t("hsv_where_note", { meter: r.meter });
+  const rows = r.sounds.filter((s) => HSV.filter === "all" || s.sounds.includes(HSV.filter));
+  $("hsvCount").textContent = t("hsv_count", { n: rows.length });
+  $("hsvRows").innerHTML = rows.slice(0, HSV.shown).map((s) => {
+    const i = r.sounds.indexOf(s);
+    const adds = s.sounds.slice(1).map((a) => `<span class="hsv-dot k-${a}"></span>${t("lg_" + a)}`).join(" ");
+    return `<tr data-i="${i}">
+      <td class="txt num">${fmtTime(s.t)}</td>
+      <td class="num">${s.bar ?? "—"} · ${slotLabel(s.slot, s.meter)}</td>
+      <td class="txt">${t("part_" + s.part)}</td>
+      <td class="txt">${s.file ? esc(s.file) : (adds || `<span class="muted">normal</span>`)}</td>
+      <td class="txt">${s.normal_set}${s.sounds.length > 1 && s.addition_set !== s.normal_set ? ` / ${s.addition_set}` : ""}</td>
+      <td class="num">${s.index}</td><td class="num">${s.volume} %</td>
+      <td><button type="button" class="btn small icon" data-play="${i}" title="${t("hsv_play")}" aria-label="${t("hsv_play")}">▶</button></td>
+    </tr>`;
+  }).join("");
+  const more = rows.length - HSV.shown;
+  $("hsvMore").hidden = more <= 0;
+  $("hsvMore").textContent = t("hsv_more", { n: Math.min(more, HSV_PAGE) });
+}
+
+// ▶ plays one sound now, with the samples the transport loaded for this map.
+function hsvPlay(i) {
+  const s = HSV.report && HSV.report.sounds[i];
+  if (!s || !HSP.events || HSP.file !== HSV.file) return;
+  const k = lowerBound(HSP.events.t, s.t - 1e-6);
+  if (k >= HSP.events.t.length || Math.abs(HSP.events.t[k] - s.t) > 1e-3) return;
+  const ctx = pbContext();
+  if (ctx.state === "suspended") ctx.resume();
+  pbHitAt(ctx.currentTime + 0.02, HSP.events.keys[k], HSP.events.volume[k]);
+}
+
 async function dropAnalyze(file) {
   if (!api() || S.busy) return;
   const options = readOptions();
@@ -2055,6 +2201,7 @@ async function hsPick(file) {
   HSP.buffers = buffers;
   HSP.events = reply.events;
   HSP.objects = reply.objects;
+  HSP.counts = reply.counts;
   hsLegend();
   if (S.result) drawTrace();
   const c = reply.counts;
@@ -3165,6 +3312,22 @@ function wire() {
   $("halfBtn").onclick = () => rescale(0.5);
   $("doubleBtn").onclick = () => rescale(2);
   $("rows").onclick = (e) => { const tr = e.target.closest("tr"); if (tr) selectPoint(+tr.dataset.i); };
+  $("hsvMap").onchange = () => hsvPick($("hsvMap").value);
+  $("hsvFilter").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-f]");
+    if (!b) return;
+    HSV.filter = b.dataset.f; HSV.shown = HSV_PAGE;
+    document.querySelectorAll("#hsvFilter button").forEach((x) => x.classList.toggle("on", x === b));
+    renderHitsoundsView();
+  });
+  $("hsvMore").onclick = () => { HSV.shown += HSV_PAGE; renderHitsoundsView(); };
+  $("hsvRows").addEventListener("click", (e) => {
+    const play = e.target.closest("[data-play]");
+    if (play) { hsvPlay(+play.dataset.play); return; }
+    const row = e.target.closest("tr[data-i]");
+    const s = row && HSV.report && HSV.report.sounds[+row.dataset.i];
+    if (s) pbSeek(Math.max(0, s.t - 1));
+  });
   $("stxBody").addEventListener("click", (e) => {
     const el = e.target.closest("[data-stx]");
     if (el) stxShow(+el.dataset.stx);

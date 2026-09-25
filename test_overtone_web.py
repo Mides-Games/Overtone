@@ -670,6 +670,18 @@ class HitsoundPlaybackBridgeTests(_IsolatedConfig):
         self.assertEqual(web._playable_sample(pcm), pcm)
         self.assertEqual(web._playable_sample(b"ID3mp3"), b"ID3mp3")
 
+    def test_the_report_places_each_sound_and_refuses_what_is_not_this_songs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            reply = api.hitsound_report("hard.osu")
+            refused = api.hitsound_report("..\\hard.osu")
+        json.dumps(reply)
+        sound = reply["report"]["sounds"][0]
+        self.assertEqual((sound["t"], sound["bar"], sound["slot"], sound["sounds"]), (1.0, 1, 8, ["normal", "clap"]))
+        self.assertEqual(reply["report"]["additions"]["clap"]["slots"][8], 1)
+        self.assertEqual(refused["key"], "bad_file")
+        self.assertEqual(web.Api().hitsound_report("hard.osu")["key"], "first")
+
     def test_a_map_outside_the_songs_folder_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             api = self._song(tmp)

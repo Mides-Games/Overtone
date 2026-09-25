@@ -5406,6 +5406,87 @@ def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str]) -> dict:
     return {"events": events, "objects": objects, "samples": samples, "counts": counts}
 
 
+# -- H2: where a map's hitsounds fall -----------------------------------------
+
+#: A sound counts as on a sixteenth when it is this close to one, in beats.
+#: Ranked maps snap far tighter; 0.06 beat is 15 ms at 240 BPM, 30 at 120.
+POSITION_TOLERANCE_BEATS = 0.06
+#: Slots per beat the report places sounds on: sixteenths in 4/4.
+SLOTS_PER_BEAT = 4
+
+
+def _bar_positions(rows: list[tuple[float, float, int]], times_ms: list[float]):
+    """For each time: (bar number from 1, slot in the bar or None off the
+    grid, the bar's meter), read against the map's own red lines. Before the
+    first line, the first line's grid extends backwards, as in osu!."""
+    import bisect
+    import math
+    if not rows:
+        return [(None, None, None) for _ in times_ms]
+    starts = [r[0] for r in rows]
+    first_bar = []
+    bar = 1
+    for i, (offset, bpm, meter) in enumerate(rows):
+        first_bar.append(bar)
+        if i + 1 < len(rows):
+            span_beats = (rows[i + 1][0] - offset) / (60000.0 / bpm)
+            bar += max(1, math.ceil(span_beats / meter - 1e-6))
+    out = []
+    for t in times_ms:
+        i = max(0, bisect.bisect_right(starts, t + 1e-6) - 1)
+        offset, bpm, meter = rows[i]
+        beats = (t - offset) / (60000.0 / bpm)
+        bar_index = math.floor(beats / meter + 1e-9)
+        within = (beats - bar_index * meter) * SLOTS_PER_BEAT
+        q = round(within)
+        slot = q % (meter * SLOTS_PER_BEAT) if abs(within - q) <= POSITION_TOLERANCE_BEATS * SLOTS_PER_BEAT \
+            else None
+        out.append((first_bar[i] + bar_index, slot, meter))
+    return out
+
+
+def hitsound_report(beatmap: dict) -> dict:
+    """Every sound of a map with its place in the bar, and where each
+    addition falls (H2). Read only.
+
+    Places are read against the map's own red lines, in sixteenths of its
+    meter: slot 0 is the downbeat, slot 4 beat 2 in 4/4. A sound further than
+    ``POSITION_TOLERANCE_BEATS`` from every sixteenth is off the grid. The
+    distribution per addition counts the sounds under the meter most of the
+    map uses; the ones under another meter are counted apart. Slider bodies
+    are left out: they span, they do not land. Plain JSON types.
+    """
+    rows = _beatmap_red_rows(beatmap)
+    events = [e for e in sound_events(beatmap) if e["part"] != "body"]
+    places = _bar_positions(rows, [e["time"] for e in events])
+    meters = [m for _b, _s, m in places if m]
+    meter = max(set(meters), key=meters.count) if meters else 4
+    slots = meter * SLOTS_PER_BEAT
+    additions = {name: {"total": 0, "slots": [0] * slots, "off_grid": 0, "other_meter": 0}
+                 for name in ("whistle", "finish", "clap")}
+    sets = {"normal": {"normal": 0, "soft": 0, "drum": 0}, "addition": {"normal": 0, "soft": 0, "drum": 0}}
+    sounds = []
+    for event, (bar, slot, m) in zip(events, places):
+        sets["normal"][event["normal_set"]] += 1
+        for name in event["sounds"][1:]:
+            sets["addition"][event["addition_set"]] += 1
+            a = additions[name]
+            a["total"] += 1
+            if m != meter:
+                a["other_meter"] += 1
+            elif slot is None:
+                a["off_grid"] += 1
+            else:
+                a["slots"][slot] += 1
+        sounds.append({"t": round(event["time"] / 1000.0, 6), "object": event["object"],
+                       "part": event["part"], "bar": bar, "slot": slot, "meter": m,
+                       "sounds": event["sounds"], "normal_set": event["normal_set"],
+                       "addition_set": event["addition_set"], "index": event["index"],
+                       "volume": event["volume"], "file": event["file"]})
+    return {"meter": meter, "slots_per_beat": SLOTS_PER_BEAT, "sounds": sounds,
+            "additions": additions, "sets": sets, "red_lines": len(rows)}
+
+
 # ---------------------------------------------------------------------------
 # Structure view (Phase 19): the Rust engine's phrases, on this song's bars
 # ---------------------------------------------------------------------------

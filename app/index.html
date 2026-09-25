@@ -31,6 +31,10 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="5" height="12" rx="1.5"/><rect x="9.5" y="4" width="5" height="16" rx="1.5"/><rect x="16.5" y="8" width="5" height="8" rx="1.5"/></svg>
         <span class="nav-label" data-i18n="nav_structure">Structure</span>
       </button>
+      <button type="button" class="nav-item" data-view="hitsounds" data-i18n-title="nav_hitsounds" title="Hitsounds">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>
+        <span class="nav-label" data-i18n="nav_hitsounds">Hitsounds</span>
+      </button>
       <button type="button" class="nav-item" data-view="mapcheck" data-i18n-title="nav_mapcheck" title="Map check">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8.5 12 2.5 2.5 5-5"/><path d="M20 12.5V18a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3h8"/></svg>
         <span class="nav-label" data-i18n="nav_mapcheck">Map check</span>
@@ -427,6 +431,54 @@
             <span class="card-sub" id="stxFile"></span>
           </div>
           <div class="card-body" id="stxBody"></div>
+        </div>
+      </section>
+
+      <!-- hitsounds: what one difficulty plays, where its additions fall (Phase 6, H2) -->
+      <section class="view" id="viewHitsounds" data-view="hitsounds" data-needs-result hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_hitsounds">Hitsounds</h2>
+          <div class="view-sub" data-i18n="hsv_sub">What one difficulty plays: where its additions fall in the bar, and every sound, to hear one by one. Read only: nothing is written.</div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="hsv_map">Difficulty</div>
+            <div class="spacer"></div>
+            <select class="input hsv-pick" id="hsvMap"></select>
+          </div>
+          <div class="card-body" id="hsvSummary"></div>
+        </div>
+
+        <div class="card cmp-card" id="hsvWhereCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="hsv_where_title">Where the additions fall</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="hsvWhereNote"></span>
+          </div>
+          <div class="card-body hsv-where" id="hsvWhere"></div>
+        </div>
+
+        <div class="card cmp-card table-card" id="hsvSoundsCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="hsv_sounds">Sounds</div>
+            <span class="pill" id="hsvCount"></span>
+            <div class="spacer"></div>
+            <div class="segmented" id="hsvFilter">
+              <button type="button" data-f="all" class="on" data-i18n="hsv_all">All</button>
+              <button type="button" data-f="whistle" data-i18n="lg_whistle">whistle</button>
+              <button type="button" data-f="finish" data-i18n="lg_finish">finish</button>
+              <button type="button" data-f="clap" data-i18n="lg_clap">clap</button>
+            </div>
+          </div>
+          <div class="table-scroll hsv-table"><table class="ms-table">
+            <thead><tr><th class="txt" data-i18n="hsv_t_time">Time</th><th data-i18n="hsv_t_place">Bar · beat</th>
+              <th class="txt" data-i18n="hsv_t_part">Part</th><th class="txt" data-i18n="hsv_t_sounds">Sounds</th>
+              <th class="txt" data-i18n="hsv_t_sets">Sets</th><th data-i18n="hsv_t_index">Index</th>
+              <th data-i18n="hsv_t_volume">Volume</th><th></th></tr></thead>
+            <tbody id="hsvRows"></tbody>
+          </table></div>
+          <div class="card-body"><button type="button" class="link" id="hsvMore" hidden></button></div>
         </div>
       </section>
 

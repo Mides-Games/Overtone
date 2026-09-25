@@ -96,7 +96,7 @@ riskier leans on them.
 **Measure:** zero-change copy (a difficulty onto itself) is byte-identical on every local map;
 events matched and unmatched per copy, on the mapsets of the local folder.
 
-### H2 · The Hitsounds section, read only (needs P-1, P-3, P-7)
+### H2 · The Hitsounds section, read only (needs P-1, P-3, P-7) — done 2026-09-24
 
 The sidebar's Hitsounds section: every object with what it plays now, resolved; the object
 lane on the timeline; audition with the samples, alone or over the song. A summary per

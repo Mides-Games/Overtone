@@ -16,6 +16,27 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Offset lab, engine half: the header's numbers
+
+### Changed
+
+- **`mp3_gapless_info(path)`**: the MP3's own gapless numbers — ID3v2 skipped,
+  first frame found, MPEG version setting the Xing offset, LAME tag unpacked
+  (delay and padding, 12 bits each at LAME+21) in samples and milliseconds at
+  the file's rate. Anything without a LAME tag reports absent instead of
+  guessed: nearly half the local folder has none.
+
+### Measured
+
+```
+8,071 local MP3s               4,428 LAME tags (delay 576 in 4,393, 35 odd ones),
+                               3,643 without; 0 errors, read only
+Python unittest                434 -> 436, all pass
+facts                          ok
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Ramps in Timing: fit, price, use
 
 ### Changed

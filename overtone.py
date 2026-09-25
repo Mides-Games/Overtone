@@ -2092,6 +2092,67 @@ def _load_audio(path: str | os.PathLike[str],
     return y, int(sr)
 
 
+def mp3_gapless_info(path: str | os.PathLike[str]) -> dict:
+    """The MP3's own gapless numbers, read from its header (Phase 19, lab).
+
+    Skips an ID3v2 tag, finds the first frame, reads the MPEG version for
+    the Xing offset, and unpacks the LAME tag's encoder delay and padding
+    (12 bits each at LAME+21). Returns encoder string, delay and padding in
+    samples and milliseconds at the file's own rate, or ``present`` False
+    for anything without a LAME tag — Fraunhofer and old encoders write
+    none, and that is reported, not guessed. Read only; plain JSON types.
+    """
+    name = str(path)
+    if Path(name).suffix.lower() != ".mp3":
+        return {"present": False}
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(8192)
+    except OSError:
+        return {"present": False}
+    pos = 0
+    if head[:3] == b"ID3":
+        if len(head) < 10:
+            return {"present": False}
+        size = 0
+        for byte in head[6:10]:
+            size = (size << 7) | (byte & 0x7F)
+        pos = 10 + size
+    sync = -1
+    for i in range(pos, min(pos + 256, len(head) - 4)):
+        if head[i] == 0xFF and head[i + 1] & 0xE0 == 0xE0:
+            sync = i
+            break
+    if sync < 0:
+        return {"present": False}
+    version = (head[sync + 1] >> 3) & 0x03
+    mono = ((head[sync + 3] >> 6) & 0x03) == 3
+    if version == 3:
+        xing_at = sync + 4 + (17 if mono else 32)
+        rates = (44100, 48000, 32000, 0)
+    elif version in (2, 0):
+        xing_at = sync + 4 + (9 if mono else 17)
+        rates = (22050, 24000, 16000, 0) if version == 2 else (11025, 12000, 8000, 0)
+    else:
+        return {"present": False}
+    sample_rate = rates[(head[sync + 2] >> 2) & 0x03]
+    if not sample_rate or head[xing_at:xing_at + 4] not in (b"Xing", b"Info"):
+        return {"present": False}
+    lame_at = head.find(b"LAME", xing_at + 4, xing_at + 240)
+    if lame_at < 0 or lame_at + 24 > len(head):
+        return {"present": False}
+    lame = head[lame_at:lame_at + 24]
+    raw = int.from_bytes(lame[21:24], "big")
+    delay, padding = (raw >> 12) & 0xFFF, raw & 0xFFF
+    encoder = lame[0:9].decode("ascii", "replace").strip("\x00")
+    if not encoder.startswith("LAME"):
+        return {"present": False}
+    scale = 1000.0 / sample_rate
+    return {"present": True, "encoder": encoder, "sample_rate": sample_rate,
+            "delay_samples": delay, "padding_samples": padding,
+            "delay_ms": round(delay * scale, 3), "padding_ms": round(padding * scale, 3)}
+
+
 def _weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
     if values.size == 0:
         return 0.0

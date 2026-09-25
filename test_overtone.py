@@ -4557,6 +4557,44 @@ class AudioSwapTests(unittest.TestCase):
         self.assertEqual(len(entries), 2)
 
 
+class OffsetLabTests(unittest.TestCase):
+    """Phase 19, Offset lab: the MP3's own gapless numbers from its header."""
+
+    @staticmethod
+    def _mp3(lame=True):
+        frame = (b"\xff\xfb\x90\x00" + bytes(32) + b"Xing" + b"\x00\x00\x00\x0f"
+                 + bytes(4 + 4 + 100 + 4))
+        if lame:
+            frame += b"LAME3.99r" + bytes(12) + bytes((0x84, 0x00, 100))
+        return b"ID3\x04\x00\x00" + bytes(4) + frame + bytes(2000)
+
+    def test_lame_delay_and_padding_unpack(self):
+        from overtone import mp3_gapless_info
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "song.mp3"
+            path.write_bytes(self._mp3())
+            info = mp3_gapless_info(path)
+        json.dumps(info)
+        self.assertEqual((info["present"], info["encoder"], info["sample_rate"],
+                          info["delay_samples"], info["padding_samples"]),
+                         (True, "LAME3.99r", 44100, 2112, 100))
+        self.assertAlmostEqual(info["delay_ms"], 2112 * 1000 / 44100, places=3)
+
+    def test_no_lame_tag_junk_or_other_format_reports_absent(self):
+        from overtone import mp3_gapless_info
+        with tempfile.TemporaryDirectory() as tmp:
+            bare = Path(tmp) / "bare.mp3"
+            bare.write_bytes(self._mp3(lame=False))
+            self.assertEqual(mp3_gapless_info(bare)["present"], False)
+            junk = Path(tmp) / "junk.mp3"
+            junk.write_bytes(bytes(100))
+            self.assertEqual(mp3_gapless_info(junk)["present"], False)
+            other = Path(tmp) / "song.wav"
+            other.write_bytes(self._mp3())
+            self.assertEqual(mp3_gapless_info(other)["present"], False)
+            self.assertEqual(mp3_gapless_info(Path(tmp) / "missing.mp3")["present"], False)
+
+
 class WriteHistoryTests(unittest.TestCase):
     """Phase 19, History: every .osu write logged, diffed and restorable."""
 

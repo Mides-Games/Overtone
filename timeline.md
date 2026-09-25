@@ -16,6 +16,42 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · Hitsounds P-2: a writer that touches only hitsounds
+
+### Changed
+
+- **`set_object_hitsounds(beatmap, changes)`** changes an object's hitSound bits, sample
+  (sets, index, volume, file) and a slider's per-edge sounds and sets, and nothing else. A
+  line whose values do not change keeps its exact text. A slider given a sample but no
+  edge fields gets them filled with what its edges already play, so the new fields change
+  no sound. Values osu! cannot read are refused before anything changes.
+- **`write_object_hitsounds(path, changes)`** does it on disk as edits over the file's own
+  text: each changed line is replaced where it stands, with its own line ending, and every
+  other byte stays. No change, no write. Atomic, backed up by inject's rules.
+
+### Fixed
+
+- Found while measuring, not fixed here: the section-level writer (`write_osu_beatmap`)
+  turns a stray LF inside a CRLF file into CRLF, 1 map in 3,000. The hitsound writer does
+  not go through it, for that reason. Handed to its own task.
+
+### Measured
+
+3,000 maps from the local Songs folder, on copies; every object's clap flipped and its
+normal set changed, then restored:
+
+```
+maps                          2,998 (2 hold a sample set of 43, which the writer refuses)
+lines changed by the flip     object lines only, every line ending kept: 2,998 / 2,998
+sound after restore           identical to the original: 2,998 / 2,998
+bytes after restore           identical: 1,673; the rest gained explicit slider edge
+                              fields or a full-form sample, which sound the same
+write, full flip              21.9 ms per map
+Python unittest               358 -> 364, all pass
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Hitsounds P-1: what each object plays
 
 ### Changed

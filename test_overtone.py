@@ -3833,6 +3833,101 @@ class SoundEventTests(unittest.TestCase):
         self.assertEqual((events[0]["normal_set"], events[0]["volume"]), ("soft", 100))
 
 
+class HitsoundWriterTests(unittest.TestCase):
+    """Phase 6, P-2: only the hitsound fields of the chosen objects change."""
+
+    def _map(self, tmp, text=_SOUND_MAP):
+        from overtone import read_osu_beatmap
+        path = str(Path(tmp) / "map.osu")
+        Path(path).write_bytes(text.replace("\n", "\r\n").encode("utf-8"))   # CRLF, as osu! writes
+        return path, read_osu_beatmap(path)
+
+    def test_nothing_asked_nothing_changed_byte_for_byte(self):
+        from overtone import beatmap_text, set_object_hitsounds
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._map(tmp)
+            original = Path(path).read_bytes()
+            same = {n: {"bits": o.get("hit_sound"), "sample": {
+                        k: (o.get("hit_sample") or {}).get(k) for k in ("normal_set", "volume")}}
+                    for n, o in enumerate(beatmap["hitobjects"]) if o["kind"] in ("circle", "spinner")}
+            result = set_object_hitsounds(beatmap, same)
+        self.assertEqual(result["changed"], [])
+        self.assertEqual(beatmap_text(beatmap).encode("utf-8"), original)
+
+    def test_a_circle_changes_its_bits_and_sample_and_nothing_else(self):
+        from overtone import beatmap_text, set_object_hitsounds, sound_events
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._map(tmp)
+            before = beatmap_text(beatmap).split("\r\n")
+            set_object_hitsounds(beatmap, {0: {"bits": 4, "sample": {"normal_set": 3, "volume": 55}}})
+            after = beatmap_text(beatmap).split("\r\n")
+        changed = [(a, b) for a, b in zip(before, after) if a != b]
+        self.assertEqual(changed, [("256,192,1000,1,8,0:0:0:0:", "256,192,1000,1,4,3:0:0:55:")])
+        event = sound_events(beatmap)[0]
+        self.assertEqual((event["sounds"], event["normal_set"], event["volume"]),
+                         (["normal", "finish"], "drum", 55))
+
+    def test_slider_edges_change_alone_and_missing_fields_keep_the_sound(self):
+        from overtone import set_object_hitsounds, sound_events
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._map(tmp)
+            before = [e for e in sound_events(beatmap) if e["object"] == 4]
+            # Object 4 has no edge fields: a volume change must add them without
+            # changing what any edge plays.
+            set_object_hitsounds(beatmap, {4: {"sample": {"volume": 30}}})
+            line = beatmap["sections"][-1]["lines"][4]
+            after = [e for e in sound_events(beatmap) if e["object"] == 4]
+            set_object_hitsounds(beatmap, {3: {"edges": [{"bits": 0}, {"bits": 2, "normal_set": 2}]}})
+            slider = [e for e in sound_events(beatmap) if e["object"] == 3]
+        self.assertEqual(line, "256,192,3000,2,2,L|326:192,2,70,2|2|2,0:0|0:0|0:0,0:0:0:30:")
+        self.assertEqual([(e["sounds"], e["normal_set"]) for e in before],
+                         [(e["sounds"], e["normal_set"]) for e in after])
+        self.assertEqual([(e["part"], e["sounds"], e["normal_set"]) for e in slider[:2]],
+                         [("head", ["normal"], "drum"), ("tail", ["normal", "whistle"], "soft")])
+
+    def test_what_osu_cannot_read_is_refused_before_anything_changes(self):
+        from overtone import beatmap_text, set_object_hitsounds
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._map(tmp)
+            original = beatmap_text(beatmap)
+            for bad in ({0: {"bits": 16}}, {0: {"sample": {"normal_set": 4}}},
+                        {0: {"sample": {"volume": 101}}}, {0: {"sample": {"file": "a,b.wav"}}},
+                        {3: {"edges": [{"bits": 2}]}}, {8: {"bits": 2}}, {99: {"bits": 2}},
+                        {0: {"sample": {"colour": 1}}}):
+                with self.subTest(bad=bad), self.assertRaises(ValueError):
+                    set_object_hitsounds(beatmap, {**{1: {"bits": 8}}, **bad})
+            self.assertEqual(beatmap_text(beatmap), original)
+
+    def test_on_disk_only_the_changed_lines_move_and_their_endings_stay(self):
+        from overtone import write_object_hitsounds
+        mixed = _SOUND_MAP.replace("\n", "\r\n").replace("[HitObjects]\r\n", "[HitObjects]\n")
+        mixed = mixed.replace("256,192,1500,1,2,1:2:0:0:\r\n", "256,192,1500,1,2,1:2:0:0:\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(b"\xef\xbb\xbf" + mixed.encode("utf-8"))
+            original = path.read_bytes()
+            nothing = write_object_hitsounds(path, {0: {"bits": 8}})
+            untouched = path.read_bytes()
+            done = write_object_hitsounds(path, {1: {"bits": 10}})
+            after = path.read_bytes()
+            backup = Path(done["backup"]).read_bytes()
+        self.assertEqual((nothing["written"], nothing["backup"], untouched), (False, None, original))
+        self.assertEqual(done["changed"], [1])
+        self.assertEqual(backup, original)
+        self.assertEqual(after, original.replace(b"256,192,1500,1,2,1:2:0:0:\n",
+                                                 b"256,192,1500,1,10,1:2:0:0:\n"))
+
+    def test_holds_and_spinners_keep_their_other_fields(self):
+        from overtone import set_object_hitsounds
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._map(tmp)
+            set_object_hitsounds(beatmap, {5: {"sample": {"addition_set": 3}},
+                                           7: {"bits": 8, "sample": {"volume": 20}}})
+            lines = beatmap["sections"][-1]["lines"]
+        self.assertEqual(lines[5], "256,192,4000,12,4,5000,0:3:0:0:")
+        self.assertEqual(lines[7], "64,192,7000,128,8,7500:0:0:0:20:")
+
+
 class StructureViewTests(unittest.TestCase):
     """Phase 19, Structure: phrases on the song's proven bars, labels with why."""
 

@@ -4969,6 +4969,189 @@ def sound_events(beatmap: dict) -> list[dict]:
     return events
 
 
+# -- P-2: the hitsound fields of a hit object line, and nothing else ---------
+
+_SAMPLE_KEYS = ("normal_set", "addition_set", "index", "volume", "file")
+
+
+def _check_hitsound_values(bits=None, sample=None, edges=None) -> None:
+    """Refuse what osu! could not read, before anything is written."""
+    if bits is not None and not (isinstance(bits, int) and 0 <= bits <= 15):
+        raise ValueError(f"hitSound must be 0-15, got {bits!r}.")
+    for key, value in (sample or {}).items():
+        if key not in _SAMPLE_KEYS:
+            raise ValueError(f"Unknown sample field {key!r}.")
+        if key == "file":
+            if any(c in str(value) for c in ",:|\r\n"):
+                raise ValueError("A sample file name cannot hold , : | or a line break.")
+        elif key in ("normal_set", "addition_set"):
+            if value not in SAMPLE_SET_NAMES and value != 0:
+                raise ValueError(f"{key} must be 0-3, got {value!r}.")
+        elif key == "index" and not (isinstance(value, int) and value >= 0):
+            raise ValueError(f"index must be 0 or more, got {value!r}.")
+        elif key == "volume" and not (isinstance(value, int) and 0 <= value <= 100):
+            raise ValueError(f"volume must be 0-100, got {value!r}.")
+    for edge in edges or []:
+        _check_hitsound_values(edge.get("bits"),
+                               {k: v for k, v in edge.items() if k in ("normal_set", "addition_set")})
+
+
+def _sample_text(original: str | None, changes: dict) -> str:
+    """``normal:addition:index:volume:file`` with ``changes`` applied, the
+    original text untouched when nothing in it changes."""
+    parsed = _parse_hit_sample(original or "")
+    if original is not None and all(parsed.get(k) == v for k, v in changes.items()):
+        return original
+    merged = {**{k: parsed.get(k) for k in _SAMPLE_KEYS}, **changes}
+    return ":".join(str(merged[k] if merged[k] is not None else (0 if k != "file" else ""))
+                    for k in _SAMPLE_KEYS)
+
+
+def _edited_object_line(line: str, obj: dict, change: dict) -> str:
+    fields = line.split(",")
+    bits = change.get("bits")
+    sample = change.get("sample") or {}
+    edges = change.get("edges")
+    old_bits = int(obj.get("hit_sound", 0))
+    kind = obj.get("kind")
+    if kind == "unparsed":
+        raise ValueError(f"Object at line {line!r} cannot be read, so it is not edited.")
+    if bits is not None and bits != old_bits:
+        fields[4] = str(bits)
+    if kind == "circle":
+        where = 5
+    elif kind == "spinner":
+        where = 6
+    elif kind == "hold":
+        where = None
+    else:                                           # slider
+        where = 10
+        slides = int(obj.get("slides", 1))
+        old_sample = obj.get("hit_sample") or {}
+        if edges is not None and len(edges) != slides + 1:
+            raise ValueError(f"A slider with {slides} slide(s) has {slides + 1} edges, "
+                             f"not {len(edges)}.")
+        if edges is not None or (sample and len(fields) <= 8):
+            # Missing edge fields are filled with what the edges play now, the
+            # slider's own bits and sets, so a new field changes no sound.
+            have_bits = [b for b in str(obj.get("edge_sounds") or "").split("|") if b.strip()]
+            have_sets = [s for s in str(obj.get("edge_sets") or "").split("|") if s.strip()]
+            cur_bits = [int(have_bits[k]) if k < len(have_bits) else old_bits
+                        for k in range(slides + 1)]
+            cur_sets = []
+            for k in range(slides + 1):
+                if k < len(have_sets):
+                    normal, _, addition = have_sets[k].partition(":")
+                    cur_sets.append((_sample_int(normal), _sample_int(addition)))
+                else:
+                    cur_sets.append((_sample_int(old_sample.get("normal_set")),
+                                     _sample_int(old_sample.get("addition_set"))))
+            new_bits, new_sets = list(cur_bits), list(cur_sets)
+            for k, edge in enumerate(edges or []):
+                if edge.get("bits") is not None:
+                    new_bits[k] = edge["bits"]
+                new_sets[k] = (edge.get("normal_set", new_sets[k][0]),
+                               edge.get("addition_set", new_sets[k][1]))
+            while len(fields) < 10:
+                fields.append("")
+            if new_bits != cur_bits or len(have_bits) != slides + 1:
+                fields[8] = "|".join(str(b) for b in new_bits)
+            if new_sets != cur_sets or len(have_sets) != slides + 1:
+                fields[9] = "|".join(f"{n}:{a}" for n, a in new_sets)
+    if sample:
+        if where is None:                          # hold: endTime:sample in one field
+            end, _, text = fields[5].partition(":")
+            fields[5] = end + ":" + _sample_text(text, sample)
+        else:
+            while len(fields) <= where:
+                fields.append(None)
+            fields[where] = _sample_text(fields[where], sample)
+    return ",".join("" if f is None else f for f in fields)
+
+
+def set_object_hitsounds(beatmap: dict, changes: dict[int, dict]) -> dict:
+    """Change the hitsounds of some objects, in place (P-2).
+
+    ``changes`` maps an index into ``beatmap["hitobjects"]`` to what changes:
+    ``bits`` (the hitSound field), ``sample`` (any of ``normal_set``,
+    ``addition_set``, ``index``, ``volume``, ``file``) and, for a slider,
+    ``edges``: one dict per edge, head to tail, with any of ``bits``,
+    ``normal_set``, ``addition_set``. Only those fields of those lines are
+    rewritten, and a line whose values do not change keeps its exact text,
+    so a write of nothing is the file it read. Values osu! could not read
+    are refused before anything changes. Returns the indices changed.
+    """
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "HitObjects"), None)
+    if section is None:
+        raise ValueError("No [HitObjects] section in this beatmap.")
+    line_of = [i for i, line in enumerate(section["lines"])
+               if line.strip() and not line.strip().startswith("//")]
+    objects = beatmap.get("hitobjects", [])
+    edits: dict[int, str] = {}
+    for n, change in changes.items():
+        if not (isinstance(n, int) and 0 <= n < len(objects) == len(line_of)):
+            raise ValueError(f"No object {n!r} in this beatmap.")
+        _check_hitsound_values(change.get("bits"), change.get("sample"), change.get("edges"))
+        old = section["lines"][line_of[n]]
+        new = _edited_object_line(old, objects[n], change)
+        if new != old:
+            edits[n] = new
+    for n, new in edits.items():
+        section["lines"][line_of[n]] = new
+        objects[n] = _parse_hit_object(new)
+    return {"changed": sorted(edits)}
+
+
+def write_object_hitsounds(osu_path: str | os.PathLike[str], changes: dict[int, dict],
+                           backup: bool = True, dry_run: bool = False) -> dict:
+    """``set_object_hitsounds`` on a file, as edits over its own text (P-2).
+
+    The file is not rebuilt: each changed object line is replaced where it
+    stands, keeping its own line ending, and every other byte (BOM, stray
+    line endings, sections the reader never looks at) stays as it was. No
+    change, no write: the file and its backups are not touched. Otherwise the
+    write is atomic and backed up by inject's rules (a pristine ``.bak``,
+    then ``.bak2``... never overwritten). Returns ``changed`` (object
+    indices), ``written`` and ``backup`` (the path holding the old bytes).
+    """
+    path = Path(osu_path)
+    original = path.read_bytes() if path.is_file() else None
+    beatmap = read_osu_beatmap(path)
+    result = set_object_hitsounds(beatmap, changes)
+    if not result["changed"] or dry_run:
+        return {**result, "written": False, "backup": None}
+    text, bom = _load_osu_text(path)
+    lines = text.splitlines(keepends=True)
+    start = next((i for i, line in enumerate(lines) if line.strip() == "[HitObjects]"), None)
+    if start is None:
+        raise ValueError("No [HitObjects] section in this beatmap.")
+    object_lines = []
+    for i in range(start + 1, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
+            break
+        if stripped and not stripped.startswith("//"):
+            object_lines.append(i)
+    section = next(s for s in beatmap["sections"] if s["name"] == "HitObjects")
+    edited = [line for line in section["lines"] if line.strip() and not line.strip().startswith("//")]
+    for n in result["changed"]:
+        i = object_lines[n]
+        body = lines[i].rstrip("\r\n")
+        lines[i] = edited[n] + lines[i][len(body):]
+    payload = "".join(lines).encode("utf-8-sig" if bom else "utf-8")
+    spare = None
+    if backup and original is not None:
+        try:
+            spare = _backup_before_write(path, original)
+        except OSError as exc:
+            raise ValueError(f"Could not back up {path.name}: {exc}") from exc
+    try:
+        _atomic_write_bytes(path, payload)
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Could not write {path.name}: {exc}") from exc
+    return {**result, "written": True, "backup": str(spare) if spare else None}
+
+
 # ---------------------------------------------------------------------------
 # Structure view (Phase 19): the Rust engine's phrases, on this song's bars
 # ---------------------------------------------------------------------------

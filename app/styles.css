@@ -400,9 +400,13 @@ button.link:focus-visible, .recent-item:focus-visible { border-radius: var(--r-x
 .progress .text { color: var(--muted); font-size: var(--fs-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ----------------------------------------------------------------- empty */
+/* An empty state sits in the middle of the area it has, not at a fixed
+   offset from the top: it fills the height and centres its block, a
+   little above the middle, where the eye puts the centre. */
 .empty {
-  margin-top: 6vh;
-  display: grid; place-items: center;
+  min-height: 100%;
+  display: grid; place-items: center; align-content: center;
+  padding-bottom: 2vh;
 }
 .drop {
   width: min(640px, 100%);

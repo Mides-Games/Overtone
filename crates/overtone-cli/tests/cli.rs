@@ -319,6 +319,65 @@ fn structure_reads_phrases_and_says_why_each_label() {
 }
 
 #[test]
+fn hitsound_proposes_every_object_with_alternatives_and_terms() {
+    // Twelve bare circles on 150 BPM clicks: the prior keeps them bare,
+    // and each proposal carries its alternatives and its terms.
+    let dir = scratch("hitsound");
+    let audio = dir.join("clicks-150.wav");
+    write_wav(&audio, &clicks(150.0, 6.0));
+    let mut map = String::from("osu file format v14\r\n[TimingPoints]\r\n500,400,4,2,1,70,1,0\r\n[HitObjects]\r\n");
+    for k in 0..12 {
+        map.push_str(&format!("256,192,{},1,0,0:0:0:0:\r\n", 500 + k * 400));
+    }
+    let map_path = dir.join("clicks.osu");
+    std::fs::write(&map_path, map).unwrap();
+    let out = run(&["hitsound", audio.to_str().unwrap(), map_path.to_str().unwrap()]);
+    let missing_map = run(&["hitsound", audio.to_str().unwrap(), "no-such.osu"]);
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["templates"], "baked");
+    assert_eq!(report["profile"], "balanced");
+    let units = report["units"].as_array().unwrap();
+    assert_eq!(units.len(), 12);
+    for unit in units {
+        let proposal = &unit["proposal"];
+        assert!(proposal["bank"].is_string());
+        assert!(proposal["additions"].is_array());
+        let probability = proposal["probability"].as_f64().unwrap();
+        assert!((0.0..=1.0).contains(&probability), "{proposal}");
+        // Alternatives with marginals, terms that replay the choice.
+        let alternatives = unit["alternatives"].as_array().unwrap();
+        assert!(!alternatives.is_empty());
+        assert!(alternatives.iter().all(|a| (0.0..=1.0).contains(&a["probability"].as_f64().unwrap())));
+        let terms = unit["terms"].as_array().unwrap();
+        assert_eq!(terms.len(), 4);
+        assert!(unit["transition_in"].is_number() || unit["transition_in"].is_null());
+        assert_eq!(unit["tail"], false);
+    }
+    // Bare circles with a prior stay bare: the first proposal is normal.
+    assert_eq!(units[0]["proposal"]["additions"].as_array().unwrap().len(), 0);
+    assert!(report["timings_s"]["decide"].is_number());
+
+    assert_eq!(missing_map.status.code(), Some(1));
+    for args in [
+        &["hitsound"][..],
+        &["hitsound", "a.wav"][..],
+        &["hitsound", "a.wav", "b.osu", "c.osu"][..],
+        &["hitsound", "a.wav", "b.osu", "--profile"][..],
+    ] {
+        let bad = run(args);
+        assert_eq!(bad.status.code(), Some(2), "{args:?}");
+    }
+}
+
+#[test]
 fn hitsound_evidence_scores_every_attack_and_names_its_role() {
     let dir = scratch("evidence");
     let path = dir.join("clicks-150.wav");

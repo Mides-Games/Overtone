@@ -319,6 +319,103 @@ pub fn parse(text: &str) -> Beatmap {
     }
 }
 
+/// One slider span in milliseconds: how long one slide takes. Ports the
+/// Python reader's cursor: the beat is the last red length (a green line
+/// before the first red one still gets that beat), red lines reset the
+/// slider velocity to 1.0, green lines set it to -100 over their length.
+/// `None` when no timing places the edges — then repeats and tails do not
+/// exist as units either.
+pub fn slider_span(timing: &[TimingPoint], multiplier: f64, time_ms: f64, length: f64) -> Option<f64> {
+    if !(length > 0.0) || !(multiplier > 0.0) {
+        return None;
+    }
+    // Per-row states like the Python cursor: red lines set the beat and
+    // reset the velocity, green lines set the velocity. The query takes the
+    // last row at or before the time, or the first row's settings before
+    // it all, as in osu!.
+    let mut states: Vec<(f64, Option<f64>, f64)> = Vec::new();
+    let mut beat: Option<f64> = None;
+    let mut sv = 1.0;
+    let mut first_beat: Option<f64> = None;
+    for point in timing {
+        if point.uninherited && point.beat_len > 0.0 {
+            beat = Some(point.beat_len);
+            sv = 1.0;
+            if first_beat.is_none() {
+                first_beat = Some(point.beat_len);
+            }
+        } else if !point.uninherited && point.beat_len < 0.0 {
+            sv = -100.0 / point.beat_len;
+        }
+        states.push((point.offset, beat, sv));
+    }
+    let mut state = states.first().map(|&(_, b, s)| (b, s));
+    for &(offset, b, s) in &states {
+        if offset > time_ms + 1e-6 {
+            break;
+        }
+        state = Some((b, s));
+    }
+    let (beat, sv) = state?;
+    let beat = beat.or(first_beat)?;
+    if !(sv > 0.0) {
+        return None;
+    }
+    Some(length / (multiplier * 100.0 * sv) * beat)
+}
+/// `(bar from 1, sixteenth slot or None off the grid, meter)` per time.
+/// Mirrors the Python `_bar_positions` the H2 report reads: sixteenths of
+/// the governing line's meter (slot 0 the downbeat), 0.06 beat tolerance,
+/// the first line's grid extending backwards, bars counted per span. Times
+/// in milliseconds, as the map speaks them.
+pub fn bar_slots(timing: &[TimingPoint], times: &[f64]) -> Vec<(i64, Option<i64>, i64)> {
+    let mut reds: Vec<(f64, f64, i64)> = timing
+        .iter()
+        .filter(|p| p.uninherited && p.beat_len > 0.0)
+        .map(|p| {
+            let meter = if p.meter > 0 { p.meter } else { 4 };
+            (p.offset, 60_000.0 / p.beat_len, meter)
+        })
+        .collect();
+    reds.sort_by(|a, b| a.0.total_cmp(&b.0));
+    if reds.is_empty() {
+        return times.iter().map(|_| (0, None, 4)).collect();
+    }
+    // First bar number of each span, counting whole bars forward.
+    let mut first_bar = Vec::with_capacity(reds.len());
+    let mut bar = 1i64;
+    for i in 0..reds.len() {
+        first_bar.push(bar);
+        if i + 1 < reds.len() {
+            let span_beats = (reds[i + 1].0 - reds[i].0) / (60_000.0 / reds[i].1);
+            let bars = (span_beats / reds[i].2 as f64 - 1e-6).ceil().max(1.0) as i64;
+            bar += bars;
+        }
+    }
+    times
+        .iter()
+        .map(|&t| {
+            let mut span = 0usize;
+            for (i, red) in reds.iter().enumerate() {
+                if red.0 <= t + 1e-6 {
+                    span = i;
+                }
+            }
+            let (offset, bpm, meter) = reds[span];
+            let beats = (t - offset) / (60_000.0 / bpm);
+            let bar_index = (beats / meter as f64 + 1e-9).floor() as i64;
+            let within = (beats - bar_index as f64 * meter as f64) * 4.0;
+            let q = within.round() as i64;
+            let slot = if (within - q as f64).abs() <= 0.06 * 4.0 {
+                Some(q.rem_euclid(meter * 4))
+            } else {
+                None
+            };
+            (first_bar[span] + bar_index, slot, meter)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -401,5 +498,42 @@ mod tests {
         let map = parse("[TimingPoints]\n1000,-50,4,2,1,60,1,0\n");
         assert_eq!(map.timing.len(), 1);
         assert!(!map.timing[0].uninherited);
+    }
+
+    #[test]
+    fn bar_slots_read_sixteenths_against_the_red_lines() {
+        // 120 BPM from 1000 ms: a beat is 500 ms, a bar 2 s.
+        let map = parse("[TimingPoints]\n1000,500,4,2,1,70,1,0\n");
+        let placed = bar_slots(&map.timing, &[1000.0, 1500.0, 1250.0, 500.0, 9000.0]);
+        assert_eq!(placed[0], (1, Some(0), 4));
+        assert_eq!(placed[1], (1, Some(4), 4));
+        assert_eq!(placed[2], (1, Some(2), 4));
+        // Before the first line the grid extends backwards, as in osu!.
+        assert_eq!(placed[3], (0, Some(12), 4));
+        // Past the line, bars keep counting.
+        assert_eq!(placed[4], (5, Some(0), 4));
+    }
+
+    #[test]
+    fn bar_slots_without_red_lines_place_nothing() {
+        let placed = bar_slots(&[], &[100.0]);
+        assert_eq!(placed, vec![(0, None, 4)]);
+    }
+
+    #[test]
+    fn slider_span_follows_beat_and_green_velocity() {
+        // 120 BPM, multiplier 1.6, length 140: one beat per 500 ms takes
+        // 140 / (1.6 * 100) of a beat... 437.5 ms at SV 1.
+        let map = parse("[TimingPoints]\n1000,500,4,2,1,70,1,0\n2000,-50,4,2,1,70,0,0\n");
+        let plain = slider_span(&map.timing, 1.6, 1000.0, 140.0).unwrap();
+        assert!((plain - 437.5).abs() < 1e-9, "{plain}");
+        // Under the green line SV doubles, so the span halves.
+        let fast = slider_span(&map.timing, 1.6, 2000.0, 140.0).unwrap();
+        assert!((fast - plain / 2.0).abs() < 1e-9, "{fast}");
+        // Before the first point the first settings apply.
+        let early = slider_span(&map.timing, 1.6, 0.0, 140.0).unwrap();
+        assert!((early - plain).abs() < 1e-9, "{early}");
+        // No timing, no span.
+        assert!(slider_span(&[], 1.6, 1000.0, 140.0).is_none());
     }
 }

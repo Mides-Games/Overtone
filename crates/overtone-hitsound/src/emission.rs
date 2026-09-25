@@ -11,7 +11,7 @@
 
 use crate::evidence::AttackEvidence;
 use crate::map::HitObject;
-use crate::profile::{Addition, Bank, Profile};
+pub use crate::profile::{Addition, Bank, Profile};
 
 /// One proposed sound: bank plus additions. Normal is the absence of
 /// additions, as the format reads it.

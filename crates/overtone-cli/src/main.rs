@@ -10,6 +10,8 @@
 //! overtone-cli hitsound-evidence song.mp3  # per attack: class probabilities
 //!                                          # with each term's contribution,
 //!                                          # and its musical role (JSON)
+//! overtone-cli hitsound song.mp3 map.osu  # per object: the proposed sound
+//!                       [--profile P.json] # with alternatives and terms (JSON)
 //! ```
 //!
 //! `--full` adds what v3's `Analysis` carries beside the red lines: the
@@ -43,8 +45,20 @@
 //! grid: the instrument half never needed one, and the role degrades to
 //! nulls where there is no grid to sit on.
 //!
+//! `hitsound` proposes the sound of every object of a map: bank plus
+//! additions per decidable point (circles, slider heads, repeats and tails,
+//! spinner ends, holds), with the runner-up alternatives, their marginal
+//! probabilities, and the emission terms plus the incoming transition
+//! behind each choice. Slider ticks take nothing — the format has no field
+//! for them — and bodies are left as they are; both are H5's to write. A
+//! tail follows the object landing under it, if any, else stays bare.
+//! Volume and sample index are not proposed: H5 decides them with the
+//! energy term. `--profile` reads another profile file; the baked
+//! `balanced` one decides otherwise.
+//!
 //! Exit codes: 0 a grid was found (for `structure`, the audio was read; for
-//! `hitsound-evidence`, the evidence was printed); 3
+//! `hitsound-evidence`, the evidence was printed; for `hitsound`, the map
+//! was proposed); 3
 //! the engine refused (no grid in this audio, reason on stderr and in
 //! `diagnostics`); 1 the file could not be loaded; 2 the command line is
 //! wrong.
@@ -59,7 +73,8 @@ use serde_json::{json, Value};
 const USAGE: &str = "usage: overtone-cli analyze <audio> [--json | --full] [--decimals N] \
 [--min-delta BPM] [--persistence BEATS] [--min-confidence C] [--no-map-bpm]\n       \
 overtone-cli structure <audio>\n       \
-overtone-cli hitsound-evidence <audio>";
+overtone-cli hitsound-evidence <audio>\n       \
+overtone-cli hitsound <audio> <map.osu> [--profile <path>]";
 
 /// The v3 CLI's defaults, which the golden vectors were dumped with.
 struct Options {
@@ -359,29 +374,324 @@ fn source(path: &Path) -> String {
     path.display().to_string()
 }
 
-/// `hitsound-evidence <audio>`: per-attack class probabilities with each
-/// term's contribution, and the attack's role, as JSON. Exit 1 when the
-/// audio cannot be read, 2 on a bad command; 0 otherwise, grid or no grid.
-fn hitsound_evidence(args: &[String]) -> ExitCode {
-    use overtone_hitsound::{baked, evidence as ev};
-    let audio = match args {
-        [path] if !path.starts_with("--") => PathBuf::from(path),
-        _ => {
-            eprintln!("overtone-cli: hitsound-evidence takes one audio file\n{USAGE}");
+/// `hitsound <audio> <map.osu> [--profile <path>]`: the proposed sound of
+/// every decidable point, with alternatives and the terms behind each
+/// choice, as JSON. Exit 1 when the audio, the map or the profile cannot be
+/// read, 2 on a bad command; 0 otherwise, grid or no grid.
+fn hitsound(args: &[String]) -> ExitCode {
+    use overtone_hitsound::{baked, emission as em, evidence as ev, map, profile::Profile, viterbi as vit};
+    let mut rest = args.iter();
+    let mut audio: Option<PathBuf> = None;
+    let mut map_path: Option<PathBuf> = None;
+    let mut profile_path: Option<PathBuf> = None;
+    while let Some(arg) = rest.next() {
+        if arg == "--profile" {
+            match rest.next() {
+                Some(path) => profile_path = Some(PathBuf::from(path)),
+                None => {
+                    eprintln!("overtone-cli: --profile needs a value\n{USAGE}");
+                    return ExitCode::from(2);
+                }
+            }
+        } else if arg.starts_with("--") {
+            eprintln!("overtone-cli: unknown option {arg}\n{USAGE}");
+            return ExitCode::from(2);
+        } else if audio.is_none() {
+            audio = Some(PathBuf::from(arg));
+        } else if map_path.is_none() {
+            map_path = Some(PathBuf::from(arg));
+        } else {
+            eprintln!("overtone-cli: hitsound takes one audio file and one map\n{USAGE}");
             return ExitCode::from(2);
         }
+    }
+    let (Some(audio), Some(map_path)) = (audio, map_path) else {
+        eprintln!("overtone-cli: hitsound takes one audio file and one map\n{USAGE}");
+        return ExitCode::from(2);
     };
-    let started = Instant::now();
-    let (y, sr) = match overtone_audio::load(&audio) {
-        Ok(loaded) => loaded,
+    let fail = |message: String| {
+        println!("{}", json!({"source": source(&audio), "map": source(&map_path), "error": message}));
+        ExitCode::from(1)
+    };
+    let profile_text = match &profile_path {
+        Some(path) => match std::fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(e) => return fail(format!("cannot read profile {}: {e}", path.display())),
+        },
+        None => include_str!("../../../profiles/balanced.json").to_string(),
+    };
+    let profile = match Profile::parse(&profile_text) {
+        Ok(profile) => profile,
+        Err(e) => return fail(e),
+    };
+    let song = match analyse_audio(&audio) {
+        Ok(song) => song,
         Err(e) => {
             eprintln!("overtone-cli: cannot load {}: {e}", audio.display());
-            println!(
-                "{}",
-                json!({"source": source(&audio), "error": e.to_string()})
-            );
-            return ExitCode::from(1);
+            return fail(format!("cannot load {}: {e}", audio.display()));
         }
+    };
+    let map_text = match std::fs::read(&map_path) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        Err(e) => return fail(format!("cannot read {}: {e}", map_path.display())),
+    };
+    let beatmap = map::parse(&map_text);
+
+    let started = Instant::now();
+    let templates = baked::templates();
+    let rows = ev::evidence(
+        &song.y, song.sr, &song.times, &song.weights,
+        &song.out.settled_sections,
+        &song.measures.iter().map(|&(_, downbeat, bar)| (downbeat, bar)).collect::<Vec<_>>(),
+        &song.boundaries, &templates,
+    );
+    let evidence_s = started.elapsed().as_secs_f64();
+    let ev_times: Vec<f64> = rows.iter().map(|row| row.time_s).collect();
+
+    let started = Instant::now();
+    let (units, is_tail) = units_of(&beatmap);
+    let times_ms: Vec<f64> = units.iter().map(|unit| unit.time_ms).collect();
+    let placed = map::bar_slots(&beatmap.timing, &times_ms);
+    let default_bank = match beatmap.sample_set {
+        2 => em::Bank::Soft,
+        3 => em::Bank::Drum,
+        _ => em::Bank::Normal,
+    };
+    // Chain units decide by Viterbi; tails follow the object under them.
+    let chain: Vec<usize> = (0..units.len()).filter(|&i| !is_tail[i]).collect();
+    let order = em::Candidate::all();
+    let mut steps = Vec::with_capacity(chain.len());
+    let mut matrices: Vec<Vec<f64>> = Vec::with_capacity(chain.len());
+    let mut scored_rows: Vec<Vec<em::Scored>> = Vec::with_capacity(chain.len());
+    for (position, &i) in chain.iter().enumerate() {
+        let unit = &units[i];
+        let attack = em::match_attack(&ev_times, unit.time_ms / 1000.0, 0.05)
+            .map(|a| &rows[a]);
+        let object = map::HitObject {
+            x: 0,
+            y: 0,
+            time: unit.time_ms,
+            new_combo: unit.new_combo,
+            hit_sound: unit.hit_sound,
+            kind: map::ObjectKind::Circle,
+            sample: map::HitSample {
+                normal_set: unit.normal_set,
+                addition_set: 0,
+                index: 0,
+                volume: 0,
+                file: String::new(),
+            },
+        };
+        let scored = em::emission(&object, attack, default_bank, &profile);
+        matrices.push(
+            order
+                .iter()
+                .map(|wanted| {
+                    scored.iter().find(|row| row.candidate == *wanted).map_or(f64::NEG_INFINITY, |row| row.score)
+                })
+                .collect(),
+        );
+        scored_rows.push(scored);
+        let break_before = position > 0
+            && song.boundaries.iter().any(|&edge| {
+                edge * 1000.0 > units[chain[position - 1]].time_ms && edge * 1000.0 <= unit.time_ms
+            });
+        let bar_slot = match placed[i] {
+            (bar, Some(slot), _) => Some((bar, slot)),
+            _ => None,
+        };
+        steps.push(vit::Step {
+            time_s: unit.time_ms / 1000.0,
+            new_combo: unit.new_combo,
+            bar_slot,
+            phrase_break_before: break_before,
+        });
+    }
+    let decisions = vit::decide(&matrices, &order, &steps, &profile);
+    // Chain position per unit, so the output walk is linear, not quadratic.
+    let mut position_of: Vec<Option<usize>> = vec![None; units.len()];
+    for (position, &i) in chain.iter().enumerate() {
+        position_of[i] = Some(position);
+    }
+    // Tails follow the decided object landing under them, if any.
+    let mut tail_state: Vec<Option<usize>> = vec![None; units.len()];
+    let mut tail_follows: Vec<Option<usize>> = vec![None; units.len()];
+    for (position, &i) in chain.iter().enumerate() {
+        tail_state[i] = Some(decisions[position].state);
+    }
+    for (i, unit) in units.iter().enumerate() {
+        if !is_tail[i] {
+            continue;
+        }
+        let under = chain
+            .iter()
+            .filter(|&&j| units[j].time_ms >= unit.time_ms && units[j].time_ms - unit.time_ms <= 50.0)
+            .min_by(|&&a, &&b| {
+                units[a].time_ms.total_cmp(&units[b].time_ms)
+            });
+        if let Some(&j) = under {
+            tail_follows[i] = Some(j);
+            tail_state[i] = tail_state[j];
+        }
+    }
+    let decide_s = started.elapsed().as_secs_f64();
+
+    let candidate_json = |state: usize| {
+        let candidate = order[state];
+        let names: Vec<&str> = candidate
+            .additions
+            .iter()
+            .zip(["whistle", "finish", "clap"])
+            .filter(|&(&present, _)| present)
+            .map(|(_, name)| name)
+            .collect();
+        json!({"bank": candidate.bank.as_str(), "additions": names, "bits": em::Addition::bits(
+            &candidate.additions.iter().zip([em::Addition::Whistle, em::Addition::Finish, em::Addition::Clap])
+                .filter(|&(&present, _)| present).map(|(_, a)| a).collect::<Vec<_>>(),
+        )})
+    };
+    let bare = order
+        .iter()
+        .position(|c| c.additions == [false, false, false] && c.bank == em::Bank::Normal)
+        .expect("a bare normal candidate");
+    let proposals: Vec<Value> = units
+        .iter()
+        .enumerate()
+        .map(|(i, unit)| {
+            let (state, probability, alternatives, terms, transition_in, follows) =
+                if is_tail[i] {
+                    let follows = tail_follows[i].map(|j| json!(units[j].object));
+                    match tail_state[i] {
+                        Some(state) => (
+                            state,
+                            Value::Null,
+                            Vec::new(),
+                            Vec::new(),
+                            Value::Null,
+                            follows.unwrap_or(Value::Null),
+                        ),
+                        None => (bare, Value::Null, Vec::new(), Vec::new(), Value::Null, Value::Null),
+                    }
+                } else {
+                    let position = position_of[i].expect("chain covers it");
+                    let decision = &decisions[position];
+                    let winner = &scored_rows[position]
+                        .iter()
+                        .find(|row| row.candidate == order[decision.state])
+                        .expect("every state scored");
+                    let transition_in = if position == 0 {
+                        Value::Null
+                    } else {
+                        json!(vit::transition(
+                            decisions[position - 1].state,
+                            decision.state,
+                            &order,
+                            &steps[position - 1],
+                            &steps[position],
+                            &profile,
+                        ))
+                    };
+                    (
+                        decision.state,
+                        json!(decision.probability),
+                        decision
+                            .alternatives
+                            .iter()
+                            .map(|&(s, p)| {
+                                let mut proposal = candidate_json(s);
+                                proposal["probability"] = json!(p);
+                                proposal
+                            })
+                            .collect::<Vec<_>>(),
+                        winner
+                            .terms
+                            .iter()
+                            .map(|&(name, value)| {
+                                let mut term = serde_json::Map::with_capacity(1);
+                                term.insert(name.to_string(), json!(value));
+                                Value::Object(term)
+                            })
+                            .collect::<Vec<_>>(),
+                        transition_in,
+                        Value::Null,
+                    )
+                };
+            let mut proposal = candidate_json(state);
+            proposal["probability"] = probability;
+            json!({
+                "object": unit.object,
+                "part": unit.part,
+                "edge": unit.edge,
+                "time_ms": unit.time_ms,
+                "proposal": proposal,
+                "alternatives": alternatives,
+                "terms": terms,
+                "transition_in": transition_in,
+                "tail": is_tail[i],
+                "follows": follows,
+            })
+        })
+        .collect();
+    let report = json!({
+        "source": source(&audio),
+        "map": source(&map_path),
+        "duration": song.y.len() as f64 / song.sr as f64,
+        "units": proposals,
+        "templates": "baked",
+        "profile": profile_path.map(|p| source(&p)).unwrap_or_else(|| "balanced".to_string()),
+        "version": overtone_tempo::VERSION,
+        "timings_s": {"decode": song.decode_s, "attacks": song.attacks_s, "tempo": song.tempo_s,
+                      "structure": song.structure_s, "evidence": evidence_s, "decide": decide_s},
+    });
+    println!("{report}");
+    eprintln!(
+        "overtone-cli: {} proposals; evidence {evidence_s:.2} s + decide {decide_s:.2} s",
+        proposals.len()
+    );
+    ExitCode::SUCCESS
+}
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("structure") {
+        return structure(&args[1..]);
+    }
+    if args.first().map(String::as_str) == Some("hitsound-evidence") {
+        return hitsound_evidence(&args[1..]);
+    }
+    if args.first().map(String::as_str) == Some("hitsound") {
+        return hitsound(&args[1..]);
+    }
+    match parse(&args) {
+        Ok(options) => analyze(&options),
+        Err(message) => {
+            eprintln!("overtone-cli: {message}\n{USAGE}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+/// Audio through attacks, tempo and structure: the shared front half of
+/// `hitsound-evidence` and `hitsound`, timed per stage like `analyze`.
+struct SongAnalysis {
+    y: Vec<f32>,
+    sr: u32,
+    times: Vec<f64>,
+    weights: Vec<f32>,
+    out: overtone_tempo::points::PipelineOutput,
+    measures: Vec<(String, usize, usize)>,
+    boundaries: Vec<f64>,
+    decode_s: f64,
+    attacks_s: f64,
+    tempo_s: f64,
+    structure_s: f64,
+}
+
+fn analyse_audio(audio: &Path) -> Result<SongAnalysis, String> {
+    let started = Instant::now();
+    let (y, sr) = match overtone_audio::load(audio) {
+        Ok(loaded) => loaded,
+        Err(e) => return Err(e.to_string()),
     };
     let decode_s = started.elapsed().as_secs_f64();
 
@@ -398,12 +708,150 @@ fn hitsound_evidence(args: &[String]) -> ExitCode {
     let tempo_s = started.elapsed().as_secs_f64();
     let measures =
         overtone_tempo::points::section_measures(&out.settled_sections, &times, &weights);
-    let bars: Vec<(usize, usize)> =
-        measures.iter().map(|&(_, downbeat, bar)| (downbeat, bar)).collect();
 
     let started = Instant::now();
     let found = overtone_dsp::structure::analyze(&y, sr);
     let structure_s = started.elapsed().as_secs_f64();
+
+    Ok(SongAnalysis {
+        y,
+        sr,
+        times,
+        weights,
+        out,
+        measures,
+        boundaries: found.boundaries,
+        decode_s,
+        attacks_s,
+        tempo_s,
+        structure_s,
+    })
+}
+
+/// One decidable point of a map: a circle, a slider edge, a spinner end or
+/// a hold, with the sound it carries now.
+#[derive(Clone)]
+struct Unit {
+    object: usize,
+    part: &'static str,
+    edge: Option<usize>,
+    time_ms: f64,
+    hit_sound: u8,
+    normal_set: i64,
+    new_combo: bool,
+}
+
+/// The decidable points of a parsed map, in time order with tail flags
+/// beside them. The head always exists; repeats and the tail need a slider
+/// span, and tails are flagged for the follow-under post-pass rather than
+/// decided.
+fn units_of(map: &overtone_hitsound::map::Beatmap) -> (Vec<Unit>, Vec<bool>) {
+    use overtone_hitsound::map::ObjectKind;
+    let mut paired: Vec<(Unit, bool)> = Vec::new();
+    for (n, object) in map.objects.iter().enumerate() {
+        let base = Unit {
+            object: n,
+            part: "circle",
+            edge: None,
+            time_ms: object.time,
+            hit_sound: object.hit_sound,
+            normal_set: object.sample.normal_set,
+            new_combo: object.new_combo,
+        };
+        match &object.kind {
+            ObjectKind::Circle => paired.push((base, false)),
+            ObjectKind::Hold { .. } => paired.push((Unit { part: "hold", ..base.clone() }, false)),
+            ObjectKind::Spinner { end_time } => {
+                paired.push((Unit { part: "spinner_end", time_ms: *end_time, ..base.clone() }, false));
+            }
+            ObjectKind::Slider { slides, length, edge_sounds, edge_sets } => {
+                let at_edge = |k: usize| {
+                    (
+                        edge_sounds.get(k).copied().unwrap_or(object.hit_sound),
+                        edge_sets
+                            .get(k)
+                            .map(|&(normal, _)| normal)
+                            .unwrap_or(object.sample.normal_set),
+                    )
+                };
+                let (bits, normal) = at_edge(0);
+                paired.push((
+                    Unit { part: "head", edge: Some(0), hit_sound: bits, normal_set: normal, ..base.clone() },
+                    false,
+                ));
+                if let Some(span) = overtone_hitsound::map::slider_span(
+                    &map.timing,
+                    map.slider_multiplier,
+                    object.time,
+                    *length,
+                ) {
+                    for k in 1..=*slides as usize {
+                        let last = k == *slides as usize;
+                        let (bits, normal) = at_edge(k);
+                        paired.push((
+                            Unit {
+                                part: if last { "tail" } else { "repeat" },
+                                edge: Some(k),
+                                time_ms: object.time + k as f64 * span,
+                                hit_sound: bits,
+                                normal_set: normal,
+                                new_combo: false,
+                                ..base.clone()
+                            },
+                            last,
+                        ));
+                    }
+                }
+            }
+            ObjectKind::Unparsed => {}
+        }
+    }
+    paired.sort_by(|a, b| {
+        a.0.time_ms
+            .total_cmp(&b.0.time_ms)
+            .then_with(|| a.0.object.cmp(&b.0.object))
+    });
+    paired.into_iter().unzip()
+}
+
+/// `hitsound-evidence <audio>`: per-attack class probabilities with each
+/// term's contribution, and the attack's role, as JSON. Exit 1 when the
+/// audio cannot be read, 2 on a bad command; 0 otherwise, grid or no grid.
+fn hitsound_evidence(args: &[String]) -> ExitCode {
+    use overtone_hitsound::{baked, evidence as ev};
+    let audio = match args {
+        [path] if !path.starts_with("--") => PathBuf::from(path),
+        _ => {
+            eprintln!("overtone-cli: hitsound-evidence takes one audio file\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    let song = match analyse_audio(&audio) {
+        Ok(song) => song,
+        Err(e) => {
+            eprintln!("overtone-cli: cannot load {}: {e}", audio.display());
+            println!(
+                "{}",
+                json!({"source": source(&audio), "error": e})
+            );
+            return ExitCode::from(1);
+        }
+    };
+    let SongAnalysis {
+        y,
+        sr,
+        times,
+        weights,
+        out,
+        measures,
+        boundaries,
+        decode_s,
+        attacks_s,
+        tempo_s,
+        structure_s,
+    } = song;
+    let bars: Vec<(usize, usize)> =
+        measures.iter().map(|&(_, downbeat, bar)| (downbeat, bar)).collect();
 
     let started = Instant::now();
     let templates = baked::templates();
@@ -414,7 +862,7 @@ fn hitsound_evidence(args: &[String]) -> ExitCode {
         &weights,
         &out.settled_sections,
         &bars,
-        &found.boundaries,
+        &boundaries,
         &templates,
     );
     let evidence_s = started.elapsed().as_secs_f64();
@@ -462,7 +910,7 @@ fn hitsound_evidence(args: &[String]) -> ExitCode {
             "downbeat": m.1,
             "beats_per_bar": m.2,
         })).collect::<Vec<_>>(),
-        "phrase_edges": found.boundaries,
+        "phrase_edges": boundaries,
         "templates": "baked",
         "version": overtone_tempo::VERSION,
         "timings_s": {"decode": decode_s, "attacks": attacks_s, "tempo": tempo_s,
@@ -474,21 +922,4 @@ fn hitsound_evidence(args: &[String]) -> ExitCode {
         rows.len()
     );
     ExitCode::SUCCESS
-}
-
-fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().map(String::as_str) == Some("structure") {
-        return structure(&args[1..]);
-    }
-    if args.first().map(String::as_str) == Some("hitsound-evidence") {
-        return hitsound_evidence(&args[1..]);
-    }
-    match parse(&args) {
-        Ok(options) => analyze(&options),
-        Err(message) => {
-            eprintln!("overtone-cli: {message}\n{USAGE}");
-            ExitCode::from(2)
-        }
-    }
 }

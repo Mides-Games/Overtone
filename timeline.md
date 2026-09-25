@@ -16,6 +16,36 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Hitsounds H4c: `hitsound` proposes every object
+
+### Changed
+
+- **`overtone-cli hitsound <audio> <map.osu> [--profile]`**: the full H4 chain —
+  audio through attacks, tempo, structure and baked evidence, the map through
+  `map.rs`, every decidable point (circles, slider heads/repeats/tails, spinner
+  ends, holds) matched to its attack, scored, and Viterbi-decided, as JSON with
+  proposal, marginal alternatives, emission terms and the incoming transition per
+  unit. Ticks take nothing and bodies stay as they are (no format field, H5's to
+  write); tails follow the decided object landing under them, else stay bare.
+  Volume and index are not proposed. Bar slots and slider spans port the Python
+  reader's rules (first grid extends back, greens set SV, reds reset it).
+- The `analyze` front half is now one shared helper, reused unchanged by
+  `hitsound-evidence` (its tests stayed green through the refactor).
+
+### Measured
+
+```
+a click track, 12 circles    12 proposals; evidence 0.08 s + decide 0.00 s
+Rust tests                   251 -> 255, all pass, no warnings
+golden 27/27 · facts
+```
+
+The synthetic exact-truth gate and the real-audio gate against P-6's baselines
+are still to run: nothing here claims the proposals are good yet, only that
+every number in them replays from the computation.
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Hitsounds H4c: the Viterbi core
 
 ### Changed

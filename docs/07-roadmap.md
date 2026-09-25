@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **364** Python (252 engine + 112 web shell) · **233** Rust.
+Tests: **365** Python (252 engine + 113 web shell) · **233** Rust.
 
 ### What is pending, in order
 
@@ -247,7 +247,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Honesty banners | fallback engine, late first line, validation findings | low | **high** | shell | no | no | P1 | **done** |
 | Confidence ribbon | per-section confidence under the ruler | low | med | timeline | no | no | P2 | todo — per-point bars in the list only |
 | Spectrogram layer | optional spectral energy | med | low-med | STFT | no | yes | P3 | todo |
-| Light theme | full token counterpart | low | low | tokens | no | no | P3 | todo |
+| Light theme | full token counterpart | low | low | tokens | no | no | P3 | **done** — one light token block, canvas ink included; Settings → Theme (System, Dark, Light) |
 | Zoom and pan | wheel zoom anchored at the cursor, drag to pan; beat grid and attack ticks when zoomed in | med | **high** | timeline | no | no | **P1** | **done** — beat grid, bars brighter; attacks show in the drift lane |
 | Drag red lines | click to select, drag to move (snapped to attacks), double-click to add | med | **high** | zoom | no | no | **P1** | **done** but adding — snaps within 6 px, Alt frees it, one undo; double-click plays instead, and the editor adds |
 | Drift lane | how far each attack sits from the grid osu! will play | med | high | timeline | no | no | P1 | **done** — nearest 1/1-1/4 tick of the governing line, ±30 ms, green ≤5, amber ≤15 |
@@ -529,7 +529,7 @@ limit applies.
 | Backup policy | one pristine `.bak` (today) or timestamped backups | low | med | writer | no | no | P2 | **not needed** — every state is already kept (`.bak` pristine, then `.bak2`, `.bak3`…); the Settings section says so |
 | Cache | size limit, location, clear button | low | low | cache | no | no | P2 | **done** but a settable limit — entries, size, folder, clear |
 | Click track | sound, accent on downbeats, level, subdivision clicks | low | med | click | no | no | P2 | **done** — 1-4 clicks per beat, bar accent on/off, levels in the transport; one sound |
-| Theme and scale | light theme, UI scale 90–150 %, reduced motion | low | med | tokens | no | no | P2 | partial — UI scale 80-150 %, reduced motion; no light theme |
+| Theme and scale | light theme, UI scale 90–150 %, reduced motion | low | med | tokens | no | no | P2 | **done** — UI scale 80-150 %, reduced motion, light theme |
 | Shortcuts | rebind any action | low | low | keyboard map | no | no | P3 | todo |
 | Per-song presets | remember detection settings per song | low | med | project format | no | no | P2 | todo |
 | Language | English and Spanish; more through translation files | low | med | i18n | no | no | P2 | partial |

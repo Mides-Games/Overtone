@@ -2306,11 +2306,14 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
             overtone.CONFIG_PATH.write_text(json.dumps({
                 "cfg_version": "2", "prefer_map_bpm": "on", "refine_beats": None,
                 "delta": True, "language": 5, "recent": ["a.mp3", 7, None],
-                "file": "song.mp3", "persistence": "12", "theme": {"kept": 1}}),
+                "file": "song.mp3", "persistence": "12", "theme": {"a": 1},
+                "future_key": {"kept": 1}}),
                 encoding="utf-8")
+            # A key this version does not know is kept as it is (a newer
+            # version wrote it); a known key of the wrong type is dropped.
             self.assertEqual(overtone.load_config(), {
                 "recent": ["a.mp3"], "file": "song.mp3", "persistence": "12",
-                "theme": {"kept": 1}})
+                "future_key": {"kept": 1}})
             # Without a config of its own, the pre-rename file is read.
             overtone.CONFIG_PATH.unlink()
             overtone.LEGACY_CONFIG_PATH.write_text('{"language": "Español"}', encoding="utf-8")

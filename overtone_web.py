@@ -56,6 +56,9 @@ AUDIO_MIME = {".wav": "audio/wav", ".flac": "audio/flac", ".ogg": "audio/ogg",
 MAX_OFFSET_DECIMALS = 3
 #: The interface's scale, as a factor of its designed size.
 UI_SCALE_RANGE = (0.8, 1.5)
+#: Themes the page knows; "system" follows Windows' app mode. Dark is the
+#: default, so nobody's window changes colour on an update.
+THEMES = ("system", "dark", "light")
 #: A tap calibration past this is not latency but taps that missed the click.
 TAP_LATENCY_LIMIT_MS = 250.0
 #: The trace needs the shape of the onset envelope, not its 40 k frames.
@@ -1090,6 +1093,7 @@ class Api:
             "click_accent": cfg.get("click_accent", True) is not False,
             "ui_scale": scale if UI_SCALE_RANGE[0] <= scale <= UI_SCALE_RANGE[1] else 1.0,
             "reduced_motion": cfg.get("reduced_motion") is True,
+            "theme": cfg.get("theme") if cfg.get("theme") in THEMES else "dark",
         }
 
     def settings(self) -> dict:
@@ -1117,6 +1121,9 @@ class Api:
                 elif key == "click_subdivision":
                     value = int(value)
                     if value not in ta.CLICK_SUBDIVISIONS:
+                        return {"ok": False, "key": "bad_values"}
+                elif key == "theme":
+                    if value not in THEMES:
                         return {"ok": False, "key": "bad_values"}
                 elif key == "ui_scale":
                     value = float(value)

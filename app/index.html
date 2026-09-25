@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -475,6 +475,15 @@
               <div class="spacer"></div>
               <input type="range" id="stScale" min="80" max="150" step="5" class="pb-seek short">
               <span class="num readout" id="stScaleValue"></span>
+            </div>
+            <div class="setting">
+              <div class="setting-name" data-i18n="st_theme">Theme</div>
+              <div class="spacer"></div>
+              <div class="segmented" id="stTheme">
+                <button type="button" data-v="system" data-i18n="st_theme_system">System</button>
+                <button type="button" data-v="dark" data-i18n="st_theme_dark">Dark</button>
+                <button type="button" data-v="light" data-i18n="st_theme_light">Light</button>
+              </div>
             </div>
             <label class="check"><input type="checkbox" id="stMotion"><span data-i18n="st_motion">Reduce motion</span></label>
           </div>

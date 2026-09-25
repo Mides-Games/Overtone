@@ -19,7 +19,7 @@
   --border-hover: #3a4763;
   --text: #e8ecf1;
   --muted: #8b94a7;
-  --dim: #606b80;
+  --dim: #808a9d;              /* 4.5:1 on every dark surface: it was 3.4 */
   --sidebar-bg: rgba(18, 24, 38, 0.55);
   --popover: rgba(13, 18, 28, 0.96);
   --scrim: rgba(5, 8, 13, 0.55);
@@ -57,7 +57,7 @@
   /* canvas ink, read by app.js */
   --chart-plot: #0e1320;
   --chart-grid: #1a2233;
-  --chart-grid-text: #606b80;
+  --chart-grid-text: #808a9d;
   --chart-tempo: #7f9df0;
   --chart-tempo-fill: rgba(127, 157, 240, 0.10);
   --chart-onset: #1e2739;
@@ -107,6 +107,75 @@
 
   --sidebar: 236px;
   color-scheme: dark;
+}
+
+/* Light: the same roles, stepped for a light ground. html[data-theme] is set
+   by the Theme setting; "System" is resolved to one of the two by app.js,
+   so this block is written once. Text tokens clear 4.5:1 on every surface;
+   the section colours are the dataviz light steps, validated on --surface-2
+   (the bridge aqua sits under 3:1 there, carried by the block labels and the
+   table beside it). */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #f7f9fc;
+  --surface-3: #e9edf3;
+  --border: #dde3ec;
+  --border-strong: #c9d2df;
+  --border-hover: #aeb9ca;
+  --text: #151b26;
+  --muted: #556072;
+  --dim: #606b7d;
+  --sidebar-bg: rgba(255, 255, 255, 0.72);
+  --popover: rgba(255, 255, 255, 0.98);
+  --scrim: rgba(20, 26, 38, 0.32);
+  --scrim-strong: rgba(20, 26, 38, 0.5);
+  --row-line: rgba(20, 30, 50, 0.07);
+  --row-hover: rgba(20, 30, 50, 0.04);
+  --glow: rgba(22, 128, 79, 0.06);
+
+  --accent: #16804f;
+  --accent-hover: #0f6b41;
+  --accent-ink: #ffffff;
+  --red: #c7343f;
+  --red-ink: #8f1d27;
+  --amber: #9a6700;
+  --amber-ink: #6b4800;
+  --blue: #3f5fc8;
+  --blue-ink: #2a4396;
+
+  --sec-verse: #2a78d6;
+  --sec-chorus: #eb6834;
+  --sec-bridge: #1baf7a;
+  --sec-edge: #7a8597;
+
+  --chart-plot: #fbfcfe;
+  --chart-grid: #e6eaf1;
+  --chart-grid-text: #606b7d;
+  --chart-tempo: #3f5fc8;
+  --chart-tempo-fill: rgba(63, 95, 200, 0.10);
+  --chart-onset: #e3e8f0;
+  --chart-onset-key: #c9d2df;
+  --chart-red: #d23f4b;
+  --chart-red-soft: rgba(210, 63, 75, 0.14);
+  --chart-red-ink: #ffffff;
+  --chart-section: rgba(20, 30, 50, 0.025);
+  --chart-selected: rgba(22, 128, 79, 0.08);
+  --chart-cursor: rgba(21, 27, 38, 0.35);
+  --chart-beat: rgba(20, 30, 50, 0.08);
+  --chart-bar: rgba(20, 30, 50, 0.2);
+  --chart-wave: #b7c2d4;
+  --chart-ghost: rgba(176, 120, 20, 0.8);
+  --chart-drift-ok: #1f9d63;
+  --chart-drift-warn: #c48a12;
+  --chart-drift-bad: #d23f4b;
+  --chart-playhead: #151b26;
+  --chart-loop: rgba(22, 128, 79, 0.08);
+
+  --shadow-sm: 0 2px 8px rgba(20, 30, 50, 0.12);
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 12px 28px -18px rgba(20, 30, 50, 0.35);
+  --shadow-pop: 0 24px 60px -12px rgba(20, 30, 50, 0.3);
 }
 
 * { box-sizing: border-box; }
@@ -392,6 +461,7 @@ button.link:focus-visible, .recent-item:focus-visible { border-radius: var(--r-x
 .k-bridge { --sec: var(--sec-bridge); }
 .stx-sec:hover { background: color-mix(in srgb, var(--sec) 34%, transparent); }
 .stx-table td.why { text-align: left; color: var(--muted); white-space: normal; }
+.stx-table td.num { white-space: nowrap; }
 .stx-table tbody tr { cursor: pointer; }
 .stx-kind { font-weight: 600; white-space: nowrap; }
 .stx-kind::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 2px; background: var(--sec); vertical-align: 0; }

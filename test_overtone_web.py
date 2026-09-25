@@ -905,13 +905,25 @@ class SettingsBridgeTests(_IsolatedConfig):
         self.assertEqual(reply["settings"], {
             "output_folder": "", "export_ask": True, "offset_decimals": 0,
             "click_subdivision": 1, "click_accent": True, "ui_scale": 1.0,
-            "reduced_motion": False})
+            "reduced_motion": False, "theme": "dark"})
         self.assertTrue(reply["output_default"].endswith(str(Path("Documents") / "Overtone")))
         api._cfg.update({"offset_decimals": 9, "click_subdivision": 5, "ui_scale": "huge",
                          "export_ask": "no", "output_folder": 7})
         s = api.settings()["settings"]
         self.assertEqual((s["offset_decimals"], s["click_subdivision"], s["ui_scale"],
                           s["export_ask"], s["output_folder"]), (0, 1, 1.0, True, ""))
+
+    def test_the_theme_is_dark_unless_asked_and_only_a_known_one_is_kept(self) -> None:
+        api = web.Api()
+        self.assertEqual(api.settings()["settings"]["theme"], "dark")
+        for bad in ("blue", "", None, 1):
+            with self.subTest(bad=bad):
+                self.assertFalse(api.set_settings({"theme": bad})["ok"])
+        for theme in ("light", "system", "dark"):
+            self.assertEqual(api.set_settings({"theme": theme})["settings"]["theme"], theme)
+        self.assertEqual(self.saved[-1]["theme"], "dark")
+        api._cfg["theme"] = "neon"                      # a hand-edited config
+        self.assertEqual(api.settings()["settings"]["theme"], "dark")
 
     def test_each_value_is_checked_before_any_is_kept(self) -> None:
         api = web.Api()

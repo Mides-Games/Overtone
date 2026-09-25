@@ -16,6 +16,57 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · The interface on tokens, and a light theme
+
+### Changed
+
+- **Every colour, size and radius behind a token.** The stylesheet had 15 font sizes and
+  no scale, 24 colours written into components, 20 more hard-coded in `app.js` for the
+  canvas, and 31 inline styles. Now there are eight type steps, a radius scale, washes
+  derived from their colour with `color-mix`, and canvas ink (`--chart-*`) read by
+  `app.js` at draw time. The inline styles left are the data-driven ones: widths and
+  positions.
+- **A light theme** (Settings → Theme: System, Dark, Light; Dark stays the default, so
+  nobody's window changes on an update). It is the same token set with light values,
+  canvas included; "System" follows Windows' app mode, live.
+- **One keyboard focus ring** on every control, where two had one.
+- **A project skill for checking the UI** (`.claude/skills/overtone-ui-check`): the
+  harness, silent from the first frame, the pane's width, both languages, and cleanup.
+
+### Fixed
+
+- **Structure painted sections in reserved colours**: chorus in amber (check by ear),
+  bridge in red (timing points). Sections now have their own categorical set, labels in
+  text ink and colour on a wash and a top rule.
+- **Caption text was under 4.5:1**: `--dim` measured 3.4:1 on the dark surfaces. It is
+  4.5:1 or more on every surface of both themes now, axis labels included.
+- The Structure table wrapped its lengths and "no proven bar" readouts onto two lines.
+
+### Measured
+
+```
+section palette, dark     dataviz validator, all pairs, on --surface-2: every check passes
+  (blue, orange, aqua)    (worst colour-blind ΔE 9.4, worst normal 20.9). Tried and failed:
+                          magenta beside orange (normal ΔE 11.6), violet beside blue
+                          (colour-blind ΔE 1.9)
+section palette, light    every check passes; aqua 2.67:1 on the surface, carried by the
+                          block labels and the table (the validator's relief rule)
+text contrast             dark: text 15.3, dim 3.4 -> 4.5-5.2; light: text 17.3, muted 6.4,
+                          dim 4.6-5.4, accent 5.0, red 5.3, amber 4.9, blue 5.7 (:1)
+browser, harness          Timing, Structure and Library in both themes, a real song; the
+                          canvas repaints on a theme change; System follows the OS in
+                          both directions; Tab reaches the focus ring; no console errors
+Python unittest           364 -> 365, all pass
+```
+
+### Rejected / tried and dropped
+
+- **Keeping the light palette in a `prefers-color-scheme` block too.** It would have
+  been written twice. `app.js` resolves "System" to dark or light instead, so the
+  stylesheet holds one light block.
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Hitsounds P-2: a writer that touches only hitsounds
 
 ### Changed

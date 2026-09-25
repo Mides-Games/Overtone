@@ -5787,7 +5787,7 @@ CONFIG_TYPES: dict[str, tuple[type, ...]] = {
     "song_volume": (int, float), "click_volume": (int, float), "tap_latency_ms": (int, float),
     "output_folder": (str,), "export_ask": (bool,), "offset_decimals": (int,),
     "click_subdivision": (int,), "click_accent": (bool,), "ui_scale": (int, float),
-    "reduced_motion": (bool,),
+    "reduced_motion": (bool,), "theme": (str,),
 }
 
 

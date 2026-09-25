@@ -104,6 +104,7 @@ const I18N = {
     inject_warn: "\nThe .osu audio ({osu}) differs from the analyzed file ({src}).",
     drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
     recent: "Recent",
+    st_theme: "Theme", st_theme_system: "System", st_theme_dark: "Dark", st_theme_light: "Light",
     nav_structure: "Structure",
     stx_sub: "Where the song's phrases change, what each part is, and why: every label beside the evidence it rests on. Read only.",
     stx_title: "Sections",
@@ -375,6 +376,7 @@ const I18N = {
     inject_warn: "\nEl audio del .osu ({osu}) difiere del analizado ({src}).",
     drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
     recent: "Recientes",
+    st_theme: "Tema", st_theme_system: "Sistema", st_theme_dark: "Oscuro", st_theme_light: "Claro",
     nav_structure: "Estructura",
     stx_sub: "Dónde cambian las frases de la canción, qué es cada parte y por qué: cada etiqueta junto a la evidencia en la que se apoya. Solo lectura.",
     stx_title: "Secciones",
@@ -2226,11 +2228,27 @@ function copyReport() {
 // bridge checks it and answers with the settings as kept.
 const ST = { settings: null, cache: null, outputDefault: "" };
 
+// "System" follows Windows' app mode, live; the stylesheet only knows dark
+// and light, so it is resolved here.
+const SYSTEM_LIGHT = window.matchMedia("(prefers-color-scheme: light)");
+
+function stTheme() {
+  const want = (ST.settings && ST.settings.theme) || "dark";
+  const theme = want === "system" ? (SYSTEM_LIGHT.matches ? "light" : "dark") : want;
+  if (document.documentElement.dataset.theme !== theme) {
+    document.documentElement.dataset.theme = theme;
+    chartInk();                       // canvas ink is read, not inherited
+    if (S.result) drawTrace();
+  }
+}
+SYSTEM_LIGHT.addEventListener("change", stTheme);
+
 function stApply() {
   const s = ST.settings;
   if (!s) return;
   document.documentElement.style.zoom = String(s.ui_scale);
   document.body.classList.toggle("reduce-motion", s.reduced_motion);
+  stTheme();
   if (S.result) drawTrace();
 }
 
@@ -2246,6 +2264,7 @@ function stRender() {
   $("stScale").value = String(Math.round(s.ui_scale * 100));
   $("stScaleValue").textContent = `${Math.round(s.ui_scale * 100)}%`;
   $("stMotion").checked = s.reduced_motion;
+  document.querySelectorAll("#stTheme button").forEach((b) => b.classList.toggle("on", b.dataset.v === s.theme));
   const c = ST.cache;
   if (c) {
     $("stCache").textContent = t("st_cache_info", { n: c.entries, mb: (c.bytes / 1048576).toFixed(1),
@@ -2290,6 +2309,7 @@ function stWire() {
   $("stScale").oninput = () => { $("stScaleValue").textContent = `${$("stScale").value}%`; };
   $("stScale").onchange = () => stSet({ ui_scale: +$("stScale").value / 100 });
   $("stMotion").onchange = () => stSet({ reduced_motion: $("stMotion").checked });
+  document.querySelectorAll("#stTheme button").forEach((b) => b.onclick = () => stSet({ theme: b.dataset.v }));
   $("stDetect").onclick = () => openDrawer(true);
   $("stCacheClear").onclick = async () => {
     const reply = await api().cache_clear();

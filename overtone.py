@@ -3693,11 +3693,12 @@ def shift_samples(old: np.ndarray, new: np.ndarray, sr: int) -> dict:
     raw = _envelope_period(new_e, sr, hop) / max(1e-9, _envelope_period(old_e, sr, hop))
     ratio = min((abs(raw / k - 1.0), raw / k) for k in (0.5, 1.0, 2.0))[1]
     ratio = float(ratio)
+    # Tempo first: a mismatch names itself even when some peak survived it.
+    if abs(ratio - 1.0) > SWAP_MAX_TEMPO_DRIFT:
+        raise ValueError(f"Tempo mismatch (ratio {ratio:.4f}): times do not map by one shift.")
     if peak < SWAP_MIN_PEAK or sharp < SWAP_MIN_SHARP:
         raise ValueError(f"No reliable alignment (peak {peak:.2f}, sharpness {sharp:.0f}): "
                          "these do not sound like two encodes of one song.")
-    if abs(ratio - 1.0) > SWAP_MAX_TEMPO_DRIFT:
-        raise ValueError(f"Tempo mismatch (ratio {ratio:.4f}): times do not map by one shift.")
     # The lag is old-against-new; map times move the other way.
     return {"shift_ms": round(-lag / SWAP_SR * 1000.0, 3), "peak": round(peak, 4),
             "sharp": round(sharp, 1), "tempo_ratio": round(ratio, 5)}
@@ -3714,14 +3715,18 @@ def audio_shift(old_path: str | os.PathLike[str], new_path: str | os.PathLike[st
                          np.asarray(new_y, dtype=np.float64), old_sr)
 
 
-def _shifted_number(text: str, shift_ms: float) -> str:
-    """A time field moved by the shift, integer-valued when it lands whole,
-    three decimals otherwise: what lazer writes, and stable reads."""
-    value = round(float(text) + shift_ms, 3)
-    return str(int(value)) if value == int(value) else f"{value:.3f}".rstrip("0")
+def _shifted_number(text: str, shift_ms: float, decimals: int = 3) -> str:
+    """A time field moved by the shift: whole milliseconds stay whole (what
+    osu!stable reads), the rest keeps ``decimals`` places like inject."""
+    value = round(float(text) + shift_ms, decimals)
+    whole = round(value)
+    if abs(value - whole) < 0.5 * 10 ** -decimals:
+        return str(int(whole))
+    return f"{value:.{decimals}f}"
 
 
-def shift_osu_text(text: str, shift_ms: float, audio_name: str | None = None) -> tuple[str, dict]:
+def shift_osu_text(text: str, shift_ms: float, audio_name: str | None = None,
+                   decimals: int = 3) -> tuple[str, dict]:
     """Every time of one .osu moved by ``shift_ms`` (Phase 19, Audio swap).
 
     Red and green offsets, object starts, spinner and hold ends, a set
@@ -3740,7 +3745,7 @@ def shift_osu_text(text: str, shift_ms: float, audio_name: str | None = None) ->
     moved = {"reds": 0, "objects": 0}
 
     def move(raw: str) -> str:
-        shifted = _shifted_number(raw, shift_ms)
+        shifted = _shifted_number(raw, shift_ms, decimals)
         if float(shifted) < 0:
             raise ValueError(f"A time lands before zero ({raw} ms): refusing.")
         return shifted
@@ -3812,7 +3817,7 @@ def shift_osu_text(text: str, shift_ms: float, audio_name: str | None = None) ->
     return "\n".join(out), moved
 
 
-def preview_audio_swap(map_paths: list, shift_ms: float) -> dict:
+def preview_audio_swap(map_paths: list, shift_ms: float, decimals: int = 3) -> dict:
     """What a shift would move, read only: per map the red lines, objects and
     new audio name, without touching a byte."""
     rows = []
@@ -3820,7 +3825,7 @@ def preview_audio_swap(map_paths: list, shift_ms: float) -> dict:
         path = Path(raw)
         try:
             text = path.read_bytes().decode("utf-8-sig")
-            _shifted, moved = shift_osu_text(text, shift_ms)
+            _shifted, moved = shift_osu_text(text, shift_ms, decimals=decimals)
         except (OSError, ValueError, UnicodeDecodeError) as exc:
             rows.append({"file": path.name, "ok": False, "error": str(exc)})
             continue
@@ -3830,13 +3835,13 @@ def preview_audio_swap(map_paths: list, shift_ms: float) -> dict:
 
 
 def apply_audio_swap(map_paths: list, shift_ms: float, audio_name: str | None = None,
-                     dry_run: bool = False) -> dict:
+                     dry_run: bool = False, decimals: int = 3) -> dict:
     """Move every time of every map by ``shift_ms``, each file backed up
     first and logged, through the atomic writer. A refusal anywhere writes
     nothing anywhere: the preview runs first inside, and one bad map stops
     the set. Returns per-file bytes written and backups."""
     paths = [Path(raw) for raw in map_paths]
-    preview = preview_audio_swap(paths, shift_ms)
+    preview = preview_audio_swap(paths, shift_ms, decimals)
     if preview["refused"]:
         bad = next(row for row in preview["maps"] if not row["ok"])
         raise ValueError(f"{bad['file']}: {bad['error']}")
@@ -3849,7 +3854,7 @@ def apply_audio_swap(map_paths: list, shift_ms: float, audio_name: str | None = 
             text = raw.decode("utf-8-sig")
         except UnicodeDecodeError as exc:
             raise ValueError(f"Could not decode {path.name} as UTF-8.") from exc
-        shifted, _moved = shift_osu_text(text, shift_ms, audio_name)
+        shifted, _moved = shift_osu_text(text, shift_ms, audio_name, decimals)
         newline = "\r\n" if b"\r\n" in raw else "\n"
         if raw.endswith((b"\n", b"\r")):
             shifted += "\n"

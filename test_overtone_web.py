@@ -1489,6 +1489,76 @@ class MapsetBridgeTests(_IsolatedConfig):
             self.assertEqual(web.Api().mapset_check(str(target))["key"], "bad_folder")
 
 
+class SwapBridgeTests(_IsolatedConfig):
+    """Audio swap in the Mapset view: measure, preview, write with backups."""
+
+    @staticmethod
+    def _clicks(seconds=6.0, bpm=150.0, seed=7):
+        import math
+        rng = np.random.default_rng(seed)
+        y = np.zeros(int(seconds * 44100), dtype=np.float64)
+        k = 0
+        while True:
+            t = 0.5 + k * 60.0 / bpm
+            if t > seconds - 0.2:
+                break
+            n = int(0.03 * 44100)
+            burst = np.exp(-np.arange(n) / (0.004 * 44100)) * (rng.random(n) - 0.5)
+            y[int(t * 44100):int(t * 44100) + n] += (0.9 if k % 4 == 0 else 0.5) * burst
+            k += 1
+        return (y / max(1e-9, np.abs(y).max()) * 30000).astype(np.int16)
+
+    def _set(self, tmp: str):
+        import soundfile as sf
+        root = Path(tmp) / "set"
+        root.mkdir()
+        y = self._clicks()
+        sf.write(str(root / "old.wav"), y, 44100)
+        shift = int(round(26.0 / 1000 * 44100))
+        delayed = np.zeros_like(y)
+        delayed[shift:] = y[:len(y) - shift]
+        sf.write(str(root / "new.wav"), delayed, 44100)
+        fast = self._clicks(bpm=165.0)
+        sf.write(str(root / "fast.wav"), fast, 44100)
+        (root / "map.osu").write_bytes("\r\n".join(
+            ["osu file format v14", "", "[General]", "AudioFilename: old.wav", "",
+             "[TimingPoints]", "500,400,4,2,0,70,1,0", "", "[HitObjects]",
+             "256,192,500,1,0,0:0:0:0:", "256,192,900,1,0,0:0:0:0:", ""]).encode("utf-8"))
+        return root
+
+    def test_audios_listed_preview_measures_apply_writes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._set(tmp)
+            api = web.Api()
+            listed = api.swap_audios(str(root))
+            self.assertEqual((listed["audios"], listed["current"]),
+                             (["fast.wav", "new.wav", "old.wav"], "old.wav"))
+            preview = api.swap_preview(str(root), "old.wav", "new.wav")
+            before = (root / "map.osu").read_bytes()
+            done = api.swap_apply(str(root), "old.wav", "new.wav")
+            after = (root / "map.osu").read_bytes()
+            json.dumps([listed, preview, done])
+            self.assertAlmostEqual(preview["shift"]["shift_ms"], 26.0, delta=0.5)
+            self.assertTrue(all(row["ok"] for row in preview["maps"]))
+            self.assertIn(b"AudioFilename: new.wav", after)
+            self.assertIn(b"256,192,526,1,0,0:0:0:0:", after)
+            self.assertNotEqual(before, after)
+            self.assertTrue((root / "map.osu.bak").is_file())
+
+    def test_tempo_twins_and_same_file_refuse_writing_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._set(tmp)
+            before = {p.name: p.read_bytes() for p in root.iterdir()}
+            api = web.Api()
+            refused = api.swap_preview(str(root), "old.wav", "fast.wav")
+            self.assertEqual(refused["key"], "error")
+            self.assertIn("Tempo", refused["detail"])
+            self.assertEqual(api.swap_preview(str(root), "old.wav", "old.wav")["key"], "sw_same_file")
+            self.assertEqual(api.swap_preview(str(root), "old.wav", "missing.wav")["key"], "bad_file")
+            self.assertEqual(api.swap_audios(str(root / "nope"))["key"], "bad_folder")
+            self.assertEqual({p.name: p.read_bytes() for p in root.iterdir()}, before)
+
+
 class RecentTests(_IsolatedConfig):
     OPTIONS = {"delta": 1.5, "persistence": 12, "confidence": 75, "pulse": "auto",
                "prefer_map_bpm": True, "refine_beats": True}

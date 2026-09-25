@@ -717,6 +717,95 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "report": report, "folder": Path(str(folder)).name}
 
+    # -- audio swap: one mapset's times onto a new encode ---------------------
+    @staticmethod
+    def _swap_files(folder: str, old_audio: str, new_audio: str):
+        """The two audio paths inside ``folder``, or a refusal."""
+        base = Path(str(folder))
+        if not base.is_dir():
+            return {"ok": False, "key": "bad_folder"}
+        old, new = str(old_audio or ""), str(new_audio or "")
+        if Path(old).name != old or Path(new).name != new:
+            return {"ok": False, "key": "bad_file"}
+        old_path, new_path = base / old, base / new
+        if old_path.suffix.lower() not in ta.AUDIO_EXTENSIONS or not old_path.is_file():
+            return {"ok": False, "key": "bad_file"}
+        if new_path.suffix.lower() not in ta.AUDIO_EXTENSIONS or not new_path.is_file():
+            return {"ok": False, "key": "bad_file"}
+        if old_path == new_path:
+            return {"ok": False, "key": "sw_same_file"}
+        try:
+            maps = sorted(p for p in base.iterdir() if p.suffix.lower() == ".osu")
+        except OSError:
+            maps = []
+        if not maps:
+            return {"ok": False, "key": "ms_no_maps"}
+        return old_path, new_path, maps
+
+    def swap_audios(self, folder: str) -> dict:
+        """The audio files of a mapset folder, with the one its maps name.
+        Read only, no analysis needed."""
+        base = Path(str(folder))
+        if not base.is_dir():
+            return {"ok": False, "key": "bad_folder"}
+        try:
+            audios = sorted(p.name for p in base.iterdir()
+                            if p.suffix.lower() in ta.AUDIO_EXTENSIONS and p.is_file())
+            current = ""
+            for path in sorted(base.iterdir()):
+                if path.suffix.lower() != ".osu":
+                    continue
+                try:
+                    header = ta.read_osu_beatmap(path)["general"]
+                except (ValueError, OSError):
+                    continue
+                current = str(header.get("AudioFilename", "")).strip()
+                if current:
+                    break
+        except OSError as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "audios": audios, "current": current}
+
+    def swap_preview(self, folder: str, old_audio: str, new_audio: str) -> dict:
+        """The shift between two encodes plus what moving the set would move.
+        Decoding two songs is one heavy job at a time; nothing is written."""
+        found = self._swap_files(folder, old_audio, new_audio)
+        if isinstance(found, dict):
+            return found
+        old_path, new_path, maps = found
+        if not self._busy.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        try:
+            shift = ta.audio_shift(old_path, new_path)
+            preview = ta.preview_audio_swap(maps, shift["shift_ms"],
+                                            self._settings()["offset_decimals"])
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            self._busy.release()
+        return {"ok": True, "old": old_path.name, "new": new_path.name,
+                "shift": shift, "maps": preview["maps"], "refused": preview["refused"]}
+
+    def swap_apply(self, folder: str, old_audio: str, new_audio: str) -> dict:
+        """Move every time of every difficulty by the measured shift, each
+        file backed up first and logged. Refusals write nothing."""
+        found = self._swap_files(folder, old_audio, new_audio)
+        if isinstance(found, dict):
+            return found
+        old_path, new_path, maps = found
+        if not self._busy.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        try:
+            shift = ta.audio_shift(old_path, new_path)
+            done = ta.apply_audio_swap(maps, shift["shift_ms"], new_path.name,
+                                       decimals=self._settings()["offset_decimals"])
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            self._busy.release()
+        return {"ok": True, "old": old_path.name, "new": new_path.name,
+                "shift": shift, "maps": done["maps"]}
+
     # -- hitsound playback (Phase 6, P-3) ------------------------------------
     def song_maps(self) -> dict:
         """The difficulties beside the analysed song that play this audio,

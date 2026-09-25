@@ -22,7 +22,7 @@ const I18N = {
     hist_title: "Writes", hist_empty: "Nothing written yet.",
     hist_t_when: "When", hist_t_what: "What", hist_t_file: "File", hist_t_backup: "Backup",
     hist_diff: "Diff", hist_restore: "Restore", hist_count: "{n} writes",
-    hist_op_inject: "timing", hist_op_hitsounds: "hitsounds", hist_op_write: "write", hist_op_restore: "restore",
+    hist_op_inject: "timing", hist_op_hitsounds: "hitsounds", hist_op_write: "write", hist_op_restore: "restore", hist_op_swap: "audio swap",
     hist_added: "+{n} red lines", hist_removed: "−{n} red lines", hist_changed: "~{n} red lines moved",
     hist_no_change: "same red lines",
     hist_confirm: "Restore {file} from {backup}? The current file is kept as a new backup first.",
@@ -166,6 +166,14 @@ const I18N = {
     hs_t_unmatched: "Nothing under them", hs_t_conflicts: "Index conflicts",
     hs_conflict_note: "An index conflict is a sound whose sample index comes from a green line the target does not have, or a slider edge whose index differs from its head's: the copy leaves those indexes as they are.",
     hs_confirm: "Write the hitsounds of {source} into {n} difficulties? Only hitsound fields change; each file is backed up first.",
+    sw_title: "Audio swap", sw_preview: "Preview", sw_apply: "Move every time",
+    sw_sub: "Measures the shift between the mapped audio and a new encode, and moves every red line, object, preview, lead-in and bookmark by it. Tempo twins and strangers refuse; every file is backed up first.",
+    sw_old: "Mapped audio", sw_new: "New encode",
+    sw_shift: "{ms} ms from {old} to {nw}; peak {peak}",
+    sw_t_reds: "Red lines", sw_t_objects: "Objects",
+    sw_confirm: "Move every time of {n} difficulties by {ms} ms onto {file}? Each file is backed up first.",
+    sw_done: "{n} difficulties moved onto {file}.",
+    sw_same_file: "The new encode is the mapped audio already.",
     hs_done: "Hitsounds copied into {n} difficulties ({objects} objects). Backups kept beside each file.",
     hs_nothing: "Nothing to change: these difficulties already sound like {source}.",
     st_theme: "Theme", st_theme_system: "System", st_theme_dark: "Dark", st_theme_light: "Light",
@@ -368,7 +376,7 @@ const I18N = {
     hist_title: "Escrituras", hist_empty: "Nada escrito todavía.",
     hist_t_when: "Cuándo", hist_t_what: "Qué", hist_t_file: "Archivo", hist_t_backup: "Respaldo",
     hist_diff: "Diff", hist_restore: "Restaurar", hist_count: "{n} escrituras",
-    hist_op_inject: "timing", hist_op_hitsounds: "hitsounds", hist_op_write: "escritura", hist_op_restore: "restauración",
+    hist_op_inject: "timing", hist_op_hitsounds: "hitsounds", hist_op_write: "escritura", hist_op_restore: "restauración", hist_op_swap: "cambio de audio",
     hist_added: "+{n} líneas rojas", hist_removed: "−{n} líneas rojas", hist_changed: "~{n} líneas rojas movidas",
     hist_no_change: "mismas líneas rojas",
     hist_confirm: "¿Restaurar {file} desde {backup}? El archivo actual se guarda como respaldo nuevo antes.",
@@ -512,6 +520,14 @@ const I18N = {
     hs_t_unmatched: "Sin nada debajo", hs_t_conflicts: "Conflictos de índice",
     hs_conflict_note: "Un conflicto de índice es un sonido cuyo índice de sample viene de una línea verde que el destino no tiene, o un borde de slider con un índice distinto al de su cabeza: la copia deja esos índices como están.",
     hs_confirm: "¿Escribir los hitsounds de {source} en {n} dificultades? Solo cambian los campos de hitsound; cada archivo se respalda antes.",
+    sw_title: "Cambio de audio", sw_preview: "Vista previa", sw_apply: "Mover todos los tiempos",
+    sw_sub: "Mide el desplazamiento entre el audio mapeado y una nueva codificación, y mueve cada línea roja, objeto, preview, lead-in y bookmark por él. Gemelos de tempo y extraños se rechazan; cada archivo se respalda antes.",
+    sw_old: "Audio mapeado", sw_new: "Nueva codificación",
+    sw_shift: "{ms} ms de {old} a {nw}; pico {peak}",
+    sw_t_reds: "Líneas rojas", sw_t_objects: "Objetos",
+    sw_confirm: "¿Mover todos los tiempos de {n} dificultades por {ms} ms hacia {file}? Cada archivo se respalda antes.",
+    sw_done: "{n} dificultades movidas hacia {file}.",
+    sw_same_file: "La nueva codificación ya es el audio mapeado.",
     hs_done: "Hitsounds copiados en {n} dificultades ({objects} objetos). Los respaldos quedan junto a cada archivo.",
     hs_nothing: "Nada que cambiar: estas dificultades ya suenan como {source}.",
     st_theme: "Tema", st_theme_system: "Sistema", st_theme_dark: "Oscuro", st_theme_light: "Claro",
@@ -726,6 +742,7 @@ function translate() {
   renderNeedSong();
   renderMapset();
   if (typeof renderCopier === "function") renderCopier();
+  if (typeof renderSwapResult === "function" && S.mapset) renderSwap();
   if (S.result) renderResult(S.result);
   if (S.busy) $("analyzeText").textContent = t("analyzing");
 }
@@ -3009,6 +3026,7 @@ async function runMapset(folder, quiet) {
   S.mapset = { path: folder, name: reply.folder, report: reply.report };
   renderMapset();
   renderCopier();
+  renderSwap();
 }
 
 function msValue(value) {
@@ -3089,6 +3107,67 @@ async function hsApply() {
   HS.preview = null;
   await hsPreview();                       // what is left: nothing, but index conflicts
   runMapset(S.mapset.path, true);
+}
+
+// ------------------------------------------------------------------ audio swap
+// Phase 19: one mapset's times onto a new encode of its audio. A preview
+// first, which writes nothing and refuses twins and strangers; the apply
+// moves every time with backups, and the mapset check re-reads the result.
+const SW = { audios: [], current: "", preview: null };
+
+async function renderSwap() {
+  const card = $("swCard");
+  if (!S.mapset) { card.hidden = true; return; }
+  const reply = await api().swap_audios(S.mapset.path);
+  if (!reply.ok) { card.hidden = true; return; }
+  SW.audios = reply.audios;
+  SW.current = reply.current;
+  SW.preview = null;
+  const others = reply.audios.filter((a) => a !== reply.current);
+  card.hidden = others.length < 1;
+  if (card.hidden) return;
+  $("swOld").textContent = reply.current || "—";
+  const box = $("swNew"), keep = box.value;
+  box.innerHTML = others.map((a) => `<option value="${esc(a)}">${esc(a)}</option>`).join("");
+  if (others.includes(keep)) box.value = keep;
+  renderSwapResult();
+}
+
+function renderSwapResult() {
+  const box = $("swResult"), p = SW.preview;
+  $("swApply").disabled = !p || p.refused || !p.maps.some((r) => r.ok);
+  if (!p) { box.innerHTML = ""; return; }
+  const shift = p.shift;
+  box.innerHTML = `<div class="card-sub">${t("sw_shift", { ms: shift.shift_ms.toFixed(2), old: p.old, nw: p.new, peak: shift.peak.toFixed(3) })}</div>
+    <div class="table-scroll mt-s"><table class="ms-table">
+      <thead><tr><th class="txt">${t("ms_t_diff")}</th><th>${t("sw_t_reds")}</th><th>${t("sw_t_objects")}</th></tr></thead>
+      <tbody>${p.maps.map((r) => `<tr><td class="txt">${esc(r.file)}</td>
+        <td class="num">${r.ok ? r.reds : `<span class="neg">${esc(r.error)}</span>`}</td>
+        <td class="num">${r.ok ? r.objects : ""}</td></tr>`).join("")}</tbody>
+    </table></div>`;
+}
+
+async function swPreview() {
+  if (!api() || !S.mapset) return;
+  const reply = await api().swap_preview(S.mapset.path, SW.current, $("swNew").value);
+  if (!reply.ok) { editFailure(reply); return; }
+  SW.preview = { ...reply, choice: SW.current + "\n" + $("swNew").value };
+  renderSwapResult();
+}
+
+async function swApply() {
+  if (!api() || !S.mapset || !SW.preview) return;
+  const choice = SW.current + "\n" + $("swNew").value;
+  if (choice !== SW.preview.choice) { await swPreview(); return; }
+  const n = SW.preview.maps.filter((r) => r.ok).length;
+  if (!n) return;
+  if (!confirm(t("sw_confirm", { n, ms: SW.preview.shift.shift_ms.toFixed(1), file: $("swNew").value }))) return;
+  const reply = await api().swap_apply(S.mapset.path, SW.current, $("swNew").value);
+  if (!reply.ok) { editFailure(reply); return; }
+  toast(t("sw_done", { n: reply.maps.length }));
+  SW.preview = null;
+  runMapset(S.mapset.path, true);
+  renderSwap();
 }
 
 function msKiai(spans) {
@@ -3807,6 +3886,9 @@ function wire() {
   $("hsSource").onchange = () => { HS.preview = null; $("hsTargets").innerHTML = ""; renderCopier(); };
   $("hsTargets").onchange = () => { HS.preview = null; renderCopyResult(); };
   $("hsVolumes").onchange = () => { HS.preview = null; renderCopyResult(); };
+  $("swPreview").onclick = swPreview;
+  $("swApply").onclick = swApply;
+  $("swNew").onchange = () => { SW.preview = null; renderSwapResult(); };
   $("undoBtn").onclick = undo;
   $("redoBtn").onclick = redo;
   $("injectBtn").onclick = injectOsu;

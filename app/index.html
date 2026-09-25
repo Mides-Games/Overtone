@@ -413,6 +413,24 @@
           </div>
         </div>
 
+        <!-- move one mapset's times onto a new encode of its audio -->
+        <div class="card cmp-card" id="swCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="sw_title">Audio swap</div>
+            <div class="spacer"></div>
+            <button class="btn small" id="swPreview"><span data-i18n="sw_preview">Preview</span></button>
+            <button class="btn small primary" id="swApply" disabled><span data-i18n="sw_apply">Move every time</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="sw_sub">Measures the shift between the mapped audio and a new encode, and moves every red line, object, preview, lead-in and bookmark by it. Tempo twins and strangers refuse; every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="sw_old">Mapped audio</span><span class="card-sub" id="swOld"></span></label>
+              <label class="field"><span class="setting-name" data-i18n="sw_new">New encode</span><select class="input" id="swNew"></select></label>
+            </div>
+            <div id="swResult"></div>
+          </div>
+        </div>
+
         <div class="card cmp-card" id="msRedCard" hidden>
           <div class="card-head">
             <div class="card-title" data-i18n="ms_red_title">Red lines</div>

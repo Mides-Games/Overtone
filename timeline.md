@@ -16,6 +16,31 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Audio swap: one shift for the mapset, in Mapset
+
+### Changed
+
+- **Audio swap card in the Mapset view**: the folder's encodes beside the mapped
+  one, a preview with the measured shift (peak and tempo beside it) and per-map
+  red/object counts, then a confirmed apply moving every time with backups —
+  logged as swaps, so History diffs read past the move. Same-folder encodes
+  only; storyboards stay where they were, stated.
+- Bridge `swap_audios`, `swap_preview`, `swap_apply` behind it (EN/ES); heavy
+  decode under the one-job lock; offset decimals follow the user's setting like
+  inject, so stable maps stay whole-millisecond.
+
+### Measured
+
+```
+Python unittest              430 -> 432, all pass
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                           unit-tested bridge only; ids, both languages, no
+                             duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Audio swap, engine half: one shift for a mapset
 
 ### Changed

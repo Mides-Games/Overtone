@@ -16,6 +16,40 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Hitsounds H3 map half: the pattern breaks
+
+### Changed
+
+- **`hitsound_consistency(beatmap)`**, the map-only half of the consistency check: on
+  4/4 maps with 10+ claps, every beat 2 and 4 carrying a sound is set against the same
+  beat of the 8 bars around it — no clap where 15 of the 16 neighbours clap is missing,
+  a clap where 1 or none do is extra. All 16 neighbours must exist, so sparse maps and
+  song edges stay silent. In the mod report as source "hitsounds", with the Report view
+  filtering it like the other groups (EN/ES). Advice with the numbers, never an edit.
+
+### Measured
+
+1,000 local maps, 0 errors:
+
+```
+maps with findings           378; median 0 flags, p90 3, max 12: a modder reads that
+threshold probe, 932 maps    15/16: p90 2+1, max 12+9; 14/16: p90 4+1, max 22+17;
+                             13/16: max 30+21 — the plan's own 15/16 is the readable one
+Python unittest              393 -> 397, all pass
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+```
+
+### Rejected / tried and dropped
+
+- **A finish on an off-beat 16th, as an absolute-position rule.** Finishes off the
+  downbeat are the norm, not the break: P-6 measures finish recall on the downbeat at
+  0.54, so the rule would flag hundreds per map. Pattern-relative finish rules (an
+  extra where neighbours hold none) stay future work, stated, not built on a hunch.
+- **Weak-slot clap rules.** Same reason: no corpus number behind any bar, so no rule.
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Hitsounds P-4: evidence through the CLI
 
 ### Changed

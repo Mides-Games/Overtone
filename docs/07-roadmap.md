@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **393** Python (273 engine + 120 web shell) · **236** Rust.
+Tests: **397** Python (277 engine + 120 web shell) · **236** Rust.
 
 ### What is pending, in order
 
@@ -344,7 +344,7 @@ the copier, the section, the check, the decision engine, the editor.
 | Sample bank | import skin/folder, audition samples | med | high | P4 playback | no | no | P1 | todo |
 | Sample recommendation | map samples to roles by their spectrum | med | med | bank | no | no | P2 | todo |
 | Hitsound export | only hitsound fields change | med | **high** | P5 writer | no | no | **P1** | todo |
-| Consistency check | flag objects whose sound disagrees with their role | low | high | decision | no | no | P2 | todo |
+| Consistency check | flag objects whose sound disagrees with their role | low | high | decision | no | no | P2 | partial — the map half (`hitsound_consistency`: missing/extra clap on beats 2 and 4, in the mod report); the audio half needs P-4 evidence matched through P-5 |
 
 The F1 numbers are measured on synthetic arrangements the fit never saw, from the same
 corpus generator; they say the classes separate, not how they do on real songs.

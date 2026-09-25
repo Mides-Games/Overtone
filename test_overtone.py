@@ -4245,6 +4245,74 @@ class HitsoundEvalTests(unittest.TestCase):
         self.assertIsNone(tallies["finish"]["f1"])
 
 
+class HitsoundConsistencyTests(unittest.TestCase):
+    """Phase 6, H3 map half: sounds breaking the map's own clap pattern."""
+
+    @staticmethod
+    def _bars(n, clap_beat2=None, clap_beat4=True):
+        # 120 BPM from 1000 ms: bar b (1-based) beats 2/4 at fixed times.
+        lines = []
+        for b in range(1, n + 1):
+            beat2 = 1500 + (b - 1) * 2000
+            beat4 = 2500 + (b - 1) * 2000
+            if clap_beat2 is None or b in clap_beat2:
+                lines.append(f"256,192,{beat2},1,8,0:0:0:0:")
+            else:
+                lines.append(f"256,192,{beat2},1,0,0:0:0:0:")
+            lines.append(f"256,192,{beat4},1,{'8' if clap_beat4 else '0'},0:0:0:0:")
+        return _copy_map(lines, timing="1000,500,4,2,0,70,1,0")
+
+    def _report(self, text):
+        from overtone import read_osu_beatmap
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            return read_osu_beatmap(path)
+
+    def test_a_bare_beat_two_in_sixteen_clapped_bars_is_missing(self):
+        from overtone import hitsound_consistency
+        beatmap = self._report(self._bars(20, clap_beat2=set(range(1, 21)) - {12}))
+        findings = hitsound_consistency(beatmap)["findings"]
+        missing = [f for f in findings if f["key"] == "hitsound_missing_clap"]
+        self.assertEqual(len(missing), 1)
+        self.assertEqual((missing[0]["values"]["bar"], missing[0]["values"]["beat"],
+                          missing[0]["values"]["have"], missing[0]["values"]["of"]),
+                         (12, "2", 16, 16))
+
+    def test_a_lone_clap_among_bare_beats_flags_when_the_map_claps(self):
+        from overtone import hitsound_consistency
+        # Beat 4 clapped everywhere (the map's pattern), beat 2 bare but for bar 12.
+        lines = []
+        for b in range(1, 21):
+            lines.append(f"256,192,{1500 + (b - 1) * 2000},1,"
+                         f"{'8' if b == 12 else '0'},0:0:0:0:")
+            lines.append(f"256,192,{2500 + (b - 1) * 2000},1,8,0:0:0:0:")
+        beatmap = self._report(_copy_map(lines, timing="1000,500,4,2,0,70,1,0"))
+        findings = hitsound_consistency(beatmap)["findings"]
+        extra = [f for f in findings if f["key"] == "hitsound_extra_clap"]
+        self.assertEqual(len(extra), 1)
+        self.assertEqual((extra[0]["values"]["bar"], extra[0]["values"]["beat"],
+                          extra[0]["values"]["have"]),
+                         (12, "2", 0))
+
+    def test_a_map_that_barely_claps_has_no_pattern_to_break(self):
+        from overtone import hitsound_consistency
+        beatmap = self._report(self._bars(20, clap_beat2={1}, clap_beat4=False))
+        self.assertEqual(hitsound_consistency(beatmap)["findings"], [])
+
+    def test_mod_report_lists_the_pattern_break_as_a_mod_line(self):
+        import numpy as np
+        from overtone import mod_report
+        beatmap = self._report(self._bars(20, clap_beat2=set(range(1, 21)) - {12}))
+        report = mod_report(beatmap, np.zeros(0), np.zeros(0), 61.0)
+        items = [i for i in report["items"] if i["source"] == "hitsound"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["text"],
+                         "no clap on beat 2 of bar 12, with 16 of the 16 bars around it clapped")
+        self.assertEqual(report["counts"]["hitsound"], 1)
+        json.dumps(report)
+
+
 class StructureViewTests(unittest.TestCase):
     """Phase 19, Structure: phrases on the song's proven bars, labels with why."""
 

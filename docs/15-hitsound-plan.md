@@ -105,12 +105,14 @@ beat position ("claps: 96 % on beats 2 and 4") that already tells a modder a lot
 **Measure:** what it shows equals what osu! plays, on hand-made maps covering each rule of
 P-1 (inheritance, per-edge sets, custom indices on greens).
 
-### H3 · Consistency check (needs P-1, P-5; audio half P-4; thresholds P-6)
+### H3 · Consistency check (needs P-1, P-5; audio half P-4; thresholds P-6) — map half done 2026-09-25
 
 Items in the mod report: objects whose sound breaks the map's own pattern, say bar 12 beat
 2 with no clap when 15 of the 16 bars around it have one, or a finish on an off-beat
-16th. The first half reads only the map and the grid. The second adds the audio: a clap
-over an attack that sounds nothing like a snare or clap, a whistle on silence.
+16th. The first half reads only the map and the grid (`hitsound_consistency`, in the
+mod report as source "hitsound"). The second adds the audio: a clap
+over an attack that sounds nothing like a snare or clap, a whistle on silence — still
+to build, on P-4's evidence matched through P-5.
 
 Advice, never an edit, with the evidence written out. Useful for every map that already
 has hitsounds, which is 94 % of them.

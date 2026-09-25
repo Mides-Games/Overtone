@@ -5551,6 +5551,67 @@ def hitsound_report(beatmap: dict) -> dict:
             "additions": additions, "sets": sets, "red_lines": len(rows)}
 
 
+# -- H3: the map's own hitsound pattern, and what breaks it -------------------
+
+#: Strong beats in 4/4, as sixteenth slots, with the beat a modder names.
+CLAP_BEATS = {4: "2", 12: "4"}
+#: Bars read on each side of a position; the plan's "15 of the 16 bars
+#: around it", which the corpus measures as the readable bar (p90 2 + 1
+#: flags a map; 14/16 already reaches 22).
+PATTERN_BARS = 8
+#: Neighbours that must carry a clap to call the middle one missing, and at
+#: most to call it extra. Measured, not tasted: see the probe in timeline P-6.
+PATTERN_NEED = 15
+#: A map that barely claps has no pattern to break.
+MIN_PATTERN_CLAPS = 10
+
+
+def hitsound_consistency(beatmap: dict) -> dict:
+    """Objects whose sound breaks the map's own clap pattern (H3, map half).
+
+    Read only, map and grid only, no audio. On 4/4 maps with claps to speak
+    of, every beat 2 and 4 that carries a sound is set against the same beat
+    of the eight bars around it: no clap where 15 of the 16 neighbours clap
+    is missing, a clap where 1 or none do is extra. All 16 neighbours must
+    exist (carry a sound), so sparse maps and song edges stay silent instead
+    of guessing. Weak slots are not judged: a clap off beats 2 and 4 is the
+    norm somewhere, and an absolute-position rule would flag hundreds (P-6).
+    Advice with the numbers behind it, never an edit. Plain JSON types.
+    """
+    report = hitsound_report(beatmap)
+    findings: list[dict] = []
+    if report["meter"] != 4 or report["additions"]["clap"]["total"] < MIN_PATTERN_CLAPS:
+        return {"findings": findings}
+    at: dict[tuple[int, int], list] = {}
+    for sound in report["sounds"]:
+        if sound["part"] == "body" or sound["meter"] != 4 or sound["slot"] is None:
+            continue
+        key = (sound["bar"], sound["slot"])
+        cell = at.setdefault(key, [0, None])
+        cell[0] += "clap" in sound["sounds"]
+        if cell[1] is None:
+            cell[1] = sound["t"] * 1000.0
+    for (bar, slot), (claps, first_ms) in sorted(at.items()):
+        if slot not in CLAP_BEATS:
+            continue
+        neighbours = [(bar + k, slot) for k in range(-PATTERN_BARS, PATTERN_BARS + 1) if k]
+        if any(nb not in at for nb in neighbours):
+            continue
+        with_clap = sum(1 for nb in neighbours if at[nb][0] > 0)
+        beat = CLAP_BEATS[slot]
+        if claps == 0 and with_clap >= PATTERN_NEED:
+            findings.append({"level": "info", "key": "hitsound_missing_clap",
+                             "time_ms": first_ms,
+                             "values": {"bar": bar, "beat": beat,
+                                        "have": with_clap, "of": 2 * PATTERN_BARS}})
+        elif claps > 0 and with_clap <= 2 * PATTERN_BARS - PATTERN_NEED:
+            findings.append({"level": "info", "key": "hitsound_extra_clap",
+                             "time_ms": first_ms,
+                             "values": {"bar": bar, "beat": beat,
+                                        "have": with_clap, "of": 2 * PATTERN_BARS}})
+    return {"findings": findings}
+
+
 # ---------------------------------------------------------------------------
 # Structure view (Phase 19): the Rust engine's phrases, on this song's bars
 # ---------------------------------------------------------------------------
@@ -6005,7 +6066,7 @@ def apply_assisted_grid(points: list[TimingPoint], fit: dict,
 #: milliseconds, then the combo numbers of the objects it names, if any.
 MOD_STAMP = re.compile(r"^\d{2,}:\d{2}:\d{3}( \(\d+(,\d+)*\))?$")
 #: The order sources are listed in when two findings share a moment.
-MOD_SOURCES = ("reference", "suggestion", "snap", "alignment")
+MOD_SOURCES = ("reference", "suggestion", "snap", "alignment", "hitsound")
 
 
 def mod_timestamp(time_ms: float, combo: list[int] | None = None) -> str:
@@ -6066,6 +6127,12 @@ def _mod_text(item: dict) -> str:
     if key == "off_attack":
         # What is measured: quiet passages may hold sounds too soft to detect.
         return f"{v['ms']} ms from the nearest attack Overtone detects"
+    if key == "hitsound_missing_clap":
+        return (f"no clap on beat {v['beat']} of bar {v['bar']}, with {v['have']} of "
+                f"the {v['of']} bars around it clapped")
+    if key == "hitsound_extra_clap":
+        return (f"a clap on beat {v['beat']} of bar {v['bar']}, with only {v['have']} "
+                f"of the {v['of']} bars around it clapped")
     return f"{key} {v}"
 
 
@@ -6137,6 +6204,10 @@ def mod_report(beatmap: dict, attack_times: np.ndarray, attack_weights: np.ndarr
                                    beatmap)
         for obj in aligned["offenders"]:
             add("alignment", "info", "off_attack", obj["time"], {"ms": f"{obj['ms']:.1f}"}, True)
+
+    for finding in hitsound_consistency(beatmap)["findings"]:
+        add("hitsound", finding["level"], finding["key"], finding["time_ms"],
+            finding["values"], True)
 
     items.sort(key=lambda item: (item["time_ms"] is not None, item["time_ms"] or 0.0,
                                  MOD_SOURCES.index(item["source"])))

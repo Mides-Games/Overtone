@@ -286,6 +286,9 @@ class Api:
         #: the CLI once, and accept/reject iterates the cache. A moved map
         #: refuses at apply time through the proposal's own staleness guard.
         self._decisions: dict[str, dict] = {}
+        #: The last ramp fit, keyed by (analysis, drift, max lines): computing
+        #: shells to the CLI, and Use reads the cache.
+        self._ramps: tuple | None = None
         #: The bytes one hitsound apply replaced, for the one-level undo.
         self._decide_undo: dict | None = None
         if initial_file:
@@ -1323,6 +1326,67 @@ class Api:
         if self._evidence is None or self._evidence[0] is not self._analysis:
             self._evidence = (self._analysis, ta.analysis_evidence(self._analysis))
         return {"ok": True, "evidence": self._evidence[1]}
+
+    # -- ramps: the elastic curve as red lines --------------------------------
+    def ramps(self, drift_ms: float = 5.0, max_lines=None) -> dict:
+        """Fit the fewest red lines within the drift and show the trade-off.
+        Shells to the CLI under the one-heavy-job lock; cached for Use.
+        Read only until Use writes."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            drift = float(drift_ms)
+        except (TypeError, ValueError):
+            return {"ok": False, "key": "bad_values"}
+        if not drift > 0:
+            return {"ok": False, "key": "bad_values"}
+        cap = None
+        if max_lines not in (None, ""):
+            try:
+                cap = int(max_lines)
+            except (TypeError, ValueError):
+                return {"ok": False, "key": "bad_values"}
+            if cap < 1:
+                return {"ok": False, "key": "bad_values"}
+        key = (drift, cap)
+        cached = self._ramps
+        if cached is None or cached[0] is not self._analysis or cached[1] != key:
+            if not self._busy.acquire(blocking=False):
+                return {"ok": False, "key": "busy"}
+            try:
+                report = overtone_rust.ramps(str(self._analysis.source), drift, cap,
+                                             self._settings()["offset_decimals"])
+            except overtone_rust.SidecarUnavailable:
+                return {"ok": False, "key": "no_rust"}
+            except overtone_rust.SidecarRefused as exc:
+                return {"ok": False, "key": "no_grid", "detail": str(exc)}
+            except (RuntimeError, ValueError, OSError) as exc:
+                return {"ok": False, "key": "error", "detail": str(exc)}
+            finally:
+                self._busy.release()
+            self._ramps = (self._analysis, key, report)
+        return {"ok": True, "report": self._ramps[2]}
+
+    def ramps_use(self) -> dict:
+        """Make the fitted red lines the working timing, as hand-placed
+        points. One undo step; locked points stay, as they do through
+        re-analysis."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if self._ramps is None or self._ramps[0] is not self._analysis:
+            return {"ok": False, "key": "no_ramps"}
+        beats = np.asarray(self._analysis.beats, dtype=np.float64)
+        points = [ta.TimingPoint(float(line["offset_ms"]), float(line["bpm"]), 1.0,
+                                 ta._nearest_beat_index(beats, float(line["offset_ms"])),
+                                 4, False, manual=True)
+                  for line in self._ramps[2]["lines"]]
+        if not points:
+            return {"ok": False, "key": "no_ramps"}
+        self._push_history()
+        self._analysis.points = self._merge_locks(points, self._analysis.beats)
+        reply = self._edited(0, None)
+        reply["loaded"] = len(points)
+        return reply
 
     # -- assisted timing: two marked downbeats seed the grid ---------------
     def assisted_fit(self, first_ms: float, second_ms: float, bars: int, meter: int) -> dict:

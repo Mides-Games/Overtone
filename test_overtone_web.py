@@ -1403,6 +1403,49 @@ class HistoryBridgeTests(_IsolatedConfig):
             self.assertEqual(api.history_restore(0)["key"], "no_backup")
 
 
+class RampsBridgeTests(_IsolatedConfig):
+    """Ramps in Timing: fit through the sidecar, Use loads hand-placed points."""
+
+    REPORT = {"lines": [{"offset_s": 0.5, "offset_ms": 500.0, "bpm": 150.0,
+                         "start_k": 0.0, "end_k": 10.0, "max_drift_ms": 1.0, "attacks": 11},
+                        {"offset_s": 5.0, "offset_ms": 5000.0, "bpm": 160.0,
+                         "start_k": 10.0, "end_k": 20.0, "max_drift_ms": 2.0, "attacks": 11}],
+              "drift_ms": 5.0,
+              "tradeoff": [{"drift_ms": 1.0, "lines": 4}, {"drift_ms": 5.0, "lines": 2}],
+              "recommend_ramps": True}
+
+    def test_fit_caches_and_use_loads_hand_placed_points(self) -> None:
+        with mock.patch.object(web.overtone_rust, "ramps", return_value=self.REPORT) as run:
+            api = _api_with_points()
+            first = api.ramps(5.0, None)
+            second = api.ramps(5.0, None)
+            self.assertEqual(run.call_count, 1)
+            used = api.ramps_use()
+        json.dumps([first, second, used])
+        self.assertTrue(first["ok"])
+        self.assertEqual(len(first["report"]["lines"]), 2)
+        self.assertEqual(first["report"], second["report"])
+        self.assertEqual([p.bpm for p in api._analysis.points], [150.0, 160.0])
+        self.assertTrue(all(p.manual for p in api._analysis.points))
+        self.assertEqual(used["loaded"], 2)
+        self.assertTrue(api.history_state()["undo"])
+
+    def test_bad_numbers_missing_fit_and_sidecar_refuse(self) -> None:
+        api = _api_with_points()
+        self.assertEqual(api.ramps(0)["key"], "bad_values")
+        self.assertEqual(api.ramps("x")["key"], "bad_values")
+        self.assertEqual(api.ramps(5.0, 0)["key"], "bad_values")
+        self.assertEqual(api.ramps_use()["key"], "no_ramps")
+        with mock.patch.object(web.overtone_rust, "ramps",
+                               side_effect=web.overtone_rust.SidecarUnavailable("gone")):
+            self.assertEqual(api.ramps()["key"], "no_rust")
+        with mock.patch.object(web.overtone_rust, "ramps",
+                               side_effect=web.overtone_rust.SidecarRefused("thin", [])):
+            self.assertEqual(api.ramps()["key"], "no_grid")
+        self.assertEqual(web.Api().ramps()["key"], "first")
+        self.assertEqual(web.Api().ramps_use()["key"], "first")
+
+
 class FolderImportTests(_IsolatedConfig):
     def _song(self, tmp: str) -> Path:
         root = Path(tmp) / "123 Artist - Title"

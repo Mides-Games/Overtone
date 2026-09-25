@@ -1566,6 +1566,8 @@ class RustSidecarTests(unittest.TestCase):
                 rs.analyze("song.wav")
             with self.assertRaises(rs.SidecarUnavailable):
                 rs.hitsound("song.wav", "map.osu")
+            with self.assertRaises(rs.SidecarUnavailable):
+                rs.ramps("song.wav")
 
     def test_the_rust_engine_reads_what_v3_reads(self):
         import overtone as ta

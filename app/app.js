@@ -287,6 +287,16 @@ const I18N = {
     ev_use: "Use", ev_used: "Red line {n} now runs {bpm} BPM.",
     ev_note: "The fallback engine keeps no attacks, so there are no alternatives to show.",
     ev_t_bpm: "BPM", ev_t_coh: "Coherence",
+    ramp_title: "Ramps",
+    ramp_sub: "The elastic curve as the fewest red lines within the drift. Using them replaces the timing with hand-placed lines; undo brings it back.",
+    ramp_drift: "Drift (ms)", ramp_max: "At most N lines", ramp_fit: "Fit", ramp_use: "Use these lines",
+    ramp_lines: "{n} red lines within {ms} ms",
+    ramp_tradeoff: "Fewer lines cost drift: {rows}.",
+    ramp_trade_row: "{drift} ms → {n} lines",
+    ramp_recommend: "The curve bends here: ramps fit better than one grid per section.",
+    ramp_piecewise: "The sections already read fine: ramps add nothing.",
+    ramp_used: "{n} hand-placed red lines.",
+    ramp_no_ramps: "Fit first: there are no lines to use yet.",
     as_title: "Assisted timing",
     as_sub: "Where detection is wrong, mark two downbeats: the grid is fitted from there, or refused with the reason.",
     as_first: "First downbeat (ms)", as_second: "A later downbeat (ms)", as_bars: "Bars between", as_meter: "Beats per bar",
@@ -641,6 +651,16 @@ const I18N = {
     ev_use: "Usar", ev_used: "La línea roja {n} ahora va a {bpm} BPM.",
     ev_note: "El motor alternativo no guarda ataques, así que no hay alternativas que mostrar.",
     ev_t_bpm: "BPM", ev_t_coh: "Coherencia",
+    ramp_title: "Rampas",
+    ramp_sub: "La curva elástica como las menos líneas rojas dentro del drift. Usarlas reemplaza el timing con líneas puestas a mano; deshacer lo recupera.",
+    ramp_drift: "Drift (ms)", ramp_max: "Como mucho N líneas", ramp_fit: "Ajustar", ramp_use: "Usar estas líneas",
+    ramp_lines: "{n} líneas rojas dentro de {ms} ms",
+    ramp_tradeoff: "Menos líneas cuestan drift: {rows}.",
+    ramp_trade_row: "{drift} ms → {n} líneas",
+    ramp_recommend: "La curva se dobla acá: las rampas ajustan mejor que una grilla por sección.",
+    ramp_piecewise: "Las secciones ya leen bien: las rampas no agregan nada.",
+    ramp_used: "{n} líneas rojas puestas a mano.",
+    ramp_no_ramps: "Ajustá primero: todavía no hay líneas para usar.",
     as_title: "Timing asistido",
     as_sub: "Donde la detección se equivoca, marcá dos tiempos fuertes: el grid se ajusta desde ahí, o se rechaza con el motivo.",
     as_first: "Primer tiempo fuerte (ms)", as_second: "Un tiempo fuerte posterior (ms)", as_bars: "Compases entre ambos", as_meter: "Tiempos por compás",
@@ -1023,7 +1043,7 @@ function showResult(result) {
   S.snap = null;
   // A grade depends on the map and the song's attacks, not on the point list:
   // it stays through edits and goes with the song.
-  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; pbReset(); hsMaps(); WARN.open.clear(); WARN.all = false; }
+  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; RA.report = null; pbReset(); hsMaps(); WARN.open.clear(); WARN.all = false; }
   if (!sameSong) { STX.view = null; STX.file = ""; STX.error = null; }
   if (!sameSong) S.comparePath = null;  // a map belongs to one song
   setView(S.view);  // lifts the "analyze first" panel off the current view
@@ -1109,6 +1129,7 @@ function renderResult(r) {
   renderSnap();
   renderRef();
   renderAssist();
+  renderRamps();
   renderReport();
   renderTaps();
   if (S.view === "timing") waveLoad();
@@ -2327,6 +2348,55 @@ function renderEvidence() {
       evUse(EV.data.sections[+n], parseFloat(bpm));
     };
   });
+}
+
+// ------------------------------------------------------------------ ramps
+// Phase 19: the elastic curve as red lines. Fit reads the sidecar and caches
+// it there; Use loads the lines as hand-placed points through the editor's
+// own path, so undo and locks behave as usual.
+const RA = { report: null };
+
+async function rampFit() {
+  if (!api() || !S.result || S.busy) return;
+  const drift = parseFloat($("rampDrift").value);
+  const maxRaw = $("rampMax").value;
+  const reply = await api().ramps(drift, maxRaw === "" ? null : maxRaw);
+  if (!reply.ok) { editFailure(reply); return; }
+  RA.report = reply.report;
+  renderRamps();
+}
+
+async function rampUse() {
+  if (!api() || !S.result || S.busy || !RA.report) return;
+  const reply = await api().ramps_use();
+  if (!reply.ok) {
+    if (reply.key === "no_ramps") toast(t("ramp_no_ramps"), true);
+    else editFailure(reply);
+    return;
+  }
+  showEditResult(reply, t("ramp_used", { n: reply.loaded }));
+}
+
+function renderRamps() {
+  const box = $("rampResult"), report = RA.report;
+  $("rampCard").hidden = !S.result;
+  $("rampUse").disabled = !report || !report.lines.length;
+  if (!report) { box.innerHTML = ""; return; }
+  const rows = report.tradeoff.map((row) =>
+    t("ramp_trade_row", { drift: row.drift_ms, n: row.lines })).join(" · ");
+  box.innerHTML = `
+    <div class="card-sub">${t("ramp_lines", { n: report.lines.length, ms: report.drift_ms })}
+      ${report.recommend_ramps ? t("ramp_recommend") : t("ramp_piecewise")}</div>
+    <div class="card-sub mt-s">${t("ramp_tradeoff", { rows })}</div>
+    <div class="table-scroll mt-s"><table>
+      <thead><tr><th>${t("ev_t_bpm")}</th><th></th><th></th></tr></thead>
+      <tbody>${report.lines.map((line) => `
+        <tr>
+          <td class="num">${line.bpm.toFixed(2)}</td>
+          <td class="num">${(line.offset_ms / 1000).toFixed(3)} s</td>
+          <td class="num">${line.attacks}</td>
+        </tr>`).join("")}</tbody>
+    </table></div>`;
 }
 
 // ------------------------------------------------------------------ playback
@@ -3843,6 +3913,8 @@ function wire() {
   $("refPick").onclick = refPick;
   $("refFind").onclick = refFind;
   $("asFit").onclick = assistFit;
+  $("rampFit").onclick = rampFit;
+  $("rampUse").onclick = rampUse;
   $("rpPick").onclick = reportPick;
   $("rpCopy").onclick = copyReport;
   $("pbPlay").onclick = pbToggle;

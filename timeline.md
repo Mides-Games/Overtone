@@ -16,6 +16,28 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Ramps in Timing: fit, price, use
+
+### Changed
+
+- **Ramps card in Timing**: drift and at-most-N inputs, Fit through the sidecar
+  (cached per analysis and settings), the lines with offset, BPM and attacks,
+  the count-against-drift trade-off with the recommendation beside it, and Use,
+  which loads the lines as hand-placed points through the editor's own path —
+  one undo, locks kept. EN/ES.
+
+### Measured
+
+```
+Python unittest              432 -> 434, all pass
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                           unit-tested bridge only; ids, both languages, no
+                             duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Ramps, engine half: the curve as red lines
 
 ### Changed

@@ -208,3 +208,40 @@ def hitsound(audio: str | os.PathLike[str], osu: str | os.PathLike[str], *,
         detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
         raise RuntimeError(f"The Rust engine failed (exit {done.returncode}): {detail}")
     return report
+
+
+def ramps(audio: str | os.PathLike[str], drift_ms: float = 5.0,
+          max_lines: int | None = None, decimals: int = 0,
+          *, cli: Path | None = None, timeout: float = TIMEOUT_S) -> dict:
+    """``overtone-cli ramps``: the elastic curve as the fewest red lines.
+
+    Raises :class:`SidecarUnavailable` without a binary, ``RuntimeError``
+    with the loader's message when the file cannot be read, and
+    :class:`SidecarRefused` when too few attacks fit anything.
+    """
+    binary = cli or find_cli()
+    if binary is None:
+        raise SidecarUnavailable("The Rust engine (overtone-cli) is not built.")
+    args = [str(binary), "ramps", os.fspath(audio), "--drift", repr(float(drift_ms)),
+            "--decimals", str(int(decimals))]
+    if max_lines is not None:
+        args += ["--max-lines", str(int(max_lines))]
+    try:
+        done = subprocess.run(args, capture_output=True, timeout=timeout,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"The Rust engine took over {timeout:.0f} s and was stopped.") from exc
+    except OSError as exc:
+        raise SidecarUnavailable(f"The Rust engine could not start: {exc}") from exc
+    try:
+        report = json.loads(done.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        report = None
+    if done.returncode == 3 and report is not None:
+        raise SidecarRefused("Too few attacks to fit a curve on.", [])
+    if done.returncode == 1 and report is not None and "error" in report:
+        raise RuntimeError(f"Cannot load {Path(os.fspath(audio)).name}: {report['error']}")
+    if done.returncode != 0 or report is None or "lines" not in report:
+        detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
+        raise RuntimeError(f"The Rust engine failed (exit {done.returncode}): {detail}")
+    return report

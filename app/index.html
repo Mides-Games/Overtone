@@ -278,6 +278,30 @@
           <div class="card-body" id="evBody"></div>
         </div>
 
+        <div class="card cmp-card" id="rampCard" hidden>
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="ramp_title">Ramps</div>
+              <div class="card-sub" data-i18n="ramp_sub">The elastic curve as the fewest red lines within the drift. Using them replaces the timing with hand-placed lines; undo brings it back.</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="assist-form">
+              <div class="field">
+                <label for="rampDrift" data-i18n="ramp_drift">Drift (ms)</label>
+                <input class="input num" id="rampDrift" type="number" step="1" min="1" value="5">
+              </div>
+              <div class="field">
+                <label for="rampMax" data-i18n="ramp_max">At most N lines</label>
+                <input class="input num" id="rampMax" type="number" step="1" min="1">
+              </div>
+              <button class="btn small primary" id="rampFit"><span data-i18n="ramp_fit">Fit</span></button>
+              <button class="btn small" id="rampUse" disabled><span data-i18n="ramp_use">Use these lines</span></button>
+            </div>
+            <div id="rampResult"></div>
+          </div>
+        </div>
+
         <div class="card cmp-card">
           <div class="card-head">
             <div>

@@ -104,6 +104,15 @@ const I18N = {
     inject_warn: "\nThe .osu audio ({osu}) differs from the analyzed file ({src}).",
     drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
     recent: "Recent",
+    g_v_short_section: "{count} sections last less than a bar. Check them by ear.",
+    g_v_octave_check: "{count} sections change tempo by an octave: half-time feel or octave mistakes? Your call.",
+    g_v_dup_points: "{count} red lines are duplicates, a few ms from another.",
+    g_v_impossible_change: "{count} tempo jumps are detection errors, not music.",
+    g_v_negative_offset: "{count} points sit before the audio starts.",
+    g_v_past_end: "{count} points sit past the end of the audio.",
+    g_v_bad_number: "{count} points have no usable number: re-analyze or delete them.",
+    warn_show: "Show them", warn_hide: "Hide", warn_beats: "{beats} beats",
+    warn_more: "{n} more notes", warn_fewer: "Show fewer notes",
     hs_title: "Copy hitsounds", hs_preview: "Preview", hs_apply: "Copy hitsounds",
     hs_sub: "Each sound of the chosen difficulties takes the source's sound at the same moment (within 5 ms): additions, sample sets and index. Sounds with nothing under them are left as they are. Only hitsound fields change, and every file is backed up first.",
     hs_source: "From", hs_targets: "Onto",
@@ -387,6 +396,15 @@ const I18N = {
     inject_warn: "\nEl audio del .osu ({osu}) difiere del analizado ({src}).",
     drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
     recent: "Recientes",
+    g_v_short_section: "{count} secciones duran menos de un compás. Revisalas de oído.",
+    g_v_octave_check: "{count} secciones cambian el tempo una octava: ¿half-time o errores de octava? Lo decidís vos.",
+    g_v_dup_points: "{count} líneas rojas son duplicados, a pocos ms de otra.",
+    g_v_impossible_change: "{count} saltos de tempo son errores de detección, no música.",
+    g_v_negative_offset: "{count} puntos están antes de que empiece el audio.",
+    g_v_past_end: "{count} puntos están después del final del audio.",
+    g_v_bad_number: "{count} puntos no tienen un número usable: re-analizá o borralos.",
+    warn_show: "Verlas", warn_hide: "Ocultar", warn_beats: "{beats} beats",
+    warn_more: "{n} avisos más", warn_fewer: "Mostrar menos avisos",
     hs_title: "Copiar hitsounds", hs_preview: "Vista previa", hs_apply: "Copiar hitsounds",
     hs_sub: "Cada sonido de las dificultades elegidas toma el sonido de la fuente en el mismo momento (a menos de 5 ms): adiciones, sample sets e índice. Los sonidos sin nada debajo quedan como están. Solo cambian los campos de hitsound, y cada archivo se respalda antes.",
     hs_source: "Desde", hs_targets: "Hacia",
@@ -878,7 +896,7 @@ function showResult(result) {
   S.snap = null;
   // A grade depends on the map and the song's attacks, not on the point list:
   // it stays through edits and goes with the song.
-  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; pbReset(); }
+  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; pbReset(); WARN.open.clear(); WARN.all = false; }
   if (!sameSong) { STX.view = null; STX.file = ""; STX.error = null; }
   if (!sameSong) S.comparePath = null;  // a map belongs to one song
   setView(S.view);  // lifts the "analyze first" panel off the current view
@@ -887,6 +905,48 @@ function showResult(result) {
   // Same song, new point list (edit, undo, redo, pulse): recompare so the
   // suggestions stay current instead of vanishing until the map is re-picked.
   if (S.comparePath) refreshCompare();
+}
+
+// ------------------------------------------------------------------ warnings
+// One banner per kind of finding, not per finding: a song with many timing
+// points used to bury the view under a banner for every short section. A kind
+// that repeats says how many, and lists them as points to jump to, folded.
+// Past a few kinds, the rest fold too.
+const WARN_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>`;
+const WARN_ITEM = {
+  v_short_section: (v) => `#${v.n} · ${t("warn_beats", { beats: v.beats })}`,
+  v_octave_check: (v) => `#${v.n} · ${v.from} → ${v.to}`,
+  v_impossible_change: (v) => `#${v.n} · ${v.from} → ${v.to}`,
+  v_dup_points: (v) => `#${v.n} · ${v.gap} ms`,
+  v_negative_offset: (v) => `#${v.n} · ${v.ms} ms`,
+  v_past_end: (v) => `#${v.n} · ${v.ms} ms`,
+  v_bad_number: (v) => `#${v.n}`,
+};
+const WARN_SHOWN = 3;
+const WARN = { open: new Set(), all: false };
+
+function renderWarnings(list) {
+  const groups = new Map();
+  for (const w of list) {
+    if (!groups.has(w.key)) groups.set(w.key, []);
+    groups.get(w.key).push(w);
+  }
+  const banners = [...groups].map(([key, ws]) => {
+    const info = ws.every((w) => w.level === "info") ? "info" : "";
+    if (ws.length === 1 || !WARN_ITEM[key]) {
+      return ws.map((w) => `<div class="banner ${w.level === "info" ? "info" : ""}">${WARN_ICON}<div>${t(w.key, w.values)}</div></div>`).join("");
+    }
+    const open = WARN.open.has(key);
+    const items = ws.map((w) => `<button type="button" class="chip" data-point="${(w.values.n ?? 0) - 1}"
+        title="${esc(t(w.key, w.values))}">${esc(WARN_ITEM[key](w.values))}</button>`).join("");
+    return `<div class="banner ${info}">${WARN_ICON}<div class="banner-text">
+        <div>${t("g_" + key, { count: ws.length })} <button type="button" class="link" data-warn="${key}">${t(open ? "warn_hide" : "warn_show")}</button></div>
+        ${open ? `<div class="chips">${items}</div>` : ""}</div></div>`;
+  });
+  const hidden = banners.length - WARN_SHOWN;
+  const shown = WARN.all || hidden <= 1 ? banners : banners.slice(0, WARN_SHOWN);
+  $("warnings").innerHTML = shown.join("") + (hidden > 1
+    ? `<button type="button" class="link warn-more" data-warn-all>${WARN.all ? t("warn_fewer") : t("warn_more", { n: hidden })}</button>` : "");
 }
 
 function renderResult(r) {
@@ -899,11 +959,7 @@ function renderResult(r) {
     + (precise ? `<span class="pill">${r.residual_ms.toFixed(2)} ms</span>` : "");
   renderSong();
 
-  $("warnings").innerHTML = r.warnings.map((w) => `
-    <div class="banner ${w.level === "info" ? "info" : ""}">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-      <div>${t(w.key, w.values)}</div>
-    </div>`).join("");
+  renderWarnings(r.warnings);
 
   $("tableCount").textContent = t("points_n", { n: r.points.length });
   $("rows").innerHTML = r.points.map((p, i) => {
@@ -3013,6 +3069,21 @@ function wire() {
     const btn = e.target.closest("[data-recent]");
     if (btn && S.recent[+btn.dataset.recent]) setFile(S.recent[+btn.dataset.recent]);
   };
+  $("warnings").addEventListener("click", (e) => {
+    const toggle = e.target.closest("[data-warn]");
+    if (toggle) {
+      const key = toggle.dataset.warn;
+      if (WARN.open.has(key)) WARN.open.delete(key); else WARN.open.add(key);
+      renderWarnings(S.result.warnings);
+      return;
+    }
+    if (e.target.closest("[data-warn-all]")) { WARN.all = !WARN.all; renderWarnings(S.result.warnings); return; }
+    const chip = e.target.closest("[data-point]");
+    const i = chip ? +chip.dataset.point : -1;
+    if (!S.result || !(i >= 0 && i < S.result.points.length)) return;
+    selectPoint(i, false);
+    document.querySelector(".trace-card").scrollIntoView({ behavior: "smooth", block: "center" });
+  });
   $("detail").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-action]");
     if (btn) editAction(btn.dataset.action);

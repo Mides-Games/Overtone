@@ -549,6 +549,18 @@ kbd {
 }
 .banner.info { border-color: color-mix(in srgb, var(--blue) 28%, transparent); background: var(--blue-soft); color: var(--blue-ink); }
 .banner svg { flex: none; margin-top: 1px; }
+.banner-text { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.banner button.link { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; max-height: 132px; overflow-y: auto; }
+.chip {
+  height: 24px; padding: 0 8px;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-radius: var(--r-sm);
+  background: transparent; color: inherit;
+  font: 600 var(--fs-1) var(--mono); font-variant-numeric: tabular-nums;
+  cursor: pointer; white-space: nowrap;
+}
+.chip:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
+.warn-more { align-self: flex-start; margin: -2px 2px 0; font-size: var(--fs-2); }
 
 .trace-card { margin-bottom: 14px; }
 .cmp-card { margin-bottom: 14px; }

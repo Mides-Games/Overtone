@@ -516,6 +516,30 @@ Structure runs on the Rust engine (in since 2026-09-24); Ramps and Evidence foll
 swap needs two analyses, which run one after the other: the one-heavy-job-at-a-time
 limit applies.
 
+### Song import from a streaming link (proposed 2026-09-25, blocked)
+
+Paste a track link, confirm it is the right song from its metadata, get the audio into
+the app, and analyse its timing. Wanted as a Library entry: link → metadata
+confirmation → audio file → the existing analysis.
+
+It is recorded here but not built, because as specified it cannot ship under the
+repo's own rules and has no lawful audio source:
+
+- **Offline is a product property** (engineering rule 6; "Cloud anything: Never" in
+  [Rejected ideas](#rejected-ideas)). Fetching metadata or audio from Spotify is a
+  network call with an external API, so this needs the rule lifted first, deliberately,
+  not slipped in.
+- **Spotify's Web API gives metadata, not audio.** It returns track, artist, album and
+  ISRC, never the full track file; full audio lives behind DRM or outside the terms of
+  use. There is no "download the audio of this link" endpoint to call.
+- It would need an API credential (client id/secret) stored and a consent step for the
+  audio's origin, like every other `.osu` write in this roadmap.
+
+What fits the rules today and already covers half the job: drop the audio file (or a
+beatmap folder) into Library, and fingerprint reuse (Phase 10.1) answers "is this song
+already mapped" from the user's own Songs folder. If the rule ever changes, the shape
+above — metadata confirmation before anything downloads — is the starting point.
+
 ---
 
 ## Phase 20 — Options and settings

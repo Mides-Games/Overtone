@@ -16,6 +16,39 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Hitsounds P-6: the bar on real maps
+
+### Changed
+
+- **`bench/eval_hitsounds.py`**, the read-only evaluation the decision engine must beat:
+  maps chosen from the library index (standard, 200+ objects, oldest first), the
+  index opened read-only and refused on a newer schema, every `.osu` only read. Each
+  sound event is one vote — the mapper's label against the rule's prediction — and
+  events no rule can place (off the grid, another meter, no red lines) count apart.
+  A map whose mapper never uses the addition is skipped for it: no recall of nothing.
+
+### Measured
+
+1,000 local maps, 0 errors, 37 ms a map:
+
+```
+clap on beats 2 and 4    928 maps with 20+ claps: F1 median 0.59, quartiles
+                         0.42-0.71; recall median 0.54
+finish on the downbeat    923 maps with 10+ finishes: F1 median 0.42, quartiles
+                         0.34-0.50; recall median 0.54
+whistles                 336,658, unscored: no simple rule proposes them, and H2
+                         showed them mostly between sixteenths
+Python unittest          388 -> 393, all pass
+benchmark.py             24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+```
+
+The "phrase starts" baseline the plan asked for is proxied by the downbeat — phrase
+edges need audio structure, which a map-only script cannot read — and the script says
+so instead of hiding it.
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Hitsounds P-5: each sound's nearest attack
 
 ### Changed

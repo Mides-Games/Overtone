@@ -4179,6 +4179,72 @@ class SoundEventMatchingTests(unittest.TestCase):
         self.assertEqual([r["part"] for r in rows], ["head", "tail"])
 
 
+class HitsoundEvalTests(unittest.TestCase):
+    """Phase 6, P-6: mapper agreement against the positional baselines."""
+
+    @staticmethod
+    def _eval():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "eval_hitsounds",
+            Path(__file__).resolve().parent / "bench" / "eval_hitsounds.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_full_agreement_scores_one(self):
+        ev = self._eval()
+        # slots 4 and 12 are beats 2 and 4; the mapper claps exactly there.
+        rows = ev.score_slots([(0, False), (4, True), (8, False), (12, True)],
+                              ev.CLAP_SLOTS)
+        self.assertEqual((rows["tp"], rows["fp"], rows["fn"], rows["skipped"]),
+                         (2, 0, 0, 0))
+        self.assertEqual((rows["precision"], rows["recall"], rows["f1"]),
+                         (1.0, 1.0, 1.0))
+
+    def test_no_mapper_positives_is_undefined_not_zero(self):
+        ev = self._eval()
+        rows = ev.score_slots([(4, False), (12, False)], ev.CLAP_SLOTS)
+        self.assertEqual((rows["tp"], rows["fp"]), (0, 2))
+        self.assertIsNone(rows["recall"])
+        self.assertIsNone(rows["f1"])
+
+    def test_unplaced_events_are_skipped_never_scored(self):
+        ev = self._eval()
+        rows = ev.score_slots([(None, True), (None, False), (4, True)],
+                              ev.CLAP_SLOTS)
+        self.assertEqual((rows["skipped"], rows["tp"]), (2, 1))
+
+    def test_a_map_clapped_on_two_and_four_scores_one(self):
+        ev = self._eval()
+        from overtone import read_osu_beatmap
+        text = _copy_map(["256,192,1000,1,0,0:0:0:0:",
+                          "256,192,1500,1,8,0:0:0:0:",
+                          "256,192,2500,1,8,0:0:0:0:"],
+                         timing="1000,500,4,2,0,70,1,0")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            tallies = ev.evaluate_map(str(path))
+        self.assertTrue(tallies["meter4"])
+        self.assertEqual(tallies["clap"]["f1"], 1.0)
+        self.assertEqual(tallies["mapper_claps"], 2)
+
+    def test_a_map_with_no_red_lines_skips_everything(self):
+        ev = self._eval()
+        beatmap = {"sections": [{"name": "TimingPoints", "lines": []}],
+                   "hitobjects": [{"kind": "circle", "time": 100.0, "hit_sound": 8,
+                                   "hit_sample": {}}],
+                   "general": {}, "difficulty": {}}
+        import json
+        from unittest import mock
+        with mock.patch.object(ev.ov, "read_osu_beatmap", return_value=beatmap):
+            tallies = ev.evaluate_map("whatever.osu")
+        json.dumps(tallies)
+        self.assertEqual(tallies["finish"]["skipped"], 1)
+        self.assertIsNone(tallies["finish"]["f1"])
+
+
 class StructureViewTests(unittest.TestCase):
     """Phase 19, Structure: phrases on the song's proven bars, labels with why."""
 

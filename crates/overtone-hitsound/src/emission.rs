@@ -80,9 +80,10 @@ pub fn explicit_bank(normal_set: i64) -> Option<Bank> {
 }
 
 /// Metrical appropriateness of one addition set: finishes want the
-/// downbeat, claps want an on-beat, whistles want off it. Starting points,
-/// not measurements — the synthetic and real gates judge them, and the
-/// timeline will say if they move.
+/// downbeat, claps want the backbeat band (weight 0.5, beats 2 and 4 —
+/// not any on-beat, or downbeat kicks grow claps), whistles want off it.
+/// Starting points, not measurements — the synthetic and real gates judge
+/// them, and the timeline will say if they move.
 fn role_fit(additions: &[Addition], division: Option<u32>, weight: Option<f64>) -> f64 {
     let (division, weight) = match (division, weight) {
         (Some(d), Some(w)) => (d, w),
@@ -94,9 +95,9 @@ fn role_fit(additions: &[Addition], division: Option<u32>, weight: Option<f64>) 
             Addition::Finish if division == 1 && weight >= 0.8 => 1.0,
             Addition::Finish if division == 1 => 0.2,
             Addition::Finish => -0.3,
-            Addition::Clap if division == 1 => 0.6,
-            Addition::Clap if division == 2 => 0.1,
-            Addition::Clap => -0.2,
+            Addition::Clap if division == 1 && (0.4..=0.8).contains(&weight) => 0.6,
+            Addition::Clap if division == 1 => -0.2,
+            Addition::Clap => -0.1,
             Addition::Whistle if division >= 2 => 0.4,
             Addition::Whistle => -0.1,
         };
@@ -126,6 +127,9 @@ pub struct Scored {
 /// matched attack through the profile's affinity, plus role, context and
 /// prior. `attack` is `None` past any detected attack — then only the prior
 /// speaks, which is exactly the honest answer for a sound over silence.
+/// The prior fires only where the mapper left a sound to agree with: on a
+/// bare object every candidate scores it 0, so affinity, role and context
+/// decide alone instead of a phantom intent vetoing the audio.
 pub fn emission(
     object: &HitObject,
     attack: Option<&AttackEvidence>,
@@ -165,7 +169,9 @@ pub fn emission(
             )
         });
         let context = context_fit(object.new_combo, !additions.is_empty());
-        let prior = if decode_additions(object.hit_sound) == candidate.additions
+        let sounded = object.hit_sound != 0 || object.sample.normal_set != 0;
+        let prior = if sounded
+            && decode_additions(object.hit_sound) == candidate.additions
             && existing_bank.map_or(true, |bank| bank == candidate.bank)
         {
             1.0
@@ -253,7 +259,8 @@ mod tests {
                 "itemised terms are the score"
             );
         }
-        // Sorted best first, and the silent prior keeps normal bare on top.
+        // Sorted best first; with no attack, no combo and no mapper sound
+        // every term is 0 and the stable order keeps normal bare on top.
         assert!(scored.windows(2).all(|w| w[0].score >= w[1].score));
     }
 
@@ -268,7 +275,10 @@ mod tests {
                 .expect("a clap candidate")
                 .score
         };
-        assert!((top(&clapped) - top(&bare) - profile.prior_weight).abs() < 1e-9);
+        // A bare object carries no intent, so the prior stays out of it;
+        // the mapper's clap moves its candidate by exactly the weight.
+        assert!((top(&bare) - 0.0).abs() < 1e-9);
+        assert!((top(&clapped) - profile.prior_weight).abs() < 1e-9);
     }
 
     #[test]

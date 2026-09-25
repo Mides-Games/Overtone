@@ -16,6 +16,40 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Hitsounds H4d: the synthetic gate, and three tunings it drove
+
+### Changed
+
+- **The synthetic exact-truth gate** (`grid_arrangement_decides_the_profiles_sounds`):
+  a 150 BPM arrangement composed from the corpus renderer (kicks on and off beats,
+  snares on backbeats, a crash opening bar 3, a rest under its ring), bare circles
+  on every hit, known grid and bars. 19 proposals: kicks drum-bare, snares
+  drum-clap, crash normal-finish, hats percussive-bare — exact, each miss naming
+  its class.
+- **The prior fires only where the mapper left a sound.** A +1.2 bonus for bare
+  candidates on a bare map is a phantom intent vetoing the audio; on bare objects
+  affinity, role and context now decide alone.
+- **Claps want the backbeat band** (metrical weight 0.4–0.8), not any on-beat, and
+  off-beat claps earn nothing by default: the old div-1 rule grew claps on downbeat
+  kicks, the div-2 rule bridged them onto hats.
+- **Streams are 16ths** (gaps under 0.15 s), not 8ths: at 0.25 the whole 150 BPM
+  backbeat grid read as one stream and the −1.4 smoothed every addition bare.
+
+### Measured
+
+```
+synthetic gate               19/19 exact (was: hats→drum, then kick+clap, then
+                             snares smoothed bare, then a bridged hat clap and a
+                             whistle — one tuning each, in that order)
+Rust tests                   255 -> 256, all pass, no warnings
+```
+
+Hats still read kick-like (closed-hat held-out F1 0.40): the gate holds them to a
+percussive bare bank, no additions, and says so. That is a template limit the
+real-audio gate will judge, not pipeline behavior to tune around a third time.
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Hitsounds H4c: `hitsound` proposes every object
 
 ### Changed

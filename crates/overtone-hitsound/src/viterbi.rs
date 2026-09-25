@@ -9,8 +9,10 @@
 //! - **switch cost**: changing bank or additions between adjacent objects
 //!   costs, unless the new object opens a combo or a phrase edge falls
 //!   between them;
-//! - **stream consistency**: inside a fast run (gap under 0.25 s) a change
-//!   costs the stream weight instead;
+//! - **stream consistency**: inside a true run (gaps under 0.15 s — 16ths,
+//!   not 8ths: an 8th-note backbeat grid is decided hit by hit, and the
+//!   gate below proved 0.25 smoothed it bare) a change costs the stream
+//!   weight instead;
 //! - **phrase symmetry**: the same slot one bar on takes the same sound for
 //!   a bonus — bars that agree sound intentional;
 //! - **finish refractory**: a finish right after a finish costs, because
@@ -68,7 +70,7 @@ pub fn transition(
     let gap = (step.time_s - prev_step.time_s).max(0.0);
     let justified = step.new_combo || step.phrase_break_before;
     if !justified {
-        score += if gap < 0.25 {
+        score += if gap < 0.15 {
             -profile.stream_consistency
         } else {
             -profile.switch_cost
@@ -311,5 +313,185 @@ mod tests {
     fn an_empty_run_decides_nothing() {
         let profile = balanced();
         assert!(decide(&[], &states(), &[], &profile).is_empty());
+    }
+
+    /// H4d synthetic gate: a grid-composed arrangement (150 BPM, kicks on and
+    /// off beats, snares on backbeats, a crash opening bar 3), bare circles
+    /// on every hit. Exact truth where the templates separate: drum-bare
+    /// kick, drum-clap snare, normal-finish crash. Hats read kick-like
+    /// (closed-hat held-out F1 0.40, a template limit, not a pipeline one),
+    /// so they assert the honest remainder: a percussive bare bank, no
+    /// additions. A miss names its class.
+    #[test]
+    fn grid_arrangement_decides_the_profiles_sounds() {
+        use crate::{baked, corpus, emission as em, evidence, map};
+        use overtone_core::GridSection;
+        use overtone_core::Seconds;
+        // Eighth-note slots from 0.5 s at 150 BPM: kicks on beats and
+        // off-beats, snares on the backbeats (slots 2 and 6 of 8), closed
+        // hats on two off-beats.
+        let cycle = [
+            corpus::HitClass::Kick,
+            corpus::HitClass::HatClosed,
+            corpus::HitClass::Snare,
+            corpus::HitClass::Kick,
+            corpus::HitClass::Kick,
+            corpus::HitClass::HatClosed,
+            corpus::HitClass::Snare,
+            corpus::HitClass::Kick,
+        ];
+        let track = corpus::render(44_100, 5.0, 0.2, &cycle, 4);
+        assert_eq!(track.hits.len(), 20, "eight slots a bar over two bars plus");
+        let crash = corpus::render(44_100, 1.2, 10.0, &[corpus::HitClass::Cymbal], 9);
+        assert_eq!(crash.hits.len(), 1);
+        // The crash replaces the kick opening bar 3 (2.1 s): one hit a slot.
+        // Its render starts at 0.5 s, so the shift lands the hit, not the
+        // buffer start, on the downbeat. The replaced kick is muted first.
+        let shift = ((2.1 - 0.5) * 44_100.0) as usize;
+        let mut samples = track.samples.clone();
+        for (i, s) in samples.iter_mut().enumerate() {
+            let t = i as f64 / 44_100.0;
+            if (t - 2.1).abs() < 0.06 {
+                *s = 0.0;
+            }
+        }
+        samples.resize(samples.len().max(shift + crash.samples.len()), 0.0);
+        for (i, &s) in crash.samples.iter().enumerate() {
+            samples[shift + i] += s;
+        }
+        let peak = samples.iter().copied().fold(0.0f32, f32::max);
+        for s in samples.iter_mut() {
+            *s /= peak.max(1e-6);
+        }
+        let mut hits: Vec<corpus::Hit> = track
+            .hits
+            .iter()
+            .filter(|h| (h.time_s - 2.1).abs() > 1e-9 && (h.time_s - 2.3).abs() > 1e-9)
+            .copied()
+            .collect();
+        // A rest on the 8th after the crash: its ring owns that window, and
+        // no gate should ask who plays under a cymbal wash.
+        hits.push(corpus::Hit {
+            class: corpus::HitClass::Cymbal,
+            time_s: 2.1,
+            velocity: 1.0,
+        });
+        hits.sort_by(|a, b| a.time_s.total_cmp(&b.time_s));
+        assert_eq!(hits.len(), 19);
+
+        let templates = baked::templates();
+        let period = 0.4;
+        let sections = vec![GridSection {
+            start: Seconds(0.5),
+            end: Seconds(5.0),
+            period,
+            phase: 0.5,
+            inliers: hits.len(),
+            residual_ms: 0.0,
+            coverage: 1.0,
+        }];
+        let times: Vec<f64> = hits.iter().map(|h| h.time_s).collect();
+        let weights = vec![1.0f32; hits.len()];
+        let roles = crate::role::analyze(&samples, 44_100, &times, &weights, &sections, &[(0, 4)], &[]);
+        let reds = vec![map::TimingPoint {
+            offset: 500.0,
+            beat_len: 400.0,
+            meter: 4,
+            sample_set: 1,
+            sample_index: 0,
+            volume: 70,
+            uninherited: true,
+        }];
+        let placed = map::bar_slots(
+            &reds,
+            &times.iter().map(|t| t * 1000.0).collect::<Vec<_>>(),
+        );
+        let profile = balanced();
+        let states = em::Candidate::all();
+        let mut emissions = Vec::new();
+        let mut steps = Vec::new();
+        for ((hit, time_s), (role, place)) in
+            hits.iter().zip(times.iter()).zip(roles.iter().zip(placed.iter()))
+        {
+            let features = crate::template::extract(&samples, 44_100, *time_s);
+            let attack = evidence::AttackEvidence {
+                time_s: *time_s,
+                weight: 1.0,
+                features,
+                classes: vec![],
+                role: role.clone(),
+            };
+            let attack = evidence::AttackEvidence {
+                classes: crate::template::classify(&templates, &attack.features)
+                    .into_iter()
+                    .map(|(class, probability)| evidence::ClassEvidence {
+                        class,
+                        probability,
+                        score: 0.0,
+                        terms: vec![],
+                    })
+                    .collect(),
+                ..attack
+            };
+            let object = map::HitObject {
+                x: 256,
+                y: 192,
+                time: time_s * 1000.0,
+                new_combo: false,
+                hit_sound: 0,
+                kind: map::ObjectKind::Circle,
+                sample: map::HitSample {
+                    normal_set: 0,
+                    addition_set: 0,
+                    index: 0,
+                    volume: 0,
+                    file: String::new(),
+                },
+            };
+            let scored = em::emission(&object, Some(&attack), em::Bank::Normal, &profile);
+            emissions.push(
+                states
+                    .iter()
+                    .map(|wanted| {
+                        scored
+                            .iter()
+                            .find(|row| row.candidate == *wanted)
+                            .map_or(f64::NEG_INFINITY, |row| row.score)
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            steps.push(Step {
+                time_s: *time_s,
+                new_combo: false,
+                bar_slot: match *place {
+                    (bar, Some(slot), _) => Some((bar, slot)),
+                    _ => None,
+                },
+                phrase_break_before: false,
+            });
+            let _ = hit;
+        }
+        let decisions = decide(&emissions, &states, &steps, &profile);
+        let expected = [
+            (corpus::HitClass::Kick, "DRUM"),
+            (corpus::HitClass::Snare, "DRUM-clap"),
+            (corpus::HitClass::Cymbal, "NORMAL-finish"),
+        ];
+        for (decision, hit) in decisions.iter().zip(hits.iter()) {
+            let state = &states[decision.state];
+            let got = state.name();
+            eprintln!("{:?} at {:.1} s -> {got} p={:.2}", hit.class, hit.time_s, decision.probability);
+            if hit.class == corpus::HitClass::HatClosed {
+                // Template-weak class: no additions, percussive bank.
+                assert!(
+                    state.additions == [false, false, false]
+                        && (state.bank == em::Bank::Drum || state.bank == em::Bank::Soft),
+                    "hat misproposed as {got}"
+                );
+                continue;
+            }
+            let (_, want) = expected.iter().find(|&&(c, _)| c == hit.class).unwrap();
+            assert_eq!(&got, want, "{:?} misproposed", hit.class);
+        }
     }
 }

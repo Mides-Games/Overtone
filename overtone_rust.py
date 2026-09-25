@@ -177,3 +177,34 @@ def structure(path: str | os.PathLike[str], *, cli: Path | None = None,
         detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
         raise RuntimeError(f"The Rust engine failed (exit {done.returncode}): {detail}")
     return report
+
+
+def hitsound(audio: str | os.PathLike[str], osu: str | os.PathLike[str], *,
+             cli: Path | None = None, timeout: float = TIMEOUT_S) -> dict:
+    """``overtone-cli hitsound``: the proposed sound of every decidable point.
+
+    The audio and the map travel together because the decision reads both.
+    Raises :class:`SidecarUnavailable` without a binary, and ``RuntimeError``
+    with the loader's message when either file cannot be read.
+    """
+    binary = cli or find_cli()
+    if binary is None:
+        raise SidecarUnavailable("The Rust engine (overtone-cli) is not built.")
+    try:
+        done = subprocess.run([str(binary), "hitsound", os.fspath(audio), os.fspath(osu)],
+                              capture_output=True, timeout=timeout,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"The Rust engine took over {timeout:.0f} s and was stopped.") from exc
+    except OSError as exc:
+        raise SidecarUnavailable(f"The Rust engine could not start: {exc}") from exc
+    try:
+        report = json.loads(done.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        report = None
+    if done.returncode == 1 and report is not None and "error" in report:
+        raise RuntimeError(report["error"])
+    if done.returncode != 0 or report is None or "units" not in report:
+        detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
+        raise RuntimeError(f"The Rust engine failed (exit {done.returncode}): {detail}")
+    return report

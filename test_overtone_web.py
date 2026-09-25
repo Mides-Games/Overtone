@@ -748,6 +748,96 @@ class HitsoundCopyBridgeTests(_IsolatedConfig):
                              "bad_folder")
 
 
+class HitsoundDecideBridgeTests(_IsolatedConfig):
+    """The decision editor's bridge: propose once, preview, apply, one undo."""
+
+    LINES = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+             "[TimingPoints]", "0,500,4,2,0,70,1,0", "", "[HitObjects]",
+             "256,192,1000,1,0,0:0:0:0:", "256,192,1500,1,0,0:0:0:0:", ""]
+
+    UNITS = [{"object": 0, "part": "circle", "edge": None, "time_ms": 1000.0,
+              "proposal": {"bank": "soft", "additions": ["finish"], "bits": 4}},
+             {"object": 1, "part": "circle", "edge": None, "time_ms": 1500.0,
+              "proposal": {"bank": "drum", "additions": ["clap"], "bits": 8}}]
+
+    def _song(self, tmp: str) -> web.Api:
+        folder = Path(tmp)
+        (folder / "audio.mp3").write_bytes(b"ID3" + bytes(64))
+        (folder / "hard.osu").write_bytes("\r\n".join(self.LINES).encode("utf-8"))
+        api = _api_with_points()
+        api._analysis.source = str(folder / "audio.mp3")
+        return api
+
+    def _proposed(self, api: web.Api):
+        with mock.patch.object(web.overtone_rust, "hitsound",
+                               return_value={"units": self.UNITS}):
+            return api.hitsound_decide_propose("hard.osu")
+
+    def test_propose_caches_and_preview_counts_without_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            before = Path(tmp, "hard.osu").read_bytes()
+            reply = self._proposed(api)
+            preview = api.hitsound_decide_preview("hard.osu", [[1, "circle", None]])
+            untouched = Path(tmp, "hard.osu").read_bytes()
+            json.dumps([reply, preview])
+            self.assertEqual((reply["units"], preview["units"], preview["accepted"],
+                              preview["would_change"]),
+                             (2, 2, 1, 1))
+            self.assertEqual(untouched, before)
+            self.assertEqual(api.hitsound_decide_preview("hard.osu")["accepted"], 2)
+
+    def test_apply_writes_with_a_backup_and_one_undo_restores(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            before = Path(tmp, "hard.osu").read_bytes()
+            self._proposed(api)
+            done = api.hitsound_decide_apply("hard.osu")
+            changed = Path(tmp, "hard.osu").read_bytes()
+            undone = api.hitsound_decide_undo()
+            restored = Path(tmp, "hard.osu").read_bytes()
+            nothing_left = api.hitsound_decide_undo()
+            json.dumps([done, undone])
+            self.assertEqual((done["changed"], done["written"], done["undo"]), ([0, 1], True, True))
+            self.assertNotEqual(changed, before)
+            self.assertEqual((restored, undone["ok"], nothing_left["key"]),
+                             (before, True, "no_undo"))
+            self.assertTrue(Path(tmp, "hard.osu.bak").is_file())
+
+    def test_apply_onto_a_copy_leaves_the_source_alone(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            before = Path(tmp, "hard.osu").read_bytes()
+            self._proposed(api)
+            done = api.hitsound_decide_apply("hard.osu", copy=True)
+            dest = Path(tmp, "hard_hitsounded.osu")
+            json.dumps(done)
+            self.assertEqual((Path(done["dest"]).name, done["undo"]), ("hard_hitsounded.osu", False))
+            self.assertEqual(Path(tmp, "hard.osu").read_bytes(), before)
+            self.assertIn(b"256,192,1500,1,8,", dest.read_bytes())
+
+    def test_without_a_proposal_or_a_binary_it_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            self.assertEqual(api.hitsound_decide_preview("hard.osu")["key"], "no_proposal")
+            self.assertEqual(api.hitsound_decide_apply("hard.osu")["key"], "no_proposal")
+            with mock.patch.object(web.overtone_rust, "hitsound",
+                                   side_effect=web.overtone_rust.SidecarUnavailable("gone")):
+                self.assertEqual(api.hitsound_decide_propose("hard.osu")["key"], "no_rust")
+            self.assertEqual(api.hitsound_decide_propose("..\\hard.osu")["key"], "bad_file")
+        self.assertEqual(web.Api().hitsound_decide_propose("hard.osu")["key"], "first")
+        self.assertEqual(web.Api().hitsound_decide_undo()["key"], "first")
+
+    def test_a_moved_map_refuses_at_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            api._decisions["hard.osu"] = {"units": [
+                {**self.UNITS[0], "time_ms": 1200.0}]}
+            reply = api.hitsound_decide_preview("hard.osu")
+        self.assertEqual(reply["key"], "error")
+        self.assertIn("1200", reply["detail"])
+
+
 class StructureBridgeTests(_IsolatedConfig):
     """The Structure view: the Rust report once per file, bars every call."""
 

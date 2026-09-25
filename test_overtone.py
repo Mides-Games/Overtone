@@ -1549,6 +1549,8 @@ class RustSidecarTests(unittest.TestCase):
         with mock.patch.object(rs, "find_cli", return_value=None):
             with self.assertRaises(rs.SidecarUnavailable):
                 rs.analyze("song.wav")
+            with self.assertRaises(rs.SidecarUnavailable):
+                rs.hitsound("song.wav", "map.osu")
 
     def test_the_rust_engine_reads_what_v3_reads(self):
         import overtone as ta

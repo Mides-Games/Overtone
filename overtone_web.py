@@ -279,6 +279,12 @@ class Api:
         #: The Rust engine's structure report, keyed by (path, size, mtime):
         #: the audio is read once, the bars are re-applied on every call.
         self._structure: tuple[tuple, dict] | None = None
+        #: The decision's proposal units, keyed by .osu name: proposing runs
+        #: the CLI once, and accept/reject iterates the cache. A moved map
+        #: refuses at apply time through the proposal's own staleness guard.
+        self._decisions: dict[str, dict] = {}
+        #: The bytes one hitsound apply replaced, for the one-level undo.
+        self._decide_undo: dict | None = None
         if initial_file:
             self._cfg["file"] = initial_file
 
@@ -846,6 +852,103 @@ class Api:
             rows.append({**self._copy_row(path, report), "written": written["written"],
                          "backup": written["backup"]})
         return {"ok": True, "source": str(source), "targets": rows}
+
+    # -- hitsound decision (Phase 6, H5) --------------------------------------
+    @staticmethod
+    def _decide_key(unit: dict) -> tuple:
+        return (unit.get("object"), unit.get("part"), unit.get("edge"))
+
+    def _decide_file(self, file: str):
+        """The .osu path inside the analysed song's folder, or a refusal."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        name = str(file or "")
+        path = Path(str(self._analysis.source)).parent / name
+        if Path(name).name != name or not name.lower().endswith(".osu") or not path.is_file():
+            return {"ok": False, "key": "bad_file"}
+        return path
+
+    def hitsound_decide_propose(self, file: str) -> dict:
+        """Propose every decidable point's sound through the Rust sidecar.
+        One heavy job at a time; the units stay cached for accept/reject."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        if not self._busy.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        try:
+            report = overtone_rust.hitsound(str(self._analysis.source), str(path))
+        except overtone_rust.SidecarUnavailable:
+            return {"ok": False, "key": "no_rust"}
+        except (RuntimeError, ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            self._busy.release()
+        units = report.get("units", [])
+        self._decisions[str(path.name)] = {"units": units}
+        return {"ok": True, "file": str(path.name), "units": len(units)}
+
+    def hitsound_decide_preview(self, file: str, accept: list | None = None) -> dict:
+        """What applying the cached proposal would change. Read only."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        cached = self._decisions.get(str(path.name))
+        if cached is None:
+            return {"ok": False, "key": "no_proposal"}
+        try:
+            accepted = None if accept is None else {tuple(a) for a in accept}
+            preview = ta.preview_proposals(ta.read_osu_beatmap(path), cached["units"], accepted)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": str(path.name), "units": preview["units"],
+                "accepted": preview["accepted"], "would_change": preview["would_change"]}
+
+    def hitsound_decide_apply(self, file: str, accept: list | None = None,
+                              copy: bool = False) -> dict:
+        """Write the accepted proposals through P-2: over the original with a
+        backup, or onto a ``<name>_hitsounded.osu`` copy that must not exist.
+        Remembers the replaced bytes for the one-level undo."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        cached = self._decisions.get(str(path.name))
+        if cached is None:
+            return {"ok": False, "key": "no_proposal"}
+        dest = path.with_name(path.stem + "_hitsounded.osu") if copy else None
+        try:
+            accepted = None if accept is None else {tuple(a) for a in accept}
+            if dest is None:
+                previous = path.read_bytes()
+            result = ta.apply_proposals(path, cached["units"], accepted, dest)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        if dest is None:
+            self._decide_undo = {"path": str(path), "bytes": previous}
+        else:
+            self._decide_undo = None
+        return {"ok": True, "file": str(path.name), "changed": result["changed"],
+                "written": result["written"], "backup": result["backup"],
+                "dest": result["dest"], "undo": self._decide_undo is not None}
+
+    def hitsound_decide_undo(self) -> dict:
+        """Restore the bytes the last in-place apply replaced, backing up the
+        current file first. One level: a second undo has nothing to restore."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not self._decide_undo:
+            return {"ok": False, "key": "no_undo"}
+        path = Path(str(self._decide_undo["path"]))
+        if not path.is_file():
+            self._decide_undo = None
+            return {"ok": False, "key": "bad_file"}
+        try:
+            backup = ta._backup_before_write(path, path.read_bytes())
+            ta._atomic_write_bytes(path, bytes(self._decide_undo["bytes"]))
+        except OSError as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        self._decide_undo = None
+        return {"ok": True, "file": path.name, "backup": str(backup)}
 
     def inject_preview(self, osu_path: str) -> dict:
         """Dry run first, like the Tk GUI's confirmation dialog data."""

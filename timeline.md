@@ -16,6 +16,32 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Hitsounds H5b bridge: propose, apply, one undo
+
+### Changed
+
+- **Decision endpoints on the bridge**: `hitsound_decide_propose` runs the CLI once
+  under the one-heavy-job lock and caches the units for accept/reject;
+  `hitsound_decide_preview` counts on the cache without writing;
+  `hitsound_decide_apply` writes in place with a backup or onto a must-not-exist
+  `_hitsounded` copy; `hitsound_decide_undo` restores the replaced bytes atomically
+  after backing up the current file — one level, stated. A moved map refuses at
+  preview through the proposal's own staleness guard; no binary answers `no_rust`.
+- `overtone_rust.hitsound(audio, osu)`: the sidecar call beside `analyze` and
+  `structure`, same errors.
+
+### Measured
+
+```
+Python unittest              409 -> 414, all pass
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+```
+
+The accept/reject surface and audition ride the next commit, against the UI harness.
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Hitsounds H5 engine half: the decision onto the map
 
 ### Changed

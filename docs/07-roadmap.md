@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **409** Python (289 engine + 120 web shell) · **256** Rust.
+Tests: **414** Python (289 engine + 125 web shell) · **256** Rust.
 
 ### What is pending, in order
 
@@ -340,7 +340,7 @@ the copier, the section, the check, the decision engine, the editor.
 | Explanations | itemised terms + alternatives | med | **high** | decision | no | no | **P1** | todo |
 | Profiles | built-in + custom, as data | low | high | decision | no | no | **P1** | todo |
 | Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | partial — the object lane (P-7); instrument lanes need P-4 |
-| Hitsound editor | change/remove/volume/sample | med | **high** | decision | no | no | **P1** | partial — engine half (`apply_proposals`: preview, backup, copy); the accept/reject surface, undo and audition still to build |
+| Hitsound editor | change/remove/volume/sample | med | **high** | decision | no | no | **P1** | partial — engine half (`apply_proposals`) plus bridge propose/preview/apply/one-level-undo; the accept/reject surface and audition still to build |
 | Sample bank | import skin/folder, audition samples | med | high | P4 playback | no | no | P1 | todo |
 | Sample recommendation | map samples to roles by their spectrum | med | med | bank | no | no | P2 | todo |
 | Hitsound export | only hitsound fields change | med | **high** | P5 writer | no | no | **P1** | partial — same engine half; the Export-section surface still to build |

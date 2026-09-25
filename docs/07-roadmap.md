@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **414** Python (289 engine + 125 web shell) · **256** Rust.
+Tests: **417** Python (291 engine + 126 web shell) · **256** Rust.
 
 ### What is pending, in order
 
@@ -492,7 +492,7 @@ number and confidence. Every write goes through the atomic writer and keeps a ba
 | Phrase starts on the phrase's bar | snap to the bar the phrase starts on, not the nearest; measured against ranked maps' kiai starts as truth | med | med | Structure view | no | no | P2 | todo |
 | Mod report | every finding as osu! editor timestamps (`mm:ss:mmm (combo) - ...`) with its number and confidence, copyable as text; each opens the local osu! editor | low | high | P7 findings | no | no | P2 | **done** — `mod_report`, the Report section: reference, suggestions, snap audit and alignment in time order, combo numbers, `osu://edit/` links from validated timestamps; 0.31 s per map |
 | Write history and restore | a log of every `.osu` write and its backup; see the timing diff against the backup and restore atomically, keeping the current file as a new backup | low | med | writer | no | no | P2 | todo |
-| Evidence view | the engine's alternatives for the open song: coherence candidates, octave margin, per-section residual and coverage, half-time hints, why the fallback ran; each one click from ×2 / ÷2 | med | med | payload fields or P22 | no | no | P2 | todo |
+| Evidence view | the engine's alternatives for the open song: coherence candidates, octave margin, per-section residual and coverage, half-time hints, why the fallback ran; each one click from ×2 / ÷2 | med | med | payload fields or P22 | no | no | P2 | **done** — `analysis_evidence` + Timing card: candidates with coherence, seeded/half/double marks, octave margin, residual/coverage; Use writes the BPM into the governing red line through edit_apply |
 | Ramp and live timing | the elastic tempo curve turned into the fewest red lines that keep every attack within a chosen drift (ms) or one line per N bars, with the count-versus-drift trade-off shown | high | high | P22, elastic grid | no | no | P2 | todo |
 | Audio swap | the shift between a mapset's old and new audio from onset cross-correlation, refused on a tempo mismatch; on consent every time in every difficulty moves, with backup | med | high | writer, attacks | no | no | P2 | todo |
 | Offset lab | MP3 encoder delay read from the file header, the first attack through each decoder side by side, and a blind listening test that reports the preferred click shift with an interval | med | med | both decoders, P4 transport | no | no | P2 | todo |

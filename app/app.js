@@ -260,6 +260,15 @@ const I18N = {
     ref_found_none: "No map under {root} uses this exact audio ({s} audio files checked).",
     ref_grade: "Grade",
     no_songs: "Choose your osu! Songs folder.",
+    ev_title: "Evidence",
+    ev_sub: "What the engine read against: coherence candidates per section, the octave margin, residual and coverage. Using one writes its BPM into the governing red line.",
+    ev_section: "§{n} · {from}–{to} s · {bpm} BPM · residual {res} ms · coverage {cov} % · {inliers} attacks",
+    ev_candidates: "Coherence candidates",
+    ev_seeded: "seeded", ev_half: "half", ev_double: "double",
+    ev_margin: "octave margin {m}",
+    ev_use: "Use", ev_used: "Red line {n} now runs {bpm} BPM.",
+    ev_note: "The fallback engine keeps no attacks, so there are no alternatives to show.",
+    ev_t_bpm: "BPM", ev_t_coh: "Coherence",
     as_title: "Assisted timing",
     as_sub: "Where detection is wrong, mark two downbeats: the grid is fitted from there, or refused with the reason.",
     as_first: "First downbeat (ms)", as_second: "A later downbeat (ms)", as_bars: "Bars between", as_meter: "Beats per bar",
@@ -586,6 +595,15 @@ const I18N = {
     ref_found_none: "Ningún mapa en {root} usa exactamente este audio ({s} archivos de audio revisados).",
     ref_grade: "Calificar",
     no_songs: "Elegí tu carpeta Songs de osu!.",
+    ev_title: "Evidencia",
+    ev_sub: "Contra qué leyó el motor: candidatos de coherencia por sección, margen de octava, residual y cobertura. Usar uno escribe su BPM en la línea roja que manda.",
+    ev_section: "§{n} · {from}–{to} s · {bpm} BPM · residual {res} ms · cobertura {cov} % · {inliers} ataques",
+    ev_candidates: "Candidatos de coherencia",
+    ev_seeded: "semilla", ev_half: "mitad", ev_double: "doble",
+    ev_margin: "margen de octava {m}",
+    ev_use: "Usar", ev_used: "La línea roja {n} ahora va a {bpm} BPM.",
+    ev_note: "El motor alternativo no guarda ataques, así que no hay alternativas que mostrar.",
+    ev_t_bpm: "BPM", ev_t_coh: "Coherencia",
     as_title: "Timing asistido",
     as_sub: "Donde la detección se equivoca, marcá dos tiempos fuertes: el grid se ajusta desde ahí, o se rechaza con el motivo.",
     as_first: "Primer tiempo fuerte (ms)", as_second: "Un tiempo fuerte posterior (ms)", as_bars: "Compases entre ambos", as_meter: "Tiempos por compás",
@@ -1055,6 +1073,7 @@ function renderResult(r) {
   renderReport();
   renderTaps();
   if (S.view === "timing") waveLoad();
+  evLoad();
 }
 
 function renderDetail() {
@@ -2190,6 +2209,85 @@ function renderAssist() {
     </div>`;
   $("asAdd").onclick = assistAdd;
   $("asAdd").disabled = S.busy;
+}
+
+// ------------------------------------------------------------------ evidence
+// Phase 19: the engine's alternatives for the open song. Read only until a
+// candidate is used, which writes its BPM into the governing red line
+// through the editor's own apply path, so undo and locks behave as usual.
+const EV = { data: null, loading: false };
+
+async function evLoad() {
+  EV.data = null;
+  if (!api() || !S.result) { renderEvidence(); return; }
+  EV.loading = true; renderEvidence();
+  try {
+    const reply = await api().evidence();
+    if (!S.result) return;
+    if (!reply.ok) { editFailure(reply); return; }
+    EV.data = reply.evidence;
+  } finally {
+    EV.loading = false;
+  }
+  renderEvidence();
+}
+
+function evGoverning(start_s) {
+  const points = (S.result && S.result.points) || [];
+  let idx = 0;
+  points.forEach((p, i) => { if (p.offset_ms <= start_s * 1000 + 1e-6) idx = i; });
+  return idx;
+}
+
+async function evUse(section, bpm) {
+  if (!api() || !S.result || S.busy) return;
+  const idx = evGoverning(section.start_s);
+  const point = S.result.points[idx];
+  selectPoint(idx, false);
+  const reply = await api().edit_apply(idx, point.offset_ms, bpm);
+  if (!reply.ok) { editFailure(reply); return; }
+  showEditResult(reply, t("ev_used", { n: idx + 1, bpm: bpm.toFixed(2) }));
+}
+
+function renderEvidence() {
+  const card = $("evCard"), body = $("evBody");
+  if (!S.result) { card.hidden = true; return; }
+  card.hidden = false;
+  const ev = EV.data;
+  $("evEngine").textContent = S.result.engine;
+  if (EV.loading || !ev) { body.innerHTML = `<div class="card-sub">${EV.loading ? t("analyzing") : ""}</div>`; return; }
+  if (!ev.sections.length) { body.innerHTML = `<div class="card-sub">${t("ev_note")}</div>`; return; }
+  body.innerHTML = ev.sections.map((s, n) => {
+    const tags = [
+      s.octave_margin !== null && s.octave_margin !== undefined
+        ? `<span class="card-sub">${t("ev_margin", { m: s.octave_margin.toFixed(3) })}</span>` : "",
+      s.half ? `<span class="card-sub">${t("ev_half")}: ${s.half.bpm.toFixed(2)} (${s.half.coherence.toFixed(3)})</span>` : "",
+      s.double ? `<span class="card-sub">${t("ev_double")}: ${s.double.bpm.toFixed(2)} (${s.double.coherence.toFixed(3)})</span>` : "",
+    ].filter(Boolean).join(" ");
+    const rows = s.candidates.map((c, i) => `
+      <tr>
+        <td class="num">${c.bpm.toFixed(2)}</td>
+        <td><span class="conf"><span class="bar"><b style="width:${Math.round(c.coherence * 100)}%"></b></span><span class="num">${c.coherence.toFixed(3)}</span></span></td>
+        <td class="txt">${i === s.seeded ? t("ev_seeded")
+          : (s.half && c.bpm === s.half.bpm ? t("ev_half")
+          : (s.double && c.bpm === s.double.bpm ? t("ev_double") : ""))}</td>
+        <td><button type="button" class="btn small" data-ev-use="${n}:${c.bpm}">${t("ev_use")}</button></td>
+      </tr>`).join("");
+    return `<div class="card-sub"><b>${t("ev_section", { n: n + 1, from: s.start_s.toFixed(1), to: s.end_s.toFixed(1),
+      bpm: s.bpm.toFixed(2), res: s.residual_ms.toFixed(2), cov: Math.round(s.coverage * 100),
+      inliers: s.inliers })}</b> ${tags}</div>
+      <div class="table-scroll"><table>
+        <caption class="card-sub">${t("ev_candidates")}</caption>
+        <thead><tr><th>${t("ev_t_bpm")}</th><th>${t("ev_t_coh")}</th><th></th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`;
+  }).join("");
+  body.querySelectorAll("[data-ev-use]").forEach((button) => {
+    button.onclick = () => {
+      const [n, bpm] = button.dataset.evUse.split(":");
+      evUse(EV.data.sections[+n], parseFloat(bpm));
+    };
+  });
 }
 
 // ------------------------------------------------------------------ playback

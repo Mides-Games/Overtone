@@ -4401,6 +4401,38 @@ class HitsoundApplyTests(unittest.TestCase):
                 proposal_changes(beatmap, units)
 
 
+class AnalysisEvidenceTests(unittest.TestCase):
+    """Phase 19, Evidence: the engine's alternatives, octave margin included."""
+
+    def test_a_clean_grid_names_its_octave_with_a_margin(self):
+        from types import SimpleNamespace
+        from overtone import GridSection, analysis_evidence
+        times = np.arange(0.5, 10.0, 0.4)
+        section = GridSection(0.5, 10.0, 0.4, 0.5, len(times), 0.1, 0.9)
+        analysis = SimpleNamespace(attack_times=times, attack_weights=np.ones_like(times),
+                                   sections=[section], engine="precision",
+                                   fit_residual_ms=0.1)
+        evidence = analysis_evidence(analysis)
+        json.dumps(evidence)
+        self.assertEqual(evidence["engine"], "precision")
+        [row] = evidence["sections"]
+        self.assertEqual((row["bpm"], row["residual_ms"], row["coverage"]), (150.0, 0.1, 0.9))
+        seeded = row["candidates"][row["seeded"]]["bpm"]
+        self.assertLess(abs(seeded / 150.0 - 1), 0.02)
+        self.assertIsNotNone(row["half"])
+        self.assertAlmostEqual(row["half"]["bpm"] / 75.0, 1.0, delta=0.03)
+        self.assertIsNotNone(row["octave_margin"])
+
+    def test_no_attacks_reports_that_instead_of_alternatives(self):
+        from types import SimpleNamespace
+        from overtone import analysis_evidence
+        analysis = SimpleNamespace(attack_times=np.zeros(0), attack_weights=np.zeros(0),
+                                   sections=[], engine="legacy", fit_residual_ms=0.0)
+        evidence = analysis_evidence(analysis)
+        json.dumps(evidence)
+        self.assertEqual((evidence["sections"], evidence["note"]), ([], "no_attacks"))
+
+
 class HitsoundConsistencyTests(unittest.TestCase):
     """Phase 6, H3 map half: sounds breaking the map's own clap pattern."""
 

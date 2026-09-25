@@ -279,6 +279,9 @@ class Api:
         #: The Rust engine's structure report, keyed by (path, size, mtime):
         #: the audio is read once, the bars are re-applied on every call.
         self._structure: tuple[tuple, dict] | None = None
+        #: The engine-evidence report for the live analysis object: attacks
+        #: and sections never move under edits, so identity is the key.
+        self._evidence: tuple | None = None
         #: The decision's proposal units, keyed by .osu name: proposing runs
         #: the CLI once, and accept/reject iterates the cache. A moved map
         #: refuses at apply time through the proposal's own staleness guard.
@@ -1220,6 +1223,17 @@ class Api:
             self._structure = (key, report)
         return {"ok": True, "file": source.name,
                 "view": ta.structure_view(self._structure[1], self._analysis)}
+
+    def evidence(self) -> dict:
+        """The engine's alternatives for the open song: coherence candidates,
+        the octave margin and half/double readings per section, residual and
+        coverage beside each. Read only; cached on the live analysis, whose
+        attacks and sections no edit moves."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if self._evidence is None or self._evidence[0] is not self._analysis:
+            self._evidence = (self._analysis, ta.analysis_evidence(self._analysis))
+        return {"ok": True, "evidence": self._evidence[1]}
 
     # -- assisted timing: two marked downbeats seed the grid ---------------
     def assisted_fit(self, first_ms: float, second_ms: float, bars: int, meter: int) -> dict:

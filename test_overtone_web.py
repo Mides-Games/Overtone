@@ -1322,6 +1322,21 @@ class SuggestBridgeTests(_IsolatedConfig):
         self.assertEqual(_api_with_points().suggest("C:/does/not/exist.osu")["key"], "bad_file")
 
 
+class EvidenceBridgeTests(_IsolatedConfig):
+    """The Evidence tab: alternatives, margins and residuals, cached."""
+
+    def test_without_attacks_it_says_so_and_caches_per_analysis(self) -> None:
+        api = _api_with_points()
+        first = api.evidence()
+        second = api.evidence()
+        json.dumps([first, second])
+        self.assertTrue(first["ok"])
+        self.assertEqual(first["evidence"]["note"], "no_attacks")
+        self.assertIs(api._evidence[0], api._analysis)
+        self.assertEqual(first["evidence"], second["evidence"])
+        self.assertEqual(web.Api().evidence()["key"], "first")
+
+
 class FolderImportTests(_IsolatedConfig):
     def _song(self, tmp: str) -> Path:
         root = Path(tmp) / "123 Artist - Title"

@@ -2658,6 +2658,58 @@ def osu_timing_text(analysis: Analysis, decimals: int = 0) -> str:
     return "\n".join(rows)
 
 
+def analysis_evidence(analysis: Analysis) -> dict:
+    """The engine's alternatives for one analysis (Phase 19, Evidence).
+
+    Read only. Per settled section: its BPM, residual, coverage and inliers,
+    plus the coherence candidates the seed search read — each with its BPM
+    and coherence, the seeding one marked — the octave margin (seeded
+    coherence minus the strongest coherence an octave away, halves and
+    doubles within 3 %), and the half/double readings themselves when the
+    sweep saw them. The margin is the number the octave decision stood on,
+    not a retelling of it. Legacy analyses keep no attacks, so they report
+    that instead of inventing alternatives. Plain JSON types.
+    """
+    times = np.asarray(getattr(analysis, "attack_times", []), dtype=np.float64)
+    weights = np.asarray(getattr(analysis, "attack_weights", []), dtype=np.float64)
+    if times.size == 0 or weights.size != times.size:
+        return {"engine": analysis.engine, "sections": [],
+                "note": "no_attacks"}
+    out = []
+    for section in getattr(analysis, "sections", []):
+        window = ((times >= section.start_s - section.period)
+                  & (times <= section.end_s + section.period))
+        found = _atomic_grid_candidates(times[window], weights[window])
+        candidates = [{"bpm": round(60.0 / period, 4), "coherence": round(coherence, 4)}
+                      for period, _phase, coherence in found]
+        seeded = -1
+        if candidates and section.bpm > 0:
+            seeded = min(range(len(found)),
+                         key=lambda i: abs(np.log((60.0 / found[i][0]) / section.bpm)))
+        halves = [c for c in candidates
+                  if abs(c["bpm"] / (section.bpm / 2) - 1) <= 0.03] if section.bpm > 0 else []
+        doubles = [c for c in candidates
+                   if abs(c["bpm"] / (section.bpm * 2) - 1) <= 0.03] if section.bpm > 0 else []
+        octave = halves + doubles
+        margin = None
+        if candidates and seeded >= 0 and octave:
+            margin = round(candidates[seeded]["coherence"]
+                           - max(c["coherence"] for c in octave), 4)
+        out.append({"start_s": round(float(section.start_s), 3),
+                    "end_s": round(float(section.end_s), 3),
+                    "bpm": round(float(section.bpm), 4),
+                    "residual_ms": round(float(section.residual_ms), 3),
+                    "coverage": round(float(section.coverage), 4),
+                    "inliers": int(section.inliers),
+                    "candidates": candidates, "seeded": seeded,
+                    "octave_margin": margin,
+                    "half": max(halves, key=lambda c: c["coherence"]) if halves else None,
+                    "double": max(doubles, key=lambda c: c["coherence"]) if doubles else None})
+    return {"engine": analysis.engine,
+            "residual_ms": round(float(analysis.fit_residual_ms), 3),
+            "sections": out}
+
+
 def analysis_report(analysis: Analysis) -> dict:
     """Machine-readable report (CLI --json, Phase 8).
 

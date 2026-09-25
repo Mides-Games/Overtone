@@ -16,6 +16,36 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Evidence view: the engine shows its alternatives
+
+### Changed
+
+- **`analysis_evidence(analysis)`** + the Timing card: per settled section its BPM,
+  residual, coverage and inliers beside the coherence candidates the seed search
+  read — BPM and coherence each, seeded marked, half/double readings and the octave
+  margin (seeded minus strongest octave-away coherence) alongside. Using a candidate
+  writes its BPM into the governing red line through `edit_apply`, so undo, locks
+  and snapping behave as usual. Legacy analyses report no-attacks instead of
+  alternatives. Candidate sweeps are ~350 ms a dense section, cached on the live
+  analysis whose attacks no edit moves.
+
+### Measured
+
+```
+Python unittest              414 -> 417, all pass
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                           unit-tested bridge only; ids, both languages, no
+                             duplicates cross-checked. Harness pass owed, stated.
+```
+
+Why-the-fallback-ran reads as far as the engine records it: the engine pill plus
+`warn_legacy` for a fallback, the residual beside it. A forced-legacy run reads
+the same as a fell-back one — the analysis stores no reason — so the card does
+not invent one.
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Hitsounds H5b surface: tick, preview, write, undo
 
 ### Changed

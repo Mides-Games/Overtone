@@ -112,7 +112,7 @@
         </div>
         <div class="recents" id="recents" hidden>
           <div class="recents-title" data-i18n="recent">Recent</div>
-          <div class="stack" id="recentList" style="gap:8px"></div>
+          <div class="stack tight" id="recentList"></div>
         </div>
         <!-- the osu! Songs folder, from the library index (overtone_library.py) -->
         <div class="songs" id="songs">
@@ -178,15 +178,15 @@
             </div>
             <div class="spacer"></div>
             <div class="legend">
-              <span><i style="background:var(--blue)"></i><span data-i18n="lg_tempo">tempo</span></span>
-              <span><i style="background:var(--red)"></i><span data-i18n="lg_points">timing points</span></span>
-              <span><i style="background:#2e3a55"></i><span data-i18n="lg_onsets">onsets</span></span>
-              <span><i style="background:#eeb24c"></i><span data-i18n="lg_ghost">map lines</span></span>
-              <span><i style="background:#4fc08a"></i><span data-i18n="lg_drift">drift</span></span>
+              <span><i class="key-tempo"></i><span data-i18n="lg_tempo">tempo</span></span>
+              <span><i class="key-points"></i><span data-i18n="lg_points">timing points</span></span>
+              <span><i class="key-onsets"></i><span data-i18n="lg_onsets">onsets</span></span>
+              <span><i class="key-ghost"></i><span data-i18n="lg_ghost">map lines</span></span>
+              <span><i class="key-drift"></i><span data-i18n="lg_drift">drift</span></span>
             </div>
             <span class="card-sub num" id="tlZoom"></span>
             <button class="btn small" id="tlFit" hidden><span data-i18n="tl_fit">Show all</span></button>
-            <div class="segmented" style="margin-left:14px" title="Pulse octave">
+            <div class="segmented ml-m" title="Pulse octave">
               <button id="halfBtn">÷2</button><button id="doubleBtn">×2</button>
             </div>
           </div>
@@ -473,8 +473,8 @@
             <div class="setting">
               <div class="setting-name" data-i18n="st_scale">Interface size</div>
               <div class="spacer"></div>
-              <input type="range" id="stScale" min="80" max="150" step="5" class="pb-seek" style="flex:0 1 220px">
-              <span class="num" id="stScaleValue" style="min-width:44px;text-align:right"></span>
+              <input type="range" id="stScale" min="80" max="150" step="5" class="pb-seek short">
+              <span class="num readout" id="stScaleValue"></span>
             </div>
             <label class="check"><input type="checkbox" id="stMotion"><span data-i18n="st_motion">Reduce motion</span></label>
           </div>
@@ -595,15 +595,15 @@
         <button data-pulse="x1">×1</button><button data-pulse="x2">×2</button><button data-pulse="x4">×4</button>
       </div>
     </div>
-    <div class="card" style="border-radius:var(--r-lg)">
-      <div class="card-body stack" style="padding:14px 18px">
+    <div class="card compact">
+      <div class="card-body stack">
         <label class="switch"><span data-i18n="t_prefer">Prefer map BPM (120–300)</span><input type="checkbox" id="preferMap"><i></i></label>
         <div class="divider"></div>
         <label class="switch"><span data-i18n="t_refine">Re-anchor beats to transients</span><input type="checkbox" id="refineBeats"><i></i></label>
       </div>
     </div>
-    <div class="card" style="border-radius:var(--r-lg)">
-      <div class="card-body stack" style="padding:14px 18px">
+    <div class="card compact">
+      <div class="card-body stack">
         <label class="switch"><span data-i18n="t_rust">Rust engine (faster, same results)</span><input type="checkbox" id="rustEngine"><i></i></label>
         <div class="card-sub" id="rustNote" data-i18n="t_rust_note">Runs at the grid's own pulse. Where it finds no grid, the Python engine takes over and says so.</div>
       </div>

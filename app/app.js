@@ -1293,12 +1293,12 @@ function renderStructure() {
     </tr>`).join("");
   body.innerHTML = `
     <div class="stx-lane"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path class="energy" d="${path}"/></svg>${blocks}</div>
-    ${v.one_family ? `<div class="card-sub" style="margin-bottom:10px">${t("stx_one_family")}</div>` : ""}
+    ${v.one_family ? `<div class="card-sub mb-m">${t("stx_one_family")}</div>` : ""}
     <div class="table-scroll"><table class="stx-table">
       <thead><tr><th>${t("stx_h_start")}</th><th>${t("stx_h_bar")}</th><th>${t("stx_h_len")}</th><th>${t("stx_h_part")}</th><th>${t("stx_h_why")}</th><th>${t("stx_h_moved")}</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
-    <div class="card-sub" style="margin-top:10px">${t("stx_note", { snap: v.snap_s, edge })}</div>`;
+    <div class="card-sub mt-m">${t("stx_note", { snap: v.snap_s, edge })}</div>`;
 }
 
 // A section opens in Timing: the timeline zoomed to it, the playhead at its start.
@@ -1445,7 +1445,7 @@ function renderCompare() {
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <div class="card-head" style="padding-left:0">
+    <div class="card-head flush">
       <div class="card-title">${t("sug_title")}</div>
       <div class="spacer"></div>
       <span class="card-sub">${t((cmp.suggestions || []).length ? "sug_hint" : "sug_empty")}</span>
@@ -1509,7 +1509,7 @@ function renderAlign() {
         <tbody>${rows}</tbody>
       </table>
     </div>` : ""}
-    ${shown.length ? `<div class="card-sub" style="margin-top:10px">${t("align_uncovered")} ${shown.map((ms) => ms.toFixed(1)).join(", ")}${rest > 0 ? ` ${t("align_more", { n: rest })}` : ""}</div>` : ""}`;
+    ${shown.length ? `<div class="card-sub mt-m">${t("align_uncovered")} ${shown.map((ms) => ms.toFixed(1)).join(", ")}${rest > 0 ? ` ${t("align_more", { n: rest })}` : ""}</div>` : ""}`;
 }
 
 // ------------------------------------------------------------------ density
@@ -1608,13 +1608,13 @@ function renderSnap() {
     </tr>`).join("");
   body.innerHTML = `
     ${notes.map((n) => `<div class="card-sub">${n}</div>`).join("")}
-    ${rows ? `<div class="table-scroll" style="margin-top:8px">
+    ${rows ? `<div class="table-scroll mt-s">
       <table>
         <thead><tr><th>${t("snap_t_time")}</th><th>${t("snap_t_kind")}</th><th>${t("snap_t_div")}</th><th>${t("snap_t_off")}</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>` : ""}
-    <div class="card-sub" style="margin-top:10px">${t("snap_starts")}</div>`;
+    <div class="card-sub mt-m">${t("snap_starts")}</div>`;
 }
 
 // ------------------------------------------------------------------ reference timing
@@ -1675,8 +1675,8 @@ function renderRefFind() {
   if (!maps.length) return `<div class="card-sub">${t("ref_found_none", { root, s: found.scanned })}</div>`;
   const indexed = found.indexed ? ` <span class="muted">${t("ref_indexed", { when: esc(when(found.scanned_at)) })}</span>` : "";
   return `<div class="card-sub">${t("ref_found", { n: maps.length, root })}${indexed}</div>
-    <div class="stack" style="gap:6px;margin:8px 0 12px">${maps.map((b, i) => `
-      <div class="recent-item" style="cursor:default">
+    <div class="stack tight mt-s mb-m">${maps.map((b, i) => `
+      <div class="recent-item static">
         <span class="name">${esc(b.difficulty)} <span class="muted">· ${esc(b.folder.split(/[\\/]/).pop())}</span></span>
         <button class="btn small" data-ref-grade="${i}">${t("ref_grade")}</button>
       </div>`).join("")}</div>`;
@@ -1740,7 +1740,7 @@ function renderRef() {
             <tbody>${rows}</tbody>
           </table>
         </div>
-        <div class="card-head" style="padding-left:0">
+        <div class="card-head flush">
           <span class="card-sub">${t("ref_hint")}</span>
           <div class="spacer"></div>
           <button class="btn small" id="refLoad"><span>${t("ref_load")}</span></button>
@@ -1782,7 +1782,7 @@ function renderAssist() {
   const box = $("asResult"), fit = S.assist;
   if (!fit) { box.innerHTML = ""; return; }
   if (!fit.ok) {
-    box.innerHTML = `<div class="warnings" style="margin-top:14px"><div class="banner">
+    box.innerHTML = `<div class="warnings mt-m"><div class="banner">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
       <div>${t(`as_${fit.reason}`, fit.values)}</div></div></div>`;
     return;
@@ -1790,7 +1790,7 @@ function renderAssist() {
   const span = { from: (fit.start_ms / 1000).toFixed(1), to: (fit.end_ms / 1000).toFixed(1) };
   const notes = [t("as_moved", { a: `${fit.first_shift_ms >= 0 ? "+" : ""}${fit.first_shift_ms.toFixed(0)}`,
                                  b: `${fit.second_shift_ms >= 0 ? "+" : ""}${fit.second_shift_ms.toFixed(0)}` })];
-  const short = fit.short ? `<div class="warnings" style="margin-top:12px"><div class="banner">
+  const short = fit.short ? `<div class="warnings mt-m"><div class="banner">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
       <div>${t("as_short", { bars: Math.floor(fit.bars_held) })}</div></div></div>` : "";
   box.innerHTML = `
@@ -1798,8 +1798,8 @@ function renderAssist() {
                                                 bars: Math.floor(fit.bars_held), div: fit.divisor,
                                                 share: Math.round(fit.share * 100) })}</div>
     ${short}
-    ${notes.map((n) => `<div class="card-sub" style="margin-top:8px">${n}</div>`).join("")}
-    <div class="card-head" style="padding-left:0">
+    ${notes.map((n) => `<div class="card-sub mt-s">${n}</div>`).join("")}
+    <div class="card-head flush">
       <span class="card-sub">${t("as_add_hint", span)}</span>
       <div class="spacer"></div>
       <button class="btn small" id="asAdd"><span>${t("as_add")}</span></button>
@@ -2028,12 +2028,12 @@ function pbDraw() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
   if (P.loop && P.playing) {
-    ctx.fillStyle = "rgba(79, 192, 138, 0.08)";
+    ctx.fillStyle = C.loop;
     ctx.fillRect(geom.X(P.loop.a), geom.y0 - 22, geom.X(P.loop.b) - geom.X(P.loop.a), geom.y1 - geom.y0 + 22);
   }
   if (!P.playing && pos <= 0) return;
   const x = Math.round(geom.X(Math.min(pos, dur))) + 0.5;
-  ctx.strokeStyle = "#e8ecf1"; ctx.lineWidth = 1.5;
+  ctx.strokeStyle = C.playhead; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(x, geom.y0 - 22); ctx.lineTo(x, geom.y1); ctx.stroke();
 }
 
@@ -2204,8 +2204,8 @@ function renderReport() {
     </tr>`).join("");
   body.innerHTML = `
     <div class="rp-filters">${filters}</div>
-    <div class="table-scroll" style="margin-top:10px"><table><tbody>${rows}</tbody></table></div>
-    <div class="card-sub" style="margin-top:10px">${t("rp_hint")}</div>`;
+    <div class="table-scroll mt-m"><table><tbody>${rows}</tbody></table></div>
+    <div class="card-sub mt-m">${t("rp_hint")}</div>`;
   body.querySelectorAll("[data-stamp]").forEach((b) => { b.onclick = () => openStamp(b.dataset.stamp); });
   body.querySelectorAll("[data-rp-source]").forEach((box) => {
     box.onchange = () => {
@@ -2384,7 +2384,7 @@ function renderMapset() {
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <div class="card-sub" style="margin-top:10px">${t("ms_density_note")}</div>`;
+    <div class="card-sub mt-m">${t("ms_density_note")}</div>`;
 
   const readable = r.difficulties.filter((d) => d.readable);
   if (readable.length < 2) return;  // nothing to compare against
@@ -2424,13 +2424,21 @@ function renderMapset() {
 }
 
 // ------------------------------------------------------------------ tempo trace
-const C = {
-  plot: "#0e1320", grid: "#1a2233", gridText: "#606b80", tempo: "#7f9df0", fill: "rgba(127,157,240,0.10)",
-  onset: "#1e2739", red: "#e0606c", redSoft: "rgba(224,96,108,0.16)", section: "rgba(255,255,255,0.018)",
-  selected: "rgba(79,192,138,0.08)", cursor: "rgba(232,236,242,0.35)",
-  beat: "rgba(255,255,255,0.07)", beatBar: "rgba(255,255,255,0.17)", wave: "#3a4a6b",
-  ghost: "rgba(238,178,76,0.75)", driftOk: "#4fc08a", driftWarn: "#eeb24c", driftBad: "#e0606c",
+// Canvas ink comes from the stylesheet's --chart-* tokens, so the timeline
+// follows the theme like every other surface. Read again when the theme changes.
+const C_TOKENS = {
+  plot: "plot", grid: "grid", gridText: "grid-text", tempo: "tempo", fill: "tempo-fill",
+  onset: "onset", red: "red", redSoft: "red-soft", redInk: "red-ink", section: "section",
+  selected: "selected", cursor: "cursor", beat: "beat", beatBar: "bar", wave: "wave",
+  ghost: "ghost", driftOk: "drift-ok", driftWarn: "drift-warn", driftBad: "drift-bad",
+  playhead: "playhead", loop: "loop",
 };
+const C = {};
+function chartInk() {
+  const css = getComputedStyle(document.documentElement);
+  for (const [key, name] of Object.entries(C_TOKENS)) C[key] = css.getPropertyValue(`--chart-${name}`).trim();
+}
+chartInk();
 const PAD = { l: 52, r: 18, t: 34, b: 30 };
 let geom = null;
 
@@ -2693,7 +2701,7 @@ function drawTrace(hoverX) {
     lastRight[row] = x + w;
     const top = y0 - 20 + row * 24;
     ctx.fillStyle = C.red; roundRect(ctx, x, top, w, 20, 10); ctx.fill();
-    ctx.fillStyle = "#1a0b0d"; ctx.fillText(label, x + 8, top + 10.5);
+    ctx.fillStyle = C.redInk; ctx.fillText(label, x + 8, top + 10.5);
   });
 
   // hover cursor

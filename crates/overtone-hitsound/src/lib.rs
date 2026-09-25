@@ -16,6 +16,7 @@ pub mod emission;
 pub mod evidence;
 pub mod map;
 pub mod profile;
+pub mod viterbi;
 pub mod role;
 pub mod source;
 pub mod spectral;

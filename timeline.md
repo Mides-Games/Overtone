@@ -16,6 +16,32 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Hitsounds H4c: the Viterbi core
+
+### Changed
+
+- **`viterbi.rs`**: the second sum of docs/06 §6 — exact Viterbi over the 24
+  candidates with pairwise transitions (switch cost waived on new combos and
+  phrase edges, stream consistency inside fast runs, phrase symmetry one bar on,
+  a one-step finish refractory), plus forward-backward marginals for alternatives
+  and confidences. Wider windows stay out on purpose: they would break the Markov
+  structure the exact DP needs.
+
+### Fixed
+
+- **The forward pass started at −∞**, so the first row poisoned the lattice and the
+  backpointers walked home to the last state. The brute-force test caught it before
+  anything leaned on it: row zero starts at 0, there being no previous state to pay.
+
+### Measured
+
+```
+Rust tests                 246 -> 251, all pass, no warnings
+DP speed                   not measured (O(n·24²); the CLI gate will time it)
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Hitsounds H4b: profiles as data, emission scored
 
 ### Changed

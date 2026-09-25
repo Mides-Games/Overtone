@@ -3743,6 +3743,96 @@ def _structure_report(bounds, kinds, groups, levels, duration=64.0, energy=None)
             "timings_s": {"structure": 0.1, "classify": 0.1}}
 
 
+_SOUND_MAP = """osu file format v14
+
+[General]
+AudioFilename: audio.mp3
+SampleSet: Soft
+
+[Difficulty]
+SliderMultiplier:1.4
+
+[TimingPoints]
+0,500,4,0,0,70,1,0
+2000,-50,4,3,2,40,0,0
+
+[HitObjects]
+256,192,1000,1,8,0:0:0:0:
+256,192,1500,1,2,1:2:0:0:
+256,192,1995,1,4,0:0:0:0:
+256,192,2500,2,0,L|356:192,1,140,4|8,0:0|3:1,0:0:0:0:
+256,192,3000,2,2,L|326:192,2,70
+256,192,4000,12,4,5000,0:0:0:0:
+256,192,6000,1,0,0:0:0:0:hit.wav
+64,192,7000,128,2,7500:0:0:0:0:
+bad line
+"""
+
+
+class SoundEventTests(unittest.TestCase):
+    """Phase 6, P-1: every object as the sounds osu! plays for it."""
+
+    def _events(self, text=_SOUND_MAP):
+        from overtone import read_osu_beatmap, sound_events
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = read_osu_beatmap(_write_osu(tmp, text))
+        events = sound_events(beatmap)
+        json.dumps(events)
+        return events
+
+    def test_circles_inherit_from_the_timing_point_then_the_map(self):
+        events = self._events()
+        first, second, late = events[0], events[1], events[2]
+        # Timing point set 0 -> the map's SampleSet (Soft); volume from the point.
+        self.assertEqual((first["sounds"], first["normal_set"], first["addition_set"],
+                          first["index"], first["volume"]),
+                         (["normal", "clap"], "soft", "soft", 0, 70))
+        self.assertEqual(first["raw"]["normal_set"], 0)
+        # The object's own sets win; its addition set is its own.
+        self.assertEqual((second["sounds"], second["normal_set"], second["addition_set"]),
+                         (["normal", "whistle"], "normal", "soft"))
+        # 5 ms before a green line, the green line already applies.
+        self.assertEqual((late["time"], late["normal_set"], late["index"], late["volume"]),
+                         (1995.0, "drum", 2, 40))
+
+    def test_slider_edges_carry_their_own_sounds_and_sets(self):
+        events = [e for e in self._events() if e["object"] == 3]
+        self.assertEqual([(e["part"], e["time"]) for e in events],
+                         [("head", 2500.0), ("tail", 2750.0), ("body", 2500.0)])
+        head, tail, body = events
+        self.assertEqual((head["sounds"], head["normal_set"]), (["normal", "finish"], "drum"))
+        self.assertEqual((tail["sounds"], tail["normal_set"], tail["addition_set"]),
+                         (["normal", "clap"], "drum", "normal"))
+        self.assertEqual((body["sounds"], body["end"]), (["slide"], 2750.0))
+
+    def test_a_slider_without_edge_fields_sounds_its_own_bits_on_every_edge(self):
+        events = [e for e in self._events() if e["object"] == 4]
+        self.assertEqual([(e["part"], e["time"]) for e in events],
+                         [("head", 3000.0), ("repeat", 3125.0), ("tail", 3250.0), ("body", 3000.0)])
+        self.assertTrue(all(e["sounds"][-1] == "whistle" for e in events))
+        self.assertEqual(events[-1]["sounds"], ["slide", "whistle"])
+
+    def test_spinners_sound_at_their_end_holds_at_their_start_files_alone(self):
+        events = self._events()
+        spinner = next(e for e in events if e["object"] == 5)
+        custom = next(e for e in events if e["object"] == 6)
+        hold = next(e for e in events if e["object"] == 7)
+        self.assertEqual((spinner["part"], spinner["time"], spinner["sounds"]),
+                         ("spinner_end", 5000.0, ["normal", "finish"]))
+        self.assertEqual((custom["file"], custom["raw"]["file"]), ("hit.wav", "hit.wav"))
+        self.assertEqual((hold["part"], hold["time"], hold["sounds"]),
+                         ("hold", 7000.0, ["normal", "whistle"]))
+        self.assertFalse(any(e["object"] == 8 for e in events))    # the bad line
+
+    def test_no_timing_points_still_places_every_head(self):
+        text = _SOUND_MAP.split("[TimingPoints]")[0] + "[HitObjects]\n" + \
+            _SOUND_MAP.split("[HitObjects]\n")[1]
+        events = self._events(text)
+        slider = [e["part"] for e in events if e["object"] == 3]
+        self.assertEqual(slider, ["head"])                  # no beat length: no tail to place
+        self.assertEqual((events[0]["normal_set"], events[0]["volume"]), ("soft", 100))
+
+
 class StructureViewTests(unittest.TestCase):
     """Phase 19, Structure: phrases on the song's proven bars, labels with why."""
 

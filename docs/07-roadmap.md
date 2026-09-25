@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **353** Python (241 engine + 112 web shell) · **233** Rust.
+Tests: **358** Python (246 engine + 112 web shell) · **233** Rust.
 
 ### What is pending, in order
 
@@ -320,7 +320,7 @@ the copier, the section, the check, the decision engine, the editor.
 
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
-| P-1 Sound events from the map | every object as the sounds it makes (edges, body, spinner end), resolved against the timing points | med | **high** | P5 reader | no | no | **P1** | todo — first |
+| P-1 Sound events from the map | every object as the sounds it makes (edges, body, spinner end), resolved against the timing points | med | **high** | P5 reader | no | no | **P1** | **done** — `sound_events`; 0 errors on 3,000 local maps, slider lengths held (0.04 % overlap, all in gimmick maps) |
 | P-2 Hitsound field writer | only `hitSound`/`edgeSounds`/`edgeSets`/`hitSample` change; zero-change write byte-identical | med | **high** | P5 writer | no | no | **P1** | todo |
 | P-3 Sample playback | samples found as osu! finds them, Overtone's own synthesised defaults, on the playback clock | med | **high** | P4 playback | no | no | **P1** | todo |
 | P-4 Evidence through the CLI | class probabilities with terms, and role, per attack; calibrated weights baked in | med | **high** | templates, role | no | no | **P1** | todo |

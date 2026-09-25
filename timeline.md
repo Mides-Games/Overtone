@@ -16,6 +16,35 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · Hitsounds P-1: what each object plays
+
+### Changed
+
+- **`sound_events(beatmap)`**, the first prerequisite of `docs/15-hitsound-plan.md`: every
+  object as the sounds osu! plays for it. Circles and mania holds sound at their start,
+  spinners at their end. A slider sounds at its head, every repeat and its tail, each with
+  its own edge sounds and sets, and its body carries the slide. Each sound is resolved
+  (object value, else timing point, else the map's `SampleSet`; additions follow the
+  normal set; index and volume of 0 inherit; a custom file plays alone), and keeps the raw
+  values beside the resolved ones, so a copy writes what the map wrote.
+- Where the format leaves a rule open, it follows osu!lazer's legacy decoder and says so:
+  a sound reads the timing point in force 5 ms after it. Stable's rule is not verified.
+
+### Measured
+
+3,000 standard maps from the local Songs folder, read only:
+
+```
+errors                      0, over 2,604,536 sound events
+time                        5.3 ms per map (reading the .osu: 16 ms)
+slider lengths              201 of 564,412 sliders (0.04 %) end past the next object's
+                            start, all in 7 maps built on overlaps (math tests,
+                            minigames, a debug map): the lengths hold
+Python unittest             353 -> 358, all pass
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Hitsounds first: the plan
 
 ### Changed

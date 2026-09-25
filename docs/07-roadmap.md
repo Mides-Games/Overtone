@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **400** Python (280 engine + 120 web shell) · **256** Rust.
+Tests: **403** Python (283 engine + 120 web shell) · **256** Rust.
 
 ### What is pending, in order
 
@@ -336,7 +336,7 @@ the copier, the section, the check, the decision engine, the editor.
 | Template calibration | logistic fit of term weights | med | high | corpus | **light** | no | P1 | **done** — held-out macro F1 0.231 hand-set → 0.723 calibrated (fit on seeds 11–14, judged on 21–24); `calibrated_templates()` ships the fit |
 | Musical role | grid position, metrical weight, phrase, accent, density | med | **high** | P2 structure | no | no | **P1** | **done** (audio side) |
 | Object context | type, pattern, spacing, combo, existing hitsounds | med | **high** | P5 reader | no | no | **P1** | partial — map context attached to each attack (Python) |
-| **Viterbi decision** | sequence labelling with consistency costs | high | **high** | all above | no | no | **P1** | todo |
+| **Viterbi decision** | sequence labelling with consistency costs | high | **high** | all above | no | no | **P1** | **done** — `overtone-cli hitsound`: 19/19 synthetic exact, real clap/finish F1 above the rules on two samples |
 | Explanations | itemised terms + alternatives | med | **high** | decision | no | no | **P1** | todo |
 | Profiles | built-in + custom, as data | low | high | decision | no | no | **P1** | todo |
 | Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | partial — the object lane (P-7); instrument lanes need P-4 |

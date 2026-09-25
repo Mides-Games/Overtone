@@ -121,7 +121,7 @@ has hitsounds, which is 94 % of them.
 **Measure:** flags per map on the local corpus; a flag rate a modder would read, not
 hundreds per map. Thresholds set on P-6's numbers, then held fixed.
 
-### H4 · Decision engine (needs P-4, P-5, P-6, grid, phrase edges)
+### H4 · Decision engine (needs P-4, P-5, P-6, grid, phrase edges) — done 2026-09-25
 
 The Viterbi of `06` §6 in Rust, profiles as JSON files, a proposal per object with its
 alternatives and the terms behind it. Exposed as `overtone-cli hitsound <audio> <map>`.
@@ -129,10 +129,13 @@ alternatives and the terms behind it. Exposed as `overtone-cli hitsound <audio> 
 **Measure, two gates before it reaches the app:**
 - *Synthetic:* the corpus renderer places hits with labels; a map with an object on each
   hit is hitsounded, and the proposal must put the profile's sound on each class (exact
-  truth).
+  truth). Holds 19/19 on a grid-composed arrangement (hats to percussive-bare as a
+  stated template limit).
 - *Real:* on P-6, agreement with the mapper per addition must beat the simple baselines.
-  Mappers disagree with each other, so the number is not "accuracy". It is "better than a
-  rule", or the engine does not ship.
+  Holds on two disjoint 11-map samples: clap F1 0.67 and 0.63 against 0.59, finish F1
+  0.71 and 0.75 against 0.42 (`bench/eval_proposals.py`). Mappers disagree with each
+  other, so the number is not "accuracy". It is "better than a rule", and both samples
+  clear it.
 
 ### H5 · Editor and export (needs H4, P-2, P-3, P-7)
 

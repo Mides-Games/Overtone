@@ -16,6 +16,37 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Hitsounds H4e: better than a rule, twice
+
+### Changed
+
+- **`bench/eval_proposals.py`**, the real-audio gate: `overtone-cli hitsound` over
+  index-selected local maps, each proposal scored against the mapper's own sounds
+  joined on (object, part, edge), medians over maps where the mapper uses the
+  addition — the same ruler as P-6. One map per audio, bodies neither side,
+  uncovered joins counted apart. `--offset` skips songs, after a bug skipped map
+  rows instead (a set holds many difficulties of one audio) and the first rerun
+  overlapped the first sample: fixed, rerun disjoint, the overlapped numbers
+  superseded and not cited.
+
+### Measured
+
+```
+two disjoint 11-map samples   clap F1 median 0.67 then 0.63 (rule 0.59);
+  (1 opus undecodable)        finish F1 median 0.71 then 0.75 (rule 0.42);
+                              whistle F1 0.81 and 0.77 (no rule proposes it);
+                              uncovered joins 0; ~22 s a song through the CLI
+Python unittest               400 -> 403, all pass
+benchmark.py                  24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+```
+
+Both samples clear both bars with margin except clap's lower quartile (0.56-0.62
+against the rule's 0.59 median): the engine beats the rule on the typical map, not
+yet on every map. That is the honest reading, and H5's editor exists for the rest.
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Hitsounds H4d: the synthetic gate, and three tunings it drove
 
 ### Changed

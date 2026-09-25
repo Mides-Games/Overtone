@@ -4245,6 +4245,58 @@ class HitsoundEvalTests(unittest.TestCase):
         self.assertIsNone(tallies["finish"]["f1"])
 
 
+class HitsoundProposalEvalTests(unittest.TestCase):
+    """Phase 6, H4e: mapper-vs-proposal tallies joined on (object, part, edge)."""
+
+    @staticmethod
+    def _eval():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "eval_proposals",
+            Path(__file__).resolve().parent / "bench" / "eval_proposals.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _event(object, part, edge, sounds):
+        return {"object": object, "part": part, "edge": edge, "time": 1000.0,
+                "sounds": sounds}
+
+    @staticmethod
+    def _unit(object, part, edge, additions):
+        return {"object": object, "part": part, "edge": edge,
+                "proposal": {"bank": "drum", "additions": additions, "bits": 0}}
+
+    def test_full_agreement_scores_one(self):
+        ev = self._eval()
+        events = [self._event(0, "circle", None, ["normal", "clap"]),
+                  self._event(1, "circle", None, ["normal"])]
+        units = [self._unit(0, "circle", None, ["clap"]),
+                 self._unit(1, "circle", None, [])]
+        tallies = ev.score_proposals(events, units)
+        json.dumps(tallies)
+        self.assertEqual((tallies["clap"]["tp"], tallies["clap"]["fp"],
+                          tallies["clap"]["fn"], tallies["clap"]["uncovered"]),
+                         (1, 0, 0, 0))
+        self.assertEqual(tallies["clap"]["f1"], 1.0)
+
+    def test_uncovered_events_count_apart_never_as_misses(self):
+        ev = self._eval()
+        events = [self._event(0, "circle", None, ["normal", "clap"])]
+        tallies = ev.score_proposals(events, [])
+        self.assertEqual((tallies["clap"]["uncovered"], tallies["clap"]["fn"]),
+                         (1, 0))
+        self.assertIsNone(tallies["clap"]["f1"])
+
+    def test_bodies_ride_neither_side(self):
+        ev = self._eval()
+        events = [self._event(0, "body", None, ["slide", "whistle"])]
+        units = [self._unit(0, "body", None, ["whistle"])]
+        tallies = ev.score_proposals(events, units)
+        self.assertEqual((tallies["whistle"]["tp"], tallies["whistle"]["mapper"]), (0, 0))
+
+
 class HitsoundConsistencyTests(unittest.TestCase):
     """Phase 6, H3 map half: sounds breaking the map's own clap pattern."""
 

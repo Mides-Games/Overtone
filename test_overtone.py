@@ -2848,6 +2848,36 @@ class MapWriterTests(unittest.TestCase):
         _beatmap, result, _info = self._write(raw)
         self.assertEqual(result, raw)
 
+    def test_mixed_line_endings_survive_read_write_and_set_reds(self) -> None:
+        # A CRLF map with bare LFs, as in a real one from the Songs folder
+        # (a lone "\n" before [Colours]). Bytes, not _write_osu: text mode
+        # would translate the endings on Windows before the reader saw them.
+        red = b"1000,400,4,1,0,100,1,0"
+        raw = (_FULL_OSU.replace("\n", "\r\n").encode("utf-8")
+               .replace(b"osu file format v14\r\n", b"osu file format v14\n")
+               .replace(b"[Metadata]\r\n", b"[Metadata]\n")
+               .replace(red + b"\r\n", red + b"\n")
+               .replace(b"\r\n[Colours]", b"\n[Colours]"))
+        self.assertEqual(raw.count(b"\r\n"), _FULL_OSU.count("\n") - 4)
+        beatmap, result, info = self._write(raw)
+        self.assertEqual(result, raw)
+        self.assertFalse(info["backup"])
+        self.assertEqual(beatmap["newline"], "\r\n")
+        # An edit keeps every other line's ending; a new red takes the ending
+        # of the red it replaces, and one past the old count the file's own.
+        one, two = b"1000,60000,4,1,0,100,1,0", b"5000,30000,4,1,0,100,1,0"
+        for reds, expected in (([one], raw.replace(red + b"\n", one + b"\n")),
+                               ([one, two], raw.replace(red + b"\n",
+                                                        one + b"\n" + two + b"\r\n"))):
+            with tempfile.TemporaryDirectory() as tmp:
+                target = Path(tmp) / "map.osu"
+                target.write_bytes(raw)
+                beatmap = read_osu_beatmap(target)
+                self.assertEqual(set_beatmap_reds(beatmap, [r.decode() for r in reds]), 1)
+                write_osu_beatmap(target, beatmap)
+                self.assertEqual(target.read_bytes(), expected)
+                self.assertEqual(Path(str(target) + ".bak").read_bytes(), raw)
+
     def test_set_reds_changes_only_reds_with_pristine_backup(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "map.osu"

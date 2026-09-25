@@ -16,6 +16,38 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Hitsounds H4b: profiles as data, emission scored
+
+### Changed
+
+- **`profiles/balanced.json`**, the affinity table and weights of docs/06 §6 as JSON
+  (not TOML: serde_json is already a dependency), loaded strictly by `profile.rs` —
+  an unknown class, bank or addition fails naming it, and a class with no affinity is
+  refused instead of silently never firing.
+- **`emission.rs`**: the first sum of §6 per object — instrument likelihoods through
+  affinity (`inherit` resolving to the object's own bank, else the map default), role
+  fit, combo emphasis, mapper prior — over 24 candidates (3 banks by 8 subsets, no
+  pruning to hide behind), every score itemised term by term. Volume, index and the
+  energy term wait for H5, stated here and in the profile. The metrical numbers in
+  `role_fit` are starting points the gates will judge, not measurements.
+- `match_attack`: the P-5 nearest-attack match for deciding per object.
+
+### Fixed
+
+- **A CRLF conversion one-liner emptied both new files.** `[open(f,'wb').write(..read..)
+  for f in ...]` evaluates the truncating `open(f,'wb')` before the read. Both files
+  were rewritten from the verified content and the tests re-run green. Conversions
+  read first, write after, in separate statements from now on.
+
+### Measured
+
+```
+Rust tests                 240 -> 246, all pass, no warnings
+golden 27/27 · facts
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Hitsounds H4a: the `.osu` reader in Rust
 
 ### Changed

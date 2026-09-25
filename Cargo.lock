@@ -171,6 +171,8 @@ dependencies = [
  "overtone-core",
  "overtone-dsp",
  "realfft",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

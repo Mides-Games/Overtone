@@ -1,0 +1,28 @@
+{
+  "_comment": "Balanced hitsound profile: instrument-to-hitsound affinity plus the emission and transition weights of docs/06-hitsound-engine.md section 6, as JSON (not TOML: serde_json is already a dependency). Volume and index are not decided by H4, so energy waits for H5 with them.",
+  "affinity": {
+    "kick": [{ "bank": "drum", "additions": [], "w": 1.0 }],
+    "snare": [
+      { "bank": "drum", "additions": ["clap"], "w": 1.0 },
+      { "bank": "normal", "additions": ["clap"], "w": 0.6 }
+    ],
+    "clap": [{ "bank": "normal", "additions": ["clap"], "w": 1.0 }],
+    "hat_closed": [{ "bank": "soft", "additions": [], "w": 0.9 }],
+    "hat_open": [{ "bank": "soft", "additions": ["whistle"], "w": 0.55 }],
+    "tom": [{ "bank": "drum", "additions": [], "w": 0.8 }],
+    "cymbal": [{ "bank": "normal", "additions": ["finish"], "w": 1.0 }],
+    "ride": [{ "bank": "soft", "additions": ["whistle"], "w": 0.7 }],
+    "bass": [{ "bank": "drum", "additions": [], "w": 0.7 }],
+    "guitar": [{ "bank": "normal", "additions": ["finish"], "w": 0.7 }],
+    "keys": [{ "bank": "soft", "additions": [], "w": 0.6 }],
+    "vocal": [{ "bank": "soft", "additions": ["whistle"], "w": 0.85 }],
+    "other": [{ "bank": "inherit", "additions": [], "w": 0.3 }]
+  },
+  "weights": { "role": 1.0, "energy": 0.6, "context": 0.8, "prior": 1.2 },
+  "transition": {
+    "stream_consistency": 1.4,
+    "phrase_symmetry": 0.9,
+    "finish_spacing": 1.1,
+    "switch_cost": 0.5
+  }
+}

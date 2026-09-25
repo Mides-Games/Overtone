@@ -44,6 +44,37 @@ pub enum Feature {
     PercussiveRatio,
 }
 
+impl Feature {
+    /// Snake-case name for evidence output (`sub_ratio`, `f0_hz`, ...).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Feature::SubRatio => "sub_ratio",
+            Feature::LowRatio => "low_ratio",
+            Feature::LowMidRatio => "low_mid_ratio",
+            Feature::MidRatio => "mid_ratio",
+            Feature::HighMidRatio => "high_mid_ratio",
+            Feature::HighRatio => "high_ratio",
+            Feature::AirRatio => "air_ratio",
+            Feature::CentroidHz => "centroid_hz",
+            Feature::Rolloff85Hz => "rolloff85_hz",
+            Feature::BandwidthHz => "bandwidth_hz",
+            Feature::Flatness => "flatness",
+            Feature::Crest => "crest",
+            Feature::Flux => "flux",
+            Feature::RiseS => "rise_s",
+            Feature::DecayTauS => "decay_tau_s",
+            Feature::SustainS => "sustain_s",
+            Feature::Zcr => "zcr",
+            Feature::SubAttacks => "sub_attacks",
+            Feature::ChromaChange => "chroma_change",
+            Feature::F0Hz => "f0_hz",
+            Feature::Harmonicity => "harmonicity",
+            Feature::Formant => "formant",
+            Feature::PercussiveRatio => "percussive_ratio",
+        }
+    }
+}
+
 /// All evidence for one attack, assembled by [`extract`].
 #[derive(Debug, Clone)]
 pub struct Features {
@@ -208,6 +239,18 @@ impl Response {
             }
             Response::AtMost(t) => ((2.0 * t - x) / t.max(1e-12)).clamp(0.0, 1.0),
             Response::AtLeast(t) => ((x - (t - 0.5)) / 1.0).clamp(0.0, 1.0),
+        }
+    }
+
+    /// Kind and knots for evidence output: `("rising", [a, b])`, and so on.
+    /// The shape is fixed (never fitted), so callers can replay the term.
+    pub fn describe(&self) -> (&'static str, Vec<f64>) {
+        match *self {
+            Response::Rising(a, b) => ("rising", vec![a, b]),
+            Response::Falling(a, b) => ("falling", vec![a, b]),
+            Response::Band(lo, mid, hi) => ("band", vec![lo, mid, hi]),
+            Response::AtMost(t) => ("at_most", vec![t]),
+            Response::AtLeast(t) => ("at_least", vec![t]),
         }
     }
 }

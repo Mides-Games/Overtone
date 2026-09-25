@@ -7,6 +7,9 @@
 //! overtone-cli analyze song.mp3 --decimals 3 # lazer keeps fractional ms
 //! overtone-cli analyze song.mp3 --full       # + the evidence an app needs
 //! overtone-cli structure song.mp3            # phrases, labels, energy (JSON)
+//! overtone-cli hitsound-evidence song.mp3  # per attack: class probabilities
+//!                                          # with each term's contribution,
+//!                                          # and its musical role (JSON)
 //! ```
 //!
 //! `--full` adds what v3's `Analysis` carries beside the red lines: the
@@ -31,7 +34,17 @@
 //! 0.5 s feature grid, and snapping them to downbeats is the caller's job,
 //! since the caller holds the grid.
 //!
-//! Exit codes: 0 a grid was found (for `structure`, the audio was read); 3
+//! `hitsound-evidence` prints what the hitsound decision (H4) gets about
+//! every attack: the 13 class probabilities with each term's contribution
+//! (feature, value, response shape, fitted weight behind it), and the
+//! attack's musical role (grid slot, metrical weight, phrase position,
+//! accent, density). The weights are the baked calibrated fit, loaded in
+//! under a millisecond. It exits 0 even when the tempo engine finds no
+//! grid: the instrument half never needed one, and the role degrades to
+//! nulls where there is no grid to sit on.
+//!
+//! Exit codes: 0 a grid was found (for `structure`, the audio was read; for
+//! `hitsound-evidence`, the evidence was printed); 3
 //! the engine refused (no grid in this audio, reason on stderr and in
 //! `diagnostics`); 1 the file could not be loaded; 2 the command line is
 //! wrong.
@@ -45,7 +58,8 @@ use serde_json::{json, Value};
 
 const USAGE: &str = "usage: overtone-cli analyze <audio> [--json | --full] [--decimals N] \
 [--min-delta BPM] [--persistence BEATS] [--min-confidence C] [--no-map-bpm]\n       \
-overtone-cli structure <audio>";
+overtone-cli structure <audio>\n       \
+overtone-cli hitsound-evidence <audio>";
 
 /// The v3 CLI's defaults, which the golden vectors were dumped with.
 struct Options {
@@ -345,10 +359,130 @@ fn source(path: &Path) -> String {
     path.display().to_string()
 }
 
+/// `hitsound-evidence <audio>`: per-attack class probabilities with each
+/// term's contribution, and the attack's role, as JSON. Exit 1 when the
+/// audio cannot be read, 2 on a bad command; 0 otherwise, grid or no grid.
+fn hitsound_evidence(args: &[String]) -> ExitCode {
+    use overtone_hitsound::{baked, evidence as ev};
+    let audio = match args {
+        [path] if !path.starts_with("--") => PathBuf::from(path),
+        _ => {
+            eprintln!("overtone-cli: hitsound-evidence takes one audio file\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    let started = Instant::now();
+    let (y, sr) = match overtone_audio::load(&audio) {
+        Ok(loaded) => loaded,
+        Err(e) => {
+            eprintln!("overtone-cli: cannot load {}: {e}", audio.display());
+            println!(
+                "{}",
+                json!({"source": source(&audio), "error": e.to_string()})
+            );
+            return ExitCode::from(1);
+        }
+    };
+    let decode_s = started.elapsed().as_secs_f64();
+
+    let started = Instant::now();
+    let (attacks, env) = overtone_dsp::detect_attacks_default(&y, sr);
+    let times: Vec<f64> = attacks.iter().map(|a| a.time.get()).collect();
+    let weights: Vec<f32> = attacks.iter().map(|a| a.weight).collect();
+    let attacks_s = started.elapsed().as_secs_f64();
+
+    let started = Instant::now();
+    let out = overtone_tempo::points::analyze_attacks(
+        &times, &weights, &env, sr, 1.5, 12, true, 0.75,
+    );
+    let tempo_s = started.elapsed().as_secs_f64();
+    let measures =
+        overtone_tempo::points::section_measures(&out.settled_sections, &times, &weights);
+    let bars: Vec<(usize, usize)> =
+        measures.iter().map(|&(_, downbeat, bar)| (downbeat, bar)).collect();
+
+    let started = Instant::now();
+    let found = overtone_dsp::structure::analyze(&y, sr);
+    let structure_s = started.elapsed().as_secs_f64();
+
+    let started = Instant::now();
+    let templates = baked::templates();
+    let rows = ev::evidence(
+        &y,
+        sr,
+        &times,
+        &weights,
+        &out.settled_sections,
+        &bars,
+        &found.boundaries,
+        &templates,
+    );
+    let evidence_s = started.elapsed().as_secs_f64();
+
+    let role_json = |role: &overtone_hitsound::role::Role| {
+        json!({
+            "division": role.division,
+            "grid_residual_ms": role.grid_residual_ms,
+            "metrical_weight": role.metrical_weight,
+            "bars_since_phrase_start": role.bars_since_phrase_start,
+            "bars_to_phrase_end": role.bars_to_phrase_end,
+            "section_boundary_s": role.section_boundary_s,
+            "local_energy": role.local_energy,
+            "accent": role.accent,
+            "density": role.density,
+        })
+    };
+    let report = json!({
+        "source": source(&audio),
+        "duration": y.len() as f64 / sr as f64,
+        "attacks": rows.iter().map(|row| json!({
+            "time_s": row.time_s,
+            "weight": row.weight,
+            "role": role_json(&row.role),
+            "classes": row.classes.iter().map(|class| json!({
+                "class": class.class.as_str(),
+                "probability": class.probability,
+                "score": class.score,
+                "terms": class.terms.iter().map(|term| {
+                    let (kind, knots) = term.response.describe();
+                    json!({
+                        "feature": term.feature.as_str(),
+                        "value": term.value,
+                        "response": {"kind": kind, "knots": knots},
+                        "contribution": term.contribution,
+                    })
+                }).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "sections": out.settled_sections.iter().zip(measures.iter()).map(|(s, m)| json!({
+            "start_s": s.start.get(),
+            "end_s": s.end.get(),
+            "period_s": s.period,
+            "phase_s": s.phase,
+            "downbeat": m.1,
+            "beats_per_bar": m.2,
+        })).collect::<Vec<_>>(),
+        "phrase_edges": found.boundaries,
+        "templates": "baked",
+        "version": overtone_tempo::VERSION,
+        "timings_s": {"decode": decode_s, "attacks": attacks_s, "tempo": tempo_s,
+                      "structure": structure_s, "evidence": evidence_s},
+    });
+    println!("{report}");
+    eprintln!(
+        "overtone-cli: {} attacks with evidence; attacks {attacks_s:.2} s + tempo {tempo_s:.2} s + structure {structure_s:.2} s + evidence {evidence_s:.2} s",
+        rows.len()
+    );
+    ExitCode::SUCCESS
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("structure") {
         return structure(&args[1..]);
+    }
+    if args.first().map(String::as_str) == Some("hitsound-evidence") {
+        return hitsound_evidence(&args[1..]);
     }
     match parse(&args) {
         Ok(options) => analyze(&options),

@@ -16,6 +16,39 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Hitsounds P-4: evidence through the CLI
+
+### Changed
+
+- **`overtone-cli hitsound-evidence <audio>`**: per attack, the 13 class probabilities
+  with each term's contribution (feature, value, response kind and knots, fitted
+  weight behind it) and the attack's musical role, as JSON, with the sections, bars
+  and phrase edges behind the roles. The calibrated weights ship baked into
+  `overtone-hitsound/src/baked.rs` — shapes still from `initial_templates`, numbers
+  generated from a fresh fit — and `baked_matches_fresh_fit` holds them bit-for-bit
+  to it. It exits 0 where there is no grid: the instrument half never needed one,
+  and the role degrades to nulls there.
+- `evidence.rs` behind it, with `contributions_replay_the_scores`: bias plus the
+  reported contributions is the reported score, term for term, so an explanation
+  built on them explains the computation and not a copy of it.
+
+### Measured
+
+```
+baked load                 0.036 ms, against 3.50 s for a fresh fit (~100,000x)
+a real song (FLARE TV      1,496 attacks with evidence; decode 0.3 + attacks 0.2 +
+  Size, 89.7 s)              tempo 0.2 + structure 0.3 + evidence 16.6 s; 16.6 MB of JSON
+                           (13 classes with every term, per attack)
+Rust tests                 233 -> 236, all pass
+golden 27/27 · nogrid · density 4/4 + 0 FP · elastic · map · facts
+```
+
+The 16.6 s and 33 MB are the full-evidence price: every term of every class, before
+H4 decides which alternatives it keeps. Slimming it (top-N classes) belongs to H4,
+not here, and the entry will say so if it happens.
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Hitsounds P-6: the bar on real maps
 
 ### Changed

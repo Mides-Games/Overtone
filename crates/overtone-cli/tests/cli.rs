@@ -317,3 +317,57 @@ fn structure_reads_phrases_and_says_why_each_label() {
         assert!(bad.stdout.is_empty());
     }
 }
+
+#[test]
+fn hitsound_evidence_scores_every_attack_and_names_its_role() {
+    let dir = scratch("evidence");
+    let path = dir.join("clicks-150.wav");
+    write_wav(&path, &clicks(150.0, 12.0));
+    let out = run(&["hitsound-evidence", path.to_str().unwrap()]);
+    let missing = run(&["hitsound-evidence", "no-such-file.wav"]);
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["templates"], "baked");
+    let attacks = report["attacks"].as_array().unwrap();
+    assert!(!attacks.is_empty());
+    for attack in attacks {
+        let classes = attack["classes"].as_array().unwrap();
+        // All 13 classes, probabilities that sum to one.
+        assert_eq!(classes.len(), 13, "{attack}");
+        let total: f64 = classes
+            .iter()
+            .map(|c| c["probability"].as_f64().unwrap())
+            .sum();
+        assert!((total - 1.0).abs() < 1e-9, "{total}");
+        // Each term's contribution replays its class's score.
+        for class in classes {
+            let terms = class["terms"].as_array().unwrap();
+            assert!(!terms.is_empty());
+            assert!(terms.iter().all(|t| t["feature"].is_string()
+                && t["value"].is_number()
+                && t["response"]["kind"].is_string()
+                && t["contribution"].is_number()));
+        }
+        // The click grid proves bars, so the role sits on it.
+        assert!(attack["role"]["division"].is_number());
+        assert!(attack["role"]["metrical_weight"].is_number());
+    }
+    assert!(!report["sections"].as_array().unwrap().is_empty());
+
+    assert_eq!(missing.status.code(), Some(1));
+    for args in [
+        &["hitsound-evidence"][..],
+        &["hitsound-evidence", "a.wav", "b.wav"][..],
+        &["hitsound-evidence", "--full"][..],
+    ] {
+        let bad = run(args);
+        assert_eq!(bad.status.code(), Some(2), "{args:?}");
+    }
+}

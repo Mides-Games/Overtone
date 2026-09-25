@@ -48,7 +48,7 @@ never re-baseline to make a red gate green.
 And the Rust side:
 
 ```bash
-cargo test --workspace                                 # all pass (233 on 2026-09-24)
+cargo test --workspace                                 # all pass (236 on 2026-09-25)
 cargo run --release -q -p overtone-bench -- golden     # 27/27 attack for attack
 cargo run --release -q -p overtone-bench -- nogrid     # noise, pads, silence refused
 cargo run --release -q -p overtone-bench -- density    # 4/4 changes, 0 false positives

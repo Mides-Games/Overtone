@@ -142,6 +142,7 @@ dependencies = [
  "overtone-audio",
  "overtone-core",
  "overtone-dsp",
+ "overtone-hitsound",
  "overtone-tempo",
  "serde_json",
 ]

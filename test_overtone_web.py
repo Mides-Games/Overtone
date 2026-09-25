@@ -629,6 +629,55 @@ class ReferenceBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().reference_find()["key"], "first")
 
 
+class HitsoundCopyBridgeTests(_IsolatedConfig):
+    """The copier in the Mapset view: a preview that writes nothing, then the copy."""
+
+    SOURCE = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+              "[TimingPoints]", "0,500,4,2,0,70,1,0", "", "[HitObjects]",
+              "256,192,1000,1,8,0:0:0:0:", "256,192,2000,1,4,0:0:0:0:", ""]
+
+    def _set(self, tmp: str) -> Path:
+        folder = Path(tmp)
+        (folder / "hard.osu").write_bytes("\r\n".join(self.SOURCE).encode("utf-8"))
+        easy = [line.replace(",8,0:0", ",0,0:0").replace(",4,0:0", ",0,0:0") for line in self.SOURCE]
+        (folder / "easy.osu").write_bytes("\r\n".join(easy[:-2] + ["256,192,3000,1,0,0:0:0:0:", ""]).encode("utf-8"))
+        return folder
+
+    def test_the_preview_writes_nothing_and_the_copy_writes_with_a_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = self._set(tmp)
+            before = (folder / "easy.osu").read_bytes()
+            api = web.Api()
+            preview = api.hitsound_copy_preview(str(folder), "hard.osu", ["easy.osu"])
+            untouched = (folder / "easy.osu").read_bytes()
+            done = api.hitsound_copy_apply(str(folder), "hard.osu", ["easy.osu"])
+            after = (folder / "easy.osu").read_bytes()
+            backup = Path(done["targets"][0]["backup"]).read_bytes()
+            again = api.hitsound_copy_preview(str(folder), "hard.osu", ["easy.osu"])
+        json.dumps([preview, done])
+        row = preview["targets"][0]
+        self.assertEqual((row["target_sounds"], row["matched"], row["changed"], row["unmatched"]),
+                         (2, 1, 1, 1))
+        self.assertEqual(untouched, before)
+        self.assertEqual((done["targets"][0]["written"], backup), (True, before))
+        self.assertIn(b"256,192,1000,1,8,0:0:0:0:", after)
+        self.assertEqual(again["targets"][0]["changed"], 0)
+
+    def test_files_outside_the_folder_or_the_source_as_a_target_are_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = self._set(tmp)
+            api = web.Api()
+            for source, targets, key in (("hard.osu", [], "hs_no_targets"),
+                                         ("hard.osu", ["hard.osu"], "hs_same_file"),
+                                         ("hard.osu", ["..\\easy.osu"], "bad_file"),
+                                         ("hard.osu", ["missing.osu"], "bad_file"),
+                                         ("hard.osu", ["audio.mp3"], "bad_file")):
+                with self.subTest(targets=targets):
+                    self.assertEqual(api.hitsound_copy_apply(str(folder), source, targets)["key"], key)
+            self.assertEqual(api.hitsound_copy_preview(str(Path(tmp) / "nope"), "a.osu", ["b.osu"])["key"],
+                             "bad_folder")
+
+
 class StructureBridgeTests(_IsolatedConfig):
     """The Structure view: the Rust report once per file, bars every call."""
 

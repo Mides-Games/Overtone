@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **371** Python (258 engine + 113 web shell) · **233** Rust.
+Tests: **373** Python (258 engine + 115 web shell) · **233** Rust.
 
 ### What is pending, in order
 
@@ -327,7 +327,7 @@ the copier, the section, the check, the decision engine, the editor.
 | P-5 Object-attack matching | each sound event's nearest attack, "no attack" as a state | low | high | P-1 | no | no | **P1** | todo |
 | P-6 Real-map evaluation | agreement with mappers' own hitsounds on local maps, against simple baselines | med | **high** | library index, P-1 | no | no | **P1** | todo |
 | P-7 Object lane | objects and their sounds on the timeline | low | high | P3 timeline, P-1 | no | no | **P1** | todo |
-| H1 Hitsound copier | one difficulty's hitsounds onto others, by time, with a preview | low | **high** | P-1, P-2 | no | no | **P1** | todo — the first thing that ships |
+| H1 Hitsound copier | one difficulty's hitsounds onto others, by time, with a preview | low | **high** | P-1, P-2 | no | no | **P1** | **done** — `copy_hitsounds` + Mapset view card; 1,494 copies on 300 local mapsets, 0 errors, 95.3 % of sounds matched (median) |
 | Per-attack features | 7 bands, centroid/rolloff/flatness/crest, rise/decay | med | **high** | P2 HPSS | no | no | **P1** | **done** |
 | Harmonicity + pitch | HPS pitch, formants | med | high | features | no | no | **P1** | **done** — inharmonicity deferred |
 | Instrument templates | 13 scored classes, explainable | high | **high** | features | no | no | **P1** | **done** — held-out F1 0.723 on synthetic arrangements it never saw (the old 0.91 judged a re-draw of its training track); Clap 0.15, closed hats 0.40 weakest |

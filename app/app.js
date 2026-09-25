@@ -19,7 +19,7 @@ const I18N = {
     exp_osz_t: ".osz package", exp_osz_d: "The audio plus a new beatmap carrying this timing.",
     exp_inject_t: "Inject into a .osu", exp_inject_d: "Replaces the red lines of a difficulty you already have. You confirm first, and a backup is kept.",
     nav_mapset: "Mapset",
-    mapset_sub: "Every difficulty of one beatmap folder side by side: red lines, audio settings and metadata that must match. Read only: differences are listed, never fixed.",
+    mapset_sub: "Every difficulty of one beatmap folder side by side: red lines, audio settings and metadata that must match. The comparison only lists differences; Copy hitsounds writes, after a preview, with backups.",
     ms_title: "Difficulties", ms_pick: "Choose beatmap folder…", ms_recheck: "Check again",
     ms_empty: "Choose a beatmap folder, or import one in the Library, to compare its difficulties.",
     ms_no_maps: "That folder has no .osu files.",
@@ -104,6 +104,17 @@ const I18N = {
     inject_warn: "\nThe .osu audio ({osu}) differs from the analyzed file ({src}).",
     drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
     recent: "Recent",
+    hs_title: "Copy hitsounds", hs_preview: "Preview", hs_apply: "Copy hitsounds",
+    hs_sub: "Each sound of the chosen difficulties takes the source's sound at the same moment (within 5 ms): additions, sample sets and index. Sounds with nothing under them are left as they are. Only hitsound fields change, and every file is backed up first.",
+    hs_source: "From", hs_targets: "Onto",
+    hs_volumes: "Copy volumes too (usually the green lines' job; they are not copied)",
+    hs_no_targets: "Choose at least one difficulty to copy onto.", hs_same_file: "A difficulty cannot be copied onto itself.",
+    hs_t_diff: "Difficulty", hs_t_sounds: "Sounds", hs_t_matched: "With a source sound", hs_t_changed: "Will change",
+    hs_t_unmatched: "Nothing under them", hs_t_conflicts: "Index conflicts",
+    hs_conflict_note: "An index conflict is a sound whose sample index comes from a green line the target does not have, or a slider edge whose index differs from its head's: the copy leaves those indexes as they are.",
+    hs_confirm: "Write the hitsounds of {source} into {n} difficulties? Only hitsound fields change; each file is backed up first.",
+    hs_done: "Hitsounds copied into {n} difficulties ({objects} objects). Backups kept beside each file.",
+    hs_nothing: "Nothing to change: these difficulties already sound like {source}.",
     st_theme: "Theme", st_theme_system: "System", st_theme_dark: "Dark", st_theme_light: "Light",
     nav_structure: "Structure",
     stx_sub: "Where the song's phrases change, what each part is, and why: every label beside the evidence it rests on. Read only.",
@@ -291,7 +302,7 @@ const I18N = {
     exp_osz_t: "Paquete .osz", exp_osz_d: "El audio más un beatmap nuevo con este timing.",
     exp_inject_t: "Inyectar en un .osu", exp_inject_d: "Reemplaza las líneas rojas de una dificultad que ya tenés. Confirmás antes y se guarda un respaldo.",
     nav_mapset: "Mapset",
-    mapset_sub: "Todas las dificultades de una carpeta, lado a lado: líneas rojas, ajustes de audio y metadatos que deben coincidir. Solo lectura: las diferencias se listan, nunca se corrigen.",
+    mapset_sub: "Todas las dificultades de una carpeta, lado a lado: líneas rojas, ajustes de audio y metadatos que deben coincidir. La comparación solo lista diferencias; Copiar hitsounds escribe, después de una vista previa y con respaldos.",
     ms_title: "Dificultades", ms_pick: "Elegir carpeta…", ms_recheck: "Revisar de nuevo",
     ms_empty: "Elegí una carpeta de beatmap, o importala en la Biblioteca, para comparar sus dificultades.",
     ms_no_maps: "Esa carpeta no tiene archivos .osu.",
@@ -376,6 +387,17 @@ const I18N = {
     inject_warn: "\nEl audio del .osu ({osu}) difiere del analizado ({src}).",
     drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
     recent: "Recientes",
+    hs_title: "Copiar hitsounds", hs_preview: "Vista previa", hs_apply: "Copiar hitsounds",
+    hs_sub: "Cada sonido de las dificultades elegidas toma el sonido de la fuente en el mismo momento (a menos de 5 ms): adiciones, sample sets e índice. Los sonidos sin nada debajo quedan como están. Solo cambian los campos de hitsound, y cada archivo se respalda antes.",
+    hs_source: "Desde", hs_targets: "Hacia",
+    hs_volumes: "Copiar también los volúmenes (suelen ser trabajo de las líneas verdes, que no se copian)",
+    hs_no_targets: "Elegí al menos una dificultad de destino.", hs_same_file: "Una dificultad no se puede copiar sobre sí misma.",
+    hs_t_diff: "Dificultad", hs_t_sounds: "Sonidos", hs_t_matched: "Con sonido fuente", hs_t_changed: "Van a cambiar",
+    hs_t_unmatched: "Sin nada debajo", hs_t_conflicts: "Conflictos de índice",
+    hs_conflict_note: "Un conflicto de índice es un sonido cuyo índice de sample viene de una línea verde que el destino no tiene, o un borde de slider con un índice distinto al de su cabeza: la copia deja esos índices como están.",
+    hs_confirm: "¿Escribir los hitsounds de {source} en {n} dificultades? Solo cambian los campos de hitsound; cada archivo se respalda antes.",
+    hs_done: "Hitsounds copiados en {n} dificultades ({objects} objetos). Los respaldos quedan junto a cada archivo.",
+    hs_nothing: "Nada que cambiar: estas dificultades ya suenan como {source}.",
     st_theme: "Tema", st_theme_system: "Sistema", st_theme_dark: "Oscuro", st_theme_light: "Claro",
     nav_structure: "Estructura",
     stx_sub: "Dónde cambian las frases de la canción, qué es cada parte y por qué: cada etiqueta junto a la evidencia en la que se apoya. Solo lectura.",
@@ -577,6 +599,7 @@ function translate() {
   renderStructure();
   renderNeedSong();
   renderMapset();
+  if (typeof renderCopier === "function") renderCopier();
   if (S.result) renderResult(S.result);
   if (S.busy) $("analyzeText").textContent = t("analyzing");
 }
@@ -2333,14 +2356,90 @@ async function runMapset(folder, quiet) {
   if (!api() || !folder) return;
   const reply = await api().mapset_check(folder);
   if (!reply.ok) { if (!quiet) editFailure(reply); return; }
+  if (!S.mapset || S.mapset.path !== folder) { HS.preview = null; $("hsTargets").innerHTML = ""; }
   S.mapset = { path: folder, name: reply.folder, report: reply.report };
   renderMapset();
+  renderCopier();
 }
 
 function msValue(value) {
   if (value === null || value === undefined) return `<span class="card-sub">${t("ms_not_set")}</span>`;
   if (value === "") return `<span class="card-sub">${t("ms_empty_value")}</span>`;
   return esc(value);
+}
+
+// ------------------------------------------------------------------ hitsound copier
+// Phase 6, H1: one difficulty's hitsounds onto others, by time. A preview
+// first, which writes nothing; the copy writes only hitsound fields.
+const HS = { preview: null };
+
+function hsReadable() {
+  return S.mapset ? S.mapset.report.difficulties.filter((d) => d.readable) : [];
+}
+
+function renderCopier() {
+  const diffs = hsReadable(), card = $("hsCard");
+  card.hidden = diffs.length < 2;
+  if (card.hidden) return;
+  const source = $("hsSource"), keep = source.value;
+  source.innerHTML = diffs.map((d) => `<option value="${esc(d.file)}">${esc(d.difficulty)}</option>`).join("");
+  if (diffs.some((d) => d.file === keep)) source.value = keep;
+  const chosen = new Set([...document.querySelectorAll("#hsTargets input:checked")].map((i) => i.value));
+  const fresh = !$("hsTargets").children.length;
+  $("hsTargets").innerHTML = diffs.filter((d) => d.file !== source.value).map((d) => `
+    <label class="check"><input type="checkbox" value="${esc(d.file)}" ${fresh || chosen.has(d.file) ? "checked" : ""}><span>${esc(d.difficulty)}</span></label>`).join("");
+  renderCopyResult();
+}
+
+function hsChoice() {
+  return { source: $("hsSource").value,
+           targets: [...document.querySelectorAll("#hsTargets input:checked")].map((i) => i.value),
+           options: { volumes: $("hsVolumes").checked } };
+}
+
+function hsName(file) {
+  const d = hsReadable().find((x) => x.file === file);
+  return d ? d.difficulty : file;
+}
+
+function renderCopyResult() {
+  const box = $("hsResult"), p = HS.preview;
+  $("hsApply").disabled = !p || !p.targets.some((r) => r.changed);
+  if (!p) { box.innerHTML = ""; return; }
+  const rows = p.targets.map((r) => `<tr>
+      <td class="txt">${esc(hsName(r.file))}</td><td class="num">${r.target_sounds}</td>
+      <td class="num">${r.matched}</td><td class="num">${r.changed}</td>
+      <td class="num">${r.unmatched}</td><td class="num">${r.index_conflicts}</td></tr>`).join("");
+  box.innerHTML = `<div class="table-scroll"><table class="ms-table">
+      <thead><tr><th class="txt">${t("hs_t_diff")}</th><th>${t("hs_t_sounds")}</th><th>${t("hs_t_matched")}</th>
+        <th>${t("hs_t_changed")}</th><th>${t("hs_t_unmatched")}</th><th>${t("hs_t_conflicts")}</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    ${p.targets.some((r) => r.index_conflicts) ? `<div class="card-sub mt-s">${t("hs_conflict_note")}</div>` : ""}`;
+}
+
+async function hsPreview() {
+  if (!api() || !S.mapset) return;
+  const c = hsChoice();
+  const reply = await api().hitsound_copy_preview(S.mapset.path, c.source, c.targets, c.options);
+  if (!reply.ok) { editFailure(reply); return; }
+  HS.preview = { ...reply, choice: JSON.stringify(c) };
+  renderCopyResult();
+}
+
+async function hsApply() {
+  if (!api() || !S.mapset || !HS.preview) return;
+  const c = hsChoice();
+  if (JSON.stringify(c) !== HS.preview.choice) { await hsPreview(); return; }   // the choice changed: preview it first
+  const n = HS.preview.targets.filter((r) => r.changed).length;
+  if (!n) { toast(t("hs_nothing", { source: hsName(c.source) })); return; }
+  if (!confirm(t("hs_confirm", { source: hsName(c.source), n }))) return;
+  const reply = await api().hitsound_copy_apply(S.mapset.path, c.source, c.targets, c.options);
+  if (!reply.ok) { editFailure(reply); return; }
+  const written = reply.targets.filter((r) => r.written);
+  toast(t("hs_done", { n: written.length, objects: written.reduce((a, r) => a + r.objects, 0) }));
+  HS.preview = null;
+  await hsPreview();                       // what is left: nothing, but index conflicts
+  runMapset(S.mapset.path, true);
 }
 
 function msKiai(spans) {
@@ -2971,6 +3070,11 @@ function wire() {
   });
   $("msPick").onclick = pickMapset;
   $("msRecheck").onclick = () => { if (S.mapset) runMapset(S.mapset.path, false); };
+  $("hsPreview").onclick = hsPreview;
+  $("hsApply").onclick = hsApply;
+  $("hsSource").onchange = () => { HS.preview = null; $("hsTargets").innerHTML = ""; renderCopier(); };
+  $("hsTargets").onchange = () => { HS.preview = null; renderCopyResult(); };
+  $("hsVolumes").onchange = () => { HS.preview = null; renderCopyResult(); };
   $("undoBtn").onclick = undo;
   $("redoBtn").onclick = redo;
   $("injectBtn").onclick = injectOsu;

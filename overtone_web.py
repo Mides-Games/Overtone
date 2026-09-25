@@ -690,6 +690,77 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "report": report, "folder": Path(str(folder)).name}
 
+    # -- hitsound copier (Phase 6, H1) ---------------------------------------
+    @staticmethod
+    def _copy_paths(folder: str, source: str, targets: list) -> tuple[Path, list[Path]] | dict:
+        """The source and target .osu paths, all inside ``folder``, or a refusal."""
+        base = Path(str(folder))
+        if not base.is_dir():
+            return {"ok": False, "key": "bad_folder"}
+        if not isinstance(targets, list) or not targets:
+            return {"ok": False, "key": "hs_no_targets"}
+        paths = []
+        for name in [source, *targets]:
+            name = str(name or "")
+            path = base / name
+            if (Path(name).name != name or not name.lower().endswith(".osu")
+                    or not path.is_file()):
+                return {"ok": False, "key": "bad_file"}
+            paths.append(path)
+        if paths[0] in paths[1:] or len(set(paths[1:])) != len(paths) - 1:
+            return {"ok": False, "key": "hs_same_file"}
+        return paths[0], paths[1:]
+
+    def _copy_plan(self, folder: str, source: str, targets: list, options: dict) -> dict:
+        found = self._copy_paths(folder, source, targets)
+        if isinstance(found, dict):
+            return found
+        source_path, target_paths = found
+        volumes = bool((options or {}).get("volumes"))
+        try:
+            source_map = ta.read_osu_beatmap(source_path)
+            plans = []
+            for path in target_paths:
+                report = ta.copy_hitsounds(source_map, ta.read_osu_beatmap(path), volumes=volumes)
+                plans.append((path, report))
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "plans": plans}
+
+    @staticmethod
+    def _copy_row(path: Path, report: dict) -> dict:
+        return {"file": path.name, "objects": len(report["changes"]),
+                **{k: report[k] for k in ("target_sounds", "matched", "changed", "unmatched",
+                                          "unmatched_times", "index_conflicts")}}
+
+    def hitsound_copy_preview(self, folder: str, source: str, targets: list,
+                              options: dict | None = None) -> dict:
+        """What copying ``source``'s hitsounds onto each target would change.
+        Read only: nothing is written."""
+        plan = self._copy_plan(folder, source, targets, options or {})
+        if not plan["ok"]:
+            return plan
+        return {"ok": True, "source": str(source),
+                "targets": [self._copy_row(path, report) for path, report in plan["plans"]]}
+
+    def hitsound_copy_apply(self, folder: str, source: str, targets: list,
+                            options: dict | None = None) -> dict:
+        """Copy ``source``'s hitsounds onto each target .osu, as the preview
+        said: only hitsound fields change, each file is backed up first."""
+        plan = self._copy_plan(folder, source, targets, options or {})
+        if not plan["ok"]:
+            return plan
+        rows = []
+        for path, report in plan["plans"]:
+            try:
+                written = ta.write_object_hitsounds(path, report["changes"])
+            except (ValueError, OSError) as exc:
+                return {"ok": False, "key": "error", "detail": f"{path.name}: {exc}",
+                        "done": rows}
+            rows.append({**self._copy_row(path, report), "written": written["written"],
+                         "backup": written["backup"]})
+        return {"ok": True, "source": str(source), "targets": rows}
+
     def inject_preview(self, osu_path: str) -> dict:
         """Dry run first, like the Tk GUI's confirmation dialog data."""
         if self._analysis is None:

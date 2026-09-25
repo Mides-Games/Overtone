@@ -561,6 +561,9 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 .assist-facts { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; }
 .assist-facts b { font-variant-numeric: tabular-nums; }
 .rp-filters { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.hs-form { display: grid; grid-template-columns: minmax(200px, 280px) minmax(0, 1fr); gap: 12px 18px; align-items: start; }
+.hs-form select.input { height: 38px; }
+.hs-targets { display: flex; flex-wrap: wrap; gap: 8px 18px; padding-top: 8px; }
 .check { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-3); cursor: pointer; }
 .check input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
 button.link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit;

@@ -28,6 +28,10 @@ later costs more than writing it down now.
   change are written, as the source's own raw values where those resolve the same way
   under the target's timing points, explicit values where they would not. A difficulty
   copied onto itself changes nothing.
+- **Copy hitsounds, in the Mapset view**: the source difficulty, the ones to copy onto,
+  and whether volumes come too; a preview per difficulty (sounds, with a source sound,
+  that will change, with nothing under them, index conflicts) that writes nothing; then
+  the copy, after a confirmation, each file backed up first. English and Spanish.
 
 ### Fixed
 
@@ -51,7 +55,11 @@ after the copy             every matched sound resolves like its source but for 
                            not share or slider edges whose index is their head's; the
                            copier counts them as conflicts (25,946)
 time                       copy and apply 17.2 ms median, 131 ms at most
-Python unittest            365 -> 371, all pass
+Python unittest            365 -> 373, all pass
+browser, harness           a real 4-difficulty set, copied to a scratch folder: preview
+                           (476, 537 and 381 sounds to change), copy, preview again (0
+                           left); on disk only [HitObjects] lines changed (325-439 a file),
+                           a .bak beside each target, the source untouched; ES strings
 ```
 
 ---

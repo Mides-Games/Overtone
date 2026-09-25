@@ -351,7 +351,7 @@
       <section class="view" id="viewMapset" data-view="mapset" hidden>
         <div class="view-head">
           <h2 class="view-title" data-i18n="nav_mapset">Mapset</h2>
-          <div class="view-sub" data-i18n="mapset_sub">Every difficulty of one beatmap folder side by side: red lines, audio settings and metadata that must match. Read only: differences are listed, never fixed.</div>
+          <div class="view-sub" data-i18n="mapset_sub">Every difficulty of one beatmap folder side by side: red lines, audio settings and metadata that must match. The comparison only lists differences; Copy hitsounds writes, after a preview, with backups.</div>
         </div>
 
         <div class="card cmp-card">
@@ -365,6 +365,25 @@
             <button class="btn small" id="msPick"><span data-i18n="ms_pick">Choose beatmap folder…</span></button>
           </div>
           <div class="card-body" id="msBody"></div>
+        </div>
+
+        <!-- copy one difficulty's hitsounds onto others (Phase 6, H1) -->
+        <div class="card cmp-card" id="hsCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="hs_title">Copy hitsounds</div>
+            <div class="spacer"></div>
+            <button class="btn small" id="hsPreview"><span data-i18n="hs_preview">Preview</span></button>
+            <button class="btn small primary" id="hsApply" disabled><span data-i18n="hs_apply">Copy hitsounds</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="hs_sub">Each sound of the chosen difficulties takes the source's sound at the same moment (within 5 ms): additions, sample sets and index. Sounds with nothing under them are left as they are. Only hitsound fields change, and every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="hs_source">From</span><select class="input" id="hsSource"></select></label>
+              <div class="field"><span class="setting-name" data-i18n="hs_targets">Onto</span><div class="hs-targets" id="hsTargets"></div></div>
+            </div>
+            <label class="check"><input type="checkbox" id="hsVolumes"><span data-i18n="hs_volumes">Copy volumes too (usually the green lines' job; they are not copied)</span></label>
+            <div id="hsResult"></div>
+          </div>
         </div>
 
         <div class="card cmp-card" id="msRedCard" hidden>
@@ -386,7 +405,7 @@
         </div>
       </section>
 
-      <!-- report: every finding about one difficulty, as modders post them -->
+      <!-- structure: the song's sections, each label beside its evidence -->
       <section class="view" id="viewStructure" data-view="structure" data-needs-result hidden>
         <div class="view-head">
           <h2 class="view-title" data-i18n="nav_structure">Structure</h2>
@@ -404,6 +423,7 @@
         </div>
       </section>
 
+      <!-- report: every finding about one difficulty, as modders post them -->
       <section class="view" id="viewReport" data-view="report" data-needs-result hidden>
         <div class="view-head">
           <h2 class="view-title" data-i18n="nav_report">Report</h2>

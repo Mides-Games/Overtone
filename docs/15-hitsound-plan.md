@@ -82,7 +82,7 @@ P-1 ─┬─► H1 copier ◄── P-2
 
 Each step is a feature on its own. The first two need no audio analysis at all.
 
-### H1 · Hitsound copier (needs P-1, P-2)
+### H1 · Hitsound copier (needs P-1, P-2) — done 2026-09-24
 
 Copy the hitsounds of one difficulty onto others: every sound event of the source at the
 same time (within a tolerance) gives its sound to the target's event there. Options: sample

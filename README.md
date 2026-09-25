@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-400%20Python%20%C2%B7%20236%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-400%20Python%20%C2%B7%20240%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -298,7 +298,7 @@ instantly and exactly; the click track is the arbiter.
 .venv/Scripts/python.exe bench/gates.py reference      # hand-timed maps graded by the attacks
 .venv/Scripts/python.exe bench/gates.py assisted       # two marked downbeats seed the grid
 .venv/Scripts/python.exe bench/facts.py                # the numbers these docs state
-cargo test --workspace                                 # 236 tests
+cargo test --workspace                                 # 240 tests
 cargo run --release -q -p overtone-bench -- golden     # Rust vs Python, attack for attack
 ```
 

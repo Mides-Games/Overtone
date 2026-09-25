@@ -16,6 +16,30 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Hitsounds H4a: the `.osu` reader in Rust
+
+### Changed
+
+- **`overtone-hitsound/src/map.rs`**, the decision input: hit objects (circles, sliders
+  with slides/length/edges, spinners, holds) with their sounds, timing lines with red
+  vs green told apart as in the Python reader (negative length beats a lying flag),
+  the map's sample set and slider multiplier. Read-only and minimal — no writer, no
+  storyboards — and one rule from Python: a hand-broken line never hides the rest, so
+  bad objects come back `Unparsed` and numberless timing lines are skipped. It lives
+  in the hitsound crate instead of a new one: graduating it waits for the Phase 0
+  port.
+
+### Measured
+
+```
+agreement vs Python, local   25,171 maps, 12,101,556 objects: counts, times and
+  Songs folder               kinds match on every object, 0 mismatches
+Rust tests                   236 -> 240, all pass
+golden 27/27 · facts
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Hitsounds H3 audio half: sounds over silence
 
 ### Changed

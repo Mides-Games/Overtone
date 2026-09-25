@@ -1,8 +1,8 @@
 //! Hitsound analysis: what the music is doing at each attack, defensibly.
 //!
 //! Pipeline (docs/06-hitsound-engine.md): per-attack features → instrument
-//! likelihoods → (object context and Viterbi come later, with the `.osu`
-//! reader) → explanations. Every decision itemises its evidence, because a
+//! likelihoods → (object context and Viterbi come later, reading the map
+//! through [`map`]) → explanations. Every decision itemises its evidence, because a
 //! mapper who disagrees must see *why* before overriding.
 //!
 //! This crate starts where the tempo engine stops: it takes audio plus
@@ -13,6 +13,7 @@
 pub mod baked;
 pub mod corpus;
 pub mod evidence;
+pub mod map;
 pub mod role;
 pub mod source;
 pub mod spectral;

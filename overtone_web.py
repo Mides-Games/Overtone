@@ -886,7 +886,7 @@ class Api:
             self._busy.release()
         units = report.get("units", [])
         self._decisions[str(path.name)] = {"units": units}
-        return {"ok": True, "file": str(path.name), "units": len(units)}
+        return {"ok": True, "file": str(path.name), "units": units}
 
     def hitsound_decide_preview(self, file: str, accept: list | None = None) -> dict:
         """What applying the cached proposal would change. Read only."""

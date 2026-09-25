@@ -340,7 +340,7 @@ the copier, the section, the check, the decision engine, the editor.
 | Explanations | itemised terms + alternatives | med | **high** | decision | no | no | **P1** | todo |
 | Profiles | built-in + custom, as data | low | high | decision | no | no | **P1** | todo |
 | Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | partial — the object lane (P-7); instrument lanes need P-4 |
-| Hitsound editor | change/remove/volume/sample | med | **high** | decision | no | no | **P1** | partial — engine half (`apply_proposals`) plus bridge propose/preview/apply/one-level-undo; the accept/reject surface and audition still to build |
+| Hitsound editor | change/remove/volume/sample | med | **high** | decision | no | no | **P1** | partial — engine half, bridge propose/preview/apply/one-level-undo, and the Decide card (tick, preview, write, copy, undo) short of a harness pass; volume/sample changes and pre-hearing proposals still to build |
 | Sample bank | import skin/folder, audition samples | med | high | P4 playback | no | no | P1 | todo |
 | Sample recommendation | map samples to roles by their spectrum | med | med | bank | no | no | P2 | todo |
 | Hitsound export | only hitsound fields change | med | **high** | P5 writer | no | no | **P1** | partial — same engine half; the Export-section surface still to build |

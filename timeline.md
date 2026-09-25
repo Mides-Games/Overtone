@@ -16,6 +16,41 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Hitsounds H5b surface: tick, preview, write, undo
+
+### Changed
+
+- **The Decide card in the Hitsounds section**: Propose runs the sidecar once and
+  lists every proposal in the sounds table (bank + additions, ticked by default);
+  All/None, Preview with counts, Write into this file or a copy after a
+  confirmation, and Undo. Writing clears the (now stale) proposal cache and
+  refreshes the report, the transport samples and the object lane. Per-row ▶ and
+  full-song playback audition what is written; pre-hearing a proposal through the
+  loaded samples waits for sample-key resolution, stated, not faked.
+- Report sounds carry their edge, so units join them exactly.
+
+### Fixed
+
+- Four found in self-review before any commit: a duplicated element id between the
+  preview button and its text, an early return leaving the card stale with no
+  report, `hsvPick` clearing a live undo on post-write refresh, and preview/write
+  without a file-match guard.
+
+### Measured
+
+```
+Python unittest              414, all pass (bridge: propose/preview/apply/undo/copy)
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                           unit-tested bridge only; every id resolves, every new
+                             string exists in EN and ES, no duplicate ids. The
+                             browser harness did not run from this session (no
+                             browser tools here) — a harness pass is still owed
+                             before this is called verified.
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Hitsounds H5b bridge: propose, apply, one undo
 
 ### Changed

@@ -145,7 +145,10 @@ copy (`<name>_hitsounded.osu`) instead of the original. The engine half
 (`proposal_changes`, `preview_proposals`, `apply_proposals`) maps bank and additions
 onto P-2 field changes — volume, index and custom files untouched, a moved sound
 refusing the whole apply — with preview, in-place backup writes and must-not-exist
-copies. The editor surface (accept/reject UI, undo, audition) is still to build.
+copies. The editor surface is in: the Decide card ticks proposals, previews, writes
+the file or a copy with confirmation, undoes once, and refreshes report, transport
+and object lane; per-row and full-song playback audition what is written.
+Volume/sample changes and pre-hearing proposals stay future work.
 
 ### H6 · After it works
 

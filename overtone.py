@@ -5645,7 +5645,7 @@ def hitsound_report(beatmap: dict) -> dict:
             else:
                 a["slots"][slot] += 1
         sounds.append({"t": round(event["time"] / 1000.0, 6), "object": event["object"],
-                       "part": event["part"], "bar": bar, "slot": slot, "meter": m,
+                       "part": event["part"], "edge": event["edge"], "bar": bar, "slot": slot, "meter": m,
                        "sounds": event["sounds"], "normal_set": event["normal_set"],
                        "addition_set": event["addition_set"], "index": event["index"],
                        "volume": event["volume"], "file": event["file"]})

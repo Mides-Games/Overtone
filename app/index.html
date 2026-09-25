@@ -438,7 +438,7 @@
       <section class="view" id="viewHitsounds" data-view="hitsounds" data-needs-result hidden>
         <div class="view-head">
           <h2 class="view-title" data-i18n="nav_hitsounds">Hitsounds</h2>
-          <div class="view-sub" data-i18n="hsv_sub">What one difficulty plays: where its additions fall in the bar, and every sound, to hear one by one. Read only: nothing is written.</div>
+          <div class="view-sub" data-i18n="hsv_sub">What one difficulty plays: where its additions fall in the bar, every sound to hear one by one, and the decision engine's proposals to write or not.</div>
         </div>
 
         <div class="card cmp-card">
@@ -448,6 +448,27 @@
             <select class="input hsv-pick" id="hsvMap"></select>
           </div>
           <div class="card-body" id="hsvSummary"></div>
+        </div>
+
+        <div class="card cmp-card" id="hsvDecideCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="hsv_decide_title">Propose hitsounds</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="hsvDecideStatus"></span>
+          </div>
+          <div class="card-body">
+            <div class="card-sub" data-i18n="hsv_decide_sub">The decision engine proposes every object's sound. Tick what to keep, preview, then write the file or a copy. Each write is backed up, and one undo restores it.</div>
+            <div class="drop-actions">
+              <button type="button" class="btn primary" id="hsvPropose"><span data-i18n="hsv_propose">Propose</span></button>
+              <button type="button" class="btn small" id="hsvDecideAll"><span data-i18n="hsv_decide_all">All</span></button>
+              <button type="button" class="btn small" id="hsvDecideNone"><span data-i18n="hsv_decide_none">None</span></button>
+              <button type="button" class="btn small" id="hsvDecidePreview"><span data-i18n="hsv_preview">Preview</span></button>
+              <button type="button" class="btn small" id="hsvDecideApply"><span data-i18n="hsv_write">Write into this file</span></button>
+              <button type="button" class="btn small" id="hsvDecideCopy"><span data-i18n="hsv_write_copy">Write a copy</span></button>
+              <button type="button" class="btn small" id="hsvDecideUndo"><span data-i18n="hsv_undo">Undo</span></button>
+            </div>
+            <div class="card-sub" id="hsvDecidePrevText"></div>
+          </div>
         </div>
 
         <div class="card cmp-card" id="hsvWhereCard" hidden>
@@ -475,7 +496,7 @@
             <thead><tr><th class="txt" data-i18n="hsv_t_time">Time</th><th data-i18n="hsv_t_place">Bar · beat</th>
               <th class="txt" data-i18n="hsv_t_part">Part</th><th class="txt" data-i18n="hsv_t_sounds">Sounds</th>
               <th class="txt" data-i18n="hsv_t_sets">Sets</th><th data-i18n="hsv_t_index">Index</th>
-              <th data-i18n="hsv_t_volume">Volume</th><th></th></tr></thead>
+              <th data-i18n="hsv_t_volume">Volume</th><th class="txt" data-i18n="hsv_t_proposal">Proposal</th><th></th></tr></thead>
             <tbody id="hsvRows"></tbody>
           </table></div>
           <div class="card-body"><button type="button" class="link" id="hsvMore" hidden></button></div>

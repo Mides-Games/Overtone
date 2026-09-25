@@ -781,7 +781,7 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
             preview = api.hitsound_decide_preview("hard.osu", [[1, "circle", None]])
             untouched = Path(tmp, "hard.osu").read_bytes()
             json.dumps([reply, preview])
-            self.assertEqual((reply["units"], preview["units"], preview["accepted"],
+            self.assertEqual((len(reply["units"]), preview["units"], preview["accepted"],
                               preview["would_change"]),
                              (2, 2, 1, 1))
             self.assertEqual(untouched, before)

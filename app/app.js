@@ -105,7 +105,7 @@ const I18N = {
     drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
     recent: "Recent",
     nav_hitsounds: "Hitsounds",
-    hsv_sub: "What one difficulty plays: where its additions fall in the bar, and every sound, to hear one by one. Read only: nothing is written.",
+    hsv_sub: "What one difficulty plays: where its additions fall in the bar, every sound to hear one by one, and the decision engine's proposals to write or not.",
     hsv_map: "Difficulty", hsv_none: "No difficulty beside this song plays its audio.",
     hsv_sounds_n: "Sounds", hsv_sets: "Sample sets", hsv_samples: "Samples",
     hsv_samples_v: "{map} the map's · {own} Overtone's",
@@ -117,6 +117,20 @@ const I18N = {
     hsv_t_time: "Time", hsv_t_place: "Bar · beat", hsv_t_part: "Part", hsv_t_sounds: "Sounds",
     hsv_t_sets: "Sets", hsv_t_index: "Index", hsv_t_volume: "Volume",
     hsv_play: "Hear this sound", hsv_more: "Show {n} more",
+    hsv_decide_title: "Propose hitsounds",
+    hsv_decide_sub: "The decision engine proposes every object's sound. Tick what to keep, preview, then write the file or a copy. Each write is backed up, and one undo restores it.",
+    hsv_propose: "Propose", hsv_proposing: "Deciding every sound…",
+    hsv_proposed: "{n} proposals", hsv_decide_all: "All", hsv_decide_none: "None",
+    hsv_preview: "Preview", hsv_would_change: "{accepted} of {units} accepted, {n} lines would change",
+    hsv_write: "Write into this file", hsv_write_copy: "Write a copy",
+    hsv_undo: "Undo", hsv_confirm_write: "Write {n} sounds into {file}? Only hitsound fields change, and the file is backed up first.",
+    hsv_confirm_copy: "Write {n} sounds into a copy beside {file}? The original stays untouched.",
+    hsv_done: "{n} sounds written into {file}.",
+    hsv_done_copy: "{n} sounds written into {file}. The original stays untouched.",
+    hsv_undone: "Restored {file} from before the write.",
+    hsv_no_rust: "Proposals run on the Rust engine (overtone-cli), and it is not built here: cargo build --release -p overtone-cli.",
+    hsv_no_proposal: "Propose first: there is nothing to preview or write yet.",
+    hsv_t_proposal: "Proposal",
     part_circle: "circle", part_head: "slider head", part_repeat: "slider repeat", part_tail: "slider tail",
     part_spinner_end: "spinner end", part_hold: "hold",
     lane_objects: "objects", lg_whistle: "whistle", lg_finish: "finish", lg_clap: "clap",
@@ -417,7 +431,7 @@ const I18N = {
     drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
     recent: "Recientes",
     nav_hitsounds: "Hitsounds",
-    hsv_sub: "Lo que suena en una dificultad: dónde caen sus adiciones en el compás, y cada sonido, para escucharlos uno por uno. Solo lectura: no se escribe nada.",
+    hsv_sub: "Lo que suena en una dificultad: dónde caen sus adiciones en el compás, cada sonido para escucharlos uno por uno, y las propuestas del motor para escribirlas o no.",
     hsv_map: "Dificultad", hsv_none: "Ninguna dificultad junto a esta canción usa su audio.",
     hsv_sounds_n: "Sonidos", hsv_sets: "Sample sets", hsv_samples: "Samples",
     hsv_samples_v: "{map} del mapa · {own} de Overtone",
@@ -429,6 +443,20 @@ const I18N = {
     hsv_t_time: "Tiempo", hsv_t_place: "Compás · tiempo", hsv_t_part: "Parte", hsv_t_sounds: "Sonidos",
     hsv_t_sets: "Sets", hsv_t_index: "Índice", hsv_t_volume: "Volumen",
     hsv_play: "Escuchar este sonido", hsv_more: "Mostrar {n} más",
+    hsv_decide_title: "Proponer hitsounds",
+    hsv_decide_sub: "El motor propone el sonido de cada objeto. Tildá lo que queda, previsualizá, y escribí el archivo o una copia. Cada escritura se respalda, y un deshacer lo restaura.",
+    hsv_propose: "Proponer", hsv_proposing: "Decidiendo cada sonido…",
+    hsv_proposed: "{n} propuestas", hsv_decide_all: "Todas", hsv_decide_none: "Ninguna",
+    hsv_preview: "Vista previa", hsv_would_change: "{accepted} de {units} aceptadas, {n} líneas cambiarían",
+    hsv_write: "Escribir en este archivo", hsv_write_copy: "Escribir una copia",
+    hsv_undo: "Deshacer", hsv_confirm_write: "¿Escribir {n} sonidos en {file}? Solo cambian los campos de hitsound, y el archivo se respalda antes.",
+    hsv_confirm_copy: "¿Escribir {n} sonidos en una copia junto a {file}? El original queda intacto.",
+    hsv_done: "{n} sonidos escritos en {file}.",
+    hsv_done_copy: "{n} sonidos escritos en {file}. El original queda intacto.",
+    hsv_undone: "{file} restaurado a antes de la escritura.",
+    hsv_no_rust: "Las propuestas usan el motor Rust (overtone-cli), y acá no está compilado: cargo build --release -p overtone-cli.",
+    hsv_no_proposal: "Proponé primero: no hay nada que previsualizar o escribir todavía.",
+    hsv_t_proposal: "Propuesta",
     part_circle: "círculo", part_head: "cabeza de slider", part_repeat: "repetición de slider", part_tail: "cola de slider",
     part_spinner_end: "fin de spinner", part_hold: "hold",
     lane_objects: "objetos", lg_whistle: "whistle", lg_finish: "finish", lg_clap: "clap",
@@ -1466,7 +1494,11 @@ async function hsvLoad() {
 }
 
 async function hsvPick(file) {
+  // New file, new decision state; refreshing the same file after a write
+  // clears the (now stale) units but keeps a live undo.
+  if (HSV.file !== file) { HSD.file = ""; HSD.units = []; HSD.accepted = new Set(); HSD.undo = false; }
   HSV.file = file; HSV.report = null; HSV.shown = HSV_PAGE;
+  $("hsvDecidePrevText").textContent = "";
   const reply = await api().hitsound_report(file);
   if (HSV.file !== file) return;
   if (!reply.ok) { editFailure(reply); return; }
@@ -1503,8 +1535,8 @@ function hsvChart(name, a, meter, peak) {
 function renderHitsoundsView() {
   const r = HSV.report, box = $("hsvMap");
   $("hsvWhereCard").hidden = $("hsvSoundsCard").hidden = !r;
-  if (!box.options.length) { $("hsvSummary").innerHTML = `<div class="card-sub">${t("hsv_none")}</div>`; return; }
-  if (!r) { $("hsvSummary").innerHTML = ""; return; }
+  if (!box.options.length) { $("hsvSummary").innerHTML = `<div class="card-sub">${t("hsv_none")}</div>`; hsdRender(); return; }
+  if (!r) { $("hsvSummary").innerHTML = ""; hsdRender(); return; }
   const n = r.sounds.length, pct = (x) => (n ? Math.round((x / n) * 100) : 0);
   const sets = r.sets.normal, setsText = ["normal", "soft", "drum"].filter((s) => sets[s]).map((s) => `${s} ${pct(sets[s])} %`).join(" · ");
   const c = HSP.file === HSV.file && HSP.events ? HSP.counts : null;
@@ -1523,6 +1555,11 @@ function renderHitsoundsView() {
   $("hsvRows").innerHTML = rows.slice(0, HSV.shown).map((s) => {
     const i = r.sounds.indexOf(s);
     const adds = s.sounds.slice(1).map((a) => `<span class="hsv-dot k-${a}"></span>${t("lg_" + a)}`).join(" ");
+    const unit = hsdUnitFor(s);
+    const key = unit && hsdKey(unit.object, unit.part, unit.edge);
+    const prop = !unit ? `<span class="muted">—</span>`
+      : `<label class="check"><input type="checkbox" data-hsd="${esc(key)}" ${HSD.accepted.has(key) ? "checked"}>`
+      + `<span>${esc(hsdLabel(unit))}</span></label>`;
     return `<tr data-i="${i}">
       <td class="txt num">${fmtTime(s.t)}</td>
       <td class="num">${s.bar ?? "—"} · ${slotLabel(s.slot, s.meter)}</td>
@@ -1530,12 +1567,14 @@ function renderHitsoundsView() {
       <td class="txt">${s.file ? esc(s.file) : (adds || `<span class="muted">normal</span>`)}</td>
       <td class="txt">${s.normal_set}${s.sounds.length > 1 && s.addition_set !== s.normal_set ? ` / ${s.addition_set}` : ""}</td>
       <td class="num">${s.index}</td><td class="num">${s.volume} %</td>
+      <td class="txt">${prop}</td>
       <td><button type="button" class="btn small icon" data-play="${i}" title="${t("hsv_play")}" aria-label="${t("hsv_play")}">▶</button></td>
     </tr>`;
   }).join("");
   const more = rows.length - HSV.shown;
   $("hsvMore").hidden = more <= 0;
   $("hsvMore").textContent = t("hsv_more", { n: Math.min(more, HSV_PAGE) });
+  hsdRender();
 }
 
 // ▶ plays one sound now, with the samples the transport loaded for this map.
@@ -1547,6 +1586,114 @@ function hsvPlay(i) {
   const ctx = pbContext();
   if (ctx.state === "suspended") ctx.resume();
   pbHitAt(ctx.currentTime + 0.02, HSP.events.keys[k], HSP.events.volume[k]);
+}
+
+// ------------------------------------------------------------------ decide
+// Phase 6, H5: the decision engine's proposals over the sounds table.
+// Units join report sounds on (object, part, edge); the ticked set is the
+// accept list the bridge previews and writes. Proposing runs the CLI once
+// and caches server-side; writing clears the cache, because the map the
+// units were decided on is gone.
+const HSD = { file: "", units: [], accepted: new Set(), undo: false, proposing: false };
+
+function hsdKey(object, part, edge) { return `${object}|${part}|${edge ?? ""}`; }
+
+function hsdUnitFor(sound) {
+  if (!HSD.units.length || HSD.file !== HSV.file) return null;
+  const key = hsdKey(sound.object, sound.part, sound.edge);
+  return HSD.units.find((u) => hsdKey(u.object, u.part, u.edge) === key) || null;
+}
+
+function hsdLabel(unit) {
+  const adds = unit.proposal.additions;
+  return unit.proposal.bank + (adds.length ? " + " + adds.join(" + ") : "");
+}
+
+function hsdAcceptList() {
+  return [...HSD.accepted].map((key) => {
+    const [object, part, edge] = key.split("|");
+    return [+object, part, edge === "" ? null : +edge];
+  });
+}
+
+function hsdRender() {
+  const has = HSD.units.length > 0 && HSD.file === HSV.file;
+  $("hsvDecideCard").hidden = !HSV.report;
+  $("hsvPropose").disabled = HSD.proposing || !HSV.file;
+  for (const id of ["hsvDecideAll", "hsvDecideNone", "hsvDecidePreview", "hsvDecideApply", "hsvDecideCopy"]) {
+    $(id).disabled = !has;
+  }
+  $("hsvDecideUndo").disabled = !HSD.undo;
+  $("hsvDecideStatus").textContent = HSD.proposing ? t("hsv_proposing")
+    : has ? t("hsv_proposed", { n: HSD.accepted.size }) : "";
+}
+
+async function hsvPropose() {
+  if (!api() || !HSV.file || HSD.proposing) return;
+  HSD.proposing = true; hsdRender();
+  try {
+    const reply = await api().hitsound_decide_propose(HSV.file);
+    if (HSV.file !== (reply.file || HSV.file)) { hsdRender(); return; }
+    if (!reply.ok) {
+      if (reply.key === "no_rust") toast(t("hsv_no_rust"), true);
+      else editFailure(reply);
+      return;
+    }
+    HSD.file = HSV.file;
+    HSD.units = reply.units;
+    HSD.accepted = new Set(reply.units.map((u) => hsdKey(u.object, u.part, u.edge)));
+    HSD.undo = false;
+  } finally {
+    HSD.proposing = false;
+  }
+  renderHitsoundsView();
+}
+
+function hsdSetAll(on) {
+  HSD.accepted = on ? new Set(HSD.units.map((u) => hsdKey(u.object, u.part, u.edge))) : new Set();
+  $("hsvDecidePrevText").textContent = "";
+  renderHitsoundsView();
+}
+
+async function hsdPreview() {
+  if (!api() || !HSD.units.length || HSD.file !== HSV.file) return;
+  const reply = await api().hitsound_decide_preview(HSV.file, hsdAcceptList());
+  if (!reply.ok) {
+    if (reply.key === "no_proposal") toast(t("hsv_no_proposal"), true);
+    else editFailure(reply);
+    return reply;
+  }
+  $("hsvDecidePrevText").textContent = t("hsv_would_change",
+    { accepted: reply.accepted, units: reply.units, n: reply.would_change });
+  return reply;
+}
+
+async function hsdWrite(copy) {
+  if (!api() || !HSD.units.length || HSD.file !== HSV.file) return;
+  const preview = await hsdPreview();
+  if (!preview || !preview.ok || !preview.would_change) return;
+  const ok = confirm(t(copy ? "hsv_confirm_copy" : "hsv_confirm_write",
+    { n: preview.would_change, file: HSV.file }));
+  if (!ok) return;
+  const reply = await api().hitsound_decide_apply(HSV.file, hsdAcceptList(), copy);
+  if (!reply.ok) { editFailure(reply); return; }
+  HSD.units = []; HSD.accepted = new Set(); HSD.undo = reply.undo;
+  $("hsvDecidePrevText").textContent = "";
+  toast(t(copy ? "hsv_done_copy" : "hsv_done", { n: reply.changed.length, file: HSV.file }));
+  await hsvPick(HSV.file);
+  if (HSP.file === HSV.file) await hsPick(HSV.file);
+  renderHitsoundsView();
+}
+
+async function hsdUndo() {
+  if (!api()) return;
+  const reply = await api().hitsound_decide_undo();
+  if (!reply.ok) { editFailure(reply); return; }
+  HSD.units = []; HSD.accepted = new Set(); HSD.undo = false;
+  toast(t("hsv_undone", { file: reply.file }));
+  await hsvPick(reply.file);
+  if (HSP.file === reply.file) await hsPick(reply.file);
+  renderHitsoundsView();
 }
 
 async function dropAnalyze(file) {
@@ -3321,6 +3468,21 @@ function wire() {
     renderHitsoundsView();
   });
   $("hsvMore").onclick = () => { HSV.shown += HSV_PAGE; renderHitsoundsView(); };
+  $("hsvPropose").onclick = () => hsvPropose();
+  $("hsvDecideAll").onclick = () => hsdSetAll(true);
+  $("hsvDecideNone").onclick = () => hsdSetAll(false);
+  $("hsvDecidePreview").onclick = () => hsdPreview();
+  $("hsvDecideApply").onclick = () => hsdWrite(false);
+  $("hsvDecideCopy").onclick = () => hsdWrite(true);
+  $("hsvDecideUndo").onclick = () => hsdUndo();
+  $("hsvRows").addEventListener("change", (e) => {
+    const box = e.target.closest("[data-hsd]");
+    if (!box) return;
+    if (box.checked) HSD.accepted.add(box.dataset.hsd);
+    else HSD.accepted.delete(box.dataset.hsd);
+    $("hsvDecidePrevText").textContent = "";
+    hsdRender();
+  });
   $("hsvRows").addEventListener("click", (e) => {
     const play = e.target.closest("[data-play]");
     if (play) { hsvPlay(+play.dataset.play); return; }

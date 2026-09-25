@@ -87,7 +87,8 @@ matters when the timeline scrolls smoothly through a 5-minute track.
 ### Sub-phase 12.4 — Theming (4 days)
 
 - QSS stylesheets for **three themes**:
-  1. **Dark** (current, mint accent) — default.
+  1. **Dark** ("Console": violet graphite, signal-cyan accent) — default. Built in the web
+     shell on 2026-09-24, with its light counterpart.
   2. **Light** — the tokens from `docs/04-ui-ux.md` in reverse.
   3. **High contrast** — accessibility, WCAG AAA.
 - User-defined themes: point the app at a QSS file, hot-reload on save.

@@ -4296,8 +4296,8 @@ class LogoIconTests(unittest.TestCase):
         # the panel colour, and the red line where it belongs.
         self.assertLess(pixel(0, 0)[3], 64)          # antialiased, mostly clear
         self.assertLess(pixel(15, 15)[3], 64)
-        self.assertEqual(pixel(13, 8), (0x15, 0x1C, 0x29, 255))
-        self.assertEqual(pixel(6, 8)[:3], (0xE0, 0x60, 0x6C))
+        self.assertEqual(pixel(13, 8), (0x1E, 0x1B, 0x27, 255))
+        self.assertEqual(pixel(6, 8)[:3], (0xFF, 0x5D, 0x6C))
 
 
 class TaskbarIdentityTests(unittest.TestCase):

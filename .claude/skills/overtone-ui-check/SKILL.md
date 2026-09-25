@@ -50,7 +50,10 @@ before:
    polling loop (`for (let i = 0; i < 60 && !S.result; i++) await new
    Promise(r => setTimeout(r, 500))`), which is sturdier than fixed waits.
 
-4. **Verify by reading, not by looking.** Screenshots often time out when the
+4. **Verify by reading, not by looking.** A caveat first: when the pane is not drawing,
+   CSS transitions do not advance, so a computed colour can stay at its starting value
+   and a screenshot can show the frame before a change. Add `reduce-motion` to `<body>`
+   (the app's own switch for no transitions) before reading styles or capturing. Screenshots often time out when the
    pane is not frontmost. Prefer `get_page_text`, `read_page`, `find`, and
    measuring with `getBoundingClientRect()` (overflow, zero widths, elements off
    screen). Take a screenshot only when appearance itself is the question, at

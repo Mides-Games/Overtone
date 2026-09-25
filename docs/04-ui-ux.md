@@ -24,25 +24,26 @@ applied without exception.
 
 ### Tokens
 
+The source of truth is `app/styles.css`: every colour, size and radius is a token there,
+dark first, with a light block of the same roles. The look is **"Console"** (2026-09-24),
+the panel of a measuring instrument:
+
 ```css
---bg-0:#0a0b0d  /* app background        */  --text-0:#e8eaed  /* primary   */
---bg-1:#111316  /* panels                */  --text-1:#9aa0a6  /* secondary */
---bg-2:#181b1f  /* cards, inputs         */  --text-2:#5f6570  /* tertiary  */
---bg-3:#1f2329  /* hover                 */
---line :#24282e /* 1px borders           */  --accent:#4fc08a  /* single accent   */
---wave :#3d444d /* waveform body         */  --red   :#e0606c  /* timing points   */
---onset:#4a5561 /* onset bed             */  --warn  :#e8b339  /* low confidence  */
---grid :#2a3038 /* beat grid             */  --info  :#7f9df0  /* tempo curve     */
+--bg:#121019        /* violet graphite ground */  --text:#efecf5    /* primary          */
+--surface:#18161f   /* panels, flat           */  --muted:#aaa3b8   /* secondary        */
+--surface-2:#1e1b27 /* raised, lanes          */  --dim:#8f88a1     /* captions, 4.5:1  */
+--border:#2c2838    /* hairlines do the work  */  --accent:#3fd0dc  /* signal cyan      */
+--red:#ff5d6c       /* timing points (osu!)   */  --amber:#f5b44a   /* check by ear     */
+--blue:#a996ff      /* tempo, lavender        */  --sec-*           /* song sections    */
 ```
 
-Dark is the default and the design target. A light theme is a Phase 3 deliverable, not an
-afterthought: every token above has a light counterpart and the timeline renderer takes
-its palette as input.
+Dark is the default. The light theme (Settings, Theme: System, Dark, Light) is the same
+roles on cool paper, the timeline canvas included: it reads its ink from `--chart-*`.
 
-Type: **IBM Plex Sans** for interface, **IBM Plex Mono** for every number — one family in
-two widths, technical without being sterile, and deliberately not Inter (which now reads as
-a default rather than a choice). Scale 10 / 11 / 12 / 13 / 15 / 19 / 21 px. Radii 6 / 10 px.
-One shadow, barely there: `0 1px 2px rgb(0 0 0 / .4)`. Borders do the work shadows usually do.
+Type, offline and shipped with Windows: **Bahnschrift** (a DIN, the lettering of instruments)
+for titles and the big readouts, **Segoe UI** for the interface, **Cascadia Mono** for
+tabular numbers; small-caps labels with letter-spacing, like a panel's. Eight steps, 11.5 to
+34 px. Radii 3 to 12 px: squarer controls, flat panels. Borders do the work shadows usually do.
 
 **Rendered mockups:** four screens — dashboard, timing workspace, hitsound analyzer and the
 decision inspector — are built as an interactive canvas rather than described here. Ask for

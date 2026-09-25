@@ -2819,7 +2819,7 @@ function drawTrace(hoverX) {
     const row = x > lastRight[0] + 4 ? 0 : (x > lastRight[1] + 4 ? 1 : 0);
     lastRight[row] = x + w;
     const top = y0 - 20 + row * 24;
-    ctx.fillStyle = C.red; roundRect(ctx, x, top, w, 20, 10); ctx.fill();
+    ctx.fillStyle = C.red; roundRect(ctx, x, top, w, 20, 4); ctx.fill();
     ctx.fillStyle = C.redInk; ctx.fillText(label, x + 8, top + 10.5);
   });
 

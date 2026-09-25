@@ -16,6 +16,44 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · A new look: "Console"
+
+### Changed
+
+- **The interface's whole look**, as asked: the panel of a measuring instrument instead of
+  a soft dark app. Violet graphite ground, one signal-cyan accent (was mint), tempo in
+  lavender, red lines still red (osu!'s own meaning) and amber still "check by ear". Flat
+  panels with hairline borders instead of lifted gradient cards; squarer controls (radii
+  3 to 12 px, pills only where something slides); pills became tags. Headings and the big
+  readouts in **Bahnschrift**, the DIN that ships with Windows; small-caps labels with
+  letter-spacing on stats, table heads and lists. Both themes, dark by default.
+- **The logo** in the same palette: graphite tile, cyan trace, red line.
+- Song sections take a new categorical set (blue, yellow, green), the hues no reserved
+  meaning uses in this palette.
+
+### Measured
+
+```
+text contrast, dark        text 13.1, muted 6.3, dim 4.5, accent 8.2, red 5.1, amber 8.4,
+  (worst surface, :1)      tempo 6.2; ink on the accent button 8.5
+text contrast, light       text 14.6, muted 6.1, dim 4.8, accent 4.6, red 4.6, amber 4.6,
+                           tempo 5.3; ink on the accent button 5.6
+sections, dark             dataviz validator, all pairs on --surface-2: passes; green and
+                           yellow in the colour-blind warning band (6.9), carried by the
+                           block labels and the table (secondary encoding)
+sections, light            passes; yellow 2.06:1 on the lane, carried by the labels
+browser, harness           Library, Timing (canvas), Structure and Settings on a real song,
+                           dark and light; Bahnschrift resolves; dark is the default
+Python unittest            373, all pass (the logo tests read the new panel and red)
+```
+
+### Rejected / tried and dropped
+
+- **Sections in blue, orange and green**: green beside orange failed the colour-blind
+  check (ΔE 2.7). **Magenta** sat 9.5 from the timing-point red, **orange** 10.3.
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Hitsounds H1: the copier
 
 ### Changed

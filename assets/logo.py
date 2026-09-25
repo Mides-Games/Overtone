@@ -1,6 +1,6 @@
 """Overtone application logo, generated — never hand-drawn.
 
-The mark: an overtone series (fundamental plus two fading harmonics, mint)
+The mark: an overtone series (fundamental plus two fading harmonics, signal cyan)
 cut by one red timing line, on the app's own panel colour. Everything is
 drawn in code with the standard library only, so anyone can regenerate it
 with the repo's own interpreter:
@@ -28,10 +28,10 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
-# Design tokens borrowed from docs/04-ui-ux.md and the Tk theme.
-BG = (0x15, 0x1C, 0x29, 0xFF)      # panel
-MINT = (0x4F, 0xC0, 0x8A)          # accent
-RED = (0xE0, 0x60, 0x6C, 0xFF)     # timing points
+# The web shell's tokens (app/styles.css, "Console"): --surface-2, --accent, --red.
+BG = (0x1E, 0x1B, 0x27, 0xFF)      # panel
+ACCENT = (0x3F, 0xD0, 0xDC)        # accent, the signal trace
+RED = (0xFF, 0x5D, 0x6C, 0xFF)     # timing points
 SIZE = 256
 #: Every size in the .ico: 16/20/24/32 are the small icon at 100/125/150/200 %,
 #: 32/40/48/64 the large one, 256 the jumbo view.
@@ -141,7 +141,7 @@ def render(size):
         for s in range(steps + 1):
             x = s * w / steps
             y = mid + amp * math.sin(2.0 * math.pi * harmonic * s / steps)
-            stamp(canvas, w, x, y, stroke / 2.0, (*MINT, int(round(255 * alpha))))
+            stamp(canvas, w, x, y, stroke / 2.0, (*ACCENT, int(round(255 * alpha))))
     # One red timing line, over the waves, left of centre; whole output pixels
     # wide and on the pixel grid, so it stays crisp at 16 px.
     line_px = max(2, int(round(7.0 * scale)))

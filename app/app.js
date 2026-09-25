@@ -303,6 +303,15 @@ const I18N = {
     lab_no_tag: "No gapless tag: this file does not state its delay.",
     lab_compare: "Compare decoders",
     lab_decoders: "First attack: Python {py} ms, Rust {rust} ms, {delta} ms apart.",
+    lab_test_title: "Blind test",
+    lab_test_sub: "Hear the same passage twice with two hidden click shifts and pick the one in time. Each shift runs against no shift, three times each.",
+    lab_start: "Start", lab_hear1: "Hear 1", lab_hear2: "Hear 2",
+    lab_vote1: "1 was in time", lab_vote2: "2 was in time", lab_cancel: "Cancel",
+    lab_rate: "Set speed to 100% for the test.",
+    lab_trial: "Trial {k} of {n}",
+    lab_t_shift: "Shift", lab_t_wins: "Wins", lab_t_interval: "95% interval",
+    lab_best: "Preferred: {shift} ms ({lo}–{hi} % preferred over no shift).",
+    lab_none: "Nothing beats no shift: the click sits where it is.",
     as_title: "Assisted timing",
     as_sub: "Where detection is wrong, mark two downbeats: the grid is fitted from there, or refused with the reason.",
     as_first: "First downbeat (ms)", as_second: "A later downbeat (ms)", as_bars: "Bars between", as_meter: "Beats per bar",
@@ -673,6 +682,15 @@ const I18N = {
     lab_no_tag: "Sin etiqueta gapless: este archivo no dice su delay.",
     lab_compare: "Comparar decodificadores",
     lab_decoders: "Primer ataque: Python {py} ms, Rust {rust} ms, diferencia {delta} ms.",
+    lab_test_title: "Prueba ciega",
+    lab_test_sub: "Escuchá el mismo pasaje dos veces con dos shifts ocultos y elegí el que va a tiempo. Cada shift corre contra cero, tres veces cada uno.",
+    lab_start: "Empezar", lab_hear1: "Escuchar 1", lab_hear2: "Escuchar 2",
+    lab_vote1: "1 iba a tiempo", lab_vote2: "2 iba a tiempo", lab_cancel: "Cancelar",
+    lab_rate: "Poné la velocidad en 100% para la prueba.",
+    lab_trial: "Prueba {k} de {n}",
+    lab_t_shift: "Shift", lab_t_wins: "Ganadas", lab_t_interval: "Intervalo 95%",
+    lab_best: "Preferido: {shift} ms ({lo}–{hi} % preferido sobre cero).",
+    lab_none: "Nada le gana a cero: el clic queda donde está.",
     as_title: "Timing asistido",
     as_sub: "Donde la detección se equivoca, marcá dos tiempos fuertes: el grid se ajusta desde ahí, o se rechaza con el motivo.",
     as_first: "Primer tiempo fuerte (ms)", as_second: "Un tiempo fuerte posterior (ms)", as_bars: "Compases entre ambos", as_meter: "Tiempos por compás",
@@ -1055,7 +1073,7 @@ function showResult(result) {
   S.snap = null;
   // A grade depends on the map and the song's attacks, not on the point list:
   // it stays through edits and goes with the song.
-  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; RA.report = null; pbReset(); hsMaps(); WARN.open.clear(); WARN.all = false; }
+  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; RA.report = null; labCancel(); pbReset(); hsMaps(); WARN.open.clear(); WARN.all = false; }
   if (!sameSong) { STX.view = null; STX.file = ""; STX.error = null; }
   if (!sameSong) S.comparePath = null;  // a map belongs to one song
   setView(S.view);  // lifts the "analyze first" panel off the current view
@@ -1147,6 +1165,7 @@ function renderResult(r) {
   if (S.view === "timing") waveLoad();
   evLoad();
   labLoad();
+  renderLab();
 }
 
 function renderDetail() {
@@ -2447,6 +2466,143 @@ async function labCompare() {
   }
 }
 
+// ------------------------------------------------------------------ blind test
+// Phase 19: which click shift sounds in time, measured blind. Each trial
+// plays the same passage twice with two shifts in random order; the vote
+// records which presentation won without naming its shift. Every shift runs
+// against 0, so the report is one win rate per shift with a Wilson 95 %
+// interval, and the preferred shift is the argmax — or nothing, when 0 is
+// unbeaten. Read only: nothing is written, and the shift restores to 0.
+const LAB_SHIFTS = [-30, -20, -10, 10, 20, 30];
+const LAB_REPS = 3;
+const LAB_WINDOW_S = 6;
+const LAB = { trials: [], at: 0, heard: [false, false], timer: 0, votes: {} };
+
+function labShiftLabel(shift) { return shift === 0 ? "±0" : `${shift > 0 ? "+" : ""}${shift}`; }
+
+function labStartPoint() {
+  if (P.loop) return P.loop.a;
+  const points = (S.result && S.result.points) || [];
+  return points.length ? Math.max(0, points[0].offset_ms / 1000) : 0;
+}
+
+function wilson(wins, n) {
+  // Wilson score interval, 95 %: honest about 3 reps a shift.
+  if (!n) return [0, 0];
+  const z = 1.96, p = wins / n, denom = 1 + (z * z) / n;
+  const middle = p + (z * z) / (2 * n);
+  const half = z * Math.sqrt((p * (1 - p) + (z * z) / (4 * n)) / n);
+  return [Math.max(0, (middle - half) / denom), Math.min(1, (middle + half) / denom)];
+}
+
+function labStart() {
+  if (!api() || !S.result) return;
+  if (pbRate() !== 1) { toast(t("lab_rate"), true); return; }
+  const order = [];
+  for (const shift of LAB_SHIFTS) for (let r = 0; r < LAB_REPS; r++) order.push(shift);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  LAB.trials = order.map((shift) => ({ shift, first: Math.random() < 0.5 ? 0 : shift }));
+  LAB.at = 0;
+  LAB.votes = {};
+  for (const shift of LAB_SHIFTS) LAB.votes[shift] = [0, 0];
+  LAB.heard = [false, false];
+  renderLab();
+}
+
+function labStopTimer() {
+  if (LAB.timer) { clearTimeout(LAB.timer); LAB.timer = 0; }
+}
+
+async function labHear(which) {
+  // which 0/1: play the window with that presentation's shift, then stop.
+  if (!api() || !S.result || !LAB.trials.length || LAB.at >= LAB.trials.length) return;
+  const trial = LAB.trials[LAB.at];
+  const shift = which === 0 ? trial.first : (trial.first === 0 ? trial.shift : 0);
+  P.clickShiftMs = shift;
+  labStopTimer();
+  await pbPlay(labStartPoint());
+  if (!P.playing) { P.clickShiftMs = 0; return; }
+  LAB.timer = setTimeout(() => { pbStop(); P.clickShiftMs = 0; LAB.heard[which] = true; renderLab(); }, LAB_WINDOW_S * 1000);
+  renderLab();
+}
+
+function labVote(which) {
+  if (!LAB.trials.length || LAB.at >= LAB.trials.length) return;
+  if (!LAB.heard[0] || !LAB.heard[1]) return;
+  const trial = LAB.trials[LAB.at];
+  const picked = which === 0 ? trial.first : (trial.first === 0 ? trial.shift : 0);
+  // Every trial is its shift against 0: picking the shift wins it, picking
+  // 0 loses it. Zero itself keeps no tally.
+  const entry = LAB.votes[trial.shift];
+  if (picked === trial.shift) entry[0]++;
+  else entry[1]++;
+  LAB.at++;
+  LAB.heard = [false, false];
+  if (LAB.at >= LAB.trials.length) labFinish();
+  else renderLab();
+}
+
+function labCancel() {
+  labStopTimer();
+  pbStop();
+  P.clickShiftMs = 0;
+  LAB.trials = [];
+  LAB.at = 0;
+  renderLab();
+}
+
+function labFinish() {
+  labStopTimer();
+  pbStop();
+  P.clickShiftMs = 0;
+  renderLab();
+}
+
+function labReport() {
+  // Per shift: wins, trials, Wilson interval. Preferred is the top win
+  // rate, smallest shift breaking ties; silence when 0 beats everything.
+  const rows = LAB_SHIFTS.map((shift) => {
+    const [wins, losses] = LAB.votes[shift] || [0, 0];
+    const n = wins + losses, rate = n ? wins / n : 0;
+    const [lo, hi] = wilson(wins, n);
+    return { shift, wins, n, rate, lo, hi };
+  });
+  const best = rows.reduce((a, b) => (b.rate > a.rate || (b.rate === a.rate && Math.abs(b.shift) < Math.abs(a.shift)) ? b : a));
+  return { rows, best: best.rate > 0.5 ? best : null };
+}
+
+function renderLab() {
+  const done = LAB.trials.length > 0 && LAB.at >= LAB.trials.length;
+  const live = LAB.trials.length > 0 && !done;
+  $("labTestCard").hidden = !S.result;
+  $("labStart").disabled = !S.result || live;
+  $("labCancel").hidden = !live && !done;
+  for (const id of ["labHear1", "labHear2", "labVote1", "labVote2"]) $(id).disabled = !live;
+  if (live) {
+    $("labVote1").disabled = $("labVote2").disabled = !(LAB.heard[0] && LAB.heard[1]);
+    $("labProgress").textContent = t("lab_trial", { k: LAB.at + 1, n: LAB.trials.length });
+  } else {
+    $("labProgress").textContent = "";
+  }
+  const box = $("labTestResult");
+  if (!done) { box.innerHTML = ""; return; }
+  const { rows, best } = labReport();
+  box.innerHTML = `<div class="table-scroll"><table>
+      <thead><tr><th>${t("lab_t_shift")}</th><th>${t("lab_t_wins")}</th><th>${t("lab_t_interval")}</th></tr></thead>
+      <tbody>${rows.map((row) => `
+        <tr>
+          <td class="num">${labShiftLabel(row.shift)} ms</td>
+          <td class="num">${row.wins}/${row.n}</td>
+          <td class="num">${Math.round(row.lo * 100)}–${Math.round(row.hi * 100)} %</td>
+        </tr>`).join("")}</tbody>
+    </table></div>
+    <div class="card-sub mt-s">${best ? t("lab_best", { shift: labShiftLabel(best.shift), lo: Math.round(best.lo * 100), hi: Math.round(best.hi * 100) })
+      : t("lab_none")}</div>`;
+}
+
 // ------------------------------------------------------------------ playback
 // The song and the click leave through one AudioContext, so they share one
 // clock and cannot drift apart. Every time below derives from it: the song
@@ -2559,6 +2715,9 @@ function pbClickAt(when, level) {
   osc.connect(env); env.connect(P.click);
   osc.start(when); osc.stop(when + 0.045);
 }
+// A listening-test shift, output milliseconds, added to every click below.
+// Zero unless a blind trial sets it; normal playback never sees it move.
+P.clickShiftMs = 0;
 
 // Hitsounds beside the song (Phase 6, P-3): one difficulty's sounds, found as
 // osu! finds its samples, scheduled on the playback clock like the click.
@@ -2634,7 +2793,7 @@ function pbTick() {
     const room = P.loop ? (P.loop.b - s0) / P.rate : Infinity;
     const len = Math.min(until - P.sched, room);
     for (let i = lowerBound(clicks.t, s0); i < clicks.t.length && clicks.t[i] < s0 + len * P.rate; i++) {
-      pbClickAt(P.startCtx + P.sched + (clicks.t[i] - s0) / P.rate, clicks.level[i]);
+      pbClickAt(P.startCtx + P.sched + (clicks.t[i] - s0) / P.rate + (P.clickShiftMs || 0) / 1000, clicks.level[i]);
     }
     const hits = HSP.events;
     if (hits) {
@@ -3964,6 +4123,12 @@ function wire() {
   $("rampFit").onclick = rampFit;
   $("rampUse").onclick = rampUse;
   $("labCompare").onclick = labCompare;
+  $("labStart").onclick = labStart;
+  $("labHear1").onclick = () => labHear(0);
+  $("labHear2").onclick = () => labHear(1);
+  $("labVote1").onclick = () => labVote(0);
+  $("labVote2").onclick = () => labVote(1);
+  $("labCancel").onclick = labCancel;
   $("rpPick").onclick = reportPick;
   $("rpCopy").onclick = copyReport;
   $("pbPlay").onclick = pbToggle;

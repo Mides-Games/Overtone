@@ -16,6 +16,33 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Offset lab: the blind test with an interval
+
+### Changed
+
+- **Blind test in the Offset lab card**: 18 trials, six shifts (±10/±20/±30 ms)
+  against 0 in shuffled blind order, 6-second windows from the loop or first
+  red line, both presentations heard before either vote counts. Per shift the
+  wins with a Wilson 95 % interval; the preferred shift is the argmax, or
+  nothing when 0 is unbeaten. Read only, one output-millisecond hook in the
+  click scheduler (identity at 0), shift restored after every window and run.
+
+### Measured
+
+```
+Python unittest              438, all pass (no new tests: client-side only)
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                           ids, both languages, no duplicates, function
+                             cross-checks. Harness pass owed, stated — this
+                             one moves sound, so the debt matters more here.
+```
+
+Two bugs caught in review before commit: a call to a trial function that was
+never written, and vote tallies with no entry for the zero side.
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Offset lab: the file's delay, both decoders
 
 ### Changed

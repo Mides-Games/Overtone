@@ -318,6 +318,28 @@
           </div>
         </div>
 
+        <div class="card cmp-card" id="labTestCard" hidden>
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="lab_test_title">Blind test</div>
+              <div class="card-sub" data-i18n="lab_test_sub">Hear the same passage twice with two hidden click shifts and pick the one in time. Each shift runs against no shift, three times each.</div>
+            </div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="labProgress"></span>
+          </div>
+          <div class="card-body">
+            <div class="drop-actions">
+              <button type="button" class="btn small primary" id="labStart"><span data-i18n="lab_start">Start</span></button>
+              <button type="button" class="btn small" id="labHear1" disabled><span data-i18n="lab_hear1">Hear 1</span></button>
+              <button type="button" class="btn small" id="labHear2" disabled><span data-i18n="lab_hear2">Hear 2</span></button>
+              <button type="button" class="btn small" id="labVote1" disabled><span data-i18n="lab_vote1">1 was in time</span></button>
+              <button type="button" class="btn small" id="labVote2" disabled><span data-i18n="lab_vote2">2 was in time</span></button>
+              <button type="button" class="btn small" id="labCancel" hidden><span data-i18n="lab_cancel">Cancel</span></button>
+            </div>
+            <div id="labTestResult"></div>
+          </div>
+        </div>
+
         <div class="card cmp-card">
           <div class="card-head">
             <div>

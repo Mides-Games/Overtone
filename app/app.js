@@ -297,6 +297,12 @@ const I18N = {
     ramp_piecewise: "The sections already read fine: ramps add nothing.",
     ramp_used: "{n} hand-placed red lines.",
     ramp_no_ramps: "Fit first: there are no lines to use yet.",
+    lab_title: "Offset lab",
+    lab_sub: "What the file says about its own delay, and the first attack through each decoder side by side.",
+    lab_header: "{encoder}: {delay} samples of delay ({delayMs} ms), {pad} of padding ({padMs} ms).",
+    lab_no_tag: "No gapless tag: this file does not state its delay.",
+    lab_compare: "Compare decoders",
+    lab_decoders: "First attack: Python {py} ms, Rust {rust} ms, {delta} ms apart.",
     as_title: "Assisted timing",
     as_sub: "Where detection is wrong, mark two downbeats: the grid is fitted from there, or refused with the reason.",
     as_first: "First downbeat (ms)", as_second: "A later downbeat (ms)", as_bars: "Bars between", as_meter: "Beats per bar",
@@ -661,6 +667,12 @@ const I18N = {
     ramp_piecewise: "Las secciones ya leen bien: las rampas no agregan nada.",
     ramp_used: "{n} líneas rojas puestas a mano.",
     ramp_no_ramps: "Ajustá primero: todavía no hay líneas para usar.",
+    lab_title: "Laboratorio de offset",
+    lab_sub: "Lo que el archivo dice de su propio delay, y el primer ataque por cada decodificador lado a lado.",
+    lab_header: "{encoder}: delay {delay} samples ({delayMs} ms), pad {pad} samples ({padMs} ms).",
+    lab_no_tag: "Sin etiqueta gapless: este archivo no dice su delay.",
+    lab_compare: "Comparar decodificadores",
+    lab_decoders: "Primer ataque: Python {py} ms, Rust {rust} ms, diferencia {delta} ms.",
     as_title: "Timing asistido",
     as_sub: "Donde la detección se equivoca, marcá dos tiempos fuertes: el grid se ajusta desde ahí, o se rechaza con el motivo.",
     as_first: "Primer tiempo fuerte (ms)", as_second: "Un tiempo fuerte posterior (ms)", as_bars: "Compases entre ambos", as_meter: "Tiempos por compás",
@@ -1134,6 +1146,7 @@ function renderResult(r) {
   renderTaps();
   if (S.view === "timing") waveLoad();
   evLoad();
+  labLoad();
 }
 
 function renderDetail() {
@@ -2397,6 +2410,41 @@ function renderRamps() {
           <td class="num">${line.attacks}</td>
         </tr>`).join("")}</tbody>
     </table></div>`;
+}
+
+// ------------------------------------------------------------------ offset lab
+// Phase 19: the file's own gapless numbers plus the first attack through
+// each decoder, side by side. The header reads with the card; the decoder
+// comparison decodes twice, so it runs on its own button.
+async function labLoad() {
+  $("labCard").hidden = !S.result;
+  $("labHeader").textContent = "";
+  $("labResult").textContent = "";
+  if (!api() || !S.result) return;
+  const reply = await api().offset_lab();
+  if (!reply.ok) { editFailure(reply); return; }
+  const header = reply.header;
+  $("labHeader").textContent = header.present
+    ? t("lab_header", { encoder: header.encoder, delay: header.delay_samples,
+                        delayMs: header.delay_ms, pad: header.padding_samples, padMs: header.padding_ms })
+    : t("lab_no_tag");
+}
+
+async function labCompare() {
+  if (!api() || !S.result || S.busy) return;
+  $("labCompare").disabled = true;
+  try {
+    const reply = await api().offset_decoders();
+    if (!reply.ok) {
+      if (reply.key === "no_rust") toast(t("hsv_no_rust"), true);
+      else editFailure(reply);
+      return;
+    }
+    $("labResult").textContent = t("lab_decoders",
+      { py: reply.python_ms.toFixed(2), rust: reply.rust_ms.toFixed(2), delta: reply.delta_ms.toFixed(2) });
+  } finally {
+    $("labCompare").disabled = false;
+  }
 }
 
 // ------------------------------------------------------------------ playback
@@ -3915,6 +3963,7 @@ function wire() {
   $("asFit").onclick = assistFit;
   $("rampFit").onclick = rampFit;
   $("rampUse").onclick = rampUse;
+  $("labCompare").onclick = labCompare;
   $("rpPick").onclick = reportPick;
   $("rpCopy").onclick = copyReport;
   $("pbPlay").onclick = pbToggle;

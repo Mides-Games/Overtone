@@ -1446,6 +1446,40 @@ class RampsBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().ramps_use()["key"], "first")
 
 
+class OffsetLabBridgeTests(_IsolatedConfig):
+    """The Offset lab: the header's numbers, both decoders side by side."""
+
+    def test_header_reads_without_a_song_decoded(self) -> None:
+        api = _api_with_points()
+        reply = api.offset_lab()
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["header"]["present"], False)
+        self.assertEqual(web.Api().offset_lab()["key"], "first")
+
+    def test_first_attacks_compare_and_refusals_say_which_side(self) -> None:
+        from types import SimpleNamespace
+        api = _api_with_points()
+        api._analysis.attack_times = np.array([1.2345, 2.0])
+        api._analysis.attack_weights = np.array([1.0, 0.8])
+        rust = SimpleNamespace(attack_times=np.array([1.2455, 2.0]),
+                               attack_weights=np.array([1.0, 0.8]))
+        with mock.patch.object(web.overtone_rust, "analyze", return_value=rust):
+            reply = api.offset_decoders()
+        json.dumps(reply)
+        self.assertEqual((reply["python_ms"], reply["rust_ms"], reply["delta_ms"]),
+                         (1234.5, 1245.5, 11.0))
+        with mock.patch.object(web.overtone_rust, "analyze",
+                               side_effect=web.overtone_rust.SidecarUnavailable("gone")):
+            self.assertEqual(api.offset_decoders()["key"], "no_rust")
+        with mock.patch.object(web.overtone_rust, "analyze",
+                               return_value=SimpleNamespace(attack_times=np.zeros(0),
+                                                            attack_weights=np.zeros(0))):
+            reply = api.offset_decoders()
+            self.assertEqual(reply["key"], "error")
+        self.assertEqual(web.Api().offset_decoders()["key"], "first")
+
+
 class FolderImportTests(_IsolatedConfig):
     def _song(self, tmp: str) -> Path:
         root = Path(tmp) / "123 Artist - Title"

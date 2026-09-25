@@ -1388,6 +1388,48 @@ class Api:
         reply["loaded"] = len(points)
         return reply
 
+    # -- offset lab: the file's own delay, both decoders side by side -------
+    def offset_lab(self) -> dict:
+        """The analysed file's gapless numbers from its own header. Pure file
+        reading: no job, no song decoding beyond the open analysis."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        return {"ok": True, "header": ta.mp3_gapless_info(str(self._analysis.source))}
+
+    def offset_decoders(self) -> dict:
+        """The first attack through each decoder, side by side: Python's
+        against the Rust sidecar's, in milliseconds. Two decodes under the
+        one-heavy-job lock; refusals say which side has nothing to compare."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not self._busy.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        try:
+            times = np.asarray(getattr(self._analysis, "attack_times", []), dtype=np.float64)
+            if times.size:
+                python_ms = round(float(times[0]) * 1000.0, 3)
+            else:
+                y, sr = ta._load_audio(str(self._analysis.source), lambda _message: None)
+                detected, _weights, _env = ta._detect_attacks(y, sr)
+                if detected.size == 0:
+                    return {"ok": False, "key": "error", "detail": "no attacks detected"}
+                python_ms = round(float(detected[0]) * 1000.0, 3)
+            report = overtone_rust.analyze(str(self._analysis.source))
+        except overtone_rust.SidecarUnavailable:
+            return {"ok": False, "key": "no_rust"}
+        except overtone_rust.SidecarRefused as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        except (RuntimeError, ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            self._busy.release()
+        rust_times = np.asarray(getattr(report, "attack_times", []), dtype=np.float64)
+        if rust_times.size == 0:
+            return {"ok": False, "key": "error", "detail": "no attacks decoded"}
+        rust_ms = round(float(rust_times[0]) * 1000.0, 3)
+        return {"ok": True, "python_ms": python_ms, "rust_ms": rust_ms,
+                "delta_ms": round(rust_ms - python_ms, 3)}
+
     # -- assisted timing: two marked downbeats seed the grid ---------------
     def assisted_fit(self, first_ms: float, second_ms: float, bars: int, meter: int) -> dict:
         """Fit the grid two marked downbeats imply. Read only: the answer (or

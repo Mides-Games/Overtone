@@ -5318,6 +5318,79 @@ def copy_hitsounds(source: dict, target: dict, tolerance_ms: float = COPY_TOLERA
             "source_sounds": len(src), "source_unused": len(src) - len(used)}
 
 
+# -- P-3: which sample each sound plays --------------------------------------
+
+#: Overtone's own samples (assets/samples.py makes them): what plays where a
+#: map names no custom sample. osu!'s own defaults are not Overtone's to ship.
+DEFAULT_SAMPLE_DIR = Path(__file__).resolve().parent / "assets" / "samples"
+#: What a beatmap folder's samples may be, in the order osu! looks for them.
+SAMPLE_EXTENSIONS = (".wav", ".ogg", ".mp3")
+#: osu!'s floor: a sound is never quieter than this, whatever the map says.
+MIN_SAMPLE_VOLUME = 5
+
+
+def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str]) -> dict:
+    """What every sound of a map plays, found as osu! finds it (P-3).
+
+    A sound with a custom ``filename`` plays that file from the beatmap
+    folder, alone. Otherwise each of its samples (the normal sound in the
+    normal set, each addition in the addition set) is looked up in the
+    folder by index: index 1 is ``soft-hitclap.wav``, index 2
+    ``soft-hitclap2.wav``, and so on, wav then ogg then mp3. Index 0, or a
+    custom sample the folder does not have, plays Overtone's own. A custom
+    filename that is missing falls back to the named samples, and is
+    counted. Slider bodies (the looping slide) are not played yet; they are
+    counted. Volume is the sound's, never under osu!'s 5 %.
+
+    Returns ``events`` in song time (seconds) with the ``keys`` they play
+    and a 0-1 ``volume``; ``samples``, each key's ``path`` and ``source``
+    (``file``, ``map`` or ``overtone``); and ``counts`` of each.
+    """
+    base = Path(folder)
+    try:
+        listing = {p.name.lower(): p for p in base.iterdir() if p.is_file()}
+    except OSError:
+        listing = {}
+    samples: dict[str, dict] = {}
+    events: list[dict] = []
+    counts = {"sounds": 0, "file": 0, "map": 0, "overtone": 0, "missing_file": 0,
+              "slider_bodies": 0}
+
+    def use(path: Path, source: str) -> str:
+        key = f"{source}:{path.name.lower()}"
+        samples.setdefault(key, {"path": str(path), "source": source})
+        counts[source] += 1
+        return key
+
+    for event in sound_events(beatmap):
+        if event["part"] == "body":
+            counts["slider_bodies"] += 1
+            continue
+        counts["sounds"] += 1
+        keys: list[str] = []
+        if event["file"]:
+            found = listing.get(event["file"].lower())
+            if found is not None:
+                keys = [use(found, "file")]
+            else:
+                counts["missing_file"] += 1
+        if not keys:
+            for sound in event["sounds"]:
+                sample_set = event["normal_set"] if sound == "normal" else event["addition_set"]
+                stem = f"{sample_set}-hit{sound}"
+                found = None
+                if event["index"] >= 1:
+                    numbered = stem + (str(event["index"]) if event["index"] > 1 else "")
+                    found = next((listing[numbered + ext] for ext in SAMPLE_EXTENSIONS
+                                  if numbered + ext in listing), None)
+                keys.append(use(found, "map") if found is not None
+                            else use(DEFAULT_SAMPLE_DIR / f"{stem}.wav", "overtone"))
+        events.append({"t": round(event["time"] / 1000.0, 6), "keys": keys,
+                       "volume": max(MIN_SAMPLE_VOLUME, min(100, event["volume"])) / 100.0})
+    events.sort(key=lambda e: e["t"])
+    return {"events": events, "samples": samples, "counts": counts}
+
+
 # ---------------------------------------------------------------------------
 # Structure view (Phase 19): the Rust engine's phrases, on this song's bars
 # ---------------------------------------------------------------------------
@@ -5951,6 +6024,7 @@ CONFIG_TYPES: dict[str, tuple[type, ...]] = {
     "confidence": (int, float, str), "prefer_map_bpm": (bool,), "refine_beats": (bool,),
     "recent": (list,), "songs_folder": (str,),
     "song_volume": (int, float), "click_volume": (int, float), "tap_latency_ms": (int, float),
+    "hitsound_volume": (int, float),
     "output_folder": (str,), "export_ask": (bool,), "offset_decimals": (int,),
     "click_subdivision": (int,), "click_accent": (bool,), "ui_scale": (int, float),
     "reduced_motion": (bool,), "theme": (str,),

@@ -6,6 +6,7 @@ test_overtone.py; these tests pin that the bridge (1) calls it exactly
 as the Tk GUI does, (2) returns only JSON types, and (3) never touches the
 user's real ~/.overtone.json.
 """
+import base64
 import json
 import os
 import tempfile
@@ -629,6 +630,61 @@ class ReferenceBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().reference_find()["key"], "first")
 
 
+class HitsoundPlaybackBridgeTests(_IsolatedConfig):
+    """The transport's hitsound track: the maps of this song, their samples."""
+
+    def _song(self, tmp: str) -> web.Api:
+        folder = Path(tmp)
+        (folder / "audio.mp3").write_bytes(b"ID3" + bytes(64))
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+                 "[Metadata]", "Version:Hard", "", "[TimingPoints]", "0,500,4,2,0,70,1,0", "",
+                 "[HitObjects]", "256,192,1000,1,8,0:0:1:0:", ""]
+        (folder / "hard.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        other = [l.replace("audio.mp3", "other.mp3") for l in lines]
+        (folder / "other.osu").write_bytes("\r\n".join(other).encode("utf-8"))
+        (folder / "soft-hitclap.wav").write_bytes(b"RIFFclap")
+        api = _api_with_points()
+        api._analysis.source = str(folder / "audio.mp3")
+        return api
+
+    def test_only_this_songs_maps_are_offered_and_their_samples_come_with_them(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            maps = api.song_maps()
+            reply = api.hitsound_playback("hard.osu")
+        json.dumps(reply)
+        self.assertEqual([m["file"] for m in maps["maps"]], ["hard.osu"])
+        self.assertEqual(maps["maps"][0]["difficulty"], "Hard")
+        self.assertEqual(reply["events"]["t"], [1.0])
+        self.assertEqual(reply["events"]["keys"], [["overtone:soft-hitnormal.wav", "map:soft-hitclap.wav"]])
+        self.assertEqual(base64.b64decode(reply["samples"]["map:soft-hitclap.wav"]["data"]), b"RIFFclap")
+        self.assertEqual(reply["samples"]["overtone:soft-hitnormal.wav"]["source"], "overtone")
+
+    def test_an_ogg_stream_in_a_wav_header_is_unwrapped_and_nothing_else_is_touched(self) -> None:
+        ogg = b"OggS" + bytes(20)
+        wrapped = b"RIFF" + (54).to_bytes(4, "little") + b"WAVEfmt " + (18).to_bytes(4, "little") +             (0x674F).to_bytes(2, "little") + bytes(24) + ogg
+        pcm = b"RIFF" + bytes(4) + b"WAVEfmt " + bytes(4) + (1).to_bytes(2, "little") + bytes(24) + b"data"
+        self.assertEqual(web._playable_sample(wrapped), ogg)
+        self.assertEqual(web._playable_sample(pcm), pcm)
+        self.assertEqual(web._playable_sample(b"ID3mp3"), b"ID3mp3")
+
+    def test_a_map_outside_the_songs_folder_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            for name in ("..\\hard.osu", "missing.osu", "audio.mp3", ""):
+                with self.subTest(name=name):
+                    self.assertEqual(api.hitsound_playback(name)["key"], "bad_file")
+        self.assertEqual(web.Api().hitsound_playback("hard.osu")["key"], "first")
+
+    def test_the_hitsound_level_is_remembered_and_optional(self) -> None:
+        api = web.Api()
+        self.assertEqual(api.set_playback({"song_volume": 0.5, "click_volume": 0.4})["playback"]["hitsound_volume"], 0.7)
+        reply = api.set_playback({"song_volume": 0.5, "click_volume": 0.4, "hitsound_volume": 0.9})
+        self.assertEqual(reply["playback"]["hitsound_volume"], 0.9)
+        self.assertFalse(api.set_playback({"song_volume": 0.5, "click_volume": 0.4,
+                                           "hitsound_volume": float("nan")})["ok"])
+
+
 class HitsoundCopyBridgeTests(_IsolatedConfig):
     """The copier in the Mapset view: a preview that writes nothing, then the copy."""
 
@@ -922,7 +978,8 @@ class PlaybackBridgeTests(_IsolatedConfig):
     def test_levels_are_clamped_remembered_and_offered_back(self) -> None:
         api = web.Api()
         self.assertEqual(api.state()["playback"],
-                         {"song_volume": 0.8, "click_volume": 0.6, "tap_latency_ms": 0.0})
+                         {"song_volume": 0.8, "click_volume": 0.6, "hitsound_volume": 0.7,
+                          "tap_latency_ms": 0.0})
         reply = api.set_playback({"song_volume": 2, "click_volume": -1})
         self.assertEqual((reply["playback"]["song_volume"], reply["playback"]["click_volume"]),
                          (1.0, 0.0))

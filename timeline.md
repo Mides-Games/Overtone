@@ -16,6 +16,46 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · Hitsounds P-3: hearing them, and warnings that fold
+
+### Changed
+
+- **Hitsounds in the transport**: "Hitsounds from" picks one of the song's difficulties,
+  and its sounds play on the playback clock with the song and the click, at their own
+  level (remembered). Each sound plays what osu! would find: its custom file alone; else
+  per sample the beatmap folder's `<set>-hit<sound><index>` (wav, ogg, mp3); else
+  Overtone's own. Slider bodies (the looping slide) are not played yet, and the status
+  says so.
+- **Overtone's own samples**, `assets/samples.py`: the three sets osu! has, four sounds
+  each, synthesised with the standard library and a seeded noise source, so the committed
+  WAVs regenerate byte for byte (a test holds them to it). osu!'s own defaults belong to
+  ppy and are not ours to ship; a map's custom samples win over these.
+- **Warnings fold by kind.** A song with many short sections put a banner per section
+  above the tempo map. Findings of one kind now share one banner with the count, their
+  points listed (folded) as chips that select the point; past three kinds, the rest
+  fold behind a link.
+- The Library's empty state is centred in the height it has, not 6 % from the top.
+
+### Fixed
+
+- **Samples the browser cannot decode.** A `.wav` whose header wraps Ogg Vorbis (format
+  0x674F), which osu! plays and neither the browser nor libsndfile reads, came through
+  silent. The bridge now hands over the Ogg stream inside it, which is intact.
+
+### Measured
+
+```
+a real map (Violin Dance)   1,362 sounds; 2,053 samples from the map's own set, 506 from
+                            Overtone's; 10 samples decoded, 1 silent before the Ogg fix
+local .wav samples          first 20,000 read: PCM 18,093, float 1,745, not RIFF 138,
+                            IMA ADPCM 11, Ogg-in-WAV 5, MS ADPCM 5, other 3
+warnings                    18 findings of 5 kinds: 18 banners -> 3 and a link, 196 px
+empty state, 1280x720       74 px above the block, 112 below (was 6vh from the top)
+Python unittest             373 -> 379, all pass
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · A new look: "Console"
 
 ### Changed

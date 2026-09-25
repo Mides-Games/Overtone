@@ -113,6 +113,10 @@ const I18N = {
     g_v_bad_number: "{count} points have no usable number: re-analyze or delete them.",
     warn_show: "Show them", warn_hide: "Hide", warn_beats: "{beats} beats",
     warn_more: "{n} more notes", warn_fewer: "Show fewer notes",
+    pb_hs: "Hitsounds from", pb_hs_off: "Off", pb_hs_vol: "Hitsounds",
+    pb_hs_loading: "Loading the hitsounds of {name}…",
+    pb_hs_ready: "Hitsounds of {name}: {n} sounds; {map} from the map's own samples, {own} from Overtone's. Slider bodies are not played yet.",
+    pb_hs_unreadable: "{n} sample(s) this window cannot decode stay silent.",
     hs_title: "Copy hitsounds", hs_preview: "Preview", hs_apply: "Copy hitsounds",
     hs_sub: "Each sound of the chosen difficulties takes the source's sound at the same moment (within 5 ms): additions, sample sets and index. Sounds with nothing under them are left as they are. Only hitsound fields change, and every file is backed up first.",
     hs_source: "From", hs_targets: "Onto",
@@ -405,6 +409,10 @@ const I18N = {
     g_v_bad_number: "{count} puntos no tienen un número usable: re-analizá o borralos.",
     warn_show: "Verlas", warn_hide: "Ocultar", warn_beats: "{beats} beats",
     warn_more: "{n} avisos más", warn_fewer: "Mostrar menos avisos",
+    pb_hs: "Hitsounds de", pb_hs_off: "Apagados", pb_hs_vol: "Hitsounds",
+    pb_hs_loading: "Cargando los hitsounds de {name}…",
+    pb_hs_ready: "Hitsounds de {name}: {n} sonidos; {map} con samples propios del mapa, {own} con los de Overtone. Los cuerpos de slider todavía no suenan.",
+    pb_hs_unreadable: "{n} sample(s) que esta ventana no puede decodificar quedan en silencio.",
     hs_title: "Copiar hitsounds", hs_preview: "Vista previa", hs_apply: "Copiar hitsounds",
     hs_sub: "Cada sonido de las dificultades elegidas toma el sonido de la fuente en el mismo momento (a menos de 5 ms): adiciones, sample sets e índice. Los sonidos sin nada debajo quedan como están. Solo cambian los campos de hitsound, y cada archivo se respalda antes.",
     hs_source: "Desde", hs_targets: "Hacia",
@@ -896,7 +904,7 @@ function showResult(result) {
   S.snap = null;
   // A grade depends on the map and the song's attacks, not on the point list:
   // it stays through edits and goes with the song.
-  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; pbReset(); WARN.open.clear(); WARN.all = false; }
+  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; pbReset(); hsMaps(); WARN.open.clear(); WARN.all = false; }
   if (!sameSong) { STX.view = null; STX.file = ""; STX.error = null; }
   if (!sameSong) S.comparePath = null;  // a map belongs to one song
   setView(S.view);  // lifts the "analyze first" panel off the current view
@@ -1900,7 +1908,7 @@ const P = {
   ctx: null, buffer: null, bufferFor: null, loading: null, source: null,
   song: null, click: null, playing: false, startCtx: 0, startPos: 0, pos: 0,
   sched: 0, timer: 0, raf: 0, loop: null, rate: 1,
-  levels: { song_volume: 0.8, click_volume: 0.6 },
+  levels: { song_volume: 0.8, click_volume: 0.6, hitsound_volume: 0.7 },
 };
 const PB_LOOKAHEAD = 0.15, PB_TICK_MS = 25, PB_LEAD = 0.06;
 
@@ -1909,6 +1917,7 @@ function pbContext() {
     P.ctx = new (window.AudioContext || window.webkitAudioContext)();
     P.song = P.ctx.createGain(); P.song.connect(P.ctx.destination);
     P.click = P.ctx.createGain(); P.click.connect(P.ctx.destination);
+    P.hits = P.ctx.createGain(); P.hits.connect(P.ctx.destination);
     pbApplyLevels();
   }
   return P.ctx;
@@ -1918,6 +1927,7 @@ function pbApplyLevels() {
   if (!P.ctx) return;
   P.song.gain.value = P.levels.song_volume;
   P.click.gain.value = $("pbClick").checked ? P.levels.click_volume : 0;
+  P.hits.gain.value = P.levels.hitsound_volume ?? 0.7;
 }
 
 async function pbFetch(kind) {
@@ -2000,6 +2010,57 @@ function pbClickAt(when, level) {
   osc.start(when); osc.stop(when + 0.045);
 }
 
+// Hitsounds beside the song (Phase 6, P-3): one difficulty's sounds, found as
+// osu! finds its samples, scheduled on the playback clock like the click.
+const HSP = { file: "", events: null, buffers: {} };
+
+async function hsMaps() {
+  const box = $("pbHs");
+  HSP.file = ""; HSP.events = null; HSP.buffers = {};
+  let maps = [];
+  if (api()) {
+    const reply = await api().song_maps();
+    maps = reply.ok ? reply.maps : [];
+  }
+  box.innerHTML = `<option value="">${t("pb_hs_off")}</option>` +
+    maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+  box.disabled = !maps.length;
+}
+
+async function hsPick(file) {
+  HSP.file = file; HSP.events = null;
+  const name = file ? $("pbHs").selectedOptions[0].textContent : "";
+  if (!file) { $("pbStatus").textContent = t("pb_hint"); return; }
+  $("pbStatus").textContent = t("pb_hs_loading", { name });
+  const reply = await api().hitsound_playback(file);
+  if (!reply.ok) { editFailure(reply); $("pbHs").value = ""; HSP.file = ""; return; }
+  const ctx = pbContext(), buffers = {};
+  let unreadable = 0;
+  for (const [key, s] of Object.entries(reply.samples)) {
+    const raw = atob(s.data), bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    try { buffers[key] = await ctx.decodeAudioData(bytes.buffer); } catch (err) { unreadable++; }
+  }
+  if (HSP.file !== file) return;             // another pick came in meanwhile
+  HSP.buffers = buffers;
+  HSP.events = reply.events;
+  const c = reply.counts;
+  $("pbStatus").textContent = t("pb_hs_ready", { name, n: c.sounds, map: c.map + c.file, own: c.overtone }) +
+    (unreadable ? ` ${t("pb_hs_unreadable", { n: unreadable })}` : "");
+}
+
+function pbHitAt(when, keys, volume) {
+  for (const key of keys) {
+    const buffer = HSP.buffers[key];
+    if (!buffer) continue;
+    const src = P.ctx.createBufferSource(), gain = P.ctx.createGain();
+    src.buffer = buffer;
+    gain.gain.value = volume;
+    src.connect(gain); gain.connect(P.hits);
+    src.start(when);
+  }
+}
+
 function pbTick() {
   if (!P.playing || !S.result) return;
   const clicks = S.result.clicks || { t: [], level: [] };
@@ -2012,6 +2073,12 @@ function pbTick() {
     const len = Math.min(until - P.sched, room);
     for (let i = lowerBound(clicks.t, s0); i < clicks.t.length && clicks.t[i] < s0 + len * P.rate; i++) {
       pbClickAt(P.startCtx + P.sched + (clicks.t[i] - s0) / P.rate, clicks.level[i]);
+    }
+    const hits = HSP.events;
+    if (hits) {
+      for (let i = lowerBound(hits.t, s0); i < hits.t.length && hits.t[i] < s0 + len * P.rate; i++) {
+        pbHitAt(P.startCtx + P.sched + (hits.t[i] - s0) / P.rate, hits.keys[i], hits.volume[i]);
+      }
     }
     P.sched += len > 1e-9 ? len : 1e-6;
   }
@@ -2068,6 +2135,8 @@ function pbStop() {
   if (P.click) {
     P.click.disconnect();
     P.click = P.ctx.createGain(); P.click.connect(P.ctx.destination);
+    P.hits.disconnect();                         // and the hitsounds already scheduled
+    P.hits = P.ctx.createGain(); P.hits.connect(P.ctx.destination);
     pbApplyLevels();
   }
   pbButtons();
@@ -2128,7 +2197,8 @@ function pbReset() {
 }
 
 function pbLevels() {
-  P.levels = { song_volume: +$("pbSongVol").value / 100, click_volume: +$("pbClickVol").value / 100 };
+  P.levels = { song_volume: +$("pbSongVol").value / 100, click_volume: +$("pbClickVol").value / 100,
+               hitsound_volume: +$("pbHsVol").value / 100 };
   pbApplyLevels();
   if (api()) api().set_playback(P.levels);
 }
@@ -3128,10 +3198,15 @@ function wire() {
   $("tapCalibrate").onclick = tapCalibrate;
   $("tapAssist").onclick = tapAssist;
   $("tapClear").onclick = () => { TAP.taps = []; renderTaps(); };
-  ["pbSongVol", "pbClickVol"].forEach((id) => {
-    $(id).addEventListener("input", () => { P.levels = { song_volume: +$("pbSongVol").value / 100, click_volume: +$("pbClickVol").value / 100 }; pbApplyLevels(); });
+  ["pbSongVol", "pbClickVol", "pbHsVol"].forEach((id) => {
+    $(id).addEventListener("input", () => {
+      P.levels = { song_volume: +$("pbSongVol").value / 100, click_volume: +$("pbClickVol").value / 100,
+                   hitsound_volume: +$("pbHsVol").value / 100 };
+      pbApplyLevels();
+    });
     $(id).addEventListener("change", pbLevels);
   });
+  $("pbHs").onchange = () => hsPick($("pbHs").value);
   $("trace").addEventListener("dblclick", (e) => {
     if (!S.result || !geom) return;
     pbPlay(Math.max(0, geom.S(tlX(e))));
@@ -3223,7 +3298,8 @@ async function boot() {
   S.lang = st.language; S.presets = st.presets;
   S.recent = st.recent || [];
   if (st.playback) {
-    P.levels = { song_volume: st.playback.song_volume, click_volume: st.playback.click_volume };
+    P.levels = { song_volume: st.playback.song_volume, click_volume: st.playback.click_volume,
+                 hitsound_volume: st.playback.hitsound_volume ?? 0.7 };
     TAP.latency = st.playback.tap_latency_ms || 0;
   }
   renderTaps();
@@ -3231,6 +3307,7 @@ async function boot() {
   songsLoad();
   $("pbSongVol").value = String(Math.round(P.levels.song_volume * 100));
   $("pbClickVol").value = String(Math.round(P.levels.click_volume * 100));
+  $("pbHsVol").value = String(Math.round(P.levels.hitsound_volume * 100));
   S.rustAvailable = !!st.rust_available;
   $("version").textContent = st.version;
   if (st.logo) $("logo").src = st.logo;

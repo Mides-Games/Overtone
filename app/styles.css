@@ -604,6 +604,7 @@ tbody td .pill { white-space: nowrap; }
 .pb-levels { display: inline-flex; gap: 14px; }
 .pb-level { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-2); color: var(--muted); }
 .pb-level input { width: 84px; accent-color: var(--accent); }
+.pb-level select.pb-hs { width: auto; min-width: 140px; max-width: 220px; height: 30px; padding: 0 8px; }
 .pb-status { padding: 0 20px 10px; }
 .taps { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 0 20px 16px; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: var(--fs-2); }

@@ -198,6 +198,24 @@ def _default_output() -> Path:
     return home / "Documents" / "Overtone"
 
 
+#: WAV format tags osu!'s audio library plays and a browser does not: Ogg
+#: Vorbis wrapped in a RIFF header (0x674F "Og" up to 0x6771). 5 of 20,000
+#: local .wav samples were one; the Ogg stream inside is intact.
+OGG_IN_WAV_TAGS = range(0x674F, 0x6772)
+
+
+def _playable_sample(data: bytes) -> bytes:
+    """A sample's bytes as a browser can decode them: an Ogg stream wrapped
+    in a WAV header is handed over without the wrapper; anything else as is."""
+    fmt = data.find(b"fmt ", 0, 64)
+    if data[:4] == b"RIFF" and fmt >= 0 and len(data) >= fmt + 10:
+        tag = int.from_bytes(data[fmt + 8:fmt + 10], "little")
+        start = data.find(b"OggS")
+        if tag in OGG_IN_WAV_TAGS and start >= 0:
+            return data[start:]
+    return data
+
+
 def _open_link(link: str) -> None:
     """Hand a local protocol link (``osu://``) to the program registered for it.
     Raises OSError when none is, so the UI can say osu! is not installed."""
@@ -690,6 +708,54 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "report": report, "folder": Path(str(folder)).name}
 
+    # -- hitsound playback (Phase 6, P-3) ------------------------------------
+    def song_maps(self) -> dict:
+        """The difficulties beside the analysed song that play this audio,
+        for the transport's hitsound picker."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        source = Path(str(self._analysis.source))
+        maps = []
+        try:
+            files = sorted(p for p in source.parent.iterdir() if p.suffix.lower() == ".osu")
+        except OSError:
+            files = []
+        for path in files:
+            try:
+                header = overtone_library.read_osu_header(path)
+            except (OSError, ValueError):
+                continue
+            if header["audio_file"].lower() == source.name.lower():
+                maps.append({"file": path.name, "difficulty": header["version"] or path.stem,
+                             "mode": header["mode"], "objects": header["objects"]})
+        return {"ok": True, "maps": maps}
+
+    def hitsound_playback(self, file: str) -> dict:
+        """Every sound of one difficulty beside the song, with the bytes of
+        each sample it plays, for the page to schedule on its own clock.
+        Only a .osu in the analysed song's folder is read."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        folder = Path(str(self._analysis.source)).parent
+        name = str(file or "")
+        path = folder / name
+        if Path(name).name != name or not name.lower().endswith(".osu") or not path.is_file():
+            return {"ok": False, "key": "bad_file"}
+        try:
+            plan = ta.hitsound_playback(ta.read_osu_beatmap(path), folder)
+            samples = {}
+            for key, sample in plan["samples"].items():
+                data = _playable_sample(Path(sample["path"]).read_bytes())
+                samples[key] = {"source": sample["source"], "name": Path(sample["path"]).name,
+                                "data": base64.b64encode(data).decode("ascii")}
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": name,
+                "events": {"t": [e["t"] for e in plan["events"]],
+                           "keys": [e["keys"] for e in plan["events"]],
+                           "volume": [e["volume"] for e in plan["events"]]},
+                "samples": samples, "counts": plan["counts"]}
+
     # -- hitsound copier (Phase 6, H1) ---------------------------------------
     @staticmethod
     def _copy_paths(folder: str, source: str, targets: list) -> tuple[Path, list[Path]] | dict:
@@ -1117,6 +1183,8 @@ class Api:
         apart; calibrating latency matters for tapping, not for listening."""
         try:
             raw = {key: float(prefs[key]) for key in ("song_volume", "click_volume")}
+            if "hitsound_volume" in prefs:           # optional: older pages send two
+                raw["hitsound_volume"] = float(prefs["hitsound_volume"])
         except (KeyError, TypeError, ValueError):
             return {"ok": False, "key": "bad_values"}
         # Before clamping: max(0.0, nan) is 0.0, and a NaN would pass as silence.
@@ -1145,6 +1213,7 @@ class Api:
         latency = _number(cfg.get("tap_latency_ms"), 0.0, float)
         return {"song_volume": min(1.0, max(0.0, _number(cfg.get("song_volume"), 0.8, float))),
                 "click_volume": min(1.0, max(0.0, _number(cfg.get("click_volume"), 0.6, float))),
+                "hitsound_volume": min(1.0, max(0.0, _number(cfg.get("hitsound_volume"), 0.7, float))),
                 "tap_latency_ms": latency if abs(latency) <= TAP_LATENCY_LIMIT_MS else 0.0}
 
     # -- settings (Phase 20): every option in one place -------------------

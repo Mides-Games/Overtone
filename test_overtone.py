@@ -4026,6 +4026,58 @@ class HitsoundCopyTests(unittest.TestCase):
         self.assertEqual(with_volume[0]["sample"]["volume"], 40)
 
 
+class HitsoundSampleTests(unittest.TestCase):
+    """Phase 6, P-3: Overtone's own samples, and which sample a sound plays."""
+
+    def test_the_committed_samples_are_what_the_generator_makes(self):
+        import importlib.util
+        import wave
+        spec = importlib.util.spec_from_file_location("samples", Path(__file__).resolve().parent / "assets" / "samples.py")
+        samples = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(samples)
+        with tempfile.TemporaryDirectory() as tmp:
+            made = samples.main(Path(tmp))
+            self.assertEqual(len(made), 12)
+            for path in made:
+                committed = samples.OUT / path.name
+                with self.subTest(sample=path.name):
+                    self.assertEqual(path.read_bytes(), committed.read_bytes())
+                    with wave.open(str(committed)) as w:
+                        self.assertEqual((w.getnchannels(), w.getsampwidth(), w.getframerate()), (1, 2, 44100))
+                        self.assertLess(w.getnframes() / 44100, 1.5)
+
+    def test_samples_are_found_as_osu_finds_them(self):
+        from overtone import DEFAULT_SAMPLE_DIR, hitsound_playback, read_osu_beatmap
+        text = _copy_map(["256,192,1000,1,8,0:0:0:0:",          # index 0: Overtone's
+                          "256,192,2000,1,8,0:0:1:0:",          # index 1: soft-hitclap.wav
+                          "256,192,3000,1,8,0:0:2:0:",          # index 2: soft-hitclap2.ogg
+                          "256,192,4000,1,8,0:0:3:0:",          # index 3: missing, Overtone's
+                          "256,192,5000,1,0,0:0:0:0:boom.wav",  # a custom file, alone
+                          "256,192,6000,1,0,0:0:0:0:gone.wav",  # missing: the named samples
+                          "256,192,7000,1,0,0:0:0:2:",          # volume 2 %: floored at 5
+                          "256,192,8000,2,0,L|356:192,1,140"])  # a slider: its body is not played
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            (folder / "map.osu").write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            for name in ("soft-hitclap.wav", "Soft-HitClap2.ogg", "boom.wav"):
+                (folder / name).write_bytes(b"RIFF")
+            plan = hitsound_playback(read_osu_beatmap(folder / "map.osu"), folder)
+        json.dumps(plan)
+        keys = [e["keys"] for e in plan["events"]]
+        self.assertEqual(keys[0], ["overtone:soft-hitnormal.wav", "overtone:soft-hitclap.wav"])
+        self.assertEqual(keys[1], ["overtone:soft-hitnormal.wav", "map:soft-hitclap.wav"])
+        self.assertEqual(keys[2][1], "map:soft-hitclap2.ogg")
+        self.assertEqual(keys[3][1], "overtone:soft-hitclap.wav")
+        self.assertEqual(keys[4], ["file:boom.wav"])
+        self.assertEqual(keys[5], ["overtone:soft-hitnormal.wav"])
+        self.assertEqual(plan["events"][6]["volume"], 0.05)
+        self.assertEqual([e["t"] for e in plan["events"]][-2:], [8.0, 8.5])    # head and tail
+        self.assertEqual((plan["counts"]["missing_file"], plan["counts"]["slider_bodies"]), (1, 1))
+        self.assertEqual(Path(plan["samples"]["overtone:soft-hitclap.wav"]["path"]).parent, DEFAULT_SAMPLE_DIR)
+        self.assertTrue(all(Path(s["path"]).is_file() for s in plan["samples"].values()
+                            if s["source"] == "overtone"))
+
+
 class StructureViewTests(unittest.TestCase):
     """Phase 19, Structure: phrases on the song's proven bars, labels with why."""
 

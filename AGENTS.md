@@ -25,7 +25,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (373 on 2026-09-24)
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (379 on 2026-09-24)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -114,7 +114,8 @@ app/                      web shell frontend (HTML/CSS/JS, no network)
 Overtone.bat              double-click launcher
 test_overtone.py          engine, I/O and classic-window tests
 test_overtone_web.py      web bridge tests (never touch the real config)
-assets/                   generated logo (assets/logo.py) and window icon
+assets/                   generated logo (assets/logo.py), window icon and Overtone's own
+                          hitsound samples (assets/samples.py)
 fixtures/                 hand-timed samples the tests read
 bench/benchmark.py        synthetic accuracy harness, exact ground truth
 bench/gates.py            octave snapshot, density-change and measure gates

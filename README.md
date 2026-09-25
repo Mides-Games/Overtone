@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-373%20Python%20%C2%B7%20233%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-379%20Python%20%C2%B7%20233%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -93,6 +93,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Suggestions: red lines the map is missing | ✅ | Shown on the tempo map; applying one is P9 |
 | Reference timing: grade any map's red lines against the attacks | ✅ | Offset, drift and fitted BPM per line, each with its standard error; load a map as the working timing; find every map of the same audio in a Songs folder |
 | Structure: the song's sections, each label with the evidence behind it | ✅ | Rust engine; edges snap to proven bar lines, a section opens in Timing. Labels are heuristics and say which rule decided them |
+| Hear a difficulty's hitsounds with the song | ✅ | The transport's "Hitsounds from"; the map's own samples, else Overtone's (osu!'s defaults are not ours to ship). Slider bodies not yet |
 | Hitsound copier: one difficulty's hitsounds onto the others | ✅ | Mapset view; by time within 5 ms, a preview first, only hitsound fields change, backups kept |
 | osu! Songs browser: your whole Songs folder, searched as you type | ✅ | A SQLite index: a rescan reads only what changed, and maps of the same audio come back in milliseconds |
 | Mod report: every finding as osu! editor timestamps | ✅ | Red lines to check, missing red lines, unsnapped objects, objects away from the music; copy all, or open the editor at a timestamp |
@@ -285,7 +286,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 373 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 379 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage

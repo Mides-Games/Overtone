@@ -1337,6 +1337,59 @@ class EvidenceBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().evidence()["key"], "first")
 
 
+class HistoryBridgeTests(_IsolatedConfig):
+    """The History section: every write listed, diffed, restorable."""
+
+    MAP = ["osu file format v14", "", "[TimingPoints]", "1000,500,4,2,0,70,1,0", "",
+           "[HitObjects]", "256,192,1000,1,0,0:0:0:0:", ""]
+
+    def _map(self, tmp: str) -> Path:
+        path = Path(tmp) / "map.osu"
+        path.write_bytes("\r\n".join(self.MAP).encode("utf-8"))
+        return path
+
+    def test_empty_history_lists_nothing(self) -> None:
+        reply = web.Api().history()
+        json.dumps(reply)
+        self.assertEqual(reply["entries"], [])
+
+    def test_a_write_is_listed_diffed_and_restored(self) -> None:
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp)
+            before = path.read_bytes()
+            written = ta.write_object_hitsounds(path, {0: {"bits": 8}})
+            moved = before.replace(b"1000,500,", b"1000,400,")
+            path.write_bytes(moved)
+            api = web.Api()
+            listing = api.history()
+            diff = api.history_diff(0)
+            restored = api.history_restore(0)
+            back = path.read_bytes()
+            json.dumps([listing, diff, restored])
+            entry = listing["entries"][0]
+            self.assertEqual((entry["op"], entry["file"], written["backup"] is not None), ("hitsounds", "map.osu", True))
+            self.assertEqual(entry["backup"], Path(written["backup"]).name)
+            self.assertEqual((diff["diff"]["n_changed"], diff["diff"]["changed"][0]["new_bpm"]), (1, 150.0))
+            self.assertEqual((restored["ok"], back), (True, before))
+            self.assertTrue(Path(tmp, "map.osu.bak2").is_file())
+
+    def test_bad_indices_and_missing_backups_refuse(self) -> None:
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            api = web.Api()
+            self.assertEqual(api.history_diff(0)["key"], "bad_index")
+            self.assertEqual(api.history_restore("x")["key"], "bad_index")
+            ta.log_write(str(Path(tmp) / "ghost.osu"), "write", None, {})
+            ghost = api.history_diff(0)
+            self.assertEqual(ghost["key"], "bad_file")
+            ta.log_write(str(Path(tmp) / "map.osu"), "write", None, {})
+            self._map(tmp)
+            missing = api.history_diff(0)
+            self.assertEqual(missing["key"], "no_backup")
+            self.assertEqual(api.history_restore(0)["key"], "no_backup")
+
+
 class FolderImportTests(_IsolatedConfig):
     def _song(self, tmp: str) -> Path:
         root = Path(tmp) / "123 Artist - Title"

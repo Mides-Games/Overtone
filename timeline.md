@@ -16,6 +16,28 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Write history: list, diff, restore
+
+### Changed
+
+- **History section**: every `.osu` write the app made (inject, hitsound fields,
+  full writes), newest first with operation, file, backup and summary; per-write
+  red-line diff against the backup; confirmed restore that keeps the current file
+  as a new backup first. Global like Library — no song needed. Bridge endpoints
+  `history`, `history_diff`, `history_restore` behind it, EN/ES.
+
+### Measured
+
+```
+Python unittest              422 -> 425, all pass
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                           unit-tested bridge only; ids, both languages, no
+                             duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Write history, engine half: every write logged
 
 ### Changed

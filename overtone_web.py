@@ -1512,6 +1512,63 @@ class Api:
             return {"ok": False, "key": "no_osu", "detail": str(exc)}
         return {"ok": True}
 
+    # -- write history: every .osu write, its backup, restore ---------------
+    def history(self) -> dict:
+        """The write log, newest first: when, what operation, which file,
+        which backup holds the replaced bytes. Global: needs no song."""
+        entries = ta.read_history()
+        return {"ok": True, "entries": [
+            {"index": n, "ts": e.get("ts"), "op": e.get("op"),
+             "file": Path(str(e.get("path", ""))).name, "path": e.get("path"),
+             "backup": Path(str(e.get("backup", ""))).name if e.get("backup") else None,
+             "backup_path": e.get("backup"), "summary": e.get("summary", {})}
+            for n, e in enumerate(entries)]}
+
+    def _history_entry(self, index: int):
+        """The log entry at ``index`` (newest first), or None when the index
+        names nothing logged."""
+        try:
+            n = int(index)
+        except (TypeError, ValueError):
+            return None
+        entries = ta.read_history()
+        return entries[n] if 0 <= n < len(entries) else None
+
+    def history_diff(self, index: int) -> dict:
+        """The timing diff of one entry: the backup's red lines against the
+        file's current ones. Read only; missing files refuse."""
+        entry = self._history_entry(index)
+        if entry is None:
+            return {"ok": False, "key": "bad_index"}
+        try:
+            current = Path(str(entry["path"])).read_bytes()
+        except OSError:
+            return {"ok": False, "key": "bad_file"}
+        if not entry.get("backup"):
+            return {"ok": False, "key": "no_backup"}
+        try:
+            old = Path(str(entry["backup"])).read_bytes()
+        except OSError:
+            return {"ok": False, "key": "no_backup"}
+        return {"ok": True, "file": Path(str(entry["path"])).name,
+                "diff": ta.diff_reds(old.decode("utf-8-sig", "replace"),
+                                     current.decode("utf-8-sig", "replace"))}
+
+    def history_restore(self, index: int) -> dict:
+        """Restore one entry's backup over its file, keeping the current bytes
+        as a new backup first. The restored bytes are logged as a restore."""
+        entry = self._history_entry(index)
+        if entry is None:
+            return {"ok": False, "key": "bad_index"}
+        if not entry.get("backup"):
+            return {"ok": False, "key": "no_backup"}
+        try:
+            result = ta.restore_write(entry["path"], entry["backup"])
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": Path(str(entry["path"])).name,
+                "backup": Path(str(result["backup"])).name}
+
     # -- helpers (not exposed: underscored) ----------------------------------
     def _save_dialog(self, filename: str, file_types, directory: Path | None = None) -> str | None:
         import webview

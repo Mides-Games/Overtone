@@ -5,7 +5,7 @@
 const I18N = {
   en: {
     tagline: "Timing for osu! maps", nav_timing: "Timing", offline: "offline, nothing leaves this PC",
-    nav_sections: "Sections", nav_library: "Library", nav_mapcheck: "Map check", nav_export: "Export", nav_settings: "Settings",
+    nav_sections: "Sections", nav_library: "Library", nav_mapcheck: "Map check", nav_export: "Export", nav_history: "History", nav_settings: "Settings",
     close: "Close",
     need_title: "Nothing analyzed yet",
     need_body: "{view} works on the analyzed song, the same one every section shares. Open an audio file and analyze it.",
@@ -18,6 +18,16 @@ const I18N = {
     exp_click_t: "Click track", exp_click_d: "A metronome WAV on these red lines, to hear any drift against the song.",
     exp_osz_t: ".osz package", exp_osz_d: "The audio plus a new beatmap carrying this timing.",
     exp_inject_t: "Inject into a .osu", exp_inject_d: "Replaces the red lines of a difficulty you already have. You confirm first, and a backup is kept.",
+    hist_sub: "Every .osu write this app made, newest first, with the backup holding what it replaced. Restoring keeps the current file as a new backup first.",
+    hist_title: "Writes", hist_empty: "Nothing written yet.",
+    hist_t_when: "When", hist_t_what: "What", hist_t_file: "File", hist_t_backup: "Backup",
+    hist_diff: "Diff", hist_restore: "Restore", hist_count: "{n} writes",
+    hist_op_inject: "timing", hist_op_hitsounds: "hitsounds", hist_op_write: "write", hist_op_restore: "restore",
+    hist_added: "+{n} red lines", hist_removed: "−{n} red lines", hist_changed: "~{n} red lines moved",
+    hist_no_change: "same red lines",
+    hist_confirm: "Restore {file} from {backup}? The current file is kept as a new backup first.",
+    hist_restored: "{file} restored.",
+    hist_summary_hitsounds: "{n} objects", hist_summary_inject: "{n} red lines",
     nav_mapset: "Mapset",
     mapset_sub: "Every difficulty of one beatmap folder side by side: red lines, audio settings and metadata that must match. The comparison only lists differences; Copy hitsounds writes, after a preview, with backups.",
     ms_title: "Difficulties", ms_pick: "Choose beatmap folder…", ms_recheck: "Check again",
@@ -340,7 +350,8 @@ const I18N = {
   },
   es: {
     tagline: "Timing para mapas de osu!", nav_timing: "Timing", offline: "sin conexión, nada sale de esta PC",
-    nav_sections: "Secciones", nav_library: "Biblioteca", nav_mapcheck: "Revisar mapa", nav_export: "Exportar", nav_settings: "Ajustes",
+    nav_sections: "Secciones", nav_library: "Biblioteca", nav_mapcheck: "Revisar mapa", nav_export:
+    "Exportar", nav_history: "Historial", nav_settings: "Ajustes",
     close: "Cerrar",
     need_title: "Todavía no hay nada analizado",
     need_body: "{view} trabaja sobre la canción analizada, la misma que comparten todas las secciones. Abrí un audio y analizalo.",
@@ -353,6 +364,16 @@ const I18N = {
     exp_click_t: "Pista de clic", exp_click_d: "Un WAV de metrónomo sobre estas líneas rojas, para oír si derivan contra la canción.",
     exp_osz_t: "Paquete .osz", exp_osz_d: "El audio más un beatmap nuevo con este timing.",
     exp_inject_t: "Inyectar en un .osu", exp_inject_d: "Reemplaza las líneas rojas de una dificultad que ya tenés. Confirmás antes y se guarda un respaldo.",
+    hist_sub: "Cada escritura .osu que hizo esta app, la más nueva primero, con el respaldo que guarda lo reemplazado. Restaurar guarda el archivo actual como respaldo nuevo antes.",
+    hist_title: "Escrituras", hist_empty: "Nada escrito todavía.",
+    hist_t_when: "Cuándo", hist_t_what: "Qué", hist_t_file: "Archivo", hist_t_backup: "Respaldo",
+    hist_diff: "Diff", hist_restore: "Restaurar", hist_count: "{n} escrituras",
+    hist_op_inject: "timing", hist_op_hitsounds: "hitsounds", hist_op_write: "escritura", hist_op_restore: "restauración",
+    hist_added: "+{n} líneas rojas", hist_removed: "−{n} líneas rojas", hist_changed: "~{n} líneas rojas movidas",
+    hist_no_change: "mismas líneas rojas",
+    hist_confirm: "¿Restaurar {file} desde {backup}? El archivo actual se guarda como respaldo nuevo antes.",
+    hist_restored: "{file} restaurado.",
+    hist_summary_hitsounds: "{n} objetos", hist_summary_inject: "{n} líneas rojas",
     nav_mapset: "Mapset",
     mapset_sub: "Todas las dificultades de una carpeta, lado a lado: líneas rojas, ajustes de audio y metadatos que deben coincidir. La comparación solo lista diferencias; Copiar hitsounds escribe, después de una vista previa y con respaldos.",
     ms_title: "Dificultades", ms_pick: "Elegir carpeta…", ms_recheck: "Revisar de nuevo",
@@ -713,8 +734,8 @@ function translate() {
 // One analysed song is shared by every view: switching only changes what is
 // visible, never the session. Views that read the analysis show the
 // "analyze first" panel until there is one, instead of blank space.
-const VIEWS = ["library", "timing", "structure", "hitsounds", "mapcheck", "mapset", "report", "export", "settings"];
-const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", structure: "nav_structure", hitsounds: "nav_hitsounds", mapcheck: "nav_mapcheck", mapset: "nav_mapset", report: "nav_report", export: "nav_export", settings: "nav_settings" };
+const VIEWS = ["library", "timing", "structure", "hitsounds", "mapcheck", "mapset", "report", "export", "history", "settings"];
+const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", structure: "nav_structure", hitsounds: "nav_hitsounds", mapcheck: "nav_mapcheck", mapset: "nav_mapset", report: "nav_report", export: "nav_export", history: "nav_history", settings: "nav_settings" };
 
 function needsResult(view) {
   const section = document.querySelector(`.content > [data-view="${view}"]`);
@@ -739,6 +760,7 @@ function setView(view) {
   if (view === "timing" && S.result) { drawTrace(); waveLoad(); }
   if (view === "structure" && S.result) stxLoad();
   if (view === "hitsounds" && S.result) hsvLoad();
+  if (view === "history") histLoad();
 }
 
 function renderNeedSong() {
@@ -2775,6 +2797,102 @@ function renderReport() {
 function copyReport() {
   const lines = reportShown().map((i) => `${i.stamp} - ${i.text}`);
   if (lines.length) copyText(lines.join("\n"), "rp_copied");
+}
+
+// ------------------------------------------------------------------ history
+// Phase 19: every .osu write, its backup, restore. Global like Library:
+// no song needed. A restore keeps the current file as a new backup first,
+// so no button here destroys anything.
+const HIST = { entries: [], diff: -1, diffReport: null };
+
+function histOp(entry) {
+  // Known operations translate; a future one reads raw instead of a key.
+  const missing = `hist_op_${entry.op}`;
+  const text = t(missing);
+  return text === missing ? entry.op : text;
+}
+
+function histSummary(entry) {
+  const summary = entry.summary || {};
+  if (entry.op === "hitsounds" && summary.changed !== undefined) {
+    return t("hist_summary_hitsounds", { n: summary.changed });
+  }
+  if (entry.op === "inject" && (summary.reds_replaced !== undefined || summary.reds_added !== undefined)) {
+    return t("hist_summary_inject", { n: (summary.reds_replaced || 0) + (summary.reds_added || 0) });
+  }
+  return "";
+}
+
+function histWhen(ts) {
+  if (!ts) return "—";
+  const date = new Date(ts);
+  return Number.isNaN(date.getTime()) ? ts : date.toLocaleString();
+}
+
+async function histLoad() {
+  HIST.diff = -1;
+  const reply = await api().history();
+  if (!reply.ok) { editFailure(reply); return; }
+  HIST.entries = reply.entries;
+  renderHistory();
+}
+
+function histDiffText(diff) {
+  const parts = [];
+  if (diff.n_added) parts.push(t("hist_added", { n: diff.n_added }));
+  if (diff.n_removed) parts.push(t("hist_removed", { n: diff.n_removed }));
+  if (diff.n_changed) parts.push(t("hist_changed", { n: diff.n_changed }));
+  const lines = [
+    ...diff.removed.map((o) => `− ${o} ms`),
+    ...diff.added.map((a) => `+ ${a.offset} ms · ${a.bpm.toFixed(2)} BPM`),
+    ...diff.changed.map((c) => `~ ${c.offset} ms · ${c.old_bpm.toFixed(2)} → ${c.new_bpm.toFixed(2)} BPM`),
+  ];
+  return { summary: parts.length ? parts.join(" · ") : t("hist_no_change"), lines };
+}
+
+async function histShowDiff(index) {
+  HIST.diff = HIST.diff === index ? -1 : index;
+  if (HIST.diff < 0) { renderHistory(); return; }
+  const reply = await api().history_diff(index);
+  if (!reply.ok) { editFailure(reply); HIST.diff = -1; renderHistory(); return; }
+  HIST.diffReport = reply.diff;
+  renderHistory();
+}
+
+async function histRestore(index) {
+  const entry = HIST.entries[index];
+  if (!entry) return;
+  const ok = confirm(t("hist_confirm", { file: entry.file, backup: entry.backup || "—" }));
+  if (!ok) return;
+  const reply = await api().history_restore(index);
+  if (!reply.ok) { editFailure(reply); return; }
+  toast(t("hist_restored", { file: entry.file }));
+  histLoad();
+}
+
+function renderHistory() {
+  const rows = HIST.entries.map((e, i) => `
+    <tr>
+      <td class="txt num">${esc(histWhen(e.ts))}</td>
+      <td class="txt">${esc(histOp(e))}${e.summary ? ` <span class="muted">${esc(histSummary(e))}</span>` : ""}</td>
+      <td class="txt">${esc(e.file)}</td>
+      <td class="txt">${e.backup ? esc(e.backup) : `<span class="muted">—</span>`}</td>
+      <td><button type="button" class="btn small" data-hist-diff="${i}">${t("hist_diff")}</button>
+        <button type="button" class="btn small" data-hist-restore="${i}" ${e.backup ? "" : "disabled"}>${t("hist_restore")}</button></td>
+    </tr>`).join("");
+  $("histCount").hidden = !HIST.entries.length;
+  $("histCount").textContent = t("hist_count", { n: HIST.entries.length });
+  let detail = "";
+  if (HIST.diff >= 0 && HIST.diffReport) {
+    const text = histDiffText(HIST.diffReport);
+    detail = `<div class="card-sub mt-m"><b>${esc(HIST.entries[HIST.diff].file)}</b> · ${esc(text.summary)}</div>`
+      + (text.lines.length ? `<div class="card-sub">${text.lines.slice(0, 20).map(esc).join("<br>")}</div>` : "");
+  }
+  $("histRows").innerHTML = rows.length ? rows
+    : `<tr><td colspan="5"><div class="card-sub">${t("hist_empty")}</div></td></tr>`;
+  $("histDiff").innerHTML = detail;
+  document.querySelectorAll("[data-hist-diff]").forEach((b) => { b.onclick = () => histShowDiff(+b.dataset.histDiff); });
+  document.querySelectorAll("[data-hist-restore]").forEach((b) => { b.onclick = () => histRestore(+b.dataset.histRestore); });
 }
 
 // ------------------------------------------------------------------ settings

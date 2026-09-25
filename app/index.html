@@ -51,6 +51,10 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>
         <span class="nav-label" data-i18n="nav_export">Export</span>
       </button>
+      <button type="button" class="nav-item" data-view="history" data-i18n-title="nav_history" title="History">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 3"/></svg>
+        <span class="nav-label" data-i18n="nav_history">History</span>
+      </button>
       <div class="nav-sep" role="presentation"></div>
       <button type="button" class="nav-item" data-view="settings" data-i18n-title="nav_settings" title="Settings">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
@@ -668,6 +672,27 @@
             </div>
             <button class="btn small" id="injectBtn"><span data-i18n="actions_inject">Inject .osu…</span></button>
           </div>
+        </div>
+      </section>
+
+      <!-- history: every .osu write, its backup, restore -->
+      <section class="view" id="viewHistory" data-view="history" hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_history">History</h2>
+          <div class="view-sub" data-i18n="hist_sub">Every .osu write this app made, newest first, with the backup holding what it replaced. Restoring keeps the current file as a new backup first.</div>
+        </div>
+        <div class="card cmp-card table-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="hist_title">Writes</div>
+            <span class="pill" id="histCount" hidden></span>
+          </div>
+          <div class="table-scroll"><table>
+            <thead><tr><th class="txt" data-i18n="hist_t_when">When</th><th class="txt" data-i18n="hist_t_what">What</th>
+              <th class="txt" data-i18n="hist_t_file">File</th><th class="txt" data-i18n="hist_t_backup">Backup</th>
+              <th></th></tr></thead>
+            <tbody id="histRows"></tbody>
+          </table></div>
+          <div class="card-body" id="histDiff"></div>
         </div>
       </section>
     </div>

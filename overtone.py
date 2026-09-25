@@ -52,6 +52,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -3213,6 +3214,126 @@ def _write_synced(path: Path, payload: bytes) -> None:
         _sync(handle)
 
 
+# -- Write history ------------------------------------------------------------
+# Every .osu write lands here: what changed, and the backup holding what it
+# replaced, so the History view can list, diff and restore. One JSON object
+# per line; a torn tail line never hides the rest.
+
+#: Entries kept; the file is rewritten at twice this, so it stays small.
+HISTORY_LIMIT = 200
+
+
+def history_path(history_dir: str | os.PathLike[str] | None = None) -> Path:
+    """Where the write log lives: beside the result cache, never the app.
+    ``OVERTONE_HISTORY_DIR`` overrides it (the test suite points it at a
+    scratch folder so no test run lands in real history)."""
+    if history_dir is not None:
+        return Path(history_dir) / "writes.jsonl"
+    override = os.environ.get("OVERTONE_HISTORY_DIR")
+    base = Path(override) if override else (
+        Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Overtone")
+    return base / "writes.jsonl"
+
+
+def log_write(path: str | os.PathLike[str], op: str, backup: str | None,
+              summary: dict | None = None,
+              history_dir: str | os.PathLike[str] | None = None) -> dict:
+    """Append one write entry: when, what operation, which file, which backup
+    holds the replaced bytes, and a small summary. Never fails the write it
+    records: a log that cannot be kept is skipped, not raised."""
+    entry = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+             "op": str(op), "path": str(path),
+             "backup": str(backup) if backup else None,
+             "summary": dict(summary or {})}
+    try:
+        log = history_path(history_dir)
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with open(log, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry) + "\n")
+        lines = log.read_text(encoding="utf-8").splitlines()
+        if len(lines) > 2 * HISTORY_LIMIT:
+            log.write_text("\n".join(lines[-HISTORY_LIMIT:]) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+    return entry
+
+
+def read_history(history_dir: str | os.PathLike[str] | None = None) -> list[dict]:
+    """The write log, newest first; malformed lines are skipped, not fatal."""
+    try:
+        lines = history_path(history_dir).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    entries = []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(entry, dict) and entry.get("path"):
+            entries.append(entry)
+    entries.reverse()
+    return entries
+
+
+def _reds_of_text(text: str) -> list[tuple[float, float]]:
+    """Every red line of .osu text as ``(offset_ms, bpm)``."""
+    reds = []
+    in_timing = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("["):
+            in_timing = stripped.lower() == "[timingpoints]"
+            continue
+        if in_timing and stripped and not stripped.startswith("//"):
+            red = _parse_red_line(line)
+            if red is not None:
+                reds.append(red)
+    return reds
+
+
+def diff_reds(old_text: str, new_text: str) -> dict:
+    """Red lines old vs new: added and removed offsets, and offsets both hold
+    whose BPM moved. Offsets pair within 1 ms, BPM past 0.001 counts as
+    moved; lists show the first 20, counts cover all. Plain JSON types."""
+    old, new = _reds_of_text(old_text), _reds_of_text(new_text)
+    used = [False] * len(new)
+    added, removed, changed = [], [], []
+    for offset, bpm in old:
+        match = next((j for j, (o, _b) in enumerate(new)
+                      if not used[j] and abs(o - offset) <= 1.0), None)
+        if match is None:
+            removed.append(round(offset, 1))
+            continue
+        used[match] = True
+        if abs(new[match][1] - bpm) > 0.001:
+            changed.append({"offset": round(offset, 1),
+                            "old_bpm": round(bpm, 4), "new_bpm": round(new[match][1], 4)})
+    for j, (offset, bpm) in enumerate(new):
+        if not used[j]:
+            added.append({"offset": round(offset, 1), "bpm": round(bpm, 4)})
+    return {"added": added[:20], "removed": [round(o, 1) for o in removed[:20]],
+            "changed": changed[:20], "n_added": len(added),
+            "n_removed": len(removed), "n_changed": len(changed)}
+
+
+def restore_write(path: str | os.PathLike[str], backup: str | os.PathLike[str],
+                  history_dir: str | os.PathLike[str] | None = None) -> dict:
+    """Restore a backup over its file, keeping the current bytes as a new
+    backup first: no restore ever destroys. Atomic temp-plus-rename, logged
+    as a restore. Missing files refuse with a message, not a traceback."""
+    target, spare = Path(path), Path(backup)
+    if not target.is_file():
+        raise ValueError(f"{target.name} is gone: nothing to restore over.")
+    if not spare.is_file():
+        raise ValueError(f"{spare.name} is gone: nothing to restore from.")
+    payload = spare.read_bytes()
+    kept = _backup_before_write(target, target.read_bytes())
+    _atomic_write_bytes(target, payload)
+    log_write(target, "restore", str(kept), {}, history_dir)
+    return {"backup": str(kept)}
+
+
 def _atomic_write_bytes(path: Path, payload: bytes) -> None:
     """Write via a sibling temp file, synced, then renamed.
 
@@ -3489,6 +3610,8 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
         if bom:
             payload = b"\xef\xbb\xbf" + payload
         _atomic_write_bytes(path, payload)
+        log_write(path, "inject", str(spare) if spare else None,
+                  {"reds_replaced": len(old_reds), "reds_added": len(reds)})
 
     return {"reds_replaced": len(old_reds), "reds_added": len(reds),
             "greens_kept": len(greens), "greens_added": len(added),
@@ -3923,6 +4046,7 @@ def write_osu_beatmap(osu_path: str | os.PathLike[str], beatmap: dict,
         _atomic_write_bytes(path, payload)
     except (OSError, ValueError) as exc:
         raise ValueError(f"Could not write {path.name}: {exc}") from exc
+    log_write(path, "write", str(spare) if spare else None, {"bytes": len(payload)})
     return {"bytes": len(payload), "backup": str(spare) if spare else None}
 
 
@@ -5271,6 +5395,8 @@ def write_object_hitsounds(osu_path: str | os.PathLike[str], changes: dict[int, 
         _atomic_write_bytes(path, payload)
     except (OSError, ValueError) as exc:
         raise ValueError(f"Could not write {path.name}: {exc}") from exc
+    log_write(path, "hitsounds", str(spare) if spare else None,
+              {"changed": len(result["changed"])})
     return {**result, "written": True, "backup": str(spare) if spare else None}
 
 

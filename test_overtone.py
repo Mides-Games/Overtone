@@ -6,6 +6,7 @@ segmentation and gap-filling helpers are still covered — they remain in the
 fallback path used for rubato and non-percussive audio.
 """
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -91,6 +92,20 @@ def _click_track(path: Path, bpm: float, duration: float = 12.0,
         current = bpm if change_at is None or tt < change_at else second_bpm
         tt += 60.0 / current
     sf.write(str(path), y, sr)
+
+
+#: The write-history log points at a scratch folder for the whole suite, so
+#: writer tests never land in real history. Removed afterwards.
+_HISTORY_SCRATCH = tempfile.TemporaryDirectory(prefix="overtone-history-")
+
+
+def setUpModule() -> None:
+    os.environ["OVERTONE_HISTORY_DIR"] = _HISTORY_SCRATCH.name
+
+
+def tearDownModule() -> None:
+    os.environ.pop("OVERTONE_HISTORY_DIR", None)
+    _HISTORY_SCRATCH.cleanup()
 
 
 class SegmentationTests(unittest.TestCase):
@@ -4431,6 +4446,63 @@ class AnalysisEvidenceTests(unittest.TestCase):
         evidence = analysis_evidence(analysis)
         json.dumps(evidence)
         self.assertEqual((evidence["sections"], evidence["note"]), ([], "no_attacks"))
+
+
+class WriteHistoryTests(unittest.TestCase):
+    """Phase 19, History: every .osu write logged, diffed and restorable."""
+
+    def test_log_and_read_round_trip_newest_first(self):
+        from overtone import log_write, read_history
+        with tempfile.TemporaryDirectory() as tmp:
+            log_write("a.osu", "inject", "a.osu.bak", {"reds_added": 2}, history_dir=tmp)
+            log_write("b.osu", "hitsounds", None, {}, history_dir=tmp)
+            entries = read_history(tmp)
+        json.dumps(entries)
+        self.assertEqual([(e["op"], e["path"], e["backup"]) for e in entries],
+                         [("hitsounds", "b.osu", None), ("inject", "a.osu", "a.osu.bak")])
+        self.assertEqual(entries[1]["summary"], {"reds_added": 2})
+
+    def test_torn_lines_do_not_hide_the_rest(self):
+        from overtone import read_history
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "writes.jsonl").write_text('{"op": "x", "path": "a.osu"}\nbroken\n',
+                                                    encoding="utf-8")
+            self.assertEqual(len(read_history(tmp)), 1)
+
+    def test_restore_keeps_the_current_bytes_as_a_new_backup(self):
+        from overtone import read_history, restore_write
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_bytes(b"v2")
+            target.with_name("map.osu.bak").write_bytes(b"v1")
+            result = restore_write(target, target.with_name("map.osu.bak"), history_dir=tmp)
+            self.assertEqual(target.read_bytes(), b"v1")
+            self.assertEqual(Path(result["backup"]).read_bytes(), b"v2")
+            self.assertEqual(read_history(tmp)[0]["op"], "restore")
+            with self.assertRaises(ValueError):
+                restore_write(target, Path(tmp) / "missing.bak", history_dir=tmp)
+
+    def test_red_diff_pairs_offsets_and_names_movers(self):
+        from overtone import diff_reds
+        old = "[TimingPoints]\n1000,500,4,2,0,70,1,0\n2000,400,4,2,0,70,1,0\n3000,500,4,2,0,70,1,0\n"
+        new = "[TimingPoints]\n1000,500,4,2,0,70,1,0\n2000,300,4,2,0,70,1,0\n4000,500,4,2,0,70,1,0\n"
+        diff = diff_reds(old, new)
+        json.dumps(diff)
+        self.assertEqual((diff["n_added"], diff["n_removed"], diff["n_changed"]), (1, 1, 1))
+        self.assertEqual(diff["changed"][0]["new_bpm"], 200.0)
+        self.assertEqual(diff["added"][0]["offset"], 4000.0)
+
+    def test_a_hitsound_write_logs_itself(self):
+        from overtone import read_history, write_object_hitsounds
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_bytes(_copy_map(["256,192,1000,1,0,0:0:0:0:"]).replace(
+                "\n", "\r\n").encode("utf-8"))
+            write_object_hitsounds(target, {0: {"bits": 8}})
+            entries = read_history()
+        self.assertEqual(entries[0]["op"], "hitsounds")
+        self.assertEqual(entries[0]["summary"], {"changed": 1})
+        self.assertTrue(entries[0]["backup"].endswith(".bak"))
 
 
 class HitsoundConsistencyTests(unittest.TestCase):

@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **417** Python (291 engine + 126 web shell) · **256** Rust.
+Tests: **422** Python (296 engine + 126 web shell) · **256** Rust.
 
 ### What is pending, in order
 

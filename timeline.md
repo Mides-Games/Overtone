@@ -16,6 +16,29 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Write history, engine half: every write logged
+
+### Changed
+
+- **Write log, restore and red diff** in the engine: `log_write` appends one JSON
+  line per `.osu` write (inject, hitsound fields, full writes) with the backup
+  holding the replaced bytes; `read_history` newest-first past torn lines;
+  `restore_write` keeps the current bytes as a new backup before swapping the
+  backup in atomically. `diff_reds` pairs offsets within 1 ms and names moved
+  BPMs. A log that cannot be kept is skipped, never raised — history must not
+  break writing. The suite points `OVERTONE_HISTORY_DIR` at scratch so writer
+  tests never land in real history.
+
+### Measured
+
+```
+Python unittest              417 -> 422 (writer suites green through the new hooks)
+benchmark.py                 not re-run (no analysis code touched)
+facts                        ok
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Evidence view: the engine shows its alternatives
 
 ### Changed

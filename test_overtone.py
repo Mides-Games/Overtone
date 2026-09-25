@@ -3920,6 +3920,19 @@ class HitsoundWriterTests(unittest.TestCase):
         self.assertEqual(after, original.replace(b"256,192,1500,1,2,1:2:0:0:\n",
                                                  b"256,192,1500,1,10,1:2:0:0:\n"))
 
+    def test_a_body_change_does_not_reach_edges_that_have_no_field_of_their_own(self):
+        from overtone import set_object_hitsounds, sound_events
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._map(tmp)
+            # Object 4 has no edge fields: its edges play its own whistle bit.
+            set_object_hitsounds(beatmap, {4: {"bits": 0}})
+            events = [e for e in sound_events(beatmap) if e["object"] == 4]
+            line = beatmap["sections"][-1]["lines"][4]
+        self.assertEqual([(e["part"], e["sounds"]) for e in events],
+                         [("head", ["normal", "whistle"]), ("repeat", ["normal", "whistle"]),
+                          ("tail", ["normal", "whistle"]), ("body", ["slide"])])
+        self.assertEqual(line, "256,192,3000,2,0,L|326:192,2,70,2|2|2,0:0|0:0|0:0")
+
     def test_holds_and_spinners_keep_their_other_fields(self):
         from overtone import set_object_hitsounds
         with tempfile.TemporaryDirectory() as tmp:
@@ -3929,6 +3942,88 @@ class HitsoundWriterTests(unittest.TestCase):
             lines = beatmap["sections"][-1]["lines"]
         self.assertEqual(lines[5], "256,192,4000,12,4,5000,0:3:0:0:")
         self.assertEqual(lines[7], "64,192,7000,128,8,7500:0:0:0:20:")
+
+
+def _copy_map(objects, timing="0,500,4,2,0,70,1,0", sample_set="Soft"):
+    return (f"osu file format v14\n\n[General]\nAudioFilename: audio.mp3\nSampleSet: {sample_set}\n\n"
+            "[Difficulty]\nSliderMultiplier:1.4\n\n"
+            f"[TimingPoints]\n{timing}\n\n[HitObjects]\n" + "\n".join(objects) + "\n")
+
+
+class HitsoundCopyTests(unittest.TestCase):
+    """Phase 6, H1: one difficulty's hitsounds onto another, by time."""
+
+    def _read(self, tmp, text, name):
+        from overtone import read_osu_beatmap
+        path = Path(tmp) / name
+        path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+        return read_osu_beatmap(path)
+
+    def test_a_difficulty_copied_onto_itself_changes_nothing(self):
+        from overtone import copy_hitsounds
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = self._read(tmp, _SOUND_MAP, "a.osu")
+        report = copy_hitsounds(beatmap, beatmap)
+        self.assertEqual((report["changes"], report["changed"]), ({}, 0))
+        self.assertEqual(report["matched"], report["target_sounds"])
+
+    def test_sounds_at_the_same_moment_are_copied_and_the_rest_left(self):
+        from overtone import copy_hitsounds, set_object_hitsounds, sound_events
+        source = _copy_map(["256,192,1000,1,8,0:0:0:0:", "256,192,2000,1,4,3:0:0:0:",
+                            "256,192,3000,1,2,0:0:0:0:"])
+        target = _copy_map(["100,100,1003,1,0,0:0:0:0:", "100,100,1500,1,2,0:0:0:0:",
+                            "100,100,2000,1,0,0:0:0:0:", "100,100,3000,1,2,0:0:0:0:"])
+        with tempfile.TemporaryDirectory() as tmp:
+            src, tgt = self._read(tmp, source, "s.osu"), self._read(tmp, target, "t.osu")
+        report = copy_hitsounds(src, tgt)
+        json.dumps(report)
+        self.assertEqual((report["target_sounds"], report["matched"], report["changed"],
+                          report["unmatched"], report["unmatched_times"]), (4, 3, 2, 1, [1500.0]))
+        self.assertEqual(sorted(report["changes"]), [0, 2])
+        set_object_hitsounds(tgt, report["changes"])
+        after = sound_events(tgt)
+        self.assertEqual([(e["sounds"], e["normal_set"]) for e in after],
+                         [(["normal", "clap"], "soft"), (["normal", "whistle"], "soft"),
+                          (["normal", "finish"], "drum"), (["normal", "whistle"], "soft")])
+        self.assertEqual(copy_hitsounds(src, tgt)["changed"], 0)       # a second copy: nothing left
+
+    def test_sets_are_written_so_they_resolve_like_the_source(self):
+        from overtone import copy_hitsounds, set_object_hitsounds, sound_events
+        # Source inherits Soft from its timing point; the target's point says Drum.
+        source = _copy_map(["256,192,1000,1,8,0:0:0:0:"], timing="0,500,4,2,0,70,1,0")
+        target = _copy_map(["256,192,1000,1,0,0:0:0:0:"], timing="0,500,4,3,0,70,1,0")
+        with tempfile.TemporaryDirectory() as tmp:
+            src, tgt = self._read(tmp, source, "s.osu"), self._read(tmp, target, "t.osu")
+        report = copy_hitsounds(src, tgt)
+        self.assertEqual(report["changes"][0]["sample"]["normal_set"], 2)     # explicit Soft
+        set_object_hitsounds(tgt, report["changes"])
+        event = sound_events(tgt)[0]
+        self.assertEqual((event["sounds"], event["normal_set"], event["addition_set"]),
+                         (["normal", "clap"], "soft", "soft"))
+
+    def test_slider_edges_take_the_sounds_under_them_and_the_body_its_whistle(self):
+        from overtone import copy_hitsounds, set_object_hitsounds, sound_events
+        # One beat is 500 ms; 140 px at SV 1 and multiplier 1.4 is one beat.
+        source = _copy_map(["256,192,1000,2,2,L|356:192,1,140,8|4,0:0|3:0,0:0:0:0:"])
+        target = _copy_map(["256,192,1000,2,0,L|356:192,1,140"])
+        with tempfile.TemporaryDirectory() as tmp:
+            src, tgt = self._read(tmp, source, "s.osu"), self._read(tmp, target, "t.osu")
+        report = copy_hitsounds(src, tgt)
+        set_object_hitsounds(tgt, report["changes"])
+        after = [(e["part"], e["sounds"], e["normal_set"]) for e in sound_events(tgt)]
+        self.assertEqual(after, [("head", ["normal", "clap"], "soft"),
+                                 ("tail", ["normal", "finish"], "drum"),
+                                 ("body", ["slide", "whistle"], "soft")])
+
+    def test_volume_is_copied_only_when_asked(self):
+        from overtone import copy_hitsounds
+        source = _copy_map(["256,192,1000,1,8,0:0:0:40:"])
+        target = _copy_map(["256,192,1000,1,8,0:0:0:0:"])
+        with tempfile.TemporaryDirectory() as tmp:
+            src, tgt = self._read(tmp, source, "s.osu"), self._read(tmp, target, "t.osu")
+        self.assertEqual(copy_hitsounds(src, tgt)["changes"], {})
+        with_volume = copy_hitsounds(src, tgt, volumes=True)["changes"]
+        self.assertEqual(with_volume[0]["sample"]["volume"], 40)
 
 
 class StructureViewTests(unittest.TestCase):

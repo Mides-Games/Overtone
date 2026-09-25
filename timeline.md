@@ -16,6 +16,46 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · Hitsounds H1: the copier
+
+### Changed
+
+- **`copy_hitsounds(source, target)`**: every sound of the target (a circle, each slider
+  edge, a spinner's end, a hold) takes the source sound at the same moment, within 5 ms:
+  its additions, sample sets and index, and its volume when asked (off by default:
+  volume is usually the green lines' job, and green lines are not copied). A slider's
+  body takes the whistle of a source slider starting with it. Only sounds that would
+  change are written, as the source's own raw values where those resolve the same way
+  under the target's timing points, explicit values where they would not. A difficulty
+  copied onto itself changes nothing.
+
+### Fixed
+
+- **A slider's body change reached its edges.** A slider without its own edge fields
+  plays its hitSound bits on every edge, so the writer, asked to take a whistle off a
+  body, took it off the edges too. The writer now fills the missing edge fields with what
+  they play before changing the body. Found by the copier's own measurement: 16 sounds on
+  300 mapsets.
+
+### Measured
+
+300 local mapsets, in memory (nothing written): the most hitsounded difficulty copied
+onto each of the others.
+
+```
+copies                     1,494; errors 0; a difficulty onto itself: 0 changes, all sets
+sounds                     913,453 target sounds; 813,906 with a source sound (median
+                           95.3 % per copy, 10th percentile 80.9 %); 106,605 changed
+after the copy             every matched sound resolves like its source but for the
+                           sample index: 26,034 (3.2 %), from green lines the target does
+                           not share or slider edges whose index is their head's; the
+                           copier counts them as conflicts (25,946)
+time                       copy and apply 17.2 ms median, 131 ms at most
+Python unittest            365 -> 371, all pass
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · The interface on tokens, and a light theme
 
 ### Changed

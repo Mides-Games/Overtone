@@ -5031,11 +5031,17 @@ def _edited_object_line(line: str, obj: dict, change: dict) -> str:
         if edges is not None and len(edges) != slides + 1:
             raise ValueError(f"A slider with {slides} slide(s) has {slides + 1} edges, "
                              f"not {len(edges)}.")
-        if edges is not None or (sample and len(fields) <= 8):
-            # Missing edge fields are filled with what the edges play now, the
-            # slider's own bits and sets, so a new field changes no sound.
-            have_bits = [b for b in str(obj.get("edge_sounds") or "").split("|") if b.strip()]
-            have_sets = [s for s in str(obj.get("edge_sets") or "").split("|") if s.strip()]
+        have_bits = [b for b in str(obj.get("edge_sounds") or "").split("|") if b.strip()]
+        have_sets = [s for s in str(obj.get("edge_sets") or "").split("|") if s.strip()]
+        # An edge without its own field plays the slider's bits and sets, so a
+        # change to those would reach the edges too: fill the missing fields
+        # first with what the edges play now, and the change stays the body's.
+        # (A copy that removed a whistle only the body had took it off every
+        # edge of 16 sliders on 300 local mapsets before this.)
+        incomplete = len(have_bits) != slides + 1 or len(have_sets) != slides + 1
+        body_changes = (bits is not None and bits != old_bits) or \
+            any(k in sample for k in ("normal_set", "addition_set")) or (sample and len(fields) <= 8)
+        if edges is not None or (incomplete and body_changes):
             cur_bits = [int(have_bits[k]) if k < len(have_bits) else old_bits
                         for k in range(slides + 1)]
             cur_sets = []
@@ -5150,6 +5156,166 @@ def write_object_hitsounds(osu_path: str | os.PathLike[str], changes: dict[int, 
     except (OSError, ValueError) as exc:
         raise ValueError(f"Could not write {path.name}: {exc}") from exc
     return {**result, "written": True, "backup": str(spare) if spare else None}
+
+
+# -- H1: one difficulty's hitsounds onto another -----------------------------
+
+#: How far apart two sounds may be and still be one moment in two
+#: difficulties. A set's difficulties share their timing, so their objects
+#: land on the same milliseconds; 5 ms absorbs rounding and hand placement
+#: and stays under a 1/16 at 240 BPM (15.6 ms).
+COPY_TOLERANCE_MS = 5.0
+_SET_NUMBER = {name: number for number, name in SAMPLE_SET_NAMES.items()}
+
+
+def _copy_fields(source: dict, cursor: "_TimingCursor", default_set: int, at: float,
+                 volumes: bool) -> tuple[dict, bool]:
+    """What to write so a target sound at ``at`` resolves like ``source``.
+
+    The source's own raw values when they resolve the same way under the
+    target's timing points (a copy writes what the mapper wrote), explicit
+    values where they would not. Returns the fields and whether the sample
+    index could be matched: an object's index of 0 means "the timing
+    point's", so an index-0 sound cannot be forced over a green line that
+    sets another index.
+    """
+    _beat, state = cursor.at(at + SAMPLE_LENIENCY_MS)
+    raw = source["raw"]
+
+    def resolves(normal, addition, index, volume):
+        got = _event_sample(state, default_set, normal, addition, index, volume, "")
+        return got
+
+    normal = raw["normal_set"] if raw["normal_set"] in (0, *SAMPLE_SET_NAMES) else 0
+    addition = raw["addition_set"] if raw["addition_set"] in (0, *SAMPLE_SET_NAMES) else 0
+    got = resolves(normal, addition, 0, 0)
+    if got["normal_set"] != source["normal_set"]:
+        normal = _SET_NUMBER[source["normal_set"]]
+    got = resolves(normal, addition, 0, 0)
+    if got["addition_set"] != source["addition_set"]:
+        addition = 0 if source["addition_set"] == source["normal_set"] \
+            else _SET_NUMBER[source["addition_set"]]
+    fields = {"normal_set": normal, "addition_set": addition}
+    index_ok = True
+    index = raw["index"] if isinstance(raw["index"], int) and raw["index"] >= 0 else 0
+    if resolves(normal, addition, index, 0)["index"] != source["index"]:
+        if source["index"] > 0:
+            index = source["index"]
+        else:
+            index_ok = False                     # 0 inherits; it cannot be forced
+    fields["index"] = index
+    if volumes:
+        volume = raw["volume"] if isinstance(raw["volume"], int) and 0 <= raw["volume"] <= 100 else 0
+        if resolves(normal, addition, index, volume)["volume"] != source["volume"]:
+            volume = source["volume"]
+        fields["volume"] = volume
+    fields["file"] = source["file"]
+    return fields, index_ok
+
+
+def copy_hitsounds(source: dict, target: dict, tolerance_ms: float = COPY_TOLERANCE_MS,
+                   volumes: bool = False) -> dict:
+    """What makes ``target`` sound like ``source`` where their objects meet (H1).
+
+    Each of the target's sounds (a circle, each slider edge, a spinner's
+    end, a hold) takes the source sound at the same moment, within
+    ``tolerance_ms``: its additions, its sample sets and index, its custom
+    file, and its volume when ``volumes`` is set (off by default: volume is
+    usually the green lines' job, and those are not copied). A slider's body
+    takes the whistle of a source slider starting with it. Sounds with no
+    source sound are left as they are. Only sounds that would change are
+    written, so copying a difficulty onto itself changes nothing.
+
+    Returns ``changes`` for ``set_object_hitsounds`` and the counts a
+    preview shows: target sounds, matched, changed, unmatched (with the
+    first times), source sounds nothing took, and index conflicts.
+    """
+    import bisect
+    src_all = sound_events(source)
+    src = sorted((e for e in src_all if e["part"] != "body"), key=lambda e: e["time"])
+    src_times = [e["time"] for e in src]
+    src_bodies = sorted((e for e in src_all if e["part"] == "body"), key=lambda e: e["time"])
+    body_times = [e["time"] for e in src_bodies]
+    used: set[int] = set()
+
+    def nearest(times, t):
+        i = bisect.bisect_left(times, t)
+        best = None
+        for j in (i - 1, i):
+            if 0 <= j < len(times) and abs(times[j] - t) <= tolerance_ms + 1e-9:
+                if best is None or abs(times[j] - t) < abs(times[best] - t):
+                    best = j
+        return best
+
+    cursor = _TimingCursor(target)
+    default_set = {"normal": 1, "soft": 2, "drum": 3}.get(
+        str((target.get("general") or {}).get("SampleSet", "Normal")).strip().lower(), 1)
+    keys = ("sounds", "normal_set", "addition_set", "index", "file") + (("volume",) if volumes else ())
+    by_object: dict[int, list[dict]] = {}
+    for event in sound_events(target):
+        by_object.setdefault(event["object"], []).append(event)
+
+    changes: dict[int, dict] = {}
+    counts = {"target_sounds": 0, "matched": 0, "changed": 0, "index_conflicts": 0}
+    unmatched: list[float] = []
+    for n, events in by_object.items():
+        obj = target["hitobjects"][n]
+        points = [e for e in events if e["part"] != "body"]
+        body = next((e for e in events if e["part"] == "body"), None)
+        wanted: dict[int, tuple[dict, dict]] = {}          # edge (or 0) -> (event, source)
+        for e in points:
+            counts["target_sounds"] += 1
+            j = nearest(src_times, e["time"])
+            if j is None:
+                unmatched.append(e["time"])
+                continue
+            counts["matched"] += 1
+            used.add(j)
+            if all(e[k] == src[j][k] for k in keys):
+                continue
+            counts["changed"] += 1
+            wanted[e["edge"] or 0] = (e, src[j])
+        body_bits = None
+        if body is not None:
+            b = nearest(body_times, body["time"])
+            if b is not None and (src_bodies[b]["bits"] & HIT_WHISTLE) != (body["bits"] & HIT_WHISTLE):
+                body_bits = (body["bits"] & ~HIT_WHISTLE) | (src_bodies[b]["bits"] & HIT_WHISTLE)
+        if not wanted and body_bits is None:
+            continue
+        change: dict = {}
+        if obj["kind"] == "slider":
+            # One index for the whole slider: the head's. An edge whose source
+            # sound uses another one cannot take it, and counts as a conflict.
+            head = wanted.get(0)
+            slider_index = (_copy_fields(head[1], cursor, default_set, head[0]["time"], volumes)[0]["index"]
+                            if head else _sample_int((obj.get("hit_sample") or {}).get("index")))
+            edges = []
+            for e in points:
+                edge = {"bits": e["bits"] & 15, "normal_set": e["raw"]["normal_set"],
+                        "addition_set": e["raw"]["addition_set"]}
+                if e["edge"] in wanted:
+                    _e, s = wanted[e["edge"]]
+                    fields, ok = _copy_fields(s, cursor, default_set, e["time"], volumes)
+                    counts["index_conflicts"] += not ok or (e["edge"] != 0 and fields["index"] != slider_index)
+                    edge = {"bits": (e["bits"] & 1) | (s["bits"] & 14),
+                            "normal_set": fields["normal_set"], "addition_set": fields["addition_set"]}
+                    if e["edge"] == 0:           # the slider's own sample: index, volume, file
+                        change["sample"] = {k: fields[k] for k in fields
+                                            if k in ("index", "volume", "file")}
+                edges.append(edge)
+            if wanted:
+                change["edges"] = edges
+            if body_bits is not None:
+                change["bits"] = body_bits & 15
+        else:
+            e, s = wanted[0]
+            fields, ok = _copy_fields(s, cursor, default_set, e["time"], volumes)
+            counts["index_conflicts"] += not ok
+            change = {"bits": (e["bits"] & 1) | (s["bits"] & 14), "sample": fields}
+        changes[n] = change
+    return {"changes": changes, **counts, "unmatched": len(unmatched),
+            "unmatched_times": [round(t, 1) for t in unmatched[:20]],
+            "source_sounds": len(src), "source_unused": len(src) - len(used)}
 
 
 # ---------------------------------------------------------------------------

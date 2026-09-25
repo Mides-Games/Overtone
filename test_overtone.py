@@ -4448,6 +4448,113 @@ class AnalysisEvidenceTests(unittest.TestCase):
         self.assertEqual((evidence["sections"], evidence["note"]), ([], "no_attacks"))
 
 
+class AudioSwapTests(unittest.TestCase):
+    """Phase 19, Audio swap: the shift between two encodes, every time moved."""
+
+    @staticmethod
+    def _clicks(bpm=150.0, seconds=8.0, seed=7):
+        import math
+        rng = np.random.default_rng(seed)
+        y = np.zeros(int(seconds * 44100), dtype=np.float64)
+        k = 0
+        while True:
+            t = 0.5 + k * 60.0 / bpm
+            if t > seconds - 0.2:
+                break
+            n = int(0.03 * 44100)
+            burst = np.exp(-np.arange(n) / (0.004 * 44100)) * (rng.random(n) - 0.5)
+            y[int(t * 44100):int(t * 44100) + n] += (0.9 if k % 4 == 0 else 0.5) * burst
+            k += 1
+        return y / max(1e-9, np.abs(y).max())
+
+    @staticmethod
+    def _delayed(y, ms):
+        shift = int(round(ms / 1000 * 44100))
+        out = np.zeros_like(y)
+        if shift >= 0:
+            out[shift:] = y[:len(y) - shift]
+        else:
+            out[:shift] = y[-shift:]
+        return out
+
+    def test_a_shift_reads_sub_millisecond_and_refusals_refuse(self):
+        from overtone import shift_samples
+        base = self._clicks()
+        self.assertAlmostEqual(shift_samples(base, self._delayed(base, 26.0), 44100)["shift_ms"],
+                               26.0, delta=0.1)
+        self.assertAlmostEqual(shift_samples(base, base, 44100)["shift_ms"], 0.0, delta=0.001)
+        with self.assertRaises(ValueError):
+            shift_samples(base, self._clicks(bpm=165.0), 44100)
+        with self.assertRaises(ValueError):
+            shift_samples(base, np.random.default_rng(1).standard_normal(len(base)), 44100)
+        with self.assertRaises(ValueError):
+            shift_samples(base[:100], base[:100], 44100)
+
+    def test_every_time_moves_and_nothing_else(self):
+        from overtone import read_osu_beatmap, shift_osu_text
+        text = "\n".join([
+            "osu file format v14", "", "[General]", "AudioFilename: old.mp3",
+            "PreviewTime: 2000", "AudioLeadIn: 500", "", "[Editor]", "Bookmarks: 1000,2000",
+            "", "[TimingPoints]", "1000,500,4,2,0,70,1,0", "1500,-100,4,2,0,60,0,0", "",
+            "[HitObjects]",
+            "256,192,1000,1,4,0:0:0:0:",
+            "256,192,2000,2,2,L|356:192,1,140,2|2|2,0:0|0:0|0:0,0:0:0:30:",
+            "256,192,3000,12,0,4000,0:0:0:0:",
+            "100,100,5000,128,0,6000:0:0:0:0:", ""])
+        shifted, moved = shift_osu_text(text, 26.0, audio_name="new.mp3")
+        json.dumps(moved)
+        self.assertEqual((moved["reds"], moved["objects"]), (2, 4))
+        self.assertIn("1026,500,4,2,0,70,1,0", shifted)
+        self.assertIn("1526,-100,4,2,0,60,0,0", shifted)
+        self.assertIn("256,192,1026,1,4,0:0:0:0:", shifted)
+        self.assertIn("256,192,3026,12,0,4026,0:0:0:0:", shifted)
+        self.assertIn("100,100,5026,128,0,6026:0:0:0:0:", shifted)
+        self.assertIn("AudioFilename: new.mp3", shifted)
+        self.assertIn("PreviewTime: 2026", shifted)
+        self.assertIn("AudioLeadIn: 526", shifted)
+        self.assertIn("Bookmarks: 1026, 2026", shifted)
+        # The shifted text parses with every time moved.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(shifted.replace("\n", "\r\n").encode("utf-8"))
+            beatmap = read_osu_beatmap(path)
+        self.assertEqual([o["time"] for o in beatmap["hitobjects"]],
+                         [1026.0, 2026.0, 3026.0, 5026.0])
+
+    def test_a_negative_landing_or_missing_section_refuses(self):
+        from overtone import shift_osu_text
+        text = _copy_map(["256,192,1000,1,0,0:0:0:0:"])
+        with self.assertRaises(ValueError):
+            shift_osu_text(text, -2000.0)
+        with self.assertRaises(ValueError):
+            shift_osu_text("[General]\n", 10.0)
+
+    def test_apply_moves_a_set_atomically_with_backups(self):
+        from overtone import apply_audio_swap, preview_audio_swap, read_history
+        with tempfile.TemporaryDirectory() as tmp:
+            first = Path(tmp) / "a.osu"
+            second = Path(tmp) / "b.osu"
+            for path in (first, second):
+                path.write_bytes(_copy_map(["256,192,1000,1,0,0:0:0:0:"]).replace(
+                    "\n", "\r\n").encode("utf-8"))
+            preview = preview_audio_swap([first, second], 26.0)
+            self.assertTrue(all(row["ok"] for row in preview["maps"]))
+            self.assertEqual(preview["maps"][0]["objects"], 1)
+            done = apply_audio_swap([first, second], 26.0, audio_name="new.mp3")
+            self.assertTrue(done["written"])
+            self.assertTrue(first.with_name("a.osu.bak").is_file())
+            # One bad map stops the set before any byte moves.
+            bad = Path(tmp) / "bad.osu"
+            bad.write_bytes(b"junk")
+            before = second.read_bytes()
+            with self.assertRaises(ValueError):
+                apply_audio_swap([second, bad], 10.0)
+            self.assertEqual(second.read_bytes(), before)
+            entries = [e for e in read_history() if e["op"] == "swap"]
+        json.dumps([preview, done])
+        self.assertEqual(len(entries), 2)
+
+
 class WriteHistoryTests(unittest.TestCase):
     """Phase 19, History: every .osu write logged, diffed and restorable."""
 

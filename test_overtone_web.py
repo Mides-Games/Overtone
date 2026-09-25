@@ -1374,6 +1374,19 @@ class HistoryBridgeTests(_IsolatedConfig):
             self.assertEqual((restored["ok"], back), (True, before))
             self.assertTrue(Path(tmp, "map.osu.bak2").is_file())
 
+    def test_a_swap_diff_reads_past_the_move(self) -> None:
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes("\r\n".join(
+                ["osu file format v14", "", "[TimingPoints]", "1000,500,4,2,0,70,1,0", "",
+                 "[HitObjects]", "256,192,1000,1,0,0:0:0:0:", ""]).encode("utf-8"))
+            ta.apply_audio_swap([path], 26.0)
+            api = web.Api()
+            diff = api.history_diff(0)["diff"]
+        json.dumps(diff)
+        self.assertEqual((diff["n_added"], diff["n_removed"], diff["n_changed"]), (0, 0, 0))
+
     def test_bad_indices_and_missing_backups_refuse(self) -> None:
         import overtone as ta
         with tempfile.TemporaryDirectory() as tmp:

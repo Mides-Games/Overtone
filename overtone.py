@@ -3622,6 +3622,248 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
 
 
 # ---------------------------------------------------------------------------
+# Audio swap (Phase 19): one mapset's times onto a new encode of its audio
+# ---------------------------------------------------------------------------
+
+#: Comparison rate for the shift: 0.09 ms a lag, anti-aliased against codec
+#: highs loss, and a 5-minute song fits the FFT in tens of megabytes.
+SWAP_SR = 11025
+#: Refusals, measured on synthetic shifts and real pairs: true shifts read
+#: peak 0.96 and up, re-encodes apart; tempo twins and strangers read under
+#: 0.11; different cuts sit between and refuse, which is the safe side.
+SWAP_MIN_PEAK = 0.5
+SWAP_MIN_SHARP = 50.0
+#: A tempo ratio past this is not a shift: over 3 minutes, 0.5 % already
+#: walks 0.9 s.
+SWAP_MAX_TEMPO_DRIFT = 0.005
+
+
+def _swap_envelope(y: np.ndarray, sr: int) -> np.ndarray:
+    """Onset-strength envelope at the comparison rate, for tempo checks."""
+    hop = max(1, sr // 86)
+    return _fast_onset_envelope(np.asarray(y, dtype=np.float32), sr, hop).astype(np.float64)
+
+
+def _envelope_period(envelope: np.ndarray, sr: int, hop: int) -> float:
+    """Dominant onset period in seconds, 40-400 BPM; octave errors are the
+    caller's to normalise, here by comparing up to an octave."""
+    working = envelope - envelope.mean()
+    n = len(working)
+    spectrum = np.abs(np.fft.rfft(working, n)) ** 2
+    autocorr = np.fft.irfft(spectrum)[:n] / max(1, n)
+    lo, hi = int(60.0 / 400 * sr / hop), int(60.0 / 40 * sr / hop)
+    lo, hi = max(1, lo), min(n - 1, max(lo + 1, hi))
+    return float(np.argmax(autocorr[lo:hi + 1]) + lo) * hop / sr
+
+
+def shift_samples(old: np.ndarray, new: np.ndarray, sr: int) -> dict:
+    """How far map times move from the old audio to the new one (Phase 19).
+
+    Both mono at one rate: downsampled once to the comparison rate, then a
+    full cross-correlation, parabolically refined. Returns ``shift_ms`` with
+    ``peak``, ``sharp`` and ``tempo_ratio`` beside it. Refuses instead of
+    guessing: a weak or dull peak is no alignment, and a tempo ratio past a
+    quarter beat over a song is not a shift. Pure; plain JSON types.
+    """
+    old = np.asarray(old, dtype=np.float64).ravel()
+    new = np.asarray(new, dtype=np.float64).ravel()
+    if old.size < sr or new.size < sr:
+        raise ValueError("Both audios must hold at least a second to align.")
+    if sr % SWAP_SR:
+        raise ValueError(f"Comparison needs a multiple of {SWAP_SR} Hz, got {sr}.")
+    factor = sr // SWAP_SR
+    old_d = signal.resample_poly(old - old.mean(), 1, factor)
+    new_d = signal.resample_poly(new - new.mean(), 1, factor)
+    n = 1
+    while n < len(old_d) + len(new_d):
+        n *= 2
+    corr = np.fft.irfft(np.fft.rfft(old_d, n) * np.conj(np.fft.rfft(new_d, n)), n)
+    denom = float(np.sqrt((old_d @ old_d) * (new_d @ new_d)))
+    corr = corr / denom if denom > 0 else corr * 0.0
+    peak_idx = int(np.argmax(corr))
+    lag = peak_idx if peak_idx <= n // 2 else peak_idx - n
+    if 0 < peak_idx < n - 1:
+        y0, y1, y2 = corr[peak_idx - 1], corr[peak_idx], corr[peak_idx + 1]
+        if y0 - 2 * y1 + y2 < 0:
+            lag += 0.5 * (y0 - y2) / (y0 - 2 * y1 + y2)
+    peak, sharp = float(corr[peak_idx]), float(corr[peak_idx] / max(1e-9, np.median(np.abs(corr))))
+    old_e = _swap_envelope(np.asarray(old, dtype=np.float32), sr)
+    new_e = _swap_envelope(np.asarray(new, dtype=np.float32), sr)
+    hop = max(1, sr // 86)
+    raw = _envelope_period(new_e, sr, hop) / max(1e-9, _envelope_period(old_e, sr, hop))
+    ratio = min((abs(raw / k - 1.0), raw / k) for k in (0.5, 1.0, 2.0))[1]
+    ratio = float(ratio)
+    if peak < SWAP_MIN_PEAK or sharp < SWAP_MIN_SHARP:
+        raise ValueError(f"No reliable alignment (peak {peak:.2f}, sharpness {sharp:.0f}): "
+                         "these do not sound like two encodes of one song.")
+    if abs(ratio - 1.0) > SWAP_MAX_TEMPO_DRIFT:
+        raise ValueError(f"Tempo mismatch (ratio {ratio:.4f}): times do not map by one shift.")
+    # The lag is old-against-new; map times move the other way.
+    return {"shift_ms": round(-lag / SWAP_SR * 1000.0, 3), "peak": round(peak, 4),
+            "sharp": round(sharp, 1), "tempo_ratio": round(ratio, 5)}
+
+
+def audio_shift(old_path: str | os.PathLike[str], new_path: str | os.PathLike[str]) -> dict:
+    """``shift_samples`` on two decoded files: mono 44.1 kHz from the loader,
+    so any two formats it reads compare. Refusals read as messages."""
+    old_y, old_sr = _load_audio(old_path, lambda _message: None)
+    new_y, new_sr = _load_audio(new_path, lambda _message: None)
+    if old_sr != new_sr:
+        raise ValueError(f"Sample rates differ ({old_sr} vs {new_sr}).")
+    return shift_samples(np.asarray(old_y, dtype=np.float64),
+                         np.asarray(new_y, dtype=np.float64), old_sr)
+
+
+def _shifted_number(text: str, shift_ms: float) -> str:
+    """A time field moved by the shift, integer-valued when it lands whole,
+    three decimals otherwise: what lazer writes, and stable reads."""
+    value = round(float(text) + shift_ms, 3)
+    return str(int(value)) if value == int(value) else f"{value:.3f}".rstrip("0")
+
+
+def shift_osu_text(text: str, shift_ms: float, audio_name: str | None = None) -> tuple[str, dict]:
+    """Every time of one .osu moved by ``shift_ms`` (Phase 19, Audio swap).
+
+    Red and green offsets, object starts, spinner and hold ends, a set
+    PreviewTime, AudioLeadIn and editor bookmarks; optionally the
+    AudioFilename with it. Lines keep their shape and order — only the
+    numbers move. Storyboard times are not parsed anywhere and stay as they
+    were, stated here instead of hidden. Anything landing before zero, and a
+    missing section the move needs, refuses the whole text: half a shifted
+    mapset is a corruption, not a subset. Returns the shifted text (split
+    lines, no trailing newline) with counts of reds and objects moved.
+    """
+    lines = text.splitlines()
+    section = ""
+    out: list[str] = []
+    seen = {"timing": False, "objects": False, "general": False, "editor": False}
+    moved = {"reds": 0, "objects": 0}
+
+    def move(raw: str) -> str:
+        shifted = _shifted_number(raw, shift_ms)
+        if float(shifted) < 0:
+            raise ValueError(f"A time lands before zero ({raw} ms): refusing.")
+        return shifted
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
+            section = stripped[1:-1].lower()
+            out.append(line)
+            continue
+        if not stripped or stripped.startswith("//"):
+            out.append(line)
+            continue
+        if section == "timingpoints":
+            seen["timing"] = True
+            fields = line.split(",")
+            if len(fields) < 2:
+                raise ValueError(f"Unusable timing line: {stripped[:40]}.")
+            fields[0] = move(fields[0])
+            moved["reds"] += 1
+            out.append(",".join(fields))
+        elif section == "hitobjects":
+            seen["objects"] = True
+            fields = line.split(",")
+            if len(fields) < 5:
+                raise ValueError(f"Unusable object line: {stripped[:40]}.")
+            try:
+                type_bits = int(fields[3])
+            except ValueError:
+                raise ValueError(f"Unusable object line: {stripped[:40]}.")
+            fields[2] = move(fields[2])
+            rest = fields[5:]
+            if type_bits & 128 and rest:
+                head, colon, tail = rest[0].partition(":")
+                rest[0] = move(head) + colon + tail if colon else move(head)
+            elif type_bits & 8 and rest:
+                rest[0] = move(rest[0])
+            fields[5:] = rest
+            moved["objects"] += 1
+            out.append(",".join(fields))
+        elif section == "general":
+            seen["general"] = True
+            name, colon, value = line.partition(":")
+            key = name.strip().lower()
+            if key in ("previewtime", "audioleadin") and colon:
+                number = value.strip()
+                if number and (key != "previewtime" or float(number) >= 0):
+                    out.append(f"{name.strip()}: {move(number)}")
+                    continue
+            if key == "audiofilename" and colon and audio_name is not None:
+                out.append(f"{name}: {audio_name}")
+                continue
+            out.append(line)
+        elif section == "editor":
+            seen["editor"] = True
+            name, colon, value = line.partition(":")
+            if name.strip().lower() == "bookmarks" and colon and value.strip():
+                try:
+                    marks = [move(mark) for mark in value.split(",") if mark.strip()]
+                except ValueError:
+                    raise ValueError("A bookmark lands before zero: refusing.")
+                out.append(f"{name}: {', '.join(marks)}")
+                continue
+            out.append(line)
+        else:
+            out.append(line)
+    if not seen["timing"] or not seen["objects"]:
+        raise ValueError("No [TimingPoints] or [HitObjects] to move.")
+    return "\n".join(out), moved
+
+
+def preview_audio_swap(map_paths: list, shift_ms: float) -> dict:
+    """What a shift would move, read only: per map the red lines, objects and
+    new audio name, without touching a byte."""
+    rows = []
+    for raw in map_paths:
+        path = Path(raw)
+        try:
+            text = path.read_bytes().decode("utf-8-sig")
+            _shifted, moved = shift_osu_text(text, shift_ms)
+        except (OSError, ValueError, UnicodeDecodeError) as exc:
+            rows.append({"file": path.name, "ok": False, "error": str(exc)})
+            continue
+        rows.append({"file": path.name, "ok": True, **moved})
+    return {"shift_ms": round(float(shift_ms), 3), "maps": rows,
+            "refused": sum(1 for row in rows if not row["ok"])}
+
+
+def apply_audio_swap(map_paths: list, shift_ms: float, audio_name: str | None = None,
+                     dry_run: bool = False) -> dict:
+    """Move every time of every map by ``shift_ms``, each file backed up
+    first and logged, through the atomic writer. A refusal anywhere writes
+    nothing anywhere: the preview runs first inside, and one bad map stops
+    the set. Returns per-file bytes written and backups."""
+    paths = [Path(raw) for raw in map_paths]
+    preview = preview_audio_swap(paths, shift_ms)
+    if preview["refused"]:
+        bad = next(row for row in preview["maps"] if not row["ok"])
+        raise ValueError(f"{bad['file']}: {bad['error']}")
+    if dry_run:
+        return {**preview, "written": False}
+    rows = []
+    for path in paths:
+        raw = path.read_bytes()
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"Could not decode {path.name} as UTF-8.") from exc
+        shifted, _moved = shift_osu_text(text, shift_ms, audio_name)
+        newline = "\r\n" if b"\r\n" in raw else "\n"
+        if raw.endswith((b"\n", b"\r")):
+            shifted += "\n"
+        payload = shifted.replace("\n", newline).encode("utf-8")
+        if raw.startswith(b"\xef\xbb\xbf"):
+            payload = b"\xef\xbb\xbf" + payload
+        spare = _backup_before_write(path, raw)
+        _atomic_write_bytes(path, payload)
+        log_write(path, "swap", str(spare), {"shift_ms": round(float(shift_ms), 3)})
+        rows.append({"file": path.name, "bytes": len(payload), "backup": str(spare)})
+    return {**preview, "written": True, "maps": rows}
+
+
+# ---------------------------------------------------------------------------
 # .osu red-line reading and map-vs-detected comparison (Phase 5)
 # ---------------------------------------------------------------------------
 

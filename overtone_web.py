@@ -1536,7 +1536,9 @@ class Api:
 
     def history_diff(self, index: int) -> dict:
         """The timing diff of one entry: the backup's red lines against the
-        file's current ones. Read only; missing files refuse."""
+        file's current ones — shifted by the logged shift first for swaps,
+        so what reads is what changed besides the move. Read only; missing
+        files refuse."""
         entry = self._history_entry(index)
         if entry is None:
             return {"ok": False, "key": "bad_index"}
@@ -1550,9 +1552,15 @@ class Api:
             old = Path(str(entry["backup"])).read_bytes()
         except OSError:
             return {"ok": False, "key": "no_backup"}
+        old_text = old.decode("utf-8-sig", "replace")
+        shift = (entry.get("summary") or {}).get("shift_ms")
+        if entry.get("op") == "swap" and isinstance(shift, (int, float)):
+            try:
+                old_text = ta.shift_osu_text(old_text, float(shift))[0]
+            except ValueError:
+                pass
         return {"ok": True, "file": Path(str(entry["path"])).name,
-                "diff": ta.diff_reds(old.decode("utf-8-sig", "replace"),
-                                     current.decode("utf-8-sig", "replace"))}
+                "diff": ta.diff_reds(old_text, current.decode("utf-8-sig", "replace"))}
 
     def history_restore(self, index: int) -> dict:
         """Restore one entry's backup over its file, keeping the current bytes

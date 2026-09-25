@@ -16,6 +16,45 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Audio swap, engine half: one shift for a mapset
+
+### Changed
+
+- **Measuring the shift** (`shift_samples`, `audio_shift`): full cross-correlation
+  at 11 kHz, parabolically refined, with peak, sharpness and an octave-aware
+  tempo ratio beside it. Refuses a weak peak, a dull one, and any tempo past
+  0.5 % — a different cut refuses on its peak before its tempo is even asked.
+- **Moving the map** (`shift_osu_text`, `preview_audio_swap`, `apply_audio_swap`):
+  red and green offsets, object starts, spinner/hold ends, PreviewTime,
+  AudioLeadIn, bookmarks and optionally the AudioFilename; lines keep their
+  shape, storyboards stay as parsed-nowhere (stated). Negative landings and
+  missing sections refuse the whole set; every file is backed up and logged.
+- History diffs read past the move: a swap entry compares backup-shifted
+  against current, so the diff names real changes instead of remove-plus-add
+  noise.
+
+### Measured
+
+```
+synthetic shifts             +26.000 ms -> +26.018, -40.500 -> -40.498,
+                             +123.456 -> +123.447, 0 exact
+real music, known silence    +26.37 -> +26.38, -150, 0 and +5230 all within 0.005 ms
+refusals                     150->165 BPM, nightcore-style pairs and different
+                             cuts (peaks 0.01-0.11) all refused
+a real 3-map set, +26 ms     717 lines moved, all backups kept, 43 ms;
+                             red diff after the move: no changes besides it
+Python unittest              425 -> 430, all pass
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+```
+
+Two probe bugs died in the design probe, recorded so nobody re-derives them: an
+FFT slice that cut the wrapped negative lags (keep the circular output whole),
+and an 8 ms STFT envelope whose window alignment biased sub-frame shifts by a
+full frame (compare the audio itself, downsampled).
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Write history: list, diff, restore
 
 ### Changed

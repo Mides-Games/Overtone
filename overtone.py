@@ -5612,6 +5612,40 @@ def hitsound_consistency(beatmap: dict) -> dict:
     return {"findings": findings}
 
 
+def hitsound_silence_check(beatmap: dict, attack_times, attack_weights,
+                           tolerance_ms: float = OBJECT_WINDOW_MS) -> dict:
+    """Finishes and claps with no attack under them (H3, audio half).
+
+    Read only. Every sound event carrying a finish or a clap is set against
+    the detected attacks through :func:`match_sound_events`: further than
+    ``tolerance_ms`` from every attack, the addition sounds over silence.
+    Whistles are not judged: unmatched whistles sit a median 66 ms from the
+    nearest attack (melodic overlap, measured on 23 songs), so calling them
+    silence would mislead, while unmatched finishes and claps sit truly
+    isolated (over 70 % past 100 ms). Slider bodies are left out: a slide
+    spans, it does not land. With no attacks at all there is nothing to
+    judge — everything would flag, so nothing does. Quiet passages may hold
+    sounds too soft to detect, so each finding is advice with its addition,
+    never an edit. Plain JSON types.
+    """
+    times = np.asarray(attack_times, dtype=np.float64)
+    weights = np.asarray(attack_weights, dtype=np.float64)
+    if times.size == 0:
+        return {"findings": []}
+    findings: list[dict] = []
+    events = [e for e in sound_events(beatmap) if e["part"] != "body"]
+    for event, row in zip(events, match_sound_events(events, times, weights,
+                                                     tolerance_ms)):
+        if row["matched"]:
+            continue
+        for addition in ("finish", "clap"):
+            if addition in event["sounds"]:
+                findings.append({"level": "info", "key": "hitsound_on_silence",
+                                 "time_ms": float(event["time"]),
+                                 "values": {"addition": addition}})
+    return {"findings": findings}
+
+
 # ---------------------------------------------------------------------------
 # Structure view (Phase 19): the Rust engine's phrases, on this song's bars
 # ---------------------------------------------------------------------------
@@ -6133,6 +6167,9 @@ def _mod_text(item: dict) -> str:
     if key == "hitsound_extra_clap":
         return (f"a clap on beat {v['beat']} of bar {v['bar']}, with only {v['have']} "
                 f"of the {v['of']} bars around it clapped")
+    if key == "hitsound_on_silence":
+        # What is measured: quiet passages may hold sounds too soft to detect.
+        return f"{v['addition']} with no attack Overtone detects nearby"
     return f"{key} {v}"
 
 
@@ -6204,6 +6241,9 @@ def mod_report(beatmap: dict, attack_times: np.ndarray, attack_weights: np.ndarr
                                    beatmap)
         for obj in aligned["offenders"]:
             add("alignment", "info", "off_attack", obj["time"], {"ms": f"{obj['ms']:.1f}"}, True)
+        for finding in hitsound_silence_check(beatmap, times, weights)["findings"]:
+            add("hitsound", finding["level"], finding["key"], finding["time_ms"],
+                finding["values"], True)
 
     for finding in hitsound_consistency(beatmap)["findings"]:
         add("hitsound", finding["level"], finding["key"], finding["time_ms"],

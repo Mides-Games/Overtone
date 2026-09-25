@@ -110,9 +110,10 @@ P-1 (inheritance, per-edge sets, custom indices on greens).
 Items in the mod report: objects whose sound breaks the map's own pattern, say bar 12 beat
 2 with no clap when 15 of the 16 bars around it have one, or a finish on an off-beat
 16th. The first half reads only the map and the grid (`hitsound_consistency`, in the
-mod report as source "hitsound"). The second adds the audio: a clap
-over an attack that sounds nothing like a snare or clap, a whistle on silence — still
-to build, on P-4's evidence matched through P-5.
+mod report as source "hitsound"). The second adds the audio (`hitsound_silence_check`,
+finishes and claps with no attack under them, in the same report) — and stops there:
+the clap-mismatch rule cannot ship until the templates prove themselves on real audio
+(see timeline H3 audio half), which is H4's real-audio gate, not new work.
 
 Advice, never an edit, with the evidence written out. Useful for every map that already
 has hitsounds, which is 94 % of them.

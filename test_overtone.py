@@ -4312,6 +4312,36 @@ class HitsoundConsistencyTests(unittest.TestCase):
         self.assertEqual(report["counts"]["hitsound"], 1)
         json.dumps(report)
 
+    def test_a_finish_with_no_attack_under_it_is_flagged(self):
+        import numpy as np
+        from overtone import hitsound_silence_check
+        beatmap = self._report(_copy_map(["256,192,1000,1,4,0:0:0:0:",
+                                          "256,192,2000,1,8,0:0:0:0:"],
+                                         timing="1000,500,4,2,0,70,1,0"))
+        findings = hitsound_silence_check(beatmap, np.array([2.0]), np.array([1.0]))["findings"]
+        self.assertEqual([(f["key"], f["values"]["addition"], f["time_ms"]) for f in findings],
+                         [("hitsound_on_silence", "finish", 1000.0)])
+
+    def test_a_lone_whistle_is_not_judged(self):
+        # Unmatched whistles sit a median 66 ms from attacks on real songs
+        # (melodic overlap), so calling them silence would mislead.
+        import numpy as np
+        from overtone import hitsound_silence_check
+        beatmap = self._report(_copy_map(["256,192,1000,1,2,0:0:0:0:"],
+                                         timing="1000,500,4,2,0,70,1,0"))
+        self.assertEqual(hitsound_silence_check(
+            beatmap, np.array([2.0]), np.array([1.0]))["findings"], [])
+
+    def test_a_clap_on_an_attack_and_silence_everywhere_flag_nothing(self):
+        import numpy as np
+        from overtone import hitsound_silence_check
+        beatmap = self._report(_copy_map(["256,192,2000,1,8,0:0:0:0:"],
+                                         timing="1000,500,4,2,0,70,1,0"))
+        self.assertEqual(hitsound_silence_check(
+            beatmap, np.array([2.0]), np.array([1.0]))["findings"], [])
+        self.assertEqual(hitsound_silence_check(
+            beatmap, np.zeros(0), np.zeros(0))["findings"], [])
+
 
 class StructureViewTests(unittest.TestCase):
     """Phase 19, Structure: phrases on the song's proven bars, labels with why."""

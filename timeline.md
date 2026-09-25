@@ -16,6 +16,43 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Hitsounds H3 audio half: sounds over silence
+
+### Changed
+
+- **`hitsound_silence_check(beatmap, attack_times, attack_weights)`**: finishes and
+  claps with no detected attack under them, matched through P-5, in the mod report
+  beside the pattern breaks. Needs only the analysis attacks — no CLI run, no
+  templates — so it rides the report's existing path. Bodies left out, no attacks at
+  all judges nothing, advice never an edit.
+
+### Measured
+
+```
+11 songs, evidence+matching   clap events: P(snare)+P(clap) median 0.138, deciles
+  (P-4 probs at mapper claps) 0.016/0.045/0.138/0.363/0.611; T=0.10 alone flags 43 %
+23 songs, analyze_audio       silence check: 17 of 23 maps with findings, median 1,
+                              p90 12, max 21
+unmatched by addition         whistle 2.2 %, finish 0.6 %, clap 1.1 %;
+  nearest-attack distance     whistle median 66 ms, finish/clap over 70 % past 100 ms
+Python unittest               397 -> 400, all pass
+benchmark.py                  24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+```
+
+### Rejected / tried and dropped
+
+- **The clap-mismatch rule** ("a clap over an attack that sounds nothing like a snare
+  or clap"). The templates this would judge with are proven only on synthetic drums;
+  on 11 real songs they put the median mapper clap at P(snare)+P(clap) 0.138, and any
+  readable bar accuses correct mapping by the dozen. This is the measurement P-6 was
+  built for: the rule waits for H4's real-audio gate instead of shipping on a hunch.
+- **Whistles in the silence check.** Unmatched whistles sit a median 66 ms from attacks
+  — melodic overlap, not silence — so flagging them would mislead. Finishes and claps
+  ship; the whistle stays out with its number attached.
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Hitsounds H3 map half: the pattern breaks
 
 ### Changed

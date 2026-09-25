@@ -4126,6 +4126,59 @@ class HitsoundReportTests(unittest.TestCase):
         self.assertEqual(report["additions"]["clap"]["total"], 1)
 
 
+class SoundEventMatchingTests(unittest.TestCase):
+    """Phase 6, P-5: each sound event's nearest attack, or no attack at all."""
+
+    @staticmethod
+    def _events(*times):
+        return [{"object": n, "part": "circle", "edge": None, "time": t,
+                 "sounds": ["normal", "clap"]} for n, t in enumerate(times)]
+
+    def test_each_event_takes_its_nearest_attack_with_dt_and_weight(self):
+        from overtone import match_sound_events
+        rows = match_sound_events(self._events(1000.0, 2000.0),
+                                  [0.995, 2.010], [0.8, 0.4])
+        json.dumps(rows)
+        self.assertEqual([(r["matched"], r["attack"]["dt_ms"], r["attack"]["weight"])
+                          for r in rows],
+                         [(True, -5.0, 0.8), (True, 10.0, 0.4)])
+
+    def test_a_sound_over_silence_is_a_state_not_an_error(self):
+        from overtone import match_sound_events
+        rows = match_sound_events(self._events(1000.0, 5000.0), [1.0], [0.9])
+        self.assertEqual((rows[0]["matched"], rows[1]["matched"]), (True, False))
+        self.assertIsNone(rows[1]["attack"])
+
+    def test_no_attacks_leaves_everything_unmatched(self):
+        from overtone import match_sound_events
+        rows = match_sound_events(self._events(1000.0), [])
+        self.assertEqual([(r["matched"], r["attack"]) for r in rows], [(False, None)])
+
+    def test_tolerance_boundary_is_inclusive(self):
+        from overtone import match_sound_events
+        rows = match_sound_events(self._events(1000.0, 2000.0), [1.05, 2.051])
+        self.assertEqual((rows[0]["matched"], rows[1]["matched"]), (True, False))
+
+    def test_unsorted_attacks_still_match_with_their_weights(self):
+        from overtone import match_sound_events
+        rows = match_sound_events(self._events(1000.0), [2.0, 0.999], [0.1, 0.7])
+        self.assertEqual((rows[0]["attack"]["dt_ms"], rows[0]["attack"]["weight"]),
+                         (-1.0, 0.7))
+
+    def test_slider_edges_each_match_their_own_attack(self):
+        from overtone import match_sound_events, sound_events
+        text = _copy_map(["256,192,1000,2,0,L|356:192,1,140"])  # head + tail
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            events = [e for e in sound_events(read_osu_beatmap(path))
+                      if e["part"] in ("head", "tail")]
+        self.assertEqual([e["part"] for e in events], ["head", "tail"])
+        rows = match_sound_events(events, [e["time"] / 1000.0 for e in events])
+        self.assertEqual([r["matched"] for r in rows], [True, True])
+        self.assertEqual([r["part"] for r in rows], ["head", "tail"])
+
+
 class StructureViewTests(unittest.TestCase):
     """Phase 19, Structure: phrases on the song's proven bars, labels with why."""
 

@@ -4969,6 +4969,70 @@ def sound_events(beatmap: dict) -> list[dict]:
     return events
 
 
+# -- P-5: each sound event's nearest attack ------------------------------------
+
+def match_sound_events(events: list[dict], attack_times,
+                       attack_weights=None,
+                       tolerance_ms: float = OBJECT_WINDOW_MS) -> list[dict]:
+    """Each sound event's nearest attack, or no attack at all (P-5).
+
+    The object-centric half of the hitsound evidence: where
+    :func:`attack_object_context` asks "which object caused this attack", this
+    asks "which attack does this sound sit on". Every event of
+    :func:`sound_events` — circle hits, each slider edge, spinner ends, and
+    slider bodies at their start (a slide starts somewhere, even if it spans)
+    — gets its nearest attack by binary search, with the attack's time, its
+    distance in ms (negative: the attack sounds first) and its weight.
+    Further than ``tolerance_ms`` from every attack, or with no attacks at
+    all, the event comes back with ``attack`` None: "no attack here" is a
+    state of its own, the one H3 reads for sounds over silence, never an
+    error and never a guess.
+
+    Attack times arrive in seconds (engine convention) and are reported in
+    milliseconds (map convention), like everywhere else; they are sorted with
+    their weights kept beside them, so an unsorted input still matches. Plain
+    JSON types, in event order.
+    """
+    times = np.asarray(attack_times, dtype=np.float64)
+    if attack_weights is None:
+        weights: np.ndarray | None = None
+    else:
+        weights = np.asarray(attack_weights, dtype=np.float64)
+    order = np.argsort(times, kind="stable")
+    sorted_times = (times[order] * 1000.0
+                    if times.size else np.zeros(0, dtype=np.float64))
+    sorted_weights = (weights[order] if weights is not None and weights.size == times.size
+                      else None)
+    finite = np.isfinite(sorted_times)
+    sorted_times = sorted_times[finite]
+    if sorted_weights is not None:
+        sorted_weights = sorted_weights[finite]
+
+    rows: list[dict] = []
+    for n, event in enumerate(events):
+        try:
+            at = float(event.get("time", float("nan")))
+        except (TypeError, ValueError):
+            at = float("nan")
+        attack = None
+        if np.isfinite(at) and sorted_times.size:
+            idx = int(np.searchsorted(sorted_times, at))
+            best = min((v for v in (idx - 1, idx) if 0 <= v < sorted_times.size),
+                       key=lambda v: abs(float(sorted_times[v]) - at))
+            dt = float(sorted_times[best]) - at
+            if abs(dt) <= tolerance_ms:
+                attack = {"time": round(float(sorted_times[best]), 3),
+                          "dt_ms": round(dt, 3),
+                          "weight": (round(float(sorted_weights[best]), 6)
+                                     if sorted_weights is not None else None)}
+        rows.append({"event": n,
+                     "object": event.get("object"), "part": event.get("part"),
+                     "edge": event.get("edge"), "time": at if np.isfinite(at) else None,
+                     "sounds": list(event.get("sounds") or []),
+                     "attack": attack, "matched": attack is not None})
+    return rows
+
+
 # -- P-2: the hitsound fields of a hit object line, and nothing else ---------
 
 _SAMPLE_KEYS = ("normal_set", "addition_set", "index", "volume", "file")

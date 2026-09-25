@@ -16,6 +16,29 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Hitsounds P-5: each sound's nearest attack
+
+### Changed
+
+- **`match_sound_events(events, attack_times, attack_weights=None)`**, the object-centric
+  half of the hitsound evidence: every sound event takes its nearest attack by binary
+  search, with the attack's time, its distance in ms and its weight. Past 50 ms from
+  every attack — the alignment report's own bar — or with no attacks at all, the event
+  comes back with `attack` None: "no attack here" is a state H3 will read for sounds
+  over silence, never an error and never a guess. Slider bodies match at their start.
+  Attack times arrive in seconds and read out in ms, like everywhere else.
+
+### Measured
+
+```
+Python unittest            382 -> 388, all pass
+benchmark.py               24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+match, 2,000 events       21.6 ms total, 10.8 us per event (binary search, no per-event scan)
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Hitsounds H2: the Hitsounds section
 
 ### Changed

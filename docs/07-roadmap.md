@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **382** Python (262 engine + 120 web shell) · **233** Rust.
+Tests: **388** Python (268 engine + 120 web shell) · **233** Rust.
 
 ### What is pending, in order
 
@@ -324,7 +324,7 @@ the copier, the section, the check, the decision engine, the editor.
 | P-2 Hitsound field writer | only `hitSound`/`edgeSounds`/`edgeSets`/`hitSample` change; zero-change write byte-identical | med | **high** | P5 writer | no | no | **P1** | **done** — `set_object_hitsounds`, `write_object_hitsounds`: edits over the file's own text; flip and restore on 2,998 local maps sound identical, only object lines move |
 | P-3 Sample playback | samples found as osu! finds them, Overtone's own synthesised defaults, on the playback clock | med | **high** | P4 playback | no | no | **P1** | **done** — `assets/samples.py`, `hitsound_playback`, the transport's "Hitsounds from"; slider bodies not played yet |
 | P-4 Evidence through the CLI | class probabilities with terms, and role, per attack; calibrated weights baked in | med | **high** | templates, role | no | no | **P1** | todo |
-| P-5 Object-attack matching | each sound event's nearest attack, "no attack" as a state | low | high | P-1 | no | no | **P1** | todo |
+| P-5 Object-attack matching | each sound event's nearest attack, "no attack" as a state | low | high | P-1 | no | no | **P1** | **done** — `match_sound_events`: binary search, dt and weight inside 50 ms, else unmatched |
 | P-6 Real-map evaluation | agreement with mappers' own hitsounds on local maps, against simple baselines | med | **high** | library index, P-1 | no | no | **P1** | todo |
 | P-7 Object lane | objects and their sounds on the timeline | low | high | P3 timeline, P-1 | no | no | **P1** | **done** — objects and additions in rows, while a difficulty's hitsounds are picked |
 | H2 Hitsounds section | one difficulty, read only: where each addition falls in the bar, every sound heard one by one | med | **high** | P-1, P-3, P-7 | no | no | **P1** | **done** — `hitsound_report`; on 800 local maps claps sit on 2 and 4 57 % of the time (median) |

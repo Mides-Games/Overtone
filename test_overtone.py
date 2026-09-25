@@ -4297,6 +4297,108 @@ class HitsoundProposalEvalTests(unittest.TestCase):
         self.assertEqual((tallies["whistle"]["tp"], tallies["whistle"]["mapper"]), (0, 0))
 
 
+class HitsoundApplyTests(unittest.TestCase):
+    """Phase 6, H5 engine half: a decision's proposals onto the map."""
+
+    @staticmethod
+    def _unit(object, part, edge, time_ms, bank, bits):
+        return {"object": object, "part": part, "edge": edge, "time_ms": time_ms,
+                "proposal": {"bank": bank, "additions": [], "bits": bits}}
+
+    def _map(self, tmp, lines, timing="1000,500,4,2,0,70,1,0"):
+        from overtone import read_osu_beatmap
+        path = Path(tmp) / "map.osu"
+        path.write_bytes(_copy_map(lines, timing).replace("\n", "\r\n").encode("utf-8"))
+        return path, read_osu_beatmap(path)
+
+    def test_a_clap_proposal_lands_bits_and_sets_leaving_the_rest(self):
+        from overtone import apply_proposals, sound_events
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:",
+                                            "256,192,1500,1,0,0:0:0:0:"])
+            before = path.read_bytes()
+            units = [self._unit(1, "circle", None, 1500.0, "drum", 8)]
+            preview = apply_proposals(path, units, preview=True)
+            self.assertEqual(preview["would_change"], 1)
+            self.assertEqual(path.read_bytes(), before)
+            result = apply_proposals(path, units)
+            self.assertEqual(result["changed"], [1])
+            after = sound_events(__import__("overtone").read_osu_beatmap(path))
+            changed = [e for e in after if e["object"] == 1][0]
+            self.assertEqual((changed["sounds"], changed["normal_set"], changed["addition_set"]),
+                             (["normal", "clap"], "drum", "drum"))
+            # Only the changed object line moved.
+            old_lines, new_lines = before.split(b"\r\n"), path.read_bytes().split(b"\r\n")
+            self.assertEqual(len(old_lines), len(new_lines))
+            self.assertEqual(sum(1 for a, b in zip(old_lines, new_lines) if a != b), 1)
+
+    def test_slider_edges_take_their_own_proposal_each(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,2,0,L|356:192,1,140"])
+            events = sound_events(overtone.read_osu_beatmap(path))
+            edges = [(e["part"], e["edge"], e["time"]) for e in events
+                     if e["part"] in ("head", "tail")]
+            self.assertEqual([p for p, _e, _t in edges], ["head", "tail"])
+            units = [self._unit(0, part, edge, t, "soft", 2) for part, edge, t in edges]
+            apply_proposals(path, units)
+            after = sound_events(overtone.read_osu_beatmap(path))
+            for e in after:
+                if e["part"] in ("head", "tail"):
+                    self.assertEqual((e["sounds"], e["normal_set"]),
+                                     (["normal", "whistle"], "soft"))
+
+    def test_accepting_a_subset_applies_only_it(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:",
+                                             "256,192,1500,1,0,0:0:0:0:"])
+            units = [self._unit(0, "circle", None, 1000.0, "drum", 8),
+                     self._unit(1, "circle", None, 1500.0, "drum", 8)]
+            result = apply_proposals(path, units, accept={(1, "circle", None)})
+            self.assertEqual(result["changed"], [1])
+            after = sound_events(overtone.read_osu_beatmap(path))
+            self.assertEqual([e["sounds"] for e in after],
+                             [["normal"], ["normal", "clap"]])
+
+    def test_a_moved_sound_refuses_the_whole_apply(self):
+        from overtone import apply_proposals
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:"])
+            before = path.read_bytes()
+            units = [self._unit(0, "circle", None, 1200.0, "drum", 8)]
+            with self.assertRaises(ValueError):
+                apply_proposals(path, units, preview=True)
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_a_copy_leaves_the_source_untouched(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:"])
+            before = path.read_bytes()
+            dest = Path(tmp) / "map_hitsounded.osu"
+            units = [self._unit(0, "circle", None, 1000.0, "soft", 4)]
+            result = apply_proposals(path, units, dest=dest)
+            self.assertEqual(Path(result["dest"]), dest)
+            self.assertEqual(path.read_bytes(), before)
+            self.assertFalse(Path(str(dest) + ".bak").exists())
+            after = sound_events(overtone.read_osu_beatmap(dest))
+            self.assertEqual(after[0]["sounds"], ["normal", "finish"])
+            with self.assertRaises(ValueError):
+                apply_proposals(path, units, dest=dest)
+
+    def test_an_unknown_bank_is_refused(self):
+        from overtone import proposal_changes
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:"])
+            units = [self._unit(0, "circle", None, 1000.0, "brass", 8)]
+            with self.assertRaises(ValueError):
+                proposal_changes(beatmap, units)
+
+
 class HitsoundConsistencyTests(unittest.TestCase):
     """Phase 6, H3 map half: sounds breaking the map's own clap pattern."""
 

@@ -5382,6 +5382,108 @@ def copy_hitsounds(source: dict, target: dict, tolerance_ms: float = COPY_TOLERA
             "source_sounds": len(src), "source_unused": len(src) - len(used)}
 
 
+# -- H5: the decision onto the map --------------------------------------------
+
+#: Proposal banks to sample sets, as the mapper writes them.
+BANK_SETS = {"normal": 1, "soft": 2, "drum": 3}
+
+
+def proposal_changes(beatmap: dict, units: list[dict], accept=None,
+                     tolerance_ms: float = COPY_TOLERANCE_MS) -> dict:
+    """A decision's proposals as P-2 field changes (H5, engine half).
+
+    Each unit names ``object``, ``part`` and ``edge`` (the CLI's proposal
+    shape) with ``proposal`` carrying ``bank`` and ``bits``. The bank becomes
+    the sample sets, the bits the additions — keeping bit 0 as H1 does — and
+    slider edges group per object, untouched edges keeping what they play.
+    Volume, index and custom files are never touched: H4 proposes no values
+    for them, and inventing some would be guessing. ``accept`` is a set of
+    ``(object, part, edge)`` to take, or everything when None: refusing is
+    the editor's job, this only counts. A unit whose sound moved since the
+    proposal (past ``tolerance_ms``) or names no sound refuses the whole
+    apply with its times, because half a stale decision is a corruption, not
+    a subset. Read only; returns the P-2 ``changes`` with counts.
+    """
+    events = {(e["object"], e["part"], e["edge"]): e for e in sound_events(beatmap)}
+    wanted: dict = {}
+    stale: list[float] = []
+    for unit in units or []:
+        key = (unit.get("object"), unit.get("part"), unit.get("edge"))
+        if accept is not None and key not in accept:
+            continue
+        event = events.get(key)
+        if event is None or abs(float(event["time"]) - float(unit.get("time_ms", 0.0))) > tolerance_ms:
+            stale.append(round(float(unit.get("time_ms", 0.0)), 1))
+            continue
+        proposal = unit.get("proposal") or {}
+        bank = proposal.get("bank")
+        if bank not in BANK_SETS:
+            raise ValueError(f"Unknown proposal bank {bank!r}.")
+        wanted[key] = (event, BANK_SETS[bank], int(proposal.get("bits", 0)) & 14)
+    if stale:
+        raise ValueError(f"{len(stale)} proposed sounds moved since the decision "
+                         f"(first at {stale[0]} ms): re-run it on this map.")
+    by_object: dict[int, list] = {}
+    for (n, _part, _edge), (event, bank_set, bits) in wanted.items():
+        by_object.setdefault(n, []).append((event, bank_set, bits))
+    edge_points: dict[int, list] = {}
+    for e in events.values():
+        if e["part"] in ("head", "repeat", "tail"):
+            edge_points.setdefault(e["object"], []).append(e)
+    changes: dict[int, dict] = {}
+    for n, items in by_object.items():
+        if len(items) == 1 and items[0][0]["part"] not in ("head", "repeat", "tail"):
+            event, bank_set, bits = items[0]
+            changes[n] = {"bits": (event["bits"] & 1) | bits,
+                          "sample": {"normal_set": bank_set, "addition_set": bank_set}}
+            continue
+        edges = []
+        for e in sorted(edge_points.get(n, []), key=lambda e: e["edge"] or 0):
+            edge = {"bits": e["bits"] & 15, "normal_set": e["raw"]["normal_set"],
+                    "addition_set": e["raw"]["addition_set"]}
+            for event, bank_set, bits in items:
+                if event["edge"] == e["edge"]:
+                    edge = {"bits": (e["bits"] & 1) | bits,
+                            "normal_set": bank_set, "addition_set": bank_set}
+            edges.append(edge)
+        changes[n] = {"edges": edges}
+    return {"changes": changes, "units": len(units or []), "accepted": len(wanted)}
+
+
+def preview_proposals(beatmap: dict, units: list[dict], accept=None) -> dict:
+    """What applying would change, without touching anything: the P-2 change
+    on a copy, counted. Read only."""
+    import copy
+    result = proposal_changes(beatmap, units, accept)
+    changed = set_object_hitsounds(copy.deepcopy(beatmap), result["changes"])["changed"]
+    return {**result, "would_change": len(changed)}
+
+
+def apply_proposals(src_path: str | os.PathLike[str], units: list[dict], accept=None,
+                    dest: str | os.PathLike[str] | None = None, preview: bool = False) -> dict:
+    """A decision onto a file: preview, or write through P-2 (H5, engine half).
+
+    ``dest`` None writes over the original with inject's backups; given, it
+    must not exist, and the source's bytes are copied there first while the
+    source stays untouched (no backup is made of a file that did not exist
+    before). ``preview`` counts and writes nothing. Volume, index and custom
+    files keep playing what they played.
+    """
+    src = Path(src_path)
+    beatmap = read_osu_beatmap(src)
+    if preview:
+        return {**preview_proposals(beatmap, units, accept), "written": False, "backup": None,
+                "dest": None}
+    changes = proposal_changes(beatmap, units, accept)["changes"]
+    if dest is None:
+        return {**write_object_hitsounds(src, changes), "dest": None}
+    target = Path(dest)
+    if target.exists():
+        raise ValueError(f"{target.name} already exists: remove it or pick another copy.")
+    target.write_bytes(src.read_bytes())
+    return {**write_object_hitsounds(target, changes, backup=False), "dest": str(target)}
+
+
 # -- P-3: which sample each sound plays --------------------------------------
 
 #: Overtone's own samples (assets/samples.py makes them): what plays where a

@@ -137,11 +137,15 @@ alternatives and the terms behind it. Exposed as `overtone-cli hitsound <audio> 
   other, so the number is not "accuracy". It is "better than a rule", and both samples
   clear it.
 
-### H5 · Editor and export (needs H4, P-2, P-3, P-7)
+### H5 · Editor and export (needs H4, P-2, P-3, P-7) — engine half done 2026-09-25
 
 Accept, reject or change each proposal, per object or per section; volume and sample index;
 undo; audition every change. Export through P-2 with a preview, backups, and optionally a
-copy (`<name>_hitsounded.osu`) instead of the original.
+copy (`<name>_hitsounded.osu`) instead of the original. The engine half
+(`proposal_changes`, `preview_proposals`, `apply_proposals`) maps bank and additions
+onto P-2 field changes — volume, index and custom files untouched, a moved sound
+refusing the whole apply — with preview, in-place backup writes and must-not-exist
+copies. The editor surface (accept/reject UI, undo, audition) is still to build.
 
 ### H6 · After it works
 

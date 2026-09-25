@@ -16,6 +16,31 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Hitsounds H5 engine half: the decision onto the map
+
+### Changed
+
+- **`proposal_changes` / `preview_proposals` / `apply_proposals`**: a decision's
+  units as P-2 field changes — bank to sample sets, bits to additions keeping bit 0
+  as H1 does, slider edges grouped with untouched edges keeping what they play.
+  Volume, index and custom files are never touched (H4 proposes no values); a unit
+  whose sound moved past 5 ms refuses the whole apply; preview counts on a copy;
+  in-place writes keep inject's backups; copies require a must-not-exist dest and
+  leave the source byte-identical.
+
+### Measured
+
+```
+9 real songs, CLI decisions   every decided unit resolves exactly as proposed:
+  applied to copies           5,856/5,856; 0 lines outside [HitObjects] moved;
+                              0 volume/index changes; 15.4 s a song, CLI included
+Python unittest               403 -> 409, all pass
+benchmark.py                  24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Hitsounds H4e: better than a rule, twice
 
 ### Changed

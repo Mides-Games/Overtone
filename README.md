@@ -166,7 +166,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Timing suggestions | ✅ | |
 | Apply a suggestion to the `.osu` | 📋 | P9 |
 | Hitsound consistency | 🟡 | In the mod report: claps that break the map's own pattern, finishes and claps over silence. Missing sample files are not reported, by measurement: osu! plays the skin's there, as 78 % of local maps intend |
-| Library health check across a Songs folder | 📋 | P21 |
+| Library health check across a Songs folder | 🟡 | Engine only: every map's red lines graded against its own audio where the map plays, kept in the library index, resumable; no page yet (P21) |
 
 ### Audio analysis
 

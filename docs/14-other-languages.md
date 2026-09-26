@@ -67,6 +67,12 @@ Songs folder (25,171 maps): a warm full scan in 13-18 s, a rescan in about 1 s, 
 5-65 ms, and same-audio in 3-5 ms against the walk's 1.0-1.5 s. The first read of the
 folder took 437 s, once, unexplained (`timeline.md`). The library health check is next.
 
+**Library focus (2026-09-26).** The first scan's cost is the first open of each `.osu`
+(about 10 ms each, whatever its size), now overlapped four at a time; progress, failures
+and a damaged index are reported as they are; a letter alone lists without ranking. The
+library health check's engine is in: schema 2 adds its `health` table, a version 1 index
+gains it on open. Numbers in `timeline.md`.
+
 ### 2. TypeScript: the web shell, type-checked against the bridge
 
 **What it adds.** `app/app.js` is 2,588 lines calling a bridge whose replies are plain

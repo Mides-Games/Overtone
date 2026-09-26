@@ -17,6 +17,175 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · The Library, measured: scans that say what they did, and the health check's engine
+
+### Changed
+
+- **A first scan opens four files at a time.** On `C:\osu!\Songs` (4,802 folders, 25,174
+  `.osu`, read only) the first scan took 263 s and the next one 17 s: the difference is the
+  first open of each `.osu`, about 10 ms whatever its size (small hitsound samples never
+  opened: 10.05 ms each; once read, 0.24 ms). Those waits overlap, so four reader threads
+  list and read folders ahead, while parsing and every database write stay on the scanning
+  thread. It builds the same index, row for row, and warm it is no slower.
+- **Progress counts folders that are in the index**: "0 / 4802" as soon as the Songs
+  folder is listed, then at most 0.25 s apart, and the last folder only once it is
+  written. When rows of maps that are gone are about to be deleted, the page says how many.
+  Commits go by time (1 s) instead of every 100 folders.
+- **A search of one letter lists the maps in the index's order**: ranking every map a
+  letter matches was most of such a search's time. Two letters and more rank as before.
+- **The library health check, engine half** (Phase 21). `Library.health()` grades each
+  indexed map's red lines against its own audio with the reference timing card's grading
+  (`grade_reference_timing`), on the attacks between the map's first and last objects,
+  where it is played. The attacks are found once per audio file, by the Rust sidecar when
+  it is found (`overtone-cli analyze --full`, read even when the engine refuses a grid,
+  through the new `overtone_rust.attacks`), else by v3's detector; the difficulties of a
+  set that share their red lines and played range are graded once. Each verdict (check,
+  error, no_audio, unsure, no_timing, ok) goes into the index's new `health` table with the
+  sizes and times of the `.osu` and the audio it was made from and the grading's version,
+  committed per audio file: a run cut short by a limit or a stop loses nothing, and a
+  rerun grades only what changed. `health_report()` lists them worst first, by the largest
+  disagreement among a map's flagged lines, each line with the evidence the reference card
+  shows. There is no page for it, and its flags are not yet a list to show (Measured).
+- **The Songs browser says what happened** (to be seen in the browser): the damaged index
+  and that Rescan rebuilds it, and that it did; "no beatmaps in {folder}" for a folder
+  scanned empty; how many maps a scan is removing; a Songs folder that is no longer there;
+  and how many files could not be read, named in the line's tooltip. English and Spanish.
+
+### Fixed
+
+- **A folder the scan could not list lost its maps, reported removed.** It was skipped,
+  and then every map the index had for it was deleted as gone, with no failure named: in
+  a probe with one set denied by ACL, 2 maps removed and 0 failed. Its rows now stay and
+  the folder is named. A `.osu` another program holds open keeps its row too: it was
+  counted both failed and removed, and left search until the next scan, which now reads it
+  again.
+- **Empty `.osu` files were difficulties with no name.** The local folder holds nine 0-byte
+  `.osu` files; they were indexed as blank maps, and one set held nothing else. A file with
+  none of [General], [Metadata], [TimingPoints] and [HitObjects] is now a named failure.
+- **A damaged index was a dead end.** Junk, a truncated file or overwritten pages made
+  every library call fail, a scan included, and nothing on the page led out but deleting
+  the file by hand. A scan now rebuilds it, since the Songs folder is the truth; only
+  SQLITE_CORRUPT and SQLITE_NOTADB count as damage, so a busy index is still waited on and
+  one from a newer schema still refused.
+- **Progress was one folder ahead of the work** at every report, and 100 % came before
+  the removals: 6.05 s of a 6.31 s scan when an index moved to another folder.
+- **The page** went blank when the index could not be read, and said "Not indexed yet" of
+  a folder just scanned and found empty.
+
+### Hardening
+
+- A search reply that lands after a newer one is dropped: one-letter searches took up to
+  331 ms under load, past the page's 120 ms typing pause.
+- Schema 2. `MIGRATIONS[2]` is `library.sql`'s health table as it stands, frozen; a test
+  holds an index migrated from version 1 to a new one, and a copy of the full local index
+  migrated on open with its 25,165 maps.
+
+### Measured
+
+```
+C:\osu!\Songs, read only (4,802 folders, 25,174 .osu, 5,232 audio files); every index in
+a temp folder. Other agents' audio jobs shared the machine throughout (CPU at 100 % in
+the later runs), so timings moved by up to 3x between runs: only runs interleaved in one
+session are compared, and CPU time is given where it could be read.
+first scan, first read of the files   263.2 s (18 folders/s, 96 .osu/s), 255.4 s of it
+                                      reading headers (437 s on 2026-09-24)
+full scan, warm, before               17.1 s (282 folders/s, 1,477 .osu/s)
+full scan, warm, interleaved rounds   before 23.6 / 21.1 / 52.4 s, after 14.2 / 21.9 /
+                                      28.8 s; CPU time 21.5 s before, 22.1 s after
+first read, the cold path             Songs was warm after the first scan, so fresh copies
+                                      of 1,211 .osu in 300 folders: 29.0, 28.5 s -> 7.1,
+                                      7.7 s (in both orders); small cold files 10.05 ms
+                                      each alone, 2.95 ms on 4 threads, 3.25 ms on 8
+first scan of Songs, after            not measured; from the copies' ratio, about 65 s
+peak working set                      +6 to +31 MB over the process's own ~100 MB
+rescan, nothing changed               1.29-1.38 s; interleaved 1.17-4.14 s before,
+                                      0.98-1.57 s after
+rescan after changes, full size       10 edited + 10 new + 10 deleted maps 2.19 s, 100
+  (simulated on the index)            each 2.63 s, 1,000 each 4.66 s; counts exact
+rescan after real edits               74 copied folders: 5 edited, 3 deleted, a folder
+                                      deleted, one renamed, two added: counts exact, 0.85 s
+progress, before                      49 reports, each one folder ahead of the work; gaps
+                                      of 6.5 s (median) to 10.4 s on the first scan
+progress, after                       69 reports on a warm full scan, 0.32 s apart at most;
+                                      "removing 25,165" 5.6 s before the end, then done
+search, before, 670 queries x 3       p50 10.6 ms, p95 95.3, max 331; one letter p50 72,
+                                      p95 157; 3-8 ms of each is opening the database
+search, interleaved, 1,755 queries    same maps returned for every one; one letter p50 58.3
+                                      -> 14.6 ms, p95 186 -> 57; every prefix of typed
+                                      artist and title p95 78.6 -> 53.5, max 366 -> 156
+same-audio                            first 33-646 ms (hashing), then 5.8-11.5 ms; the walk
+                                      3.2-4.0 s; the same matches for 3 of 3
+edge cases                            empty and missing Songs folders end cleanly; a
+                                      denied folder 2 removed / 0 failed -> 0 / 1, maps
+                                      kept; a held file kept and read next time; empty,
+                                      junk, UTF-16 and 16 MB .osu named; junk, truncated
+                                      and overwritten indexes rebuilt by the next scan
+long paths                            the longest .osu path here is 249 characters; under
+                                      osu!'s default %LOCALAPPDATA%\osu!\Songs, 178 of
+                                      25,174 would pass 259, and long paths are off on
+                                      this machine: they are named failures, not fixed
+health check, 30 random mapsets       155 maps, 54 audio files, CPU held at 100 % by other
+  (seed 21), both engines             jobs: the Rust sidecar 275.8 s, 5.11 s per audio
+                                      file (median 4.47, max 20.3), 1.78 s per map; v3
+                                      564.1 s, 10.45 s per audio file (median 7.70, max
+                                      77.1), 3.64 s per map. The same verdict for 155 of
+                                      155 maps, flag sizes within 0.01 ms
+                                      a rerun with nothing changed: 0 graded, 0.06 s
+                                      75 maps flagged in 17 of 30 sets, 6 unsure, 74 ok
+a whole Songs folder                  5,236 audio files: about 7.4 h with the sidecar at
+                                      that pace, 15 h with v3; not measured
+are the flags real?                   an independent reference: where each map's own
+                                      objects fall against the attacks, quarter by quarter
+                                      of the map. Of 104 maps it can judge, 60 move by
+                                      8 ms or more and 44 stay within 4 ms. Graded where
+                                      each map is played, the flags catch 23 of the 60
+                                      and hit 26 of the 44; graded on the whole audio file,
+                                      as the reference card does, 18 and 27
+                                      the five largest flags read 54-694 ms; those maps'
+                                      objects show 3-14 ms: two steady, three moving by
+                                      9-14 ms. The sizes come from fits anchored far from
+                                      what the map plays (a red line 68 s before its
+                                      first object), 131 gimmick lines of a mania map,
+                                      spans of 11-19 attacks, and grids that explain 41 %
+                                      of the attacks
+                                      one small flag is plainly real: sajou no hana -
+                                      Evergreen's objects walk 20 ms across 215 s
+index migration                       a copy of the full local index, schema 1 with 25,165
+                                      maps, opened as schema 2 in 22 ms, every map kept
+Python unittest     +14 tests (528 -> 542 on its own base), all pass (the Rust health test ran with OVERTONE_CLI set)
+facts
+```
+
+### Rejected / tried and dropped
+
+- **Parsing on the reader threads.** The same wall time as reading only, and more CPU
+  (23.4-31.5 s against 22.1-28.0 s over three interleaved rounds): parsing stays on the
+  scanning thread, where it does not contend.
+- **An FTS5 prefix index** (`prefix='1 2'`). Same rows, one-letter queries twice as fast
+  (124 -> 63 ms median over common letters), but a schema migration that rebuilds the
+  full-text index (3.6 s over 25,174 maps) and 18 % more file (25.8 -> 30.5 MB). The cost
+  was ranking, not matching (matching "s" took 15 ms of 136), so not ranking one letter
+  does more with no migration.
+- **Ranking and limiting before the joins** (a subquery). The same rows, and not faster.
+- **Grading every attack of the audio file**, as the reference card does for the song it
+  has open. Pack and practice maps play part of a long file, and the songs around them
+  moved the fit: a synthetic pack read 723 ms of drift, a local one 1,019 ms. Graded
+  between its first and last objects the synthetic map is clean, and over the 30 mapsets
+  the flags matched the reference slightly better (above). It does not fix a red line
+  placed long before the part a map plays: the fit is anchored there, with nothing to hold
+  it, and the local pack map still reads 694 ms.
+
+### Open items
+
+- **What the health check should call wrong** (a decision). The reference grading was
+  built for one song a mapper is checking, and across a library its bar (5 ms and two
+  standard errors) flags steady maps as often as moving ones. The engine keeps every
+  verdict with its evidence, and `HEALTH_GRADER` regrades everything when the rule
+  changes. Two ways on: grade what the map plays, its objects against the attacks (the
+  reference used above, which no ear has checked either); or keep the reference grading
+  behind a floor in ms and a minimum of attacks per span, with gimmick maps (lines under a
+  beat long) set apart. Either wants a hand-checked sample before a page lists maps.
+
 ## v4.0.0-dev — 2026-09-26 · The CLI writes UTF-8 when its output is redirected
 
 Redirected to a file or a pipe, Windows hands Python its ANSI code page (cp1252 here), not

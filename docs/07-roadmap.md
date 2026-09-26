@@ -47,8 +47,10 @@ point, section volumes, SV normaliser, re-snap, snap divisors, audio file check)
    clap-mismatch rule, and instrument lanes on the timeline. At the mappers' claps of 11
    real songs the templates read snare or clap at a median 0.138 (timeline, H3 audio
    half), so lanes drawn from them would show a precision they do not have.
-2. **Library focus** (Phase 19) — scan, rescan and search measured on a full Songs folder,
-   then the library health check (Phase 21).
+2. **Library focus** (Phase 19) — scan, rescan and search measured and fixed on
+   2026-09-26; the page's states wait for the browser harness. Next, the library health
+   check's page (Phase 21): its engine grades and caches every map, and what it should
+   list waits on a decision (timeline, 2026-09-26).
 3. **The Audio section** (Phase 19), and phrase starts on the phrase's own bar.
 4. **Other languages** (Phase 24) — TypeScript (needs Node.js) and a C# lazer gate (needs
    the .NET SDK). Neither is installed; ask before installing.
@@ -495,7 +497,7 @@ Report, Export, History, Settings); Audio is the one left.
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Session model | one loaded song shared by every section through events | med | **high** | shell | no | no | **P1** | **done** — one song shared by every section |
 | Library | home: open audio or a beatmap folder, recents, osu! Songs browser with search | med | **high** | P5 reader | no | no | **P1** | **done** — recents, folder import, Songs browser on a SQLite + FTS5 index (Phase 24): search as you type, rescan reads only what changed |
-| Library focus | leave the Library category working well: scan/rescan with truthful folder progress, search fast on a full Songs folder, clear empty and error states, and the health check (Phase 21) listing maps whose timing disagrees with their audio | med | high | Library, index, compare | no | no | P1 | todo — measured on the local Songs folder (scan/rescan/search times) before it ships |
+| Library focus | leave the Library category working well: scan/rescan with truthful folder progress, search fast on a full Songs folder, clear empty and error states, and the health check (Phase 21) listing maps whose timing disagrees with their audio | med | high | Library, index, compare | no | no | P1 | partial — measured on the local Songs folder (4,802 folders, 25,174 maps) and fixed on 2026-09-26: the first scan (263 s) waits on first opens, now 4 at a time (1,211 fresh maps 29.0 → 7.1 s); progress counts folders in the index from 0, 0.25 s apart at most, and says what it removes; unreadable folders and files keep their rows and are named; a damaged index is rebuilt; one-letter search p50 58 → 15 ms; the page says each state (to see in the browser); the health check has its engine half, not its page |
 | Timing | tempo map, points, editor, verdict | — | — | — | no | no | **P1** | **done** |
 | Map check | compare, alignment, validation, density and suggestions for the loaded difficulty | med | **high** | P5, P7 | no | no | **P1** | **done** — own section: compare, alignment, density, snap audit, suggestions |
 | Hitsounds | instrument lanes, per-object sound, exported hitsound difficulty | high | **high** | P6 | no | no | P1 | partial — the section is in: where each addition falls, every sound heard one by one (H2), the Propose card (H5) and the hitsound difficulty in Export; instrument lanes wait until the templates hold on real audio |
@@ -618,7 +620,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Video offset | match the video's own audio track to the song | med | low | decode | no | no | P3 | todo |
 | Other games | export timing to Quaver (`.qua`) and StepMania (`.sm`/`.ssc`) | low | med | writer | no | no | P2 | todo |
 | Import other formats | read Quaver / StepMania timing to compare against | low | low | reader | no | no | P3 | todo |
-| Library health check | scan a Songs folder and list maps whose timing disagrees with their audio | med | med | batch, compare, library index | no | no | P2 | todo — the index lists the maps |
+| Library health check | scan a Songs folder and list maps whose timing disagrees with their audio | med | med | batch, compare, library index | no | no | P2 | partial — engine half (2026-09-26): every map graded by the reference grading where it plays, kept in the index, resumable, reruns grade only what changed; 5.1 s per audio file with the Rust sidecar, about 7 h for 5,236 local audio files (estimate). Its flags do not yet separate maps that move from steady ones (23 of 60 caught, 26 of 44 steady flagged), so the page waits on a decision about the rule and a hand-checked sample |
 | Sample kit analysis | classify a skin's samples and suggest a mapping | med | low | P6 | no | no | P3 | todo |
 
 ---
@@ -671,7 +673,7 @@ project's rules (offline, one-line local gates), and how each stays in step with
 
 | Language | Feature | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
-| **SQL** (SQLite + FTS5) | library index of the Songs folder: search, same-audio lookup, library health, ground for fingerprint reuse | low | **high** | Python's `sqlite3` (installed) | no | no | **P1** | **done** — `overtone_library.py` + `library.sql`: search, same-audio in 3-5 ms; library health next |
+| **SQL** (SQLite + FTS5) | library index of the Songs folder: search, same-audio lookup, library health, ground for fingerprint reuse | low | **high** | Python's `sqlite3` (installed) | no | no | **P1** | **done** — `overtone_library.py` + `library.sql` (schema 2): search p50 10 ms (one letter 15 ms), same-audio 6-12 ms once hashed, the library health table |
 | **TypeScript** | the web shell type-checked against the bridge (`@ts-check` + JSDoc, `tsc --noEmit`), payload types generated from Python | med | high | Node.js (dev only, not installed) | no | no | P1 | todo — after Node |
 | **C#** | osu!lazer compatibility gate: lazer's own `osu.Game` decoder reads every `.osu` Overtone writes | med | high | .NET 8 SDK (dev only, not installed) | no | no | P2 | todo |
 | **WGSL** (WebGPU) | spectrogram layer computed on the GPU | med | low-med | WebView2 WebGPU | no | **yes** | P3 | todo |

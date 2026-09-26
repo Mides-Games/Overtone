@@ -19,6 +19,7 @@ to the report so it can be replayed. Offline; writes only to a temp folder.
 from __future__ import annotations
 
 import argparse
+import copy
 import faulthandler
 import random
 import sys
@@ -144,11 +145,20 @@ def mutate(text: str, rng: random.Random) -> bytes:
     return data
 
 
+def _with_red_line(beatmap: dict) -> dict:
+    """A copy with one red line added, as applying a suggestion does: the
+    others keep reading the map as it was read."""
+    work = copy.deepcopy(beatmap)
+    ta.add_red_line(work, 1750.0, 150.0)
+    return work
+
+
 def consumers(beatmap: dict, folder: Path) -> None:
     """Every function that takes a parsed beatmap; ValueError is a fair refusal."""
     times = np.linspace(0.5, 8.0, 40)
     weights = np.ones_like(times)
     calls = [
+        lambda: ta.beatmap_text(_with_red_line(beatmap)),
         lambda: ta.sound_events(beatmap),
         lambda: ta.hitsound_report(beatmap),
         lambda: ta.hitsound_consistency(beatmap),

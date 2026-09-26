@@ -72,6 +72,8 @@ from overtone import (
     analysis_report,
     density_report,
     suggest_missing_lines,
+    add_red_line,
+    beatmap_text,
     mapset_report,
     main,
 )
@@ -3864,6 +3866,126 @@ class SuggestTests(unittest.TestCase):
         self.assertEqual(len(suggest_missing_lines(analysis, beatmap, tolerance_beats=0.5)), 1)
         with self.assertRaises(ValueError):
             suggest_missing_lines(analysis, beatmap, tolerance_beats=0)
+
+    def test_the_meter_rides_along_when_proven(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0),
+             TimingPoint(20500.0, 152.0, 0.8, 50, meter=3, meter_known=True),
+             TimingPoint(40500.0, 150.0, 0.8, 100, meter=3)])
+        found = suggest_missing_lines(analysis, _reds_map([(500.0, 150.0)]))
+        self.assertEqual([(s["index"], s["meter"]) for s in found], [(1, 3), (2, None)])
+
+
+class AddRedLineTests(unittest.TestCase):
+    """One suggested red line into a map (Phase 9): that line, a green where
+    the map would otherwise play differently, and nothing else."""
+
+    #: CRLF like the editor writes, one bare-LF line, a BOM: every one of
+    #: them must come back as it was.
+    LINES = ["osu file format v14", "", "[General]", "AudioFilename: song.mp3",
+             "SampleSet: Soft", "", "[Difficulty]", "SliderMultiplier:1.4", "",
+             "[TimingPoints]", "1000,500,3,2,1,70,1,0", "5000,-125,3,2,1,60,0,1",
+             "9000,-100,3,2,3,40,0,0", "20000,400,4,2,1,70,1,0", "", "",
+             "[HitObjects]", "256,192,1000,1,0,0:0:0:0:", "256,192,6000,2,0,B|300:192,1,140",
+             "256,192,8000,1,0,0:0:0:0:", "256,192,8500,2,0,B|300:192,2,70",
+             "256,192,21000,2,0,B|300:192,1,140"]
+
+    def _read(self, tmp: str) -> tuple[Path, dict]:
+        path = Path(tmp) / "map.osu"
+        text = "\r\n".join(self.LINES[:4]) + "\n" + "\r\n".join(self.LINES[4:]) + "\r\n"
+        path.write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))
+        return path, read_osu_beatmap(path)
+
+    def _added(self, before: bytes, after: bytes) -> list[bytes]:
+        """The lines ``after`` holds that ``before`` does not, with the rest
+        of ``after`` required to be ``before`` byte for byte, in order."""
+        old, new = before.splitlines(keepends=True), after.splitlines(keepends=True)
+        extra, n = [], 0
+        for line in new:
+            if n < len(old) and line == old[n]:
+                n += 1
+            else:
+                extra.append(line)
+        self.assertEqual(n, len(old), "a line of the map changed or went missing")
+        return extra
+
+    def test_one_red_line_the_green_it_needs_and_nothing_else(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._read(tmp)
+            before = path.read_bytes()
+            summary = add_red_line(beatmap, 7000.0, 150.0)
+            write_osu_beatmap(path, beatmap, op="suggestion")
+            after = path.read_bytes()
+        # The state in force at 7000 ms is the green at 5000: soft, index 1,
+        # 60 %, kiai on, and 0.8x the slider velocity, which the red resets.
+        self.assertEqual(self._added(before, after),
+                         [b"7000,400.000000000000,3,2,1,60,1,1\r\n", b"7000,-125,3,2,1,60,0,1\r\n"])
+        self.assertTrue(after.startswith(b"\xef\xbb\xbf"))
+        self.assertEqual((summary["greens_added"], summary["meter"], summary["offset_ms"]), (1, 3, 7000.0))
+        self.assertEqual([round(o) for o, _b in beatmap["timing"]["reds"]], [1000, 7000, 20000])
+
+    def test_a_green_at_its_own_time_follows_it_and_needs_no_twin(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._read(tmp)
+            before = path.read_bytes()
+            summary = add_red_line(beatmap, 9000.0, 150.0)
+            write_osu_beatmap(path, beatmap, backup=False)
+            after = path.read_bytes()
+        self.assertEqual(self._added(before, after), [b"9000,400.000000000000,3,2,3,40,1,0\r\n"])
+        self.assertLess(after.index(b"9000,400."), after.index(b"9000,-100,"))
+        self.assertEqual(summary["greens_added"], 0)
+
+    def test_before_the_first_red_it_carries_what_the_intro_played(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._read(tmp)
+            before = path.read_bytes()
+            summary = add_red_line(beatmap, 500.0, 150.0)
+            write_osu_beatmap(path, beatmap, backup=False)
+            added = self._added(before, path.read_bytes())
+        self.assertEqual(added, [b"500,400.000000000000,3,2,1,70,1,0\r\n"])
+        self.assertEqual((summary["objects"], summary["sliders"]), (0, 0))
+        self.assertIsNone(summary["max_end_shift_ms"])
+
+    def test_slider_ends_under_the_new_line_are_counted_and_measured(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._read(tmp)
+            summary = add_red_line(beatmap, 7000.0, 150.0)
+        # 8000 and 8500 fall under it; 21000 follows the red at 20000. The
+        # slider at 8500 (70 px, 2 slides, 0.8x) takes 625 ms at 500 ms a
+        # beat and 500 ms at 400: its end moves 125 ms earlier.
+        self.assertEqual((summary["objects"], summary["sliders"], summary["slider_ends_moved"]),
+                         (2, 1, 1))
+        self.assertEqual(summary["max_end_shift_ms"], -125.0)
+
+    def test_the_meter_given_or_the_maps_own(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._read(tmp)
+            self.assertEqual(add_red_line(beatmap, 22000.0, 150.0)["meter"], 4)
+            self.assertEqual(add_red_line(beatmap, 30000.0, 150.0, meter=7)["row"].split(",")[2], "7")
+            for bad in (0, 17, 2.5, True):
+                with self.assertRaises(ValueError):
+                    add_red_line(beatmap, 40000.0, 150.0, meter=bad)
+
+    def test_decimals_as_inject_writes_them(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._read(tmp)
+            summary = add_red_line(beatmap, 7000.256, 150.0, decimals=2)
+        self.assertTrue(summary["row"].startswith("7000.26,"))
+        self.assertEqual(summary["offset_ms"], 7000.26)
+
+    def test_refusals_leave_the_map_as_it_was(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._read(tmp)
+            text = beatmap_text(beatmap)
+            for offset, bpm in ((1000.4, 150.0), (float("nan"), 150.0), (7000.0, 0.0),
+                                (7000.0, float("inf")), ("soon", 150.0)):
+                with self.assertRaises(ValueError):
+                    add_red_line(beatmap, offset, bpm)
+            self.assertEqual(beatmap_text(beatmap), text)
+            path.write_text("osu file format v14\n\n[General]\nAudioFilename: a.mp3\n",
+                            encoding="utf-8")
+            with self.assertRaises(ValueError):
+                add_red_line(read_osu_beatmap(path), 7000.0, 150.0)
 
 
 def _mapset_osu(version: str, audio: str = "song.mp3", reds=((1000, 400.0, 4), (30000, 300.0, 4)),

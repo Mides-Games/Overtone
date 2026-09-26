@@ -5829,7 +5829,8 @@ def suggest_missing_lines(analysis: Analysis, beatmap: dict,
     hears a change the map does not have. Proposals, never auto-fixes — Phase 7
     consents first. Each is ``{"index", "offset_ms", "bpm", "nearest_ms"}``
     with plain JSON types; a map with no reds proposes every section past the
-    first, which is exactly timing-from-scratch assistance.
+    first, which is exactly timing-from-scratch assistance. ``meter`` is the
+    bar the detector proved for that section, or None when it proved none.
     """
     if tolerance_beats <= 0:
         raise ValueError("Tolerance must be positive.")
@@ -5850,8 +5851,157 @@ def suggest_missing_lines(analysis: Analysis, beatmap: dict,
             suggestions.append({"index": n, "offset_ms": point.offset_ms,
                                 "bpm": point.bpm,
                                 # Infinity is not JSON: no red line reads as null.
-                                "nearest_ms": None if nearest == float("inf") else nearest})
+                                "nearest_ms": None if nearest == float("inf") else nearest,
+                                "meter": int(point.meter) if point.meter_known else None})
     return suggestions
+
+
+#: A red line closer than this to another is the same line written twice.
+RED_LINE_CLASH_MS = 1.0
+
+
+def add_red_line(beatmap: dict, offset_ms: float, bpm: float, meter: int | None = None,
+                 decimals: int = 0) -> dict:
+    """One red line into [TimingPoints], in place (Phase 9: apply a suggestion).
+
+    A suggestion adds a line; it does not rewrite the map's timing the way
+    inject does, so every other line keeps its bytes and its place. The new
+    line carries the sample set, index, volume and kiai the map plays at its
+    time, and goes before any green at that time (the order osu! reads).
+    A red line resets slider velocity, so where the map would then play
+    differently — a velocity other than 1.0 in force there — a green at the
+    same time restores what it played. The meter is the one the detector
+    proved there, else the map's own at that time: a bar nobody measured is
+    not invented. Offsets are whole milliseconds unless ``decimals`` says
+    otherwise, as inject writes them.
+
+    What it does change is the beat that objects follow from its time to the
+    next red line, which is the point; sliders there keep their length in
+    beats, so their ends move with the tempo, and the summary says by how
+    much. Returns ``row``, ``offset_ms`` (as written), ``bpm``, ``meter``,
+    ``greens_added``, ``objects`` (under the new line), ``sliders`` (of
+    those), ``slider_ends_moved`` (by half a millisecond or more) and
+    ``max_end_shift_ms`` (signed, None without sliders). Plain JSON types.
+    """
+    section = next((s for s in beatmap.get("sections", []) if s.get("name") == "TimingPoints"),
+                   None)
+    if section is None:
+        raise ValueError("No [TimingPoints] section in this beatmap.")
+    try:
+        offset_ms, bpm = float(offset_ms), float(bpm)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("A red line needs a time and a BPM.") from exc
+    if not (np.isfinite(offset_ms) and np.isfinite(bpm)) or bpm <= 0:
+        raise ValueError("A red line needs a finite time and a positive BPM.")
+    if meter is not None and (isinstance(meter, bool) or int(meter) != meter
+                              or int(meter) not in EDIT_METERS):
+        raise ValueError(f"A bar holds {EDIT_METERS.start} to {EDIT_METERS.stop - 1} beats.")
+    stamp = f"{offset_ms:.{int(decimals)}f}" if decimals > 0 else str(int(round(offset_ms)))
+    time_ms = float(stamp)
+
+    points: list[dict] = []
+    for order, line in enumerate(section["lines"]):
+        text = line.strip()
+        if text and not text.startswith("//") and (point := _timing_point_fields(text)) is not None:
+            point.update(order=order, line=order)
+            points.append(point)
+    reds = _ordered([q for q in points if q["red"]])
+    clash = next((q for q in reds if abs(q["time"] - time_ms) < RED_LINE_CLASH_MS), None)
+    if clash is not None:
+        raise ValueError(f"A red line already sits at {clash['time']:g} ms.")
+    if meter is None:
+        governing = [q for q in reds if q["time"] <= time_ms + 1e-6] or reds[:1]
+        meter = max(1, governing[-1]["meter"]) if governing else 4
+    state = _states_at_events(points, [time_ms])[0]
+    sample_set, sample_index, volume, kiai = (
+        (state.sample_set, state.sample_index, state.volume, state.kiai) if state is not None
+        else (0, 0, 100, False))
+    row = f"{stamp},{60000.0 / bpm:.12f},{int(meter)},{sample_set},{sample_index},{volume},1,{int(kiai)}"
+
+    before = _TimingCursor(beatmap)
+    # Before the first point at or after its time; after the last point when
+    # none is, so blank lines closing the section stay where they are.
+    at = next((q["line"] for q in points if q["time"] >= time_ms - 1e-6),
+              max((q["line"] for q in points), default=-1) + 1)
+    red = _timing_point_fields(row)
+    red.update(order=-1)
+    endings = section.get("endings")
+    aligned = endings is not None and len(endings) == len(section["lines"])
+    section["lines"].insert(at, row)
+    if aligned:
+        endings.insert(at, None)
+
+    # Wherever the map would now play differently, a green restores it.
+    events = sorted({q["time"] for q in points} | {time_ms})
+    wanted = _states_at_events(points, events)
+    added: list[dict] = []
+    for event, want in zip(events, wanted):
+        if event < time_ms - 1e-6 or want is None:
+            continue
+        have = _states_at_events(points + [red] + added, [event])[0]
+        if have is not None and have.same_as(want):
+            continue
+        governing = [q for q in _ordered(reds + [red]) if q["time"] <= event + 1e-6]
+        text = (stamp if abs(event - time_ms) <= 1e-6
+                else _point_time_text(section, event) or f"{event:g}")
+        green = (f"{text},{-100.0 / want.sv:.12g},{governing[-1]['meter']},{want.sample_set},"
+                 f"{want.sample_index},{want.volume},0,{int(want.kiai)}")
+        point = _timing_point_fields(green)
+        point.update(order=len(section["lines"]) + len(added))
+        added.append(point)
+        if abs(event - time_ms) <= 1e-6:
+            section["lines"].insert(at + 1, green)
+            if aligned:
+                endings.insert(at + 1, None)
+        else:
+            _insert_timing_line(section, green)
+
+    timing = [line for line in section["lines"]
+              if line.strip() and not line.strip().startswith("//")]
+    beatmap["timing"] = {
+        "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
+        "greens": [line for line in timing if not _is_red_line(line.strip())],
+    }
+
+    # The objects the new line times, up to the next red line, and how far
+    # the ends of the sliders among them move at the new beat length.
+    after = _TimingCursor(beatmap)
+    until = next((q["time"] for q in reds if q["time"] > time_ms + 1e-6), float("inf"))
+    try:
+        multiplier = float((beatmap.get("difficulty") or {}).get("SliderMultiplier", 1.4))
+    except (TypeError, ValueError):
+        multiplier = 1.4
+    if not np.isfinite(multiplier) or multiplier <= 0:
+        multiplier = 1.4
+
+    def end_of(obj: dict, cursor: _TimingCursor) -> float | None:
+        beat, play = cursor.at(float(obj["time"]))
+        sv = play.sv if play is not None else 1.0
+        length = float(obj.get("length", 0.0) or 0.0)
+        if not beat or sv <= 0 or length <= 0 or not np.isfinite(length):
+            return None
+        slides = max(1, _sample_int(obj.get("slides"), 1))
+        return float(obj["time"]) + length / (multiplier * 100.0 * sv) * beat * slides
+
+    under = []
+    for obj in beatmap.get("hitobjects", []):
+        try:
+            start = float(obj["time"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if np.isfinite(start) and time_ms - 1e-6 <= start < until - 1e-6:
+            under.append(obj)
+    shifts = []
+    for obj in under:
+        if obj.get("kind") == "slider":
+            old, new = end_of(obj, before), end_of(obj, after)
+            if old is not None and new is not None:
+                shifts.append(new - old)
+    worst = max(shifts, key=abs) if shifts else None
+    return {"row": row, "offset_ms": time_ms, "bpm": bpm, "meter": int(meter),
+            "greens_added": len(added), "objects": len(under), "sliders": len(shifts),
+            "slider_ends_moved": sum(1 for s in shifts if abs(s) >= 0.5),
+            "max_end_shift_ms": None if worst is None else round(worst, 1)}
 
 
 def _nearest_sorted(values: np.ndarray, target: float) -> float:

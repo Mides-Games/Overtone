@@ -20,7 +20,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 |---|---|
 | Timing engine (Python v3) | **works** — 24/24 corpus, median 0.0000 BPM / 0.16 ms, all gates green (every Python and Rust gate re-run 2026-09-26) |
 | Timing engine (Rust v4) | **at parity, in the app** — matches v3 attack for attack and red line for red line on 27/27, ~4x faster end to end (on Corpus B's real songs it writes v3's red lines on 13 of the 15 that v3 fits a grid to); Settings → Rust engine runs it through `overtone-cli`, and v3 takes over (with a note) where it has no answer. The same sidecar runs Structure (`structure`), Ramps (`ramps`) and the hitsound proposals (`hitsound`); `hitsound-evidence` prints each attack's classes and role from the command line |
-| App (web shell) | **usable** — ten sidebar sections: Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export, History, Settings. Analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject (one map or the whole mapset, with the diff), compare with a map, alignment, density, snap audit, re-snap, suggestions, mapset check, reference timing, assisted timing, evidence, ramps, offset lab, constant scroll, snap divisors, kiai / breaks / bookmarks / preview point / section volumes from the structure, audio swap, audio file check, write history with restore, mod report, folder import, recents, osu! Songs browser, EN/ES, dark and light |
+| App (web shell) | **usable** — ten sidebar sections: Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export, History, Settings. Analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject (one map or the whole mapset, with the diff), compare with a map, alignment, density, snap audit, re-snap, suggestions (each addable on its own), mapset check, reference timing, assisted timing, evidence, ramps, offset lab, constant scroll, snap divisors, kiai / breaks / bookmarks / preview point / section volumes from the structure, audio swap, audio file check, write history with restore, mod report, folder import, recents, osu! Songs browser, EN/ES, dark and light |
 | osu! files | **works** — full reader, byte-identical writer, atomic write + backup, every write logged and restorable; hitsound fields edited in place, nothing else moves (P-2) |
 | Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks; in the mod report, claps that break the map's own pattern and finishes or claps over silence (H3) |
 | Hitsound engine | **in the app** — the copier (H1), the Hitsounds section (H2), the consistency check (H3), and the decision engine in Rust (H4) behind the Propose card: tick by row or by bars, swap a proposal for one of its alternatives, set volume and sample index by hand, hear it all over the song as the write would make it, preview, write the file or a copy, undo (H5); a row's inspector says why each sound was proposed; the profile is chosen on the Propose card (Balanced, or Drum-focused, measured on its own style's maps). Instrument lanes and a sample bank are still to build |
@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **612** Python (418 engine + 194 web shell) · **270** Rust.
+Tests: **616** Python (418 engine + 198 web shell) · **270** Rust.
 
 ### What is pending, in order
 
@@ -411,7 +411,7 @@ Nothing here is promised. Each item is a hypothesis with a way to test it.
 | Learned structure | section labels from a small embedding | high | low-med | P2 | **yes** | opt | P3 | todo |
 | Full drum transcription | complete kit transcription | high | med | classifier | yes | opt | P3 | todo |
 | Timing suggestions | list red lines a map is missing | med | med | P7 | no | no | P2 | **done** — shown in the compare card |
-| Apply a suggestion | write one suggested red line into the `.osu`, with backup and consent | med | med | suggestions, writer | no | no | P2 | todo |
+| Apply a suggestion | write one suggested red line into the `.osu`, with backup and consent | med | med | suggestions, writer | no | no | P2 | **done** — Add beside each suggestion in Map check: that red line alone, carrying the sounds in force, a green where slider velocity needs one; the confirmation names the objects and slider ends it moves and warns at ×2/×4 the map's tempo; backed up, logged |
 | Waveform annotation | user notes pinned to timeline positions | low | low | P3 | no | no | P3 | todo |
 | Plugin API | third-party analysis stages | high | low | P0 rules | no | no | P3 | todo |
 | WASM engine | the core in a browser | med | low | P1 | no | no | P3 | todo |

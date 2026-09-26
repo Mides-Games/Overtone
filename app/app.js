@@ -36,6 +36,7 @@ const I18N = {
     hist_op_inject: "timing", hist_op_hitsounds: "hitsounds", hist_op_write: "write", hist_op_restore: "restore", hist_op_swap: "audio swap",
     hist_op_resnap: "re-snap", hist_op_bookmarks: "bookmarks", hist_op_kiai: "kiai", hist_op_breaks: "breaks",
     hist_op_scroll: "constant scroll", hist_op_volumes: "section volumes", hist_op_hsdiff: "hitsound difficulty",
+    hist_op_suggestion: "suggested red line",
     hsd_title: "Hitsound difficulty",
     hsd_sub: "A new difficulty beside the others with a circle at every sound of the mapset, each playing it exactly: hitsound in one place, then copy it to every difficulty (Mapset, Copy hitsounds). Where two difficulties sound together the source's sound wins; timing, events and settings are the source's own.",
     hsd_source: "Sounds from", hsd_fill: "Fill in the other difficulties' sounds where the source has none",
@@ -359,8 +360,17 @@ const I18N = {
     cmp_unreadable_f: "Could not compare: {detail}",
     sug_title: "Suggestions",
     sug_empty: "Every detected change has a red line nearby.",
-    sug_hint: "Changes Overtone hears that this map has no red line for. Inject .osu… writes them.",
-    sug_show: "Show",
+    sug_hint: "Changes Overtone hears that this map has no red line for. Add writes one into the map, backed up first; Inject .osu… writes them all.",
+    sug_show: "Show", sug_add: "Add",
+    sug_add_confirm: "Add a red line to {file}?\n\n{lines}\n\nThe file is backed up first, and History can restore it.",
+    sug_add_line: "{o} ms · {b} BPM · {m} beats a bar, with the sample set, volume and kiai the map plays there",
+    sug_add_green: "A green line at the same time keeps the slider velocity the map had there",
+    sug_add_octave: "Careful: that is {k} the map's own {b} BPM here, which is more often the same pulse counted differently than a new tempo",
+    sug_add_objects: "{n} objects follow the new beat until the next red line",
+    sug_add_sliders: "{n} slider ends move; the furthest by {d} ms, {dir}",
+    sug_earlier: "earlier", sug_later: "later",
+    sug_added: "Red line added at {o} ms in {file}.",
+    suggestion_gone: "That suggestion is no longer in the list: the map or the analysis changed since.",
     align_title: "Alignment", align_pick: "Check alignment…",
     align_empty: "Choose a .osu to check its objects against the detected attacks.",
     align_counts: "{m}/{o} objects · {c}/{a} attacks",
@@ -579,6 +589,7 @@ const I18N = {
     hist_op_inject: "timing", hist_op_hitsounds: "hitsounds", hist_op_write: "escritura", hist_op_restore: "restauración", hist_op_swap: "cambio de audio",
     hist_op_resnap: "reajuste", hist_op_bookmarks: "bookmarks", hist_op_kiai: "kiai", hist_op_breaks: "breaks",
     hist_op_scroll: "scroll constante", hist_op_volumes: "volúmenes por sección", hist_op_hsdiff: "dificultad de hitsounds",
+    hist_op_suggestion: "línea roja sugerida",
     hsd_title: "Dificultad de hitsounds",
     hsd_sub: "Una dificultad nueva junto a las demás, con un círculo en cada sonido del mapset que lo toca exacto: hitsoundeá en un solo lugar y después copiala a todas (Mapset, Copiar hitsounds). Donde dos dificultades suenan juntas gana la fuente; el timing, los eventos y los ajustes son los de la fuente.",
     hsd_source: "Sonidos de", hsd_fill: "Completar con los sonidos de las demás dificultades donde la fuente no tiene",
@@ -902,8 +913,17 @@ const I18N = {
     cmp_unreadable_f: "No se pudo comparar: {detail}",
     sug_title: "Sugerencias",
     sug_empty: "Cada cambio detectado tiene una línea roja cerca.",
-    sug_hint: "Cambios que Overtone detecta y este mapa no tiene como línea roja. Inyectar .osu… los escribe.",
-    sug_show: "Ver",
+    sug_hint: "Cambios que Overtone detecta y este mapa no tiene como línea roja. Agregar escribe una en el mapa, con copia de seguridad antes; Inyectar .osu… las escribe todas.",
+    sug_show: "Ver", sug_add: "Agregar",
+    sug_add_confirm: "¿Agregar una línea roja a {file}?\n\n{lines}\n\nAntes se hace una copia de seguridad del archivo, e Historial puede restaurarlo.",
+    sug_add_line: "{o} ms · {b} BPM · {m} pulsos por compás, con el sample set, el volumen y el kiai que el mapa tiene ahí",
+    sug_add_green: "Una línea verde en el mismo tiempo mantiene la velocidad de sliders que el mapa tenía ahí",
+    sug_add_octave: "Ojo: es {k} los {b} BPM del propio mapa aquí, y eso suele ser el mismo pulso contado de otra forma más que un tempo nuevo",
+    sug_add_objects: "{n} objetos siguen el nuevo pulso hasta la próxima línea roja",
+    sug_add_sliders: "{n} finales de slider se mueven; el que más, {d} ms {dir}",
+    sug_earlier: "antes", sug_later: "después",
+    sug_added: "Línea roja agregada en {o} ms en {file}.",
+    suggestion_gone: "Esa sugerencia ya no está en la lista: cambió el mapa o el análisis.",
     align_title: "Alineación", align_pick: "Revisar alineación…",
     align_empty: "Elegí un .osu para contrastar sus objetos con los ataques detectados.",
     align_counts: "{m}/{o} objetos · {c}/{a} ataques",
@@ -3128,7 +3148,10 @@ function renderCompare() {
       <td class="num">${s.offset_ms.toFixed(1)}</td>
       <td class="num">${s.bpm.toFixed(3)}</td>
       <td class="num">${s.nearest_ms === null ? "—" : s.nearest_ms.toFixed(1)}</td>
-      <td><button class="btn small" data-show="${s.index}">${t("sug_show")}</button></td>
+      <td><div class="sug-actions">
+        <button class="btn small" data-show="${s.index}">${t("sug_show")}</button>
+        <button class="btn small" data-add="${s.index}">${t("sug_add")}</button>
+      </div></td>
     </tr>`).join("");
   body.innerHTML = `
     ${banners ? `<div class="warnings">${banners}</div>` : ""}
@@ -3153,6 +3176,43 @@ function renderCompare() {
         <tbody>${sug}</tbody>
       </table>
     </div>` : ""}`;
+}
+
+// One suggestion into the map (Phase 9): the preview names what the write
+// adds and what it moves, nothing is written without that consent, and the
+// list is read again after, since the new red line answers its suggestion.
+async function suggestAdd(index) {
+  if (!api() || !S.result || S.busy || !S.comparePath) return;
+  const prev = await api().suggest_preview(S.comparePath, index);
+  if (!prev.ok) {
+    editFailure(prev);
+    if (prev.key === "suggestion_gone") refreshCompare();
+    return;
+  }
+  const s = prev.summary;
+  const lines = [t("sug_add_line", { o: s.offset_ms, b: s.bpm.toFixed(3), m: s.meter })];
+  // Twice or four times the map's own tempo there is more often the same
+  // pulse counted differently than a change the map lacks (Corpus B: every
+  // slider shift past 25 ms came from one of these).
+  const ratio = s.map_bpm ? s.bpm / s.map_bpm : null;
+  const octave = ratio && [[2, "×2"], [4, "×4"], [0.5, "÷2"], [0.25, "÷4"]]
+    .find(([k]) => Math.abs(ratio / k - 1) <= 0.03);
+  if (octave) lines.push(t("sug_add_octave", { k: octave[1], b: s.map_bpm.toFixed(3) }));
+  if (s.greens_added) lines.push(t("sug_add_green"));
+  if (s.objects) lines.push(t("sug_add_objects", { n: s.objects }));
+  if (s.slider_ends_moved) {
+    lines.push(t("sug_add_sliders", { n: s.slider_ends_moved, d: Math.abs(s.max_end_shift_ms).toFixed(1),
+                                      dir: t(s.max_end_shift_ms < 0 ? "sug_earlier" : "sug_later") }));
+  }
+  if (!confirm(t("sug_add_confirm", { file: prev.file, lines: lines.join("\n") }))) return;
+  const done = await api().suggest_apply(S.comparePath, index, prev.suggestion.offset_ms);
+  if (!done.ok) {
+    editFailure(done);
+    if (done.key === "suggestion_gone") refreshCompare();
+    return;
+  }
+  toast(t("sug_added", { o: done.summary.offset_ms, file: done.file }));
+  refreshCompare();
 }
 
 // ------------------------------------------------------------------ alignment
@@ -5738,6 +5798,8 @@ function wire() {
     if (e.target.id === "editMeter") editAction("meter");
   });
   $("cmpBody").addEventListener("click", (e) => {
+    const add = e.target.closest("[data-add]");
+    if (add) { suggestAdd(+add.dataset.add); return; }
     const btn = e.target.closest("[data-show]");
     if (!btn || !S.result) return;
     const i = +btn.dataset.show;

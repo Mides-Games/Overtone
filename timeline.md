@@ -17,6 +17,69 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · One suggested red line, added with consent
+
+### Changed
+
+- **Add, beside each suggestion** in Map check: one suggested red line goes into the map on
+  its own, after a confirmation that names it (time, BPM, beats a bar), the green line that
+  keeps slider velocity when one is needed, how many objects follow the new beat until the
+  next red line, and how far the ends of the sliders among them move. The file is backed
+  up first (`.bak`, never overwritten), the write is logged in History as a suggested red
+  line, and the list is read again after, so the answered suggestion leaves it. Inject
+  still writes every line; Add writes one.
+- **The new line carries what the map plays there**: the sample set, index, volume and kiai
+  of the timing point in force, and it goes before any green at its own time, the order
+  osu! reads. Its bar is the one the detector proved there, else the map's own there, not
+  an assumed 4.
+- **A suggestion at ×2 or ×4 the map's own tempo says so** in the confirmation (÷2 and ÷4
+  too): on Corpus B every slider-end shift past 25 ms came from one of these, the same
+  pulse counted differently rather than a change the map lacks.
+- `add_red_line(beatmap, offset_ms, bpm, meter, decimals)` in the engine, with the map's
+  tempo in force in its summary; `suggest_preview` and `suggest_apply` in the bridge;
+  suggestions carry the proven `meter`.
+
+### Hardening
+
+- **Nothing the page did not show is written.** Apply reads the map and the list again and
+  takes only the suggestion at the index and time the page showed (within 0.5 ms): a
+  changed map, a new analysis, a second click after the write, or an index that is not a
+  whole number is refused as `suggestion_gone`, the file untouched.
+- **Every other line keeps its bytes and its place**: the BOM, CRLF, a bare LF line, the
+  blank lines closing the section, as the tests hold on a mixed-ending map.
+- `bench/fuzz_reader.py` runs the insertion over its 3000 mutant maps: no crash, no hang.
+
+### Measured
+
+```
+Corpus B: the 20 ranked maps read from the Songs folder (never written), with the Corpus B
+analyses of the fallback re-timing branch (engine 3780f3d43ba0d38f); every suggestion
+applied alone, in memory:
+  suggestions                      23, on 5 maps (15 maps have none)
+  every original line kept         23 of 23, byte for byte and in order, plus the red
+                                   line and the greens reported and nothing else
+  a green needed for velocity      15 of 23
+  objects under the new lines      1,677; 545 sliders, of which 400 end elsewhere
+  furthest slider-end shift        median 4.7 ms over the 18 suggestions with sliders
+                                   under them; 159 to 559 ms on the five at ×2 or ×4
+                                   the map's tempo, the only five past 25 ms
+Engine commit (add_red_line): unit tests 612 OK; benchmark 24/24, bpm-snapshot 24/24,
+golden 27/27, reference 24/24, assisted 70 sections, coverage, measures, signatures,
+robustness; fuzz_reader 3000 mutants, 2838 read, no crash
+Python unittest   604 -> 616, all pass
+The page, through the UI harness at 1280 px on a scratch copy of a test song: the
+confirmation's lines (a green, 3 objects, 2 slider ends, the furthest 23.8 ms earlier)
+as worked out by hand; cancel writes nothing; Add writes exactly the red line and its
+green (diffed against the .bak); History names the write; the ×2 warning on a
+half-tempo map, in English and Spanish; no page errors
+```
+
+### Rejected / tried and dropped
+
+- **Applying a suggestion through inject**: inject rewrites every red line from the
+  analysis, so the lines a mapper timed by hand would change along with the one they
+  agreed to.
+
 ## v4.0.0-dev — 2026-09-26 · The hitsound profile, chosen on the Propose card
 
 ### Changed

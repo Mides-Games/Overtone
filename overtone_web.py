@@ -1511,6 +1511,68 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "suggestions": suggestions, "file": Path(osu_path).name}
 
+    def _suggestion(self, osu_path: str, index) -> tuple[Path, dict, dict] | dict:
+        """The map, read now, and its suggestion ``index`` as the list would
+        show it now, or a refusal: ``suggestion_gone`` when the map or the
+        analysis changed so that the list no longer holds it."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        path = Path(str(osu_path))
+        if not path.is_file():
+            return {"ok": False, "key": "bad_file"}
+        if isinstance(index, bool) or not isinstance(index, int):
+            return {"ok": False, "key": "suggestion_gone"}
+        try:
+            beatmap = ta.read_osu_beatmap(path)
+            found = ta.suggest_missing_lines(self._analysis, beatmap)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        suggestion = next((s for s in found if s["index"] == index), None)
+        if suggestion is None:
+            return {"ok": False, "key": "suggestion_gone"}
+        return path, beatmap, suggestion
+
+    def suggest_preview(self, osu_path: str, index: int) -> dict:
+        """What adding suggestion ``index`` to the map would write: the red
+        line, the green that keeps slider velocity, and the objects and
+        slider ends it times. Read only."""
+        got = self._suggestion(osu_path, index)
+        if isinstance(got, dict):
+            return got
+        path, beatmap, suggestion = got
+        try:
+            summary = ta.add_red_line(beatmap, suggestion["offset_ms"], suggestion["bpm"],
+                                      suggestion["meter"],
+                                      decimals=self._settings()["offset_decimals"])
+        except ValueError as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name, "suggestion": suggestion, "summary": summary}
+
+    def suggest_apply(self, osu_path: str, index: int, offset_ms: float) -> dict:
+        """Add suggestion ``index`` to the map, the file backed up first and
+        the write logged. ``offset_ms`` is the time the page showed and was
+        agreed to: a suggestion that has moved since is refused, not written."""
+        got = self._suggestion(osu_path, index)
+        if isinstance(got, dict):
+            return got
+        path, beatmap, suggestion = got
+        try:
+            shown = float(offset_ms)
+        except (TypeError, ValueError):
+            shown = float("nan")
+        if not abs(shown - suggestion["offset_ms"]) <= 0.5:
+            return {"ok": False, "key": "suggestion_gone"}
+        try:
+            summary = ta.add_red_line(beatmap, suggestion["offset_ms"], suggestion["bpm"],
+                                      suggestion["meter"],
+                                      decimals=self._settings()["offset_decimals"])
+            written = ta.write_osu_beatmap(path, beatmap, op="suggestion",
+                                           summary={"offset_ms": summary["offset_ms"],
+                                                    "bpm": round(summary["bpm"], 4)})
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name, "summary": summary, "backup": written["backup"]}
+
     @staticmethod
     def _digest(path: str | Path) -> tuple[str, str]:
         import hashlib

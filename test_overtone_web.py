@@ -1688,6 +1688,59 @@ class SuggestBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().suggest("C:/x.osu")["key"], "first")
         self.assertEqual(_api_with_points().suggest("C:/does/not/exist.osu")["key"], "bad_file")
 
+    def test_preview_names_the_line_and_writes_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = _api_with_points()
+            target = self._map(tmp, [(1000.0, 120.0)])
+            before = Path(target).read_bytes()
+            reply = api.suggest_preview(target, 1)
+            self.assertEqual(Path(target).read_bytes(), before)
+            self.assertFalse(Path(target + ".bak").exists())
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["suggestion"]["index"], 1)
+        self.assertTrue(reply["summary"]["row"].startswith("9000,400.000000000000,4,1,0,100,1,0"))
+        self.assertEqual(reply["summary"]["greens_added"], 0)
+        json.dumps(reply)
+
+    def test_apply_adds_the_line_backed_up_and_logged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = _api_with_points()
+            target = self._map(tmp, [(1000.0, 120.0)])
+            before = Path(target).read_bytes()
+            reply = api.suggest_apply(target, 1, 9000.0)
+            after = Path(target).read_bytes()
+            self.assertEqual(Path(reply["backup"]).read_bytes(), before)
+            self.assertEqual(api.suggest(target)["suggestions"], [])
+            history = ta.read_history()
+        self.assertTrue(reply["ok"])
+        # write_text wrote the map with the platform's line ending; the new
+        # line takes the file's.
+        newline = b"\r\n" if b"\r\n" in before else b"\n"
+        self.assertEqual(after, before + b"9000,400.000000000000,4,1,0,100,1,0" + newline)
+        self.assertEqual((history[0]["op"], history[0]["path"]), ("suggestion", target))
+        json.dumps(reply)
+
+    def test_apply_refuses_what_the_page_did_not_show(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = _api_with_points()
+            target = self._map(tmp, [(1000.0, 120.0)])
+            before = Path(target).read_bytes()
+            for index, offset in ((1, 9100.0), (1, "x"), (1, None), (2, 9000.0), (True, 9000.0),
+                                  ("1", 9000.0)):
+                self.assertEqual(api.suggest_apply(target, index, offset)["key"], "suggestion_gone")
+            self.assertEqual(api.suggest_preview(target, 0)["key"], "suggestion_gone")
+            self.assertEqual(Path(target).read_bytes(), before)
+            self.assertTrue(api.suggest_apply(target, 1, 9000.0)["ok"])
+            # Written once, the suggestion is answered: a second apply finds none.
+            self.assertEqual(api.suggest_apply(target, 1, 9000.0)["key"], "suggestion_gone")
+
+    def test_apply_needs_a_result_and_a_real_file(self) -> None:
+        self.assertEqual(web.Api().suggest_apply("C:/x.osu", 1, 9000.0)["key"], "first")
+        self.assertEqual(web.Api().suggest_preview("C:/x.osu", 1)["key"], "first")
+        missing = "C:/does/not/exist.osu"
+        self.assertEqual(_api_with_points().suggest_apply(missing, 1, 9000.0)["key"], "bad_file")
+        self.assertEqual(_api_with_points().suggest_preview(missing, 1)["key"], "bad_file")
+
 
 class EvidenceBridgeTests(_IsolatedConfig):
     """The Evidence tab: alternatives, margins and residuals, cached."""

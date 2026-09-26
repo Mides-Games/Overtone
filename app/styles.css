@@ -600,6 +600,7 @@ kbd {
 .trace-card { margin-bottom: 14px; }
 .cmp-card { margin-bottom: 14px; }
 .cmp-card .card-body { padding-top: 12px; }
+.sug-actions { display: flex; gap: 6px; justify-content: flex-end; }
 .neg { color: var(--amber); }
 .muted { color: var(--dim); }
 .settings-body { gap: 14px; }

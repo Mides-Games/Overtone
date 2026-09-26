@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **559** Python (388 engine + 171 web shell) · **263** Rust.
+Tests: **562** Python (391 engine + 171 web shell) · **263** Rust.
 
 ### What is pending, in order
 

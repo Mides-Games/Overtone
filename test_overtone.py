@@ -4516,6 +4516,76 @@ class LibraryIndexTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.library.scan(self.tmp / "missing")
 
+    def test_a_folder_that_cannot_be_listed_keeps_its_maps_and_is_named(self):
+        from unittest import mock
+        self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
+        locked = self._set("2 Other - Tune", b"OggS" + bytes(200), ["Normal"],
+                           artist="Other", title="Tune")
+        self.library.scan(self.songs)
+        real = os.scandir
+
+        def scandir(path="."):
+            if os.fspath(path) == str(locked):
+                raise PermissionError(13, "Access is denied", str(locked))
+            return real(path)
+
+        with mock.patch.object(self.ol.os, "scandir", scandir):
+            report = self.library.scan(self.songs)
+        # Not listed is not gone: before, its maps were reported removed and
+        # dropped, with no failure named.
+        self.assertEqual((report["removed"], report["failed"], report["beatmaps"],
+                          report["sets"], report["audio"]), (0, 1, 3, 2, 2))
+        self.assertEqual(report["failures"][0]["path"], str(locked))
+        self.assertEqual(self.library.search("tune")["beatmaps"], 1)
+        self.assertEqual(self.library.stats()["failed"], 1)       # kept for the page
+        again = self.library.scan(self.songs)
+        self.assertEqual((again["failed"], again["unchanged"], again["removed"]), (0, 3, 0))
+        self.assertEqual(self.library.stats()["failures"], [])
+
+    def test_a_map_that_cannot_be_opened_keeps_its_row_until_it_can(self):
+        from unittest import mock
+        folder = self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
+        self.library.scan(self.songs)
+        hard = next(folder.glob("*Hard*.osu"))
+        hard.write_text(hard.read_text(encoding="utf-8").replace("Version:Hard", "Version:Harder"),
+                        encoding="utf-8", newline="")
+        stat = hard.stat()
+        os.utime(hard, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+        real_open = open
+
+        def held(path, *args, **kwargs):          # osu! writing it, say
+            if os.fspath(path) == str(hard):
+                raise PermissionError(13, "The file is in use", str(hard))
+            return real_open(path, *args, **kwargs)
+
+        with mock.patch.object(self.ol, "open", held, create=True):
+            report = self.library.scan(self.songs)
+        self.assertEqual((report["failed"], report["removed"], report["updated"],
+                          report["beatmaps"]), (1, 0, 0, 2))
+        self.assertEqual([s["beatmaps"][0]["version"] for s in self.library.search("hard")["sets"]],
+                         ["Hard"])                    # the row it had
+        again = self.library.scan(self.songs)
+        self.assertEqual((again["failed"], again["updated"], again["unchanged"]), (0, 1, 1))
+        self.assertEqual(self.library.search("harder")["beatmaps"], 1)
+
+    def test_files_that_are_not_beatmaps_are_failures_not_blank_maps(self):
+        folder = self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
+        (folder / "empty.osu").write_bytes(b"")
+        (folder / "junk.osu").write_bytes(bytes(range(256)) * 4)
+        report = self.library.scan(self.songs)
+        self.assertEqual((report["beatmaps"], report["added"], report["failed"]), (2, 2, 2))
+        self.assertTrue(all("not a beatmap" in f["detail"] for f in report["failures"]),
+                        report["failures"])
+        for path in (folder / "empty.osu", folder / "junk.osu"):
+            with self.assertRaises(ValueError):
+                self.ol.read_osu_header(path)
+        easy = next(folder.glob("*Easy*.osu"))
+        easy.write_bytes(b"")                       # emptied since the last scan
+        again = self.library.scan(self.songs)
+        # Its row goes, counted as failed, never as removed: the file is there.
+        self.assertEqual((again["beatmaps"], again["failed"], again["removed"]), (1, 3, 0))
+        self.assertEqual(self.library.search("easy")["beatmaps"], 0)
+
 
 def _structure_report(bounds, kinds, groups, levels, duration=64.0, energy=None):
     """``overtone-cli structure``'s JSON for hand-made sections."""

@@ -17,6 +17,7 @@ from a newer schema is refused, never rewritten.
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import re
@@ -38,6 +39,8 @@ MIGRATIONS: dict[int, str] = {}
 SEARCH_LIMIT = 200
 #: How often, in folders, a scan reports progress.
 PROGRESS_EVERY = 100
+#: How many failures a scan names; the count is always complete.
+FAILURES_KEPT = 20
 
 #: A section header line. Both patterns open on a newline, a literal the
 #: regex engine can jump to; a ``^`` under re.M gave it none and cost the
@@ -107,11 +110,20 @@ def read_osu_header(path: str | os.PathLike[str]) -> dict:
     Only [General], [Metadata] and the red lines of [TimingPoints] are
     decoded; [Events] (whole storyboards, some of them) is skipped and
     [HitObjects] only counted. Undecodable bytes become U+FFFD rather than
-    dropping the map: a broken tag should not hide a whole set.
+    dropping the map: a broken tag should not hide a whole set. A file with
+    none of those four sections (an empty one, as osu! leaves nine of in one
+    Songs folder, or junk) raises ``ValueError``: it is not a beatmap, and
+    listed it would read as a difficulty with no name.
     """
-    raw = Path(path).read_bytes()
+    return _parse_osu_header(Path(path).read_bytes(), Path(path).name)
+
+
+def _parse_osu_header(raw: bytes, name: str) -> dict:
+    """``read_osu_header`` on bytes already read; ``name`` is for messages."""
     if len(raw) > ta.MAX_OSU_BYTES:
-        raise ValueError(f"{Path(path).name} is {len(raw) / 1e6:.1f} MB — that is not a beatmap.")
+        raise ValueError(f"{name} is {len(raw) / 1e6:.1f} MB — that is not a beatmap.")
+    if not raw or raw.isspace():
+        raise ValueError(f"{name} is empty — that is not a beatmap.")
     # [HitObjects] is the last section and most of the file: find it with a
     # plain byte search, and look for the others only before it.
     cut = raw.find(_HIT_OBJECTS)
@@ -123,6 +135,10 @@ def read_osu_header(path: str | os.PathLike[str]) -> dict:
     for n, mark in enumerate(marks):
         end = marks[n + 1].start() if n + 1 < len(marks) else len(head)
         spans.setdefault(mark.group(1), (mark.end(), end))
+    if cut < 0 and not any(section in spans for section in (b"General", b"Metadata",
+                                                           b"TimingPoints")):
+        raise ValueError(f"{name} has no [General], [Metadata], [TimingPoints] or "
+                         "[HitObjects] — that is not a beatmap.")
     objects = 0
     if cut >= 0:
         tail = raw[cut + len(_HIT_OBJECTS):]
@@ -224,8 +240,13 @@ class Library:
         One folder level below ``root``, the shape of a Songs folder, plus
         ``root`` itself. Only .osu files whose size or modification time
         changed are read; rows for files that are gone are deleted, so the
-        index holds one Songs folder, the last one scanned. ``progress``,
-        when given, is called with ``(folders_done, folders_total)``.
+        index holds one Songs folder, the last one scanned. What could not be
+        read is counted in ``failed`` and named in ``failures``, and is never
+        reported gone: a folder that cannot be listed, or a .osu that cannot
+        be opened, keeps what the index knew of it (the next scan tries
+        again), while a file that is not a beatmap loses its row.
+        ``progress``, when given, is called with ``(folders_done,
+        folders_total)``.
         """
         base = Path(os.path.abspath(root))
         if not base.is_dir():
@@ -238,6 +259,11 @@ class Library:
             raise ValueError(f"Could not list {base}: {exc}") from exc
         counts = {"added": 0, "updated": 0, "unchanged": 0, "removed": 0, "failed": 0}
         failures: list[dict] = []
+
+        def fail(path: str, detail: str) -> None:
+            counts["failed"] += 1
+            failures.append({"path": path, "detail": detail})
+
         with closing(self._connect()) as db, db:
             known = {row[0]: row[1:] for row in db.execute(
                 "SELECT path, size, mtime_ns, audio_file FROM beatmaps")}
@@ -247,6 +273,18 @@ class Library:
             seen_maps: set[str] = set()
             seen_audio: set[str] = set()
             seen_sets: set[str] = set()
+            unlisted: set[str] = set()   # folders that could not be listed
+            not_maps: set[str] = set()   # .osu files that are not beatmaps
+
+            def set_of(folder: str) -> int:
+                set_id = set_ids.get(folder)
+                if set_id is None:
+                    set_id = db.execute("INSERT INTO sets (folder, name) VALUES (?, ?)",
+                                        (folder, Path(folder).name)).lastrowid
+                    set_ids[folder] = set_id
+                seen_sets.add(folder)
+                return set_id
+
             for done, folder in enumerate(folders, 1):
                 if done % PROGRESS_EVERY == 0 or done == len(folders):
                     # Committed as it goes: a scan stopped halfway keeps what
@@ -257,41 +295,54 @@ class Library:
                 try:
                     with os.scandir(folder) as entries:
                         files = [e for e in entries if e.is_file()]
-                except OSError:
+                except OSError as exc:
+                    # Not listed is not gone: what the index knew of it stays.
+                    unlisted.add(folder)
+                    fail(folder, str(exc))
                     continue
                 osus = [e for e in files if e.name.lower().endswith(".osu")]
                 if not osus:
                     continue
-                set_id = set_ids.get(folder)
-                if set_id is None:
-                    set_id = db.execute("INSERT INTO sets (folder, name) VALUES (?, ?)",
-                                        (folder, Path(folder).name)).lastrowid
-                    set_ids[folder] = set_id
-                seen_sets.add(folder)
                 audio_names: set[str] = set()
                 for entry in osus:
+                    old = known.get(entry.path)
                     try:
                         stat = entry.stat()
-                    except OSError:
-                        continue
-                    seen_maps.add(entry.path)
-                    old = known.get(entry.path)
-                    if old is not None and old[0] == stat.st_size and old[1] == stat.st_mtime_ns:
-                        counts["unchanged"] += 1
-                        audio_names.add(old[2].lower())
+                        if old is not None and old[0] == stat.st_size and old[1] == stat.st_mtime_ns:
+                            counts["unchanged"] += 1
+                            seen_maps.add(entry.path)
+                            set_of(folder)
+                            audio_names.add(old[2].lower())
+                            continue
+                        with open(entry.path, "rb") as handle:
+                            raw = handle.read()
+                    except OSError as exc:
+                        fail(entry.path, str(exc))
+                        # Could not open is not gone: the old row stays, and
+                        # since its size and time no longer match, the next
+                        # scan reads it again.
+                        if old is not None:
+                            seen_maps.add(entry.path)
+                            set_of(folder)
+                            audio_names.add(old[2].lower())
                         continue
                     try:
-                        header = read_osu_header(entry.path)
-                    except (OSError, ValueError) as exc:
-                        counts["failed"] += 1
-                        failures.append({"path": entry.path, "detail": str(exc)})
-                        seen_maps.discard(entry.path)
+                        header = _parse_osu_header(raw, entry.name)
+                    except ValueError as exc:
+                        # Not a beatmap (any more): its row goes, and it counts
+                        # as failed, never as removed.
+                        fail(entry.path, str(exc))
+                        not_maps.add(entry.path)
                         continue
-                    db.execute(_UPSERT_BEATMAP, (set_id, entry.path, stat.st_size,
+                    db.execute(_UPSERT_BEATMAP, (set_of(folder), entry.path, stat.st_size,
                                                  stat.st_mtime_ns,
                                                  *(header[c] for c in _BEATMAP_COLUMNS[3:])))
+                    seen_maps.add(entry.path)
                     counts["updated" if old is not None else "added"] += 1
                     audio_names.add(header["audio_file"].lower())
+                if folder not in seen_sets:
+                    continue
+                set_id = set_ids[folder]
                 by_name = {e.name.lower(): e for e in files}
                 for name in audio_names:
                     entry = by_name.get(name)
@@ -310,24 +361,34 @@ class Library:
                                "set_id = excluded.set_id, size = excluded.size, "
                                "mtime_ns = excluded.mtime_ns, sha256 = NULL",
                                (entry.path, set_id, stat.st_size, stat.st_mtime_ns))
-            gone = [(path,) for path in known if path not in seen_maps]
+            def outside(path: str) -> bool:
+                return os.path.dirname(path) not in unlisted
+
+            gone = [path for path in known
+                    if path not in seen_maps and path not in not_maps and outside(path)]
             counts["removed"] = len(gone)
-            db.executemany("DELETE FROM beatmaps WHERE path = ?", gone)
+            db.executemany("DELETE FROM beatmaps WHERE path = ?",
+                           [(path,) for path in gone + sorted(not_maps & known.keys())])
             db.executemany("DELETE FROM audio WHERE path = ?",
-                           [(path,) for path in known_audio if path not in seen_audio])
+                           [(path,) for path in known_audio
+                            if path not in seen_audio and outside(path)])
             db.executemany("DELETE FROM sets WHERE folder = ?",
-                           [(folder,) for folder in set_ids if folder not in seen_sets])
+                           [(folder,) for folder in set_ids
+                            if folder not in seen_sets and folder not in unlisted])
             seconds = time.perf_counter() - started
             for key, value in (("root", str(base)), ("scanned_at", _now()),
-                               ("scan_seconds", f"{seconds:.3f}")):
+                               ("scan_seconds", f"{seconds:.3f}"),
+                               ("failed", str(counts["failed"])),
+                               ("failures", json.dumps(failures[:FAILURES_KEPT]))):
                 db.execute("INSERT INTO meta (key, value) VALUES (?, ?) "
                            "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
         return {**self.stats(), **counts, "folders": len(folders),
-                "failures": failures[:20], "seconds": round(seconds, 3)}
+                "failures": failures[:FAILURES_KEPT], "seconds": round(seconds, 3)}
 
     # -- reading -------------------------------------------------------------
     def stats(self) -> dict:
-        """What the index holds and when it was last brought in step."""
+        """What the index holds, when it was last brought in step, and what
+        that scan could not read."""
         with closing(self._connect()) as db:
             meta = dict(db.execute("SELECT key, value FROM meta"))
             sets, beatmaps, audio = (db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
@@ -335,7 +396,9 @@ class Library:
         return {"path": str(self.path), "schema": SCHEMA_VERSION,
                 "root": meta.get("root"), "scanned_at": meta.get("scanned_at"),
                 "scan_seconds": float(meta["scan_seconds"]) if "scan_seconds" in meta else None,
-                "sets": sets, "beatmaps": beatmaps, "audio": audio}
+                "sets": sets, "beatmaps": beatmaps, "audio": audio,
+                "failed": int(meta.get("failed", 0)),
+                "failures": json.loads(meta.get("failures", "[]"))}
 
     def covers(self, root: str | os.PathLike[str]) -> bool:
         """Whether the index was built from this Songs folder."""

@@ -1792,6 +1792,70 @@ class SnapAuditTests(unittest.TestCase):
         self.assertEqual(snap_timing_points(points)[1].offset_ms, 21001.5)
 
 
+class SnapDivisorTests(unittest.TestCase):
+    """Where the song needs 1/3, 1/4 or 1/6, per section."""
+
+    @staticmethod
+    def _analysis(points, attacks_s, duration=60.0, weight=1.0):
+        analysis = Analysis("x.wav", duration, np.zeros(0), np.zeros(0),
+                            points, 128, 44100, 1.0)
+        analysis.attack_times = np.array(attacks_s, dtype=np.float64)
+        analysis.attack_weights = np.full(len(attacks_s), weight)
+        return analysis
+
+    def test_triplets_read_third_quarters_read_quarter(self) -> None:
+        from overtone import snap_divisors
+        points = [TimingPoint(1000.0, 120.0, 0.9, 0)]
+        triplets = [1.0 + k / 6.0 for k in range(13)]
+        report = snap_divisors(self._analysis(points, triplets))
+        json.dumps(report)
+        section = report["sections"][0]
+        self.assertEqual(section["divisor"], "1/3")
+        self.assertEqual((section["attacks"], section["thirds"]), (13, 8))
+        quarters = [1.0 + k * 0.125 for k in range(17)]
+        plain = snap_divisors(self._analysis(points, quarters))["sections"][0]
+        self.assertEqual((plain["divisor"], plain["thirds"], plain["sixths"]), ("1/4", 0, 0))
+
+    def test_sixth_notes_read_sixth_and_swing_reads_other(self) -> None:
+        from overtone import snap_divisors
+        points = [TimingPoint(1000.0, 120.0, 0.9, 0)]
+        sixths = [1.0 + (k + (1 / 6 if k % 2 == 0 else 5 / 6)) * 0.5 for k in range(6)]
+        sixths += [1.0, 2.0]
+        report = snap_divisors(self._analysis(points, sixths))["sections"][0]
+        self.assertEqual((report["divisor"], report["sixths"]), ("1/6", 6))
+        swung = [1.0 + k * 0.5 + (0.025 if k % 2 else 0.0) for k in range(9)]
+        off = snap_divisors(self._analysis(points, swung))["sections"][0]
+        self.assertEqual((off["divisor"], off["thirds"]), ("1/4", 0))
+        self.assertGreater(off["finer"], 0)
+        tight = snap_divisors(self._analysis(points, swung), tol_ms=5.0)["sections"][0]
+        self.assertEqual((tight["divisor"], tight["other"]), ("1/4", 4))
+
+    def test_sections_verdict_apart_and_empties_stay_quarter(self) -> None:
+        from overtone import snap_divisors
+        points = [TimingPoint(1000.0, 120.0, 0.9, 0), TimingPoint(5000.0, 120.0, 0.9, 10)]
+        attacks = [1.0 + k / 6.0 for k in range(13)] + [5.0 + k * 0.125 for k in range(9)]
+        report = snap_divisors(self._analysis(points, attacks))
+        self.assertEqual([s["divisor"] for s in report["sections"]], ["1/3", "1/4"])
+        self.assertEqual(snap_divisors(self._analysis(points, []))["sections"][0]["attacks"], 0)
+        self.assertEqual(snap_divisors(self._analysis(points, []))["sections"][0]["divisor"], "1/4")
+        bare = self._analysis([], [])
+        self.assertEqual(snap_divisors(bare), {"sections": []})
+        with self.assertRaises(ValueError):
+            snap_divisors(self._analysis(points, [1.0]), tol_ms=0)
+
+    def test_quiet_thirds_under_loud_quarters_stay_quarter(self) -> None:
+        from overtone import snap_divisors
+        points = [TimingPoint(1000.0, 120.0, 0.9, 0)]
+        quarters = [1.0 + k * 0.5 for k in range(9)]
+        thirds = [1.0 + k / 6.0 for k in (2, 4, 8, 10, 14, 16, 20, 22)]
+        analysis = self._analysis(points, quarters + thirds)
+        analysis.attack_weights = np.array([1.0] * 9 + [0.05] * 8)
+        section = snap_divisors(analysis)["sections"][0]
+        self.assertEqual(section["thirds"], 8)
+        self.assertLess(section["third_share"], 0.10)
+        self.assertEqual(section["divisor"], "1/4")
+
+
 class NoiseBeforeTheMusicTests(unittest.TestCase):
     """The first red line starts where the grid starts, not at the first noise.
 

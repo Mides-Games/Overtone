@@ -16,6 +16,40 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Snap divisors, engine half: thirds have to be loud
+
+### Changed
+
+- **`snap_divisors(analysis)`**: per section, every attack takes the coarsest
+  1/1-1/16 grid within 15 ms and the section reads 1/6, 1/3 or 1/4 — the
+  verdict following attack weight, with counts and weight shares reported so
+  the mapper judges.
+
+### Rejected / tried and dropped
+
+- **Count-share verdicts.** The first cut read 6 of 34 corpus sections as
+  1/3 or 1/6 on straight material. Probed: the drum samples re-trigger
+  detection ~166 ms in, which lands on the triplet grid exactly when the
+  tempo puts a third near it (120-132 BPM), all on one triplet slot; noise
+  fills both. Count shares hit 20 % on echoes, weight shares stay under 7 %,
+  so the verdict follows weight (10 % bar, 3 attacks). After the change 33
+  of 34 read 1/4; the one 1/3 is shuffle-96, whose swung hats sit 4 ms off
+  the triplet grid by construction — the honest mapping recommendation.
+
+### Measured
+
+```
+synthetic thirds/sixths/quarters/swing   exact verdicts; tight tol recovers other
+24-track corpus, 34 sections             33 read 1/4, 1 reads 1/3 (shuffle, by design)
+Python unittest                          469 -> 473 (new suites green)
+facts                                    ok
+```
+
+No writes anywhere in this change, so no backup logic; no analysis code
+touched, so no benchmark run here.
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Constant scroll from Timing
 
 ### Changed

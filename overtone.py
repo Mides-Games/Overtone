@@ -5054,6 +5054,91 @@ def snap_audit(beatmap: dict, analysis: Analysis | None = None,
     return report
 
 
+#: An attack this far from a divisor tick still counts as on it. The snap
+#: audit's 2 ms is about objects, stored whole-millisecond; attacks are
+#: measured, with detection jitter on top, so the bar is looser — and it is
+#: the tool's own, adjustable, not the client's.
+DIVISOR_TOLERANCE_MS = 15.0
+#: A section needs a finer divisor when the attacks on thirds or sixths carry
+#: this share of its weight, with at least this many of them. Weighted, not
+#: counted: sample echoes and noise-floor detections sit on triplet grids by
+#: coincidence of tempo, but they are quiet next to the drums — on straight
+#: 120-132 BPM material they held up to 20 % of the count yet under 7 % of
+#: the weight, while real triplets hold both. One stray triplet is feel.
+DIVISOR_MIN_WSHARE = 0.10
+DIVISOR_MIN_COUNT = 3
+
+
+def snap_divisors(analysis: Analysis, tol_ms: float = DIVISOR_TOLERANCE_MS) -> dict:
+    """Where the song needs 1/3, 1/4 or 1/6, per section (Phase 21).
+
+    Every attack takes the coarsest of the 1/1-1/16 grids it sits on within
+    ``tol_ms`` — the same divisors the editor offers — and each section
+    counts how many need thirds (divisor 3), sixths (6 and nothing coarser),
+    finer grids (8 and up, past this row's scope but reported), or none (far
+    off-grid feel such as heavy shuffle lives here; the swing lane is its own
+    row). The verdict follows the weight, not the count: a section reads 1/6
+    past the count and weight bars, else 1/3, else 1/4 — a soft triplet still
+    counts, but the prominent rhythm decides. Read only, plain JSON types.
+    """
+    if tol_ms <= 0:
+        raise ValueError("Tolerance must be positive.")
+    points = [p for p in list(getattr(analysis, "points", None) or [])
+              if np.isfinite(getattr(p, "offset_ms", float("nan")))
+              and np.isfinite(getattr(p, "bpm", float("nan"))) and p.bpm > 0]
+    times = np.asarray(getattr(analysis, "attack_times", []), dtype=np.float64) * 1000.0
+    weights = np.asarray(getattr(analysis, "attack_weights", []), dtype=np.float64)
+    finite = np.isfinite(times)
+    times = times[finite]
+    weights = weights[finite] if weights.shape == finite.shape else np.ones_like(times)
+    weights = np.where(np.isfinite(weights) & (weights > 0), weights, 0.0)
+    duration_ms = float(getattr(analysis, "duration", 0.0) or 0.0) * 1000.0
+    out = []
+    for i, point in enumerate(points):
+        offset, bpm = float(point.offset_ms), float(point.bpm)
+        end = float(points[i + 1].offset_ms) if i + 1 < len(points) else duration_ms
+        beat_ms = 60000.0 / bpm
+        in_span = (times >= offset - 1e-6) & (times < end - 1e-6)
+        span, span_w = times[in_span], weights[in_span]
+        thirds = sixths = finer = other = 0
+        thirds_w = sixths_w = 0.0
+        for attack, weight in zip(span, span_w):
+            position = (float(attack) - offset) / beat_ms
+            hit = None
+            for divisor in SNAP_DIVISORS:
+                tick = round(position * divisor) / divisor
+                if abs(position - tick) * beat_ms <= float(tol_ms) + 1e-9:
+                    hit = divisor
+                    break
+            if hit is None:
+                other += 1
+            elif hit == 3:
+                thirds += 1
+                thirds_w += float(weight)
+            elif hit == 6:
+                sixths += 1
+                sixths_w += float(weight)
+            elif hit in (8, 12, 16):
+                finer += 1
+        total = len(span)
+        weight_total = float(span_w.sum())
+        sixth_share = sixths_w / weight_total if weight_total > 0 else 0.0
+        third_share = thirds_w / weight_total if weight_total > 0 else 0.0
+        if sixths >= DIVISOR_MIN_COUNT and sixth_share >= DIVISOR_MIN_WSHARE:
+            divisor = "1/6"
+        elif thirds >= DIVISOR_MIN_COUNT and third_share >= DIVISOR_MIN_WSHARE:
+            divisor = "1/3"
+        else:
+            divisor = "1/4"
+        out.append({"offset_ms": round(offset, 3), "bpm": round(bpm, 3),
+                    "attacks": int(total), "quarters": total - thirds - sixths - finer - other,
+                    "thirds": thirds, "sixths": sixths, "finer": finer, "other": other,
+                    "third_share": round(third_share, 3),
+                    "sixth_share": round(sixth_share, 3),
+                    "divisor": divisor})
+    return {"sections": out}
+
+
 def suggest_missing_lines(analysis: Analysis, beatmap: dict,
                           tolerance_beats: float = 1.0) -> list[dict]:
     """Detected sections with no nearby map red (Phase 9: timing suggestions).

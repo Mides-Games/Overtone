@@ -17,6 +17,119 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · An installer: a per-user MSI and a portable ZIP, in one line
+
+### Changed
+
+- **`installer\build.py` builds Overtone for a machine with no Python and no Rust**
+  (roadmap 10.13.1, 10.13.5 and part of 10.13.2). One line: the Rust engine; PyInstaller's
+  tree, `Overtone.exe` (the window), `overtone-py.exe` (the Python engine's command line)
+  and `_internal\` with Python 3.14, the locked wheels, the app's own files and the Rust
+  engine; a smoke test of that tree; a per-user MSI made with WiX 5.0.2; the same tree as a
+  ZIP. Then both are unpacked in temporary folders, the MSI by an administrative install
+  that registers nothing, compared with the tree file by file and smoke-tested. Outputs go
+  to `dist\`, git-ignored, with a summary of sizes, SHA-256, step times and smoke results.
+- **The MSI needs no administrator**: it installs per user into
+  `%LOCALAPPDATA%\Programs\Overtone`, with a Start menu shortcut that carries the app's
+  taskbar identity, and welcome, folder and install pages. Its uninstall is authored to
+  remove the program folder, the shortcut and the installer's own registry key (not run
+  here: see Measured). The app's data (settings in
+  `~\.overtone.json`, `%LOCALAPPDATA%\Overtone\`, exports, `.bak` files) lies outside the
+  program folder, and the MSI never creates or deletes it. `docs/11` now lists where each
+  piece really lives: the plan's `%APPDATA%\Overtone\` was never used by the code.
+- **`Overtone.exe --self-check [REPORT.json]`**: the window's executable looks for what it
+  reads where the code looks for it (page, icon, samples, library schema), loads the
+  window's libraries without opening a window (it fails without the WebView2 runtime), and
+  runs both engines on twenty seconds of clicks at 150 BPM, the Rust one through the app's
+  own sidecar call. Exit 0 only when all pass. It is how the build checks the window's
+  executable without a window; anyone can run it on an installed copy.
+- Not built yet, and said so in `docs/11`: signing, licence notices and an SBOM (so neither
+  artefact should be published yet), file associations, the portable `data\` folder, and an
+  install and uninstall on a real profile.
+
+### Fixed
+
+- **An installed copy never cached an analysis.** The result cache stamps its keys with
+  `overtone.py`'s modification time, so that editing the DSP invalidates them. A frozen
+  build packs `overtone.py` inside the executable: the module still reports a `__file__`,
+  but no file is there, the stamp raised OSError, and every key came out None, so every
+  song was analysed again, silently. A frozen build now stamps its executable, which a
+  rebuild replaces. The new test fails on the old code (the key is None).
+
+### Hardening
+
+- The build refuses a venv whose wheels differ from `requirements.lock` or
+  `installer\requirements-build.lock` (PyInstaller 6.22.3 and its five dependencies): the
+  bundle carries whatever the venv holds, and the locks are what was measured.
+- The smoke test runs every executable with a scratch profile (USERPROFILE, LOCALAPPDATA,
+  APPDATA, TEMP, TMP) and a PATH of Windows' own folders: the frozen app cannot touch the
+  user's config, cache or history, nor lean on a DLL only a developer's PATH provides. It
+  fails if the tree changes at all, since a program that writes into its own folder leaves
+  files an uninstall does not remove.
+- The MSI's file list is one component per folder, each with an HKCU key path and a
+  RemoveFolder, which is what Windows Installer asks of a per-user package: its validation
+  finds no error, and every folder has its removal authored, the 35 of the tree's 168 that
+  hold only folders included.
+- The Rust engine ships in `_internal`, beside the MSVC runtime it links
+  (`VCRUNTIME140.dll`, which PyInstaller copies there): found there without a copy in
+  `System32`, and where `overtone_rust` already looks.
+- Toolchain, per user and without an administrator: the .NET SDK 10.0.401 from Microsoft's
+  signed `dotnet-install.ps1`, which leaves PATH alone; every `dotnet` the build runs has
+  telemetry, update checks and the first run's PATH and certificate changes turned off.
+  One setup command here ran without those two variables, and the SDK's first run added
+  `%USERPROFILE%\.dotnet\tools` to the user PATH and an untrusted `CN=localhost`
+  development certificate to the personal store; `docs/11` lists the variables for that
+  reason. The build itself reaches no network.
+- **WiX 6 and 7 are not used**: their NuGet packages carry the Open Source Maintenance Fee
+  EULA and require accepting it (`requireLicenseAcceptance`); that is the owner's decision,
+  not the build's. WiX 5.0.2 is MS-RL alone and asks nothing.
+
+### Measured
+
+```
+installer\build.py --clean at 9356249, this machine, other sessions running on it
+  toolchain   Python 3.14.7 · PyInstaller 6.22.3 (hooks 2026.7) · rustc 1.98.1
+              · .NET SDK 10.0.401 · WiX 5.0.2
+  tree        734 files, 314.5 MB (llvmlite 120.4, scipy 50.4, numpy + scipy DLLs 41.5,
+              Overtone.exe 20.0, overtone-py.exe 19.4, the Rust engine 5.5)
+  MSI         113.0 MB   sha256 72d6ce1d87c30b500be1bf67b256b015e5ed35b3cac92fc2ab2fc1d38a49ffe7
+  ZIP         138.4 MB   sha256 2a29151dd474c7e4564bb602d523ad2583dfb6bced4a6218919bc0d9a67b94ed
+  ICE         0 errors; warnings ICE91 x734 (per-user folder), ICE61 x1 (same-version upgrade)
+  steps       cargo 0.6 s (built; 5 min 10 s from nothing) · PyInstaller 485.8 s · smoke 59.0 s
+              · MSI 316.9 s · ICE 60.3 s · ZIP 41.9 s · admin install 46.9 s · unzip 5.0 s
+              · total 1296.2 s; an earlier clean build, more loaded: 1947.2 s
+smoke                  overtone-py.exe       overtone-cli.exe      Overtone.exe --self-check
+  dist\Overtone        174.0000 BPM 29.4 s   174.0000 BPM 2.6 s    8/8 26.1 s
+  MSI, admin install   174.0000 BPM 16.1 s   174.0000 BPM 2.2 s    8/8 35.7 s
+  ZIP, unpacked        174.0000 BPM 13.7 s   174.0000 BPM 1.3 s    8/8 31.3 s
+  every copy's 734 files identical to the tree; every tree unchanged by its runs; the
+  scratch profile got numba's cache (2 files, 8 kB) and nothing else
+edm-174 read by the frozen Python engine 174.00000407786123, by overtone.py in the checkout
+  the same to the last digit, by the Rust engine 174.00000407791484
+MSI Word Count 10 (compressed, no elevation needed), no ALLUSERS; the administrative
+  install asked for nothing
+Python unittest     +8 tests (528 -> 536 on its own base), all pass · facts ok
+```
+
+Not measured: a real install and uninstall (not run, by instruction), the window itself
+and the classic Tk window (they open windows). The Tk window's Tcl and Tk scripts were
+checked inside `tcl90.dll` and `tcl9tk90.dll`, where Python 3.14's Tcl/Tk 9 keeps them.
+
+### Rejected / tried and dropped
+
+- **WiX 5's `<Files>` harvesting**: one component per file, the file as its key path. In a
+  per-user package Windows Installer's validation reported 734 ICE38 and 194 ICE64 errors
+  (a key path in the user profile must be an HKCU value; a folder there must be removed
+  explicitly). The build now writes the file list itself, one component per folder: no
+  error.
+- **A dual-purpose package** (`Scope="perUserOrMachine"` into `ProgramFiles64Folder`, which
+  Windows points at `%LOCALAPPDATA%\Programs` for a per-user install): it avoids those
+  errors, but WiX leaves the "no elevation needed" bit unset (Word Count 2, against 10 for
+  `perUser`), so whether Windows would ask for an administrator was not something this
+  build could show without installing. `Scope="perUser"` sets it.
+- **The Rust engine beside `Overtone.exe`**, where a user would find it: there it depends
+  on a system copy of the MSVC runtime (see Hardening).
+
 ## v4.0.0-dev — 2026-09-26 · The Library, measured: scans that say what they did, and the health check's engine
 
 ### Changed

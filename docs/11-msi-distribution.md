@@ -6,9 +6,148 @@ dependencies beyond what Windows already provides, no user-managed model
 downloads. The user double-clicks the `.msi`, clicks through Next / Install,
 and every capability of the app is available immediately.
 
-This is the concrete plan to build that.
+This is the concrete plan to build that, and, first, what of it is built.
 
 ---
+
+## What is built — 2026-09-26
+
+Sub-phases 10.13.1 (the build harness), 10.13.2 (the WiX authoring, in part) and 10.13.5
+(the portable ZIP), for the app as it is today: the Python engine and the web window, with
+the Rust engine beside them. None of Phase 10's models exist yet, so none ship; the
+component table below is still the plan for when they do.
+
+One line, from a checkout, builds everything and checks it:
+
+```
+.venv\Scripts\python.exe installer\build.py            # --no-msi, --no-verify, --clean
+```
+
+| In `dist\` (git-ignored) | What it is |
+|---|---|
+| `Overtone\` | the tree: `Overtone.exe` (the window, what `Overtone.bat` starts), `overtone-py.exe` (the Python engine's command line, what `overtone.py` is in a checkout), and `_internal\`: Python 3.14, the wheels of `requirements.lock`, the app's own files and the Rust engine, `overtone-cli.exe` |
+| `Overtone-4.0.0-dev-x64.msi` | the installer: per user, no administrator, into `%LOCALAPPDATA%\Programs\Overtone`, with a Start menu shortcut; uninstalled from Windows' Apps list |
+| `Overtone-4.0.0-dev-x64-portable.zip` | the same tree in one `Overtone` folder |
+| `Overtone-4.0.0-dev-build.txt` | the toolchain, sizes, SHA-256 of both, every step's time and the smoke results |
+
+What the script does, in order, each step timed and logged to `build\logs`:
+
+1. refuses to start if the venv's wheels differ from `requirements.lock` or
+   `installer\requirements-build.lock` (the bundle carries what the venv holds, and the
+   locks are what was measured), or if a tool is missing, naming it;
+2. `cargo build --release -p overtone-cli`;
+3. PyInstaller, `installer\overtone.spec`: two executables over one `_internal`. The app's
+   files (`app\`, `assets\logo.*`, `assets\samples\`, `profiles\`, `library.sql`, listed
+   once in `installer\release.py`) land at their repository paths, which is where the code
+   looks for them; the Rust engine lands beside the modules, where `overtone_rust` looks,
+   and beside the MSVC runtime it links;
+4. the smoke test on the tree (below);
+5. the MSI, with WiX 5.0.2: `installer\Overtone.wxs`, plus the file list that the script
+   writes from the tree (one component per folder, an HKCU value as its key path and a
+   `RemoveFolder`), then Windows Installer's own validation (ICE), where an error stops the
+   build;
+6. the ZIP;
+7. both unpacked in temporary folders — the MSI by an administrative install
+   (`msiexec /a … /qn`, which lays the files out and registers nothing), the ZIP by
+   extraction — each compared with the tree file by file (size and SHA-256), and each
+   smoke-tested.
+
+**The smoke test** (`installer\smoke.py [TREE]`, also runnable on its own) needs no window
+and plays nothing. With a scratch profile (USERPROFILE, LOCALAPPDATA, APPDATA, TEMP and TMP
+in a temporary folder, PATH holding only Windows' folders) it runs `overtone-py.exe` and
+`_internal\overtone-cli.exe` on the benchmark's `edm-174` case, each of which must read
+174 BPM within the benchmark's 0.05, and `Overtone.exe --self-check REPORT.json` (the
+window's executable has no console, so the verdict goes to the file and the exit code;
+anyone can run it on an installed copy). The self-check is
+the window's own executable looking for everything it reads where the code looks for it
+(page, icon, samples, library schema), loading the window's libraries without opening a
+window (pythonnet and the WebView2 assemblies; it fails if the WebView2 runtime is
+missing), and running both engines on twenty seconds of clicks at 150 BPM, the Rust one
+through the same sidecar call the app makes. The tree must come out byte for byte as it
+went in: a program that writes into its own folder leaves files an uninstall does not
+remove.
+
+**Measured** on 2026-09-26, `build.py --clean` at commit `9356249` on this machine, while
+other sessions ran on it (its timings vary by up to a third between runs even when idle):
+
+| | |
+|---|---|
+| Tree | 734 files, 314.5 MB unpacked: llvmlite (numba's compiler) 120.4 MB, scipy 50.4 MB, numpy's and scipy's DLLs 41.5 MB, the two executables 20.0 and 19.4 MB (each holds its own copy of the Python modules), scikit-learn 12.6 MB, the Rust engine 5.5 MB |
+| MSI | 113.0 MB (WiX's "high" compression); unpacked, the same 734 files |
+| ZIP | 138.4 MB (deflate, level 9); unpacked, the same 734 files |
+| ICE validation | no error; warnings: ICE91 ×734 (files in a per-user folder, as intended) and ICE61 ×1 (a rebuild of the same version replaces the installed one, as intended) |
+| Build | 1296 s in all: cargo 0.6 s (already built; 5 min 10 s from nothing), PyInstaller 486 s, smoke 59 s, MSI 317 s, ICE 60 s, ZIP 42 s, administrative install 47 s, unzip 5 s. An earlier clean build under heavier load took 1947 s (PyInstaller 1109 s, MSI 431 s) |
+
+| Smoke test | `overtone-py.exe`, edm-174 | `_internal\overtone-cli.exe`, edm-174 | `Overtone.exe --self-check` |
+|---|---|---|---|
+| `dist\Overtone` | 174.0000 BPM, 29.4 s | 174.0000 BPM, 2.6 s | 8 of 8, 26.1 s |
+| the MSI's files (administrative install) | 174.0000 BPM, 16.1 s | 174.0000 BPM, 2.2 s | 8 of 8, 35.7 s |
+| the ZIP, unpacked | 174.0000 BPM, 13.7 s | 174.0000 BPM, 1.3 s | 8 of 8, 31.3 s |
+
+All three copies were byte for byte identical to the tree (size and SHA-256 of every file)
+and came out of their runs unchanged; the scratch profile received numba's cache (2 files,
+8 kB) and nothing else. The frozen Python engine reads edm-174 as 174.00000407786123 BPM,
+the checkout's `overtone.py` the same to the last digit, and the Rust engine
+174.00000407791484. The first run on a freshly built tree tends to be the slowest (29.4 s
+here, 80.0 s in the earlier build) although every run starts with an empty numba cache;
+not investigated further, as the machine was busy. The WebView2 runtime here is
+153.0.4234.48.
+
+Not exercised, since it opens windows: the app's window itself, and the classic Tk window
+(`overtone-py.exe` with no arguments). The Tk window's scripts do ship: Python 3.14's Tcl
+and Tk 9 carry them inside `tcl90.dll` and `tcl9tk90.dll` (`init.tcl`, `tk.tcl`, `ttk.tcl`
+checked there), which is why the tree has no `_tcl_data` folder.
+
+**Not built yet**, so none of it is claimed:
+
+- **Code signing** (10.13.6), out of scope here: the MSI and the executables are unsigned,
+  so SmartScreen can be expected to warn on a downloaded copy (not tried).
+- **Licence notices and SBOM** (10.13.3): the repository has no `LICENSE` file yet, and the
+  bundled libraries' notices (Python, numpy, scipy, librosa, numba and llvmlite,
+  scikit-learn, libsndfile under LGPL, pythonnet, the WebView2 SDK, Tcl/Tk, OpenSSL) are not
+  gathered into the tree; the few that are there (numpy's, libsndfile's `COPYING`, two of
+  scikit-learn's) came with PyInstaller's hooks, not by design. The MSI skips the licence
+  page for that reason. Neither artefact should be published before this is done.
+- **Windows integration beyond the Start menu** (the rest of 10.13.2): no desktop shortcut,
+  file associations, Explorer menu or `overtone://` scheme, and no custom setup screen.
+- **The portable `data\` folder**: the ZIP's copy keeps its settings and cache where the
+  installed one does (see "User data locations"), not beside the executable.
+- **An install and uninstall on a real profile**: not exercised here, by instruction; the
+  build proves the MSI's files (administrative install), its tables (ICE, above) and its
+  authoring, not the install itself. The first real install is worth a before-and-after
+  listing of `%LOCALAPPDATA%\Programs` and the Start menu.
+- **WiX 6 or 7**: their NuGet packages require accepting the Open Source Maintenance Fee
+  EULA (`requireLicenseAcceptance` true, licence file `OSMFEULA.txt`): whoever accesses or
+  uses the binaries "agrees to be bound by the terms of this Agreement", and a fee applies
+  to users who use WiX in revenue-generating activities with US$10,000 or more of annual
+  gross revenue. That is the maintainer's decision, not the build's, so the build pins
+  5.0.2, which is MS-RL alone and requires no acceptance.
+
+### Building it
+
+Once, per user, with no administrator and nothing on `PATH` changed (PowerShell, from the
+repository):
+
+```
+.venv\Scripts\python.exe -m pip install -r installer\requirements-build.lock
+powershell -ExecutionPolicy Bypass -File dotnet-install.ps1 -Version 10.0.401 -NoPath
+$env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"; $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = "false"
+$env:DOTNET_GENERATE_ASPNET_CERTIFICATE = "false"; $env:DOTNET_NOLOGO = "1"
+$dotnet = "$env:LOCALAPPDATA\Microsoft\dotnet\dotnet.exe"
+cd installer; & $dotnet tool restore
+& $dotnet tool run wix -- extension add -g WixToolset.UI.wixext/5.0.2
+```
+
+`dotnet-install.ps1` is Microsoft's script (https://dot.net/v1/dotnet-install.ps1,
+Authenticode-signed by Microsoft); it puts the SDK in `%LOCALAPPDATA%\Microsoft\dotnet`,
+where `build.py` looks first. The four variables keep the SDK's telemetry off and stop its
+first run from adding a folder to `PATH` or a development certificate to the store; they
+must be set before any `dotnet` command, since one run without them is enough (it happened
+here once: see the timeline). `build.py` sets them, and turns off update checks, for every
+`dotnet` it runs.
+`dotnet tool restore` reads `installer\dotnet-tools.json`, which pins WiX 5.0.2; the UI
+extension goes to `%USERPROFILE%\.wix\extensions`. The Rust toolchain is the one CLAUDE.md
+names. After this the build needs no network, and `--no-msi` needs neither .NET nor WiX.
 
 ## What the installer bundles
 
@@ -17,7 +156,11 @@ download is ever required.
 
 Sizes and licences re-checked on 2026-09-23 (see the licence audit in
 `10-precision-plan.md`). The totals further down predate that check: they
-still count ~500 MB of Demucs weights that no longer ship.
+still count ~500 MB of Demucs weights that no longer ship. Today's build (above) holds
+the rows that exist, the app, the Python runtime, the DSP wheels and libsndfile, plus
+numba's llvmlite (120 MB of the tree, the largest single part), scikit-learn (which
+librosa brings), pythonnet and the WebView2 assemblies for the window, and the Rust
+engine: 314.5 MB unpacked.
 
 | Component | Size | Licence | Purpose |
 |---|---:|---|---|
@@ -49,12 +192,16 @@ Two options for how that lands in the user's storage after install:
 
 - **WiX Toolset** (MS-RL; releases need the Open Source Maintenance Fee
   EULA, with a fee if used to generate revenue) — the industry-standard MSI builder. Turns a
-  declarative XML into a signed `.msi`.
+  declarative XML into a signed `.msi`. Built with **5.0.2**, the last release under MS-RL
+  alone: 6.x and 7.x (7.0.0 on 2026-09-26) ship the OSMF EULA and ask for its acceptance, a
+  decision left to the maintainer (see "What is built").
 - **PyOxidizer** or **PyInstaller** — bundle Python plus the app into a single
   redistributable directory tree.
   - PyInstaller is more mature and better documented.
   - PyOxidizer produces smaller and faster startup but is finicky with PyTorch.
   - Decision: PyInstaller for the first release; evaluate PyOxidizer for v4.
+    **PyInstaller 6.22.3** freezes Python 3.14.7 and every wheel of the lock, numba and
+    pythonnet included, with the hooks it ships.
 - **A code-signing certificate** — required for Windows SmartScreen to not
   warn on install. Options in order of cost:
   1. **Self-signed** for beta releases (SmartScreen will still warn).
@@ -66,28 +213,45 @@ Two options for how that lands in the user's storage after install:
 
 ### Structure
 
+As built (PyInstaller's onedir layout; the MSI installs it, the ZIP holds it):
+
 ```
-Overtone/
-├─ Overtone.exe                 # PyInstaller wrapper, launches the GUI
-├─ overtone-cli.exe             # PyInstaller wrapper for the CLI
-├─ python\
-│  ├─ python.dll                # Python runtime
-│  ├─ site-packages\            # every wheel the app needs
-│  └─ overtone\                 # the actual app
+Overtone\
+├─ Overtone.exe                 # the window (no console)
+├─ overtone-py.exe              # the Python engine's command line, as overtone.py
+└─ _internal\                   # PyInstaller's contents folder
+   ├─ python314.dll, base_library.zip, VCRUNTIME140*.dll …
+   ├─ numpy\ scipy\ librosa\ numba\ llvmlite\ sklearn\ webview\ pythonnet\ …
+   ├─ app\  assets\  profiles\  library.sql     # the app's files, at their repo paths
+   └─ overtone-cli.exe          # the Rust engine, where overtone_rust finds it
+```
+
+The Python command line is not called `overtone-cli.exe`, as the plan had it: that is the
+Rust engine's name, and both ship. The Rust engine sits in `_internal` rather than beside
+`Overtone.exe` because it links the MSVC runtime (`VCRUNTIME140.dll`), which PyInstaller
+copies there; beside it, the DLL is found without relying on a copy in `System32`.
+Uninstalling is Windows Installer's own, so there is no `uninstall.exe`.
+
+Planned for when Phase 10's models land:
+
+```
+Overtone\
 ├─ models\
 │  ├─ beat_this.pt              # BeatThis weights
 │  ├─ htdemucs.pt               # Demucs weights
 │  ├─ madmom\                   # madmom models
 │  └─ manifest.json             # hash / version / licence per model
 ├─ ffmpeg\                      # optional, for MP3/M4A fallback
-├─ docs\                        # licences + user manual
-└─ uninstall.exe
+└─ docs\                        # licences + user manual
 ```
 
 Every model file is checksummed and its checksum verified at first launch.
 Missing or corrupt files trigger a clear error, never a silent download.
 
 ## Windows integration
+
+Built: 1 (the shortcut carries the app's taskbar identity, `Overtone.TimingWorkbench`, so
+the running window groups under it) and 6. The rest is not built yet.
 
 1. **Start Menu entry**: `Overtone`, launches the GUI.
 2. **Desktop shortcut**: optional, checkbox in installer.
@@ -102,23 +266,39 @@ Missing or corrupt files trigger a clear error, never a silent download.
 ## Update path
 
 - The installer detects a previous Overtone install by its Upgrade Code
-  (a fixed GUID for the whole product family).
-- New versions install cleanly over old ones, preserving `%APPDATA%\Overtone\`
-  (settings, project history, license state).
-- The app checks a local file for the installed version at start; there is no
-  network update check. Users see a "new version available" banner only if
+  (a fixed GUID for the whole product family): `EE97BBEC-80EB-4D3C-BE6D-5963826D82CA`,
+  in `installer\Overtone.wxs`. Never change it.
+- New versions install cleanly over old ones (a major upgrade; a rebuild of the same
+  version replaces the installed one too), preserving the user's data, below, which no
+  install or uninstall touches.
+- Planned, not built: the app checks a local file for the installed version at start;
+  there is no network update check. Users see a "new version available" banner only if
   they open the app after a manual update.
 
 ## User data locations
 
-- `%APPDATA%\Overtone\` — settings, per-user preferences, recents.
-- `%APPDATA%\Overtone\projects\` — saved project files.
-- `%LOCALAPPDATA%\Overtone\cache\` — analysis cache keyed by
-  `blake3(audio bytes)`. Purgeable from within the app; automatic cap at
-  10 GB.
-- `%LOCALAPPDATA%\Overtone\logs\` — diagnostic logs. Rolling, 30 days.
+Where the app keeps what it writes, as of 2026-09-26 (the plan had `%APPDATA%\Overtone\`
+for settings; the code never used it):
 
-The installer creates none of these; the app creates them on first run.
+- `%USERPROFILE%\.overtone.json` — settings and recents, shared by the window and the
+  classic Tk window (`~\.timing_analyzer.json`, the old name, is still read).
+- `%LOCALAPPDATA%\Overtone\` — `cache\` (analysis results keyed by the audio's SHA-256,
+  ten entries and 50 MB at most, purgeable in Settings), `writes.jsonl` (the write
+  history), `library.sqlite3` (the library index), `drops\` (files dropped on the window)
+  and `webview\` (the window's browser storage).
+- `%USERPROFILE%\Documents\Overtone\` — exports, unless told otherwise.
+- `<name>.osu.bak` (then `.bak2`, `.bak3`…) beside each beatmap it writes.
+- `%LOCALAPPDATA%\numba\Cache\` — frozen builds only: numba's compiled librosa
+  functions, keyed to the executable. A frozen module has no source file on disk, so numba
+  uses its user-wide cache there instead of a `__pycache__` beside the code (the smoke test
+  lists it: two files, 8 kB, after one analysis).
+
+The installer creates none of these and removes none of them: the app creates them when
+it first needs them, outside the program folder, and writes nothing into the program
+folder itself (the smoke test checks that, in the tree, the MSI's files and the ZIP's).
+Everything the MSI does write, its uninstall is authored to remove (not yet run on a real
+profile): the program folder, the Start menu shortcut, and its own bookkeeping key,
+`HKCU\Software\Overtone\Installer`.
 
 ## The audit trail
 
@@ -142,10 +322,12 @@ a ZIP the user unpacks anywhere:
 
 - No registry entries, no file associations, no Start Menu.
 - Reads settings and cache from a `data\` subfolder next to the executable,
-  not from `%APPDATA%`.
+  not from `%APPDATA%`. **Not built yet**: today's ZIP keeps them where the installed
+  copy does (see "User data locations"), so the two share settings and cache.
 - Useful for USB sticks, sandbox testing, and machines where the user cannot
   install software.
-- Same 1.2 GB, unpacked to ~1.4 GB on disk.
+- Same 1.2 GB, unpacked to ~1.4 GB on disk. As built, without models: 138.4 MB, unpacked
+  to 314.5 MB (the MSI: 113.0 MB).
 
 ## Size reduction options
 
@@ -188,6 +370,14 @@ Produces:
 The script pins every wheel and every model version, so a build at commit X
 today produces byte-identical artefacts to a build at commit X in a year.
 
+As built, `installer\build.py` (see "What is built") is this script without signing, the
+SBOM or models: it produces the tree, the MSI, the ZIP and a build summary holding the
+SHA-256 of both artefacts, the toolchain's versions, every step's time and the smoke
+results, while `build\logs\` keeps each step's full output. It refuses a venv whose wheels
+differ from the two locks, so the wheel set is reproducible. The artefacts are not
+byte-identical from build to build: WiX gives every build of the MSI a new package code
+(two builds here: `{D5481272-…}`, then `{133122E1-…}`), which is 10.13.7's to settle.
+
 ## Cost summary
 
 - **Code-signing certificate**: $0 self-signed / $10/month Azure Trusted
@@ -195,7 +385,9 @@ today produces byte-identical artefacts to a build at commit X in a year.
 - **Distribution hosting**: GitHub Releases handles 2 GB per file, free.
 - **CDN for updates**: not needed — no network update path.
 - **Build machine**: a single Windows dev box; the whole build runs in
-  ~5 minutes.
+  ~5 minutes. Measured on 2026-09-26, without models: 22 minutes for a clean build on a
+  busy machine, 8 of them PyInstaller's and 5 WiX's compression, and 32 minutes under
+  heavier load (see "What is built").
 
 Zero recurring cost if the beta releases stay self-signed and hosting stays
 on GitHub Releases.
@@ -203,14 +395,18 @@ on GitHub Releases.
 ## Timeline within Phase 10
 
 - **10.13.1** — build harness: PyInstaller wrapper, reproducible wheel set,
-  first unsigned MSI. **2 days.**
+  first unsigned MSI. **2 days.** **Built 2026-09-26.**
 - **10.13.2** — WiX authoring: install flow, custom setup screen, file
-  associations, uninstall. **3 days.**
+  associations, uninstall. **3 days.** **Partly built 2026-09-26**: the install flow
+  (welcome, folder, install), per user, the Start menu shortcut, uninstall; no custom
+  setup screen or file associations.
 - **10.13.3** — model manifest and integrity checks: checksums, licence
-  packaging, SBOM. **1 day.**
+  packaging, SBOM. **1 day.** The artefacts' SHA-256 is in the build summary; nothing
+  else yet.
 - **10.13.4** — size reduction: quantise models, drop madmom, ship
   Demucs-drums-only. **2 days.**
-- **10.13.5** — portable ZIP variant. **1 day.**
+- **10.13.5** — portable ZIP variant. **1 day.** **Built 2026-09-26**, without the
+  `data\` folder.
 - **10.13.6** — code signing: obtain certificate, integrate into build,
   document the signed release process. **2 days.**
 - **10.13.7** — build automation script + release checklist. **1 day.**

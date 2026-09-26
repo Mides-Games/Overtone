@@ -29,7 +29,7 @@ sections within 0.05 BPM and 5 ms     24 / 24
 | **Hitsounds** | ✅ In the app: copy one difficulty's hitsounds onto the others, see where each addition falls, hear them with the song, a consistency check in the mod report, the Rust decision engine's proposals to tick, and volume and sample index to set by hand, all heard over the song before a preview, a write and an undo. Profiles and a sample bank come next |
 | **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, a section loop or one drawn on the map at 100/75/50 %, taps, the percussive part alone, a difficulty's hitsounds as written or as they would be written |
 | **Accuracy on real, live-played songs** | 📋 Planned, and measured first — today 1.6 % of 20 ranked maps' red lines land within 5 ms (Corpus B, `bench/corpus_b.py`) |
-| **Installer** (MSI) | 📋 Planned |
+| **Installer** (MSI) | 🟡 Built, not published: `installer\build.py` makes a per-user MSI (no administrator) and a portable ZIP in one line, and smoke-tests both unpacked. Unsigned, and the licence notices are not packaged yet |
 
 Nothing here claims a number that was not measured. Targets are marked as targets.
 
@@ -211,7 +211,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Feature | Status | Notes |
 |---|:--:|---|
 | Double-click launcher | ✅ | `Overtone.bat` |
-| Self-contained MSI + portable ZIP | 📋 | P10.13 — [plan](docs/11-msi-distribution.md) |
+| Self-contained MSI + portable ZIP | 🟡 | P10.13 — `installer\build.py`: per-user MSI into `%LOCALAPPDATA%\Programs`, Start menu shortcut, the same tree as a ZIP; not signed, no licence notices or file associations yet ([what is built](docs/11-msi-distribution.md)) |
 
 ### Deliberately not built
 
@@ -240,7 +240,11 @@ Then double-click **`Overtone.bat`**, or from a terminal:
 .venv/Scripts/python.exe overtone_web.py [audio-file]   # the app (Edge WebView2 window)
 .venv/Scripts/python.exe overtone.py                    # the classic Tk window
 .venv/Scripts/python.exe overtone.py song.wav --stats   # command line
+.venv/Scripts/python.exe installer/build.py             # the MSI and portable ZIP, in dist/
 ```
+
+The installer build needs a one-time toolchain (PyInstaller, a per-user .NET SDK and WiX
+5.0.2, no administrator): [docs/11](docs/11-msi-distribution.md#building-it).
 
 WAV, FLAC, OGG and most MP3s open directly (libsndfile 1.2); the odd MP3 it cannot read
 (one of the songs tested) and M4A / AAC need FFmpeg on `PATH` for the Python engine. The

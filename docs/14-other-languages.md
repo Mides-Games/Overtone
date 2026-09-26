@@ -23,7 +23,7 @@ Tools on this machine (2026-09-24):
 | Tool | State |
 |---|---|
 | SQLite (Python's `sqlite3`) | 3.50.4, with FTS5 full-text search: nothing to install |
-| .NET | runtime 8.0 only, no SDK: C# needs the SDK installed |
+| .NET | runtime 8.0 only, no SDK: C# needs the SDK installed. Since 2026-09-26 the SDK 10.0.401 is installed per user (`%LOCALAPPDATA%\Microsoft\dotnet`), for the MSI build |
 | Node.js | absent: TypeScript needs Node installed (as a development tool) |
 | WebView2 | present: WebGPU / WGSL available to the page |
 
@@ -143,7 +143,9 @@ surface that has to be designed, not bolted on.
 ### 6. WiX (XML): the installer
 
 **What it adds.** The MSI already planned (Phase 10.13), with its own licence note (MS-RL).
-It is listed here only so the count is complete.
+It is listed here only so the count is complete. Built on 2026-09-26 with WiX 5.0.2, the
+last release under MS-RL alone (6 and 7 ask for the Open Source Maintenance Fee EULA,
+which was not accepted): `installer\Overtone.wxs`, see `11-msi-distribution.md`.
 
 ---
 
@@ -161,5 +163,5 @@ It is listed here only so the count is complete.
 1. **SQL library index**: no install, P1, and it unblocks the Songs browser, the library
    health check and fingerprint reuse.
 2. **TypeScript check of the web shell**: after Node.js is installed.
-3. **C# lazer gate**: after the .NET SDK is installed.
+3. **C# lazer gate**: after the .NET SDK is installed (it is, per user, since 2026-09-26).
 4. **WGSL spectrogram** and **Lua rules**: when their phases come up.

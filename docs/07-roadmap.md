@@ -27,7 +27,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency, the percussive part alone, and a difficulty's hitsounds with its own samples, as written or as they would be written, slider slides looped head to tail |
 | UI verification | **done** 2026-09-26 — the 19 surfaces of 2026-09-25/26 exercised in the browser pane on two real mapsets, both themes and languages; it found app.js not loading and fifteen bugs in writes, counts and messages, all fixed; the two tools that needed a decision were decided the same day (timeline) |
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
-| Installer (MSI) | **not started** — plan only |
+| Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
 Tests: **581** Python (400 engine + 181 web shell) · **263** Rust.
 
@@ -53,10 +53,14 @@ point, section volumes, SV normaliser, re-snap, snap divisors, audio file check)
    list waits on a decision (timeline, 2026-09-26).
 3. **The Audio section** (Phase 19), and phrase starts on the phrase's own bar.
 4. **Other languages** (Phase 24) — TypeScript (needs Node.js) and a C# lazer gate (needs
-   the .NET SDK). Neither is installed; ask before installing.
+   the .NET SDK). Node is not installed; ask before installing it. The .NET SDK is, per
+   user, since 2026-09-26 (10.0.401, for the MSI build).
 5. **Real-audio accuracy** (Phase 10) — Corpus B is built and measured (10.0); one
    sub-phase at a time from here, each measured on it.
-6. **Installer** (Phase 10.13) — MSI + portable ZIP.
+6. **Installer, the rest** (Phase 10.13) — licence notices and an SBOM before anything is
+   published, code signing, the portable `data\` folder, file associations, and one real
+   install and uninstall. Built so far: the one-line build, the per-user MSI and the ZIP
+   ([`11`](11-msi-distribution.md)).
 
 Three proposals wait on a decision, not on work: the Rhythm guide (`04-ui-ux.md` §9 rules out
 editing a beatmap beyond hitsounds and timing), song import from a streaming link
@@ -453,7 +457,7 @@ estimate with a number or is dropped.
 | 10.10 | Chord & cadence anchors | cadences as downbeat voters | +1 pt | todo |
 | 10.11 | Instrument specialists | trained kick/snare/hat detectors | +1 pt | todo |
 | 10.12 | UX for slow but precise | stage progress, cancel, cached intermediates | usability | partial — result cache, stage progress with timings, stop between stages; no cached intermediates |
-| 10.13 | **MSI distribution** | one self-contained installer + portable ZIP — [`11-msi-distribution.md`](11-msi-distribution.md) | packaging | todo |
+| 10.13 | **MSI distribution** | one self-contained installer + portable ZIP — [`11-msi-distribution.md`](11-msi-distribution.md) | packaging | partial — 10.13.1 and 10.13.5 built, 10.13.2 in part (2026-09-26): `installer\build.py`, a per-user MSI and the ZIP, smoke-tested unpacked; no signing, licences or file associations |
 
 **Licences, checked at the source on 2026-09-23** (full table in `10-precision-plan.md`):
 Beat This! is MIT down to its weights; BeatNet is CC-BY-4.0; madmom's models are
@@ -675,10 +679,10 @@ project's rules (offline, one-line local gates), and how each stays in step with
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | **SQL** (SQLite + FTS5) | library index of the Songs folder: search, same-audio lookup, library health, ground for fingerprint reuse | low | **high** | Python's `sqlite3` (installed) | no | no | **P1** | **done** — `overtone_library.py` + `library.sql` (schema 2): search p50 10 ms (one letter 15 ms), same-audio 6-12 ms once hashed, the library health table |
 | **TypeScript** | the web shell type-checked against the bridge (`@ts-check` + JSDoc, `tsc --noEmit`), payload types generated from Python | med | high | Node.js (dev only, not installed) | no | no | P1 | todo — after Node |
-| **C#** | osu!lazer compatibility gate: lazer's own `osu.Game` decoder reads every `.osu` Overtone writes | med | high | .NET 8 SDK (dev only, not installed) | no | no | P2 | todo |
+| **C#** | osu!lazer compatibility gate: lazer's own `osu.Game` decoder reads every `.osu` Overtone writes | med | high | .NET SDK (dev only; 10.0.401 installed per user on 2026-09-26, for the MSI) | no | no | P2 | todo |
 | **WGSL** (WebGPU) | spectrogram layer computed on the GPU | med | low-med | WebView2 WebGPU | no | **yes** | P3 | todo |
 | **Lua** | user rules for the mod report, sandboxed | med | low-med | `lupa` or `mlua` | no | no | P3 | todo |
-| WiX (XML) | the MSI (Phase 10.13) | med | med | WiX toolset | no | no | — | as planned |
+| WiX (XML) | the MSI (Phase 10.13) | med | med | WiX toolset | no | no | — | **built** — `installer\Overtone.wxs`, WiX 5.0.2 (MS-RL; 6 and 7 ask for the OSMF EULA, not accepted) |
 
 Rejected: C++, Go, Java, Kotlin, Cython, Julia, R — the reasons are in the document.
 

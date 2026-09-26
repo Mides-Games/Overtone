@@ -4133,6 +4133,29 @@ class CliOutputTests(unittest.TestCase):
         self.assertIn("Error:", err)
 
 
+class CliEncodingTests(unittest.TestCase):
+    def test_redirected_output_takes_any_file_name(self):
+        # Redirected, Windows hands Python its ANSI code page, and a Japanese
+        # name in a batch row ended the run in a UnicodeEncodeError traceback.
+        import io
+        import sys
+        from unittest import mock
+        import overtone
+        rows = [{"file": "東方 テスト.wav", "ok": False, "global_bpm": 0.0, "points": 0,
+                 "duration": 0.0, "error": "No rhythmic pulse found"}]
+        out, err = io.BytesIO(), io.BytesIO()
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(sys, "argv", ["overtone.py", tmp]), \
+                mock.patch.object(sys, "stdout", io.TextIOWrapper(out, encoding="cp1252")) as stdout, \
+                mock.patch.object(sys, "stderr", io.TextIOWrapper(err, encoding="cp1252")), \
+                mock.patch.object(overtone, "analyze_batch", return_value=rows), \
+                self.assertRaises(SystemExit) as done:
+            main()
+        stdout.flush()
+        self.assertEqual(done.exception.code, 1)               # the row failed, the run did not
+        self.assertIn("東方 テスト.wav", out.getvalue().decode("utf-8"))
+
+
 class CliFlagTests(unittest.TestCase):
     """A flag that cannot act is refused: --inject with the audio forgotten
     opened the window, and --title without --osz wrote nothing, both silently."""

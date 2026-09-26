@@ -9647,6 +9647,12 @@ class TimingAnalyzerApp:
 
 
 def main() -> None:
+    # Redirected (`> timing.txt`, a pipe), Windows hands Python its ANSI code
+    # page, and a Japanese file name in a batch row or an error ended the run
+    # in a traceback. UTF-8 holds every name; a console is left as it is.
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, "reconfigure") and not stream.isatty():
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="Overtone — BPM and offset detector for osu! mapping")
     parser.add_argument("audio", nargs="?", help="Audio file to analyze (a folder analyses every audio file in it; no argument opens the GUI)")
     parser.add_argument("--delta", type=float, default=1.5, help="Minimum BPM change (default 1.5)")

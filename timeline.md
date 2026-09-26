@@ -17,6 +17,36 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · The CLI writes UTF-8 when its output is redirected
+
+Redirected to a file or a pipe, Windows hands Python its ANSI code page (cp1252 here), not
+the console's Unicode. A batch run over a folder with a Japanese file name printed its
+header, then ended in a `UnicodeEncodeError` traceback at that name's row; an error message
+naming such a path did the same. Roadmap, Phase 22: "CLI Unicode output".
+
+### Fixed
+
+- `main()` writes stdout and stderr as UTF-8 (unencodable text replaced, never raised) when
+  they are not a console. A console is left as it is: Python already writes it as Unicode.
+  The timing lines and the JSON are ASCII either way.
+
+### Measured
+
+```
+batch over a folder holding "東方 テスト.wav" (3 s of silence), stdout piped,
+PYTHONIOENCODING unset
+  before    header, then UnicodeEncodeError: 'charmap' codec can't encode characters
+  after     the row, "東方 テスト.wav ... FAILED: No rhythmic pulse found", as UTF-8;
+            exit 1 because the row failed, not the run
+the new test on the old code   the same UnicodeEncodeError
+Python unittest      558 -> 559, all pass · facts ok
+engine gates         benchmark 24/24, bpm-snapshot 24/24, golden 27/27, reference 24/24,
+                     coverage, measures, signatures, robustness, assisted: all pass
+```
+
+This session's own shell sets `PYTHONIOENCODING=utf-8`, which is why no earlier run here
+saw it; the test hands `main()` cp1252 streams instead of relying on the environment.
+
 ## v4.0.0-dev — 2026-09-26 · The late reading: ranked maps put their lines before the sound
 
 Corpus B read every category a median +24 ms after the mappers' red lines, steady songs

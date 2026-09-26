@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **558** Python (387 engine + 171 web shell) · **263** Rust.
+Tests: **559** Python (388 engine + 171 web shell) · **263** Rust.
 
 ### What is pending, in order
 
@@ -636,7 +636,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Faster phase re-centring | a recurrence instead of one `exp` per shift | low | low | — | no | no | P3 | todo |
 | Specific load errors | missing, empty and junk files each get their own message | low | med | decode | no | no | P2 | **done** — missing, empty and junk files named |
 | Config type checks | a wrong-typed or BOM config never crashes or silently resets | low | med | config | no | no | P2 | partial — web shell only |
-| CLI Unicode output | no crash on Japanese names when output is redirected | low | med | CLI | no | no | P2 | todo |
+| CLI Unicode output | no crash on Japanese names when output is redirected | low | med | CLI | no | no | P2 | **done** — redirected, the CLI writes UTF-8; a console is left as it is |
 | CSV save errors | a locked CSV (open in Excel) shows an error | low | low | GUI | no | no | P3 | todo |
 | Injection backups | back up the current state on every injection, and report it truthfully | low | med | writer | no | no | P2 | todo |
 

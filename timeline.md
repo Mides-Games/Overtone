@@ -17,6 +17,28 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · The song before the first red line, hatched on the map
+
+A banner said when the first red line came late, but the map did not show the stretch it
+meant. osu! runs the first line's grid back over everything before it, which holds only
+if the intro keeps that tempo. Roadmap, Phase 3: "Uncovered-intro shading".
+
+### Changed
+
+- The map hatches the song before the first red line across every lane, in the grid's
+  own ink so it follows the theme, and the hover there adds "before the first red line:
+  its grid runs back here". A line at or before 0 ms hatches nothing. No Python changed.
+
+### Measured
+
+```
+Take You Down through the harness page (first red line at 16.6 s, music from 11.1 s)
+  a row of the tempo plot, 1-15 s     luminance 23.9, spread 5.2 (the stripes)
+  the same row, 30-60 s               luminance 20.1, spread 0.0
+  hover at 0:04.9 / 0:40              the line above / nothing added; both languages
+web shell tests      171, all pass (the page's bracket and string checks included)
+```
+
 ## v4.0.0-dev — 2026-09-26 · A failed onset envelope is no longer swapped in silence
 
 The roadmap still listed the envelope's memory as open. Its blocks landed with audit #38

@@ -111,6 +111,7 @@ const I18N = {
     engine_precision: "precision grid", engine_legacy: "beat tracker fallback",
     constant: "constant", variable: "variable", points_n: "{n} points", meter_known: "bar found", meter_guess: "bar assumed",
     time_at: "time", tempo_at: "tempo", line_at: "red line",
+    before_first: "before the first red line: its grid runs back here",
     warn_legacy: "No steady grid could be fitted, so this result comes from the fallback beat tracker. Check it by ear before mapping.",
     warn_loose: "The grid fits loosely (residual {ms} ms). The tempo may drift; listen to the click track.",
     v_dup_points: "Two red lines {gap} ms apart — one of them is a duplicate.",
@@ -626,6 +627,7 @@ const I18N = {
     engine_precision: "rejilla de precisión", engine_legacy: "tracker de respaldo",
     constant: "constante", variable: "variable", points_n: "{n} puntos", meter_known: "compás hallado", meter_guess: "compás supuesto",
     time_at: "tiempo", tempo_at: "tempo", line_at: "línea roja",
+    before_first: "antes de la primera línea roja: su grilla se extiende hacia atrás",
     warn_legacy: "No se pudo ajustar una rejilla estable; este resultado viene del tracker de respaldo. Revisalo de oído antes de mapear.",
     warn_loose: "La rejilla ajusta con holgura (residuo {ms} ms). El tempo puede derivar; escuchá la pista de clic.",
     v_dup_points: "Dos líneas rojas a {gap} ms — una es un duplicado.",
@@ -4906,6 +4908,22 @@ function driftFor(r) {
   return dev;
 }
 
+// Diagonal hatching, one tile per ink: the grid's own, so it follows the theme.
+const HATCH = { ink: null, pattern: null };
+function hatchFill(ctx) {
+  if (HATCH.ink !== C.grid || !HATCH.pattern) {
+    const tile = document.createElement("canvas");
+    tile.width = tile.height = 8;
+    const g = tile.getContext("2d");
+    g.strokeStyle = C.grid; g.lineWidth = 1.5;
+    g.beginPath();
+    for (const d of [-8, 0, 8]) { g.moveTo(d, 8); g.lineTo(d + 8, 0); }
+    g.stroke();
+    Object.assign(HATCH, { ink: C.grid, pattern: ctx.createPattern(tile, "repeat") });
+  }
+  return HATCH.pattern;
+}
+
 // The loaded map's red lines, drawn as ghosts beside the working ones.
 function ghostLines() {
   if (S.ref && S.ref.report && S.ref.report.ok) return S.ref.report.lines.map((l) => l.offset_ms / 1000);
@@ -4964,6 +4982,13 @@ function drawTrace(hoverX) {
     if (i === S.selected) { ctx.fillStyle = C.selected; ctx.fillRect(a, plotTop, b - a, yD1 - plotTop); }
     else if (i % 2 === 1) { ctx.fillStyle = C.section; ctx.fillRect(a, plotTop, b - a, yD1 - plotTop); }
   });
+  // Before the first red line no line governs the song: osu! runs that line's
+  // grid back over it, which holds only if the intro keeps its tempo.
+  const firstLine = bounds.length > 1 ? bounds[0] : 0;
+  if (firstLine > v.a) {
+    ctx.fillStyle = hatchFill(ctx);
+    ctx.fillRect(X(v.a), plotTop, Math.min(X(firstLine), x1) - X(v.a), yD1 - plotTop);
+  }
 
   // the beat grid, once beats are far enough apart to read
   const ct = (r.clicks && r.clicks.t) || [], cl = (r.clicks && r.clicks.level) || [];
@@ -5283,7 +5308,8 @@ function onTraceMove(ev) {
   tip.innerHTML = `
     <div class="row"><span class="k">${t("time_at")}</span><span class="num">${fmtTime(s)}</span></div>
     <div class="row"><span class="k">${t("tempo_at")}</span><span class="num">${(r.trace.bpm[j] || 0).toFixed(2)}</span></div>
-    <div class="row"><span class="k">${t("line_at")}</span><span class="num">${g ? g.bpm.toFixed(3) : "—"}</span></div>`;
+    <div class="row"><span class="k">${t("line_at")}</span><span class="num">${g ? g.bpm.toFixed(3) : "—"}</span></div>
+    ${r.points.length && s < r.points[0].offset_ms / 1000 ? `<div class="row"><span class="k">${t("before_first")}</span></div>` : ""}`;
   tip.style.left = `${x}px`; tip.style.top = `${geom.y0}px`;
   tip.hidden = false;
   drawTrace(x);

@@ -264,7 +264,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Map red lines as ghosts | the loaded .osu's red lines drawn beside the detected ones | low | high | compare | no | no | P1 | **done** — from the reference card, else the compare card |
 | Verdict strip | which engine answered, its residual, and whether to trust it, in one line | low | high | shell | no | no | P1 | partial — banners + engine pill |
 | Snap indicator | say when export snapping moved an offset, so a ±1 ms nudge is not silently undone | low | med | editor | no | no | P2 | **done** without an indicator, by fixing the cause — snapping never moves a hand-placed line, and every edit now starts from the line as it is shown, so a nudge moves the shown and written line by exactly its step |
-| Uncovered-intro shading | hatch the audio before the first red line | low | med | timeline | no | no | P2 | partial — banner only |
+| Uncovered-intro shading | hatch the audio before the first red line | low | med | timeline | no | no | P2 | **done** — hatched across every lane, and the hover says the first line's grid runs back there; the banner stays for a late first line |
 | Density ribbon | half- and double-time inside one reported section | med | med | P2 density | no | no | P2 | todo |
 | Measures on the map | bar ticks and signature regions | low | med | timeline | no | no | P2 | partial — meter column |
 | Keyboard map | every action reachable from the keyboard; `?` shows the sheet | low | med | shell | no | no | P2 | partial |

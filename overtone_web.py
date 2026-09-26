@@ -1058,9 +1058,11 @@ class Api:
             summary = ta.inject_osu_timing_points(
                 osu_path, self._analysis, dry_run=True,
                 decimals=self._settings()["offset_decimals"])
+            diff = ta.inject_diff(osu_path, self._analysis,
+                                  decimals=self._settings()["offset_decimals"])
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
-        return {"ok": True, "summary": summary}
+        return {"ok": True, "summary": summary, "diff": diff}
 
     def inject_apply(self, osu_path: str) -> dict:
         """Replace the red lines, keeping what they replace in a backup (never overwritten)."""

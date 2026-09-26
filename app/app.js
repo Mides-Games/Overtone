@@ -21,6 +21,7 @@ const I18N = {
     exp_inject_all_t: "Inject into every difficulty", exp_inject_all_d: "Replaces the red lines of every .osu beside the analyzed song. One preview, one confirmation, each file backed up first.",
     exp_inject_all_preview: "Preview all", actions_inject_all: "Inject all…",
     inject_all_row: "{file}: {replaced} replaced, {added} new",
+    inject_all_row_drift: ", drift {d}ms",
     inject_all_row_greens: ", +{g} greens",
     inject_all_row_mismatch: " (audio differs)",
     inject_all_error: "{file}: {detail}",
@@ -120,6 +121,10 @@ const I18N = {
     saved_to: "Saved to {path}",
     injected: "Injected {added} red lines ({replaced} replaced, {greens} green kept).",
     inject_confirm: "Replace {reds} red lines with {n} new ones in {file}?{warn}",
+    inject_diff_line: "{o}ms {ob} → {n}ms {nb}",
+    inject_diff_drift: " (drift {d}ms)",
+    inject_diff_more: "+{n} more changed lines",
+    inject_diff_same: "{n} lines unchanged",
     inject_greens: "\nIt also adds {g} green lines so slider velocity and hitsounds play as before.",
     inject_warn: "\nThe .osu audio ({osu}) differs from the analyzed file ({src}).",
     drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
@@ -435,6 +440,7 @@ const I18N = {
     exp_inject_all_t: "Inyectar en todas las dificultades", exp_inject_all_d: "Reemplaza las líneas rojas de cada .osu junto a la canción analizada. Una vista previa, una confirmación, cada archivo respaldado antes.",
     exp_inject_all_preview: "Vista previa", actions_inject_all: "Inyectar todas…",
     inject_all_row: "{file}: {replaced} reemplazadas, {added} nuevas",
+    inject_all_row_drift: ", deriva {d}ms",
     inject_all_row_greens: ", +{g} verdes",
     inject_all_row_mismatch: " (el audio difiere)",
     inject_all_error: "{file}: {detail}",
@@ -534,6 +540,10 @@ const I18N = {
     saved_to: "Guardado en {path}",
     injected: "Inyectadas {added} líneas rojas ({replaced} reemplazadas, {greens} verdes intactas).",
     inject_confirm: "¿Reemplazar {reds} líneas rojas por {n} nuevas en {file}?{warn}",
+    inject_diff_line: "{o}ms {ob} → {n}ms {nb}",
+    inject_diff_drift: " (deriva {d}ms)",
+    inject_diff_more: "+{n} líneas cambiadas más",
+    inject_diff_same: "{n} líneas iguales",
     inject_greens: "\nTambién agrega {g} líneas verdes para que la velocidad de sliders y los hitsounds suenen igual.",
     inject_warn: "\nEl audio del .osu ({osu}) difiere del analizado ({src}).",
     drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
@@ -1412,13 +1422,27 @@ async function injectOsu() {
   if (!prev.ok) { editFailure(prev); return; }
   const s = prev.summary;
   const warn = (s.audio_mismatch ? t("inject_warn", { osu: s.osu_audio, src: s.analysed_audio }) : "")
-    + (s.greens_added ? t("inject_greens", { g: s.greens_added }) : "");
+    + (s.greens_added ? t("inject_greens", { g: s.greens_added }) : "")
+    + injectDiffText((prev.diff && prev.diff.pairs) || []);
   const name = String(target).split(/[\\/]/).pop();
   if (!confirm(t("inject_confirm", { reds: s.reds_replaced, n: s.reds_added, file: name, warn }))) return;
   const done = await api().inject_apply(target);
   if (!done.ok) { editFailure(done); return; }
   const d = done.summary;
   toast(t("injected", { added: d.reds_added, replaced: d.reds_replaced, greens: d.greens_kept }));
+}
+
+// Changed red lines as confirm-dialog lines: the first 10, then a count.
+function injectDiffText(pairs) {
+  const moved = (p) => p.delta_offset_ms || p.delta_bpm || (p.drift_end_ms !== null && p.drift_end_ms);
+  const changed = pairs.filter(moved), same = pairs.length - changed.length;
+  const lines = changed.slice(0, 10).map((p) => {
+    const base = t("inject_diff_line", { o: p.old.offset_ms, ob: p.old.bpm, n: p.new.offset_ms, nb: p.new.bpm });
+    return p.drift_end_ms === null ? base : base + t("inject_diff_drift", { d: p.drift_end_ms });
+  });
+  if (changed.length > 10) lines.push(t("inject_diff_more", { n: changed.length - 10 }));
+  if (same) lines.push(t("inject_diff_same", { n: same }));
+  return lines.length ? "\n" + lines.join("\n") : "";
 }
 
 // ------------------------------------------------------------------ inject all
@@ -1430,7 +1454,11 @@ function injectAllRow(f) {
   if (!f.ok) return t("inject_all_error", { file: f.file, detail: f.error });
   const greens = f.greens_added ? t("inject_all_row_greens", { g: f.greens_added }) : "";
   const warn = f.audio_mismatch ? t("inject_all_row_mismatch") : "";
-  return t("inject_all_row", { file: f.file, replaced: f.reds_replaced, added: f.reds_added }) + greens + warn;
+  const pairs = (f.diff && f.diff.pairs) || [];
+  const drifts = pairs.map((p) => p.drift_end_ms).filter((d) => d !== null && d);
+  const worst = drifts.length ? drifts.reduce((a, b) => Math.abs(a) >= Math.abs(b) ? a : b) : null;
+  const drift = worst === null ? "" : t("inject_all_row_drift", { d: worst });
+  return t("inject_all_row", { file: f.file, replaced: f.reds_replaced, added: f.reds_added }) + greens + warn + drift;
 }
 
 async function injectAllPreview() {

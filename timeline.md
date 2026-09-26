@@ -16,6 +16,29 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Inject diff beside every preview
+
+### Changed
+
+- **Diff in Export**: the single inject's confirm lists each changed red line
+  (old → new with the drift at its span end, first 10 then a count, unchanged
+  lines tallied), and every inject-all row shows its worst drift. Both
+  previews carry the full pairs; the mapset engine reports them per file. EN/ES.
+
+### Measured
+
+```
+synthetic maps                single preview 1 pair + 1 added; inject-all entries
+                              carry pairs; bytes unchanged by previews
+Python unittest                 463 -> 464, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages
+                                cross-checked. Harness pass owed, stated.
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Inject diff, engine half: old beside new, drift included
 
 ### Changed

@@ -420,6 +420,21 @@ class ExportTests(_IsolatedConfig):
         self.assertEqual(web.Api().inject_all_preview()["key"], "first")
         self.assertEqual(web.Api().inject_all_apply()["key"], "first")
 
+    def test_inject_previews_carry_the_diff(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = Path(tmp) / "map.osu"
+            beatmap.write_text(_OSU_TEXT, encoding="utf-8")
+            api = _api_with_points()
+            prev = api.inject_preview(str(beatmap))
+            json.dumps(prev)
+            self.assertEqual((len(prev["diff"]["pairs"]), len(prev["diff"]["added"])), (1, 1))
+            api._analysis.source = str(Path(tmp) / "audio.mp3")
+            many = api.inject_all_preview()
+            json.dumps(many)
+            entry = next(f for f in many["report"]["files"] if f["file"] == "map.osu")
+            self.assertTrue(entry["ok"])
+            self.assertEqual((len(entry["diff"]["pairs"]), len(entry["diff"]["added"])), (1, 1))
+
 
 class CompareBridgeTests(_IsolatedConfig):
     def _report_for(self, api, text):

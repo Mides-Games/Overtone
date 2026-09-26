@@ -3728,10 +3728,11 @@ def inject_mapset(folder: str | os.PathLike[str], analysis: Analysis,
         try:
             summary = inject_osu_timing_points(path, analysis, backup=backup,
                                                dry_run=dry_run, decimals=decimals)
+            diff = inject_diff(path, analysis, decimals=decimals)
         except (ValueError, OSError) as exc:
             files.append({"file": path.name, "ok": False, "error": str(exc)})
             continue
-        files.append({"file": path.name, "ok": True, **summary})
+        files.append({"file": path.name, "ok": True, **summary, "diff": diff})
     return {"folder": str(root), "files": files,
             "ok": sum(1 for f in files if f["ok"]),
             "failed": sum(1 for f in files if not f["ok"])}

@@ -2727,6 +2727,121 @@ def run_analysis(path: str, params: dict, progress=None) -> ta.Analysis:
 
 
 # ---------------------------------------------------------------------------
+# Self-check: what an installed copy needs, found where the code looks
+# ---------------------------------------------------------------------------
+
+#: Overtone's own samples (``assets/samples.py``): per set, the four hits and
+#: the two slider loops that play where a map names none of its own.
+OWN_SAMPLES = tuple(f"{sample_set}-{sound}.wav" for sample_set in ("normal", "soft", "drum")
+                    for sound in ("hitnormal", "hitwhistle", "hitfinish", "hitclap",
+                                  "sliderslide", "sliderwhistle"))
+#: The self-check's clicks fall every 0.4 s: 150 BPM for both engines.
+SELF_CHECK_BPM = 150.0
+
+
+def resource_files() -> dict[str, tuple[Path, ...]]:
+    """The files the app reads beside its code, by what they are for. The
+    installer bundles each one at the same path relative to the code (a test
+    holds the two lists together), and the self-check looks for them."""
+    return {"page": (APP_DIR / "index.html", APP_DIR / "app.js", APP_DIR / "styles.css"),
+            "icon": (ICON_ICO, LOGO_PNG),
+            "samples": tuple(ta.DEFAULT_SAMPLE_DIR / name for name in OWN_SAMPLES),
+            "library schema": (overtone_library.SCHEMA_PATH,)}
+
+
+def _need_files(*paths: Path) -> str:
+    missing = [str(path) for path in paths if not path.is_file()]
+    if missing:
+        raise FileNotFoundError("missing " + ", ".join(missing))
+    return str(paths[0].parent)
+
+
+def _check_schema() -> str:
+    found = overtone_library.schema_file_version()
+    if found != overtone_library.SCHEMA_VERSION:
+        raise ValueError(f"library.sql states schema {found}, the code reads "
+                         f"{overtone_library.SCHEMA_VERSION}")
+    return f"{overtone_library.SCHEMA_PATH} (schema {found})"
+
+
+def _check_window() -> str:
+    """The window's libraries load: pythonnet, and the WebView2 assemblies,
+    which pywebview only picks when the WebView2 runtime is installed.
+    Importing them creates no window."""
+    from webview.platforms import winforms
+    if winforms.renderer != "edgechromium":
+        raise RuntimeError(f"no WebView2 runtime: pywebview would use {winforms.renderer}")
+    return f"pywebview renders with {winforms.renderer}"
+
+
+def _click_track(path: Path) -> str:
+    """Twenty seconds of noise bursts at SELF_CHECK_BPM, every fourth louder."""
+    sr = 44_100
+    y = np.zeros(20 * sr, dtype=np.float32)
+    burst = np.exp(-np.arange(1300) / 180.0) * (np.random.default_rng(3).random(1300) - 0.5)
+    for k, t in enumerate(np.arange(0.5, 19.5, 60.0 / SELF_CHECK_BPM)):
+        start = int(t * sr)
+        y[start:start + burst.size] += (0.9 if k % 4 == 0 else 0.5) * burst
+    ta.sf.write(str(path), y, sr, subtype="PCM_16")
+    return str(path)
+
+
+def _check_bpm(analysis: ta.Analysis) -> str:
+    if abs(analysis.global_bpm - SELF_CHECK_BPM) > 0.05:
+        raise ValueError(f"read {analysis.global_bpm:.3f} BPM from clicks at {SELF_CHECK_BPM:g}")
+    return f"{analysis.global_bpm:.3f} BPM"
+
+
+def self_check() -> dict:
+    """Whether this copy of the app has what it needs, looked up where the
+    code looks for it: the page, the icon, Overtone's samples, the library
+    schema, the window's libraries, and both engines on twenty seconds of
+    clicks, the Rust one through the same sidecar call the app makes.
+
+    The installer's smoke test runs it in the frozen executable
+    (``Overtone.exe --self-check``), where every path above resolves inside
+    the bundle. Opens no window, plays nothing, and writes only the clicks,
+    in a temporary folder it removes.
+    """
+    import tempfile
+    checks: list[dict] = []
+
+    def check(name: str, run) -> None:
+        try:
+            checks.append({"name": name, "ok": True, "detail": run()})
+        except Exception as exc:  # noqa: BLE001 -- a failed check is the result
+            checks.append({"name": name, "ok": False, "detail": f"{type(exc).__name__}: {exc}"})
+
+    files = resource_files()
+    for name in ("page", "icon", "samples"):
+        check(name, lambda paths=files[name]: _need_files(*paths))
+    check("library schema", _check_schema)
+    check("window", _check_window)
+    with tempfile.TemporaryDirectory(prefix="overtone-check-") as scratch:
+        clicks = Path(scratch) / "clicks.wav"
+        check("audio write", lambda: _click_track(clicks))
+        check("python engine", lambda: _check_bpm(ta.analyze_audio(str(clicks))))
+        check("rust engine", lambda: f"{_check_bpm(overtone_rust.analyze(clicks))}, "
+                                     f"{overtone_rust.find_cli()}")
+    return {"ok": all(entry["ok"] for entry in checks), "version": ta.APP_VERSION,
+            "frozen": bool(getattr(sys, "frozen", False)), "executable": sys.executable,
+            "checks": checks}
+
+
+def _run_self_check(report: str | None) -> None:
+    """``--self-check [REPORT.json]``: the result as JSON in the file, or on
+    stdout when none is named, and exit 0 only when every check passed. The
+    window's executable has no console, so the smoke test names a file."""
+    result = self_check()
+    text = json.dumps(result, indent=2)
+    if report:
+        Path(report).write_text(text + "\n", encoding="utf-8")
+    elif sys.stdout is not None:
+        print(text)
+    raise SystemExit(0 if result["ok"] else 1)
+
+
+# ---------------------------------------------------------------------------
 # Window
 # ---------------------------------------------------------------------------
 
@@ -2750,8 +2865,10 @@ def _dark_caption(window) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    import webview
     args = list(sys.argv[1:] if argv is None else argv)
+    if args[:1] == ["--self-check"]:
+        _run_self_check(args[1] if len(args) > 1 else None)
+    import webview
     files = [a for a in args if not a.startswith("--")]
     api = Api(files[0] if files else "", autorun=bool(files))
     # Before the window exists: the taskbar reads the id when the window opens.

@@ -7,6 +7,7 @@ as the Tk GUI does, (2) returns only JSON types, and (3) never touches the
 user's real ~/.overtone.json.
 """
 import base64
+import contextlib
 import json
 import os
 import tempfile
@@ -2829,6 +2830,87 @@ def _bracket_problems(src: str) -> list[tuple[str, int]]:
             regex_ok = c not in ")]}"
             i += 1
     return problems + stack
+
+
+class SelfCheckTests(unittest.TestCase):
+    """``Overtone.exe --self-check``, which the installer's smoke test runs in
+    the frozen app, where every path resolves inside the bundle. Here it runs
+    on the source tree; where a test is about the verdict, not the engines,
+    the window's libraries and both analyses are stubbed."""
+
+    def _stubs(self) -> contextlib.ExitStack:
+        answer = _analysis([ta.TimingPoint(500, web.SELF_CHECK_BPM, 1, 0)])
+        answer.global_bpm = web.SELF_CHECK_BPM
+        stack = contextlib.ExitStack()
+        stack.enter_context(mock.patch.object(web, "_check_window", return_value="stub"))
+        stack.enter_context(mock.patch.object(ta, "analyze_audio", return_value=answer))
+        stack.enter_context(mock.patch.object(web.overtone_rust, "analyze", return_value=answer))
+        return stack
+
+    def test_the_source_tree_has_everything(self) -> None:
+        with self._stubs():
+            report = web.self_check()
+        self.assertEqual([c["name"] for c in report["checks"]],
+                         ["page", "icon", "samples", "library schema", "window",
+                          "audio write", "python engine", "rust engine"])
+        self.assertTrue(report["ok"], report)
+        self.assertFalse(report["frozen"])
+        json.dumps(report)
+
+    def test_a_missing_file_fails_its_check_by_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, self._stubs(), \
+                mock.patch.object(web, "APP_DIR", Path(tmp)):
+            report = web.self_check()
+        checks = {c["name"]: c for c in report["checks"]}
+        self.assertFalse(report["ok"])
+        self.assertFalse(checks["page"]["ok"])
+        self.assertIn("index.html", checks["page"]["detail"])
+        self.assertTrue(checks["icon"]["ok"])  # one failure does not stop the rest
+
+    def test_the_python_engine_reads_the_clicks_at_their_tempo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            clicks = Path(tmp) / "clicks.wav"
+            web._click_track(clicks)
+            self.assertEqual(web._check_bpm(ta.analyze_audio(str(clicks))), "150.000 BPM")
+        halved = _analysis([ta.TimingPoint(500, 75, 1, 0)])
+        halved.global_bpm = 75.0
+        with self.assertRaises(ValueError):
+            web._check_bpm(halved)
+
+    def test_the_rust_engine_reads_the_clicks_at_their_tempo(self) -> None:
+        if web.overtone_rust.find_cli() is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        with tempfile.TemporaryDirectory() as tmp:
+            clicks = Path(tmp) / "clicks.wav"
+            web._click_track(clicks)
+            self.assertEqual(web._check_bpm(web.overtone_rust.analyze(clicks)), "150.000 BPM")
+
+    def test_the_window_check_needs_the_webview2_runtime(self) -> None:
+        import types
+        for renderer, passes in (("edgechromium", True), ("mshtml", False)):
+            winforms = types.SimpleNamespace(renderer=renderer)
+            platforms = types.SimpleNamespace(winforms=winforms)
+            with mock.patch.dict("sys.modules", {"webview.platforms": platforms,
+                                                 "webview.platforms.winforms": winforms}):
+                if passes:
+                    self.assertIn(renderer, web._check_window())
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "WebView2"):
+                        web._check_window()
+
+    def test_main_writes_the_report_and_opens_no_window(self) -> None:
+        webview = mock.MagicMock()
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict("sys.modules", {"webview": webview}):
+            report = Path(tmp) / "report.json"
+            for ok, code in ((True, 0), (False, 1)):
+                with mock.patch.object(web, "self_check", return_value={"ok": ok, "checks": []}), \
+                        self.assertRaises(SystemExit) as stopped:
+                    web.main(["--self-check", str(report)])
+                self.assertEqual(stopped.exception.code, code)
+                self.assertEqual(json.loads(report.read_text(encoding="utf-8"))["ok"], ok)
+        webview.create_window.assert_not_called()
+        webview.start.assert_not_called()
 
 
 class AppScriptTests(unittest.TestCase):

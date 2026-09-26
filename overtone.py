@@ -7560,6 +7560,17 @@ def hitsound_silence_check(beatmap: dict, attack_times, attack_weights,
 #: boundaries sit on a 0.5 s feature grid and the Rust tests hold them within
 #: 1.5 s of the truth; past that, the nearest bar line is another phrase's.
 STRUCTURE_SNAP_S = 1.5
+#: The proven bar beside the nearest one takes the edge when the level changes
+#: more there, the way it goes from one section to the next, by this many dB:
+#: the phrase's first bar is where the change lands, and the novelty peak
+#: (4 s either side, on 0.5 s windows) sits up to a bar off it, most often a
+#: bar early, on a break or a fill before a chorus. On ranked maps' kiai starts
+#: with an edge within 2 bars, the kiai's own bar: nearest 42 % -> this rule
+#: 65 % on the 500 songs it was chosen on; 46 % -> 56 % on 500 held out (27
+#: fixed, 12 broken, p 0.024), short of the bar set beforehand (+10 points and
+#: p < 0.01); frozen, then 35 % -> 49 % on the 673 songs neither used (46
+#: fixed, 19 broken, sign test p 0.001), kiai ends 50 % -> 52 %. See timeline.md.
+STRUCTURE_PHRASE_MARGIN_DB = 0.5
 #: Points the energy lane keeps: enough for a wide window, few for the bridge.
 STRUCTURE_LANE_POINTS = 800
 
@@ -7573,13 +7584,20 @@ def downbeat_times(analysis: Analysis) -> list[tuple[float, bool]]:
     by the accents or set by the mapper; a bar counted on a guessed meter
     is a bar line, but not evidence for a phrase.
     """
+    return [(t, proven) for t, proven, _bar in _bar_lines(analysis)]
+
+
+def _bar_lines(analysis: Analysis) -> list[tuple[float, bool, float]]:
+    """:func:`downbeat_times` with each line's own bar length in seconds:
+    ``(seconds, proven, bar)``. A bar a later red line cuts short keeps its
+    line's length here, so a level read over "one bar" is always a bar."""
     points = snap_timing_points(list(getattr(analysis, "points", None) or []))
     duration = float(getattr(analysis, "duration", 0.0) or 0.0)
     try:
         song_bar = max(1, min(16, int(str(getattr(analysis, "meter", "4/4")).split("/")[0])))
     except (ValueError, TypeError):
         song_bar = 4
-    out: list[tuple[float, bool]] = []
+    out: list[tuple[float, bool, float]] = []
     for s, point in enumerate(points):
         if not np.isfinite(point.bpm) or point.bpm <= 0 or not np.isfinite(point.offset_ms):
             continue
@@ -7592,8 +7610,32 @@ def downbeat_times(analysis: Analysis) -> list[tuple[float, bool]]:
             t = start + k * step
             if t >= end - 1e-6 and not (s + 1 == len(points) and t <= end + 1e-6):
                 break
-            out.append((t, proven))
+            out.append((t, proven, step))
     return out
+
+
+def _lane_power(energy: np.ndarray, hop: float, start: float, end: float) -> float | None:
+    """Mean power of the RMS lane over ``[start, end)``, each window weighed by
+    how much of it the span covers; the span is clipped to the lane first.
+    None when nothing of it is on the lane."""
+    start, end = max(start, 0.0), min(end, energy.size * hop)
+    if hop <= 0 or end <= start:
+        return None
+    first, last = int(np.floor(start / hop)), min(int(np.ceil(end / hop)), energy.size)
+    edges = np.arange(first, last) * hop
+    cover = np.clip(np.minimum(edges + hop, end) - np.maximum(edges, start), 0.0, None)
+    return float(np.sum(cover * energy[first:last] ** 2) / (end - start))
+
+
+def _bar_change_db(energy: np.ndarray, hop: float, bar: float, before: float,
+                   after: float) -> float:
+    """The level of the bar from ``bar`` on over the bar before it, in dB.
+    0.0 where either side is off the lane: no level, no evidence."""
+    later = _lane_power(energy, hop, bar, bar + after)
+    earlier = _lane_power(energy, hop, bar - before, bar)
+    if later is None or earlier is None:
+        return 0.0
+    return float(10.0 * np.log10(max(later, 1e-12) / max(earlier, 1e-12)))
 
 
 def _pooled_lane(values: list[float], hop: float, points: int) -> dict:
@@ -7616,25 +7658,52 @@ def structure_view(report: dict, analysis: Analysis) -> dict:
     each label beside the evidence it rests on. Plain types.
 
     ``report`` is ``overtone-cli structure``'s JSON. Each inner boundary
-    moves to the nearest proven downbeat within ``STRUCTURE_SNAP_S`` and
-    says how far it moved; one with no proven downbeat that close stays on
-    the 0.5 s feature grid and says so. The song's start and end never move.
+    moves to the nearest proven downbeat within ``STRUCTURE_SNAP_S``, or to
+    the proven bar line either side of it when the level changes more there
+    (``STRUCTURE_PHRASE_MARGIN_DB``), the way it goes from the section before
+    to the one after: one bar after the line against one bar before, on the
+    report's energy lane. Each says how far it moved, which of the two put
+    it there and the change at its bar. One with no proven downbeat that
+    close stays on the 0.5 s feature grid and says so. The song's start and
+    end never move.
 
     Labels are the Rust rules' (repetition, then level); ``why`` names the
     rule that decided each one, with the numbers it read. Groups are letters
     by first appearance, so "A B A B" reads at a glance whatever the labels.
     """
     duration = float(report.get("duration") or getattr(analysis, "duration", 0.0) or 0.0)
-    bars = downbeat_times(analysis)
-    proven = np.asarray([t for t, known in bars if known], dtype=np.float64)
-    every = np.asarray([t for t, _known in bars], dtype=np.float64)
+    lines = _bar_lines(analysis)
+    every = np.asarray([t for t, _known, _bar in lines], dtype=np.float64)
+    known = np.asarray([k for _t, k, _bar in lines], dtype=bool)
+    length = np.asarray([b for _t, _known, b in lines], dtype=np.float64)
     raw = list(report.get("sections") or [])
+    energy = np.asarray(report.get("energy") or [], dtype=np.float64)
+    hop = float(report.get("energy_hop") or 0.5)
 
-    def snap(t: float) -> tuple[float, float | None]:
-        if proven.size == 0:
-            return t, None
-        nearest = float(proven[np.argmin(np.abs(proven - t))])
-        return (nearest, nearest - t) if abs(nearest - t) <= STRUCTURE_SNAP_S else (t, None)
+    def snap(t: float, rising: bool) -> tuple[float, float | None, str | None, float | None]:
+        """Where an edge lands, how far it moved, which rule put it there and
+        the level change at its bar: ``(t, None, None, None)`` with no proven
+        bar close enough."""
+        if not known.any():
+            return t, None, None, None
+        n = int(np.argmin(np.where(known, np.abs(every - t), np.inf)))
+        if abs(every[n] - t) > STRUCTURE_SNAP_S:
+            return t, None, None, None
+        sign = 1.0 if rising else -1.0
+        # A bar against the one before it, each its own line's length.
+        change = {i: _bar_change_db(energy, hop, float(every[i]),
+                                    float(length[i - 1] if i > 0 else length[i]), float(length[i]))
+                  for i in (n - 1, n, n + 1) if 0 <= i < every.size and known[i]}
+        # Ties go to the nearest line, then to the earlier one.
+        best = max(change, key=lambda i: (sign * change[i], -abs(i - n), -i))
+        if sign * change[best] < sign * change[n] + STRUCTURE_PHRASE_MARGIN_DB:
+            best = n
+        to = float(every[best])
+        return to, to - t, "nearest" if best == n else "level", round(change[best], 1)
+
+    edges = [snap(float(raw[i]["start_s"]),
+                  float(raw[i]["level_db"]) >= float(raw[i - 1]["level_db"]))
+             for i in range(1, len(raw))]
 
     def bar_number(t: float) -> int | None:
         # 1 from the first red line's bar; None before it, where no bar is counted.
@@ -7655,8 +7724,9 @@ def structure_view(report: dict, analysis: Analysis) -> dict:
     sections: list[dict] = []
     for i, section in enumerate(raw):
         start, end = float(section["start_s"]), float(section["end_s"])
-        start_to, start_moved = (start, None) if i == 0 else snap(start)
-        end_to = end if i + 1 == len(raw) else snap(end)[0]
+        start_to, start_moved, placed, change = (start, None, None, None) if i == 0 else edges[i - 1]
+        # Sections are contiguous: an end is the next start, snapped once.
+        end_to = end if i + 1 == len(raw) else edges[i][0]
         kind, group = str(section["kind"]), int(section["group"])
         repeats = int(section["repeats"])
         if kind == "chorus":
@@ -7683,6 +7753,7 @@ def structure_view(report: dict, analysis: Analysis) -> dict:
             "start_s": round(start_to, 4), "end_s": round(end_to, 4),
             "raw_start_s": start, "moved_ms": None if start_moved is None else round(start_moved * 1000, 1),
             "snapped": i == 0 or start_moved is not None, "bar": bar_number(start_to),
+            "snap": placed, "change_db": change,
             "why": why,
         })
     one_family = len(families) == 1 and len(raw) > 1
@@ -7691,12 +7762,13 @@ def structure_view(report: dict, analysis: Analysis) -> dict:
         "sections": sections,
         "families": len(families),
         "one_family": one_family,
-        "proven_bars": int(proven.size),
+        "proven_bars": int(known.sum()),
         "bars": int(every.size),
         "lane": _pooled_lane(report.get("energy") or [], float(report.get("energy_hop") or 0.5),
                              STRUCTURE_LANE_POINTS),
         "rules": report.get("rules") or {},
         "snap_s": STRUCTURE_SNAP_S,
+        "phrase_margin_db": STRUCTURE_PHRASE_MARGIN_DB,
         "timings_s": report.get("timings_s") or {},
         "preview": suggest_preview_time(sections),
     }

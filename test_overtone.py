@@ -6241,6 +6241,67 @@ class StructureViewTests(unittest.TestCase):
         self.assertEqual([s["bar"] for s in structure_view(report, self._analysis(late))["sections"]],
                          [None, 8, 15, 23])
 
+    @staticmethod
+    def _lane(*spans):
+        """An RMS lane at 0.5 s windows over 64 s: ``(from_s, level)`` pairs,
+        each level held until the next pair."""
+        t = np.arange(128) * 0.5
+        lane = np.zeros(128)
+        for start, level in spans:
+            lane[t >= start] = level
+        return lane
+
+    def test_an_edge_takes_the_bar_where_the_level_changes_not_the_nearest(self):
+        from overtone import structure_view
+        bars = [TimingPoint(0.0, 120.0, 0.9, 0, 4, True)]           # bar lines every 2 s
+        # The novelty peak at 30.8 s is nearest the bar at 30 s; the chorus
+        # starts at 32 s, where the level rises 20 dB.
+        rise = _structure_report([30.8], ["verse", "chorus"], [0, 1], [-20.0, 0.0],
+                                 energy=self._lane((0.0, 0.1), (32.0, 1.0)))
+        view = structure_view(rise, self._analysis(bars))
+        json.dumps(view)
+        chorus = view["sections"][1]
+        self.assertEqual((chorus["start_s"], chorus["moved_ms"], chorus["bar"]), (32.0, 1200.0, 17))
+        self.assertEqual((chorus["snap"], chorus["change_db"]), ("level", 20.0))
+        self.assertEqual(view["sections"][0]["end_s"], 32.0)
+        self.assertEqual((view["sections"][0]["snap"], view["phrase_margin_db"]), (None, 0.5))
+        # A fall takes the bar where the level falls, by the same rule.
+        fall = _structure_report([30.8], ["chorus", "verse"], [0, 1], [0.0, -20.0],
+                                 energy=self._lane((0.0, 1.0), (32.0, 0.1)))
+        verse = structure_view(fall, self._analysis(bars))["sections"][1]
+        self.assertEqual((verse["start_s"], verse["snap"], verse["change_db"]), (32.0, "level", -20.0))
+
+    def test_the_sections_levels_say_which_way_the_change_goes(self):
+        from overtone import structure_view
+        bars = [TimingPoint(0.0, 120.0, 0.9, 0, 4, True)]
+        # A stop bar at 30-32 s: the level falls 20 dB at 30 s and rises 20 dB
+        # at 32 s. Into a louder section, the phrase starts at the rise...
+        stop = self._lane((0.0, 0.5), (30.0, 0.05), (32.0, 0.5))
+        louder = _structure_report([30.2], ["verse", "chorus"], [0, 1], [-1.0, 0.0], energy=stop)
+        chorus = structure_view(louder, self._analysis(bars))["sections"][1]
+        self.assertEqual((chorus["start_s"], chorus["moved_ms"], chorus["snap"]), (32.0, 1800.0, "level"))
+        # ...and into a quieter one at the fall, the nearest bar here.
+        quieter = _structure_report([30.2], ["chorus", "verse"], [0, 1], [0.0, -1.0], energy=stop)
+        verse = structure_view(quieter, self._analysis(bars))["sections"][1]
+        self.assertEqual((verse["start_s"], verse["snap"], verse["change_db"]), (30.0, "nearest", -20.0))
+
+    def test_the_nearest_bar_stays_unless_another_proven_one_changes_more(self):
+        from overtone import STRUCTURE_PHRASE_MARGIN_DB, structure_view
+        bars = [TimingPoint(0.0, 120.0, 0.9, 0, 4, True)]
+
+        def start(step_db, points=bars):
+            lane = self._lane((0.0, 1.0), (32.0, 10.0 ** (step_db / 20.0)))
+            report = _structure_report([30.8], ["verse", "chorus"], [0, 1], [-1.0, 0.0], energy=lane)
+            first = structure_view(report, self._analysis(points))["sections"][1]
+            return first["start_s"], first["snap"]
+
+        self.assertEqual(STRUCTURE_PHRASE_MARGIN_DB, 0.5)
+        self.assertEqual(start(0.4), (30.0, "nearest"))             # under the margin
+        self.assertEqual(start(0.6), (32.0, "level"))
+        # A bar the accents did not prove is never taken, however loud.
+        unproven = bars + [TimingPoint(32000.0, 120.0, 0.9, 1, 4, False)]
+        self.assertEqual(start(20.0, unproven), (30.0, "nearest"))
+
     def test_every_label_names_the_rule_and_the_numbers_it_read(self):
         from overtone import structure_view
         report = _structure_report([8.0, 24.0, 40.0, 50.0, 60.0],

@@ -111,6 +111,7 @@ def is_damaged(exc: BaseException) -> bool:
     return isinstance(exc, sqlite3.DatabaseError) and code is not None and (
         code & 0xFF) in _DAMAGED_CODES
 
+
 #: A section header line. Both patterns open on a newline, a literal the
 #: regex engine can jump to; a ``^`` under re.M gave it none and cost the
 #: header pass about 10 s of its 20 over 705 MB of .osu files.
@@ -187,10 +188,11 @@ def read_osu_header(path: str | os.PathLike[str]) -> dict:
     return _parse_osu_header(Path(path).read_bytes(), Path(path).name)
 
 
-def _parse_osu_header(raw: bytes, name: str) -> dict:
-    """``read_osu_header`` on bytes already read; ``name`` is for messages."""
+def _parse_osu_header(raw: bytes, name: str, size: int | None = None) -> dict:
+    """``read_osu_header`` on bytes already read; ``name`` and ``size`` (the
+    file's, when only its start was read) are for messages."""
     if len(raw) > ta.MAX_OSU_BYTES:
-        raise ValueError(f"{name} is {len(raw) / 1e6:.1f} MB — that is not a beatmap.")
+        raise ValueError(f"{name} is {(size or len(raw)) / 1e6:.1f} MB — that is not a beatmap.")
     if not raw or raw.isspace():
         raise ValueError(f"{name} is empty — that is not a beatmap.")
     # [HitObjects] is the last section and most of the file: find it with a
@@ -288,7 +290,8 @@ def _read_folder(folder: str, known: dict) -> dict:
                 maps.append(("unchanged", entry.path, None))
                 continue
             with open(entry.path, "rb") as handle:
-                raw = handle.read()
+                # Past the limit a file is refused anyway: never hold more.
+                raw = handle.read(ta.MAX_OSU_BYTES + 1)
         except OSError as exc:
             maps.append(("unreadable", entry.path, str(exc)))
             continue
@@ -473,7 +476,7 @@ class Library:
                     if kind == "read":
                         size, mtime_ns, raw = value
                         try:
-                            header = _parse_osu_header(raw, os.path.basename(path))
+                            header = _parse_osu_header(raw, os.path.basename(path), size)
                         except ValueError as exc:
                             # Not a beatmap (any more): its row goes, and it
                             # counts as failed, never as removed.

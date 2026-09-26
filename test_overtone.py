@@ -4539,9 +4539,9 @@ class LibraryIndexTests(unittest.TestCase):
         parsed: list[str] = []
         real = self.ol._parse_osu_header
 
-        def parse(raw, name):
+        def parse(raw, name, size=None):
             parsed.append(name)
-            return real(raw, name)
+            return real(raw, name, size)
 
         calls = []
         with mock.patch.object(self.ol, "_parse_osu_header", parse), \
@@ -4638,6 +4638,15 @@ class LibraryIndexTests(unittest.TestCase):
         # Its row goes, counted as failed, never as removed: the file is there.
         self.assertEqual((again["beatmaps"], again["failed"], again["removed"]), (1, 3, 0))
         self.assertEqual(self.library.search("easy")["beatmaps"], 0)
+        # Past the size limit only the limit is read, and the true size is said.
+        from unittest import mock
+        (folder / "huge.osu").write_bytes(b"osu file format v14\r\n" + b"x" * 260_000)
+        with mock.patch.object(self.ol.ta, "MAX_OSU_BYTES", 100_000):
+            read = dict((p, v) for kind, p, v in self.ol._read_folder(str(folder), {})["maps"])
+            huge = self.library.scan(self.songs)
+        self.assertEqual(len(read[str(folder / "huge.osu")][2]), 100_001)
+        self.assertIn("huge.osu is 0.3 MB", next(f["detail"] for f in huge["failures"]
+                                                 if f["path"].endswith("huge.osu")))
 
     def test_a_damaged_index_is_rebuilt_by_the_next_scan(self):
         import sqlite3

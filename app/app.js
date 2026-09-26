@@ -359,9 +359,11 @@ const I18N = {
     ramp_tradeoff: "Fewer lines cost drift: {rows}.",
     ramp_trade_row: "{drift} ms → {n} lines",
     ramp_recommend: "The curve bends here: ramps fit better than one grid per section.",
-    ramp_piecewise: "The sections already read fine: ramps add nothing.",
+    ramp_piecewise: "The sections already read fine: ramps add nothing, so there are no lines to use.",
     ramp_used: "{n} hand-placed red lines.",
     ramp_no_ramps: "Fit first: there are no lines to use yet.",
+    ramp_not_recommended: "The sections read better than ramps here: there is nothing to use.",
+    ramp_t_at: "Starts", ramp_t_attacks: "Attacks",
     sv_title: "Constant scroll",
     sv_sub: "Greens that cancel this difficulty's BPM changes, so scroll and slider speed stay constant. Sound, kiai and barlines never move; every file is backed up first.",
     sv_preview: "Preview", sv_apply: "Write greens",
@@ -816,9 +818,11 @@ const I18N = {
     ramp_tradeoff: "Menos líneas cuestan drift: {rows}.",
     ramp_trade_row: "{drift} ms → {n} líneas",
     ramp_recommend: "La curva se dobla acá: las rampas ajustan mejor que una grilla por sección.",
-    ramp_piecewise: "Las secciones ya leen bien: las rampas no agregan nada.",
+    ramp_piecewise: "Las secciones ya leen bien: las rampas no agregan nada, así que no hay líneas para usar.",
     ramp_used: "{n} líneas rojas puestas a mano.",
     ramp_no_ramps: "Ajustá primero: todavía no hay líneas para usar.",
+    ramp_not_recommended: "Acá las secciones leen mejor que las rampas: no hay nada para usar.",
+    ramp_t_at: "Empieza", ramp_t_attacks: "Ataques",
     sv_title: "Scroll constante",
     sv_sub: "Verdes que cancelan los cambios de BPM de esta dificultad, para que el scroll y los sliders vayan siempre igual. El sonido, el kiai y los compases no se mueven nunca; cada archivo se respalda antes.",
     sv_preview: "Vista previa", sv_apply: "Escribir verdes",
@@ -3011,6 +3015,7 @@ async function rampUse() {
   const reply = await api().ramps_use();
   if (!reply.ok) {
     if (reply.key === "no_ramps") toast(t("ramp_no_ramps"), true);
+    else if (reply.key === "ramps_not_recommended") toast(t("ramp_not_recommended"), true);
     else editFailure(reply);
     return;
   }
@@ -3020,16 +3025,24 @@ async function rampUse() {
 function renderRamps() {
   const box = $("rampResult"), report = RA.report;
   $("rampCard").hidden = !S.result;
-  $("rampUse").disabled = !report || !report.lines.length;
+  // The engine's own selector decides: where the sections read better, the
+  // lines are a real song's jitter cut into two-attack grids at any BPM
+  // (184 lines, 173-794 BPM on a steady 172 BPM song), so none are offered.
+  const usable = !!report && report.recommend_ramps && report.lines.length > 0;
+  $("rampUse").disabled = !usable;
   if (!report) { box.innerHTML = ""; return; }
   const rows = report.tradeoff.map((row) =>
     t("ramp_trade_row", { drift: row.drift_ms, n: row.lines })).join(" · ");
+  if (!report.recommend_ramps) {
+    box.innerHTML = `<div class="card-sub">${t("ramp_piecewise")}</div>`;
+    return;
+  }
   box.innerHTML = `
     <div class="card-sub">${t("ramp_lines", { n: report.lines.length, ms: report.drift_ms })}
-      ${report.recommend_ramps ? t("ramp_recommend") : t("ramp_piecewise")}</div>
+      ${t("ramp_recommend")}</div>
     <div class="card-sub mt-s">${t("ramp_tradeoff", { rows })}</div>
     <div class="table-scroll mt-s"><table>
-      <thead><tr><th>${t("ev_t_bpm")}</th><th></th><th></th></tr></thead>
+      <thead><tr><th>${t("ev_t_bpm")}</th><th>${t("ramp_t_at")}</th><th>${t("ramp_t_attacks")}</th></tr></thead>
       <tbody>${report.lines.map((line) => `
         <tr>
           <td class="num">${line.bpm.toFixed(2)}</td>

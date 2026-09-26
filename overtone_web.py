@@ -1490,6 +1490,10 @@ class Api:
             return {"ok": False, "key": "first"}
         if self._ramps is None or self._ramps[0] is not self._analysis:
             return {"ok": False, "key": "no_ramps"}
+        if not self._ramps[2].get("recommend_ramps"):
+            # The engine's own selector says the sections read better; on a
+            # real song the lines are then jitter cut into two-attack grids.
+            return {"ok": False, "key": "ramps_not_recommended"}
         beats = np.asarray(self._analysis.beats, dtype=np.float64)
         points = [ta.TimingPoint(float(line["offset_ms"]), float(line["bpm"]), 1.0,
                                  ta._nearest_beat_index(beats, float(line["offset_ms"])),

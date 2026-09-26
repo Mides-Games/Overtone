@@ -1537,6 +1537,19 @@ class RampsBridgeTests(_IsolatedConfig):
         self.assertEqual(used["loaded"], 2)
         self.assertTrue(api.history_state()["undo"])
 
+    def test_lines_the_selector_turned_down_are_not_used(self) -> None:
+        # On a steady 172 BPM song the fit cut the jitter into 184 lines at
+        # 173-794 BPM, and Use would have loaded them all.
+        declined = {**self.REPORT, "recommend_ramps": False}
+        with mock.patch.object(web.overtone_rust, "ramps", return_value=declined):
+            api = _api_with_points()
+            before = [(p.offset_ms, p.bpm) for p in api._analysis.points]
+            self.assertTrue(api.ramps(5.0, None)["ok"])
+            refused = api.ramps_use()
+        self.assertEqual(refused["key"], "ramps_not_recommended")
+        self.assertEqual([(p.offset_ms, p.bpm) for p in api._analysis.points], before)
+        self.assertFalse(api.history_state()["undo"])
+
     def test_bad_numbers_missing_fit_and_sidecar_refuse(self) -> None:
         api = _api_with_points()
         self.assertEqual(api.ramps(0)["key"], "bad_values")

@@ -1914,6 +1914,36 @@ class MapsetBridgeTests(_IsolatedConfig):
             self.assertEqual(web.Api().mapset_check(str(target))["key"], "bad_folder")
 
 
+class AudioCheckBridgeTests(_IsolatedConfig):
+    """Facts and stated bars for a mapset folder's own audio."""
+
+    def _folder(self, tmp: str) -> Path:
+        import soundfile as sfile
+        folder = Path(tmp)
+        sr = 44100
+        y = (np.sin(2 * np.pi * 440.0 * np.arange(sr * 4) / sr) * 0.5).astype(np.float32)
+        sfile.write(str(folder / "audio.wav"), np.stack([y, y], axis=1), sr, subtype="PCM_16")
+        (folder / "map.osu").write_text("\n".join(
+            ["osu file format v14", "", "[General]", "AudioFilename: audio.wav", "",
+             "[TimingPoints]", "0,500,4,2,0,70,1,0", "", "[HitObjects]", ""]), encoding="utf-8")
+        return folder
+
+    def test_report_names_facts_and_needs_a_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = self._folder(tmp)
+            reply = web.Api().audio_check(str(folder))
+            json.dumps(reply)
+            self.assertTrue(reply["ok"])
+            report = reply["report"]
+            self.assertEqual((report["file"], report["sample_rate"], report["bitrate_kbps"],
+                              report["findings"]),
+                             ("audio.wav", 44100, 1411, []))
+            self.assertEqual(web.Api().audio_check(str(folder / "missing"))["key"], "bad_folder")
+            (folder / "audio.wav").unlink()
+            (folder / "map.osu").write_text("[General]\n", encoding="utf-8")
+            self.assertEqual(web.Api().audio_check(str(folder))["key"], "ms_no_audio")
+
+
 class SwapBridgeTests(_IsolatedConfig):
     """Audio swap in the Mapset view: measure, preview, write with backups."""
 

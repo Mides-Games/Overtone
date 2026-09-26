@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **479** Python (328 engine + 151 web shell) · **263** Rust.
+Tests: **488** Python (334 engine + 154 web shell) · **263** Rust.
 
 ### What is pending, in order
 
@@ -583,7 +583,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Swing lane | where the music swings or sits off the grid | med | med | attacks | no | no | P2 | todo |
 | New mapset from audio | encode MP3/OGG at a target bitrate, trim lead silence and re-offset | med | high | `.osz` | no | no | P2 | partial — `.osz` without encoding |
 | Metadata from tags | artist/title/source from the audio's tags, romanised and Unicode kept apart | low | med | `.osz` | no | no | P2 | todo |
-| Audio file check | bitrate, sample rate, length, clipping and lead-in against ranking rules | low | med | decode | no | no | P2 | todo |
+| Audio file check | bitrate, sample rate, length, clipping and lead-in against ranking rules | low | med | decode | no | no | P2 | **done** — header facts plus raw-decode measurements, findings on the tool's own bars (no ranking number encoded, none verifiable offline); Mapset card beside Audio swap |
 | Video offset | match the video's own audio track to the song | med | low | decode | no | no | P3 | todo |
 | Other games | export timing to Quaver (`.qua`) and StepMania (`.sm`/`.ssc`) | low | med | writer | no | no | P2 | todo |
 | Import other formats | read Quaver / StepMania timing to compare against | low | low | reader | no | no | P3 | todo |

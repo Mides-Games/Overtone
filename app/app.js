@@ -189,6 +189,15 @@ const I18N = {
     sw_confirm: "Move every time of {n} difficulties by {ms} ms onto {file}? Each file is backed up first.",
     sw_done: "{n} difficulties moved onto {file}.",
     sw_same_file: "The new encode is the mapped audio already.",
+    ac_title: "Audio file",
+    ac_sub: "Bitrate, sample rate, length, clipping and lead-in of the audio the maps name. Findings carry the tool's own bars; no ranking number is encoded.",
+    ac_facts: "{format} · {rate} Hz · {ch} ch · {dur} · {br} kbps{avg} · peak {peak} dB",
+    ac_avg: " (average)",
+    ac_clean: "Clean: no clipping, short lead-in, full rate.",
+    ac_clipping: "Clipping: {share}% of samples at full scale.",
+    ac_long_lead: "{ms} ms of near-silence before the first sound.",
+    ac_low_rate: "{rate} Hz is under CD quality.",
+    ms_no_audio: "That folder names no audio file its maps can play.",
     hs_done: "Hitsounds copied into {n} difficulties ({objects} objects). Backups kept beside each file.",
     hs_nothing: "Nothing to change: these difficulties already sound like {source}.",
     st_theme: "Theme", st_theme_system: "System", st_theme_dark: "Dark", st_theme_light: "Light",
@@ -634,6 +643,15 @@ const I18N = {
     sw_confirm: "¿Mover todos los tiempos de {n} dificultades por {ms} ms hacia {file}? Cada archivo se respalda antes.",
     sw_done: "{n} dificultades movidas hacia {file}.",
     sw_same_file: "La nueva codificación ya es el audio mapeado.",
+    ac_title: "Archivo de audio",
+    ac_sub: "Bitrate, sample rate, duración, clips e intro del audio que nombran los mapas. Los hallazgos usan las barras de la herramienta; ningún número de ranking está codificado.",
+    ac_facts: "{format} · {rate} Hz · {ch} canales · {dur} · {br} kbps{avg} · pico {peak} dB",
+    ac_avg: " (promedio)",
+    ac_clean: "Limpio: sin clips, intro corta, rate completo.",
+    ac_clipping: "Clipping: {share}% de samples a full.",
+    ac_long_lead: "{ms} ms de casi silencio antes del primer sonido.",
+    ac_low_rate: "{rate} Hz bajo calidad CD.",
+    ms_no_audio: "Esa carpeta no nombra ningún audio que sus mapas puedan usar.",
     hs_done: "Hitsounds copiados en {n} dificultades ({objects} objetos). Los respaldos quedan junto a cada archivo.",
     hs_nothing: "Nada que cambiar: estas dificultades ya suenan como {source}.",
     st_theme: "Tema", st_theme_system: "Sistema", st_theme_dark: "Oscuro", st_theme_light: "Claro",
@@ -3905,6 +3923,7 @@ async function runMapset(folder, quiet) {
   renderMapset();
   renderCopier();
   renderSwap();
+  renderAudioCheck();
 }
 
 function msValue(value) {
@@ -4046,6 +4065,41 @@ async function swApply() {
   SW.preview = null;
   runMapset(S.mapset.path, true);
   renderSwap();
+}
+
+// ------------------------------------------------------------------ audio file check
+// Phase 21: facts and stated bars for the mapset folder's own audio.
+// Read only; runs with the mapset check.
+const AC = { reply: null, for: "" };
+
+async function renderAudioCheck() {
+  const card = $("acCard");
+  if (!S.mapset) { card.hidden = true; return; }
+  if (AC.for !== S.mapset.path) {
+    AC.for = S.mapset.path;
+    AC.reply = await api().audio_check(S.mapset.path);
+  }
+  const reply = AC.reply;
+  card.hidden = !reply;
+  if (!reply) return;
+  const body = $("acBody");
+  if (!reply.ok) {
+    body.innerHTML = `<div class="card-sub">${reply.key === "ms_no_audio" ? t("ms_no_audio") : esc(reply.detail || reply.key)}</div>`;
+    return;
+  }
+  const r = reply.report;
+  const facts = t("ac_facts", { format: r.format || r.file.split(".").pop().toUpperCase(),
+                                rate: r.sample_rate, ch: r.channels, dur: mmss(r.duration_s),
+                                br: r.bitrate_kbps, avg: r.bitrate_how === "average" ? t("ac_avg") : "",
+                                peak: r.peak_db === null ? "—" : r.peak_db });
+  const rows = r.findings.map((f) => {
+    const text = f.key === "clipping" ? t("ac_clipping", { share: f.share_pct })
+      : f.key === "long_lead" ? t("ac_long_lead", { ms: f.lead_ms })
+      : t("ac_low_rate", { rate: f.sample_rate });
+    return `<div class="card-sub ${f.level === "warn" ? "neg" : ""}">${esc(text)}</div>`;
+  }).join("");
+  body.innerHTML = `<div>${esc(facts)}</div>`
+    + (rows || `<div class="card-sub">${t("ac_clean")}</div>`);
 }
 
 function msKiai(spans) {

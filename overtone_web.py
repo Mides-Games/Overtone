@@ -723,6 +723,24 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "report": report, "folder": Path(str(folder)).name}
 
+    def audio_check(self, folder: str) -> dict:
+        """Facts and stated bars for a mapset folder's own audio. Read only,
+        no analysis needed: the file the maps name, or a refusal."""
+        base = Path(str(folder))
+        if not base.is_dir():
+            return {"ok": False, "key": "bad_folder"}
+        try:
+            scanned = ta.scan_beatmap_folder(base)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        if not scanned["audio"]:
+            return {"ok": False, "key": "ms_no_audio"}
+        try:
+            report = ta.audio_file_report(Path(scanned["audio"]))
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "report": report}
+
     # -- audio swap: one mapset's times onto a new encode ---------------------
     @staticmethod
     def _swap_files(folder: str, old_audio: str, new_audio: str):

@@ -15,6 +15,55 @@ attempted and abandoned — the reasoning is the expensive part, and re-deriving
 later costs more than writing it down now.
 
 ---
+---
+
+## v4.0.0-dev — 2026-09-26 · Audio file card in Mapset
+
+### Changed
+
+- **Audio-file card in Mapset**: the folder's own audio with its facts
+  (format, rate, channels, length, bitrate with its method, peak) and the
+  findings behind it, or a clean bill. Read only, runs with the mapset
+  check. EN/ES.
+
+### Measured
+
+```
+synthetic mapset                WAV facts exact, no findings; missing audio refused
+Python unittest                 467 -> 468, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages
+                                cross-checked. Harness pass owed, stated.
+```
+
+## v4.0.0-dev — 2026-09-26 · Audio file check, engine half: facts plus stated bars
+
+### Changed
+
+- **`audio_file_report(path)`**: rate, channels, duration and exact PCM
+  bitrate (file-size average otherwise, labeled) from the header; peak,
+  clipped share and leading near-silence measured on the raw decode, never
+  the peak-normalized analysis buffer. Findings carry the tool's own bars.
+
+### Rejected / tried and dropped
+
+- **Encoding ranking numbers.** The row says "against ranking rules", but no
+  threshold was verifiable offline, so none is encoded: bitrate ships without
+  a verdict, and the clipping, lead and rate bars are the tool's own, stated
+  in the constants. A ranking cross-check stays future work with a criteria
+  source in hand.
+
+### Measured
+
+```
+synthetic WAVs                  1411 kbps exact, -6.0 dB peak, clipping flagged
+                                at full scale, 2.5 s lead flagged, missing refused
+Python unittest                 464 -> 467 (new suites green)
+facts                           ok
+```
+
+---
 
 ## v4.0.0-dev — 2026-09-26 · Section volumes from Structure
 
@@ -36,6 +85,26 @@ bpm-snapshot 24/24 · golden.py 27/27 · facts
 UI                              unit-tested bridge only; ids, both languages, no
                                 duplicates cross-checked. Harness pass owed, stated.
 ```
+
+## v4.0.0-dev — 2026-09-26 · Volume by section, engine half: loud sets the scale
+
+### Changed
+
+- **`set_section_volumes(beatmap, sections)`**: each section at the loudest
+  section's volume scaled by their dB distance, written as greens — a green
+  already at a boundary gets only its volume rewritten. The scale hangs from
+  the volume in force at the loudest start, which the tool never touches, so
+  a second run keeps instead of turning down again. Sets, index and kiai ride
+  along untouched.
+
+### Measured
+
+```
+verse -8 dB, chorus -14 dB      chorus green at 35 (70 x 10^(-6/20)), verse kept,
+                                sounds identical, second run all kept
+Python unittest                 464 -> 467 (writer suites green)
+facts                           ok
+```
 ## v4.0.0-dev — 2026-09-26 · Re-snap objects from Map check
 
 ### Changed
@@ -56,6 +125,7 @@ bpm-snapshot 24/24 · golden.py 27/27 · facts
 UI                              unit-tested bridge only; ids, both languages, no
                                 duplicates cross-checked. Harness pass owed, stated.
 ```
+
 
 ---
 
@@ -159,25 +229,6 @@ UI                              unit-tested bridge only; ids, both languages, no
 
 ---
 
-## v4.0.0-dev — 2026-09-26 · Volume by section, engine half: loud sets the scale
-
-### Changed
-
-- **`set_section_volumes(beatmap, sections)`**: each section at the loudest
-  section's volume scaled by their dB distance, written as greens — a green
-  already at a boundary gets only its volume rewritten. The scale hangs from
-  the volume in force at the loudest start, which the tool never touches, so
-  a second run keeps instead of turning down again. Sets, index and kiai ride
-  along untouched.
-
-### Measured
-
-```
-verse -8 dB, chorus -14 dB      chorus green at 35 (70 x 10^(-6/20)), verse kept,
-                                sounds identical, second run all kept
-Python unittest                 464 -> 467 (writer suites green)
-facts                           ok
-```
 
 ---
 

@@ -2842,6 +2842,16 @@ class MapFullReaderTests(unittest.TestCase):
 
 
 class MapWriterTests(unittest.TestCase):
+    @staticmethod
+    def _kiai_map(timing: str):
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+                 "[TimingPoints]"] + timing.split("\n") + ["", "[HitObjects]",
+                 "256,192,1000,1,0,0:0:0:0:", ""]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes("\r\n".join(lines).encode("utf-8"))
+            return read_osu_beatmap(path)
+
     def _write(self, raw: bytes, name: str = "map.osu"):
         import json
         with tempfile.TemporaryDirectory() as tmp:
@@ -2904,6 +2914,30 @@ class MapWriterTests(unittest.TestCase):
             target.write_text("[General]\nAudioFilename: a.mp3\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 set_beatmap_reds(read_osu_beatmap(target), ["1,500,4,1,0,100,1,0"])
+
+    def test_chorus_kiai_opens_and_closes_carrying_state(self) -> None:
+        from overtone import set_chorus_kiai, sound_events
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1500,-100,4,2,1,60,0,0")
+        before = sound_events(beatmap)
+        result = set_chorus_kiai(beatmap, [(1000.0, 2000.0)])
+        json.dumps(result)
+        self.assertEqual(result, {"added": 2, "flipped": 0, "kept": 0})
+        self.assertEqual(sound_events(beatmap), before)
+        greens = beatmap["timing"]["greens"]
+        self.assertEqual((len(greens), greens[0].split(",")[7], greens[1].split(",")[7]),
+                         (3, "1", "0"))
+        self.assertTrue(greens[0].startswith("1000,-100,"))
+        # Second run changes nothing: kiai already reads right.
+        self.assertEqual(set_chorus_kiai(beatmap, [(1000.0, 2000.0)]),
+                         {"added": 0, "flipped": 0, "kept": 2})
+
+    def test_chorus_kiai_flips_a_green_instead_of_doubling(self) -> None:
+        from overtone import set_chorus_kiai
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1000,-100,4,2,1,70,0,0")
+        result = set_chorus_kiai(beatmap, [(1000.0, 2000.0)])
+        self.assertEqual((result["flipped"], result["added"]),
+                         (1, 1))
+        self.assertEqual(len(beatmap["timing"]["greens"]), 2)
 
 
 _CONTEXT_OSU = "\n".join([

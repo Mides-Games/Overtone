@@ -4341,6 +4341,86 @@ def set_beatmap_reds(beatmap: dict, new_reds: list[str]) -> int:
     return replaced
 
 
+def set_chorus_kiai(beatmap: dict, spans: list[tuple[float, float]]) -> dict:
+    """Kiai on chorus spans, written as green lines (Phase 21, Kiai).
+
+    Each span opens kiai at its start and closes it at its end: a green
+    already at the boundary gets its kiai bit flipped, otherwise a new green
+    carries the audible state in force there (SV, sets, index, volume), so
+    nothing plays differently — kiai is light, not sound. A boundary whose
+    kiai already reads right is left alone. Raw lines move, the ``timing``
+    view is refreshed, and comments and blanks stay put. In place, like the
+    P-2 field edits. Returns added, flipped and kept.
+    """
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "TimingPoints"), None)
+    if section is None:
+        raise ValueError("No [TimingPoints] section in this beatmap.")
+    cursor = _TimingCursor(beatmap)
+    import bisect
+
+    def meter_at(time_ms: float) -> int:
+        rows = _beatmap_red_rows(beatmap)
+        i = bisect.bisect_right([o for o, _b, _m in rows], time_ms + 1e-6) - 1
+        return rows[max(i, 0)][2] if rows else 4
+
+    def stamp(time_ms: float) -> str:
+        whole = round(time_ms)
+        return str(int(whole)) if abs(time_ms - whole) < 1e-6 else f"{time_ms:.3f}"
+
+    def state_at(time_ms: float):
+        _beat, state = cursor.at(time_ms)
+        if state is None:
+            return 1.0, 0, 0, 100
+        return state.sv, state.sample_set, state.sample_index, state.volume
+
+    added = flipped = kept = 0
+    overlays: list[tuple[float, bool]] = []
+    bounds: list[tuple[float, bool]] = []
+    for start_ms, end_ms in spans:
+        bounds.append((float(start_ms), True))
+        bounds.append((float(end_ms), False))
+    # Ascending, opens before closes: each boundary reads the kiai the
+    # previous ones left, including this run's own greens.
+    for time_ms, want in sorted(bounds, key=lambda b: (b[0], not b[1])):
+        current = next((k for t, k in reversed(overlays) if t <= time_ms + 1e-6), None)
+        if current is None:
+            _beat, state = cursor.at(time_ms)
+            current = state.kiai if state is not None else False
+        if current == want:
+            kept += 1
+            continue
+        overlays.append((time_ms, want))
+        hit = next((n for n, line in enumerate(section["lines"])
+                    if line.strip() and not line.strip().startswith("//")
+                    and (point := _timing_point_fields(line)) is not None
+                    and not point["red"] and abs(point["time"] - time_ms) <= 0.01), None)
+        if hit is not None:
+            fields = [f.strip() for f in section["lines"][hit].split(",")]
+            while len(fields) < 8:
+                fields.append("")
+            effects = int(float(fields[7])) if fields[7] else 0
+            fields[7] = str((effects | 1) if want else (effects & ~1))
+            section["lines"][hit] = ",".join(fields)
+            flipped += 1
+            continue
+        sv, sample_set, sample_index, volume = state_at(time_ms)
+        row = (f"{stamp(time_ms)},{-100.0 / sv:.12g},{meter_at(time_ms)},"
+               f"{sample_set},{sample_index},{volume},0,{1 if want else 0}")
+        at = next((n for n, line in enumerate(section["lines"])
+                   if line.strip() and not line.strip().startswith("//")
+                   and (point := _timing_point_fields(line)) is not None
+                   and point["time"] > time_ms + 1e-6), len(section["lines"]))
+        section["lines"].insert(at, row)
+        added += 1
+    timing = [line for line in section["lines"]
+              if line.strip() and not line.strip().startswith("//")]
+    beatmap["timing"] = {
+        "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
+        "greens": [line for line in timing if not _is_red_line(line.strip())],
+    }
+    return {"added": added, "flipped": flipped, "kept": kept}
+
+
 def beatmap_text(beatmap: dict) -> str:
     """Head plus sections in order, raw lines untouched, original newline."""
     newline = beatmap.get("newline", "\n")

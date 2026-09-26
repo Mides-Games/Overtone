@@ -16,6 +16,27 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Kiai, engine half: chorus spans as green lines
+
+### Changed
+
+- **`set_chorus_kiai(beatmap, spans)`**: each chorus span opens kiai at its
+  start and closes it at its end — a green already at the boundary gets its
+  kiai bit flipped, otherwise a new green carries the audible state in force
+  there (SV, sets, index, volume), so nothing plays differently. A boundary
+  whose kiai already reads right is left alone, so a second run is a no-op.
+
+### Measured
+
+```
+Python unittest              446 -> 448 (writer suites green)
+facts                        ok
+```
+
+No analysis code touched, so no benchmark run here.
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Bookmarks: section starts, merged not replaced
 
 ### Changed

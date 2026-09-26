@@ -17,6 +17,52 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · A hitsound difficulty for the whole mapset
+
+### Changed
+
+- **The Export section writes a hitsound difficulty**: a new
+  `Artist - Title (Mapper) [Hitsounds].osu` beside the others, with a circle at every
+  time a sound falls. The source's sounds come first (the densest difficulty is offered
+  first); then, unless unticked, every time another difficulty sounds where the source
+  has none, with that difficulty's sound. Each circle writes its sound in full (additions,
+  both sets, index, volume, custom file), so it plays what it played where it came from
+  whatever the green lines say. Everything else is the source's own, byte for byte, but
+  the metadata's Version (`Hitsounds`) and BeatmapID (0). It never replaces a file: one
+  already there is named in the card instead. History lists the write. The mapper
+  hitsounds it in one place (the Hitsounds section opens it like any difficulty) and
+  copies it everywhere with the Mapset copier.
+- **What a circle cannot carry is counted, not guessed**: an index of 0, which the format
+  can only inherit, where the source's green lines give another; and the source's sounds
+  that share their time with a different one (a mania chord, stacked objects), where one
+  circle keeps the first. Combining them would change what each object plays.
+
+### Measured
+
+```
+300 local mapsets with two or more difficulties (in memory, Songs only read): the
+densest as the source, the others filling in
+  276944 circles: 246589 from the source, 30355 from the others; 878518 sounds shared
+  within 5 ms
+  cannot play exactly (the index-0 case): 976 circles (0.35 %), in 25 mapsets
+  the source's sounds sharing a time with a different one: 7978, reported
+  copied back onto its source with H1, volumes included: 7978 of 258676 sounds change,
+  every one of them where the source plays a different sound within 5 ms, 0 otherwise;
+  slider bodies changed 0
+Jester (5 difficulties), in the browser (harness), EN and ES
+  Transcending Dimensions offered first; preview: 2102 circles, 1937 from it and 165
+  from the others, 4035 sounds shared, every circle exact; unticking the fill: 1937
+  written: the new difficulty appears in every list and opens in the Hitsounds section
+  (2102 sounds); History lists it with no backup, so no restore; a second preview names
+  the file already there, in the card, in both languages
+  the Mapset copier with it as the source: every sound of the 5 difficulties finds its
+  circle (0 unmatched); onto Transcending Dimensions 0 change, onto the others 6 to 16
+  objects, where they sound unlike the source
+Python unittest     524 -> 528, all pass
+benchmark.py 24/24 · bpm-snapshot 24/24 · golden.py 27/27 · coverage, measures,
+signatures, robustness, reference 24/24, assisted 70 · facts
+```
+
 ## v4.0.0-dev — 2026-09-26 · Slider bodies heard: the slide loops head to tail
 
 ### Changed

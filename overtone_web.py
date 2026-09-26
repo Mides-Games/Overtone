@@ -1155,6 +1155,47 @@ class Api:
                 "written": result["written"], "backup": result["backup"],
                 "dest": result["dest"], "undo": self._decide_undo is not None}
 
+    # -- hitsound difficulty (Phase 6, H5 export) ------------------------------
+    def _hsdiff_paths(self, file: str, fill: bool):
+        """The source .osu beside the analysed song, and the difficulties to
+        fill from: the song's others, the ones with most objects first."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        others = []
+        if fill:
+            maps = self.song_maps().get("maps", [])
+            others = [path.parent / m["file"] for m in sorted(maps, key=lambda m: -m["objects"])
+                      if m["file"] != path.name]
+        return path, others
+
+    def _hsdiff(self, file: str, fill: bool, preview: bool) -> dict:
+        found = self._hsdiff_paths(file, bool(fill))
+        if isinstance(found, dict):
+            return found
+        path, others = found
+        dest = ta.hitsound_difficulty_path(path)
+        if dest.exists():
+            return {"ok": False, "key": "hsd_exists", "dest": dest.name}
+        try:
+            result = ta.write_hitsound_difficulty(path, others, preview=preview)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name, "dest": Path(result["dest"]).name,
+                "others": len(others), "written": result["written"],
+                **{k: result[k] for k in ("circles", "from_source", "from_others", "merged",
+                                          "stacked", "stacked_times", "inexact", "inexact_times")}}
+
+    def hitsound_difficulty_preview(self, file: str, fill: bool = True) -> dict:
+        """What the hitsound difficulty built from ``file`` would hold, and
+        whether every circle plays its sound exactly. Read only."""
+        return self._hsdiff(file, fill, True)
+
+    def hitsound_difficulty_write(self, file: str, fill: bool = True) -> dict:
+        """Write the hitsound difficulty as a new .osu beside ``file``: it
+        never replaces one, and History lists it."""
+        return self._hsdiff(file, fill, False)
+
     def hitsound_decide_undo(self) -> dict:
         """Restore the bytes the last in-place apply replaced, backing up the
         current file first and logging the write, as History lists every one.

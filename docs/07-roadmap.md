@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **527** Python (364 engine + 163 web shell) · **263** Rust.
+Tests: **528** Python (364 engine + 164 web shell) · **263** Rust.
 
 ### What is pending, in order
 
@@ -41,7 +41,7 @@ and the Phase 21 map tools (inject everywhere with a diff, kiai, breaks, bookmar
 point, section volumes, SV normaliser, re-snap, snap divisors, audio file check).
 
 1. **Hitsounds, the rest** (Phase 6, [`15-hitsound-plan.md`](15-hitsound-plan.md)) — the
-   Export section's hitsound surface, profiles in the app (more profiles first, each
+   profiles in the app (more profiles first, each
    measured against the mappers as H4 was), instrument lanes on the
    timeline (P-4's evidence is there to draw); then H6 (sample
    bank, recommendation) and H7 (a proposal from the audio alone). The clap-mismatch rule
@@ -353,7 +353,7 @@ the copier, the section, the check, the decision engine, the editor.
 | Hitsound editor | change/remove/volume/sample | med | **high** | decision | no | no | **P1** | **done** — the Decide card ticks proposals by row or by bars, swaps one for an alternative, sets volume and sample index by hand, and plays it all over the song as the write would make it (equal to the written copy on 799 of 800 local maps, the last refused alike by both), then previews, writes the file or a copy and undoes once |
 | Sample bank | import skin/folder, audition samples | med | high | P4 playback | no | no | P1 | todo |
 | Sample recommendation | map samples to roles by their spectrum | med | med | bank | no | no | P2 | todo |
-| Hitsound export | only hitsound fields change | med | **high** | P5 writer | no | no | **P1** | partial — same engine half; the Export-section surface still to build |
+| Hitsound export | only hitsound fields change | med | **high** | P5 writer | no | no | **P1** | **done** — the Decide card writes the file or a copy; the Export section writes a hitsound difficulty for the whole mapset, which copied back with H1 leaves its source as it was |
 | Consistency check | flag objects whose sound disagrees with their role | low | high | decision | no | no | P2 | partial — map half and silence half in the mod report (missing/extra clap; finish/clap with no attack under them); clap-mismatch refused on measurement until the templates prove themselves on real audio |
 | Audio-only proposal | hitsounds from the song alone, no map: attacks → classes + role, proposed on the song's own analysis | med | high | H4, P-4 | no | no | P2 | todo — proposed 2026-09-26: H4 needs a difficulty's objects today and refuses without them; the ask is drop an audio file and get a proposal by the song's analysis |
 
@@ -482,7 +482,7 @@ Report, Export, History, Settings); Audio is the one left.
 | Library focus | leave the Library category working well: scan/rescan with truthful folder progress, search fast on a full Songs folder, clear empty and error states, and the health check (Phase 21) listing maps whose timing disagrees with their audio | med | high | Library, index, compare | no | no | P1 | todo — measured on the local Songs folder (scan/rescan/search times) before it ships |
 | Timing | tempo map, points, editor, verdict | — | — | — | no | no | **P1** | **done** |
 | Map check | compare, alignment, validation, density and suggestions for the loaded difficulty | med | **high** | P5, P7 | no | no | **P1** | **done** — own section: compare, alignment, density, snap audit, suggestions |
-| Hitsounds | instrument lanes, per-object sound, exported hitsound difficulty | high | **high** | P6 | no | no | P1 | partial — the section is in: where each addition falls, every sound heard one by one (H2) and the Propose card (H5); instrument lanes and an exported hitsound difficulty still to build |
+| Hitsounds | instrument lanes, per-object sound, exported hitsound difficulty | high | **high** | P6 | no | no | P1 | partial — the section is in: where each addition falls, every sound heard one by one (H2), the Propose card (H5) and the hitsound difficulty in Export; instrument lanes still to build |
 | Audio | spectrogram, 7-band onset lanes, percussive/harmonic balance, energy with sections, tempo heatmap | med | med | P2 via bridge | no | opt | P2 | todo |
 | Export | every output in one place: `.osu` text, CSV, click, `.osz`, lazer decimals, other games | low | high | P5 | no | no | P1 | **done** — own section |
 | Settings | every option in Phase 20 | low | high | shell | no | no | P1 | **done** — its own section; detection stays in the drawer |

@@ -897,6 +897,25 @@
             <button class="btn small primary" id="injectAllBtn" disabled><span data-i18n="actions_inject_all">Inject all…</span></button>
           </div>
         </div>
+
+        <div class="card cmp-card" id="hsdCard">
+          <div class="card-head">
+            <div class="card-title" data-i18n="hsd_title">Hitsound difficulty</div>
+          </div>
+          <div class="card-body">
+            <div class="card-sub" data-i18n="hsd_sub">A new difficulty beside the others with a circle at every sound of the mapset, each playing it exactly: hitsound in one place, then copy it to every difficulty (Mapset, Copy hitsounds). Where two difficulties sound together the source's sound wins; timing, events and settings are the source's own.</div>
+            <div class="hsd-form">
+              <div class="field">
+                <label for="hsdSource" data-i18n="hsd_source">Sounds from</label>
+                <select class="input" id="hsdSource" disabled></select>
+              </div>
+              <label class="check"><input type="checkbox" id="hsdFill" checked><span data-i18n="hsd_fill">Fill in the other difficulties' sounds where the source has none</span></label>
+              <button type="button" class="btn small" id="hsdPreviewBtn" disabled><span data-i18n="hsd_preview">Preview</span></button>
+              <button type="button" class="btn small primary" id="hsdWriteBtn" disabled><span data-i18n="hsd_write">Write the difficulty</span></button>
+            </div>
+            <div class="card-sub" id="hsdResult"></div>
+          </div>
+        </div>
       </section>
 
       <!-- history: every .osu write, its backup, restore -->

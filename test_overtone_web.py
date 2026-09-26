@@ -990,6 +990,30 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
         self.assertIn(b"256,192,1500,1,8,3:3:0:0:", text)
         self.assertEqual(refused, ["error"] * 4)
 
+    def test_a_hitsound_difficulty_is_previewed_then_written_beside_the_song(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            other = [l.replace("256,192,1500,1,0,", "256,192,1750,1,4,") for l in self.LINES]
+            Path(tmp, "normal.osu").write_bytes("\r\n".join(other).encode("utf-8"))
+            preview = api.hitsound_difficulty_preview("hard.osu")
+            alone = api.hitsound_difficulty_preview("hard.osu", False)
+            done = api.hitsound_difficulty_write("hard.osu")
+            written = Path(tmp, "hard [Hitsounds].osu").read_bytes()
+            again = api.hitsound_difficulty_write("hard.osu")
+            newest = api.history()["entries"][0]
+            maps = [m["file"] for m in api.song_maps()["maps"]]
+        json.dumps([preview, done])
+        self.assertEqual((preview["dest"], preview["written"], preview["others"]),
+                         ("hard [Hitsounds].osu", False, 1))
+        self.assertEqual({k: preview[k] for k in ("circles", "from_source", "from_others", "merged", "inexact")},
+                         {"circles": 3, "from_source": 2, "from_others": 1, "merged": 1, "inexact": 0})
+        self.assertEqual((alone["circles"], alone["others"]), (2, 0))
+        self.assertEqual((done["written"], done["circles"]), (True, 3))
+        self.assertIn(b"256,192,1750,1,4,", written)
+        self.assertEqual((again["key"], again["dest"], newest["op"], newest["file"]),
+                         ("hsd_exists", "hard [Hitsounds].osu", "hsdiff", "hard [Hitsounds].osu"))
+        self.assertIn("hard [Hitsounds].osu", maps)
+
     def test_without_a_proposal_or_a_binary_it_says_so(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             api = self._song(tmp)

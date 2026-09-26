@@ -140,7 +140,7 @@ alternatives and the terms behind it. Exposed as `overtone-cli hitsound <audio> 
   other, so the number is not "accuracy". It is "better than a rule", and both samples
   clear it.
 
-### H5 · Editor and export (needs H4, P-2, P-3, P-7) — done 2026-09-26, but the Export section's surface
+### H5 · Editor and export (needs H4, P-2, P-3, P-7) — done 2026-09-26
 
 Accept, reject or change each proposal, per object or per section; volume and sample index;
 undo; audition every change. Export through P-2 with a preview, backups, and optionally a
@@ -162,7 +162,12 @@ swapped for one of its two runner-ups in the table, each shown with how likely i
 there on its own (2026-09-26). A row's inspector explains its proposal (docs/06 §7 at the
 level of the terms): what was heard under it, the three likeliest instruments and its
 place in the bar, and every term the engine added up there, signed. The Export
-section's surface stays future work. The card is tested through the bridge and in the browser (harness).
+section writes a hitsound difficulty (2026-09-26): a new .osu with a circle at every
+sound of the mapset, the source's first and every other difficulty's where the source
+has none, each writing its sound in full; it is checked against where each sound came
+from, and what it cannot carry (an inherited index 0, two sounds at one time) is
+counted, not guessed. Copied back with H1 it leaves its source as it was. The card is
+tested through the bridge and in the browser (harness).
 
 ### H6 · After it works
 

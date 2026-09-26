@@ -35,7 +35,18 @@ const I18N = {
     hist_diff: "Diff", hist_restore: "Restore", hist_count: "{n} writes",
     hist_op_inject: "timing", hist_op_hitsounds: "hitsounds", hist_op_write: "write", hist_op_restore: "restore", hist_op_swap: "audio swap",
     hist_op_resnap: "re-snap", hist_op_bookmarks: "bookmarks", hist_op_kiai: "kiai", hist_op_breaks: "breaks",
-    hist_op_scroll: "constant scroll", hist_op_volumes: "section volumes",
+    hist_op_scroll: "constant scroll", hist_op_volumes: "section volumes", hist_op_hsdiff: "hitsound difficulty",
+    hsd_title: "Hitsound difficulty",
+    hsd_sub: "A new difficulty beside the others with a circle at every sound of the mapset, each playing it exactly: hitsound in one place, then copy it to every difficulty (Mapset, Copy hitsounds). Where two difficulties sound together the source's sound wins; timing, events and settings are the source's own.",
+    hsd_source: "Sounds from", hsd_fill: "Fill in the other difficulties' sounds where the source has none",
+    hsd_preview: "Preview", hsd_write: "Write the difficulty",
+    hsd_would: "{dest}: {n} circles, {src} from {name} and {others} from the other difficulties ({merged} sounds shared within 5 ms).",
+    hsd_exact: "Every circle plays its sound exactly.",
+    hsd_stacked: "{n} of the source's sounds share their time with a different one (a chord, stacked objects): the circle keeps the first (the first at {time}).",
+    hsd_inexact: "{n} circles cannot play exactly: the format can only inherit an index of 0 there, and the source's green lines give another (the first at {time}).",
+    hsd_confirm: "Write {dest} beside the song? It is a new file: nothing is replaced.",
+    hsd_done: "Wrote {dest}: {n} circles.",
+    hsd_exists: "{dest} is already beside the song: remove or rename it to write a new one.",
     hist_added: "+{n} red lines", hist_removed: "−{n} red lines", hist_changed: "~{n} red lines moved",
     hist_no_change: "same red lines",
     hist_confirm: "Restore {file} from {backup}? The current file is kept as a new backup first.",
@@ -524,7 +535,18 @@ const I18N = {
     hist_diff: "Diff", hist_restore: "Restaurar", hist_count: "{n} escrituras",
     hist_op_inject: "timing", hist_op_hitsounds: "hitsounds", hist_op_write: "escritura", hist_op_restore: "restauración", hist_op_swap: "cambio de audio",
     hist_op_resnap: "reajuste", hist_op_bookmarks: "bookmarks", hist_op_kiai: "kiai", hist_op_breaks: "breaks",
-    hist_op_scroll: "scroll constante", hist_op_volumes: "volúmenes por sección",
+    hist_op_scroll: "scroll constante", hist_op_volumes: "volúmenes por sección", hist_op_hsdiff: "dificultad de hitsounds",
+    hsd_title: "Dificultad de hitsounds",
+    hsd_sub: "Una dificultad nueva junto a las demás, con un círculo en cada sonido del mapset que lo toca exacto: hitsoundeá en un solo lugar y después copiala a todas (Mapset, Copiar hitsounds). Donde dos dificultades suenan juntas gana la fuente; el timing, los eventos y los ajustes son los de la fuente.",
+    hsd_source: "Sonidos de", hsd_fill: "Completar con los sonidos de las demás dificultades donde la fuente no tiene",
+    hsd_preview: "Vista previa", hsd_write: "Escribir la dificultad",
+    hsd_would: "{dest}: {n} círculos, {src} de {name} y {others} de las demás dificultades ({merged} sonidos compartidos a menos de 5 ms).",
+    hsd_exact: "Cada círculo toca su sonido exacto.",
+    hsd_stacked: "{n} sonidos de la fuente comparten su instante con otro distinto (un acorde, objetos apilados): el círculo se queda con el primero (el primero en {time}).",
+    hsd_inexact: "{n} círculos no pueden sonar exacto: ahí el formato solo puede heredar un índice 0, y las líneas verdes de la fuente dan otro (el primero en {time}).",
+    hsd_confirm: "¿Escribir {dest} junto a la canción? Es un archivo nuevo: no se reemplaza nada.",
+    hsd_done: "{dest} escrito: {n} círculos.",
+    hsd_exists: "{dest} ya está junto a la canción: borralo o renombralo para escribir uno nuevo.",
     hist_added: "+{n} líneas rojas", hist_removed: "−{n} líneas rojas", hist_changed: "~{n} líneas rojas movidas",
     hist_no_change: "mismas líneas rojas",
     hist_confirm: "¿Restaurar {file} desde {backup}? El archivo actual se guarda como respaldo nuevo antes.",
@@ -1047,6 +1069,7 @@ function setView(view) {
   if (view === "timing" && S.result) { drawTrace(); waveLoad(); svMaps(); divsLoad(); }
   if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); stxVolMaps(); }
   if (view === "hitsounds" && S.result) hsvLoad();
+  if (view === "export" && S.result) hsdfMaps();
   if (view === "history") histLoad();
 }
 
@@ -2613,6 +2636,79 @@ async function hsdUndo() {
   await hsvPick(reply.file);
   if (HSP.file === reply.file) await hsPick(reply.file);
   renderHitsoundsView();
+}
+
+// ------------------------------------------------------------------ hitsound difficulty
+// Phase 6, H5 export: a new difficulty with a circle at every sound of the
+// mapset, each playing it exactly, to hitsound in one place and copy from.
+const HSDF = { preview: null };
+
+async function hsdfMaps() {
+  const box = $("hsdSource");
+  let maps = [];
+  if (api()) {
+    const reply = await api().song_maps();
+    maps = reply.ok ? reply.maps : [];
+  }
+  // The densest difficulty first: the natural source, and the first to fill from.
+  maps.sort((a, b) => b.objects - a.objects);
+  const keep = box.value;
+  box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+  if (maps.some((m) => m.file === keep)) box.value = keep;
+  box.disabled = $("hsdPreviewBtn").disabled = !maps.length;
+  HSDF.preview = null;
+  hsdfRender();
+}
+
+function hsdfRender() {
+  const p = HSDF.preview;
+  $("hsdWriteBtn").disabled = !(p && p.circles);
+  if (!p) { $("hsdResult").textContent = ""; return; }
+  const name = ($("hsdSource").selectedOptions[0] || {}).textContent || p.file;
+  $("hsdResult").textContent = [
+    t("hsd_would", { dest: p.dest, n: p.circles, src: p.from_source, name, others: p.from_others, merged: p.merged }),
+    p.stacked ? t("hsd_stacked", { n: p.stacked, time: fmtTime(p.stacked_times[0]) }) : "",
+    p.inexact ? t("hsd_inexact", { n: p.inexact, time: fmtTime(p.inexact_times[0]) }) : t("hsd_exact"),
+  ].filter(Boolean).join(" ");
+}
+
+async function hsdfPreview() {
+  const file = $("hsdSource").value;
+  if (!api() || !file) return;
+  const reply = await api().hitsound_difficulty_preview(file, $("hsdFill").checked);
+  HSDF.preview = reply.ok ? reply : null;
+  hsdfRender();
+  // One is there already: the card says so where the preview would be.
+  if (reply.key === "hsd_exists") $("hsdResult").textContent = t("hsd_exists", { dest: reply.dest });
+  else if (!reply.ok) editFailure(reply);
+}
+
+async function hsdfWrite() {
+  const p = HSDF.preview;
+  if (!api() || !p || !p.circles) return;
+  if (!confirm(t("hsd_confirm", { dest: p.dest }))) return;
+  const reply = await api().hitsound_difficulty_write(p.file, $("hsdFill").checked);
+  if (reply.key === "hsd_exists") { toast(t("hsd_exists", { dest: reply.dest }), true); return; }
+  if (!reply.ok) { editFailure(reply); return; }
+  toast(t("hsd_done", { dest: reply.dest, n: reply.circles }));
+  // The new difficulty is one of the song's now: its lists pick it up, and
+  // what the transport plays stays as it is.
+  $("hsvMap").dataset.for = "";
+  await hsMapsRefresh();
+  await hsdfMaps();
+}
+
+// The transport's list of difficulties again, what it plays untouched.
+async function hsMapsRefresh() {
+  if (!api()) return;
+  const box = $("pbHs"), keep = box.value;
+  const reply = await api().song_maps();
+  const maps = reply.ok ? reply.maps : [];
+  box.innerHTML = `<option value="">${t("pb_hs_off")}</option>` +
+    maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+  box.disabled = !maps.length;
+  hsProposalOption(hsdHas() ? HSD.file : "");
+  box.value = keep;
 }
 
 async function dropAnalyze(file) {
@@ -5261,6 +5357,9 @@ function wire() {
   $("redoBtn").onclick = redo;
   $("injectBtn").onclick = injectOsu;
   $("injectAllPreviewBtn").onclick = injectAllPreview;
+  $("hsdPreviewBtn").onclick = () => hsdfPreview();
+  $("hsdWriteBtn").onclick = () => hsdfWrite();
+  ["hsdSource", "hsdFill"].forEach((id) => $(id).addEventListener("change", () => { HSDF.preview = null; hsdfRender(); }));
   $("injectAllBtn").onclick = injectAllApply;
   wireDrop();
   $("trace").addEventListener("mousemove", onTraceMove);

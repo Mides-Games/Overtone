@@ -635,6 +635,10 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 .hsv-alt { width: auto; height: 28px; padding: 0 4px; font-size: var(--fs-1); }
 .hsv-table td .was { color: var(--dim); }
 .hsv-table td .now { color: var(--accent); font-weight: 600; }
+.hsd-form { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 16px; margin: 14px 0 8px; }
+.hsd-form .field { gap: 4px; }
+.hsd-form select.input { width: auto; min-width: 200px; height: 36px; }
+.hsd-form .btn { height: 36px; }
 .hsv-bars { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--fs-2); }
 .hsv-bars .input { width: 68px; height: 32px; }
 .hsv-edit { display: flex; flex-wrap: wrap; align-items: end; justify-content: center; gap: 10px 12px; margin: 14px 0 6px; }

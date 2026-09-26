@@ -4558,6 +4558,27 @@ def _green_fields(line: str) -> list[str]:
     return fields
 
 
+def _point_time_text(section: dict, time_ms: float) -> str | None:
+    """The time field of a timing line at ``time_ms``, exactly as the map
+    wrote it. A green inserted at a red line's time must carry the same
+    number: rounded, 17837.0114440535 became 17837.011 and landed before the
+    red line it was meant to follow, which then undid it."""
+    for line in section.get("lines", []):
+        text = line.strip()
+        if text and not text.startswith("//") and (point := _timing_point_fields(text)) is not None \
+                and abs(point["time"] - time_ms) <= 0.01:
+            return text.split(",", 1)[0].strip()
+    return None
+
+
+def _first_red_time(beatmap: dict) -> float | None:
+    """The map's first red line: nothing is written before it, since osu!
+    reads the first line's settings back to the song's start, and a green
+    placed there would become what the whole intro reads."""
+    rows = [o for o, b, _m in _beatmap_red_rows(beatmap) if np.isfinite(o) and np.isfinite(b)]
+    return min(rows) if rows else None
+
+
 def _insert_timing_line(section: dict, row: str) -> None:
     """``row`` into [TimingPoints] before the first point later than it,
     every other line keeping its own ending; the new one takes the file's."""
@@ -4643,8 +4664,11 @@ def set_chorus_kiai(beatmap: dict, spans: list[tuple[float, float]]) -> dict:
         inserts.append((at, on))            # no green there, or only a red line
         return "added"
 
+    first_red = _first_red_time(beatmap)
     runs: list[list[float]] = []
     for start_ms, end_ms in sorted((float(a), float(b)) for a, b in spans):
+        if first_red is not None:
+            start_ms = max(start_ms, first_red)
         if not end_ms > start_ms:
             continue
         if runs and start_ms <= runs[-1][1] + 0.01:
@@ -4676,7 +4700,8 @@ def set_chorus_kiai(beatmap: dict, spans: list[tuple[float, float]]) -> dict:
         _beat, state = cursor.at(time_ms)
         sv, sample_set, sample_index, volume = ((state.sv, state.sample_set, state.sample_index,
                                                  state.volume) if state is not None else (1.0, 0, 0, 100))
-        _insert_timing_line(section, f"{stamp(time_ms)},{-100.0 / sv:.12g},{meter_at(time_ms)},"
+        when = _point_time_text(section, time_ms) or stamp(time_ms)
+        _insert_timing_line(section, f"{when},{-100.0 / sv:.12g},{meter_at(time_ms)},"
                                      f"{sample_set},{sample_index},{volume},0,{1 if on else 0}")
     timing = [line for line in section["lines"]
               if line.strip() and not line.strip().startswith("//")]

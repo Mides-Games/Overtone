@@ -3238,6 +3238,25 @@ class MapWriterTests(unittest.TestCase):
         self.assertEqual([g.split(",")[0] for g in beatmap["timing"]["greens"]],
                          ["1000", "1400", "1800", "2500"])
 
+    def test_chorus_kiai_follows_a_red_line_to_its_last_decimal(self) -> None:
+        # Rounded to three decimals, a green meant to follow a lazer-precision
+        # red line landed before it, and the red line switched kiai off again.
+        from overtone import set_chorus_kiai
+        beatmap = self._kiai_map("0,500,4,2,1,70,1,0\n1500.0114440535,400,4,2,1,70,1,0")
+        set_chorus_kiai(beatmap, [(1000.0, 2000.0)])
+        self.assertIn("1500.0114440535,-100,4,2,1,70,0,1", beatmap["timing"]["greens"])
+        self.assertEqual(self._kiai_reads(beatmap, [1600]), [True])
+
+    def test_chorus_kiai_writes_nothing_before_the_first_red_line(self) -> None:
+        # osu! reads the first line's settings back to the song's start: a
+        # green before it would become what the whole intro reads.
+        from overtone import set_chorus_kiai
+        beatmap = self._kiai_map("5000,500,4,2,1,70,1,0")
+        set_chorus_kiai(beatmap, [(1000.0, 8000.0)])
+        times = [float(g.split(",")[0]) for g in beatmap["timing"]["greens"]]
+        self.assertEqual(times, [5000.0, 8000.0])
+        self.assertEqual(self._kiai_reads(beatmap, [6000, 9000]), [True, False])
+
     def test_chorus_kiai_keeps_each_lines_own_ending(self) -> None:
         from overtone import set_chorus_kiai, write_osu_beatmap
         raw = ("osu file format v14\r\n\r\n[General]\r\nAudioFilename: audio.mp3\r\n\r\n"

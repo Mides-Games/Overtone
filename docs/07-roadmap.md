@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **499** Python (340 engine + 159 web shell) · **263** Rust.
+Tests: **501** Python (342 engine + 159 web shell) · **263** Rust.
 
 ### What is pending, in order
 

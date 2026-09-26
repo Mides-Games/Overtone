@@ -25,7 +25,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (580 on 2026-09-26)
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (581 on 2026-09-26)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -124,6 +124,8 @@ overtone_library.py       the library index: a Songs folder in SQLite, searched 
 library.sql               the index's schema, versioned; facts.py checks the version
 app/                      web shell frontend (HTML/CSS/JS, no network)
 Overtone.bat              double-click launcher
+installer/                the MSI and portable ZIP: PyInstaller spec, WiX source, the
+                          one-line build (installer/build.py) and its smoke test
 test_overtone.py          engine, I/O and classic-window tests
 test_overtone_web.py      web bridge tests (never touch the real config)
 assets/                   generated logo (assets/logo.py), window icon and Overtone's own

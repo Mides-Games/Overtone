@@ -1,0 +1,15 @@
+# The installer's build tools (installer/build.py), installed into the same venv
+# on top of ../requirements.lock, and pinned so a build at one commit collects
+# the same code:
+#
+#   .venv\Scripts\python.exe -m pip install -r installer\requirements-build.lock
+#
+# Checked with Python 3.14.7 on 2026-09-26: PyInstaller 6.22.3 freezes the app,
+# and the frozen engines read the smoke test's 174 BPM. build.py refuses a venv
+# whose wheels differ from either lock.
+altgraph==0.17.5
+pefile==2024.8.26
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.7
+pywin32-ctypes==0.2.3
+setuptools==84.0.0

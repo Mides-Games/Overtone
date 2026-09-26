@@ -17,6 +17,10 @@ bench/.cache/
 
 # Rust (v4)
 /target/
+# Installer (installer/build.py): the frozen tree, the MSI and the ZIP, and
+# PyInstaller's and WiX's working files. Build outputs are never committed.
+/dist/
+/build/
 # Tauri frontend
 /app/node_modules/
 /app/dist/

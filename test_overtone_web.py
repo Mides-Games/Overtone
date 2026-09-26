@@ -2912,6 +2912,18 @@ class SelfCheckTests(unittest.TestCase):
         webview.create_window.assert_not_called()
         webview.start.assert_not_called()
 
+    def test_the_installer_bundles_every_file_the_app_reads(self) -> None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "installer_release", web.HERE / "installer" / "release.py")
+        release = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(release)
+        bundled = {(Path(folder) / Path(source).name).as_posix()
+                   for source, folder in release.data_files()}
+        for purpose, paths in web.resource_files().items():
+            for path in paths:
+                self.assertIn(path.relative_to(web.HERE).as_posix(), bundled, purpose)
+
 
 class AppScriptTests(unittest.TestCase):
     """The page script, read as text: no JavaScript engine runs in these tests.

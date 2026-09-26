@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-580%20Python%20%C2%B7%20263%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-581%20Python%20%C2%B7%20263%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -304,7 +304,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 580 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 581 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage
@@ -392,6 +392,8 @@ overtone_library.py       the library index: your Songs folder in SQLite
 library.sql               the index's schema
 app/                      the app's frontend (HTML/CSS/JS, nothing from the network)
 Overtone.bat              double-click launcher
+installer/                the MSI and portable ZIP: PyInstaller spec, WiX source,
+                          the one-line build and its smoke test
 test_overtone.py          engine, I/O and classic-window tests
 test_overtone_web.py      bridge tests (never touch your real config)
 bench/                    benchmark, gates, golden vectors

@@ -874,6 +874,10 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
             self.assertEqual((restored, undone["ok"], nothing_left["key"]),
                              (before, True, "no_undo"))
             self.assertTrue(Path(tmp, "hard.osu.bak").is_file())
+            # The undo rewrote the file: History lists it, with the backup it made.
+            newest = api.history()["entries"][0]
+            self.assertEqual((newest["op"], newest["file"], newest["backup"]),
+                             ("restore", "hard.osu", Path(undone["backup"]).name))
 
     def test_apply_onto_a_copy_leaves_the_source_alone(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1624,6 +1628,8 @@ class StructureKiaiBridgeTests(_IsolatedConfig):
                 self.assertEqual([(g.split(",")[0], g.split(",")[7]) for g in greens],
                                  [("16000", "1"), ("32000", "0")])
                 self.assertTrue(Path(tmp, "map.osu.bak").is_file())
+                # History names the tool that wrote it.
+                self.assertEqual(api.history()["entries"][0]["op"], "kiai")
 
     def test_without_a_chorus_or_maps_it_says_so(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

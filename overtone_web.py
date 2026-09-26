@@ -1049,7 +1049,8 @@ class Api:
 
     def hitsound_decide_undo(self) -> dict:
         """Restore the bytes the last in-place apply replaced, backing up the
-        current file first. One level: a second undo has nothing to restore."""
+        current file first and logging the write, as History lists every one.
+        One level: a second undo has nothing to restore."""
         if self._analysis is None:
             return {"ok": False, "key": "first"}
         if not self._decide_undo:
@@ -1063,6 +1064,7 @@ class Api:
             ta._atomic_write_bytes(path, bytes(self._decide_undo["bytes"]))
         except OSError as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
+        ta.log_write(path, "restore", str(backup) if backup else None, {"undo": "hitsounds"})
         self._decide_undo = None
         return {"ok": True, "file": path.name, "backup": str(backup)}
 
@@ -1558,7 +1560,7 @@ class Api:
         path, beatmap, starts = plan
         try:
             result = ta.set_editor_bookmarks(beatmap, [round(s) for s in starts])
-            written = ta.write_osu_beatmap(path, beatmap)
+            written = ta.write_osu_beatmap(path, beatmap, op="bookmarks")
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "file": path.name, "added": result["added"],
@@ -1608,7 +1610,7 @@ class Api:
         path, beatmap, spans = plan
         try:
             result = ta.set_chorus_kiai(beatmap, spans)
-            written = ta.write_osu_beatmap(path, beatmap)
+            written = ta.write_osu_beatmap(path, beatmap, op="kiai")
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "file": path.name, "choruses": len(spans),
@@ -1650,7 +1652,7 @@ class Api:
             return {"ok": False, "key": "no_breaks"}
         try:
             result = ta.set_map_breaks(beatmap, [(s["start_ms"], s["end_ms"]) for s in spans])
-            written = ta.write_osu_beatmap(path, beatmap)
+            written = ta.write_osu_beatmap(path, beatmap, op="breaks")
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "file": path.name, "breaks": len(spans),
@@ -1695,7 +1697,7 @@ class Api:
         path, beatmap = plan
         try:
             result = ta.set_constant_scroll(beatmap)
-            written = ta.write_osu_beatmap(path, beatmap)
+            written = ta.write_osu_beatmap(path, beatmap, op="scroll")
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "file": path.name,
@@ -1743,7 +1745,7 @@ class Api:
         path, beatmap, sections = plan
         try:
             result = ta.set_section_volumes(beatmap, sections)
-            written = ta.write_osu_beatmap(path, beatmap)
+            written = ta.write_osu_beatmap(path, beatmap, op="volumes")
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "file": path.name, "sections": len(sections),

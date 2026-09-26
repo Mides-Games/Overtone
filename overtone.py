@@ -4995,7 +4995,7 @@ def beatmap_text(beatmap: dict) -> str:
 
 
 def write_osu_beatmap(osu_path: str | os.PathLike[str], beatmap: dict,
-                      backup: bool = True) -> dict:
+                      backup: bool = True, op: str = "write") -> dict:
     """Write a parsed beatmap back (Phase 5, writer row).
 
     Untouched lines come out byte-identical — same text, same line ending
@@ -5003,7 +5003,8 @@ def write_osu_beatmap(osu_path: str | os.PathLike[str], beatmap: dict,
     all. Atomic temp-plus-rename, and backups follow inject's rules
     (_backup_before_write): written first, never overwritten, skipped when
     there is no original to protect. ``backup`` in the result is the path
-    holding the replaced bytes, or None.
+    holding the replaced bytes, or None. ``op`` names the write in the
+    history log (kiai, breaks...), so History says which tool wrote it.
     """
     path = Path(osu_path)
     original = path.read_bytes() if path.is_file() else None
@@ -5018,7 +5019,7 @@ def write_osu_beatmap(osu_path: str | os.PathLike[str], beatmap: dict,
         _atomic_write_bytes(path, payload)
     except (OSError, ValueError) as exc:
         raise ValueError(f"Could not write {path.name}: {exc}") from exc
-    log_write(path, "write", str(spare) if spare else None, {"bytes": len(payload)})
+    log_write(path, op, str(spare) if spare else None, {"bytes": len(payload)})
     return {"bytes": len(payload), "backup": str(spare) if spare else None}
 
 

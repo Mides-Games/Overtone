@@ -345,6 +345,7 @@ the copier, the section, the check, the decision engine, the editor.
 | Sample recommendation | map samples to roles by their spectrum | med | med | bank | no | no | P2 | todo |
 | Hitsound export | only hitsound fields change | med | **high** | P5 writer | no | no | **P1** | partial — same engine half; the Export-section surface still to build |
 | Consistency check | flag objects whose sound disagrees with their role | low | high | decision | no | no | P2 | partial — map half and silence half in the mod report (missing/extra clap; finish/clap with no attack under them); clap-mismatch refused on measurement until the templates prove themselves on real audio |
+| Audio-only proposal | hitsounds from the song alone, no map: attacks → classes + role, proposed on the song's own analysis | med | high | H4, P-4 | no | no | P2 | todo — proposed 2026-09-26: H4 needs a difficulty's objects today and refuses without them; the ask is drop an audio file and get a proposal by the song's analysis |
 
 The F1 numbers are measured on synthetic arrangements the fit never saw, from the same
 corpus generator; they say the classes separate, not how they do on real songs.

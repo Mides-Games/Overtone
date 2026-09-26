@@ -155,6 +155,19 @@ Volume/sample changes and pre-hearing proposals stay future work.
 Sample bank import and sample-to-role recommendation (`06` §8), custom profiles in the app,
 and only then the ML evaluation of `08`, against the template baseline.
 
+### H7 · Audio-only proposal (proposed 2026-09-26, todo)
+
+Today H4 takes `<audio> <map>`: it needs a difficulty's objects and refuses
+without them. The ask, noted 2026-09-26: drop an audio file with no map, have
+the song's own analysis (attacks → instrument classes + musical role) propose
+what hitsounds go where. The open question is what object rhythm to propose on
+when there is no map to hang sounds on — the likely shape is strong attacks on
+the detected grid as the object set, with the proposal marked as what the song
+suggests rather than what fits an existing difficulty. Needs H4's decision
+plus P-4 evidence; evaluation against P-6 mapper agreement does not apply
+without a map, so it needs its own gate (e.g. class agreement with H4's
+proposal on the same song once mapped).
+
 ---
 
 ## 4. Decisions to make

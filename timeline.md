@@ -16,6 +16,29 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Inject the whole mapset from Export
+
+### Changed
+
+- **Inject-all row in Export**: a preview listing every `.osu` beside the
+  analyzed song (reds replaced and new, greens added, audio mismatches,
+  unreadable files) and one confirmation writing them all — each file backed
+  up first, one bad map never stopping the rest. EN/ES.
+
+### Measured
+
+```
+synthetic 3-map set         2 ok 1 failed in preview, nothing written; apply
+                            writes both with backups; bytes change, errors ride along
+Python unittest                 458 -> 460, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages, no
+                                duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Inject everywhere, engine half: one bad map stops nothing
 
 ### Changed

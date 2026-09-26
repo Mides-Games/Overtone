@@ -396,6 +396,30 @@ class ExportTests(_IsolatedConfig):
         self.assertEqual(web.Api().inject_apply("C:/x.osu")["key"], "first")
         self.assertEqual(_api_with_points().inject_preview("C:/does/not/exist.osu")["key"], "bad_file")
 
+    def test_inject_all_dry_run_then_apply_with_backups(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ("easy.osu", "hard.osu"):
+                (Path(tmp) / name).write_text(_OSU_TEXT, encoding="utf-8")
+            (Path(tmp) / "broken.osu").write_text("[General]\n[HitObjects]\n", encoding="utf-8")
+            api = _api_with_points()
+            api._analysis.source = str(Path(tmp) / "audio.mp3")
+            prev = api.inject_all_preview()
+            json.dumps(prev)
+            self.assertTrue(prev["ok"])
+            self.assertEqual((prev["report"]["ok"], prev["report"]["failed"]), (2, 1))
+            self.assertEqual((Path(tmp) / "easy.osu").read_text(encoding="utf-8"), _OSU_TEXT)
+            done = api.inject_all_apply()
+            json.dumps(done)
+            self.assertEqual((done["report"]["ok"], done["report"]["failed"]), (2, 1))
+            for name in ("easy.osu", "hard.osu"):
+                self.assertTrue(Path(str(Path(tmp) / name) + ".bak").is_file())
+                self.assertNotIn("1000,400,4,1,0,100,1,0",
+                                 (Path(tmp) / name).read_text(encoding="utf-8"))
+
+    def test_inject_all_needs_a_result(self) -> None:
+        self.assertEqual(web.Api().inject_all_preview()["key"], "first")
+        self.assertEqual(web.Api().inject_all_apply()["key"], "first")
+
 
 class CompareBridgeTests(_IsolatedConfig):
     def _report_for(self, api, text):

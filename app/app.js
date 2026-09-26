@@ -154,6 +154,19 @@ const I18N = {
     hsv_what_ticked_alt: "{accepted} of {units} proposals ticked, {chosen} of them an alternative",
     hsv_alts: "{n} alternatives", hsv_alt_aria: "The proposal or one of its alternatives",
     hsv_alt_note: "In the table, a proposal can be swapped for one of its alternatives. The percentages say how likely each sound is there on its own, among the 24 the engine weighs, which keeps them low. The proposal is the one that fits the whole sequence best, so an alternative can score higher alone.",
+    hsv_why_proposed: "Proposed", hsv_why_behind: "behind it:", hsv_why_heard: "Heard", hsv_why_terms: "Why",
+    hsv_why_sum: "Its score here", hsv_why_close: "Close",
+    hsv_why_silence: "Nothing was heard under it: the audio and its place in the bar say nothing here.",
+    hsv_why_tail: "A slider tail takes the sound of the object landing under it.",
+    hsv_why_tail_bare: "No object lands under this tail, so it stays bare.",
+    hsv_why_note: "The proposal is the best path through the whole map, not the best score here alone: these are its terms at this sound, added up.",
+    hsv_term_affinity: "the instrument heard", hsv_term_role: "its place in the bar", hsv_term_context: "a new combo",
+    hsv_term_prior: "what the map plays now", hsv_term_transition: "the sound before it",
+    hsv_div_1: "on a beat", hsv_div_2: "on an eighth", hsv_div_3: "on a triplet", hsv_div_4: "on a sixteenth",
+    hsv_div_6: "on a sextuplet", hsv_div_8: "on a 32nd", hsv_div_none: "off every grid",
+    hs_class_kick: "kick", hs_class_snare: "snare", hs_class_clap: "clap", hs_class_hat_closed: "closed hat",
+    hs_class_hat_open: "open hat", hs_class_tom: "tom", hs_class_cymbal: "cymbal", hs_class_ride: "ride",
+    hs_class_bass: "bass", hs_class_guitar: "guitar", hs_class_keys: "keys", hs_class_vocal: "vocal", hs_class_other: "other",
     hsv_hear: "Hear before writing",
     hsv_hearing: "The transport plays the file as it would be written ({what}): {n} sounds unlike the file, the first at {time}. Switch its hitsounds to {name} to compare.",
     hsv_hearing_same: "The transport plays the file as it would be written ({what}), and every sound plays as the file already does.",
@@ -630,6 +643,19 @@ const I18N = {
     hsv_what_ticked_alt: "{accepted} de {units} propuestas tildadas, {chosen} de ellas una alternativa",
     hsv_alts: "{n} alternativas", hsv_alt_aria: "La propuesta o una de sus alternativas",
     hsv_alt_note: "En la tabla, cada propuesta se puede cambiar por una de sus alternativas. Los porcentajes dicen qué tan probable es cada sonido ahí por sí solo, entre los 24 que pesa el motor, y por eso son bajos. La propuesta es la que mejor encaja en toda la secuencia, así que una alternativa puede puntuar más sola.",
+    hsv_why_proposed: "Propuesto", hsv_why_behind: "detrás:", hsv_why_heard: "Se oyó", hsv_why_terms: "Por qué",
+    hsv_why_sum: "Su puntaje acá", hsv_why_close: "Cerrar",
+    hsv_why_silence: "No se oyó nada debajo: el audio y su lugar en el compás no dicen nada acá.",
+    hsv_why_tail: "Una cola de slider toma el sonido del objeto que cae debajo.",
+    hsv_why_tail_bare: "Ningún objeto cae debajo de esta cola, así que queda sin adiciones.",
+    hsv_why_note: "La propuesta es el mejor camino por todo el mapa, no el mejor puntaje acá solo: estos son sus términos en este sonido, sumados.",
+    hsv_term_affinity: "el instrumento oído", hsv_term_role: "su lugar en el compás", hsv_term_context: "un combo nuevo",
+    hsv_term_prior: "lo que el mapa ya suena", hsv_term_transition: "el sonido anterior",
+    hsv_div_1: "en un tiempo", hsv_div_2: "en una corchea", hsv_div_3: "en un tresillo", hsv_div_4: "en una semicorchea",
+    hsv_div_6: "en un seisillo", hsv_div_8: "en una fusa", hsv_div_none: "fuera de toda grilla",
+    hs_class_kick: "bombo", hs_class_snare: "caja", hs_class_clap: "palmas", hs_class_hat_closed: "hi-hat cerrado",
+    hs_class_hat_open: "hi-hat abierto", hs_class_tom: "tom", hs_class_cymbal: "platillo", hs_class_ride: "ride",
+    hs_class_bass: "bajo", hs_class_guitar: "guitarra", hs_class_keys: "teclado", hs_class_vocal: "voz", hs_class_other: "otro",
     hsv_hear: "Escuchar antes de escribir",
     hsv_hearing: "El transporte toca el archivo como quedaría escrito ({what}): {n} sonidos distintos del archivo, el primero en {time}. Cambiá sus hitsounds a {name} para comparar.",
     hsv_hearing_same: "El transporte toca el archivo como quedaría escrito ({what}), y cada sonido suena como ya suena en el archivo.",
@@ -2170,7 +2196,8 @@ function stxShow(i) {
 // Phase 6, H2: one difficulty, read only. Where its additions fall in the bar
 // (a small multiple per addition, on one scale), and every sound, to hear
 // one by one with the samples the transport plays.
-const HSV = { file: "", report: null, filter: "all", bars: { from: null, to: null }, shown: 200 };
+const HSV = { file: "", report: null, filter: "all", bars: { from: null, to: null }, shown: 200,
+              selected: null };
 const HSV_ADDS = ["whistle", "finish", "clap"];
 const HSV_PAGE = 200;
 
@@ -2206,7 +2233,7 @@ async function hsvPick(file) {
     HSD.file = ""; HSD.units = []; HSD.byKey = new Map(); HSD.accepted = new Set(); HSD.choice = new Map();
     HSD.edits = new Map(); HSD.undo = false;
   }
-  HSV.file = file; HSV.report = null; HSV.shown = HSV_PAGE;
+  HSV.file = file; HSV.report = null; HSV.shown = HSV_PAGE; HSV.selected = null;
   $("hsvDecidePrevText").textContent = "";
   const reply = await api().hitsound_report(file);
   if (HSV.file !== file) return;
@@ -2292,7 +2319,7 @@ function renderHitsoundsView() {
         + [unit.proposal, ...alts].map((p, k) => `<option value="${k - 1}"${k - 1 === chosen ? " selected" : ""}>${esc(hsdLabel(p))}</option>`).join("")
         + `</select></span>`;
     const edit = HSD.file === HSV.file ? HSD.edits.get(s.object) : undefined;
-    return `<tr data-i="${i}">
+    return `<tr data-i="${i}"${i === HSV.selected ? ' class="sel"' : ""}>
       <td class="txt num">${fmtTime(s.t)}</td>
       <td class="num">${s.bar ?? "—"} · ${slotLabel(s.slot, s.meter)}</td>
       <td class="txt">${t("part_" + s.part)}</td>
@@ -2307,6 +2334,7 @@ function renderHitsoundsView() {
   $("hsvMore").hidden = more <= 0;
   $("hsvMore").textContent = t("hsv_more", { n: Math.min(more, HSV_PAGE) });
   hsdRender();
+  hsdWhy();
 }
 
 // ▶ plays one sound now, with the samples the transport loaded for this map.
@@ -2365,6 +2393,49 @@ function hsdHas() { return HSD.file === HSV.file && (HSD.units.length > 0 || HSD
 function hsdLabel(p) {
   const sure = typeof p.probability === "number" ? ` ${Math.round(p.probability * 100)} %` : "";
   return p.bank + p.additions.map((a) => "+" + a).join("") + sure;
+}
+
+// The decision behind one sound, read off the computation (docs/06 §7): the
+// proposal and its runner-ups, what was heard under it, and every term the
+// engine added up there, signed. Opens on a row click, over the table.
+const HSD_TERMS = ["affinity", "role", "context", "prior"];
+
+function hsdWhy() {
+  const box = $("hsvWhy"), r = HSV.report;
+  const s = r && HSV.selected !== null ? r.sounds[HSV.selected] : null;
+  const unit = s && hsdUnitFor(s);
+  box.hidden = !unit;
+  if (!unit) { box.innerHTML = ""; return; }
+  const head = `${fmtTime(s.t)} · ${t("part_" + s.part)} · ${s.bar ?? "—"} · ${slotLabel(s.slot, s.meter)}`;
+  const row = (label, body) => `<div class="label">${label}</div><div>${body}</div>`;
+  const alts = (unit.alternatives || []).map((a) => esc(hsdLabel(a))).join(" · ");
+  let heard = "", why = "";
+  if (unit.tail) {
+    heard = esc(t(unit.follows === null ? "hsv_why_tail_bare" : "hsv_why_tail"));
+  } else if (!unit.heard) {
+    heard = esc(t("hsv_why_silence"));
+  } else {
+    const classes = unit.heard.classes.map((c) => `${esc(t("hs_class_" + c.class))} ${Math.round(c.probability * 100)} %`).join(" · ");
+    const d = unit.heard.division;
+    heard = `${classes} · ${esc(t(d ? "hsv_div_" + d : "hsv_div_none"))}`;
+  }
+  if (!unit.tail) {
+    const terms = HSD_TERMS.map((name) => [name, (unit.terms.find((x) => name in x) || {})[name] || 0]);
+    if (unit.transition_in !== null && unit.transition_in !== undefined) terms.push(["transition", unit.transition_in]);
+    const peak = Math.max(1e-9, ...terms.map(([, v]) => Math.abs(v)));
+    const sum = terms.reduce((a, [, v]) => a + v, 0);
+    why = `<div class="hsv-terms">${terms.map(([name, v]) => `<span>${esc(t("hsv_term_" + name))}</span>`
+      + `<span class="track"><span class="bar${v < 0 ? " neg" : ""}" style="width:${(Math.abs(v) / peak * 100).toFixed(1)}%"></span></span>`
+      + `<span class="num">${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}</span>`).join("")}`
+      + `<span><b>${esc(t("hsv_why_sum"))}</b></span><span></span><span class="num"><b>${sum >= 0 ? "+" : "−"}${Math.abs(sum).toFixed(2)}</b></span></div>`;
+  }
+  box.innerHTML = `<div class="hsv-why-head"><b>${esc(head)}</b><span class="spacer"></span>`
+    + `<button type="button" class="btn small icon" data-why-close title="${t("hsv_why_close")}" aria-label="${t("hsv_why_close")}">×</button></div>`
+    + `<div class="hsv-why-grid">`
+    + row(t("hsv_why_proposed"), `<b>${esc(hsdLabel(unit.proposal))}</b>${alts ? ` <span class="muted">· ${t("hsv_why_behind")} ${alts}</span>` : ""}`)
+    + row(t("hsv_why_heard"), heard)
+    + (why ? row(t("hsv_why_terms"), why) : "")
+    + `</div>${why ? `<div class="card-sub mt-s">${esc(t("hsv_why_note"))}</div>` : ""}`;
 }
 
 function hsdAcceptList() {
@@ -5001,7 +5072,19 @@ function wire() {
     if (e.target.closest("select, input, label")) return;   // a choice, not a seek
     const row = e.target.closest("tr[data-i]");
     const s = row && HSV.report && HSV.report.sounds[+row.dataset.i];
-    if (s) pbSeek(Math.max(0, s.t - 1));
+    if (!s) return;
+    pbSeek(Math.max(0, s.t - 1));
+    // The row's decision opens over the table, and the row stays marked.
+    HSV.selected = +row.dataset.i;
+    document.querySelectorAll("#hsvRows tr.sel").forEach((tr) => tr.classList.remove("sel"));
+    row.classList.add("sel");
+    hsdWhy();
+  });
+  $("hsvWhy").addEventListener("click", (e) => {
+    if (!e.target.closest("[data-why-close]")) return;
+    HSV.selected = null;
+    document.querySelectorAll("#hsvRows tr.sel").forEach((tr) => tr.classList.remove("sel"));
+    hsdWhy();
   });
   $("stxBody").addEventListener("click", (e) => {
     const el = e.target.closest("[data-stx]");

@@ -159,7 +159,10 @@ sounds the table shows (its addition filter and a range of bars): the object's o
 values, 0 to follow its green line again, a slider's for all its edges, merged into
 the same preview, hearing, write and undo, and with no proposal needed. A proposal is
 swapped for one of its two runner-ups in the table, each shown with how likely it is
-there on its own (2026-09-26). The Export section's surface stays future work. The card is tested through the bridge and in the browser (harness).
+there on its own (2026-09-26). A row's inspector explains its proposal (docs/06 §7 at the
+level of the terms): what was heard under it, the three likeliest instruments and its
+place in the bar, and every term the engine added up there, signed. The Export
+section's surface stays future work. The card is tested through the bridge and in the browser (harness).
 
 ### H6 · After it works
 

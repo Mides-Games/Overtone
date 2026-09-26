@@ -620,6 +620,17 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 .hsv-table td { white-space: nowrap; }
 .hsv-table th { white-space: normal; }
 .hsv-table td:last-child, .hsv-table th:last-child { padding-left: 4px; }
+.hsv-table tbody tr.sel td { background: var(--accent-soft); }
+.hsv-why { border-bottom: 1px solid var(--row-line); }
+.hsv-why-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.hsv-why-head .spacer { flex: 1; }
+.hsv-why-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 18px; align-items: baseline; }
+.hsv-why-grid .label { color: var(--muted); font-size: var(--fs-1); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; }
+.hsv-terms { display: grid; grid-template-columns: max-content 160px max-content; gap: 4px 12px; align-items: center; }
+.hsv-terms .bar { height: 8px; border-radius: 4px; background: var(--accent); }
+.hsv-terms .bar.neg { background: var(--dim); }
+.hsv-terms .track { display: flex; }
+.hsv-terms .num { font-variant-numeric: tabular-nums; text-align: right; }
 .hsv-prop { display: inline-flex; align-items: center; gap: 4px; }
 .hsv-alt { width: auto; height: 28px; padding: 0 4px; font-size: var(--fs-1); }
 .hsv-table td .was { color: var(--dim); }

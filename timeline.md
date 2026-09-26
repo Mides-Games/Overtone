@@ -17,6 +17,44 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Why a sound was proposed
+
+### Changed
+
+- **`overtone-cli hitsound` says what it heard under each decided sound**: the matched
+  attack's time, its three likeliest instruments with their probabilities, and its
+  division and metrical weight; null over silence, and on tails, which follow instead.
+- **A row's inspector explains its proposal** (docs/06 §7, at the level of the terms). A
+  click on a row with a proposal opens it over the table: the proposal and its runner-ups,
+  what was heard ("clap 64 % · bass 22 % · kick 10 % · on an eighth") or that nothing
+  was, and every term the engine added up there, signed and drawn to scale: the
+  instrument heard, the place in the bar, a new combo, what the map plays now, the sound
+  before it, and their sum. A tail says what it follows, or that it stays bare. The row
+  stays marked until the inspector closes. The features behind each instrument stay in
+  `overtone-cli hitsound-evidence`: the page shows what the decision used.
+
+### Measured
+
+```
+overtone-cli hitsound on 8 local maps, one difficulty each: 5602 decided sounds
+  something heard under it: 5387 (96.2 %); over silence: 215
+  the term that weighs most in the proposal's score: what the map plays now 57.8 %,
+  the instrument heard 21.8 %, the place in the bar 10.0 %, a new combo 7.1 %, the
+  sound before it 3.2 %
+  heard, yet the proposal takes nothing from the instrument: 1325 of 5387 (24.6 %)
+  -> on maps already hitsounded the proposals mostly keep what the mapper wrote, by
+     design (the prior weighs 1.2); the inspector is what makes that visible
+Jester [Trynna's Hard], in the browser (harness, silent), EN and ES
+  1311 proposals: 840 heard, 15 over silence, 456 slider tails (none with an object
+  under it, so all bare); the first circle: clap 64 % heard, soft+whistle proposed on
+  its place in the bar (+0.40) and a new combo (+0.80), the audio adding nothing to it,
+  score +1.20, with normal+clap behind at 8 %
+  the inspector's sum equals the terms the CLI sent; close hides it and unmarks the row
+Python unittest     522, all pass (no count change) · facts
+cargo test --workspace 263 pass (the hitsound CLI test now checks heard and silence)
+Rust gates: golden 27/27 · nogrid refused · density 4/4, 0 false · elastic · map
+```
+
 ## v4.0.0-dev — 2026-09-26 · A proposal swapped for one of its alternatives
 
 ### Changed

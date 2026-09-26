@@ -190,7 +190,8 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Each sound matched to its nearest attack, or to none | ✅ | Within 50 ms |
 | Consistency check | 🟡 | In the mod report: pattern breaks, finishes and claps over silence; the "wrong instrument" rule waits for proof on real audio |
 | Sequence decision (Viterbi) | ✅ | `overtone-cli hitsound`: 19/19 on synthetic exact truth; clap and finish agreement with mappers above the simple rules on two real samples |
-| Explanations, profiles in the app, sample bank, hitsound export | 📋 | P6 |
+| Why a sound was proposed: what was heard under it, and every term the engine added up | ✅ | A row's inspector in the Hitsounds section (docs/06 §7 at the level of the terms); the features behind each instrument are in `overtone-cli hitsound-evidence` |
+| Profiles in the app, sample bank, hitsound export | 📋 | P6 |
 
 ### Command line
 
@@ -420,8 +421,8 @@ sliders quedan igual).
 - **Motor en Rust (🦀):** da los mismos resultados que Python y es unas 4 veces más rápido
   de punta a punta; la app lo usa como opción (Ajustes → motor Rust) y para Estructura,
   Rampas y las propuestas de hitsounds.
-- **Próximo (📋):** el resto de los hitsounds (exportación, explicaciones, perfiles, banco
-  de samples), la sección Audio, precisión en canciones reales e
+- **Próximo (📋):** el resto de los hitsounds (exportación, perfiles, banco de samples), la
+  sección Audio, precisión en canciones reales e
   instalador `.msi`.
 
 Uso: doble clic en `Overtone.bat`, abrí un audio, **Analizar**, revisá el mapa de tempo,

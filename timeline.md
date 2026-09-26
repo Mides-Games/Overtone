@@ -16,6 +16,30 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Volume by section, engine half: loud sets the scale
+
+### Changed
+
+- **`set_section_volumes(beatmap, sections)`**: each section at the loudest
+  section's volume scaled by their dB distance, written as greens — a green
+  already at a boundary gets only its volume rewritten. The scale hangs from
+  the volume in force at the loudest start, which the tool never touches, so
+  a second run keeps instead of turning down again. Sets, index and kiai ride
+  along untouched.
+
+### Measured
+
+```
+verse -8 dB, chorus -14 dB      chorus green at 35 (70 x 10^(-6/20)), verse kept,
+                                sounds identical, second run all kept
+Python unittest                 464 -> 467 (writer suites green)
+facts                           ok
+```
+
+No analysis code touched, so no benchmark run here.
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Inject diff beside every preview
 
 ### Changed

@@ -3109,6 +3109,43 @@ class MapWriterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             set_map_breaks(bare, [(10000.0, 30000.0)])
 
+    _VOLUME_SECTIONS = [
+        {"start_s": 0.0, "end_s": 10.0, "kind": "verse", "level_db": -8.0},
+        {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -14.0},
+    ]
+
+    def test_section_volumes_follow_energy(self) -> None:
+        from overtone import set_section_volumes, sound_events
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1500,-100,4,2,1,60,0,0")
+        before = sound_events(beatmap)
+        result = set_section_volumes(beatmap, self._VOLUME_SECTIONS)
+        json.dumps(result)
+        self.assertEqual(result, {"added": 1, "flipped": 0, "kept": 1})
+        self.assertEqual(sound_events(beatmap), before)
+        self.assertEqual(beatmap["timing"]["greens"],
+                         ["1500,-100,4,2,1,60,0,0", "10000,-100,4,2,1,35,0,0"])
+        self.assertEqual(set_section_volumes(beatmap, self._VOLUME_SECTIONS),
+                         {"added": 0, "flipped": 0, "kept": 2})
+
+    def test_section_volumes_rewrite_a_wrong_green(self) -> None:
+        from overtone import set_section_volumes
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n"
+                                 "10000,-100,4,2,1,60,0,0")
+        self.assertEqual(set_section_volumes(beatmap, self._VOLUME_SECTIONS),
+                         {"added": 0, "flipped": 1, "kept": 1})
+        greens = beatmap["timing"]["greens"]
+        self.assertEqual(greens, ["10000,-100,4,2,1,35,0,0"])
+
+    def test_section_volumes_silent_without_levels_or_timing(self) -> None:
+        from overtone import set_section_volumes
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0")
+        self.assertEqual(set_section_volumes(beatmap, []),
+                         {"added": 0, "flipped": 0, "kept": 0})
+        self.assertEqual(set_section_volumes(beatmap, [{"start_s": 0.0}]),
+                         {"added": 0, "flipped": 0, "kept": 0})
+        with self.assertRaises(ValueError):
+            set_section_volumes({"sections": []}, self._VOLUME_SECTIONS)
+
 
 _CONTEXT_OSU = "\n".join([
     "osu file format v14",

@@ -23,13 +23,13 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | App (web shell) | **usable** — ten sidebar sections: Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export, History, Settings. Analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject (one map or the whole mapset, with the diff), compare with a map, alignment, density, snap audit, re-snap, suggestions, mapset check, reference timing, assisted timing, evidence, ramps, offset lab, constant scroll, snap divisors, kiai / breaks / bookmarks / preview point / section volumes from the structure, audio swap, audio file check, write history with restore, mod report, folder import, recents, osu! Songs browser, EN/ES, dark and light |
 | osu! files | **works** — full reader, byte-identical writer, atomic write + backup, every write logged and restorable; hitsound fields edited in place, nothing else moves (P-2) |
 | Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks; in the mod report, claps that break the map's own pattern and finishes or claps over silence (H3) |
-| Hitsound engine | **in the app** — the copier (H1), the Hitsounds section (H2), the consistency check (H3), and the decision engine in Rust (H4) behind the Propose card: tick, preview, write the file or a copy, undo (H5). Volume and sample edits, hearing a proposal before it is written, explanations, profiles, instrument lanes and a sample bank are still to build |
-| Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency, the percussive part alone, and a difficulty's hitsounds with its own samples (slider bodies not yet) |
-| UI verification | **done** 2026-09-26 — the 19 surfaces of 2026-09-25/26 exercised in the browser pane on two real mapsets, both themes and languages; it found app.js not loading and fifteen bugs in writes, counts and messages, all fixed; two tools need a decision (timeline) |
+| Hitsound engine | **in the app** — the copier (H1), the Hitsounds section (H2), the consistency check (H3), and the decision engine in Rust (H4) behind the Propose card: tick, hear it over the song as the write would make it, preview, write the file or a copy, undo (H5). Volume and sample edits, explanations, profiles, instrument lanes and a sample bank are still to build |
+| Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency, the percussive part alone, and a difficulty's hitsounds with its own samples, as written or as proposed (slider bodies not yet) |
+| UI verification | **done** 2026-09-26 — the 19 surfaces of 2026-09-25/26 exercised in the browser pane on two real mapsets, both themes and languages; it found app.js not loading and fifteen bugs in writes, counts and messages, all fixed; the two tools that needed a decision were decided the same day (timeline) |
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **513** Python (353 engine + 160 web shell) · **263** Rust.
+Tests: **514** Python (353 engine + 161 web shell) · **263** Rust.
 
 ### What is pending, in order
 
@@ -41,8 +41,7 @@ and the Phase 21 map tools (inject everywhere with a diff, kiai, breaks, bookmar
 point, section volumes, SV normaliser, re-snap, snap divisors, audio file check).
 
 1. **Hitsounds, the rest** (Phase 6, [`15-hitsound-plan.md`](15-hitsound-plan.md)) — volume
-   and sample edits and hearing a proposal before it is written (H5), the Export section's
-   hitsound surface, explanations and profiles in the app, instrument lanes on the
+   and sample edits (H5), the Export section's hitsound surface, explanations and profiles in the app, instrument lanes on the
    timeline (P-4's evidence is there to draw), slider bodies in playback; then H6 (sample
    bank, recommendation) and H7 (a proposal from the audio alone). The clap-mismatch rule
    waits until the templates hold on real audio.
@@ -350,7 +349,7 @@ the copier, the section, the check, the decision engine, the editor.
 | Explanations | itemised terms + alternatives | med | **high** | decision | no | no | **P1** | todo |
 | Profiles | built-in + custom, as data | low | high | decision | no | no | **P1** | todo |
 | Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | partial — the object lane (P-7); instrument lanes still to draw, from P-4's evidence (done) |
-| Hitsound editor | change/remove/volume/sample | med | **high** | decision | no | no | **P1** | partial — engine half, bridge propose/preview/apply/one-level-undo, and the Decide card (tick, preview, write, copy, undo) short of a harness pass; volume/sample changes and pre-hearing proposals still to build |
+| Hitsound editor | change/remove/volume/sample | med | **high** | decision | no | no | **P1** | partial — engine half, bridge propose/preview/apply/one-level-undo, the Decide card (tick, preview, write, copy, undo) and hearing a proposal over the song before it is written (what plays equals the written copy on 799 of 800 local maps, the last refused alike by both); volume/sample changes still to build |
 | Sample bank | import skin/folder, audition samples | med | high | P4 playback | no | no | P1 | todo |
 | Sample recommendation | map samples to roles by their spectrum | med | med | bank | no | no | P2 | todo |
 | Hitsound export | only hitsound fields change | med | **high** | P5 writer | no | no | **P1** | partial — same engine half; the Export-section surface still to build |

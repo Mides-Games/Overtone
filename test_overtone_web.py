@@ -899,17 +899,56 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
             self.assertEqual(Path(tmp, "hard.osu").read_bytes(), before)
             self.assertIn(b"256,192,1500,1,8,", dest.read_bytes())
 
+    def test_a_proposal_is_heard_as_its_written_copy_plays_and_nothing_is_written(self) -> None:
+        # A circle left unticked, and a slider whose head and tail are ticked:
+        # the transport must play what writing those ticks would play.
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+                 "[Difficulty]", "SliderMultiplier:1.4", "",
+                 "[TimingPoints]", "0,500,4,2,1,70,1,0", "", "[HitObjects]",
+                 "256,192,1000,1,0,0:0:0:0:",
+                 "256,192,2000,2,0,L|356:192,1,70,2|0,0:0|0:0,0:0:0:0:", ""]
+        units = [self.UNITS[0],
+                 {"object": 1, "part": "head", "edge": 0, "time_ms": 2000.0,
+                  "proposal": {"bank": "drum", "additions": ["clap"], "bits": 8}},
+                 {"object": 1, "part": "tail", "edge": 1, "time_ms": 2250.0,
+                  "proposal": {"bank": "soft", "additions": ["finish"], "bits": 4}}]
+        accept = [[1, "head", 0], [1, "tail", 1]]
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            Path(tmp, "hard.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+            Path(tmp, "drum-hitclap.wav").write_bytes(b"RIFFdrumclap")
+            before = Path(tmp, "hard.osu").read_bytes()
+            with mock.patch.object(web.overtone_rust, "hitsound", return_value={"units": units}):
+                api.hitsound_decide_propose("hard.osu")
+            heard = api.hitsound_decide_playback("hard.osu", accept)
+            untouched = Path(tmp, "hard.osu").read_bytes()
+            as_is = api.hitsound_playback("hard.osu")
+            api.hitsound_decide_apply("hard.osu", accept, copy=True)
+            written = api.hitsound_playback("hard_hitsounded.osu")
+        json.dumps(heard)
+        self.assertEqual(untouched, before)
+        for part in ("events", "objects", "samples", "counts"):
+            self.assertEqual(heard[part], written[part], part)
+        self.assertNotEqual(heard["events"], as_is["events"])
+        self.assertEqual(heard["events"]["keys"][0], as_is["events"]["keys"][0])
+        self.assertEqual((heard["proposal"], heard["units"], heard["accepted"], heard["differs"],
+                          heard["first"]), (True, 3, 2, 2, 2.0))
+        self.assertIn("map:drum-hitclap.wav", heard["samples"])
+
     def test_without_a_proposal_or_a_binary_it_says_so(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             api = self._song(tmp)
             self.assertEqual(api.hitsound_decide_preview("hard.osu")["key"], "no_proposal")
             self.assertEqual(api.hitsound_decide_apply("hard.osu")["key"], "no_proposal")
+            self.assertEqual(api.hitsound_decide_playback("hard.osu")["key"], "no_proposal")
+            self.assertEqual(api.hitsound_decide_playback("..\\hard.osu")["key"], "bad_file")
             with mock.patch.object(web.overtone_rust, "hitsound",
                                    side_effect=web.overtone_rust.SidecarUnavailable("gone")):
                 self.assertEqual(api.hitsound_decide_propose("hard.osu")["key"], "no_rust")
             self.assertEqual(api.hitsound_decide_propose("..\\hard.osu")["key"], "bad_file")
         self.assertEqual(web.Api().hitsound_decide_propose("hard.osu")["key"], "first")
         self.assertEqual(web.Api().hitsound_decide_undo()["key"], "first")
+        self.assertEqual(web.Api().hitsound_decide_playback("hard.osu")["key"], "first")
 
     def test_a_moved_map_refuses_at_preview(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -917,8 +956,10 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
             api._decisions["hard.osu"] = {"units": [
                 {**self.UNITS[0], "time_ms": 1200.0}]}
             reply = api.hitsound_decide_preview("hard.osu")
+            heard = api.hitsound_decide_playback("hard.osu")
         self.assertEqual(reply["key"], "error")
         self.assertIn("1200", reply["detail"])
+        self.assertEqual(heard["key"], "error")
 
 
 class StructureBridgeTests(_IsolatedConfig):

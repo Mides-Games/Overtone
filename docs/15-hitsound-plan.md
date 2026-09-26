@@ -150,10 +150,12 @@ onto P-2 field changes — volume, index and custom files untouched, a moved sou
 refusing the whole apply — with preview, in-place backup writes and must-not-exist
 copies. The editor surface is in: the Decide card ticks proposals, previews, writes
 the file or a copy with confirmation, undoes once, and refreshes report, transport
-and object lane; per-row and full-song playback audition what is written.
-Volume/sample changes, pre-hearing proposals and the Export section's surface stay
-future work. The card is tested through the bridge; its browser (harness) pass is
-still owed.
+and object lane; per-row and full-song playback audition what is written. A proposal
+is heard before it is written (2026-09-26): the transport plays the difficulty with
+the ticked proposals made in memory, as the write makes them, and follows the ticks
+as they change; on 800 local maps that playback equals the written copy's on 799, the
+last refused alike by both. Volume/sample changes and the Export section's surface
+stay future work. The card is tested through the bridge and in the browser (harness).
 
 ### H6 · After it works
 

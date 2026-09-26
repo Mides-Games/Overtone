@@ -144,11 +144,15 @@ const I18N = {
     hsv_t_time: "Time", hsv_t_place: "Bar · beat", hsv_t_part: "Part", hsv_t_sounds: "Sounds",
     hsv_t_sets: "Sets", hsv_t_index: "Index", hsv_t_volume: "Volume",
     hsv_play: "Hear this sound", hsv_more: "Show {n} more",
+    hsv_play_proposal: "Hear this sound as proposed",
     hsv_decide_title: "Propose hitsounds",
-    hsv_decide_sub: "The decision engine proposes every object's sound. Tick what to keep, preview, then write the file or a copy. Each write is backed up, and one undo restores it.",
+    hsv_decide_sub: "The decision engine proposes every object's sound. Tick what to keep, hear it over the song, preview, then write the file or a copy. Each write is backed up, and one undo restores it.",
     hsv_propose: "Propose", hsv_proposing: "Deciding every sound…",
     hsv_proposed: "{n} proposals", hsv_decide_all: "All", hsv_decide_none: "None",
     hsv_preview: "Preview", hsv_would_change: "{accepted} of {units} accepted, {n} lines would change",
+    hsv_hear: "Hear the proposal",
+    hsv_hearing: "The transport plays the proposal: {accepted} of {units} ticked, {n} sounds unlike the file, the first at {time}. Switch its hitsounds to {name} to compare.",
+    hsv_hearing_same: "The transport plays the proposal: {accepted} of {units} ticked, and every sound plays as the file already does.",
     hsv_write: "Write into this file", hsv_write_copy: "Write a copy",
     hsv_undo: "Undo", hsv_confirm_write: "Write {n} sounds into {file}? Only hitsound fields change, and the file is backed up first.",
     hsv_confirm_copy: "Write {n} sounds into a copy beside {file}? The original stays untouched.",
@@ -172,6 +176,7 @@ const I18N = {
     warn_more: "{n} more notes", warn_fewer: "Show fewer notes",
     pb_hs: "Hitsounds from", pb_hs_off: "Off", pb_hs_vol: "Hitsounds",
     pb_hs_loading: "Loading the hitsounds of {name}…",
+    pb_hs_proposal: "{name}, as proposed",
     pb_hs_ready: "Hitsounds of {name}: {n} sounds; {map} from the map's own samples, {own} from Overtone's. Slider bodies are not played yet.",
     pb_hs_unreadable: "{n} sample(s) this window cannot decode stay silent.",
     hs_title: "Copy hitsounds", hs_preview: "Preview", hs_apply: "Copy hitsounds",
@@ -605,11 +610,15 @@ const I18N = {
     hsv_t_time: "Tiempo", hsv_t_place: "Compás · tiempo", hsv_t_part: "Parte", hsv_t_sounds: "Sonidos",
     hsv_t_sets: "Sets", hsv_t_index: "Índice", hsv_t_volume: "Volumen",
     hsv_play: "Escuchar este sonido", hsv_more: "Mostrar {n} más",
+    hsv_play_proposal: "Escuchar este sonido como se propone",
     hsv_decide_title: "Proponer hitsounds",
-    hsv_decide_sub: "El motor propone el sonido de cada objeto. Tildá lo que queda, previsualizá, y escribí el archivo o una copia. Cada escritura se respalda, y un deshacer lo restaura.",
+    hsv_decide_sub: "El motor propone el sonido de cada objeto. Tildá lo que queda, escuchalo sobre la canción, previsualizá, y escribí el archivo o una copia. Cada escritura se respalda, y un deshacer lo restaura.",
     hsv_propose: "Proponer", hsv_proposing: "Decidiendo cada sonido…",
     hsv_proposed: "{n} propuestas", hsv_decide_all: "Todas", hsv_decide_none: "Ninguna",
     hsv_preview: "Vista previa", hsv_would_change: "{accepted} de {units} aceptadas, {n} líneas cambiarían",
+    hsv_hear: "Escuchar la propuesta",
+    hsv_hearing: "El transporte toca la propuesta: {accepted} de {units} tildadas, {n} sonidos distintos del archivo, el primero en {time}. Cambiá sus hitsounds a {name} para comparar.",
+    hsv_hearing_same: "El transporte toca la propuesta: {accepted} de {units} tildadas, y cada sonido suena como ya suena en el archivo.",
     hsv_write: "Escribir en este archivo", hsv_write_copy: "Escribir una copia",
     hsv_undo: "Deshacer", hsv_confirm_write: "¿Escribir {n} sonidos en {file}? Solo cambian los campos de hitsound, y el archivo se respalda antes.",
     hsv_confirm_copy: "¿Escribir {n} sonidos en una copia junto a {file}? El original queda intacto.",
@@ -633,6 +642,7 @@ const I18N = {
     warn_more: "{n} avisos más", warn_fewer: "Mostrar menos avisos",
     pb_hs: "Hitsounds de", pb_hs_off: "Apagados", pb_hs_vol: "Hitsounds",
     pb_hs_loading: "Cargando los hitsounds de {name}…",
+    pb_hs_proposal: "{name}, como se propone",
     pb_hs_ready: "Hitsounds de {name}: {n} sonidos; {map} con samples propios del mapa, {own} con los de Overtone. Los cuerpos de slider todavía no suenan.",
     pb_hs_unreadable: "{n} sample(s) que esta ventana no puede decodificar quedan en silencio.",
     hs_title: "Copiar hitsounds", hs_preview: "Vista previa", hs_apply: "Copiar hitsounds",
@@ -2212,7 +2222,7 @@ function renderHitsoundsView() {
   if (!r) { $("hsvSummary").innerHTML = ""; hsdRender(); return; }
   const n = r.sounds.length, pct = (x) => (n ? Math.round((x / n) * 100) : 0);
   const sets = r.sets.normal, setsText = ["normal", "soft", "drum"].filter((s) => sets[s]).map((s) => `${s} ${pct(sets[s])} %`).join(" · ");
-  const c = HSP.file === HSV.file && HSP.events ? HSP.counts : null;
+  const c = HSP.file === HSV.file && HSP.events && !HSP.proposal ? HSP.counts : null;
   const stat = (label, value, small) => `<div class="hsv-stat"><div class="label">${label}</div><div class="value">${value}${small ? `<small>${small}</small>` : ""}</div></div>`;
   $("hsvSummary").innerHTML = `<div class="hsv-stats">
       ${stat(t("hsv_sounds_n"), n)}
@@ -2225,6 +2235,8 @@ function renderHitsoundsView() {
   $("hsvWhereNote").textContent = t("hsv_where_note", { meter: r.meter });
   const rows = r.sounds.filter((s) => HSV.filter === "all" || s.sounds.includes(HSV.filter));
   $("hsvCount").textContent = t("hsv_count", { n: rows.length });
+  // ▶ plays what the transport holds: the file, or the file as proposed.
+  const playLabel = t(HSP.proposal && HSP.file === HSV.file ? "hsv_play_proposal" : "hsv_play");
   $("hsvRows").innerHTML = rows.slice(0, HSV.shown).map((s) => {
     const i = r.sounds.indexOf(s);
     const adds = s.sounds.slice(1).map((a) => `<span class="hsv-dot k-${a}"></span>${t("lg_" + a)}`).join(" ");
@@ -2241,7 +2253,7 @@ function renderHitsoundsView() {
       <td class="txt">${s.normal_set}${s.sounds.length > 1 && s.addition_set !== s.normal_set ? ` / ${s.addition_set}` : ""}</td>
       <td class="num">${s.index}</td><td class="num">${s.volume} %</td>
       <td class="txt">${prop}</td>
-      <td><button type="button" class="btn small icon" data-play="${i}" title="${t("hsv_play")}" aria-label="${t("hsv_play")}">▶</button></td>
+      <td><button type="button" class="btn small icon" data-play="${i}" title="${playLabel}" aria-label="${playLabel}">▶</button></td>
     </tr>`;
   }).join("");
   const more = rows.length - HSV.shown;
@@ -2293,12 +2305,42 @@ function hsdRender() {
   const has = HSD.units.length > 0 && HSD.file === HSV.file;
   $("hsvDecideCard").hidden = !HSV.report;
   $("hsvPropose").disabled = HSD.proposing || !HSV.file;
-  for (const id of ["hsvDecideAll", "hsvDecideNone", "hsvDecidePreview", "hsvDecideApply", "hsvDecideCopy"]) {
+  for (const id of ["hsvDecideAll", "hsvDecideNone", "hsvDecidePreview", "hsvDecideHear", "hsvDecideApply", "hsvDecideCopy"]) {
     $(id).disabled = !has;
   }
   $("hsvDecideUndo").disabled = !HSD.undo;
   $("hsvDecideStatus").textContent = HSD.proposing ? t("hsv_proposing")
     : has ? t("hsv_proposed", { n: HSD.accepted.size }) : "";
+  hsProposalOption(has ? HSD.file : "");
+  const h = has && HSP.proposal && HSP.file === HSD.file ? HSP.heard : null;
+  const plain = h && [...$("pbHs").options].find((o) => o.value === HSD.file);
+  $("hsvDecideHearText").textContent = !h ? ""
+    : h.differs ? t("hsv_hearing", { accepted: h.accepted, units: h.units, n: h.differs,
+                                     time: fmtTime(h.first), name: plain ? plain.textContent : HSD.file })
+    : t("hsv_hearing_same", { accepted: h.accepted, units: h.units });
+}
+
+// Hear the ticked proposals over the song: the transport switches to the
+// difficulty as proposed and plays, from the playhead or, from the song's
+// start, just before the first sound that changes.
+async function hsdHear() {
+  if (!api() || !HSD.units.length || HSD.file !== HSV.file) return;
+  hsProposalOption(HSD.file);
+  await hsPick(HS_PROPOSAL + HSD.file);
+  renderHitsoundsView();
+  const h = HSP.proposal && HSP.heard;
+  if (!h || P.playing) return;
+  pbPlay(P.pos > 0 || h.first === null ? P.pos : Math.max(0, h.first - 1));
+}
+
+// The ticks changed: a proposal in the transport follows them once the
+// ticking pauses, heard on the next beat like an edit to the click.
+let hsdRehear = 0;
+function hsdTicked() {
+  clearTimeout(hsdRehear);
+  const live = () => HSP.proposal && HSD.units.length > 0 && HSP.file === HSD.file;
+  if (!live()) return;
+  hsdRehear = setTimeout(() => { if (live()) hsPick(HS_PROPOSAL + HSD.file).then(hsdRender); }, 250);
 }
 
 async function hsvPropose() {
@@ -2320,12 +2362,14 @@ async function hsvPropose() {
     HSD.proposing = false;
   }
   renderHitsoundsView();
+  hsdTicked();
 }
 
 function hsdSetAll(on) {
   HSD.accepted = on ? new Set(HSD.units.map((u) => hsdKey(u.object, u.part, u.edge))) : new Set();
   $("hsvDecidePrevText").textContent = "";
   renderHitsoundsView();
+  hsdTicked();
 }
 
 async function hsdPreview() {
@@ -3368,7 +3412,15 @@ P.clickShiftMs = 0;
 
 // Hitsounds beside the song (Phase 6, P-3): one difficulty's sounds, found as
 // osu! finds its samples, scheduled on the playback clock like the click.
-const HSP = { file: "", events: null, objects: null, buffers: {} };
+// `proposal` is set while they are the decision's (H5), as writing the ticked
+// proposals would make them, instead of the file's; `heard` is what the
+// bridge counted then. Samples decode once per song: their keys name a file
+// of the song's folder, the same for every difficulty.
+const HSP = { file: "", proposal: false, heard: null, events: null, objects: null,
+              buffers: {}, decoded: {}, token: 0 };
+// The transport's option for a difficulty as proposed. A "/" is never in a
+// file name the bridge takes, so it cannot be a difficulty's own option.
+const HS_PROPOSAL = "proposal/";
 
 // The legend's addition keys show while a difficulty's object lane does.
 function hsLegend() {
@@ -3377,7 +3429,8 @@ function hsLegend() {
 
 async function hsMaps() {
   const box = $("pbHs");
-  HSP.file = ""; HSP.events = null; HSP.objects = null; HSP.buffers = {};
+  HSP.file = ""; HSP.proposal = false; HSP.heard = null; HSP.events = null; HSP.objects = null;
+  HSP.buffers = {}; HSP.decoded = {}; HSP.token++;
   hsLegend();
   let maps = [];
   if (api()) {
@@ -3389,27 +3442,69 @@ async function hsMaps() {
   box.disabled = !maps.length;
 }
 
-async function hsPick(file) {
-  HSP.file = file; HSP.events = null; HSP.objects = null;
-  hsLegend();
-  if (S.result) drawTrace();
-  const name = file ? $("pbHs").selectedOptions[0].textContent : "";
+// The transport offers a difficulty as proposed while there is a proposal to
+// hear: from Propose until a write, an undo or another difficulty.
+function hsProposalOption(file) {
+  const box = $("pbHs"), value = file ? HS_PROPOSAL + file : "";
+  for (const o of [...box.options]) if (o.value.startsWith(HS_PROPOSAL) && o.value !== value) o.remove();
+  const plain = file && [...box.options].find((o) => o.value === file);
+  if (!plain || [...box.options].some((o) => o.value === value)) return;
+  const o = document.createElement("option");
+  o.value = value;
+  o.textContent = t("pb_hs_proposal", { name: plain.textContent });
+  plain.after(o);
+}
+
+// Load a transport option: a difficulty's file, or HS_PROPOSAL + file for it
+// as the ticked proposals would write it. Between a file and its proposal the
+// old sounds play on until the new ones are in, so an A/B while playing has
+// no gap; another difficulty silences them at once.
+async function hsPick(value) {
+  const proposal = value.startsWith(HS_PROPOSAL);
+  const file = proposal ? value.slice(HS_PROPOSAL.length) : value;
+  const token = ++HSP.token;
+  $("pbHs").value = value;
+  if (HSP.file !== file || !file) {
+    HSP.events = null; HSP.objects = null;
+    hsLegend();
+    if (S.result) drawTrace();
+  }
+  HSP.file = file; HSP.proposal = proposal; HSP.heard = null;
+  const option = $("pbHs").selectedOptions[0];
+  const name = option && option.value === value ? option.textContent : file;
   if (!file) { $("pbStatus").textContent = t("pb_hint"); return; }
   $("pbStatus").textContent = t("pb_hs_loading", { name });
-  const reply = await api().hitsound_playback(file);
-  if (!reply.ok) { editFailure(reply); $("pbHs").value = ""; HSP.file = ""; return; }
+  const reply = proposal ? await api().hitsound_decide_playback(file, hsdAcceptList())
+                         : await api().hitsound_playback(file);
+  if (HSP.token !== token) return;           // another pick came in meanwhile
+  if (!reply.ok) {
+    if (reply.key === "no_proposal") toast(t("hsv_no_proposal"), true);
+    else editFailure(reply);
+    // A proposal that cannot be heard leaves the file as written playing.
+    if (proposal) { hsPick(file).then(() => { if (HSV.report) renderHitsoundsView(); }); return; }
+    HSP.file = ""; HSP.proposal = false; HSP.events = null; HSP.objects = null;
+    $("pbHs").value = "";
+    hsLegend();
+    if (S.result) drawTrace();
+    return;
+  }
   const ctx = pbContext(), buffers = {};
   let unreadable = 0;
   for (const [key, s] of Object.entries(reply.samples)) {
-    const raw = atob(s.data), bytes = new Uint8Array(raw.length);
-    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-    try { buffers[key] = await ctx.decodeAudioData(bytes.buffer); } catch (err) { unreadable++; }
+    if (!HSP.decoded[key]) {
+      const raw = atob(s.data), bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      try { HSP.decoded[key] = await ctx.decodeAudioData(bytes.buffer); } catch (err) { unreadable++; continue; }
+    }
+    buffers[key] = HSP.decoded[key];
   }
-  if (HSP.file !== file) return;             // another pick came in meanwhile
+  if (HSP.token !== token) return;
   HSP.buffers = buffers;
   HSP.events = reply.events;
   HSP.objects = reply.objects;
   HSP.counts = reply.counts;
+  HSP.heard = proposal ? { accepted: reply.accepted, units: reply.units, differs: reply.differs,
+                           first: reply.first } : null;
   hsLegend();
   if (S.result) drawTrace();
   const c = reply.counts;
@@ -4734,6 +4829,7 @@ function wire() {
   $("hsvDecideAll").onclick = () => hsdSetAll(true);
   $("hsvDecideNone").onclick = () => hsdSetAll(false);
   $("hsvDecidePreview").onclick = () => hsdPreview();
+  $("hsvDecideHear").onclick = () => hsdHear();
   $("hsvDecideApply").onclick = () => hsdWrite(false);
   $("hsvDecideCopy").onclick = () => hsdWrite(true);
   $("hsvDecideUndo").onclick = () => hsdUndo();
@@ -4744,6 +4840,7 @@ function wire() {
     else HSD.accepted.delete(box.dataset.hsd);
     $("hsvDecidePrevText").textContent = "";
     hsdRender();
+    hsdTicked();
   });
   $("hsvRows").addEventListener("click", (e) => {
     const play = e.target.closest("[data-play]");
@@ -4869,7 +4966,7 @@ function wire() {
     });
     $(id).addEventListener("change", pbLevels);
   });
-  $("pbHs").onchange = () => hsPick($("pbHs").value);
+  $("pbHs").onchange = () => hsPick($("pbHs").value).then(() => { if (HSV.report) renderHitsoundsView(); });
   $("trace").addEventListener("dblclick", (e) => {
     if (!S.result || !geom) return;
     pbPlay(Math.max(0, geom.S(tlX(e))));

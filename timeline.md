@@ -17,6 +17,59 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Hearing a hitsound proposal before it is written
+
+### Changed
+
+- **The Propose card plays the proposal over the song before anything is written.** "Hear
+  the proposal" puts the difficulty *as proposed* in the transport: the ticked proposals
+  made to the map in memory, exactly as the write makes them, then resolved to samples as
+  osu! plays the written file. It plays from the playhead, or, from the song's start, a
+  second before the first sound that changes. The card says how many sounds play unlike
+  the file and when the first falls.
+- **File and proposal side by side.** The transport's "Hitsounds from" offers "<difficulty>,
+  as proposed" next to the difficulty from Propose until a write, an undo or another
+  difficulty, so the two can be switched while playing. Between a file and its proposal
+  the old sounds play on until the new ones are in, so the switch leaves no gap. Ticking
+  while the proposal plays is heard once the ticking pauses (a quarter second, one bridge
+  call for a burst). A row's ▶ plays what the transport holds, so with the proposal in it,
+  the sound as proposed; the object lane shows the proposal's additions.
+- A song's samples decode once, not on every pick: their keys name files of the song's
+  folder, the same for every difficulty.
+
+### Fixed
+
+- **An older hitsound pick could undo a newer one** (found reading the code, not seen in
+  use). The transport checked whether another pick had come in only after a successful
+  reply, so a refusal that arrived late turned hitsounds off under the pick that replaced
+  it. A token now orders picks, refusal or not.
+
+### Hardening
+
+- A proposal that cannot be heard (none cached, or a sound moved since the decision) says
+  why and leaves the file as written playing. Nothing is written by hearing: the bridge
+  test checks the file's bytes, and that the proposal's playback equals the playback of the
+  copy the write then makes (events, objects, samples, counts).
+
+### Measured
+
+```
+heard == written, 800 local maps (758 standard, 21 taiko, 3 catch, 18 mania): random
+proposals on 70 % of each map's sounds, half of them ticked
+  the proposal's playback equals the written copy's on 799; different on 0; refused
+  alike by both on 1 (an Aspire map whose 529 sliders of negative length leave no tail
+  to place)
+  545436 proposals, 273113 ticked, 262389 sounds heard unlike the file
+Jester [Trynna's Hard], in the browser (harness, silent), EN and ES
+  1311 proposals, 988 sounds unlike the file, the first at 2.969 s; the page's own count
+  of changed events agrees; the copy written after it plays exactly what was heard
+  10 unticks 40 ms apart: one bridge call; 1301 of 1311 ticked, 979 unlike the file
+  file <-> proposal while playing: 30 polls during the switch, no empty track
+  after a write, an undo, or a proposal the bridge refuses: the file as written plays
+Python unittest     513 -> 514, all pass
+facts
+```
+
 ## v4.0.0-dev — 2026-09-26 · Constant scroll scales every green; section volumes keep the mapper's
 
 ### Changed

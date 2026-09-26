@@ -883,14 +883,19 @@ class Api:
         if Path(name).name != name or not name.lower().endswith(".osu") or not path.is_file():
             return {"ok": False, "key": "bad_file"}
         try:
-            plan = ta.hitsound_playback(ta.read_osu_beatmap(path), folder)
-            samples = {}
-            for key, sample in plan["samples"].items():
-                data = _playable_sample(Path(sample["path"]).read_bytes())
-                samples[key] = {"source": sample["source"], "name": Path(sample["path"]).name,
-                                "data": base64.b64encode(data).decode("ascii")}
+            return self._playback_reply(name, ta.hitsound_playback(ta.read_osu_beatmap(path), folder))
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
+
+    @staticmethod
+    def _playback_reply(name: str, plan: dict) -> dict:
+        """A playback plan as the page schedules it: columns of events and
+        objects, and the bytes of each sample they play."""
+        samples = {}
+        for key, sample in plan["samples"].items():
+            data = _playable_sample(Path(sample["path"]).read_bytes())
+            samples[key] = {"source": sample["source"], "name": Path(sample["path"]).name,
+                            "data": base64.b64encode(data).decode("ascii")}
         return {"ok": True, "file": name,
                 "events": {"t": [e["t"] for e in plan["events"]],
                            "keys": [e["keys"] for e in plan["events"]],
@@ -1038,6 +1043,35 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "file": str(path.name), "units": preview["units"],
                 "accepted": preview["accepted"], "would_change": preview["would_change"]}
+
+    def hitsound_decide_playback(self, file: str, accept: list | None = None) -> dict:
+        """The cached proposal as the transport plays it: the ticked changes
+        made to the map in memory, exactly as the write would make them, then
+        played as the written file would be. Nothing is written. Also counts
+        the sounds that play differently from the file, and when the first of
+        them falls (seconds), so the page can start just before it."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        cached = self._decisions.get(str(path.name))
+        if cached is None:
+            return {"ok": False, "key": "no_proposal"}
+        try:
+            accepted = None if accept is None else {tuple(a) for a in accept}
+            beatmap = ta.read_osu_beatmap(path)
+            written = ta.hitsound_playback(beatmap, path.parent)
+            changes = ta.proposal_changes(beatmap, cached["units"], accepted)
+            ta.set_object_hitsounds(beatmap, changes["changes"])
+            plan = ta.hitsound_playback(beatmap, path.parent)
+            reply = self._playback_reply(str(path.name), plan)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        # Hitsound fields never move a sound, so both lists hold the same
+        # sounds in the same order.
+        differ = [b["t"] for a, b in zip(written["events"], plan["events"]) if a != b]
+        return {**reply, "proposal": True, "units": changes["units"],
+                "accepted": changes["accepted"], "differs": len(differ),
+                "first": differ[0] if differ else None}
 
     def hitsound_decide_apply(self, file: str, accept: list | None = None,
                               copy: bool = False) -> dict:

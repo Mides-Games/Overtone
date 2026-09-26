@@ -2507,6 +2507,25 @@ class CacheTests(_IsolatedConfig):
             self.assertNotEqual(key, api._cache_key(str(one), params))
             self.assertIsNone(api._cache_key(str(Path(tmp) / "gone.wav"), params))
 
+    def test_a_frozen_build_stamps_its_executable(self) -> None:
+        # A frozen build (PyInstaller) packs overtone.py inside the executable,
+        # so the module's __file__ names nothing on disk: the key was None and
+        # an installed copy never cached a result. A rebuilt executable is a
+        # different engine, as an edited overtone.py is.
+        with tempfile.TemporaryDirectory() as tmp:
+            one = Path(tmp) / "a.wav"
+            one.write_bytes(b"RIFF....")
+            exe = Path(tmp) / "Overtone.exe"
+            exe.write_bytes(b"MZ")
+            params = web.Api._params(self.OPTIONS)
+            with mock.patch.object(web.sys, "frozen", True, create=True), \
+                    mock.patch.object(web.sys, "executable", str(exe)), \
+                    mock.patch.object(ta, "__file__", str(Path(tmp) / "_internal" / "overtone.py")):
+                key = web.Api._cache_key(str(one), params)
+                self.assertIsNotNone(key)
+                os.utime(exe, (1_000_000, 1_000_000))
+                self.assertNotEqual(key, web.Api._cache_key(str(one), params))
+
     def test_save_load_round_trip_and_corrupt_cache_is_a_miss(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             one = Path(tmp) / "a.wav"

@@ -233,6 +233,13 @@ def _open_link(link: str) -> None:
         raise OSError("Opening osu! links is supported on Windows only.")
 
 
+def _engine_file() -> str:
+    """The file the engine's code is read from: ``overtone.py``, or in a frozen
+    build the executable, whose archive holds the modules. There
+    ``overtone.__file__`` names a file inside the bundle that does not exist."""
+    return sys.executable if getattr(sys, "frozen", False) else ta.__file__
+
+
 def _logo_uri() -> str:
     try:
         return "data:image/png;base64," + base64.b64encode(LOGO_PNG.read_bytes()).decode("ascii")
@@ -2578,7 +2585,7 @@ class Api:
             with open(path, "rb") as handle:
                 for chunk in iter(lambda: handle.read(1 << 20), b""):
                     digest.update(chunk)
-            engine_mtime = os.path.getmtime(ta.__file__)
+            engine_mtime = os.path.getmtime(_engine_file())
             if params.get("engine") == "rust":
                 # A rebuilt binary is a different engine, as an edited DSP is.
                 binary = overtone_rust.find_cli()

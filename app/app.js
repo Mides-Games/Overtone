@@ -1931,7 +1931,11 @@ function renderSongs() {
   }
   if (!SONGS.scanning && idx && idx.failed) {
     info += ` · ${t("songs_failed", { n: idx.failed })}`;
-    tip = idx.failures.map((f) => `${f.path.split(/[\\/]/).pop()}: ${f.detail}`).join("\n")
+    // A reason that already names its file ("x.osu is empty…") is not prefixed again.
+    tip = idx.failures.map((f) => {
+      const name = f.path.split(/[\\/]/).pop();
+      return f.detail.includes(name) ? f.detail : `${name}: ${f.detail}`;
+    }).join("\n")
       + (idx.failed > idx.failures.length ? "\n…" : "");
   }
   $("songsInfo").innerHTML = info;

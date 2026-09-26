@@ -76,6 +76,8 @@ later costs more than writing it down now.
   full width of the Library's one-line status: at 960 px a long "is not there" line pushed
   the header past the window, reachable only by scrolling sideways. The column is now the
   view's width, and the line truncates as it was meant to.
+- **The unreadable files' tooltip named each file twice** ("broken.osu: broken.osu is
+  empty…"); a reason that already names its file is no longer prefixed with it.
 
 ### Hardening
 

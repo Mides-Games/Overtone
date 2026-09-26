@@ -1805,19 +1805,6 @@ async function stxBmMaps() {
   renderBookmarks();
 }
 
-async function stxBmMaps() {
-  const box = $("stxBmMap");
-  let maps = [];
-  if (api()) {
-    const reply = await api().song_maps();
-    maps = reply.ok ? reply.maps : [];
-  }
-  const keep = box.value;
-  box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
-  if (maps.some((m) => m.file === keep)) box.value = keep;
-  box.disabled = !maps.length;
-}
-
 async function stxBmPreview() {
   if (!api() || !S.result) return;
   const file = $("stxBmMap").value;
@@ -2081,6 +2068,7 @@ function renderVolumes() {
   $("stxVolApply").disabled = !p || (!p.added && !p.flipped);
   $("stxVolResult").textContent = !p ? ""
     : t("stx_vol_would", { added: p.added, flipped: p.flipped, kept: p.kept, n: p.sections, file: p.file });
+}
 
 // ------------------------------------------------------------------ snap divisors
 // Phase 21: which divisor each section needs, from the song's own attacks.

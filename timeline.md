@@ -17,6 +17,38 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · The app loads again: a merge had cut app.js short
+
+### Fixed
+
+- **app.js did not load** since 851f368 ("Bring section volumes to master"): the
+  merge dropped the closing brace of `renderVolumes`, the browser stopped at
+  "Unexpected end of input", and the window showed its frame with nothing behind
+  it: no analysis, no section, no button. Every test stayed green, because none of
+  them reads app.js. Found by the first harness pass since the merge.
+- **`stxBmMaps` was declared twice** since cc9c249: the second, older copy won and
+  dropped the Bookmarks card's reset when the song changes, so a preview of the
+  last song's difficulty could still read as current.
+
+### Hardening
+
+- `AppScriptTests` read app.js as text: its brackets must balance (strings,
+  template literals, comments and regex literals skipped) and no top-level name
+  may be declared twice. Both fail on the old file, at the brace of line 2077 and
+  on `stxBmMaps`. No JavaScript engine is installed here (Node is Phase 24), so
+  this is a count, not a parse; it catches what merges drop.
+
+### Measured
+
+```
+app.js at b094b2f             SyntaxError: Unexpected end of input; no function defined
+app.js now                    loads; a real mapset (Master of Tides, 3 difficulties,
+                              a scratch copy) analysed through the harness: 128.06 BPM
+new tests on the old file     brackets [('{', 2077)]; declared twice ['stxBmMaps']
+ids app.js reads              242, all present in index.html (checked once, by hand)
+Python unittest               489 -> 492, all pass
+```
+
 ## v4.0.0-dev — 2026-09-26 · Audio file card in Mapset
 
 ### Changed

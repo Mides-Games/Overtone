@@ -2344,5 +2344,111 @@ class CacheTests(_IsolatedConfig):
             self.assertEqual([p["path"] for p in payloads], [fixed.source, str(b)])
 
 
+def _bracket_problems(src: str) -> list[tuple[str, int]]:
+    """Unmatched or unclosed brackets in JavaScript source, as (bracket, line).
+
+    Strings, template literals (with ``${}`` nested to any depth), comments
+    and regex literals are skipped, so only the code's own brackets count. A
+    ``/`` starts a regex where an operand is expected: after an operator, an
+    opening bracket or a keyword such as ``return``."""
+    closing = {")": "(", "]": "[", "}": "{"}
+    keywords = {"return", "typeof", "case", "in", "of", "new", "delete", "void", "throw",
+                "else", "do", "yield", "await"}
+    stack: list[tuple[str, int]] = []
+    templates: list[int] = []           # stack depth at each open ${
+    problems: list[tuple[str, int]] = []
+    i, line, n, regex_ok = 0, 1, len(src), True
+    while i < n:
+        c = src[i]
+        if c == "\n":
+            line += 1
+            i += 1
+        elif c in " \t\r":
+            i += 1
+        elif src.startswith("//", i):
+            end = src.find("\n", i)
+            i = n if end < 0 else end
+        elif src.startswith("/*", i):
+            end = src.index("*/", i + 2)
+            line += src.count("\n", i, end)
+            i = end + 2
+        elif c in "'\"":
+            i += 1
+            while src[i] != c:
+                i += 2 if src[i] == "\\" else 1
+            i += 1
+            regex_ok = False
+        elif c == "`" or (c == "}" and templates and templates[-1] == len(stack)):
+            if c == "}":
+                templates.pop()
+            i += 1
+            while src[i] != "`" and not src.startswith("${", i):
+                line += src[i] == "\n"
+                i += 2 if src[i] == "\\" else 1
+            if src[i] == "`":
+                i += 1
+                regex_ok = False
+            else:
+                templates.append(len(stack))
+                i += 2
+                regex_ok = True
+        elif c == "/" and regex_ok:
+            i += 1
+            in_class = False
+            while in_class or src[i] != "/":
+                if src[i] == "\\":
+                    i += 1
+                elif src[i] in "[]":
+                    in_class = src[i] == "["
+                i += 1
+            i += 1
+            while i < n and src[i].isalpha():
+                i += 1
+            regex_ok = False
+        elif c.isalnum() or c in "_$":
+            start = i
+            while i < n and (src[i].isalnum() or src[i] in "_$"):
+                i += 1
+            regex_ok = src[start:i] in keywords
+        else:
+            if c in "([{":
+                stack.append((c, line))
+            elif c in ")]}":
+                if stack and stack[-1][0] == closing[c]:
+                    stack.pop()
+                else:
+                    problems.append((c, line))
+            regex_ok = c not in ")]}"
+            i += 1
+    return problems + stack
+
+
+class AppScriptTests(unittest.TestCase):
+    """The page script, read as text: no JavaScript engine runs in these tests.
+
+    A merge that dropped one closing brace (851f368) kept every bridge test
+    green while app.js did not load at all, so the app showed nothing but its
+    empty frame. The bracket count catches that class of break; a name
+    declared twice is the other merge scar (the second declaration silently
+    wins, or the page refuses to load)."""
+
+    SOURCE = Path(__file__).resolve().parent / "app" / "app.js"
+
+    def test_the_brackets_balance(self) -> None:
+        self.assertEqual(_bracket_problems(self.SOURCE.read_text(encoding="utf-8")), [])
+
+    def test_the_count_finds_what_a_merge_drops(self) -> None:
+        self.assertEqual(_bracket_problems("function a() {\n  if (x) { f(`${y}`); }\n"), [("{", 1)])
+        self.assertEqual(_bracket_problems("const r = /[)}]/g;\nconst s = '(';\nf(a / b);"), [])
+        self.assertEqual(_bracket_problems("f(`a ${g({ b: `${c}` })} d`);\n// )\n/* } */"), [])
+        self.assertEqual(_bracket_problems("f(x]"), [("]", 1), ("(", 1)])
+
+    def test_every_top_level_name_is_declared_once(self) -> None:
+        import re
+        names = re.findall(r"^(?:async function|function|const|let|class) (\w+)",
+                           self.SOURCE.read_text(encoding="utf-8"), re.M)
+        self.assertEqual(sorted({name for name in names if names.count(name) > 1}), [])
+
+
 if __name__ == "__main__":
     unittest.main()

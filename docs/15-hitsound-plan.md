@@ -154,8 +154,11 @@ and object lane; per-row and full-song playback audition what is written. A prop
 is heard before it is written (2026-09-26): the transport plays the difficulty with
 the ticked proposals made in memory, as the write makes them, and follows the ticks
 as they change; on 800 local maps that playback equals the written copy's on 799, the
-last refused alike by both. Volume/sample changes and the Export section's surface
-stay future work. The card is tested through the bridge and in the browser (harness).
+last refused alike by both. Volume and sample index are set by hand (2026-09-26) on the
+sounds the table shows (its addition filter and a range of bars): the object's own
+values, 0 to follow its green line again, a slider's for all its edges, merged into
+the same preview, hearing, write and undo, and with no proposal needed. A proposal
+changed to one of its alternatives and the Export section's surface stay future work. The card is tested through the bridge and in the browser (harness).
 
 ### H6 · After it works
 

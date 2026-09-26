@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-520%20Python%20%C2%B7%20263%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-521%20Python%20%C2%B7%20263%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -26,8 +26,8 @@ sections within 0.05 BPM and 5 ms     24 / 24
 | **Timing engine** (Rust v4) | ✅ At parity with Python, attack for attack and red line for red line; about 4× faster end to end on the corpus. In the app as an opt-in (Settings → Rust engine); Python takes over, and says so, where Rust has no answer |
 | **App** (web window) | ✅ Ten sections: Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export, History and Settings; analyse, edit, undo, lock, export, inject (one map or the whole mapset, with a diff), compare with a map, alignment, density, snap audit, re-snap, suggestions, mapset check, reference and assisted timing, the engine's alternatives, ramps, offset lab, map tools from the song's structure, audio swap, write history, mod report, osu! Songs browser — in English and Spanish, dark or light |
 | **osu! files** | ✅ Full reader; writer keeps every byte you did not ask to change |
-| **Hitsounds** | ✅ In the app: copy one difficulty's hitsounds onto the others, see where each addition falls, hear them with the song, a consistency check in the mod report, and the Rust decision engine's proposals to tick, hear over the song, preview, write and undo. Volume and sample edits, profiles and a sample bank come next |
-| **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, section loop at 100/75/50 %, taps, the percussive part alone, a difficulty's hitsounds as written or as proposed |
+| **Hitsounds** | ✅ In the app: copy one difficulty's hitsounds onto the others, see where each addition falls, hear them with the song, a consistency check in the mod report, the Rust decision engine's proposals to tick, and volume and sample index to set by hand, all heard over the song before a preview, a write and an undo. Profiles and a sample bank come next |
+| **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, section loop at 100/75/50 %, taps, the percussive part alone, a difficulty's hitsounds as written or as they would be written |
 | **Accuracy on real, live-played songs** | 📋 Planned — today ~5 % of a ranked map's red lines land within 5 ms |
 | **Installer** (MSI) | 📋 Planned |
 
@@ -104,6 +104,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Offset lab: the MP3's own delay, both decoders side by side, a blind listening test | ✅ | Timing card; 18 blind trials give the preferred click shift with an interval |
 | Snap divisors: where the song needs 1/3, 1/4 or 1/6 | ✅ | Timing card, one line per section; thirds only where they are loud |
 | Hitsound proposals: tick, hear, preview, write the file or a copy, undo | ✅ | Hitsounds section; the Rust decision engine proposes every object's sound, and the transport plays the ticked ones as the write would make them, before it |
+| Volume and sample index by hand, per object or over a range of bars | ✅ | Hitsounds section, with or without proposals, heard before writing; 0 follows the green line again, and a slider takes one value for all its edges, as the format has it |
 | Detection settings drawer, presets | ✅ | Shared with the classic window |
 | English / Spanish | ✅ | |
 | Dark window caption, generated app icon | ✅ | |
@@ -189,7 +190,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Each sound matched to its nearest attack, or to none | ✅ | Within 50 ms |
 | Consistency check | 🟡 | In the mod report: pattern breaks, finishes and claps over silence; the "wrong instrument" rule waits for proof on real audio |
 | Sequence decision (Viterbi) | ✅ | `overtone-cli hitsound`: 19/19 on synthetic exact truth; clap and finish agreement with mappers above the simple rules on two real samples |
-| Explanations, profiles in the app, volume and sample edits, sample bank, hitsound export | 📋 | P6 |
+| Explanations, profiles in the app, a proposal's alternatives, sample bank, hitsound export | 📋 | P6 |
 
 ### Command line
 
@@ -300,7 +301,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 520 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 521 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage
@@ -413,14 +414,15 @@ sliders quedan igual).
   entero, con el diff), comparación con un mapa, alineación, densidad y sugerencias,
   la canción con el clic dentro de la app, la estructura (kiai, breaks, bookmarks,
   volúmenes por sección), hitsounds (copiarlos entre dificultades, ver dónde cae cada
-  uno, escucharlos, revisar su consistencia y aceptar o no las propuestas del motor,
-  escuchándolas antes de escribirlas) y
+  uno, escucharlos, revisar su consistencia, aceptar o no las propuestas del motor y
+  poner volumen e índice de sample a mano, todo escuchado antes de escribirlo) y
   el historial de escrituras con restauración; en inglés y español, oscuro o claro.
 - **Motor en Rust (🦀):** da los mismos resultados que Python y es unas 4 veces más rápido
   de punta a punta; la app lo usa como opción (Ajustes → motor Rust) y para Estructura,
   Rampas y las propuestas de hitsounds.
-- **Próximo (📋):** terminar el editor de hitsounds (volumen y samples), la sección Audio,
-  precisión en canciones reales e instalador `.msi`.
+- **Próximo (📋):** el resto de los hitsounds (alternativas de cada propuesta, exportación,
+  perfiles, banco de samples), la sección Audio, precisión en canciones reales e
+  instalador `.msi`.
 
 Uso: doble clic en `Overtone.bat`, abrí un audio, **Analizar**, revisá el mapa de tempo,
 escuchá la pista de clic y usá **Inyectar .osu…**. La octava (92 vs 184) sigue siendo

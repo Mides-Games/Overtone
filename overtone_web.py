@@ -1028,40 +1028,58 @@ class Api:
         self._decisions[str(path.name)] = {"units": units}
         return {"ok": True, "file": str(path.name), "units": units}
 
-    def hitsound_decide_preview(self, file: str, accept: list | None = None) -> dict:
-        """What applying the cached proposal would change. Read only."""
+    def _decide_units(self, path: Path, edits) -> list | dict:
+        """The cached proposal's units, none when hand edits come alone (they
+        need no Rust), or a refusal: nothing to apply, or edits that are not a
+        list of objects."""
+        if edits is not None and not (isinstance(edits, list)
+                                      and all(isinstance(e, dict) for e in edits)):
+            return {"ok": False, "key": "error", "detail": "edits must be a list of objects"}
+        cached = self._decisions.get(str(path.name))
+        if cached is None and not edits:
+            return {"ok": False, "key": "no_proposal"}
+        return cached["units"] if cached else []
+
+    def hitsound_decide_preview(self, file: str, accept: list | None = None,
+                                edits: list | None = None) -> dict:
+        """What applying the cached proposal and the hand edits would change.
+        Read only."""
         path = self._decide_file(file)
         if isinstance(path, dict):
             return path
-        cached = self._decisions.get(str(path.name))
-        if cached is None:
-            return {"ok": False, "key": "no_proposal"}
+        units = self._decide_units(path, edits)
+        if isinstance(units, dict):
+            return units
         try:
             accepted = None if accept is None else {tuple(a) for a in accept}
-            preview = ta.preview_proposals(ta.read_osu_beatmap(path), cached["units"], accepted)
+            preview = ta.preview_proposals(ta.read_osu_beatmap(path), units, accepted, edits)
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "file": str(path.name), "units": preview["units"],
-                "accepted": preview["accepted"], "would_change": preview["would_change"]}
+                "accepted": preview["accepted"], "edited": preview["edited"],
+                "would_change": preview["would_change"]}
 
-    def hitsound_decide_playback(self, file: str, accept: list | None = None) -> dict:
-        """The cached proposal as the transport plays it: the ticked changes
-        made to the map in memory, exactly as the write would make them, then
-        played as the written file would be. Nothing is written. Also counts
-        the sounds that play differently from the file, and when the first of
-        them falls (seconds), so the page can start just before it."""
+    def hitsound_decide_playback(self, file: str, accept: list | None = None,
+                                 edits: list | None = None) -> dict:
+        """The cached proposal and the hand edits as the transport plays them:
+        the ticked changes made to the map in memory, exactly as the write
+        would make them, then played as the written file would be. Nothing is
+        written. Also counts the sounds that play differently from the file,
+        and when the first of them falls (seconds), so the page can start
+        just before it."""
         path = self._decide_file(file)
         if isinstance(path, dict):
             return path
-        cached = self._decisions.get(str(path.name))
-        if cached is None:
-            return {"ok": False, "key": "no_proposal"}
+        units = self._decide_units(path, edits)
+        if isinstance(units, dict):
+            return units
         try:
             accepted = None if accept is None else {tuple(a) for a in accept}
             beatmap = ta.read_osu_beatmap(path)
             written = ta.hitsound_playback(beatmap, path.parent)
-            changes = ta.proposal_changes(beatmap, cached["units"], accepted)
-            ta.set_object_hitsounds(beatmap, changes["changes"])
+            changes = ta.proposal_changes(beatmap, units, accepted)
+            edited = ta.edit_changes(beatmap, edits, changes["changes"])
+            ta.set_object_hitsounds(beatmap, edited["changes"])
             plan = ta.hitsound_playback(beatmap, path.parent)
             reply = self._playback_reply(str(path.name), plan)
         except (ValueError, OSError) as exc:
@@ -1070,26 +1088,27 @@ class Api:
         # sounds in the same order.
         differ = [b["t"] for a, b in zip(written["events"], plan["events"]) if a != b]
         return {**reply, "proposal": True, "units": changes["units"],
-                "accepted": changes["accepted"], "differs": len(differ),
-                "first": differ[0] if differ else None}
+                "accepted": changes["accepted"], "edited": edited["edited"],
+                "differs": len(differ), "first": differ[0] if differ else None}
 
     def hitsound_decide_apply(self, file: str, accept: list | None = None,
-                              copy: bool = False) -> dict:
-        """Write the accepted proposals through P-2: over the original with a
-        backup, or onto a ``<name>_hitsounded.osu`` copy that must not exist.
-        Remembers the replaced bytes for the one-level undo."""
+                              copy: bool = False, edits: list | None = None) -> dict:
+        """Write the accepted proposals and the hand edits through P-2: over
+        the original with a backup, or onto a ``<name>_hitsounded.osu`` copy
+        that must not exist. Remembers the replaced bytes for the one-level
+        undo."""
         path = self._decide_file(file)
         if isinstance(path, dict):
             return path
-        cached = self._decisions.get(str(path.name))
-        if cached is None:
-            return {"ok": False, "key": "no_proposal"}
+        units = self._decide_units(path, edits)
+        if isinstance(units, dict):
+            return units
         dest = path.with_name(path.stem + "_hitsounded.osu") if copy else None
         try:
             accepted = None if accept is None else {tuple(a) for a in accept}
             if dest is None:
                 previous = path.read_bytes()
-            result = ta.apply_proposals(path, cached["units"], accepted, dest)
+            result = ta.apply_proposals(path, units, accepted, dest, edits=edits)
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         if dest is None:

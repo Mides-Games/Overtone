@@ -935,6 +935,30 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
                           heard["first"]), (True, 3, 2, 2, 2.0))
         self.assertIn("map:drum-hitclap.wav", heard["samples"])
 
+    def test_hand_edits_need_no_proposal_and_are_heard_as_they_are_written(self) -> None:
+        edits = [{"object": 1, "part": "circle", "edge": None, "time_ms": 1500.0,
+                  "volume": 35, "index": 2}]
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            Path(tmp, "soft-hitnormal2.wav").write_bytes(b"RIFFsoft2")
+            before = Path(tmp, "hard.osu").read_bytes()
+            preview = api.hitsound_decide_preview("hard.osu", [], edits)
+            heard = api.hitsound_decide_playback("hard.osu", [], edits)
+            untouched = Path(tmp, "hard.osu").read_bytes()
+            done = api.hitsound_decide_apply("hard.osu", [], True, edits)
+            written = api.hitsound_playback("hard_hitsounded.osu")
+            refused = api.hitsound_decide_preview("hard.osu", [], "volume 35")
+        json.dumps([preview, heard, done])
+        self.assertEqual((preview["units"], preview["accepted"], preview["edited"],
+                          preview["would_change"]), (0, 0, 1, 1))
+        self.assertEqual(untouched, before)
+        for part in ("events", "objects", "samples", "counts"):
+            self.assertEqual(heard[part], written[part], part)
+        self.assertEqual((heard["edited"], heard["differs"], heard["first"]), (1, 1, 1.5))
+        self.assertEqual(heard["events"]["volume"][1], 0.35)
+        self.assertIn("map:soft-hitnormal2.wav", heard["samples"])
+        self.assertEqual((done["changed"], refused["key"]), ([1], "error"))
+
     def test_without_a_proposal_or_a_binary_it_says_so(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             api = self._song(tmp)

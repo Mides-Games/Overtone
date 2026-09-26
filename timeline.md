@@ -17,6 +17,54 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Volume and sample index by hand
+
+### Changed
+
+- **The Propose card edits volume and sample index too** ("Propose and edit hitsounds").
+  A volume (0-100 %) or a sample index set on the sounds the table shows goes to their
+  objects as the object's own value; 0 follows the green line again. The format keeps one
+  volume and one index per object, so a slider takes them for every edge and its body, and
+  the card says so. Edits need no proposal, and so no Rust; with a proposal they go into
+  the same write as the ticked sounds, with one backup and one undo. The table shows each
+  edit beside what plays now ("60 % → 40 %", "→ the line's"); the preview and the
+  transport count them, and "Hear before writing" (was "Hear the proposal") plays it all
+  over the song as the write would make it. Empty or out-of-range values say so.
+- **The sounds table takes a range of bars** beside its addition filter. All, None, Set and
+  Clear act on the sounds it shows, every page of them, so ticking or unticking one
+  section's proposals, or setting its volume, is one click. A new song starts from all bars.
+- Clearing the last edits while the transport plays them puts the file as written back in
+  it.
+
+### Hardening
+
+- An edit carries the sound it was set on. A sound that moved since, two edits giving one
+  object different values, or a value osu! could not read refuse the whole write, as a
+  moved proposal does; the bridge refuses edits that are not a list of objects.
+
+### Measured
+
+```
+800 local maps (copies): random proposals on half of each map's sounds, half of those
+ticked, and edits (volume, index or both, 0 included) on a quarter of the objects
+  heard == written: 799; different: 0; refused alike by both: 1 (the Aspire map of the
+  entry below)
+  edits alone, 132438 objects (45696 sliders): every sound plays what it played but the
+  edited volume and index, which are the edit's (or the line's for 0): wrong 0;
+  lines of objects not edited changed 0; bytes outside [HitObjects] changed 0
+Jester [Trynna's Hard], in the browser (harness, silent), EN and ES
+  bars 17-20: 40 sounds on 23 objects; volume 40 -> preview "23 objects would change";
+  heard: 43 sounds unlike the file (the 40, and 3 edges of sliders crossing the range's
+  ends); the copy plays exactly what was heard: 43 sounds at 40 %, no other sound changed
+  bars 30-31, None: the 20 proposals there unticked, 1291 of 1311 left; with 12 objects at
+  25 %: 734 objects would change; written in place it plays what was heard, and the undo
+  restores the file's playback exactly
+  1280 and 1024 px wide: the bars and the edit row fit, no page scroll
+Python unittest     514 -> 521, all pass
+benchmark.py 24/24 · bpm-snapshot 24/24 · golden.py 27/27 · coverage, measures,
+signatures, robustness, reference 24/24, assisted 70 · facts
+```
+
 ## v4.0.0-dev — 2026-09-26 · Hearing a hitsound proposal before it is written
 
 ### Changed

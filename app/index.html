@@ -661,22 +661,35 @@
 
         <div class="card cmp-card" id="hsvDecideCard" hidden>
           <div class="card-head">
-            <div class="card-title" data-i18n="hsv_decide_title">Propose hitsounds</div>
+            <div class="card-title" data-i18n="hsv_decide_title">Propose and edit hitsounds</div>
             <div class="spacer"></div>
             <span class="card-sub" id="hsvDecideStatus"></span>
           </div>
           <div class="card-body">
-            <div class="card-sub" data-i18n="hsv_decide_sub">The decision engine proposes every object's sound. Tick what to keep, hear it over the song, preview, then write the file or a copy. Each write is backed up, and one undo restores it.</div>
+            <div class="card-sub" data-i18n="hsv_decide_sub">The decision engine proposes every object's sound; volume and sample index are yours to set. Tick what to keep, hear it over the song, preview, then write the file or a copy. Each write is backed up, and one undo restores it.</div>
             <div class="drop-actions">
               <button type="button" class="btn primary" id="hsvPropose"><span data-i18n="hsv_propose">Propose</span></button>
               <button type="button" class="btn small" id="hsvDecideAll"><span data-i18n="hsv_decide_all">All</span></button>
               <button type="button" class="btn small" id="hsvDecideNone"><span data-i18n="hsv_decide_none">None</span></button>
-              <button type="button" class="btn small" id="hsvDecideHear"><span data-i18n="hsv_hear">Hear the proposal</span></button>
+              <button type="button" class="btn small" id="hsvDecideHear"><span data-i18n="hsv_hear">Hear before writing</span></button>
               <button type="button" class="btn small" id="hsvDecidePreview"><span data-i18n="hsv_preview">Preview</span></button>
               <button type="button" class="btn small" id="hsvDecideApply"><span data-i18n="hsv_write">Write into this file</span></button>
               <button type="button" class="btn small" id="hsvDecideCopy"><span data-i18n="hsv_write_copy">Write a copy</span></button>
               <button type="button" class="btn small" id="hsvDecideUndo"><span data-i18n="hsv_undo">Undo</span></button>
             </div>
+            <div class="hsv-edit">
+              <div class="field">
+                <label for="hsvEditVolume" data-i18n="hsv_edit_volume">Volume (%)</label>
+                <input class="input num" id="hsvEditVolume" type="number" step="1" min="0" max="100" placeholder="—">
+              </div>
+              <div class="field">
+                <label for="hsvEditIndex" data-i18n="hsv_edit_index">Sample index</label>
+                <input class="input num" id="hsvEditIndex" type="number" step="1" min="0" placeholder="—">
+              </div>
+              <button type="button" class="btn small" id="hsvEditSet"><span data-i18n="hsv_edit_set">Set on the sounds shown</span></button>
+              <button type="button" class="btn small" id="hsvEditClear"><span data-i18n="hsv_edit_clear">Clear their edits</span></button>
+            </div>
+            <div class="card-sub" data-i18n="hsv_edit_note">0 follows the green line. A slider has one volume and one index for all its edges. All, None, Set and Clear act on the sounds the table shows: its filter and its bars.</div>
             <div class="card-sub" id="hsvDecideHearText"></div>
             <div class="card-sub" id="hsvDecidePrevText"></div>
           </div>
@@ -696,6 +709,11 @@
             <div class="card-title" data-i18n="hsv_sounds">Sounds</div>
             <span class="pill" id="hsvCount"></span>
             <div class="spacer"></div>
+            <label class="hsv-bars"><span data-i18n="hsv_bars">Bars</span>
+              <input class="input num" id="hsvBarFrom" type="number" step="1" placeholder="—" data-i18n-aria="hsv_bar_from" aria-label="From bar">
+              <span>–</span>
+              <input class="input num" id="hsvBarTo" type="number" step="1" placeholder="—" data-i18n-aria="hsv_bar_to" aria-label="To bar">
+            </label>
             <div class="segmented" id="hsvFilter">
               <button type="button" data-f="all" class="on" data-i18n="hsv_all">All</button>
               <button type="button" data-f="whistle" data-i18n="lg_whistle">whistle</button>

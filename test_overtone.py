@@ -4626,6 +4626,56 @@ class LibraryIndexTests(unittest.TestCase):
         self.assertEqual((again["beatmaps"], again["failed"], again["removed"]), (1, 3, 0))
         self.assertEqual(self.library.search("easy")["beatmaps"], 0)
 
+    def test_a_damaged_index_is_rebuilt_by_the_next_scan(self):
+        import sqlite3
+        from contextlib import closing
+        self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
+        for damage in ("junk", "truncated", "pages overwritten"):
+            with self.subTest(damage=damage):
+                self.library.reset()
+                self.library.scan(self.songs)
+                with closing(sqlite3.connect(self.library.path)) as db:
+                    db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                size = self.library.path.stat().st_size
+                with open(self.library.path, "r+b") as handle:
+                    if damage == "junk":
+                        handle.write(b"not a database, just bytes" * 40)
+                    elif damage == "truncated":
+                        handle.truncate(size // 2)
+                    else:                             # every page after the first
+                        handle.seek(4096)
+                        handle.write(bytes(range(256)) * ((size - 4096) // 256))
+                with self.assertRaises((ValueError, sqlite3.DatabaseError)) as caught:
+                    self.library.stats()
+                self.assertTrue(self.ol.is_damaged(caught.exception), caught.exception)
+                # Before, every call failed from here on, a scan included.
+                report = self.library.scan(self.songs)
+                self.assertTrue(report.get("rebuilt"))
+                self.assertEqual((report["beatmaps"], report["added"]), (2, 2))
+                self.assertEqual(self.library.search("band")["beatmaps"], 2)
+
+    def test_a_busy_index_is_not_damaged_and_a_newer_one_is_refused_not_rebuilt(self):
+        import sqlite3
+        from contextlib import closing
+        self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy"])
+        self.library.scan(self.songs)
+        holder = sqlite3.connect(self.library.path)
+        holder.execute("BEGIN IMMEDIATE")
+        try:
+            with closing(sqlite3.connect(self.library.path, timeout=0)) as db, \
+                    self.assertRaises(sqlite3.OperationalError) as caught:
+                db.execute("INSERT INTO meta (key, value) VALUES ('x', 'y')")
+        finally:
+            holder.rollback()
+            holder.close()
+        self.assertFalse(self.ol.is_damaged(caught.exception))
+        with closing(sqlite3.connect(self.library.path)) as db:
+            db.execute(f"PRAGMA user_version = {self.ol.SCHEMA_VERSION + 1}")
+        with self.assertRaises(ValueError) as newer:
+            self.library.scan(self.songs)
+        self.assertFalse(self.ol.is_damaged(newer.exception))
+        self.assertTrue(self.library.path.exists())      # never rewritten
+
 
 def _structure_report(bounds, kinds, groups, levels, duration=64.0, energy=None):
     """``overtone-cli structure``'s JSON for hand-made sections."""

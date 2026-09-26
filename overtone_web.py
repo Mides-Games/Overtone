@@ -1596,25 +1596,35 @@ class Api:
     def _songs_root(self, folder: str = "") -> str:
         return str(folder or self._cfg.get("songs_folder") or _default_songs())
 
+    @staticmethod
+    def _library_error(exc: Exception) -> dict:
+        """A damaged index has its own key: the page can say that a scan
+        rebuilds it, which is the way out."""
+        if overtone_library.is_damaged(exc):
+            return {"ok": False, "key": "library_damaged", "detail": str(exc)}
+        return {"ok": False, "key": "error", "detail": str(exc)}
+
     def library_state(self) -> dict:
-        """Where the Songs folder is and what the index holds of it."""
+        """Where the Songs folder is and what the index holds of it. When the
+        index cannot be read, the folder facts still come back with why."""
         root = self._songs_root()
         library = overtone_library.Library()
         try:
             index = library.stats()
             current = library.covers(root)
         except (ValueError, OSError, sqlite3.Error) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
+            return {**self._library_error(exc), "songs": root,
+                    "songs_found": Path(root).is_dir(), "scanning": self._scanning.locked()}
         return {"ok": True, "songs": root, "songs_found": Path(root).is_dir(),
                 "index": index, "current": current, "scanning": self._scanning.locked()}
 
     def library_scan(self, folder: str = "") -> dict:
         """Bring the index in step with the Songs folder (the remembered one,
         else osu!'s default). Unchanged maps are skipped, so a rescan costs a
-        folder listing; the first scan reads every header. The page hears
-        ``onLibraryProgress`` with the folders in the index, their total, and
-        how many rows of maps that are gone are being removed after the last
-        folder."""
+        folder listing; the first scan reads every header, and a damaged
+        index is rebuilt. The page hears ``onLibraryProgress`` with the
+        folders in the index, their total, and how many rows of maps that
+        are gone are being removed after the last folder."""
         root = self._songs_root(folder)
         if not Path(root).is_dir():
             return {"ok": False, "key": "no_songs"}
@@ -1625,7 +1635,7 @@ class Api:
                 root, lambda done, total, removing: self._emit(
                     "onLibraryProgress", {"done": done, "total": total, "removing": removing}))
         except (ValueError, OSError, sqlite3.Error) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
+            return self._library_error(exc)
         finally:
             self._scanning.release()
         if folder:
@@ -1638,7 +1648,7 @@ class Api:
         try:
             result = overtone_library.Library().search(str(text or ""))
         except (ValueError, OSError, sqlite3.Error) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
+            return self._library_error(exc)
         return {"ok": True, "result": result}
 
     def library_reset(self) -> dict:

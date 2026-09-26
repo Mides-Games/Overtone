@@ -1204,6 +1204,26 @@ class LibraryBridgeTests(_IsolatedConfig):
         self.assertEqual(sent[0], {"done": 0, "total": total, "removing": 0})
         self.assertEqual(sent[-1], {"done": total, "total": total, "removing": 0})
 
+    def test_a_damaged_index_says_so_and_a_scan_rebuilds_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = self._songs(tmp)
+            api = web.Api()
+            api.library_scan(str(songs))
+            index = web.overtone_library.default_path()
+            for suffix in ("-wal", "-shm"):
+                Path(f"{index}{suffix}").unlink(missing_ok=True)
+            index.write_bytes(b"not a database, just bytes" * 40)
+            state, search = api.library_state(), api.library_search("band")
+            scan = api.library_scan()
+            after = api.library_state()
+        json.dumps([state, search, scan, after])
+        # Before, all three answered "error" and nothing on the page led out.
+        self.assertEqual((state["ok"], state["key"], state["songs_found"]),
+                         (False, "library_damaged", True))
+        self.assertEqual(search["key"], "library_damaged")
+        self.assertTrue(scan["ok"] and scan["report"]["rebuilt"])
+        self.assertEqual((after["index"]["beatmaps"], after["current"]), (1, True))
+
     def test_same_audio_answers_from_the_index_and_walks_when_it_finds_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             songs = self._songs(tmp)

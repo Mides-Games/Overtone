@@ -8,7 +8,8 @@ are remembered), and what the folder holds (sets, difficulties, first BPM).
 It is derived data. The Songs folder stays the truth: a scan reads each
 .osu's header, skips files whose size and modification time are unchanged,
 and drops rows for files that are gone. Deleting the database loses nothing
-but the time of the next scan.
+but the time of the next scan, which is why a damaged one is rebuilt rather
+than repaired.
 
 The schema is ``library.sql`` beside this file. Its ``schema-version`` line
 is ``SCHEMA_VERSION`` here, stored in ``PRAGMA user_version``; a database
@@ -57,6 +58,23 @@ READERS = 4
 READ_AHEAD = 8
 #: How many failures a scan names; the count is always complete.
 FAILURES_KEPT = 20
+#: SQLite's result codes for a file that is not, or no longer, a database.
+#: A busy or locked index (SQLITE_BUSY, 5) is not damage and is never rebuilt.
+_DAMAGED_CODES = (sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB)
+
+
+class DamagedIndex(ValueError):
+    """The index file is not a database any more; a scan rebuilds it."""
+
+
+def is_damaged(exc: BaseException) -> bool:
+    """Whether ``exc`` says the index file itself is broken: not busy, not
+    from a newer schema, not a folder problem."""
+    if isinstance(exc, DamagedIndex):
+        return True
+    code = getattr(exc, "sqlite_errorcode", None)
+    return isinstance(exc, sqlite3.DatabaseError) and code is not None and (
+        code & 0xFF) in _DAMAGED_CODES
 
 #: A section header line. Both patterns open on a newline, a literal the
 #: regex engine can jump to; a ``^`` under re.M gave it none and cost the
@@ -272,6 +290,9 @@ class Library:
                     db.execute(f"PRAGMA user_version = {step}")
         except sqlite3.DatabaseError as exc:
             db.close()
+            if is_damaged(exc):
+                raise DamagedIndex(f"The library index {self.path} is damaged ({exc}); "
+                                   "a scan rebuilds it.") from exc
             raise ValueError(f"Could not open the library index {self.path}: {exc}") from exc
         except BaseException:
             db.close()
@@ -298,7 +319,8 @@ class Library:
         in ``failures``, and is never reported gone: a folder that cannot be
         listed, or a .osu that cannot be opened, keeps what the index knew of
         it (the next scan tries again), while a file that is not a beatmap
-        loses its row.
+        loses its row. A damaged index is deleted and the scan starts over
+        (``rebuilt``).
 
         ``progress``, when given, is called with ``(done, total, removing)``:
         ``done`` folders of ``total`` are in the index, from ``(0, total)``
@@ -316,7 +338,15 @@ class Library:
                 folders = [str(base)] + sorted(e.path for e in entries if e.is_dir())
         except OSError as exc:
             raise ValueError(f"Could not list {base}: {exc}") from exc
-        return self._scan(base, folders, progress, started)
+        try:
+            return self._scan(base, folders, progress, started)
+        except (sqlite3.DatabaseError, ValueError) as exc:
+            if not is_damaged(exc):
+                raise
+            # Derived data: the folder is the truth, so a broken file is
+            # replaced, not repaired.
+            self.reset()
+            return {**self._scan(base, folders, progress, started), "rebuilt": True}
 
     def _scan(self, base: Path, folders: list[str], progress, started: float) -> dict:
         total = len(folders)

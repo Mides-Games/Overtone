@@ -17,6 +17,49 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · A proposal swapped for one of its alternatives
+
+### Changed
+
+- **Each proposal in the sounds table is a choice**: the proposal or one of the two
+  runner-ups the decision engine ranks behind it, each with how likely it is there on its
+  own. A runner-up chosen ticks itself, and is what the preview, the transport and the
+  write use. A slider tail follows its head and has no choice. With that, H5 is in but for
+  the Export section's surface.
+- **The card says what the percentages are**: a sound's chance on its own, over the 24
+  sounds the engine weighs. The proposal is the one that fits the whole sequence best, so a
+  runner-up can score higher alone, and on real maps one does for 23 % of the sounds
+  (below). Without the note that reads as a wrong proposal.
+- A tick or a choice no longer moves the playhead; a click elsewhere on the row still does.
+- Proposal labels are compact ("soft+whistle 7 %"), and the table's headers may wrap while
+  its cells never do, so the choice fits beside eight columns at 1280 px in both languages.
+
+### Hardening
+
+- A choice the sound does not have, or one for a sound with no proposal, refuses the
+  preview, the hearing and the write alike.
+
+### Measured
+
+```
+overtone-cli hitsound on 8 local maps, one difficulty each: 5602 sounds that are not
+slider tails, each with 2 runner-ups
+  the proposal on its own: median 12.8 %, p10 6.5 %, p90 21.3 %; the best runner-up:
+  median 8.5 %
+  a runner-up more likely on its own than the proposal: 1287 of 5602 (23.0 %)
+Jester [Trynna's Hard], in the browser (harness, silent), EN and ES
+  1311 proposals; the 456 slider tails have no choice; the first circle: soft+whistle
+  7 % proposed, normal+clap 8 % and normal+whistle 7 % behind
+  normal+clap chosen on an unticked row: it ticks itself; preview "1311 of 1311
+  proposals ticked, 1 of them an alternative: 734 objects would change"; the transport
+  plays normal+clap there; the copy written after plays exactly what was heard and holds
+  normal+clap on that circle; the playhead did not move
+  1280 px: EN and ES fit, no row wraps; 1024 px with proposals shown: the table scrolls
+  sideways inside its card (41 px EN, 95 ES), the page does not
+Python unittest     521 -> 522, all pass
+facts
+```
+
 ## v4.0.0-dev — 2026-09-26 · Volume and sample index by hand
 
 ### Changed

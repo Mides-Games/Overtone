@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-521%20Python%20%C2%B7%20263%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-522%20Python%20%C2%B7%20263%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -103,7 +103,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Ramps: a tempo ramp as the fewest red lines within a chosen drift | ✅ | Timing card, Rust engine; the count-versus-drift trade-off shown, the lines loaded as hand-placed |
 | Offset lab: the MP3's own delay, both decoders side by side, a blind listening test | ✅ | Timing card; 18 blind trials give the preferred click shift with an interval |
 | Snap divisors: where the song needs 1/3, 1/4 or 1/6 | ✅ | Timing card, one line per section; thirds only where they are loud |
-| Hitsound proposals: tick, hear, preview, write the file or a copy, undo | ✅ | Hitsounds section; the Rust decision engine proposes every object's sound, and the transport plays the ticked ones as the write would make them, before it |
+| Hitsound proposals: tick, swap for an alternative, hear, preview, write the file or a copy, undo | ✅ | Hitsounds section; the Rust decision engine proposes every object's sound, and the transport plays the ticked ones as the write would make them, before it |
 | Volume and sample index by hand, per object or over a range of bars | ✅ | Hitsounds section, with or without proposals, heard before writing; 0 follows the green line again, and a slider takes one value for all its edges, as the format has it |
 | Detection settings drawer, presets | ✅ | Shared with the classic window |
 | English / Spanish | ✅ | |
@@ -190,7 +190,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Each sound matched to its nearest attack, or to none | ✅ | Within 50 ms |
 | Consistency check | 🟡 | In the mod report: pattern breaks, finishes and claps over silence; the "wrong instrument" rule waits for proof on real audio |
 | Sequence decision (Viterbi) | ✅ | `overtone-cli hitsound`: 19/19 on synthetic exact truth; clap and finish agreement with mappers above the simple rules on two real samples |
-| Explanations, profiles in the app, a proposal's alternatives, sample bank, hitsound export | 📋 | P6 |
+| Explanations, profiles in the app, sample bank, hitsound export | 📋 | P6 |
 
 ### Command line
 
@@ -301,7 +301,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 521 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 522 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage
@@ -420,8 +420,8 @@ sliders quedan igual).
 - **Motor en Rust (🦀):** da los mismos resultados que Python y es unas 4 veces más rápido
   de punta a punta; la app lo usa como opción (Ajustes → motor Rust) y para Estructura,
   Rampas y las propuestas de hitsounds.
-- **Próximo (📋):** el resto de los hitsounds (alternativas de cada propuesta, exportación,
-  perfiles, banco de samples), la sección Audio, precisión en canciones reales e
+- **Próximo (📋):** el resto de los hitsounds (exportación, explicaciones, perfiles, banco
+  de samples), la sección Audio, precisión en canciones reales e
   instalador `.msi`.
 
 Uso: doble clic en `Overtone.bat`, abrí un audio, **Analizar**, revisá el mapa de tempo,

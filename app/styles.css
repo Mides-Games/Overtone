@@ -615,7 +615,13 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 .hsv-dot.k-clap { background: var(--chart-clap); }
 .hsv-table { max-height: 460px; }
 .hsv-table tbody tr { cursor: pointer; }
-.hsv-table td.txt, .hsv-table th { white-space: nowrap; }
+/* Cells never wrap (a wrapped bar · beat doubles the row); headers may, which
+   is what fits the proposal's choice beside eight columns at 1280 px. */
+.hsv-table td { white-space: nowrap; }
+.hsv-table th { white-space: normal; }
+.hsv-table td:last-child, .hsv-table th:last-child { padding-left: 4px; }
+.hsv-prop { display: inline-flex; align-items: center; gap: 4px; }
+.hsv-alt { width: auto; height: 28px; padding: 0 4px; font-size: var(--fs-1); }
 .hsv-table td .was { color: var(--dim); }
 .hsv-table td .now { color: var(--accent); font-weight: 600; }
 .hsv-bars { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--fs-2); }

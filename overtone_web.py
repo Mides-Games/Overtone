@@ -1028,26 +1028,55 @@ class Api:
         self._decisions[str(path.name)] = {"units": units}
         return {"ok": True, "file": str(path.name), "units": units}
 
-    def _decide_units(self, path: Path, edits) -> list | dict:
+    def _decide_units(self, path: Path, edits, choices=None) -> list | dict:
         """The cached proposal's units, none when hand edits come alone (they
         need no Rust), or a refusal: nothing to apply, or edits that are not a
-        list of objects."""
+        list of objects. ``choices`` swaps in the runner-ups the page chose."""
         if edits is not None and not (isinstance(edits, list)
                                       and all(isinstance(e, dict) for e in edits)):
             return {"ok": False, "key": "error", "detail": "edits must be a list of objects"}
         cached = self._decisions.get(str(path.name))
         if cached is None and not edits:
             return {"ok": False, "key": "no_proposal"}
-        return cached["units"] if cached else []
+        return self._chosen(cached["units"] if cached else [], choices)
+
+    @staticmethod
+    def _chosen(units: list, choices) -> list | dict:
+        """The units with an alternative in place of the proposal wherever the
+        page chose one: ``[object, part, edge, index]``, the index into that
+        unit's ``alternatives`` (best first, as the CLI ranks them). An index
+        the unit does not have, or a sound with no unit, refuses them all."""
+        if not choices:
+            return units
+        if not (isinstance(choices, list) and all(
+                isinstance(c, list) and len(c) == 4 and isinstance(c[3], int) for c in choices)):
+            return {"ok": False, "key": "error",
+                    "detail": "choices must be [object, part, edge, index] lists"}
+        pick = {(c[0], c[1], c[2]): c[3] for c in choices}
+        out = []
+        for unit in units:
+            index = pick.pop((unit.get("object"), unit.get("part"), unit.get("edge")), None)
+            if index is None:
+                out.append(unit)
+                continue
+            alternatives = unit.get("alternatives") or []
+            if not 0 <= index < len(alternatives):
+                return {"ok": False, "key": "error",
+                        "detail": f"The sound at {unit.get('time_ms')} ms has no alternative {index}."}
+            out.append({**unit, "proposal": alternatives[index]})
+        if pick:
+            return {"ok": False, "key": "error",
+                    "detail": f"{len(pick)} chosen sounds have no proposal: propose again."}
+        return out
 
     def hitsound_decide_preview(self, file: str, accept: list | None = None,
-                                edits: list | None = None) -> dict:
-        """What applying the cached proposal and the hand edits would change.
-        Read only."""
+                                edits: list | None = None, choices: list | None = None) -> dict:
+        """What applying the cached proposal (with the chosen alternatives) and
+        the hand edits would change. Read only."""
         path = self._decide_file(file)
         if isinstance(path, dict):
             return path
-        units = self._decide_units(path, edits)
+        units = self._decide_units(path, edits, choices)
         if isinstance(units, dict):
             return units
         try:
@@ -1057,10 +1086,10 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "file": str(path.name), "units": preview["units"],
                 "accepted": preview["accepted"], "edited": preview["edited"],
-                "would_change": preview["would_change"]}
+                "chosen": len(choices or []), "would_change": preview["would_change"]}
 
     def hitsound_decide_playback(self, file: str, accept: list | None = None,
-                                 edits: list | None = None) -> dict:
+                                 edits: list | None = None, choices: list | None = None) -> dict:
         """The cached proposal and the hand edits as the transport plays them:
         the ticked changes made to the map in memory, exactly as the write
         would make them, then played as the written file would be. Nothing is
@@ -1070,7 +1099,7 @@ class Api:
         path = self._decide_file(file)
         if isinstance(path, dict):
             return path
-        units = self._decide_units(path, edits)
+        units = self._decide_units(path, edits, choices)
         if isinstance(units, dict):
             return units
         try:
@@ -1089,10 +1118,12 @@ class Api:
         differ = [b["t"] for a, b in zip(written["events"], plan["events"]) if a != b]
         return {**reply, "proposal": True, "units": changes["units"],
                 "accepted": changes["accepted"], "edited": edited["edited"],
-                "differs": len(differ), "first": differ[0] if differ else None}
+                "chosen": len(choices or []), "differs": len(differ),
+                "first": differ[0] if differ else None}
 
     def hitsound_decide_apply(self, file: str, accept: list | None = None,
-                              copy: bool = False, edits: list | None = None) -> dict:
+                              copy: bool = False, edits: list | None = None,
+                              choices: list | None = None) -> dict:
         """Write the accepted proposals and the hand edits through P-2: over
         the original with a backup, or onto a ``<name>_hitsounded.osu`` copy
         that must not exist. Remembers the replaced bytes for the one-level
@@ -1100,7 +1131,7 @@ class Api:
         path = self._decide_file(file)
         if isinstance(path, dict):
             return path
-        units = self._decide_units(path, edits)
+        units = self._decide_units(path, edits, choices)
         if isinstance(units, dict):
             return units
         dest = path.with_name(path.stem + "_hitsounded.osu") if copy else None

@@ -151,6 +151,9 @@ const I18N = {
     hsv_proposed: "{n} proposals", hsv_decide_all: "All", hsv_decide_none: "None",
     hsv_preview: "Preview", hsv_would_change: "{what}: {n} objects would change",
     hsv_what_ticked: "{accepted} of {units} proposals ticked", hsv_edited: "{n} objects edited", hsv_and: " and ",
+    hsv_what_ticked_alt: "{accepted} of {units} proposals ticked, {chosen} of them an alternative",
+    hsv_alts: "{n} alternatives", hsv_alt_aria: "The proposal or one of its alternatives",
+    hsv_alt_note: "In the table, a proposal can be swapped for one of its alternatives. The percentages say how likely each sound is there on its own, among the 24 the engine weighs, which keeps them low. The proposal is the one that fits the whole sequence best, so an alternative can score higher alone.",
     hsv_hear: "Hear before writing",
     hsv_hearing: "The transport plays the file as it would be written ({what}): {n} sounds unlike the file, the first at {time}. Switch its hitsounds to {name} to compare.",
     hsv_hearing_same: "The transport plays the file as it would be written ({what}), and every sound plays as the file already does.",
@@ -624,6 +627,9 @@ const I18N = {
     hsv_proposed: "{n} propuestas", hsv_decide_all: "Todas", hsv_decide_none: "Ninguna",
     hsv_preview: "Vista previa", hsv_would_change: "{what}: {n} objetos cambiarían",
     hsv_what_ticked: "{accepted} de {units} propuestas tildadas", hsv_edited: "{n} objetos editados", hsv_and: " y ",
+    hsv_what_ticked_alt: "{accepted} de {units} propuestas tildadas, {chosen} de ellas una alternativa",
+    hsv_alts: "{n} alternativas", hsv_alt_aria: "La propuesta o una de sus alternativas",
+    hsv_alt_note: "En la tabla, cada propuesta se puede cambiar por una de sus alternativas. Los porcentajes dicen qué tan probable es cada sonido ahí por sí solo, entre los 24 que pesa el motor, y por eso son bajos. La propuesta es la que mejor encaja en toda la secuencia, así que una alternativa puede puntuar más sola.",
     hsv_hear: "Escuchar antes de escribir",
     hsv_hearing: "El transporte toca el archivo como quedaría escrito ({what}): {n} sonidos distintos del archivo, el primero en {time}. Cambiá sus hitsounds a {name} para comparar.",
     hsv_hearing_same: "El transporte toca el archivo como quedaría escrito ({what}), y cada sonido suena como ya suena en el archivo.",
@@ -2197,7 +2203,7 @@ async function hsvPick(file) {
   // New file, new decision state; refreshing the same file after a write
   // clears the (now stale) units but keeps a live undo.
   if (HSV.file !== file) {
-    HSD.file = ""; HSD.units = []; HSD.byKey = new Map(); HSD.accepted = new Set();
+    HSD.file = ""; HSD.units = []; HSD.byKey = new Map(); HSD.accepted = new Set(); HSD.choice = new Map();
     HSD.edits = new Map(); HSD.undo = false;
   }
   HSV.file = file; HSV.report = null; HSV.shown = HSV_PAGE;
@@ -2276,9 +2282,15 @@ function renderHitsoundsView() {
     const adds = s.sounds.slice(1).map((a) => `<span class="hsv-dot k-${a}"></span>${t("lg_" + a)}`).join(" ");
     const unit = hsdUnitFor(s);
     const key = unit && hsdKey(unit.object, unit.part, unit.edge);
+    const tick = unit && `<input type="checkbox" data-hsd="${esc(key)}" ${HSD.accepted.has(key) ? "checked" : ""}>`;
+    // The proposal, or one of its runner-ups; a slider tail follows its head and has none.
+    const alts = unit && unit.alternatives && unit.alternatives.length ? unit.alternatives : null;
+    const chosen = alts && HSD.choice.has(key) ? HSD.choice.get(key) : -1;
     const prop = !unit ? `<span class="muted">—</span>`
-      : `<label class="check"><input type="checkbox" data-hsd="${esc(key)}" ${HSD.accepted.has(key) ? "checked" : ""}>`
-      + `<span>${esc(hsdLabel(unit))}</span></label>`;
+      : !alts ? `<label class="check">${tick}<span>${esc(hsdLabel(unit.proposal))}</span></label>`
+      : `<span class="hsv-prop"><label class="check">${tick}</label><select class="input hsv-alt" data-hsd-alt="${esc(key)}" aria-label="${t("hsv_alt_aria")}">`
+        + [unit.proposal, ...alts].map((p, k) => `<option value="${k - 1}"${k - 1 === chosen ? " selected" : ""}>${esc(hsdLabel(p))}</option>`).join("")
+        + `</select></span>`;
     const edit = HSD.file === HSV.file ? HSD.edits.get(s.object) : undefined;
     return `<tr data-i="${i}">
       <td class="txt num">${fmtTime(s.t)}</td>
@@ -2316,8 +2328,8 @@ function hsvPlay(i) {
 // the cache, because the map the units were decided on is gone. Edits need
 // no proposal: one per object, keyed by the sound they were set on, so the
 // bridge can refuse them if that sound moved.
-const HSD = { file: "", units: [], byKey: new Map(), accepted: new Set(), edits: new Map(),
-              undo: false, proposing: false };
+const HSD = { file: "", units: [], byKey: new Map(), accepted: new Set(), choice: new Map(),
+              edits: new Map(), undo: false, proposing: false };
 
 function hsdKey(object, part, edge) { return `${object}|${part}|${edge ?? ""}`; }
 
@@ -2328,10 +2340,19 @@ function hsdUnitFor(sound) {
 
 function hsdEditList() { return [...HSD.edits.values()]; }
 
+// The runner-ups chosen on ticked sounds, as [object, part, edge, index].
+function hsdChoiceList() {
+  return [...HSD.choice].filter(([key]) => HSD.accepted.has(key)).map(([key, k]) => {
+    const [object, part, edge] = key.split("|");
+    return [+object, part, edge === "" ? null : +edge, k];
+  });
+}
+
 // What a preview or the transport is made of, in words.
 function hsdWhat(r) {
   const parts = [];
-  if (r.units) parts.push(t("hsv_what_ticked", { accepted: r.accepted, units: r.units }));
+  if (r.units) parts.push(t(r.chosen ? "hsv_what_ticked_alt" : "hsv_what_ticked",
+                            { accepted: r.accepted, units: r.units, chosen: r.chosen }));
   if (r.edited) parts.push(t("hsv_edited", { n: r.edited }));
   return parts.join(t("hsv_and"));
 }
@@ -2339,9 +2360,11 @@ function hsdWhat(r) {
 // Something to write: ticked-or-not proposals, or edits, for the difficulty shown.
 function hsdHas() { return HSD.file === HSV.file && (HSD.units.length > 0 || HSD.edits.size > 0); }
 
-function hsdLabel(unit) {
-  const adds = unit.proposal.additions;
-  return unit.proposal.bank + (adds.length ? " + " + adds.join(" + ") : "");
+// A proposal or a runner-up in words, compact for the table: its bank, its
+// additions, how likely on its own ("soft+whistle 7 %").
+function hsdLabel(p) {
+  const sure = typeof p.probability === "number" ? ` ${Math.round(p.probability * 100)} %` : "";
+  return p.bank + p.additions.map((a) => "+" + a).join("") + sure;
 }
 
 function hsdAcceptList() {
@@ -2362,8 +2385,10 @@ function hsdRender() {
   $("hsvEditSet").disabled = !HSV.report;
   $("hsvEditClear").disabled = !(mine && HSD.edits.size);
   $("hsvDecideUndo").disabled = !HSD.undo;
+  const chosen = units ? hsdChoiceList().length : 0;
   $("hsvDecideStatus").textContent = HSD.proposing ? t("hsv_proposing")
     : [units ? t("hsv_proposed", { n: HSD.accepted.size }) : "",
+       chosen ? t("hsv_alts", { n: chosen }) : "",
        mine && HSD.edits.size ? t("hsv_edited", { n: HSD.edits.size }) : ""].filter(Boolean).join(" · ");
   hsProposalOption(has ? HSD.file : "");
   const h = has && HSP.proposal && HSP.file === HSD.file ? HSP.heard : null;
@@ -2447,6 +2472,7 @@ async function hsvPropose() {
     HSD.file = HSV.file;
     HSD.units = reply.units;
     HSD.byKey = new Map(reply.units.map((u) => [hsdKey(u.object, u.part, u.edge), u]));
+    HSD.choice = new Map();
     HSD.accepted = new Set(HSD.byKey.keys());
     HSD.undo = false;
   } finally {
@@ -2472,7 +2498,7 @@ function hsdSetAll(on) {
 
 async function hsdPreview() {
   if (!api() || !hsdHas()) return;
-  const reply = await api().hitsound_decide_preview(HSV.file, hsdAcceptList(), hsdEditList());
+  const reply = await api().hitsound_decide_preview(HSV.file, hsdAcceptList(), hsdEditList(), hsdChoiceList());
   if (!reply.ok) {
     if (reply.key === "no_proposal") toast(t("hsv_no_proposal"), true);
     else editFailure(reply);
@@ -2490,9 +2516,11 @@ async function hsdWrite(copy) {
   const ok = confirm(t(copy ? "hsv_confirm_copy" : "hsv_confirm_write",
     { n: preview.would_change, file: HSV.file }));
   if (!ok) return;
-  const reply = await api().hitsound_decide_apply(HSV.file, hsdAcceptList(), copy, hsdEditList());
+  const reply = await api().hitsound_decide_apply(HSV.file, hsdAcceptList(), copy, hsdEditList(),
+                                                hsdChoiceList());
   if (!reply.ok) { editFailure(reply); return; }
-  HSD.units = []; HSD.byKey = new Map(); HSD.accepted = new Set(); HSD.edits = new Map();
+  HSD.units = []; HSD.byKey = new Map(); HSD.accepted = new Set(); HSD.choice = new Map();
+  HSD.edits = new Map();
   HSD.undo = reply.undo;
   $("hsvDecidePrevText").textContent = "";
   // A copy names the file it wrote, not the original it left alone.
@@ -2507,7 +2535,8 @@ async function hsdUndo() {
   if (!api()) return;
   const reply = await api().hitsound_decide_undo();
   if (!reply.ok) { editFailure(reply); return; }
-  HSD.units = []; HSD.byKey = new Map(); HSD.accepted = new Set(); HSD.edits = new Map();
+  HSD.units = []; HSD.byKey = new Map(); HSD.accepted = new Set(); HSD.choice = new Map();
+  HSD.edits = new Map();
   HSD.undo = false;
   toast(t("hsv_undone", { file: reply.file }));
   await hsvPick(reply.file);
@@ -3575,7 +3604,8 @@ async function hsPick(value) {
   const name = option && option.value === value ? option.textContent : file;
   if (!file) { $("pbStatus").textContent = t("pb_hint"); return; }
   $("pbStatus").textContent = t("pb_hs_loading", { name });
-  const reply = proposal ? await api().hitsound_decide_playback(file, hsdAcceptList(), hsdEditList())
+  const reply = proposal ? await api().hitsound_decide_playback(file, hsdAcceptList(), hsdEditList(),
+                                                              hsdChoiceList())
                          : await api().hitsound_playback(file);
   if (HSP.token !== token) return;           // another pick came in meanwhile
   if (!reply.ok) {
@@ -3605,7 +3635,7 @@ async function hsPick(value) {
   HSP.objects = reply.objects;
   HSP.counts = reply.counts;
   HSP.heard = proposal ? { accepted: reply.accepted, units: reply.units, edited: reply.edited,
-                           differs: reply.differs, first: reply.first } : null;
+                           chosen: reply.chosen, differs: reply.differs, first: reply.first } : null;
   hsLegend();
   if (S.result) drawTrace();
   const c = reply.counts;
@@ -4946,6 +4976,17 @@ function wire() {
     renderHitsoundsView();
   }));
   $("hsvRows").addEventListener("change", (e) => {
+    const alt = e.target.closest("[data-hsd-alt]");
+    if (alt) {
+      // A runner-up chosen is a sound wanted: it ticks itself.
+      const key = alt.dataset.hsdAlt, k = +alt.value;
+      if (k < 0) HSD.choice.delete(key);
+      else { HSD.choice.set(key, k); HSD.accepted.add(key); }
+      $("hsvDecidePrevText").textContent = "";
+      renderHitsoundsView();
+      hsdTicked();
+      return;
+    }
     const box = e.target.closest("[data-hsd]");
     if (!box) return;
     if (box.checked) HSD.accepted.add(box.dataset.hsd);
@@ -4957,6 +4998,7 @@ function wire() {
   $("hsvRows").addEventListener("click", (e) => {
     const play = e.target.closest("[data-play]");
     if (play) { hsvPlay(+play.dataset.play); return; }
+    if (e.target.closest("select, input, label")) return;   // a choice, not a seek
     const row = e.target.closest("tr[data-i]");
     const s = row && HSV.report && HSV.report.sounds[+row.dataset.i];
     if (s) pbSeek(Math.max(0, s.t - 1));

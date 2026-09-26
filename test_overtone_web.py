@@ -959,6 +959,33 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
         self.assertIn("map:soft-hitnormal2.wav", heard["samples"])
         self.assertEqual((done["changed"], refused["key"]), ([1], "error"))
 
+    def test_a_chosen_alternative_is_what_is_heard_and_written(self) -> None:
+        units = [{**self.UNITS[0], "alternatives": [
+                     {"bank": "drum", "additions": ["clap"], "bits": 8, "probability": 0.2},
+                     {"bank": "normal", "additions": [], "bits": 0, "probability": 0.1}]},
+                 self.UNITS[1]]
+        choices = [[0, "circle", None, 1]]
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            with mock.patch.object(web.overtone_rust, "hitsound", return_value={"units": units}):
+                api.hitsound_decide_propose("hard.osu")
+            preview = api.hitsound_decide_preview("hard.osu", None, None, choices)
+            heard = api.hitsound_decide_playback("hard.osu", None, None, choices)
+            api.hitsound_decide_apply("hard.osu", None, True, None, choices)
+            written = api.hitsound_playback("hard_hitsounded.osu")
+            text = Path(tmp, "hard_hitsounded.osu").read_bytes()
+            refused = [api.hitsound_decide_preview("hard.osu", None, None, bad)["key"]
+                       for bad in ([[0, "circle", None, 2]], [[1, "circle", None, 0]],
+                                   [[7, "circle", None, 0]], [[0, "circle", None]])]
+        json.dumps([preview, heard])
+        self.assertEqual((preview["chosen"], preview["accepted"], heard["chosen"]), (1, 2, 1))
+        for part in ("events", "objects", "samples", "counts"):
+            self.assertEqual(heard[part], written[part], part)
+        # The first sound took its second alternative, the other kept its proposal.
+        self.assertIn(b"256,192,1000,1,0,1:1:0:0:", text)
+        self.assertIn(b"256,192,1500,1,8,3:3:0:0:", text)
+        self.assertEqual(refused, ["error"] * 4)
+
     def test_without_a_proposal_or_a_binary_it_says_so(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             api = self._song(tmp)

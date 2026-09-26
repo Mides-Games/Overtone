@@ -140,7 +140,7 @@ alternatives and the terms behind it. Exposed as `overtone-cli hitsound <audio> 
   other, so the number is not "accuracy". It is "better than a rule", and both samples
   clear it.
 
-### H5 · Editor and export (needs H4, P-2, P-3, P-7) — engine half and the Propose card done 2026-09-25
+### H5 · Editor and export (needs H4, P-2, P-3, P-7) — done 2026-09-26, but the Export section's surface
 
 Accept, reject or change each proposal, per object or per section; volume and sample index;
 undo; audition every change. Export through P-2 with a preview, backups, and optionally a
@@ -157,8 +157,9 @@ as they change; on 800 local maps that playback equals the written copy's on 799
 last refused alike by both. Volume and sample index are set by hand (2026-09-26) on the
 sounds the table shows (its addition filter and a range of bars): the object's own
 values, 0 to follow its green line again, a slider's for all its edges, merged into
-the same preview, hearing, write and undo, and with no proposal needed. A proposal
-changed to one of its alternatives and the Export section's surface stay future work. The card is tested through the bridge and in the browser (harness).
+the same preview, hearing, write and undo, and with no proposal needed. A proposal is
+swapped for one of its two runner-ups in the table, each shown with how likely it is
+there on its own (2026-09-26). The Export section's surface stays future work. The card is tested through the bridge and in the browser (harness).
 
 ### H6 · After it works
 

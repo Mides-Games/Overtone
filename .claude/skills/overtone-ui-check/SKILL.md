@@ -20,9 +20,10 @@ before:
   runs, so playback code runs but nothing is heard. Do not remove that shim, and
   do not click Play expecting to hear it.
 - **No user data.** The harness patches `load_config`/`save_config` and points
-  LOCALAPPDATA at a fresh temp folder, so the user's config, recents, cache and
-  library index are never read or written. The osu! Songs folder may be read
-  (it is read only); never write into it.
+  LOCALAPPDATA and USERPROFILE at a fresh temp folder, so the user's config,
+  recents, cache, library index, exports and song projects are never read or
+  written. The osu! Songs folder may be read (it is read only); never write
+  into it.
 - **Leave nothing behind.** The browser pane needs a `launch.json` outside the
   repo, in the session's root folder. Remove it when done.
 

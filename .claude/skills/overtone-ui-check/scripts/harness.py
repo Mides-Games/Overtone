@@ -31,6 +31,9 @@ parser.add_argument("--port", type=int, default=8766)
 ARGS = parser.parse_args()
 
 os.environ["LOCALAPPDATA"] = tempfile.mkdtemp(prefix="overtone-harness-")
+# The home folder too: exports and song projects default to Documents\Overtone
+# under it, and a check must never write into the user's real Documents.
+os.environ["USERPROFILE"] = os.environ["LOCALAPPDATA"]
 import overtone as ta  # noqa: E402
 
 mock.patch.object(ta, "load_config", return_value={}).start()

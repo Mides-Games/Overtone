@@ -365,9 +365,11 @@ const I18N = {
     ramp_not_recommended: "The sections read better than ramps here: there is nothing to use.",
     ramp_t_at: "Starts", ramp_t_attacks: "Attacks",
     sv_title: "Constant scroll",
-    sv_sub: "Greens that cancel this difficulty's BPM changes, so scroll and slider speed stay constant. Sound, kiai and barlines never move; every file is backed up first.",
+    sv_sub: "Greens that cancel this difficulty's BPM changes: one at each red line, and every green after it scaled by the tempo ratio, so the scroll stays constant and the map's own SV changes keep their shape. A slider lasts by its SV, so a map with sliders after a BPM change is refused rather than moved off its beats. Sound, kiai and barlines never move; every file is backed up first.",
     sv_preview: "Preview", sv_apply: "Write greens",
-    sv_would: "{added} new, {flipped} rewritten, {kept} kept at {bpm} BPM into {file}.",
+    sv_would: "{added} new, {flipped} rescaled, {kept} already constant at {bpm} BPM into {file}.",
+    already_written: "Written here already, and not written twice: History restores the file to start over.",
+    scroll_sliders: "{n} sliders start where the scroll would be rescaled, the first at {at}: a slider lasts by its SV, so every end would leave its beat. Nothing is written; normalise this difficulty in the editor, resizing its sliders.",
     sv_confirm: "Write scroll greens at {bpm} BPM into {file}?",
     sv_done: "Scroll constant at {bpm} BPM into {file}.",
     sv_nothing: "Every section already scrolls at {bpm} BPM in {file}.",
@@ -824,9 +826,11 @@ const I18N = {
     ramp_not_recommended: "Acá las secciones leen mejor que las rampas: no hay nada para usar.",
     ramp_t_at: "Empieza", ramp_t_attacks: "Ataques",
     sv_title: "Scroll constante",
-    sv_sub: "Verdes que cancelan los cambios de BPM de esta dificultad, para que el scroll y los sliders vayan siempre igual. El sonido, el kiai y los compases no se mueven nunca; cada archivo se respalda antes.",
+    sv_sub: "Verdes que cancelan los cambios de BPM de esta dificultad: uno en cada línea roja, y cada verde después de ella escalado por la razón de tempo, para que el scroll vaya siempre igual y los cambios de SV del mapa conserven su forma. Un slider dura según su SV, así que un mapa con sliders después de un cambio de BPM se rechaza en vez de sacarlos de sus tiempos. El sonido, el kiai y los compases no se mueven nunca; cada archivo se respalda antes.",
     sv_preview: "Vista previa", sv_apply: "Escribir verdes",
-    sv_would: "{added} nuevas, {flipped} reescritas, {kept} iguales a {bpm} BPM en {file}.",
+    sv_would: "{added} nuevas, {flipped} reescaladas, {kept} ya constantes a {bpm} BPM en {file}.",
+    already_written: "Ya se escribió acá, y no se escribe dos veces: Historial restaura el archivo para empezar de nuevo.",
+    scroll_sliders: "{n} sliders empiezan donde el scroll se reescalaría, el primero en {at}: un slider dura según su SV, así que cada final saldría de su tiempo. No se escribe nada; normalizá esta dificultad en el editor, ajustando sus sliders.",
     sv_confirm: "¿Escribir verdes de scroll a {bpm} BPM en {file}?",
     sv_done: "Scroll constante a {bpm} BPM en {file}.",
     sv_nothing: "Cada sección ya va a {bpm} BPM en {file}.",
@@ -2021,7 +2025,17 @@ async function svPreview() {
   const file = $("svMap").value;
   if (!file) return;
   const reply = await api().scroll_preview(file);
-  if (!reply.ok) { editFailure(reply); return; }
+  if (!reply.ok) {
+    if (reply.key === "scroll_sliders") {
+      // Refused for a reason the card can say in full, not an error.
+      SV.preview = null;
+      renderSv();
+      $("svResult").textContent = t("scroll_sliders", { n: reply.count, at: mmss(reply.first_ms / 1000) });
+      return;
+    }
+    editFailure(reply);
+    return;
+  }
   SV.preview = { ...reply, file };
   renderSv();
 }
@@ -2045,8 +2059,8 @@ function renderSv() {
   const card = $("svCard"), p = SV.preview;
   card.hidden = !S.result;
   if (!S.result) return;
-  $("svApply").disabled = !p || (!p.added && !p.flipped);
-  $("svResult").textContent = !p ? ""
+  $("svApply").disabled = !p || p.already || (!p.added && !p.flipped);
+  $("svResult").textContent = !p ? "" : p.already ? t("already_written")
     : t("sv_would", { added: p.added, flipped: p.flipped, kept: p.kept, bpm: p.reference_bpm, file: p.file });
 }
 

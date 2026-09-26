@@ -4904,19 +4904,81 @@ def set_map_breaks(beatmap: dict, spans: list[tuple[float, float]]) -> dict:
     return {"added": added, "kept": kept}
 
 
+#: The multipliers osu! plays a green line's slider velocity at: 0.1x to 10x.
+SV_RANGE = (0.1, 10.0)
+
+
+class ScrollMovesSliders(ValueError):
+    """Normalising would move slider ends: in osu! a slider lasts by the SV
+    it starts under, so scaling that SV moves its tail and repeats off the
+    beats they were snapped to. On 225 local maps with BPM changes, the
+    first version of the tool moved slider ends in 194."""
+
+    def __init__(self, count: int, first_ms: float) -> None:
+        super().__init__(f"{count} sliders start where the scroll would be rescaled (the first at "
+                         f"{first_ms:.0f} ms): a slider lasts by its SV, so each end would leave "
+                         "its beat. Refusing the map.")
+        self.count = count
+        self.first_ms = first_ms
+#: A span reads constant already when the scroll right after its red line is
+#: within this share of the reference's: normalised by hand, or by a first run.
+SCROLL_TOLERANCE = 1e-4
+
+
+def scroll_profile(beatmap: dict) -> str:
+    """A fingerprint of what the map scrolls at: every change of BPM or SV
+    multiplier, in osu!'s order, rounded to 1e-6. Writes that leave scroll
+    alone keep it — a kiai or volume green carries the SV in force — while a
+    restore, an inject, a hand edit of SV or another copy of the map change
+    it. Constant scroll records it in History, so a map it normalised is not
+    normalised twice in any session, and a map that changed since is free."""
+    import hashlib
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "TimingPoints"), None)
+    points = []
+    for order, line in enumerate((section or {}).get("lines", [])):
+        text = line.strip()
+        if text and not text.startswith("//") and (point := _timing_point_fields(text)) is not None:
+            point["order"] = order
+            points.append(point)
+    bpm, sv, changes = None, 1.0, []
+    for point in _ordered(points):
+        if point["red"] and point["beat_length"] > 0:
+            bpm, sv = 60000.0 / point["beat_length"], 1.0
+        elif not point["red"] and point["beat_length"] < 0:
+            sv = -100.0 / point["beat_length"]
+        now = (None if bpm is None else round(bpm, 6), round(sv, 6))
+        if not changes or changes[-1][1:] != now:
+            changes.append((round(point["time"], 3), *now))
+    return hashlib.sha1(repr(changes).encode("utf-8")).hexdigest()
+
+
 def set_constant_scroll(beatmap: dict) -> dict:
     """Greens that cancel BPM changes, so scroll and slider speed stay
     constant (Phase 21, SV normaliser).
 
-    The first red line's BPM is the reference: every later red with a
-    different BPM gets a green at its time carrying the multiplier the change
-    needs (reference over its own), red before green at the same time. A green
-    already there with that multiplier is kept; one with another gets only its
-    beat length rewritten. New greens carry the audible state in force there —
-    SV is scroll, not sound — and the red's own effects, so kiai and barlines
-    read exactly as before. Reds at the reference BPM are not this tool's
-    business and never count. In place, like the P-2 field edits. Returns
-    added, flipped and kept.
+    The first red line's BPM is the reference. Under every later red with a
+    different BPM, each green's multiplier is scaled by reference over that
+    BPM, so the mapper's own SV changes keep their shape at the reference's
+    speed instead of the new tempo's; a red with no green at its own time
+    gets one carrying reference over its BPM (red before green, as osu!
+    orders them), with the audible state in force there — SV is scroll, not
+    sound — and the red's own effects, so kiai and barlines read as before.
+
+    A span already reading constant is kept whole: when the scroll right
+    after its red line is the reference's (``SCROLL_TOLERANCE``), it was
+    normalised, by hand or by a first run, and is not scaled twice. osu!
+    resets SV to 1.0 at every red line, so "right after" is what the map sets
+    there, not what played before it. One case reads wrong: a span whose own
+    green at the red line held another multiplier than 1.0 reads as not yet
+    normalised on a second run and is scaled again — History restores it.
+    A multiplier scaled out of ``SV_RANGE`` refuses the map, naming its time.
+    So does a slider starting in a span that would be rescaled
+    (:class:`ScrollMovesSliders`): a slider lasts by its SV, and scaling it
+    would move every tail and repeat off its beat, so only maps with nothing
+    but circles, spinners and holds there (osu!mania's, for one) are written.
+    Reds at the reference BPM are not this tool's business and never count.
+    In place, like the P-2 field edits. Returns added (greens at red lines),
+    flipped (greens rescaled) and kept (spans already constant).
     """
     section = next((s for s in beatmap.get("sections", []) if s["name"] == "TimingPoints"), None)
     if section is None:
@@ -4927,16 +4989,11 @@ def set_constant_scroll(beatmap: dict) -> dict:
         raise ValueError("No usable red lines in this beatmap.")
     reference = rows[0][1]
     cursor = _TimingCursor(beatmap)
+    import bisect
 
     def stamp(time_ms: float) -> str:
         whole = round(time_ms)
         return str(int(whole)) if abs(time_ms - whole) < 1e-6 else f"{time_ms:.3f}"
-
-    def state_at(time_ms: float):
-        _beat, state = cursor.at(time_ms)
-        if state is None:
-            return 1.0, 0, 0, 100
-        return state.sv, state.sample_set, state.sample_index, state.volume
 
     def red_effects(time_ms: float) -> int:
         for line in section["lines"]:
@@ -4945,37 +5002,63 @@ def set_constant_scroll(beatmap: dict) -> dict:
                 return point["effects"]
         return 0
 
+    # Every green, in osu!'s order, under the red line it plays at.
+    points = []
+    for order, line in enumerate(section["lines"]):
+        text = line.strip()
+        if text and not text.startswith("//") and (point := _timing_point_fields(text)) is not None:
+            point["order"] = order
+            points.append(point)
+    greens = [p for p in _ordered(points) if not p["red"] and p["beat_length"] < 0]
+    red_times = [o for o, _b, _m in rows]
+    by_span: dict[int, list[dict]] = {}
+    for green in greens:
+        span = bisect.bisect_right(red_times, green["time"] + 1e-6) - 1
+        if span >= 0:
+            by_span.setdefault(span, []).append(green)
+
     added = flipped = kept = 0
-    for offset, bpm, meter in rows[1:]:
+    rescaled: dict[int, float] = {}
+    inserts: list[tuple[float, float, int]] = []
+    slider_starts = sorted(float(o["time"]) for o in beatmap.get("hitobjects", [])
+                           if o.get("kind") == "slider" and "time" in o)
+    moved: list[float] = []
+    for span, (offset, bpm, meter) in enumerate(rows):
         need = reference / bpm
-        if abs(need - 1.0) < 1e-9:
+        if span == 0 or abs(need - 1.0) < 1e-9:
             continue
-        value = -100.0 / need
-        hit = next((n for n, line in enumerate(section["lines"])
-                    if line.strip() and not line.strip().startswith("//")
-                    and (point := _timing_point_fields(line)) is not None
-                    and not point["red"] and abs(point["time"] - offset) <= 0.01), None)
-        if hit is not None:
-            fields = [f.strip() for f in section["lines"][hit].split(",")]
-            while len(fields) < 8:
-                fields.append("")
-            have = -100.0 / float(fields[1]) if float(fields[1]) < 0 else 1.0
-            if abs(have - need) <= 1e-9 * max(1.0, abs(need)):
-                kept += 1
-                continue
-            fields[1] = f"{value:.12g}"
-            section["lines"][hit] = ",".join(fields)
-            flipped += 1
+        own = by_span.get(span, [])
+        at_red = [g for g in own if abs(g["time"] - offset) <= 0.01]
+        after = -100.0 / at_red[-1]["beat_length"] if at_red else 1.0
+        if abs(bpm * after / reference - 1.0) <= SCROLL_TOLERANCE:
+            kept += 1
             continue
-        _, sample_set, sample_index, volume = state_at(offset)
-        row = (f"{stamp(offset)},{value:.12g},{meter},"
-               f"{sample_set},{sample_index},{volume},0,{red_effects(offset)}")
-        at = next((n for n, line in enumerate(section["lines"])
-                   if line.strip() and not line.strip().startswith("//")
-                   and (point := _timing_point_fields(line)) is not None
-                   and point["time"] > offset + 1e-6), len(section["lines"]))
-        section["lines"].insert(at, row)
-        added += 1
+        until = rows[span + 1][0] if span + 1 < len(rows) else float("inf")
+        moved += [t for t in slider_starts if offset - 1e-6 <= t < until - 1e-6]
+        for green in own:
+            value = -100.0 / green["beat_length"] * need
+            if not SV_RANGE[0] - 1e-9 <= value <= SV_RANGE[1] + 1e-9:
+                raise ValueError(f"Scaling the green at {stamp(green['time'])} ms gives "
+                                 f"{value:.3f}x, outside osu!'s {SV_RANGE[0]:g}x-{SV_RANGE[1]:g}x: "
+                                 "refusing the map.")
+            rescaled[green["order"]] = value
+        flipped += len(own)
+        if not at_red:
+            inserts.append((offset, need, meter))
+            added += 1
+    if moved:
+        raise ScrollMovesSliders(len(moved), min(moved))
+    for order, value in rescaled.items():
+        fields = _green_fields(section["lines"][order])
+        fields[1] = f"{-100.0 / value:.12g}"
+        section["lines"][order] = ",".join(fields)
+    for offset, need, meter in inserts:
+        _beat, state = cursor.at(offset)
+        sample_set, sample_index, volume = ((state.sample_set, state.sample_index, state.volume)
+                                            if state is not None else (0, 0, 100))
+        when = _point_time_text(section, offset) or stamp(offset)
+        _insert_timing_line(section, f"{when},{-100.0 / need:.12g},{meter},"
+                                     f"{sample_set},{sample_index},{volume},0,{red_effects(offset)}")
     timing = [line for line in section["lines"]
               if line.strip() and not line.strip().startswith("//")]
     beatmap["timing"] = {
@@ -5020,7 +5103,7 @@ def beatmap_text(beatmap: dict) -> str:
 
 
 def write_osu_beatmap(osu_path: str | os.PathLike[str], beatmap: dict,
-                      backup: bool = True, op: str = "write") -> dict:
+                      backup: bool = True, op: str = "write", summary: dict | None = None) -> dict:
     """Write a parsed beatmap back (Phase 5, writer row).
 
     Untouched lines come out byte-identical — same text, same line ending
@@ -5029,7 +5112,8 @@ def write_osu_beatmap(osu_path: str | os.PathLike[str], beatmap: dict,
     (_backup_before_write): written first, never overwritten, skipped when
     there is no original to protect. ``backup`` in the result is the path
     holding the replaced bytes, or None. ``op`` names the write in the
-    history log (kiai, breaks...), so History says which tool wrote it.
+    history log (kiai, breaks...), so History says which tool wrote it, and
+    ``summary`` adds to what the log keeps of it.
     """
     path = Path(osu_path)
     original = path.read_bytes() if path.is_file() else None
@@ -5044,7 +5128,7 @@ def write_osu_beatmap(osu_path: str | os.PathLike[str], beatmap: dict,
         _atomic_write_bytes(path, payload)
     except (OSError, ValueError) as exc:
         raise ValueError(f"Could not write {path.name}: {exc}") from exc
-    log_write(path, op, str(spare) if spare else None, {"bytes": len(payload)})
+    log_write(path, op, str(spare) if spare else None, {"bytes": len(payload), **(summary or {})})
     return {"bytes": len(payload), "backup": str(spare) if spare else None}
 
 

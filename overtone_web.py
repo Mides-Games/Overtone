@@ -1697,6 +1697,47 @@ class Api:
                 "added": result["added"], "kept": result["kept"],
                 "written": written["bytes"] > 0, "backup": written["backup"]}
 
+    def _already_written(self, tool: str, path: Path) -> bool:
+        """True while the file still holds exactly what ``tool`` wrote into
+        it this session."""
+        try:
+            key, digest = self._digest(path)
+        except OSError:
+            return False
+        return self._tool_wrote.get(f"{tool}|{key}") == digest
+
+    def _remember_write(self, tool: str, path: Path) -> None:
+        try:
+            key, digest = self._digest(path)
+        except OSError:
+            return
+        self._tool_wrote[f"{tool}|{key}"] = digest
+
+    @staticmethod
+    def _scrolled_already(path: Path, beatmap: dict) -> bool:
+        """True while the map scrolls exactly as this file's last scroll write
+        left it (its History entry keeps the scroll profile): a normalised
+        map is not normalised twice, whatever session it was in. On local
+        mania and taiko maps a second run would have scaled over half of them
+        again, their own green at each red line reading as not yet
+        normalised. Writes that leave scroll alone (kiai, volumes, hitsounds)
+        keep the file held; a restore, an inject, an SV edit or another copy
+        of the map free it."""
+        def key(value) -> str:
+            return os.path.normcase(str(Path(str(value)).resolve()))
+        try:
+            target = key(path)
+        except OSError:
+            return False
+        for entry in ta.read_history():
+            try:
+                if entry.get("op") != "scroll" or key(entry.get("path", "")) != target:
+                    continue
+            except OSError:
+                continue
+            return (entry.get("summary") or {}).get("profile") == ta.scroll_profile(beatmap)
+        return False
+
     # -- constant scroll: greens that cancel BPM changes ----------------------
     def _scroll_plan(self, file: str):
         """The map beside the analysed song, or a refusal."""
@@ -1710,8 +1751,9 @@ class Api:
         return path, beatmap
 
     def scroll_preview(self, file: str) -> dict:
-        """What normalising this difficulty's scroll would add, rewrite or
-        keep, against its first red line's BPM. Read only."""
+        """What normalising this difficulty's scroll would add, rescale or
+        keep, against its first red line's BPM. Read only. ``already`` is
+        true while the file holds what a scroll write here made."""
         plan = self._scroll_plan(file)
         if isinstance(plan, dict):
             return plan
@@ -1719,23 +1761,33 @@ class Api:
         try:
             import copy
             result = ta.set_constant_scroll(copy.deepcopy(beatmap))
+        except ta.ScrollMovesSliders as exc:
+            return {"ok": False, "key": "scroll_sliders", "count": exc.count,
+                    "first_ms": exc.first_ms}
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "file": path.name,
                 "reference_bpm": round(beatmap["timing"]["reds"][0][1], 3),
                 "added": result["added"], "flipped": result["flipped"],
-                "kept": result["kept"]}
+                "kept": result["kept"], "already": self._scrolled_already(path, beatmap)}
 
     def scroll_apply(self, file: str) -> dict:
         """Write the scroll greens into the difficulty, the file backed up
-        first and logged. Sound, kiai and barlines never move."""
+        first and logged. Sound, kiai and barlines never move. Refuses a file
+        History says this tool normalised already: never scaled twice."""
         plan = self._scroll_plan(file)
         if isinstance(plan, dict):
             return plan
         path, beatmap = plan
+        if self._scrolled_already(path, beatmap):
+            return {"ok": False, "key": "already_written"}
         try:
             result = ta.set_constant_scroll(beatmap)
-            written = ta.write_osu_beatmap(path, beatmap, op="scroll")
+            written = ta.write_osu_beatmap(path, beatmap, op="scroll",
+                                           summary={"profile": ta.scroll_profile(beatmap)})
+        except ta.ScrollMovesSliders as exc:
+            return {"ok": False, "key": "scroll_sliders", "count": exc.count,
+                    "first_ms": exc.first_ms}
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "file": path.name,

@@ -3365,6 +3365,77 @@ class MapWriterTests(unittest.TestCase):
         self.assertEqual(set_constant_scroll(beatmap), {"added": 0, "flipped": 1, "kept": 0})
         self.assertEqual(beatmap["timing"]["greens"], ["2000,-125,4,2,1,70,0,0"])
 
+    def test_constant_scroll_scales_the_maps_own_greens(self) -> None:
+        # Only a green at the red line went in before: the map's 0.5x and
+        # 1.25x after the change stayed relative to 150 BPM and undid it at
+        # the first one. Every green under the change now scales by 120/150.
+        from overtone import set_constant_scroll, sound_events
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1500,-133.333333333333,4,2,1,70,0,0\n"
+                                 "2000,400,4,2,1,70,1,0\n2500,-200,4,2,1,70,0,0\n"
+                                 "3000,-80,4,2,1,70,0,0")
+        before = sound_events(beatmap)
+        self.assertEqual(set_constant_scroll(beatmap), {"added": 1, "flipped": 2, "kept": 0})
+        self.assertEqual(sound_events(beatmap), before)
+        self.assertEqual(beatmap["timing"]["greens"],
+                         ["1500,-133.333333333333,4,2,1,70,0,0", "2000,-125,4,2,1,70,0,0",
+                          "2500,-250,4,2,1,70,0,0", "3000,-100,4,2,1,70,0,0"])
+        # Normalised now: a second run finds the span constant and scales nothing.
+        self.assertEqual(set_constant_scroll(beatmap), {"added": 0, "flipped": 0, "kept": 1})
+
+    def test_constant_scroll_keeps_a_span_normalised_by_hand(self) -> None:
+        from overtone import set_constant_scroll
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n2000,400,4,2,1,70,1,0\n"
+                                 "2000,-125,4,2,1,70,0,0\n2500,-250,4,2,1,70,0,0")
+        self.assertEqual(set_constant_scroll(beatmap), {"added": 0, "flipped": 0, "kept": 1})
+        self.assertEqual(beatmap["timing"]["greens"],
+                         ["2000,-125,4,2,1,70,0,0", "2500,-250,4,2,1,70,0,0"])
+
+    def test_constant_scroll_green_follows_a_red_line_to_its_last_decimal(self) -> None:
+        from overtone import set_constant_scroll
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n2000.0114440535,400,4,2,1,70,1,0")
+        set_constant_scroll(beatmap)
+        self.assertEqual(beatmap["timing"]["greens"], ["2000.0114440535,-125,4,2,1,70,0,0"])
+
+    def test_scroll_profile_follows_scroll_and_nothing_else(self) -> None:
+        from overtone import scroll_profile, set_chorus_kiai, set_constant_scroll, set_section_volumes
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1500,-125,4,2,1,70,0,0\n"
+                                 "2000,400,4,2,1,70,1,0")
+        plain = scroll_profile(beatmap)
+        set_chorus_kiai(beatmap, [(1200.0, 1800.0)])
+        set_section_volumes(beatmap, [{"start_s": 1.0, "end_s": 1.8, "level_db": -6.0},
+                                      {"start_s": 1.8, "end_s": 9.0, "level_db": 0.0}])
+        self.assertEqual(scroll_profile(beatmap), plain)       # light and sound, not scroll
+        set_constant_scroll(beatmap)
+        self.assertNotEqual(scroll_profile(beatmap), plain)
+
+    def test_constant_scroll_refuses_to_move_slider_ends(self) -> None:
+        # A slider lasts by the SV it starts under: scaled, its tail and
+        # repeats leave their beats. The first version moved slider ends on
+        # 194 of 225 local maps with BPM changes.
+        from overtone import ScrollMovesSliders, set_constant_scroll
+        timing = "1000,500,4,2,1,70,1,0\n2000,400,4,2,1,70,1,0"
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+                 "[Difficulty]", "SliderMultiplier:1.4", "", "[TimingPoints]"] + timing.split("\n") + [
+                 "", "[HitObjects]", "256,192,1200,2,0,L|356:192,1,140", "256,192,2400,2,0,L|356:192,1,140",
+                 "256,192,2800,2,0,L|356:192,1,140", ""]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes("\r\n".join(lines).encode("utf-8"))
+            beatmap = read_osu_beatmap(path)
+        with self.assertRaises(ScrollMovesSliders) as refused:
+            set_constant_scroll(beatmap)
+        # Two sliders start after the change; the one before it stays out of it.
+        self.assertEqual((refused.exception.count, refused.exception.first_ms), (2, 2400.0))
+        self.assertEqual(beatmap["timing"]["greens"], [])
+
+    def test_constant_scroll_refuses_a_multiplier_osu_cannot_play(self) -> None:
+        from overtone import set_constant_scroll
+        # 120 -> 60 BPM doubles every multiplier: 8.33x would become 16.7x.
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n2000,1000,4,2,1,70,1,0\n"
+                                 "2500,-12,4,2,1,70,0,0")
+        with self.assertRaisesRegex(ValueError, "2500"):
+            set_constant_scroll(beatmap)
+
     _VOLUME_SECTIONS = [
         {"start_s": 0.0, "end_s": 10.0, "kind": "verse", "level_db": -8.0},
         {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -14.0},

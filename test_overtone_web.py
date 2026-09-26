@@ -1751,6 +1751,38 @@ class ScrollBridgeTests(_IsolatedConfig):
             greens = ta.read_osu_beatmap(Path(tmp) / "map.osu")["timing"]["greens"]
             self.assertEqual(greens, ["2000,-125,4,2,1,70,0,0"])
             self.assertTrue(Path(tmp, "map.osu.bak").is_file())
+            # Normalised already, by History's scroll profile: previewed as
+            # such and never scaled twice, in this session or the next.
+            self.assertTrue(api.scroll_preview("map.osu")["already"])
+            self.assertEqual(api.scroll_apply("map.osu")["key"], "already_written")
+            later = _api_with_points()
+            later._analysis.source = str(Path(tmp) / "audio.mp3")
+            self.assertTrue(later.scroll_preview("map.osu")["already"])
+            self.assertEqual(later.scroll_apply("map.osu")["key"], "already_written")
+            self.assertEqual(Path(tmp, "map.osu").read_bytes(), after)
+            # A write that leaves the scroll alone keeps it held...
+            beatmap = ta.read_osu_beatmap(Path(tmp) / "map.osu")
+            ta.set_chorus_kiai(beatmap, [(1500.0, 1800.0)])
+            ta.write_osu_beatmap(Path(tmp) / "map.osu", beatmap, op="kiai")
+            self.assertTrue(later.scroll_preview("map.osu")["already"])
+            # ...and another copy of the map, not normalised, is free.
+            Path(tmp, "map.osu").write_bytes(raw_before)
+            self.assertFalse(later.scroll_preview("map.osu")["already"])
+
+    def test_sliders_after_a_change_refuse_and_nothing_is_written(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            path = Path(tmp, "map.osu")
+            path.write_bytes(path.read_bytes().replace(
+                b"256,192,1000,1,0,0:0:0:0:", b"256,192,1000,1,0,0:0:0:0:\r\n256,192,2500,2,0,L|356:192,1,140"))
+            before = path.read_bytes()
+            preview = api.scroll_preview("map.osu")
+            done = api.scroll_apply("map.osu")
+            self.assertEqual(path.read_bytes(), before)
+            self.assertFalse(Path(tmp, "map.osu.bak").exists())
+        json.dumps([preview, done])
+        self.assertEqual((preview["key"], preview["count"], preview["first_ms"]), ("scroll_sliders", 1, 2500.0))
+        self.assertEqual(done["key"], "scroll_sliders")
 
     def test_without_maps_it_says_so(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

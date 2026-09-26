@@ -203,6 +203,13 @@ def _default_output() -> Path:
 #: local .wav samples were one; the Ogg stream inside is intact.
 OGG_IN_WAV_TAGS = range(0x674F, 0x6772)
 
+#: osu!'s skinnable hitsound names — a sample set, a hit or slider sound, an
+#: optional index. A mapset's own samples, never a new encode of its song:
+#: listed as candidates, every mapset with custom samples showed Audio swap.
+HITSOUND_SAMPLE_NAME = re.compile(
+    r"^(normal|soft|drum)-(hit(normal|whistle|finish|clap)|slider(slide|whistle|tick))\d*\.",
+    re.IGNORECASE)
+
 
 def _playable_sample(data: bytes) -> bytes:
     """A sample's bytes as a browser can decode them: an Ogg stream wrapped
@@ -773,13 +780,15 @@ class Api:
 
     def swap_audios(self, folder: str) -> dict:
         """The audio files of a mapset folder, with the one its maps name.
-        Read only, no analysis needed."""
+        Hitsound samples are not songs and are left out. Read only, no
+        analysis needed."""
         base = Path(str(folder))
         if not base.is_dir():
             return {"ok": False, "key": "bad_folder"}
         try:
             audios = sorted(p.name for p in base.iterdir()
-                            if p.suffix.lower() in ta.AUDIO_EXTENSIONS and p.is_file())
+                            if p.suffix.lower() in ta.AUDIO_EXTENSIONS and p.is_file()
+                            and not HITSOUND_SAMPLE_NAME.match(p.name))
             current = ""
             for path in sorted(base.iterdir()):
                 if path.suffix.lower() != ".osu":

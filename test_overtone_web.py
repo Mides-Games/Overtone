@@ -2027,6 +2027,17 @@ class SwapBridgeTests(_IsolatedConfig):
             self.assertNotEqual(before, after)
             self.assertTrue((root / "map.osu.bak").is_file())
 
+    def test_hitsound_samples_are_not_offered_as_encodes(self) -> None:
+        # Every custom-sample mapset listed its samples as new encodes, so
+        # the card showed with no second song in the folder.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._set(tmp)
+            for name in ("soft-hitclap.wav", "drum-hitnormal2.wav", "Normal-SliderSlide.ogg",
+                         "soft-slidertick.wav"):
+                (root / name).write_bytes(b"RIFF")
+            listed = web.Api().swap_audios(str(root))
+            self.assertEqual(listed["audios"], ["fast.wav", "new.wav", "old.wav"])
+
     def test_tempo_twins_and_same_file_refuse_writing_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = self._set(tmp)

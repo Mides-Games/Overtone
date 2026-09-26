@@ -56,7 +56,7 @@ There were 1673 eligible songs, one per artist and title. A fixed seed shuffled 
 disjoint samples of 500 came first: A chose the rule, and B was held out and read once. C,
 the other 673, was read once after the rule was frozen. No audio file is shared between
 samples. Some titles recur as another cut or another song of that name: 36 of B's 481 in A,
-and 81 of C's 638 in A or B. `overtone-cli structure` ran on every song; one MP3 of B did not
+and 81 of C's 638 in A or B. `overtone-cli structure` ran on every song; one MP3 of A did not
 decode. The chance of the exact bar is 20 %: one of the five bars in the ±2-bar window an edge
 is paired within.
 

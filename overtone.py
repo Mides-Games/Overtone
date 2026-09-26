@@ -3100,9 +3100,23 @@ def delete_timing_point(points: list[TimingPoint], index: int) -> list[TimingPoi
     return [p for n, p in enumerate(points) if n != index]
 
 
+def _shown_offset(points: list[TimingPoint], index: int) -> float:
+    """Where the table shows point ``index`` and the .osu writes it: a detected
+    line within SNAP_TOLERANCE_MS of the previous grid sits on that grid.
+
+    An edit makes a point hand-placed, and snapping skips those, so an edit
+    that starts from the raw offset moves the line by up to that tolerance
+    before doing what was asked: a -1 ms nudge on a line shown at 5000.0 but
+    detected at 5000.6 showed 4999.6 and still wrote 5000. Edits that keep a
+    line where it is, or move it by a step, start from here instead.
+    """
+    return snap_timing_points(points)[index].offset_ms
+
+
 def nudge_timing_point(points: list[TimingPoint], beats: np.ndarray, index: int,
                        delta_ms: float) -> list[TimingPoint]:
-    """Shift one point's offset by ``delta_ms``, beat index refreshed.
+    """Shift one point's offset by ``delta_ms`` from where it is shown
+    (``_shown_offset``), beat index refreshed.
 
     A nudge stops at 0 ms rather than carry a point from the audio into the
     time before it. A point already before 0 ms (an anacrusis, or audio that
@@ -3112,8 +3126,9 @@ def nudge_timing_point(points: list[TimingPoint], beats: np.ndarray, index: int,
     if not 0 <= index < len(points):
         raise ValueError("No timing point at that index.")
     old = points[index]
-    offset = old.offset_ms + delta_ms
-    if old.offset_ms >= 0.0 > offset:
+    shown = _shown_offset(points, index)
+    offset = shown + delta_ms
+    if shown >= 0.0 > offset:
         offset = 0.0
     merged = list(points)
     merged[index] = TimingPoint(offset, old.bpm, old.confidence,
@@ -3124,7 +3139,8 @@ def nudge_timing_point(points: list[TimingPoint], beats: np.ndarray, index: int,
 
 
 def rescale_section(points: list[TimingPoint], index: int, factor: float) -> list[TimingPoint]:
-    """Multiply one section's BPM (per-section ×2/÷2 fix). Offset untouched."""
+    """Multiply one section's BPM (per-section ×2/÷2 fix). The line stays
+    where it is shown (``_shown_offset``)."""
     if not 0 <= index < len(points):
         raise ValueError("No timing point at that index.")
     if factor not in (0.5, 2.0):
@@ -3134,8 +3150,8 @@ def rescale_section(points: list[TimingPoint], index: int, factor: float) -> lis
     if not 30 <= bpm <= 600:
         raise ValueError(f"Resulting BPM {bpm:.1f} is outside 30–600.")
     merged = list(points)
-    merged[index] = TimingPoint(old.offset_ms, bpm, old.confidence, old.beat_index,
-                                old.meter, old.meter_known, manual=True)
+    merged[index] = TimingPoint(_shown_offset(points, index), bpm, old.confidence,
+                                old.beat_index, old.meter, old.meter_known, manual=True)
     return merged
 
 
@@ -3183,20 +3199,20 @@ def split_section(points: list[TimingPoint], beats: np.ndarray, index: int, at_m
     """
     if not 0 <= index < len(points):
         raise ValueError("No timing point at that index.")
-    point = points[index]
-    stop = points[index + 1].offset_ms if index + 1 < len(points) else float(end_ms)
+    point, start = points[index], _shown_offset(points, index)
+    stop = _shown_offset(points, index + 1) if index + 1 < len(points) else float(end_ms)
     beat_ms = 60000.0 / point.bpm
-    k = int(round((float(at_ms) - point.offset_ms) / beat_ms))
-    split_ms = point.offset_ms + k * beat_ms
+    k = int(round((float(at_ms) - start) / beat_ms))
+    split_ms = start + k * beat_ms
     if k < 1 or split_ms > stop - 0.5 * beat_ms:
         raise ValueError("Split inside the section: a beat or more after its red line, "
                          "before the next one.")
     times = np.asarray(attack_times, dtype=np.float64)
     weights = np.asarray(attack_weights, dtype=np.float64)
-    first = _refit_section(times, weights, point.offset_ms, point.bpm, split_ms)
+    first = _refit_section(times, weights, start, point.bpm, split_ms)
     second = _refit_section(times, weights, split_ms, point.bpm, stop)
     merged = list(points)
-    merged[index] = TimingPoint(point.offset_ms, first["bpm"], point.confidence,
+    merged[index] = TimingPoint(start, first["bpm"], point.confidence,
                                 point.beat_index, point.meter, point.meter_known, manual=True)
     # A split on a beat need not be on a bar: the new line's meter is a guess.
     merged.append(TimingPoint(split_ms, second["bpm"], 1.0, _nearest_beat_index(beats, split_ms),
@@ -3212,15 +3228,15 @@ def merge_sections(points: list[TimingPoint], beats: np.ndarray, index: int,
     which keeps its offset. Returns the new points and a report."""
     if not 0 <= index < len(points) - 1:
         raise ValueError("There is no next section to merge with.")
-    point, gone = points[index], points[index + 1]
-    stop = points[index + 2].offset_ms if index + 2 < len(points) else float(end_ms)
+    point, start = points[index], _shown_offset(points, index)
+    stop = _shown_offset(points, index + 2) if index + 2 < len(points) else float(end_ms)
     row = _refit_section(np.asarray(attack_times, dtype=np.float64),
                          np.asarray(attack_weights, dtype=np.float64),
-                         point.offset_ms, point.bpm, stop)
+                         start, point.bpm, stop)
     merged = [p for n, p in enumerate(points) if n != index + 1]
-    merged[index] = TimingPoint(point.offset_ms, row["bpm"], point.confidence, point.beat_index,
+    merged[index] = TimingPoint(start, row["bpm"], point.confidence, point.beat_index,
                                 point.meter, point.meter_known, manual=True)
-    return merged, {"removed_ms": gone.offset_ms, "sections": [row]}
+    return merged, {"removed_ms": _shown_offset(points, index + 1), "sections": [row]}
 
 
 # ---------------------------------------------------------------------------

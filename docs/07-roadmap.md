@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 % |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **554** Python (383 engine + 171 web shell) · **263** Rust.
+Tests: **555** Python (384 engine + 171 web shell) · **263** Rust.
 
 ### What is pending, in order
 
@@ -263,7 +263,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Drift lane | how far each attack sits from the grid osu! will play | med | high | timeline | no | no | P1 | **done** — nearest 1/1-1/4 tick of the governing line, ±30 ms, green ≤5, amber ≤15 |
 | Map red lines as ghosts | the loaded .osu's red lines drawn beside the detected ones | low | high | compare | no | no | P1 | **done** — from the reference card, else the compare card |
 | Verdict strip | which engine answered, its residual, and whether to trust it, in one line | low | high | shell | no | no | P1 | partial — banners + engine pill |
-| Snap indicator | say when export snapping moved an offset, so a ±1 ms nudge is not silently undone | low | med | editor | no | no | P2 | todo |
+| Snap indicator | say when export snapping moved an offset, so a ±1 ms nudge is not silently undone | low | med | editor | no | no | P2 | **done** without an indicator, by fixing the cause — snapping never moves a hand-placed line, and every edit now starts from the line as it is shown, so a nudge moves the shown and written line by exactly its step |
 | Uncovered-intro shading | hatch the audio before the first red line | low | med | timeline | no | no | P2 | partial — banner only |
 | Density ribbon | half- and double-time inside one reported section | med | med | P2 density | no | no | P2 | todo |
 | Measures on the map | bar ticks and signature regions | low | med | timeline | no | no | P2 | partial — meter column |

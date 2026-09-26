@@ -463,6 +463,31 @@ class ManualEditTests(unittest.TestCase):
                                      np.ones(60), 20000.0)
         self.assertEqual((out[0].bpm, report["sections"][0]["kept"]), (120.0, "weak"))
 
+    def test_edits_start_from_the_line_as_it_is_shown(self):
+        from overtone import merge_sections, split_section
+        # Detected 0.6 ms after a beat of the grid before it: rounding noise,
+        # shown and written on that beat. An edit makes the line hand-placed,
+        # which snapping skips, so starting from the raw 5000.6 moved it first:
+        # -1 ms showed 4999.6 and the .osu still read 5000.
+        beats = np.arange(0.0, 30.0, 0.5)
+        points = [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(5000.6, 120.0, 0.9, 10),
+                  TimingPoint(15000.0, 125.0, 0.9, 30)]
+        self.assertEqual(snap_timing_points(points)[1].offset_ms, 5000.0)
+        for step in (-1.0, 1.0, 5.0):
+            with self.subTest(step=step):
+                nudged = snap_timing_points(nudge_timing_point(points, beats, 1, step))
+                self.assertAlmostEqual(nudged[1].offset_ms, 5000.0 + step, places=9)
+        # Edits that keep the line keep it where it was shown.
+        self.assertEqual(rescale_section(points, 1, 2.0)[1].offset_ms, 5000.0)
+        none = np.zeros(0)
+        split, report = split_section(points, beats, 1, 7100.0, none, none, 30000.0)
+        self.assertEqual([p.offset_ms for p in split[:3]], [0.0, 5000.0, 7000.0])
+        merged, report = merge_sections(points, beats, 0, none, none, 30000.0)
+        self.assertEqual((report["removed_ms"], [p.offset_ms for p in merged]),
+                         (5000.0, [0.0, 15000.0]))
+        merged, _report = merge_sections(points, beats, 1, none, none, 30000.0)
+        self.assertEqual([p.offset_ms for p in merged], [0.0, 5000.0])
+
 
 def _section_analysis(mid_amp: float, bpm: float = 112.4):
     from overtone import Analysis

@@ -17,6 +17,41 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Edits start from the line as it is shown
+
+The roadmap asked for a snap indicator: say when export snapping moved an offset, so a
+±1 ms nudge is not silently undone. Snapping never moves a hand-placed line, and an edited
+line is hand-placed; the quieter problem was one step earlier. The table shows, and the
+.osu writes, a detected line within 1 ms of the previous grid (`SNAP_TOLERANCE_MS`) on that
+grid, but a nudge started from the raw offset. On a line detected at 5000.6 and shown at
+5000.0, -1 ms showed 4999.6 and still wrote 5000, and +1 ms jumped to 5001.6. ×2/÷2 of a
+section, split and merge kept the raw offset too, so the line they kept in place moved by
+the same amount once it was hand-placed and no longer snapped.
+
+### Fixed
+
+- **`_shown_offset`**: where the table shows a line and the .osu writes it. A nudge starts
+  from it; ×2/÷2, split (the kept line, and the grid the new one goes on) and merge (the
+  kept line, and the removed one it reports) keep it. The new test fails on the old code at
+  every step: 4999.6, 5001.6 and 5005.6 for -1, +1 and +5, and 5000.6 after ×2.
+- No indicator was built: with the cause gone there is nothing left for it to say.
+
+### Measured
+
+```
+raw vs shown, precision engine's own section changes   0.005-0.026 ms (the measurement
+                                                       behind SNAP_TOLERANCE_MS), under
+                                                       the 0.1 ms the table shows
+the full 1 ms                                          only lines that land near the
+                                                       previous grid another way: the
+                                                       fallback tracker, a loaded map
+how often, on real songs                               not measured
+Python unittest      554 -> 555, all pass · facts ok
+engine gates         benchmark 24/24, bpm-snapshot 24/24, golden 27/27, reference 24/24,
+                     coverage, measures, signatures, robustness, assisted: all pass (no
+                     gate edits a point, so none could move)
+```
+
 ## v4.0.0-dev — 2026-09-26 · Analysis stages named and timed, and a stop between them
 
 The progress bar showed the engine's English message and nothing else: no time, and no

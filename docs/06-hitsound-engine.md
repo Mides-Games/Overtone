@@ -328,9 +328,12 @@ Samples/
 - Analyse the samples themselves with the same feature extractor, then **recommend** a
   mapping: a sample whose spectral profile is kick-like is offered for the kick role. This
   makes profiles portable across sample sets instead of hard-coding "drum-hitnormal".
-- Missing samples are reported, not silently assigned: an assignment referencing a sample
-  the beatmap folder does not contain is a playable-but-silent hitsound, and that is a
-  validation error (see [`07-roadmap.md`](07-roadmap.md), Phase 6).
+- Missing samples are counted, never silently assigned. A sound asking the beatmap folder
+  for a sample it does not contain plays the skin's default sample, not silence (osu!
+  falls back, and the playback counts it). On 800 local maps (2026-09-26) 78 % ask for
+  one the folder lacks, nearly always an index-1 hitnormal the mapper meant the skin to
+  play, so a missing sample is not a validation finding (timeline, same date). This
+  replaces an earlier line here that called such a sound silent and a validation error.
 
 ---
 

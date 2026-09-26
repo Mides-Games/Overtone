@@ -367,7 +367,7 @@ corpus generator; they say the classes separate, not how they do on real songs.
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Validation rules | duplicates, very short sections, impossible changes, suspicious offsets, octave mistakes | med | **high** | P5 | no | no | **P1** | **done** — shown as banners |
-| Hitsound validation | missing samples, silent assignments, inconsistent patterns | med | high | P6 | no | no | P1 | partial — in the mod report since H3: claps that break the map's own pattern, finishes and claps with no attack under them; missing sample files are counted by the playback, not reported as findings yet |
+| Hitsound validation | missing samples, silent assignments, inconsistent patterns | med | high | P6 | no | no | P1 | partial — in the mod report since H3: claps that break the map's own pattern, finishes and claps with no attack under them; missing sample files are counted by the playback and, measured, not reported: osu! plays the skin's there, and 78 % of 800 local maps ask for one, mostly an index-1 hitnormal left to the skin on purpose |
 | Alignment report | objects not on attacks; attacks with no object | med | high | P5 | no | no | P1 | **done** |
 | Never auto-fix | every finding is a proposal with a consent step | low | **high** | rules | no | no | **P1** | **done** |
 | Density analysis | objects/s over time | low | med | P5 | no | no | P2 | **done** |

@@ -17,6 +17,33 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Missing hitsound samples: measured, not reported
+
+### Rejected / tried and dropped
+
+- **Missing sample files as mod report findings** (P7, "missing samples, silent
+  assignments"). The plan called a sound whose sample the beatmap folder lacks
+  "playable-but-silent" and a validation error. It is neither: osu! plays the skin's
+  default sample there, and the playback already counts it. Measured before building the
+  finding, on 800 local maps: 624 (78 %) ask for a sample their folder lacks, 601 of them
+  in mapsets that ship samples of their own, nearly always an index-1 hitnormal
+  (`soft-hitnormal`, `normal-hitnormal`) that the mapper leaves to the skin on purpose
+  while shipping custom additions. A finding would accuse correct maps three times in
+  four. The one unambiguous case, a custom filename named on an object and missing from
+  the folder, occurs on 0 of the 800. `06-hitsound-engine.md` §8, the roadmap row and the
+  README now say so.
+
+### Measured
+
+```
+800 local maps (one difficulty each, read only)
+  ship hitsound samples              662
+  ask for an index >= 1 sample       672
+  ask for one the folder lacks       624: 601 that ship samples, 23 that ship none
+  missing names per map (shipping)   median 4, p90 10, max 70
+  a named custom file missing        0
+```
+
 ## v4.0.0-dev — 2026-09-26 · A hitsound difficulty for the whole mapset
 
 ### Changed

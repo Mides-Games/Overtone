@@ -17,6 +17,37 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · The engines warmed up while the user picks a song
+
+The first analysis in each session paid for what first calls compile and set up (librosa's
+numba kernels, scipy's filters, the FFT plans): measured in fresh processes on the same
+20 s fixture, a first grid analysis took 1.0-1.4 s longer than the second, a first
+fallback one 3.5-4.0 s longer. Roadmap, Phase 22: "Pre-warm the engine".
+
+### Changed
+
+- **`warm_up()`**: both engines, the grid and the fallback tracker, once each on the
+  self-check's 20 s of clicks in a temporary folder. It holds no lock and changes no
+  state, so an analysis started meanwhile runs as ever, and it reports a failure instead
+  of raising.
+- The window starts it on a background thread when it opens, except when it was opened
+  with a song, whose analysis is about to run. 3 bridge tests.
+
+### Measured
+
+```
+bench/audio/downbeat-4-4.wav, a fresh process each, 3 rounds interleaved, machine busy
+                      first analysis, cold     first analysis after warm_up()
+  grid (auto)         2.46 / 2.65 / 3.22 s     0.90 / 1.09 / 1.24 s   median -1.56 s
+  fallback (legacy)   5.21 / 5.74 / 5.81 s     2.65 / 2.66 / 3.13 s   median -3.08 s
+  warm_up() itself    grid 1.44-3.12 s + fallback 2.50-3.36 s, on its own thread
+Python unittest      581 -> 584, all pass · facts ok · engine untouched, gates not re-run
+```
+
+The warm-up's own seconds are spent while the window is open and a song is being picked;
+an analysis that starts before it ends shares the machine with it, and still finds the
+compiled kernels it has already built.
+
 ## v4.0.0-dev — 2026-09-26 · Bars on the map at every zoom, and signatures on the red lines
 
 Zoomed out past 7 px a beat, the map drew no grid at all, so a whole song showed no bars;

@@ -2912,6 +2912,37 @@ class SelfCheckTests(unittest.TestCase):
         webview.create_window.assert_not_called()
         webview.start.assert_not_called()
 
+
+class WarmUpTests(_IsolatedConfig):
+    """The window runs both engines once in the background, so the user's
+    first analysis does not pay for first-call compilation."""
+
+    def test_both_engines_run_once_on_clicks(self) -> None:
+        seen = []
+
+        def analyse(path, engine="auto", **_options):
+            seen.append((engine, Path(path).is_file()))
+
+        with mock.patch.object(ta, "analyze_audio", side_effect=analyse):
+            took = web.warm_up()
+        self.assertEqual(seen, [("auto", True), ("legacy", True)])
+        self.assertEqual(sorted(took), ["auto", "legacy"])
+        self.assertTrue(all(seconds >= 0 for seconds in took.values()))
+
+    def test_a_failure_is_reported_never_raised(self) -> None:
+        with mock.patch.object(ta, "analyze_audio", side_effect=MemoryError("no room")):
+            self.assertEqual(web.warm_up(), {"error": "MemoryError: no room"})
+
+    def test_the_window_warms_up_unless_a_song_is_about_to_run(self) -> None:
+        for argv, warms in (([], True), (["song.wav"], False)):
+            ran = threading.Event()
+            with self.subTest(argv=argv), \
+                    mock.patch.dict("sys.modules", {"webview": mock.MagicMock()}), \
+                    mock.patch.object(ta, "claim_taskbar_identity"), \
+                    mock.patch.object(web, "warm_up", side_effect=ran.set):
+                web.main(argv)
+                self.assertEqual(ran.wait(5 if warms else 0.5), warms)
+
     def test_the_installer_bundles_every_file_the_app_reads(self) -> None:
         import importlib.util
         spec = importlib.util.spec_from_file_location(

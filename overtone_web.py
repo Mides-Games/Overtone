@@ -2828,6 +2828,31 @@ def self_check() -> dict:
             "checks": checks}
 
 
+def warm_up() -> dict:
+    """Both engines' first calls, run before the user's first analysis.
+
+    The first analysis in a process paid for what first calls compile and set
+    up (librosa's numba kernels, scipy's filters, the FFT plans): measured in
+    fresh processes, 1.0-1.4 s of a first grid analysis and 3.5-4.0 s of a
+    first fallback one. The window runs this on a background thread, on the
+    self-check's clicks in a temporary folder. It holds no lock and changes no
+    state, so an analysis started meanwhile runs as ever. Returns the seconds
+    each engine took, or the error, and never raises.
+    """
+    import tempfile
+    took: dict = {}
+    try:
+        with tempfile.TemporaryDirectory(prefix="overtone-warm-") as scratch:
+            clicks = _click_track(Path(scratch) / "clicks.wav")
+            for engine in ("auto", "legacy"):
+                start = time.perf_counter()
+                ta.analyze_audio(clicks, engine=engine)
+                took[engine] = round(time.perf_counter() - start, 3)
+    except Exception as exc:  # noqa: BLE001 -- a warm-up must never disturb the app
+        took["error"] = f"{type(exc).__name__}: {exc}"
+    return took
+
+
 def _run_self_check(report: str | None) -> None:
     """``--self-check [REPORT.json]``: the result as JSON in the file, or on
     stdout when none is named, and exit 0 only when every check passed. The
@@ -2878,6 +2903,10 @@ def main(argv: list[str] | None = None) -> None:
         width=1320, height=880, min_size=(960, 640), background_color="#0B0F17")
     api._window = window
     window.events.shown += lambda: _dark_caption(window)
+    # The first analysis would pay for first-call compilation: pay it now,
+    # while the user picks a song. Not when a song given here is about to run.
+    if not files:
+        threading.Thread(target=warm_up, name="warm-up", daemon=True).start()
     webview.start(gui="edgechromium", icon=str(ICON_ICO) if ICON_ICO.is_file() else None,
                   private_mode=False,
                   storage_path=str(Path(os.environ.get("LOCALAPPDATA", HERE)) / "Overtone" / "webview"))

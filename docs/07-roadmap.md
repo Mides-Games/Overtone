@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **581** Python (400 engine + 181 web shell) · **263** Rust.
+Tests: **584** Python (400 engine + 184 web shell) · **263** Rust.
 
 ### What is pending, in order
 
@@ -637,7 +637,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Fallback re-timing | re-time the fallback tracker's beats at sample resolution (they land 5–35 ms late) | med | **high** | — | no | no | P1 | todo |
 | Real-MP3 offset bias | measure the ~20–26 ms attack-vs-map bias on real MP3s before trusting absolute offsets | med | **high** | Corpus B | no | no | P1 | **explained** (2026-09-26, 10.0a) — measured 2026-09-24 by reference timing: 30 random ranked maps all read the attacks after their lines, median +26.2 ms (IQR +23.0..+30.9), OGG (+27.2, n=3) as MP3 (+26.1, n=27); on Corpus B v3's red lines sit a median +24.0 ms after the maps'. Read from the audio itself, the sound starts a median 21.4 ms after ranked maps' lines (100 held-out maps, every decoder) and 7.9 ms before Overtone's (Corpus B): a convention of the maps plus a few ms of the engine, not the MP3 decoder. Not corrected: the correction waits on a decision (10.0a) |
 | Envelope memory bound | mel in chunks: ~2.65 → ~0.74 GB peak on long tracks; no silent MemoryError fallback | med | high | — | no | no | P1 | **done** — spectrogram and tempogram in blocks since audit #38 (3.7 → 0.55 GB peak on a 5-minute song, the same red lines); a failed envelope now reaches the caller instead of being swapped for the flux one (2026-09-26) |
-| Pre-warm the engine | load librosa and numba in the background at startup (~2.3 s off the first analysis) | low | med | shell | no | no | P2 | todo |
+| Pre-warm the engine | load librosa and numba in the background at startup (~2.3 s off the first analysis) | low | med | shell | no | no | P2 | **done** — the window runs both engines once on 20 s of clicks in the background (not when opened with a song to analyse): a first grid analysis 2.65 → 1.09 s, a first fallback one 5.74 → 2.66 s (medians of 3 fresh processes) |
 | Linear section growth | refine the growth grid on a trailing window | med | med | — | no | no | P2 | todo |
 | Faster phase re-centring | a recurrence instead of one `exp` per shift | low | low | — | no | no | P3 | todo |
 | Specific load errors | missing, empty and junk files each get their own message | low | med | decode | no | no | P2 | **done** — missing, empty and junk files named |

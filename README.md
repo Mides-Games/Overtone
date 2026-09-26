@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-616%20Python%20%C2%B7%20270%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-621%20Python%20%C2%B7%20270%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -67,7 +67,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Elastic grid for tempo ramps | ✅ | 0.16 BPM on realistic ramps, in Rust; Timing's Ramps card turns the curve into the fewest red lines within a chosen drift. The analysis itself still gives a staircase in Python |
 | 2-D coherence map | 🦀 | Better seeds and a confidence map |
 | Bar-length change (4/4 → 3/4 keeping the beat) | 📋 | P5 |
-| Fallback beats re-timed at sample resolution | 📋 | P22 — they land 5–35 ms late today |
+| Fallback beats on their attacks | ✅ | The tracker's lag behind the attacks, read on each song's waveform, is taken off every beat and red line: 7-9 ms on clean drums, 12-17 ms on real songs |
 | Real-audio offset bias measured and corrected | 📋 | P22 — explained, not corrected: ranked maps put their lines a median 21 ms before the sound starts (100 held-out maps, every decoder), and Overtone's grids sit a few ms after it; following the maps' convention on export is a decision (10.0a) |
 | Human-level accuracy on real songs | 📋 | P10 — fingerprint reuse, percussive stem, neural beats, rippling tempo, ensemble |
 | Analysis mode fast / precise | 📋 | P20 |
@@ -295,7 +295,9 @@ A folder instead of a file analyses every audio file in it. Presets: **Variable*
    change over one constant bar gets its own red line and meter — but only when every
    section divides that bar, so a real tempo change is never swallowed.
 8. **Fallback.** No grid fits (rubato, free time): the v2 tracker runs, after checking the
-   onset envelope is more periodic than itself shuffled — noise is refused, not timed.
+   onset envelope is more periodic than itself shuffled — noise is refused, not timed. Its
+   beats sit on the envelope's peaks, after the attacks; the lag, read on the waveform for
+   each song, is taken off every beat and red line.
 
 Full specification: [`docs/05-dsp-pipeline.md`](docs/05-dsp-pipeline.md).
 
@@ -311,7 +313,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 616 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 621 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage

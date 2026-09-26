@@ -96,6 +96,37 @@ def _click_track(path: Path, bpm: float, duration: float = 12.0,
     sf.write(str(path), y, sr)
 
 
+def _click_ramp(path: Path, bpm0: float, bpm1: float, duration: float,
+                sr: int = 44100) -> np.ndarray:
+    """A click on every beat of a tempo ramping from ``bpm0`` to ``bpm1``: no
+    grid fits it, so it reaches the fallback tracker. Returns each click's
+    time, to the sample it starts on."""
+    import soundfile as sf
+    y = np.zeros(int(sr * duration), dtype=np.float32)
+    n = int(0.03 * sr)
+    t = np.arange(n) / sr
+    click = (np.sin(2 * np.pi * 1800 * t) * np.exp(-t / 0.004)).astype(np.float32) * 0.9
+    clicks, tt = [], 0.5
+    while tt < duration - 0.5:
+        i = int(round(tt * sr))
+        y[i:i + n] += click
+        clicks.append(i / sr)
+        tt += 60.0 / (bpm0 + (bpm1 - bpm0) * tt / duration)
+    sf.write(str(path), y, sr)
+    return np.asarray(clicks)
+
+
+def _from_nearest_ms(times, targets, reach: float = 0.06) -> np.ndarray:
+    """Each time less its nearest target, in ms (+ when later); those with no
+    target within ``reach`` seconds are left out."""
+    times, targets = np.asarray(times, dtype=float), np.asarray(targets, dtype=float)
+    right = np.clip(np.searchsorted(targets, times), 1, targets.size - 1)
+    nearest = np.where(np.abs(times - targets[right - 1]) <= np.abs(times - targets[right]),
+                       targets[right - 1], targets[right])
+    gap = times - nearest
+    return gap[np.abs(gap) <= reach] * 1000.0
+
+
 #: The write-history log points at a scratch folder for the whole suite, so
 #: writer tests never land in real history. Removed afterwards.
 _HISTORY_SCRATCH = tempfile.TemporaryDirectory(prefix="overtone-history-")
@@ -1531,6 +1562,111 @@ class LegacyPulseFactorTests(unittest.TestCase):
         self.assertEqual(analysis.global_bpm, float(np.median(analysis.local_bpms)))
         again = rebuild_with_subdivision(analysis, analysis.subdivision)
         self.assertEqual(again.global_bpm, analysis.global_bpm)
+
+
+class FallbackLagTests(unittest.TestCase):
+    """The fallback tracker's beats land on their attacks, not after them.
+
+    The tracker ends each beat on a peak of the onset envelope, and those
+    peaks come after the sound starts: forced on Corpus A, its beats landed a
+    median 7.4-8.9 ms after their hits (13 and 17 ms under noise), and on
+    the four Corpus B songs that reach it the sound starts 21-24 ms before
+    its beats. The lag is read on the song's waveform and taken off every
+    beat and red line; the tempo the tracker read stays as it was.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.path = Path(cls._tmp.name) / "ramp.wav"
+        cls.clicks = _click_ramp(cls.path, 100.0, 140.0, 24.0)
+        cls.analysis = analyze_audio(cls.path)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_a_ramp_through_the_fallback_lands_on_its_clicks(self):
+        analysis = self.analysis
+        self.assertEqual((analysis.engine, analysis.subdivision), ("legacy", 1.0))
+        # A bare click's envelope peaks about 6 ms after the click starts.
+        self.assertTrue(-0.009 < analysis.beat_shift_s < -0.003, analysis.beat_shift_s)
+        errors = _from_nearest_ms(analysis.beats, self.clicks)
+        self.assertGreater(errors.size, 0.9 * analysis.beats.size)
+        self.assertLess(abs(float(np.median(errors))), 1.0)             # +6.1 ms before
+        first = _from_nearest_ms([snap_timing_points(analysis.points)[0].offset_ms / 1000.0],
+                                 self.clicks)
+        self.assertEqual(first.size, 1)
+        self.assertLess(abs(float(first[0])), 2.0)
+
+    def test_only_the_positions_move(self):
+        from unittest import mock
+        import overtone
+        with mock.patch.object(overtone, "_tracker_lag", return_value=0.0):
+            unmoved = analyze_audio(self.path)
+        moved, shift = self.analysis, self.analysis.beat_shift_s
+        self.assertNotEqual(shift, 0.0)
+        self.assertEqual(unmoved.beat_shift_s, 0.0)
+        np.testing.assert_array_equal(moved.local_bpms, unmoved.local_bpms)
+        np.testing.assert_array_equal(moved.base_frames, unmoved.base_frames)
+        self.assertEqual((moved.global_bpm, moved.meter, moved.subdivision),
+                         (unmoved.global_bpm, unmoved.meter, unmoved.subdivision))
+        self.assertEqual([(p.bpm, p.confidence, p.beat_index, p.meter) for p in moved.points],
+                         [(p.bpm, p.confidence, p.beat_index, p.meter) for p in unmoved.points])
+        np.testing.assert_allclose(moved.beats - unmoved.beats, shift, atol=1e-12)
+        np.testing.assert_allclose([p.offset_ms for p in moved.points],
+                                   [p.offset_ms + shift * 1000.0 for p in unmoved.points],
+                                   atol=1e-9)
+
+    def test_a_rebuild_moves_its_beats_by_the_songs_lag(self):
+        # A rebuild has no audio to read the lag on; the song's own is kept.
+        analysis = self.analysis
+        same = rebuild_with_subdivision(analysis, analysis.subdivision)
+        np.testing.assert_array_equal(same.beats, analysis.beats)
+        self.assertEqual([(p.offset_ms, p.bpm) for p in same.points],
+                         [(p.offset_ms, p.bpm) for p in analysis.points])
+        half = rebuild_with_subdivision(analysis, analysis.subdivision / 2)
+        self.assertEqual(half.beat_shift_s, analysis.beat_shift_s)
+        errors = _from_nearest_ms(half.beats, self.clicks)
+        self.assertGreater(errors.size, 0.9 * half.beats.size)
+        self.assertLess(abs(float(np.median(errors))), 1.0)
+
+    def test_the_pulse_suggestion_reads_the_envelope_where_the_tracker_put_the_beats(self):
+        # Moved 20 ms earlier, a beat's +-2 frame window no longer holds the
+        # envelope peak it was tracked on, and the suggestion would vanish.
+        from overtone import suggest_section_pulse
+        rate = 44100 / HOP
+        beats = 0.5 + np.arange(40) * 0.6                   # 100 BPM, off-beats between
+        onset = np.zeros(int(26 * rate), dtype=np.float32)
+        onset[np.rint(beats * rate).astype(int)] = 1.0
+        onset[np.rint((beats + 0.3) * rate).astype(int)] = 0.8
+
+        def analysis(shift: float) -> Analysis:
+            return Analysis("x.wav", 25.0, beats + shift, np.full(40, 100.0),
+                            [TimingPoint(500.0 + shift * 1000.0, 100.0, 1.0, 0)], HOP, 44100,
+                            1.0, 100.0, 1.0, "4/4", onset, beats * rate, beat_shift_s=shift)
+
+        where = suggest_section_pulse(analysis(0.0))
+        self.assertEqual([(index, factor) for index, factor, _ratio in where], [(0, 2)])
+        self.assertEqual(suggest_section_pulse(analysis(-0.020)), where)
+
+    def test_no_lag_is_read_without_attacks_under_the_beats(self):
+        from overtone import _tracker_lag
+        sr = 44100
+        y = np.zeros(sr * 12, dtype=np.float32)
+        n = int(0.03 * sr)
+        t = np.arange(n) / sr
+        click = (np.sin(2 * np.pi * 1800 * t) * np.exp(-t / 0.004)).astype(np.float32)
+        hits = 0.5 + np.arange(20) * 0.5
+        for hit in hits:
+            i = int(round(hit * sr))
+            y[i:i + n] += click
+        self.assertAlmostEqual(_tracker_lag(y, sr, hits + 0.007), -0.007, delta=0.0005)
+        # In silence, too few on an attack, or under half of them: nothing to read.
+        self.assertEqual(_tracker_lag(y, sr, hits + 0.25), 0.0)
+        self.assertEqual(_tracker_lag(y, sr, hits[:6] + 0.007), 0.0)
+        self.assertEqual(_tracker_lag(y, sr, np.r_[hits[:9] + 0.007, hits[9:] + 0.25]), 0.0)
+        self.assertEqual(_tracker_lag(np.zeros(0, dtype=np.float32), sr, hits), 0.0)
 
 
 class OneWindowSignatureTests(unittest.TestCase):

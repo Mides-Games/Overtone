@@ -33,7 +33,9 @@ Pipeline
    poison it. Boundaries settle on the beat where the two grids cross, and each
    section is refitted on its own attacks alone.
 7. Fall back to the v2 hybrid beat tracker when no grid fits at all (rubato,
-   free time, no percussion).
+   free time, no percussion). Its beats sit on the onset envelope's peaks, so
+   they are moved by the envelope's lag behind the attacks, read on the
+   waveform for each song.
 
 Defaults (1.5 BPM / 12 beats / 75 %) target songs whose BPM changes often;
 the Steady preset (2.0 / 20 / 85 %) suits constant-tempo tracks.
@@ -51,7 +53,7 @@ import re
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -126,6 +128,12 @@ class Analysis:
     downbeat_class: int = 0
     fit_residual_ms: float = 0.0
     engine: str = "legacy"
+    # The fallback tracker's beats and red lines were moved by this much (s,
+    # negative: earlier) from the onset envelope's peaks it put them on: the
+    # envelope's lag behind the sound, measured on the song (_tracker_lag).
+    # base_frames stay where the tracker put them. 0 for the precision
+    # engine, which re-times every attack on the waveform instead.
+    beat_shift_s: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -2396,6 +2404,48 @@ def _fit_pulse_gap(env: np.ndarray, sr: int) -> float:
     return _pulse_clarity(onset, sr, hop) - float(np.mean(shuffled))
 
 
+#: A song's tracker lag is read only when at least this many of the fallback
+#: tracker's beats, and at least half of them, sit on an attack the re-timing
+#: can see (98-99 % do on the four Corpus B songs that fall back).
+MIN_LAG_BEATS = 8
+
+
+def _tracker_lag(y: np.ndarray, sr: int, beat_times: np.ndarray) -> float:
+    """The shift (s) that puts the fallback tracker's beats on their attacks.
+
+    The tracker follows the onset envelope and ends each beat on one of its
+    peaks, which come after the sound starts: with the tracker forced, the
+    beats of Corpus A's fixtures landed a median 7.4-8.9 ms after their hits
+    (13 and 17 ms under noise), and on the four Corpus B songs that fall back
+    to it the sound starts 21-24 ms before its beats. Each beat is re-timed
+    on the waveform as the precision engine re-times its attacks
+    (_retime_onsets), and the median shift of the beats that moved is the
+    song's lag.
+
+    One median for the song, not each beat's own re-timing: on those four
+    songs a beat's own reading scattered the beats (the interquartile width
+    of their distance to the maps' hand-timed beats grew from 5.1 to 8.6, 9.6
+    to 16.3 and 5.8 to 13.7 ms on three of them), and a fallback red line
+    sits on a single beat. 0 when too few beats sit on an attack to read it.
+    """
+    beat_times = np.asarray(beat_times, dtype=np.float64)
+    if beat_times.size == 0 or y.size == 0:
+        return 0.0
+    shift = _retime_onsets(y, sr, beat_times) - beat_times
+    moved = shift[shift != 0.0]
+    if moved.size < max(MIN_LAG_BEATS, 0.5 * beat_times.size):
+        return 0.0
+    return float(np.median(moved))
+
+
+def _moved_beats(beats: np.ndarray, points: list[TimingPoint],
+                 shift: float) -> tuple[np.ndarray, list[TimingPoint]]:
+    """The fallback tracker's beats moved by ``shift`` (none before 0 s), and
+    each of its red lines with the beat it sits on. The tempo is untouched."""
+    moved = np.maximum(np.asarray(beats, dtype=np.float64) + shift, 0.0)
+    return moved, [replace(p, offset_ms=float(moved[p.beat_index] * 1000.0)) for p in points]
+
+
 def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
                      min_delta: float, persistence: int, prefer_map_bpm: bool,
                      min_confidence: float, say: Callable[[str], None],
@@ -2405,6 +2455,11 @@ def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
     It refuses audio with no pulse at all instead of tracking one: a beat
     tracker always finds *some* beats, so on white noise it used to report
     127.68 BPM. A tempo that drifts or ramps still passes; noise does not.
+
+    Its beats sit on the onset envelope's peaks, after the sound starts, so
+    with ``refine_beats`` they and the red lines on them are moved by the lag
+    measured on the song (_tracker_lag). Sections, BPMs, the pulse and the
+    meter are still read on the tracker's own beats.
     """
     say("Extracting transients and tempo hypotheses…")
     hop = HOP
@@ -2470,9 +2525,12 @@ def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
     # few tenths of a BPM wide, and on 16 single-tempo corpus cases the average
     # was further from the truth 14 times (median error 0.39 against 0.17 BPM).
     global_bpm = float(np.median(local_v)) if len(local_v) else 0.0
-    return Analysis(str(path), y.size / sr, beats_v, local_v, points, hop, sr,
+    shift = _tracker_lag(y, sr, beats_v) if refine_beats else 0.0
+    moved, points = _moved_beats(beats_v, points, shift)
+    return Analysis(str(path), y.size / sr, moved, local_v, points, hop, sr,
                     subdivision, global_bpm, _stability(local_v),
-                    _guess_meter(beats_v, onset, sr, hop), onset, beat_frames_raw)
+                    _guess_meter(beats_v, onset, sr, hop), onset, beat_frames_raw,
+                    beat_shift_s=shift)
 
 
 def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
@@ -2495,7 +2553,8 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
     halves it, 2 doubles it). Use it when you *know* the song's octave — e.g.
     a 225 BPM stream reported as 112 BPM — or from the GUI pulse selector.
     ``refine_beats`` re-times every attack on the raw waveform at sample
-    resolution; disable it only to diagnose whether that snapping drifts.
+    resolution (and moves the fallback tracker's beats by the lag read that
+    way); disable it only to diagnose whether that snapping drifts.
     """
     if min_delta <= 0 or persistence < 2 or not 0 <= min_confidence <= 1:
         raise ValueError("Minimum delta must be positive, persistence at least 2, confidence between 0 and 1.")
@@ -2613,12 +2672,17 @@ def rebuild_with_subdivision(analysis: Analysis, factor: float,
     if not points and candidates:
         points = [max(candidates, key=lambda p: p.confidence)]
     global_bpm = float(np.median(local_v)) if len(local_v) else 0.0
-    return Analysis(analysis.source, analysis.duration, beats_v, local_v, points,
+    # There is no audio here to read the lag on, so the song's own moves the
+    # new beats; a rebuild's beats, read on the audio, lag within 2.5 ms of it.
+    shift = float(getattr(analysis, "beat_shift_s", 0.0))
+    moved, points = _moved_beats(beats_v, points, shift)
+    return Analysis(analysis.source, analysis.duration, moved, local_v, points,
                     analysis.hop_length, analysis.sample_rate, factor, global_bpm,
                     _stability(local_v),
                     _guess_meter(beats_v, analysis.onset, analysis.sample_rate,
                                  analysis.hop_length),
-                    analysis.onset, np.asarray(analysis.base_frames, dtype=float))
+                    analysis.onset, np.asarray(analysis.base_frames, dtype=float),
+                    beat_shift_s=shift)
 
 
 # ---------------------------------------------------------------------------
@@ -3287,6 +3351,9 @@ def suggest_section_pulse(analysis: Analysis,
     frame_rate = analysis.sample_rate / analysis.hop_length
     section_frames = np.rint(np.asarray(analysis.base_frames, dtype=float))
     section_frames = section_frames[(section_frames >= 0) & (section_frames < len(analysis.onset))]
+    # The envelope is read where the fallback tracker put each beat, on its
+    # peaks, not where the beat was moved to (Analysis.beat_shift_s).
+    shift = float(getattr(analysis, "beat_shift_s", 0.0))
     for idx, point in enumerate(snapped):
         if point.bpm >= low_bpm:
             continue
@@ -3296,7 +3363,7 @@ def suggest_section_pulse(analysis: Analysis,
         start_s = point.offset_ms / 1000.0
         end_s = snapped[idx + 1].offset_ms / 1000.0 if idx + 1 < len(snapped) else analysis.duration
         mask = (analysis.beats >= start_s) & (analysis.beats < end_s)
-        grid = np.rint(analysis.beats[mask] * frame_rate).astype(int)
+        grid = np.rint((analysis.beats[mask] - shift) * frame_rate).astype(int)
         grid = grid[(grid >= 0) & (grid < len(analysis.onset))]
         if len(grid) < 4:
             continue

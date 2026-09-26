@@ -245,6 +245,12 @@ This satisfies "do not remove v3's engine without an equal or better replacement
 only terms that can be checked: the ramp and pad fixtures must come out better than a
 staircase, and the no-answer fixtures must say no.
 
+Since 2026-09-26 v3's tracker also moves its beats onto their attacks. They sit on the
+onset envelope's peaks, 7-17 ms after the attacks as the precision engine re-times them,
+so `_tracker_lag` re-times each beat on the waveform (`_retime_onsets`) and every beat and
+red line moves by the median shift; the tempo it read stays as it was (timeline). v4 has no
+tracker, so there is nothing to port.
+
 ---
 
 # Part B — improvements, each gated

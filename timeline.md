@@ -17,6 +17,157 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · The fallback tracker's beats, moved onto their attacks
+
+When no grid fits, v3 falls back to the v2 beat tracker, and the roadmap said its beats land
+5-35 ms late (Phase 22, "Fallback re-timing"). Measured first, against truth that needs no
+map: with the tracker forced on Corpus A, its beats land a median 7.4-8.9 ms after the hits
+(13 and 17 ms under noise); on the four Corpus B songs that reach it, the sound starts 21-24
+ms before them. Each song's lag is now read on its waveform and taken off every beat and red
+line. The tempo the tracker reads is untouched, and so is everything the precision engine
+does.
+
+### Fixed
+
+- **The fallback's beats sat on the onset envelope's peaks, after the sound.** The tracker
+  follows librosa's onset strength at 5.8 ms frames, and `_refine_beats_to_transients` ends
+  each beat on that envelope's peak. The peak comes after the attack starts, by as long as
+  the flux takes to rise: 7-9 ms for drums over silence, more when noise or a bed fills the
+  bands (13-17 ms), 12-17 ms on the real songs. The precision engine removes the same lag by
+  re-timing each attack on the waveform (`_retime_onsets`). The fallback had no such step.
+- **`_tracker_lag`** re-times each of the tracker's beats that way. The median shift of the
+  beats that moved is the song's lag; it is read only when at least 8 moved, and at least
+  half of them. Every beat and every red line moves by it, none before 0 s.
+  - Sections, BPMs, the pulse octave and the meter are still read on the tracker's own
+    beats, so they come out identical (checked on all 32 fallback analyses below).
+- **`Analysis.beat_shift_s`** keeps the shift, 0 for the precision engine.
+  - A ×2/÷2 rebuild has no audio to read a lag on, so it moves its beats by the song's own.
+    Its beats, read on the audio, lag within 2.5 ms of it (×0.5 to ×4, Corpus A and B).
+  - The pulse suggestion reads the envelope where the tracker put each beat. Moved 20 ms
+    earlier, a beat's ±2-frame window misses the peak and the suggestion would vanish.
+- 5 tests: a click ramp through the fallback lands on its clicks, and so does its ÷2
+  rebuild (+6.1 and +6.5 ms on the old code); only positions move; the suggestion reads the
+  envelope; no lag without attacks under the beats.
+
+### Measured
+
+```
+every beat against the nearest sound placed (signed, + when the beat is later); one-off
+scripts, not committed
+Corpus A, the tracker forced (engine="legacy"), 24 fixtures
+  beats            per-fixture medians +7.43..+8.91 ms (+13.24 noisy-140, +17.18 very-noisy-132),
+                   0 % within 5 ms  ->  -0.20..+0.23 ms, 99.3-100 % within 5 ms
+  lag read         -7.34..-8.99 ms, -13.12 and -17.04 under noise
+  red lines        |error| median 7.81 -> 0.72 ms; within 5 ms 0 -> 34 of 35 (the 35th sits in
+                   with-drop-180's silence, 237 ms from any hit)
+  benchmark.py --engine legacy   offsets median 8.03 -> 1.18 ms, within 5 ms 0 -> 17 of 24;
+                   BPM unchanged (median 0.1974, the tracker's median of beat gaps), 0 -> 1 of
+                   24 cases within both bars. The seven offsets still over 5 ms are the
+                   tracker's tempo (its grid drifts from the line to the true change) or a
+                   grid started on noise; tiny-change 6.85 -> 11.37, where the lag had hidden
+                   part of that drift
+renders that reach the fallback with engine auto (60 s, every hit at a known sample)
+  ramp 100->140, kit and off-beat hats       +8.66 -> +0.18 ms; within 5 ms 0 -> 95.8 %
+  ramp 170->120                              +7.88 -> +0.16;  0 -> 100 %
+  96 BPM ±9 % under a loud pad and noise     +15.23 -> +0.09; 0 -> 100 %
+  ±10 % for 20 s, then 140 steady            +8.70 -> +0.19;  0 -> 100 %
+  red lines        |error| median 8.46 -> 0.68 ms; within 5 ms 0 -> 23 of 24 (the ramp's first
+                   sits on a beat the tracker put between hits, 48.5 -> 40.0 ms)
+  three rubato renders (the tempo swinging ±6-9 % around 120-150 BPM) were fitted by the
+  precision engine and never reach the fallback
+the benchmark's degenerate ramp (120 -> 160)   the same 8 sections and BPMs, so its printed
+                   line is unchanged; beats +7.71 -> +0.11 ms (0 -> 100 % within 5 ms), red
+                   lines +6.5..+8.7 -> -1.1..+1.1 ms
+Corpus B, the four songs that fall back (The Raven is refused before any tracking)
+  lag read         One Step Closer -17.2, Vampires -16.4, Calm Down Juliet -12.0,
+                   Day to Story -14.8 ms
+  the sound's start after the tracker's own beats (--onsets' measure, on its beats rather
+  than on a grid drawn from its red lines; contrast in brackets)
+                   -21.8 (3.0) -> -4.2 (2.8), -20.7 (3.7) -> -4.3 (3.6),
+                   -21.8 (2.8) -> -9.7 (2.7), -24.4 (2.4) -> -9.6 (2.4)
+  against the maps' beats, beat by beat (median, and the interquartile width)
+                   +36.9 (5.1) -> +19.9 (5.3), +31.9 (13.6) -> +15.9 (12.9),
+                   +41.8 (9.6) -> +30.1 (6.6), +46.0 (5.8) -> +31.3 (5.7) ms; the maps put their
+                   lines 7-23 ms before the sound on these four (10.0a)
+  red lines against the maps, within 2 / 5 / 10 / 50 ms
+                   One Step Closer 0/0/0/0 -> 0/0/0/0 of 1; Vampires 5/14/34/134 ->
+                   5/14/29/144 of 236; Calm Down Juliet 0/0/1/2 -> 0/1/1/4 of 7;
+                   Day to Story 0/0/1/2 -> 1/1/1/2 of 5
+Corpus B, all 20 tracks (bench/corpus_b.py, analysed afresh before and after)
+  within 2/5/10/50 ms   0.5 / 1.6 / 4.6 / 46.9 % -> 0.6 / 1.7 / 4.2 / 47.9 % of the 1,152 red
+                        lines (6 / 18 / 53 / 540 -> 7 / 20 / 48 / 552); per track 0.1 / 0.9 / 5.4 /
+                        68.4 -> 1.1 / 2.6 / 5.3 / 70.0 % (one more line on each of two maps of 7
+                        and 5 lines)
+  signed error          median +25.1 -> +23.4 ms; within 50 ms +27.4 -> +26.5; the tracks' own
+                        medians +24.0 -> +24.0
+  BPM per section       72 of 789 within 0.05, unchanged
+  unchanged             the 15 tracks on the grid, red line for red line, and The Raven's refusal
+  --onsets              after Overtone's grids, median -7.9 -> -4.9 ms over 19 tracks. The four
+                        fallback songs read +54.3 -> +73.0, -28.0 -> -9.9, -15.9 -> -1.0 and
+                        -5.0 -> +24.6, at contrast 1.0-1.3: a grid drawn from their few red lines
+                        does not follow them, and nothing starts clearly on it. The reading on the
+                        tracker's own beats (above) is the one that measures the beats
+cost             _tracker_lag 80 ms on a 6-minute song's 1,114 beats (median of 7 runs, the
+                 machine loaded; 7 ms on 140 beats)
+Python unittest  581 -> 586, all pass (overtone-cli built in the worktree, none skipped) · facts ok
+engine gates     benchmark 24/24 (0.0000 BPM / 0.16 ms), bpm-snapshot 24/24, golden 27/27,
+                 coverage, measures, signatures, robustness, reference 24/24, assisted 70:
+                 all pass, each one's output line for line the same as on the unchanged tree
+                 (timings and temporary paths aside). The benchmark's ramp is the only input
+                 among them the tracker times, and the line it prints does not move
+fuzz_reader      3000 mutants, no crash, no hang
+```
+
+What the numbers say:
+
+- **The beats now sit where the precision engine's attacks do.** On the fixtures that is the
+  hit, to a fraction of a millisecond. On the real songs it is 4-10 ms after the first
+  high-frequency edge, the full band's rise, as the precision engine's grids sit (-7.9 ms,
+  10.0a).
+- **The fallback's red lines barely move against the maps**: within 5 ms 14 -> 16 of those
+  four songs' 249 lines, within 10 ms 36 -> 31, within 50 ms 138 -> 150. What separates
+  them is the tracker's tempo, not its lag: Vampires gets 22 red lines for the map's 236, and
+  a red line run over the beats between them drifts. The maps' own convention adds 7-23 ms.
+  Within 10 ms loses 5 lines on Vampires. Errors there spread over a wide band (IQR -15.9 to
+  +54.3 ms), so moving every line 16 ms moves some in and some out of the bar.
+
+### Rejected / tried and dropped
+
+- **Each beat on its own re-timed attack.** The roadmap's candidate, as `_retime_onsets` on
+  each beat, or snapped to the nearest of the precision engine's attacks within 40 ms before
+  and 10 ms after.
+  - Tighter on the clean fixtures: interquartile widths of 0.3-0.6 ms, against 0.8-2.0 ms
+    for one shift.
+  - But it scattered the real songs' beats. Against the maps' beats the interquartile width
+    went 5.1 -> 8.6 ms (One Step Closer), 9.6 -> 16.3 (Calm Down Juliet) and 5.8 -> 13.7 (Day
+    to Story); 19.7, 17.3 and 16.0 with the nearest attack. Vampires 13.6 -> 12.8.
+  - The sound's start on their average smeared: contrast 3.0 -> 2.4 and 2.8 -> 1.7 (sharper
+    on Vampires, 3.7 -> 4.8).
+  - Under the loud pad render, 72 % of the beats landed within 5 ms, against 100 % for one
+    shift.
+  - A fallback red line sits on a single beat, so its scatter goes straight into the offset.
+- **Reading the tempo on the re-timed beats as well.** It split the songs differently.
+  Vampires went from 22 red lines to 14-17, within 50 ms of the map 134 -> 104-126. On
+  Corpus A the benchmark went 0 -> 3-4 of 24, with fixtures worse as well as better
+  (odd-222.22 0.075 -> 0.249 BPM, decimal-128.37 0.237 -> 0.010). The tracker's BPM is a median
+  of beat gaps and not this row's subject; kept as it was.
+- **A running median of the shifts** (±8 or ±32 beats), and each beat's own shift kept
+  where it agrees with that median within 1-2 ms. Never tighter than one median for the
+  song: widths 6.4 and 5.5 against 5.3 (One Step Closer), 10.8 and 8.5 against 6.6 (Calm Down
+  Juliet), 7.2 and 6.4 against 5.7 (Day to Story).
+- **One constant for every song.** The lag runs from 7.3 to 17 ms over these tracks, by the
+  sound (clean drums, noise, a bed, a mix): any one number is 5 ms or more off somewhere.
+
+Left open:
+
+- Found here, not fixed: rebuilding a fallback result at its own pulse is not the identity
+  when the tracker doubled its own pulse. The analysis holds no inserted beat without a peak
+  (`hold_without_peak` only when the user asked); the rebuild holds them for any factor above
+  1. It is the same on the old code: 11 of the 32 fallback analyses here differ, and Calm
+  Down Juliet goes from 3 red lines to 10.
+- The 4-10 ms left on the real songs belong with the precision engine's own (10.0a), not to
+  the fallback.
+
 ## v4.0.0-dev — 2026-09-26 · One suggested red line, added with consent
 
 ### Changed

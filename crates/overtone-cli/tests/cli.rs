@@ -321,7 +321,8 @@ fn structure_reads_phrases_and_says_why_each_label() {
 #[test]
 fn hitsound_proposes_every_object_with_alternatives_and_terms() {
     // Twelve bare circles on 150 BPM clicks: the prior keeps them bare,
-    // and each proposal carries its alternatives and its terms.
+    // and each proposal carries its alternatives, its terms and what was
+    // heard under it. A thirteenth circle between two clicks hears nothing.
     let dir = scratch("hitsound");
     let audio = dir.join("clicks-150.wav");
     write_wav(&audio, &clicks(150.0, 6.0));
@@ -329,6 +330,7 @@ fn hitsound_proposes_every_object_with_alternatives_and_terms() {
     for k in 0..12 {
         map.push_str(&format!("256,192,{},1,0,0:0:0:0:\r\n", 500 + k * 400));
     }
+    map.push_str("256,192,5100,1,0,0:0:0:0:\r\n");
     let map_path = dir.join("clicks.osu");
     std::fs::write(&map_path, map).unwrap();
     let out = run(&["hitsound", audio.to_str().unwrap(), map_path.to_str().unwrap()]);
@@ -345,7 +347,20 @@ fn hitsound_proposes_every_object_with_alternatives_and_terms() {
     assert_eq!(report["templates"], "baked");
     assert_eq!(report["profile"], "balanced");
     let units = report["units"].as_array().unwrap();
-    assert_eq!(units.len(), 12);
+    assert_eq!(units.len(), 13);
+    for unit in &units[..12] {
+        // Heard: the click under it, its likeliest instruments best first.
+        let heard = &unit["heard"];
+        let at = heard["time_ms"].as_f64().unwrap();
+        assert!((at - unit["time_ms"].as_f64().unwrap()).abs() <= 50.0, "{heard}");
+        let classes = heard["classes"].as_array().unwrap();
+        assert!((1..=3).contains(&classes.len()));
+        let p: Vec<f64> = classes.iter().map(|c| c["probability"].as_f64().unwrap()).collect();
+        assert!(p.windows(2).all(|w| w[0] >= w[1]) && p.iter().all(|x| (0.0..=1.0).contains(x)));
+        assert!(classes.iter().all(|c| c["class"].is_string()));
+        assert!(heard["metrical_weight"].is_number() || heard["metrical_weight"].is_null());
+    }
+    assert!(units[12]["heard"].is_null(), "{}", units[12]["heard"]);
     for unit in units {
         let proposal = &unit["proposal"];
         assert!(proposal["bank"].is_string());

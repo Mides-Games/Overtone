@@ -50,13 +50,15 @@
 //! `hitsound` proposes the sound of every object of a map: bank plus
 //! additions per decidable point (circles, slider heads, repeats and tails,
 //! spinner ends, holds), with the runner-up alternatives, their marginal
-//! probabilities, and the emission terms plus the incoming transition
-//! behind each choice. Slider ticks take nothing — the format has no field
-//! for them — and bodies are left as they are; both are H5's to write. A
-//! tail follows the object landing under it, if any, else stays bare.
-//! Volume and sample index are not proposed: H5 decides them with the
-//! energy term. `--profile` reads another profile file; the baked
-//! `balanced` one decides otherwise.
+//! probabilities, the emission terms plus the incoming transition behind
+//! each choice, and what was heard under it (the matched attack's three
+//! likeliest instruments and its place in the bar; null over silence).
+//! Slider ticks take nothing — the format has no field for them — and
+//! bodies are left as they are; both are H5's to write. A tail follows the
+//! object landing under it, if any, else stays bare. Volume and sample
+//! index are not proposed: they are the mapper's, set by hand in H5.
+//! `--profile` reads another profile file; the baked `balanced` one decides
+//! otherwise.
 //!
 //! `ramps` turns the elastic tempo curve into the fewest red lines that
 //! keep every attack within the chosen drift: longest grids back to back,
@@ -473,10 +475,12 @@ fn hitsound(args: &[String]) -> ExitCode {
     let mut steps = Vec::with_capacity(chain.len());
     let mut matrices: Vec<Vec<f64>> = Vec::with_capacity(chain.len());
     let mut scored_rows: Vec<Vec<em::Scored>> = Vec::with_capacity(chain.len());
+    let mut matched: Vec<Option<usize>> = Vec::with_capacity(chain.len());
     for (position, &i) in chain.iter().enumerate() {
         let unit = &units[i];
-        let attack = em::match_attack(&ev_times, unit.time_ms / 1000.0, 0.05)
-            .map(|a| &rows[a]);
+        let found = em::match_attack(&ev_times, unit.time_ms / 1000.0, 0.05);
+        matched.push(found);
+        let attack = found.map(|a| &rows[a]);
         let object = map::HitObject {
             x: 0,
             y: 0,
@@ -564,11 +568,30 @@ fn hitsound(args: &[String]) -> ExitCode {
         .iter()
         .position(|c| c.additions == [false, false, false] && c.bank == em::Bank::Normal)
         .expect("a bare normal candidate");
+    // What the engine heard under a decided sound, for the explanation: the
+    // matched attack's likeliest instruments and its place in the bar. Null
+    // over silence, where only the prior spoke.
+    let heard_json = |found: Option<usize>| match found {
+        Some(a) => {
+            let row = &rows[a];
+            let mut classes: Vec<&ev::ClassEvidence> = row.classes.iter().collect();
+            classes.sort_by(|x, y| y.probability.total_cmp(&x.probability));
+            json!({
+                "time_ms": row.time_s * 1000.0,
+                "classes": classes.iter().take(3).map(|c| json!({
+                    "class": c.class.as_str(), "probability": c.probability,
+                })).collect::<Vec<_>>(),
+                "division": row.role.division,
+                "metrical_weight": row.role.metrical_weight,
+            })
+        }
+        None => Value::Null,
+    };
     let proposals: Vec<Value> = units
         .iter()
         .enumerate()
         .map(|(i, unit)| {
-            let (state, probability, alternatives, terms, transition_in, follows) =
+            let (state, probability, alternatives, terms, transition_in, follows, heard) =
                 if is_tail[i] {
                     let follows = tail_follows[i].map(|j| json!(units[j].object));
                     match tail_state[i] {
@@ -579,8 +602,10 @@ fn hitsound(args: &[String]) -> ExitCode {
                             Vec::new(),
                             Value::Null,
                             follows.unwrap_or(Value::Null),
+                            Value::Null,
                         ),
-                        None => (bare, Value::Null, Vec::new(), Vec::new(), Value::Null, Value::Null),
+                        None => (bare, Value::Null, Vec::new(), Vec::new(), Value::Null, Value::Null,
+                                 Value::Null),
                     }
                 } else {
                     let position = position_of[i].expect("chain covers it");
@@ -624,6 +649,7 @@ fn hitsound(args: &[String]) -> ExitCode {
                             .collect::<Vec<_>>(),
                         transition_in,
                         Value::Null,
+                        heard_json(matched[position]),
                     )
                 };
             let mut proposal = candidate_json(state);
@@ -639,6 +665,7 @@ fn hitsound(args: &[String]) -> ExitCode {
                 "transition_in": transition_in,
                 "tail": is_tail[i],
                 "follows": follows,
+                "heard": heard,
             })
         })
         .collect();

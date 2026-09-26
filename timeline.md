@@ -17,6 +17,33 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Bars on the map at every zoom, and signatures on the red lines
+
+Zoomed out past 7 px a beat, the map drew no grid at all, so a whole song showed no bars;
+and which red lines changed the bar's length showed only in the points table's meter
+column. Roadmap, Phase 3: "Measures on the map".
+
+### Changed
+
+- When the beats are too close to draw, the bar lines are drawn alone while they are 8 px
+  apart or more; zoomed in, the full grid returns at 7 px a beat, as before.
+- A red line whose bar differs from the line before it (the first one, from 4/4) adds the
+  signature to its chip: "150.00 · 3/4". A line that keeps the bar keeps its plain chip.
+  No Python changed.
+
+### Measured
+
+```
+signature-changes.wav (the signatures gate's fixture: 6/4, 3/4, 6/4, 3/4, 6/4, 4/4, all
+proven), through the harness page
+  chips                        300.00 · 6/4, 150.00 · 3/4, 300.00 · 6/4, 150.00 · 3/4,
+                               300.00 · 6/4, 200.00 · 4/4
+  whole song (122 s on 876 px) 90 bar lines across a row of the plot (bars 8.6 px apart;
+                               none before, at 1.4 px a beat)
+  4 s at 150 BPM               10 lines, one a beat: the full grid
+web shell tests      181, all pass
+```
+
 ## v4.0.0-dev — 2026-09-26 · A keyboard map: every key on one sheet
 
 The page answered Space, T, ↑/↓, Ctrl+O/Z/Y and Enter/F5, and said so nowhere but a hint

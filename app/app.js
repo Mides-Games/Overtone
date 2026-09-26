@@ -5044,14 +5044,18 @@ function drawTrace(hoverX) {
     ctx.fillRect(X(v.a), plotTop, Math.min(X(firstLine), x1) - X(v.a), yD1 - plotTop);
   }
 
-  // the beat grid, once beats are far enough apart to read
+  // the beat grid once beats are far enough apart to read; zoomed out past
+  // that, the bars alone while they are
   const ct = (r.clicks && r.clicks.t) || [], cl = (r.clicks && r.clicks.level) || [];
-  const beats = [];
-  for (let i = 0; i < ct.length && beats.length < 2; i++) if (cl[i] >= 1) beats.push(ct[i]);
-  const pxPerBeat = beats.length > 1 ? ((x1 - x0) / span) * (beats[1] - beats[0]) : 0;
-  if (pxPerBeat >= 7) {
+  const spacing = (level) => {
+    const first = [];
+    for (let i = 0; i < ct.length && first.length < 2; i++) if (cl[i] >= level) first.push(ct[i]);
+    return first.length > 1 ? ((x1 - x0) / span) * (first[1] - first[0]) : 0;
+  };
+  const gridLevel = spacing(1) >= 7 ? 1 : spacing(2) >= 8 ? 2 : 0;
+  if (gridLevel) {
     for (let i = lowerBound(ct, v.a); i < ct.length && ct[i] <= v.b; i++) {
-      if (!(cl[i] >= 1)) continue;
+      if (!(cl[i] >= gridLevel)) continue;
       const x = Math.round(X(ct[i])) + 0.5;
       ctx.strokeStyle = cl[i] === 2 ? C.beatBar : C.beat; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(x, plotTop); ctx.lineTo(x, yW1); ctx.stroke();
@@ -5185,7 +5189,10 @@ function drawTrace(hoverX) {
     if (x < x0 - 60 || x > x1 + 1) return;
     ctx.strokeStyle = C.red; ctx.lineWidth = i === S.selected || (dragging && dragging.i === i) ? 2 : 1.25;
     ctx.beginPath(); ctx.moveTo(x, plotTop); ctx.lineTo(x, yD1); ctx.stroke();
-    const label = dragging && dragging.i === i ? `${(s * 1000).toFixed(1)} ms` : p.bpm.toFixed(p.bpm % 1 ? 2 : 0);
+    // A red line where the bar changes length says so: the signature's region starts here.
+    const meterChange = p.meter !== (i ? r.points[i - 1].meter : 4);
+    const label = dragging && dragging.i === i ? `${(s * 1000).toFixed(1)} ms`
+      : p.bpm.toFixed(p.bpm % 1 ? 2 : 0) + (meterChange ? ` · ${p.meter}/4` : "");
     const w = ctx.measureText(label).width + 16;
     const row = x > lastRight[0] + 4 ? 0 : (x > lastRight[1] + 4 ? 1 : 0);
     lastRight[row] = x + w;

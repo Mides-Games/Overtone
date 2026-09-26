@@ -79,7 +79,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Open audio, drag and drop, beatmap folder import, recent files | ✅ | A file dropped on `Overtone.bat` opens straight into analysis |
 | Analysis on a background thread, each stage named and timed, with a stop | ✅ | The stop lands when the running stage ends; the result on screen stays |
 | Stats strip: global BPM, points, beats, stability, engine, residual | ✅ | |
-| Timeline: local BPM, waveform, drift lane, sections, red lines, hover readout | ✅ | Wheel zooms at the cursor, drag pans; click selects the governing red line; the stretch before the first red line is hatched |
+| Timeline: local BPM, waveform, drift lane, sections, red lines, hover readout | ✅ | Wheel zooms at the cursor, drag pans; click selects the governing red line; the stretch before the first red line is hatched; zoomed out, the bar lines stay; a red line where the bar changes names its signature |
 | Timing-point list with a detail panel | ✅ | ↑ / ↓ to move; the panel explains the selected point |
 | Honesty banners | ✅ | Fallback engine, a first red line long after the music starts, loose grids, validation findings |
 | Point editor: apply, add, delete, ±1 ms nudge, per-section ×2 / ÷2, split, merge | ✅ | Split at the playhead and merge with the next refit the sections to their attacks |

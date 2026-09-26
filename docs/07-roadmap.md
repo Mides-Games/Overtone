@@ -644,7 +644,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Config type checks | a wrong-typed or BOM config never crashes or silently resets | low | med | config | no | no | P2 | partial — web shell only |
 | CLI Unicode output | no crash on Japanese names when output is redirected | low | med | CLI | no | no | P2 | **done** — redirected, the CLI writes UTF-8; a console is left as it is |
 | CSV save errors | a locked CSV (open in Excel) shows an error | low | low | GUI | no | no | P3 | todo |
-| Injection backups | back up the current state on every injection, and report it truthfully | low | med | writer | no | no | P2 | todo |
+| Injection backups | back up the current state on every injection, and report it truthfully | low | med | writer | no | no | P2 | **done** since audit #36 — every write keeps what it replaces (`.bak` first and for good, then `.bak2`, `.bak3`…, never overwritten, skipped only when the newest already holds those bytes) and returns the backup's real path; tested (`test_backup_keeps_the_pristine_original` and the tests after it) |
 
 ---
 

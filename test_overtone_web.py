@@ -1568,6 +1568,61 @@ class StructureKiaiBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().structure_kiai_preview("map.osu")["key"], "first")
 
 
+class StructureBreaksBridgeTests(_IsolatedConfig):
+    """Quiet spans long enough for a break, previewed then written once."""
+
+    VIEW = {"sections": [{"start_s": 0.0, "end_s": 10.0, "kind": "verse", "level_db": -8.0},
+                          {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -14.0}]}
+
+    def _song(self, tmp: str) -> web.Api:
+        folder = Path(tmp)
+        (folder / "audio.mp3").write_bytes(b"ID3" + bytes(64))
+        (folder / "map.osu").write_bytes("\r\n".join(
+            ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+             "[Events]", "//Background and Video events", "//Break Periods", "",
+             "[TimingPoints]", "0,500,4,2,0,70,1,0", "",
+             "[HitObjects]", "256,192,1000,1,0,0:0:0:0:", "256,192,2000,1,0,0:0:0:0:",
+             "256,192,30000,1,0,0:0:0:0:", ""]).encode("utf-8"))
+        api = _api_with_points()
+        api._analysis.source = str(folder / "audio.mp3")
+        return api
+
+    def test_preview_lists_and_apply_writes_with_a_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": True, "view": self.VIEW}):
+                preview = api.structure_breaks_preview("map.osu")
+                raw_before = Path(tmp, "map.osu").read_bytes()
+                done = api.structure_breaks_apply("map.osu")
+                after = Path(tmp, "map.osu").read_bytes()
+                json.dumps([preview, done])
+                self.assertEqual(preview["spans"],
+                                 [{"start_ms": 10000, "end_ms": 30000, "kind": "chorus",
+                                   "under_db": 6.0, "gap_s": 28.0}])
+                self.assertEqual((done["breaks"], done["added"], done["written"]),
+                                 (1, 1, True))
+                self.assertNotEqual(raw_before, after)
+                self.assertIn(b"2,10000,30000", after)
+                self.assertTrue(Path(tmp, "map.osu.bak").is_file())
+                again = api.structure_breaks_apply("map.osu")
+                self.assertEqual((again["added"], again["kept"]), (0, 1))
+
+    def test_without_spans_or_maps_it_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            loud = {"sections": [dict(s, level_db=-8.0) for s in self.VIEW["sections"]]}
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": True, "view": loud}):
+                self.assertEqual(api.structure_breaks_preview("map.osu")["spans"], [])
+                self.assertEqual(api.structure_breaks_apply("map.osu")["key"], "no_breaks")
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": False, "key": "no_rust"}):
+                self.assertEqual(api.structure_breaks_preview("map.osu")["key"], "no_rust")
+            self.assertEqual(api.structure_breaks_preview("..\\map.osu")["key"], "bad_file")
+        self.assertEqual(web.Api().structure_breaks_preview("map.osu")["key"], "first")
+
+
 class OffsetLabBridgeTests(_IsolatedConfig):
     """The Offset lab: the header's numbers, both decoders side by side."""
 

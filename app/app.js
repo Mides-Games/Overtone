@@ -212,6 +212,13 @@ const I18N = {
     stx_kiai_done: "Kiai on {n} choruses into {file}.",
     stx_kiai_nothing: "Kiai already matches the choruses in {file}.",
     stx_kiai_nochorus: "No chorus sections in this song, so there is nothing to light.",
+    stx_breaks_title: "Breaks",
+    stx_breaks_sub: "Breaks where the song goes quiet and the map goes silent, written as 2,start,end lines. Only spans 5 s or longer are proposed; every file is backed up first.",
+    stx_breaks_preview: "Preview", stx_breaks_apply: "Write breaks",
+    stx_breaks_would: "{n} breaks into {file}: {spans}.",
+    stx_breaks_confirm: "Write {n} breaks into {file}?",
+    stx_breaks_done: "{n} breaks into {file}.",
+    stx_breaks_nothing: "Nothing quiet and long enough for a break in this song.",
     stx_note: "Letters are families of sections that repeat. Edges snap to the nearest proven bar line within {snap} s: a bar near the change, not proof the phrase starts on it. A change within {edge} s of either end cannot be placed. Click a section to open it in Timing.",
     songs_title: "osu! Songs",
     songs_scan: "Scan",
@@ -609,6 +616,13 @@ const I18N = {
     stx_kiai_done: "Kiai en {n} estribillos en {file}.",
     stx_kiai_nothing: "El kiai ya coincide con los estribillos en {file}.",
     stx_kiai_nochorus: "Esta canción no tiene secciones de estribillo, así que no hay nada que iluminar.",
+    stx_breaks_title: "Breaks",
+    stx_breaks_sub: "Breaks donde la canción se calma y el mapa queda en silencio, escritos como líneas 2,start,end. Solo se proponen tramos de 5 s o más; cada archivo se respalda antes.",
+    stx_breaks_preview: "Vista previa", stx_breaks_apply: "Escribir breaks",
+    stx_breaks_would: "{n} breaks en {file}: {spans}.",
+    stx_breaks_confirm: "¿Escribir {n} breaks en {file}?",
+    stx_breaks_done: "{n} breaks en {file}.",
+    stx_breaks_nothing: "Nada tan calmo y largo como para un break en esta canción.",
     stx_note: "Las letras son familias de secciones que se repiten. Los bordes se ajustan a la línea de compás probada más cercana, a menos de {snap} s: un compás cerca del cambio, no la prueba de que la frase empiece ahí. Un cambio a menos de {edge} s de cada punta no se puede ubicar. Hacé clic en una sección para abrirla en Timing.",
     songs_title: "Songs de osu!",
     songs_scan: "Escanear",
@@ -861,7 +875,7 @@ function setView(view) {
   if (changed) $("content").scrollTop = 0;
   // The canvas measures its box: it can only be drawn while visible.
   if (view === "timing" && S.result) { drawTrace(); waveLoad(); }
-  if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); }
+  if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); }
   if (view === "hitsounds" && S.result) hsvLoad();
   if (view === "history") histLoad();
 }
@@ -1200,6 +1214,7 @@ function renderResult(r) {
   renderTaps();
   renderBookmarks();
   renderKiai();
+  renderBreaks();
   if (S.view === "timing") waveLoad();
   evLoad();
   labLoad();
@@ -1726,6 +1741,69 @@ function renderKiai() {
   $("stxKiaiApply").disabled = !p || (!p.added && !p.flipped);
   $("stxKiaiResult").textContent = !p ? ""
     : t("stx_kiai_would", { added: p.added, flipped: p.flipped, kept: p.kept, n: p.choruses, file: p.file });
+}
+
+// ------------------------------------------------------------------ breaks
+// Phase 21: breaks where the song goes quiet and the map goes silent, in one
+// difficulty of the song. The maps come from the transport picker; preview
+// lists the spans, apply writes 2,start,end lines under a backup.
+const STXBR = { preview: null, for: "" };
+
+function stxBrSpan(s) {
+  return `${mmss(s.start_ms / 1000)}–${mmss(s.end_ms / 1000)} ${s.kind}`;
+}
+
+async function stxBreaksMaps() {
+  const box = $("stxBreaksMap");
+  let maps = [];
+  if (api()) {
+    const reply = await api().song_maps();
+    maps = reply.ok ? reply.maps : [];
+  }
+  const path = (S.result && S.result.path) || "";
+  if (STXBR.for !== path) { STXBR.for = path; STXBR.preview = null; }
+  const keep = box.value;
+  box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+  if (maps.some((m) => m.file === keep)) box.value = keep;
+  box.disabled = !maps.length;
+  renderBreaks();
+}
+
+async function stxBreaksPreview() {
+  if (!api() || !S.result) return;
+  const file = $("stxBreaksMap").value;
+  if (!file) return;
+  const reply = await api().structure_breaks_preview(file);
+  if (!reply.ok) { editFailure(reply); return; }
+  STXBR.preview = { ...reply, file };
+  if (!reply.spans.length) toast(t("stx_breaks_nothing"));
+  renderBreaks();
+}
+
+async function stxBreaksApply() {
+  if (!api() || !S.result || !STXBR.preview) return;
+  const file = $("stxBreaksMap").value;
+  if (STXBR.preview.file !== file) { await stxBreaksPreview(); return; }
+  if (!STXBR.preview.spans.length) { toast(t("stx_breaks_nothing")); return; }
+  if (!confirm(t("stx_breaks_confirm", { n: STXBR.preview.spans.length, file }))) return;
+  const reply = await api().structure_breaks_apply(file);
+  if (!reply.ok) {
+    if (reply.key === "no_breaks") { toast(t("stx_breaks_nothing")); return; }
+    editFailure(reply); return;
+  }
+  toast(t("stx_breaks_done", { n: reply.breaks, file }));
+  STXBR.preview = null;
+  renderBreaks();
+}
+
+function renderBreaks() {
+  const card = $("stxBreaksCard"), p = STXBR.preview;
+  card.hidden = !S.result;
+  if (!S.result) return;
+  $("stxBreaksApply").disabled = !p || !p.spans.length;
+  $("stxBreaksResult").textContent = !p ? ""
+    : t("stx_breaks_would", { n: p.spans.length, file: p.file,
+                               spans: p.spans.map(stxBrSpan).join(" · ") });
 }
 
 // A section opens in Timing: the timeline zoomed to it, the playhead at its start.
@@ -4244,6 +4322,9 @@ function wire() {
   $("stxKiaiPreview").onclick = stxKiaiPreview;
   $("stxKiaiApply").onclick = stxKiaiApply;
   $("stxKiaiMap").onchange = () => { STXK.preview = null; renderKiai(); };
+  $("stxBreaksPreview").onclick = stxBreaksPreview;
+  $("stxBreaksApply").onclick = stxBreaksApply;
+  $("stxBreaksMap").onchange = () => { STXBR.preview = null; renderBreaks(); };
   $("songsScan").onclick = () => songsScan();
   $("songsPick").onclick = songsPick;
   $("songsQuery").oninput = () => {

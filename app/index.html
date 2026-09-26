@@ -561,6 +561,22 @@
             <div class="card-sub" id="stxKiaiResult"></div>
           </div>
         </div>
+
+        <div class="card cmp-card" id="stxBreaksCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="stx_breaks_title">Breaks</div>
+            <div class="spacer"></div>
+            <button type="button" class="btn small" id="stxBreaksPreview"><span data-i18n="stx_breaks_preview">Preview</span></button>
+            <button type="button" class="btn small primary" id="stxBreaksApply" disabled><span data-i18n="stx_breaks_apply">Write breaks</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="stx_breaks_sub">Breaks where the song goes quiet and the map goes silent, written as 2,start,end lines. Only spans 5 s or longer are proposed; every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="hsv_map">Difficulty</span><select class="input" id="stxBreaksMap"></select></label>
+            </div>
+            <div class="card-sub" id="stxBreaksResult"></div>
+          </div>
+        </div>
       </section>
 
       <!-- hitsounds: what one difficulty plays, where its additions fall (Phase 6, H2) -->

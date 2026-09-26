@@ -16,6 +16,29 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Breaks: quiet spans written from Structure
+
+### Changed
+
+- **Breaks card in Structure**: one difficulty's picker, a preview listing
+  each span (time range, section kind) and a confirmed write adding
+  `2,start,end` lines after `//Break Periods` — every file backed up first.
+  A song with nothing quiet and long enough says so instead of writing. EN/ES.
+
+### Measured
+
+```
+synthetic map, 1 quiet gap    1 span (10.0–30.0 s, chorus, −6.0 dB, 28.0 s gap),
+                              written with backup; second run 0 added 1 kept
+Python unittest                 454 -> 456, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages, no
+                                duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Breaks, engine half: quiet spans, cut on gaps
 
 ### Changed

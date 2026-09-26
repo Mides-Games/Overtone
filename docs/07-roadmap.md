@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **454** Python (313 engine + 141 web shell) · **263** Rust.
+Tests: **456** Python (313 engine + 143 web shell) · **263** Rust.
 
 ### What is pending, in order
 
@@ -575,7 +575,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Kiai from structure | kiai on chorus sections, written as greens | med | high | P2 structure, writer | no | no | P1 | **done** — engine half carries the audible state so sound never changes, second run a no-op; Structure card with preview counts and confirmed write with backup |
 | Preview point | suggest `PreviewTime` at the chorus | low | med | structure | no | no | P2 | **done** — loudest chorus start, loudest part without one, in the Structure view with its reason |
 | Bookmarks | section starts as editor bookmarks | low | med | structure | no | no | P2 | **done** — merged with the map's own, preview then confirmed write with backup, in the Structure view |
-| Breaks | quiet spans long enough for a break | low | med | energy | no | no | P2 | todo |
+| Breaks | quiet spans long enough for a break | low | med | energy | no | no | P2 | **done** — sections 6 dB under the loudest cut by the map's own sound gaps (5 s or longer), Structure card with span preview and confirmed write with backup |
 | Volume by section | hitsound volume from section energy, as greens | low | med | energy, writer | no | no | P2 | todo |
 | SV normaliser | greens that cancel BPM changes so scroll and slider speed stay constant | med | **high** | writer | no | no | P1 | todo |
 | Re-snap objects | move hit objects onto the new grid after a timing change | high | **high** | writer, P5 | no | no | P1 | todo |

@@ -4654,6 +4654,60 @@ class AnalysisEvidenceTests(unittest.TestCase):
         self.assertEqual((evidence["sections"], evidence["note"]), ([], "no_attacks"))
 
 
+class AudioFileReportTests(unittest.TestCase):
+    """Phase 21, Audio file check: facts about the file plus stated bars."""
+
+    @staticmethod
+    def _tone(path: Path, gain: float, lead_s: float = 0.0, seconds: float = 4.0,
+              sr: int = 44100) -> None:
+        import soundfile as sfile
+        n = int(seconds * sr)
+        t = np.arange(n) / sr
+        y = (np.sin(2 * np.pi * 440.0 * t) * gain).astype(np.float32)
+        y[:int(lead_s * sr)] = 0.0
+        stereo = np.stack([y, y], axis=1)
+        sfile.write(str(path), stereo, sr, subtype="PCM_16")
+
+    def test_facts_and_exact_pcm_bitrate(self) -> None:
+        from overtone import audio_file_report
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "song.wav"
+            self._tone(path, 0.5)
+            report = audio_file_report(path)
+            json.dumps(report)
+            self.assertEqual((report["sample_rate"], report["channels"],
+                              report["duration_s"], report["bitrate_kbps"],
+                              report["bitrate_how"]),
+                             (44100, 2, 4.0, 1411, "header"))
+            self.assertAlmostEqual(report["peak_db"], -6.0, places=1)
+            self.assertEqual(report["clipped_share"], 0.0)
+            self.assertEqual((report["lead_ms"], report["findings"]), (0.0, []))
+
+    def test_clipping_and_long_lead_flagged(self) -> None:
+        from overtone import audio_file_report
+        with tempfile.TemporaryDirectory() as tmp:
+            loud = Path(tmp) / "loud.wav"
+            self._tone(loud, 1.0)
+            clipped = audio_file_report(loud)
+            self.assertGreater(clipped["clipped_share"], 0.001)
+            self.assertEqual([f["key"] for f in clipped["findings"]], ["clipping"])
+            gapped = Path(tmp) / "gapped.wav"
+            self._tone(gapped, 0.5, lead_s=2.5)
+            lead = audio_file_report(gapped)
+            self.assertGreaterEqual(lead["lead_ms"], 2400.0)
+            self.assertEqual([f["key"] for f in lead["findings"]], ["long_lead"])
+
+    def test_missing_or_empty_refuses(self) -> None:
+        from overtone import audio_file_report
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                audio_file_report(Path(tmp) / "missing.wav")
+            empty = Path(tmp) / "empty.wav"
+            empty.write_bytes(b"")
+            with self.assertRaises(ValueError):
+                audio_file_report(empty)
+
+
 class AudioSwapTests(unittest.TestCase):
     """Phase 19, Audio swap: the shift between two encodes, every time moved."""
 

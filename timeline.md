@@ -16,6 +16,36 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Audio file check, engine half: facts plus stated bars
+
+### Changed
+
+- **`audio_file_report(path)`**: rate, channels, duration and exact PCM
+  bitrate (file-size average otherwise, labeled) from the header; peak,
+  clipped share and leading near-silence measured on the raw decode, never
+  the peak-normalized analysis buffer. Findings carry the tool's own bars.
+
+### Rejected / tried and dropped
+
+- **Encoding ranking numbers.** The row says "against ranking rules", but no
+  threshold was verifiable offline, so none is encoded: bitrate ships without
+  a verdict, and the clipping, lead and rate bars are the tool's own, stated
+  in the constants. A ranking cross-check stays future work with a criteria
+  source in hand.
+
+### Measured
+
+```
+synthetic WAVs                  1411 kbps exact, -6.0 dB peak, clipping flagged
+                                at full scale, 2.5 s lead flagged, missing refused
+Python unittest                 464 -> 467 (new suites green)
+facts                           ok
+```
+
+No analysis code touched, so no benchmark run here.
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Inject diff beside every preview
 
 ### Changed

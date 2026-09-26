@@ -2172,6 +2172,83 @@ def mp3_gapless_info(path: str | os.PathLike[str]) -> dict:
             "delay_ms": round(delay * scale, 3), "padding_ms": round(padding * scale, 3)}
 
 
+#: A file with this share of samples at full scale reads as clipped.
+#: Mastering can sit near zero innocently, so the bar is a share, not a peak:
+#: one stray full-scale sample is not clipping.
+AUDIO_CLIP_SHARE = 0.001
+#: Leading near-silence past this reads as trimmable dead air. The number is
+#: the tool's own bar, not the client's: no ranking rule was verifiable
+#: offline, so no ranking number is encoded anywhere in this report.
+AUDIO_LEAD_WARN_MS = 2000.0
+#: Below CD quality gets a note, as a fact about the file, not a verdict.
+AUDIO_RATE_FLOOR = 44100
+
+
+def audio_file_report(path: str | os.PathLike[str]) -> dict:
+    """Bitrate, sample rate, length, clipping and lead-in of one audio file
+    (Phase 21, Audio file check).
+
+    Header facts come from libsndfile: rate, channels, duration. Bitrate is
+    exact for PCM (rate × bits × channels) and a file-size average otherwise,
+    labeled which. Peak, clipped share (samples at full scale) and leading
+    near-silence (first 100 ms window peaking past -60 dBFS) are measured on
+    the raw decode — never the peak-normalized analysis buffer, which would
+    hide every one of them. Findings carry the tool's own bars, stated in the
+    constants above: ranking numbers were not verifiable offline and are not
+    encoded here. Read only, plain JSON types.
+    """
+    file = Path(path)
+    if not file.is_file():
+        raise ValueError(f"{file} is not a file.")
+    try:
+        info = sf.info(str(file))
+    except Exception as exc:
+        raise ValueError(f"Could not read {file.name}: {exc}") from exc
+    if info.samplerate <= 0 or info.frames <= 0:
+        raise ValueError(f"{file.name} has no audio in it.")
+    duration_s = info.frames / info.samplerate
+    subtype = str(info.subtype or "").upper()
+    bits = {"PCM_16": 16, "PCM_24": 24, "PCM_32": 32,
+            "FLOAT": 32, "DOUBLE": 64}.get(subtype)
+    if bits is not None:
+        bitrate_kbps = int(round(info.samplerate * bits * info.channels / 1000.0))
+        bitrate_how = "header"
+    else:
+        size = file.stat().st_size
+        bitrate_kbps = int(round(size * 8.0 / duration_s / 1000.0)) if duration_s > 0 else 0
+        bitrate_how = "average"
+    try:
+        raw, _rate = sf.read(str(file), dtype="float32", always_2d=False)
+    except Exception as exc:
+        raise ValueError(f"Could not decode {file.name}: {exc}") from exc
+    mono = np.abs(np.asarray(raw, dtype=np.float64))
+    mono = mono.max(axis=1) if mono.ndim == 2 else mono
+    peak = float(mono.max(initial=0.0))
+    peak_db = round(20.0 * np.log10(peak), 1) if peak > 0 else None
+    clipped_share = round(float(np.mean(mono >= 0.999)) if mono.size else 0.0, 6)
+    window = max(1, int(info.samplerate // 10))
+    lead_ms = round(duration_s * 1000.0, 1)
+    for start in range(0, mono.size, window):
+        if float(mono[start:start + window].max(initial=0.0)) > 0.001:
+            lead_ms = round(start / info.samplerate * 1000.0, 1)
+            break
+    findings = []
+    if clipped_share > AUDIO_CLIP_SHARE:
+        findings.append({"key": "clipping", "level": "warn",
+                         "detail": f"{clipped_share * 100:.2f}% of samples at full scale."})
+    if lead_ms > AUDIO_LEAD_WARN_MS:
+        findings.append({"key": "long_lead", "level": "warn",
+                         "detail": f"{lead_ms:.0f} ms of near-silence before the first sound."})
+    if info.samplerate < AUDIO_RATE_FLOOR:
+        findings.append({"key": "low_rate", "level": "info",
+                         "detail": f"{info.samplerate} Hz is under CD quality."})
+    return {"file": file.name, "format": str(info.format or ""), "subtype": subtype,
+            "sample_rate": int(info.samplerate), "channels": int(info.channels),
+            "duration_s": round(duration_s, 3), "bitrate_kbps": bitrate_kbps,
+            "bitrate_how": bitrate_how, "peak_db": peak_db,
+            "clipped_share": clipped_share, "lead_ms": lead_ms, "findings": findings}
+
+
 def _weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
     if values.size == 0:
         return 0.0

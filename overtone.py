@@ -3701,6 +3701,42 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
             "osu_audio": audio_name, "analysed_audio": analysed_name}
 
 
+def inject_mapset(folder: str | os.PathLike[str], analysis: Analysis,
+                  backup: bool = True, dry_run: bool = False,
+                  decimals: int = 0) -> dict:
+    """Replace the red lines of every difficulty in a song folder (Phase 21).
+
+    One confirmation for the whole mapset: each ``.osu`` in ``folder`` goes
+    through :func:`inject_osu_timing_points` with this analysis, and one bad
+    map never stops the rest — its error rides along in its own entry. With
+    ``dry_run`` nothing is written anywhere. Plain JSON types:
+    ``{"folder", "files": [{"file", "ok", ...summary | "error"}], "ok",
+    "failed"}``.
+    """
+    root = Path(folder)
+    if not root.is_dir():
+        raise ValueError(f"{root} is not a folder.")
+    try:
+        maps = sorted(p for p in root.iterdir()
+                      if p.is_file() and p.suffix.lower() == ".osu")
+    except OSError as exc:
+        raise ValueError(f"Could not list {root}: {exc}") from exc
+    if not maps:
+        raise ValueError(f"No difficulties in {root}.")
+    files = []
+    for path in maps:
+        try:
+            summary = inject_osu_timing_points(path, analysis, backup=backup,
+                                               dry_run=dry_run, decimals=decimals)
+        except (ValueError, OSError) as exc:
+            files.append({"file": path.name, "ok": False, "error": str(exc)})
+            continue
+        files.append({"file": path.name, "ok": True, **summary})
+    return {"folder": str(root), "files": files,
+            "ok": sum(1 for f in files if f["ok"]),
+            "failed": sum(1 for f in files if not f["ok"])}
+
+
 # ---------------------------------------------------------------------------
 # Audio swap (Phase 19): one mapset's times onto a new encode of its audio
 # ---------------------------------------------------------------------------

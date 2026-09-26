@@ -505,6 +505,56 @@ class OsuInjectTests(unittest.TestCase):
             self.assertTrue(summary["audio_mismatch"])
 
 
+class InjectMapsetTests(unittest.TestCase):
+    FAKE_OSU = ("osu file format v14\n[General]\nAudioFilename: song.mp3\n"
+                "[TimingPoints]\n353,266.666666666667,4,2,0,100,1,0\n"
+                "[HitObjects]\n64,80,1000,1,0\n")
+
+    def _analysis(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(source="song.mp3",
+                               points=[TimingPoint(360.0, 224.0, 0.95, 1)])
+
+    def _folder(self, tmp: str) -> Path:
+        root = Path(tmp)
+        (root / "easy.osu").write_bytes(self.FAKE_OSU.replace("\n", "\r\n").encode("utf-8"))
+        (root / "hard.osu").write_bytes(self.FAKE_OSU.replace("\n", "\r\n").encode("utf-8"))
+        (root / "broken.osu").write_text("[General]\n[HitObjects]\n", encoding="utf-8")
+        return root
+
+    def test_dry_run_writes_nothing_and_a_bad_map_does_not_stop_the_rest(self) -> None:
+        from overtone import inject_mapset
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._folder(tmp)
+            report = inject_mapset(root, self._analysis(), dry_run=True)
+            json.dumps(report)
+            self.assertEqual((report["ok"], report["failed"]), (2, 1))
+            self.assertEqual([f["file"] for f in report["files"]],
+                             ["broken.osu", "easy.osu", "hard.osu"])
+            broken = next(f for f in report["files"] if f["file"] == "broken.osu")
+            self.assertFalse(broken["ok"])
+            self.assertIn("TimingPoints", broken["error"])
+            self.assertFalse((root / "easy.osu.bak").exists())
+
+    def test_apply_writes_every_difficulty_with_its_backup(self) -> None:
+        from overtone import inject_mapset
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._folder(tmp)
+            report = inject_mapset(root, self._analysis())
+            self.assertEqual((report["ok"], report["failed"]), (2, 1))
+            for name in ("easy.osu", "hard.osu"):
+                out = (root / name).read_bytes()
+                self.assertNotIn(b"266.666666666667", out)
+                self.assertTrue((Path(str(root / name) + ".bak")).is_file())
+            with self.assertRaises(ValueError):
+                inject_mapset(root / "missing", self._analysis())
+            (root / "easy.osu").unlink()
+            (root / "hard.osu").unlink()
+            (root / "broken.osu").unlink()
+            with self.assertRaises(ValueError):
+                inject_mapset(root, self._analysis())
+
+
 def _timing_rows(text: str) -> list[list[str]]:
     rows, inside = [], False
     for line in text.splitlines():

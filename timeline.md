@@ -16,6 +16,26 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Inject everywhere, engine half: one bad map stops nothing
+
+### Changed
+
+- **`inject_mapset(folder, analysis)`**: every `.osu` in the folder through
+  the same inject, dry-run or backed-up write — one bad map rides along in
+  its own entry instead of stopping the rest. A missing folder or a folder
+  with no difficulties refuses outright.
+
+### Measured
+
+```
+Python unittest              456 -> 458 (inject suites green)
+facts                        ok
+```
+
+No analysis code touched, so no benchmark run here.
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Breaks: quiet spans written from Structure
 
 ### Changed

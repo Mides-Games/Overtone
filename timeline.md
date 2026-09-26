@@ -71,6 +71,11 @@ later costs more than writing it down now.
   the removals: 6.05 s of a 6.31 s scan when an index moved to another folder.
 - **The page** went blank when the index could not be read, and said "Not indexed yet" of
   a folder just scanned and found empty.
+- **At the window's narrowest, Folder and Rescan sat off screen** (found in the browser
+  check before merging). The empty views' grid had one `auto` column, which grew to the
+  full width of the Library's one-line status: at 960 px a long "is not there" line pushed
+  the header past the window, reachable only by scrolling sideways. The column is now the
+  view's width, and the line truncates as it was meant to.
 
 ### Hardening
 
@@ -159,6 +164,20 @@ are the flags real?                   an independent reference: where each map's
                                       Evergreen's objects walk 20 ms across 215 s
 index migration                       a copy of the full local index, schema 1 with 25,165
                                       maps, opened as schema 2 in 22 ms, every map kept
+browser check before merging (the harness on this branch; the Songs folder read only)
+  first scan of the Songs folder      "Listing the folder…", then 15 -> 1006 / 4802 folders
+                                      in 32 s, never ahead of the work; 25,165 maps in
+                                      168.5 s, machine busy; "9 could not be read", named
+  another folder                      "Removing 25165 maps that are no longer in the folder…"
+  empty folder, moved folder          "No beatmaps in … · scanned …"; "… is not there: the
+                                      index (1 maps) is from …"
+  a 0-byte .osu, a junk index         "· 1 could not be read", the file in the tooltip; the
+                                      damaged message, then "The damaged index was rebuilt."
+                                      and the list back
+  overlapping searches                only the latest drawn ("a" asked before "fox
+                                      stevenson"; typing "camellia" fast)
+  960 px, Spanish, longest line       buttons at 654-832 px after the grid fix (963-1141
+                                      before, off screen); line truncated; 1280 px unchanged
 Python unittest     +14 tests (528 -> 542 on its own base), all pass (the Rust health test ran with OVERTONE_CLI set)
 facts
 ```

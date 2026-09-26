@@ -429,6 +429,10 @@ button.link:focus-visible, .recent-item:focus-visible { border-radius: var(--r-x
 .empty {
   min-height: 100%;
   display: grid; place-items: center; align-content: center;
+  /* One column exactly the view's width: an auto one grew to fit the
+     library's one-line status, and at the window's narrowest pushed the
+     Folder and Rescan buttons off screen instead of truncating the line. */
+  grid-template-columns: minmax(0, 1fr);
   padding-bottom: 2vh;
 }
 .drop {

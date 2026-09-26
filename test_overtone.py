@@ -408,6 +408,61 @@ class ManualEditTests(unittest.TestCase):
         with self.assertRaises(ValueError):  # 400 × 2 = 800 exceeds the 600 cap
             rescale_section([TimingPoint(0.0, 400.0, 1.0, 0)], 0, 2.0)
 
+    @staticmethod
+    def _tempo_change():
+        # 120 BPM for 20 beats from 0 ms, then 125 BPM from 10 s: one tempo
+        # change the detector missed, under a single 120 BPM red line.
+        first = np.arange(20) * 0.5
+        second = 10.0 + np.arange(30) * 0.48
+        times = np.concatenate([first, second])
+        return times, np.ones_like(times)
+
+    def test_split_puts_a_line_on_the_section_grid_and_refits_both_halves(self):
+        from overtone import split_section
+        times, weights = self._tempo_change()
+        beats = np.arange(0.0, 25.0, 0.5)
+        points = [TimingPoint(0.0, 120.0, 0.9, 0)]
+        out, report = split_section(points, beats, 0, 10110.0, times, weights, 24500.0)
+        self.assertEqual([p.offset_ms for p in out], [0.0, 10000.0])
+        self.assertAlmostEqual(out[0].bpm, 120.0, delta=0.05)
+        self.assertAlmostEqual(out[1].bpm, 125.0, delta=0.05)
+        self.assertTrue(all(p.manual for p in out))
+        self.assertEqual((out[1].meter_known, report["split_ms"]), (False, 10000.0))
+        self.assertEqual([s["kept"] for s in report["sections"]], [None, None])
+
+    def test_a_split_off_the_section_is_refused(self):
+        from overtone import split_section
+        times, weights = self._tempo_change()
+        points = [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(10000.0, 125.0, 0.9, 20)]
+        for at in (100.0, 9900.0, 12000.0):       # on the line, on the next, past it
+            with self.subTest(at=at), self.assertRaises(ValueError):
+                split_section(points, np.arange(0.0, 25.0, 0.5), 0, at, times, weights, 24500.0)
+
+    def test_merge_drops_the_next_line_and_refits_the_whole_span(self):
+        from overtone import merge_sections
+        times = np.arange(40) * 0.5                   # a steady 120 BPM
+        points = [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(10000.0, 118.0, 0.7, 20)]
+        out, report = merge_sections(points, np.arange(0.0, 20.0, 0.5), 0, times,
+                                     np.ones_like(times), 20000.0)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].offset_ms, 0.0)
+        self.assertAlmostEqual(out[0].bpm, 120.0, delta=0.05)
+        self.assertEqual((report["removed_ms"], report["sections"][0]["kept"]), (10000.0, None))
+        with self.assertRaises(ValueError):
+            merge_sections(out, np.arange(0.0, 20.0, 0.5), 0, times, np.ones_like(times), 20000.0)
+
+    def test_too_few_or_scattered_attacks_keep_the_bpm_and_say_why(self):
+        from overtone import merge_sections
+        points = [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(10000.0, 118.0, 0.7, 20)]
+        few = np.array([0.5, 1.0, 1.5])
+        out, report = merge_sections(points, np.arange(0.0, 20.0, 0.5), 0, few,
+                                     np.ones_like(few), 20000.0)
+        self.assertEqual((out[0].bpm, report["sections"][0]["kept"]), (120.0, "few"))
+        scattered = np.random.default_rng(3).uniform(0.0, 20.0, 60)
+        out, report = merge_sections(points, np.arange(0.0, 20.0, 0.5), 0, np.sort(scattered),
+                                     np.ones(60), 20000.0)
+        self.assertEqual((out[0].bpm, report["sections"][0]["kept"]), (120.0, "weak"))
+
 
 def _section_analysis(mid_amp: float, bpm: float = 112.4):
     from overtone import Analysis

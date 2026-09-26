@@ -3139,6 +3139,90 @@ def rescale_section(points: list[TimingPoint], index: int, factor: float) -> lis
     return merged
 
 
+def _refit_section(times: np.ndarray, weights: np.ndarray, offset_ms: float, bpm: float,
+                   end_ms: float) -> dict:
+    """One section's beat refitted to the attacks it spans, its red line held.
+
+    The reference grading's fit (``_grade_span``), started from the section's
+    own grid: the BPM follows the attacks, never further than
+    ``REFERENCE_PERIOD_BAND`` from where it started. Fewer than
+    ``REFERENCE_MIN_ATTACKS`` attacks (``kept: "few"``), or a grid explaining
+    less than ``REFERENCE_MIN_SHARE`` of their weight (``kept: "weak"``),
+    keeps the BPM as it was and says why, instead of guessing.
+    """
+    start_s, beat_s, end_s = offset_ms / 1000.0, 60.0 / bpm, end_ms / 1000.0
+    # An attack up to half the finest subdivision early belongs to the line it opens.
+    slack = 0.5 * beat_s / max(REFERENCE_DIVISORS)
+    inside = (times >= start_s - slack) & (times < end_s - slack)
+    span_t, span_w = times[inside], weights[inside]
+    row = {"offset_ms": float(offset_ms), "bpm_before": float(bpm), "bpm": float(bpm),
+           "attacks": int(span_t.size), "share": None, "kept": None}
+    if span_t.size < REFERENCE_MIN_ATTACKS or end_s <= start_s:
+        row["kept"] = "few"
+        return row
+    graded = _grade_span(span_t, span_w, start_s, beat_s, end_s)
+    row["share"] = float(graded["share"])
+    if graded["share"] < REFERENCE_MIN_SHARE:
+        row["kept"] = "weak"
+        return row
+    row["bpm"] = float(graded["fitted_bpm"])
+    return row
+
+
+def split_section(points: list[TimingPoint], beats: np.ndarray, index: int, at_ms: float,
+                  attack_times, attack_weights, end_ms: float) -> tuple[list[TimingPoint], dict]:
+    """Split section ``index`` in two where a tempo changes inside it (editor).
+
+    The new red line goes on the beat of the section's own grid nearest
+    ``at_ms``, so the bars before it stay where they were; it must be a beat
+    or more after the section's line and before the next. Both halves are
+    then refitted to their attacks (``_refit_section``): the section keeps
+    its offset, the new line its place, each gets the BPM its attacks keep
+    or keeps the old one with the reason. Returns the new points and a
+    report of both halves.
+    """
+    if not 0 <= index < len(points):
+        raise ValueError("No timing point at that index.")
+    point = points[index]
+    stop = points[index + 1].offset_ms if index + 1 < len(points) else float(end_ms)
+    beat_ms = 60000.0 / point.bpm
+    k = int(round((float(at_ms) - point.offset_ms) / beat_ms))
+    split_ms = point.offset_ms + k * beat_ms
+    if k < 1 or split_ms > stop - 0.5 * beat_ms:
+        raise ValueError("Split inside the section: a beat or more after its red line, "
+                         "before the next one.")
+    times = np.asarray(attack_times, dtype=np.float64)
+    weights = np.asarray(attack_weights, dtype=np.float64)
+    first = _refit_section(times, weights, point.offset_ms, point.bpm, split_ms)
+    second = _refit_section(times, weights, split_ms, point.bpm, stop)
+    merged = list(points)
+    merged[index] = TimingPoint(point.offset_ms, first["bpm"], point.confidence,
+                                point.beat_index, point.meter, point.meter_known, manual=True)
+    # A split on a beat need not be on a bar: the new line's meter is a guess.
+    merged.append(TimingPoint(split_ms, second["bpm"], 1.0, _nearest_beat_index(beats, split_ms),
+                              point.meter, False, manual=True))
+    merged.sort(key=lambda p: p.offset_ms)
+    return merged, {"split_ms": split_ms, "sections": [first, second]}
+
+
+def merge_sections(points: list[TimingPoint], beats: np.ndarray, index: int,
+                   attack_times, attack_weights, end_ms: float) -> tuple[list[TimingPoint], dict]:
+    """Merge section ``index`` with the next one: the next red line goes and
+    the whole span is refitted from ``index``'s line (``_refit_section``),
+    which keeps its offset. Returns the new points and a report."""
+    if not 0 <= index < len(points) - 1:
+        raise ValueError("There is no next section to merge with.")
+    point, gone = points[index], points[index + 1]
+    stop = points[index + 2].offset_ms if index + 2 < len(points) else float(end_ms)
+    row = _refit_section(np.asarray(attack_times, dtype=np.float64),
+                         np.asarray(attack_weights, dtype=np.float64),
+                         point.offset_ms, point.bpm, stop)
+    merged = [p for n, p in enumerate(points) if n != index + 1]
+    merged[index] = TimingPoint(point.offset_ms, row["bpm"], point.confidence, point.beat_index,
+                                point.meter, point.meter_known, manual=True)
+    return merged, {"removed_ms": gone.offset_ms, "sections": [row]}
+
+
 # ---------------------------------------------------------------------------
 # Per-section pulse suggestions
 # ---------------------------------------------------------------------------

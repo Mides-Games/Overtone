@@ -1669,7 +1669,7 @@ function renderHitsoundsView() {
     const unit = hsdUnitFor(s);
     const key = unit && hsdKey(unit.object, unit.part, unit.edge);
     const prop = !unit ? `<span class="muted">—</span>`
-      : `<label class="check"><input type="checkbox" data-hsd="${esc(key)}" ${HSD.accepted.has(key) ? "checked"}>`
+      : `<label class="check"><input type="checkbox" data-hsd="${esc(key)}" ${HSD.accepted.has(key) ? "checked" : ""}>`
       + `<span>${esc(hsdLabel(unit))}</span></label>`;
     return `<tr data-i="${i}">
       <td class="txt num">${fmtTime(s.t)}</td>

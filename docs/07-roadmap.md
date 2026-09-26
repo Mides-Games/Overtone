@@ -40,23 +40,19 @@ Evidence, Write history, Audio swap, Offset lab and Ramps; the percussion-only a
 and the Phase 21 map tools (inject everywhere with a diff, kiai, breaks, bookmarks, preview
 point, section volumes, SV normaliser, re-snap, snap divisors, audio file check).
 
-1. **Constant scroll on maps with sliders** (Phase 21, a decision) — a slider lasts by its
-   SV, so a standard, taiko or catch map with sliders after a BPM change is refused (221
-   of 249 local standard maps with one). Writing it would mean resizing every slider to
-   keep its ends on the beat, which changes the sliders' shapes.
-2. **Hitsounds, the rest** (Phase 6, [`15-hitsound-plan.md`](15-hitsound-plan.md)) — volume
+1. **Hitsounds, the rest** (Phase 6, [`15-hitsound-plan.md`](15-hitsound-plan.md)) — volume
    and sample edits and hearing a proposal before it is written (H5), the Export section's
    hitsound surface, explanations and profiles in the app, instrument lanes on the
    timeline (P-4's evidence is there to draw), slider bodies in playback; then H6 (sample
    bank, recommendation) and H7 (a proposal from the audio alone). The clap-mismatch rule
    waits until the templates hold on real audio.
-3. **Library focus** (Phase 19) — scan, rescan and search measured on a full Songs folder,
+2. **Library focus** (Phase 19) — scan, rescan and search measured on a full Songs folder,
    then the library health check (Phase 21).
-4. **The Audio section** (Phase 19), and phrase starts on the phrase's own bar.
-5. **Other languages** (Phase 24) — TypeScript (needs Node.js) and a C# lazer gate (needs
+3. **The Audio section** (Phase 19), and phrase starts on the phrase's own bar.
+4. **Other languages** (Phase 24) — TypeScript (needs Node.js) and a C# lazer gate (needs
    the .NET SDK). Neither is installed; ask before installing.
-6. **Real-audio accuracy** (Phase 10) — build Corpus B first, then one sub-phase at a time.
-7. **Installer** (Phase 10.13) — MSI + portable ZIP.
+5. **Real-audio accuracy** (Phase 10) — build Corpus B first, then one sub-phase at a time.
+6. **Installer** (Phase 10.13) — MSI + portable ZIP.
 
 Two proposals wait on a decision, not on work: the Rhythm guide (`04-ui-ux.md` §9 rules out
 editing a beatmap beyond hitsounds and timing) and song import from a streaming link
@@ -594,7 +590,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Bookmarks | section starts as editor bookmarks | low | med | structure | no | no | P2 | **done** — merged with the map's own, preview then confirmed write with backup, in the Structure view |
 | Breaks | quiet spans long enough for a break | low | med | energy | no | no | P2 | **done** — sections 6 dB under the loudest cut by the map's own sound gaps (5 s or longer), Structure card with span preview and confirmed write with backup |
 | Volume by section | hitsound volume from section energy, as greens | low | med | energy, writer | no | no | P2 | **done** — sections where the map sets its own volumes kept; a section at one volume set all the way through (its start, greens, a green at each red line inside, the next section's own volume given back); the scale from the loudest section's longest-held volume, 5 % floor. On 800 local maps: 20 % of sections set, 77 % left to the mapper, none of those changed |
-| SV normaliser | greens that cancel BPM changes so scroll and slider speed stay constant | med | **high** | writer | no | no | P1 | **done** where it cannot move a slider — first red's BPM is the reference; every green under a BPM change scaled by reference over its BPM, a green at each red line, spans already constant kept, a second run refused through History's scroll profile; a map with a slider in a span it would scale refused (a slider lasts by its SV). Of local maps with a BPM change: mania 100 of 117 written, taiko 103 of 132, standard 22 of 249 |
+| SV normaliser | greens that cancel BPM changes so scroll and slider speed stay constant | med | **high** | writer | no | no | P1 | **done** where it cannot move a slider — first red's BPM is the reference; every green under a BPM change scaled by reference over its BPM, a green at each red line, spans already constant kept, a second run refused through History's scroll profile; a map with a slider in a span it would scale refused, by decision (a slider lasts by its SV, and resizing it would change its shape: see Rejected ideas). Of local maps with a BPM change: mania 100 of 117 written, taiko 103 of 132, standard 22 of 249 |
 | Re-snap objects | move hit objects onto the new grid after a timing change | high | **high** | writer, P5 | no | no | P1 | **done** — snapped-before stays snapped via the diff's drift, off-grid listed never touched; Map check card with preview, one confirmation and backup |
 | Snap-divisor map | where the song needs 1/3, 1/4 or 1/6, per section | med | high | attacks | no | no | P1 | **done** — coarsest grid per attack within 15 ms, verdict by attack weight; read-only Timing card, one line per section |
 | Swing lane | where the music swings or sits off the grid | med | med | attacks | no | no | P2 | todo |
@@ -681,6 +677,7 @@ Rejected: C++, Go, Java, Kotlin, Cython, Julia, R — the reasons are in the doc
 | **Chorus / verse detection** as a headline | **Keep, demote.** Useful for per-section hitsound profiles, not its own phase |
 | **PySide6 desktop UI** (old Phase 12 plan) | **Superseded** by the web shell, which survives the move to Tauri |
 | **SuperFlux**, **tempogram from the coherence map** | **Rejected on measurement** (Phase 2) |
+| **Resizing sliders to hold scroll constant** | **Won't build** (decided 2026-09-26). A slider lasts by the SV it starts under, so constant scroll under one means a new length, and so a new shape on screen: that is the mapper's call, made in the editor. Constant scroll refuses such a map and says how many sliders and where (221 of 249 local standard maps with a BPM change) |
 | **A pitch-kept slow loop** | **Rejected on measurement** (Phase 4): it exists to judge attacks, and the phase vocoder moved them a median 23-24 ms; the loop is resampled instead, pitch and all |
 | **Cloud anything** | **Never.** Offline is a product property |
 

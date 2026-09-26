@@ -17,6 +17,41 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · The hitsound profile, chosen beside Propose
+
+### Changed
+
+- **A Profile selector beside Propose** in the Hitsounds section's Propose card: Balanced
+  first, then every profile `profiles/` holds (Drum-focused today), named in English and
+  Spanish; a line under the buttons says what the chosen one does. The status names the
+  profile that decided the proposals shown, and when another is chosen afterwards the card
+  says so until Propose runs again. With Balanced alone there is nothing to choose: no
+  selector, no note, no name in the status, the card as it was.
+- **The bridge lists the profiles**: `hitsound_profiles` gives `balanced` first, then every
+  `profiles/<name>.json` whose name is lowercase letters, digits, `-` and `_`, and
+  `hitsound_decide_propose(file, profile)` decides with the one named. Balanced stays the
+  baked one, with no file handed over, as before profiles. `overtone_rust.hitsound` passes
+  `--profile` to the sidecar.
+
+### Hardening
+
+- **A profile is a listed name, never a path.** A name the folder does not list, a path
+  (relative, absolute, or the folder's own file), a name with its extension, another case,
+  an empty string or anything not a string is refused as `bad_profile` before the sidecar
+  runs.
+- **The page's two languages are held together by a test**: the English and Spanish tables
+  must hold the same keys with the same placeholders (795 each). Nothing checked that
+  before; they already matched.
+
+### Measured
+
+```
+Python unittest   534 -> 538, all pass (with the CLI built)
+facts
+the page itself: not checked in a browser yet (selector, note, status, both languages,
+1280 and 1024 px)
+```
+
 ## v4.0.0-dev — 2026-09-26 · Hitsound profiles held to their own style: Drum-focused ships, Minimal does not
 
 ### Changed

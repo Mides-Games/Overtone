@@ -216,19 +216,24 @@ def structure(path: str | os.PathLike[str], *, cli: Path | None = None,
 
 
 def hitsound(audio: str | os.PathLike[str], osu: str | os.PathLike[str], *,
+             profile: str | os.PathLike[str] | None = None,
              cli: Path | None = None, timeout: float = TIMEOUT_S) -> dict:
     """``overtone-cli hitsound``: the proposed sound of every decidable point.
 
     The audio and the map travel together because the decision reads both.
-    Raises :class:`SidecarUnavailable` without a binary, and ``RuntimeError``
-    with the loader's message when either file cannot be read.
+    ``profile`` is a profile file to decide with; without one the CLI's
+    baked ``balanced`` decides. Raises :class:`SidecarUnavailable` without a
+    binary, and ``RuntimeError`` with the loader's message when the audio,
+    the map or the profile cannot be read.
     """
     binary = cli or find_cli()
     if binary is None:
         raise SidecarUnavailable("The Rust engine (overtone-cli) is not built.")
+    args = [str(binary), "hitsound", os.fspath(audio), os.fspath(osu)]
+    if profile is not None:
+        args += ["--profile", os.fspath(profile)]
     try:
-        done = subprocess.run([str(binary), "hitsound", os.fspath(audio), os.fspath(osu)],
-                              capture_output=True, timeout=timeout,
+        done = subprocess.run(args, capture_output=True, timeout=timeout,
                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"The Rust engine took over {timeout:.0f} s and was stopped.") from exc

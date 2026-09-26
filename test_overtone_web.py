@@ -1092,6 +1092,61 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
         self.assertIn("1200", reply["detail"])
         self.assertEqual(heard["key"], "error")
 
+    def test_profiles_are_listed_by_name_and_reach_the_sidecar_as_their_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as shelf:
+            for name in ("quiet", "drum_focused", "balanced", "Loud", "two words", "x.y"):
+                Path(shelf, f"{name}.json").write_text("{}", encoding="utf-8")
+            Path(shelf, "notes.txt").write_text("", encoding="utf-8")
+            Path(shelf, "folder.json").mkdir()
+            api = self._song(tmp)
+            with mock.patch.object(web, "PROFILE_DIR", Path(shelf)), \
+                    mock.patch.object(web.overtone_rust, "hitsound",
+                                      return_value={"units": self.UNITS}) as run:
+                listed = api.hitsound_profiles()
+                chosen = api.hitsound_decide_propose("hard.osu", "quiet")
+                plain = api.hitsound_decide_propose("hard.osu")
+                named = api.hitsound_decide_propose("hard.osu", "balanced")
+        json.dumps([listed, chosen, plain, named])
+        # balanced first (the CLI bakes it in), then the plain names in order;
+        # names only, never a path.
+        self.assertEqual((listed["profiles"], listed["default"]),
+                         (["balanced", "drum_focused", "quiet"], "balanced"))
+        self.assertEqual(run.call_args_list[0].kwargs["profile"], Path(shelf, "quiet.json"))
+        # balanced is the baked one: no file handed over, as before profiles.
+        self.assertEqual([c.kwargs["profile"] for c in run.call_args_list[1:]], [None, None])
+        self.assertEqual((chosen["profile"], plain["profile"], named["profile"]),
+                         ("quiet", "balanced", "balanced"))
+        self.assertEqual(len(chosen["units"]), 2)
+
+    def test_a_profile_is_a_listed_name_never_a_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as shelf:
+            Path(shelf, "quiet.json").write_text("{}", encoding="utf-8")
+            elsewhere = Path(tmp, "mine.json")
+            elsewhere.write_text("{}", encoding="utf-8")
+            api = self._song(tmp)
+            with mock.patch.object(web, "PROFILE_DIR", Path(shelf)), \
+                    mock.patch.object(web.overtone_rust, "hitsound",
+                                      return_value={"units": self.UNITS}) as run:
+                refused = [api.hitsound_decide_propose("hard.osu", bad)["key"]
+                           for bad in ("../quiet", str(elsewhere), str(Path(shelf, "quiet.json")),
+                                       "quiet.json", "mine", "QUIET", "", 3, ["quiet"])]
+            gone = api.hitsound_decide_propose("..\\hard.osu", "quiet")
+        self.assertEqual(refused, ["bad_profile"] * 9)
+        self.assertEqual(gone["key"], "bad_file")
+        run.assert_not_called()
+
+    def test_the_sidecar_gets_the_profile_file_on_its_command_line(self) -> None:
+        done = mock.Mock(returncode=0, stdout=json.dumps({"units": []}).encode("utf-8"),
+                         stderr=b"")
+        with mock.patch.object(web.overtone_rust.subprocess, "run", return_value=done) as run:
+            web.overtone_rust.hitsound("song.mp3", "hard.osu", cli=Path("cli.exe"))
+            web.overtone_rust.hitsound("song.mp3", "hard.osu", cli=Path("cli.exe"),
+                                       profile=Path("profiles", "quiet.json"))
+        self.assertEqual(run.call_args_list[0].args[0], ["cli.exe", "hitsound", "song.mp3", "hard.osu"])
+        self.assertEqual(run.call_args_list[1].args[0],
+                         ["cli.exe", "hitsound", "song.mp3", "hard.osu",
+                          "--profile", str(Path("profiles", "quiet.json"))])
+
 
 class StructureBridgeTests(_IsolatedConfig):
     """The Structure view: the Rust report once per file, bars every call."""
@@ -3079,6 +3134,26 @@ class AppScriptTests(unittest.TestCase):
         names = re.findall(r"^(?:async function|function|const|let|class) (\w+)",
                            self.SOURCE.read_text(encoding="utf-8"), re.M)
         self.assertEqual(sorted({name for name in names if names.count(name) > 1}), [])
+
+    def test_english_and_spanish_hold_the_same_keys_and_placeholders(self) -> None:
+        # A key missing from the Spanish table shows English on the Spanish
+        # page, one missing from English shows its raw name, and a placeholder
+        # only one table names prints its braces in the other.
+        import re
+        text = self.SOURCE.read_text(encoding="utf-8")
+        start = text.index("const I18N = {")
+        en_at, es_at = text.index("\n  en: {", start), text.index("\n  es: {", start)
+        end = text.index("\n};", es_at)
+        pair = re.compile(r'(\w+):\s*("(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`)')
+
+        def table(chunk: str) -> dict:
+            return {m.group(1): sorted(set(re.findall(r"\{(\w+)\}", m.group(2))))
+                    for m in pair.finditer(chunk)}
+
+        en, es = table(text[en_at:es_at]), table(text[es_at:end])
+        self.assertGreater(len(en), 700)
+        self.assertEqual(sorted(set(en) ^ set(es)), [])
+        self.assertEqual([k for k in en if en[k] != es[k]], [])
 
 
 if __name__ == "__main__":

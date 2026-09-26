@@ -665,6 +665,10 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 .hsd-form .btn { height: 36px; }
 .hsv-bars { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--fs-2); }
 .hsv-bars .input { width: 68px; height: 32px; }
+.hsv-profile { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--fs-2); }
+.hsv-profile .input { width: auto; min-width: 150px; height: 36px; }
+.hsv-profile-note { text-align: center; margin-top: 8px; }
+.hsv-profile-note:empty { display: none; }
 .hsv-edit { display: flex; flex-wrap: wrap; align-items: end; justify-content: center; gap: 10px 12px; margin: 14px 0 6px; }
 .hsv-edit .field { gap: 4px; }
 .hsv-edit .input { width: 110px; height: 36px; }

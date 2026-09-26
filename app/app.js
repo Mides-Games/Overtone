@@ -181,6 +181,12 @@ const I18N = {
     hsv_decide_title: "Propose and edit hitsounds",
     hsv_decide_sub: "The decision engine proposes every object's sound; volume and sample index are yours to set. Tick what to keep, hear it over the song, preview, then write the file or a copy. Each write is backed up, and one undo restores it.",
     hsv_propose: "Propose", hsv_proposing: "Deciding every sound…",
+    hsv_profile: "Profile", hsv_prof_balanced: "Balanced",
+    hsv_prof_balanced_note: "Balanced, the default: every instrument heard can take its sound, placed by the beat.",
+    hsv_prof_drum_focused: "Drum-focused",
+    hsv_prof_drum_focused_note: "Drum-focused: kick, snare, hats and cymbals choose the sounds; vocals and melody only keep the plain sound; a finish leans to where a combo starts.",
+    hsv_prof_again: "The proposals shown were decided with {used}: press Propose to decide with {chosen}.",
+    bad_profile: "That hitsound profile is not in the profiles folder.",
     hsv_proposed: "{n} proposals", hsv_decide_all: "All", hsv_decide_none: "None",
     hsv_preview: "Preview", hsv_would_change: "{what}: {n} objects would change",
     hsv_what_ticked: "{accepted} of {units} proposals ticked", hsv_edited: "{n} objects edited", hsv_and: " and ",
@@ -718,6 +724,12 @@ const I18N = {
     hsv_decide_title: "Proponer y editar hitsounds",
     hsv_decide_sub: "El motor propone el sonido de cada objeto; el volumen y el índice de sample los ponés vos. Tildá lo que queda, escuchalo sobre la canción, previsualizá, y escribí el archivo o una copia. Cada escritura se respalda, y un deshacer lo restaura.",
     hsv_propose: "Proponer", hsv_proposing: "Decidiendo cada sonido…",
+    hsv_profile: "Perfil", hsv_prof_balanced: "Equilibrado",
+    hsv_prof_balanced_note: "Equilibrado, el de siempre: cada instrumento que se oye puede llevar su sonido, ubicado según el pulso.",
+    hsv_prof_drum_focused: "Centrado en la batería",
+    hsv_prof_drum_focused_note: "Centrado en la batería: bombo, caja, hi-hats y platillos eligen los sonidos; la voz y la melodía solo mantienen el sonido liso; un finish tiende a caer donde empieza un combo.",
+    hsv_prof_again: "Las propuestas que ves se decidieron con {used}: tocá Proponer para decidir con {chosen}.",
+    bad_profile: "Ese perfil de hitsounds no está en la carpeta de perfiles.",
     hsv_proposed: "{n} propuestas", hsv_decide_all: "Todas", hsv_decide_none: "Ninguna",
     hsv_preview: "Vista previa", hsv_would_change: "{what}: {n} objetos cambiarían",
     hsv_what_ticked: "{accepted} de {units} propuestas tildadas", hsv_edited: "{n} objetos editados", hsv_and: " y ",
@@ -2622,7 +2634,47 @@ function hsvPlay(i) {
 // no proposal: one per object, keyed by the sound they were set on, so the
 // bridge can refuse them if that sound moved.
 const HSD = { file: "", units: [], byKey: new Map(), accepted: new Set(), choice: new Map(),
-              edits: new Map(), undo: false, proposing: false };
+              edits: new Map(), undo: false, proposing: false,
+              profiles: ["balanced"], profile: "balanced", proposedWith: "" };
+
+// Hitsound profiles by name, as the bridge lists them (balanced first): a
+// profile the page has words for shows them, any other its file's name.
+function hsdProfileLabel(name) {
+  const key = "hsv_prof_" + name;
+  return key in I18N.en ? t(key) : name;
+}
+
+// The selector shows only when there is a choice: balanced alone needs none.
+function hsdProfilesRender() {
+  const box = $("hsvProfile");
+  box.innerHTML = HSD.profiles.map((name) => {
+    const key = "hsv_prof_" + name;
+    return `<option value="${esc(name)}"${key in I18N.en ? ` data-i18n="${key}"` : ""}>${esc(hsdProfileLabel(name))}</option>`;
+  }).join("");
+  box.value = HSD.profile;
+  $("hsvProfileField").hidden = HSD.profiles.length < 2;
+}
+
+async function hsdProfilesLoad() {
+  if (!api()) return;
+  const reply = await api().hitsound_profiles();
+  if (!reply || !reply.ok) return;
+  HSD.profiles = reply.profiles;
+  if (!HSD.profiles.includes(HSD.profile)) HSD.profile = reply.default;
+  hsdProfilesRender();
+}
+
+// What the chosen profile does, and a reminder when the proposals shown
+// were decided with another one.
+function hsdProfileNote() {
+  const key = `hsv_prof_${HSD.profile}_note`;
+  const note = HSD.profiles.length > 1 && key in I18N.en ? t(key) : "";
+  const shown = HSD.file === HSV.file && HSD.units.length > 0 && HSD.proposedWith;
+  const again = shown && HSD.proposedWith !== HSD.profile
+    ? t("hsv_prof_again", { used: hsdProfileLabel(HSD.proposedWith), chosen: hsdProfileLabel(HSD.profile) })
+    : "";
+  return [note, again].filter(Boolean).join(" ");
+}
 
 function hsdKey(object, part, edge) { return `${object}|${part}|${edge ?? ""}`; }
 
@@ -2714,6 +2766,8 @@ function hsdRender() {
   const mine = HSD.file === HSV.file, units = mine && HSD.units.length > 0, has = hsdHas();
   $("hsvDecideCard").hidden = !HSV.report;
   $("hsvPropose").disabled = HSD.proposing || !HSV.file;
+  $("hsvProfile").disabled = HSD.proposing;
+  $("hsvProfileNote").textContent = hsdProfileNote();
   $("hsvDecideAll").disabled = $("hsvDecideNone").disabled = !units;
   for (const id of ["hsvDecidePreview", "hsvDecideHear", "hsvDecideApply", "hsvDecideCopy"]) {
     $(id).disabled = !has;
@@ -2724,6 +2778,7 @@ function hsdRender() {
   const chosen = units ? hsdChoiceList().length : 0;
   $("hsvDecideStatus").textContent = HSD.proposing ? t("hsv_proposing")
     : [units ? t("hsv_proposed", { n: HSD.accepted.size }) : "",
+       units && HSD.proposedWith && HSD.profiles.length > 1 ? hsdProfileLabel(HSD.proposedWith) : "",
        chosen ? t("hsv_alts", { n: chosen }) : "",
        mine && HSD.edits.size ? t("hsv_edited", { n: HSD.edits.size }) : ""].filter(Boolean).join(" · ");
   hsProposalOption(has ? HSD.file : "");
@@ -2798,7 +2853,7 @@ async function hsvPropose() {
   if (!api() || !HSV.file || HSD.proposing) return;
   HSD.proposing = true; hsdRender();
   try {
-    const reply = await api().hitsound_decide_propose(HSV.file);
+    const reply = await api().hitsound_decide_propose(HSV.file, HSD.profile);
     if (HSV.file !== (reply.file || HSV.file)) { hsdRender(); return; }
     if (!reply.ok) {
       if (reply.key === "no_rust") toast(t("hsv_no_rust"), true);
@@ -2806,6 +2861,7 @@ async function hsvPropose() {
       return;
     }
     HSD.file = HSV.file;
+    HSD.proposedWith = reply.profile || HSD.profile;
     HSD.units = reply.units;
     HSD.byKey = new Map(reply.units.map((u) => [hsdKey(u.object, u.part, u.edge), u]));
     HSD.choice = new Map();
@@ -5569,6 +5625,7 @@ function wire() {
   });
   $("hsvMore").onclick = () => { HSV.shown += HSV_PAGE; renderHitsoundsView(); };
   $("hsvPropose").onclick = () => hsvPropose();
+  $("hsvProfile").onchange = () => { HSD.profile = $("hsvProfile").value; hsdRender(); };
   $("hsvDecideAll").onclick = () => hsdSetAll(true);
   $("hsvDecideNone").onclick = () => hsdSetAll(false);
   $("hsvDecidePreview").onclick = () => hsdPreview();
@@ -5893,6 +5950,7 @@ async function boot() {
   applyOptions(st.options);
   setFile(st.file);
   translate();
+  hsdProfilesLoad();
   // Offered only where built; a saved choice without a binary falls back.
   $("rustEngine").disabled = !S.rustAvailable;
   if (!S.rustAvailable) $("rustNote").textContent = t("t_rust_missing");

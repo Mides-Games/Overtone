@@ -673,6 +673,9 @@
           <div class="card-body">
             <div class="card-sub" data-i18n="hsv_decide_sub">The decision engine proposes every object's sound; volume and sample index are yours to set. Tick what to keep, hear it over the song, preview, then write the file or a copy. Each write is backed up, and one undo restores it.</div>
             <div class="drop-actions">
+              <label class="hsv-profile" id="hsvProfileField" hidden><span data-i18n="hsv_profile">Profile</span>
+                <select class="input" id="hsvProfile"></select>
+              </label>
               <button type="button" class="btn primary" id="hsvPropose"><span data-i18n="hsv_propose">Propose</span></button>
               <button type="button" class="btn small" id="hsvDecideAll"><span data-i18n="hsv_decide_all">All</span></button>
               <button type="button" class="btn small" id="hsvDecideNone"><span data-i18n="hsv_decide_none">None</span></button>
@@ -682,6 +685,7 @@
               <button type="button" class="btn small" id="hsvDecideCopy"><span data-i18n="hsv_write_copy">Write a copy</span></button>
               <button type="button" class="btn small" id="hsvDecideUndo"><span data-i18n="hsv_undo">Undo</span></button>
             </div>
+            <div class="card-sub hsv-profile-note" id="hsvProfileNote"></div>
             <div class="hsv-edit">
               <div class="field">
                 <label for="hsvEditVolume" data-i18n="hsv_edit_volume">Volume (%)</label>

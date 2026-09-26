@@ -69,6 +69,25 @@ LOOSE_RESIDUAL_MS = 5.0
 #: its points and locks, keyed by the audio's SHA-256 (roadmap 14.1).
 PROJECT_FORMAT = "overtone-project"
 PROJECT_VERSION = 1
+#: Hitsound profiles the Propose card offers (docs/06 §11): the JSON files
+#: in ``profiles/`` beside the app, by name. The page chooses a name from
+#: that list; a path never comes from the page.
+PROFILE_DIR = HERE / "profiles"
+#: The profile the CLI bakes in: always offered, and decided without a file.
+DEFAULT_PROFILE = "balanced"
+_PROFILE_NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
+
+
+def hitsound_profile_names() -> list[str]:
+    """The profiles a proposal may use: ``balanced`` first, then every
+    ``profiles/<name>.json`` whose name is lowercase letters, digits, ``-``
+    and ``_``, in name order. A name is all the page ever sees or sends."""
+    try:
+        stems = sorted(p.stem for p in PROFILE_DIR.glob("*.json") if p.is_file())
+    except OSError:
+        stems = []
+    return [DEFAULT_PROFILE] + [name for name in stems
+                                if name != DEFAULT_PROFILE and _PROFILE_NAME.fullmatch(name)]
 
 
 # ---------------------------------------------------------------------------
@@ -1155,16 +1174,29 @@ class Api:
             return {"ok": False, "key": "bad_file"}
         return path
 
-    def hitsound_decide_propose(self, file: str) -> dict:
-        """Propose every decidable point's sound through the Rust sidecar.
-        One heavy job at a time; the units stay cached for accept/reject."""
+    def hitsound_profiles(self) -> dict:
+        """The hitsound profiles the Propose card offers, by name,
+        ``balanced`` (the default) first."""
+        return {"ok": True, "profiles": hitsound_profile_names(), "default": DEFAULT_PROFILE}
+
+    def hitsound_decide_propose(self, file: str, profile: str | None = None) -> dict:
+        """Propose every decidable point's sound through the Rust sidecar,
+        decided with ``profile``: a name :meth:`hitsound_profiles` lists,
+        ``balanced`` when none is given. Anything else is refused before the
+        sidecar runs. One heavy job at a time; the units stay cached for
+        accept/reject."""
         path = self._decide_file(file)
         if isinstance(path, dict):
             return path
+        name = DEFAULT_PROFILE if profile is None else profile
+        if not isinstance(name, str) or name not in hitsound_profile_names():
+            return {"ok": False, "key": "bad_profile"}
         if not self._busy.acquire(blocking=False):
             return {"ok": False, "key": "busy"}
         try:
-            report = overtone_rust.hitsound(str(self._analysis.source), str(path))
+            report = overtone_rust.hitsound(
+                str(self._analysis.source), str(path),
+                profile=None if name == DEFAULT_PROFILE else PROFILE_DIR / f"{name}.json")
         except overtone_rust.SidecarUnavailable:
             return {"ok": False, "key": "no_rust"}
         except (RuntimeError, ValueError, OSError) as exc:
@@ -1173,7 +1205,7 @@ class Api:
             self._busy.release()
         units = report.get("units", [])
         self._decisions[str(path.name)] = {"units": units}
-        return {"ok": True, "file": str(path.name), "units": units}
+        return {"ok": True, "file": str(path.name), "units": units, "profile": name}
 
     def _decide_units(self, path: Path, edits, choices=None) -> list | dict:
         """The cached proposal's units, none when hand edits come alone (they

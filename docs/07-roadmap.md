@@ -40,10 +40,10 @@ Evidence, Write history, Audio swap, Offset lab and Ramps; the percussion-only a
 and the Phase 21 map tools (inject everywhere with a diff, kiai, breaks, bookmarks, preview
 point, section volumes, SV normaliser, re-snap, snap divisors, audio file check).
 
-1. **Two map tools that stop at the first green** (Phase 21, a decision each) — constant
-   scroll writes only at red lines and section volumes only at section starts, so the
-   map's own greens take over a beat in. Rescaling or overwriting them needs a rule the
-   2026-09-26 harness pass could not choose (timeline).
+1. **Constant scroll on maps with sliders** (Phase 21, a decision) — a slider lasts by its
+   SV, so a standard, taiko or catch map with sliders after a BPM change is refused (221
+   of 249 local standard maps with one). Writing it would mean resizing every slider to
+   keep its ends on the beat, which changes the sliders' shapes.
 2. **Hitsounds, the rest** (Phase 6, [`15-hitsound-plan.md`](15-hitsound-plan.md)) — volume
    and sample edits and hearing a proposal before it is written (H5), the Export section's
    hitsound surface, explanations and profiles in the app, instrument lanes on the
@@ -593,8 +593,8 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Preview point | suggest `PreviewTime` at the chorus | low | med | structure | no | no | P2 | **done** — loudest chorus start, loudest part without one, in the Structure view with its reason |
 | Bookmarks | section starts as editor bookmarks | low | med | structure | no | no | P2 | **done** — merged with the map's own, preview then confirmed write with backup, in the Structure view |
 | Breaks | quiet spans long enough for a break | low | med | energy | no | no | P2 | **done** — sections 6 dB under the loudest cut by the map's own sound gaps (5 s or longer), Structure card with span preview and confirmed write with backup |
-| Volume by section | hitsound volume from section energy, as greens | low | med | energy, writer | no | no | P2 | partial — loudest section's volume scaled by dB distance, anchor never touched so reruns keep; Structure card with preview counts and confirmed write with backup. Written at section starts only: the map's own greens and a red line inside a section take over (found 2026-09-26; overwriting a mapper's volumes is a decision) |
-| SV normaliser | greens that cancel BPM changes so scroll and slider speed stay constant | med | **high** | writer | no | no | P1 | partial — first red's BPM is the reference, greens at each red line carry reference-over-own with the audible state and the red's effects; Timing card with preview counts and confirmed write with backup. The map's own greens after a BPM change are not rescaled, so the scroll holds only until the next one (found 2026-09-26; rescaling needs a rule against a second run) |
+| Volume by section | hitsound volume from section energy, as greens | low | med | energy, writer | no | no | P2 | **done** — sections where the map sets its own volumes kept; a section at one volume set all the way through (its start, greens, a green at each red line inside, the next section's own volume given back); the scale from the loudest section's longest-held volume, 5 % floor. On 800 local maps: 20 % of sections set, 77 % left to the mapper, none of those changed |
+| SV normaliser | greens that cancel BPM changes so scroll and slider speed stay constant | med | **high** | writer | no | no | P1 | **done** where it cannot move a slider — first red's BPM is the reference; every green under a BPM change scaled by reference over its BPM, a green at each red line, spans already constant kept, a second run refused through History's scroll profile; a map with a slider in a span it would scale refused (a slider lasts by its SV). Of local maps with a BPM change: mania 100 of 117 written, taiko 103 of 132, standard 22 of 249 |
 | Re-snap objects | move hit objects onto the new grid after a timing change | high | **high** | writer, P5 | no | no | P1 | **done** — snapped-before stays snapped via the diff's drift, off-grid listed never touched; Map check card with preview, one confirmation and backup |
 | Snap-divisor map | where the song needs 1/3, 1/4 or 1/6, per section | med | high | attacks | no | no | P1 | **done** — coarsest grid per attack within 15 ms, verdict by attack weight; read-only Timing card, one line per section |
 | Swing lane | where the music swings or sits off the grid | med | med | attacks | no | no | P2 | todo |

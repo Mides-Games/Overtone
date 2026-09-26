@@ -142,8 +142,8 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Decimal offsets for lazer | ✅ | Settings → Offset precision: 0-3 decimals for copy, `.osz` and inject; the CLI flag too |
 | lazer format specifics | 📋 | P5 |
 | Inject into every difficulty at once, with a diff | ✅ | Export; each old red line beside its new value and the drift it causes, one confirmation, every file backed up, one bad map stops nothing |
-| Kiai, breaks, bookmarks, section volumes and the preview point from the song's structure | ✅ | Structure view; each write previewed, confirmed and backed up; the preview point is suggested with its reason. Section volumes are written at section starts only, so the map's own greens take over |
-| SV normaliser across BPM changes | 🟡 | Timing's Constant scroll card: a green at each red line, what plays kept. The map's own greens after a BPM change are not rescaled yet |
+| Kiai, breaks, bookmarks, section volumes and the preview point from the song's structure | ✅ | Structure view; each write previewed, confirmed and backed up; the preview point is suggested with its reason. Section volumes leave every section where the map sets its own volumes alone |
+| SV normaliser across BPM changes | ✅ | Timing's Constant scroll card: every green under a BPM change scaled by the tempo ratio, never twice. A map with sliders there is refused: a slider lasts by its SV |
 | Re-snap objects after a timing change | ✅ | Map check; snapped objects stay snapped, off-grid ones are listed and never moved |
 | Export to Quaver and StepMania | 📋 | P21 |
 | Audio file check | ✅ | Mapset; bitrate, sample rate, length, clipping and lead-in against Overtone's own bars — no ranking number is encoded, none can be checked offline |

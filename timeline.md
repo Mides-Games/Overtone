@@ -17,6 +17,67 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Constant scroll scales every green; section volumes keep the mapper's
+
+### Changed
+
+- **Constant scroll scales every green under a BPM change** by the reference over that
+  BPM, so the mapper's own SV changes keep their shape at the reference's speed; before,
+  only a green at the red line went in, and the map's next green undid it. A span that
+  already reads constant (normalised by hand, or by a first run) is kept. **A map where a
+  slider starts in a span it would scale is refused**: a slider lasts by the SV it starts
+  under, so scaling it moves its tail and repeats off their beats. The card says how many
+  and where. A second run is refused too, in any session: History keeps the scroll
+  profile the write left, which kiai and volume writes do not change.
+- **Section volumes keep the mapper's volumes.** A section where the map sets its own
+  (at its start or anywhere inside) is left as it is; a section the map plays at one
+  volume is set all the way through: its start, every green inside, a green at each red
+  line inside (a red line carries its own volume), and a green giving the next section its
+  own volume back. The scale hangs from the volume the loudest section plays longest, not
+  the one at its start, and never goes under osu!'s 5 %. The card counts sections set,
+  already right and left to the mapper, apart from the lines it writes.
+
+### Fixed
+
+- **Constant scroll moved slider ends.** Its first version wrote SV under sliders on 194 of
+  225 local standard maps with BPM changes, while its card said sound never moves.
+- **A green meant to follow a red line could land before it**: times were rounded to three
+  decimals, and a lazer-precision red line at 17837.0114440535 got its green at 17837.011,
+  then undid it. Greens written at a line's time now carry its exact time (kiai, volumes,
+  scroll).
+- **Nothing is written before a map's first red line**: osu! reads the first line's
+  settings back to the song's start, so a green at 20 s before a first red line at 44 s
+  became what the whole intro read, and a second volumes run rescaled the map from it.
+- A fade 47 dB under the loudest section got volume 0.
+
+### Measured
+
+```
+constant scroll, local maps with a BPM change, of up to 400 drawn per mode
+  mania     117: written 100, refused for sliders 0,   out of range 8, constant already 9
+  taiko     132: written 103, refused for sliders 18,  out of range 3, constant already 8
+  catch      38: written 7,   refused for sliders 31
+  standard  249: written 22,  refused for sliders 221, out of range 5, constant already 1
+  slider or note times moved on written maps: 0 (the first version: 194 of 225 standard)
+  a second run with no guard would have scaled 55 of 103 taiko and 63 of 100 mania maps
+  again (their own green at each red line); History's scroll profile refuses it, and holds
+  through kiai and volume writes on 400 of 400 maps
+  Presti - Veritas [Vespere] (mania): the mapper's 0.85/0.87/0.90/0.92/0.95x, written for
+  175 BPM, now read exactly so at the 170 BPM reference; 1591 notes unmoved
+section volumes, 800 local maps cut in 20 s sections
+  6480 sections: 1296 set all the way through (20 %), 193 at their volume, 4976 left to
+  the mapper (77 %); a mapper's section changed 0; a set section not through 0; a second
+  run changes 0
+  Master of Tides [Master of the Seas]: 2 of 11 sections set, 1 at its volume already
+  (with the 5 % floor); in [FinallyV's Extra] the 8 left to the mapper play the same
+  volumes as before, read every 250 ms
+median time a map   1.0 ms (scroll)
+Python unittest     499 -> 513, all pass
+benchmark.py        24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · coverage, measures, signatures, robustness,
+reference 24/24, assisted 70 · facts
+```
+
 ## v4.0.0-dev — 2026-09-26 · Harness pass: the 19 owed surfaces, and what they hid
 
 ### Changed

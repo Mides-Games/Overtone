@@ -6,6 +6,15 @@
 //! novelty curve peaks, and peaks are phrase boundaries. The energy map
 //! rides alongside — verse/chorus contrast that harmony alone cannot see.
 //!
+//! [`phrases`] reads the same windows for sections instead: where the music
+//! starts or stops repeating something heard elsewhere in the song. On
+//! ranked maps the checkerboard's peaks sat no closer to a kiai start than
+//! chance (11.6 % of kiai starts with an edge within 2 bars, 16.7 % by
+//! chance, on 500 held-out songs); the repetition edges put one within 2
+//! bars of 58.0 %, and 39.8 % of them sit near a kiai start or end (16.5 %
+//! by chance). [`analyze`] stays as it was for the hitsound engine, whose
+//! proposals were measured with its edges.
+//!
 //! Two deliberate scope cuts, both recorded rather than hidden. Downbeat
 //! snapping belongs to the tempo layer, which owns grids; this crate is
 //! tempoless, so boundaries sit on the 0.5 s feature grid. And timbre
@@ -13,6 +22,8 @@
 //! phrases, so a change of instrumentation over the same chords at the
 //! same level is not a boundary this reads. Section classification
 //! ([`crate::classify`]) labels the phrases from chroma and energy too.
+
+use rayon::prelude::*;
 
 use crate::{chroma, stft};
 
@@ -30,6 +41,29 @@ pub const PEAK_FRACTION: f64 = 0.30;
 /// below any phrase worth a red line and above any straddle wobble.
 pub const MERGE_S: f64 = 4.0;
 
+/// Seconds each window carries into its repetition fingerprint: the window
+/// and the ones before it (delay embedding), so a repeat is a run of
+/// chords, not one chord that recurs everywhere.
+pub const EMBED_S: f64 = 1.5;
+/// A window recurs with its nearest neighbours by that fingerprint, this
+/// fraction of the song's windows, kept only where both are among each
+/// other's nearest.
+pub const NEIGHBOURS: f64 = 0.04;
+/// Gaussian smoothing (sigma) of the time-lag matrix along time: one row
+/// per window, one column per lag at which it recurs. On ranked maps 4 and
+/// 5 s read within a point of F1 of each other and 3 s three points under;
+/// smoothing along lag as well read no better.
+pub const SMOOTH_TIME_S: f64 = 4.0;
+/// A repetition edge stands this far over the moving median of its curve,
+/// in units of the curve's maximum.
+pub const EDGE_OVER_MEDIAN: f64 = 0.1;
+/// How far either side of a window that moving median runs.
+pub const MEDIAN_S: f64 = 14.0;
+/// Lags per block: the smoothed time-lag matrix, windows squared in reals,
+/// is built a block of lags at a time and never held whole; the
+/// recurrences behind it are one bit a pair.
+const LAG_BLOCK: usize = 64;
+
 /// Phrase boundaries in seconds, plus the RMS energy map behind them.
 #[derive(Debug, Clone)]
 pub struct Structure {
@@ -38,16 +72,17 @@ pub struct Structure {
     pub energy_hop: f64,
 }
 
-/// Segment audio into phrases. Empty on silence or inputs shorter than two
-/// kernel widths.
-///
-/// The checkerboard needs [`KERNEL_HALF`] windows on each side of a
-/// boundary, so novelty exists only from 4 s after the start to 4-4.5 s
-/// before the end, and no boundary is ever reported in those end spans
-/// (leading silence included). A change inside one is lost, or read on the
-/// span's edge: measured on a 40 s track, a chord change at 2 s came out at
-/// 4.0 s, one at 38 s was lost, and one at 37 s came out at 35.5 s.
-pub fn analyze(y: &[f32], sr: u32) -> Structure {
+/// Per-window features (twelve chroma means plus the log-energy term), the
+/// RMS lane and the windows' real length. `features` and `rms` are empty
+/// for inputs shorter than two kernel widths.
+struct Windows {
+    features: Vec<Vec<f64>>,
+    rms: Vec<f64>,
+    win_s: f64,
+}
+
+/// The windows both edge finders read.
+fn windows(y: &[f32], sr: u32) -> Windows {
     let hop = (WIN_S * sr as f64).round() as usize;
     let n_fft = 2048;
     // Twelve classes per frame, reduced as each frame is computed: the
@@ -60,10 +95,10 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
     // Windows, not STFT frames: the loop below indexes feature windows, so
     // a short track must bow out here rather than panic there.
     if hop == 0 || y.len().div_ceil(hop) < 2 * KERNEL_HALF + 1 {
-        return Structure {
-            boundaries: Vec::new(),
-            energy: Vec::new(),
-            energy_hop: win_s,
+        return Windows {
+            features: Vec::new(),
+            rms: Vec::new(),
+            win_s,
         };
     }
 
@@ -112,6 +147,36 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
         vec.push((1.0 + r.max(1e-9).ln() / 20.723).clamp(0.0, 1.0));
         features.push(vec);
     }
+    Windows {
+        features,
+        rms,
+        win_s,
+    }
+}
+
+/// Segment audio into phrases. Empty on silence or inputs shorter than two
+/// kernel widths.
+///
+/// The checkerboard needs [`KERNEL_HALF`] windows on each side of a
+/// boundary, so novelty exists only from 4 s after the start to 4-4.5 s
+/// before the end, and no boundary is ever reported in those end spans
+/// (leading silence included). A change inside one is lost, or read on the
+/// span's edge: measured on a 40 s track, a chord change at 2 s came out at
+/// 4.0 s, one at 38 s was lost, and one at 37 s came out at 35.5 s.
+pub fn analyze(y: &[f32], sr: u32) -> Structure {
+    let Windows {
+        features,
+        rms,
+        win_s,
+    } = windows(y, sr);
+    if features.is_empty() {
+        return Structure {
+            boundaries: Vec::new(),
+            energy: Vec::new(),
+            energy_hop: win_s,
+        };
+    }
+    let windows = features.len();
 
     // Cosine self-similarity.
     let norms: Vec<f64> = features
@@ -177,6 +242,228 @@ pub fn analyze(y: &[f32], sr: u32) -> Structure {
         energy: rms,
         energy_hop: win_s,
     }
+}
+
+/// Section edges where repetition starts or stops (structure features,
+/// Serrà et al. 2012), for the Structure view. Empty on silence or inputs
+/// shorter than two kernel widths; the same blind spans at either end as
+/// [`analyze`], and the same energy lane.
+///
+/// Each window's fingerprint is its features over [`EMBED_S`]; windows
+/// recur where their fingerprints are mutual nearest neighbours. Laid out
+/// by lag (row: window, column: how far ahead, around the song, it
+/// recurs) and smoothed along time, a row changes where a section begins
+/// or ends: the lags at which the song repeats itself change there. The
+/// curve is how much each row differs from the one before; an edge is a
+/// peak over the curve's moving median by [`EDGE_OVER_MEDIAN`], merged at
+/// [`MERGE_S`].
+///
+/// What it reads is the set of lags at which each window recurs, so a part
+/// that differs from another only in level is the same part to it: one
+/// held chord played quiet and loud by turns (12/24/36 s) gives a single
+/// edge, between the halves. The measure that chose it is ranked maps'
+/// kiai (timeline.md).
+pub fn phrases(y: &[f32], sr: u32) -> Structure {
+    let Windows {
+        features,
+        rms,
+        win_s,
+    } = windows(y, sr);
+    if features.is_empty() {
+        return Structure {
+            boundaries: Vec::new(),
+            energy: Vec::new(),
+            energy_hop: win_s,
+        };
+    }
+    let curve = repetition_curve(&features, win_s);
+    Structure {
+        boundaries: repetition_edges(&curve, win_s)
+            .iter()
+            .map(|&i| i as f64 * win_s)
+            .collect(),
+        energy: rms,
+        energy_hop: win_s,
+    }
+}
+
+/// scipy.ndimage's Gaussian: radius `int(4 sigma + 0.5)` windows, weights
+/// summing to one.
+fn gaussian(sigma: f64) -> Vec<f64> {
+    let radius = (4.0 * sigma + 0.5) as usize;
+    let weights: Vec<f64> = (0..=2 * radius)
+        .map(|i| {
+            let x = i as f64 - radius as f64;
+            (-0.5 * x * x / (sigma * sigma)).exp()
+        })
+        .collect();
+    let sum: f64 = weights.iter().sum();
+    weights.into_iter().map(|w| w / sum).collect()
+}
+
+/// Which windows recur with which: row `i` holds bit `j` when `i` and `j`
+/// are among each other's `NEIGHBOURS` nearest by cosine over the delay
+/// embedding. Ties at the k-th similarity are all kept.
+fn recurrences(features: &[Vec<f64>], win_s: f64) -> Vec<Vec<u64>> {
+    let n = features.len();
+    let depth = ((EMBED_S / win_s).round() as usize).max(1);
+    // Window i with the depth-1 before it; before the first, the first.
+    let embedded: Vec<Vec<f64>> = (0..n)
+        .map(|i| {
+            let mut v = Vec::with_capacity(features[0].len() * depth);
+            for j in 0..depth {
+                v.extend_from_slice(&features[i.saturating_sub(j)]);
+            }
+            v
+        })
+        .collect();
+    let norms: Vec<f64> = embedded
+        .iter()
+        .map(|v| v.iter().map(|&x| x * x).sum::<f64>().sqrt())
+        .collect();
+    let sim = |a: usize, b: usize| -> f64 {
+        if norms[a] <= 0.0 || norms[b] <= 0.0 {
+            return 0.0;
+        }
+        embedded[a]
+            .iter()
+            .zip(&embedded[b])
+            .map(|(&x, &y)| x * y)
+            .sum::<f64>()
+            / (norms[a] * norms[b])
+    };
+    let k = ((NEIGHBOURS * n as f64).round() as usize).clamp(1, n - 1);
+    // Each window's k-th highest similarity to another window; the pairs
+    // are computed twice rather than held, n^2 of them on an hour-long mix.
+    let kth: Vec<f64> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            let mut row: Vec<f64> = (0..n).filter(|&j| j != i).map(|j| sim(i, j)).collect();
+            let (_, value, _) = row.select_nth_unstable_by(k - 1, |a, b| b.total_cmp(a));
+            *value
+        })
+        .collect();
+    let words = n.div_ceil(64);
+    (0..n)
+        .into_par_iter()
+        .map(|i| {
+            let mut bits = vec![0u64; words];
+            for j in (0..n).filter(|&j| j != i) {
+                let s = sim(i, j);
+                if s >= kth[i] && s >= kth[j] {
+                    bits[j / 64] |= 1u64 << (j % 64);
+                }
+            }
+            bits
+        })
+        .collect()
+}
+
+/// How much the smoothed time-lag row of each window differs from the one
+/// before, over its maximum between the first and last [`KERNEL_HALF`]
+/// windows, the spans the checkerboard of [`analyze`] cannot place an edge
+/// in either. The curve keeps its values there: zeroed, the first window
+/// past them turned into a peak whenever the curve fell from it (299 of
+/// 3738 edges on ranked maps, 3 of them near a kiai change).
+fn repetition_curve(features: &[Vec<f64>], win_s: f64) -> Vec<f64> {
+    let n = features.len();
+    let rows = recurrences(features, win_s);
+    let recurs = |i: usize, j: usize| rows[i][j / 64] >> (j % 64) & 1 == 1;
+    let along_time = gaussian(SMOOTH_TIME_S / win_s);
+    let reach = along_time.len() / 2;
+    // Per block of lags: the lag columns, smoothed along time (the first
+    // and last rows held), and each row's squared step from the row before.
+    // The blocks come back in order and are summed in order, so the curve
+    // does not depend on the thread count.
+    let firsts: Vec<usize> = (0..n).step_by(LAG_BLOCK).collect();
+    let steps: Vec<Vec<f64>> = firsts
+        .into_par_iter()
+        .map(|first| {
+            let width = LAG_BLOCK.min(n - first);
+            let mut by_lag = vec![0.0f64; n * width];
+            for (i, row) in by_lag.chunks_exact_mut(width).enumerate() {
+                for (c, slot) in row.iter_mut().enumerate() {
+                    if recurs(i, (i + first + c) % n) {
+                        *slot = 1.0;
+                    }
+                }
+            }
+            let mut step = vec![0.0f64; n];
+            let mut previous = vec![0.0f64; width];
+            for (i, slot) in step.iter_mut().enumerate() {
+                for (c, last) in previous.iter_mut().enumerate() {
+                    let mut acc = 0.0;
+                    for (e, &w) in along_time.iter().enumerate() {
+                        let t = (i + e).saturating_sub(reach).min(n - 1);
+                        acc += w * by_lag[t * width + c];
+                    }
+                    if i > 0 {
+                        *slot += (acc - *last).powi(2);
+                    }
+                    *last = acc;
+                }
+            }
+            step
+        })
+        .collect();
+    let mut curve = vec![0.0f64; n];
+    for step in &steps {
+        for (slot, v) in curve.iter_mut().zip(step) {
+            *slot += v;
+        }
+    }
+    for v in curve.iter_mut() {
+        *v = v.sqrt();
+    }
+    let peak = curve[placeable(n)]
+        .iter()
+        .copied()
+        .fold(0.0f64, f64::max);
+    if peak > 0.0 {
+        for v in curve.iter_mut() {
+            *v /= peak;
+        }
+    }
+    curve
+}
+
+/// The windows an edge may sit on: past the first [`KERNEL_HALF`] and
+/// before the last, as for the checkerboard.
+fn placeable(n: usize) -> std::ops::Range<usize> {
+    KERNEL_HALF..n.saturating_sub(KERNEL_HALF).max(KERNEL_HALF)
+}
+
+/// The moving median of `values` over `2 half + 1` windows, the ends held
+/// (scipy.ndimage.median_filter, mode "nearest").
+fn moving_median(values: &[f64], half: usize) -> Vec<f64> {
+    let n = values.len();
+    let mut window = Vec::with_capacity(2 * half + 1);
+    (0..n)
+        .map(|i| {
+            window.clear();
+            window.extend(
+                (0..=2 * half).map(|d| values[(i + d).saturating_sub(half).min(n - 1)]),
+            );
+            let (_, median, _) = window.select_nth_unstable_by(half, f64::total_cmp);
+            *median
+        })
+        .collect()
+}
+
+/// Peaks of the repetition curve over its moving median by
+/// [`EDGE_OVER_MEDIAN`] on the windows an edge may sit on, merged at
+/// [`MERGE_S`]: window indices, ascending.
+fn repetition_edges(curve: &[f64], win_s: f64) -> Vec<usize> {
+    let span = placeable(curve.len());
+    if curve[span.clone()].iter().all(|&v| v <= 0.0) {
+        return Vec::new();
+    }
+    let base = moving_median(curve, (MEDIAN_S / win_s).round() as usize);
+    let found: Vec<usize> = crate::peaks::find_peaks(curve, 2, None, None)
+        .into_iter()
+        .filter(|&i| span.contains(&i) && curve[i] > base[i] + EDGE_OVER_MEDIAN)
+        .collect();
+    merge_close(&found, curve, (MERGE_S / win_s).round() as usize)
 }
 
 /// Keep the strongest of any peaks closer than `window`, strongest first:
@@ -361,6 +648,7 @@ mod tests {
     fn silence_has_no_structure() {
         let structure = analyze(&vec![0.0f32; 44_100 * 10], 44_100);
         assert!(structure.boundaries.is_empty());
+        assert!(phrases(&vec![0.0f32; 44_100 * 10], 44_100).boundaries.is_empty());
     }
 
     #[test]
@@ -371,6 +659,178 @@ mod tests {
             let y = chord(44_100, 220.0, true, 0.4, seconds as f64);
             let structure = analyze(&y, 44_100);
             assert!(structure.boundaries.is_empty(), "{seconds}s");
+            assert!(phrases(&y, 44_100).boundaries.is_empty(), "{seconds}s");
         }
+    }
+
+    /// A part of a song: one triad per feature window, root and quality
+    /// drawn from `seed`, so a part played again is the same part.
+    fn part(sr: u32, seed: u64, seconds: f64, amp: f64) -> Vec<f32> {
+        let mut state = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
+        let mut out = Vec::new();
+        for _ in 0..(seconds / WIN_S).round() as usize {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            let root = 110.0 * 2f64.powf((state % 24) as f64 / 12.0);
+            out.extend(chord(sr, root, (state >> 8) & 1 == 0, amp, WIN_S));
+        }
+        out
+    }
+
+    /// An 8 s intro heard once, then A B C A C B: 12 s parts, each
+    /// returning once at its own distance (36, 48 and 24 s), so every edge
+    /// changes the lags at which the song repeats. `a_level` is the second
+    /// A's. Truth at 8/20/32/44/56/68.
+    fn song(sr: u32, a_level: f64) -> (Vec<f32>, Vec<f64>) {
+        let (a, b, c) = (part(sr, 1, 12.0, 0.1), part(sr, 2, 12.0, 0.2), part(sr, 3, 12.0, 0.4));
+        (
+            concat(&[
+                part(sr, 9, 8.0, 0.1),
+                a,
+                b.clone(),
+                c.clone(),
+                part(sr, 1, 12.0, a_level),
+                c,
+                b,
+            ]),
+            vec![8.0, 20.0, 32.0, 44.0, 56.0, 68.0],
+        )
+    }
+
+    #[test]
+    fn repetition_edges_read_the_checkerboard_abab_too() {
+        let (y, truth) = abab(44_100);
+        check_boundaries(&phrases(&y, 44_100).boundaries, &truth);
+    }
+
+    #[test]
+    fn a_change_of_level_alone_is_not_a_repetition_edge() {
+        // One held chord, quiet and loud by turns: every window recurs with
+        // the whole song, loud or quiet, so the lags change only between
+        // the halves. Recorded as measured, not as right: the checkerboard
+        // reads this (dynamics_alone_still_segments).
+        let (y, _truth) = dynamics_only(44_100);
+        let found = phrases(&y, 44_100).boundaries;
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!((found[0] - 24.0).abs() <= 1.5, "{found:?}");
+    }
+
+    #[test]
+    fn repetition_edges_find_where_each_part_returns() {
+        let (y, truth) = song(44_100, 0.1);
+        let found = phrases(&y, 44_100);
+        check_boundaries(&found.boundaries, &truth);
+        // The same energy lane as the checkerboard's.
+        assert_eq!(found.energy, analyze(&y, 44_100).energy);
+    }
+
+    #[test]
+    fn a_part_that_returns_louder_is_still_the_same_part() {
+        // The second A at three times the level: its windows still find the
+        // first A's, so the edges stay where the parts change.
+        let (y, truth) = song(44_100, 0.3);
+        check_boundaries(&phrases(&y, 44_100).boundaries, &truth);
+    }
+
+    #[test]
+    fn repetition_edges_stay_out_of_the_kernel_spans_at_either_end() {
+        // Parts that change 2 s from either end, and returning parts
+        // between them so that repetition has something to read.
+        let sr = 44_100;
+        let y = concat(&[
+            part(sr, 3, 2.0, 0.4),
+            part(sr, 1, 14.0, 0.4),
+            part(sr, 2, 14.0, 0.4),
+            part(sr, 1, 14.0, 0.4),
+            part(sr, 4, 2.0, 0.4),
+        ]);
+        let reach = KERNEL_HALF as f64 * WIN_S;
+        let found = phrases(&y, sr).boundaries;
+        assert!(!found.is_empty());
+        for &b in &found {
+            assert!(b >= reach && b <= 46.0 - reach, "{b} in {found:?}");
+        }
+    }
+
+    /// The time-lag matrix whole, for the blocked build to be checked
+    /// against.
+    fn dense_curve(features: &[Vec<f64>], win_s: f64) -> Vec<f64> {
+        let n = features.len();
+        let rows = recurrences(features, win_s);
+        let lag: Vec<Vec<f64>> = (0..n)
+            .map(|i| {
+                (0..n)
+                    .map(|l| {
+                        let j = (i + l) % n;
+                        f64::from((rows[i][j / 64] >> (j % 64) & 1) as u8)
+                    })
+                    .collect()
+            })
+            .collect();
+        let g = gaussian(SMOOTH_TIME_S / win_s);
+        let r = g.len() / 2;
+        let smooth: Vec<Vec<f64>> = (0..n)
+            .map(|i| {
+                (0..n)
+                    .map(|l| {
+                        g.iter()
+                            .enumerate()
+                            .map(|(e, w)| w * lag[(i + e).saturating_sub(r).min(n - 1)][l])
+                            .sum()
+                    })
+                    .collect()
+            })
+            .collect();
+        let mut curve: Vec<f64> = (0..n)
+            .map(|i| {
+                if i == 0 {
+                    return 0.0;
+                }
+                (0..n)
+                    .map(|l| (smooth[i][l] - smooth[i - 1][l]).powi(2))
+                    .sum::<f64>()
+                    .sqrt()
+            })
+            .collect();
+        let peak = curve[KERNEL_HALF..n - KERNEL_HALF]
+            .iter()
+            .copied()
+            .fold(0.0f64, f64::max);
+        for v in curve.iter_mut() {
+            *v /= peak;
+        }
+        curve
+    }
+
+    #[test]
+    fn the_blocked_lag_matrix_reads_as_the_whole_one() {
+        // 150 windows cross two block edges and wrap around the song; a
+        // part at 20..50 returns at 90..120, the rest is noise.
+        let mut state = 0x2545_f491_4f6c_dd1du64;
+        let mut noise = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state >> 11) as f64 / (1u64 << 53) as f64
+        };
+        let mut features: Vec<Vec<f64>> =
+            (0..150).map(|_| (0..13).map(|_| noise()).collect()).collect();
+        for i in 20..50 {
+            features[i + 70] = features[i].iter().map(|v| v * 1.01).collect();
+        }
+        let blocked = repetition_curve(&features, WIN_S);
+        let whole = dense_curve(&features, WIN_S);
+        for (i, (a, b)) in blocked.iter().zip(&whole).enumerate() {
+            assert!((a - b).abs() < 1e-9, "window {i}: {a} against {b}");
+        }
+        assert!(blocked.iter().any(|&v| v > 0.0));
+    }
+
+    #[test]
+    fn the_moving_median_holds_the_ends() {
+        let values = [5.0, 1.0, 4.0, 2.0, 3.0];
+        // Windows of three: [5 5 1] [5 1 4] [1 4 2] [4 2 3] [2 3 3].
+        assert_eq!(moving_median(&values, 1), vec![5.0, 4.0, 2.0, 3.0, 3.0]);
     }
 }

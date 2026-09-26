@@ -259,13 +259,33 @@ fn triad(root: f64, amp: f64, seconds: f64) -> Vec<f32> {
         .collect()
 }
 
+/// A part of a song: one triad per half second, root and quality drawn
+/// from `seed`, so a part played again is the same part.
+fn part(seed: u64, seconds: f64, amp: f64) -> Vec<f32> {
+    let mut state = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
+    let mut out = Vec::new();
+    for _ in 0..(seconds * 2.0).round() as usize {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        let root = 110.0 * 2f64.powf((state % 24) as f64 / 12.0);
+        out.extend(triad(root, amp, 0.5));
+    }
+    out
+}
+
 #[test]
 fn structure_reads_phrases_and_says_why_each_label() {
-    // Quiet A minor, loud F major, twice: 16 s phrases, boundaries at 16/32/48.
+    // An intro, then A B C A C B: 12 s parts of changing chords, each back
+    // once at its own distance and each louder than the last. The edges
+    // are where the song starts or stops repeating: 8/20/32/44/56/68.
     let dir = scratch("structure");
-    let path = dir.join("abab.wav");
-    let (a, b) = (triad(220.0, 0.12, 16.0), triad(174.61, 0.3, 16.0));
-    write_wav(&path, &[a.clone(), b.clone(), a, b].concat());
+    let path = dir.join("iabcacb.wav");
+    let (a, b, c) = (part(1, 12.0, 0.05), part(2, 12.0, 0.1), part(3, 12.0, 0.2));
+    write_wav(
+        &path,
+        &[part(9, 8.0, 0.05), a.clone(), b.clone(), c.clone(), a, c, b].concat(),
+    );
     let out = run(&["structure", path.to_str().unwrap()]);
     let missing = run(&["structure", "no-such-file.wav"]);
     std::fs::remove_dir_all(&dir).ok();
@@ -283,8 +303,8 @@ fn structure_reads_phrases_and_says_why_each_label() {
         .iter()
         .map(|v| v.as_f64().unwrap())
         .collect();
-    assert_eq!(bounds.len(), 3, "{bounds:?}");
-    for (found, truth) in bounds.iter().zip([16.0, 32.0, 48.0]) {
+    assert_eq!(bounds.len(), 6, "{bounds:?}");
+    for (found, truth) in bounds.iter().zip([8.0, 20.0, 32.0, 44.0, 56.0, 68.0]) {
         assert!((found - truth).abs() <= 1.5, "{bounds:?}");
     }
     let sections = report["sections"].as_array().unwrap();
@@ -292,17 +312,24 @@ fn structure_reads_phrases_and_says_why_each_label() {
         .iter()
         .map(|s| s["kind"].as_str().unwrap())
         .collect();
-    assert_eq!(kinds, ["verse", "chorus", "verse", "chorus"]);
     let groups: Vec<u64> = sections
         .iter()
         .map(|s| s["group"].as_u64().unwrap())
         .collect();
-    assert_eq!(groups, [0, 1, 0, 1]);
-    assert!(sections.iter().all(|s| s["repeats"] == 2));
-    assert!(sections[1]["level_db"].as_f64().unwrap() > sections[0]["level_db"].as_f64().unwrap());
+    let repeats: Vec<u64> = sections
+        .iter()
+        .map(|s| s["repeats"].as_u64().unwrap())
+        .collect();
+    // C, twice and loudest, is the chorus; the intro, A and B share one
+    // family.
+    assert_eq!(kinds, ["verse", "verse", "verse", "chorus", "verse", "chorus", "verse"]);
+    assert_eq!(groups, [0, 0, 0, 1, 0, 1, 0]);
+    assert_eq!(repeats, [5, 5, 5, 2, 5, 2, 5]);
+    assert!(sections[3]["level_db"].as_f64().unwrap() > sections[2]["level_db"].as_f64().unwrap());
     let energy = report["energy"].as_array().unwrap().len();
-    assert_eq!(energy, 128, "one value per 0.5 s window");
+    assert_eq!(energy, 160, "one value per 0.5 s window");
     assert_eq!(report["rules"]["edge_blind_s"], 4.0);
+    assert!(report["rules"]["edge_over_median"].is_number());
 
     assert_eq!(missing.status.code(), Some(1));
     let failed: serde_json::Value = serde_json::from_slice(&missing.stdout).unwrap();

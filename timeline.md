@@ -17,6 +17,178 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Structure edges where the song repeats itself
+
+88 % of ranked maps' kiai starts had no structure edge within 2 bars. Measured first: the
+checkerboard novelty the edges came from sits no closer to a kiai start than chance, so no
+threshold on it could find them. Edges where the song starts or stops repeating something
+(structure features, over the same half-second windows) find 58-63 % of kiai starts, and 40 %
+of them sit near a kiai change against 15-16 % today. The finder was chosen on sample A and
+confirmed on sample B, read once, against a bar written down before it was read.
+
+### Changed
+
+- **`overtone-cli structure` takes its section edges from repetition**
+  (`structure::phrases`). Each half-second window's fingerprint is its chroma and level over
+  1.5 s. Two windows recur when each is among the other's nearest 4 %. Laid out by lag (row:
+  window, column: how far ahead it recurs) and smoothed over 4 s, a row changes where the song
+  starts or stops repeating something. An edge is a peak of that change 0.1 of its maximum
+  over its 14 s moving median, merged at 4 s. None falls in the 4 s at either end, as before.
+  The JSON keeps its shape; `rules` names the new constants beside the old ones.
+- **The hitsound engine keeps the checkerboard edges** (`structure::analyze`, unchanged). Its
+  phrase breaks (where a change of sound is allowed) and the phrase positions it reports
+  were measured with them; moving it to the new edges is its own measurement.
+- `overtone-bench structure <case>` runs the edges the command prints.
+- 7 Rust tests: the edges of an intro and A B C A C B of changing chords, the same with a
+  louder return, the checkerboard's held-chord A B A B, one chord that only changes level
+  (one edge, recorded as measured), no edge in the end spans, the blocked lag matrix against
+  the whole one, and the moving median. The silence and short-audio tests cover the new
+  finder too. The CLI's structure test now plays the intro and A B C A C B, with the labels
+  it gets.
+
+### Measured
+
+The truth, the pairing and the samples are the phrase level rule's (entry below): kiai starts
+of 4+ bar spans on ranked maps, paired one to one with an edge within 2 bars; A (500 songs)
+to choose, B (500) held out. Precision counts the edges within 2 bars of any start or end of
+a 4+ bar kiai span. An edge far from both is not proven false, since a verse start has no
+kiai. So each number stands beside its chance: the same song's edges shifted at random, 50
+times, over the span an edge may sit in.
+
+Where today's missed kiai starts sit (A, 1045 of 1189 missed):
+
+```
+a novelty peak within 2 bars, under the 0.30 x max threshold   1010  (96.7 %)
+   its height over the song's maximum   0.20-0.30: 86   0.15-0.20: 84   0.10-0.15: 130
+                                        0.05-0.10: 228  under 0.05: 482
+   its rank among the song's local maxima: median 25th (quartiles 14-43),
+   where a song has a median 53
+no novelty peak within 2 bars                                     16   (1.5 %)
+over the threshold, merged into a stronger peak 2+ bars away      14   (1.3 %)
+within 8 s of an end                                               5   (0.5 %)
+restarts (kiai off for under 2 bars before)                      307 of the 1045
+```
+
+There is no cap on the edge count in the code; the threshold is the only limit. The curve
+itself carries nothing about kiai starts. Its highest value within a bar of a start sits at
+the 49.7th percentile of the same statistic across the song (0.5 = no information). The
+other curves, on A:
+
+```
+                              kiai starts   kiai ends
+novelty, 4 s kernel (today)       0.497        0.537
+novelty, 8 / 12 s kernel          0.509 / 0.524
+level rise over 2 s               0.668        0.366
+level step either way, 2 s        0.609        0.599
+timbre (log-mel), 4 s kernel      0.526        0.576
+repetition (structure features)   0.629        0.630
+```
+
+Tried on A, read at the same number of edges (6 per song), with the finder's first version
+(ends zeroed, lags smoothed 0.5 s):
+
+```
+                                 recall  precision   chance recall / precision
+novelty, 4 s kernel              16.5 %   17.6 %      20.6 / 17.8 %
+novelty, 8 s kernel              25.7 %   21.9 %      23.5 / 17.8 %
+level step either way, 2 s       30.6 %   25.2 %      22.2 / 18.1 %
+repetition, 3 s fingerprint      48.1 %   35.1 %      21.8 / 17.3 %
+repetition, 1.5 s fingerprint    50.0 %   37.6 %      22.0 / 17.5 %
+repetition + level step, mixed   43.8 %   34.1 %      21.2 / 17.6 %
+```
+
+The finder that shipped, today's edges against it, from the two builds' own reports:
+
+```
+                                 A (tuning)                  B (held out, read once)
+                                 today       repetition      today       repetition
+kiai starts, edge within 2 bars  12.1 %      63.3 %          11.6 %      58.0 %
+  (chance)                       16.5 %      24.3 %          16.7 %      23.3 %
+  after 2+ bars without kiai     13.2 %      66.8 %          13.4 %      63.7 %
+  found by one only              41          650             49          630
+  sign test                      p 5e-142                    p 1.4e-129
+edges near a kiai change         16.3 %      41.5 %          14.6 %      39.8 %
+  (chance)                       17.6 %      17.0 %          17.2 %      16.5 %
+  far from any                   1913        1831            2141        1977
+edges per song, median           3 (1-6)     6 (4-9)         3 (1-7)     6 (4-9)
+  most in one song               39          22              35          16
+new edges with none of today's within 2 bars
+                                             2570, 42.2 %                2657, 41.4 %
+                                             near a change               near a change
+today's edges with no new one within 2 bars
+                                 1673, 9.9 % near a change   1837, 9.0 % near a change
+the Kiai card (chorus sections against the map's kiai)
+  chorus time under kiai         31.1 %      32.9 %          28.6 %      33.0 %
+  kiai starts with a chorus
+    start within 2 bars          3.8 %       9.1 %           4.3 %       10.9 %
+  songs with a chorus            89          72              99          87
+  kiai time under a chorus       20.8 %      16.8 %          22.3 %      20.6 %
+the level rule on the pairs, kiai's own bar
+  nearest bar / level rule       42.4 / 64.6 % 53.9 / 60.4 % 45.5 / 55.9 % 57.4 / 60.6 %
+of all kiai starts, an edge on the kiai's own bar (level rule)
+                                 7.8 %       38.3 %          6.5 %       35.1 %
+```
+
+- **The bar, written down before B was read:** recall at least 10 points over today with the
+  sign test under 0.01; precision no lower than today's and at least 1.5 times its own
+  chance; the added edges near a kiai change at least as often as today's edges are; and the
+  Kiai card no less precise (chorus time under kiai, and kiai starts with a chorus start).
+  B cleared all four: +46.4 points, 39.8 % against 14.6 % (1.5 x chance is 24.8 %), 41.4 %
+  added against 14.6 %, and 33.0 % / 10.9 % against 28.6 % / 4.3 %.
+- **The Kiai card lights fewer songs**: 87 against 99 on B, and less of the kiai (20.6 against
+  22.3 %). A chorus needs two repeated families, and the classifier groups sections by their
+  mean chroma, which a full mix makes alike. In the median song, one family holds every
+  section, with either finder. With the repetition edges (7 sections a song against 4), the
+  songs with one repeated family go from 312 to 408 of B's 500, and those with two or more
+  from 100 to 88 (A: 313 -> 420, 90 -> 76). That is the labels' limit more than the edges'. It is
+  left as a decision (roadmap: Section labels from repetition).
+- **Rust against the numpy model the finder was chosen with**: the same edges on all 499 songs
+  of A that decode.
+- **Time and memory** of `overtone-cli structure`, old and new, two runs each: a 140 s song
+  0.44-0.51 against 0.53 s for the structure stage, 44-45 against 42 MB at peak; a 502 s song
+  1.61-1.62 against 1.62-1.69 s, 156-157 against 154-156 MB; the 6-minute fixture 1.43-1.47
+  against 1.33-1.37 s, 80-81 against 78 MB. A 54-minute input (that fixture 9 times, every
+  window recurring 8 times) took 10.8 against 11.3 s, 657 MB at peak both. The lag matrix is
+  built 64 lags at a time, never whole.
+- Rust tests 263 -> 270, all pass. The bench gates all pass: golden 27/27 attack for attack,
+  nogrid, density 4/4 with no false positive, elastic (worst 4.865 %, as recorded), map.
+  The Python gates all pass: 546 tests, benchmark 24/24 (median 0.0000 BPM, 0.16 ms),
+  bpm-snapshot 24/24, golden 27/27, coverage, measures, signatures, robustness, reference
+  24/24, assisted (70 marked sections), facts, and 3000 fuzzed .osu files.
+
+### Rejected / tried and dropped
+
+- **Thresholds on the novelty curve.** Lower fractions of the song's maximum (0.25-0.10),
+  median + 2-6 MAD, and the top 1.5-4.5 peaks per minute all raise recall only as fast as
+  chance does (0.10 x max: 35.7 % against 38.1 % by chance), at 13-17.5 % precision. The
+  curve has nothing to threshold.
+- **Wider checkerboards** (8-12 s): 19-20 % precision against 17-18 % by chance.
+- **Level steps**, rises or either way, 2-8 s either side, the low band alone. A rise over
+  2 s is the best single sign of a kiai start (0.668), but at 2-3 dB it reads 19-31 % recall
+  at 22-23 % precision. Mixed into the repetition curve, it lowered both.
+- **Timbre in the fingerprint** (log-mel alone, or beside the chroma): 47 and 71 % recall
+  at 26 and 29 % precision, against 78 and 31 % for the chroma at the same threshold (on
+  the first 214 songs of A).
+- **Adding the repetition edges to today's** instead of replacing them: recall 66.0 against
+  63.9 %, precision 28.9 against 36.8 % (A, first finder). Today's edges sit at chance, and
+  those the new finder drops are near a kiai change 9-10 % of the time.
+- **Smoothing along lag** as well as time (0.25-1 s): F1 of recall and precision 43.6-46.6
+  against 46.7 without it.
+- **The curve zeroed over the blind spans at either end.** The first window past them became
+  a peak whenever the curve fell from there: 299 of 3738 edges on A, 3 near a kiai change.
+  Kept whole and cut after peak picking: precision 36.8 -> 41.5 %, recall 63.9 -> 63.3 %.
+- **The first windows' rows held at the first full fingerprint's**, since their fingerprints
+  are padding: F1 49.7 against 50.2.
+- **The parameters around the one chosen**: fingerprints of 1-2 s, smoothing 3-5 s, nearest
+  4-6 %, thresholds 0.04-0.2 over the median. The best F1 on A was 50.5 (5 s smoothing,
+  0.07); 50.2 at 4 s and 0.1 was within half a point, and the rule set beforehand kept the
+  defaults then.
+- **The Kiai card guard as first written** (kiai time under a chorus and the time F1 no
+  lower than today's). The zeroed finder cleared it on A only through its 4 s first
+  sections: tiny quiet first and last sections let the classifier split a song into a quiet
+  and a loud family, and call most of it chorus (F1 32.1 against 24.9). It was replaced by
+  the card's precision before B was read, and the coverage is reported instead.
+
 ## v4.0.0-dev — 2026-09-26 · Phrase starts on the phrase's bar: the level rule, confirmed
 
 The Structure view snapped each phrase edge to the nearest proven bar. A rule that takes the

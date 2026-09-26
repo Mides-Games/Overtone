@@ -32,11 +32,13 @@
 //! "checked, nothing found", so the key is absent; and `diagnostics` says why
 //! the engine refused, where v3 falls back to its beat tracker instead.
 //!
-//! `structure` prints phrase boundaries, the section labels with the evidence
-//! each rests on (repetition group, repeats, level), and the energy lane
-//! behind them. It is tempoless, as the DSP crate is: boundaries sit on the
-//! 0.5 s feature grid, and snapping them to downbeats is the caller's job,
-//! since the caller holds the grid.
+//! `structure` prints section boundaries, the section labels with the
+//! evidence each rests on (repetition group, repeats, level), and the energy
+//! lane behind them. The boundaries are where the song starts or stops
+//! repeating itself (`structure::phrases`), not the novelty peaks the
+//! hitsound engine reads. It is tempoless, as the DSP crate is: boundaries
+//! sit on the 0.5 s feature grid, and snapping them to downbeats is the
+//! caller's job, since the caller holds the grid.
 //!
 //! `hitsound-evidence` prints what the hitsound decision (H4) gets about
 //! every attack: the 13 class probabilities with each term's contribution
@@ -344,7 +346,7 @@ fn structure(args: &[String]) -> ExitCode {
     };
     let decode_s = started.elapsed().as_secs_f64();
     let started = Instant::now();
-    let found = s::analyze(&y, sr);
+    let found = s::phrases(&y, sr);
     let structure_s = started.elapsed().as_secs_f64();
     let started = Instant::now();
     let sections = c::classify(&y, sr, &found.boundaries);
@@ -367,6 +369,11 @@ fn structure(args: &[String]) -> ExitCode {
             "window_s": s::WIN_S,
             "edge_blind_s": s::KERNEL_HALF as f64 * s::WIN_S,
             "merge_s": s::MERGE_S,
+            "embed_s": s::EMBED_S,
+            "neighbours": s::NEIGHBOURS,
+            "smooth_time_s": s::SMOOTH_TIME_S,
+            "median_s": s::MEDIAN_S,
+            "edge_over_median": s::EDGE_OVER_MEDIAN,
             "repeat_cosine": c::REPEAT_COSINE,
             "split_power_ratio": c::SPLIT_POWER_RATIO,
             "intro_max_s": c::INTRO_MAX_S,

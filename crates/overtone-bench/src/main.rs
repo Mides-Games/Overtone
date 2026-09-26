@@ -748,7 +748,9 @@ fn structure_mode(root: &Path, name: &str) -> Result<()> {
     let (y, sr) = overtone_audio::load(&audio).map_err(|e| anyhow::anyhow!("{e}"))?;
     let decode_s = started.elapsed().as_secs_f64();
     let started = std::time::Instant::now();
-    let structure = overtone_dsp::structure::analyze(&y, sr);
+    // The section edges `overtone-cli structure` prints: repetition, not
+    // the novelty peaks the hitsound engine reads.
+    let structure = overtone_dsp::structure::phrases(&y, sr);
     let structure_s = started.elapsed().as_secs_f64();
     let started = std::time::Instant::now();
     let sections = overtone_dsp::classify::classify(&y, sr, &structure.boundaries);

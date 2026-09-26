@@ -38,6 +38,25 @@ pub enum HitClass {
 }
 
 impl HitClass {
+    /// Lowercase name for evidence output (`hat_closed`, ...).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            HitClass::Kick => "kick",
+            HitClass::Snare => "snare",
+            HitClass::Clap => "clap",
+            HitClass::HatClosed => "hat_closed",
+            HitClass::HatOpen => "hat_open",
+            HitClass::Tom => "tom",
+            HitClass::Cymbal => "cymbal",
+            HitClass::Other => "other",
+            HitClass::Ride => "ride",
+            HitClass::Bass => "bass",
+            HitClass::Guitar => "guitar",
+            HitClass::Keys => "keys",
+            HitClass::Vocal => "vocal",
+        }
+    }
+
     pub const ALL: [HitClass; 13] = [
         HitClass::Kick,
         HitClass::Snare,

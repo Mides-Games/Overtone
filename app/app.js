@@ -5,7 +5,7 @@
 const I18N = {
   en: {
     tagline: "Timing for osu! maps", nav_timing: "Timing", offline: "offline, nothing leaves this PC",
-    nav_sections: "Sections", nav_library: "Library", nav_mapcheck: "Map check", nav_export: "Export", nav_settings: "Settings",
+    nav_sections: "Sections", nav_library: "Library", nav_mapcheck: "Map check", nav_export: "Export", nav_history: "History", nav_settings: "Settings",
     close: "Close",
     need_title: "Nothing analyzed yet",
     need_body: "{view} works on the analyzed song, the same one every section shares. Open an audio file and analyze it.",
@@ -18,6 +18,16 @@ const I18N = {
     exp_click_t: "Click track", exp_click_d: "A metronome WAV on these red lines, to hear any drift against the song.",
     exp_osz_t: ".osz package", exp_osz_d: "The audio plus a new beatmap carrying this timing.",
     exp_inject_t: "Inject into a .osu", exp_inject_d: "Replaces the red lines of a difficulty you already have. You confirm first, and a backup is kept.",
+    hist_sub: "Every .osu write this app made, newest first, with the backup holding what it replaced. Restoring keeps the current file as a new backup first.",
+    hist_title: "Writes", hist_empty: "Nothing written yet.",
+    hist_t_when: "When", hist_t_what: "What", hist_t_file: "File", hist_t_backup: "Backup",
+    hist_diff: "Diff", hist_restore: "Restore", hist_count: "{n} writes",
+    hist_op_inject: "timing", hist_op_hitsounds: "hitsounds", hist_op_write: "write", hist_op_restore: "restore", hist_op_swap: "audio swap",
+    hist_added: "+{n} red lines", hist_removed: "−{n} red lines", hist_changed: "~{n} red lines moved",
+    hist_no_change: "same red lines",
+    hist_confirm: "Restore {file} from {backup}? The current file is kept as a new backup first.",
+    hist_restored: "{file} restored.",
+    hist_summary_hitsounds: "{n} objects", hist_summary_inject: "{n} red lines",
     nav_mapset: "Mapset",
     mapset_sub: "Every difficulty of one beatmap folder side by side: red lines, audio settings and metadata that must match. The comparison only lists differences; Copy hitsounds writes, after a preview, with backups.",
     ms_title: "Difficulties", ms_pick: "Choose beatmap folder…", ms_recheck: "Check again",
@@ -104,6 +114,35 @@ const I18N = {
     inject_warn: "\nThe .osu audio ({osu}) differs from the analyzed file ({src}).",
     drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
     recent: "Recent",
+    nav_hitsounds: "Hitsounds",
+    hsv_sub: "What one difficulty plays: where its additions fall in the bar, every sound to hear one by one, and the decision engine's proposals to write or not.",
+    hsv_map: "Difficulty", hsv_none: "No difficulty beside this song plays its audio.",
+    hsv_sounds_n: "Sounds", hsv_sets: "Sample sets", hsv_samples: "Samples",
+    hsv_samples_v: "{map} the map's · {own} Overtone's",
+    hsv_where_title: "Where the additions fall",
+    hsv_where_note: "Share of each addition on each sixteenth of a {meter}/4 bar, read against the map's own red lines.",
+    hsv_top: "{pct} % on {slots}", hsv_none_add: "none",
+    hsv_between: "{n} between sixteenths (triplets and the like)", hsv_other_meter: "{n} under another meter",
+    hsv_sounds: "Sounds", hsv_all: "All", hsv_count: "{n} sounds",
+    hsv_t_time: "Time", hsv_t_place: "Bar · beat", hsv_t_part: "Part", hsv_t_sounds: "Sounds",
+    hsv_t_sets: "Sets", hsv_t_index: "Index", hsv_t_volume: "Volume",
+    hsv_play: "Hear this sound", hsv_more: "Show {n} more",
+    hsv_decide_title: "Propose hitsounds",
+    hsv_decide_sub: "The decision engine proposes every object's sound. Tick what to keep, preview, then write the file or a copy. Each write is backed up, and one undo restores it.",
+    hsv_propose: "Propose", hsv_proposing: "Deciding every sound…",
+    hsv_proposed: "{n} proposals", hsv_decide_all: "All", hsv_decide_none: "None",
+    hsv_preview: "Preview", hsv_would_change: "{accepted} of {units} accepted, {n} lines would change",
+    hsv_write: "Write into this file", hsv_write_copy: "Write a copy",
+    hsv_undo: "Undo", hsv_confirm_write: "Write {n} sounds into {file}? Only hitsound fields change, and the file is backed up first.",
+    hsv_confirm_copy: "Write {n} sounds into a copy beside {file}? The original stays untouched.",
+    hsv_done: "{n} sounds written into {file}.",
+    hsv_done_copy: "{n} sounds written into {file}. The original stays untouched.",
+    hsv_undone: "Restored {file} from before the write.",
+    hsv_no_rust: "Proposals run on the Rust engine (overtone-cli), and it is not built here: cargo build --release -p overtone-cli.",
+    hsv_no_proposal: "Propose first: there is nothing to preview or write yet.",
+    hsv_t_proposal: "Proposal",
+    part_circle: "circle", part_head: "slider head", part_repeat: "slider repeat", part_tail: "slider tail",
+    part_spinner_end: "spinner end", part_hold: "hold",
     lane_objects: "objects", lg_whistle: "whistle", lg_finish: "finish", lg_clap: "clap",
     g_v_short_section: "{count} sections last less than a bar. Check them by ear.",
     g_v_octave_check: "{count} sections change tempo by an octave: half-time feel or octave mistakes? Your call.",
@@ -127,6 +166,14 @@ const I18N = {
     hs_t_unmatched: "Nothing under them", hs_t_conflicts: "Index conflicts",
     hs_conflict_note: "An index conflict is a sound whose sample index comes from a green line the target does not have, or a slider edge whose index differs from its head's: the copy leaves those indexes as they are.",
     hs_confirm: "Write the hitsounds of {source} into {n} difficulties? Only hitsound fields change; each file is backed up first.",
+    sw_title: "Audio swap", sw_preview: "Preview", sw_apply: "Move every time",
+    sw_sub: "Measures the shift between the mapped audio and a new encode, and moves every red line, object, preview, lead-in and bookmark by it. Tempo twins and strangers refuse; every file is backed up first.",
+    sw_old: "Mapped audio", sw_new: "New encode",
+    sw_shift: "{ms} ms from {old} to {nw}; peak {peak}",
+    sw_t_reds: "Red lines", sw_t_objects: "Objects",
+    sw_confirm: "Move every time of {n} difficulties by {ms} ms onto {file}? Each file is backed up first.",
+    sw_done: "{n} difficulties moved onto {file}.",
+    sw_same_file: "The new encode is the mapped audio already.",
     hs_done: "Hitsounds copied into {n} difficulties ({objects} objects). Backups kept beside each file.",
     hs_nothing: "Nothing to change: these difficulties already sound like {source}.",
     st_theme: "Theme", st_theme_system: "System", st_theme_dark: "Dark", st_theme_light: "Light",
@@ -149,6 +196,29 @@ const I18N = {
     stx_why_bridge: "Heard once, between the repeats.",
     stx_unsnapped: "no proven bar within {s} s",
     stx_one_family: "Every section reads as one family: on a full mix, the harmony of verse and chorus often looks alike, and the labels cannot tell them apart. The phrase edges and the energy still hold.",
+    stx_preview: "Preview point: {at} ({kind}).",
+    stx_bm_title: "Bookmarks",
+    stx_bm_sub: "Section starts as editor bookmarks in one difficulty, merged with its own. Nothing is ever deleted; every file is backed up first.",
+    stx_bm_preview: "Preview", stx_bm_apply: "Write bookmarks",
+    stx_bm_would: "{added} new of {total} bookmarks into {file}.",
+    stx_bm_confirm: "Write {n} bookmarks into {file}? Its own bookmarks stay.",
+    stx_bm_done: "{n} bookmarks into {file}.",
+    stx_bm_nothing: "Every section start is already a bookmark in {file}.",
+    stx_kiai_title: "Kiai",
+    stx_kiai_sub: "Kiai on the chorus sections in one difficulty, written as green lines. Sound never changes — kiai is light, not sound; every file is backed up first.",
+    stx_kiai_preview: "Preview", stx_kiai_apply: "Write kiai",
+    stx_kiai_would: "{added} new, {flipped} flipped, {kept} kept over {n} choruses into {file}.",
+    stx_kiai_confirm: "Write kiai on {n} choruses into {file}?",
+    stx_kiai_done: "Kiai on {n} choruses into {file}.",
+    stx_kiai_nothing: "Kiai already matches the choruses in {file}.",
+    stx_kiai_nochorus: "No chorus sections in this song, so there is nothing to light.",
+    stx_breaks_title: "Breaks",
+    stx_breaks_sub: "Breaks where the song goes quiet and the map goes silent, written as 2,start,end lines. Only spans 5 s or longer are proposed; every file is backed up first.",
+    stx_breaks_preview: "Preview", stx_breaks_apply: "Write breaks",
+    stx_breaks_would: "{n} breaks into {file}: {spans}.",
+    stx_breaks_confirm: "Write {n} breaks into {file}?",
+    stx_breaks_done: "{n} breaks into {file}.",
+    stx_breaks_nothing: "Nothing quiet and long enough for a break in this song.",
     stx_note: "Letters are families of sections that repeat. Edges snap to the nearest proven bar line within {snap} s: a bar near the change, not proof the phrase starts on it. A change within {edge} s of either end cannot be placed. Click a section to open it in Timing.",
     songs_title: "osu! Songs",
     songs_scan: "Scan",
@@ -231,6 +301,40 @@ const I18N = {
     ref_found_none: "No map under {root} uses this exact audio ({s} audio files checked).",
     ref_grade: "Grade",
     no_songs: "Choose your osu! Songs folder.",
+    ev_title: "Evidence",
+    ev_sub: "What the engine read against: coherence candidates per section, the octave margin, residual and coverage. Using one writes its BPM into the governing red line.",
+    ev_section: "§{n} · {from}–{to} s · {bpm} BPM · residual {res} ms · coverage {cov} % · {inliers} attacks",
+    ev_candidates: "Coherence candidates",
+    ev_seeded: "seeded", ev_half: "half", ev_double: "double",
+    ev_margin: "octave margin {m}",
+    ev_use: "Use", ev_used: "Red line {n} now runs {bpm} BPM.",
+    ev_note: "The fallback engine keeps no attacks, so there are no alternatives to show.",
+    ev_t_bpm: "BPM", ev_t_coh: "Coherence",
+    ramp_title: "Ramps",
+    ramp_sub: "The elastic curve as the fewest red lines within the drift. Using them replaces the timing with hand-placed lines; undo brings it back.",
+    ramp_drift: "Drift (ms)", ramp_max: "At most N lines", ramp_fit: "Fit", ramp_use: "Use these lines",
+    ramp_lines: "{n} red lines within {ms} ms",
+    ramp_tradeoff: "Fewer lines cost drift: {rows}.",
+    ramp_trade_row: "{drift} ms → {n} lines",
+    ramp_recommend: "The curve bends here: ramps fit better than one grid per section.",
+    ramp_piecewise: "The sections already read fine: ramps add nothing.",
+    ramp_used: "{n} hand-placed red lines.",
+    ramp_no_ramps: "Fit first: there are no lines to use yet.",
+    lab_title: "Offset lab",
+    lab_sub: "What the file says about its own delay, and the first attack through each decoder side by side.",
+    lab_header: "{encoder}: {delay} samples of delay ({delayMs} ms), {pad} of padding ({padMs} ms).",
+    lab_no_tag: "No gapless tag: this file does not state its delay.",
+    lab_compare: "Compare decoders",
+    lab_decoders: "First attack: Python {py} ms, Rust {rust} ms, {delta} ms apart.",
+    lab_test_title: "Blind test",
+    lab_test_sub: "Hear the same passage twice with two hidden click shifts and pick the one in time. Each shift runs against no shift, three times each.",
+    lab_start: "Start", lab_hear1: "Hear 1", lab_hear2: "Hear 2",
+    lab_vote1: "1 was in time", lab_vote2: "2 was in time", lab_cancel: "Cancel",
+    lab_rate: "Set speed to 100% for the test.",
+    lab_trial: "Trial {k} of {n}",
+    lab_t_shift: "Shift", lab_t_wins: "Wins", lab_t_interval: "95% interval",
+    lab_best: "Preferred: {shift} ms ({lo}–{hi} % preferred over no shift).",
+    lab_none: "Nothing beats no shift: the click sits where it is.",
     as_title: "Assisted timing",
     as_sub: "Where detection is wrong, mark two downbeats: the grid is fitted from there, or refused with the reason.",
     as_first: "First downbeat (ms)", as_second: "A later downbeat (ms)", as_bars: "Bars between", as_meter: "Beats per bar",
@@ -267,18 +371,20 @@ const I18N = {
     nav_report: "Report",
     report_sub: "Every finding about one difficulty as osu! editor timestamps, ready to paste into a mod post. A timestamp opens the editor there. Read only: nothing is written.",
     rp_title: "Mod report", rp_pick: "Choose .osu…", rp_copy: "Copy all",
-    rp_empty: "Choose the .osu of a difficulty to gather every finding about it: red lines to check, red lines it is missing, unsnapped objects and objects away from the music.",
+    rp_empty: "Choose the .osu of a difficulty to gather every finding about it: red lines to check, red lines it is missing, unsnapped objects, objects away from the music and hitsounds breaking the map's own pattern.",
     rp_counts: "{n} findings", rp_none: "Nothing to report on this difficulty.",
-    rp_src_reference: "Red lines", rp_src_suggestion: "Missing red lines", rp_src_snap: "Snapping", rp_src_alignment: "Away from the music",
+    rp_src_reference: "Red lines", rp_src_suggestion: "Missing red lines", rp_src_snap: "Snapping", rp_src_alignment: "Away from the music", rp_src_hitsound: "Hitsounds",
     rp_hint: "The lines are in English, as mod posts are. Untick a group to leave it out of the copy.",
     rp_copied: "Report copied: paste it into your mod post.",
     rp_open: "Open in the osu! editor",
     bad_stamp: "That is not an editor timestamp.",
     no_osu: "osu! did not open — is it installed? ({detail})",
     pb_play: "Play / pause (Space)", pb_from_line: "From red line", pb_seek: "Position",
-    pb_click: "Click", pb_loop: "Loop section", pb_song: "Song", pb_click_vol: "Click",
+    pb_click: "Click", pb_perc: "Percussion only", pb_loop: "Loop section", pb_song: "Song", pb_click_vol: "Click",
     pb_hint: "Space plays and pauses · double-click the tempo map to play from there · the click follows your edits",
     pb_loading: "Loading the song… {n}/{of}",
+    pb_perc_preparing: "Separating the drums…",
+    pb_perc_on: "Percussion only: the drums against the click. Untick to hear the full song.",
     pb_failed: "The song could not be played: {detail}",
     no_audio_staged: "The song is not loaded; press play again.",
     pb_rate: "Speed: slower lowers the pitch, so every attack stays exactly in place",
@@ -302,7 +408,8 @@ const I18N = {
   },
   es: {
     tagline: "Timing para mapas de osu!", nav_timing: "Timing", offline: "sin conexión, nada sale de esta PC",
-    nav_sections: "Secciones", nav_library: "Biblioteca", nav_mapcheck: "Revisar mapa", nav_export: "Exportar", nav_settings: "Ajustes",
+    nav_sections: "Secciones", nav_library: "Biblioteca", nav_mapcheck: "Revisar mapa", nav_export:
+    "Exportar", nav_history: "Historial", nav_settings: "Ajustes",
     close: "Cerrar",
     need_title: "Todavía no hay nada analizado",
     need_body: "{view} trabaja sobre la canción analizada, la misma que comparten todas las secciones. Abrí un audio y analizalo.",
@@ -315,6 +422,16 @@ const I18N = {
     exp_click_t: "Pista de clic", exp_click_d: "Un WAV de metrónomo sobre estas líneas rojas, para oír si derivan contra la canción.",
     exp_osz_t: "Paquete .osz", exp_osz_d: "El audio más un beatmap nuevo con este timing.",
     exp_inject_t: "Inyectar en un .osu", exp_inject_d: "Reemplaza las líneas rojas de una dificultad que ya tenés. Confirmás antes y se guarda un respaldo.",
+    hist_sub: "Cada escritura .osu que hizo esta app, la más nueva primero, con el respaldo que guarda lo reemplazado. Restaurar guarda el archivo actual como respaldo nuevo antes.",
+    hist_title: "Escrituras", hist_empty: "Nada escrito todavía.",
+    hist_t_when: "Cuándo", hist_t_what: "Qué", hist_t_file: "Archivo", hist_t_backup: "Respaldo",
+    hist_diff: "Diff", hist_restore: "Restaurar", hist_count: "{n} escrituras",
+    hist_op_inject: "timing", hist_op_hitsounds: "hitsounds", hist_op_write: "escritura", hist_op_restore: "restauración", hist_op_swap: "cambio de audio",
+    hist_added: "+{n} líneas rojas", hist_removed: "−{n} líneas rojas", hist_changed: "~{n} líneas rojas movidas",
+    hist_no_change: "mismas líneas rojas",
+    hist_confirm: "¿Restaurar {file} desde {backup}? El archivo actual se guarda como respaldo nuevo antes.",
+    hist_restored: "{file} restaurado.",
+    hist_summary_hitsounds: "{n} objetos", hist_summary_inject: "{n} líneas rojas",
     nav_mapset: "Mapset",
     mapset_sub: "Todas las dificultades de una carpeta, lado a lado: líneas rojas, ajustes de audio y metadatos que deben coincidir. La comparación solo lista diferencias; Copiar hitsounds escribe, después de una vista previa y con respaldos.",
     ms_title: "Dificultades", ms_pick: "Elegir carpeta…", ms_recheck: "Revisar de nuevo",
@@ -401,6 +518,35 @@ const I18N = {
     inject_warn: "\nEl audio del .osu ({osu}) difiere del analizado ({src}).",
     drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
     recent: "Recientes",
+    nav_hitsounds: "Hitsounds",
+    hsv_sub: "Lo que suena en una dificultad: dónde caen sus adiciones en el compás, cada sonido para escucharlos uno por uno, y las propuestas del motor para escribirlas o no.",
+    hsv_map: "Dificultad", hsv_none: "Ninguna dificultad junto a esta canción usa su audio.",
+    hsv_sounds_n: "Sonidos", hsv_sets: "Sample sets", hsv_samples: "Samples",
+    hsv_samples_v: "{map} del mapa · {own} de Overtone",
+    hsv_where_title: "Dónde caen las adiciones",
+    hsv_where_note: "Proporción de cada adición en cada semicorchea de un compás de {meter}/4, leída contra las líneas rojas del propio mapa.",
+    hsv_top: "{pct} % en {slots}", hsv_none_add: "ninguna",
+    hsv_between: "{n} entre semicorcheas (tresillos y similares)", hsv_other_meter: "{n} bajo otro compás",
+    hsv_sounds: "Sonidos", hsv_all: "Todos", hsv_count: "{n} sonidos",
+    hsv_t_time: "Tiempo", hsv_t_place: "Compás · tiempo", hsv_t_part: "Parte", hsv_t_sounds: "Sonidos",
+    hsv_t_sets: "Sets", hsv_t_index: "Índice", hsv_t_volume: "Volumen",
+    hsv_play: "Escuchar este sonido", hsv_more: "Mostrar {n} más",
+    hsv_decide_title: "Proponer hitsounds",
+    hsv_decide_sub: "El motor propone el sonido de cada objeto. Tildá lo que queda, previsualizá, y escribí el archivo o una copia. Cada escritura se respalda, y un deshacer lo restaura.",
+    hsv_propose: "Proponer", hsv_proposing: "Decidiendo cada sonido…",
+    hsv_proposed: "{n} propuestas", hsv_decide_all: "Todas", hsv_decide_none: "Ninguna",
+    hsv_preview: "Vista previa", hsv_would_change: "{accepted} de {units} aceptadas, {n} líneas cambiarían",
+    hsv_write: "Escribir en este archivo", hsv_write_copy: "Escribir una copia",
+    hsv_undo: "Deshacer", hsv_confirm_write: "¿Escribir {n} sonidos en {file}? Solo cambian los campos de hitsound, y el archivo se respalda antes.",
+    hsv_confirm_copy: "¿Escribir {n} sonidos en una copia junto a {file}? El original queda intacto.",
+    hsv_done: "{n} sonidos escritos en {file}.",
+    hsv_done_copy: "{n} sonidos escritos en {file}. El original queda intacto.",
+    hsv_undone: "{file} restaurado a antes de la escritura.",
+    hsv_no_rust: "Las propuestas usan el motor Rust (overtone-cli), y acá no está compilado: cargo build --release -p overtone-cli.",
+    hsv_no_proposal: "Proponé primero: no hay nada que previsualizar o escribir todavía.",
+    hsv_t_proposal: "Propuesta",
+    part_circle: "círculo", part_head: "cabeza de slider", part_repeat: "repetición de slider", part_tail: "cola de slider",
+    part_spinner_end: "fin de spinner", part_hold: "hold",
     lane_objects: "objetos", lg_whistle: "whistle", lg_finish: "finish", lg_clap: "clap",
     g_v_short_section: "{count} secciones duran menos de un compás. Revisalas de oído.",
     g_v_octave_check: "{count} secciones cambian el tempo una octava: ¿half-time o errores de octava? Lo decidís vos.",
@@ -424,6 +570,14 @@ const I18N = {
     hs_t_unmatched: "Sin nada debajo", hs_t_conflicts: "Conflictos de índice",
     hs_conflict_note: "Un conflicto de índice es un sonido cuyo índice de sample viene de una línea verde que el destino no tiene, o un borde de slider con un índice distinto al de su cabeza: la copia deja esos índices como están.",
     hs_confirm: "¿Escribir los hitsounds de {source} en {n} dificultades? Solo cambian los campos de hitsound; cada archivo se respalda antes.",
+    sw_title: "Cambio de audio", sw_preview: "Vista previa", sw_apply: "Mover todos los tiempos",
+    sw_sub: "Mide el desplazamiento entre el audio mapeado y una nueva codificación, y mueve cada línea roja, objeto, preview, lead-in y bookmark por él. Gemelos de tempo y extraños se rechazan; cada archivo se respalda antes.",
+    sw_old: "Audio mapeado", sw_new: "Nueva codificación",
+    sw_shift: "{ms} ms de {old} a {nw}; pico {peak}",
+    sw_t_reds: "Líneas rojas", sw_t_objects: "Objetos",
+    sw_confirm: "¿Mover todos los tiempos de {n} dificultades por {ms} ms hacia {file}? Cada archivo se respalda antes.",
+    sw_done: "{n} dificultades movidas hacia {file}.",
+    sw_same_file: "La nueva codificación ya es el audio mapeado.",
     hs_done: "Hitsounds copiados en {n} dificultades ({objects} objetos). Los respaldos quedan junto a cada archivo.",
     hs_nothing: "Nada que cambiar: estas dificultades ya suenan como {source}.",
     st_theme: "Tema", st_theme_system: "Sistema", st_theme_dark: "Oscuro", st_theme_light: "Claro",
@@ -446,6 +600,29 @@ const I18N = {
     stx_why_bridge: "Suena una vez, entre las repeticiones.",
     stx_unsnapped: "sin compás probado a menos de {s} s",
     stx_one_family: "Todas las secciones se leen como una sola familia: en una mezcla completa, la armonía de estrofa y estribillo suele parecerse, y las etiquetas no las distinguen. Los bordes de frase y la energía siguen valiendo.",
+    stx_preview: "Punto de preview: {at} ({kind}).",
+    stx_bm_title: "Bookmarks",
+    stx_bm_sub: "Inicios de sección como bookmarks de editor en una dificultad, mezclados con los suyos. Nada se borra nunca; cada archivo se respalda antes.",
+    stx_bm_preview: "Vista previa", stx_bm_apply: "Escribir bookmarks",
+    stx_bm_would: "{added} nuevos de {total} bookmarks en {file}.",
+    stx_bm_confirm: "¿Escribir {n} bookmarks en {file}? Los suyos quedan.",
+    stx_bm_done: "{n} bookmarks en {file}.",
+    stx_bm_nothing: "Cada inicio de sección ya es bookmark en {file}.",
+    stx_kiai_title: "Kiai",
+    stx_kiai_sub: "Kiai en las secciones de estribillo en una dificultad, escrito como líneas verdes. El sonido no cambia nunca — el kiai es luz, no sonido; cada archivo se respalda antes.",
+    stx_kiai_preview: "Vista previa", stx_kiai_apply: "Escribir kiai",
+    stx_kiai_would: "{added} nuevas, {flipped} cambiadas, {kept} iguales en {n} estribillos en {file}.",
+    stx_kiai_confirm: "¿Escribir kiai en {n} estribillos en {file}?",
+    stx_kiai_done: "Kiai en {n} estribillos en {file}.",
+    stx_kiai_nothing: "El kiai ya coincide con los estribillos en {file}.",
+    stx_kiai_nochorus: "Esta canción no tiene secciones de estribillo, así que no hay nada que iluminar.",
+    stx_breaks_title: "Breaks",
+    stx_breaks_sub: "Breaks donde la canción se calma y el mapa queda en silencio, escritos como líneas 2,start,end. Solo se proponen tramos de 5 s o más; cada archivo se respalda antes.",
+    stx_breaks_preview: "Vista previa", stx_breaks_apply: "Escribir breaks",
+    stx_breaks_would: "{n} breaks en {file}: {spans}.",
+    stx_breaks_confirm: "¿Escribir {n} breaks en {file}?",
+    stx_breaks_done: "{n} breaks en {file}.",
+    stx_breaks_nothing: "Nada tan calmo y largo como para un break en esta canción.",
     stx_note: "Las letras son familias de secciones que se repiten. Los bordes se ajustan a la línea de compás probada más cercana, a menos de {snap} s: un compás cerca del cambio, no la prueba de que la frase empiece ahí. Un cambio a menos de {edge} s de cada punta no se puede ubicar. Hacé clic en una sección para abrirla en Timing.",
     songs_title: "Songs de osu!",
     songs_scan: "Escanear",
@@ -528,6 +705,40 @@ const I18N = {
     ref_found_none: "Ningún mapa en {root} usa exactamente este audio ({s} archivos de audio revisados).",
     ref_grade: "Calificar",
     no_songs: "Elegí tu carpeta Songs de osu!.",
+    ev_title: "Evidencia",
+    ev_sub: "Contra qué leyó el motor: candidatos de coherencia por sección, margen de octava, residual y cobertura. Usar uno escribe su BPM en la línea roja que manda.",
+    ev_section: "§{n} · {from}–{to} s · {bpm} BPM · residual {res} ms · cobertura {cov} % · {inliers} ataques",
+    ev_candidates: "Candidatos de coherencia",
+    ev_seeded: "semilla", ev_half: "mitad", ev_double: "doble",
+    ev_margin: "margen de octava {m}",
+    ev_use: "Usar", ev_used: "La línea roja {n} ahora va a {bpm} BPM.",
+    ev_note: "El motor alternativo no guarda ataques, así que no hay alternativas que mostrar.",
+    ev_t_bpm: "BPM", ev_t_coh: "Coherencia",
+    ramp_title: "Rampas",
+    ramp_sub: "La curva elástica como las menos líneas rojas dentro del drift. Usarlas reemplaza el timing con líneas puestas a mano; deshacer lo recupera.",
+    ramp_drift: "Drift (ms)", ramp_max: "Como mucho N líneas", ramp_fit: "Ajustar", ramp_use: "Usar estas líneas",
+    ramp_lines: "{n} líneas rojas dentro de {ms} ms",
+    ramp_tradeoff: "Menos líneas cuestan drift: {rows}.",
+    ramp_trade_row: "{drift} ms → {n} líneas",
+    ramp_recommend: "La curva se dobla acá: las rampas ajustan mejor que una grilla por sección.",
+    ramp_piecewise: "Las secciones ya leen bien: las rampas no agregan nada.",
+    ramp_used: "{n} líneas rojas puestas a mano.",
+    ramp_no_ramps: "Ajustá primero: todavía no hay líneas para usar.",
+    lab_title: "Laboratorio de offset",
+    lab_sub: "Lo que el archivo dice de su propio delay, y el primer ataque por cada decodificador lado a lado.",
+    lab_header: "{encoder}: delay {delay} samples ({delayMs} ms), pad {pad} samples ({padMs} ms).",
+    lab_no_tag: "Sin etiqueta gapless: este archivo no dice su delay.",
+    lab_compare: "Comparar decodificadores",
+    lab_decoders: "Primer ataque: Python {py} ms, Rust {rust} ms, diferencia {delta} ms.",
+    lab_test_title: "Prueba ciega",
+    lab_test_sub: "Escuchá el mismo pasaje dos veces con dos shifts ocultos y elegí el que va a tiempo. Cada shift corre contra cero, tres veces cada uno.",
+    lab_start: "Empezar", lab_hear1: "Escuchar 1", lab_hear2: "Escuchar 2",
+    lab_vote1: "1 iba a tiempo", lab_vote2: "2 iba a tiempo", lab_cancel: "Cancelar",
+    lab_rate: "Poné la velocidad en 100% para la prueba.",
+    lab_trial: "Prueba {k} de {n}",
+    lab_t_shift: "Shift", lab_t_wins: "Ganadas", lab_t_interval: "Intervalo 95%",
+    lab_best: "Preferido: {shift} ms ({lo}–{hi} % preferido sobre cero).",
+    lab_none: "Nada le gana a cero: el clic queda donde está.",
     as_title: "Timing asistido",
     as_sub: "Donde la detección se equivoca, marcá dos tiempos fuertes: el grid se ajusta desde ahí, o se rechaza con el motivo.",
     as_first: "Primer tiempo fuerte (ms)", as_second: "Un tiempo fuerte posterior (ms)", as_bars: "Compases entre ambos", as_meter: "Tiempos por compás",
@@ -564,18 +775,20 @@ const I18N = {
     nav_report: "Reporte",
     report_sub: "Cada hallazgo sobre una dificultad como timestamps del editor de osu!, listo para pegar en un mod. Un timestamp abre el editor ahí. Solo lectura: no se escribe nada.",
     rp_title: "Reporte de mod", rp_pick: "Elegir .osu…", rp_copy: "Copiar todo",
-    rp_empty: "Elegí el .osu de una dificultad para juntar cada hallazgo sobre ella: líneas rojas a revisar, líneas rojas que le faltan, objetos sin snap y objetos lejos de la música.",
+    rp_empty: "Elegí el .osu de una dificultad para juntar cada hallazgo sobre ella: líneas rojas a revisar, líneas rojas que le faltan, objetos sin snap, objetos lejos de la música e hitsounds que rompen el patrón del mapa.",
     rp_counts: "{n} hallazgos", rp_none: "Nada que reportar en esta dificultad.",
-    rp_src_reference: "Líneas rojas", rp_src_suggestion: "Líneas rojas faltantes", rp_src_snap: "Snap", rp_src_alignment: "Lejos de la música",
+    rp_src_reference: "Líneas rojas", rp_src_suggestion: "Líneas rojas faltantes", rp_src_snap: "Snap", rp_src_alignment: "Lejos de la música", rp_src_hitsound: "Hitsounds",
     rp_hint: "Las líneas van en inglés, como los mods. Destildá un grupo para dejarlo fuera de la copia.",
     rp_copied: "Reporte copiado: pegalo en tu mod.",
     rp_open: "Abrir en el editor de osu!",
     bad_stamp: "Eso no es un timestamp del editor.",
     no_osu: "osu! no se abrió — ¿está instalado? ({detail})",
     pb_play: "Reproducir / pausar (Espacio)", pb_from_line: "Desde la línea roja", pb_seek: "Posición",
-    pb_click: "Click", pb_loop: "Repetir sección", pb_song: "Canción", pb_click_vol: "Click",
+    pb_click: "Click", pb_perc: "Solo percusión", pb_loop: "Repetir sección", pb_song: "Canción", pb_click_vol: "Click",
     pb_hint: "Espacio reproduce y pausa · doble clic en el mapa de tempo para reproducir desde ahí · el click sigue tus ediciones",
     pb_loading: "Cargando la canción… {n}/{of}",
+    pb_perc_preparing: "Separando la batería…",
+    pb_perc_on: "Solo percusión: la batería contra el click. Destildá para oír la canción entera.",
     pb_failed: "No se pudo reproducir la canción: {detail}",
     no_audio_staged: "La canción no está cargada; volvé a darle play.",
     pb_rate: "Velocidad: más lento baja el tono, así cada ataque queda exactamente en su lugar",
@@ -625,9 +838,11 @@ function translate() {
   renderRecents();
   renderSongs();
   renderStructure();
+  if (HSV.report) renderHitsoundsView();
   renderNeedSong();
   renderMapset();
   if (typeof renderCopier === "function") renderCopier();
+  if (typeof renderSwapResult === "function" && S.mapset) renderSwap();
   if (S.result) renderResult(S.result);
   if (S.busy) $("analyzeText").textContent = t("analyzing");
 }
@@ -636,8 +851,8 @@ function translate() {
 // One analysed song is shared by every view: switching only changes what is
 // visible, never the session. Views that read the analysis show the
 // "analyze first" panel until there is one, instead of blank space.
-const VIEWS = ["library", "timing", "structure", "mapcheck", "mapset", "report", "export", "settings"];
-const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", structure: "nav_structure", mapcheck: "nav_mapcheck", mapset: "nav_mapset", report: "nav_report", export: "nav_export", settings: "nav_settings" };
+const VIEWS = ["library", "timing", "structure", "hitsounds", "mapcheck", "mapset", "report", "export", "history", "settings"];
+const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", structure: "nav_structure", hitsounds: "nav_hitsounds", mapcheck: "nav_mapcheck", mapset: "nav_mapset", report: "nav_report", export: "nav_export", history: "nav_history", settings: "nav_settings" };
 
 function needsResult(view) {
   const section = document.querySelector(`.content > [data-view="${view}"]`);
@@ -660,7 +875,9 @@ function setView(view) {
   if (changed) $("content").scrollTop = 0;
   // The canvas measures its box: it can only be drawn while visible.
   if (view === "timing" && S.result) { drawTrace(); waveLoad(); }
-  if (view === "structure" && S.result) stxLoad();
+  if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); }
+  if (view === "hitsounds" && S.result) hsvLoad();
+  if (view === "history") histLoad();
 }
 
 function renderNeedSong() {
@@ -906,7 +1123,7 @@ function showResult(result) {
   S.snap = null;
   // A grade depends on the map and the song's attacks, not on the point list:
   // it stays through edits and goes with the song.
-  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; pbReset(); hsMaps(); WARN.open.clear(); WARN.all = false; }
+  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; RA.report = null; labCancel(); pbReset(); hsMaps(); WARN.open.clear(); WARN.all = false; }
   if (!sameSong) { STX.view = null; STX.file = ""; STX.error = null; }
   if (!sameSong) S.comparePath = null;  // a map belongs to one song
   setView(S.view);  // lifts the "analyze first" panel off the current view
@@ -992,9 +1209,15 @@ function renderResult(r) {
   renderSnap();
   renderRef();
   renderAssist();
+  renderRamps();
   renderReport();
   renderTaps();
+  renderBookmarks();
+  renderKiai();
+  renderBreaks();
   if (S.view === "timing") waveLoad();
+  evLoad();
+  labLoad();
 }
 
 function renderDetail() {
@@ -1384,12 +1607,203 @@ function renderStructure() {
     </tr>`).join("");
   body.innerHTML = `
     <div class="stx-lane"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path class="energy" d="${path}"/></svg>${blocks}</div>
+    ${v.preview ? `<div class="card-sub mb-m">${t("stx_preview", { at: stxTime(v.preview.time_s), kind: t(STX_KIND[v.preview.kind]) })}</div>` : ""}
     ${v.one_family ? `<div class="card-sub mb-m">${t("stx_one_family")}</div>` : ""}
     <div class="table-scroll"><table class="stx-table">
       <thead><tr><th>${t("stx_h_start")}</th><th>${t("stx_h_bar")}</th><th>${t("stx_h_len")}</th><th>${t("stx_h_part")}</th><th>${t("stx_h_why")}</th><th>${t("stx_h_moved")}</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
     <div class="card-sub mt-m">${t("stx_note", { snap: v.snap_s, edge })}</div>`;
+}
+
+// ------------------------------------------------------------------ bookmarks
+// Phase 21: section starts as editor bookmarks in one difficulty of the song.
+// The maps come from the transport picker; preview counts, apply merges with
+// the map's own bookmarks under a backup, and the card refreshes.
+const STXBM = { preview: null, for: "" };
+
+async function stxBmMaps() {
+  const box = $("stxBmMap");
+  let maps = [];
+  if (api()) {
+    const reply = await api().song_maps();
+    maps = reply.ok ? reply.maps : [];
+  }
+  const path = (S.result && S.result.path) || "";
+  if (STXBM.for !== path) { STXBM.for = path; STXBM.preview = null; }
+  const keep = box.value;
+  box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+  if (maps.some((m) => m.file === keep)) box.value = keep;
+  box.disabled = !maps.length;
+  renderBookmarks();
+}
+
+async function stxBmMaps() {
+  const box = $("stxBmMap");
+  let maps = [];
+  if (api()) {
+    const reply = await api().song_maps();
+    maps = reply.ok ? reply.maps : [];
+  }
+  const keep = box.value;
+  box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+  if (maps.some((m) => m.file === keep)) box.value = keep;
+  box.disabled = !maps.length;
+}
+
+async function stxBmPreview() {
+  if (!api() || !S.result) return;
+  const file = $("stxBmMap").value;
+  if (!file) return;
+  const reply = await api().structure_bookmarks_preview(file);
+  if (!reply.ok) { editFailure(reply); return; }
+  STXBM.preview = { ...reply, file };
+  renderBookmarks();
+}
+
+async function stxBmApply() {
+  if (!api() || !S.result || !STXBM.preview) return;
+  const file = $("stxBmMap").value;
+  if (STXBM.preview.file !== file) { await stxBmPreview(); return; }
+  if (!STXBM.preview.added) { toast(t("stx_bm_nothing", { file })); return; }
+  if (!confirm(t("stx_bm_confirm", { n: STXBM.preview.added, file }))) return;
+  const reply = await api().structure_bookmarks_apply(file);
+  if (!reply.ok) { editFailure(reply); return; }
+  toast(t("stx_bm_done", { n: reply.added, file }));
+  STXBM.preview = null;
+  renderBookmarks();
+}
+
+function renderBookmarks() {
+  const card = $("stxBmCard"), p = STXBM.preview;
+  card.hidden = !S.result;
+  if (!S.result) return;
+  $("stxBmApply").disabled = !p || !p.added;
+  $("stxBmResult").textContent = !p ? ""
+    : t("stx_bm_would", { added: p.added, total: p.total, file: p.file });
+}
+
+// ------------------------------------------------------------------ kiai
+// Phase 21: kiai on the chorus sections in one difficulty of the song.
+// The maps come from the transport picker; preview counts added, flipped
+// and kept, apply writes green lines under a backup, and the card refreshes.
+const STXK = { preview: null, for: "" };
+
+async function stxKiaiMaps() {
+  const box = $("stxKiaiMap");
+  let maps = [];
+  if (api()) {
+    const reply = await api().song_maps();
+    maps = reply.ok ? reply.maps : [];
+  }
+  const path = (S.result && S.result.path) || "";
+  if (STXK.for !== path) { STXK.for = path; STXK.preview = null; }
+  const keep = box.value;
+  box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+  if (maps.some((m) => m.file === keep)) box.value = keep;
+  box.disabled = !maps.length;
+  renderKiai();
+}
+
+async function stxKiaiPreview() {
+  if (!api() || !S.result) return;
+  const file = $("stxKiaiMap").value;
+  if (!file) return;
+  const reply = await api().structure_kiai_preview(file);
+  if (!reply.ok) {
+    if (reply.key === "no_chorus") { toast(t("stx_kiai_nochorus")); return; }
+    editFailure(reply); return;
+  }
+  STXK.preview = { ...reply, file };
+  renderKiai();
+}
+
+async function stxKiaiApply() {
+  if (!api() || !S.result || !STXK.preview) return;
+  const file = $("stxKiaiMap").value;
+  if (STXK.preview.file !== file) { await stxKiaiPreview(); return; }
+  if (!STXK.preview.added && !STXK.preview.flipped) { toast(t("stx_kiai_nothing", { file })); return; }
+  if (!confirm(t("stx_kiai_confirm", { n: STXK.preview.choruses, file }))) return;
+  const reply = await api().structure_kiai_apply(file);
+  if (!reply.ok) {
+    if (reply.key === "no_chorus") { toast(t("stx_kiai_nochorus")); return; }
+    editFailure(reply); return;
+  }
+  toast(t("stx_kiai_done", { n: reply.choruses, file }));
+  STXK.preview = null;
+  renderKiai();
+}
+
+function renderKiai() {
+  const card = $("stxKiaiCard"), p = STXK.preview;
+  card.hidden = !S.result;
+  if (!S.result) return;
+  $("stxKiaiApply").disabled = !p || (!p.added && !p.flipped);
+  $("stxKiaiResult").textContent = !p ? ""
+    : t("stx_kiai_would", { added: p.added, flipped: p.flipped, kept: p.kept, n: p.choruses, file: p.file });
+}
+
+// ------------------------------------------------------------------ breaks
+// Phase 21: breaks where the song goes quiet and the map goes silent, in one
+// difficulty of the song. The maps come from the transport picker; preview
+// lists the spans, apply writes 2,start,end lines under a backup.
+const STXBR = { preview: null, for: "" };
+
+function stxBrSpan(s) {
+  return `${mmss(s.start_ms / 1000)}–${mmss(s.end_ms / 1000)} ${s.kind}`;
+}
+
+async function stxBreaksMaps() {
+  const box = $("stxBreaksMap");
+  let maps = [];
+  if (api()) {
+    const reply = await api().song_maps();
+    maps = reply.ok ? reply.maps : [];
+  }
+  const path = (S.result && S.result.path) || "";
+  if (STXBR.for !== path) { STXBR.for = path; STXBR.preview = null; }
+  const keep = box.value;
+  box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+  if (maps.some((m) => m.file === keep)) box.value = keep;
+  box.disabled = !maps.length;
+  renderBreaks();
+}
+
+async function stxBreaksPreview() {
+  if (!api() || !S.result) return;
+  const file = $("stxBreaksMap").value;
+  if (!file) return;
+  const reply = await api().structure_breaks_preview(file);
+  if (!reply.ok) { editFailure(reply); return; }
+  STXBR.preview = { ...reply, file };
+  if (!reply.spans.length) toast(t("stx_breaks_nothing"));
+  renderBreaks();
+}
+
+async function stxBreaksApply() {
+  if (!api() || !S.result || !STXBR.preview) return;
+  const file = $("stxBreaksMap").value;
+  if (STXBR.preview.file !== file) { await stxBreaksPreview(); return; }
+  if (!STXBR.preview.spans.length) { toast(t("stx_breaks_nothing")); return; }
+  if (!confirm(t("stx_breaks_confirm", { n: STXBR.preview.spans.length, file }))) return;
+  const reply = await api().structure_breaks_apply(file);
+  if (!reply.ok) {
+    if (reply.key === "no_breaks") { toast(t("stx_breaks_nothing")); return; }
+    editFailure(reply); return;
+  }
+  toast(t("stx_breaks_done", { n: reply.breaks, file }));
+  STXBR.preview = null;
+  renderBreaks();
+}
+
+function renderBreaks() {
+  const card = $("stxBreaksCard"), p = STXBR.preview;
+  card.hidden = !S.result;
+  if (!S.result) return;
+  $("stxBreaksApply").disabled = !p || !p.spans.length;
+  $("stxBreaksResult").textContent = !p ? ""
+    : t("stx_breaks_would", { n: p.spans.length, file: p.file,
+                               spans: p.spans.map(stxBrSpan).join(" · ") });
 }
 
 // A section opens in Timing: the timeline zoomed to it, the playhead at its start.
@@ -1401,6 +1815,239 @@ function stxShow(i) {
   setView("timing");
   drawTrace();
   pbSeek(s.start_s);
+}
+
+// ------------------------------------------------------------------ hitsounds view
+// Phase 6, H2: one difficulty, read only. Where its additions fall in the bar
+// (a small multiple per addition, on one scale), and every sound, to hear
+// one by one with the samples the transport plays.
+const HSV = { file: "", report: null, filter: "all", shown: 200 };
+const HSV_ADDS = ["whistle", "finish", "clap"];
+const HSV_PAGE = 200;
+
+function slotLabel(slot, meter) {
+  if (slot === null || slot === undefined) return "—";
+  return `${Math.floor(slot / 4) + 1}${["", "e", "+", "a"][slot % 4]}`;
+}
+
+async function hsvLoad() {
+  const box = $("hsvMap");
+  if (!api() || !S.result) return;
+  if (!box.options.length || box.dataset.for !== S.result.path) {
+    const reply = await api().song_maps();
+    const maps = reply.ok ? reply.maps : [];
+    box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+    box.dataset.for = S.result.path;
+    box.disabled = !maps.length;
+    HSV.file = ""; HSV.report = null;
+    if (!maps.length) { renderHitsoundsView(); return; }
+    if (HSP.file && maps.some((m) => m.file === HSP.file)) box.value = HSP.file;
+  }
+  if (box.value && box.value !== HSV.file) await hsvPick(box.value);
+  else renderHitsoundsView();
+}
+
+async function hsvPick(file) {
+  // New file, new decision state; refreshing the same file after a write
+  // clears the (now stale) units but keeps a live undo.
+  if (HSV.file !== file) { HSD.file = ""; HSD.units = []; HSD.accepted = new Set(); HSD.undo = false; }
+  HSV.file = file; HSV.report = null; HSV.shown = HSV_PAGE;
+  $("hsvDecidePrevText").textContent = "";
+  const reply = await api().hitsound_report(file);
+  if (HSV.file !== file) return;
+  if (!reply.ok) { editFailure(reply); return; }
+  HSV.report = reply.report;
+  renderHitsoundsView();
+  // The same difficulty in the transport: its samples load for the ▶ buttons.
+  if (HSP.file !== file) { $("pbHs").value = file; hsPick(file).then(renderHitsoundsView); }
+}
+
+function hsvChart(name, a, meter, peak) {
+  const n = a.slots.length, W = 300, H = 96, gap = 2, bw = (W - gap * (n - 1)) / n;
+  const bars = a.slots.map((c, k) => {
+    const share = a.total ? c / a.total : 0, h = peak ? (share / peak) * (H - 8) : 0;
+    const x = k * (bw + gap);
+    return `<rect class="bar" x="${x.toFixed(1)}" y="${(H - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(h, share ? 1 : 0).toFixed(1)}"><title>${slotLabel(k, meter)}: ${c} (${Math.round(share * 100)} %)</title></rect>`;
+  }).join("");
+  const labels = a.slots.map((_c, k) => k % 4 === 0
+    ? `<text class="beat" x="${(k * (bw + gap) + bw / 2).toFixed(1)}" y="${H + 14}" text-anchor="middle">${k / 4 + 1}</text>`
+    : (n <= 16 ? `<text class="sub" x="${(k * (bw + gap) + bw / 2).toFixed(1)}" y="${H + 14}" text-anchor="middle">${["", "e", "+", "a"][k % 4]}</text>` : "")).join("");
+  // The fewest sixteenths that hold 80 % of this addition, four at most.
+  const order = a.slots.map((c, k) => [c, k]).sort((x, y) => y[0] - x[0]);
+  let held = 0; const top = [];
+  for (const [c, k] of order) { if (!c || top.length === 4 || held >= 0.8 * a.total) break; top.push(k); held += c; }
+  const sum = a.total ? t("hsv_top", { pct: Math.round((held / a.total) * 100), slots: top.sort((x, y) => x - y).map((k) => slotLabel(k, meter)).join(", ") })
+                      : t("hsv_none_add");
+  const extra = [a.off_grid ? t("hsv_between", { n: a.off_grid }) : "", a.other_meter ? t("hsv_other_meter", { n: a.other_meter }) : ""].filter(Boolean).join(" · ");
+  return `<div class="hsv-chart k-${name}">
+    <div class="head"><span class="hsv-dot k-${name}"></span><b>${t("lg_" + name)}</b><span class="num">${a.total}</span><span class="sum">${esc(sum)}</span></div>
+    <svg viewBox="0 0 ${W} ${H + 18}" role="img" aria-label="${esc(t("lg_" + name) + ": " + sum)}">
+      ${bars}<line class="base" x1="0" x2="${W}" y1="${H + 0.5}" y2="${H + 0.5}"/>${labels}</svg>
+    ${extra ? `<div class="card-sub mt-s">${esc(extra)}</div>` : ""}</div>`;
+}
+
+function renderHitsoundsView() {
+  const r = HSV.report, box = $("hsvMap");
+  $("hsvWhereCard").hidden = $("hsvSoundsCard").hidden = !r;
+  if (!box.options.length) { $("hsvSummary").innerHTML = `<div class="card-sub">${t("hsv_none")}</div>`; hsdRender(); return; }
+  if (!r) { $("hsvSummary").innerHTML = ""; hsdRender(); return; }
+  const n = r.sounds.length, pct = (x) => (n ? Math.round((x / n) * 100) : 0);
+  const sets = r.sets.normal, setsText = ["normal", "soft", "drum"].filter((s) => sets[s]).map((s) => `${s} ${pct(sets[s])} %`).join(" · ");
+  const c = HSP.file === HSV.file && HSP.events ? HSP.counts : null;
+  const stat = (label, value, small) => `<div class="hsv-stat"><div class="label">${label}</div><div class="value">${value}${small ? `<small>${small}</small>` : ""}</div></div>`;
+  $("hsvSummary").innerHTML = `<div class="hsv-stats">
+      ${stat(t("hsv_sounds_n"), n)}
+      ${HSV_ADDS.map((a) => stat(t("lg_" + a), r.additions[a].total, `${pct(r.additions[a].total)} %`)).join("")}
+      ${stat(t("hsv_sets"), `<span class="card-sub">${esc(setsText)}</span>`)}
+      ${c ? stat(t("hsv_samples"), `<span class="card-sub">${esc(t("hsv_samples_v", { map: c.map + c.file, own: c.overtone }))}</span>`) : ""}
+    </div>`;
+  const peak = Math.max(1e-9, ...HSV_ADDS.flatMap((a) => r.additions[a].slots.map((x) => (r.additions[a].total ? x / r.additions[a].total : 0))));
+  $("hsvWhere").innerHTML = HSV_ADDS.map((a) => hsvChart(a, r.additions[a], r.meter, peak)).join("");
+  $("hsvWhereNote").textContent = t("hsv_where_note", { meter: r.meter });
+  const rows = r.sounds.filter((s) => HSV.filter === "all" || s.sounds.includes(HSV.filter));
+  $("hsvCount").textContent = t("hsv_count", { n: rows.length });
+  $("hsvRows").innerHTML = rows.slice(0, HSV.shown).map((s) => {
+    const i = r.sounds.indexOf(s);
+    const adds = s.sounds.slice(1).map((a) => `<span class="hsv-dot k-${a}"></span>${t("lg_" + a)}`).join(" ");
+    const unit = hsdUnitFor(s);
+    const key = unit && hsdKey(unit.object, unit.part, unit.edge);
+    const prop = !unit ? `<span class="muted">—</span>`
+      : `<label class="check"><input type="checkbox" data-hsd="${esc(key)}" ${HSD.accepted.has(key) ? "checked" : ""}>`
+      + `<span>${esc(hsdLabel(unit))}</span></label>`;
+    return `<tr data-i="${i}">
+      <td class="txt num">${fmtTime(s.t)}</td>
+      <td class="num">${s.bar ?? "—"} · ${slotLabel(s.slot, s.meter)}</td>
+      <td class="txt">${t("part_" + s.part)}</td>
+      <td class="txt">${s.file ? esc(s.file) : (adds || `<span class="muted">normal</span>`)}</td>
+      <td class="txt">${s.normal_set}${s.sounds.length > 1 && s.addition_set !== s.normal_set ? ` / ${s.addition_set}` : ""}</td>
+      <td class="num">${s.index}</td><td class="num">${s.volume} %</td>
+      <td class="txt">${prop}</td>
+      <td><button type="button" class="btn small icon" data-play="${i}" title="${t("hsv_play")}" aria-label="${t("hsv_play")}">▶</button></td>
+    </tr>`;
+  }).join("");
+  const more = rows.length - HSV.shown;
+  $("hsvMore").hidden = more <= 0;
+  $("hsvMore").textContent = t("hsv_more", { n: Math.min(more, HSV_PAGE) });
+  hsdRender();
+}
+
+// ▶ plays one sound now, with the samples the transport loaded for this map.
+function hsvPlay(i) {
+  const s = HSV.report && HSV.report.sounds[i];
+  if (!s || !HSP.events || HSP.file !== HSV.file) return;
+  const k = lowerBound(HSP.events.t, s.t - 1e-6);
+  if (k >= HSP.events.t.length || Math.abs(HSP.events.t[k] - s.t) > 1e-3) return;
+  const ctx = pbContext();
+  if (ctx.state === "suspended") ctx.resume();
+  pbHitAt(ctx.currentTime + 0.02, HSP.events.keys[k], HSP.events.volume[k]);
+}
+
+// ------------------------------------------------------------------ decide
+// Phase 6, H5: the decision engine's proposals over the sounds table.
+// Units join report sounds on (object, part, edge); the ticked set is the
+// accept list the bridge previews and writes. Proposing runs the CLI once
+// and caches server-side; writing clears the cache, because the map the
+// units were decided on is gone.
+const HSD = { file: "", units: [], accepted: new Set(), undo: false, proposing: false };
+
+function hsdKey(object, part, edge) { return `${object}|${part}|${edge ?? ""}`; }
+
+function hsdUnitFor(sound) {
+  if (!HSD.units.length || HSD.file !== HSV.file) return null;
+  const key = hsdKey(sound.object, sound.part, sound.edge);
+  return HSD.units.find((u) => hsdKey(u.object, u.part, u.edge) === key) || null;
+}
+
+function hsdLabel(unit) {
+  const adds = unit.proposal.additions;
+  return unit.proposal.bank + (adds.length ? " + " + adds.join(" + ") : "");
+}
+
+function hsdAcceptList() {
+  return [...HSD.accepted].map((key) => {
+    const [object, part, edge] = key.split("|");
+    return [+object, part, edge === "" ? null : +edge];
+  });
+}
+
+function hsdRender() {
+  const has = HSD.units.length > 0 && HSD.file === HSV.file;
+  $("hsvDecideCard").hidden = !HSV.report;
+  $("hsvPropose").disabled = HSD.proposing || !HSV.file;
+  for (const id of ["hsvDecideAll", "hsvDecideNone", "hsvDecidePreview", "hsvDecideApply", "hsvDecideCopy"]) {
+    $(id).disabled = !has;
+  }
+  $("hsvDecideUndo").disabled = !HSD.undo;
+  $("hsvDecideStatus").textContent = HSD.proposing ? t("hsv_proposing")
+    : has ? t("hsv_proposed", { n: HSD.accepted.size }) : "";
+}
+
+async function hsvPropose() {
+  if (!api() || !HSV.file || HSD.proposing) return;
+  HSD.proposing = true; hsdRender();
+  try {
+    const reply = await api().hitsound_decide_propose(HSV.file);
+    if (HSV.file !== (reply.file || HSV.file)) { hsdRender(); return; }
+    if (!reply.ok) {
+      if (reply.key === "no_rust") toast(t("hsv_no_rust"), true);
+      else editFailure(reply);
+      return;
+    }
+    HSD.file = HSV.file;
+    HSD.units = reply.units;
+    HSD.accepted = new Set(reply.units.map((u) => hsdKey(u.object, u.part, u.edge)));
+    HSD.undo = false;
+  } finally {
+    HSD.proposing = false;
+  }
+  renderHitsoundsView();
+}
+
+function hsdSetAll(on) {
+  HSD.accepted = on ? new Set(HSD.units.map((u) => hsdKey(u.object, u.part, u.edge))) : new Set();
+  $("hsvDecidePrevText").textContent = "";
+  renderHitsoundsView();
+}
+
+async function hsdPreview() {
+  if (!api() || !HSD.units.length || HSD.file !== HSV.file) return;
+  const reply = await api().hitsound_decide_preview(HSV.file, hsdAcceptList());
+  if (!reply.ok) {
+    if (reply.key === "no_proposal") toast(t("hsv_no_proposal"), true);
+    else editFailure(reply);
+    return reply;
+  }
+  $("hsvDecidePrevText").textContent = t("hsv_would_change",
+    { accepted: reply.accepted, units: reply.units, n: reply.would_change });
+  return reply;
+}
+
+async function hsdWrite(copy) {
+  if (!api() || !HSD.units.length || HSD.file !== HSV.file) return;
+  const preview = await hsdPreview();
+  if (!preview || !preview.ok || !preview.would_change) return;
+  const ok = confirm(t(copy ? "hsv_confirm_copy" : "hsv_confirm_write",
+    { n: preview.would_change, file: HSV.file }));
+  if (!ok) return;
+  const reply = await api().hitsound_decide_apply(HSV.file, hsdAcceptList(), copy);
+  if (!reply.ok) { editFailure(reply); return; }
+  HSD.units = []; HSD.accepted = new Set(); HSD.undo = reply.undo;
+  $("hsvDecidePrevText").textContent = "";
+  toast(t(copy ? "hsv_done_copy" : "hsv_done", { n: reply.changed.length, file: HSV.file }));
+  await hsvPick(HSV.file);
+  if (HSP.file === HSV.file) await hsPick(HSV.file);
+  renderHitsoundsView();
+}
+
+async function hsdUndo() {
+  if (!api()) return;
+  const reply = await api().hitsound_decide_undo();
+  if (!reply.ok) { editFailure(reply); return; }
+  HSD.units = []; HSD.accepted = new Set(); HSD.undo = false;
+  toast(t("hsv_undone", { file: reply.file }));
+  await hsvPick(reply.file);
+  if (HSP.file === reply.file) await hsPick(reply.file);
+  renderHitsoundsView();
 }
 
 async function dropAnalyze(file) {
@@ -1899,6 +2546,306 @@ function renderAssist() {
   $("asAdd").disabled = S.busy;
 }
 
+// ------------------------------------------------------------------ evidence
+// Phase 19: the engine's alternatives for the open song. Read only until a
+// candidate is used, which writes its BPM into the governing red line
+// through the editor's own apply path, so undo and locks behave as usual.
+const EV = { data: null, loading: false };
+
+async function evLoad() {
+  EV.data = null;
+  if (!api() || !S.result) { renderEvidence(); return; }
+  EV.loading = true; renderEvidence();
+  try {
+    const reply = await api().evidence();
+    if (!S.result) return;
+    if (!reply.ok) { editFailure(reply); return; }
+    EV.data = reply.evidence;
+  } finally {
+    EV.loading = false;
+  }
+  renderEvidence();
+}
+
+function evGoverning(start_s) {
+  const points = (S.result && S.result.points) || [];
+  let idx = 0;
+  points.forEach((p, i) => { if (p.offset_ms <= start_s * 1000 + 1e-6) idx = i; });
+  return idx;
+}
+
+async function evUse(section, bpm) {
+  if (!api() || !S.result || S.busy) return;
+  const idx = evGoverning(section.start_s);
+  const point = S.result.points[idx];
+  selectPoint(idx, false);
+  const reply = await api().edit_apply(idx, point.offset_ms, bpm);
+  if (!reply.ok) { editFailure(reply); return; }
+  showEditResult(reply, t("ev_used", { n: idx + 1, bpm: bpm.toFixed(2) }));
+}
+
+function renderEvidence() {
+  const card = $("evCard"), body = $("evBody");
+  if (!S.result) { card.hidden = true; return; }
+  card.hidden = false;
+  const ev = EV.data;
+  $("evEngine").textContent = S.result.engine;
+  if (EV.loading || !ev) { body.innerHTML = `<div class="card-sub">${EV.loading ? t("analyzing") : ""}</div>`; return; }
+  if (!ev.sections.length) { body.innerHTML = `<div class="card-sub">${t("ev_note")}</div>`; return; }
+  body.innerHTML = ev.sections.map((s, n) => {
+    const tags = [
+      s.octave_margin !== null && s.octave_margin !== undefined
+        ? `<span class="card-sub">${t("ev_margin", { m: s.octave_margin.toFixed(3) })}</span>` : "",
+      s.half ? `<span class="card-sub">${t("ev_half")}: ${s.half.bpm.toFixed(2)} (${s.half.coherence.toFixed(3)})</span>` : "",
+      s.double ? `<span class="card-sub">${t("ev_double")}: ${s.double.bpm.toFixed(2)} (${s.double.coherence.toFixed(3)})</span>` : "",
+    ].filter(Boolean).join(" ");
+    const rows = s.candidates.map((c, i) => `
+      <tr>
+        <td class="num">${c.bpm.toFixed(2)}</td>
+        <td><span class="conf"><span class="bar"><b style="width:${Math.round(c.coherence * 100)}%"></b></span><span class="num">${c.coherence.toFixed(3)}</span></span></td>
+        <td class="txt">${i === s.seeded ? t("ev_seeded")
+          : (s.half && c.bpm === s.half.bpm ? t("ev_half")
+          : (s.double && c.bpm === s.double.bpm ? t("ev_double") : ""))}</td>
+        <td><button type="button" class="btn small" data-ev-use="${n}:${c.bpm}">${t("ev_use")}</button></td>
+      </tr>`).join("");
+    return `<div class="card-sub"><b>${t("ev_section", { n: n + 1, from: s.start_s.toFixed(1), to: s.end_s.toFixed(1),
+      bpm: s.bpm.toFixed(2), res: s.residual_ms.toFixed(2), cov: Math.round(s.coverage * 100),
+      inliers: s.inliers })}</b> ${tags}</div>
+      <div class="table-scroll"><table>
+        <caption class="card-sub">${t("ev_candidates")}</caption>
+        <thead><tr><th>${t("ev_t_bpm")}</th><th>${t("ev_t_coh")}</th><th></th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`;
+  }).join("");
+  body.querySelectorAll("[data-ev-use]").forEach((button) => {
+    button.onclick = () => {
+      const [n, bpm] = button.dataset.evUse.split(":");
+      evUse(EV.data.sections[+n], parseFloat(bpm));
+    };
+  });
+}
+
+// ------------------------------------------------------------------ ramps
+// Phase 19: the elastic curve as red lines. Fit reads the sidecar and caches
+// it there; Use loads the lines as hand-placed points through the editor's
+// own path, so undo and locks behave as usual.
+const RA = { report: null };
+
+async function rampFit() {
+  if (!api() || !S.result || S.busy) return;
+  const drift = parseFloat($("rampDrift").value);
+  const maxRaw = $("rampMax").value;
+  const reply = await api().ramps(drift, maxRaw === "" ? null : maxRaw);
+  if (!reply.ok) { editFailure(reply); return; }
+  RA.report = reply.report;
+  renderRamps();
+}
+
+async function rampUse() {
+  if (!api() || !S.result || S.busy || !RA.report) return;
+  const reply = await api().ramps_use();
+  if (!reply.ok) {
+    if (reply.key === "no_ramps") toast(t("ramp_no_ramps"), true);
+    else editFailure(reply);
+    return;
+  }
+  showEditResult(reply, t("ramp_used", { n: reply.loaded }));
+}
+
+function renderRamps() {
+  const box = $("rampResult"), report = RA.report;
+  $("rampCard").hidden = !S.result;
+  $("rampUse").disabled = !report || !report.lines.length;
+  if (!report) { box.innerHTML = ""; return; }
+  const rows = report.tradeoff.map((row) =>
+    t("ramp_trade_row", { drift: row.drift_ms, n: row.lines })).join(" · ");
+  box.innerHTML = `
+    <div class="card-sub">${t("ramp_lines", { n: report.lines.length, ms: report.drift_ms })}
+      ${report.recommend_ramps ? t("ramp_recommend") : t("ramp_piecewise")}</div>
+    <div class="card-sub mt-s">${t("ramp_tradeoff", { rows })}</div>
+    <div class="table-scroll mt-s"><table>
+      <thead><tr><th>${t("ev_t_bpm")}</th><th></th><th></th></tr></thead>
+      <tbody>${report.lines.map((line) => `
+        <tr>
+          <td class="num">${line.bpm.toFixed(2)}</td>
+          <td class="num">${(line.offset_ms / 1000).toFixed(3)} s</td>
+          <td class="num">${line.attacks}</td>
+        </tr>`).join("")}</tbody>
+    </table></div>`;
+}
+
+// ------------------------------------------------------------------ offset lab
+// Phase 19: the file's own gapless numbers plus the first attack through
+// each decoder, side by side. The header reads with the card; the decoder
+// comparison decodes twice, so it runs on its own button.
+async function labLoad() {
+  $("labCard").hidden = !S.result;
+  $("labHeader").textContent = "";
+  $("labResult").textContent = "";
+  if (!api() || !S.result) return;
+  const reply = await api().offset_lab();
+  if (!reply.ok) { editFailure(reply); return; }
+  const header = reply.header;
+  $("labHeader").textContent = header.present
+    ? t("lab_header", { encoder: header.encoder, delay: header.delay_samples,
+                        delayMs: header.delay_ms, pad: header.padding_samples, padMs: header.padding_ms })
+    : t("lab_no_tag");
+}
+
+async function labCompare() {
+  if (!api() || !S.result || S.busy) return;
+  $("labCompare").disabled = true;
+  try {
+    const reply = await api().offset_decoders();
+    if (!reply.ok) {
+      if (reply.key === "no_rust") toast(t("hsv_no_rust"), true);
+      else editFailure(reply);
+      return;
+    }
+    $("labResult").textContent = t("lab_decoders",
+      { py: reply.python_ms.toFixed(2), rust: reply.rust_ms.toFixed(2), delta: reply.delta_ms.toFixed(2) });
+  } finally {
+    $("labCompare").disabled = false;
+  }
+}
+
+// ------------------------------------------------------------------ blind test
+// Phase 19: which click shift sounds in time, measured blind. Each trial
+// plays the same passage twice with two shifts in random order; the vote
+// records which presentation won without naming its shift. Every shift runs
+// against 0, so the report is one win rate per shift with a Wilson 95 %
+// interval, and the preferred shift is the argmax — or nothing, when 0 is
+// unbeaten. Read only: nothing is written, and the shift restores to 0.
+const LAB_SHIFTS = [-30, -20, -10, 10, 20, 30];
+const LAB_REPS = 3;
+const LAB_WINDOW_S = 6;
+const LAB = { trials: [], at: 0, heard: [false, false], timer: 0, votes: {} };
+
+function labShiftLabel(shift) { return shift === 0 ? "±0" : `${shift > 0 ? "+" : ""}${shift}`; }
+
+function labStartPoint() {
+  if (P.loop) return P.loop.a;
+  const points = (S.result && S.result.points) || [];
+  return points.length ? Math.max(0, points[0].offset_ms / 1000) : 0;
+}
+
+function wilson(wins, n) {
+  // Wilson score interval, 95 %: honest about 3 reps a shift.
+  if (!n) return [0, 0];
+  const z = 1.96, p = wins / n, denom = 1 + (z * z) / n;
+  const middle = p + (z * z) / (2 * n);
+  const half = z * Math.sqrt((p * (1 - p) + (z * z) / (4 * n)) / n);
+  return [Math.max(0, (middle - half) / denom), Math.min(1, (middle + half) / denom)];
+}
+
+function labStart() {
+  if (!api() || !S.result) return;
+  if (pbRate() !== 1) { toast(t("lab_rate"), true); return; }
+  const order = [];
+  for (const shift of LAB_SHIFTS) for (let r = 0; r < LAB_REPS; r++) order.push(shift);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  LAB.trials = order.map((shift) => ({ shift, first: Math.random() < 0.5 ? 0 : shift }));
+  LAB.at = 0;
+  LAB.votes = {};
+  for (const shift of LAB_SHIFTS) LAB.votes[shift] = [0, 0];
+  LAB.heard = [false, false];
+  renderLab();
+}
+
+function labStopTimer() {
+  if (LAB.timer) { clearTimeout(LAB.timer); LAB.timer = 0; }
+}
+
+async function labHear(which) {
+  // which 0/1: play the window with that presentation's shift, then stop.
+  if (!api() || !S.result || !LAB.trials.length || LAB.at >= LAB.trials.length) return;
+  const trial = LAB.trials[LAB.at];
+  const shift = which === 0 ? trial.first : (trial.first === 0 ? trial.shift : 0);
+  P.clickShiftMs = shift;
+  labStopTimer();
+  await pbPlay(labStartPoint());
+  if (!P.playing) { P.clickShiftMs = 0; return; }
+  LAB.timer = setTimeout(() => { pbStop(); P.clickShiftMs = 0; LAB.heard[which] = true; renderLab(); }, LAB_WINDOW_S * 1000);
+  renderLab();
+}
+
+function labVote(which) {
+  if (!LAB.trials.length || LAB.at >= LAB.trials.length) return;
+  if (!LAB.heard[0] || !LAB.heard[1]) return;
+  const trial = LAB.trials[LAB.at];
+  const picked = which === 0 ? trial.first : (trial.first === 0 ? trial.shift : 0);
+  // Every trial is its shift against 0: picking the shift wins it, picking
+  // 0 loses it. Zero itself keeps no tally.
+  const entry = LAB.votes[trial.shift];
+  if (picked === trial.shift) entry[0]++;
+  else entry[1]++;
+  LAB.at++;
+  LAB.heard = [false, false];
+  if (LAB.at >= LAB.trials.length) labFinish();
+  else renderLab();
+}
+
+function labCancel() {
+  labStopTimer();
+  pbStop();
+  P.clickShiftMs = 0;
+  LAB.trials = [];
+  LAB.at = 0;
+  renderLab();
+}
+
+function labFinish() {
+  labStopTimer();
+  pbStop();
+  P.clickShiftMs = 0;
+  renderLab();
+}
+
+function labReport() {
+  // Per shift: wins, trials, Wilson interval. Preferred is the top win
+  // rate, smallest shift breaking ties; silence when 0 beats everything.
+  const rows = LAB_SHIFTS.map((shift) => {
+    const [wins, losses] = LAB.votes[shift] || [0, 0];
+    const n = wins + losses, rate = n ? wins / n : 0;
+    const [lo, hi] = wilson(wins, n);
+    return { shift, wins, n, rate, lo, hi };
+  });
+  const best = rows.reduce((a, b) => (b.rate > a.rate || (b.rate === a.rate && Math.abs(b.shift) < Math.abs(a.shift)) ? b : a));
+  return { rows, best: best.rate > 0.5 ? best : null };
+}
+
+function renderLab() {
+  const done = LAB.trials.length > 0 && LAB.at >= LAB.trials.length;
+  const live = LAB.trials.length > 0 && !done;
+  $("labTestCard").hidden = !S.result;
+  $("labStart").disabled = !S.result || live;
+  $("labCancel").hidden = !live && !done;
+  for (const id of ["labHear1", "labHear2", "labVote1", "labVote2"]) $(id).disabled = !live;
+  if (live) {
+    $("labVote1").disabled = $("labVote2").disabled = !(LAB.heard[0] && LAB.heard[1]);
+    $("labProgress").textContent = t("lab_trial", { k: LAB.at + 1, n: LAB.trials.length });
+  } else {
+    $("labProgress").textContent = "";
+  }
+  const box = $("labTestResult");
+  if (!done) { box.innerHTML = ""; return; }
+  const { rows, best } = labReport();
+  box.innerHTML = `<div class="table-scroll"><table>
+      <thead><tr><th>${t("lab_t_shift")}</th><th>${t("lab_t_wins")}</th><th>${t("lab_t_interval")}</th></tr></thead>
+      <tbody>${rows.map((row) => `
+        <tr>
+          <td class="num">${labShiftLabel(row.shift)} ms</td>
+          <td class="num">${row.wins}/${row.n}</td>
+          <td class="num">${Math.round(row.lo * 100)}–${Math.round(row.hi * 100)} %</td>
+        </tr>`).join("")}</tbody>
+    </table></div>
+    <div class="card-sub mt-s">${best ? t("lab_best", { shift: labShiftLabel(best.shift), lo: Math.round(best.lo * 100), hi: Math.round(best.hi * 100) })
+      : t("lab_none")}</div>`;
+}
+
 // ------------------------------------------------------------------ playback
 // The song and the click leave through one AudioContext, so they share one
 // clock and cannot drift apart. Every time below derives from it: the song
@@ -1950,21 +2897,28 @@ async function pbFetch(kind) {
 async function pbLoad() {
   const path = S.result && S.result.path;
   if (!path) return false;
-  if (P.buffer && P.bufferFor === path) return true;
+  const perc = $("pbPerc") && $("pbPerc").checked;
+  const key = perc ? path + "|perc" : path;
+  if (P.buffer && P.bufferFor === key) return true;
   if (P.loading) return P.loading;
   P.loading = (async () => {
     const ctx = pbContext();
     try {
-      try {
-        P.buffer = await ctx.decodeAudioData(await pbFetch("file"));
-      } catch (err) {
-        // The browser cannot read every format Overtone can (AIFF): take
-        // Overtone's own decode instead of refusing.
-        P.buffer = await ctx.decodeAudioData(await pbFetch("wav"));
+      if (perc) {
+        $("pbStatus").textContent = t("pb_perc_preparing");
+        P.buffer = await ctx.decodeAudioData(await pbFetch("percussion"));
+      } else {
+        try {
+          P.buffer = await ctx.decodeAudioData(await pbFetch("file"));
+        } catch (err) {
+          // The browser cannot read every format Overtone can (AIFF): take
+          // Overtone's own decode instead of refusing.
+          P.buffer = await ctx.decodeAudioData(await pbFetch("wav"));
+        }
       }
-      P.bufferFor = path;
+      P.bufferFor = key;
       waveBuild();
-      $("pbStatus").textContent = t("pb_hint");
+      $("pbStatus").textContent = t(perc ? "pb_perc_on" : "pb_hint");
       return true;
     } catch (err) {
       P.buffer = null;
@@ -2011,6 +2965,9 @@ function pbClickAt(when, level) {
   osc.connect(env); env.connect(P.click);
   osc.start(when); osc.stop(when + 0.045);
 }
+// A listening-test shift, output milliseconds, added to every click below.
+// Zero unless a blind trial sets it; normal playback never sees it move.
+P.clickShiftMs = 0;
 
 // Hitsounds beside the song (Phase 6, P-3): one difficulty's sounds, found as
 // osu! finds its samples, scheduled on the playback clock like the click.
@@ -2055,6 +3012,7 @@ async function hsPick(file) {
   HSP.buffers = buffers;
   HSP.events = reply.events;
   HSP.objects = reply.objects;
+  HSP.counts = reply.counts;
   hsLegend();
   if (S.result) drawTrace();
   const c = reply.counts;
@@ -2085,7 +3043,7 @@ function pbTick() {
     const room = P.loop ? (P.loop.b - s0) / P.rate : Infinity;
     const len = Math.min(until - P.sched, room);
     for (let i = lowerBound(clicks.t, s0); i < clicks.t.length && clicks.t[i] < s0 + len * P.rate; i++) {
-      pbClickAt(P.startCtx + P.sched + (clicks.t[i] - s0) / P.rate, clicks.level[i]);
+      pbClickAt(P.startCtx + P.sched + (clicks.t[i] - s0) / P.rate + (P.clickShiftMs || 0) / 1000, clicks.level[i]);
     }
     const hits = HSP.events;
     if (hits) {
@@ -2317,7 +3275,7 @@ function tapAssist() {
 
 // ------------------------------------------------------------------ mod report
 // One difficulty, every finding, in time order as a mod post lists them.
-const RP_SOURCES = ["reference", "suggestion", "snap", "alignment"];
+const RP_SOURCES = ["reference", "suggestion", "snap", "alignment", "hitsound"];
 
 async function reportPick() {
   if (!api() || !S.result || S.busy) return;
@@ -2383,6 +3341,102 @@ function renderReport() {
 function copyReport() {
   const lines = reportShown().map((i) => `${i.stamp} - ${i.text}`);
   if (lines.length) copyText(lines.join("\n"), "rp_copied");
+}
+
+// ------------------------------------------------------------------ history
+// Phase 19: every .osu write, its backup, restore. Global like Library:
+// no song needed. A restore keeps the current file as a new backup first,
+// so no button here destroys anything.
+const HIST = { entries: [], diff: -1, diffReport: null };
+
+function histOp(entry) {
+  // Known operations translate; a future one reads raw instead of a key.
+  const missing = `hist_op_${entry.op}`;
+  const text = t(missing);
+  return text === missing ? entry.op : text;
+}
+
+function histSummary(entry) {
+  const summary = entry.summary || {};
+  if (entry.op === "hitsounds" && summary.changed !== undefined) {
+    return t("hist_summary_hitsounds", { n: summary.changed });
+  }
+  if (entry.op === "inject" && (summary.reds_replaced !== undefined || summary.reds_added !== undefined)) {
+    return t("hist_summary_inject", { n: (summary.reds_replaced || 0) + (summary.reds_added || 0) });
+  }
+  return "";
+}
+
+function histWhen(ts) {
+  if (!ts) return "—";
+  const date = new Date(ts);
+  return Number.isNaN(date.getTime()) ? ts : date.toLocaleString();
+}
+
+async function histLoad() {
+  HIST.diff = -1;
+  const reply = await api().history();
+  if (!reply.ok) { editFailure(reply); return; }
+  HIST.entries = reply.entries;
+  renderHistory();
+}
+
+function histDiffText(diff) {
+  const parts = [];
+  if (diff.n_added) parts.push(t("hist_added", { n: diff.n_added }));
+  if (diff.n_removed) parts.push(t("hist_removed", { n: diff.n_removed }));
+  if (diff.n_changed) parts.push(t("hist_changed", { n: diff.n_changed }));
+  const lines = [
+    ...diff.removed.map((o) => `− ${o} ms`),
+    ...diff.added.map((a) => `+ ${a.offset} ms · ${a.bpm.toFixed(2)} BPM`),
+    ...diff.changed.map((c) => `~ ${c.offset} ms · ${c.old_bpm.toFixed(2)} → ${c.new_bpm.toFixed(2)} BPM`),
+  ];
+  return { summary: parts.length ? parts.join(" · ") : t("hist_no_change"), lines };
+}
+
+async function histShowDiff(index) {
+  HIST.diff = HIST.diff === index ? -1 : index;
+  if (HIST.diff < 0) { renderHistory(); return; }
+  const reply = await api().history_diff(index);
+  if (!reply.ok) { editFailure(reply); HIST.diff = -1; renderHistory(); return; }
+  HIST.diffReport = reply.diff;
+  renderHistory();
+}
+
+async function histRestore(index) {
+  const entry = HIST.entries[index];
+  if (!entry) return;
+  const ok = confirm(t("hist_confirm", { file: entry.file, backup: entry.backup || "—" }));
+  if (!ok) return;
+  const reply = await api().history_restore(index);
+  if (!reply.ok) { editFailure(reply); return; }
+  toast(t("hist_restored", { file: entry.file }));
+  histLoad();
+}
+
+function renderHistory() {
+  const rows = HIST.entries.map((e, i) => `
+    <tr>
+      <td class="txt num">${esc(histWhen(e.ts))}</td>
+      <td class="txt">${esc(histOp(e))}${e.summary ? ` <span class="muted">${esc(histSummary(e))}</span>` : ""}</td>
+      <td class="txt">${esc(e.file)}</td>
+      <td class="txt">${e.backup ? esc(e.backup) : `<span class="muted">—</span>`}</td>
+      <td><button type="button" class="btn small" data-hist-diff="${i}">${t("hist_diff")}</button>
+        <button type="button" class="btn small" data-hist-restore="${i}" ${e.backup ? "" : "disabled"}>${t("hist_restore")}</button></td>
+    </tr>`).join("");
+  $("histCount").hidden = !HIST.entries.length;
+  $("histCount").textContent = t("hist_count", { n: HIST.entries.length });
+  let detail = "";
+  if (HIST.diff >= 0 && HIST.diffReport) {
+    const text = histDiffText(HIST.diffReport);
+    detail = `<div class="card-sub mt-m"><b>${esc(HIST.entries[HIST.diff].file)}</b> · ${esc(text.summary)}</div>`
+      + (text.lines.length ? `<div class="card-sub">${text.lines.slice(0, 20).map(esc).join("<br>")}</div>` : "");
+  }
+  $("histRows").innerHTML = rows.length ? rows
+    : `<tr><td colspan="5"><div class="card-sub">${t("hist_empty")}</div></td></tr>`;
+  $("histDiff").innerHTML = detail;
+  document.querySelectorAll("[data-hist-diff]").forEach((b) => { b.onclick = () => histShowDiff(+b.dataset.histDiff); });
+  document.querySelectorAll("[data-hist-restore]").forEach((b) => { b.onclick = () => histRestore(+b.dataset.histRestore); });
 }
 
 // ------------------------------------------------------------------ settings
@@ -2499,6 +3553,7 @@ async function runMapset(folder, quiet) {
   S.mapset = { path: folder, name: reply.folder, report: reply.report };
   renderMapset();
   renderCopier();
+  renderSwap();
 }
 
 function msValue(value) {
@@ -2579,6 +3634,67 @@ async function hsApply() {
   HS.preview = null;
   await hsPreview();                       // what is left: nothing, but index conflicts
   runMapset(S.mapset.path, true);
+}
+
+// ------------------------------------------------------------------ audio swap
+// Phase 19: one mapset's times onto a new encode of its audio. A preview
+// first, which writes nothing and refuses twins and strangers; the apply
+// moves every time with backups, and the mapset check re-reads the result.
+const SW = { audios: [], current: "", preview: null };
+
+async function renderSwap() {
+  const card = $("swCard");
+  if (!S.mapset) { card.hidden = true; return; }
+  const reply = await api().swap_audios(S.mapset.path);
+  if (!reply.ok) { card.hidden = true; return; }
+  SW.audios = reply.audios;
+  SW.current = reply.current;
+  SW.preview = null;
+  const others = reply.audios.filter((a) => a !== reply.current);
+  card.hidden = others.length < 1;
+  if (card.hidden) return;
+  $("swOld").textContent = reply.current || "—";
+  const box = $("swNew"), keep = box.value;
+  box.innerHTML = others.map((a) => `<option value="${esc(a)}">${esc(a)}</option>`).join("");
+  if (others.includes(keep)) box.value = keep;
+  renderSwapResult();
+}
+
+function renderSwapResult() {
+  const box = $("swResult"), p = SW.preview;
+  $("swApply").disabled = !p || p.refused || !p.maps.some((r) => r.ok);
+  if (!p) { box.innerHTML = ""; return; }
+  const shift = p.shift;
+  box.innerHTML = `<div class="card-sub">${t("sw_shift", { ms: shift.shift_ms.toFixed(2), old: p.old, nw: p.new, peak: shift.peak.toFixed(3) })}</div>
+    <div class="table-scroll mt-s"><table class="ms-table">
+      <thead><tr><th class="txt">${t("ms_t_diff")}</th><th>${t("sw_t_reds")}</th><th>${t("sw_t_objects")}</th></tr></thead>
+      <tbody>${p.maps.map((r) => `<tr><td class="txt">${esc(r.file)}</td>
+        <td class="num">${r.ok ? r.reds : `<span class="neg">${esc(r.error)}</span>`}</td>
+        <td class="num">${r.ok ? r.objects : ""}</td></tr>`).join("")}</tbody>
+    </table></div>`;
+}
+
+async function swPreview() {
+  if (!api() || !S.mapset) return;
+  const reply = await api().swap_preview(S.mapset.path, SW.current, $("swNew").value);
+  if (!reply.ok) { editFailure(reply); return; }
+  SW.preview = { ...reply, choice: SW.current + "\n" + $("swNew").value };
+  renderSwapResult();
+}
+
+async function swApply() {
+  if (!api() || !S.mapset || !SW.preview) return;
+  const choice = SW.current + "\n" + $("swNew").value;
+  if (choice !== SW.preview.choice) { await swPreview(); return; }
+  const n = SW.preview.maps.filter((r) => r.ok).length;
+  if (!n) return;
+  if (!confirm(t("sw_confirm", { n, ms: SW.preview.shift.shift_ms.toFixed(1), file: $("swNew").value }))) return;
+  const reply = await api().swap_apply(S.mapset.path, SW.current, $("swNew").value);
+  if (!reply.ok) { editFailure(reply); return; }
+  toast(t("sw_done", { n: reply.maps.length }));
+  SW.preview = null;
+  runMapset(S.mapset.path, true);
+  renderSwap();
 }
 
 function msKiai(spans) {
@@ -3165,10 +4281,50 @@ function wire() {
   $("halfBtn").onclick = () => rescale(0.5);
   $("doubleBtn").onclick = () => rescale(2);
   $("rows").onclick = (e) => { const tr = e.target.closest("tr"); if (tr) selectPoint(+tr.dataset.i); };
+  $("hsvMap").onchange = () => hsvPick($("hsvMap").value);
+  $("hsvFilter").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-f]");
+    if (!b) return;
+    HSV.filter = b.dataset.f; HSV.shown = HSV_PAGE;
+    document.querySelectorAll("#hsvFilter button").forEach((x) => x.classList.toggle("on", x === b));
+    renderHitsoundsView();
+  });
+  $("hsvMore").onclick = () => { HSV.shown += HSV_PAGE; renderHitsoundsView(); };
+  $("hsvPropose").onclick = () => hsvPropose();
+  $("hsvDecideAll").onclick = () => hsdSetAll(true);
+  $("hsvDecideNone").onclick = () => hsdSetAll(false);
+  $("hsvDecidePreview").onclick = () => hsdPreview();
+  $("hsvDecideApply").onclick = () => hsdWrite(false);
+  $("hsvDecideCopy").onclick = () => hsdWrite(true);
+  $("hsvDecideUndo").onclick = () => hsdUndo();
+  $("hsvRows").addEventListener("change", (e) => {
+    const box = e.target.closest("[data-hsd]");
+    if (!box) return;
+    if (box.checked) HSD.accepted.add(box.dataset.hsd);
+    else HSD.accepted.delete(box.dataset.hsd);
+    $("hsvDecidePrevText").textContent = "";
+    hsdRender();
+  });
+  $("hsvRows").addEventListener("click", (e) => {
+    const play = e.target.closest("[data-play]");
+    if (play) { hsvPlay(+play.dataset.play); return; }
+    const row = e.target.closest("tr[data-i]");
+    const s = row && HSV.report && HSV.report.sounds[+row.dataset.i];
+    if (s) pbSeek(Math.max(0, s.t - 1));
+  });
   $("stxBody").addEventListener("click", (e) => {
     const el = e.target.closest("[data-stx]");
     if (el) stxShow(+el.dataset.stx);
   });
+  $("stxBmPreview").onclick = stxBmPreview;
+  $("stxBmApply").onclick = stxBmApply;
+  $("stxBmMap").onchange = () => { STXBM.preview = null; renderBookmarks(); };
+  $("stxKiaiPreview").onclick = stxKiaiPreview;
+  $("stxKiaiApply").onclick = stxKiaiApply;
+  $("stxKiaiMap").onchange = () => { STXK.preview = null; renderKiai(); };
+  $("stxBreaksPreview").onclick = stxBreaksPreview;
+  $("stxBreaksApply").onclick = stxBreaksApply;
+  $("stxBreaksMap").onchange = () => { STXBR.preview = null; renderBreaks(); };
   $("songsScan").onclick = () => songsScan();
   $("songsPick").onclick = songsPick;
   $("songsQuery").oninput = () => {
@@ -3223,6 +4379,15 @@ function wire() {
   $("refPick").onclick = refPick;
   $("refFind").onclick = refFind;
   $("asFit").onclick = assistFit;
+  $("rampFit").onclick = rampFit;
+  $("rampUse").onclick = rampUse;
+  $("labCompare").onclick = labCompare;
+  $("labStart").onclick = labStart;
+  $("labHear1").onclick = () => labHear(0);
+  $("labHear2").onclick = () => labHear(1);
+  $("labVote1").onclick = () => labVote(0);
+  $("labVote2").onclick = () => labVote(1);
+  $("labCancel").onclick = labCancel;
   $("rpPick").onclick = reportPick;
   $("rpCopy").onclick = copyReport;
   $("pbPlay").onclick = pbToggle;
@@ -3233,6 +4398,11 @@ function wire() {
   };
   $("pbSeek").addEventListener("input", () => { if (S.result) pbSeek((+$("pbSeek").value / 1000) * S.result.duration); });
   $("pbClick").addEventListener("change", pbApplyLevels);
+  $("pbPerc").addEventListener("change", () => {
+    P.buffer = null;
+    if (P.playing) pbPlay(pbPosition());
+    else pbDraw();
+  });
   $("pbLoop").addEventListener("change", () => { if (P.playing) pbPlay(pbPosition()); });
   document.querySelectorAll("#pbRate button").forEach((b) => b.onclick = () => {
     document.querySelectorAll("#pbRate button").forEach((o) => o.classList.toggle("on", o === b));
@@ -3266,6 +4436,9 @@ function wire() {
   $("hsSource").onchange = () => { HS.preview = null; $("hsTargets").innerHTML = ""; renderCopier(); };
   $("hsTargets").onchange = () => { HS.preview = null; renderCopyResult(); };
   $("hsVolumes").onchange = () => { HS.preview = null; renderCopyResult(); };
+  $("swPreview").onclick = swPreview;
+  $("swApply").onclick = swApply;
+  $("swNew").onchange = () => { SW.preview = null; renderSwapResult(); };
   $("undoBtn").onclick = undo;
   $("redoBtn").onclick = redo;
   $("injectBtn").onclick = injectOsu;

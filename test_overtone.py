@@ -6,6 +6,7 @@ segmentation and gap-filling helpers are still covered — they remain in the
 fallback path used for rubato and non-percussive audio.
 """
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -91,6 +92,20 @@ def _click_track(path: Path, bpm: float, duration: float = 12.0,
         current = bpm if change_at is None or tt < change_at else second_bpm
         tt += 60.0 / current
     sf.write(str(path), y, sr)
+
+
+#: The write-history log points at a scratch folder for the whole suite, so
+#: writer tests never land in real history. Removed afterwards.
+_HISTORY_SCRATCH = tempfile.TemporaryDirectory(prefix="overtone-history-")
+
+
+def setUpModule() -> None:
+    os.environ["OVERTONE_HISTORY_DIR"] = _HISTORY_SCRATCH.name
+
+
+def tearDownModule() -> None:
+    os.environ.pop("OVERTONE_HISTORY_DIR", None)
+    _HISTORY_SCRATCH.cleanup()
 
 
 class SegmentationTests(unittest.TestCase):
@@ -1549,6 +1564,10 @@ class RustSidecarTests(unittest.TestCase):
         with mock.patch.object(rs, "find_cli", return_value=None):
             with self.assertRaises(rs.SidecarUnavailable):
                 rs.analyze("song.wav")
+            with self.assertRaises(rs.SidecarUnavailable):
+                rs.hitsound("song.wav", "map.osu")
+            with self.assertRaises(rs.SidecarUnavailable):
+                rs.ramps("song.wav")
 
     def test_the_rust_engine_reads_what_v3_reads(self):
         import overtone as ta
@@ -2823,6 +2842,16 @@ class MapFullReaderTests(unittest.TestCase):
 
 
 class MapWriterTests(unittest.TestCase):
+    @staticmethod
+    def _kiai_map(timing: str):
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+                 "[TimingPoints]"] + timing.split("\n") + ["", "[HitObjects]",
+                 "256,192,1000,1,0,0:0:0:0:", ""]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes("\r\n".join(lines).encode("utf-8"))
+            return read_osu_beatmap(path)
+
     def _write(self, raw: bytes, name: str = "map.osu"):
         import json
         with tempfile.TemporaryDirectory() as tmp:
@@ -2885,6 +2914,87 @@ class MapWriterTests(unittest.TestCase):
             target.write_text("[General]\nAudioFilename: a.mp3\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 set_beatmap_reds(read_osu_beatmap(target), ["1,500,4,1,0,100,1,0"])
+
+    def test_chorus_kiai_opens_and_closes_carrying_state(self) -> None:
+        from overtone import set_chorus_kiai, sound_events
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1500,-100,4,2,1,60,0,0")
+        before = sound_events(beatmap)
+        result = set_chorus_kiai(beatmap, [(1000.0, 2000.0)])
+        json.dumps(result)
+        self.assertEqual(result, {"added": 2, "flipped": 0, "kept": 0})
+        self.assertEqual(sound_events(beatmap), before)
+        greens = beatmap["timing"]["greens"]
+        self.assertEqual((len(greens), greens[0].split(",")[7], greens[1].split(",")[7]),
+                         (3, "1", "0"))
+        self.assertTrue(greens[0].startswith("1000,-100,"))
+        # Second run changes nothing: kiai already reads right.
+        self.assertEqual(set_chorus_kiai(beatmap, [(1000.0, 2000.0)]),
+                         {"added": 0, "flipped": 0, "kept": 2})
+
+    def test_chorus_kiai_flips_a_green_instead_of_doubling(self) -> None:
+        from overtone import set_chorus_kiai
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1000,-100,4,2,1,70,0,0")
+        result = set_chorus_kiai(beatmap, [(1000.0, 2000.0)])
+        self.assertEqual((result["flipped"], result["added"]),
+                         (1, 1))
+        self.assertEqual(len(beatmap["timing"]["greens"]), 2)
+
+    @staticmethod
+    def _breaks_map(events: str, objects: str):
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+                 "[Events]"] + events.split("\n") + ["", "[TimingPoints]",
+                 "0,500,4,2,0,70,1,0", "", "[HitObjects]"] + objects.split("\n") + [""]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes("\r\n".join(lines).encode("utf-8"))
+            return read_osu_beatmap(path)
+
+    _BREAK_SECTIONS = [
+        {"start_s": 0.0, "end_s": 10.0, "kind": "verse", "level_db": -8.0},
+        {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -14.0},
+    ]
+
+    def test_suggest_breaks_cuts_quiet_gaps(self) -> None:
+        from overtone import suggest_breaks
+        beatmap = self._breaks_map(
+            "//Background and Video events\n//Break Periods",
+            "256,192,1000,1,0,0:0:0:0:\n256,192,2000,1,0,0:0:0:0:\n256,192,30000,1,0,0:0:0:0:")
+        spans = suggest_breaks(beatmap, self._BREAK_SECTIONS)
+        json.dumps(spans)
+        self.assertEqual(spans, [{"start_ms": 10000, "end_ms": 30000, "kind": "chorus",
+                                  "under_db": 6.0, "gap_s": 28.0}])
+
+    def test_suggest_breaks_silent_where_loud_or_short(self) -> None:
+        from overtone import suggest_breaks
+        beatmap = self._breaks_map(
+            "//Break Periods",
+            "256,192,1000,1,0,0:0:0:0:\n256,192,2000,1,0,0:0:0:0:\n256,192,6000,1,0,0:0:0:0:")
+        loud = [dict(s, level_db=-8.0) for s in self._BREAK_SECTIONS]
+        self.assertEqual(suggest_breaks(beatmap, loud), [])
+        self.assertEqual(suggest_breaks(beatmap, self._BREAK_SECTIONS), [])
+
+    def test_set_map_breaks_adds_after_the_comment_and_dedupes(self) -> None:
+        from overtone import set_map_breaks
+        beatmap = self._breaks_map(
+            "//Background and Video events\n//Break Periods",
+            "256,192,1000,1,0,0:0:0:0:")
+        self.assertEqual(set_map_breaks(beatmap, [(10000.0, 30000.0)]),
+                         {"added": 1, "kept": 0})
+        lines = next(s for s in beatmap["sections"] if s["name"] == "Events")["lines"]
+        self.assertEqual(lines[1:3], ["//Break Periods", "2,10000,30000"])
+        self.assertEqual(set_map_breaks(beatmap, [(10000.0, 30000.0)]),
+                         {"added": 0, "kept": 1})
+
+    def test_set_map_breaks_refuses_junk_and_missing_events(self) -> None:
+        from overtone import set_map_breaks
+        beatmap = self._breaks_map("//Break Periods", "256,192,1000,1,0,0:0:0:0:")
+        with self.assertRaises(ValueError):
+            set_map_breaks(beatmap, [(5000.0, 5000.0)])
+        with self.assertRaises(ValueError):
+            set_map_breaks(beatmap, [(9000.0, 4000.0)])
+        bare = self._kiai_map("0,500,4,2,0,70,1,0")
+        with self.assertRaises(ValueError):
+            set_map_breaks(bare, [(10000.0, 30000.0)])
 
 
 _CONTEXT_OSU = "\n".join([
@@ -4082,6 +4192,680 @@ class HitsoundSampleTests(unittest.TestCase):
                             if s["source"] == "overtone"))
 
 
+class HitsoundReportTests(unittest.TestCase):
+    """Phase 6, H2: every sound's place in the bar, and where additions fall."""
+
+    def test_places_are_read_against_the_maps_own_red_lines(self):
+        from overtone import hitsound_report, read_osu_beatmap
+        # 120 BPM from 1000 ms: a beat is 500 ms, a bar 2 s; 3/4 from 9000 ms.
+        text = _copy_map(["256,192,1000,1,4,0:0:0:0:",     # bar 1, the downbeat: a finish
+                          "256,192,1500,1,8,0:0:0:0:",     # bar 1, beat 2: a clap
+                          "256,192,1250,1,2,0:0:0:0:",     # bar 1, 1+ (slot 2): a whistle
+                          "256,192,1190,1,2,0:0:0:0:",     # 0.38 beat: off the grid
+                          "256,192,2500,1,8,0:0:0:0:",     # bar 1, beat 4: a clap
+                          "256,192,3500,1,8,0:0:0:0:",     # bar 2, beat 2: a clap
+                          "256,192,500,1,0,0:0:0:0:",      # a beat before the first line: bar 0, beat 4
+                          "256,192,9500,1,8,0:0:0:0:"],    # the 3/4 line's beat 2
+                         timing="1000,500,4,2,0,70,1,0\n9000,500,3,2,0,70,1,0")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            report = hitsound_report(read_osu_beatmap(path))
+        json.dumps(report)
+        self.assertEqual(report["meter"], 4)
+        claps = report["additions"]["clap"]
+        self.assertEqual((claps["total"], claps["slots"][4], claps["slots"][12], claps["other_meter"]),
+                         (4, 2, 1, 1))
+        whistles = report["additions"]["whistle"]
+        self.assertEqual((whistles["total"], whistles["slots"][2], whistles["off_grid"]), (2, 1, 1))
+        self.assertEqual(report["additions"]["finish"]["slots"][0], 1)
+        by_time = {s["t"]: s for s in report["sounds"]}
+        self.assertEqual((by_time[1.5]["bar"], by_time[1.5]["slot"]), (1, 4))
+        self.assertEqual((by_time[3.5]["bar"], by_time[3.5]["slot"]), (2, 4))
+        self.assertEqual((by_time[0.5]["bar"], by_time[0.5]["slot"]), (0, 12))
+        self.assertEqual((by_time[9.5]["bar"], by_time[9.5]["slot"], by_time[9.5]["meter"]), (5, 4, 3))
+        self.assertEqual(report["sets"]["normal"]["soft"], 8)
+
+    def test_no_red_lines_places_nothing_and_does_not_fail(self):
+        from overtone import hitsound_report
+        beatmap = {"sections": [{"name": "TimingPoints", "lines": []}],
+                   "hitobjects": [{"kind": "circle", "time": 100.0, "hit_sound": 8, "hit_sample": {}}],
+                   "general": {}, "difficulty": {}}
+        report = hitsound_report(beatmap)
+        self.assertEqual((report["sounds"][0]["bar"], report["sounds"][0]["slot"]), (None, None))
+        self.assertEqual(report["additions"]["clap"]["total"], 1)
+
+
+class SoundEventMatchingTests(unittest.TestCase):
+    """Phase 6, P-5: each sound event's nearest attack, or no attack at all."""
+
+    @staticmethod
+    def _events(*times):
+        return [{"object": n, "part": "circle", "edge": None, "time": t,
+                 "sounds": ["normal", "clap"]} for n, t in enumerate(times)]
+
+    def test_each_event_takes_its_nearest_attack_with_dt_and_weight(self):
+        from overtone import match_sound_events
+        rows = match_sound_events(self._events(1000.0, 2000.0),
+                                  [0.995, 2.010], [0.8, 0.4])
+        json.dumps(rows)
+        self.assertEqual([(r["matched"], r["attack"]["dt_ms"], r["attack"]["weight"])
+                          for r in rows],
+                         [(True, -5.0, 0.8), (True, 10.0, 0.4)])
+
+    def test_a_sound_over_silence_is_a_state_not_an_error(self):
+        from overtone import match_sound_events
+        rows = match_sound_events(self._events(1000.0, 5000.0), [1.0], [0.9])
+        self.assertEqual((rows[0]["matched"], rows[1]["matched"]), (True, False))
+        self.assertIsNone(rows[1]["attack"])
+
+    def test_no_attacks_leaves_everything_unmatched(self):
+        from overtone import match_sound_events
+        rows = match_sound_events(self._events(1000.0), [])
+        self.assertEqual([(r["matched"], r["attack"]) for r in rows], [(False, None)])
+
+    def test_tolerance_boundary_is_inclusive(self):
+        from overtone import match_sound_events
+        rows = match_sound_events(self._events(1000.0, 2000.0), [1.05, 2.051])
+        self.assertEqual((rows[0]["matched"], rows[1]["matched"]), (True, False))
+
+    def test_unsorted_attacks_still_match_with_their_weights(self):
+        from overtone import match_sound_events
+        rows = match_sound_events(self._events(1000.0), [2.0, 0.999], [0.1, 0.7])
+        self.assertEqual((rows[0]["attack"]["dt_ms"], rows[0]["attack"]["weight"]),
+                         (-1.0, 0.7))
+
+    def test_slider_edges_each_match_their_own_attack(self):
+        from overtone import match_sound_events, sound_events
+        text = _copy_map(["256,192,1000,2,0,L|356:192,1,140"])  # head + tail
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            events = [e for e in sound_events(read_osu_beatmap(path))
+                      if e["part"] in ("head", "tail")]
+        self.assertEqual([e["part"] for e in events], ["head", "tail"])
+        rows = match_sound_events(events, [e["time"] / 1000.0 for e in events])
+        self.assertEqual([r["matched"] for r in rows], [True, True])
+        self.assertEqual([r["part"] for r in rows], ["head", "tail"])
+
+
+class HitsoundEvalTests(unittest.TestCase):
+    """Phase 6, P-6: mapper agreement against the positional baselines."""
+
+    @staticmethod
+    def _eval():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "eval_hitsounds",
+            Path(__file__).resolve().parent / "bench" / "eval_hitsounds.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_full_agreement_scores_one(self):
+        ev = self._eval()
+        # slots 4 and 12 are beats 2 and 4; the mapper claps exactly there.
+        rows = ev.score_slots([(0, False), (4, True), (8, False), (12, True)],
+                              ev.CLAP_SLOTS)
+        self.assertEqual((rows["tp"], rows["fp"], rows["fn"], rows["skipped"]),
+                         (2, 0, 0, 0))
+        self.assertEqual((rows["precision"], rows["recall"], rows["f1"]),
+                         (1.0, 1.0, 1.0))
+
+    def test_no_mapper_positives_is_undefined_not_zero(self):
+        ev = self._eval()
+        rows = ev.score_slots([(4, False), (12, False)], ev.CLAP_SLOTS)
+        self.assertEqual((rows["tp"], rows["fp"]), (0, 2))
+        self.assertIsNone(rows["recall"])
+        self.assertIsNone(rows["f1"])
+
+    def test_unplaced_events_are_skipped_never_scored(self):
+        ev = self._eval()
+        rows = ev.score_slots([(None, True), (None, False), (4, True)],
+                              ev.CLAP_SLOTS)
+        self.assertEqual((rows["skipped"], rows["tp"]), (2, 1))
+
+    def test_a_map_clapped_on_two_and_four_scores_one(self):
+        ev = self._eval()
+        from overtone import read_osu_beatmap
+        text = _copy_map(["256,192,1000,1,0,0:0:0:0:",
+                          "256,192,1500,1,8,0:0:0:0:",
+                          "256,192,2500,1,8,0:0:0:0:"],
+                         timing="1000,500,4,2,0,70,1,0")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            tallies = ev.evaluate_map(str(path))
+        self.assertTrue(tallies["meter4"])
+        self.assertEqual(tallies["clap"]["f1"], 1.0)
+        self.assertEqual(tallies["mapper_claps"], 2)
+
+    def test_a_map_with_no_red_lines_skips_everything(self):
+        ev = self._eval()
+        beatmap = {"sections": [{"name": "TimingPoints", "lines": []}],
+                   "hitobjects": [{"kind": "circle", "time": 100.0, "hit_sound": 8,
+                                   "hit_sample": {}}],
+                   "general": {}, "difficulty": {}}
+        import json
+        from unittest import mock
+        with mock.patch.object(ev.ov, "read_osu_beatmap", return_value=beatmap):
+            tallies = ev.evaluate_map("whatever.osu")
+        json.dumps(tallies)
+        self.assertEqual(tallies["finish"]["skipped"], 1)
+        self.assertIsNone(tallies["finish"]["f1"])
+
+
+class HitsoundProposalEvalTests(unittest.TestCase):
+    """Phase 6, H4e: mapper-vs-proposal tallies joined on (object, part, edge)."""
+
+    @staticmethod
+    def _eval():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "eval_proposals",
+            Path(__file__).resolve().parent / "bench" / "eval_proposals.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _event(object, part, edge, sounds):
+        return {"object": object, "part": part, "edge": edge, "time": 1000.0,
+                "sounds": sounds}
+
+    @staticmethod
+    def _unit(object, part, edge, additions):
+        return {"object": object, "part": part, "edge": edge,
+                "proposal": {"bank": "drum", "additions": additions, "bits": 0}}
+
+    def test_full_agreement_scores_one(self):
+        ev = self._eval()
+        events = [self._event(0, "circle", None, ["normal", "clap"]),
+                  self._event(1, "circle", None, ["normal"])]
+        units = [self._unit(0, "circle", None, ["clap"]),
+                 self._unit(1, "circle", None, [])]
+        tallies = ev.score_proposals(events, units)
+        json.dumps(tallies)
+        self.assertEqual((tallies["clap"]["tp"], tallies["clap"]["fp"],
+                          tallies["clap"]["fn"], tallies["clap"]["uncovered"]),
+                         (1, 0, 0, 0))
+        self.assertEqual(tallies["clap"]["f1"], 1.0)
+
+    def test_uncovered_events_count_apart_never_as_misses(self):
+        ev = self._eval()
+        events = [self._event(0, "circle", None, ["normal", "clap"])]
+        tallies = ev.score_proposals(events, [])
+        self.assertEqual((tallies["clap"]["uncovered"], tallies["clap"]["fn"]),
+                         (1, 0))
+        self.assertIsNone(tallies["clap"]["f1"])
+
+    def test_bodies_ride_neither_side(self):
+        ev = self._eval()
+        events = [self._event(0, "body", None, ["slide", "whistle"])]
+        units = [self._unit(0, "body", None, ["whistle"])]
+        tallies = ev.score_proposals(events, units)
+        self.assertEqual((tallies["whistle"]["tp"], tallies["whistle"]["mapper"]), (0, 0))
+
+
+class HitsoundApplyTests(unittest.TestCase):
+    """Phase 6, H5 engine half: a decision's proposals onto the map."""
+
+    @staticmethod
+    def _unit(object, part, edge, time_ms, bank, bits):
+        return {"object": object, "part": part, "edge": edge, "time_ms": time_ms,
+                "proposal": {"bank": bank, "additions": [], "bits": bits}}
+
+    def _map(self, tmp, lines, timing="1000,500,4,2,0,70,1,0"):
+        from overtone import read_osu_beatmap
+        path = Path(tmp) / "map.osu"
+        path.write_bytes(_copy_map(lines, timing).replace("\n", "\r\n").encode("utf-8"))
+        return path, read_osu_beatmap(path)
+
+    def test_a_clap_proposal_lands_bits_and_sets_leaving_the_rest(self):
+        from overtone import apply_proposals, sound_events
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:",
+                                            "256,192,1500,1,0,0:0:0:0:"])
+            before = path.read_bytes()
+            units = [self._unit(1, "circle", None, 1500.0, "drum", 8)]
+            preview = apply_proposals(path, units, preview=True)
+            self.assertEqual(preview["would_change"], 1)
+            self.assertEqual(path.read_bytes(), before)
+            result = apply_proposals(path, units)
+            self.assertEqual(result["changed"], [1])
+            after = sound_events(__import__("overtone").read_osu_beatmap(path))
+            changed = [e for e in after if e["object"] == 1][0]
+            self.assertEqual((changed["sounds"], changed["normal_set"], changed["addition_set"]),
+                             (["normal", "clap"], "drum", "drum"))
+            # Only the changed object line moved.
+            old_lines, new_lines = before.split(b"\r\n"), path.read_bytes().split(b"\r\n")
+            self.assertEqual(len(old_lines), len(new_lines))
+            self.assertEqual(sum(1 for a, b in zip(old_lines, new_lines) if a != b), 1)
+
+    def test_slider_edges_take_their_own_proposal_each(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,2,0,L|356:192,1,140"])
+            events = sound_events(overtone.read_osu_beatmap(path))
+            edges = [(e["part"], e["edge"], e["time"]) for e in events
+                     if e["part"] in ("head", "tail")]
+            self.assertEqual([p for p, _e, _t in edges], ["head", "tail"])
+            units = [self._unit(0, part, edge, t, "soft", 2) for part, edge, t in edges]
+            apply_proposals(path, units)
+            after = sound_events(overtone.read_osu_beatmap(path))
+            for e in after:
+                if e["part"] in ("head", "tail"):
+                    self.assertEqual((e["sounds"], e["normal_set"]),
+                                     (["normal", "whistle"], "soft"))
+
+    def test_accepting_a_subset_applies_only_it(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:",
+                                             "256,192,1500,1,0,0:0:0:0:"])
+            units = [self._unit(0, "circle", None, 1000.0, "drum", 8),
+                     self._unit(1, "circle", None, 1500.0, "drum", 8)]
+            result = apply_proposals(path, units, accept={(1, "circle", None)})
+            self.assertEqual(result["changed"], [1])
+            after = sound_events(overtone.read_osu_beatmap(path))
+            self.assertEqual([e["sounds"] for e in after],
+                             [["normal"], ["normal", "clap"]])
+
+    def test_a_moved_sound_refuses_the_whole_apply(self):
+        from overtone import apply_proposals
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:"])
+            before = path.read_bytes()
+            units = [self._unit(0, "circle", None, 1200.0, "drum", 8)]
+            with self.assertRaises(ValueError):
+                apply_proposals(path, units, preview=True)
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_a_copy_leaves_the_source_untouched(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:"])
+            before = path.read_bytes()
+            dest = Path(tmp) / "map_hitsounded.osu"
+            units = [self._unit(0, "circle", None, 1000.0, "soft", 4)]
+            result = apply_proposals(path, units, dest=dest)
+            self.assertEqual(Path(result["dest"]), dest)
+            self.assertEqual(path.read_bytes(), before)
+            self.assertFalse(Path(str(dest) + ".bak").exists())
+            after = sound_events(overtone.read_osu_beatmap(dest))
+            self.assertEqual(after[0]["sounds"], ["normal", "finish"])
+            with self.assertRaises(ValueError):
+                apply_proposals(path, units, dest=dest)
+
+    def test_an_unknown_bank_is_refused(self):
+        from overtone import proposal_changes
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:"])
+            units = [self._unit(0, "circle", None, 1000.0, "brass", 8)]
+            with self.assertRaises(ValueError):
+                proposal_changes(beatmap, units)
+
+
+class AnalysisEvidenceTests(unittest.TestCase):
+    """Phase 19, Evidence: the engine's alternatives, octave margin included."""
+
+    def test_a_clean_grid_names_its_octave_with_a_margin(self):
+        from types import SimpleNamespace
+        from overtone import GridSection, analysis_evidence
+        times = np.arange(0.5, 10.0, 0.4)
+        section = GridSection(0.5, 10.0, 0.4, 0.5, len(times), 0.1, 0.9)
+        analysis = SimpleNamespace(attack_times=times, attack_weights=np.ones_like(times),
+                                   sections=[section], engine="precision",
+                                   fit_residual_ms=0.1)
+        evidence = analysis_evidence(analysis)
+        json.dumps(evidence)
+        self.assertEqual(evidence["engine"], "precision")
+        [row] = evidence["sections"]
+        self.assertEqual((row["bpm"], row["residual_ms"], row["coverage"]), (150.0, 0.1, 0.9))
+        seeded = row["candidates"][row["seeded"]]["bpm"]
+        self.assertLess(abs(seeded / 150.0 - 1), 0.02)
+        self.assertIsNotNone(row["half"])
+        self.assertAlmostEqual(row["half"]["bpm"] / 75.0, 1.0, delta=0.03)
+        self.assertIsNotNone(row["octave_margin"])
+
+    def test_no_attacks_reports_that_instead_of_alternatives(self):
+        from types import SimpleNamespace
+        from overtone import analysis_evidence
+        analysis = SimpleNamespace(attack_times=np.zeros(0), attack_weights=np.zeros(0),
+                                   sections=[], engine="legacy", fit_residual_ms=0.0)
+        evidence = analysis_evidence(analysis)
+        json.dumps(evidence)
+        self.assertEqual((evidence["sections"], evidence["note"]), ([], "no_attacks"))
+
+
+class AudioSwapTests(unittest.TestCase):
+    """Phase 19, Audio swap: the shift between two encodes, every time moved."""
+
+    @staticmethod
+    def _clicks(bpm=150.0, seconds=8.0, seed=7):
+        import math
+        rng = np.random.default_rng(seed)
+        y = np.zeros(int(seconds * 44100), dtype=np.float64)
+        k = 0
+        while True:
+            t = 0.5 + k * 60.0 / bpm
+            if t > seconds - 0.2:
+                break
+            n = int(0.03 * 44100)
+            burst = np.exp(-np.arange(n) / (0.004 * 44100)) * (rng.random(n) - 0.5)
+            y[int(t * 44100):int(t * 44100) + n] += (0.9 if k % 4 == 0 else 0.5) * burst
+            k += 1
+        return y / max(1e-9, np.abs(y).max())
+
+    @staticmethod
+    def _delayed(y, ms):
+        shift = int(round(ms / 1000 * 44100))
+        out = np.zeros_like(y)
+        if shift >= 0:
+            out[shift:] = y[:len(y) - shift]
+        else:
+            out[:shift] = y[-shift:]
+        return out
+
+    def test_a_shift_reads_sub_millisecond_and_refusals_refuse(self):
+        from overtone import shift_samples
+        base = self._clicks()
+        self.assertAlmostEqual(shift_samples(base, self._delayed(base, 26.0), 44100)["shift_ms"],
+                               26.0, delta=0.1)
+        self.assertAlmostEqual(shift_samples(base, base, 44100)["shift_ms"], 0.0, delta=0.001)
+        with self.assertRaises(ValueError):
+            shift_samples(base, self._clicks(bpm=165.0), 44100)
+        with self.assertRaises(ValueError):
+            shift_samples(base, np.random.default_rng(1).standard_normal(len(base)), 44100)
+        with self.assertRaises(ValueError):
+            shift_samples(base[:100], base[:100], 44100)
+
+    def test_every_time_moves_and_nothing_else(self):
+        from overtone import read_osu_beatmap, shift_osu_text
+        text = "\n".join([
+            "osu file format v14", "", "[General]", "AudioFilename: old.mp3",
+            "PreviewTime: 2000", "AudioLeadIn: 500", "", "[Editor]", "Bookmarks: 1000,2000",
+            "", "[TimingPoints]", "1000,500,4,2,0,70,1,0", "1500,-100,4,2,0,60,0,0", "",
+            "[HitObjects]",
+            "256,192,1000,1,4,0:0:0:0:",
+            "256,192,2000,2,2,L|356:192,1,140,2|2|2,0:0|0:0|0:0,0:0:0:30:",
+            "256,192,3000,12,0,4000,0:0:0:0:",
+            "100,100,5000,128,0,6000:0:0:0:0:", ""])
+        shifted, moved = shift_osu_text(text, 26.0, audio_name="new.mp3")
+        json.dumps(moved)
+        self.assertEqual((moved["reds"], moved["objects"]), (2, 4))
+        self.assertIn("1026,500,4,2,0,70,1,0", shifted)
+        self.assertIn("1526,-100,4,2,0,60,0,0", shifted)
+        self.assertIn("256,192,1026,1,4,0:0:0:0:", shifted)
+        self.assertIn("256,192,3026,12,0,4026,0:0:0:0:", shifted)
+        self.assertIn("100,100,5026,128,0,6026:0:0:0:0:", shifted)
+        self.assertIn("AudioFilename: new.mp3", shifted)
+        self.assertIn("PreviewTime: 2026", shifted)
+        self.assertIn("AudioLeadIn: 526", shifted)
+        self.assertIn("Bookmarks: 1026, 2026", shifted)
+        # The shifted text parses with every time moved.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(shifted.replace("\n", "\r\n").encode("utf-8"))
+            beatmap = read_osu_beatmap(path)
+        self.assertEqual([o["time"] for o in beatmap["hitobjects"]],
+                         [1026.0, 2026.0, 3026.0, 5026.0])
+
+    def test_a_negative_landing_or_missing_section_refuses(self):
+        from overtone import shift_osu_text
+        text = _copy_map(["256,192,1000,1,0,0:0:0:0:"])
+        with self.assertRaises(ValueError):
+            shift_osu_text(text, -2000.0)
+        with self.assertRaises(ValueError):
+            shift_osu_text("[General]\n", 10.0)
+
+    def test_apply_moves_a_set_atomically_with_backups(self):
+        from overtone import apply_audio_swap, preview_audio_swap, read_history
+        with tempfile.TemporaryDirectory() as tmp:
+            first = Path(tmp) / "a.osu"
+            second = Path(tmp) / "b.osu"
+            for path in (first, second):
+                path.write_bytes(_copy_map(["256,192,1000,1,0,0:0:0:0:"]).replace(
+                    "\n", "\r\n").encode("utf-8"))
+            preview = preview_audio_swap([first, second], 26.0)
+            self.assertTrue(all(row["ok"] for row in preview["maps"]))
+            self.assertEqual(preview["maps"][0]["objects"], 1)
+            done = apply_audio_swap([first, second], 26.0, audio_name="new.mp3")
+            self.assertTrue(done["written"])
+            self.assertTrue(first.with_name("a.osu.bak").is_file())
+            # One bad map stops the set before any byte moves.
+            bad = Path(tmp) / "bad.osu"
+            bad.write_bytes(b"junk")
+            before = second.read_bytes()
+            with self.assertRaises(ValueError):
+                apply_audio_swap([second, bad], 10.0)
+            self.assertEqual(second.read_bytes(), before)
+            entries = [e for e in read_history() if e["op"] == "swap"]
+        json.dumps([preview, done])
+        self.assertEqual(len(entries), 2)
+
+
+class OffsetLabTests(unittest.TestCase):
+    """Phase 19, Offset lab: the MP3's own gapless numbers from its header."""
+
+    @staticmethod
+    def _mp3(lame=True):
+        frame = (b"\xff\xfb\x90\x00" + bytes(32) + b"Xing" + b"\x00\x00\x00\x0f"
+                 + bytes(4 + 4 + 100 + 4))
+        if lame:
+            frame += b"LAME3.99r" + bytes(12) + bytes((0x84, 0x00, 100))
+        return b"ID3\x04\x00\x00" + bytes(4) + frame + bytes(2000)
+
+    def test_lame_delay_and_padding_unpack(self):
+        from overtone import mp3_gapless_info
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "song.mp3"
+            path.write_bytes(self._mp3())
+            info = mp3_gapless_info(path)
+        json.dumps(info)
+        self.assertEqual((info["present"], info["encoder"], info["sample_rate"],
+                          info["delay_samples"], info["padding_samples"]),
+                         (True, "LAME3.99r", 44100, 2112, 100))
+        self.assertAlmostEqual(info["delay_ms"], 2112 * 1000 / 44100, places=3)
+
+    def test_no_lame_tag_junk_or_other_format_reports_absent(self):
+        from overtone import mp3_gapless_info
+        with tempfile.TemporaryDirectory() as tmp:
+            bare = Path(tmp) / "bare.mp3"
+            bare.write_bytes(self._mp3(lame=False))
+            self.assertEqual(mp3_gapless_info(bare)["present"], False)
+            junk = Path(tmp) / "junk.mp3"
+            junk.write_bytes(bytes(100))
+            self.assertEqual(mp3_gapless_info(junk)["present"], False)
+            other = Path(tmp) / "song.wav"
+            other.write_bytes(self._mp3())
+            self.assertEqual(mp3_gapless_info(other)["present"], False)
+            self.assertEqual(mp3_gapless_info(Path(tmp) / "missing.mp3")["present"], False)
+
+
+class PercussionTests(unittest.TestCase):
+    """Phase 4, percussion-only audition: the drums as playable bytes."""
+
+    def test_percussive_stem_decodes_at_full_length(self):
+        import soundfile as sf
+        from overtone import percussive_wav
+        sr = 44100
+        t = np.arange(3 * sr) / sr
+        # Clicks over a sustained hum: drums plus something to remove.
+        y = (0.5 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)
+        for k in range(12):
+            start = int((0.5 + k * 0.2) * sr)
+            y[start:start + 400] += 0.9
+        room = tempfile.TemporaryDirectory()
+        self.addCleanup(room.cleanup)
+        raw = percussive_wav(y, sr)
+        self.assertTrue(raw.startswith(b"RIFF"))
+        path = str(Path(room.name) / "perc.wav")
+        with open(path, "wb") as handle:
+            handle.write(raw)
+        back, back_sr = sf.read(path, dtype="float32")
+        self.assertEqual((len(back), back_sr), (len(y), sr))
+        self.assertGreater(float(np.abs(back).max()), 0.0)
+
+
+class WriteHistoryTests(unittest.TestCase):
+    """Phase 19, History: every .osu write logged, diffed and restorable."""
+
+    def test_log_and_read_round_trip_newest_first(self):
+        from overtone import log_write, read_history
+        with tempfile.TemporaryDirectory() as tmp:
+            log_write("a.osu", "inject", "a.osu.bak", {"reds_added": 2}, history_dir=tmp)
+            log_write("b.osu", "hitsounds", None, {}, history_dir=tmp)
+            entries = read_history(tmp)
+        json.dumps(entries)
+        self.assertEqual([(e["op"], e["path"], e["backup"]) for e in entries],
+                         [("hitsounds", "b.osu", None), ("inject", "a.osu", "a.osu.bak")])
+        self.assertEqual(entries[1]["summary"], {"reds_added": 2})
+
+    def test_torn_lines_do_not_hide_the_rest(self):
+        from overtone import read_history
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "writes.jsonl").write_text('{"op": "x", "path": "a.osu"}\nbroken\n',
+                                                    encoding="utf-8")
+            self.assertEqual(len(read_history(tmp)), 1)
+
+    def test_restore_keeps_the_current_bytes_as_a_new_backup(self):
+        from overtone import read_history, restore_write
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_bytes(b"v2")
+            target.with_name("map.osu.bak").write_bytes(b"v1")
+            result = restore_write(target, target.with_name("map.osu.bak"), history_dir=tmp)
+            self.assertEqual(target.read_bytes(), b"v1")
+            self.assertEqual(Path(result["backup"]).read_bytes(), b"v2")
+            self.assertEqual(read_history(tmp)[0]["op"], "restore")
+            with self.assertRaises(ValueError):
+                restore_write(target, Path(tmp) / "missing.bak", history_dir=tmp)
+
+    def test_red_diff_pairs_offsets_and_names_movers(self):
+        from overtone import diff_reds
+        old = "[TimingPoints]\n1000,500,4,2,0,70,1,0\n2000,400,4,2,0,70,1,0\n3000,500,4,2,0,70,1,0\n"
+        new = "[TimingPoints]\n1000,500,4,2,0,70,1,0\n2000,300,4,2,0,70,1,0\n4000,500,4,2,0,70,1,0\n"
+        diff = diff_reds(old, new)
+        json.dumps(diff)
+        self.assertEqual((diff["n_added"], diff["n_removed"], diff["n_changed"]), (1, 1, 1))
+        self.assertEqual(diff["changed"][0]["new_bpm"], 200.0)
+        self.assertEqual(diff["added"][0]["offset"], 4000.0)
+
+    def test_a_hitsound_write_logs_itself(self):
+        from overtone import read_history, write_object_hitsounds
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_bytes(_copy_map(["256,192,1000,1,0,0:0:0:0:"]).replace(
+                "\n", "\r\n").encode("utf-8"))
+            write_object_hitsounds(target, {0: {"bits": 8}})
+            entries = read_history()
+        self.assertEqual(entries[0]["op"], "hitsounds")
+        self.assertEqual(entries[0]["summary"], {"changed": 1})
+        self.assertTrue(entries[0]["backup"].endswith(".bak"))
+
+
+class HitsoundConsistencyTests(unittest.TestCase):
+    """Phase 6, H3 map half: sounds breaking the map's own clap pattern."""
+
+    @staticmethod
+    def _bars(n, clap_beat2=None, clap_beat4=True):
+        # 120 BPM from 1000 ms: bar b (1-based) beats 2/4 at fixed times.
+        lines = []
+        for b in range(1, n + 1):
+            beat2 = 1500 + (b - 1) * 2000
+            beat4 = 2500 + (b - 1) * 2000
+            if clap_beat2 is None or b in clap_beat2:
+                lines.append(f"256,192,{beat2},1,8,0:0:0:0:")
+            else:
+                lines.append(f"256,192,{beat2},1,0,0:0:0:0:")
+            lines.append(f"256,192,{beat4},1,{'8' if clap_beat4 else '0'},0:0:0:0:")
+        return _copy_map(lines, timing="1000,500,4,2,0,70,1,0")
+
+    def _report(self, text):
+        from overtone import read_osu_beatmap
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            return read_osu_beatmap(path)
+
+    def test_a_bare_beat_two_in_sixteen_clapped_bars_is_missing(self):
+        from overtone import hitsound_consistency
+        beatmap = self._report(self._bars(20, clap_beat2=set(range(1, 21)) - {12}))
+        findings = hitsound_consistency(beatmap)["findings"]
+        missing = [f for f in findings if f["key"] == "hitsound_missing_clap"]
+        self.assertEqual(len(missing), 1)
+        self.assertEqual((missing[0]["values"]["bar"], missing[0]["values"]["beat"],
+                          missing[0]["values"]["have"], missing[0]["values"]["of"]),
+                         (12, "2", 16, 16))
+
+    def test_a_lone_clap_among_bare_beats_flags_when_the_map_claps(self):
+        from overtone import hitsound_consistency
+        # Beat 4 clapped everywhere (the map's pattern), beat 2 bare but for bar 12.
+        lines = []
+        for b in range(1, 21):
+            lines.append(f"256,192,{1500 + (b - 1) * 2000},1,"
+                         f"{'8' if b == 12 else '0'},0:0:0:0:")
+            lines.append(f"256,192,{2500 + (b - 1) * 2000},1,8,0:0:0:0:")
+        beatmap = self._report(_copy_map(lines, timing="1000,500,4,2,0,70,1,0"))
+        findings = hitsound_consistency(beatmap)["findings"]
+        extra = [f for f in findings if f["key"] == "hitsound_extra_clap"]
+        self.assertEqual(len(extra), 1)
+        self.assertEqual((extra[0]["values"]["bar"], extra[0]["values"]["beat"],
+                          extra[0]["values"]["have"]),
+                         (12, "2", 0))
+
+    def test_a_map_that_barely_claps_has_no_pattern_to_break(self):
+        from overtone import hitsound_consistency
+        beatmap = self._report(self._bars(20, clap_beat2={1}, clap_beat4=False))
+        self.assertEqual(hitsound_consistency(beatmap)["findings"], [])
+
+    def test_mod_report_lists_the_pattern_break_as_a_mod_line(self):
+        import numpy as np
+        from overtone import mod_report
+        beatmap = self._report(self._bars(20, clap_beat2=set(range(1, 21)) - {12}))
+        report = mod_report(beatmap, np.zeros(0), np.zeros(0), 61.0)
+        items = [i for i in report["items"] if i["source"] == "hitsound"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["text"],
+                         "no clap on beat 2 of bar 12, with 16 of the 16 bars around it clapped")
+        self.assertEqual(report["counts"]["hitsound"], 1)
+        json.dumps(report)
+
+    def test_a_finish_with_no_attack_under_it_is_flagged(self):
+        import numpy as np
+        from overtone import hitsound_silence_check
+        beatmap = self._report(_copy_map(["256,192,1000,1,4,0:0:0:0:",
+                                          "256,192,2000,1,8,0:0:0:0:"],
+                                         timing="1000,500,4,2,0,70,1,0"))
+        findings = hitsound_silence_check(beatmap, np.array([2.0]), np.array([1.0]))["findings"]
+        self.assertEqual([(f["key"], f["values"]["addition"], f["time_ms"]) for f in findings],
+                         [("hitsound_on_silence", "finish", 1000.0)])
+
+    def test_a_lone_whistle_is_not_judged(self):
+        # Unmatched whistles sit a median 66 ms from attacks on real songs
+        # (melodic overlap), so calling them silence would mislead.
+        import numpy as np
+        from overtone import hitsound_silence_check
+        beatmap = self._report(_copy_map(["256,192,1000,1,2,0:0:0:0:"],
+                                         timing="1000,500,4,2,0,70,1,0"))
+        self.assertEqual(hitsound_silence_check(
+            beatmap, np.array([2.0]), np.array([1.0]))["findings"], [])
+
+    def test_a_clap_on_an_attack_and_silence_everywhere_flag_nothing(self):
+        import numpy as np
+        from overtone import hitsound_silence_check
+        beatmap = self._report(_copy_map(["256,192,2000,1,8,0:0:0:0:"],
+                                         timing="1000,500,4,2,0,70,1,0"))
+        self.assertEqual(hitsound_silence_check(
+            beatmap, np.array([2.0]), np.array([1.0]))["findings"], [])
+        self.assertEqual(hitsound_silence_check(
+            beatmap, np.zeros(0), np.zeros(0))["findings"], [])
+
+
 class StructureViewTests(unittest.TestCase):
     """Phase 19, Structure: phrases on the song's proven bars, labels with why."""
 
@@ -4152,6 +4936,29 @@ class StructureViewTests(unittest.TestCase):
         self.assertTrue(view["one_family"])
         self.assertEqual(view["sections"][0]["why"], {"rule": "verse_one_family", "repeats": 3})
 
+    def test_preview_starts_at_the_loudest_chorus(self):
+        from overtone import structure_view, suggest_preview_time
+        report = _structure_report([8.0, 24.0, 40.0, 50.0, 60.0],
+                                   ["intro", "verse", "chorus", "bridge", "chorus", "outro"],
+                                   [0, 1, 2, 3, 2, 4], [-12.0, -6.0, -1.0, -3.0, 0.0, -9.0], 70.0)
+        view = structure_view(report, self._analysis([], 70.0))
+        json.dumps(view)
+        self.assertEqual(view["preview"],
+                         {"time_s": 50.0, "time_ms": 50000, "kind": "chorus",
+                          "why": "chorus_loudest"})
+
+    def test_preview_without_a_chorus_takes_the_loudest_part(self):
+        from overtone import suggest_preview_time
+        sections = [{"kind": "intro", "level_db": 0.0, "start_s": 0.0},
+                    {"kind": "verse", "level_db": -3.0, "start_s": 10.0},
+                    {"kind": "bridge", "level_db": -1.0, "start_s": 30.0},
+                    {"kind": "outro", "level_db": -6.0, "start_s": 50.0}]
+        self.assertEqual(suggest_preview_time(sections)["why"], "loudest_part")
+        self.assertEqual(suggest_preview_time(sections)["time_s"], 30.0)
+        only_intro = [{"kind": "intro", "level_db": 0.0, "start_s": 0.0}]
+        self.assertEqual(suggest_preview_time(only_intro)["why"], "loudest_only")
+        self.assertIsNone(suggest_preview_time([]))
+
     def test_the_energy_lane_is_pooled_by_its_peaks(self):
         from overtone import STRUCTURE_LANE_POINTS, structure_view
         energy = np.full(2000, 0.1)
@@ -4163,6 +4970,31 @@ class StructureViewTests(unittest.TestCase):
         self.assertAlmostEqual(lane["hop"] * len(lane["values"]), 1000.0, delta=lane["hop"])
         self.assertEqual(structure_view(report, self._analysis([], 1000.0))["sections"][0]["why"],
                          {"rule": "verse_single"})
+
+    def test_bookmarks_merge_sorted_and_keep_the_mappers(self):
+        from overtone import set_editor_bookmarks
+        beatmap = {"sections": [{"name": "Editor",
+                                 "lines": ["Bookmarks: 3000,1000", "DistanceSpacing: 1.2"]}],
+                   "editor": {}}
+        result = set_editor_bookmarks(beatmap, [2000.4, 1000.0, -50.0])
+        json.dumps(result)
+        self.assertEqual(result, {"added": 1, "total": 3})
+        self.assertEqual(beatmap["sections"][0]["lines"],
+                         ["Bookmarks: 1000, 2000, 3000", "DistanceSpacing: 1.2"])
+        self.assertEqual(beatmap["editor"]["Bookmarks"], "1000, 2000, 3000")
+
+    def test_bookmarks_append_when_missing_and_refuse_junk(self):
+        from overtone import set_editor_bookmarks
+        bare = {"sections": [{"name": "Editor", "lines": ["DistanceSpacing: 1.2"]}],
+                "editor": {}}
+        self.assertEqual(set_editor_bookmarks(bare, [500.0])["added"], 1)
+        self.assertIn("Bookmarks: 500", bare["sections"][0]["lines"])
+        junk = {"sections": [{"name": "Editor", "lines": ["Bookmarks: 1000,soon"]}],
+                "editor": {}}
+        with self.assertRaises(ValueError):
+            set_editor_bookmarks(junk, [2000.0])
+        with self.assertRaises(ValueError):
+            set_editor_bookmarks({"sections": []}, [2000.0])
 
 
 class AssistedTimingTests(unittest.TestCase):

@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **379** Python (260 engine + 119 web shell) · **233** Rust.
+Tests: **456** Python (313 engine + 143 web shell) · **263** Rust.
 
 ### What is pending, in order
 
@@ -280,7 +280,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | In-app preview | play song + click from the selected red line (WebAudio in the shell) | med | **high** | transport | no | no | **P1** | **done** |
 | Slow section loop | 4-bar loop of song + click at 100 / 75 / 50 %, pitch kept | med | high | transport | no | no | P1 | **done**, pitch not kept, by measurement — the section loop at 100/75/50 %, resampled: every attack exactly at t / rate. A pitch-kept stretch (librosa's phase vocoder) put attacks a median 23-24 ms late |
 | Tap-along check | tap along inside the app; show how far each tap lands from the grid | low | med | transport | no | no | P2 | **done** — T or the Tap button: taps placed at the sample then sounding (getOutputTimestamp; mapping within -1.1..+0.4 ms, measured), tempo of the run, offset from the click |
-| Percussion-only audition | hear just the percussive part (HPSS) to judge timing | med | med | P2 HPSS | no | no | P2 | todo |
+| Percussion-only audition | hear just the percussive part (HPSS) to judge timing | med | med | P2 HPSS | no | no | P2 | **done** — transport toggle, librosa stem cached per analysis over the chunk transport |
 | Latency calibration | measure output latency once so the click lines up with the audio | low | med | transport | no | no | P2 | not needed for listening — the song and the click share one AudioContext and one clock (measured within 0.25 ms). For tapping: **done** — the person's own latency, measured against the click and remembered |
 
 ---
@@ -323,10 +323,11 @@ the copier, the section, the check, the decision engine, the editor.
 | P-1 Sound events from the map | every object as the sounds it makes (edges, body, spinner end), resolved against the timing points | med | **high** | P5 reader | no | no | **P1** | **done** — `sound_events`; 0 errors on 3,000 local maps, slider lengths held (0.04 % overlap, all in gimmick maps) |
 | P-2 Hitsound field writer | only `hitSound`/`edgeSounds`/`edgeSets`/`hitSample` change; zero-change write byte-identical | med | **high** | P5 writer | no | no | **P1** | **done** — `set_object_hitsounds`, `write_object_hitsounds`: edits over the file's own text; flip and restore on 2,998 local maps sound identical, only object lines move |
 | P-3 Sample playback | samples found as osu! finds them, Overtone's own synthesised defaults, on the playback clock | med | **high** | P4 playback | no | no | **P1** | **done** — `assets/samples.py`, `hitsound_playback`, the transport's "Hitsounds from"; slider bodies not played yet |
-| P-4 Evidence through the CLI | class probabilities with terms, and role, per attack; calibrated weights baked in | med | **high** | templates, role | no | no | **P1** | todo |
-| P-5 Object-attack matching | each sound event's nearest attack, "no attack" as a state | low | high | P-1 | no | no | **P1** | todo |
-| P-6 Real-map evaluation | agreement with mappers' own hitsounds on local maps, against simple baselines | med | **high** | library index, P-1 | no | no | **P1** | todo |
+| P-4 Evidence through the CLI | class probabilities with terms, and role, per attack; calibrated weights baked in | med | **high** | templates, role | no | no | **P1** | **done** — `overtone-cli hitsound-evidence`: 13 probs + every term's contribution + role per attack, baked fit in 0.036 ms (was 3.5 s a call) |
+| P-5 Object-attack matching | each sound event's nearest attack, "no attack" as a state | low | high | P-1 | no | no | **P1** | **done** — `match_sound_events`: binary search, dt and weight inside 50 ms, else unmatched |
+| P-6 Real-map evaluation | agreement with mappers' own hitsounds on local maps, against simple baselines | med | **high** | library index, P-1 | no | no | **P1** | **done** — `bench/eval_hitsounds.py`: clap-on-2-and-4 F1 0.59, finish-on-downbeat F1 0.42 (medians, 1,000 local maps); the bars H4 must beat |
 | P-7 Object lane | objects and their sounds on the timeline | low | high | P3 timeline, P-1 | no | no | **P1** | **done** — objects and additions in rows, while a difficulty's hitsounds are picked |
+| H2 Hitsounds section | one difficulty, read only: where each addition falls in the bar, every sound heard one by one | med | **high** | P-1, P-3, P-7 | no | no | **P1** | **done** — `hitsound_report`; on 800 local maps claps sit on 2 and 4 57 % of the time (median) |
 | H1 Hitsound copier | one difficulty's hitsounds onto others, by time, with a preview | low | **high** | P-1, P-2 | no | no | **P1** | **done** — `copy_hitsounds` + Mapset view card; 1,494 copies on 300 local mapsets, 0 errors, 95.3 % of sounds matched (median) |
 | Per-attack features | 7 bands, centroid/rolloff/flatness/crest, rise/decay | med | **high** | P2 HPSS | no | no | **P1** | **done** |
 | Harmonicity + pitch | HPS pitch, formants | med | high | features | no | no | **P1** | **done** — inharmonicity deferred |
@@ -335,15 +336,16 @@ the copier, the section, the check, the decision engine, the editor.
 | Template calibration | logistic fit of term weights | med | high | corpus | **light** | no | P1 | **done** — held-out macro F1 0.231 hand-set → 0.723 calibrated (fit on seeds 11–14, judged on 21–24); `calibrated_templates()` ships the fit |
 | Musical role | grid position, metrical weight, phrase, accent, density | med | **high** | P2 structure | no | no | **P1** | **done** (audio side) |
 | Object context | type, pattern, spacing, combo, existing hitsounds | med | **high** | P5 reader | no | no | **P1** | partial — map context attached to each attack (Python) |
-| **Viterbi decision** | sequence labelling with consistency costs | high | **high** | all above | no | no | **P1** | todo |
+| **Viterbi decision** | sequence labelling with consistency costs | high | **high** | all above | no | no | **P1** | **done** — `overtone-cli hitsound`: 19/19 synthetic exact, real clap/finish F1 above the rules on two samples |
 | Explanations | itemised terms + alternatives | med | **high** | decision | no | no | **P1** | todo |
 | Profiles | built-in + custom, as data | low | high | decision | no | no | **P1** | todo |
-| Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | todo |
-| Hitsound editor | change/remove/volume/sample | med | **high** | decision | no | no | **P1** | todo |
+| Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | partial — the object lane (P-7); instrument lanes need P-4 |
+| Hitsound editor | change/remove/volume/sample | med | **high** | decision | no | no | **P1** | partial — engine half, bridge propose/preview/apply/one-level-undo, and the Decide card (tick, preview, write, copy, undo) short of a harness pass; volume/sample changes and pre-hearing proposals still to build |
 | Sample bank | import skin/folder, audition samples | med | high | P4 playback | no | no | P1 | todo |
 | Sample recommendation | map samples to roles by their spectrum | med | med | bank | no | no | P2 | todo |
-| Hitsound export | only hitsound fields change | med | **high** | P5 writer | no | no | **P1** | todo |
-| Consistency check | flag objects whose sound disagrees with their role | low | high | decision | no | no | P2 | todo |
+| Hitsound export | only hitsound fields change | med | **high** | P5 writer | no | no | **P1** | partial — same engine half; the Export-section surface still to build |
+| Consistency check | flag objects whose sound disagrees with their role | low | high | decision | no | no | P2 | partial — map half and silence half in the mod report (missing/extra clap; finish/clap with no attack under them); clap-mismatch refused on measurement until the templates prove themselves on real audio |
+| Audio-only proposal | hitsounds from the song alone, no map: attacks → classes + role, proposed on the song's own analysis | med | high | H4, P-4 | no | no | P2 | todo — proposed 2026-09-26: H4 needs a difficulty's objects today and refuses without them; the ask is drop an audio file and get a proposal by the song's analysis |
 
 The F1 numbers are measured on synthetic arrangements the fit never saw, from the same
 corpus generator; they say the classes separate, not how they do on real songs.
@@ -490,11 +492,11 @@ number and confidence. Every write goes through the atomic writer and keeps a ba
 | Structure view | phrase boundaries snapped to the nearest proven downbeat, labelled with the evidence for each label, over the energy lane; home for the kiai, preview, bookmark and break proposals | med | **high** | P2 structure + classify, P22 | no | no | **P1** | **done** — `overtone-cli structure`, `structure_view`; edges on the nearest proven bar within 1.5 s (on 20 ranked maps' bars, 31 % on a 4-bar line against 25 % by chance: a bar near the change, not the phrase's first) |
 | Phrase starts on the phrase's bar | snap to the bar the phrase starts on, not the nearest; measured against ranked maps' kiai starts as truth | med | med | Structure view | no | no | P2 | todo |
 | Mod report | every finding as osu! editor timestamps (`mm:ss:mmm (combo) - ...`) with its number and confidence, copyable as text; each opens the local osu! editor | low | high | P7 findings | no | no | P2 | **done** — `mod_report`, the Report section: reference, suggestions, snap audit and alignment in time order, combo numbers, `osu://edit/` links from validated timestamps; 0.31 s per map |
-| Write history and restore | a log of every `.osu` write and its backup; see the timing diff against the backup and restore atomically, keeping the current file as a new backup | low | med | writer | no | no | P2 | todo |
-| Evidence view | the engine's alternatives for the open song: coherence candidates, octave margin, per-section residual and coverage, half-time hints, why the fallback ran; each one click from ×2 / ÷2 | med | med | payload fields or P22 | no | no | P2 | todo |
-| Ramp and live timing | the elastic tempo curve turned into the fewest red lines that keep every attack within a chosen drift (ms) or one line per N bars, with the count-versus-drift trade-off shown | high | high | P22, elastic grid | no | no | P2 | todo |
-| Audio swap | the shift between a mapset's old and new audio from onset cross-correlation, refused on a tempo mismatch; on consent every time in every difficulty moves, with backup | med | high | writer, attacks | no | no | P2 | todo |
-| Offset lab | MP3 encoder delay read from the file header, the first attack through each decoder side by side, and a blind listening test that reports the preferred click shift with an interval | med | med | both decoders, P4 transport | no | no | P2 | todo |
+| Write history and restore | a log of every `.osu` write and its backup; see the timing diff against the backup and restore atomically, keeping the current file as a new backup | low | med | writer | no | no | P2 | **done** — JSONL log beside the cache, History section with per-write red diff and confirmed restore |
+| Evidence view | the engine's alternatives for the open song: coherence candidates, octave margin, per-section residual and coverage, half-time hints, why the fallback ran; each one click from ×2 / ÷2 | med | med | payload fields or P22 | no | no | P2 | **done** — `analysis_evidence` + Timing card: candidates with coherence, seeded/half/double marks, octave margin, residual/coverage; Use writes the BPM into the governing red line through edit_apply |
+| Ramp and live timing | the elastic tempo curve turned into the fewest red lines that keep every attack within a chosen drift (ms) or one line per N bars, with the count-versus-drift trade-off shown | high | high | P22, elastic grid | no | no | P2 | **done** — `overtone-cli ramps` + Timing card: longest grids back to back on strong attacks, tradeoff table, max-lines cap; Use loads hand-placed lines |
+| Audio swap | the shift between a mapset's old and new audio from full-waveform correlation (onsets biased sub-frame shifts by a frame in the probe), refused on a tempo mismatch; on consent every time in every difficulty moves, with backup | med | high | writer, attacks | no | no | P2 | **done** — correlation at 11 kHz (±0.005 ms on real music), tempo twins and different cuts refused, Mapset card with preview and confirmed apply |
+| Offset lab | MP3 encoder delay read from the file header, the first attack through each decoder side by side, and a blind listening test that reports the preferred click shift with an interval | med | med | both decoders, P4 transport | no | no | P2 | **done** — header numbers, decoder side-by-side, and an 18-trial blind 2AFC with Wilson intervals in Timing |
 | Rhythm guide | a separate guide difficulty with circles on strong attacks snapped to the detected grid (per band; optional taiko don/kat hint), ambiguous snaps left out and listed | med | high | attacks, sections, `.osz` writer | no | no | P2 | needs a decision: `04-ui-ux.md` §9 rules out beatmap editing beyond hitsounds and timing |
 
 Target sidebar, grouped by job: **Library** · **Timing** (Evidence and Ramps as tabs) ·
@@ -514,6 +516,30 @@ Build order:
 Structure runs on the Rust engine (in since 2026-09-24); Ramps and Evidence follow it. Audio
 swap needs two analyses, which run one after the other: the one-heavy-job-at-a-time
 limit applies.
+
+### Song import from a streaming link (proposed 2026-09-25, blocked)
+
+Paste a track link, confirm it is the right song from its metadata, get the audio into
+the app, and analyse its timing. Wanted as a Library entry: link → metadata
+confirmation → audio file → the existing analysis.
+
+It is recorded here but not built, because as specified it cannot ship under the
+repo's own rules and has no lawful audio source:
+
+- **Offline is a product property** (engineering rule 6; "Cloud anything: Never" in
+  [Rejected ideas](#rejected-ideas)). Fetching metadata or audio from Spotify is a
+  network call with an external API, so this needs the rule lifted first, deliberately,
+  not slipped in.
+- **Spotify's Web API gives metadata, not audio.** It returns track, artist, album and
+  ISRC, never the full track file; full audio lives behind DRM or outside the terms of
+  use. There is no "download the audio of this link" endpoint to call.
+- It would need an API credential (client id/secret) stored and a consent step for the
+  audio's origin, like every other `.osu` write in this roadmap.
+
+What fits the rules today and already covers half the job: drop the audio file (or a
+beatmap folder) into Library, and fingerprint reuse (Phase 10.1) answers "is this song
+already mapped" from the user's own Songs folder. If the rule ever changes, the shape
+above — metadata confirmation before anything downloads — is the starting point.
 
 ---
 
@@ -546,10 +572,10 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Inject diff | each old red line beside its new value, and the drift it causes | low | **high** | inject | no | no | **P1** | todo |
 | Inject into every difficulty | one confirmation for the whole mapset | low | **high** | inject | no | no | **P1** | todo |
-| Kiai from structure | kiai on chorus sections, written as greens | med | high | P2 structure, writer | no | no | P1 | todo |
-| Preview point | suggest `PreviewTime` at the chorus | low | med | structure | no | no | P2 | todo |
-| Bookmarks | section starts as editor bookmarks | low | med | structure | no | no | P2 | todo |
-| Breaks | quiet spans long enough for a break | low | med | energy | no | no | P2 | todo |
+| Kiai from structure | kiai on chorus sections, written as greens | med | high | P2 structure, writer | no | no | P1 | **done** — engine half carries the audible state so sound never changes, second run a no-op; Structure card with preview counts and confirmed write with backup |
+| Preview point | suggest `PreviewTime` at the chorus | low | med | structure | no | no | P2 | **done** — loudest chorus start, loudest part without one, in the Structure view with its reason |
+| Bookmarks | section starts as editor bookmarks | low | med | structure | no | no | P2 | **done** — merged with the map's own, preview then confirmed write with backup, in the Structure view |
+| Breaks | quiet spans long enough for a break | low | med | energy | no | no | P2 | **done** — sections 6 dB under the loudest cut by the map's own sound gaps (5 s or longer), Structure card with span preview and confirmed write with backup |
 | Volume by section | hitsound volume from section energy, as greens | low | med | energy, writer | no | no | P2 | todo |
 | SV normaliser | greens that cancel BPM changes so scroll and slider speed stay constant | med | **high** | writer | no | no | P1 | todo |
 | Re-snap objects | move hit objects onto the new grid after a timing change | high | **high** | writer, P5 | no | no | P1 | todo |

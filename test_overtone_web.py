@@ -670,6 +670,18 @@ class HitsoundPlaybackBridgeTests(_IsolatedConfig):
         self.assertEqual(web._playable_sample(pcm), pcm)
         self.assertEqual(web._playable_sample(b"ID3mp3"), b"ID3mp3")
 
+    def test_the_report_places_each_sound_and_refuses_what_is_not_this_songs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            reply = api.hitsound_report("hard.osu")
+            refused = api.hitsound_report("..\\hard.osu")
+        json.dumps(reply)
+        sound = reply["report"]["sounds"][0]
+        self.assertEqual((sound["t"], sound["bar"], sound["slot"], sound["sounds"]), (1.0, 1, 8, ["normal", "clap"]))
+        self.assertEqual(reply["report"]["additions"]["clap"]["slots"][8], 1)
+        self.assertEqual(refused["key"], "bad_file")
+        self.assertEqual(web.Api().hitsound_report("hard.osu")["key"], "first")
+
     def test_a_map_outside_the_songs_folder_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             api = self._song(tmp)
@@ -734,6 +746,96 @@ class HitsoundCopyBridgeTests(_IsolatedConfig):
                     self.assertEqual(api.hitsound_copy_apply(str(folder), source, targets)["key"], key)
             self.assertEqual(api.hitsound_copy_preview(str(Path(tmp) / "nope"), "a.osu", ["b.osu"])["key"],
                              "bad_folder")
+
+
+class HitsoundDecideBridgeTests(_IsolatedConfig):
+    """The decision editor's bridge: propose once, preview, apply, one undo."""
+
+    LINES = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+             "[TimingPoints]", "0,500,4,2,0,70,1,0", "", "[HitObjects]",
+             "256,192,1000,1,0,0:0:0:0:", "256,192,1500,1,0,0:0:0:0:", ""]
+
+    UNITS = [{"object": 0, "part": "circle", "edge": None, "time_ms": 1000.0,
+              "proposal": {"bank": "soft", "additions": ["finish"], "bits": 4}},
+             {"object": 1, "part": "circle", "edge": None, "time_ms": 1500.0,
+              "proposal": {"bank": "drum", "additions": ["clap"], "bits": 8}}]
+
+    def _song(self, tmp: str) -> web.Api:
+        folder = Path(tmp)
+        (folder / "audio.mp3").write_bytes(b"ID3" + bytes(64))
+        (folder / "hard.osu").write_bytes("\r\n".join(self.LINES).encode("utf-8"))
+        api = _api_with_points()
+        api._analysis.source = str(folder / "audio.mp3")
+        return api
+
+    def _proposed(self, api: web.Api):
+        with mock.patch.object(web.overtone_rust, "hitsound",
+                               return_value={"units": self.UNITS}):
+            return api.hitsound_decide_propose("hard.osu")
+
+    def test_propose_caches_and_preview_counts_without_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            before = Path(tmp, "hard.osu").read_bytes()
+            reply = self._proposed(api)
+            preview = api.hitsound_decide_preview("hard.osu", [[1, "circle", None]])
+            untouched = Path(tmp, "hard.osu").read_bytes()
+            json.dumps([reply, preview])
+            self.assertEqual((len(reply["units"]), preview["units"], preview["accepted"],
+                              preview["would_change"]),
+                             (2, 2, 1, 1))
+            self.assertEqual(untouched, before)
+            self.assertEqual(api.hitsound_decide_preview("hard.osu")["accepted"], 2)
+
+    def test_apply_writes_with_a_backup_and_one_undo_restores(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            before = Path(tmp, "hard.osu").read_bytes()
+            self._proposed(api)
+            done = api.hitsound_decide_apply("hard.osu")
+            changed = Path(tmp, "hard.osu").read_bytes()
+            undone = api.hitsound_decide_undo()
+            restored = Path(tmp, "hard.osu").read_bytes()
+            nothing_left = api.hitsound_decide_undo()
+            json.dumps([done, undone])
+            self.assertEqual((done["changed"], done["written"], done["undo"]), ([0, 1], True, True))
+            self.assertNotEqual(changed, before)
+            self.assertEqual((restored, undone["ok"], nothing_left["key"]),
+                             (before, True, "no_undo"))
+            self.assertTrue(Path(tmp, "hard.osu.bak").is_file())
+
+    def test_apply_onto_a_copy_leaves_the_source_alone(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            before = Path(tmp, "hard.osu").read_bytes()
+            self._proposed(api)
+            done = api.hitsound_decide_apply("hard.osu", copy=True)
+            dest = Path(tmp, "hard_hitsounded.osu")
+            json.dumps(done)
+            self.assertEqual((Path(done["dest"]).name, done["undo"]), ("hard_hitsounded.osu", False))
+            self.assertEqual(Path(tmp, "hard.osu").read_bytes(), before)
+            self.assertIn(b"256,192,1500,1,8,", dest.read_bytes())
+
+    def test_without_a_proposal_or_a_binary_it_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            self.assertEqual(api.hitsound_decide_preview("hard.osu")["key"], "no_proposal")
+            self.assertEqual(api.hitsound_decide_apply("hard.osu")["key"], "no_proposal")
+            with mock.patch.object(web.overtone_rust, "hitsound",
+                                   side_effect=web.overtone_rust.SidecarUnavailable("gone")):
+                self.assertEqual(api.hitsound_decide_propose("hard.osu")["key"], "no_rust")
+            self.assertEqual(api.hitsound_decide_propose("..\\hard.osu")["key"], "bad_file")
+        self.assertEqual(web.Api().hitsound_decide_propose("hard.osu")["key"], "first")
+        self.assertEqual(web.Api().hitsound_decide_undo()["key"], "first")
+
+    def test_a_moved_map_refuses_at_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            api._decisions["hard.osu"] = {"units": [
+                {**self.UNITS[0], "time_ms": 1200.0}]}
+            reply = api.hitsound_decide_preview("hard.osu")
+        self.assertEqual(reply["key"], "error")
+        self.assertIn("1200", reply["detail"])
 
 
 class StructureBridgeTests(_IsolatedConfig):
@@ -976,6 +1078,30 @@ class PlaybackBridgeTests(_IsolatedConfig):
         y, sr = ta.sf.read(io.BytesIO(wav))
         self.assertEqual(sr, ta.TARGET_SR)
         self.assertAlmostEqual(len(y) / sr, 3.0, delta=0.05)
+
+    def test_percussion_only_stages_cached_and_round_trips(self) -> None:
+        import base64
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            song = Path(tmp) / "song.mp3"
+            song.write_bytes(b"ID3" + bytes(64))
+            api = _api_with_points()
+            api._analysis.source = str(song)
+            fake = b"RIFF" + bytes(100)
+            with mock.patch.object(ta, "_load_audio", return_value=(np.zeros(44100, dtype=np.float32), 44100)) as load, \
+                    mock.patch.object(ta, "percussive_wav", return_value=fake) as stem:
+                opened = api.audio_open("percussion")
+                again = api.audio_open("percussion")
+            self.assertEqual((opened["size"], opened["chunks"], opened["mime"]),
+                             (len(fake), 1, "audio/wav"))
+            self.assertEqual(load.call_count, 1)
+            self.assertEqual(stem.call_count, 1)
+            got = b"".join(base64.b64decode(api.audio_chunk(i)["data"])
+                           for i in range(opened["chunks"]))
+            json.dumps(opened)
+            self.assertEqual(got, fake)
+            self.assertEqual(again["size"], len(fake))
+            self.assertEqual(web.Api().audio_open("percussion")["key"], "first")
 
     def test_levels_are_clamped_remembered_and_offered_back(self) -> None:
         api = web.Api()
@@ -1220,6 +1346,317 @@ class SuggestBridgeTests(_IsolatedConfig):
         self.assertEqual(_api_with_points().suggest("C:/does/not/exist.osu")["key"], "bad_file")
 
 
+class EvidenceBridgeTests(_IsolatedConfig):
+    """The Evidence tab: alternatives, margins and residuals, cached."""
+
+    def test_without_attacks_it_says_so_and_caches_per_analysis(self) -> None:
+        api = _api_with_points()
+        first = api.evidence()
+        second = api.evidence()
+        json.dumps([first, second])
+        self.assertTrue(first["ok"])
+        self.assertEqual(first["evidence"]["note"], "no_attacks")
+        self.assertIs(api._evidence[0], api._analysis)
+        self.assertEqual(first["evidence"], second["evidence"])
+        self.assertEqual(web.Api().evidence()["key"], "first")
+
+
+class HistoryBridgeTests(_IsolatedConfig):
+    """The History section: every write listed, diffed, restorable."""
+
+    MAP = ["osu file format v14", "", "[TimingPoints]", "1000,500,4,2,0,70,1,0", "",
+           "[HitObjects]", "256,192,1000,1,0,0:0:0:0:", ""]
+
+    def _map(self, tmp: str) -> Path:
+        path = Path(tmp) / "map.osu"
+        path.write_bytes("\r\n".join(self.MAP).encode("utf-8"))
+        return path
+
+    def test_empty_history_lists_nothing(self) -> None:
+        reply = web.Api().history()
+        json.dumps(reply)
+        self.assertEqual(reply["entries"], [])
+
+    def test_a_write_is_listed_diffed_and_restored(self) -> None:
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp)
+            before = path.read_bytes()
+            written = ta.write_object_hitsounds(path, {0: {"bits": 8}})
+            moved = before.replace(b"1000,500,", b"1000,400,")
+            path.write_bytes(moved)
+            api = web.Api()
+            listing = api.history()
+            diff = api.history_diff(0)
+            restored = api.history_restore(0)
+            back = path.read_bytes()
+            json.dumps([listing, diff, restored])
+            entry = listing["entries"][0]
+            self.assertEqual((entry["op"], entry["file"], written["backup"] is not None), ("hitsounds", "map.osu", True))
+            self.assertEqual(entry["backup"], Path(written["backup"]).name)
+            self.assertEqual((diff["diff"]["n_changed"], diff["diff"]["changed"][0]["new_bpm"]), (1, 150.0))
+            self.assertEqual((restored["ok"], back), (True, before))
+            self.assertTrue(Path(tmp, "map.osu.bak2").is_file())
+
+    def test_a_swap_diff_reads_past_the_move(self) -> None:
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes("\r\n".join(
+                ["osu file format v14", "", "[TimingPoints]", "1000,500,4,2,0,70,1,0", "",
+                 "[HitObjects]", "256,192,1000,1,0,0:0:0:0:", ""]).encode("utf-8"))
+            ta.apply_audio_swap([path], 26.0)
+            api = web.Api()
+            diff = api.history_diff(0)["diff"]
+        json.dumps(diff)
+        self.assertEqual((diff["n_added"], diff["n_removed"], diff["n_changed"]), (0, 0, 0))
+
+    def test_bad_indices_and_missing_backups_refuse(self) -> None:
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            api = web.Api()
+            self.assertEqual(api.history_diff(0)["key"], "bad_index")
+            self.assertEqual(api.history_restore("x")["key"], "bad_index")
+            ta.log_write(str(Path(tmp) / "ghost.osu"), "write", None, {})
+            ghost = api.history_diff(0)
+            self.assertEqual(ghost["key"], "bad_file")
+            ta.log_write(str(Path(tmp) / "map.osu"), "write", None, {})
+            self._map(tmp)
+            missing = api.history_diff(0)
+            self.assertEqual(missing["key"], "no_backup")
+            self.assertEqual(api.history_restore(0)["key"], "no_backup")
+
+
+class RampsBridgeTests(_IsolatedConfig):
+    """Ramps in Timing: fit through the sidecar, Use loads hand-placed points."""
+
+    REPORT = {"lines": [{"offset_s": 0.5, "offset_ms": 500.0, "bpm": 150.0,
+                         "start_k": 0.0, "end_k": 10.0, "max_drift_ms": 1.0, "attacks": 11},
+                        {"offset_s": 5.0, "offset_ms": 5000.0, "bpm": 160.0,
+                         "start_k": 10.0, "end_k": 20.0, "max_drift_ms": 2.0, "attacks": 11}],
+              "drift_ms": 5.0,
+              "tradeoff": [{"drift_ms": 1.0, "lines": 4}, {"drift_ms": 5.0, "lines": 2}],
+              "recommend_ramps": True}
+
+    def test_fit_caches_and_use_loads_hand_placed_points(self) -> None:
+        with mock.patch.object(web.overtone_rust, "ramps", return_value=self.REPORT) as run:
+            api = _api_with_points()
+            first = api.ramps(5.0, None)
+            second = api.ramps(5.0, None)
+            self.assertEqual(run.call_count, 1)
+            used = api.ramps_use()
+        json.dumps([first, second, used])
+        self.assertTrue(first["ok"])
+        self.assertEqual(len(first["report"]["lines"]), 2)
+        self.assertEqual(first["report"], second["report"])
+        self.assertEqual([p.bpm for p in api._analysis.points], [150.0, 160.0])
+        self.assertTrue(all(p.manual for p in api._analysis.points))
+        self.assertEqual(used["loaded"], 2)
+        self.assertTrue(api.history_state()["undo"])
+
+    def test_bad_numbers_missing_fit_and_sidecar_refuse(self) -> None:
+        api = _api_with_points()
+        self.assertEqual(api.ramps(0)["key"], "bad_values")
+        self.assertEqual(api.ramps("x")["key"], "bad_values")
+        self.assertEqual(api.ramps(5.0, 0)["key"], "bad_values")
+        self.assertEqual(api.ramps_use()["key"], "no_ramps")
+        with mock.patch.object(web.overtone_rust, "ramps",
+                               side_effect=web.overtone_rust.SidecarUnavailable("gone")):
+            self.assertEqual(api.ramps()["key"], "no_rust")
+        with mock.patch.object(web.overtone_rust, "ramps",
+                               side_effect=web.overtone_rust.SidecarRefused("thin", [])):
+            self.assertEqual(api.ramps()["key"], "no_grid")
+        self.assertEqual(web.Api().ramps()["key"], "first")
+        self.assertEqual(web.Api().ramps_use()["key"], "first")
+
+
+class StructureBookmarksBridgeTests(_IsolatedConfig):
+    """Section starts as editor bookmarks, previewed then written once."""
+
+    VIEW = {"sections": [{"start_s": 0.0}, {"start_s": 16.5}, {"start_s": 32.0}]}
+
+    def _song(self, tmp: str) -> web.Api:
+        folder = Path(tmp)
+        (folder / "audio.mp3").write_bytes(b"ID3" + bytes(64))
+        (folder / "map.osu").write_bytes("\r\n".join(
+            ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+             "[Editor]", "Bookmarks: 1000", "", "[TimingPoints]", "0,500,4,2,0,70,1,0", "",
+             "[HitObjects]", "256,192,1000,1,0,0:0:0:0:", ""]).encode("utf-8"))
+        api = _api_with_points()
+        api._analysis.source = str(folder / "audio.mp3")
+        return api
+
+    def test_preview_counts_and_apply_merges_with_a_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": True, "view": self.VIEW}):
+                preview = api.structure_bookmarks_preview("map.osu")
+                before = Path(tmp, "map.osu").read_bytes()
+                done = api.structure_bookmarks_apply("map.osu")
+                after = Path(tmp, "map.osu").read_bytes()
+                json.dumps([preview, done])
+                self.assertEqual((preview["starts"], preview["added"], preview["total"]),
+                                 (3, 3, 4))
+                self.assertEqual((done["added"], done["written"]), (3, True))
+                self.assertNotEqual(before, after)
+                self.assertIn(b"Bookmarks: 0, 1000, 16500, 32000", after)
+                self.assertTrue(Path(tmp, "map.osu.bak").is_file())
+
+    def test_without_sections_or_maps_it_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": False, "key": "no_rust"}):
+                self.assertEqual(api.structure_bookmarks_preview("map.osu")["key"], "no_rust")
+            self.assertEqual(api.structure_bookmarks_preview("..\\map.osu")["key"], "bad_file")
+        self.assertEqual(web.Api().structure_bookmarks_preview("map.osu")["key"], "first")
+
+
+class StructureKiaiBridgeTests(_IsolatedConfig):
+    """Kiai on chorus sections, previewed then written once."""
+
+    VIEW = {"sections": [{"start_s": 0.0, "end_s": 16.0, "kind": "verse"},
+                          {"start_s": 16.0, "end_s": 32.0, "kind": "chorus"}]}
+
+    def _song(self, tmp: str) -> web.Api:
+        folder = Path(tmp)
+        (folder / "audio.mp3").write_bytes(b"ID3" + bytes(64))
+        (folder / "map.osu").write_bytes("\r\n".join(
+            ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+             "[TimingPoints]", "0,500,4,2,0,70,1,0", "",
+             "[HitObjects]", "256,192,1000,1,0,0:0:0:0:", ""]).encode("utf-8"))
+        api = _api_with_points()
+        api._analysis.source = str(folder / "audio.mp3")
+        return api
+
+    def test_preview_counts_and_apply_writes_greens_with_a_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": True, "view": self.VIEW}):
+                preview = api.structure_kiai_preview("map.osu")
+                before = ta.sound_events(ta.read_osu_beatmap(Path(tmp) / "map.osu"))
+                raw_before = Path(tmp, "map.osu").read_bytes()
+                done = api.structure_kiai_apply("map.osu")
+                after = Path(tmp, "map.osu").read_bytes()
+                json.dumps([preview, done])
+                self.assertEqual((preview["choruses"], preview["added"],
+                                  preview["flipped"], preview["kept"]),
+                                 (1, 2, 0, 0))
+                self.assertEqual((done["added"], done["flipped"], done["written"]),
+                                 (2, 0, True))
+                self.assertNotEqual(raw_before, after)
+                self.assertEqual(ta.sound_events(ta.read_osu_beatmap(Path(tmp) / "map.osu")),
+                                 before)
+                greens = ta.read_osu_beatmap(Path(tmp) / "map.osu")["timing"]["greens"]
+                self.assertEqual([(g.split(",")[0], g.split(",")[7]) for g in greens],
+                                 [("16000", "1"), ("32000", "0")])
+                self.assertTrue(Path(tmp, "map.osu.bak").is_file())
+
+    def test_without_a_chorus_or_maps_it_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            plain = {"ok": True, "view": {"sections": [{"start_s": 0.0, "end_s": 8.0,
+                                                         "kind": "verse"}]}}
+            with mock.patch.object(web.Api, "structure", return_value=plain):
+                self.assertEqual(api.structure_kiai_preview("map.osu")["key"], "no_chorus")
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": False, "key": "no_rust"}):
+                self.assertEqual(api.structure_kiai_preview("map.osu")["key"], "no_rust")
+            self.assertEqual(api.structure_kiai_preview("..\\map.osu")["key"], "bad_file")
+        self.assertEqual(web.Api().structure_kiai_preview("map.osu")["key"], "first")
+
+
+class StructureBreaksBridgeTests(_IsolatedConfig):
+    """Quiet spans long enough for a break, previewed then written once."""
+
+    VIEW = {"sections": [{"start_s": 0.0, "end_s": 10.0, "kind": "verse", "level_db": -8.0},
+                          {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -14.0}]}
+
+    def _song(self, tmp: str) -> web.Api:
+        folder = Path(tmp)
+        (folder / "audio.mp3").write_bytes(b"ID3" + bytes(64))
+        (folder / "map.osu").write_bytes("\r\n".join(
+            ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+             "[Events]", "//Background and Video events", "//Break Periods", "",
+             "[TimingPoints]", "0,500,4,2,0,70,1,0", "",
+             "[HitObjects]", "256,192,1000,1,0,0:0:0:0:", "256,192,2000,1,0,0:0:0:0:",
+             "256,192,30000,1,0,0:0:0:0:", ""]).encode("utf-8"))
+        api = _api_with_points()
+        api._analysis.source = str(folder / "audio.mp3")
+        return api
+
+    def test_preview_lists_and_apply_writes_with_a_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": True, "view": self.VIEW}):
+                preview = api.structure_breaks_preview("map.osu")
+                raw_before = Path(tmp, "map.osu").read_bytes()
+                done = api.structure_breaks_apply("map.osu")
+                after = Path(tmp, "map.osu").read_bytes()
+                json.dumps([preview, done])
+                self.assertEqual(preview["spans"],
+                                 [{"start_ms": 10000, "end_ms": 30000, "kind": "chorus",
+                                   "under_db": 6.0, "gap_s": 28.0}])
+                self.assertEqual((done["breaks"], done["added"], done["written"]),
+                                 (1, 1, True))
+                self.assertNotEqual(raw_before, after)
+                self.assertIn(b"2,10000,30000", after)
+                self.assertTrue(Path(tmp, "map.osu.bak").is_file())
+                again = api.structure_breaks_apply("map.osu")
+                self.assertEqual((again["added"], again["kept"]), (0, 1))
+
+    def test_without_spans_or_maps_it_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            loud = {"sections": [dict(s, level_db=-8.0) for s in self.VIEW["sections"]]}
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": True, "view": loud}):
+                self.assertEqual(api.structure_breaks_preview("map.osu")["spans"], [])
+                self.assertEqual(api.structure_breaks_apply("map.osu")["key"], "no_breaks")
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": False, "key": "no_rust"}):
+                self.assertEqual(api.structure_breaks_preview("map.osu")["key"], "no_rust")
+            self.assertEqual(api.structure_breaks_preview("..\\map.osu")["key"], "bad_file")
+        self.assertEqual(web.Api().structure_breaks_preview("map.osu")["key"], "first")
+
+
+class OffsetLabBridgeTests(_IsolatedConfig):
+    """The Offset lab: the header's numbers, both decoders side by side."""
+
+    def test_header_reads_without_a_song_decoded(self) -> None:
+        api = _api_with_points()
+        reply = api.offset_lab()
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["header"]["present"], False)
+        self.assertEqual(web.Api().offset_lab()["key"], "first")
+
+    def test_first_attacks_compare_and_refusals_say_which_side(self) -> None:
+        from types import SimpleNamespace
+        api = _api_with_points()
+        api._analysis.attack_times = np.array([1.2345, 2.0])
+        api._analysis.attack_weights = np.array([1.0, 0.8])
+        rust = SimpleNamespace(attack_times=np.array([1.2455, 2.0]),
+                               attack_weights=np.array([1.0, 0.8]))
+        with mock.patch.object(web.overtone_rust, "analyze", return_value=rust):
+            reply = api.offset_decoders()
+        json.dumps(reply)
+        self.assertEqual((reply["python_ms"], reply["rust_ms"], reply["delta_ms"]),
+                         (1234.5, 1245.5, 11.0))
+        with mock.patch.object(web.overtone_rust, "analyze",
+                               side_effect=web.overtone_rust.SidecarUnavailable("gone")):
+            self.assertEqual(api.offset_decoders()["key"], "no_rust")
+        with mock.patch.object(web.overtone_rust, "analyze",
+                               return_value=SimpleNamespace(attack_times=np.zeros(0),
+                                                            attack_weights=np.zeros(0))):
+            reply = api.offset_decoders()
+            self.assertEqual(reply["key"], "error")
+        self.assertEqual(web.Api().offset_decoders()["key"], "first")
+
+
 class FolderImportTests(_IsolatedConfig):
     def _song(self, tmp: str) -> Path:
         root = Path(tmp) / "123 Artist - Title"
@@ -1304,6 +1741,76 @@ class MapsetBridgeTests(_IsolatedConfig):
             target = Path(tmp) / "map.osu"
             target.write_text("[General]\n", encoding="utf-8")
             self.assertEqual(web.Api().mapset_check(str(target))["key"], "bad_folder")
+
+
+class SwapBridgeTests(_IsolatedConfig):
+    """Audio swap in the Mapset view: measure, preview, write with backups."""
+
+    @staticmethod
+    def _clicks(seconds=6.0, bpm=150.0, seed=7):
+        import math
+        rng = np.random.default_rng(seed)
+        y = np.zeros(int(seconds * 44100), dtype=np.float64)
+        k = 0
+        while True:
+            t = 0.5 + k * 60.0 / bpm
+            if t > seconds - 0.2:
+                break
+            n = int(0.03 * 44100)
+            burst = np.exp(-np.arange(n) / (0.004 * 44100)) * (rng.random(n) - 0.5)
+            y[int(t * 44100):int(t * 44100) + n] += (0.9 if k % 4 == 0 else 0.5) * burst
+            k += 1
+        return (y / max(1e-9, np.abs(y).max()) * 30000).astype(np.int16)
+
+    def _set(self, tmp: str):
+        import soundfile as sf
+        root = Path(tmp) / "set"
+        root.mkdir()
+        y = self._clicks()
+        sf.write(str(root / "old.wav"), y, 44100)
+        shift = int(round(26.0 / 1000 * 44100))
+        delayed = np.zeros_like(y)
+        delayed[shift:] = y[:len(y) - shift]
+        sf.write(str(root / "new.wav"), delayed, 44100)
+        fast = self._clicks(bpm=165.0)
+        sf.write(str(root / "fast.wav"), fast, 44100)
+        (root / "map.osu").write_bytes("\r\n".join(
+            ["osu file format v14", "", "[General]", "AudioFilename: old.wav", "",
+             "[TimingPoints]", "500,400,4,2,0,70,1,0", "", "[HitObjects]",
+             "256,192,500,1,0,0:0:0:0:", "256,192,900,1,0,0:0:0:0:", ""]).encode("utf-8"))
+        return root
+
+    def test_audios_listed_preview_measures_apply_writes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._set(tmp)
+            api = web.Api()
+            listed = api.swap_audios(str(root))
+            self.assertEqual((listed["audios"], listed["current"]),
+                             (["fast.wav", "new.wav", "old.wav"], "old.wav"))
+            preview = api.swap_preview(str(root), "old.wav", "new.wav")
+            before = (root / "map.osu").read_bytes()
+            done = api.swap_apply(str(root), "old.wav", "new.wav")
+            after = (root / "map.osu").read_bytes()
+            json.dumps([listed, preview, done])
+            self.assertAlmostEqual(preview["shift"]["shift_ms"], 26.0, delta=0.5)
+            self.assertTrue(all(row["ok"] for row in preview["maps"]))
+            self.assertIn(b"AudioFilename: new.wav", after)
+            self.assertIn(b"256,192,526,1,0,0:0:0:0:", after)
+            self.assertNotEqual(before, after)
+            self.assertTrue((root / "map.osu.bak").is_file())
+
+    def test_tempo_twins_and_same_file_refuse_writing_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._set(tmp)
+            before = {p.name: p.read_bytes() for p in root.iterdir()}
+            api = web.Api()
+            refused = api.swap_preview(str(root), "old.wav", "fast.wav")
+            self.assertEqual(refused["key"], "error")
+            self.assertIn("Tempo", refused["detail"])
+            self.assertEqual(api.swap_preview(str(root), "old.wav", "old.wav")["key"], "sw_same_file")
+            self.assertEqual(api.swap_preview(str(root), "old.wav", "missing.wav")["key"], "bad_file")
+            self.assertEqual(api.swap_audios(str(root / "nope"))["key"], "bad_folder")
+            self.assertEqual({p.name: p.read_bytes() for p in root.iterdir()}, before)
 
 
 class RecentTests(_IsolatedConfig):

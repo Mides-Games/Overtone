@@ -31,6 +31,10 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="5" height="12" rx="1.5"/><rect x="9.5" y="4" width="5" height="16" rx="1.5"/><rect x="16.5" y="8" width="5" height="8" rx="1.5"/></svg>
         <span class="nav-label" data-i18n="nav_structure">Structure</span>
       </button>
+      <button type="button" class="nav-item" data-view="hitsounds" data-i18n-title="nav_hitsounds" title="Hitsounds">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>
+        <span class="nav-label" data-i18n="nav_hitsounds">Hitsounds</span>
+      </button>
       <button type="button" class="nav-item" data-view="mapcheck" data-i18n-title="nav_mapcheck" title="Map check">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8.5 12 2.5 2.5 5-5"/><path d="M20 12.5V18a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3h8"/></svg>
         <span class="nav-label" data-i18n="nav_mapcheck">Map check</span>
@@ -46,6 +50,10 @@
       <button type="button" class="nav-item" data-view="export" data-i18n-title="nav_export" title="Export">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>
         <span class="nav-label" data-i18n="nav_export">Export</span>
+      </button>
+      <button type="button" class="nav-item" data-view="history" data-i18n-title="nav_history" title="History">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 3"/></svg>
+        <span class="nav-label" data-i18n="nav_history">History</span>
       </button>
       <div class="nav-sep" role="presentation"></div>
       <button type="button" class="nav-item" data-view="settings" data-i18n-title="nav_settings" title="Settings">
@@ -207,6 +215,7 @@
             <span class="num pb-time" id="pbTime">0:00.000</span>
             <input type="range" class="pb-seek" id="pbSeek" min="0" max="1000" step="1" value="0" data-i18n-aria="pb_seek" aria-label="Position">
             <label class="check"><input type="checkbox" id="pbClick" checked><span data-i18n="pb_click">Click</span></label>
+            <label class="check"><input type="checkbox" id="pbPerc"><span data-i18n="pb_perc">Percussion only</span></label>
             <label class="check"><input type="checkbox" id="pbLoop"><span data-i18n="pb_loop">Loop section</span></label>
             <div class="segmented" id="pbRate" data-i18n-title="pb_rate" title="Speed: slower lowers the pitch, so every attack stays exactly in place">
               <button data-rate="1" class="on">100%</button><button data-rate="0.75">75%</button><button data-rate="0.5">50%</button>
@@ -256,6 +265,80 @@
             </div>
           </div>
           <div class="card detail-card" id="detail"></div>
+        </div>
+
+        <div class="card cmp-card" id="evCard" hidden>
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="ev_title">Evidence</div>
+              <div class="card-sub" data-i18n="ev_sub">What the engine read against: coherence candidates per section, the octave margin, residual and coverage. Using one writes its BPM into the governing red line.</div>
+            </div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="evEngine"></span>
+          </div>
+          <div class="card-body" id="evBody"></div>
+        </div>
+
+        <div class="card cmp-card" id="rampCard" hidden>
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="ramp_title">Ramps</div>
+              <div class="card-sub" data-i18n="ramp_sub">The elastic curve as the fewest red lines within the drift. Using them replaces the timing with hand-placed lines; undo brings it back.</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="assist-form">
+              <div class="field">
+                <label for="rampDrift" data-i18n="ramp_drift">Drift (ms)</label>
+                <input class="input num" id="rampDrift" type="number" step="1" min="1" value="5">
+              </div>
+              <div class="field">
+                <label for="rampMax" data-i18n="ramp_max">At most N lines</label>
+                <input class="input num" id="rampMax" type="number" step="1" min="1">
+              </div>
+              <button class="btn small primary" id="rampFit"><span data-i18n="ramp_fit">Fit</span></button>
+              <button class="btn small" id="rampUse" disabled><span data-i18n="ramp_use">Use these lines</span></button>
+            </div>
+            <div id="rampResult"></div>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="labCard" hidden>
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="lab_title">Offset lab</div>
+              <div class="card-sub" data-i18n="lab_sub">What the file says about its own delay, and the first attack through each decoder side by side.</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-sub" id="labHeader"></div>
+            <div class="drop-actions">
+              <button type="button" class="btn small" id="labCompare"><span data-i18n="lab_compare">Compare decoders</span></button>
+            </div>
+            <div class="card-sub" id="labResult"></div>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="labTestCard" hidden>
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="lab_test_title">Blind test</div>
+              <div class="card-sub" data-i18n="lab_test_sub">Hear the same passage twice with two hidden click shifts and pick the one in time. Each shift runs against no shift, three times each.</div>
+            </div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="labProgress"></span>
+          </div>
+          <div class="card-body">
+            <div class="drop-actions">
+              <button type="button" class="btn small primary" id="labStart"><span data-i18n="lab_start">Start</span></button>
+              <button type="button" class="btn small" id="labHear1" disabled><span data-i18n="lab_hear1">Hear 1</span></button>
+              <button type="button" class="btn small" id="labHear2" disabled><span data-i18n="lab_hear2">Hear 2</span></button>
+              <button type="button" class="btn small" id="labVote1" disabled><span data-i18n="lab_vote1">1 was in time</span></button>
+              <button type="button" class="btn small" id="labVote2" disabled><span data-i18n="lab_vote2">2 was in time</span></button>
+              <button type="button" class="btn small" id="labCancel" hidden><span data-i18n="lab_cancel">Cancel</span></button>
+            </div>
+            <div id="labTestResult"></div>
+          </div>
         </div>
 
         <div class="card cmp-card">
@@ -393,6 +476,24 @@
           </div>
         </div>
 
+        <!-- move one mapset's times onto a new encode of its audio -->
+        <div class="card cmp-card" id="swCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="sw_title">Audio swap</div>
+            <div class="spacer"></div>
+            <button class="btn small" id="swPreview"><span data-i18n="sw_preview">Preview</span></button>
+            <button class="btn small primary" id="swApply" disabled><span data-i18n="sw_apply">Move every time</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="sw_sub">Measures the shift between the mapped audio and a new encode, and moves every red line, object, preview, lead-in and bookmark by it. Tempo twins and strangers refuse; every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="sw_old">Mapped audio</span><span class="card-sub" id="swOld"></span></label>
+              <label class="field"><span class="setting-name" data-i18n="sw_new">New encode</span><select class="input" id="swNew"></select></label>
+            </div>
+            <div id="swResult"></div>
+          </div>
+        </div>
+
         <div class="card cmp-card" id="msRedCard" hidden>
           <div class="card-head">
             <div class="card-title" data-i18n="ms_red_title">Red lines</div>
@@ -427,6 +528,123 @@
             <span class="card-sub" id="stxFile"></span>
           </div>
           <div class="card-body" id="stxBody"></div>
+        </div>
+
+        <div class="card cmp-card" id="stxBmCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="stx_bm_title">Bookmarks</div>
+            <div class="spacer"></div>
+            <button type="button" class="btn small" id="stxBmPreview"><span data-i18n="stx_bm_preview">Preview</span></button>
+            <button type="button" class="btn small primary" id="stxBmApply" disabled><span data-i18n="stx_bm_apply">Write bookmarks</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="stx_bm_sub">Section starts as editor bookmarks in one difficulty, merged with its own. Nothing is ever deleted; every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="hsv_map">Difficulty</span><select class="input" id="stxBmMap"></select></label>
+            </div>
+            <div class="card-sub" id="stxBmResult"></div>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="stxKiaiCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="stx_kiai_title">Kiai</div>
+            <div class="spacer"></div>
+            <button type="button" class="btn small" id="stxKiaiPreview"><span data-i18n="stx_kiai_preview">Preview</span></button>
+            <button type="button" class="btn small primary" id="stxKiaiApply" disabled><span data-i18n="stx_kiai_apply">Write kiai</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="stx_kiai_sub">Kiai on the chorus sections in one difficulty, written as green lines. Sound never changes — kiai is light, not sound; every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="hsv_map">Difficulty</span><select class="input" id="stxKiaiMap"></select></label>
+            </div>
+            <div class="card-sub" id="stxKiaiResult"></div>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="stxBreaksCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="stx_breaks_title">Breaks</div>
+            <div class="spacer"></div>
+            <button type="button" class="btn small" id="stxBreaksPreview"><span data-i18n="stx_breaks_preview">Preview</span></button>
+            <button type="button" class="btn small primary" id="stxBreaksApply" disabled><span data-i18n="stx_breaks_apply">Write breaks</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="stx_breaks_sub">Breaks where the song goes quiet and the map goes silent, written as 2,start,end lines. Only spans 5 s or longer are proposed; every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="hsv_map">Difficulty</span><select class="input" id="stxBreaksMap"></select></label>
+            </div>
+            <div class="card-sub" id="stxBreaksResult"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- hitsounds: what one difficulty plays, where its additions fall (Phase 6, H2) -->
+      <section class="view" id="viewHitsounds" data-view="hitsounds" data-needs-result hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_hitsounds">Hitsounds</h2>
+          <div class="view-sub" data-i18n="hsv_sub">What one difficulty plays: where its additions fall in the bar, every sound to hear one by one, and the decision engine's proposals to write or not.</div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="hsv_map">Difficulty</div>
+            <div class="spacer"></div>
+            <select class="input hsv-pick" id="hsvMap"></select>
+          </div>
+          <div class="card-body" id="hsvSummary"></div>
+        </div>
+
+        <div class="card cmp-card" id="hsvDecideCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="hsv_decide_title">Propose hitsounds</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="hsvDecideStatus"></span>
+          </div>
+          <div class="card-body">
+            <div class="card-sub" data-i18n="hsv_decide_sub">The decision engine proposes every object's sound. Tick what to keep, preview, then write the file or a copy. Each write is backed up, and one undo restores it.</div>
+            <div class="drop-actions">
+              <button type="button" class="btn primary" id="hsvPropose"><span data-i18n="hsv_propose">Propose</span></button>
+              <button type="button" class="btn small" id="hsvDecideAll"><span data-i18n="hsv_decide_all">All</span></button>
+              <button type="button" class="btn small" id="hsvDecideNone"><span data-i18n="hsv_decide_none">None</span></button>
+              <button type="button" class="btn small" id="hsvDecidePreview"><span data-i18n="hsv_preview">Preview</span></button>
+              <button type="button" class="btn small" id="hsvDecideApply"><span data-i18n="hsv_write">Write into this file</span></button>
+              <button type="button" class="btn small" id="hsvDecideCopy"><span data-i18n="hsv_write_copy">Write a copy</span></button>
+              <button type="button" class="btn small" id="hsvDecideUndo"><span data-i18n="hsv_undo">Undo</span></button>
+            </div>
+            <div class="card-sub" id="hsvDecidePrevText"></div>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="hsvWhereCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="hsv_where_title">Where the additions fall</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="hsvWhereNote"></span>
+          </div>
+          <div class="card-body hsv-where" id="hsvWhere"></div>
+        </div>
+
+        <div class="card cmp-card table-card" id="hsvSoundsCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="hsv_sounds">Sounds</div>
+            <span class="pill" id="hsvCount"></span>
+            <div class="spacer"></div>
+            <div class="segmented" id="hsvFilter">
+              <button type="button" data-f="all" class="on" data-i18n="hsv_all">All</button>
+              <button type="button" data-f="whistle" data-i18n="lg_whistle">whistle</button>
+              <button type="button" data-f="finish" data-i18n="lg_finish">finish</button>
+              <button type="button" data-f="clap" data-i18n="lg_clap">clap</button>
+            </div>
+          </div>
+          <div class="table-scroll hsv-table"><table class="ms-table">
+            <thead><tr><th class="txt" data-i18n="hsv_t_time">Time</th><th data-i18n="hsv_t_place">Bar · beat</th>
+              <th class="txt" data-i18n="hsv_t_part">Part</th><th class="txt" data-i18n="hsv_t_sounds">Sounds</th>
+              <th class="txt" data-i18n="hsv_t_sets">Sets</th><th data-i18n="hsv_t_index">Index</th>
+              <th data-i18n="hsv_t_volume">Volume</th><th class="txt" data-i18n="hsv_t_proposal">Proposal</th><th></th></tr></thead>
+            <tbody id="hsvRows"></tbody>
+          </table></div>
+          <div class="card-body"><button type="button" class="link" id="hsvMore" hidden></button></div>
         </div>
       </section>
 
@@ -583,6 +801,27 @@
             </div>
             <button class="btn small" id="injectBtn"><span data-i18n="actions_inject">Inject .osu…</span></button>
           </div>
+        </div>
+      </section>
+
+      <!-- history: every .osu write, its backup, restore -->
+      <section class="view" id="viewHistory" data-view="history" hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_history">History</h2>
+          <div class="view-sub" data-i18n="hist_sub">Every .osu write this app made, newest first, with the backup holding what it replaced. Restoring keeps the current file as a new backup first.</div>
+        </div>
+        <div class="card cmp-card table-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="hist_title">Writes</div>
+            <span class="pill" id="histCount" hidden></span>
+          </div>
+          <div class="table-scroll"><table>
+            <thead><tr><th class="txt" data-i18n="hist_t_when">When</th><th class="txt" data-i18n="hist_t_what">What</th>
+              <th class="txt" data-i18n="hist_t_file">File</th><th class="txt" data-i18n="hist_t_backup">Backup</th>
+              <th></th></tr></thead>
+            <tbody id="histRows"></tbody>
+          </table></div>
+          <div class="card-body" id="histDiff"></div>
         </div>
       </section>
     </div>

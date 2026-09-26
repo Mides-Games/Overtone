@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-379%20Python%20%C2%B7%20233%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-456%20Python%20%C2%B7%20263%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -24,7 +24,7 @@ sections within 0.05 BPM and 5 ms     24 / 24
 |---|---|
 | **Timing engine** (Python) | ✅ Works. Exact on the synthetic corpus; refuses audio with no pulse |
 | **Timing engine** (Rust v4) | ✅ At parity with Python, attack for attack and red line for red line; about 4× faster end to end on the corpus. In the app as an opt-in (Settings → Rust engine); Python takes over, and says so, where Rust has no answer |
-| **App** (web window) | ✅ Sections for Library, Timing, Structure, Map check, Mapset, Report and Export; analyse, edit, undo, lock, export, inject, compare with a map, alignment, density, snap audit, suggestions, mapset check, reference timing, assisted timing, mod report, osu! Songs browser — in English and Spanish |
+| **App** (web window) | ✅ Sections for Library, Timing, Structure, Hitsounds, Map check, Mapset, Report and Export; analyse, edit, undo, lock, export, inject, compare with a map, alignment, density, snap audit, suggestions, mapset check, reference timing, assisted timing, mod report, osu! Songs browser — in English and Spanish |
 | **osu! files** | ✅ Full reader; writer keeps every byte you did not ask to change |
 | **Hitsounds** | 🦀 Half built in Rust (features, 13 instrument classes, musical role); no decision or editor yet |
 | **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, section loop at 100/75/50 %, taps |
@@ -93,6 +93,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Suggestions: red lines the map is missing | ✅ | Shown on the tempo map; applying one is P9 |
 | Reference timing: grade any map's red lines against the attacks | ✅ | Offset, drift and fitted BPM per line, each with its standard error; load a map as the working timing; find every map of the same audio in a Songs folder |
 | Structure: the song's sections, each label with the evidence behind it | ✅ | Rust engine; edges snap to proven bar lines, a section opens in Timing. Labels are heuristics and say which rule decided them |
+| Hitsounds section: where each addition falls in the bar, every sound heard one by one | ✅ | Read only; against the map's own red lines, in sixteenths. The object lane shows them on the timeline |
 | Hear a difficulty's hitsounds with the song | ✅ | The transport's "Hitsounds from"; the map's own samples, else Overtone's (osu!'s defaults are not ours to ship). Slider bodies not yet |
 | Hitsound copier: one difficulty's hitsounds onto the others | ✅ | Mapset view; by time within 5 ms, a preview first, only hitsound fields change, backups kept |
 | osu! Songs browser: your whole Songs folder, searched as you type | ✅ | A SQLite index: a rescan reads only what changed, and maps of the same audio come back in milliseconds |
@@ -107,7 +108,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Map red lines drawn as ghosts on the timeline | ✅ | From the reference or compare card |
 | Command palette, full keyboard map | 📋 | P3 |
 | Settings section: output folder, offset precision, click, interface size, cache | ✅ | Detection stays in its drawer |
-| Sections: Hitsounds, Audio | 📋 | P19 — Library, Timing, Structure, Map check, Mapset, Report, Export and Settings exist |
+| Sections: Audio | 📋 | P19 — Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export and Settings exist |
 | Light and dark themes, or the system's | ✅ | Settings → Theme; UI scale and reduced motion too |
 
 ### Playback
@@ -286,7 +287,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 379 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 456 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage
@@ -297,7 +298,7 @@ instantly and exactly; the click track is the arbiter.
 .venv/Scripts/python.exe bench/gates.py reference      # hand-timed maps graded by the attacks
 .venv/Scripts/python.exe bench/gates.py assisted       # two marked downbeats seed the grid
 .venv/Scripts/python.exe bench/facts.py                # the numbers these docs state
-cargo test --workspace                                 # 233 tests
+cargo test --workspace                                 # 263 tests
 cargo run --release -q -p overtone-bench -- golden     # Rust vs Python, attack for attack
 ```
 

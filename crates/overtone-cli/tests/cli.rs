@@ -317,3 +317,161 @@ fn structure_reads_phrases_and_says_why_each_label() {
         assert!(bad.stdout.is_empty());
     }
 }
+
+#[test]
+fn hitsound_proposes_every_object_with_alternatives_and_terms() {
+    // Twelve bare circles on 150 BPM clicks: the prior keeps them bare,
+    // and each proposal carries its alternatives and its terms.
+    let dir = scratch("hitsound");
+    let audio = dir.join("clicks-150.wav");
+    write_wav(&audio, &clicks(150.0, 6.0));
+    let mut map = String::from("osu file format v14\r\n[TimingPoints]\r\n500,400,4,2,1,70,1,0\r\n[HitObjects]\r\n");
+    for k in 0..12 {
+        map.push_str(&format!("256,192,{},1,0,0:0:0:0:\r\n", 500 + k * 400));
+    }
+    let map_path = dir.join("clicks.osu");
+    std::fs::write(&map_path, map).unwrap();
+    let out = run(&["hitsound", audio.to_str().unwrap(), map_path.to_str().unwrap()]);
+    let missing_map = run(&["hitsound", audio.to_str().unwrap(), "no-such.osu"]);
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["templates"], "baked");
+    assert_eq!(report["profile"], "balanced");
+    let units = report["units"].as_array().unwrap();
+    assert_eq!(units.len(), 12);
+    for unit in units {
+        let proposal = &unit["proposal"];
+        assert!(proposal["bank"].is_string());
+        assert!(proposal["additions"].is_array());
+        let probability = proposal["probability"].as_f64().unwrap();
+        assert!((0.0..=1.0).contains(&probability), "{proposal}");
+        // Alternatives with marginals, terms that replay the choice.
+        let alternatives = unit["alternatives"].as_array().unwrap();
+        assert!(!alternatives.is_empty());
+        assert!(alternatives.iter().all(|a| (0.0..=1.0).contains(&a["probability"].as_f64().unwrap())));
+        let terms = unit["terms"].as_array().unwrap();
+        assert_eq!(terms.len(), 4);
+        assert!(unit["transition_in"].is_number() || unit["transition_in"].is_null());
+        assert_eq!(unit["tail"], false);
+    }
+    // Bare circles with a prior stay bare: the first proposal is normal.
+    assert_eq!(units[0]["proposal"]["additions"].as_array().unwrap().len(), 0);
+    assert!(report["timings_s"]["decide"].is_number());
+
+    assert_eq!(missing_map.status.code(), Some(1));
+    for args in [
+        &["hitsound"][..],
+        &["hitsound", "a.wav"][..],
+        &["hitsound", "a.wav", "b.osu", "c.osu"][..],
+        &["hitsound", "a.wav", "b.osu", "--profile"][..],
+    ] {
+        let bad = run(args);
+        assert_eq!(bad.status.code(), Some(2), "{args:?}");
+    }
+}
+
+#[test]
+fn ramps_turns_a_click_track_into_one_line_and_refuses_bad_input() {
+    let dir = scratch("ramps");
+    let path = dir.join("clicks-150.wav");
+    write_wav(&path, &clicks(150.0, 30.0));
+    let out = run(&["ramps", path.to_str().unwrap()]);
+    let capped = run(&["ramps", path.to_str().unwrap(), "--max-lines", "1"]);
+    let missing = run(&["ramps", "no-such-file.wav"]);
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let lines = report["lines"].as_array().unwrap();
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    let bpm = lines[0]["bpm"].as_f64().unwrap();
+    assert!((bpm - 150.0).abs() < 0.5, "one line at {bpm}");
+    assert!(lines[0]["max_drift_ms"].as_f64().unwrap() <= 5.0);
+    let tradeoff = report["tradeoff"].as_array().unwrap();
+    assert_eq!(tradeoff.len(), 5);
+    assert!(tradeoff.iter().all(|row| row["lines"].as_u64().unwrap() == 1));
+    assert_eq!(report["recommend_ramps"], false);
+    assert_eq!(report["elastic"]["degree"].as_u64().unwrap(), 1);
+
+    assert_eq!(capped.status.code(), Some(0));
+    let capped_report: serde_json::Value = serde_json::from_slice(&capped.stdout).unwrap();
+    assert_eq!(capped_report["drift_ms"].as_f64().unwrap(), 1.0);
+
+    assert_eq!(missing.status.code(), Some(1));
+    for args in [
+        &["ramps"][..],
+        &["ramps", "a.wav", "b.wav"][..],
+        &["ramps", "a.wav", "--drift", "0"][..],
+        &["ramps", "a.wav", "--max-lines", "0"][..],
+        &["ramps", "a.wav", "--bogus"][..],
+    ] {
+        let bad = run(args);
+        assert_eq!(bad.status.code(), Some(2), "{args:?}");
+    }
+}
+
+#[test]
+fn hitsound_evidence_scores_every_attack_and_names_its_role() {
+    let dir = scratch("evidence");
+    let path = dir.join("clicks-150.wav");
+    write_wav(&path, &clicks(150.0, 12.0));
+    let out = run(&["hitsound-evidence", path.to_str().unwrap()]);
+    let missing = run(&["hitsound-evidence", "no-such-file.wav"]);
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["templates"], "baked");
+    let attacks = report["attacks"].as_array().unwrap();
+    assert!(!attacks.is_empty());
+    for attack in attacks {
+        let classes = attack["classes"].as_array().unwrap();
+        // All 13 classes, probabilities that sum to one.
+        assert_eq!(classes.len(), 13, "{attack}");
+        let total: f64 = classes
+            .iter()
+            .map(|c| c["probability"].as_f64().unwrap())
+            .sum();
+        assert!((total - 1.0).abs() < 1e-9, "{total}");
+        // Each term's contribution replays its class's score.
+        for class in classes {
+            let terms = class["terms"].as_array().unwrap();
+            assert!(!terms.is_empty());
+            assert!(terms.iter().all(|t| t["feature"].is_string()
+                && t["value"].is_number()
+                && t["response"]["kind"].is_string()
+                && t["contribution"].is_number()));
+        }
+        // The click grid proves bars, so the role sits on it.
+        assert!(attack["role"]["division"].is_number());
+        assert!(attack["role"]["metrical_weight"].is_number());
+    }
+    assert!(!report["sections"].as_array().unwrap().is_empty());
+
+    assert_eq!(missing.status.code(), Some(1));
+    for args in [
+        &["hitsound-evidence"][..],
+        &["hitsound-evidence", "a.wav", "b.wav"][..],
+        &["hitsound-evidence", "--full"][..],
+    ] {
+        let bad = run(args);
+        assert_eq!(bad.status.code(), Some(2), "{args:?}");
+    }
+}

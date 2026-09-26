@@ -52,6 +52,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -2091,6 +2092,86 @@ def _load_audio(path: str | os.PathLike[str],
     return y, int(sr)
 
 
+def percussive_wav(y: np.ndarray, sr: int) -> bytes:
+    """The percussive stem as 16-bit mono WAV bytes (Phase 4, audition).
+
+    librosa's HPSS, same length in and out, peak-normalized like a decode.
+    Thin on purpose: the bridge caches the bytes per analysis, and the only
+    promise made here is bytes that decode — attack preservation is measured
+    where it is used, not asserted here.
+    """
+    import io
+    _harmonic, percussive = librosa.effects.hpss(np.asarray(y, dtype=np.float32))
+    peak = float(np.max(np.abs(percussive)))
+    if peak > 1e-9:
+        percussive = (percussive / peak * 0.99).astype(np.float32)
+    buffer = io.BytesIO()
+    sf.write(buffer, np.asarray(percussive, dtype=np.float32), int(sr),
+             format="WAV", subtype="PCM_16")
+    return buffer.getvalue()
+
+
+def mp3_gapless_info(path: str | os.PathLike[str]) -> dict:
+    """The MP3's own gapless numbers, read from its header (Phase 19, lab).
+
+    Skips an ID3v2 tag, finds the first frame, reads the MPEG version for
+    the Xing offset, and unpacks the LAME tag's encoder delay and padding
+    (12 bits each at LAME+21). Returns encoder string, delay and padding in
+    samples and milliseconds at the file's own rate, or ``present`` False
+    for anything without a LAME tag — Fraunhofer and old encoders write
+    none, and that is reported, not guessed. Read only; plain JSON types.
+    """
+    name = str(path)
+    if Path(name).suffix.lower() != ".mp3":
+        return {"present": False}
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(8192)
+    except OSError:
+        return {"present": False}
+    pos = 0
+    if head[:3] == b"ID3":
+        if len(head) < 10:
+            return {"present": False}
+        size = 0
+        for byte in head[6:10]:
+            size = (size << 7) | (byte & 0x7F)
+        pos = 10 + size
+    sync = -1
+    for i in range(pos, min(pos + 256, len(head) - 4)):
+        if head[i] == 0xFF and head[i + 1] & 0xE0 == 0xE0:
+            sync = i
+            break
+    if sync < 0:
+        return {"present": False}
+    version = (head[sync + 1] >> 3) & 0x03
+    mono = ((head[sync + 3] >> 6) & 0x03) == 3
+    if version == 3:
+        xing_at = sync + 4 + (17 if mono else 32)
+        rates = (44100, 48000, 32000, 0)
+    elif version in (2, 0):
+        xing_at = sync + 4 + (9 if mono else 17)
+        rates = (22050, 24000, 16000, 0) if version == 2 else (11025, 12000, 8000, 0)
+    else:
+        return {"present": False}
+    sample_rate = rates[(head[sync + 2] >> 2) & 0x03]
+    if not sample_rate or head[xing_at:xing_at + 4] not in (b"Xing", b"Info"):
+        return {"present": False}
+    lame_at = head.find(b"LAME", xing_at + 4, xing_at + 240)
+    if lame_at < 0 or lame_at + 24 > len(head):
+        return {"present": False}
+    lame = head[lame_at:lame_at + 24]
+    raw = int.from_bytes(lame[21:24], "big")
+    delay, padding = (raw >> 12) & 0xFFF, raw & 0xFFF
+    encoder = lame[0:9].decode("ascii", "replace").strip("\x00")
+    if not encoder.startswith("LAME"):
+        return {"present": False}
+    scale = 1000.0 / sample_rate
+    return {"present": True, "encoder": encoder, "sample_rate": sample_rate,
+            "delay_samples": delay, "padding_samples": padding,
+            "delay_ms": round(delay * scale, 3), "padding_ms": round(padding * scale, 3)}
+
+
 def _weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
     if values.size == 0:
         return 0.0
@@ -2658,6 +2739,58 @@ def osu_timing_text(analysis: Analysis, decimals: int = 0) -> str:
     return "\n".join(rows)
 
 
+def analysis_evidence(analysis: Analysis) -> dict:
+    """The engine's alternatives for one analysis (Phase 19, Evidence).
+
+    Read only. Per settled section: its BPM, residual, coverage and inliers,
+    plus the coherence candidates the seed search read — each with its BPM
+    and coherence, the seeding one marked — the octave margin (seeded
+    coherence minus the strongest coherence an octave away, halves and
+    doubles within 3 %), and the half/double readings themselves when the
+    sweep saw them. The margin is the number the octave decision stood on,
+    not a retelling of it. Legacy analyses keep no attacks, so they report
+    that instead of inventing alternatives. Plain JSON types.
+    """
+    times = np.asarray(getattr(analysis, "attack_times", []), dtype=np.float64)
+    weights = np.asarray(getattr(analysis, "attack_weights", []), dtype=np.float64)
+    if times.size == 0 or weights.size != times.size:
+        return {"engine": analysis.engine, "sections": [],
+                "note": "no_attacks"}
+    out = []
+    for section in getattr(analysis, "sections", []):
+        window = ((times >= section.start_s - section.period)
+                  & (times <= section.end_s + section.period))
+        found = _atomic_grid_candidates(times[window], weights[window])
+        candidates = [{"bpm": round(60.0 / period, 4), "coherence": round(coherence, 4)}
+                      for period, _phase, coherence in found]
+        seeded = -1
+        if candidates and section.bpm > 0:
+            seeded = min(range(len(found)),
+                         key=lambda i: abs(np.log((60.0 / found[i][0]) / section.bpm)))
+        halves = [c for c in candidates
+                  if abs(c["bpm"] / (section.bpm / 2) - 1) <= 0.03] if section.bpm > 0 else []
+        doubles = [c for c in candidates
+                   if abs(c["bpm"] / (section.bpm * 2) - 1) <= 0.03] if section.bpm > 0 else []
+        octave = halves + doubles
+        margin = None
+        if candidates and seeded >= 0 and octave:
+            margin = round(candidates[seeded]["coherence"]
+                           - max(c["coherence"] for c in octave), 4)
+        out.append({"start_s": round(float(section.start_s), 3),
+                    "end_s": round(float(section.end_s), 3),
+                    "bpm": round(float(section.bpm), 4),
+                    "residual_ms": round(float(section.residual_ms), 3),
+                    "coverage": round(float(section.coverage), 4),
+                    "inliers": int(section.inliers),
+                    "candidates": candidates, "seeded": seeded,
+                    "octave_margin": margin,
+                    "half": max(halves, key=lambda c: c["coherence"]) if halves else None,
+                    "double": max(doubles, key=lambda c: c["coherence"]) if doubles else None})
+    return {"engine": analysis.engine,
+            "residual_ms": round(float(analysis.fit_residual_ms), 3),
+            "sections": out}
+
+
 def analysis_report(analysis: Analysis) -> dict:
     """Machine-readable report (CLI --json, Phase 8).
 
@@ -3161,6 +3294,126 @@ def _write_synced(path: Path, payload: bytes) -> None:
         _sync(handle)
 
 
+# -- Write history ------------------------------------------------------------
+# Every .osu write lands here: what changed, and the backup holding what it
+# replaced, so the History view can list, diff and restore. One JSON object
+# per line; a torn tail line never hides the rest.
+
+#: Entries kept; the file is rewritten at twice this, so it stays small.
+HISTORY_LIMIT = 200
+
+
+def history_path(history_dir: str | os.PathLike[str] | None = None) -> Path:
+    """Where the write log lives: beside the result cache, never the app.
+    ``OVERTONE_HISTORY_DIR`` overrides it (the test suite points it at a
+    scratch folder so no test run lands in real history)."""
+    if history_dir is not None:
+        return Path(history_dir) / "writes.jsonl"
+    override = os.environ.get("OVERTONE_HISTORY_DIR")
+    base = Path(override) if override else (
+        Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Overtone")
+    return base / "writes.jsonl"
+
+
+def log_write(path: str | os.PathLike[str], op: str, backup: str | None,
+              summary: dict | None = None,
+              history_dir: str | os.PathLike[str] | None = None) -> dict:
+    """Append one write entry: when, what operation, which file, which backup
+    holds the replaced bytes, and a small summary. Never fails the write it
+    records: a log that cannot be kept is skipped, not raised."""
+    entry = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+             "op": str(op), "path": str(path),
+             "backup": str(backup) if backup else None,
+             "summary": dict(summary or {})}
+    try:
+        log = history_path(history_dir)
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with open(log, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry) + "\n")
+        lines = log.read_text(encoding="utf-8").splitlines()
+        if len(lines) > 2 * HISTORY_LIMIT:
+            log.write_text("\n".join(lines[-HISTORY_LIMIT:]) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+    return entry
+
+
+def read_history(history_dir: str | os.PathLike[str] | None = None) -> list[dict]:
+    """The write log, newest first; malformed lines are skipped, not fatal."""
+    try:
+        lines = history_path(history_dir).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    entries = []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(entry, dict) and entry.get("path"):
+            entries.append(entry)
+    entries.reverse()
+    return entries
+
+
+def _reds_of_text(text: str) -> list[tuple[float, float]]:
+    """Every red line of .osu text as ``(offset_ms, bpm)``."""
+    reds = []
+    in_timing = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("["):
+            in_timing = stripped.lower() == "[timingpoints]"
+            continue
+        if in_timing and stripped and not stripped.startswith("//"):
+            red = _parse_red_line(line)
+            if red is not None:
+                reds.append(red)
+    return reds
+
+
+def diff_reds(old_text: str, new_text: str) -> dict:
+    """Red lines old vs new: added and removed offsets, and offsets both hold
+    whose BPM moved. Offsets pair within 1 ms, BPM past 0.001 counts as
+    moved; lists show the first 20, counts cover all. Plain JSON types."""
+    old, new = _reds_of_text(old_text), _reds_of_text(new_text)
+    used = [False] * len(new)
+    added, removed, changed = [], [], []
+    for offset, bpm in old:
+        match = next((j for j, (o, _b) in enumerate(new)
+                      if not used[j] and abs(o - offset) <= 1.0), None)
+        if match is None:
+            removed.append(round(offset, 1))
+            continue
+        used[match] = True
+        if abs(new[match][1] - bpm) > 0.001:
+            changed.append({"offset": round(offset, 1),
+                            "old_bpm": round(bpm, 4), "new_bpm": round(new[match][1], 4)})
+    for j, (offset, bpm) in enumerate(new):
+        if not used[j]:
+            added.append({"offset": round(offset, 1), "bpm": round(bpm, 4)})
+    return {"added": added[:20], "removed": [round(o, 1) for o in removed[:20]],
+            "changed": changed[:20], "n_added": len(added),
+            "n_removed": len(removed), "n_changed": len(changed)}
+
+
+def restore_write(path: str | os.PathLike[str], backup: str | os.PathLike[str],
+                  history_dir: str | os.PathLike[str] | None = None) -> dict:
+    """Restore a backup over its file, keeping the current bytes as a new
+    backup first: no restore ever destroys. Atomic temp-plus-rename, logged
+    as a restore. Missing files refuse with a message, not a traceback."""
+    target, spare = Path(path), Path(backup)
+    if not target.is_file():
+        raise ValueError(f"{target.name} is gone: nothing to restore over.")
+    if not spare.is_file():
+        raise ValueError(f"{spare.name} is gone: nothing to restore from.")
+    payload = spare.read_bytes()
+    kept = _backup_before_write(target, target.read_bytes())
+    _atomic_write_bytes(target, payload)
+    log_write(target, "restore", str(kept), {}, history_dir)
+    return {"backup": str(kept)}
+
+
 def _atomic_write_bytes(path: Path, payload: bytes) -> None:
     """Write via a sibling temp file, synced, then renamed.
 
@@ -3437,6 +3690,8 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
         if bom:
             payload = b"\xef\xbb\xbf" + payload
         _atomic_write_bytes(path, payload)
+        log_write(path, "inject", str(spare) if spare else None,
+                  {"reds_replaced": len(old_reds), "reds_added": len(reds)})
 
     return {"reds_replaced": len(old_reds), "reds_added": len(reds),
             "greens_kept": len(greens), "greens_added": len(added),
@@ -3444,6 +3699,253 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
             "audio_mismatch": bool(audio_name and analysed_name
                                    and audio_name.lower() != analysed_name.lower()),
             "osu_audio": audio_name, "analysed_audio": analysed_name}
+
+
+# ---------------------------------------------------------------------------
+# Audio swap (Phase 19): one mapset's times onto a new encode of its audio
+# ---------------------------------------------------------------------------
+
+#: Comparison rate for the shift: 0.09 ms a lag, anti-aliased against codec
+#: highs loss, and a 5-minute song fits the FFT in tens of megabytes.
+SWAP_SR = 11025
+#: Refusals, measured on synthetic shifts and real pairs: true shifts read
+#: peak 0.96 and up, re-encodes apart; tempo twins and strangers read under
+#: 0.11; different cuts sit between and refuse, which is the safe side.
+SWAP_MIN_PEAK = 0.5
+SWAP_MIN_SHARP = 50.0
+#: A tempo ratio past this is not a shift: over 3 minutes, 0.5 % already
+#: walks 0.9 s.
+SWAP_MAX_TEMPO_DRIFT = 0.005
+
+
+def _swap_envelope(y: np.ndarray, sr: int) -> np.ndarray:
+    """Onset-strength envelope at the comparison rate, for tempo checks."""
+    hop = max(1, sr // 86)
+    return _fast_onset_envelope(np.asarray(y, dtype=np.float32), sr, hop).astype(np.float64)
+
+
+def _envelope_period(envelope: np.ndarray, sr: int, hop: int) -> float:
+    """Dominant onset period in seconds, 40-400 BPM; octave errors are the
+    caller's to normalise, here by comparing up to an octave."""
+    working = envelope - envelope.mean()
+    n = len(working)
+    spectrum = np.abs(np.fft.rfft(working, n)) ** 2
+    autocorr = np.fft.irfft(spectrum)[:n] / max(1, n)
+    lo, hi = int(60.0 / 400 * sr / hop), int(60.0 / 40 * sr / hop)
+    lo, hi = max(1, lo), min(n - 1, max(lo + 1, hi))
+    return float(np.argmax(autocorr[lo:hi + 1]) + lo) * hop / sr
+
+
+def shift_samples(old: np.ndarray, new: np.ndarray, sr: int) -> dict:
+    """How far map times move from the old audio to the new one (Phase 19).
+
+    Both mono at one rate: downsampled once to the comparison rate, then a
+    full cross-correlation, parabolically refined. Returns ``shift_ms`` with
+    ``peak``, ``sharp`` and ``tempo_ratio`` beside it. Refuses instead of
+    guessing: a weak or dull peak is no alignment, and a tempo ratio past a
+    quarter beat over a song is not a shift. Pure; plain JSON types.
+    """
+    old = np.asarray(old, dtype=np.float64).ravel()
+    new = np.asarray(new, dtype=np.float64).ravel()
+    if old.size < sr or new.size < sr:
+        raise ValueError("Both audios must hold at least a second to align.")
+    if sr % SWAP_SR:
+        raise ValueError(f"Comparison needs a multiple of {SWAP_SR} Hz, got {sr}.")
+    factor = sr // SWAP_SR
+    old_d = signal.resample_poly(old - old.mean(), 1, factor)
+    new_d = signal.resample_poly(new - new.mean(), 1, factor)
+    n = 1
+    while n < len(old_d) + len(new_d):
+        n *= 2
+    corr = np.fft.irfft(np.fft.rfft(old_d, n) * np.conj(np.fft.rfft(new_d, n)), n)
+    denom = float(np.sqrt((old_d @ old_d) * (new_d @ new_d)))
+    corr = corr / denom if denom > 0 else corr * 0.0
+    peak_idx = int(np.argmax(corr))
+    lag = peak_idx if peak_idx <= n // 2 else peak_idx - n
+    if 0 < peak_idx < n - 1:
+        y0, y1, y2 = corr[peak_idx - 1], corr[peak_idx], corr[peak_idx + 1]
+        if y0 - 2 * y1 + y2 < 0:
+            lag += 0.5 * (y0 - y2) / (y0 - 2 * y1 + y2)
+    peak, sharp = float(corr[peak_idx]), float(corr[peak_idx] / max(1e-9, np.median(np.abs(corr))))
+    old_e = _swap_envelope(np.asarray(old, dtype=np.float32), sr)
+    new_e = _swap_envelope(np.asarray(new, dtype=np.float32), sr)
+    hop = max(1, sr // 86)
+    raw = _envelope_period(new_e, sr, hop) / max(1e-9, _envelope_period(old_e, sr, hop))
+    ratio = min((abs(raw / k - 1.0), raw / k) for k in (0.5, 1.0, 2.0))[1]
+    ratio = float(ratio)
+    # Tempo first: a mismatch names itself even when some peak survived it.
+    if abs(ratio - 1.0) > SWAP_MAX_TEMPO_DRIFT:
+        raise ValueError(f"Tempo mismatch (ratio {ratio:.4f}): times do not map by one shift.")
+    if peak < SWAP_MIN_PEAK or sharp < SWAP_MIN_SHARP:
+        raise ValueError(f"No reliable alignment (peak {peak:.2f}, sharpness {sharp:.0f}): "
+                         "these do not sound like two encodes of one song.")
+    # The lag is old-against-new; map times move the other way.
+    return {"shift_ms": round(-lag / SWAP_SR * 1000.0, 3), "peak": round(peak, 4),
+            "sharp": round(sharp, 1), "tempo_ratio": round(ratio, 5)}
+
+
+def audio_shift(old_path: str | os.PathLike[str], new_path: str | os.PathLike[str]) -> dict:
+    """``shift_samples`` on two decoded files: mono 44.1 kHz from the loader,
+    so any two formats it reads compare. Refusals read as messages."""
+    old_y, old_sr = _load_audio(old_path, lambda _message: None)
+    new_y, new_sr = _load_audio(new_path, lambda _message: None)
+    if old_sr != new_sr:
+        raise ValueError(f"Sample rates differ ({old_sr} vs {new_sr}).")
+    return shift_samples(np.asarray(old_y, dtype=np.float64),
+                         np.asarray(new_y, dtype=np.float64), old_sr)
+
+
+def _shifted_number(text: str, shift_ms: float, decimals: int = 3) -> str:
+    """A time field moved by the shift: whole milliseconds stay whole (what
+    osu!stable reads), the rest keeps ``decimals`` places like inject."""
+    value = round(float(text) + shift_ms, decimals)
+    whole = round(value)
+    if abs(value - whole) < 0.5 * 10 ** -decimals:
+        return str(int(whole))
+    return f"{value:.{decimals}f}"
+
+
+def shift_osu_text(text: str, shift_ms: float, audio_name: str | None = None,
+                   decimals: int = 3) -> tuple[str, dict]:
+    """Every time of one .osu moved by ``shift_ms`` (Phase 19, Audio swap).
+
+    Red and green offsets, object starts, spinner and hold ends, a set
+    PreviewTime, AudioLeadIn and editor bookmarks; optionally the
+    AudioFilename with it. Lines keep their shape and order — only the
+    numbers move. Storyboard times are not parsed anywhere and stay as they
+    were, stated here instead of hidden. Anything landing before zero, and a
+    missing section the move needs, refuses the whole text: half a shifted
+    mapset is a corruption, not a subset. Returns the shifted text (split
+    lines, no trailing newline) with counts of reds and objects moved.
+    """
+    lines = text.splitlines()
+    section = ""
+    out: list[str] = []
+    seen = {"timing": False, "objects": False, "general": False, "editor": False}
+    moved = {"reds": 0, "objects": 0}
+
+    def move(raw: str) -> str:
+        shifted = _shifted_number(raw, shift_ms, decimals)
+        if float(shifted) < 0:
+            raise ValueError(f"A time lands before zero ({raw} ms): refusing.")
+        return shifted
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
+            section = stripped[1:-1].lower()
+            out.append(line)
+            continue
+        if not stripped or stripped.startswith("//"):
+            out.append(line)
+            continue
+        if section == "timingpoints":
+            seen["timing"] = True
+            fields = line.split(",")
+            if len(fields) < 2:
+                raise ValueError(f"Unusable timing line: {stripped[:40]}.")
+            fields[0] = move(fields[0])
+            moved["reds"] += 1
+            out.append(",".join(fields))
+        elif section == "hitobjects":
+            seen["objects"] = True
+            fields = line.split(",")
+            if len(fields) < 5:
+                raise ValueError(f"Unusable object line: {stripped[:40]}.")
+            try:
+                type_bits = int(fields[3])
+            except ValueError:
+                raise ValueError(f"Unusable object line: {stripped[:40]}.")
+            fields[2] = move(fields[2])
+            rest = fields[5:]
+            if type_bits & 128 and rest:
+                head, colon, tail = rest[0].partition(":")
+                rest[0] = move(head) + colon + tail if colon else move(head)
+            elif type_bits & 8 and rest:
+                rest[0] = move(rest[0])
+            fields[5:] = rest
+            moved["objects"] += 1
+            out.append(",".join(fields))
+        elif section == "general":
+            seen["general"] = True
+            name, colon, value = line.partition(":")
+            key = name.strip().lower()
+            if key in ("previewtime", "audioleadin") and colon:
+                number = value.strip()
+                if number and (key != "previewtime" or float(number) >= 0):
+                    out.append(f"{name.strip()}: {move(number)}")
+                    continue
+            if key == "audiofilename" and colon and audio_name is not None:
+                out.append(f"{name}: {audio_name}")
+                continue
+            out.append(line)
+        elif section == "editor":
+            seen["editor"] = True
+            name, colon, value = line.partition(":")
+            if name.strip().lower() == "bookmarks" and colon and value.strip():
+                try:
+                    marks = [move(mark) for mark in value.split(",") if mark.strip()]
+                except ValueError:
+                    raise ValueError("A bookmark lands before zero: refusing.")
+                out.append(f"{name}: {', '.join(marks)}")
+                continue
+            out.append(line)
+        else:
+            out.append(line)
+    if not seen["timing"] or not seen["objects"]:
+        raise ValueError("No [TimingPoints] or [HitObjects] to move.")
+    return "\n".join(out), moved
+
+
+def preview_audio_swap(map_paths: list, shift_ms: float, decimals: int = 3) -> dict:
+    """What a shift would move, read only: per map the red lines, objects and
+    new audio name, without touching a byte."""
+    rows = []
+    for raw in map_paths:
+        path = Path(raw)
+        try:
+            text = path.read_bytes().decode("utf-8-sig")
+            _shifted, moved = shift_osu_text(text, shift_ms, decimals=decimals)
+        except (OSError, ValueError, UnicodeDecodeError) as exc:
+            rows.append({"file": path.name, "ok": False, "error": str(exc)})
+            continue
+        rows.append({"file": path.name, "ok": True, **moved})
+    return {"shift_ms": round(float(shift_ms), 3), "maps": rows,
+            "refused": sum(1 for row in rows if not row["ok"])}
+
+
+def apply_audio_swap(map_paths: list, shift_ms: float, audio_name: str | None = None,
+                     dry_run: bool = False, decimals: int = 3) -> dict:
+    """Move every time of every map by ``shift_ms``, each file backed up
+    first and logged, through the atomic writer. A refusal anywhere writes
+    nothing anywhere: the preview runs first inside, and one bad map stops
+    the set. Returns per-file bytes written and backups."""
+    paths = [Path(raw) for raw in map_paths]
+    preview = preview_audio_swap(paths, shift_ms, decimals)
+    if preview["refused"]:
+        bad = next(row for row in preview["maps"] if not row["ok"])
+        raise ValueError(f"{bad['file']}: {bad['error']}")
+    if dry_run:
+        return {**preview, "written": False}
+    rows = []
+    for path in paths:
+        raw = path.read_bytes()
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"Could not decode {path.name} as UTF-8.") from exc
+        shifted, _moved = shift_osu_text(text, shift_ms, audio_name, decimals)
+        newline = "\r\n" if b"\r\n" in raw else "\n"
+        if raw.endswith((b"\n", b"\r")):
+            shifted += "\n"
+        payload = shifted.replace("\n", newline).encode("utf-8")
+        if raw.startswith(b"\xef\xbb\xbf"):
+            payload = b"\xef\xbb\xbf" + payload
+        spare = _backup_before_write(path, raw)
+        _atomic_write_bytes(path, payload)
+        log_write(path, "swap", str(spare), {"shift_ms": round(float(shift_ms), 3)})
+        rows.append({"file": path.name, "bytes": len(payload), "backup": str(spare)})
+    return {**preview, "written": True, "maps": rows}
 
 
 # ---------------------------------------------------------------------------
@@ -3839,6 +4341,186 @@ def set_beatmap_reds(beatmap: dict, new_reds: list[str]) -> int:
     return replaced
 
 
+def set_chorus_kiai(beatmap: dict, spans: list[tuple[float, float]]) -> dict:
+    """Kiai on chorus spans, written as green lines (Phase 21, Kiai).
+
+    Each span opens kiai at its start and closes it at its end: a green
+    already at the boundary gets its kiai bit flipped, otherwise a new green
+    carries the audible state in force there (SV, sets, index, volume), so
+    nothing plays differently — kiai is light, not sound. A boundary whose
+    kiai already reads right is left alone. Raw lines move, the ``timing``
+    view is refreshed, and comments and blanks stay put. In place, like the
+    P-2 field edits. Returns added, flipped and kept.
+    """
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "TimingPoints"), None)
+    if section is None:
+        raise ValueError("No [TimingPoints] section in this beatmap.")
+    cursor = _TimingCursor(beatmap)
+    import bisect
+
+    def meter_at(time_ms: float) -> int:
+        rows = _beatmap_red_rows(beatmap)
+        i = bisect.bisect_right([o for o, _b, _m in rows], time_ms + 1e-6) - 1
+        return rows[max(i, 0)][2] if rows else 4
+
+    def stamp(time_ms: float) -> str:
+        whole = round(time_ms)
+        return str(int(whole)) if abs(time_ms - whole) < 1e-6 else f"{time_ms:.3f}"
+
+    def state_at(time_ms: float):
+        _beat, state = cursor.at(time_ms)
+        if state is None:
+            return 1.0, 0, 0, 100
+        return state.sv, state.sample_set, state.sample_index, state.volume
+
+    added = flipped = kept = 0
+    overlays: list[tuple[float, bool]] = []
+    bounds: list[tuple[float, bool]] = []
+    for start_ms, end_ms in spans:
+        bounds.append((float(start_ms), True))
+        bounds.append((float(end_ms), False))
+    # Ascending, opens before closes: each boundary reads the kiai the
+    # previous ones left, including this run's own greens.
+    for time_ms, want in sorted(bounds, key=lambda b: (b[0], not b[1])):
+        current = next((k for t, k in reversed(overlays) if t <= time_ms + 1e-6), None)
+        if current is None:
+            _beat, state = cursor.at(time_ms)
+            current = state.kiai if state is not None else False
+        if current == want:
+            kept += 1
+            continue
+        overlays.append((time_ms, want))
+        hit = next((n for n, line in enumerate(section["lines"])
+                    if line.strip() and not line.strip().startswith("//")
+                    and (point := _timing_point_fields(line)) is not None
+                    and not point["red"] and abs(point["time"] - time_ms) <= 0.01), None)
+        if hit is not None:
+            fields = [f.strip() for f in section["lines"][hit].split(",")]
+            while len(fields) < 8:
+                fields.append("")
+            effects = int(float(fields[7])) if fields[7] else 0
+            fields[7] = str((effects | 1) if want else (effects & ~1))
+            section["lines"][hit] = ",".join(fields)
+            flipped += 1
+            continue
+        sv, sample_set, sample_index, volume = state_at(time_ms)
+        row = (f"{stamp(time_ms)},{-100.0 / sv:.12g},{meter_at(time_ms)},"
+               f"{sample_set},{sample_index},{volume},0,{1 if want else 0}")
+        at = next((n for n, line in enumerate(section["lines"])
+                   if line.strip() and not line.strip().startswith("//")
+                   and (point := _timing_point_fields(line)) is not None
+                   and point["time"] > time_ms + 1e-6), len(section["lines"]))
+        section["lines"].insert(at, row)
+        added += 1
+    timing = [line for line in section["lines"]
+              if line.strip() and not line.strip().startswith("//")]
+    beatmap["timing"] = {
+        "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
+        "greens": [line for line in timing if not _is_red_line(line.strip())],
+    }
+    return {"added": added, "flipped": flipped, "kept": kept}
+
+
+def suggest_breaks(beatmap: dict, sections: list[dict], min_length_s: float = 5.0,
+                 quiet_db: float = 6.0) -> list[dict]:
+    """Quiet spans long enough for a break (Phase 21, Breaks).
+
+    A break lives where the song goes quiet *and* the map goes silent: each
+    section at least ``quiet_db`` under the loudest one's level is covered,
+    adjacent quiet sections merged, and every gap between the map's own sound
+    events (see :func:`sound_events`) meeting that cover for at least
+    ``min_length_s`` becomes a span. Both bars are the tool's own, adjustable —
+    the preview shows each span's length and depth so the mapper judges, never
+    a claim about the client's. Read only, plain JSON types: ``start_ms``,
+    ``end_ms``, the section ``kind`` holding the span's start, ``under_db``
+    and the ``gap_s`` it was cut from.
+    """
+    usable = []
+    for section in sections or []:
+        try:
+            start = float(section["start_s"]) * 1000.0
+            end = float(section["end_s"]) * 1000.0
+            level = float(section.get("level_db", float("nan")))
+        except (TypeError, ValueError, KeyError):
+            continue
+        if not np.isfinite(level) or end <= start:
+            continue
+        usable.append((start, end, str(section.get("kind", "")), level))
+    if not usable:
+        return []
+    loudest = max(level for _s, _e, _k, level in usable)
+    quiet = sorted([(s, e, k, loudest - level)
+                    for s, e, k, level in usable if loudest - level >= quiet_db])
+    if not quiet:
+        return []
+    # One cover: adjacent quiet sections read as one silence.
+    cover: list[list] = []
+    for start, end, kind, under in quiet:
+        if cover and start <= cover[-1][1] + 1e-6:
+            cover[-1][1] = max(cover[-1][1], end)
+        else:
+            cover.append([start, end, kind, under])
+    times = sorted({float(e["time"]) for e in sound_events(beatmap)})
+    if len(times) < 2:
+        return []
+    minimum = float(min_length_s) * 1000.0
+    spans = []
+    for start, end, kind, under in cover:
+        for before, after in zip(times, times[1:]):
+            low, high = max(before, start), min(after, end)
+            if high - low >= minimum - 1e-6:
+                spans.append({
+                    "start_ms": int(round(low)), "end_ms": int(round(high)),
+                    "kind": kind, "under_db": round(under, 1),
+                    "gap_s": round((after - before) / 1000.0, 2),
+                })
+    return sorted(spans, key=lambda s: (s["start_ms"], s["end_ms"]))
+
+
+def set_map_breaks(beatmap: dict, spans: list[tuple[float, float]]) -> dict:
+    """Break spans as ``2,start,end`` lines in [Events] (Phase 21, Breaks).
+
+    A span already covered by a break line is kept, the rest are added after
+    the ``//Break Periods`` comment when the map has one, else at the
+    section's end — line order inside [Events] means nothing to the client,
+    every line is typed. Whole milliseconds; a span ending at or before its
+    start refuses the map, and a missing [Events] refuses it too, rather than
+    inventing file structure. Comments and blanks stay put. In place, like the
+    P-2 field edits. Returns added and kept.
+    """
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "Events"), None)
+    if section is None:
+        raise ValueError("No [Events] section in this beatmap.")
+    have: list[tuple[int, int]] = []
+    for line in section["lines"]:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("//"):
+            continue
+        fields = stripped.split(",")
+        if len(fields) >= 3 and fields[0].strip() == "2":
+            try:
+                have.append((int(float(fields[1])), int(float(fields[2]))))
+            except ValueError:
+                continue
+    added = kept = 0
+    fresh: list[str] = []
+    for start_ms, end_ms in spans:
+        start, end = int(round(float(start_ms))), int(round(float(end_ms)))
+        if end <= start:
+            raise ValueError(f"Break ends at or before its start: {start_ms} -> {end_ms}.")
+        if any(begin <= start + 1 and finish >= end - 1 for begin, finish in have):
+            kept += 1
+            continue
+        have.append((start, end))
+        fresh.append(f"2,{start},{end}")
+        added += 1
+    if fresh:
+        at = next((n + 1 for n, line in enumerate(section["lines"])
+                   if line.strip() == "//Break Periods"), len(section["lines"]))
+        section["lines"][at:at] = fresh
+    return {"added": added, "kept": kept}
+
+
 def beatmap_text(beatmap: dict) -> str:
     """Head plus sections in order, raw lines untouched, original newline."""
     newline = beatmap.get("newline", "\n")
@@ -3871,6 +4553,7 @@ def write_osu_beatmap(osu_path: str | os.PathLike[str], beatmap: dict,
         _atomic_write_bytes(path, payload)
     except (OSError, ValueError) as exc:
         raise ValueError(f"Could not write {path.name}: {exc}") from exc
+    log_write(path, "write", str(spare) if spare else None, {"bytes": len(payload)})
     return {"bytes": len(payload), "backup": str(spare) if spare else None}
 
 
@@ -4969,6 +5652,70 @@ def sound_events(beatmap: dict) -> list[dict]:
     return events
 
 
+# -- P-5: each sound event's nearest attack ------------------------------------
+
+def match_sound_events(events: list[dict], attack_times,
+                       attack_weights=None,
+                       tolerance_ms: float = OBJECT_WINDOW_MS) -> list[dict]:
+    """Each sound event's nearest attack, or no attack at all (P-5).
+
+    The object-centric half of the hitsound evidence: where
+    :func:`attack_object_context` asks "which object caused this attack", this
+    asks "which attack does this sound sit on". Every event of
+    :func:`sound_events` — circle hits, each slider edge, spinner ends, and
+    slider bodies at their start (a slide starts somewhere, even if it spans)
+    — gets its nearest attack by binary search, with the attack's time, its
+    distance in ms (negative: the attack sounds first) and its weight.
+    Further than ``tolerance_ms`` from every attack, or with no attacks at
+    all, the event comes back with ``attack`` None: "no attack here" is a
+    state of its own, the one H3 reads for sounds over silence, never an
+    error and never a guess.
+
+    Attack times arrive in seconds (engine convention) and are reported in
+    milliseconds (map convention), like everywhere else; they are sorted with
+    their weights kept beside them, so an unsorted input still matches. Plain
+    JSON types, in event order.
+    """
+    times = np.asarray(attack_times, dtype=np.float64)
+    if attack_weights is None:
+        weights: np.ndarray | None = None
+    else:
+        weights = np.asarray(attack_weights, dtype=np.float64)
+    order = np.argsort(times, kind="stable")
+    sorted_times = (times[order] * 1000.0
+                    if times.size else np.zeros(0, dtype=np.float64))
+    sorted_weights = (weights[order] if weights is not None and weights.size == times.size
+                      else None)
+    finite = np.isfinite(sorted_times)
+    sorted_times = sorted_times[finite]
+    if sorted_weights is not None:
+        sorted_weights = sorted_weights[finite]
+
+    rows: list[dict] = []
+    for n, event in enumerate(events):
+        try:
+            at = float(event.get("time", float("nan")))
+        except (TypeError, ValueError):
+            at = float("nan")
+        attack = None
+        if np.isfinite(at) and sorted_times.size:
+            idx = int(np.searchsorted(sorted_times, at))
+            best = min((v for v in (idx - 1, idx) if 0 <= v < sorted_times.size),
+                       key=lambda v: abs(float(sorted_times[v]) - at))
+            dt = float(sorted_times[best]) - at
+            if abs(dt) <= tolerance_ms:
+                attack = {"time": round(float(sorted_times[best]), 3),
+                          "dt_ms": round(dt, 3),
+                          "weight": (round(float(sorted_weights[best]), 6)
+                                     if sorted_weights is not None else None)}
+        rows.append({"event": n,
+                     "object": event.get("object"), "part": event.get("part"),
+                     "edge": event.get("edge"), "time": at if np.isfinite(at) else None,
+                     "sounds": list(event.get("sounds") or []),
+                     "attack": attack, "matched": attack is not None})
+    return rows
+
+
 # -- P-2: the hitsound fields of a hit object line, and nothing else ---------
 
 _SAMPLE_KEYS = ("normal_set", "addition_set", "index", "volume", "file")
@@ -5155,6 +5902,8 @@ def write_object_hitsounds(osu_path: str | os.PathLike[str], changes: dict[int, 
         _atomic_write_bytes(path, payload)
     except (OSError, ValueError) as exc:
         raise ValueError(f"Could not write {path.name}: {exc}") from exc
+    log_write(path, "hitsounds", str(spare) if spare else None,
+              {"changed": len(result["changed"])})
     return {**result, "written": True, "backup": str(spare) if spare else None}
 
 
@@ -5318,6 +6067,108 @@ def copy_hitsounds(source: dict, target: dict, tolerance_ms: float = COPY_TOLERA
             "source_sounds": len(src), "source_unused": len(src) - len(used)}
 
 
+# -- H5: the decision onto the map --------------------------------------------
+
+#: Proposal banks to sample sets, as the mapper writes them.
+BANK_SETS = {"normal": 1, "soft": 2, "drum": 3}
+
+
+def proposal_changes(beatmap: dict, units: list[dict], accept=None,
+                     tolerance_ms: float = COPY_TOLERANCE_MS) -> dict:
+    """A decision's proposals as P-2 field changes (H5, engine half).
+
+    Each unit names ``object``, ``part`` and ``edge`` (the CLI's proposal
+    shape) with ``proposal`` carrying ``bank`` and ``bits``. The bank becomes
+    the sample sets, the bits the additions — keeping bit 0 as H1 does — and
+    slider edges group per object, untouched edges keeping what they play.
+    Volume, index and custom files are never touched: H4 proposes no values
+    for them, and inventing some would be guessing. ``accept`` is a set of
+    ``(object, part, edge)`` to take, or everything when None: refusing is
+    the editor's job, this only counts. A unit whose sound moved since the
+    proposal (past ``tolerance_ms``) or names no sound refuses the whole
+    apply with its times, because half a stale decision is a corruption, not
+    a subset. Read only; returns the P-2 ``changes`` with counts.
+    """
+    events = {(e["object"], e["part"], e["edge"]): e for e in sound_events(beatmap)}
+    wanted: dict = {}
+    stale: list[float] = []
+    for unit in units or []:
+        key = (unit.get("object"), unit.get("part"), unit.get("edge"))
+        if accept is not None and key not in accept:
+            continue
+        event = events.get(key)
+        if event is None or abs(float(event["time"]) - float(unit.get("time_ms", 0.0))) > tolerance_ms:
+            stale.append(round(float(unit.get("time_ms", 0.0)), 1))
+            continue
+        proposal = unit.get("proposal") or {}
+        bank = proposal.get("bank")
+        if bank not in BANK_SETS:
+            raise ValueError(f"Unknown proposal bank {bank!r}.")
+        wanted[key] = (event, BANK_SETS[bank], int(proposal.get("bits", 0)) & 14)
+    if stale:
+        raise ValueError(f"{len(stale)} proposed sounds moved since the decision "
+                         f"(first at {stale[0]} ms): re-run it on this map.")
+    by_object: dict[int, list] = {}
+    for (n, _part, _edge), (event, bank_set, bits) in wanted.items():
+        by_object.setdefault(n, []).append((event, bank_set, bits))
+    edge_points: dict[int, list] = {}
+    for e in events.values():
+        if e["part"] in ("head", "repeat", "tail"):
+            edge_points.setdefault(e["object"], []).append(e)
+    changes: dict[int, dict] = {}
+    for n, items in by_object.items():
+        if len(items) == 1 and items[0][0]["part"] not in ("head", "repeat", "tail"):
+            event, bank_set, bits = items[0]
+            changes[n] = {"bits": (event["bits"] & 1) | bits,
+                          "sample": {"normal_set": bank_set, "addition_set": bank_set}}
+            continue
+        edges = []
+        for e in sorted(edge_points.get(n, []), key=lambda e: e["edge"] or 0):
+            edge = {"bits": e["bits"] & 15, "normal_set": e["raw"]["normal_set"],
+                    "addition_set": e["raw"]["addition_set"]}
+            for event, bank_set, bits in items:
+                if event["edge"] == e["edge"]:
+                    edge = {"bits": (e["bits"] & 1) | bits,
+                            "normal_set": bank_set, "addition_set": bank_set}
+            edges.append(edge)
+        changes[n] = {"edges": edges}
+    return {"changes": changes, "units": len(units or []), "accepted": len(wanted)}
+
+
+def preview_proposals(beatmap: dict, units: list[dict], accept=None) -> dict:
+    """What applying would change, without touching anything: the P-2 change
+    on a copy, counted. Read only."""
+    import copy
+    result = proposal_changes(beatmap, units, accept)
+    changed = set_object_hitsounds(copy.deepcopy(beatmap), result["changes"])["changed"]
+    return {**result, "would_change": len(changed)}
+
+
+def apply_proposals(src_path: str | os.PathLike[str], units: list[dict], accept=None,
+                    dest: str | os.PathLike[str] | None = None, preview: bool = False) -> dict:
+    """A decision onto a file: preview, or write through P-2 (H5, engine half).
+
+    ``dest`` None writes over the original with inject's backups; given, it
+    must not exist, and the source's bytes are copied there first while the
+    source stays untouched (no backup is made of a file that did not exist
+    before). ``preview`` counts and writes nothing. Volume, index and custom
+    files keep playing what they played.
+    """
+    src = Path(src_path)
+    beatmap = read_osu_beatmap(src)
+    if preview:
+        return {**preview_proposals(beatmap, units, accept), "written": False, "backup": None,
+                "dest": None}
+    changes = proposal_changes(beatmap, units, accept)["changes"]
+    if dest is None:
+        return {**write_object_hitsounds(src, changes), "dest": None}
+    target = Path(dest)
+    if target.exists():
+        raise ValueError(f"{target.name} already exists: remove it or pick another copy.")
+    target.write_bytes(src.read_bytes())
+    return {**write_object_hitsounds(target, changes, backup=False), "dest": str(target)}
+
+
 # -- P-3: which sample each sound plays --------------------------------------
 
 #: Overtone's own samples (assets/samples.py makes them): what plays where a
@@ -5404,6 +6255,182 @@ def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str]) -> dict:
                         "end": None if end is None else round(end / 1000.0, 6)})
     objects.sort(key=lambda o: o["t"])
     return {"events": events, "objects": objects, "samples": samples, "counts": counts}
+
+
+# -- H2: where a map's hitsounds fall -----------------------------------------
+
+#: A sound counts as on a sixteenth when it is this close to one, in beats.
+#: Ranked maps snap far tighter; 0.06 beat is 15 ms at 240 BPM, 30 at 120.
+POSITION_TOLERANCE_BEATS = 0.06
+#: Slots per beat the report places sounds on: sixteenths in 4/4.
+SLOTS_PER_BEAT = 4
+
+
+def _bar_positions(rows: list[tuple[float, float, int]], times_ms: list[float]):
+    """For each time: (bar number from 1, slot in the bar or None off the
+    grid, the bar's meter), read against the map's own red lines. Before the
+    first line, the first line's grid extends backwards, as in osu!."""
+    import bisect
+    import math
+    if not rows:
+        return [(None, None, None) for _ in times_ms]
+    starts = [r[0] for r in rows]
+    first_bar = []
+    bar = 1
+    for i, (offset, bpm, meter) in enumerate(rows):
+        first_bar.append(bar)
+        if i + 1 < len(rows):
+            span_beats = (rows[i + 1][0] - offset) / (60000.0 / bpm)
+            bar += max(1, math.ceil(span_beats / meter - 1e-6))
+    out = []
+    for t in times_ms:
+        i = max(0, bisect.bisect_right(starts, t + 1e-6) - 1)
+        offset, bpm, meter = rows[i]
+        beats = (t - offset) / (60000.0 / bpm)
+        bar_index = math.floor(beats / meter + 1e-9)
+        within = (beats - bar_index * meter) * SLOTS_PER_BEAT
+        q = round(within)
+        slot = q % (meter * SLOTS_PER_BEAT) if abs(within - q) <= POSITION_TOLERANCE_BEATS * SLOTS_PER_BEAT \
+            else None
+        out.append((first_bar[i] + bar_index, slot, meter))
+    return out
+
+
+def hitsound_report(beatmap: dict) -> dict:
+    """Every sound of a map with its place in the bar, and where each
+    addition falls (H2). Read only.
+
+    Places are read against the map's own red lines, in sixteenths of its
+    meter: slot 0 is the downbeat, slot 4 beat 2 in 4/4. A sound further than
+    ``POSITION_TOLERANCE_BEATS`` from every sixteenth is off the grid. The
+    distribution per addition counts the sounds under the meter most of the
+    map uses; the ones under another meter are counted apart. Slider bodies
+    are left out: they span, they do not land. Plain JSON types.
+    """
+    rows = _beatmap_red_rows(beatmap)
+    events = [e for e in sound_events(beatmap) if e["part"] != "body"]
+    places = _bar_positions(rows, [e["time"] for e in events])
+    meters = [m for _b, _s, m in places if m]
+    meter = max(set(meters), key=meters.count) if meters else 4
+    slots = meter * SLOTS_PER_BEAT
+    additions = {name: {"total": 0, "slots": [0] * slots, "off_grid": 0, "other_meter": 0}
+                 for name in ("whistle", "finish", "clap")}
+    sets = {"normal": {"normal": 0, "soft": 0, "drum": 0}, "addition": {"normal": 0, "soft": 0, "drum": 0}}
+    sounds = []
+    for event, (bar, slot, m) in zip(events, places):
+        sets["normal"][event["normal_set"]] += 1
+        for name in event["sounds"][1:]:
+            sets["addition"][event["addition_set"]] += 1
+            a = additions[name]
+            a["total"] += 1
+            if m != meter:
+                a["other_meter"] += 1
+            elif slot is None:
+                a["off_grid"] += 1
+            else:
+                a["slots"][slot] += 1
+        sounds.append({"t": round(event["time"] / 1000.0, 6), "object": event["object"],
+                       "part": event["part"], "edge": event["edge"], "bar": bar, "slot": slot, "meter": m,
+                       "sounds": event["sounds"], "normal_set": event["normal_set"],
+                       "addition_set": event["addition_set"], "index": event["index"],
+                       "volume": event["volume"], "file": event["file"]})
+    return {"meter": meter, "slots_per_beat": SLOTS_PER_BEAT, "sounds": sounds,
+            "additions": additions, "sets": sets, "red_lines": len(rows)}
+
+
+# -- H3: the map's own hitsound pattern, and what breaks it -------------------
+
+#: Strong beats in 4/4, as sixteenth slots, with the beat a modder names.
+CLAP_BEATS = {4: "2", 12: "4"}
+#: Bars read on each side of a position; the plan's "15 of the 16 bars
+#: around it", which the corpus measures as the readable bar (p90 2 + 1
+#: flags a map; 14/16 already reaches 22).
+PATTERN_BARS = 8
+#: Neighbours that must carry a clap to call the middle one missing, and at
+#: most to call it extra. Measured, not tasted: see the probe in timeline P-6.
+PATTERN_NEED = 15
+#: A map that barely claps has no pattern to break.
+MIN_PATTERN_CLAPS = 10
+
+
+def hitsound_consistency(beatmap: dict) -> dict:
+    """Objects whose sound breaks the map's own clap pattern (H3, map half).
+
+    Read only, map and grid only, no audio. On 4/4 maps with claps to speak
+    of, every beat 2 and 4 that carries a sound is set against the same beat
+    of the eight bars around it: no clap where 15 of the 16 neighbours clap
+    is missing, a clap where 1 or none do is extra. All 16 neighbours must
+    exist (carry a sound), so sparse maps and song edges stay silent instead
+    of guessing. Weak slots are not judged: a clap off beats 2 and 4 is the
+    norm somewhere, and an absolute-position rule would flag hundreds (P-6).
+    Advice with the numbers behind it, never an edit. Plain JSON types.
+    """
+    report = hitsound_report(beatmap)
+    findings: list[dict] = []
+    if report["meter"] != 4 or report["additions"]["clap"]["total"] < MIN_PATTERN_CLAPS:
+        return {"findings": findings}
+    at: dict[tuple[int, int], list] = {}
+    for sound in report["sounds"]:
+        if sound["part"] == "body" or sound["meter"] != 4 or sound["slot"] is None:
+            continue
+        key = (sound["bar"], sound["slot"])
+        cell = at.setdefault(key, [0, None])
+        cell[0] += "clap" in sound["sounds"]
+        if cell[1] is None:
+            cell[1] = sound["t"] * 1000.0
+    for (bar, slot), (claps, first_ms) in sorted(at.items()):
+        if slot not in CLAP_BEATS:
+            continue
+        neighbours = [(bar + k, slot) for k in range(-PATTERN_BARS, PATTERN_BARS + 1) if k]
+        if any(nb not in at for nb in neighbours):
+            continue
+        with_clap = sum(1 for nb in neighbours if at[nb][0] > 0)
+        beat = CLAP_BEATS[slot]
+        if claps == 0 and with_clap >= PATTERN_NEED:
+            findings.append({"level": "info", "key": "hitsound_missing_clap",
+                             "time_ms": first_ms,
+                             "values": {"bar": bar, "beat": beat,
+                                        "have": with_clap, "of": 2 * PATTERN_BARS}})
+        elif claps > 0 and with_clap <= 2 * PATTERN_BARS - PATTERN_NEED:
+            findings.append({"level": "info", "key": "hitsound_extra_clap",
+                             "time_ms": first_ms,
+                             "values": {"bar": bar, "beat": beat,
+                                        "have": with_clap, "of": 2 * PATTERN_BARS}})
+    return {"findings": findings}
+
+
+def hitsound_silence_check(beatmap: dict, attack_times, attack_weights,
+                           tolerance_ms: float = OBJECT_WINDOW_MS) -> dict:
+    """Finishes and claps with no attack under them (H3, audio half).
+
+    Read only. Every sound event carrying a finish or a clap is set against
+    the detected attacks through :func:`match_sound_events`: further than
+    ``tolerance_ms`` from every attack, the addition sounds over silence.
+    Whistles are not judged: unmatched whistles sit a median 66 ms from the
+    nearest attack (melodic overlap, measured on 23 songs), so calling them
+    silence would mislead, while unmatched finishes and claps sit truly
+    isolated (over 70 % past 100 ms). Slider bodies are left out: a slide
+    spans, it does not land. With no attacks at all there is nothing to
+    judge — everything would flag, so nothing does. Quiet passages may hold
+    sounds too soft to detect, so each finding is advice with its addition,
+    never an edit. Plain JSON types.
+    """
+    times = np.asarray(attack_times, dtype=np.float64)
+    weights = np.asarray(attack_weights, dtype=np.float64)
+    if times.size == 0:
+        return {"findings": []}
+    findings: list[dict] = []
+    events = [e for e in sound_events(beatmap) if e["part"] != "body"]
+    for event, row in zip(events, match_sound_events(events, times, weights,
+                                                     tolerance_ms)):
+        if row["matched"]:
+            continue
+        for addition in ("finish", "clap"):
+            if addition in event["sounds"]:
+                findings.append({"level": "info", "key": "hitsound_on_silence",
+                                 "time_ms": float(event["time"]),
+                                 "values": {"addition": addition}})
+    return {"findings": findings}
 
 
 # ---------------------------------------------------------------------------
@@ -5552,7 +6579,74 @@ def structure_view(report: dict, analysis: Analysis) -> dict:
         "rules": report.get("rules") or {},
         "snap_s": STRUCTURE_SNAP_S,
         "timings_s": report.get("timings_s") or {},
+        "preview": suggest_preview_time(sections),
     }
+
+
+def suggest_preview_time(sections: list[dict]) -> dict | None:
+    """Where a song-select preview should start (Phase 21, Preview point).
+
+    The loudest chorus's start; without a chorus, the loudest part that is
+    neither intro nor outro; without anything, nothing. Starts are the
+    snapped ones when they come from the view, so the point sits on a bar.
+    A suggestion with its reason, never a write. Plain JSON types.
+    """
+    if not sections:
+        return None
+
+    def pick(pool: list[dict]) -> dict:
+        return max(pool, key=lambda s: (float(s.get("level_db", 0.0)), -float(s.get("start_s", 0.0))))
+
+    choruses = [s for s in sections if s.get("kind") == "chorus"]
+    if choruses:
+        chosen, why = pick(choruses), "chorus_loudest"
+    else:
+        parts = [s for s in sections if s.get("kind") not in ("intro", "outro")]
+        if parts:
+            chosen, why = pick(parts), "loudest_part"
+        else:
+            chosen, why = pick(list(sections)), "loudest_only"
+    return {"time_s": float(chosen["start_s"]), "time_ms": int(round(float(chosen["start_s"]) * 1000)),
+            "kind": chosen["kind"], "why": why}
+
+
+def set_editor_bookmarks(beatmap: dict, times_ms: list[float]) -> dict:
+    """Section starts as editor bookmarks (Phase 21, Bookmarks).
+
+    Merges whole-millisecond times into the map's own bookmarks, sorted —
+    the mapper's survive, nothing is ever deleted, negative times are
+    dropped (bookmarks live at or past zero). A bookmarks line with
+    unreadable entries refuses the map instead of silently dropping them.
+    Only the bookmarks line moves (appended at the section's end when the
+    map has none); every other byte waits for the writer. In place, like
+    the P-2 field edits. Returns added and total.
+    """
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "Editor"), None)
+    if section is None:
+        raise ValueError("No [Editor] section in this beatmap.")
+    kept: list[int] = []
+    index = next((i for i, line in enumerate(section["lines"])
+                  if line.strip().lower().startswith("bookmarks:")), None)
+    if index is not None:
+        for token in section["lines"][index].split(":", 1)[1].split(","):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                kept.append(int(token))
+            except ValueError:
+                raise ValueError(f"Unusable bookmarks: {token!r}.")
+    wanted = sorted({int(round(t)) for t in times_ms if t is not None} | set(kept))
+    wanted = [t for t in wanted if t >= 0]
+    if index is None:
+        section["lines"].append(f"Bookmarks: {', '.join(str(t) for t in wanted)}")
+    else:
+        head = section["lines"][index].split(":", 1)[0]
+        section["lines"][index] = f"{head}: {', '.join(str(t) for t in wanted)}"
+    editor = beatmap.setdefault("editor", {})
+    if isinstance(editor, dict):
+        editor["Bookmarks"] = ", ".join(str(t) for t in wanted)
+    return {"added": len(wanted) - len(kept), "total": len(wanted)}
 
 
 # ---------------------------------------------------------------------------
@@ -5860,7 +6954,7 @@ def apply_assisted_grid(points: list[TimingPoint], fit: dict,
 #: milliseconds, then the combo numbers of the objects it names, if any.
 MOD_STAMP = re.compile(r"^\d{2,}:\d{2}:\d{3}( \(\d+(,\d+)*\))?$")
 #: The order sources are listed in when two findings share a moment.
-MOD_SOURCES = ("reference", "suggestion", "snap", "alignment")
+MOD_SOURCES = ("reference", "suggestion", "snap", "alignment", "hitsound")
 
 
 def mod_timestamp(time_ms: float, combo: list[int] | None = None) -> str:
@@ -5921,6 +7015,15 @@ def _mod_text(item: dict) -> str:
     if key == "off_attack":
         # What is measured: quiet passages may hold sounds too soft to detect.
         return f"{v['ms']} ms from the nearest attack Overtone detects"
+    if key == "hitsound_missing_clap":
+        return (f"no clap on beat {v['beat']} of bar {v['bar']}, with {v['have']} of "
+                f"the {v['of']} bars around it clapped")
+    if key == "hitsound_extra_clap":
+        return (f"a clap on beat {v['beat']} of bar {v['bar']}, with only {v['have']} "
+                f"of the {v['of']} bars around it clapped")
+    if key == "hitsound_on_silence":
+        # What is measured: quiet passages may hold sounds too soft to detect.
+        return f"{v['addition']} with no attack Overtone detects nearby"
     return f"{key} {v}"
 
 
@@ -5992,6 +7095,13 @@ def mod_report(beatmap: dict, attack_times: np.ndarray, attack_weights: np.ndarr
                                    beatmap)
         for obj in aligned["offenders"]:
             add("alignment", "info", "off_attack", obj["time"], {"ms": f"{obj['ms']:.1f}"}, True)
+        for finding in hitsound_silence_check(beatmap, times, weights)["findings"]:
+            add("hitsound", finding["level"], finding["key"], finding["time_ms"],
+                finding["values"], True)
+
+    for finding in hitsound_consistency(beatmap)["findings"]:
+        add("hitsound", finding["level"], finding["key"], finding["time_ms"],
+            finding["values"], True)
 
     items.sort(key=lambda item: (item["time_ms"] is not None, item["time_ms"] or 0.0,
                                  MOD_SOURCES.index(item["source"])))

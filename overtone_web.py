@@ -274,11 +274,26 @@ class Api:
         self._assisted: dict | None = None
         #: The song's bytes while the page fetches them for playback.
         self._audio_bytes: bytes | None = None
+        #: The percussive stem's WAV bytes with the analysis that made them:
+        #: HPSS costs seconds once, then rides the cache like structure.
+        self._percussion: tuple | None = None
         #: Held while the library index scans, so two scans never interleave.
         self._scanning = threading.Lock()
         #: The Rust engine's structure report, keyed by (path, size, mtime):
         #: the audio is read once, the bars are re-applied on every call.
         self._structure: tuple[tuple, dict] | None = None
+        #: The engine-evidence report for the live analysis object: attacks
+        #: and sections never move under edits, so identity is the key.
+        self._evidence: tuple | None = None
+        #: The decision's proposal units, keyed by .osu name: proposing runs
+        #: the CLI once, and accept/reject iterates the cache. A moved map
+        #: refuses at apply time through the proposal's own staleness guard.
+        self._decisions: dict[str, dict] = {}
+        #: The last ramp fit, keyed by (analysis, drift, max lines): computing
+        #: shells to the CLI, and Use reads the cache.
+        self._ramps: tuple | None = None
+        #: The bytes one hitsound apply replaced, for the one-level undo.
+        self._decide_undo: dict | None = None
         if initial_file:
             self._cfg["file"] = initial_file
 
@@ -708,6 +723,95 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "report": report, "folder": Path(str(folder)).name}
 
+    # -- audio swap: one mapset's times onto a new encode ---------------------
+    @staticmethod
+    def _swap_files(folder: str, old_audio: str, new_audio: str):
+        """The two audio paths inside ``folder``, or a refusal."""
+        base = Path(str(folder))
+        if not base.is_dir():
+            return {"ok": False, "key": "bad_folder"}
+        old, new = str(old_audio or ""), str(new_audio or "")
+        if Path(old).name != old or Path(new).name != new:
+            return {"ok": False, "key": "bad_file"}
+        old_path, new_path = base / old, base / new
+        if old_path.suffix.lower() not in ta.AUDIO_EXTENSIONS or not old_path.is_file():
+            return {"ok": False, "key": "bad_file"}
+        if new_path.suffix.lower() not in ta.AUDIO_EXTENSIONS or not new_path.is_file():
+            return {"ok": False, "key": "bad_file"}
+        if old_path == new_path:
+            return {"ok": False, "key": "sw_same_file"}
+        try:
+            maps = sorted(p for p in base.iterdir() if p.suffix.lower() == ".osu")
+        except OSError:
+            maps = []
+        if not maps:
+            return {"ok": False, "key": "ms_no_maps"}
+        return old_path, new_path, maps
+
+    def swap_audios(self, folder: str) -> dict:
+        """The audio files of a mapset folder, with the one its maps name.
+        Read only, no analysis needed."""
+        base = Path(str(folder))
+        if not base.is_dir():
+            return {"ok": False, "key": "bad_folder"}
+        try:
+            audios = sorted(p.name for p in base.iterdir()
+                            if p.suffix.lower() in ta.AUDIO_EXTENSIONS and p.is_file())
+            current = ""
+            for path in sorted(base.iterdir()):
+                if path.suffix.lower() != ".osu":
+                    continue
+                try:
+                    header = ta.read_osu_beatmap(path)["general"]
+                except (ValueError, OSError):
+                    continue
+                current = str(header.get("AudioFilename", "")).strip()
+                if current:
+                    break
+        except OSError as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "audios": audios, "current": current}
+
+    def swap_preview(self, folder: str, old_audio: str, new_audio: str) -> dict:
+        """The shift between two encodes plus what moving the set would move.
+        Decoding two songs is one heavy job at a time; nothing is written."""
+        found = self._swap_files(folder, old_audio, new_audio)
+        if isinstance(found, dict):
+            return found
+        old_path, new_path, maps = found
+        if not self._busy.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        try:
+            shift = ta.audio_shift(old_path, new_path)
+            preview = ta.preview_audio_swap(maps, shift["shift_ms"],
+                                            self._settings()["offset_decimals"])
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            self._busy.release()
+        return {"ok": True, "old": old_path.name, "new": new_path.name,
+                "shift": shift, "maps": preview["maps"], "refused": preview["refused"]}
+
+    def swap_apply(self, folder: str, old_audio: str, new_audio: str) -> dict:
+        """Move every time of every difficulty by the measured shift, each
+        file backed up first and logged. Refusals write nothing."""
+        found = self._swap_files(folder, old_audio, new_audio)
+        if isinstance(found, dict):
+            return found
+        old_path, new_path, maps = found
+        if not self._busy.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        try:
+            shift = ta.audio_shift(old_path, new_path)
+            done = ta.apply_audio_swap(maps, shift["shift_ms"], new_path.name,
+                                       decimals=self._settings()["offset_decimals"])
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            self._busy.release()
+        return {"ok": True, "old": old_path.name, "new": new_path.name,
+                "shift": shift, "maps": done["maps"]}
+
     # -- hitsound playback (Phase 6, P-3) ------------------------------------
     def song_maps(self) -> dict:
         """The difficulties beside the analysed song that play this audio,
@@ -759,6 +863,22 @@ class Api:
                             "end": [o["end"] for o in plan["objects"]],
                             "kind": [o["kind"] for o in plan["objects"]]},
                 "samples": samples, "counts": plan["counts"]}
+
+    def hitsound_report(self, file: str) -> dict:
+        """One difficulty beside the song, sound by sound: its place in the
+        bar and where each addition falls (H2). Read only."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        folder = Path(str(self._analysis.source)).parent
+        name = str(file or "")
+        path = folder / name
+        if Path(name).name != name or not name.lower().endswith(".osu") or not path.is_file():
+            return {"ok": False, "key": "bad_file"}
+        try:
+            report = ta.hitsound_report(ta.read_osu_beatmap(path))
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": name, "report": report}
 
     # -- hitsound copier (Phase 6, H1) ---------------------------------------
     @staticmethod
@@ -830,6 +950,103 @@ class Api:
             rows.append({**self._copy_row(path, report), "written": written["written"],
                          "backup": written["backup"]})
         return {"ok": True, "source": str(source), "targets": rows}
+
+    # -- hitsound decision (Phase 6, H5) --------------------------------------
+    @staticmethod
+    def _decide_key(unit: dict) -> tuple:
+        return (unit.get("object"), unit.get("part"), unit.get("edge"))
+
+    def _decide_file(self, file: str):
+        """The .osu path inside the analysed song's folder, or a refusal."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        name = str(file or "")
+        path = Path(str(self._analysis.source)).parent / name
+        if Path(name).name != name or not name.lower().endswith(".osu") or not path.is_file():
+            return {"ok": False, "key": "bad_file"}
+        return path
+
+    def hitsound_decide_propose(self, file: str) -> dict:
+        """Propose every decidable point's sound through the Rust sidecar.
+        One heavy job at a time; the units stay cached for accept/reject."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        if not self._busy.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        try:
+            report = overtone_rust.hitsound(str(self._analysis.source), str(path))
+        except overtone_rust.SidecarUnavailable:
+            return {"ok": False, "key": "no_rust"}
+        except (RuntimeError, ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            self._busy.release()
+        units = report.get("units", [])
+        self._decisions[str(path.name)] = {"units": units}
+        return {"ok": True, "file": str(path.name), "units": units}
+
+    def hitsound_decide_preview(self, file: str, accept: list | None = None) -> dict:
+        """What applying the cached proposal would change. Read only."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        cached = self._decisions.get(str(path.name))
+        if cached is None:
+            return {"ok": False, "key": "no_proposal"}
+        try:
+            accepted = None if accept is None else {tuple(a) for a in accept}
+            preview = ta.preview_proposals(ta.read_osu_beatmap(path), cached["units"], accepted)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": str(path.name), "units": preview["units"],
+                "accepted": preview["accepted"], "would_change": preview["would_change"]}
+
+    def hitsound_decide_apply(self, file: str, accept: list | None = None,
+                              copy: bool = False) -> dict:
+        """Write the accepted proposals through P-2: over the original with a
+        backup, or onto a ``<name>_hitsounded.osu`` copy that must not exist.
+        Remembers the replaced bytes for the one-level undo."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        cached = self._decisions.get(str(path.name))
+        if cached is None:
+            return {"ok": False, "key": "no_proposal"}
+        dest = path.with_name(path.stem + "_hitsounded.osu") if copy else None
+        try:
+            accepted = None if accept is None else {tuple(a) for a in accept}
+            if dest is None:
+                previous = path.read_bytes()
+            result = ta.apply_proposals(path, cached["units"], accepted, dest)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        if dest is None:
+            self._decide_undo = {"path": str(path), "bytes": previous}
+        else:
+            self._decide_undo = None
+        return {"ok": True, "file": str(path.name), "changed": result["changed"],
+                "written": result["written"], "backup": result["backup"],
+                "dest": result["dest"], "undo": self._decide_undo is not None}
+
+    def hitsound_decide_undo(self) -> dict:
+        """Restore the bytes the last in-place apply replaced, backing up the
+        current file first. One level: a second undo has nothing to restore."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not self._decide_undo:
+            return {"ok": False, "key": "no_undo"}
+        path = Path(str(self._decide_undo["path"]))
+        if not path.is_file():
+            self._decide_undo = None
+            return {"ok": False, "key": "bad_file"}
+        try:
+            backup = ta._backup_before_write(path, path.read_bytes())
+            ta._atomic_write_bytes(path, bytes(self._decide_undo["bytes"]))
+        except OSError as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        self._decide_undo = None
+        return {"ok": True, "file": path.name, "backup": str(backup)}
 
     def inject_preview(self, osu_path: str) -> dict:
         """Dry run first, like the Tk GUI's confirmation dialog data."""
@@ -1102,6 +1319,259 @@ class Api:
         return {"ok": True, "file": source.name,
                 "view": ta.structure_view(self._structure[1], self._analysis)}
 
+    def evidence(self) -> dict:
+        """The engine's alternatives for the open song: coherence candidates,
+        the octave margin and half/double readings per section, residual and
+        coverage beside each. Read only; cached on the live analysis, whose
+        attacks and sections no edit moves."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if self._evidence is None or self._evidence[0] is not self._analysis:
+            self._evidence = (self._analysis, ta.analysis_evidence(self._analysis))
+        return {"ok": True, "evidence": self._evidence[1]}
+
+    # -- ramps: the elastic curve as red lines --------------------------------
+    def ramps(self, drift_ms: float = 5.0, max_lines=None) -> dict:
+        """Fit the fewest red lines within the drift and show the trade-off.
+        Shells to the CLI under the one-heavy-job lock; cached for Use.
+        Read only until Use writes."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            drift = float(drift_ms)
+        except (TypeError, ValueError):
+            return {"ok": False, "key": "bad_values"}
+        if not drift > 0:
+            return {"ok": False, "key": "bad_values"}
+        cap = None
+        if max_lines not in (None, ""):
+            try:
+                cap = int(max_lines)
+            except (TypeError, ValueError):
+                return {"ok": False, "key": "bad_values"}
+            if cap < 1:
+                return {"ok": False, "key": "bad_values"}
+        key = (drift, cap)
+        cached = self._ramps
+        if cached is None or cached[0] is not self._analysis or cached[1] != key:
+            if not self._busy.acquire(blocking=False):
+                return {"ok": False, "key": "busy"}
+            try:
+                report = overtone_rust.ramps(str(self._analysis.source), drift, cap,
+                                             self._settings()["offset_decimals"])
+            except overtone_rust.SidecarUnavailable:
+                return {"ok": False, "key": "no_rust"}
+            except overtone_rust.SidecarRefused as exc:
+                return {"ok": False, "key": "no_grid", "detail": str(exc)}
+            except (RuntimeError, ValueError, OSError) as exc:
+                return {"ok": False, "key": "error", "detail": str(exc)}
+            finally:
+                self._busy.release()
+            self._ramps = (self._analysis, key, report)
+        return {"ok": True, "report": self._ramps[2]}
+
+    def ramps_use(self) -> dict:
+        """Make the fitted red lines the working timing, as hand-placed
+        points. One undo step; locked points stay, as they do through
+        re-analysis."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if self._ramps is None or self._ramps[0] is not self._analysis:
+            return {"ok": False, "key": "no_ramps"}
+        beats = np.asarray(self._analysis.beats, dtype=np.float64)
+        points = [ta.TimingPoint(float(line["offset_ms"]), float(line["bpm"]), 1.0,
+                                 ta._nearest_beat_index(beats, float(line["offset_ms"])),
+                                 4, False, manual=True)
+                  for line in self._ramps[2]["lines"]]
+        if not points:
+            return {"ok": False, "key": "no_ramps"}
+        self._push_history()
+        self._analysis.points = self._merge_locks(points, self._analysis.beats)
+        reply = self._edited(0, None)
+        reply["loaded"] = len(points)
+        return reply
+
+    # -- offset lab: the file's own delay, both decoders side by side -------
+    def offset_lab(self) -> dict:
+        """The analysed file's gapless numbers from its own header. Pure file
+        reading: no job, no song decoding beyond the open analysis."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        return {"ok": True, "header": ta.mp3_gapless_info(str(self._analysis.source))}
+
+    def offset_decoders(self) -> dict:
+        """The first attack through each decoder, side by side: Python's
+        against the Rust sidecar's, in milliseconds. Two decodes under the
+        one-heavy-job lock; refusals say which side has nothing to compare."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not self._busy.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        try:
+            times = np.asarray(getattr(self._analysis, "attack_times", []), dtype=np.float64)
+            if times.size:
+                python_ms = round(float(times[0]) * 1000.0, 3)
+            else:
+                y, sr = ta._load_audio(str(self._analysis.source), lambda _message: None)
+                detected, _weights, _env = ta._detect_attacks(y, sr)
+                if detected.size == 0:
+                    return {"ok": False, "key": "error", "detail": "no attacks detected"}
+                python_ms = round(float(detected[0]) * 1000.0, 3)
+            report = overtone_rust.analyze(str(self._analysis.source))
+        except overtone_rust.SidecarUnavailable:
+            return {"ok": False, "key": "no_rust"}
+        except overtone_rust.SidecarRefused as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        except (RuntimeError, ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            self._busy.release()
+        rust_times = np.asarray(getattr(report, "attack_times", []), dtype=np.float64)
+        if rust_times.size == 0:
+            return {"ok": False, "key": "error", "detail": "no attacks decoded"}
+        rust_ms = round(float(rust_times[0]) * 1000.0, 3)
+        return {"ok": True, "python_ms": python_ms, "rust_ms": rust_ms,
+                "delta_ms": round(rust_ms - python_ms, 3)}
+
+    # -- structure bookmarks: section starts as editor bookmarks ------------
+    def _bookmarks_plan(self, file: str):
+        """The map plus the song's section starts in ms, or a refusal."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        view = self.structure()
+        if not view.get("ok"):
+            return view
+        try:
+            beatmap = ta.read_osu_beatmap(path)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        starts = [s["start_s"] * 1000.0 for s in view["view"]["sections"]]
+        return path, beatmap, starts
+
+    def structure_bookmarks_preview(self, file: str) -> dict:
+        """What writing the section starts as bookmarks would add. Read only."""
+        plan = self._bookmarks_plan(file)
+        if isinstance(plan, dict):
+            return plan
+        path, beatmap, starts = plan
+        try:
+            import copy
+            result = ta.set_editor_bookmarks(copy.deepcopy(beatmap),
+                                             [round(s) for s in starts])
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name, "starts": len(starts),
+                "added": result["added"], "total": result["total"]}
+
+    def structure_bookmarks_apply(self, file: str) -> dict:
+        """Write the section starts into the map's bookmarks, merged with its
+        own, the file backed up first and logged."""
+        plan = self._bookmarks_plan(file)
+        if isinstance(plan, dict):
+            return plan
+        path, beatmap, starts = plan
+        try:
+            result = ta.set_editor_bookmarks(beatmap, [round(s) for s in starts])
+            written = ta.write_osu_beatmap(path, beatmap)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name, "added": result["added"],
+                "total": result["total"], "written": written["bytes"] > 0,
+                "backup": written["backup"]}
+
+    # -- structure kiai: kiai on chorus sections ------------------------------
+    def _kiai_plan(self, file: str):
+        """The map plus the song's chorus spans in ms, or a refusal."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        view = self.structure()
+        if not view.get("ok"):
+            return view
+        try:
+            beatmap = ta.read_osu_beatmap(path)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        spans = [(s["start_s"] * 1000.0, s["end_s"] * 1000.0)
+                 for s in view["view"]["sections"] if s.get("kind") == "chorus"]
+        if not spans:
+            return {"ok": False, "key": "no_chorus"}
+        return path, beatmap, spans
+
+    def structure_kiai_preview(self, file: str) -> dict:
+        """What writing kiai on the choruses would add, flip or keep. Read only."""
+        plan = self._kiai_plan(file)
+        if isinstance(plan, dict):
+            return plan
+        path, beatmap, spans = plan
+        try:
+            import copy
+            result = ta.set_chorus_kiai(copy.deepcopy(beatmap), spans)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name, "choruses": len(spans),
+                "added": result["added"], "flipped": result["flipped"],
+                "kept": result["kept"]}
+
+    def structure_kiai_apply(self, file: str) -> dict:
+        """Write kiai on the choruses as green lines, the file backed up
+        first and logged. Sound never changes: kiai is light, not sound."""
+        plan = self._kiai_plan(file)
+        if isinstance(plan, dict):
+            return plan
+        path, beatmap, spans = plan
+        try:
+            result = ta.set_chorus_kiai(beatmap, spans)
+            written = ta.write_osu_beatmap(path, beatmap)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name, "choruses": len(spans),
+                "added": result["added"], "flipped": result["flipped"],
+                "kept": result["kept"], "written": written["bytes"] > 0,
+                "backup": written["backup"]}
+
+    # -- structure breaks: quiet spans long enough for a break ----------------
+    def _breaks_plan(self, file: str):
+        """The map plus the song's suggested break spans, or a refusal."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        view = self.structure()
+        if not view.get("ok"):
+            return view
+        try:
+            beatmap = ta.read_osu_beatmap(path)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return path, beatmap, ta.suggest_breaks(beatmap, view["view"]["sections"])
+
+    def structure_breaks_preview(self, file: str) -> dict:
+        """What writing the suggested breaks would add. Read only."""
+        plan = self._breaks_plan(file)
+        if isinstance(plan, dict):
+            return plan
+        path, _beatmap, spans = plan
+        return {"ok": True, "file": path.name, "spans": spans}
+
+    def structure_breaks_apply(self, file: str) -> dict:
+        """Write the suggested breaks as 2,start,end lines, the file backed
+        up first and logged. Recomputes the spans: the preview never decides."""
+        plan = self._breaks_plan(file)
+        if isinstance(plan, dict):
+            return plan
+        path, beatmap, spans = plan
+        if not spans:
+            return {"ok": False, "key": "no_breaks"}
+        try:
+            result = ta.set_map_breaks(beatmap, [(s["start_ms"], s["end_ms"]) for s in spans])
+            written = ta.write_osu_beatmap(path, beatmap)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name, "breaks": len(spans),
+                "added": result["added"], "kept": result["kept"],
+                "written": written["bytes"] > 0, "backup": written["backup"]}
+
     # -- assisted timing: two marked downbeats seed the grid ---------------
     def assisted_fit(self, first_ms: float, second_ms: float, bars: int, meter: int) -> dict:
         """Fit the grid two marked downbeats imply. Read only: the answer (or
@@ -1142,14 +1612,27 @@ class Api:
 
         ``file`` is the song as it is on disk, for the browser to decode.
         ``wav`` is Overtone's own decode as 16-bit mono WAV, for a format the
-        browser cannot read (AIFF). Only the analysed file is ever served:
-        the page names no path.
+        browser cannot read (AIFF). ``percussion`` is the HPSS stem as WAV,
+        computed once per analysis under the one-heavy-job lock. Only the
+        analysed file is ever served: the page names no path.
         """
         if self._analysis is None:
             return {"ok": False, "key": "first"}
         source = Path(str(self._analysis.source))
         try:
-            if kind == "wav":
+            if kind == "percussion":
+                if self._percussion is None or self._percussion[0] is not self._analysis:
+                    if not self._busy.acquire(blocking=False):
+                        return {"ok": False, "key": "busy"}
+                    try:
+                        y, sr = ta._load_audio(source, lambda _message: None)
+                        payload = ta.percussive_wav(y, sr)
+                    finally:
+                        self._busy.release()
+                    self._percussion = (self._analysis, payload)
+                payload = self._percussion[1]
+                mime = "audio/wav"
+            elif kind == "wav":
                 payload = _wav_bytes(source)
                 mime = "audio/wav"
             else:
@@ -1378,6 +1861,71 @@ class Api:
         except OSError as exc:
             return {"ok": False, "key": "no_osu", "detail": str(exc)}
         return {"ok": True}
+
+    # -- write history: every .osu write, its backup, restore ---------------
+    def history(self) -> dict:
+        """The write log, newest first: when, what operation, which file,
+        which backup holds the replaced bytes. Global: needs no song."""
+        entries = ta.read_history()
+        return {"ok": True, "entries": [
+            {"index": n, "ts": e.get("ts"), "op": e.get("op"),
+             "file": Path(str(e.get("path", ""))).name, "path": e.get("path"),
+             "backup": Path(str(e.get("backup", ""))).name if e.get("backup") else None,
+             "backup_path": e.get("backup"), "summary": e.get("summary", {})}
+            for n, e in enumerate(entries)]}
+
+    def _history_entry(self, index: int):
+        """The log entry at ``index`` (newest first), or None when the index
+        names nothing logged."""
+        try:
+            n = int(index)
+        except (TypeError, ValueError):
+            return None
+        entries = ta.read_history()
+        return entries[n] if 0 <= n < len(entries) else None
+
+    def history_diff(self, index: int) -> dict:
+        """The timing diff of one entry: the backup's red lines against the
+        file's current ones — shifted by the logged shift first for swaps,
+        so what reads is what changed besides the move. Read only; missing
+        files refuse."""
+        entry = self._history_entry(index)
+        if entry is None:
+            return {"ok": False, "key": "bad_index"}
+        try:
+            current = Path(str(entry["path"])).read_bytes()
+        except OSError:
+            return {"ok": False, "key": "bad_file"}
+        if not entry.get("backup"):
+            return {"ok": False, "key": "no_backup"}
+        try:
+            old = Path(str(entry["backup"])).read_bytes()
+        except OSError:
+            return {"ok": False, "key": "no_backup"}
+        old_text = old.decode("utf-8-sig", "replace")
+        shift = (entry.get("summary") or {}).get("shift_ms")
+        if entry.get("op") == "swap" and isinstance(shift, (int, float)):
+            try:
+                old_text = ta.shift_osu_text(old_text, float(shift))[0]
+            except ValueError:
+                pass
+        return {"ok": True, "file": Path(str(entry["path"])).name,
+                "diff": ta.diff_reds(old_text, current.decode("utf-8-sig", "replace"))}
+
+    def history_restore(self, index: int) -> dict:
+        """Restore one entry's backup over its file, keeping the current bytes
+        as a new backup first. The restored bytes are logged as a restore."""
+        entry = self._history_entry(index)
+        if entry is None:
+            return {"ok": False, "key": "bad_index"}
+        if not entry.get("backup"):
+            return {"ok": False, "key": "no_backup"}
+        try:
+            result = ta.restore_write(entry["path"], entry["backup"])
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": Path(str(entry["path"])).name,
+                "backup": Path(str(result["backup"])).name}
 
     # -- helpers (not exposed: underscored) ----------------------------------
     def _save_dialog(self, filename: str, file_types, directory: Path | None = None) -> str | None:

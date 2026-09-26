@@ -63,9 +63,9 @@ Each has an id, what it unblocks, and a size (S, M, L: relative effort, not a da
 | **P-1** | **Sound events from the map** | every object expanded into the sounds it makes: circle; slider head, each repeat, tail (per-edge sound and set), body; spinner end; mania hold. Each resolved to what osu! plays: object sample overriding the timing point's, 0 meaning "inherit". Everything below reads hitsounds through this | H1, H2, H3, H5, P-5 | M | **done** |
 | **P-2** | **Hitsound field writer** | changes only `hitSound`, `edgeSounds`, `edgeSets` and `hitSample` on hit object lines, as edits over the original bytes. A write with zero changes gives the identical file (a test, and a measurement over every local map). Green lines only with consent, reusing inject's rules | H1, H5 | M | **done** |
 | **P-3** | **Sample playback** | samples found as osu! finds them (beatmap folder custom index, then skin, then defaults), decoded in the page, scheduled on the existing clock. Defaults are **Overtone's own synthesised set**: osu!'s default samples are ppy's, not ours to bundle | H2, H5 | M | **done** |
-| **P-4** | **Evidence through the CLI** | `overtone-cli hitsound-evidence <audio>`: per attack, class probabilities with each term's contribution, and its role. The calibrated weights baked in as constants, with a test that they equal a fresh fit (3.5 s per call otherwise) | H3 (audio half), H4 | M | todo |
-| **P-5** | **Object ↔ attack matching** | object-centric: each sound event's nearest attack by binary search, and "no attack here" as a state of its own (a sound over silence) | H3, H4 | S | todo |
-| **P-6** | **Real-map evaluation** | a local, read-only script over maps chosen from the library index: how often a proposal agrees with the mapper's own hitsounds, per addition, against simple baselines ("clap on 2 and 4", "finish on phrase starts"). The maps are never committed; the script and its numbers are | H3 thresholds, H4 tuning | M | todo |
+| **P-4** | **Evidence through the CLI** | `overtone-cli hitsound-evidence <audio>`: per attack, class probabilities with each term's contribution, and its role. The calibrated weights baked in as constants, with a test that they equal a fresh fit (3.5 s per call otherwise) | H3 (audio half), H4 | M | **done** — `evidence.rs` + baked constants (`baked_matches_fresh_fit` holds them bit-for-bit to the fit); exits 0 with null roles where there is no grid |
+| **P-5** | **Object ↔ attack matching** | object-centric: each sound event's nearest attack by binary search, and "no attack here" as a state of its own (a sound over silence) | H3, H4 | S | **done** — `match_sound_events`: every event (edges, ends, bodies at their start) takes its nearest attack with dt and weight inside 50 ms, else `attack` None; unsorted input still matches |
+| **P-6** | **Real-map evaluation** | a local, read-only script over maps chosen from the library index: how often a proposal agrees with the mapper's own hitsounds, per addition, against simple baselines ("clap on 2 and 4", "finish on phrase starts"). The maps are never committed; the script and its numbers are | H3 thresholds, H4 tuning | M | **done** — `bench/eval_hitsounds.py` (index read-only, 0 errors on 1,000 maps): clap rule F1 0.59, finish rule F1 0.42 (medians); "phrase starts" proxied by the downbeat, stated in the script |
 | **P-7** | **Object lane on the timeline** | objects and their sounds drawn under the waveform, selectable | H2, H5 | S-M | **done** |
 
 ```
@@ -96,7 +96,7 @@ riskier leans on them.
 **Measure:** zero-change copy (a difficulty onto itself) is byte-identical on every local map;
 events matched and unmatched per copy, on the mapsets of the local folder.
 
-### H2 · The Hitsounds section, read only (needs P-1, P-3, P-7)
+### H2 · The Hitsounds section, read only (needs P-1, P-3, P-7) — done 2026-09-24
 
 The sidebar's Hitsounds section: every object with what it plays now, resolved; the object
 lane on the timeline; audition with the samples, alone or over the song. A summary per
@@ -105,12 +105,15 @@ beat position ("claps: 96 % on beats 2 and 4") that already tells a modder a lot
 **Measure:** what it shows equals what osu! plays, on hand-made maps covering each rule of
 P-1 (inheritance, per-edge sets, custom indices on greens).
 
-### H3 · Consistency check (needs P-1, P-5; audio half P-4; thresholds P-6)
+### H3 · Consistency check (needs P-1, P-5; audio half P-4; thresholds P-6) — map half done 2026-09-25
 
 Items in the mod report: objects whose sound breaks the map's own pattern, say bar 12 beat
 2 with no clap when 15 of the 16 bars around it have one, or a finish on an off-beat
-16th. The first half reads only the map and the grid. The second adds the audio: a clap
-over an attack that sounds nothing like a snare or clap, a whistle on silence.
+16th. The first half reads only the map and the grid (`hitsound_consistency`, in the
+mod report as source "hitsound"). The second adds the audio (`hitsound_silence_check`,
+finishes and claps with no attack under them, in the same report) — and stops there:
+the clap-mismatch rule cannot ship until the templates prove themselves on real audio
+(see timeline H3 audio half), which is H4's real-audio gate, not new work.
 
 Advice, never an edit, with the evidence written out. Useful for every map that already
 has hitsounds, which is 94 % of them.
@@ -118,7 +121,7 @@ has hitsounds, which is 94 % of them.
 **Measure:** flags per map on the local corpus; a flag rate a modder would read, not
 hundreds per map. Thresholds set on P-6's numbers, then held fixed.
 
-### H4 · Decision engine (needs P-4, P-5, P-6, grid, phrase edges)
+### H4 · Decision engine (needs P-4, P-5, P-6, grid, phrase edges) — done 2026-09-25
 
 The Viterbi of `06` §6 in Rust, profiles as JSON files, a proposal per object with its
 alternatives and the terms behind it. Exposed as `overtone-cli hitsound <audio> <map>`.
@@ -126,21 +129,44 @@ alternatives and the terms behind it. Exposed as `overtone-cli hitsound <audio> 
 **Measure, two gates before it reaches the app:**
 - *Synthetic:* the corpus renderer places hits with labels; a map with an object on each
   hit is hitsounded, and the proposal must put the profile's sound on each class (exact
-  truth).
+  truth). Holds 19/19 on a grid-composed arrangement (hats to percussive-bare as a
+  stated template limit).
 - *Real:* on P-6, agreement with the mapper per addition must beat the simple baselines.
-  Mappers disagree with each other, so the number is not "accuracy". It is "better than a
-  rule", or the engine does not ship.
+  Holds on two disjoint 11-map samples: clap F1 0.67 and 0.63 against 0.59, finish F1
+  0.71 and 0.75 against 0.42 (`bench/eval_proposals.py`). Mappers disagree with each
+  other, so the number is not "accuracy". It is "better than a rule", and both samples
+  clear it.
 
-### H5 · Editor and export (needs H4, P-2, P-3, P-7)
+### H5 · Editor and export (needs H4, P-2, P-3, P-7) — engine half done 2026-09-25
 
 Accept, reject or change each proposal, per object or per section; volume and sample index;
 undo; audition every change. Export through P-2 with a preview, backups, and optionally a
-copy (`<name>_hitsounded.osu`) instead of the original.
+copy (`<name>_hitsounded.osu`) instead of the original. The engine half
+(`proposal_changes`, `preview_proposals`, `apply_proposals`) maps bank and additions
+onto P-2 field changes — volume, index and custom files untouched, a moved sound
+refusing the whole apply — with preview, in-place backup writes and must-not-exist
+copies. The editor surface is in: the Decide card ticks proposals, previews, writes
+the file or a copy with confirmation, undoes once, and refreshes report, transport
+and object lane; per-row and full-song playback audition what is written.
+Volume/sample changes and pre-hearing proposals stay future work.
 
 ### H6 · After it works
 
 Sample bank import and sample-to-role recommendation (`06` §8), custom profiles in the app,
 and only then the ML evaluation of `08`, against the template baseline.
+
+### H7 · Audio-only proposal (proposed 2026-09-26, todo)
+
+Today H4 takes `<audio> <map>`: it needs a difficulty's objects and refuses
+without them. The ask, noted 2026-09-26: drop an audio file with no map, have
+the song's own analysis (attacks → instrument classes + musical role) propose
+what hitsounds go where. The open question is what object rhythm to propose on
+when there is no map to hang sounds on — the likely shape is strong attacks on
+the detected grid as the object set, with the proposal marked as what the song
+suggests rather than what fits an existing difficulty. Needs H4's decision
+plus P-4 evidence; evaluation against P-6 mapper agreement does not apply
+without a map, so it needs its own gate (e.g. class agreement with H4's
+proposal on the same song once mapped).
 
 ---
 

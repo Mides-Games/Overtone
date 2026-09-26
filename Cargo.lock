@@ -142,6 +142,7 @@ dependencies = [
  "overtone-audio",
  "overtone-core",
  "overtone-dsp",
+ "overtone-hitsound",
  "overtone-tempo",
  "serde_json",
 ]
@@ -170,6 +171,8 @@ dependencies = [
  "overtone-core",
  "overtone-dsp",
  "realfft",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

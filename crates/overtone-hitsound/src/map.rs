@@ -1,0 +1,539 @@
+//! Minimal read-only `.osu` input for the hitsound decision (H4a).
+//!
+//! Not the Phase 0 port: no writer, no storyboards, no editor metadata —
+//! just what a proposal needs, which is hit objects with their sounds and
+//! the timing lines behind the bar grid. One rule shapes it, taken from the
+//! Python reader: a hand-broken line never hides the rest of the map, so
+//! bad objects come back [`ObjectKind::Unparsed`] and numberless timing
+//! lines are skipped. Infallible on text by construction; file errors stay
+//! with the caller.
+
+/// `normal:addition:index:volume:file`, short forms padded like Python.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HitSample {
+    pub normal_set: i64,
+    pub addition_set: i64,
+    pub index: i64,
+    pub volume: i64,
+    pub file: String,
+}
+
+fn parse_sample(text: &str) -> HitSample {
+    let mut parts = text.split(':');
+    let number = |part: Option<&str>| part.unwrap_or("").trim().parse::<i64>().unwrap_or(0);
+    let file = text.split(':').nth(4).unwrap_or("").to_string();
+    HitSample {
+        normal_set: number(parts.next()),
+        addition_set: number(parts.next()),
+        index: number(parts.next()),
+        volume: number(parts.next()),
+        file,
+    }
+}
+
+/// What an object is, with what H4 decides on. Curve points are not kept:
+/// placement is the mapper's job, sound is ours.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ObjectKind {
+    Circle,
+    Slider {
+        slides: i64,
+        length: f64,
+        edge_sounds: Vec<u8>,
+        edge_sets: Vec<(i64, i64)>,
+    },
+    Spinner {
+        end_time: f64,
+    },
+    Hold {
+        end_time: f64,
+    },
+    /// A hand-broken line: kept in place, decided nothing.
+    Unparsed,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HitObject {
+    pub x: i64,
+    pub y: i64,
+    pub time: f64,
+    pub new_combo: bool,
+    pub hit_sound: u8,
+    pub kind: ObjectKind,
+    pub sample: HitSample,
+}
+
+/// One `[TimingPoints]` line: red lines carry the tempo, green lines the
+/// slider velocity and the sounding state. A negative beat length is
+/// inherited whatever the flag says — the length beats a contradictory
+/// flag, as in legacy maps.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimingPoint {
+    pub offset: f64,
+    pub beat_len: f64,
+    pub meter: i64,
+    pub sample_set: i64,
+    pub sample_index: i64,
+    pub volume: i64,
+    pub uninherited: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct Beatmap {
+    pub sample_set: i64,
+    pub slider_multiplier: f64,
+    pub timing: Vec<TimingPoint>,
+    pub objects: Vec<HitObject>,
+}
+
+fn parse_object(line: &str) -> HitObject {
+    let unparsed = || HitObject {
+        x: 0,
+        y: 0,
+        time: f64::NAN,
+        new_combo: false,
+        hit_sound: 0,
+        kind: ObjectKind::Unparsed,
+        sample: parse_sample(""),
+    };
+    let fields: Vec<&str> = line.split(',').collect();
+    if fields.len() < 5 {
+        return unparsed();
+    }
+    let (x, y, time, type_bits, hit_sound) = match (
+        fields[0].trim().parse::<i64>(),
+        fields[1].trim().parse::<i64>(),
+        fields[2].trim().parse::<f64>(),
+        fields[3].trim().parse::<i64>(),
+        fields[4].trim().parse::<u8>(),
+    ) {
+        (Ok(x), Ok(y), Ok(time), Ok(type_bits), Ok(hit_sound)) if time.is_finite() => {
+            (x, y, time, type_bits, hit_sound)
+        }
+        _ => return unparsed(),
+    };
+    let rest = &fields[5..];
+    let (kind, sample) = if type_bits & 128 != 0 {
+        // Mania hold: endTime, then the sample.
+        match rest.first() {
+            Some(first) => {
+                let (end, _, sample) = split_once(first, ':');
+                match end.trim().parse::<f64>() {
+                    Ok(end_time) if end_time.is_finite() => (
+                        ObjectKind::Hold { end_time },
+                        parse_sample(&sample),
+                    ),
+                    _ => return unparsed(),
+                }
+            }
+            None => return unparsed(),
+        }
+    } else if type_bits & 8 != 0 {
+        // Spinner: endTime, then the sample.
+        match rest.first().and_then(|s| s.trim().parse::<f64>().ok()) {
+            Some(end_time) if end_time.is_finite() => (
+                ObjectKind::Spinner { end_time },
+                parse_sample(rest.get(1).copied().unwrap_or("")),
+            ),
+            _ => return unparsed(),
+        }
+    } else if type_bits & 2 != 0 {
+        // Slider: curve, slides, length, then edges and the sample. A
+        // slider without its numbers is not an object to decide on.
+        if rest.len() < 3 {
+            return unparsed();
+        }
+        let (slides, length) = match (
+            rest[1].trim().parse::<i64>(),
+            rest[2].trim().parse::<f64>(),
+        ) {
+            (Ok(slides), Ok(length)) if length.is_finite() => (slides, length),
+            _ => return unparsed(),
+        };
+        let edge_sounds = rest
+            .get(3)
+            .map(|s| {
+                s.split('|')
+                    .filter_map(|b| b.trim().parse::<u8>().ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let edge_sets = rest
+            .get(4)
+            .map(|s| {
+                s.split('|')
+                    .filter_map(|pair| {
+                        let (normal, _, addition) = split_pair(pair, ':');
+                        Some((
+                            normal.trim().parse::<i64>().unwrap_or(0),
+                            addition.trim().parse::<i64>().unwrap_or(0),
+                        ))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        (
+            ObjectKind::Slider {
+                slides,
+                length,
+                edge_sounds,
+                edge_sets,
+            },
+            parse_sample(rest.get(5).copied().unwrap_or("")),
+        )
+    } else if type_bits & 1 != 0 {
+        (
+            ObjectKind::Circle,
+            parse_sample(rest.first().copied().unwrap_or("")),
+        )
+    } else {
+        return unparsed();
+    };
+    HitObject {
+        x,
+        y,
+        time,
+        new_combo: type_bits & 4 != 0,
+        hit_sound,
+        kind,
+        sample,
+    }
+}
+
+fn split_once(text: &str, delimiter: char) -> (&str, char, String) {
+    match text.find(delimiter) {
+        Some(i) => (&text[..i], delimiter, text[i + 1..].to_string()),
+        None => (text, delimiter, String::new()),
+    }
+}
+
+fn split_pair(text: &str, delimiter: char) -> (&str, char, &str) {
+    match text.find(delimiter) {
+        Some(i) => (&text[..i], delimiter, &text[i + 1..]),
+        None => (text, delimiter, ""),
+    }
+}
+
+fn parse_timing(line: &str) -> Option<TimingPoint> {
+    let fields: Vec<&str> = line.split(',').collect();
+    if fields.len() < 2 {
+        return None;
+    }
+    let offset = fields[0].trim().parse::<f64>().ok()?;
+    let beat_len = fields[1].trim().parse::<f64>().ok()?;
+    if !offset.is_finite() || !beat_len.is_finite() || beat_len == 0.0 {
+        return None;
+    }
+    let number = |i: usize| {
+        fields
+            .get(i)
+            .map(|s| s.trim().parse::<i64>().unwrap_or(0))
+            .unwrap_or(0)
+    };
+    let inherited_by_length = beat_len < 0.0;
+    let uninherited = fields
+        .get(6)
+        .map(|s| s.trim() == "1")
+        .unwrap_or(true)
+        && !inherited_by_length;
+    Some(TimingPoint {
+        offset,
+        beat_len,
+        meter: if fields.len() > 2 { number(2) } else { 4 },
+        sample_set: number(3),
+        sample_index: number(4),
+        volume: number(5),
+        uninherited,
+    })
+}
+
+fn section_value(text: &str, section: &str, key: &str) -> Option<String> {
+    let mut inside = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            inside = trimmed.eq_ignore_ascii_case(&format!("[{section}]"));
+            continue;
+        }
+        if inside {
+            if let Some((name, value)) = trimmed.split_once(':') {
+                if name.trim().eq_ignore_ascii_case(key) {
+                    return Some(value.trim().to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn sample_set_name(name: &str) -> i64 {
+    match name.trim().to_lowercase().as_str() {
+        "soft" => 2,
+        "drum" => 3,
+        _ => 1,
+    }
+}
+
+/// The decision input of one `.osu` file's text: BOM tolerated, either line
+/// ending, sections in any order, unknown sections ignored.
+pub fn parse(text: &str) -> Beatmap {
+    let text = text.strip_prefix('\u{FEFF}').unwrap_or(text);
+    let sample_set = section_value(text, "General", "SampleSet")
+        .map(|name| sample_set_name(&name))
+        .unwrap_or(1);
+    let slider_multiplier = section_value(text, "Difficulty", "SliderMultiplier")
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|v| v.is_finite() && *v > 0.0)
+        .unwrap_or(1.4);
+    let mut timing = Vec::new();
+    let mut objects = Vec::new();
+    let mut section = "";
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            section = match &trimmed[1..trimmed.len() - 1] {
+                "TimingPoints" => "timing",
+                "HitObjects" => "objects",
+                _ => "",
+            };
+            continue;
+        }
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            continue;
+        }
+        match section {
+            "timing" => {
+                if let Some(point) = parse_timing(trimmed) {
+                    timing.push(point);
+                }
+            }
+            "objects" => objects.push(parse_object(trimmed)),
+            _ => {}
+        }
+    }
+    Beatmap {
+        sample_set,
+        slider_multiplier,
+        timing,
+        objects,
+    }
+}
+
+/// One slider span in milliseconds: how long one slide takes. Ports the
+/// Python reader's cursor: the beat is the last red length (a green line
+/// before the first red one still gets that beat), red lines reset the
+/// slider velocity to 1.0, green lines set it to -100 over their length.
+/// `None` when no timing places the edges — then repeats and tails do not
+/// exist as units either.
+pub fn slider_span(timing: &[TimingPoint], multiplier: f64, time_ms: f64, length: f64) -> Option<f64> {
+    if !(length > 0.0) || !(multiplier > 0.0) {
+        return None;
+    }
+    // Per-row states like the Python cursor: red lines set the beat and
+    // reset the velocity, green lines set the velocity. The query takes the
+    // last row at or before the time, or the first row's settings before
+    // it all, as in osu!.
+    let mut states: Vec<(f64, Option<f64>, f64)> = Vec::new();
+    let mut beat: Option<f64> = None;
+    let mut sv = 1.0;
+    let mut first_beat: Option<f64> = None;
+    for point in timing {
+        if point.uninherited && point.beat_len > 0.0 {
+            beat = Some(point.beat_len);
+            sv = 1.0;
+            if first_beat.is_none() {
+                first_beat = Some(point.beat_len);
+            }
+        } else if !point.uninherited && point.beat_len < 0.0 {
+            sv = -100.0 / point.beat_len;
+        }
+        states.push((point.offset, beat, sv));
+    }
+    let mut state = states.first().map(|&(_, b, s)| (b, s));
+    for &(offset, b, s) in &states {
+        if offset > time_ms + 1e-6 {
+            break;
+        }
+        state = Some((b, s));
+    }
+    let (beat, sv) = state?;
+    let beat = beat.or(first_beat)?;
+    if !(sv > 0.0) {
+        return None;
+    }
+    Some(length / (multiplier * 100.0 * sv) * beat)
+}
+/// `(bar from 1, sixteenth slot or None off the grid, meter)` per time.
+/// Mirrors the Python `_bar_positions` the H2 report reads: sixteenths of
+/// the governing line's meter (slot 0 the downbeat), 0.06 beat tolerance,
+/// the first line's grid extending backwards, bars counted per span. Times
+/// in milliseconds, as the map speaks them.
+pub fn bar_slots(timing: &[TimingPoint], times: &[f64]) -> Vec<(i64, Option<i64>, i64)> {
+    let mut reds: Vec<(f64, f64, i64)> = timing
+        .iter()
+        .filter(|p| p.uninherited && p.beat_len > 0.0)
+        .map(|p| {
+            let meter = if p.meter > 0 { p.meter } else { 4 };
+            (p.offset, 60_000.0 / p.beat_len, meter)
+        })
+        .collect();
+    reds.sort_by(|a, b| a.0.total_cmp(&b.0));
+    if reds.is_empty() {
+        return times.iter().map(|_| (0, None, 4)).collect();
+    }
+    // First bar number of each span, counting whole bars forward.
+    let mut first_bar = Vec::with_capacity(reds.len());
+    let mut bar = 1i64;
+    for i in 0..reds.len() {
+        first_bar.push(bar);
+        if i + 1 < reds.len() {
+            let span_beats = (reds[i + 1].0 - reds[i].0) / (60_000.0 / reds[i].1);
+            let bars = (span_beats / reds[i].2 as f64 - 1e-6).ceil().max(1.0) as i64;
+            bar += bars;
+        }
+    }
+    times
+        .iter()
+        .map(|&t| {
+            let mut span = 0usize;
+            for (i, red) in reds.iter().enumerate() {
+                if red.0 <= t + 1e-6 {
+                    span = i;
+                }
+            }
+            let (offset, bpm, meter) = reds[span];
+            let beats = (t - offset) / (60_000.0 / bpm);
+            let bar_index = (beats / meter as f64 + 1e-9).floor() as i64;
+            let within = (beats - bar_index as f64 * meter as f64) * 4.0;
+            let q = within.round() as i64;
+            let slot = if (within - q as f64).abs() <= 0.06 * 4.0 {
+                Some(q.rem_euclid(meter * 4))
+            } else {
+                None
+            };
+            (first_bar[span] + bar_index, slot, meter)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MAP: &str = "osu file format v14\r\n\
+        \r\n\
+        [General]\r\n\
+        SampleSet: Soft\r\n\
+        \r\n\
+        [Difficulty]\r\n\
+        SliderMultiplier: 1.6\r\n\
+        \r\n\
+        [TimingPoints]\r\n\
+        1000,500,4,2,1,70,1,0\r\n\
+        9000,-100,4,2,1,60,0,0\r\n\
+        9500,400\r\n\
+        broken\r\n\
+        \r\n\
+        [HitObjects]\r\n\
+        256,192,1000,1,4,0:0:0:0:\r\n\
+        256,192,2000,2,2,L|356:192,1,140,2|2|2,0:0|0:0,0:0:0:0:\r\n\
+        256,192,3000,12,0,4000,0:0:0:0:\r\n\
+        100,100,4000,128,0,5000:0:0:0:0:\r\n\
+        nonsense\r\n";
+
+    #[test]
+    fn every_object_kind_parses_with_its_sound() {
+        let map = parse(MAP);
+        assert_eq!(map.sample_set, 2);
+        assert!((map.slider_multiplier - 1.6).abs() < 1e-12);
+        assert_eq!(map.objects.len(), 5);
+        let circle = &map.objects[0];
+        assert!(matches!(circle.kind, ObjectKind::Circle));
+        assert_eq!((circle.x, circle.y, circle.time, circle.hit_sound), (256, 192, 1000.0, 4));
+        assert!(!circle.new_combo);
+        assert_eq!(map.objects[2].new_combo, true);
+        match &map.objects[1].kind {
+            ObjectKind::Slider { slides, length, edge_sounds, edge_sets } => {
+                assert_eq!((*slides, *length), (1, 140.0));
+                assert_eq!(*edge_sounds, vec![2, 2, 2]);
+                assert_eq!(*edge_sets, vec![(0, 0), (0, 0)]);
+            }
+            kind => panic!("slider misread as {kind:?}"),
+        }
+        assert!(matches!(
+            map.objects[2].kind,
+            ObjectKind::Spinner { end_time } if end_time == 4000.0
+        ));
+        assert!(matches!(
+            map.objects[3].kind,
+            ObjectKind::Hold { end_time } if end_time == 5000.0
+        ));
+        assert!(matches!(map.objects[4].kind, ObjectKind::Unparsed));
+    }
+
+    #[test]
+    fn red_green_and_legacy_timing_lines_parse_and_junk_skips() {
+        let map = parse(MAP);
+        assert_eq!(map.timing.len(), 3);
+        assert!(map.timing[0].uninherited);
+        assert_eq!(map.timing[0].meter, 4);
+        assert!(!map.timing[1].uninherited);
+        assert!(map.timing[1].beat_len < 0.0);
+        // Legacy two-field line: red when the length is positive.
+        assert!(map.timing[2].uninherited);
+        assert_eq!(map.timing[2].meter, 4);
+    }
+
+    #[test]
+    fn missing_sections_fall_back_to_defaults() {
+        let map = parse("[HitObjects]\n256,192,1000,1,0,0:0:0:0:\n");
+        assert_eq!((map.sample_set, map.slider_multiplier), (1, 1.4));
+        assert!(map.timing.is_empty());
+        assert!(matches!(map.objects[0].kind, ObjectKind::Circle));
+    }
+
+    #[test]
+    fn negative_length_beats_a_red_flag() {
+        // A legacy map's line with a contradictory flag stays inherited.
+        let map = parse("[TimingPoints]\n1000,-50,4,2,1,60,1,0\n");
+        assert_eq!(map.timing.len(), 1);
+        assert!(!map.timing[0].uninherited);
+    }
+
+    #[test]
+    fn bar_slots_read_sixteenths_against_the_red_lines() {
+        // 120 BPM from 1000 ms: a beat is 500 ms, a bar 2 s.
+        let map = parse("[TimingPoints]\n1000,500,4,2,1,70,1,0\n");
+        let placed = bar_slots(&map.timing, &[1000.0, 1500.0, 1250.0, 500.0, 9000.0]);
+        assert_eq!(placed[0], (1, Some(0), 4));
+        assert_eq!(placed[1], (1, Some(4), 4));
+        assert_eq!(placed[2], (1, Some(2), 4));
+        // Before the first line the grid extends backwards, as in osu!.
+        assert_eq!(placed[3], (0, Some(12), 4));
+        // Past the line, bars keep counting.
+        assert_eq!(placed[4], (5, Some(0), 4));
+    }
+
+    #[test]
+    fn bar_slots_without_red_lines_place_nothing() {
+        let placed = bar_slots(&[], &[100.0]);
+        assert_eq!(placed, vec![(0, None, 4)]);
+    }
+
+    #[test]
+    fn slider_span_follows_beat_and_green_velocity() {
+        // 120 BPM, multiplier 1.6, length 140: one beat per 500 ms takes
+        // 140 / (1.6 * 100) of a beat... 437.5 ms at SV 1.
+        let map = parse("[TimingPoints]\n1000,500,4,2,1,70,1,0\n2000,-50,4,2,1,70,0,0\n");
+        let plain = slider_span(&map.timing, 1.6, 1000.0, 140.0).unwrap();
+        assert!((plain - 437.5).abs() < 1e-9, "{plain}");
+        // Under the green line SV doubles, so the span halves.
+        let fast = slider_span(&map.timing, 1.6, 2000.0, 140.0).unwrap();
+        assert!((fast - plain / 2.0).abs() < 1e-9, "{fast}");
+        // Before the first point the first settings apply.
+        let early = slider_span(&map.timing, 1.6, 0.0, 140.0).unwrap();
+        assert!((early - plain).abs() < 1e-9, "{early}");
+        // No timing, no span.
+        assert!(slider_span(&[], 1.6, 1000.0, 140.0).is_none());
+    }
+}

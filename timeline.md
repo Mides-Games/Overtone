@@ -16,6 +16,914 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Breaks: quiet spans written from Structure
+
+### Changed
+
+- **Breaks card in Structure**: one difficulty's picker, a preview listing
+  each span (time range, section kind) and a confirmed write adding
+  `2,start,end` lines after `//Break Periods` — every file backed up first.
+  A song with nothing quiet and long enough says so instead of writing. EN/ES.
+
+### Measured
+
+```
+synthetic map, 1 quiet gap    1 span (10.0–30.0 s, chorus, −6.0 dB, 28.0 s gap),
+                              written with backup; second run 0 added 1 kept
+Python unittest                 454 -> 456, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages, no
+                                duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
+## v4.0.0-dev — 2026-09-26 · Breaks, engine half: quiet spans, cut on gaps
+
+### Changed
+
+- **`suggest_breaks(beatmap, sections)`**: sections 6 dB under the loudest,
+  merged where adjacent, cut by the map's own sound gaps — only intersections
+  5 s or longer become spans, each with its kind, depth and gap. Both bars are
+  the tool's own and adjustable; the preview will show them, never a claim
+  about the client's.
+- **`set_map_breaks(beatmap, spans)`**: spans as `2,start,end` lines after
+  `//Break Periods`, covered spans kept, zero-length spans and a missing
+  [Events] refusing the map. Comments and blanks stay put.
+
+### Measured
+
+```
+Python unittest              450 -> 454 (writer suites green)
+facts                        ok
+```
+
+No analysis code touched, so no benchmark run here.
+
+---
+
+## v4.0.0-dev — 2026-09-26 · Kiai: chorus spans lit from Structure
+
+### Changed
+
+- **Kiai card in Structure**: one difficulty's picker, preview counts (added,
+  flipped, kept) and a confirmed write putting kiai on the chorus sections as
+  green lines — sound never changes, every file backed up first. A song with
+  no chorus says so instead of writing nothing. EN/ES.
+
+### Measured
+
+```
+synthetic map, 1 chorus     2 added 0 flipped 0 kept, sound_events identical,
+                            backup kept; greens read 1 at the open, 0 at the close
+Python unittest                 448 -> 450, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages, no
+                                duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
+## v4.0.0-dev — 2026-09-26 · Kiai, engine half: chorus spans as green lines
+
+### Changed
+
+- **`set_chorus_kiai(beatmap, spans)`**: each chorus span opens kiai at its
+  start and closes it at its end — a green already at the boundary gets its
+  kiai bit flipped, otherwise a new green carries the audible state in force
+  there (SV, sets, index, volume), so nothing plays differently. A boundary
+  whose kiai already reads right is left alone, so a second run is a no-op.
+
+### Measured
+
+```
+Python unittest              446 -> 448 (writer suites green)
+facts                        ok
+```
+
+No analysis code touched, so no benchmark run here.
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Bookmarks: section starts, merged not replaced
+
+### Changed
+
+- **Bookmarks card in Structure**: one difficulty's picker, preview counts, and a
+  confirmed write merging section starts into its editor bookmarks — the mapper's
+  survive, every file backed up first. EN/ES.
+
+### Measured
+
+```
+a real 3-map set, 11 sections   11 added onto 4 kept per map, 1 line moved each,
+                                0 non-bookmark moves, backups kept
+Python unittest                 444 -> 446, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages, no
+                                duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Bookmarks, engine half: merge, never delete
+
+### Changed
+
+- **`set_editor_bookmarks(beatmap, times_ms)`**: whole-millisecond section starts
+  merged into the map's own bookmarks, sorted — the mapper's survive, negatives
+  dropped, junk refusing the map instead of vanishing silently. Only the
+  bookmarks line moves. `[Editor]` is universal locally (500/500 maps), so a
+  missing one refuses rather than invents file structure.
+
+### Measured
+
+```
+Python unittest              442 -> 444 (writer suites green)
+facts                        ok
+```
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Preview point: the chorus, or the loudest part
+
+### Changed
+
+- **`suggest_preview_time` in the Structure view**: the loudest chorus's start,
+  the loudest non-intro/outro part's without one, each with its reason. Read
+  only: a suggestion, never a write. EN/ES.
+
+### Measured
+
+```
+4 real songs                   3 fall back to the loudest part (labels fire
+                               rarely, as known); 1 with real choruses previews
+                               the loudest one's start at 36.5 s
+Python unittest                440 -> 442, all pass
+benchmark.py                   24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                             one render line plus one string per language,
+                               cross-checked. Harness pass owed, stated.
+```
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Percussion-only audition in the transport
+
+### Changed
+
+- **Percussion only toggle**: the HPSS stem through the same chunk transport as
+  the song, cached per analysis, decoded and looped like the song with the click
+  on top — judging timing against drums alone. The waveform lane follows the
+  buffer, so it shows what plays.
+
+### Measured
+
+```
+a real song, 90 s             HPSS 11.1 s once, cached; 99/99 strong attacks kept
+                              within 50 ms on the stem; 12 % of the energy
+Python unittest               438 -> 440, all pass
+benchmark.py                  24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                            unit-tested bridge only; ids, both languages, no
+                              duplicates cross-checked. Harness pass owed, stated.
+```
+
+No Rust resynthesis was written: the crate's HPSS stops at masks, and librosa's
+reference HPSS is already a dependency. Porting ISTFT for parity's sake alone
+would be code without a measurement behind it.
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Offset lab: the blind test with an interval
+
+### Changed
+
+- **Blind test in the Offset lab card**: 18 trials, six shifts (±10/±20/±30 ms)
+  against 0 in shuffled blind order, 6-second windows from the loop or first
+  red line, both presentations heard before either vote counts. Per shift the
+  wins with a Wilson 95 % interval; the preferred shift is the argmax, or
+  nothing when 0 is unbeaten. Read only, one output-millisecond hook in the
+  click scheduler (identity at 0), shift restored after every window and run.
+
+### Measured
+
+```
+Python unittest              438, all pass (no new tests: client-side only)
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                           ids, both languages, no duplicates, function
+                             cross-checks. Harness pass owed, stated — this
+                             one moves sound, so the debt matters more here.
+```
+
+Two bugs caught in review before commit: a call to a trial function that was
+never written, and vote tallies with no entry for the zero side.
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Offset lab: the file's delay, both decoders
+
+### Changed
+
+- **Offset lab card in Timing**: the analysed file's gapless numbers from its own
+  header, and the first attack through each decoder side by side on its own
+  button (two decodes under the one-job lock). EN/ES.
+
+### Measured
+
+```
+first attack, Python vs    6 real songs: identical to 0.00 ms on all six — the
+  Rust decoders            +26 ms reference bias is not a decoder difference,
+                           so the lab points elsewhere (mapper convention)
+Python unittest            436 -> 438, all pass
+benchmark.py               24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                         unit-tested bridge only; ids, both languages, no
+                           duplicates cross-checked. Harness pass owed, stated.
+```
+
+The blind listening test from the roadmap row is still to build.
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Offset lab, engine half: the header's numbers
+
+### Changed
+
+- **`mp3_gapless_info(path)`**: the MP3's own gapless numbers — ID3v2 skipped,
+  first frame found, MPEG version setting the Xing offset, LAME tag unpacked
+  (delay and padding, 12 bits each at LAME+21) in samples and milliseconds at
+  the file's rate. Anything without a LAME tag reports absent instead of
+  guessed: nearly half the local folder has none.
+
+### Measured
+
+```
+8,071 local MP3s               4,428 LAME tags (delay 576 in 4,393, 35 odd ones),
+                               3,643 without; 0 errors, read only
+Python unittest                434 -> 436, all pass
+facts                          ok
+```
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Ramps in Timing: fit, price, use
+
+### Changed
+
+- **Ramps card in Timing**: drift and at-most-N inputs, Fit through the sidecar
+  (cached per analysis and settings), the lines with offset, BPM and attacks,
+  the count-against-drift trade-off with the recommendation beside it, and Use,
+  which loads the lines as hand-placed points through the editor's own path —
+  one undo, locks kept. EN/ES.
+
+### Measured
+
+```
+Python unittest              432 -> 434, all pass
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                           unit-tested bridge only; ids, both languages, no
+                             duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Ramps, engine half: the curve as red lines
+
+### Changed
+
+- **`ramps.rs` + `overtone-cli ramps`**: longest least-squares grids back to back
+  over the elastic beat indices, each keeping every covered attack within the
+  drift — greedy, which is optimal for fewest segments under monotone coverage.
+  `--drift` (default 5 ms) picks the rung, `--max-lines` takes the cheapest rung
+  that fits, and the trade-off table (1/2/5/10/20 ms) prices every rung. The
+  selector recommends ramps past degree 1 when the elastic residual beats the
+  piecewise one, or when it found no sections at all.
+
+### Fixed
+
+- **Grids fitted through ghost notes.** The first version demanded every attack
+  within drift of a beat, and off-beat 8ths snapped to their neighbour's index
+  read as zero drift for standing still: a 120→160 ramp came out as 70 doubled
+  lines of 3 attacks. Red lines anchor on strong attacks (half the peak and up,
+  the alignment report's own bar); ornaments ride between. Same run now reads
+  16 lines, 121 to 159 BPM.
+
+### Measured
+
+```
+ramp-120-160, 5 ms           16 red lines, first 121.1 BPM, last 159.4 BPM,
+                             worst drift 3.4 ms; tradeoff 31/23/16/11/8 lines
+click track                  1 line at the tempo, recommend false
+Rust tests                   256 -> 263, all pass, no warnings
+golden 27/27 · elastic · facts
+```
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Audio swap: one shift for the mapset, in Mapset
+
+### Changed
+
+- **Audio swap card in the Mapset view**: the folder's encodes beside the mapped
+  one, a preview with the measured shift (peak and tempo beside it) and per-map
+  red/object counts, then a confirmed apply moving every time with backups —
+  logged as swaps, so History diffs read past the move. Same-folder encodes
+  only; storyboards stay where they were, stated.
+- Bridge `swap_audios`, `swap_preview`, `swap_apply` behind it (EN/ES); heavy
+  decode under the one-job lock; offset decimals follow the user's setting like
+  inject, so stable maps stay whole-millisecond.
+
+### Measured
+
+```
+Python unittest              430 -> 432, all pass
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                           unit-tested bridge only; ids, both languages, no
+                             duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Audio swap, engine half: one shift for a mapset
+
+### Changed
+
+- **Measuring the shift** (`shift_samples`, `audio_shift`): full cross-correlation
+  at 11 kHz, parabolically refined, with peak, sharpness and an octave-aware
+  tempo ratio beside it. Refuses a weak peak, a dull one, and any tempo past
+  0.5 % — a different cut refuses on its peak before its tempo is even asked.
+- **Moving the map** (`shift_osu_text`, `preview_audio_swap`, `apply_audio_swap`):
+  red and green offsets, object starts, spinner/hold ends, PreviewTime,
+  AudioLeadIn, bookmarks and optionally the AudioFilename; lines keep their
+  shape, storyboards stay as parsed-nowhere (stated). Negative landings and
+  missing sections refuse the whole set; every file is backed up and logged.
+- History diffs read past the move: a swap entry compares backup-shifted
+  against current, so the diff names real changes instead of remove-plus-add
+  noise.
+
+### Measured
+
+```
+synthetic shifts             +26.000 ms -> +26.018, -40.500 -> -40.498,
+                             +123.456 -> +123.447, 0 exact
+real music, known silence    +26.37 -> +26.38, -150, 0 and +5230 all within 0.005 ms
+refusals                     150->165 BPM, nightcore-style pairs and different
+                             cuts (peaks 0.01-0.11) all refused
+a real 3-map set, +26 ms     717 lines moved, all backups kept, 43 ms;
+                             red diff after the move: no changes besides it
+Python unittest              425 -> 430, all pass
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+```
+
+Two probe bugs died in the design probe, recorded so nobody re-derives them: an
+FFT slice that cut the wrapped negative lags (keep the circular output whole),
+and an 8 ms STFT envelope whose window alignment biased sub-frame shifts by a
+full frame (compare the audio itself, downsampled).
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Write history: list, diff, restore
+
+### Changed
+
+- **History section**: every `.osu` write the app made (inject, hitsound fields,
+  full writes), newest first with operation, file, backup and summary; per-write
+  red-line diff against the backup; confirmed restore that keeps the current file
+  as a new backup first. Global like Library — no song needed. Bridge endpoints
+  `history`, `history_diff`, `history_restore` behind it, EN/ES.
+
+### Measured
+
+```
+Python unittest              422 -> 425, all pass
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                           unit-tested bridge only; ids, both languages, no
+                             duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Write history, engine half: every write logged
+
+### Changed
+
+- **Write log, restore and red diff** in the engine: `log_write` appends one JSON
+  line per `.osu` write (inject, hitsound fields, full writes) with the backup
+  holding the replaced bytes; `read_history` newest-first past torn lines;
+  `restore_write` keeps the current bytes as a new backup before swapping the
+  backup in atomically. `diff_reds` pairs offsets within 1 ms and names moved
+  BPMs. A log that cannot be kept is skipped, never raised — history must not
+  break writing. The suite points `OVERTONE_HISTORY_DIR` at scratch so writer
+  tests never land in real history.
+
+### Measured
+
+```
+Python unittest              417 -> 422 (writer suites green through the new hooks)
+benchmark.py                 not re-run (no analysis code touched)
+facts                        ok
+```
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Evidence view: the engine shows its alternatives
+
+### Changed
+
+- **`analysis_evidence(analysis)`** + the Timing card: per settled section its BPM,
+  residual, coverage and inliers beside the coherence candidates the seed search
+  read — BPM and coherence each, seeded marked, half/double readings and the octave
+  margin (seeded minus strongest octave-away coherence) alongside. Using a candidate
+  writes its BPM into the governing red line through `edit_apply`, so undo, locks
+  and snapping behave as usual. Legacy analyses report no-attacks instead of
+  alternatives. Candidate sweeps are ~350 ms a dense section, cached on the live
+  analysis whose attacks no edit moves.
+
+### Measured
+
+```
+Python unittest              414 -> 417, all pass
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                           unit-tested bridge only; ids, both languages, no
+                             duplicates cross-checked. Harness pass owed, stated.
+```
+
+Why-the-fallback-ran reads as far as the engine records it: the engine pill plus
+`warn_legacy` for a fallback, the residual beside it. A forced-legacy run reads
+the same as a fell-back one — the analysis stores no reason — so the card does
+not invent one.
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Hitsounds H5b surface: tick, preview, write, undo
+
+### Changed
+
+- **The Decide card in the Hitsounds section**: Propose runs the sidecar once and
+  lists every proposal in the sounds table (bank + additions, ticked by default);
+  All/None, Preview with counts, Write into this file or a copy after a
+  confirmation, and Undo. Writing clears the (now stale) proposal cache and
+  refreshes the report, the transport samples and the object lane. Per-row ▶ and
+  full-song playback audition what is written; pre-hearing a proposal through the
+  loaded samples waits for sample-key resolution, stated, not faked.
+- Report sounds carry their edge, so units join them exactly.
+
+### Fixed
+
+- Four found in self-review before any commit: a duplicated element id between the
+  preview button and its text, an early return leaving the card stale with no
+  report, `hsvPick` clearing a live undo on post-write refresh, and preview/write
+  without a file-match guard.
+
+### Measured
+
+```
+Python unittest              414, all pass (bridge: propose/preview/apply/undo/copy)
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                           unit-tested bridge only; every id resolves, every new
+                             string exists in EN and ES, no duplicate ids. The
+                             browser harness did not run from this session (no
+                             browser tools here) — a harness pass is still owed
+                             before this is called verified.
+```
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Hitsounds H5b bridge: propose, apply, one undo
+
+### Changed
+
+- **Decision endpoints on the bridge**: `hitsound_decide_propose` runs the CLI once
+  under the one-heavy-job lock and caches the units for accept/reject;
+  `hitsound_decide_preview` counts on the cache without writing;
+  `hitsound_decide_apply` writes in place with a backup or onto a must-not-exist
+  `_hitsounded` copy; `hitsound_decide_undo` restores the replaced bytes atomically
+  after backing up the current file — one level, stated. A moved map refuses at
+  preview through the proposal's own staleness guard; no binary answers `no_rust`.
+- `overtone_rust.hitsound(audio, osu)`: the sidecar call beside `analyze` and
+  `structure`, same errors.
+
+### Measured
+
+```
+Python unittest              409 -> 414, all pass
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+```
+
+The accept/reject surface and audition ride the next commit, against the UI harness.
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Hitsounds H5 engine half: the decision onto the map
+
+### Changed
+
+- **`proposal_changes` / `preview_proposals` / `apply_proposals`**: a decision's
+  units as P-2 field changes — bank to sample sets, bits to additions keeping bit 0
+  as H1 does, slider edges grouped with untouched edges keeping what they play.
+  Volume, index and custom files are never touched (H4 proposes no values); a unit
+  whose sound moved past 5 ms refuses the whole apply; preview counts on a copy;
+  in-place writes keep inject's backups; copies require a must-not-exist dest and
+  leave the source byte-identical.
+
+### Measured
+
+```
+9 real songs, CLI decisions   every decided unit resolves exactly as proposed:
+  applied to copies           5,856/5,856; 0 lines outside [HitObjects] moved;
+                              0 volume/index changes; 15.4 s a song, CLI included
+Python unittest               403 -> 409, all pass
+benchmark.py                  24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+```
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Hitsounds H4e: better than a rule, twice
+
+### Changed
+
+- **`bench/eval_proposals.py`**, the real-audio gate: `overtone-cli hitsound` over
+  index-selected local maps, each proposal scored against the mapper's own sounds
+  joined on (object, part, edge), medians over maps where the mapper uses the
+  addition — the same ruler as P-6. One map per audio, bodies neither side,
+  uncovered joins counted apart. `--offset` skips songs, after a bug skipped map
+  rows instead (a set holds many difficulties of one audio) and the first rerun
+  overlapped the first sample: fixed, rerun disjoint, the overlapped numbers
+  superseded and not cited.
+
+### Measured
+
+```
+two disjoint 11-map samples   clap F1 median 0.67 then 0.63 (rule 0.59);
+  (1 opus undecodable)        finish F1 median 0.71 then 0.75 (rule 0.42);
+                              whistle F1 0.81 and 0.77 (no rule proposes it);
+                              uncovered joins 0; ~22 s a song through the CLI
+Python unittest               400 -> 403, all pass
+benchmark.py                  24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+```
+
+Both samples clear both bars with margin except clap's lower quartile (0.56-0.62
+against the rule's 0.59 median): the engine beats the rule on the typical map, not
+yet on every map. That is the honest reading, and H5's editor exists for the rest.
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Hitsounds H4d: the synthetic gate, and three tunings it drove
+
+### Changed
+
+- **The synthetic exact-truth gate** (`grid_arrangement_decides_the_profiles_sounds`):
+  a 150 BPM arrangement composed from the corpus renderer (kicks on and off beats,
+  snares on backbeats, a crash opening bar 3, a rest under its ring), bare circles
+  on every hit, known grid and bars. 19 proposals: kicks drum-bare, snares
+  drum-clap, crash normal-finish, hats percussive-bare — exact, each miss naming
+  its class.
+- **The prior fires only where the mapper left a sound.** A +1.2 bonus for bare
+  candidates on a bare map is a phantom intent vetoing the audio; on bare objects
+  affinity, role and context now decide alone.
+- **Claps want the backbeat band** (metrical weight 0.4–0.8), not any on-beat, and
+  off-beat claps earn nothing by default: the old div-1 rule grew claps on downbeat
+  kicks, the div-2 rule bridged them onto hats.
+- **Streams are 16ths** (gaps under 0.15 s), not 8ths: at 0.25 the whole 150 BPM
+  backbeat grid read as one stream and the −1.4 smoothed every addition bare.
+
+### Measured
+
+```
+synthetic gate               19/19 exact (was: hats→drum, then kick+clap, then
+                             snares smoothed bare, then a bridged hat clap and a
+                             whistle — one tuning each, in that order)
+Rust tests                   255 -> 256, all pass, no warnings
+```
+
+Hats still read kick-like (closed-hat held-out F1 0.40): the gate holds them to a
+percussive bare bank, no additions, and says so. That is a template limit the
+real-audio gate will judge, not pipeline behavior to tune around a third time.
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Hitsounds H4c: `hitsound` proposes every object
+
+### Changed
+
+- **`overtone-cli hitsound <audio> <map.osu> [--profile]`**: the full H4 chain —
+  audio through attacks, tempo, structure and baked evidence, the map through
+  `map.rs`, every decidable point (circles, slider heads/repeats/tails, spinner
+  ends, holds) matched to its attack, scored, and Viterbi-decided, as JSON with
+  proposal, marginal alternatives, emission terms and the incoming transition per
+  unit. Ticks take nothing and bodies stay as they are (no format field, H5's to
+  write); tails follow the decided object landing under them, else stay bare.
+  Volume and index are not proposed. Bar slots and slider spans port the Python
+  reader's rules (first grid extends back, greens set SV, reds reset it).
+- The `analyze` front half is now one shared helper, reused unchanged by
+  `hitsound-evidence` (its tests stayed green through the refactor).
+
+### Measured
+
+```
+a click track, 12 circles    12 proposals; evidence 0.08 s + decide 0.00 s
+Rust tests                   251 -> 255, all pass, no warnings
+golden 27/27 · facts
+```
+
+The synthetic exact-truth gate and the real-audio gate against P-6's baselines
+are still to run: nothing here claims the proposals are good yet, only that
+every number in them replays from the computation.
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Hitsounds H4c: the Viterbi core
+
+### Changed
+
+- **`viterbi.rs`**: the second sum of docs/06 §6 — exact Viterbi over the 24
+  candidates with pairwise transitions (switch cost waived on new combos and
+  phrase edges, stream consistency inside fast runs, phrase symmetry one bar on,
+  a one-step finish refractory), plus forward-backward marginals for alternatives
+  and confidences. Wider windows stay out on purpose: they would break the Markov
+  structure the exact DP needs.
+
+### Fixed
+
+- **The forward pass started at −∞**, so the first row poisoned the lattice and the
+  backpointers walked home to the last state. The brute-force test caught it before
+  anything leaned on it: row zero starts at 0, there being no previous state to pay.
+
+### Measured
+
+```
+Rust tests                 246 -> 251, all pass, no warnings
+DP speed                   not measured (O(n·24²); the CLI gate will time it)
+```
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Hitsounds H4b: profiles as data, emission scored
+
+### Changed
+
+- **`profiles/balanced.json`**, the affinity table and weights of docs/06 §6 as JSON
+  (not TOML: serde_json is already a dependency), loaded strictly by `profile.rs` —
+  an unknown class, bank or addition fails naming it, and a class with no affinity is
+  refused instead of silently never firing.
+- **`emission.rs`**: the first sum of §6 per object — instrument likelihoods through
+  affinity (`inherit` resolving to the object's own bank, else the map default), role
+  fit, combo emphasis, mapper prior — over 24 candidates (3 banks by 8 subsets, no
+  pruning to hide behind), every score itemised term by term. Volume, index and the
+  energy term wait for H5, stated here and in the profile. The metrical numbers in
+  `role_fit` are starting points the gates will judge, not measurements.
+- `match_attack`: the P-5 nearest-attack match for deciding per object.
+
+### Fixed
+
+- **A CRLF conversion one-liner emptied both new files.** `[open(f,'wb').write(..read..)
+  for f in ...]` evaluates the truncating `open(f,'wb')` before the read. Both files
+  were rewritten from the verified content and the tests re-run green. Conversions
+  read first, write after, in separate statements from now on.
+
+### Measured
+
+```
+Rust tests                 240 -> 246, all pass, no warnings
+golden 27/27 · facts
+```
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Hitsounds H4a: the `.osu` reader in Rust
+
+### Changed
+
+- **`overtone-hitsound/src/map.rs`**, the decision input: hit objects (circles, sliders
+  with slides/length/edges, spinners, holds) with their sounds, timing lines with red
+  vs green told apart as in the Python reader (negative length beats a lying flag),
+  the map's sample set and slider multiplier. Read-only and minimal — no writer, no
+  storyboards — and one rule from Python: a hand-broken line never hides the rest, so
+  bad objects come back `Unparsed` and numberless timing lines are skipped. It lives
+  in the hitsound crate instead of a new one: graduating it waits for the Phase 0
+  port.
+
+### Measured
+
+```
+agreement vs Python, local   25,171 maps, 12,101,556 objects: counts, times and
+  Songs folder               kinds match on every object, 0 mismatches
+Rust tests                   236 -> 240, all pass
+golden 27/27 · facts
+```
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Hitsounds H3 audio half: sounds over silence
+
+### Changed
+
+- **`hitsound_silence_check(beatmap, attack_times, attack_weights)`**: finishes and
+  claps with no detected attack under them, matched through P-5, in the mod report
+  beside the pattern breaks. Needs only the analysis attacks — no CLI run, no
+  templates — so it rides the report's existing path. Bodies left out, no attacks at
+  all judges nothing, advice never an edit.
+
+### Measured
+
+```
+11 songs, evidence+matching   clap events: P(snare)+P(clap) median 0.138, deciles
+  (P-4 probs at mapper claps) 0.016/0.045/0.138/0.363/0.611; T=0.10 alone flags 43 %
+23 songs, analyze_audio       silence check: 17 of 23 maps with findings, median 1,
+                              p90 12, max 21
+unmatched by addition         whistle 2.2 %, finish 0.6 %, clap 1.1 %;
+  nearest-attack distance     whistle median 66 ms, finish/clap over 70 % past 100 ms
+Python unittest               397 -> 400, all pass
+benchmark.py                  24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+```
+
+### Rejected / tried and dropped
+
+- **The clap-mismatch rule** ("a clap over an attack that sounds nothing like a snare
+  or clap"). The templates this would judge with are proven only on synthetic drums;
+  on 11 real songs they put the median mapper clap at P(snare)+P(clap) 0.138, and any
+  readable bar accuses correct mapping by the dozen. This is the measurement P-6 was
+  built for: the rule waits for H4's real-audio gate instead of shipping on a hunch.
+- **Whistles in the silence check.** Unmatched whistles sit a median 66 ms from attacks
+  — melodic overlap, not silence — so flagging them would mislead. Finishes and claps
+  ship; the whistle stays out with its number attached.
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Hitsounds H3 map half: the pattern breaks
+
+### Changed
+
+- **`hitsound_consistency(beatmap)`**, the map-only half of the consistency check: on
+  4/4 maps with 10+ claps, every beat 2 and 4 carrying a sound is set against the same
+  beat of the 8 bars around it — no clap where 15 of the 16 neighbours clap is missing,
+  a clap where 1 or none do is extra. All 16 neighbours must exist, so sparse maps and
+  song edges stay silent. In the mod report as source "hitsounds", with the Report view
+  filtering it like the other groups (EN/ES). Advice with the numbers, never an edit.
+
+### Measured
+
+1,000 local maps, 0 errors:
+
+```
+maps with findings           378; median 0 flags, p90 3, max 12: a modder reads that
+threshold probe, 932 maps    15/16: p90 2+1, max 12+9; 14/16: p90 4+1, max 22+17;
+                             13/16: max 30+21 — the plan's own 15/16 is the readable one
+Python unittest              393 -> 397, all pass
+benchmark.py                 24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+```
+
+### Rejected / tried and dropped
+
+- **A finish on an off-beat 16th, as an absolute-position rule.** Finishes off the
+  downbeat are the norm, not the break: P-6 measures finish recall on the downbeat at
+  0.54, so the rule would flag hundreds per map. Pattern-relative finish rules (an
+  extra where neighbours hold none) stay future work, stated, not built on a hunch.
+- **Weak-slot clap rules.** Same reason: no corpus number behind any bar, so no rule.
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Hitsounds P-4: evidence through the CLI
+
+### Changed
+
+- **`overtone-cli hitsound-evidence <audio>`**: per attack, the 13 class probabilities
+  with each term's contribution (feature, value, response kind and knots, fitted
+  weight behind it) and the attack's musical role, as JSON, with the sections, bars
+  and phrase edges behind the roles. The calibrated weights ship baked into
+  `overtone-hitsound/src/baked.rs` — shapes still from `initial_templates`, numbers
+  generated from a fresh fit — and `baked_matches_fresh_fit` holds them bit-for-bit
+  to it. It exits 0 where there is no grid: the instrument half never needed one,
+  and the role degrades to nulls there.
+- `evidence.rs` behind it, with `contributions_replay_the_scores`: bias plus the
+  reported contributions is the reported score, term for term, so an explanation
+  built on them explains the computation and not a copy of it.
+
+### Measured
+
+```
+baked load                 0.036 ms, against 3.50 s for a fresh fit (~100,000x)
+a real song (FLARE TV      1,496 attacks with evidence; decode 0.3 + attacks 0.2 +
+  Size, 89.7 s)              tempo 0.2 + structure 0.3 + evidence 16.6 s; 16.6 MB of JSON
+                           (13 classes with every term, per attack)
+Rust tests                 233 -> 236, all pass
+golden 27/27 · nogrid · density 4/4 + 0 FP · elastic · map · facts
+```
+
+The 16.6 s and 33 MB are the full-evidence price: every term of every class, before
+H4 decides which alternatives it keeps. Slimming it (top-N classes) belongs to H4,
+not here, and the entry will say so if it happens.
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Hitsounds P-6: the bar on real maps
+
+### Changed
+
+- **`bench/eval_hitsounds.py`**, the read-only evaluation the decision engine must beat:
+  maps chosen from the library index (standard, 200+ objects, oldest first), the
+  index opened read-only and refused on a newer schema, every `.osu` only read. Each
+  sound event is one vote — the mapper's label against the rule's prediction — and
+  events no rule can place (off the grid, another meter, no red lines) count apart.
+  A map whose mapper never uses the addition is skipped for it: no recall of nothing.
+
+### Measured
+
+1,000 local maps, 0 errors, 37 ms a map:
+
+```
+clap on beats 2 and 4    928 maps with 20+ claps: F1 median 0.59, quartiles
+                         0.42-0.71; recall median 0.54
+finish on the downbeat    923 maps with 10+ finishes: F1 median 0.42, quartiles
+                         0.34-0.50; recall median 0.54
+whistles                 336,658, unscored: no simple rule proposes them, and H2
+                         showed them mostly between sixteenths
+Python unittest          388 -> 393, all pass
+benchmark.py             24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+```
+
+The "phrase starts" baseline the plan asked for is proxied by the downbeat — phrase
+edges need audio structure, which a map-only script cannot read — and the script says
+so instead of hiding it.
+
+---
+
+## v4.0.0-dev — 2026-09-25 · Hitsounds P-5: each sound's nearest attack
+
+### Changed
+
+- **`match_sound_events(events, attack_times, attack_weights=None)`**, the object-centric
+  half of the hitsound evidence: every sound event takes its nearest attack by binary
+  search, with the attack's time, its distance in ms and its weight. Past 50 ms from
+  every attack — the alignment report's own bar — or with no attacks at all, the event
+  comes back with `attack` None: "no attack here" is a state H3 will read for sounds
+  over silence, never an error and never a guess. Slider bodies match at their start.
+  Attack times arrive in seconds and read out in ms, like everywhere else.
+
+### Measured
+
+```
+Python unittest            382 -> 388, all pass
+benchmark.py               24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+match, 2,000 events       21.6 ms total, 10.8 us per event (binary search, no per-event scan)
+```
+
+---
+
+## v4.0.0-dev — 2026-09-24 · Hitsounds H2: the Hitsounds section
+
+### Changed
+
+- **A Hitsounds section** in the sidebar, read only, for one difficulty beside the song:
+  - a summary: sounds, whistles, finishes and claps (with their share), the sample sets
+    used, and how many samples come from the map and how many from Overtone;
+  - **where the additions fall**: for each addition, its share on each sixteenth of the
+    bar (1 e + a 2 e + a ...), read against the map's own red lines, one scale for the
+    three so they compare, and the fewest sixteenths holding 80 % of it in a sentence
+    ("clap 96 % on 2, 4"); sounds between sixteenths (triplets) and under another meter
+    counted apart;
+  - **every sound** with its time, bar and beat, part, additions, sets, index and volume,
+    filtered by addition, 200 at a time; ▶ plays that sound alone with the samples the
+    transport loaded, and a row puts the playhead a second before it.
+- `hitsound_report(beatmap)` behind it: each sound's bar and sixteenth, and the
+  distribution per addition.
+
+### Measured
+
+800 standard maps (200+ objects) from the local Songs folder:
+
+```
+errors                          0; 9.7 ms median a map, 146 ms at most
+claps on beats 2 and 4          4/4 maps with 20+ claps (726): median 57 %, quartiles
+                                41-73 %: the backbeat rule covers about half of what
+                                mappers do, the bar the decision engine will have to beat
+finishes on the downbeat        4/4 maps with 10+ finishes (685): median 55 %
+additions between sixteenths    1.7 % (triplet snaps, mostly); under another meter 0.6 %
+a real map (Violin Dance)       1,362 sounds; clap 96 % on 2, 4; finish 84 % on 1, 3;
+                                whistle mostly between sixteenths (542 of 755)
+Python unittest                 379 -> 382, all pass
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Hitsounds P-7: the object lane
 
 ### Changed

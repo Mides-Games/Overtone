@@ -591,6 +591,32 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 .assist-facts { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; }
 .assist-facts b { font-variant-numeric: tabular-nums; }
 .rp-filters { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.hsv-pick { width: auto; min-width: 180px; height: 32px; }
+.hsv-stats { display: flex; flex-wrap: wrap; gap: 10px 28px; }
+.hsv-stat .label { color: var(--muted); font-size: var(--fs-1); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; }
+.hsv-stat .value { font: 600 var(--fs-5)/1.2 var(--font-display); font-variant-numeric: tabular-nums; margin-top: 4px; }
+.hsv-stat .value small { font: 500 var(--fs-2) var(--font); color: var(--muted); margin-left: 4px; }
+.hsv-where { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.hsv-chart .head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.hsv-chart .head b { font-weight: 600; }
+.hsv-chart .head .sum { color: var(--muted); font-size: var(--fs-2); }
+.hsv-chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.hsv-chart .bar { rx: 2; }
+.hsv-chart .base { stroke: var(--border-strong); stroke-width: 1; }
+.hsv-chart .beat { fill: var(--muted); font: 600 10px var(--mono); }
+.hsv-chart .sub { fill: var(--dim); font: 10px var(--mono); }
+.hsv-chart.k-whistle { --hs: var(--chart-whistle); }
+.hsv-chart.k-finish { --hs: var(--chart-finish); }
+.hsv-chart.k-clap { --hs: var(--chart-clap); }
+.hsv-chart .bar { fill: var(--hs); }
+.hsv-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: 0; }
+.hsv-dot.k-whistle { background: var(--chart-whistle); }
+.hsv-dot.k-finish { background: var(--chart-finish); }
+.hsv-dot.k-clap { background: var(--chart-clap); }
+.hsv-table { max-height: 460px; }
+.hsv-table tbody tr { cursor: pointer; }
+.hsv-table td.txt, .hsv-table th { white-space: nowrap; }
+@media (max-width: 1080px) { .hsv-where { grid-template-columns: minmax(0, 1fr); } }
 .hs-form { display: grid; grid-template-columns: minmax(200px, 280px) minmax(0, 1fr); gap: 12px 18px; align-items: start; }
 .hs-form select.input { height: 38px; }
 .hs-targets { display: flex; flex-wrap: wrap; gap: 8px 18px; padding-top: 8px; }

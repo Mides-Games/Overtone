@@ -299,6 +299,44 @@ class EditTests(_IsolatedConfig):
         self.assertEqual(reply["selected"], 0)
         self.assertFalse(api.edit_rescale(0, 3.0)["ok"])
 
+    @staticmethod
+    def _tempo_change_api() -> web.Api:
+        # One 120 BPM line over a song that turns 125 BPM at 10 s.
+        api = web.Api()
+        api._analysis = _analysis([ta.TimingPoint(0.0, 120.0, 0.9, 0)],
+                                  beats=np.arange(0.0, 25.0, 0.5))
+        times = np.concatenate([np.arange(20) * 0.5, 10.0 + np.arange(30) * 0.48])
+        api._analysis.attack_times, api._analysis.attack_weights = times, np.ones_like(times)
+        api._analysis.duration = 24.5
+        return api
+
+    def test_split_and_merge_refit_and_undo_like_any_edit(self) -> None:
+        api = self._tempo_change_api()
+        split = api.edit_split(0, 10110.0)
+        json.dumps(split)
+        self.assertEqual([p.offset_ms for p in api._analysis.points], [0.0, 10000.0])
+        self.assertAlmostEqual(api._analysis.points[1].bpm, 125.0, delta=0.05)
+        self.assertEqual((split["selected"], split["undo"]), (1, True))
+        self.assertEqual([s["kept"] for s in split["report"]["sections"]], [None, None])
+        merged = api.edit_merge(0)
+        self.assertEqual((len(api._analysis.points), merged["report"]["removed_ms"]), (1, 10000.0))
+        api.undo()
+        self.assertEqual(len(api._analysis.points), 2)
+
+    def test_split_and_merge_refuse_what_they_cannot_do(self) -> None:
+        api = self._tempo_change_api()
+        self.assertEqual(api.edit_split(0, 100.0)["key"], "error")      # on the line itself
+        self.assertEqual(api.edit_merge(0)["key"], "error")             # nothing after it
+        self.assertEqual((api.edit_split("x", 1.0)["key"], api.edit_merge("x")["key"]),
+                         ("error", "error"))
+        api.edit_split(0, 10110.0)
+        api.set_locked(1, True)
+        refused = api.edit_merge(0)                                     # the next line holds it
+        self.assertEqual((refused["key"], refused["index"]), ("locked", 1))
+        self.assertEqual(api.edit_split(1, 20000.0)["key"], "locked")
+        self.assertEqual((web.Api().edit_split(0, 1.0)["key"], web.Api().edit_merge(0)["key"]),
+                         ("first", "first"))
+
     def test_edits_need_a_result_and_valid_values(self) -> None:
         self.assertEqual(web.Api().edit_apply(0, 1000.0, 120.0)["key"], "first")
         self.assertEqual(web.Api().edit_add(1000.0, 120.0)["key"], "first")

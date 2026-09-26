@@ -636,6 +636,45 @@ class Api:
         self._analysis.points = points
         return self._edited(index, None)
 
+    def edit_split(self, index: int, at_ms: float) -> dict:
+        """Split one section where its tempo changes: a red line on its grid's
+        beat nearest ``at_ms``, both halves refitted to their attacks."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if self._is_locked(index):
+            return {"ok": False, "key": "locked"}
+        try:
+            index = int(index)
+            times, weights = self._attacks()
+            points, report = ta.split_section(
+                self._analysis.points, self._analysis.beats, index, float(at_ms), times, weights,
+                float(self._analysis.duration) * 1000.0)
+        except (ValueError, TypeError, IndexError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        self._push_history()
+        self._analysis.points = points
+        return {**self._edited(None, report["split_ms"]), "report": report}
+
+    def edit_merge(self, index: int) -> dict:
+        """Merge one section with the next: that red line goes, the span is
+        refitted from this one's line. Locked lines refuse, as they do any edit."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            index = int(index)
+            for held in (index, index + 1):
+                if self._is_locked(held):
+                    return {"ok": False, "key": "locked", "index": held}
+            times, weights = self._attacks()
+            points, report = ta.merge_sections(
+                self._analysis.points, self._analysis.beats, index, times, weights,
+                float(self._analysis.duration) * 1000.0)
+        except (ValueError, TypeError, IndexError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        self._push_history()
+        self._analysis.points = points
+        return {**self._edited(index, None), "report": report}
+
     # -- exports and .osu injection (same engine calls as the Tk GUI) -----
     def osu_text(self) -> dict:
         if self._analysis is None:

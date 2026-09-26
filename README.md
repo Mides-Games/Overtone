@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-547%20Python%20%C2%B7%20263%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-549%20Python%20%C2%B7%20263%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -82,7 +82,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Timeline: local BPM, waveform, drift lane, sections, red lines, hover readout | ✅ | Wheel zooms at the cursor, drag pans; click selects the governing red line |
 | Timing-point list with a detail panel | ✅ | ↑ / ↓ to move; the panel explains the selected point |
 | Honesty banners | ✅ | Fallback engine, a first red line long after the music starts, loose grids, validation findings |
-| Point editor: apply, add, delete, ±1 ms nudge, per-section ×2 / ÷2 | ✅ | |
+| Point editor: apply, add, delete, ±1 ms nudge, per-section ×2 / ÷2, split, merge | ✅ | Split at the playhead and merge with the next refit the sections to their attacks |
 | Undo / redo | ✅ | |
 | Lock verified points | ✅ | Locked points survive re-analysis |
 | Exports: copy `.osu` timing, CSV, click track, `.osz` | ✅ | |
@@ -303,7 +303,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 547 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 549 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage

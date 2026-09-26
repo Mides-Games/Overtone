@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 % |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **547** Python (383 engine + 164 web shell) · **263** Rust.
+Tests: **549** Python (383 engine + 166 web shell) · **263** Rust.
 
 ### What is pending, in order
 
@@ -283,7 +283,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Scrub + loop | scrubbing, loop selection, loop section | med | high | transport | no | no | P1 | partial — seek bar and loop section (sample-exact, the click folded into it); no drawn selection to loop, no audible scrub |
 | Play from beat / point | click a beat or red line to play from it | low | med | transport | no | no | P2 | **done** — from the selected red line, or double-click the map |
 | Grid editor | edit offset/BPM, ±1 ms nudge, ×2/÷2 | med | **high** | P1 | no | no | **P1** | **done** (web shell) |
-| Add / delete / split / merge | with recalculation | med | high | editor | no | no | **P1** | partial — add and delete; no split/merge |
+| Add / delete / split / merge | with recalculation | med | high | editor | no | no | **P1** | **done** (web shell) — split at the playhead on the section's beat, merge with the next; the sections involved refitted to their attacks, or kept with the reason |
 | **Lock timing point** | protect a verified point from re-analysis | low | high | editor | no | no | P1 | **done** |
 | Undo/redo | one stack per song | med | high | editor | no | no | P1 | **done** (web shell) |
 | Click-accent meter fix | accent on the detected meter — closes audit **F-03** | trivial | low | click | no | no | P1 | **done** |

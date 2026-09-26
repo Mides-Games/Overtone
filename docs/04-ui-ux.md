@@ -198,7 +198,12 @@ Editing is direct: click a cell, type, `↵`. Offset and BPM accept arithmetic (
   verified a section by ear must be able to protect it.
 - **Recalculate** refits *only* the selected section on its own attacks — a targeted
   version of what the engine already does per section.
-- **Split** at the playhead, seeding the new region with its own coherence scan.
+- **Split** at the playhead, on the section's own beat nearest it; **Merge** drops the next
+  red line. Either way the sections involved are refitted on their own attacks, offsets
+  held, and the note says each one's BPM and share on its grid, or why the BPM stayed
+  (too few attacks, or under 40 % on grid). *Built 2026-09-26 (web shell):* the refit is
+  the reference grading's, started from the grid the section already had rather than a
+  fresh coherence scan, so a half moves at most 0.8–1.25× and cannot flip an octave.
 - Hand-edited points carry 100 % confidence and are marked as user-owned, as in v3 — with
   the addition that the badge says *why* it is 100 % ("you set this").
 - Every edit is undoable. One undo stack per project, `⌘Z` / `⇧⌘Z`.

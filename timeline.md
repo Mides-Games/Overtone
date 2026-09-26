@@ -17,6 +17,52 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Split and merge sections, refitted to their attacks
+
+The editor could add and delete a red line, not split a section where its tempo moves or
+merge two that are one. Either meant placing a line by ear and typing both BPMs. Roadmap,
+Phase 4: "Add / delete / split / merge, with recalculation".
+
+### Changed
+
+- **Split at playhead** (`split_section`): the new red line goes on the section's own beat
+  nearest the playhead, a beat or more after its line and half a beat or more before the
+  next; anywhere else is refused (the page asks for the playhead inside the section first).
+  Its meter is the section's, marked unknown: a beat need not be a bar.
+- **Merge with next** (`merge_sections`): the next red line goes and the whole span is
+  refitted from this one's line.
+- **The refit** (`_refit_section`) is the reference grading's fit (`_grade_span`), started
+  from the grid the section already had: phase locked at the line, least squares on windows
+  doubling forward, read at 1/1 to 1/4. Offsets are held; only the BPM moves, at most
+  0.8-1.25x, so a half cannot flip an octave. Fewer than 8 attacks, or a grid holding under
+  40 % of their weight, keeps the old BPM with the reason (`kept: few / weak`) instead of a
+  guess. The note says each section's BPM and its share on grid, the words the assisted
+  card uses. A fallback result, which keeps no attacks, detects them once per song as
+  reference grading does.
+- Both are one undo step, and locked lines refuse like any edit; a merge refused by the
+  next line's lock names that line.
+- 4 engine tests (split on the grid and both halves refitted; a split off the section
+  refused; merge refits the whole span; too few or scattered attacks keep the BPM) and 2
+  bridge tests (split, merge, undo; every refusal).
+
+### Measured
+
+```
+Synthetic "Secs" track (145 -> 152 -> 145 BPM, 68 s), through the harness page
+  split the 152 section at 0:35     line at 34968.0 ms, 27 beats after 24310.1
+                                    both halves 152.000 BPM, 100 % on grid
+  merge 145 with that 152 half      145.001 BPM, 76 % on grid
+  merge 145 with all of the 152     144.999 BPM
+  undo                              the three lines back, to the 0.1 ms shown
+Python unittest      543 -> 549, all pass · facts ok
+engine gates         benchmark 24/24, bpm-snapshot 24/24, golden 27/27, reference 24/24,
+                     coverage, measures, signatures, robustness, assisted: all pass (the
+                     engine only gained functions; no reading moved)
+```
+
+Not measured: on real songs, how often a split's refit lands within 0.05 BPM of a mapper's
+red line. Corpus B names 1,087 such lines on its four drift maps; it is the place to do it.
+
 ## v4.0.0-dev — 2026-09-26 · Corpus B: 20 hand-timed ranked maps, and where both engines stand
 
 Phase 10's rule is that nothing ships without a measured gain on Corpus B, and Corpus B was
@@ -130,6 +176,7 @@ What the corpus says, beyond the headline:
 - **BeatmapSetID > 0 as proof of a ranked map.** Graveyarded sets have IDs too: the local
   osu!.db lists 4,458 of its 24,565 difficulties as pending or graveyard. The status comes
   from osu!.db.
+
 ## v4.0.0-dev — 2026-09-26 · Phrase starts on the phrase's bar: measured, not shipped
 
 ### Changed

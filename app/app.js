@@ -129,6 +129,14 @@ const I18N = {
     e_offset: "Offset (ms)", e_bpm: "BPM", e_apply: "Apply", e_add: "Add", e_delete: "Delete",
     edited: "Point #{n}: {bpm} BPM · {ms} ms", added: "Added {bpm} BPM at {ms} ms", deleted: "Deleted point #{n}",
     section_rescaled: "Section #{n}: {bpm} BPM",
+    e_split: "Split at playhead", e_merge: "Merge with next",
+    e_split_hint: "A red line on this section's beat nearest the playhead; both halves are refitted to their attacks",
+    e_merge_hint: "Removes the next red line and refits the whole span from this one",
+    split_outside: "Put the playhead inside this section first",
+    split_done: "Split at {time} — before: {first} · after: {second}",
+    merged_done: "Merged — {first}",
+    refit_bpm: "{bpm} BPM, {share}% on grid", refit_kept_few: "{bpm} BPM kept: too few attacks",
+    refit_kept_weak: "{bpm} BPM kept: only {share}% on grid",
     copied: "Timing points copied — paste into the .osu [TimingPoints].",
     clipboard_failed: "Could not reach the clipboard: {detail}",
     saved_to: "Saved to {path}",
@@ -629,6 +637,14 @@ const I18N = {
     e_offset: "Offset (ms)", e_bpm: "BPM", e_apply: "Aplicar", e_add: "Añadir", e_delete: "Borrar",
     edited: "Punto #{n}: {bpm} BPM · {ms} ms", added: "Añadido {bpm} BPM en {ms} ms", deleted: "Borrado el punto #{n}",
     section_rescaled: "Sección #{n}: {bpm} BPM",
+    e_split: "Dividir en el cabezal", e_merge: "Unir con la siguiente",
+    e_split_hint: "Una línea roja en el pulso de esta sección más cercano al cabezal; las dos mitades se reajustan a sus ataques",
+    e_merge_hint: "Quita la línea roja siguiente y reajusta todo el tramo desde esta",
+    split_outside: "Primero poné el cabezal dentro de esta sección",
+    split_done: "Dividida en {time} — antes: {first} · después: {second}",
+    merged_done: "Unidas — {first}",
+    refit_bpm: "{bpm} BPM, {share}% en la grilla", refit_kept_few: "{bpm} BPM sin cambios: pocos ataques",
+    refit_kept_weak: "{bpm} BPM sin cambios: solo {share}% en la grilla",
     copied: "Timing points copiados — pegalos en el [TimingPoints] del .osu.",
     clipboard_failed: "No se pudo llegar al portapapeles: {detail}",
     saved_to: "Guardado en {path}",
@@ -1473,6 +1489,10 @@ function renderDetail() {
         <button class="btn small" data-action="double-s">×2 §</button>
       </div>
       <div class="editor-row">
+        <button class="btn small" data-action="split" title="${t("e_split_hint")}">${t("e_split")}</button>
+        <button class="btn small" data-action="merge" title="${t("e_merge_hint")}" ${next ? "" : "disabled"}>${t("e_merge")}</button>
+      </div>
+      <div class="editor-row">
         <button class="btn small" data-action="lock">${t(locked ? "unlock" : "lock")}</button>
       </div>
     </div>
@@ -1525,6 +1545,25 @@ async function editAction(action) {
       const q = reply.result.points[reply.selected];
       message = t("section_rescaled", { n: reply.selected + 1, bpm: q.bpm.toFixed(2) });
     }
+  } else if (action === "split" || action === "merge") {
+    if (sel < 0) { toast(t("no_selection"), true); return; }
+    // Each refitted section in words: the BPM its attacks keep and how much of
+    // their weight the grid explains, or why the BPM stayed.
+    const refit = (s) => t(s.kept ? `refit_kept_${s.kept}` : "refit_bpm",
+      { bpm: s.bpm.toFixed(3), share: s.share == null ? "" : Math.round(s.share * 100) });
+    if (action === "split") {
+      const p = S.result.points[sel], next = S.result.points[sel + 1];
+      const at = pbPosition() * 1000, stop = next ? next.offset_ms : S.result.duration * 1000;
+      if (!(at > p.offset_ms && at < stop)) { toast(t("split_outside"), true); return; }
+      reply = await api().edit_split(sel, at);
+      if (reply.ok) {
+        const [a, b] = reply.report.sections;
+        message = t("split_done", { time: fmtTime(reply.report.split_ms / 1000), first: refit(a), second: refit(b) });
+      }
+    } else {
+      reply = await api().edit_merge(sel);
+      if (reply.ok) message = t("merged_done", { first: refit(reply.report.sections[0]) });
+    }
   } else if (action === "lock") {
     if (sel < 0) { toast(t("no_selection"), true); return; }
     const off = S.result.points[sel].offset_ms;
@@ -1533,7 +1572,7 @@ async function editAction(action) {
   }
   if (!reply) return;
   if (!reply.ok) {
-    if (reply.key === "locked") toast(t("point_locked", { n: sel + 1 }), true);
+    if (reply.key === "locked") toast(t("point_locked", { n: (reply.index ?? sel) + 1 }), true);
     else editFailure(reply);
     return;
   }

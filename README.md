@@ -18,16 +18,16 @@ sections within 0.05 BPM and 5 ms     24 / 24
 
 ---
 
-## Where it stands — 2026-09-24
+## Where it stands — 2026-09-26
 
 | Area | State |
 |---|---|
 | **Timing engine** (Python) | ✅ Works. Exact on the synthetic corpus; refuses audio with no pulse |
 | **Timing engine** (Rust v4) | ✅ At parity with Python, attack for attack and red line for red line; about 4× faster end to end on the corpus. In the app as an opt-in (Settings → Rust engine); Python takes over, and says so, where Rust has no answer |
-| **App** (web window) | ✅ Sections for Library, Timing, Structure, Hitsounds, Map check, Mapset, Report and Export; analyse, edit, undo, lock, export, inject, compare with a map, alignment, density, snap audit, suggestions, mapset check, reference timing, assisted timing, mod report, osu! Songs browser — in English and Spanish |
+| **App** (web window) | ✅ Ten sections: Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export, History and Settings; analyse, edit, undo, lock, export, inject (one map or the whole mapset, with a diff), compare with a map, alignment, density, snap audit, re-snap, suggestions, mapset check, reference and assisted timing, the engine's alternatives, ramps, offset lab, map tools from the song's structure, audio swap, write history, mod report, osu! Songs browser — in English and Spanish, dark or light. The newest screens still owe a browser check ([timeline](timeline.md)) |
 | **osu! files** | ✅ Full reader; writer keeps every byte you did not ask to change |
-| **Hitsounds** | 🦀 Half built in Rust (features, 13 instrument classes, musical role); no decision or editor yet |
-| **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, section loop at 100/75/50 %, taps |
+| **Hitsounds** | ✅ In the app: copy one difficulty's hitsounds onto the others, see where each addition falls, hear them with the song, a consistency check in the mod report, and the Rust decision engine's proposals to tick, preview, write and undo. Volume and sample edits, profiles and a sample bank come next |
+| **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, section loop at 100/75/50 %, taps, the percussive part alone, a difficulty's hitsounds |
 | **Accuracy on real, live-played songs** | 📋 Planned — today ~5 % of a ranked map's red lines land within 5 ms |
 | **Installer** (MSI) | 📋 Planned |
 
@@ -64,7 +64,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Fallback beat tracker for rubato / free time | ✅ | Says so in the result and the app |
 | Result cache by audio content | ✅ | Re-analysing a song takes ~0.02 s |
 | Per-section octave (exact 2× changes) | 🦀 | In Rust; the Python engine decides the octave globally |
-| Elastic grid for tempo ramps | 🦀 | 0.16 BPM on realistic ramps in Rust; Python emits a staircase |
+| Elastic grid for tempo ramps | ✅ | 0.16 BPM on realistic ramps, in Rust; Timing's Ramps card turns the curve into the fewest red lines within a chosen drift. The analysis itself still gives a staircase in Python |
 | 2-D coherence map | 🦀 | Better seeds and a confidence map |
 | Bar-length change (4/4 → 3/4 keeping the beat) | 📋 | P5 |
 | Fallback beats re-timed at sample resolution | 📋 | P22 — they land 5–35 ms late today |
@@ -99,6 +99,11 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | osu! Songs browser: your whole Songs folder, searched as you type | ✅ | A SQLite index: a rescan reads only what changed, and maps of the same audio come back in milliseconds |
 | Mod report: every finding as osu! editor timestamps | ✅ | Red lines to check, missing red lines, unsnapped objects, objects away from the music; copy all, or open the editor at a timestamp |
 | Assisted timing: two marked downbeats fit the grid | ✅ | Where detection fails: marks snap to attacks, the grid grows across breakdowns but not tempo changes, refusals say why. Marks are typed in ms, or tapped from a downbeat |
+| Evidence: the engine's alternatives, candidates, octave margin, residual and coverage | ✅ | Timing card; Use writes a candidate's BPM into its red line |
+| Ramps: a tempo ramp as the fewest red lines within a chosen drift | ✅ | Timing card, Rust engine; the count-versus-drift trade-off shown, the lines loaded as hand-placed |
+| Offset lab: the MP3's own delay, both decoders side by side, a blind listening test | ✅ | Timing card; 18 blind trials give the preferred click shift with an interval |
+| Snap divisors: where the song needs 1/3, 1/4 or 1/6 | ✅ | Timing card, one line per section; thirds only where they are loud |
+| Hitsound proposals: tick, preview, write the file or a copy, undo | ✅ | Hitsounds section; the Rust decision engine proposes every object's sound |
 | Detection settings drawer, presets | ✅ | Shared with the classic window |
 | English / Spanish | ✅ | |
 | Dark window caption, generated app icon | ✅ | |
@@ -108,7 +113,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Map red lines drawn as ghosts on the timeline | ✅ | From the reference or compare card |
 | Command palette, full keyboard map | 📋 | P3 |
 | Settings section: output folder, offset precision, click, interface size, cache | ✅ | Detection stays in its drawer |
-| Sections: Audio | 📋 | P19 — Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export and Settings exist |
+| Sections: Audio | 📋 | P19 — Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export, History and Settings exist |
 | Light and dark themes, or the system's | ✅ | Settings → Theme; UI scale and reduced motion too |
 
 ### Playback
@@ -122,6 +127,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Seek, section loop, playhead, play from a red line | ✅ | Space plays and pauses; double-click the tempo map to play from there |
 | Tap-along check, tap latency calibration | ✅ | How far your taps land from the click; calibrate once, remembered |
 | Metronome options | ✅ | 1-4 clicks per beat, bar accent; one sound |
+| Percussion only: the percussive part against the click | ✅ | A transport toggle; librosa's HPSS, cached per analysis |
 
 ### osu! files
 
@@ -133,14 +139,17 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Timing injection that keeps what the map plays | ✅ | Measured on a ranked map: 0 of 1341 objects change sound or scroll |
 | Legacy two-field timing lines | ✅ | |
 | `.osz` from a song: audio + a minimal `.osu` | ✅ | |
-| Decimal offsets for lazer | 🟡 | CLI flag; in the app is P20 |
+| Decimal offsets for lazer | ✅ | Settings → Offset precision: 0-3 decimals for copy, `.osz` and inject; the CLI flag too |
 | lazer format specifics | 📋 | P5 |
-| Inject into every difficulty at once, with a diff | 📋 | P21 |
-| Kiai, preview point, bookmarks and breaks from song structure | 📋 | P21 |
-| SV normaliser across BPM changes | 📋 | P21 |
-| Re-snap objects after a timing change | 📋 | P21 |
+| Inject into every difficulty at once, with a diff | ✅ | Export; each old red line beside its new value and the drift it causes, one confirmation, every file backed up, one bad map stops nothing |
+| Kiai, breaks, bookmarks, section volumes and the preview point from the song's structure | ✅ | Structure view; each write previewed, confirmed and backed up; the preview point is suggested with its reason |
+| SV normaliser across BPM changes | ✅ | Timing's Constant scroll card: greens that keep scroll and slider speed constant, what plays kept |
+| Re-snap objects after a timing change | ✅ | Map check; snapped objects stay snapped, off-grid ones are listed and never moved |
 | Export to Quaver and StepMania | 📋 | P21 |
-| Audio file check against ranking rules | 📋 | P21 |
+| Audio file check | ✅ | Mapset; bitrate, sample rate, length, clipping and lead-in against Overtone's own bars — no ranking number is encoded, none can be checked offline |
+| Audio swap: a mapset moved onto a new encode | ✅ | Mapset; the shift from the waveforms, refused on a tempo mismatch or a different cut; every time in every difficulty moves, backed up |
+| Write history: every `.osu` write, its diff, a restore | ✅ | History section; a restore keeps the current file as a new backup |
+| Hitsound fields written in place | ✅ | Only `hitSound`, `edgeSounds`, `edgeSets` and `hitSample` change; a write with no change gives the same bytes |
 | Reader fuzzing | 📋 | P5 |
 
 ### Map checking
@@ -154,7 +163,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Mapset check: red lines, audio settings and metadata across difficulties | ✅ | Read only, never fixes |
 | Timing suggestions | ✅ | |
 | Apply a suggestion to the `.osu` | 📋 | P9 |
-| Hitsound validation | 📋 | P7 |
+| Hitsound consistency | 🟡 | In the mod report: claps that break the map's own pattern, finishes and claps over silence; missing sample files not reported yet (P7) |
 | Library health check across a Songs folder | 📋 | P21 |
 
 ### Audio analysis
@@ -164,20 +173,23 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | 7-band onset functions | 🦀 | |
 | Harmonic / percussive separation (HPSS) | 🦀 | Also the planned percussive stem for P10 |
 | Chroma and MFCC | 🦀 | Bass notes on their true pitch class since 2026-09-23 |
-| Song structure and section labels (intro / verse / chorus) | 🦀 | |
+| Song structure and section labels (intro / verse / chorus) | ✅ | The Structure view, through the Rust engine |
 | Audio section: spectrogram, band lanes, energy with sections | 📋 | P19 |
-| Snap-divisor map and swing lane | 📋 | P21 |
+| Snap-divisor map | ✅ | Timing card, one line per section |
+| Swing lane | 📋 | P21 |
 
 ### Hitsounds
 
 | Feature | Status | Notes |
 |---|:--:|---|
-| Per-attack spectral, temporal and source features | 🦀 | |
-| 13 instrument templates, calibrated | 🦀 | Macro F1 0.72 on synthetic arrangements it never saw — not a real-song number (an earlier "0.91" judged a re-draw of its training track) |
-| Musical role: grid position, metrical weight, phrase, accent | 🦀 | |
-| Map context per attack | 🟡 | Python |
-| Sequence decision (Viterbi) with explanations | 📋 | P6 |
-| Profiles, hitsound editor, sample bank, hitsound export | 📋 | P6 |
+| Every object as the sounds osu! plays: edges, bodies, spinner ends | ✅ | Resolved against the timing points; 0 errors on 3,000 local maps |
+| Per-attack spectral, temporal and source features | ✅ | Rust, through `overtone-cli hitsound-evidence` |
+| 13 instrument templates, calibrated | ✅ | Macro F1 0.72 on synthetic arrangements it never saw — not a real-song number (an earlier "0.91" judged a re-draw of its training track); the fit is baked in |
+| Musical role: grid position, metrical weight, phrase, accent | ✅ | Rust |
+| Each sound matched to its nearest attack, or to none | ✅ | Within 50 ms |
+| Consistency check | 🟡 | In the mod report: pattern breaks, finishes and claps over silence; the "wrong instrument" rule waits for proof on real audio |
+| Sequence decision (Viterbi) | ✅ | `overtone-cli hitsound`: 19/19 on synthetic exact truth; clap and finish agreement with mappers above the simple rules on two real samples |
+| Explanations, profiles in the app, volume and sample edits, sample bank, hitsound export | 📋 | P6 |
 
 ### Command line
 
@@ -188,6 +200,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Whole folders | ✅ | |
 | Unified command set (`analyze · timing · hitsound · validate …`) | 📋 | P8 |
 | Rust engine as a JSON sidecar (`overtone-cli analyze --json` / `--full`) | ✅ | Exit codes: 0 grid, 3 refused, 1 unreadable, 2 usage |
+| The sidecar's other commands: `structure`, `ramps`, `hitsound`, `hitsound-evidence` | ✅ | The first three are what the Structure view, the Ramps card and the hitsound proposals run; `hitsound-evidence` prints each attack's class probabilities and role |
 
 ### Distribution
 
@@ -324,14 +337,15 @@ timed decoding and attack detection only.
 
 - **Real recordings are much harder than the corpus** — see above.
 - **Rubato and accelerating tempo** fall back to the tracker, which emits a staircase of
-  red lines in Python (8 on a 120 → 160 ramp). The Rust elastic grid handles ramps; the app
-  does not use it yet.
+  red lines in Python (8 on a 120 → 160 ramp). The Rust elastic grid handles ramps, and
+  Timing's Ramps card uses it; the analysis itself does not yet.
 - **An exact 2× tempo change** is one section in Python — the octave is decided globally.
   Rust decides it per section.
 - **A signature change that keeps the beat and changes the bar's length** is not detected.
 - **Swing and shuffle**: BPM and offset are exact, but the grid residual is large — that
   number is telling the truth about the music.
-- **Offsets export as whole milliseconds** (the `.osu` format); the fit is sub-millisecond.
+- **Offsets export as whole milliseconds** by default, what osu!stable reads; Settings →
+  Offset precision keeps up to 3 decimals for lazer. The fit is sub-millisecond.
 - **Every audit finding is closed** — fixed, found already fixed, or decided (Opus stays
   refused) — [`docs/13-audit-backlog.md`](docs/13-audit-backlog.md).
 - **Always check the first beat and every transition in the osu! editor.**
@@ -354,7 +368,7 @@ timed decoding and attack detection only.
 | [10 · Precision plan](docs/10-precision-plan.md) | Human-level accuracy on real songs, with a verified licence audit |
 | [11 · MSI distribution](docs/11-msi-distribution.md) | One self-contained installer |
 | [12 · Comfort features](docs/12-comfort-features.md) | Playback, projects, osu! integration, i18n, plugins |
-| [13 · Audit backlog](docs/13-audit-backlog.md) | Confirmed findings still open |
+| [13 · Audit backlog](docs/13-audit-backlog.md) | The audit's findings, every one closed |
 | [14 · Other languages](docs/14-other-languages.md) | Which features another language serves better, and how they stay in step |
 | [15 · Hitsound plan](docs/15-hitsound-plan.md) | What hitsounds need first, and what ships in which order |
 | [timeline.md](timeline.md) | Engineering log, with what was tried and dropped |
@@ -373,9 +387,10 @@ Overtone.bat              double-click launcher
 test_overtone.py          engine, I/O and classic-window tests
 test_overtone_web.py      bridge tests (never touch your real config)
 bench/                    benchmark, gates, golden vectors
-crates/                   Rust workspace: core, audio, dsp, tempo, hitsound, bench
+crates/                   Rust workspace: core, audio, dsp, tempo, hitsound, bench, cli
+profiles/                 hitsound profiles as JSON
 proto/                    prototypes measured before any port
-assets/                   generated logo and icon
+assets/                   generated logo, icon and Overtone's own hitsound samples
 docs/                     design documents and plans
 ```
 
@@ -394,13 +409,18 @@ audio y escribe el timing en tu `.osu` sin tocar nada más (hitsounds, kiai y ve
 sliders quedan igual).
 
 - **Qué funciona hoy (✅):** análisis, editor con deshacer, bloqueo de puntos, exportación
-  (`.osu`, CSV, pista de clic, `.osz`), inyección con vista previa, comparación con un mapa,
-  alineación, densidad y sugerencias, en inglés y español.
-- **Motor en Rust (🦀):** da los mismos resultados que Python y es unas 4 veces más rápido de punta a punta; todavía no lo usa la app.
-- **Próximo (📋):** los hallazgos medios de la auditoría (los 6 altos ya están
-  arreglados), escuchar la canción con el clic dentro de la app, conectar el motor
-  Rust, línea de tiempo con zoom, secciones (Biblioteca, Hitsounds, Audio…), herramientas
-  de mapa, precisión en canciones reales e instalador `.msi`.
+  (`.osu`, CSV, pista de clic, `.osz`), inyección con vista previa (un mapa o el mapset
+  entero, con el diff), comparación con un mapa, alineación, densidad y sugerencias,
+  la canción con el clic dentro de la app, la estructura (kiai, breaks, bookmarks,
+  volúmenes por sección), hitsounds (copiarlos entre dificultades, ver dónde cae cada
+  uno, escucharlos, revisar su consistencia y aceptar o no las propuestas del motor) y
+  el historial de escrituras con restauración; en inglés y español, oscuro o claro.
+- **Motor en Rust (🦀):** da los mismos resultados que Python y es unas 4 veces más rápido
+  de punta a punta; la app lo usa como opción (Ajustes → motor Rust) y para Estructura,
+  Rampas y las propuestas de hitsounds.
+- **Próximo (📋):** revisar en el navegador las pantallas nuevas, terminar el editor de
+  hitsounds (volumen, samples, escuchar antes de escribir), la sección Audio, precisión
+  en canciones reales e instalador `.msi`.
 
 Uso: doble clic en `Overtone.bat`, abrí un audio, **Analizar**, revisá el mapa de tempo,
 escuchá la pista de clic y usá **Inyectar .osu…**. La octava (92 vs 184) sigue siendo

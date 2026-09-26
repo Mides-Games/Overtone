@@ -24,6 +24,7 @@ import re
 import sqlite3
 import sys
 import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -248,6 +249,37 @@ def _number(value: object, default, cast):
     return number if np.isfinite(number) else default
 
 
+#: The stages an analysis announces, by the id the page names each one by in
+#: the user's language. A test holds this to every message the engine sends,
+#: so a reworded message cannot silently lose its name.
+STAGES = {
+    "Loading and normalizing audio…": "load",
+    "Detecting attacks at sample resolution…": "attacks",
+    "Scanning pulse coherence…": "coherence",
+    "Resolving the beat octave…": "octave",
+    "Fitting tempo sections…": "sections",
+    "No fittable grid — falling back to the beat tracker…": "fallback",
+    "Extracting transients and tempo hypotheses…": "transients",
+    "Tracking beats (hybrid DP + PLP + peaks)…": "tracking",
+    "Resolving half/double-time pulse…": "pulse",
+    "Computing local tempo and persistent changes…": "local",
+    "Analysing with the Rust engine…": "rust",
+}
+
+
+def stage_id(message: str) -> str | None:
+    """The stage a progress message announces, or None for one the table does
+    not know. The fallback's message carries its reason after the fixed text."""
+    return next((sid for text, sid in STAGES.items() if message.startswith(text)), None)
+
+
+class AnalysisStopped(BaseException):
+    """Raised through the engine from its progress callback when the user
+    stops an analysis. A BaseException, as asyncio's CancelledError is: the
+    engine falls back to the beat tracker on any ``Exception`` from the
+    precision fit, and a stop is not a failed fit."""
+
+
 # ---------------------------------------------------------------------------
 # Bridge exposed to JavaScript as window.pywebview.api
 # ---------------------------------------------------------------------------
@@ -264,6 +296,16 @@ class Api:
         self._autorun = bool(initial_file) and autorun
         self._analysis: ta.Analysis | None = None
         self._busy = threading.Lock()
+        #: Set by stop_analysis. The worker checks it at every stage the
+        #: engine announces and once more before a result replaces the last.
+        self._stop = threading.Event()
+        #: The running analysis's stages as they began, in seconds from _t0,
+        #: and when its engine returned (None while it runs).
+        self._stages: list[dict] = []
+        self._t0 = 0.0
+        self._engine_done: float | None = None
+        #: The timings of the analysis that produced the result on screen.
+        self._last_timings: dict | None = None
         self._cfg = ta.load_config()
         #: Undo/redo stacks: snapshots of the point list before each mutation.
         #: A fresh analysis replaces the whole map, so it clears both.
@@ -469,8 +511,28 @@ class Api:
         if not self._busy.acquire(blocking=False):
             return {"ok": False, "key": "busy"}
         self._remember(path, options)
+        self._stop.clear()
+        self._stages = []
+        self._t0 = time.perf_counter()
+        self._engine_done = None
         threading.Thread(target=self._worker, args=(path, params), daemon=True).start()
         return {"ok": True}
+
+    def stop_analysis(self) -> dict:
+        """Stop the running analysis. The engine is asked between its stages,
+        so the stop lands when the current stage ends; the result on screen
+        before it stays, as after a failed analysis."""
+        if not self._busy.locked():
+            return {"ok": False, "key": "not_running"}
+        self._stop.set()
+        return {"ok": True}
+
+    def analysis_timings(self) -> dict:
+        """How long the analysis on screen took, stage by stage (``cached``
+        when it came from the result cache and ran none)."""
+        if self._last_timings is None:
+            return {"ok": False, "key": "first"}
+        return {"ok": True, **self._last_timings}
 
     def rescale(self, mult: float) -> dict:
         """Instant x2 / /2 on the current result, as the Tk header buttons do."""
@@ -2402,25 +2464,53 @@ class Api:
             result = None
             if not self._locked:
                 result = self._cache_load(path, params)
+            cached = result is not None
             if result is None:
                 result = run_analysis(path, params, self._emit_progress)
+                self._engine_done = time.perf_counter() - self._t0
                 if not self._locked:
                     self._cache_save(path, params, result)
             else:
                 # Content-keyed cache: the DSP is identical for byte twins,
                 # but the path on the payload must be this file's.
                 result.source = path
+            # The Rust engine is one stage, and a cached result none: a stop
+            # asked for meanwhile still keeps the result that was on screen.
+            self._check_stop()
             if self._locked:
                 result.points = self._merge_locks(result.points, result.beats)
             self._analysis = result
             self._assisted = None       # a fit belongs to the song it was made on
             self._history.clear()
             self._future.clear()
+            self._last_timings = self._timings(cached)
             self._emit("onResult", self._payload())
+        except AnalysisStopped:
+            self._emit("onStopped", self._timings(False))
         except Exception as exc:  # noqa: BLE001 -- the UI shows the message
             self._emit("onError", str(exc))
         finally:
             self._busy.release()
+
+    def _check_stop(self) -> None:
+        if self._stop.is_set():
+            raise AnalysisStopped()
+
+    def _stage_rows(self, now: float) -> list[dict]:
+        """Every stage so far with the seconds it took; the last one runs to ``now``."""
+        ends = [stage["start_s"] for stage in self._stages[1:]] + [now]
+        return [{"stage": stage["stage"], "message": stage["message"],
+                 "seconds": round(end - stage["start_s"], 3)}
+                for stage, end in zip(self._stages, ends)]
+
+    def _timings(self, cached: bool) -> dict:
+        """How long the analysis took, stage by stage. The last stage ends
+        when the engine returned (or was stopped); the total also counts the
+        cache check before the first stage and the save after the last. A
+        cached result ran none."""
+        now = time.perf_counter() - self._t0
+        end = now if self._engine_done is None else self._engine_done
+        return {"total_s": round(now, 3), "cached": cached, "stages": self._stage_rows(end)}
 
     def _merge_locks(self, points, beats) -> list:
         """Verified red lines survive a new point list (re-analysis, a loaded
@@ -2441,7 +2531,14 @@ class Api:
         return points
 
     def _emit_progress(self, message: str) -> None:
-        self._emit("onProgress", message)
+        """Each stage as it begins, with the time every earlier one took. The
+        engine calls this between its stages, so it is also where a stop lands."""
+        self._check_stop()
+        now = time.perf_counter() - self._t0
+        self._stages.append({"stage": stage_id(message), "message": message, "start_s": now})
+        self._emit("onProgress", {"message": message, "stage": stage_id(message),
+                                  "elapsed_s": round(now, 3),
+                                  "done": self._stage_rows(now)[:-1]})
 
     # -- result cache (Phase 2: same audio plus same options, no recompute) --
     #: Entries kept and total bytes kept; payloads are small (pooled onset

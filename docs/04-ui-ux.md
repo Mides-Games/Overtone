@@ -292,6 +292,12 @@ Per-stage timings are always visible, not hidden behind a debug flag: they are h
 reports a performance problem, and how we notice one. Cancellable at any point. The
 previous analysis stays on screen and interactive throughout.
 
+*Built 2026-09-26 (web shell):* the bar names each stage the engine announces, ticks the
+finished ones with their times and runs a clock; the song panel keeps the times after.
+Stop lands when the running stage ends, not at any point: the engine is asked between its
+stages, and one stage can be long (attack detection ran 48 s on an eight-minute track,
+with the machine busy). The result on screen stays.
+
 ---
 
 ## 8. Accessibility and honesty

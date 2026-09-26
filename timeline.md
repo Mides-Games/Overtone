@@ -17,6 +17,67 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Analysis stages named and timed, and a stop between them
+
+The progress bar showed the engine's English message and nothing else: no time, and no
+way out of a long analysis of the wrong song but to wait. Roadmap, Phase 3: "Progress
+panel" (P1) and "Cancellable analysis" (P2).
+
+### Changed
+
+- **Each stage named and timed.** The bridge sends every stage the engine announces with
+  an id, the time since the start and what each finished stage took; the page names it in
+  the user's language, ticks the finished ones with their times, and runs the stage's and
+  the total's clocks between events. The ids live in one table, `STAGES`, and a test holds
+  it to every message the engine sends, so a reworded message cannot lose its name.
+- **Stop.** `stop_analysis` sets a flag the worker checks at every stage the engine
+  announces and once more before a result replaces the one on screen. The progress
+  callback raises `AnalysisStopped`, a `BaseException` as asyncio's `CancelledError` is:
+  the engine falls back to the beat tracker on any `Exception` from the precision fit, and
+  a stop is not a failed fit. The page says "Stopping" until the stage ends, then that the
+  analysis stopped and the result on screen stayed. The Rust engine runs as one stage and a
+  cached result as none: a stop asked for meanwhile holds when they return.
+- **The song panel keeps the times** (`analysis_timings`): the total ("from the cache"
+  when nothing ran) and each stage. The last stage ends when the engine returned; the total
+  also counts the cache check before and the save after.
+- `onResult` still carries exactly the engine's payload, so the page asks for the timings
+  instead of finding them attached. 5 bridge tests.
+
+### Measured
+
+```
+Per stage, analyze_audio called from Python, with five other jobs running on the machine
+  Take You Down          2:15   17.2 s  audio 1.6   attacks 11.3  pulse 0.3  octave 0.5
+                                        sections 3.5
+  FREEDOM DiVE           4:36   45.6 s  audio 15.2 (the process's first analysis)
+                                        attacks 19.6  pulse 0.4  octave 4.4  sections 6.0
+  Vampires (fallback)    5:27   83.5 s  audio 2.6   attacks 19.8  pulse 0.5
+                                        transients 53.1  beats 7.0  half/double 0.4  local 0.2
+  The Raven (refused)    7:57   78.1 s  audio 6.1   attacks 47.7  pulse 4.6  transients 19.7
+  the longest stage, 11.3 to 53.1 s, is the longest a stop waits
+Through the harness page, Take You Down
+  full run      9.9 s: audio 0.9  attacks 5.9  pulse 0.3  octave 0.5  sections 2.2
+  again         0.05 s, from the cache
+  Stop          pressed about 2 s into attacks; stopped at 5.3 s, when that stage ended;
+                the 174.01 BPM result on screen stayed
+Python unittest      549 -> 554, all pass · facts ok · engine gates not re-run (overtone.py
+                     untouched)
+```
+
+The harness's clocks include its event polling; they are not the app's.
+
+### Rejected / tried and dropped
+
+- **The timings attached to `onResult`**: that event carries exactly the engine's payload,
+  and a cached result sends it alone; both are held by tests.
+- **Handing the page back at once while the stage finishes behind it**: the page would say
+  "stopped" while the machine is still busy and the next analysis waits all the same. It
+  says "Stopping" until that is true.
+- **The analysis in a subprocess, ended on stop**: instant, but every analysis would pay
+  the imports and numba's compile again (the pre-warm row puts that at ~2.3 s). Kept for
+  the new "Stop inside a stage" task, as a worker process that stays warm, or checkpoints
+  between the envelope's chunks once the envelope memory bound chunks it.
+
 ## v4.0.0-dev — 2026-09-26 · Split and merge sections, refitted to their attacks
 
 The editor could add and delete a red line, not split a section where its tempo moves or

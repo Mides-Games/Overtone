@@ -88,6 +88,12 @@ const I18N = {
     d_conf: "Confidence", d_span: "Governs", d_until: "until {t}", d_end: "to the end", d_bars: "{n} bars",
     d_duration: "Duration", d_first: "First beat", d_engine: "Engine", d_residual: "Grid residual",
     d_pulse: "Pulse", d_sections: "Grid sections", d_hint: "Select a timing point in the list or on the tempo map to inspect it.",
+    d_timing: "Analysis", d_timing_cached: "from the cache, {s} s",
+    stop: "Stop", stopping: "Stopping", stop_hint: "Stops when the current stage ends; the result on screen stays",
+    analysis_stopped: "Analysis stopped after {s} s", analysis_stopped_kept: "Analysis stopped after {s} s — the result on screen stays",
+    stage_load: "Audio", stage_attacks: "Attacks", stage_coherence: "Pulse scan", stage_octave: "Octave",
+    stage_sections: "Sections", stage_fallback: "Beat tracker", stage_transients: "Transients",
+    stage_tracking: "Beats", stage_pulse: "Half/double time", stage_local: "Local tempo", stage_rust: "Rust engine",
     d_meter_known: "Bar found in the accents: this red line sits on a downbeat.",
     d_meter_guess: "No bar evidence: the red line sits on a beat, and the meter is the analysis default.",
     lg_tempo: "tempo", lg_points: "timing points", lg_onsets: "onsets", lg_ghost: "map lines",
@@ -596,6 +602,12 @@ const I18N = {
     d_conf: "Confianza", d_span: "Gobierna", d_until: "hasta {t}", d_end: "hasta el final", d_bars: "{n} compases",
     d_duration: "Duración", d_first: "Primer beat", d_engine: "Motor", d_residual: "Residuo de la rejilla",
     d_pulse: "Pulso", d_sections: "Secciones de rejilla", d_hint: "Elegí un timing point en la lista o en el mapa de tempo para inspeccionarlo.",
+    d_timing: "Análisis", d_timing_cached: "desde la caché, {s} s",
+    stop: "Detener", stopping: "Deteniendo", stop_hint: "Se detiene al terminar la etapa en curso; el resultado en pantalla se queda",
+    analysis_stopped: "Análisis detenido a los {s} s", analysis_stopped_kept: "Análisis detenido a los {s} s — el resultado en pantalla se queda",
+    stage_load: "Audio", stage_attacks: "Ataques", stage_coherence: "Barrido del pulso", stage_octave: "Octava",
+    stage_sections: "Secciones", stage_fallback: "Rastreador de pulsos", stage_transients: "Transitorios",
+    stage_tracking: "Pulsos", stage_pulse: "Mitad/doble tiempo", stage_local: "Tempo local", stage_rust: "Motor Rust",
     d_meter_known: "Compás hallado en los acentos: esta línea roja cae en un downbeat.",
     d_meter_guess: "Sin evidencia de compás: la línea roja cae en un beat y el compás es el valor por defecto.",
     lg_tempo: "tempo", lg_points: "timing points", lg_onsets: "ataques", lg_ghost: "líneas del mapa",
@@ -1020,7 +1032,7 @@ const I18N = {
   },
 };
 
-const S = { lang: "en", view: "library", mapset: null, file: null, options: null, presets: {}, result: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, snap: null, ref: null, refFind: null, assist: null, report: null, recent: [] };
+const S = { lang: "en", view: "library", mapset: null, file: null, options: null, presets: {}, result: null, timings: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, snap: null, ref: null, refFind: null, assist: null, report: null, recent: [] };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
@@ -1181,9 +1193,63 @@ function setBusy(busy, message) {
   $("analyzeSpin").hidden = !busy;
   $("analyzeText").textContent = t(busy ? "analyzing" : "analyze");
   $("progress").hidden = !busy;
-  if (message !== undefined) $("progressText").textContent = message;
+  clearInterval(PROG.timer);
+  if (busy) {
+    progressReset(message);
+    PROG.timer = setInterval(renderProgress, 200);
+  }
   syncActions();
   renderNeedSong();
+}
+
+// The running analysis, stage by stage: the engine announces each one as it
+// begins, with what every earlier one took; the clocks run between events.
+const PROG = { start: 0, stageStart: 0, began: false, stage: null, message: "", done: [], timer: 0, stopping: false };
+
+function stageName(id, message) {
+  return id ? t(`stage_${id}`) : String(message || "").replace(/…$/, "");
+}
+
+function progressReset(message) {
+  const now = performance.now();
+  Object.assign(PROG, { start: now, stageStart: now, began: false, stage: null,
+                        message: message || "", done: [], stopping: false });
+  renderProgress();
+}
+
+function renderProgress() {
+  const now = performance.now(), secs = (ms) => `${(ms / 1000).toFixed(1)} s`;
+  // Before the first stage the line says what is being read (a dropped file's name).
+  const current = PROG.began
+    ? `${stageName(PROG.stage, PROG.message)}… ${secs(now - PROG.stageStart)}` : PROG.message;
+  $("progressText").textContent = PROG.stopping ? [t("stopping"), current].filter(Boolean).join(" · ") : current;
+  $("progressText").title = PROG.began ? PROG.message : "";
+  $("progressStages").innerHTML = PROG.done.map((s) =>
+    `<span class="stage" title="${esc(s.message)}">✓ ${esc(stageName(s.stage, s.message))} <span class="num">${s.seconds.toFixed(1)} s</span></span>`).join("");
+  $("progressClock").textContent = secs(now - PROG.start);
+  $("stopBtn").disabled = PROG.stopping;
+  $("stopBtn").title = t("stop_hint");
+}
+
+async function stopAnalysis() {
+  if (!api() || !S.busy || PROG.stopping) return;
+  PROG.stopping = true;
+  renderProgress();
+  const reply = await api().stop_analysis();
+  // Not running: a dropped file still being read, or the analysis ended as
+  // the click travelled (its own event says how). Either way, nothing stops.
+  if (!reply.ok) { PROG.stopping = false; renderProgress(); }
+}
+
+// How long the analysis on screen took, for the song panel.
+function timingSummary(tm) {
+  if (!tm) return "—";
+  return tm.cached ? t("d_timing_cached", { s: tm.total_s.toFixed(2) }) : `${tm.total_s.toFixed(1)} s`;
+}
+
+function timingStages(tm) {
+  if (!tm || tm.cached || !tm.stages.length) return "";
+  return tm.stages.map((s) => `${esc(stageName(s.stage, s.message))} ${s.seconds.toFixed(1)}`).join(" · ") + " s";
 }
 
 function syncActions() {
@@ -1292,7 +1358,20 @@ async function rescale(mult) {
 }
 
 window.overtone = {
-  onProgress(message) { $("progressText").textContent = message; },
+  onProgress(info) {
+    const now = performance.now();
+    Object.assign(PROG, { began: true, stage: info.stage || null, message: info.message || "",
+                          stageStart: now, done: info.done || [] });
+    // The bridge's clock is the truth; the page's only runs between events.
+    if (info.elapsed_s !== undefined) PROG.start = now - info.elapsed_s * 1000;
+    renderProgress();
+  },
+  onStopped(timings) {
+    S.pendingDrop = null;
+    setBusy(false);
+    const s = ((timings && timings.total_s) || 0).toFixed(1);
+    toast(t(S.result ? "analysis_stopped_kept" : "analysis_stopped", { s }));
+  },
   onLibraryProgress(progress) { SONGS.progress = progress; renderSongs(); },
   onResult(result) {
     setBusy(false);
@@ -1304,6 +1383,7 @@ window.overtone = {
       S.pendingDrop = null;
     }
     S.selected = -1;
+    S.timings = null;
     showResult(result);
     // A finished analysis lands on Timing, unless the user is already on a
     // view that was waiting for it (Map check, Export): that one fills in.
@@ -1311,6 +1391,10 @@ window.overtone = {
     syncHistory();
     syncLocks();
     refreshRecents();
+    api().analysis_timings().then((reply) => {
+      S.timings = reply && reply.ok ? reply : null;
+      if (S.selected < 0) renderDetail();
+    });
     toast(t("done", { n: result.points.length, bpm: result.global_bpm.toFixed(2) }));
   },
   onError(detail) { S.pendingDrop = null; setBusy(false); toast(t("error", { detail }), true); },
@@ -1446,7 +1530,9 @@ function renderDetail() {
       ${kv([[t("d_duration"), mmss(r.duration)], [t("d_first"), firstBeat],
             [t("d_engine"), `${t(r.engine === "precision" ? "engine_precision" : "engine_legacy")} · ${t(r.backend === "rust" ? "backend_rust" : "backend_python")}`],
             [t("d_residual"), r.engine === "precision" ? `${r.residual_ms.toFixed(2)} ms` : "—"],
-            [t("d_sections"), r.sections.length || "—"], [t("d_pulse"), `×${r.subdivision}`]])}
+            [t("d_sections"), r.sections.length || "—"], [t("d_pulse"), `×${r.subdivision}`],
+            [t("d_timing"), timingSummary(S.timings)]])}
+      ${timingStages(S.timings) ? `<div class="detail-note num">${timingStages(S.timings)}</div>` : ""}
       <div class="detail-note">${t("d_hint")}</div>`;
     return;
   }
@@ -5186,6 +5272,7 @@ function wire() {
   $("scrim").onclick = () => openDrawer(false);
   $("drop").onclick = openAudio;
   $("analyzeBtn").onclick = analyze;
+  $("stopBtn").onclick = stopAnalysis;
   $("halfBtn").onclick = () => rescale(0.5);
   $("doubleBtn").onclick = () => rescale(2);
   $("rows").onclick = (e) => { const tr = e.target.closest("tr"); if (tr) selectPoint(+tr.dataset.i); };

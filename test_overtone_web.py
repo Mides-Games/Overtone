@@ -11,6 +11,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -2573,6 +2574,130 @@ class CacheTests(_IsolatedConfig):
                 self.assertTrue(done.wait(30))
                 self.assertEqual(run.call_count, 1)
             self.assertEqual([p["path"] for p in payloads], [fixed.source, str(b)])
+
+
+class AnalysisStopTests(_IsolatedConfig):
+    """Stage names and timings while an analysis runs, and stopping one."""
+
+    OPTIONS = CacheTests.OPTIONS
+
+    def _run(self, api: web.Api, wav: Path, engine) -> list[tuple[str, object]]:
+        """One analysis through the real worker with ``engine`` as run_analysis;
+        returns the events, once the worker has let go of the busy lock."""
+        events: list[tuple[str, object]] = []
+        done = threading.Event()
+
+        def emit(handler, payload):
+            events.append((handler, payload))
+            if handler in ("onResult", "onError", "onStopped"):
+                done.set()
+
+        api._emit = emit
+        with mock.patch.object(web, "run_analysis", side_effect=engine):
+            self.assertTrue(api.analyze(str(wav), self.OPTIONS)["ok"])
+            self.assertTrue(done.wait(30))
+        for _ in range(500):
+            if not api._busy.locked():
+                break
+            threading.Event().wait(0.01)
+        return events
+
+    def test_every_stage_the_engine_announces_has_a_name(self) -> None:
+        import re
+        said = []
+        for module in (ta, web):
+            said += re.findall(r'(?:say|progress)\("([^"]+)"',
+                               Path(module.__file__).read_text(encoding="utf-8"))
+        # Every message named, every name still announced, one id per stage.
+        self.assertEqual(sorted(set(said)), sorted(web.STAGES))
+        self.assertEqual(len(set(web.STAGES.values())), len(web.STAGES))
+        self.assertEqual(web.stage_id("No fittable grid — falling back to the beat tracker… "
+                                      "(ValueError: x)"), "fallback")
+        self.assertIsNone(web.stage_id("Something new…"))
+        page = (Path(web.__file__).parent / "app" / "app.js").read_text(encoding="utf-8")
+        for sid in web.STAGES.values():
+            self.assertEqual(page.count(f"stage_{sid}:"), 2, sid)    # English and Spanish
+
+    def test_each_stage_is_named_and_the_ones_before_it_timed(self) -> None:
+        api = web.Api()
+        events: list[tuple[str, object]] = []
+        api._emit = lambda handler, payload: events.append((handler, payload))
+        api._t0 = time.perf_counter()
+        api._emit_progress("Loading and normalizing audio…")
+        api._emit_progress("Detecting attacks at sample resolution…")
+        first, second = (payload for _handler, payload in events)
+        self.assertEqual((first["stage"], second["stage"]), ("load", "attacks"))
+        self.assertEqual(first["done"], [])
+        self.assertEqual([row["stage"] for row in second["done"]], ["load"])
+        self.assertGreaterEqual(second["done"][0]["seconds"], 0.0)
+        self.assertGreaterEqual(second["elapsed_s"], first["elapsed_s"])
+        json.dumps(events)
+
+    def test_a_stop_lands_at_the_next_stage_and_the_result_on_screen_stays(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "a.wav"
+            wav.write_bytes(b"RIFF....")
+            api = web.Api()
+            before = _analysis([ta.TimingPoint(500, 150, 1, 0)])
+            api._analysis = before
+            stops = []
+
+            def engine(path, params, progress):
+                progress("Loading and normalizing audio…")
+                stops.append(api.stop_analysis())             # Stop, mid-stage
+                progress("Detecting attacks at sample resolution…")
+                raise AssertionError("the stop should have landed at the stage above")
+
+            events = self._run(api, wav, engine)
+        self.assertEqual(stops, [{"ok": True}])
+        self.assertEqual([kind for kind, _payload in events], ["onProgress", "onStopped"])
+        self.assertIs(api._analysis, before)
+        stopped = events[-1][1]
+        self.assertEqual([row["stage"] for row in stopped["stages"]], ["load"])
+        self.assertFalse(stopped["cached"])
+        self.assertEqual(api.stop_analysis()["key"], "not_running")
+        self.assertEqual(api.analysis_timings()["key"], "first")      # none ran to the end
+
+    def test_a_stop_while_the_engine_had_no_stage_to_end_still_holds(self) -> None:
+        # The Rust engine runs as one stage: the stop is honoured when it returns.
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "a.wav"
+            wav.write_bytes(b"RIFF....")
+            api = web.Api()
+
+            def engine(path, params, progress):
+                progress("Analysing with the Rust engine…")
+                api.stop_analysis()
+                return _analysis([ta.TimingPoint(500, 150, 1, 0)])
+
+            events = self._run(api, wav, engine)
+        self.assertEqual([kind for kind, _payload in events], ["onProgress", "onStopped"])
+        self.assertIsNone(api._analysis)
+
+    def test_timings_describe_the_analysis_on_screen(self) -> None:
+        self.assertEqual(web.Api().analysis_timings()["key"], "first")
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "a.wav"
+            wav.write_bytes(b"RIFF....")
+            api = web.Api()
+
+            def engine(path, params, progress):
+                progress("Loading and normalizing audio…")
+                progress("Scanning pulse coherence…")
+                return _analysis([ta.TimingPoint(500, 150, 1, 0)])
+
+            self._run(api, wav, engine)
+            ran = api.analysis_timings()
+            self._run(api, wav, engine)                  # the same file: from the cache
+            cached = api.analysis_timings()
+        self.assertEqual((ran["ok"], ran["cached"]), (True, False))
+        self.assertEqual([row["stage"] for row in ran["stages"]], ["load", "coherence"])
+        # The total also holds the cache check before the first stage and the
+        # save after the last; the stages never add up to more than it.
+        self.assertTrue(all(row["seconds"] >= 0 for row in ran["stages"]))
+        self.assertLessEqual(sum(row["seconds"] for row in ran["stages"]), ran["total_s"] + 0.002)
+        self.assertEqual((cached["cached"], cached["stages"]), (True, []))
+        json.dumps([ran, cached])
 
 
 def _bracket_problems(src: str) -> list[tuple[str, int]]:

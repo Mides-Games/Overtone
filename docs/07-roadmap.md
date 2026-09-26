@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 % |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **549** Python (383 engine + 166 web shell) · **263** Rust.
+Tests: **554** Python (383 engine + 171 web shell) · **263** Rust.
 
 ### What is pending, in order
 
@@ -252,7 +252,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Tempo curve layer | local BPM over time | med | high | timeline | no | no | **P1** | **done** |
 | Hover readout | time, tempo, governing red line | low | high | timeline | no | no | **P1** | **done** |
 | Stat cards | BPM, points, beats, stability, engine, residual | low | med | shell | no | no | P1 | **done** |
-| Progress panel | per-stage ticks and timings, cancellable | low | med | shell | no | no | P1 | partial — stage messages; no timings, no cancel |
+| Progress panel | per-stage ticks and timings, cancellable | low | med | shell | no | no | P1 | **done** (web shell) — each stage named, the finished ones ticked with their times, a running clock and Stop; the song panel keeps the times |
 | Dashboard | drop target, recents, folder entry points | low | med | shell | no | no | P1 | **done** |
 | Honesty banners | fallback engine, late first line, validation findings | low | **high** | shell | no | no | P1 | **done** |
 | Confidence ribbon | per-section confidence under the ruler | low | med | timeline | no | no | P2 | todo — per-point bars in the list only |
@@ -268,7 +268,8 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Density ribbon | half- and double-time inside one reported section | med | med | P2 density | no | no | P2 | todo |
 | Measures on the map | bar ticks and signature regions | low | med | timeline | no | no | P2 | partial — meter column |
 | Keyboard map | every action reachable from the keyboard; `?` shows the sheet | low | med | shell | no | no | P2 | partial |
-| Cancellable analysis | stop button, stage names and timings | low | med | progress | no | no | P2 | todo |
+| Cancellable analysis | stop button, stage names and timings | low | med | progress | no | no | P2 | **done** between stages — the engine is asked at each stage it announces and once more before a result replaces the one on screen, which stays |
+| Stop inside a stage | a stop that lands in seconds, not when the stage ends: attack detection ran 48 s on an eight-minute track, the fallback's transients 53 s on another (machine busy) | med | med | cancellable analysis | no | no | P2 | todo — checkpoints between the envelope's chunks (with the envelope memory bound), or the analysis in a worker process that can be ended |
 | Command palette | Ctrl+K search over every action | low | low | shell | no | no | P3 | todo |
 
 ---
@@ -446,7 +447,7 @@ estimate with a number or is dropped.
 | 10.9 | Fine-tune on ranked maps | domain-specific model | +2 pts | todo |
 | 10.10 | Chord & cadence anchors | cadences as downbeat voters | +1 pt | todo |
 | 10.11 | Instrument specialists | trained kick/snare/hat detectors | +1 pt | todo |
-| 10.12 | UX for slow but precise | stage progress, cancel, cached intermediates | usability | partial (cache) |
+| 10.12 | UX for slow but precise | stage progress, cancel, cached intermediates | usability | partial — result cache, stage progress with timings, stop between stages; no cached intermediates |
 | 10.13 | **MSI distribution** | one self-contained installer + portable ZIP — [`11-msi-distribution.md`](11-msi-distribution.md) | packaging | todo |
 
 **Licences, checked at the source on 2026-09-23** (full table in `10-precision-plan.md`):

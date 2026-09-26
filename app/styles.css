@@ -409,6 +409,18 @@ button.link:focus-visible, .recent-item:focus-visible { border-radius: var(--r-x
 }
 @keyframes slide { from { left: -40%; } to { left: 100%; } }
 .progress .text { color: var(--muted); font-size: var(--fs-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Finished stages, newest nearest the running one. The running stage's line
+   never gives way; when the finished ones outgrow the room left, they are
+   packed to its end, so the oldest are the ones cut. */
+.progress .stages + .text { flex: none; }
+.progress .stages {
+  flex: 0 1 auto; min-width: 0; display: flex; justify-content: flex-end; gap: 12px;
+  overflow: hidden; white-space: nowrap; color: var(--dim); font-size: var(--fs-1);
+}
+.progress .stages:empty { display: none; }
+.progress .stage .num { color: var(--muted); }
+.progress .clock { margin-left: auto; flex: none; color: var(--muted); font-size: var(--fs-2); }
+.progress #stopBtn { flex: none; }
 
 /* ----------------------------------------------------------------- empty */
 /* An empty state sits in the middle of the area it has, not at a fixed

@@ -306,6 +306,11 @@ class Api:
         #: objects left its own red lines, and a second re-snap would move
         #: them twice. Injecting or restoring changes the bytes and frees it.
         self._resnapped: dict[str, str] = {}
+        #: The same for section volumes, by tool and path: its own output
+        #: reads as done but for one case (a mapper's section at the volume
+        #: just written before it), which must not be written twice. Constant
+        #: scroll asks History instead, since its case spans sessions.
+        self._tool_wrote: dict[str, str] = {}
         if initial_file:
             self._cfg["file"] = initial_file
 
@@ -1812,7 +1817,8 @@ class Api:
         return path, beatmap, view["view"]["sections"]
 
     def structure_volumes_preview(self, file: str) -> dict:
-        """What writing section volumes would add, rewrite or keep. Read only."""
+        """What writing section volumes would add, rewrite or keep, and how
+        many sections are left to the map's own volumes. Read only."""
         plan = self._volumes_plan(file)
         if isinstance(plan, dict):
             return plan
@@ -1824,24 +1830,29 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "file": path.name, "sections": len(sections),
                 "added": result["added"], "flipped": result["flipped"],
-                "kept": result["kept"]}
+                "kept": result["kept"], "mapper": result["mapper"], "set": result["set"],
+                "already": self._already_written("volumes", path)}
 
     def structure_volumes_apply(self, file: str) -> dict:
         """Write section volumes as green lines, the file backed up first and
-        logged. Recomputes: the preview never decides."""
+        logged. Recomputes: the preview never decides. Refuses a file still
+        holding what a volumes write here made."""
         plan = self._volumes_plan(file)
         if isinstance(plan, dict):
             return plan
         path, beatmap, sections = plan
+        if self._already_written("volumes", path):
+            return {"ok": False, "key": "already_written"}
         try:
             result = ta.set_section_volumes(beatmap, sections)
             written = ta.write_osu_beatmap(path, beatmap, op="volumes")
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
+        self._remember_write("volumes", path)
         return {"ok": True, "file": path.name, "sections": len(sections),
                 "added": result["added"], "flipped": result["flipped"],
-                "kept": result["kept"], "written": written["bytes"] > 0,
-                "backup": written["backup"]}
+                "kept": result["kept"], "mapper": result["mapper"], "set": result["set"],
+                "written": written["bytes"] > 0, "backup": written["backup"]}
 
     def snap_divisors(self) -> dict:
         """Which divisor each section needs, from the song's own attacks.

@@ -4718,37 +4718,49 @@ def set_section_volumes(beatmap: dict, sections: list[dict]) -> dict:
     Each section plays at the loudest section's volume scaled by their level
     distance in dB — amplitude math, not taste — so a chorus hits harder than
     its verse by exactly how much louder it is. The scale's anchor is the
-    volume in force at the loudest section's start, which the tool never
-    touches, so a second run reads its own greens as already right instead of
-    turning them down again. A section already at its target is kept,
-    including the loudest ones; a green already at a boundary gets only its
-    volume rewritten. New greens carry the audible state in force there, so
-    sets, index and kiai never move with the volume. In place, like the P-2
-    field edits. Returns added, flipped and kept.
+    volume the loudest section plays longest, which the tool never changes: a
+    second run reads its own greens as right instead of turning them down
+    again, and a short mute at that section's start (5 % on a real map) does
+    not become the scale.
+
+    The mapper's own volumes are kept. A section where the map changes the
+    volume, at its start or anywhere inside, is left as it is and counted as
+    the mapper's. A section the map plays at one volume from start to end is
+    set to its target all the way through: its start, the volume of every
+    green inside, and a new green at each red line inside, since a red line
+    carries a volume of its own. New greens carry the audible state in force
+    there, so SV, sets, index and kiai never move with the volume. A section
+    already at its target throughout is kept. One case reads wrong on a second
+    run: a mapper's section whose one volume equals the target this tool
+    wrote into the section before it reads as inherited and is set. Sections
+    run to their stated end, else to the next start. In place, like the P-2
+    field edits. Returns sections set, kept (at their target already) and
+    mapper (left to the map's own volumes), and the green lines added and
+    flipped (volume rewritten) to set them.
     """
     section = next((s for s in beatmap.get("sections", []) if s["name"] == "TimingPoints"), None)
     if section is None:
         raise ValueError("No [TimingPoints] section in this beatmap.")
-    starts = []
+    counts = {"added": 0, "flipped": 0, "kept": 0, "mapper": 0, "set": 0}
+    entries = []
     for entry in sections or []:
         try:
             start = float(entry["start_s"]) * 1000.0
             level = float(entry.get("level_db", float("nan")))
+            end = float(entry.get("end_s", float("nan"))) * 1000.0
         except (TypeError, ValueError, KeyError):
             continue
         if np.isfinite(start) and np.isfinite(level):
-            starts.append((start, level))
-    if not starts:
-        return {"added": 0, "flipped": 0, "kept": 0}
-    loudest = max(level for _s, level in starts)
+            entries.append((start, level, end))
+    if not entries:
+        return counts
     # One boundary per start: contiguous sections never share one, but a
     # hand-built list might, and two greens on the same millisecond are junk.
-    unique: list[tuple[float, float]] = []
-    for start, level in sorted(starts):
+    unique: list[tuple[float, float, float]] = []
+    for start, level, end in sorted(entries):
         if not unique or abs(start - unique[-1][0]) > 0.01:
-            unique.append((start, level))
-    starts = unique
-    cursor = _TimingCursor(beatmap)
+            unique.append((start, level, end))
+    cursor = _TimingCursor(beatmap)      # the map as read, before any edit here
     import bisect
 
     def meter_at(time_ms: float) -> int:
@@ -4760,48 +4772,97 @@ def set_section_volumes(beatmap: dict, sections: list[dict]) -> dict:
         whole = round(time_ms)
         return str(int(whole)) if abs(time_ms - whole) < 1e-6 else f"{time_ms:.3f}"
 
-    def state_at(time_ms: float):
+    def volume_at(time_ms: float) -> int:
         _beat, state = cursor.at(time_ms)
-        if state is None:
-            return 1.0, 0, 0, 100, False
-        sv = state.sv if state.sv > 0 else 1.0
-        return sv, state.sample_set, state.sample_index, state.volume, state.kiai
+        return state.volume if state is not None else 100
 
-    # The anchor the scale hangs from: the volume in force where the song is
-    # loudest. The tool never writes there (ratio 1, always kept), so the
-    # anchor survives its own runs and the scale never ratchets down.
-    anchor_start = min(starts, key=lambda s: (-s[1], s[0]))[0]
-    _beat, anchor = cursor.at(anchor_start)
-    reference = anchor.volume if anchor is not None else 100
-    added = flipped = kept = 0
-    for start_ms, level in sorted(starts):
-        target = max(0, min(100, int(round(reference * 10.0 ** ((level - loudest) / 20.0)))))
-        _beat, state = cursor.at(start_ms)
-        current = state.volume if state is not None else 100
-        if target == current:
-            kept += 1
+    points = []
+    for order, line in enumerate(section["lines"]):
+        text = line.strip()
+        if text and not text.startswith("//") and (point := _timing_point_fields(text)) is not None:
+            point["order"] = order
+            points.append(point)
+    points = _ordered(points)
+    ends = [float(o.get("end_time") or o.get("time") or 0.0)
+            for o in beatmap.get("hitobjects", []) if "time" in o]
+    last = max([p["time"] for p in points] + ends + [unique[-1][0]]) + 1.0
+    spans = []
+    for n, (start, level, end) in enumerate(unique):
+        following = unique[n + 1][0] if n + 1 < len(unique) else None
+        stop = end if np.isfinite(end) and end > start else (following if following is not None else last)
+        if following is not None:
+            stop = min(stop, following)
+        spans.append((start, max(stop, start), level, following is not None))
+    # Nothing is written before the first red line (osu! would read it back
+    # to the song's start), and the scale comes from what is left.
+    first_red = _first_red_time(beatmap)
+    if first_red is not None:
+        spans = [(max(s, first_red), e, lv, more) for s, e, lv, more in spans if e > first_red + 0.01]
+    if not spans:
+        return counts
+    loudest = max(lv for _s, _e, lv, _m in spans)
+
+    def longest_volume(start: float, stop: float) -> int:
+        cuts = sorted({start, stop} | {p["time"] for p in points if start < p["time"] < stop})
+        held: dict[int, float] = {}
+        for a, b in zip(cuts, cuts[1:]):
+            held[volume_at(a)] = held.get(volume_at(a), 0.0) + (b - a)
+        return max(held, key=lambda v: (held[v], v)) if held else volume_at(start)
+
+    anchor = min(spans, key=lambda s: (-s[2], s[0]))
+    reference = longest_volume(anchor[0], anchor[1])
+    flips: dict[int, int] = {}
+    # New greens by time: a set section's closing green and the next
+    # section's own start land on the same millisecond, and the start wins.
+    inserts: dict[float, tuple[float, int]] = {}
+    for start, stop, level, more in spans:
+        # Never under osu!'s own floor: a fade 47 dB down came out at 0.
+        target = max(MIN_SAMPLE_VOLUME, min(100, int(round(reference * 10.0 ** ((level - loudest) / 20.0)))))
+        inside = [p for p in points if start - 0.01 <= p["time"] < stop - 0.01]
+        times = sorted({start} | {p["time"] for p in inside})
+        if all(volume_at(t) == target for t in times):
+            counts["kept"] += 1
             continue
-        hit = next((n for n, line in enumerate(section["lines"])
-                    if line.strip() and not line.strip().startswith("//")
-                    and (point := _timing_point_fields(line)) is not None
-                    and not point["red"] and abs(point["time"] - start_ms) <= 0.01), None)
-        if hit is not None:
-            fields = _green_fields(section["lines"][hit])
-            fields[5] = str(target)
-            section["lines"][hit] = ",".join(fields)
-            flipped += 1
+        before = volume_at(start - 0.01)
+        if any(p["volume"] != before for p in inside):
+            counts["mapper"] += 1
             continue
-        sv, sample_set, sample_index, _volume, kiai = state_at(start_ms)
-        _insert_timing_line(section, f"{stamp(start_ms)},{-100.0 / sv:.12g},{meter_at(start_ms)},"
-                                     f"{sample_set},{sample_index},{target},0,{1 if kiai else 0}")
-        added += 1
+        counts["set"] += 1
+        for time_ms in times:
+            greens = [p for p in inside if not p["red"] and abs(p["time"] - time_ms) <= 0.01]
+            for green in greens:
+                flips[green["order"]] = target
+            if greens:
+                inserts.pop(round(time_ms, 2), None)
+            else:
+                inserts[round(time_ms, 2)] = (time_ms, target)
+        # The target must not run on past the section: where the next one
+        # starts with no line of its own, a green gives back what the map
+        # played there (the next section's own start may still replace it).
+        opens_own = any(abs(p["time"] - stop) <= 0.01 for p in points)
+        if (more or stop < last - 1.0) and not opens_own and volume_at(stop) != target:
+            inserts[round(stop, 2)] = (stop, volume_at(stop))
+    counts["flipped"] = len(flips)
+    counts["added"] = len(inserts)
+    for order, volume in flips.items():
+        fields = _green_fields(section["lines"][order])
+        fields[5] = str(volume)
+        section["lines"][order] = ",".join(fields)
+    for time_ms, volume in inserts.values():
+        _beat, state = cursor.at(time_ms)
+        sv, sample_set, sample_index, kiai = ((state.sv if state.sv > 0 else 1.0, state.sample_set,
+                                               state.sample_index, state.kiai)
+                                              if state is not None else (1.0, 0, 0, False))
+        when = _point_time_text(section, time_ms) or stamp(time_ms)
+        _insert_timing_line(section, f"{when},{-100.0 / sv:.12g},{meter_at(time_ms)},"
+                                     f"{sample_set},{sample_index},{volume},0,{1 if kiai else 0}")
     timing = [line for line in section["lines"]
               if line.strip() and not line.strip().startswith("//")]
     beatmap["timing"] = {
         "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
         "greens": [line for line in timing if not _is_red_line(line.strip())],
     }
-    return {"added": added, "flipped": flipped, "kept": kept}
+    return counts
 
 
 def suggest_breaks(beatmap: dict, sections: list[dict], min_length_s: float = 5.0,

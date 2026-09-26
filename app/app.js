@@ -246,12 +246,12 @@ const I18N = {
     stx_breaks_done: "{n} breaks into {file}.",
     stx_breaks_nothing: "Nothing quiet and long enough for a break in this song.",
     stx_vol_title: "Volume",
-    stx_vol_sub: "Hitsound volume following section energy in one difficulty, written as green lines. Sets, samples and kiai never move; every file is backed up first.",
+    stx_vol_sub: "Hitsound volume following section energy in one difficulty, written as green lines. A section where the map sets its own volumes is left alone; the others take their volume all the way through. Sets, samples and kiai never move; every file is backed up first.",
     stx_vol_preview: "Preview", stx_vol_apply: "Write volumes",
-    stx_vol_would: "{added} new, {flipped} rewritten, {kept} kept over {n} sections into {file}.",
-    stx_vol_confirm: "Write section volumes over {n} sections into {file}?",
-    stx_vol_done: "Volumes over {n} sections into {file}.",
-    stx_vol_nothing: "Volumes already follow the sections in {file}.",
+    stx_vol_would: "{set} sections set ({added} new greens, {flipped} rewritten), {kept} at their volume already, {mapper} left to the map's own volumes, into {file}.",
+    stx_vol_confirm: "Set the volume of {n} sections in {file}? The sections where the map sets its own stay as they are.",
+    stx_vol_done: "Volumes set in {n} sections of {file}.",
+    stx_vol_nothing: "Nothing to write in {file}: the sections read their volumes already, or the map sets its own.",
     stx_note: "Letters are families of sections that repeat. Edges snap to the nearest proven bar line within {snap} s: a bar near the change, not proof the phrase starts on it. A change within {edge} s of either end cannot be placed. Click a section to open it in Timing.",
     songs_title: "osu! Songs",
     songs_scan: "Scan",
@@ -707,12 +707,12 @@ const I18N = {
     stx_breaks_done: "{n} breaks en {file}.",
     stx_breaks_nothing: "Nada tan calmo y largo como para un break en esta canción.",
     stx_vol_title: "Volumen",
-    stx_vol_sub: "Volumen de hitsounds según la energía de cada sección en una dificultad, escrito como líneas verdes. Sets, samples y kiai no se mueven nunca; cada archivo se respalda antes.",
+    stx_vol_sub: "Volumen de hitsounds según la energía de cada sección en una dificultad, escrito como líneas verdes. Una sección donde el mapa pone sus propios volúmenes queda como está; las demás toman su volumen de punta a punta. Sets, samples y kiai no se mueven nunca; cada archivo se respalda antes.",
     stx_vol_preview: "Vista previa", stx_vol_apply: "Escribir volúmenes",
-    stx_vol_would: "{added} nuevas, {flipped} reescritas, {kept} iguales en {n} secciones en {file}.",
-    stx_vol_confirm: "¿Escribir volúmenes de {n} secciones en {file}?",
-    stx_vol_done: "Volúmenes de {n} secciones en {file}.",
-    stx_vol_nothing: "Los volúmenes ya siguen a las secciones en {file}.",
+    stx_vol_would: "{set} secciones ajustadas ({added} verdes nuevas, {flipped} reescritas), {kept} ya en su volumen, {mapper} con los volúmenes del propio mapa, en {file}.",
+    stx_vol_confirm: "¿Ajustar el volumen de {n} secciones en {file}? Las secciones donde el mapa pone el suyo quedan como están.",
+    stx_vol_done: "Volúmenes ajustados en {n} secciones de {file}.",
+    stx_vol_nothing: "Nada para escribir en {file}: las secciones ya tienen su volumen, o el mapa pone el suyo.",
     stx_note: "Las letras son familias de secciones que se repiten. Los bordes se ajustan a la línea de compás probada más cercana, a menos de {snap} s: un compás cerca del cambio, no la prueba de que la frase empiece ahí. Un cambio a menos de {edge} s de cada punta no se puede ubicar. Hacé clic en una sección para abrirla en Timing.",
     songs_title: "Songs de osu!",
     songs_scan: "Escanear",
@@ -2079,10 +2079,10 @@ async function stxVolApply() {
   const file = $("stxVolMap").value;
   if (STXV.preview.file !== file) { await stxVolPreview(); return; }
   if (!STXV.preview.added && !STXV.preview.flipped) { toast(t("stx_vol_nothing", { file })); return; }
-  if (!confirm(t("stx_vol_confirm", { n: STXV.preview.sections, file }))) return;
+  if (!confirm(t("stx_vol_confirm", { n: STXV.preview.set, file }))) return;
   const reply = await api().structure_volumes_apply(file);
   if (!reply.ok) { editFailure(reply); return; }
-  toast(t("stx_vol_done", { n: reply.sections, file }));
+  toast(t("stx_vol_done", { n: reply.set, file }));
   STXV.preview = null;
   renderVolumes();
 }
@@ -2091,9 +2091,10 @@ function renderVolumes() {
   const card = $("stxVolCard"), p = STXV.preview;
   card.hidden = !S.result;
   if (!S.result) return;
-  $("stxVolApply").disabled = !p || (!p.added && !p.flipped);
-  $("stxVolResult").textContent = !p ? ""
-    : t("stx_vol_would", { added: p.added, flipped: p.flipped, kept: p.kept, n: p.sections, file: p.file });
+  $("stxVolApply").disabled = !p || p.already || (!p.added && !p.flipped);
+  $("stxVolResult").textContent = !p ? "" : p.already ? t("already_written")
+    : t("stx_vol_would", { set: p.set, added: p.added, flipped: p.flipped, kept: p.kept,
+                           mapper: p.mapper, file: p.file });
 }
 
 // ------------------------------------------------------------------ snap divisors

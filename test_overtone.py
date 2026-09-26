@@ -3441,35 +3441,113 @@ class MapWriterTests(unittest.TestCase):
         {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -14.0},
     ]
 
-    def test_section_volumes_follow_energy(self) -> None:
-        from overtone import set_section_volumes, sound_events
+    @staticmethod
+    def _volumes_read(beatmap, times_ms):
+        from overtone import _TimingCursor
+        cursor = _TimingCursor(beatmap)
+        return [cursor.at(t)[1].volume for t in times_ms]
+
+    def test_section_volumes_follow_energy_and_keep_the_mappers(self) -> None:
+        from overtone import set_section_volumes
+        # The verse, loudest, changes volume at 1500: the mapper's, kept. The
+        # chorus plays 60 throughout: set to its target, the anchor being the
+        # volume the verse plays longest (60), not the one at its start (70).
         beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1500,-100,4,2,1,60,0,0")
-        before = sound_events(beatmap)
         result = set_section_volumes(beatmap, self._VOLUME_SECTIONS)
         json.dumps(result)
-        self.assertEqual(result, {"added": 1, "flipped": 0, "kept": 1})
-        self.assertEqual(sound_events(beatmap), before)
+        self.assertEqual(result, {"added": 1, "flipped": 0, "kept": 0, "mapper": 1, "set": 1})
         self.assertEqual(beatmap["timing"]["greens"],
-                         ["1500,-100,4,2,1,60,0,0", "10000,-100,4,2,1,35,0,0"])
+                         ["1500,-100,4,2,1,60,0,0", "10000,-100,4,2,1,30,0,0"])
+        self.assertEqual(self._volumes_read(beatmap, [1200, 5000, 20000]), [70, 60, 30])
         self.assertEqual(set_section_volumes(beatmap, self._VOLUME_SECTIONS),
-                         {"added": 0, "flipped": 0, "kept": 2})
+                         {"added": 0, "flipped": 0, "kept": 1, "mapper": 1, "set": 0})
 
-    def test_section_volumes_rewrite_a_wrong_green(self) -> None:
+    def test_section_volumes_leave_a_mappers_volume_at_a_section_start(self) -> None:
+        # A green at the chorus start with its own volume is the mapper's
+        # choice: the old tool rewrote it to the target.
         from overtone import set_section_volumes
         beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n"
                                  "10000,-100,4,2,1,60,0,0")
         self.assertEqual(set_section_volumes(beatmap, self._VOLUME_SECTIONS),
-                         {"added": 0, "flipped": 1, "kept": 1})
-        greens = beatmap["timing"]["greens"]
-        self.assertEqual(greens, ["10000,-100,4,2,1,35,0,0"])
+                         {"added": 0, "flipped": 0, "kept": 1, "mapper": 1, "set": 0})
+        self.assertEqual(beatmap["timing"]["greens"], ["10000,-100,4,2,1,60,0,0"])
+
+    def test_section_volumes_set_a_flat_section_all_the_way_through(self) -> None:
+        # The map plays 60 everywhere: an SV green and a tempo change inside
+        # the quiet verse would each have put 60 back a beat in. Both take the
+        # target, and the loud chorus after it keeps its 60.
+        from overtone import set_section_volumes, sound_events
+        beatmap = self._kiai_map("0,500,4,2,1,60,1,0\n4000,-125,4,2,1,60,0,0\n"
+                                 "6000,400,4,2,1,60,1,0")
+        sections = [{"start_s": 0.0, "end_s": 10.0, "kind": "verse", "level_db": -12.0},
+                    {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -6.0}]
+        before = [(e["time"], e["sounds"], e["normal_set"]) for e in sound_events(beatmap)]
+        result = set_section_volumes(beatmap, sections)
+        # A green at the verse start and at the red line inside, the SV
+        # green's volume rewritten, and a green giving the chorus its 60 back.
+        self.assertEqual(result, {"added": 3, "flipped": 1, "kept": 1, "mapper": 0, "set": 1})
+        self.assertEqual(self._volumes_read(beatmap, [1000, 5000, 7000, 12000]), [30, 30, 30, 60])
+        self.assertIn("4000,-125,4,2,1,30,0,0", beatmap["timing"]["greens"])
+        self.assertIn("6000,-100,4,2,1,30,0,0", beatmap["timing"]["greens"])
+        self.assertIn("10000,-100,4,2,1,60,0,0", beatmap["timing"]["greens"])
+        self.assertEqual([(e["time"], e["sounds"], e["normal_set"]) for e in sound_events(beatmap)],
+                         before)
+        self.assertEqual(set_section_volumes(beatmap, sections),
+                         {"added": 0, "flipped": 0, "kept": 2, "mapper": 0, "set": 0})
+
+    def test_section_volumes_anchor_on_what_the_loudest_part_plays_longest(self) -> None:
+        # A 5 % mute at the loudest section's start (Master of Tides has one)
+        # would have scaled every target from 5.
+        from overtone import set_section_volumes
+        beatmap = self._kiai_map("0,500,4,2,1,70,1,0\n10000,-100,4,2,1,5,0,0\n"
+                                 "10200,-100,4,2,1,80,0,0")
+        sections = [{"start_s": 0.0, "end_s": 10.0, "kind": "verse", "level_db": -12.0},
+                    {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -6.0}]
+        set_section_volumes(beatmap, sections)
+        self.assertEqual(self._volumes_read(beatmap, [5000]), [40])      # 80 at -6 dB
+
+    def test_section_volumes_follow_a_red_line_to_its_last_decimal(self) -> None:
+        # Rounded to 17837.011, the green landed before a lazer-precision red
+        # line at 17837.0114440535, which then put its own volume back.
+        from overtone import set_section_volumes
+        beatmap = self._kiai_map("0,500,4,2,1,60,1,0\n1700.0114440535,400,4,2,1,60,1,0")
+        sections = [{"start_s": 0.0, "end_s": 10.0, "kind": "verse", "level_db": -12.0},
+                    {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -6.0}]
+        set_section_volumes(beatmap, sections)
+        self.assertIn("1700.0114440535,-100,4,2,1,30,0,0", beatmap["timing"]["greens"])
+        self.assertEqual(self._volumes_read(beatmap, [1800]), [30])
+
+    def test_section_volumes_write_nothing_before_the_first_red_line(self) -> None:
+        # A green at 20 s before a first red line at 44 s became what the whole
+        # intro read, the anchor's section included: a second run then
+        # rescaled everything from it (a real map, Age Of Reason).
+        from overtone import set_section_volumes
+        beatmap = self._kiai_map("44000,500,4,2,1,52,1,0")
+        sections = [{"start_s": 0.0, "end_s": 20.0, "kind": "intro", "level_db": 0.0},
+                    {"start_s": 20.0, "end_s": 60.0, "kind": "verse", "level_db": -6.0},
+                    {"start_s": 60.0, "end_s": 90.0, "kind": "chorus", "level_db": -3.0}]
+        first = set_section_volumes(beatmap, sections)
+        times = [float(g.split(",")[0]) for g in beatmap["timing"]["greens"]]
+        self.assertTrue(all(t >= 44000 for t in times), times)
+        self.assertEqual(first["added"], 2)          # the verse from 44 s, and the chorus's own back
+        self.assertEqual(set_section_volumes(beatmap, sections)["added"]
+                         + set_section_volumes(beatmap, sections)["flipped"], 0)
+
+    def test_section_volumes_never_go_under_osus_floor(self) -> None:
+        # A fade 47 dB under the loudest section came out at volume 0.
+        from overtone import MIN_SAMPLE_VOLUME, set_section_volumes
+        beatmap = self._kiai_map("0,500,4,2,1,70,1,0")
+        sections = [{"start_s": 0.0, "end_s": 10.0, "kind": "chorus", "level_db": 0.0},
+                    {"start_s": 10.0, "end_s": 12.0, "kind": "outro", "level_db": -47.0}]
+        set_section_volumes(beatmap, sections)
+        self.assertEqual(self._volumes_read(beatmap, [11000]), [MIN_SAMPLE_VOLUME])
 
     def test_section_volumes_silent_without_levels_or_timing(self) -> None:
         from overtone import set_section_volumes
         beatmap = self._kiai_map("1000,500,4,2,1,70,1,0")
-        self.assertEqual(set_section_volumes(beatmap, []),
-                         {"added": 0, "flipped": 0, "kept": 0})
-        self.assertEqual(set_section_volumes(beatmap, [{"start_s": 0.0}]),
-                         {"added": 0, "flipped": 0, "kept": 0})
+        nothing = {"added": 0, "flipped": 0, "kept": 0, "mapper": 0, "set": 0}
+        self.assertEqual(set_section_volumes(beatmap, []), nothing)
+        self.assertEqual(set_section_volumes(beatmap, [{"start_s": 0.0}]), nothing)
         with self.assertRaises(ValueError):
             set_section_volumes({"sections": []}, self._VOLUME_SECTIONS)
 

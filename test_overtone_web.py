@@ -1833,15 +1833,18 @@ class StructureVolumesBridgeTests(_IsolatedConfig):
                 done = api.structure_volumes_apply("map.osu")
                 after = Path(tmp, "map.osu").read_bytes()
                 json.dumps([preview, done])
-                self.assertEqual((preview["sections"], preview["added"],
-                                  preview["flipped"], preview["kept"]),
-                                 (2, 1, 0, 1))
-                self.assertEqual((done["added"], done["written"]), (1, True))
+                # The verse changes volume at 1500: the mapper's, left alone.
+                self.assertEqual((preview["sections"], preview["set"], preview["added"], preview["flipped"],
+                                  preview["kept"], preview["mapper"], preview["already"]),
+                                 (2, 1, 1, 0, 0, 1, False))
+                self.assertEqual((done["added"], done["mapper"], done["written"]), (1, 1, True))
                 self.assertNotEqual(raw_before, after)
-                self.assertIn(b"10000,-100,4,2,1,35,0,0", after)
+                self.assertIn(b"10000,-100,4,2,1,30,0,0", after)
                 self.assertTrue(Path(tmp, "map.osu.bak").is_file())
-                again = api.structure_volumes_apply("map.osu")
-                self.assertEqual((again["added"], again["kept"]), (0, 2))
+                # Written here already: previewed as such, and never written twice.
+                self.assertTrue(api.structure_volumes_preview("map.osu")["already"])
+                self.assertEqual(api.structure_volumes_apply("map.osu")["key"], "already_written")
+                self.assertEqual(Path(tmp, "map.osu").read_bytes(), after)
 
     def test_without_sections_or_maps_it_says_so(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

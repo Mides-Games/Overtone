@@ -234,6 +234,13 @@ const I18N = {
     stx_breaks_confirm: "Write {n} breaks into {file}?",
     stx_breaks_done: "{n} breaks into {file}.",
     stx_breaks_nothing: "Nothing quiet and long enough for a break in this song.",
+    stx_vol_title: "Volume",
+    stx_vol_sub: "Hitsound volume following section energy in one difficulty, written as green lines. Sets, samples and kiai never move; every file is backed up first.",
+    stx_vol_preview: "Preview", stx_vol_apply: "Write volumes",
+    stx_vol_would: "{added} new, {flipped} rewritten, {kept} kept over {n} sections into {file}.",
+    stx_vol_confirm: "Write section volumes over {n} sections into {file}?",
+    stx_vol_done: "Volumes over {n} sections into {file}.",
+    stx_vol_nothing: "Volumes already follow the sections in {file}.",
     stx_note: "Letters are families of sections that repeat. Edges snap to the nearest proven bar line within {snap} s: a bar near the change, not proof the phrase starts on it. A change within {edge} s of either end cannot be placed. Click a section to open it in Timing.",
     songs_title: "osu! Songs",
     songs_scan: "Scan",
@@ -653,6 +660,13 @@ const I18N = {
     stx_breaks_confirm: "¿Escribir {n} breaks en {file}?",
     stx_breaks_done: "{n} breaks en {file}.",
     stx_breaks_nothing: "Nada tan calmo y largo como para un break en esta canción.",
+    stx_vol_title: "Volumen",
+    stx_vol_sub: "Volumen de hitsounds según la energía de cada sección en una dificultad, escrito como líneas verdes. Sets, samples y kiai no se mueven nunca; cada archivo se respalda antes.",
+    stx_vol_preview: "Vista previa", stx_vol_apply: "Escribir volúmenes",
+    stx_vol_would: "{added} nuevas, {flipped} reescritas, {kept} iguales en {n} secciones en {file}.",
+    stx_vol_confirm: "¿Escribir volúmenes de {n} secciones en {file}?",
+    stx_vol_done: "Volúmenes de {n} secciones en {file}.",
+    stx_vol_nothing: "Los volúmenes ya siguen a las secciones en {file}.",
     stx_note: "Las letras son familias de secciones que se repiten. Los bordes se ajustan a la línea de compás probada más cercana, a menos de {snap} s: un compás cerca del cambio, no la prueba de que la frase empiece ahí. Un cambio a menos de {edge} s de cada punta no se puede ubicar. Hacé clic en una sección para abrirla en Timing.",
     songs_title: "Songs de osu!",
     songs_scan: "Escanear",
@@ -905,7 +919,7 @@ function setView(view) {
   if (changed) $("content").scrollTop = 0;
   // The canvas measures its box: it can only be drawn while visible.
   if (view === "timing" && S.result) { drawTrace(); waveLoad(); }
-  if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); }
+  if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); stxVolMaps(); }
   if (view === "hitsounds" && S.result) hsvLoad();
   if (view === "history") histLoad();
 }
@@ -1245,6 +1259,7 @@ function renderResult(r) {
   renderBookmarks();
   renderKiai();
   renderBreaks();
+  renderVolumes();
   renderInjectAll();
   if (S.view === "timing") waveLoad();
   evLoad();
@@ -1897,6 +1912,60 @@ function renderBreaks() {
   $("stxBreaksResult").textContent = !p ? ""
     : t("stx_breaks_would", { n: p.spans.length, file: p.file,
                                spans: p.spans.map(stxBrSpan).join(" · ") });
+}
+
+// ------------------------------------------------------------------ volumes
+// Phase 21: hitsound volume from section energy in one difficulty of the
+// song. The maps come from the transport picker; preview counts added,
+// flipped and kept, apply writes green lines under a backup.
+const STXV = { preview: null, for: "" };
+
+async function stxVolMaps() {
+  const box = $("stxVolMap");
+  let maps = [];
+  if (api()) {
+    const reply = await api().song_maps();
+    maps = reply.ok ? reply.maps : [];
+  }
+  const path = (S.result && S.result.path) || "";
+  if (STXV.for !== path) { STXV.for = path; STXV.preview = null; }
+  const keep = box.value;
+  box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+  if (maps.some((m) => m.file === keep)) box.value = keep;
+  box.disabled = !maps.length;
+  renderVolumes();
+}
+
+async function stxVolPreview() {
+  if (!api() || !S.result) return;
+  const file = $("stxVolMap").value;
+  if (!file) return;
+  const reply = await api().structure_volumes_preview(file);
+  if (!reply.ok) { editFailure(reply); return; }
+  STXV.preview = { ...reply, file };
+  renderVolumes();
+}
+
+async function stxVolApply() {
+  if (!api() || !S.result || !STXV.preview) return;
+  const file = $("stxVolMap").value;
+  if (STXV.preview.file !== file) { await stxVolPreview(); return; }
+  if (!STXV.preview.added && !STXV.preview.flipped) { toast(t("stx_vol_nothing", { file })); return; }
+  if (!confirm(t("stx_vol_confirm", { n: STXV.preview.sections, file }))) return;
+  const reply = await api().structure_volumes_apply(file);
+  if (!reply.ok) { editFailure(reply); return; }
+  toast(t("stx_vol_done", { n: reply.sections, file }));
+  STXV.preview = null;
+  renderVolumes();
+}
+
+function renderVolumes() {
+  const card = $("stxVolCard"), p = STXV.preview;
+  card.hidden = !S.result;
+  if (!S.result) return;
+  $("stxVolApply").disabled = !p || (!p.added && !p.flipped);
+  $("stxVolResult").textContent = !p ? ""
+    : t("stx_vol_would", { added: p.added, flipped: p.flipped, kept: p.kept, n: p.sections, file: p.file });
 }
 
 // A section opens in Timing: the timeline zoomed to it, the playhead at its start.
@@ -4418,6 +4487,9 @@ function wire() {
   $("stxBreaksPreview").onclick = stxBreaksPreview;
   $("stxBreaksApply").onclick = stxBreaksApply;
   $("stxBreaksMap").onchange = () => { STXBR.preview = null; renderBreaks(); };
+  $("stxVolPreview").onclick = stxVolPreview;
+  $("stxVolApply").onclick = stxVolApply;
+  $("stxVolMap").onchange = () => { STXV.preview = null; renderVolumes(); };
   $("songsScan").onclick = () => songsScan();
   $("songsPick").onclick = songsPick;
   $("songsQuery").oninput = () => {

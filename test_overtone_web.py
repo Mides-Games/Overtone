@@ -1662,6 +1662,53 @@ class StructureBreaksBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().structure_breaks_preview("map.osu")["key"], "first")
 
 
+class StructureVolumesBridgeTests(_IsolatedConfig):
+    """Hitsound volume from section energy, previewed then written once."""
+
+    VIEW = {"sections": [{"start_s": 0.0, "end_s": 10.0, "kind": "verse", "level_db": -8.0},
+                          {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -14.0}]}
+
+    def _song(self, tmp: str) -> web.Api:
+        folder = Path(tmp)
+        (folder / "audio.mp3").write_bytes(b"ID3" + bytes(64))
+        (folder / "map.osu").write_bytes("\r\n".join(
+            ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+             "[TimingPoints]", "1000,500,4,2,1,70,1,0", "1500,-100,4,2,1,60,0,0", "",
+             "[HitObjects]", "256,192,1000,1,0,0:0:0:0:", ""]).encode("utf-8"))
+        api = _api_with_points()
+        api._analysis.source = str(folder / "audio.mp3")
+        return api
+
+    def test_preview_counts_and_apply_writes_with_a_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": True, "view": self.VIEW}):
+                preview = api.structure_volumes_preview("map.osu")
+                raw_before = Path(tmp, "map.osu").read_bytes()
+                done = api.structure_volumes_apply("map.osu")
+                after = Path(tmp, "map.osu").read_bytes()
+                json.dumps([preview, done])
+                self.assertEqual((preview["sections"], preview["added"],
+                                  preview["flipped"], preview["kept"]),
+                                 (2, 1, 0, 1))
+                self.assertEqual((done["added"], done["written"]), (1, True))
+                self.assertNotEqual(raw_before, after)
+                self.assertIn(b"10000,-100,4,2,1,35,0,0", after)
+                self.assertTrue(Path(tmp, "map.osu.bak").is_file())
+                again = api.structure_volumes_apply("map.osu")
+                self.assertEqual((again["added"], again["kept"]), (0, 2))
+
+    def test_without_sections_or_maps_it_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": False, "key": "no_rust"}):
+                self.assertEqual(api.structure_volumes_preview("map.osu")["key"], "no_rust")
+            self.assertEqual(api.structure_volumes_preview("..\\map.osu")["key"], "bad_file")
+        self.assertEqual(web.Api().structure_volumes_preview("map.osu")["key"], "first")
+
+
 class OffsetLabBridgeTests(_IsolatedConfig):
     """The Offset lab: the header's numbers, both decoders side by side."""
 

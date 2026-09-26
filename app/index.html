@@ -577,6 +577,22 @@
             <div class="card-sub" id="stxBreaksResult"></div>
           </div>
         </div>
+
+        <div class="card cmp-card" id="stxVolCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="stx_vol_title">Volume</div>
+            <div class="spacer"></div>
+            <button type="button" class="btn small" id="stxVolPreview"><span data-i18n="stx_vol_preview">Preview</span></button>
+            <button type="button" class="btn small primary" id="stxVolApply" disabled><span data-i18n="stx_vol_apply">Write volumes</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="stx_vol_sub">Hitsound volume following section energy in one difficulty, written as green lines. Sets, samples and kiai never move; every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="hsv_map">Difficulty</span><select class="input" id="stxVolMap"></select></label>
+            </div>
+            <div class="card-sub" id="stxVolResult"></div>
+          </div>
+        </div>
       </section>
 
       <!-- hitsounds: what one difficulty plays, where its additions fall (Phase 6, H2) -->

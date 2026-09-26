@@ -6935,31 +6935,79 @@ def proposal_changes(beatmap: dict, units: list[dict], accept=None,
     return {"changes": changes, "units": len(units or []), "accepted": len(wanted)}
 
 
-def preview_proposals(beatmap: dict, units: list[dict], accept=None) -> dict:
+def edit_changes(beatmap: dict, edits: list[dict], changes: dict | None = None,
+                 tolerance_ms: float = COPY_TOLERANCE_MS) -> dict:
+    """Volume and sample index set by hand, as P-2 field changes (H5).
+
+    Each edit names a sound as a proposal unit does (``object``, ``part``,
+    ``edge``, ``time_ms``) and carries ``volume`` and/or ``index``: the
+    object's own values, 0 to follow its green line again. The format keeps
+    one volume and one index per object, so an edit on one edge of a slider
+    is the slider's: every edge and the body play it. The edits merge into
+    ``changes`` (a decision's, say), whose sets and additions they leave as
+    they are. As with proposals, a sound that moved since the edit (past
+    ``tolerance_ms``) refuses the whole apply, and so do two edits giving one
+    object different values, or a value osu! could not read. Read only;
+    returns the merged ``changes`` and how many objects the edits reach.
+    """
+    events = {(e["object"], e["part"], e["edge"]): e for e in sound_events(beatmap)}
+    wanted: dict[int, dict] = {}
+    stale: list[float] = []
+    for edit in edits or []:
+        key = (edit.get("object"), edit.get("part"), edit.get("edge"))
+        event = events.get(key)
+        if event is None or abs(float(event["time"]) - float(edit.get("time_ms", 0.0))) > tolerance_ms:
+            stale.append(round(float(edit.get("time_ms", 0.0)), 1))
+            continue
+        values = {k: edit[k] for k in ("volume", "index") if edit.get(k) is not None}
+        _check_hitsound_values(sample=values)
+        have = wanted.setdefault(event["object"], {})
+        for name, value in values.items():
+            if have.get(name, value) != value:
+                raise ValueError(f"Two edits give the object at {event['time']} ms "
+                                 f"{name} {have[name]} and {value}.")
+            have[name] = value
+    if stale:
+        raise ValueError(f"{len(stale)} edited sounds moved since the edit "
+                         f"(first at {stale[0]} ms): edit them again on this map.")
+    merged = dict(changes or {})
+    for n, values in wanted.items():
+        if values:
+            change = dict(merged.get(n) or {})
+            change["sample"] = {**(change.get("sample") or {}), **values}
+            merged[n] = change
+    return {"changes": merged, "edited": sum(1 for values in wanted.values() if values)}
+
+
+def preview_proposals(beatmap: dict, units: list[dict], accept=None, edits=None) -> dict:
     """What applying would change, without touching anything: the P-2 change
     on a copy, counted. Read only."""
     import copy
     result = proposal_changes(beatmap, units, accept)
-    changed = set_object_hitsounds(copy.deepcopy(beatmap), result["changes"])["changed"]
-    return {**result, "would_change": len(changed)}
+    edited = edit_changes(beatmap, edits, result["changes"])
+    changed = set_object_hitsounds(copy.deepcopy(beatmap), edited["changes"])["changed"]
+    return {**result, **edited, "would_change": len(changed)}
 
 
 def apply_proposals(src_path: str | os.PathLike[str], units: list[dict], accept=None,
-                    dest: str | os.PathLike[str] | None = None, preview: bool = False) -> dict:
-    """A decision onto a file: preview, or write through P-2 (H5, engine half).
+                    dest: str | os.PathLike[str] | None = None, preview: bool = False,
+                    edits=None) -> dict:
+    """A decision and hand edits onto a file: preview, or write through P-2
+    (H5, engine half).
 
     ``dest`` None writes over the original with inject's backups; given, it
     must not exist, and the source's bytes are copied there first while the
     source stays untouched (no backup is made of a file that did not exist
     before). ``preview`` counts and writes nothing. Volume, index and custom
-    files keep playing what they played.
+    files keep playing what they played, unless ``edits`` set them.
     """
     src = Path(src_path)
     beatmap = read_osu_beatmap(src)
     if preview:
-        return {**preview_proposals(beatmap, units, accept), "written": False, "backup": None,
-                "dest": None}
-    changes = proposal_changes(beatmap, units, accept)["changes"]
+        return {**preview_proposals(beatmap, units, accept, edits), "written": False,
+                "backup": None, "dest": None}
+    changes = edit_changes(beatmap, edits,
+                           proposal_changes(beatmap, units, accept)["changes"])["changes"]
     if dest is None:
         return {**write_object_hitsounds(src, changes), "dest": None}
     target = Path(dest)

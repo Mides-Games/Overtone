@@ -5063,6 +5063,105 @@ class HitsoundApplyTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 proposal_changes(beatmap, units)
 
+    @staticmethod
+    def _edit(object, part, edge, time_ms, **values):
+        return {"object": object, "part": part, "edge": edge, "time_ms": time_ms, **values}
+
+    def test_a_hand_edit_sets_volume_and_index_and_nothing_else(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,8,2:0:0:0:",
+                                             "256,192,1500,1,0,0:0:0:0:"])
+            before = path.read_bytes()
+            result = apply_proposals(path, [], edits=[self._edit(0, "circle", None, 1000.0,
+                                                                 volume=40, index=2)])
+            self.assertEqual(result["changed"], [0])
+            after = path.read_bytes()
+            self.assertIn(b"256,192,1000,1,8,2:0:2:40:", after)
+            old_lines, new_lines = before.split(b"\r\n"), after.split(b"\r\n")
+            self.assertEqual(sum(1 for a, b in zip(old_lines, new_lines) if a != b), 1)
+            event = sound_events(overtone.read_osu_beatmap(path))[0]
+            self.assertEqual((event["volume"], event["index"], event["sounds"], event["normal_set"]),
+                             (40, 2, ["normal", "clap"], "soft"))
+
+    def test_an_edit_on_one_edge_is_the_sliders_for_every_edge(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,2,0,L|356:192,1,140,2|8,1:0|3:0"])
+            tail = [e for e in sound_events(overtone.read_osu_beatmap(path)) if e["part"] == "tail"][0]
+            apply_proposals(path, [], edits=[self._edit(0, "tail", 1, tail["time"], volume=30)])
+            after = sound_events(overtone.read_osu_beatmap(path))
+            self.assertEqual([(e["part"], e["volume"]) for e in after],
+                             [("head", 30), ("tail", 30), ("body", 30)])
+            # The edges keep their own additions and sets.
+            self.assertEqual([(e["sounds"], e["normal_set"]) for e in after if e["part"] != "body"],
+                             [(["normal", "whistle"], "normal"), (["normal", "clap"], "drum")])
+
+    def test_edits_merge_with_the_ticked_proposals(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:",
+                                             "256,192,1500,1,0,0:0:0:0:"])
+            units = [self._unit(0, "circle", None, 1000.0, "drum", 8)]
+            edits = [self._edit(0, "circle", None, 1000.0, volume=55),
+                     self._edit(1, "circle", None, 1500.0, index=3)]
+            preview = apply_proposals(path, units, preview=True, edits=edits)
+            self.assertEqual((preview["accepted"], preview["edited"], preview["would_change"]),
+                             (1, 2, 2))
+            apply_proposals(path, units, edits=edits)
+            first, second = sound_events(overtone.read_osu_beatmap(path))
+            self.assertEqual((first["sounds"], first["normal_set"], first["volume"]),
+                             (["normal", "clap"], "drum", 55))
+            self.assertEqual((second["sounds"], second["index"], second["volume"]),
+                             (["normal"], 3, 70))
+
+    def test_zero_follows_the_green_line_again(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:4:90:"])
+            self.assertEqual(sound_events(overtone.read_osu_beatmap(path))[0]["volume"], 90)
+            apply_proposals(path, [], edits=[self._edit(0, "circle", None, 1000.0,
+                                                        volume=0, index=0)])
+            event = sound_events(overtone.read_osu_beatmap(path))[0]
+            self.assertEqual((event["volume"], event["index"]), (70, 0))
+
+    def test_an_edit_to_what_plays_already_writes_nothing(self):
+        from overtone import apply_proposals
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:2:40:"])
+            before = path.read_bytes()
+            edits = [self._edit(0, "circle", None, 1000.0, volume=40, index=2)]
+            self.assertEqual(apply_proposals(path, [], preview=True, edits=edits)["would_change"], 0)
+            self.assertEqual(apply_proposals(path, [], edits=edits)["written"], False)
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_moved_conflicting_or_unreadable_edits_refuse_everything(self):
+        from overtone import apply_proposals, edit_changes, read_osu_beatmap
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._map(tmp, ["256,192,1000,2,0,L|356:192,1,140"])
+            head, tail = 1000.0, 1000.0 + 140 / 140 * 500
+            before = path.read_bytes()
+            for edits in ([self._edit(0, "head", 0, 1200.0, volume=40)],
+                          [self._edit(0, "head", 0, head, volume=40),
+                           self._edit(0, "tail", 1, tail, volume=50)],
+                          [self._edit(0, "head", 0, head, volume=101)],
+                          [self._edit(0, "head", 0, head, index=-1)],
+                          [self._edit(3, "circle", None, head, volume=40)]):
+                with self.subTest(edits=edits), self.assertRaises(ValueError):
+                    edit_changes(beatmap, edits)
+            with self.assertRaises(ValueError):
+                apply_proposals(path, [], edits=[self._edit(0, "head", 0, 1200.0, volume=40)])
+            self.assertEqual(path.read_bytes(), before)
+            # The same value from two edges is one edit, not a conflict.
+            same = edit_changes(read_osu_beatmap(path),
+                                [self._edit(0, "head", 0, head, volume=40),
+                                 self._edit(0, "tail", 1, tail, volume=40)])
+            self.assertEqual((same["edited"], same["changes"]), (1, {0: {"sample": {"volume": 40}}}))
+
 
 class AnalysisEvidenceTests(unittest.TestCase):
     """Phase 19, Evidence: the engine's alternatives, octave margin included."""

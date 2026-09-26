@@ -348,9 +348,9 @@ the copier, the section, the check, the decision engine, the editor.
 | Musical role | grid position, metrical weight, phrase, accent, density | med | **high** | P2 structure | no | no | **P1** | **done** (audio side) |
 | Object context | type, pattern, spacing, combo, existing hitsounds | med | **high** | P5 reader | no | no | **P1** | partial — map context attached to each attack (Python) |
 | **Viterbi decision** | sequence labelling with consistency costs | high | **high** | all above | no | no | **P1** | **done** — `overtone-cli hitsound`: 19/19 synthetic exact, real clap/finish F1 above the rules on two samples |
-| Explanations | itemised terms + alternatives | med | **high** | decision | no | no | **P1** | todo |
+| Explanations | itemised terms + alternatives | med | **high** | decision | no | no | **P1** | **done** — a row's inspector in the Hitsounds section: the proposal and its two runner-ups with their chances, what was heard under it (three likeliest instruments, place in the bar) and every term signed; the features behind each instrument stay in `overtone-cli hitsound-evidence` |
 | Profiles | built-in + custom, as data | low | high | decision | no | no | **P1** | todo |
-| Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | partial — the object lane (P-7); instrument lanes still to draw, from P-4's evidence (done) |
+| Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | partial — the object lane (P-7), drawn with each sound's additions; instrument lanes wait until the templates hold on real audio (median 0.138 snare-or-clap at the mappers' claps of 11 songs) |
 | Hitsound editor | change/remove/volume/sample | med | **high** | decision | no | no | **P1** | **done** — the Decide card ticks proposals by row or by bars, swaps one for an alternative, sets volume and sample index by hand, and plays it all over the song as the write would make it (equal to the written copy on 799 of 800 local maps, the last refused alike by both), then previews, writes the file or a copy and undoes once |
 | Sample bank | import skin/folder, audition samples | med | high | P4 playback | no | no | P1 | todo |
 | Sample recommendation | map samples to roles by their spectrum | med | med | bank | no | no | P2 | todo |

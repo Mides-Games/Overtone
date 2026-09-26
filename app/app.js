@@ -316,11 +316,18 @@ const I18N = {
     songs_search: "Search artist, title, mapper, difficulty, tags",
     songs_listing: "Listing the folder…",
     songs_progress: "{done} / {total} folders",
+    songs_removing: "Removing {n} maps that are no longer in the folder…",
     songs_none: "Not indexed yet: Scan reads {root} once.",
     songs_missing: "No Songs folder at {root}: choose one.",
+    songs_empty: "No beatmaps in {root} · scanned {when}",
+    songs_gone: "{root} is not there: the index ({n} maps) is from {when}.",
     songs_info: "{n} maps in {s} sets · scanned {when}",
     songs_other: "Index of {root} ({n} maps): Rescan for the current folder.",
+    songs_failed: "{n} could not be read",
     songs_scanned: "Library: {n} maps in {s} sets ({changed} read, {removed} gone) in {sec} s.",
+    songs_scanned_failed: "Library: {n} maps in {s} sets ({changed} read, {removed} gone, {failed} could not be read) in {sec} s.",
+    songs_rebuilt: "The damaged index was rebuilt.",
+    library_damaged: "The library index is damaged: Rescan rebuilds it from the folder.",
     songs_nothing: "No map matches “{q}”.",
     songs_limited: "The first {n} maps: type more to narrow them.",
     songs_diff: "diff",
@@ -832,11 +839,18 @@ const I18N = {
     songs_search: "Buscá artista, título, mapper, dificultad, tags",
     songs_listing: "Listando la carpeta…",
     songs_progress: "{done} / {total} carpetas",
+    songs_removing: "Quitando {n} mapas que ya no están en la carpeta…",
     songs_none: "Sin índice todavía: Escanear lee {root} una vez.",
     songs_missing: "No hay carpeta Songs en {root}: elegí una.",
+    songs_empty: "No hay beatmaps en {root} · escaneado {when}",
+    songs_gone: "{root} no está: el índice ({n} mapas) es del {when}.",
     songs_info: "{n} mapas en {s} sets · escaneado {when}",
     songs_other: "Índice de {root} ({n} mapas): reescaneá para la carpeta actual.",
+    songs_failed: "{n} no se pudieron leer",
     songs_scanned: "Biblioteca: {n} mapas en {s} sets ({changed} leídos, {removed} quitados) en {sec} s.",
+    songs_scanned_failed: "Biblioteca: {n} mapas en {s} sets ({changed} leídos, {removed} quitados, {failed} sin leer) en {sec} s.",
+    songs_rebuilt: "El índice dañado se reconstruyó.",
+    library_damaged: "El índice de la biblioteca está dañado: Reescanear lo reconstruye desde la carpeta.",
     songs_nothing: "Ningún mapa coincide con “{q}”.",
     songs_limited: "Los primeros {n} mapas: escribí más para acotar.",
     songs_diff: "dific.",
@@ -1824,7 +1838,7 @@ async function refreshRecents() {
 // ------------------------------------------------------------------ songs browser
 // The library index (overtone_library.py) answers as you type. A scan brings
 // it in step with the Songs folder; only the first one reads every header.
-const SONGS = { state: null, result: null, query: "", timer: 0, scanning: false, progress: null };
+const SONGS = { state: null, result: null, query: "", timer: 0, scanning: false, progress: null, asked: 0 };
 
 function when(iso) {
   const date = iso ? new Date(iso) : null;
@@ -1833,15 +1847,21 @@ function when(iso) {
 
 async function songsLoad() {
   if (!api()) return;
-  const reply = await api().library_state();
-  SONGS.state = reply.ok ? reply : null;
-  if (reply.ok && reply.index.beatmaps) await songsSearch();
+  // A failed reply is kept too: its key and the folder facts are what the
+  // info line says, where it used to go blank.
+  SONGS.state = await api().library_state();
+  if (SONGS.state.ok && SONGS.state.index.beatmaps) await songsSearch();
   else renderSongs();
 }
 
 async function songsSearch() {
+  // Searches overlap once one takes longer than the typing pause, and
+  // replies can land out of order: only the latest one is drawn.
+  const asked = ++SONGS.asked;
   const reply = await api().library_search(SONGS.query);
-  if (!reply.ok) toast(t("error", { detail: reply.detail || "" }), true);
+  if (asked !== SONGS.asked) return;
+  if (!reply.ok && reply.key === "library_damaged") SONGS.state = { ...(SONGS.state || {}), ...reply };
+  else if (!reply.ok) toast(t("error", { detail: reply.detail || "" }), true);
   SONGS.result = reply.ok ? reply.result : null;
   renderSongs();
 }
@@ -1865,8 +1885,10 @@ async function songsScan(folder = "") {
     toast(reply.key === "error" ? t("error", { detail: reply.detail || "" }) : t(reply.key), true);
   } else {
     const r = reply.report;
-    toast(t("songs_scanned", { n: r.beatmaps, s: r.sets, changed: r.added + r.updated,
-                               removed: r.removed, sec: r.seconds.toFixed(1) }));
+    toast((r.rebuilt ? t("songs_rebuilt") + " " : "")
+          + t(r.failed ? "songs_scanned_failed" : "songs_scanned",
+              { n: r.beatmaps, s: r.sets, changed: r.added + r.updated, removed: r.removed,
+                failed: r.failed, sec: r.seconds.toFixed(1) }));
   }
   await songsLoad();
 }
@@ -1885,23 +1907,35 @@ function songBpm(set) {
 }
 
 function renderSongs() {
-  const st = SONGS.state, idx = st && st.index, indexed = !!(idx && idx.beatmaps);
+  const st = SONGS.state, ok = !!(st && st.ok), idx = ok ? st.index : null;
+  const indexed = !!(idx && idx.beatmaps), damaged = !!(st && st.key === "library_damaged");
   $("songsQuery").placeholder = t("songs_search");
   $("songsQuery").hidden = !indexed;
-  $("songsScanText").textContent = t(SONGS.scanning ? "songs_scanning" : indexed ? "songs_rescan" : "songs_scan");
+  $("songsScanText").textContent = t(SONGS.scanning ? "songs_scanning" : indexed || damaged ? "songs_rescan" : "songs_scan");
   $("songsScan").disabled = SONGS.scanning;
   $("songsPick").disabled = SONGS.scanning;
-  let info = "";
+  let info = "", tip = "";
+  const p = SONGS.progress;
   if (SONGS.scanning) {
-    info = SONGS.progress ? t("songs_progress", SONGS.progress) : t("songs_listing");
+    info = !p ? t("songs_listing") : p.removing ? t("songs_removing", { n: p.removing }) : t("songs_progress", p);
+  } else if (st && !ok) {
+    info = damaged ? t("library_damaged") : t("error", { detail: esc(st.detail || "") });
   } else if (st && !indexed) {
-    info = t(st.songs_found ? "songs_none" : "songs_missing", { root: esc(st.songs) });
+    // Scanned and empty is not "not indexed yet".
+    info = !st.songs_found ? t("songs_missing", { root: esc(st.songs) })
+      : idx.scanned_at && st.current ? t("songs_empty", { root: esc(st.songs), when: esc(when(idx.scanned_at)) })
+      : t("songs_none", { root: esc(st.songs) });
   } else if (st) {
-    info = t(st.current ? "songs_info" : "songs_other",
+    info = t(st.current && !st.songs_found ? "songs_gone" : st.current ? "songs_info" : "songs_other",
              { n: idx.beatmaps, s: idx.sets, when: esc(when(idx.scanned_at)), root: esc(idx.root) });
   }
+  if (!SONGS.scanning && idx && idx.failed) {
+    info += ` · ${t("songs_failed", { n: idx.failed })}`;
+    tip = idx.failures.map((f) => `${f.path.split(/[\\/]/).pop()}: ${f.detail}`).join("\n")
+      + (idx.failed > idx.failures.length ? "\n…" : "");
+  }
   $("songsInfo").innerHTML = info;
-  $("songsInfo").title = $("songsInfo").textContent;
+  $("songsInfo").title = tip || $("songsInfo").textContent;
   const res = SONGS.result;
   if (!indexed || !res) { $("songsList").innerHTML = ""; return; }
   if (!res.sets.length) {

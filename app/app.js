@@ -335,6 +335,13 @@ const I18N = {
     ramp_piecewise: "The sections already read fine: ramps add nothing.",
     ramp_used: "{n} hand-placed red lines.",
     ramp_no_ramps: "Fit first: there are no lines to use yet.",
+    sv_title: "Constant scroll",
+    sv_sub: "Greens that cancel this difficulty's BPM changes, so scroll and slider speed stay constant. Sound, kiai and barlines never move; every file is backed up first.",
+    sv_preview: "Preview", sv_apply: "Write greens",
+    sv_would: "{added} new, {flipped} rewritten, {kept} kept at {bpm} BPM into {file}.",
+    sv_confirm: "Write scroll greens at {bpm} BPM into {file}?",
+    sv_done: "Scroll constant at {bpm} BPM into {file}.",
+    sv_nothing: "Every section already scrolls at {bpm} BPM in {file}.",
     lab_title: "Offset lab",
     lab_sub: "What the file says about its own delay, and the first attack through each decoder side by side.",
     lab_header: "{encoder}: {delay} samples of delay ({delayMs} ms), {pad} of padding ({padMs} ms).",
@@ -754,6 +761,13 @@ const I18N = {
     ramp_piecewise: "Las secciones ya leen bien: las rampas no agregan nada.",
     ramp_used: "{n} líneas rojas puestas a mano.",
     ramp_no_ramps: "Ajustá primero: todavía no hay líneas para usar.",
+    sv_title: "Scroll constante",
+    sv_sub: "Verdes que cancelan los cambios de BPM de esta dificultad, para que el scroll y los sliders vayan siempre igual. El sonido, el kiai y los compases no se mueven nunca; cada archivo se respalda antes.",
+    sv_preview: "Vista previa", sv_apply: "Escribir verdes",
+    sv_would: "{added} nuevas, {flipped} reescritas, {kept} iguales a {bpm} BPM en {file}.",
+    sv_confirm: "¿Escribir verdes de scroll a {bpm} BPM en {file}?",
+    sv_done: "Scroll constante a {bpm} BPM en {file}.",
+    sv_nothing: "Cada sección ya va a {bpm} BPM en {file}.",
     lab_title: "Laboratorio de offset",
     lab_sub: "Lo que el archivo dice de su propio delay, y el primer ataque por cada decodificador lado a lado.",
     lab_header: "{encoder}: delay {delay} samples ({delayMs} ms), pad {pad} samples ({padMs} ms).",
@@ -904,7 +918,7 @@ function setView(view) {
   renderNeedSong();
   if (changed) $("content").scrollTop = 0;
   // The canvas measures its box: it can only be drawn while visible.
-  if (view === "timing" && S.result) { drawTrace(); waveLoad(); }
+  if (view === "timing" && S.result) { drawTrace(); waveLoad(); svMaps(); }
   if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); }
   if (view === "hitsounds" && S.result) hsvLoad();
   if (view === "history") histLoad();
@@ -1246,6 +1260,7 @@ function renderResult(r) {
   renderKiai();
   renderBreaks();
   renderInjectAll();
+  renderSv();
   if (S.view === "timing") waveLoad();
   evLoad();
   labLoad();
@@ -1897,6 +1912,62 @@ function renderBreaks() {
   $("stxBreaksResult").textContent = !p ? ""
     : t("stx_breaks_would", { n: p.spans.length, file: p.file,
                                spans: p.spans.map(stxBrSpan).join(" · ") });
+}
+
+// ------------------------------------------------------------------ constant scroll
+// Phase 21, SV normaliser: greens cancelling one difficulty's BPM changes so
+// scroll and slider speed stay constant. The maps come from the transport
+// picker; preview counts, apply writes under a backup, and the card refreshes.
+const SV = { preview: null, for: "" };
+
+async function svMaps() {
+  const box = $("svMap");
+  let maps = [];
+  if (api()) {
+    const reply = await api().song_maps();
+    maps = reply.ok ? reply.maps : [];
+  }
+  const path = (S.result && S.result.path) || "";
+  if (SV.for !== path) { SV.for = path; SV.preview = null; }
+  const keep = box.value;
+  box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+  if (maps.some((m) => m.file === keep)) box.value = keep;
+  box.disabled = !maps.length;
+  renderSv();
+}
+
+async function svPreview() {
+  if (!api() || !S.result) return;
+  const file = $("svMap").value;
+  if (!file) return;
+  const reply = await api().scroll_preview(file);
+  if (!reply.ok) { editFailure(reply); return; }
+  SV.preview = { ...reply, file };
+  renderSv();
+}
+
+async function svApply() {
+  if (!api() || !S.result || !SV.preview) return;
+  const file = $("svMap").value;
+  if (SV.preview.file !== file) { await svPreview(); return; }
+  if (!SV.preview.added && !SV.preview.flipped) {
+    toast(t("sv_nothing", { bpm: SV.preview.reference_bpm, file })); return;
+  }
+  if (!confirm(t("sv_confirm", { bpm: SV.preview.reference_bpm, file }))) return;
+  const reply = await api().scroll_apply(file);
+  if (!reply.ok) { editFailure(reply); return; }
+  toast(t("sv_done", { bpm: reply.reference_bpm, file }));
+  SV.preview = null;
+  renderSv();
+}
+
+function renderSv() {
+  const card = $("svCard"), p = SV.preview;
+  card.hidden = !S.result;
+  if (!S.result) return;
+  $("svApply").disabled = !p || (!p.added && !p.flipped);
+  $("svResult").textContent = !p ? ""
+    : t("sv_would", { added: p.added, flipped: p.flipped, kept: p.kept, bpm: p.reference_bpm, file: p.file });
 }
 
 // A section opens in Timing: the timeline zoomed to it, the playhead at its start.
@@ -4473,6 +4544,9 @@ function wire() {
   $("refFind").onclick = refFind;
   $("asFit").onclick = assistFit;
   $("rampFit").onclick = rampFit;
+  $("svPreview").onclick = svPreview;
+  $("svApply").onclick = svApply;
+  $("svMap").onchange = () => { SV.preview = null; renderSv(); };
   $("rampUse").onclick = rampUse;
   $("labCompare").onclick = labCompare;
   $("labStart").onclick = labStart;

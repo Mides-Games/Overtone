@@ -1599,6 +1599,53 @@ class Api:
                 "added": result["added"], "kept": result["kept"],
                 "written": written["bytes"] > 0, "backup": written["backup"]}
 
+    # -- constant scroll: greens that cancel BPM changes ----------------------
+    def _scroll_plan(self, file: str):
+        """The map beside the analysed song, or a refusal."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        try:
+            beatmap = ta.read_osu_beatmap(path)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return path, beatmap
+
+    def scroll_preview(self, file: str) -> dict:
+        """What normalising this difficulty's scroll would add, rewrite or
+        keep, against its first red line's BPM. Read only."""
+        plan = self._scroll_plan(file)
+        if isinstance(plan, dict):
+            return plan
+        path, beatmap = plan
+        try:
+            import copy
+            result = ta.set_constant_scroll(copy.deepcopy(beatmap))
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name,
+                "reference_bpm": round(beatmap["timing"]["reds"][0][1], 3),
+                "added": result["added"], "flipped": result["flipped"],
+                "kept": result["kept"]}
+
+    def scroll_apply(self, file: str) -> dict:
+        """Write the scroll greens into the difficulty, the file backed up
+        first and logged. Sound, kiai and barlines never move."""
+        plan = self._scroll_plan(file)
+        if isinstance(plan, dict):
+            return plan
+        path, beatmap = plan
+        try:
+            result = ta.set_constant_scroll(beatmap)
+            written = ta.write_osu_beatmap(path, beatmap)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name,
+                "reference_bpm": round(beatmap["timing"]["reds"][0][1], 3),
+                "added": result["added"], "flipped": result["flipped"],
+                "kept": result["kept"], "written": written["bytes"] > 0,
+                "backup": written["backup"]}
+
     # -- assisted timing: two marked downbeats seed the grid ---------------
     def assisted_fit(self, first_ms: float, second_ms: float, bars: int, meter: int) -> dict:
         """Fit the grid two marked downbeats imply. Read only: the answer (or

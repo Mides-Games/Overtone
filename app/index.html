@@ -303,6 +303,22 @@
           </div>
         </div>
 
+        <div class="card cmp-card" id="svCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="sv_title">Constant scroll</div>
+            <div class="spacer"></div>
+            <button type="button" class="btn small" id="svPreview"><span data-i18n="sv_preview">Preview</span></button>
+            <button type="button" class="btn small primary" id="svApply" disabled><span data-i18n="sv_apply">Write greens</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="sv_sub">Greens that cancel this difficulty's BPM changes, so scroll and slider speed stay constant. Sound, kiai and barlines never move; every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="hsv_map">Difficulty</span><select class="input" id="svMap"></select></label>
+            </div>
+            <div class="card-sub" id="svResult"></div>
+          </div>
+        </div>
+
         <div class="card cmp-card" id="labCard" hidden>
           <div class="card-head">
             <div>

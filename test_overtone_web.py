@@ -1662,6 +1662,44 @@ class StructureBreaksBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().structure_breaks_preview("map.osu")["key"], "first")
 
 
+class ScrollBridgeTests(_IsolatedConfig):
+    """Scroll greens that cancel BPM changes, previewed then written once."""
+
+    def _song(self, tmp: str) -> web.Api:
+        folder = Path(tmp)
+        (folder / "audio.mp3").write_bytes(b"ID3" + bytes(64))
+        (folder / "map.osu").write_bytes("\r\n".join(
+            ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+             "[TimingPoints]", "1000,500,4,2,1,70,1,0", "2000,400,4,2,1,70,1,0", "",
+             "[HitObjects]", "256,192,1000,1,0,0:0:0:0:", ""]).encode("utf-8"))
+        api = _api_with_points()
+        api._analysis.source = str(folder / "audio.mp3")
+        return api
+
+    def test_preview_counts_and_apply_writes_with_a_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            preview = api.scroll_preview("map.osu")
+            raw_before = Path(tmp, "map.osu").read_bytes()
+            done = api.scroll_apply("map.osu")
+            after = Path(tmp, "map.osu").read_bytes()
+            json.dumps([preview, done])
+            self.assertEqual((preview["reference_bpm"], preview["added"],
+                              preview["flipped"], preview["kept"]),
+                             (120.0, 1, 0, 0))
+            self.assertEqual((done["added"], done["written"]), (1, True))
+            self.assertNotEqual(raw_before, after)
+            greens = ta.read_osu_beatmap(Path(tmp) / "map.osu")["timing"]["greens"]
+            self.assertEqual(greens, ["2000,-125,4,2,1,70,0,0"])
+            self.assertTrue(Path(tmp, "map.osu.bak").is_file())
+
+    def test_without_maps_it_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            self.assertEqual(api.scroll_preview("..\\map.osu")["key"], "bad_file")
+        self.assertEqual(web.Api().scroll_preview("map.osu")["key"], "first")
+
+
 class OffsetLabBridgeTests(_IsolatedConfig):
     """The Offset lab: the header's numbers, both decoders side by side."""
 

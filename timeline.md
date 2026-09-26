@@ -16,6 +16,28 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Constant scroll from Timing
+
+### Changed
+
+- **Constant-scroll card in Timing**: one difficulty's picker, preview counts
+  against its first red's BPM and a confirmed write greening every BPM change
+  away — sound, kiai and barlines never move, every file backed up first. EN/ES.
+
+### Measured
+
+```
+synthetic map, 120 -> 150     1 added at -125, written with backup; greens read
+                              exactly [-125]
+Python unittest                 467 -> 469, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages, no
+                                duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · SV normaliser, engine half: greens cancel the BPM
 
 ### Changed

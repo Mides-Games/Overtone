@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **456** Python (313 engine + 143 web shell) · **263** Rust.
+Tests: **464** Python (318 engine + 146 web shell) · **263** Rust.
 
 ### What is pending, in order
 
@@ -570,8 +570,8 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 
 | Tool | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
-| Inject diff | each old red line beside its new value, and the drift it causes | low | **high** | inject | no | no | **P1** | todo |
-| Inject into every difficulty | one confirmation for the whole mapset | low | **high** | inject | no | no | **P1** | todo |
+| Inject diff | each old red line beside its new value, and the drift it causes | low | **high** | inject | no | no | **P1** | **done** — `inject_diff` pairs by order with exact end-of-span drift; both inject previews carry it, the single confirm lists changed lines, inject-all rows show worst drift |
+| Inject into every difficulty | one confirmation for the whole mapset | low | **high** | inject | no | no | **P1** | **done** — `inject_mapset` runs every .osu through the same inject (one bad map never stops the rest); Export row with per-file preview and one confirmation, each file backed up |
 | Kiai from structure | kiai on chorus sections, written as greens | med | high | P2 structure, writer | no | no | P1 | **done** — engine half carries the audible state so sound never changes, second run a no-op; Structure card with preview counts and confirmed write with backup |
 | Preview point | suggest `PreviewTime` at the chorus | low | med | structure | no | no | P2 | **done** — loudest chorus start, loudest part without one, in the Structure view with its reason |
 | Bookmarks | section starts as editor bookmarks | low | med | structure | no | no | P2 | **done** — merged with the map's own, preview then confirmed write with backup, in the Structure view |

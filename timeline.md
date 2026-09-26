@@ -16,6 +16,100 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Inject diff beside every preview
+
+### Changed
+
+- **Diff in Export**: the single inject's confirm lists each changed red line
+  (old → new with the drift at its span end, first 10 then a count, unchanged
+  lines tallied), and every inject-all row shows its worst drift. Both
+  previews carry the full pairs; the mapset engine reports them per file. EN/ES.
+
+### Measured
+
+```
+synthetic maps                single preview 1 pair + 1 added; inject-all entries
+                              carry pairs; bytes unchanged by previews
+Python unittest                 463 -> 464, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages
+                                cross-checked. Harness pass owed, stated.
+```
+
+---
+
+## v4.0.0-dev — 2026-09-26 · Inject diff, engine half: old beside new, drift included
+
+### Changed
+
+- **`inject_diff(osu_path, analysis)`**: the map's reds paired with the
+  analysis' new ones by order — what the inject actually writes — each pair
+  with both offsets, BPMs and meters, the deltas, and the drift an object at
+  the old span's end lands off the new grid (exact given the pairing; None
+  past the last line). Longer sides ride along as removed/added. Read only.
+
+### Fixed
+
+- Two of my own drafts before committing: the section scan broke out of the
+  file before reaching [TimingPoints], and the test misread the fixture's
+  green line as a third red — the drift it then "expected" was mine, not the
+  code's (−49.89 hand-verified: 7 ms shift plus 12.8 s at −1 BPM).
+
+### Measured
+
+```
+Python unittest              460 -> 463 (inject suites green)
+facts                        ok
+```
+
+No analysis code touched, so no benchmark run here.
+
+---
+
+## v4.0.0-dev — 2026-09-26 · Inject the whole mapset from Export
+
+### Changed
+
+- **Inject-all row in Export**: a preview listing every `.osu` beside the
+  analyzed song (reds replaced and new, greens added, audio mismatches,
+  unreadable files) and one confirmation writing them all — each file backed
+  up first, one bad map never stopping the rest. EN/ES.
+
+### Measured
+
+```
+synthetic 3-map set         2 ok 1 failed in preview, nothing written; apply
+                            writes both with backups; bytes change, errors ride along
+Python unittest                 458 -> 460, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages, no
+                                duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
+## v4.0.0-dev — 2026-09-26 · Inject everywhere, engine half: one bad map stops nothing
+
+### Changed
+
+- **`inject_mapset(folder, analysis)`**: every `.osu` in the folder through
+  the same inject, dry-run or backed-up write — one bad map rides along in
+  its own entry instead of stopping the rest. A missing folder or a folder
+  with no difficulties refuses outright.
+
+### Measured
+
+```
+Python unittest              456 -> 458 (inject suites green)
+facts                        ok
+```
+
+No analysis code touched, so no benchmark run here.
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Breaks: quiet spans written from Structure
 
 ### Changed

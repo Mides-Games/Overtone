@@ -1058,9 +1058,11 @@ class Api:
             summary = ta.inject_osu_timing_points(
                 osu_path, self._analysis, dry_run=True,
                 decimals=self._settings()["offset_decimals"])
+            diff = ta.inject_diff(osu_path, self._analysis,
+                                  decimals=self._settings()["offset_decimals"])
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
-        return {"ok": True, "summary": summary}
+        return {"ok": True, "summary": summary, "diff": diff}
 
     def inject_apply(self, osu_path: str) -> dict:
         """Replace the red lines, keeping what they replace in a backup (never overwritten)."""
@@ -1075,6 +1077,31 @@ class Api:
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "summary": summary}
+
+    def inject_all_preview(self) -> dict:
+        """Dry run over every .osu beside the analysed song. Read only."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            report = ta.inject_mapset(Path(str(self._analysis.source)).parent,
+                                      self._analysis, dry_run=True,
+                                      decimals=self._settings()["offset_decimals"])
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "report": report}
+
+    def inject_all_apply(self) -> dict:
+        """Replace the red lines of every .osu beside the analysed song,
+        each file backed up first."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            report = ta.inject_mapset(Path(str(self._analysis.source)).parent,
+                                      self._analysis, backup=True,
+                                      decimals=self._settings()["offset_decimals"])
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "report": report}
 
     def compare(self, osu_path: str) -> dict:
         """Per-section map-vs-detected table for the compare card."""

@@ -18,6 +18,17 @@ const I18N = {
     exp_click_t: "Click track", exp_click_d: "A metronome WAV on these red lines, to hear any drift against the song.",
     exp_osz_t: ".osz package", exp_osz_d: "The audio plus a new beatmap carrying this timing.",
     exp_inject_t: "Inject into a .osu", exp_inject_d: "Replaces the red lines of a difficulty you already have. You confirm first, and a backup is kept.",
+    exp_inject_all_t: "Inject into every difficulty", exp_inject_all_d: "Replaces the red lines of every .osu beside the analyzed song. One preview, one confirmation, each file backed up first.",
+    exp_inject_all_preview: "Preview all", actions_inject_all: "Inject all…",
+    inject_all_row: "{file}: {replaced} replaced, {added} new",
+    inject_all_row_drift: ", drift {d}ms",
+    inject_all_row_greens: ", +{g} greens",
+    inject_all_row_mismatch: " (audio differs)",
+    inject_all_error: "{file}: {detail}",
+    inject_all_confirm: "Replace the red lines of {n} difficulties ({files})? Each file is backed up first.{warn}",
+    inject_all_warn: " Some .osu files name a different audio.",
+    inject_all_done: "Injected {n} difficulties, {f} skipped.",
+    inject_all_nothing: "No difficulty to inject into.",
     hist_sub: "Every .osu write this app made, newest first, with the backup holding what it replaced. Restoring keeps the current file as a new backup first.",
     hist_title: "Writes", hist_empty: "Nothing written yet.",
     hist_t_when: "When", hist_t_what: "What", hist_t_file: "File", hist_t_backup: "Backup",
@@ -110,6 +121,10 @@ const I18N = {
     saved_to: "Saved to {path}",
     injected: "Injected {added} red lines ({replaced} replaced, {greens} green kept).",
     inject_confirm: "Replace {reds} red lines with {n} new ones in {file}?{warn}",
+    inject_diff_line: "{o}ms {ob} → {n}ms {nb}",
+    inject_diff_drift: " (drift {d}ms)",
+    inject_diff_more: "+{n} more changed lines",
+    inject_diff_same: "{n} lines unchanged",
     inject_greens: "\nIt also adds {g} green lines so slider velocity and hitsounds play as before.",
     inject_warn: "\nThe .osu audio ({osu}) differs from the analyzed file ({src}).",
     drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
@@ -422,6 +437,17 @@ const I18N = {
     exp_click_t: "Pista de clic", exp_click_d: "Un WAV de metrónomo sobre estas líneas rojas, para oír si derivan contra la canción.",
     exp_osz_t: "Paquete .osz", exp_osz_d: "El audio más un beatmap nuevo con este timing.",
     exp_inject_t: "Inyectar en un .osu", exp_inject_d: "Reemplaza las líneas rojas de una dificultad que ya tenés. Confirmás antes y se guarda un respaldo.",
+    exp_inject_all_t: "Inyectar en todas las dificultades", exp_inject_all_d: "Reemplaza las líneas rojas de cada .osu junto a la canción analizada. Una vista previa, una confirmación, cada archivo respaldado antes.",
+    exp_inject_all_preview: "Vista previa", actions_inject_all: "Inyectar todas…",
+    inject_all_row: "{file}: {replaced} reemplazadas, {added} nuevas",
+    inject_all_row_drift: ", deriva {d}ms",
+    inject_all_row_greens: ", +{g} verdes",
+    inject_all_row_mismatch: " (el audio difiere)",
+    inject_all_error: "{file}: {detail}",
+    inject_all_confirm: "¿Reemplazar las líneas rojas de {n} dificultades ({files})? Cada archivo se respalda antes.{warn}",
+    inject_all_warn: " Algunos .osu nombran otro audio.",
+    inject_all_done: "Inyectadas {n} dificultades, {f} salteadas.",
+    inject_all_nothing: "No hay dificultades para inyectar.",
     hist_sub: "Cada escritura .osu que hizo esta app, la más nueva primero, con el respaldo que guarda lo reemplazado. Restaurar guarda el archivo actual como respaldo nuevo antes.",
     hist_title: "Escrituras", hist_empty: "Nada escrito todavía.",
     hist_t_when: "Cuándo", hist_t_what: "Qué", hist_t_file: "Archivo", hist_t_backup: "Respaldo",
@@ -514,6 +540,10 @@ const I18N = {
     saved_to: "Guardado en {path}",
     injected: "Inyectadas {added} líneas rojas ({replaced} reemplazadas, {greens} verdes intactas).",
     inject_confirm: "¿Reemplazar {reds} líneas rojas por {n} nuevas en {file}?{warn}",
+    inject_diff_line: "{o}ms {ob} → {n}ms {nb}",
+    inject_diff_drift: " (deriva {d}ms)",
+    inject_diff_more: "+{n} líneas cambiadas más",
+    inject_diff_same: "{n} líneas iguales",
     inject_greens: "\nTambién agrega {g} líneas verdes para que la velocidad de sliders y los hitsounds suenen igual.",
     inject_warn: "\nEl audio del .osu ({osu}) difiere del analizado ({src}).",
     drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
@@ -1215,6 +1245,7 @@ function renderResult(r) {
   renderBookmarks();
   renderKiai();
   renderBreaks();
+  renderInjectAll();
   if (S.view === "timing") waveLoad();
   evLoad();
   labLoad();
@@ -1391,13 +1422,75 @@ async function injectOsu() {
   if (!prev.ok) { editFailure(prev); return; }
   const s = prev.summary;
   const warn = (s.audio_mismatch ? t("inject_warn", { osu: s.osu_audio, src: s.analysed_audio }) : "")
-    + (s.greens_added ? t("inject_greens", { g: s.greens_added }) : "");
+    + (s.greens_added ? t("inject_greens", { g: s.greens_added }) : "")
+    + injectDiffText((prev.diff && prev.diff.pairs) || []);
   const name = String(target).split(/[\\/]/).pop();
   if (!confirm(t("inject_confirm", { reds: s.reds_replaced, n: s.reds_added, file: name, warn }))) return;
   const done = await api().inject_apply(target);
   if (!done.ok) { editFailure(done); return; }
   const d = done.summary;
   toast(t("injected", { added: d.reds_added, replaced: d.reds_replaced, greens: d.greens_kept }));
+}
+
+// Changed red lines as confirm-dialog lines: the first 10, then a count.
+function injectDiffText(pairs) {
+  const moved = (p) => p.delta_offset_ms || p.delta_bpm || (p.drift_end_ms !== null && p.drift_end_ms);
+  const changed = pairs.filter(moved), same = pairs.length - changed.length;
+  const lines = changed.slice(0, 10).map((p) => {
+    const base = t("inject_diff_line", { o: p.old.offset_ms, ob: p.old.bpm, n: p.new.offset_ms, nb: p.new.bpm });
+    return p.drift_end_ms === null ? base : base + t("inject_diff_drift", { d: p.drift_end_ms });
+  });
+  if (changed.length > 10) lines.push(t("inject_diff_more", { n: changed.length - 10 }));
+  if (same) lines.push(t("inject_diff_same", { n: same }));
+  return lines.length ? "\n" + lines.join("\n") : "";
+}
+
+// ------------------------------------------------------------------ inject all
+// Phase 21: the same inject over every .osu beside the analyzed song.
+// Preview lists each file, one confirmation writes them all, each backed up.
+const INJALL = { preview: null, for: "" };
+
+function injectAllRow(f) {
+  if (!f.ok) return t("inject_all_error", { file: f.file, detail: f.error });
+  const greens = f.greens_added ? t("inject_all_row_greens", { g: f.greens_added }) : "";
+  const warn = f.audio_mismatch ? t("inject_all_row_mismatch") : "";
+  const pairs = (f.diff && f.diff.pairs) || [];
+  const drifts = pairs.map((p) => p.drift_end_ms).filter((d) => d !== null && d);
+  const worst = drifts.length ? drifts.reduce((a, b) => Math.abs(a) >= Math.abs(b) ? a : b) : null;
+  const drift = worst === null ? "" : t("inject_all_row_drift", { d: worst });
+  return t("inject_all_row", { file: f.file, replaced: f.reds_replaced, added: f.reds_added }) + greens + warn + drift;
+}
+
+async function injectAllPreview() {
+  if (!api() || !S.result || S.busy) return;
+  const reply = await api().inject_all_preview();
+  if (!reply.ok) { editFailure(reply); return; }
+  INJALL.preview = reply.report;
+  INJALL.for = (S.result && S.result.path) || "";
+  renderInjectAll();
+}
+
+async function injectAllApply() {
+  if (!api() || !S.result || S.busy || !INJALL.preview) return;
+  const r = INJALL.preview;
+  if (!r.ok) { toast(t("inject_all_nothing")); return; }
+  const good = r.files.filter((f) => f.ok);
+  const warn = r.files.some((f) => f.ok && f.audio_mismatch) ? t("inject_all_warn") : "";
+  if (!confirm(t("inject_all_confirm", { n: good.length, files: good.map((f) => f.file).join(", "), warn }))) return;
+  const done = await api().inject_all_apply();
+  if (!done.ok) { editFailure(done); return; }
+  toast(t("inject_all_done", { n: done.report.ok, f: done.report.failed }));
+  INJALL.preview = null;
+  renderInjectAll();
+}
+
+function renderInjectAll() {
+  const path = (S.result && S.result.path) || "";
+  if (INJALL.for !== path) { INJALL.for = path; INJALL.preview = null; }
+  const p = INJALL.preview;
+  if ($("injectAllBtn")) $("injectAllBtn").disabled = !S.result || !p || !p.ok;
+  if ($("injectAllResult")) $("injectAllResult").textContent = !p ? ""
+    : p.files.map(injectAllRow).join(" · ");
 }
 
 // ------------------------------------------------------------------ drag and drop
@@ -4442,6 +4535,8 @@ function wire() {
   $("undoBtn").onclick = undo;
   $("redoBtn").onclick = redo;
   $("injectBtn").onclick = injectOsu;
+  $("injectAllPreviewBtn").onclick = injectAllPreview;
+  $("injectAllBtn").onclick = injectAllApply;
   wireDrop();
   $("trace").addEventListener("mousemove", onTraceMove);
   $("trace").addEventListener("mouseleave", () => { $("tip").hidden = true; drawTrace(); });

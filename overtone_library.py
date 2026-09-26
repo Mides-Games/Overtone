@@ -512,10 +512,16 @@ class Library:
 
         Artist, title (romanised and Unicode), creator, difficulty, source
         and tags are searched, each word as a prefix, accents ignored. No
-        words lists the library in folder order.
+        words lists the library in folder order. Words of one letter each
+        are not ranked: the maps come in the index's own order.
         """
         limit = max(1, min(int(limit), SEARCH_LIMIT))
         query = _match_query(text)
+        # One letter matches nearly every map ("s": 23,418 of 25,174), and
+        # ranking them all was 124 of the 136 ms such a search took; in the
+        # index's order FTS5 stops at the limit. A letter is not a search yet.
+        order = ("beatmap_search.rowid" if query is not None
+                 and all(len(word) == 1 for word in _WORD.findall(text)) else "rank")
         started = time.perf_counter()
         with closing(self._connect()) as db:
             if query is None:
@@ -525,7 +531,7 @@ class Library:
                 rows = db.execute(f"SELECT {_ROW} FROM beatmap_search "
                                   "JOIN beatmaps b ON b.id = beatmap_search.rowid "
                                   "JOIN sets s ON s.id = b.set_id "
-                                  "WHERE beatmap_search MATCH ? ORDER BY rank LIMIT ?",
+                                  f"WHERE beatmap_search MATCH ? ORDER BY {order} LIMIT ?",
                                   (query, limit)).fetchall()
         sets: dict[str, dict] = {}
         for (bid, path, artist, title, artist_u, title_u, creator, version, mode, audio_file,

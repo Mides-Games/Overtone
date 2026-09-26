@@ -4451,6 +4451,19 @@ class LibraryIndexTests(unittest.TestCase):
         self.assertTrue(self.library.covers(self.songs))
         self.assertFalse(self.library.covers(self.tmp))
 
+    def test_one_letter_lists_in_index_order_and_longer_words_are_ranked(self):
+        self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy"], tags="sun")
+        self._set("2 Sun - Sun", b"OggS" + bytes(200), ["Sun"], artist="Sun", title="Sun",
+                  unicode_title="Sun", tags="sun")
+        self.library.scan(self.songs)
+        # Ranking every map a letter matches was most of a search's time; a
+        # letter lists them as indexed, words rank the map named Sun first.
+        self.assertEqual([s["name"] for s in self.library.search("s")["sets"]],
+                         ["1 Band - Song", "2 Sun - Sun"])
+        self.assertEqual([s["name"] for s in self.library.search("su")["sets"]],
+                         ["2 Sun - Sun", "1 Band - Song"])
+        self.assertEqual(self.library.search("s")["beatmaps"], self.library.search("su")["beatmaps"])
+
     def test_a_rescan_reads_only_what_changed_and_forgets_what_is_gone(self):
         first = self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
         second = self._set("2 Other - Tune", b"OggS" + bytes(200), ["Normal"],

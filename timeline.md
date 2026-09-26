@@ -204,6 +204,13 @@ structure stage that finds more edges would place more kiai than any snap rule c
     bar about half the time, with the 673 unused songs or even with 1500: the size bar sits
     at the effect itself. Whether about 10 points is worth shipping is a decision, not a
     measurement.
+  - Every variant below was also read on B, after the decision and for the record only.
+    Every one-bar level variant beat today on B's kiai starts (51.0-58.6 % against
+    45.5 %). Two would have cleared the bar: reach 2 bars at 1 dB (57.9 %, +27/-9, p 0.004)
+    and at 2 dB (56.6 %, +20/-4, p 0.002), with kiai ends at 46.5 and 48.4 %. Neither was
+    best on A (61.8 and 59.7 %). Picking one now would be choosing on the held-out
+    sample, so a rule frozen now must be confirmed on the 673 eligible songs neither
+    sample used.
 - **4-bar lines from the red line.** This takes the nearest bar on a 4-bar line, if one is
   within a bar. Kiai starts do sit on those lines 47.7 % of the time (A; 25 % by chance), and
   69 % of the gaps between a song's kiai starts are whole 4-bar multiples.

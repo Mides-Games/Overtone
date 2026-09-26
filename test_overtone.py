@@ -1856,6 +1856,70 @@ class SnapDivisorTests(unittest.TestCase):
         self.assertEqual(section["divisor"], "1/4")
 
 
+class ResnapTests(unittest.TestCase):
+    @staticmethod
+    def _map(objects: str):
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+                 "[TimingPoints]", "1000,500,4,2,0,70,1,0", "", "[HitObjects]"] + \
+                objects.split("\n") + [""]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes("\r\n".join(lines).encode("utf-8"))
+            return read_osu_beatmap(path)
+
+    _SHIFT = [{"old": {"offset_ms": 1000.0, "bpm": 120.0, "meter": 4},
+               "new": {"offset_ms": 1010.0, "bpm": 120.0, "meter": 4},
+               "delta_offset_ms": 10.0, "delta_bpm": 0.0, "drift_end_ms": None}]
+
+    def test_shift_moves_snapped_lists_the_rest(self) -> None:
+        from overtone import resnap_objects
+        beatmap = self._map("256,192,1000,1,0,0:0:0:0:\n"
+                            "256,192,1500,1,0,0:0:0:0:\n"
+                            "256,192,2000,2,0,B|320:192,1,100,0:0:0:0:\n"
+                            "256,192,2500,12,0,3000,0:0:0:0:\n"
+                            "256,192,1300,1,0,0:0:0:0:")
+        result = resnap_objects(beatmap, self._SHIFT)
+        json.dumps(result)
+        self.assertEqual((result["moved"], result["skipped"]), (4, 0))
+        self.assertEqual([(o["time_ms"], o["kind"]) for o in result["left"]],
+                         [(1300.0, "circle")])
+        objects = beatmap["hitobjects"]
+        self.assertEqual([o["time"] for o in objects], [1010.0, 1510.0, 2010.0, 2510.0, 1300.0])
+        spinner = next(o for o in objects if o["kind"] == "spinner")
+        self.assertEqual(spinner["end_time"], 3010)
+        self.assertEqual(beatmap["hitobjects"][2]["hit_sound"], 0)
+
+    def test_tempo_change_scales_and_diff_shapes_fit(self) -> None:
+        from overtone import inject_diff, resnap_objects
+        from types import SimpleNamespace
+        beatmap = self._map("256,192,1500,1,0,0:0:0:0:")
+        pairs = [{"old": {"offset_ms": 1000.0, "bpm": 120.0, "meter": 4},
+                  "new": {"offset_ms": 1000.0, "bpm": 150.0, "meter": 4},
+                  "delta_offset_ms": 0.0, "delta_bpm": 30.0, "drift_end_ms": None}]
+        result = resnap_objects(beatmap, pairs)
+        self.assertEqual((result["moved"], beatmap["hitobjects"][0]["time"]), (1, 1400.0))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(("osu file format v14\n[General]\nAudioFilename: a.mp3\n"
+                              "[TimingPoints]\n1000,500,4,2,0,70,1,0\n"
+                              "[HitObjects]\n256,192,1500,1,0,0:0:0:0:\n").encode("utf-8"))
+            analysis = SimpleNamespace(source="a.mp3", points=[TimingPoint(1010.0, 120.0, 0.9, 0)])
+            diff = inject_diff(path, analysis)
+            beatmap = read_osu_beatmap(path)
+            moved = resnap_objects(beatmap, diff["pairs"])
+            self.assertEqual(moved["moved"], 1)
+            self.assertEqual(beatmap["hitobjects"][0]["time"], 1510.0)
+            self.assertEqual(read_osu_beatmap(path)["hitobjects"][0]["time"], 1500.0)
+
+    def test_no_pairs_or_no_objects_refuses(self) -> None:
+        from overtone import resnap_objects
+        beatmap = self._map("256,192,1000,1,0,0:0:0:0:")
+        with self.assertRaises(ValueError):
+            resnap_objects(beatmap, [])
+        with self.assertRaises(ValueError):
+            resnap_objects({"sections": []}, self._SHIFT)
+
+
 class NoiseBeforeTheMusicTests(unittest.TestCase):
     """The first red line starts where the grid starts, not at the first noise.
 

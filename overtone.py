@@ -5139,6 +5139,85 @@ def snap_divisors(analysis: Analysis, tol_ms: float = DIVISOR_TOLERANCE_MS) -> d
     return {"sections": out}
 
 
+def resnap_objects(beatmap: dict, pairs: list[dict]) -> dict:
+    """Move hit objects onto the new grid after a timing change (Phase 21).
+
+    ``pairs`` are :func:`inject_diff`'s: each old red beside its new value.
+    An object start that sat on the old grid — snapped before, snapped still,
+    by the snap audit's own 2 ms — moves by that span's drift, so it lands on
+    the same beat of the new timing; slider heads move and their tails follow
+    from the slider's own length under the new BPM, while spinner and hold
+    ends move by the drift at their own time. Anything else stays exactly
+    where the mapper put it and is listed, with its nearest divisor and miss:
+    swing, drags and deliberate offsets are not "fixed". Times are rewritten
+    whole-millisecond over the file's own object lines; every other byte of
+    each line survives. A move landing before zero is skipped, never written
+    negative. In place. Returns moved, left and skipped.
+    """
+    old_reds = [(float(p["old"]["offset_ms"]), float(p["old"]["bpm"])) for p in pairs]
+    new_reds = [(float(p["new"]["offset_ms"]), float(p["new"]["bpm"])) for p in pairs]
+    if not old_reds:
+        raise ValueError("No red-line pairs to resnap onto.")
+
+    def drift(time_ms: float) -> float:
+        index = 0
+        for i, red in enumerate(old_reds):
+            if red[0] <= time_ms + 1e-9:
+                index = i
+        old_off, old_bpm = old_reds[index]
+        new_off, new_bpm = new_reds[index]
+        return new_off + (time_ms - old_off) * ((60000.0 / new_bpm) / (60000.0 / old_bpm))
+
+    def shift(time_ms: float) -> int | None:
+        moved = int(round(drift(time_ms)))
+        return moved if moved >= 0 else None
+
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "HitObjects"), None)
+    if section is None:
+        raise ValueError("No [HitObjects] section in this beatmap.")
+    moved = skipped = 0
+    left: list[dict] = []
+    out: list[str] = []
+    for line in section["lines"]:
+        stripped = line.strip()
+        obj = _parse_hit_object(line) if stripped else None
+        if obj is None or obj.get("kind") == "unparsed" or "time" not in obj:
+            if stripped and not stripped.startswith("//"):
+                skipped += 1
+            out.append(line)
+            continue
+        snap = _snap_of(float(obj["time"]), old_reds)
+        if not snap["snapped"]:
+            left.append({"time_ms": float(obj["time"]), "kind": obj.get("kind", "unparsed"),
+                         "nearest_divisor": snap["divisor"], "off_ms": round(snap["off_ms"], 3)})
+            out.append(line)
+            continue
+        start = shift(float(obj["time"]))
+        if start is None:
+            skipped += 1
+            out.append(line)
+            continue
+        fields = line.split(",")
+        fields[2] = str(start)
+        if obj.get("kind") in ("spinner", "hold") and "end_time" in obj:
+            end = shift(float(obj["end_time"]))
+            if end is None:
+                skipped += 1
+                out.append(line)
+                continue
+            if obj["kind"] == "spinner":
+                fields[5] = str(end)
+            else:
+                _head, _, tail = fields[5].partition(":")
+                fields[5] = f"{end}:{tail}" if tail else str(end)
+        out.append(",".join(fields))
+        moved += 1
+    section["lines"] = out
+    objects = [line for line in out if line.strip() and not line.strip().startswith("//")]
+    beatmap["hitobjects"] = [_parse_hit_object(line) for line in objects]
+    return {"moved": moved, "left": left, "skipped": skipped}
+
+
 def suggest_missing_lines(analysis: Analysis, beatmap: dict,
                           tolerance_beats: float = 1.0) -> list[dict]:
     """Detected sections with no nearby map red (Phase 9: timing suggestions).

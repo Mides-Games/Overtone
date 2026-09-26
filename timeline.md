@@ -16,6 +16,31 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Re-snap, engine half: snapped stays snapped
+
+### Changed
+
+- **`resnap_objects(beatmap, pairs)`**: object starts on the old grid move by
+  their span's drift onto the same beat of the new timing — slider heads move
+  with tails following the slider's own length, spinner and hold ends by the
+  drift at their time. Off-grid objects stay put and are listed with nearest
+  divisor and miss; times rewrite whole-millisecond over the files' own lines.
+
+### Measured
+
+```
++10 ms shift                   4 moved (circle, circle, slider head, spinner
+                               with end), 1 off-grid listed, bytes otherwise kept
+120 -> 150 BPM                  object at 1500 lands 1400, exactly
+diff shapes                     inject_diff pairs feed resnap directly
+Python unittest                 474 -> 477 (new suites green)
+facts                           ok
+```
+
+No analysis code touched, so no benchmark run here.
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Snap divisors, one line per section in Timing
 
 ### Changed

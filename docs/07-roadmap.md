@@ -19,14 +19,14 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Area | State |
 |---|---|
 | Timing engine (Python v3) | **works** — 24/24 corpus, median 0.0000 BPM / 0.16 ms, all gates green (every Python and Rust gate re-run 2026-09-26) |
-| Timing engine (Rust v4) | **at parity, in the app** — matches v3 attack for attack and red line for red line on 27/27, ~4x faster end to end; Settings → Rust engine runs it through `overtone-cli`, and v3 takes over (with a note) where it has no answer. The same sidecar runs Structure (`structure`), Ramps (`ramps`) and the hitsound proposals (`hitsound`); `hitsound-evidence` prints each attack's classes and role from the command line |
+| Timing engine (Rust v4) | **at parity, in the app** — matches v3 attack for attack and red line for red line on 27/27, ~4x faster end to end (on Corpus B's real songs it writes v3's red lines on 13 of the 15 that v3 fits a grid to); Settings → Rust engine runs it through `overtone-cli`, and v3 takes over (with a note) where it has no answer. The same sidecar runs Structure (`structure`), Ramps (`ramps`) and the hitsound proposals (`hitsound`); `hitsound-evidence` prints each attack's classes and role from the command line |
 | App (web shell) | **usable** — ten sidebar sections: Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export, History, Settings. Analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject (one map or the whole mapset, with the diff), compare with a map, alignment, density, snap audit, re-snap, suggestions, mapset check, reference timing, assisted timing, evidence, ramps, offset lab, constant scroll, snap divisors, kiai / breaks / bookmarks / preview point / section volumes from the structure, audio swap, audio file check, write history with restore, mod report, folder import, recents, osu! Songs browser, EN/ES, dark and light |
 | osu! files | **works** — full reader, byte-identical writer, atomic write + backup, every write logged and restorable; hitsound fields edited in place, nothing else moves (P-2) |
 | Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks; in the mod report, claps that break the map's own pattern and finishes or claps over silence (H3) |
 | Hitsound engine | **in the app** — the copier (H1), the Hitsounds section (H2), the consistency check (H3), and the decision engine in Rust (H4) behind the Propose card: tick by row or by bars, swap a proposal for one of its alternatives, set volume and sample index by hand, hear it all over the song as the write would make it, preview, write the file or a copy, undo (H5); a row's inspector says why each sound was proposed. Profiles, instrument lanes and a sample bank are still to build |
 | Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency, the percussive part alone, and a difficulty's hitsounds with its own samples, as written or as they would be written, slider slides looped head to tail |
 | UI verification | **done** 2026-09-26 — the 19 surfaces of 2026-09-25/26 exercised in the browser pane on two real mapsets, both themes and languages; it found app.js not loading and fifteen bugs in writes, counts and messages, all fixed; the two tools that needed a decision were decided the same day (timeline) |
-| Precision plan (Phase 10) | **not started** — plan only |
+| Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 % |
 | Installer (MSI) | **not started** — plan only |
 
 Tests: **543** Python (379 engine + 164 web shell) · **263** Rust.
@@ -52,7 +52,8 @@ point, section volumes, SV normaliser, re-snap, snap divisors, audio file check)
 3. **The Audio section** (Phase 19), and phrase starts on the phrase's own bar.
 4. **Other languages** (Phase 24) — TypeScript (needs Node.js) and a C# lazer gate (needs
    the .NET SDK). Neither is installed; ask before installing.
-5. **Real-audio accuracy** (Phase 10) — build Corpus B first, then one sub-phase at a time.
+5. **Real-audio accuracy** (Phase 10) — Corpus B is built and measured (10.0); one
+   sub-phase at a time from here, each measured on it.
 6. **Installer** (Phase 10.13) — MSI + portable ZIP.
 
 Two proposals wait on a decision, not on work: the Rhythm guide (`04-ui-ux.md` §9 rules out
@@ -409,20 +410,27 @@ Nothing here is promised. Each item is a hypothesis with a way to test it.
 
 ## Phase 10 — Human-level timing accuracy
 
-Documented in full in [`10-precision-plan.md`](10-precision-plan.md). **Not started.** The
-goal: push accuracy on real songs from today's ~5 % of a ranked map's red lines within
-5 ms (measured on one track, *Vampires Will Never Hurt You*) towards 90 %+, offline.
+Documented in full in [`10-precision-plan.md`](10-precision-plan.md). **Measured, nothing
+shipped.** The goal: push accuracy on real songs from today's **1.6 %** of ranked red lines
+with an Overtone beat within 5 ms towards 90 %+, offline. That is v3 on Corpus B, 1,152 red
+lines of 20 ranked maps, measured 2026-09-26 with `bench/corpus_b.py`; averaged over the
+tracks it is 0.9 %, and within 50 ms 46.9 %. The "~5 %" quoted here before came from one
+track, *Vampires Will Never Hurt You* (4.7 % on 2026-09-22, method not recorded); Corpus B's
+scorer reads 5.9 % there. Two things set the gap: the red lines read a median 24-27 ms after
+the maps' (the Phase 22 row below), and one grid, or none, against a band that drifts.
 
 **Measurement first.** Nothing ships without a measured gain on Corpus B — 20 hand-timed
 ranked tracks across every category — while Corpus A (the 24 synthetic fixtures) stays
-green.
+green. The truth has a spread of its own: two ranked maps of the same audio agree on 82 %
+of their red lines within 5 ms, and on 74 % where they differ at all (319 pairs, measured
+2026-09-26), so 90 % of one mapper's lines asks more than a second mapper gives.
 
 The gain column below is an **estimate, not a measurement**; each sub-phase replaces its
 estimate with a number or is dropped.
 
 | # | Sub-phase | What it adds | Estimated gain | Status |
 |---|---|---|---:|:--:|
-| 10.0 | Corpus B | 20 ranked tracks + the scoring script | — | todo |
+| 10.0 | Corpus B | 20 ranked tracks + the scoring script | — | **done** — `bench/corpus_b.json` + `bench/corpus_b.py`: v3 1.6 % of 1,152 red lines within 5 ms (0.9 % per track, 46.9 % within 50 ms), Rust 1.4 % (5 of 20 refused); signed error a median +24.0 ms per track |
 | 10.1 | Fingerprint & reuse | match the audio against the user's own `osu!/Songs`; exact when the song is already mapped | large when matched | todo |
 | 10.2 | Source separation | percussive stem first — HPSS (built, no weights); Demucs weights are research-only | +8 pts | partial (HPSS in Rust) |
 | 10.3 | Neural beat tracking | Beat This! (MIT code and weights) as one more voter | +17 pts | todo |
@@ -612,7 +620,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Rust engine in the app | `overtone-cli analyze --json` sidecar, opt-in, v3 as fallback; `.opus` goes to v3 or is refused (v4 has no decoder, by decision) | med | **high** | P1 | no | no | **P1** | **done** — opt-in; v3 takes over with a note where Rust has no answer |
 | Fallback re-timing | re-time the fallback tracker's beats at sample resolution (they land 5–35 ms late) | med | **high** | — | no | no | P1 | todo |
-| Real-MP3 offset bias | measure the ~20–26 ms attack-vs-map bias on real MP3s before trusting absolute offsets | med | **high** | Corpus B | no | no | P1 | partial — measured 2026-09-24 by reference timing: 30 random ranked maps all read the attacks after their lines, median +26.2 ms (IQR +23.0..+30.9), OGG (+27.2, n=3) as MP3 (+26.1, n=27), so not the MP3 decoder; not explained or corrected |
+| Real-MP3 offset bias | measure the ~20–26 ms attack-vs-map bias on real MP3s before trusting absolute offsets | med | **high** | Corpus B | no | no | P1 | partial — measured 2026-09-24 by reference timing: 30 random ranked maps all read the attacks after their lines, median +26.2 ms (IQR +23.0..+30.9), OGG (+27.2, n=3) as MP3 (+26.1, n=27), so not the MP3 decoder; on Corpus B (2026-09-26) v3's own red lines sit a median +24.0 ms after the maps' (17 tracks; MP3 +19.6 over 15, OGG +32.7 over 2), and 1.6 % of them fall within 5 ms; not explained or corrected |
 | Envelope memory bound | mel in chunks: ~2.65 → ~0.74 GB peak on long tracks; no silent MemoryError fallback | med | high | — | no | no | P1 | todo |
 | Pre-warm the engine | load librosa and numba in the background at startup (~2.3 s off the first analysis) | low | med | shell | no | no | P2 | todo |
 | Linear section growth | refine the growth grid on a trailing window | med | med | — | no | no | P2 | todo |

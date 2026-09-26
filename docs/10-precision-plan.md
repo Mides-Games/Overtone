@@ -11,11 +11,17 @@ take longer per analysis: a five-minute song may take a couple of minutes to
 process rather than three seconds. Precision is the only goal; time is not
 budgeted.
 
-The baseline this phase is measured against is the ranked map
-`2437969 My Chemical Romance - Vampires Will Never Hurt You` — 236 hand-placed
-red lines over 5 minutes 12 seconds of live-band audio. Today Overtone reaches
-**4.7 % of those points within 5 ms**. The ceiling this plan targets is
-**90–95 %** with a **1–2 ms median error**.
+The baseline this phase is measured against is **Corpus B** (below): 20 ranked
+maps from the local osu! Songs folder, 1,152 hand-placed red lines. On
+2026-09-26 the v3 engine put **1.6 % of them within 5 ms** (0.9 % averaged over
+the tracks, 46.9 % within 50 ms; `bench/corpus_b.py`). The first baseline
+quoted here, 4.7 % on one of those maps
+(`2437969 My Chemical Romance - Vampires Will Never Hurt You`, 236 red lines,
+2026-09-22), was measured by a method not recorded; Corpus B's scorer reads
+5.9 % on it. The ceiling this plan targets is **90–95 %** with a **1–2 ms
+median error** — more than two ranked maps of the same audio give each other:
+82 % of their red lines within 5 ms, 74 % where the two maps' lines differ at
+all (319 pairs from the same Songs folder, measured 2026-09-26).
 
 ---
 
@@ -27,29 +33,42 @@ Nothing on this phase ships without a measurable improvement on both corpora.
 
 - **Corpus A** — the 24 synthetic fixtures. This is the accuracy baseline
   (0.16 ms median). Cannot regress.
-- **Corpus B — real ranked maps.** Twenty tracks scraped from osu!'s ranked
-  section, spanning every category the plan needs to handle:
+- **Corpus B — real ranked maps.** Twenty ranked or loved maps from the local
+  osu! Songs folder (not scraped: Overtone makes no network calls), named in
+  `bench/corpus_b.json` by folder, file and SHA-1. The audio is never
+  committed, and a file that changed is refused. They span every category the
+  plan needs to handle; the property column is what the plan expected, the
+  last one what v3 measured on 2026-09-26:
 
-  | Category | Tracks | Property |
-  |---|---|---|
-  | Constant-tempo EDM | 4 | v3 already exact |
-  | Constant-tempo rock/pop | 4 | v3 usually exact, sometimes octave wrong |
-  | Live-band with drift | 4 | Vampires-style, 200+ manual points |
-  | Verse/chorus octave swap | 3 | Sunday Cruise class |
-  | Rubato intro then steady | 3 | v3 falls back |
-  | Signature changes | 2 | 6/4 → 3/4, etc |
+  | Category | Tracks | Property | In `corpus_b.json` | v3, within 5 / 50 ms |
+  |---|---|---|---|---|
+  | Constant-tempo EDM | 4 | v3 already exact | freedom-dive, take-you-down, steampunk-engines, i-remember | 0 / 75 % |
+  | Constant-tempo rock/pop | 4 | v3 usually exact, sometimes octave wrong | diary-of-jane, camisa-negra, one-step-closer, imagination | 0 / 75 % |
+  | Live-band with drift | 4 | Vampires-style, 200+ manual points | vampires, yui-again, the-raven, shinkou | 1.6 / 45.4 % |
+  | Verse/chorus octave swap | 3 | Sunday Cruise class | calm-down-juliet, jungle-dragon, martyr | 0 / 68 % |
+  | Rubato intro then steady | 3 | v3 falls back | noble, torikago, day-to-story | 4.8 / 57.1 % |
+  | Signature changes | 2 | 6/4 → 3/4, etc | palette, nana-hitsuji | 0 / 100 % |
 
-  Each carries its ranked `.osu` as ground truth.
+  Each carries its ranked `.osu` as ground truth. Every one of them is in the
+  Songs folder that Phase 10.1 fingerprints, so 10.1 is measured with each
+  track's own mapset held out, or it scores itself.
 
 ### The metric
 
 Not "did we find the right number of points". The correct question is:
-**for each ranked red line, does an Overtone red line fall within 5 ms of it?**
-Reported as:
+**for each ranked red line, does the Overtone red line in force there put a
+beat within 5 ms of it?** The detected line (the last one at or before the
+ranked line, with half a beat of slack) is run forwards or backwards to it:
+two red lines on different bars of one grid play the same in osu!, so the grid
+is compared, not the anchor. `bench/corpus_b.py` reports:
 
-- % of ranked points within 5 ms · within 10 ms · within 50 ms
-- median and worst offset error
-- median and worst BPM error (octave-normalised)
+- % of ranked red lines within 2 · 5 · 10 · 50 ms, pooled and averaged over
+  the tracks (the drift maps hold 1,087 of the 1,152 lines)
+- the signed offset error (+ when Overtone is later): median, quartiles,
+  median |error| and worst
+- the BPM error per map section, octave-normalised (median and worst), and
+  the octaves read
+- all of it per category; a refused track misses every line
 
 Corpus A stays the same. Corpus B is the new bar.
 
@@ -641,7 +660,7 @@ gain. `bpm-snapshot` and Corpus A gates remain green throughout.
 
 | After phase | % within 5 ms | Median error |
 |---|---:|---:|
-| today | 4.7 % | 60 ms |
+| today (Corpus B, v3, 2026-09-26) | 1.6 % | 35 ms |
 | 10.1 (fingerprint) | ~40 %† | ~20 ms† |
 | 10.2 (source sep) | ~48 % | ~15 ms |
 | 10.3 (neural) | ~65 % | ~8 ms |
@@ -657,6 +676,12 @@ gain. `bpm-snapshot` and Corpus A gates remain green throughout.
 † 10.1 is bimodal: 100 % on tracks in the mirror, unchanged on tracks not.
 The average depends on the mirror coverage; ~40 % is a rough figure assuming
 half the user's tracks are in the ranked corpus.
+
+Only the "today" row is measured: the median error there is the median |error|
+of the 789 red lines with a reading (the refused track's 363 have none). The
+rows below it are the estimates the plan started from, made against the
+earlier single-track figure (4.7 %, 60 ms), and each sub-phase replaces its row
+with a measurement.
 
 ## What this does not cover
 

@@ -28,7 +28,7 @@ sections within 0.05 BPM and 5 ms     24 / 24
 | **osu! files** | ✅ Full reader; writer keeps every byte you did not ask to change |
 | **Hitsounds** | ✅ In the app: copy one difficulty's hitsounds onto the others, see where each addition falls, hear them with the song, a consistency check in the mod report, the Rust decision engine's proposals to tick, and volume and sample index to set by hand, all heard over the song before a preview, a write and an undo. Profiles and a sample bank come next |
 | **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, section loop at 100/75/50 %, taps, the percussive part alone, a difficulty's hitsounds as written or as they would be written |
-| **Accuracy on real, live-played songs** | 📋 Planned — today ~5 % of a ranked map's red lines land within 5 ms |
+| **Accuracy on real, live-played songs** | 📋 Planned, and measured first — today 1.6 % of 20 ranked maps' red lines land within 5 ms (Corpus B, `bench/corpus_b.py`) |
 | **Installer** (MSI) | 📋 Planned |
 
 Nothing here claims a number that was not measured. Targets are marked as targets.
@@ -327,9 +327,10 @@ offsets modulo one beat, which is why an off-beat red line could hide in it unti
 2026-09-23 audit round found one.
 
 **Synthetic drums are cleaner than records.** Read the corpus numbers as an upper bound.
-On a real live-band ranked map (*Vampires Will Never Hurt You*, 236 hand-placed red lines)
-about 5 % of the red lines land within 5 ms today; closing that gap is
-[Phase 10](docs/10-precision-plan.md).
+On Corpus B, 20 hand-timed ranked maps from a local osu! Songs folder (`bench/corpus_b.py`),
+1.6 % of their 1,152 red lines have an Overtone beat within 5 ms, and 47 % within 50 ms
+(measured 2026-09-26): the red lines read a median 24 ms after the mappers', and the grid does
+not follow a band that drifts. Closing that gap is [Phase 10](docs/10-precision-plan.md).
 
 Rust speed, like for like: the whole pipeline over the corpus (decode, attacks, tempo)
 takes ~4.2 s against ~18.5 s for Python's `analyze_audio` — about 4×. An earlier "2.5 s"

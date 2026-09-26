@@ -17,6 +17,119 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Corpus B: 20 hand-timed ranked maps, and where both engines stand
+
+Phase 10's rule is that nothing ships without a measured gain on Corpus B, and Corpus B was
+a table in the plan. The only real-song number was one track's 4.7 %, measured on
+2026-09-22 by a method nobody wrote down. This builds the corpus and its scorer (roadmap
+10.0) and measures both engines on it. No engine code changed.
+
+### Changed
+
+- **`bench/corpus_b.json`**: 20 ranked or loved maps from the local Songs folder, in the
+  precision plan's six categories and counts (4 constant-tempo EDM, 4 constant-tempo
+  rock/pop, 4 live bands that drift, 3 octave swaps, 3 rubato intros, 2 signature
+  changes). Each is named by folder, truth difficulty and audio file with their SHA-1s,
+  plus a line on why it was chosen; Vampires is one of them. The audio and the maps are
+  never committed. Chosen from 25,174 local `.osu` files: ranked, approved or loved in
+  osu!.db (read from a copy), BeatmapSetID > 0, no online or local offset, and every
+  difficulty of the set on the same red lines; MP3 or OGG. 1,152 red lines in all, 1,087
+  of them on the four drift maps.
+- **`bench/corpus_b.py`**, one line to run. Per red line of the map: does the timing
+  Overtone would export put a beat within 2, 5, 10 or 50 ms of it? The detected red line
+  in force there (the benchmark's half beat of slack) is run to the map's line; the signed
+  gap to its nearest beat is the error, + when Overtone is later. A grid read an octave
+  slow is split to the map's beat and the octave counted apart; a refusal misses every
+  line. Reported pooled over the lines and averaged over the tracks, per category and per
+  track: the signed error's median, quartiles and worst, the median of each track's own
+  error, and per map section the BPM against the map's, octave-normalised.
+- **A changed file is refused, never guessed at.** Each track is found by its folder, or
+  by its set ID when a set was downloaded again, and skipped with the reason when either
+  hash differs. Analyses are cached in `bench/.cache/` (git-ignored) per audio hash and
+  the hash of the code that produced them, so an engine change is never served an old
+  answer. `--engine rust` runs overtone-cli; `--jobs` runs several analyses at once.
+- 11 tests of the scorer on made-up red lines and temporary files. No test reads the
+  Songs folder.
+
+### Measured
+
+```
+Corpus B, Python v3 (the app's default): 20 of 20 tracks, 1,152 red lines
+  within 5 ms        1.6 % of the red lines (18)       0.9 % averaged over the tracks
+  within 2/10/50 ms  0.5 / 4.6 / 46.9 %                 0.1 / 5.4 / 68.4 %
+  signed error       median +25.1 ms, IQR -15.1..+36.5, |error| median 35.1, worst 212.5
+                     (789 lines; The Raven's 363 have no reading)
+    within 50 ms     median +27.4 ms, IQR +17.1..+35.2 (540 lines)
+    per track        median +24.0 ms over 17 tracks' own; MP3 +19.6 (15), OGG +32.7 (2)
+  BPM per section    72 of 789 within 0.05, 222 within 1, octave-normalised;
+                     read at x2 49, x4 5, x8 1
+  paths              15 on the grid, 4 fell back to the tracker, The Raven refused
+  per category       within 5 / 50 ms, pooled
+    edm 0 / 75 %        rock-pop 0 / 75 %          live-drift 1.6 / 45.4 %
+    octave-swap 0 / 68 %  rubato-intro 4.8 / 57.1 %  signature 0 / 100 %
+  Vampires           14 of 236 within 5 ms (5.9 %), from the tracker's 22 red lines
+  time               598 s of analysis, 4.8-85.5 s a track (17 of them two at a time:
+                     296 s wall); a re-score from the cache 0.4-1.4 s
+Corpus B, Rust (overtone-cli): 20 of 20 tracks
+  within 5 ms        1.4 % of the red lines (16)       0.8 % averaged over the tracks
+  within 2/10/50 ms  0.4 / 3.3 / 23.4 %                 0.1 / 3.4 / 54.2 %
+  refused            5, where v3 falls back or refuses: One Step Closer, Vampires,
+                     The Raven, Calm Down Juliet, Day to Story (612 lines unread)
+  signed error       per track median +25.6 ms over 13 tracks
+  time               96 s one at a time, 1.1-8.8 s a track
+diagnostic only: less one constant (the median error of the lines within 50 ms),
+  v3 would put 14.4 % within 5 ms, Rust 6.0 %
+two ranked maps of the same audio, each scored against the other (the same scorer, a
+one-off script over the Songs folder, not committed): 319 pairs from different sets
+over 198 byte-identical audio files, 4,966 red lines both ways
+  within 2/5/10/50 ms  79.1 / 81.8 / 86.1 / 92.3 %
+  173 pairs hold the same red lines to the millisecond (copied, or found alike); the 146
+  that differ agree on 73.8 % within 5 ms, 81.7 % within 10 ms
+Python unittest      532 -> 543, all pass · facts ok · engine gates not re-run (no engine
+                     code changed)
+```
+
+What the corpus says, beyond the headline:
+
+- **The late reading is most of the gap on steady songs.** Six of the eight one-line maps
+  have an Overtone beat 14.6 to 35.5 ms after their red line, none within 5 ms, while
+  their BPMs hold (7 of 8 within 0.05). The median, +24 to +27 ms, is the offset reference
+  timing found on 30 random maps (+26.2), now on the red lines Overtone writes. Less one
+  constant (+27.4 ms), 10 of the two signature maps' 11 red lines would be within 5 ms.
+- **Drift is the other half.** On the drift maps v3 writes one red line (YUI, Shinkou) or
+  the tracker's 22 (Vampires) against the mappers' 226 to 363, and none on The Raven;
+  less the same constant, 13.8 % of their lines would be within 5 ms.
+- **v3 refuses a real song.** The Raven fails the no-pulse check ("No rhythmic pulse
+  found"): its pulse gap is 0.024, under the 0.07 threshold and near white noise's
+  0.014-0.022, where the 55 real songs that set the threshold all scored 0.090 or more.
+- **Rust writes v3's red lines on 13 of the 15 songs v3 fits a grid to** (within 1 ms and
+  0.01 BPM), and refuses the four where v3 falls back to the tracker. The two others:
+  Shinkou, an OGG, decodes to 4,206 attacks against v3's 4,181 (655 ms / 190.22 against
+  660 / 189.98); FREEDOM DiVE has the same 4,668 attacks but one red line at 149.8 s,
+  333.33 BPM in 12/4 (confidence 0.39, kept as the best of a weak set), where v3 writes
+  222.22 from 0.8 s, after Rust's per-section octave read 222/444/222/111/222. The golden
+  gate pins parity on the fixtures, not on real audio.
+- **Octave:** v3 reads four of the eight one-line songs an octave up (Imagination at 408,
+  The Diary of Jane at 167, La Camisa Negra at 194, I Remember at 220).
+- **Phase 10.1 cannot be scored on it as it stands.** Every track is in the Songs folder
+  that fingerprint reuse would search, so 10.1 is measured with each track's own mapset
+  held out, or it finds its own answer.
+
+### Rejected / tried and dropped
+
+- **Matching red lines by their own times.** A detected line anchored on another bar of
+  the same grid misses by whole beats while osu! plays the two maps alike. The detected
+  grid is run to the map's line instead.
+- **Each track's own median as the diagnostic's offset.** On a one-line map it is exact by
+  construction, so eight tracks would read 100 %. One constant for the corpus is used.
+- **The median of every line as that constant.** Grids that do not fit spread their errors
+  over half a beat and pulled it to +25.1 ms (v3) and +9.7 (Rust); the lines within 50 ms
+  give +27.4 and +21.6.
+- **A pooled share alone.** The drift maps hold 1,087 of the 1,152 lines; the mean over
+  tracks is printed beside it, so one song does not stand for twenty.
+- **BeatmapSetID > 0 as proof of a ranked map.** Graveyarded sets have IDs too: the local
+  osu!.db lists 4,458 of its 24,565 difficulties as pending or graveyard. The status comes
+  from osu!.db.
 ## v4.0.0-dev — 2026-09-26 · Phrase starts on the phrase's bar: measured, not shipped
 
 ### Changed

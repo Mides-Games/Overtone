@@ -43,6 +43,11 @@ later costs more than writing it down now.
   use). The transport checked whether another pick had come in only after a successful
   reply, so a refusal that arrived late turned hitsounds off under the pick that replaced
   it. A token now orders picks, refusal or not.
+- **The Propose card counted objects and called them sounds.** Its write confirmation
+  and toast take the number of object lines that change: "727 sounds" on Jester
+  [Trynna's Hard], while the hearing line beside them said 979 sounds unlike the file
+  (a slider is one line, and a sound per edge). They say objects now, and so does the
+  preview, which said lines.
 
 ### Hardening
 

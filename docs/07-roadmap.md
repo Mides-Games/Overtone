@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **594** Python (404 engine + 190 web shell) · **270** Rust.
+Tests: **600** Python (410 engine + 190 web shell) · **270** Rust.
 
 ### What is pending, in order
 
@@ -41,9 +41,11 @@ and the Phase 21 map tools (inject everywhere with a diff, kiai, breaks, bookmar
 point, section volumes, SV normaliser, re-snap, snap divisors, audio file check).
 
 1. **Hitsounds, the rest** (Phase 6, [`15-hitsound-plan.md`](15-hitsound-plan.md)) — the
-   profiles in the app (more profiles first, each measured against the mappers as H4
-   was); then H6 (sample bank, recommendation) and H7 (a proposal from the audio
-   alone). Two things wait until the instrument templates hold on real audio: the
+   profiles in the app: Drum-focused beat Balanced on its own style's maps and ships as a
+   file, Minimal did not on bare claps and does not (timeline, 2026-09-26); choosing one
+   beside Propose is next. Then H6 (sample bank, recommendation) and H7 (a proposal from
+   the audio alone). The role term reading the map's red lines instead of the audio's bar
+   is what bare maps need next, for every profile (`06` §11). Two things wait until the instrument templates hold on real audio: the
    clap-mismatch rule, and instrument lanes on the timeline. At the mappers' claps of 11
    real songs the templates read snare or clap at a median 0.138 (timeline, H3 audio
    half), so lanes drawn from them would show a precision they do not have.
@@ -358,7 +360,7 @@ the copier, the section, the check, the decision engine, the editor.
 | Object context | type, pattern, spacing, combo, existing hitsounds | med | **high** | P5 reader | no | no | **P1** | partial — map context attached to each attack (Python) |
 | **Viterbi decision** | sequence labelling with consistency costs | high | **high** | all above | no | no | **P1** | **done** — `overtone-cli hitsound`: 19/19 synthetic exact, real clap/finish F1 above the rules on two samples |
 | Explanations | itemised terms + alternatives | med | **high** | decision | no | no | **P1** | **done** — a row's inspector in the Hitsounds section: the proposal and its two runner-ups with their chances, what was heard under it (three likeliest instruments, place in the bar) and every term signed; the features behind each instrument stay in `overtone-cli hitsound-evidence` |
-| Profiles | built-in + custom, as data | low | high | decision | no | no | **P1** | todo |
+| Profiles | built-in + custom, as data | low | high | decision | no | no | **P1** | partial — Balanced baked in; Drum-focused ships as `profiles/drum_focused.json` after beating Balanced on its own style's confirm maps, as mapped and bare; Minimal measured and not shipped (bare claps); a custom profile is a JSON file in `profiles/` |
 | Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | partial — the object lane (P-7), drawn with each sound's additions; instrument lanes wait until the templates hold on real audio (median 0.138 snare-or-clap at the mappers' claps of 11 songs) |
 | Hitsound editor | change/remove/volume/sample | med | **high** | decision | no | no | **P1** | **done** — the Decide card ticks proposals by row or by bars, swaps one for an alternative, sets volume and sample index by hand, and plays it all over the song as the write would make it (equal to the written copy on 799 of 800 local maps, the last refused alike by both), then previews, writes the file or a copy and undoes once |
 | Sample bank | import skin/folder, audition samples | med | high | P4 playback | no | no | P1 | todo |

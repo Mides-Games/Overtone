@@ -1,0 +1,62 @@
+{
+  "_comment": "Drum-focused hitsound profile (docs/06-hitsound-engine.md section 11): kick, snare, hats, toms and cymbals choose the sound, in drum, soft and normal banks as balanced does; bass, guitar, keys, vocals and anything unnamed only vote for the plain sound in the object's own set. Every instrument leans a little (0.2) to a finish where the map starts a combo, because drum mappers put most finishes there. Decided object by object (switch cost 0.05). Tuned and measured on drum-led maps: timeline, 2026-09-26.",
+  "affinity": {
+    "kick": [
+      { "bank": "drum", "additions": [], "w": 1.0 },
+      { "bank": "inherit", "additions": ["finish"], "w": 0.2 }
+    ],
+    "snare": [
+      { "bank": "drum", "additions": ["clap"], "w": 1.2 },
+      { "bank": "normal", "additions": ["clap"], "w": 0.6 },
+      { "bank": "inherit", "additions": ["finish"], "w": 0.2 }
+    ],
+    "clap": [
+      { "bank": "normal", "additions": ["clap"], "w": 1.2 },
+      { "bank": "inherit", "additions": ["finish"], "w": 0.2 }
+    ],
+    "hat_closed": [
+      { "bank": "soft", "additions": [], "w": 0.9 },
+      { "bank": "inherit", "additions": ["finish"], "w": 0.2 }
+    ],
+    "hat_open": [
+      { "bank": "soft", "additions": [], "w": 0.55 },
+      { "bank": "inherit", "additions": ["finish"], "w": 0.2 }
+    ],
+    "tom": [
+      { "bank": "drum", "additions": [], "w": 0.9 },
+      { "bank": "inherit", "additions": ["finish"], "w": 0.2 }
+    ],
+    "cymbal": [{ "bank": "normal", "additions": ["finish"], "w": 1.2 }],
+    "ride": [
+      { "bank": "soft", "additions": [], "w": 0.7 },
+      { "bank": "inherit", "additions": ["finish"], "w": 0.2 }
+    ],
+    "bass": [
+      { "bank": "inherit", "additions": [], "w": 0.7 },
+      { "bank": "inherit", "additions": ["finish"], "w": 0.2 }
+    ],
+    "guitar": [
+      { "bank": "inherit", "additions": [], "w": 0.7 },
+      { "bank": "inherit", "additions": ["finish"], "w": 0.2 }
+    ],
+    "keys": [
+      { "bank": "inherit", "additions": [], "w": 0.7 },
+      { "bank": "inherit", "additions": ["finish"], "w": 0.2 }
+    ],
+    "vocal": [
+      { "bank": "inherit", "additions": [], "w": 0.7 },
+      { "bank": "inherit", "additions": ["finish"], "w": 0.2 }
+    ],
+    "other": [
+      { "bank": "inherit", "additions": [], "w": 0.7 },
+      { "bank": "inherit", "additions": ["finish"], "w": 0.2 }
+    ]
+  },
+  "weights": { "role": 1.0, "energy": 0.6, "context": 0.6, "prior": 1.2 },
+  "transition": {
+    "stream_consistency": 0.1,
+    "phrase_symmetry": 0.9,
+    "finish_spacing": 2.0,
+    "switch_cost": 0.05
+  }
+}

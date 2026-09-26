@@ -140,6 +140,16 @@ alternatives and the terms behind it. Exposed as `overtone-cli hitsound <audio> 
   other, so the number is not "accuracy". It is "better than a rule", and both samples
   clear it.
 
+**More profiles, 2026-09-26.** A profile ships only if it beats Balanced on maps
+hitsounded in its own style (`--style`: a rule read from the mappers' own sounds, set
+before anything was proposed), on a confirm sample kept apart from the tune sample, with
+the maps as mapped and stripped bare (`--bare`). Drum-focused clears it and ships as
+`profiles/drum_focused.json`; Minimal beats Balanced by more as mapped but not on bare
+claps, and is not shipped (timeline, same date). Deciding object by object lifts both;
+on bare maps every profile places claps near chance, because the role term reads the
+audio's bar and not the map's red lines (`06` §11): the change that would let a sparse
+profile compete there is in the engine, not in a profile.
+
 ### H5 · Editor and export (needs H4, P-2, P-3, P-7) — done 2026-09-26
 
 Accept, reject or change each proposal, per object or per section; volume and sample index;

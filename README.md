@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-594%20Python%20%C2%B7%20270%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-600%20Python%20%C2%B7%20270%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -195,6 +195,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Sequence decision (Viterbi) | ✅ | `overtone-cli hitsound`: 19/19 on synthetic exact truth; clap and finish agreement with mappers above the simple rules on two real samples |
 | Why a sound was proposed: what was heard under it, and every term the engine added up | ✅ | A row's inspector in the Hitsounds section (docs/06 §7 at the level of the terms); the features behind each instrument are in `overtone-cli hitsound-evidence` |
 | A hitsound difficulty: a circle at every sound of the mapset, to hitsound in one place | ✅ | Export section; each circle plays its sound exactly, or the card counts the ones that cannot; copy it to every difficulty with the copier |
+| Profiles | 🟡 | Balanced, and Drum-focused (`overtone-cli hitsound --profile profiles/drum_focused.json`), which beat it on maps hitsounded in its own style, as mapped and stripped bare; Minimal was built and measured, and did not beat it bare, so it does not ship |
 | Profiles in the app, sample bank | 📋 | P6 |
 
 ### Command line
@@ -310,7 +311,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 594 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 600 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage

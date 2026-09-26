@@ -17,6 +17,153 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Hitsound profiles held to their own style: Drum-focused ships, Minimal does not
+
+### Changed
+
+- **`profiles/drum_focused.json`**, the second profile (`06` §11: kick, snare and hats drive
+  everything, vocals ignored), as data only. The drum classes choose the sound in
+  Balanced's banks (snare and clap 1.2, cymbal 1.2, hats plain); bass, guitar, keys,
+  vocals and anything unnamed only vote for the plain sound in the object's own set (0.7);
+  every class but the cymbal leans a little (0.2) to a finish, which the context term turns
+  into a finish where the map opens a combo, because drum mappers put 64 % of their
+  finishes on new-combo sounds (below); and it decides object by object: switch cost 0.05
+  and streams 0.1, where Balanced has 0.5 and 1.4. `overtone-cli hitsound --profile
+  profiles/drum_focused.json` reads it; choosing it in the app is the next entry.
+- **`bench/eval_proposals.py` holds a profile to maps of its own style.** `--profile`
+  decides with a profile file; `--style minimal|drum` keeps the songs whose mapper
+  hitsounds in that style, by a rule read from the mapper's own sounds before anything is
+  proposed (`in_style`); `--bare` proposes on a copy of each map with every hitsound
+  stripped and still scores against the mapper's sounds, since the prior speaks only
+  where the mapper left a sound. Every run also reports the proposals' character beside
+  the mapper's: additions per object and their share on a beat. Without the new options
+  it selects and scores as before.
+- **The style rule**, set before any proposal from 4,543 local songs in 4/4 (the mappers'
+  own sounds; each threshold is where it falls in that spread): *minimal* is 0.1-0.4
+  additions per object (under 0.1 a map is not hitsounded yet; 0.4 closes the sparsest
+  4 % of the rest), at least 80 % of them on a beat (p75 0.76), and 20 claps or 10
+  finishes, so one of them can be scored; *drum-focused* is more than 0.4 per object (never
+  both), 20 claps with 75 % on beats 2 and 4 (p75 0.73), 10 finishes with 70 % on the
+  downbeat (p75 0.72), and whistles at most 40 % of the additions (p25 0.40). Each mapset
+  is judged by its first map that is not a hitsound difficulty, and a mapper gives one song
+  at most: listing the samples first showed compilation sets and one mapper filling a
+  third of a sample, and both amendments were made before anything was proposed. A
+  style's first 11 songs tune, the next 11 confirm.
+
+### Fixed
+
+- **One slow song ended a whole evaluation.** A CLI run past the timeout raised
+  `TimeoutExpired`, which the per-song loop does not catch, so the run stopped there (a
+  drum confirm run did, after 6 maps). It is now one failed song like any other, and the
+  timeout is 1,800 s rather than 300: under other sessions' load one song's evidence took
+  546 s. The stopped run was run again whole.
+
+### Hardening
+
+- Bare copies are written to a temporary folder, never beside the song. On the 44 style
+  maps the originals were byte-identical before and after (sha256), and every copy had the
+  same objects, every other section unchanged and no sound left but the plain one.
+
+### Measured
+
+```
+style rule, from 4,543 local songs in 4/4 (one map per audio file, the mappers' sounds)
+  additions per object p10 0.08 · p25 0.67 · median 1.04; share on a beat p75 0.76, p90 0.87
+  claps on beats 2 and 4 p75 0.73 (20+ claps); finishes on the downbeat p75 0.72 (10+)
+  whistles of all additions p25 0.40
+samples: a fresh scan of the Songs folder into a scratch index (ids in folder order), one
+  song per mapper, 11 to tune and the next 11 to confirm per style; 0 errors in any run
+
+F1: median over maps with 20+ claps / 10+ finishes of the mapper's own; character: medians
+                  clap F1      finish F1    additions/object  on a beat
+                  mapped bare  mapped bare  mapped bare       mapped bare
+minimal maps, tune (replica, below)             mappers 0.33       mappers 0.89
+  balanced        0.34   0.26  0.60   0.08  1.04   1.06       0.49   0.49
+  minimal         0.53   0.24  0.88   0.13  0.54   0.35       0.77   0.75
+minimal maps, confirm (bench/eval_proposals.py)  mappers 0.37      mappers 0.85
+  balanced        0.43   0.20  0.64   0.07  0.98   1.06       0.61   0.54
+  minimal         0.72   0.18  0.82   0.12  0.42   0.38       0.83   0.77
+drum-led maps, tune (replica)                   mappers 0.80       mappers 0.87
+  balanced        0.57   0.35  0.75   0.09  1.16   1.14       0.63   0.60
+  drum-focused    0.63   0.34  0.77   0.09  0.96   0.80       0.83   0.81
+drum-led maps, confirm (bench/eval_proposals.py) mappers 0.63      mappers 0.90
+  balanced        0.54   0.33  0.69   0.08  1.09   1.09       0.63   0.60
+  drum-focused    0.69   0.36  0.80   0.13  0.82   0.67       0.76   0.74
+general maps, the default selection's first 11 songs (10: one mp3 the CLI cannot
+decode); replica                                mappers 1.17       mappers 0.67
+  balanced        0.69   0.29  0.71   0.08  1.13   1.09       0.65   0.60
+  minimal         0.82   0.31  0.84   0.13  0.99   0.51       0.71   0.74
+  drum-focused    0.79   0.33  0.77   0.13  1.04   0.81       0.71   0.73
+Python unittest   528 -> 534, all pass, with the CLI built (the shipped profiles load in
+                  its strict loader)
+facts
+```
+
+**The gate**, written down before anything was proposed: a profile ships only if, on its
+style's confirm sample, its clap and finish medians are both at least Balanced's with the
+maps as mapped, one of them higher, and neither is lower on the same maps stripped bare.
+Drum-focused clears every clause. Minimal clears the mapped ones by the widest margin
+here and the bare finish, but its bare clap is 0.18 against 0.20: not shipped (Rejected,
+below). The confirm numbers come from `bench/eval_proposals.py` and the real CLI (88 runs).
+The tune and general numbers come from a replica of the CLI's decide stage fed by one
+`hitsound-evidence` run per song (a scratch port of `map.rs`, the units, emission and
+Viterbi, not committed), equal to the CLI on 11 runs covering both shipped files and
+Minimal's, mapped and bare: 6,425 of 6,425 proposals, probabilities within 2.2e-13.
+
+**What moves a profile.** Balanced's switch cost makes an addition standing alone pay
+twice, into it and out of it, so its path stays inside additions: about one per object on
+minimal maps whose mappers use a third of that, with half of them on a beat against the
+mappers' nine in ten. Deciding object by object is what lifts both profiles with the
+mappers' sounds in place, far more than their weights: on drum-led tune maps, Minimal's
+weights score clap 0.67 and finish 0.82 as mapped, above Drum-focused's 0.63 and 0.77.
+The styles differ in how much they propose and where, and on bare maps.
+
+**Why bare maps are near chance for every profile.** The role term reads the audio's own
+bar, not the map's red lines. On the 22 tune songs it gives no role at all on 5 (no grid
+to sit on), and elsewhere the metrical weight it gives equals the one the map's own lines give
+at a median of 12 % (minimal) and 28 % (drum) of the map's beats: it finds the beats,
+rarely which one opens the bar. Bare, a proposed clap is right about as often as a clap is
+there at all (precision 0.15 against a clap rate of 0.13 on minimal maps, 0.30-0.34
+against 0.26 on drum-led ones), so clap F1 follows how many claps a profile proposes, and
+the one proposing most scores best: on the bare minimal tune maps Balanced proposes 7,337
+claps for the mappers' 1,846. Finishes are the part the map does tell: 70 % (minimal) and 64 %
+(drum) of the mappers' finishes are on new-combo sounds, and 23-28 % of new combos carry
+one against 1-2 % of other sounds; claps are not (9-10 % of new combos).
+
+### Rejected / tried and dropped
+
+- **Minimal** (`06` §11: drums only on strong beats), not shipped. On its own confirm maps
+  as mapped it beats Balanced by the widest margin measured (clap F1 0.72 against 0.43,
+  finish 0.82 against 0.64) at its mappers' own density (0.42 additions per object against
+  their 0.37 and Balanced's 0.98), and bare its finishes still win (0.12 against 0.07); its
+  bare claps are 0.18 against 0.20, and the gate asked for not lower. The bare clap is
+  chance for every profile here, and a sparse profile proposes fewer claps at the same
+  precision, so this is the clause a Minimal cannot clear until the role reads the map's
+  own grid. The profile tried, to rebuild it: every class votes for the plain sound in
+  the object's own set (`inherit`, 0.9) but snare and clap (clap, 1.0) and cymbal (finish,
+  1.0); role 1.0, context 0.3, prior 1.2; switch cost 0.05, streams 0.1, phrase symmetry
+  0.9, finish spacing 2.0.
+- Tuned through the replica on the tune samples only: 22 Minimal and 13 Drum-focused
+  variants. None cleared the bare clause on tune; each profile was chosen as the one with
+  the mapped clauses cleared and the smallest bare shortfall, the style's own character
+  breaking the tie. What did not help:
+  - **Style weights on Balanced's transitions.** Drum weights at switch cost 0.5 scored
+    below Balanced on drum-led maps (clap F1 0.52-0.54 against 0.57, finish 0.40-0.71
+    against 0.75): the path stays inside additions either way, and the weights only moved
+    which ones. A Minimal at switch cost 0.8 dropped the mappers' own isolated claps and
+    finishes (F1 0.33 and 0.37 as mapped, against 0.53 and 0.88 deciding per object) and
+    proposed almost nothing bare (0.03 additions per object).
+  - **More clap evidence for Minimal** (snare and clap at 1.5-2.0): no gain bare (clap F1
+    0.22-0.23 against 0.24), a loss as mapped (0.42-0.47 against 0.53). The templates read
+    snare or clap at a median 0.138 at mappers' claps; weighting a weak reading harder adds
+    claps where there are none.
+  - **Minimal leaning to finishes on new combos** (the 0.2 finish vote and context 0.6 that
+    Drum-focused has): bare finish F1 0.17 against 0.13, but 0.81 against 0.88 as mapped
+    and more additions bare (0.42 per object against 0.35).
+  - **A weaker role term for Minimal** (0.5): better as mapped (clap 0.54, finish 0.94),
+    worse bare (clap 0.21 against Balanced's 0.26, finish 0.075 against 0.083), and the
+    bare clauses were the ones at risk.
+
 ## v4.0.0-dev — 2026-09-26 · A red line's bar length, set by hand
 
 The engine reads a section's meter where it can and guesses 4/4 where it cannot, and a

@@ -5497,6 +5497,135 @@ class HitsoundProposalEvalTests(unittest.TestCase):
         tallies = ev.score_proposals(events, units)
         self.assertEqual((tallies["whistle"]["tp"], tallies["whistle"]["mapper"]), (0, 0))
 
+    def test_a_run_past_the_timeout_is_one_error_not_the_end(self):
+        # The loop counts RuntimeError as one skipped song; a raw
+        # TimeoutExpired used to end the whole evaluation instead.
+        ev = self._eval()
+        from unittest import mock
+        stopped = ev.subprocess.TimeoutExpired(["overtone-cli"], ev.TIMEOUT_S)
+        with mock.patch.object(ev.subprocess, "run", side_effect=stopped):
+            with self.assertRaises(RuntimeError) as raised:
+                ev.run_proposals("overtone-cli.exe", "song.mp3", "map.osu")
+        self.assertIn("map.osu", str(raised.exception))
+
+    @staticmethod
+    def _eighths(bars, sounds, timing="1000,500,4,2,0,70,1,0"):
+        """A map with a circle on every eighth of ``bars`` 4/4 bars at 120
+        BPM, each carrying ``sounds[sixteenth slot]`` (hitSound bits, 0 if
+        absent)."""
+        from overtone import read_osu_beatmap
+        lines = [f"256,192,{1000 + 250 * k},1,{sounds.get((k % 8) * 2, 0)},0:0:0:0:"
+                 for k in range(8 * bars)]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(_copy_map(lines, timing).replace("\n", "\r\n").encode("utf-8"))
+            return read_osu_beatmap(path)
+
+    def test_the_style_rule_reads_the_mappers_own_sounds(self):
+        ev = self._eval()
+        # Claps on beats 2 and 4 only: 20 claps on 80 circles, all on a beat.
+        sparse = ev.style_metrics(self._eighths(10, {4: 8, 12: 8}))
+        # The same claps, a finish on every downbeat, a whistle on every "and"
+        # of 1: 0.5 additions an object, a quarter of them whistles.
+        drums = ev.style_metrics(self._eighths(10, {0: 4, 2: 2, 4: 8, 12: 8}))
+        # The drum map's claps and finishes, and a whistle on every off-beat
+        # eighth: a melody line leads (whistles 4 of 7 additions), not the drums.
+        melody = ev.style_metrics(self._eighths(10, {0: 4, 2: 2, 4: 8, 6: 2, 10: 2, 12: 8, 14: 2}))
+        in_three = ev.style_metrics(self._eighths(10, {4: 8, 12: 8}, "1000,500,3,2,0,70,1,0"))
+        json.dumps([sparse, drums, melody])
+        self.assertEqual((sparse["clap"], sparse["additions_per_object"], sparse["on_beat"],
+                          sparse["claps_on_2_and_4"]), (20, 0.25, 1.0, 1.0))
+        self.assertEqual((drums["additions_per_object"], drums["finishes_on_1"],
+                          drums["whistle_share"]), (0.5, 1.0, 0.25))
+        verdicts = [(ev.in_style(m, "minimal"), ev.in_style(m, "drum"))
+                    for m in (sparse, drums, melody, in_three)]
+        self.assertEqual(verdicts, [(True, False), (False, True), (False, False), (False, False)])
+
+    def test_a_bare_copy_strips_every_sound_and_nothing_else(self):
+        ev = self._eval()
+        from overtone import read_osu_beatmap, sound_events
+        text = _copy_map(["256,192,1000,5,8,3:2:1:60:clap.wav",
+                          "256,192,1500,2,2,L|356:192,1,70,2|8,1:2|3:0,2:0:0:0:",
+                          "256,192,2500,12,4,3500,0:0:0:0:",
+                          "256,192,4000,1,0,0:0:0:0:"], timing="1000,500,4,2,0,70,1,0")
+        with tempfile.TemporaryDirectory() as tmp:
+            source, dest = Path(tmp) / "map.osu", Path(tmp) / "bare.osu"
+            source.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            before = source.read_bytes()
+            ev.bare_copy(str(source), dest)
+            original, bare = read_osu_beatmap(source), read_osu_beatmap(dest)
+            stripped = dest.read_bytes()
+            self.assertEqual(source.read_bytes(), before)
+        events = sound_events(bare)
+        self.assertEqual(len(events), len(sound_events(original)))
+        self.assertTrue(all(e["bits"] == 0 and not any(e["raw"][k] for k in e["raw"])
+                            for e in events))
+        self.assertEqual([(o["kind"], o["time"], o["new_combo"]) for o in bare["hitobjects"]],
+                         [(o["kind"], o["time"], o["new_combo"]) for o in original["hitobjects"]])
+        cut = before.index(b"[HitObjects]")
+        self.assertEqual(stripped[:cut], before[:cut])
+        self.assertNotIn(b"\n", stripped.replace(b"\r\n", b""))
+
+    def test_character_counts_additions_and_where_they_fall(self):
+        ev = self._eval()
+        # Proposals on the downbeat, beat 2, the eighth after it and beat 3;
+        # the mapper claps beat 2 and whistles that eighth.
+        beatmap = self._eighths(1, {4: 8, 6: 2})
+        units = [self._unit(0, "circle", None, ["finish"]), self._unit(2, "circle", None, ["clap"]),
+                 self._unit(3, "circle", None, []), self._unit(4, "circle", None, ["whistle", "clap"])]
+        shape = ev.character(beatmap, units)
+        self.assertEqual(shape["objects"], 8)
+        self.assertEqual(shape["mapper"], {"additions": 2, "placed": 2, "on_beat": 1})
+        self.assertEqual(shape["proposed"], {"additions": 4, "placed": 4, "on_beat": 4})
+
+    def test_every_shipped_profile_is_whole_and_its_rows_can_fire(self):
+        # The CLI refuses an unknown class, bank or addition, but a row whose
+        # additions are out of bit order (whistle, finish, clap) loads and never
+        # matches a candidate: a silent row. And every class must appear.
+        classes = {"kick", "snare", "clap", "hat_closed", "hat_open", "tom", "cymbal", "other",
+                   "ride", "bass", "guitar", "keys", "vocal"}
+        folder = Path(__file__).resolve().parent / "profiles"
+        shipped = sorted(folder.glob("*.json"))
+        self.assertIn(folder / "balanced.json", shipped)
+        for path in shipped:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(set(raw["affinity"]), classes, path.name)
+            for rows in raw["affinity"].values():
+                self.assertTrue(rows, path.name)
+                for row in rows:
+                    self.assertIn(row["bank"], ("normal", "soft", "drum", "inherit"), path.name)
+                    order = [a for a in ("whistle", "finish", "clap") if a in row["additions"]]
+                    self.assertEqual(row["additions"], order, path.name)
+                    self.assertTrue(np.isfinite(row["w"]) and row["w"] >= 0, path.name)
+            self.assertEqual(set(raw["weights"]), {"role", "energy", "context", "prior"})
+            self.assertEqual(set(raw["transition"]), {"stream_consistency", "phrase_symmetry",
+                                                      "finish_spacing", "switch_cost"})
+            numbers = list(raw["weights"].values()) + list(raw["transition"].values())
+            self.assertTrue(all(np.isfinite(v) and v >= 0 for v in numbers), path.name)
+
+    def test_the_cli_decides_with_every_shipped_profile(self):
+        # The CLI's own loader is the strict one: every shipped file must load
+        # there, and its report must name the file it decided with.
+        import overtone_rust as rs
+        cli = rs.find_cli()
+        if cli is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        ev = self._eval()
+        folder = Path(__file__).resolve().parent / "profiles"
+        lines = [f"256,192,{500 + 500 * k},{5 if k % 4 == 0 else 1},0,0:0:0:0:" for k in range(20)]
+        with tempfile.TemporaryDirectory() as tmp:
+            audio, osu = Path(tmp) / "drums.wav", Path(tmp) / "drums.osu"
+            _drum_track(audio, [(0.5, 120.0)], duration=11.0)
+            osu.write_bytes(_copy_map(lines, "500,500,4,2,0,70,1,0").replace("\n", "\r\n")
+                            .encode("utf-8"))
+            reports = {path.name: ev.run_proposals(str(cli), str(audio), str(osu), str(path))
+                       for path in sorted(folder.glob("*.json"))}
+            reports["baked"] = ev.run_proposals(str(cli), str(audio), str(osu))
+        for name, report in reports.items():
+            self.assertEqual(len(report["units"]), 20, name)
+            self.assertEqual(report["profile"], "balanced" if name == "baked"
+                             else str(folder / name), name)
+
 
 class HitsoundApplyTests(unittest.TestCase):
     """Phase 6, H5 engine half: a decision's proposals onto the map."""

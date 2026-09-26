@@ -378,19 +378,45 @@ honest complement is a small hand-labelled set of real tracks, and it should be 
 
 ## 11. Profiles
 
-| Profile | Character |
-|---|---|
-| Balanced | natural and musical; the default |
-| Technical | precise hats and claps, dense subdivision coverage |
-| Aggressive | more accents, more finishes on phrase edges |
-| Minimal | drums only on strong beats; most objects inherit |
-| Drum-focused | kick/snare/hat drive everything; vocals ignored |
-| Vocal-focused | vocal onsets take whistles; drums support |
-| Rock / Metal | kick, snare, crash and guitar accents; hats de-emphasised |
-| Custom | every weight in §6 exposed, saved as TOML |
+| Profile | Character | State (2026-09-26) |
+|---|---|---|
+| Balanced | natural and musical; the default | ships, baked into the CLI |
+| Technical | precise hats and claps, dense subdivision coverage | not built |
+| Aggressive | more accents, more finishes on phrase edges | not built |
+| Minimal | drums only on strong beats; most objects inherit | built, measured, **not shipped** (below) |
+| Drum-focused | kick/snare/hat drive everything; vocals ignored | ships: `profiles/drum_focused.json` |
+| Vocal-focused | vocal onsets take whistles; drums support | not built |
+| Rock / Metal | kick, snare, crash and guitar accents; hats de-emphasised | not built |
+| Custom | every weight in §6 exposed, saved as TOML | a JSON file in `profiles/` (`15-hitsound-plan.md` §1) |
 
 A profile is data. Adding one is a file, not a code change — which is the test of whether
 the decision engine is actually configurable or just parameterised.
+
+A profile ships only if it beats Balanced on maps hitsounded in its own style, on a
+confirm sample kept apart from the one it was tuned on, with the maps as their mappers
+left them and again stripped bare (`bench/eval_proposals.py --style`, timeline
+2026-09-26). Drum-focused did: clap F1 0.69 against 0.54 and finish 0.80 against 0.69 as
+mapped, and higher bare too. Minimal beat Balanced as mapped by more still (0.72 against
+0.43, 0.82 against 0.64) but not on bare claps (0.18 against 0.20), so it is not shipped.
+What building the two showed about what a profile can say:
+
+- **Its transitions weigh as much as its affinity.** At Balanced's switch cost (0.5) an
+  addition standing alone pays twice, into it and out of it, so the path stays inside
+  additions: about one per object on minimally hitsounded maps and on drum-led ones,
+  against their mappers' 0.33 and 0.80. Drum-focused decides object by object (0.05), and
+  that, more than its weights, is what lifts it with the mappers' sounds in place.
+- **It cannot say "inherit".** Every candidate names a bank, and a written proposal sets
+  it on the object. An `inherit` row resolves to the object's own set, else the map's
+  `[General]` set — not the green line's — so on a map whose green lines change the set,
+  a plain proposal can name a set the object does not play now.
+- **Its role term reads the audio's bar, not the map's.** On the 22 songs the profiles
+  were tuned on, the audio grid gives no role at all on 5, and elsewhere the metrical
+  weight it gives equals the one the map's own red lines give at a median of 12 % (minimal
+  maps) and 28 % (drum-led) of the map's beats: it finds the beats, rarely which one opens
+  the bar. On a map with no hitsounds yet, every profile places claps about as often
+  right as a clap is there at all. Reading the role from the map's red lines when a map is
+  given is an engine change, not a profile, and until then a sparse profile cannot beat a
+  prolific one on bare claps.
 
 ---
 

@@ -3186,21 +3186,73 @@ class MapWriterTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 set_beatmap_reds(read_osu_beatmap(target), ["1,500,4,1,0,100,1,0"])
 
+    @staticmethod
+    def _kiai_reads(beatmap, times_ms):
+        from overtone import _TimingCursor
+        cursor = _TimingCursor(beatmap)
+        return [cursor.at(t)[1].kiai for t in times_ms]
+
     def test_chorus_kiai_opens_and_closes_carrying_state(self) -> None:
         from overtone import set_chorus_kiai, sound_events
         beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1500,-100,4,2,1,60,0,0")
         before = sound_events(beatmap)
         result = set_chorus_kiai(beatmap, [(1000.0, 2000.0)])
         json.dumps(result)
-        self.assertEqual(result, {"added": 2, "flipped": 0, "kept": 0})
+        # The map's own green inside the chorus would switch kiai off half
+        # way through: it is lit too, not left to cancel the chorus.
+        self.assertEqual(result, {"added": 2, "flipped": 1, "kept": 0})
         self.assertEqual(sound_events(beatmap), before)
         greens = beatmap["timing"]["greens"]
-        self.assertEqual((len(greens), greens[0].split(",")[7], greens[1].split(",")[7]),
-                         (3, "1", "0"))
+        self.assertEqual([(g.split(",")[0], g.split(",")[7]) for g in greens],
+                         [("1000", "1"), ("1500", "1"), ("2000", "0")])
         self.assertTrue(greens[0].startswith("1000,-100,"))
+        self.assertEqual(self._kiai_reads(beatmap, [900, 1200, 1700, 2100]), [False, True, True, False])
         # Second run changes nothing: kiai already reads right.
         self.assertEqual(set_chorus_kiai(beatmap, [(1000.0, 2000.0)]),
                          {"added": 0, "flipped": 0, "kept": 2})
+
+    def test_chorus_kiai_keeps_touching_choruses_lit(self) -> None:
+        # Two choruses back to back: the seam closed kiai right after the
+        # second one opened, so only the first was lit (Master of Tides).
+        from overtone import set_chorus_kiai
+        beatmap = self._kiai_map("0,500,4,2,1,70,1,0\n2000,-100,4,2,1,60")
+        result = set_chorus_kiai(beatmap, [(1000.0, 2000.0), (2000.0, 3000.0)])
+        self.assertEqual(result, {"added": 2, "flipped": 1, "kept": 0})
+        self.assertEqual(self._kiai_reads(beatmap, [900, 1500, 2000, 2500, 3100]),
+                         [False, True, True, True, False])
+        # An old six-field green takes the defaults osu! reads for the rest.
+        self.assertIn("2000,-100,4,2,1,60,0,1", beatmap["timing"]["greens"])
+
+    def test_chorus_kiai_lights_a_red_line_inside_and_gives_back_the_maps_own(self) -> None:
+        from overtone import set_chorus_kiai, sound_events
+        # A tempo change inside the chorus carries its own kiai bit (off); the
+        # mapper's own kiai from 1800 runs past the chorus and stays.
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1400,400,4,2,1,70,1,0\n"
+                                 "1800,-100,4,2,1,70,0,1\n2500,-100,4,2,1,70,0,0")
+        before = sound_events(beatmap)
+        result = set_chorus_kiai(beatmap, [(1000.0, 2000.0)])
+        self.assertEqual(result, {"added": 2, "flipped": 0, "kept": 1})
+        self.assertEqual(sound_events(beatmap), before)
+        self.assertEqual(self._kiai_reads(beatmap, [1200, 1500, 1900, 2200, 2600]),
+                         [True, True, True, True, False])
+        self.assertEqual([g.split(",")[0] for g in beatmap["timing"]["greens"]],
+                         ["1000", "1400", "1800", "2500"])
+
+    def test_chorus_kiai_keeps_each_lines_own_ending(self) -> None:
+        from overtone import set_chorus_kiai, write_osu_beatmap
+        raw = ("osu file format v14\r\n\r\n[General]\r\nAudioFilename: audio.mp3\r\n\r\n"
+               "[TimingPoints]\r\n1000,500,4,2,1,70,1,0\n3000,-100,4,2,1,60,0,0\r\n\r\n"
+               "[HitObjects]\r\n256,192,1000,1,0,0:0:0:0:\r\n").encode("utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(raw)
+            beatmap = read_osu_beatmap(path)
+            set_chorus_kiai(beatmap, [(1500.0, 2000.0)])
+            write_osu_beatmap(path, beatmap, backup=False)
+            written = path.read_bytes()
+        # The red line's bare LF survives the insert; the new greens take CRLF.
+        self.assertIn(b"1000,500,4,2,1,70,1,0\n1500,", written)
+        self.assertIn(b"1500,-100,4,2,1,70,0,1\r\n2000,-100,4,2,1,70,0,0\r\n3000,", written)
 
     def test_chorus_kiai_flips_a_green_instead_of_doubling(self) -> None:
         from overtone import set_chorus_kiai

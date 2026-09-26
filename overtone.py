@@ -4537,21 +4537,55 @@ def set_beatmap_reds(beatmap: dict, new_reds: list[str]) -> int:
     return replaced
 
 
+#: What osu! reads for the fields an old green line leaves out: meter,
+#: sample set, sample index, volume, uninherited (0: a green) and effects.
+_GREEN_FIELD_DEFAULTS = ("", "", "4", "0", "0", "100", "0", "0")
+
+
+def _green_fields(line: str) -> list[str]:
+    """A green line's eight fields, the missing ones at osu!'s defaults: an
+    empty field would not read back (osu! reads a character from it)."""
+    fields = [f.strip() for f in line.split(",")]
+    while len(fields) < 8:
+        fields.append(_GREEN_FIELD_DEFAULTS[len(fields)])
+    return fields
+
+
+def _insert_timing_line(section: dict, row: str) -> None:
+    """``row`` into [TimingPoints] before the first point later than it,
+    every other line keeping its own ending; the new one takes the file's."""
+    time_ms = float(row.split(",", 1)[0])
+    at = next((n for n, line in enumerate(section["lines"])
+               if line.strip() and not line.strip().startswith("//")
+               and (point := _timing_point_fields(line)) is not None
+               and point["time"] > time_ms + 1e-6), len(section["lines"]))
+    endings = section.get("endings")
+    if endings is not None and len(endings) == len(section["lines"]):
+        endings.insert(at, None)
+    section["lines"].insert(at, row)
+
+
 def set_chorus_kiai(beatmap: dict, spans: list[tuple[float, float]]) -> dict:
     """Kiai on chorus spans, written as green lines (Phase 21, Kiai).
 
-    Each span opens kiai at its start and closes it at its end: a green
-    already at the boundary gets its kiai bit flipped, otherwise a new green
-    carries the audible state in force there (SV, sets, index, volume), so
-    nothing plays differently — kiai is light, not sound. A boundary whose
-    kiai already reads right is left alone. Raw lines move, the ``timing``
-    view is refreshed, and comments and blanks stay put. In place, like the
-    P-2 field edits. Returns added, flipped and kept.
+    Choruses that touch or overlap light as one run: a chorus ending where
+    the next one begins must not switch kiai off at the seam. Inside a run
+    every point reads kiai, because a point carries its own kiai bit and the
+    map's own greens (SV, volume) would switch it off a beat in: a green
+    where kiai reads off gets its bit set, and a time with no green to set
+    (the run's start, or a red line inside, which carries its own effects)
+    gets a new green carrying the audible state in force there (SV, sets,
+    index, volume), so nothing plays differently — kiai is light, not sound.
+    At the run's end, kiai goes back to what the map itself had there. A
+    boundary already reading right is kept, so a second run changes nothing.
+    Raw lines move, the ``timing`` view is refreshed, and comments and
+    blanks stay put. In place, like the P-2 field edits. Returns added
+    (greens), flipped (kiai bits) and kept (boundaries already right).
     """
     section = next((s for s in beatmap.get("sections", []) if s["name"] == "TimingPoints"), None)
     if section is None:
         raise ValueError("No [TimingPoints] section in this beatmap.")
-    cursor = _TimingCursor(beatmap)
+    cursor = _TimingCursor(beatmap)      # the map as read: audible state and its own kiai
     import bisect
 
     def meter_at(time_ms: float) -> int:
@@ -4563,58 +4597,87 @@ def set_chorus_kiai(beatmap: dict, spans: list[tuple[float, float]]) -> dict:
         whole = round(time_ms)
         return str(int(whole)) if abs(time_ms - whole) < 1e-6 else f"{time_ms:.3f}"
 
-    def state_at(time_ms: float):
-        _beat, state = cursor.at(time_ms)
-        if state is None:
-            return 1.0, 0, 0, 100
-        return state.sv, state.sample_set, state.sample_index, state.volume
+    # The kiai each point time reads once every point there is applied, in
+    # osu!'s order, and the green read last there: the one a flip goes to.
+    rows = []
+    for order, line in enumerate(section["lines"]):
+        text = line.strip()
+        if text and not text.startswith("//") and (point := _timing_point_fields(text)) is not None:
+            point["order"] = order
+            rows.append(point)
+    kiai_at: dict[float, bool] = {}
+    last_green: dict[float, int] = {}
+    for row in _ordered(rows):
+        kiai_at[row["time"]] = bool(row["effects"] & 1)
+        if not row["red"]:
+            last_green[row["time"]] = row["order"]
+    times = sorted(kiai_at)
+    flips: dict[int, bool] = {}
+    inserts: list[tuple[float, bool]] = []
 
-    added = flipped = kept = 0
-    overlays: list[tuple[float, bool]] = []
-    bounds: list[tuple[float, bool]] = []
-    for start_ms, end_ms in spans:
-        bounds.append((float(start_ms), True))
-        bounds.append((float(end_ms), False))
-    # Ascending, opens before closes: each boundary reads the kiai the
-    # previous ones left, including this run's own greens.
-    for time_ms, want in sorted(bounds, key=lambda b: (b[0], not b[1])):
-        current = next((k for t, k in reversed(overlays) if t <= time_ms + 1e-6), None)
-        if current is None:
-            _beat, state = cursor.at(time_ms)
-            current = state.kiai if state is not None else False
-        if current == want:
-            kept += 1
+    def point_time(time_ms: float) -> float | None:
+        i = bisect.bisect_left(times, time_ms - 0.01)
+        return times[i] if i < len(times) and times[i] <= time_ms + 0.01 else None
+
+    def kiai_now(time_ms: float) -> bool:
+        # Before the first point, the first point's settings apply, as in osu!.
+        i = bisect.bisect_right(times, time_ms + 1e-6) - 1
+        return kiai_at[times[max(i, 0)]] if times else False
+
+    def decide(time_ms: float, on: bool) -> str:
+        at = point_time(time_ms)
+        if at is None:
+            at = time_ms
+            bisect.insort(times, at)
+        kiai_at[at] = on
+        if at in last_green:
+            flips[last_green[at]] = on
+            return "flipped"
+        inserts.append((at, on))            # no green there, or only a red line
+        return "added"
+
+    runs: list[list[float]] = []
+    for start_ms, end_ms in sorted((float(a), float(b)) for a, b in spans):
+        if not end_ms > start_ms:
             continue
-        overlays.append((time_ms, want))
-        hit = next((n for n, line in enumerate(section["lines"])
-                    if line.strip() and not line.strip().startswith("//")
-                    and (point := _timing_point_fields(line)) is not None
-                    and not point["red"] and abs(point["time"] - time_ms) <= 0.01), None)
-        if hit is not None:
-            fields = [f.strip() for f in section["lines"][hit].split(",")]
-            while len(fields) < 8:
-                fields.append("")
-            effects = int(float(fields[7])) if fields[7] else 0
-            fields[7] = str((effects | 1) if want else (effects & ~1))
-            section["lines"][hit] = ",".join(fields)
-            flipped += 1
-            continue
-        sv, sample_set, sample_index, volume = state_at(time_ms)
-        row = (f"{stamp(time_ms)},{-100.0 / sv:.12g},{meter_at(time_ms)},"
-               f"{sample_set},{sample_index},{volume},0,{1 if want else 0}")
-        at = next((n for n, line in enumerate(section["lines"])
-                   if line.strip() and not line.strip().startswith("//")
-                   and (point := _timing_point_fields(line)) is not None
-                   and point["time"] > time_ms + 1e-6), len(section["lines"]))
-        section["lines"].insert(at, row)
-        added += 1
+        if runs and start_ms <= runs[-1][1] + 0.01:
+            runs[-1][1] = max(runs[-1][1], end_ms)
+        else:
+            runs.append([start_ms, end_ms])
+    counts = {"added": 0, "flipped": 0, "kept": 0}
+    for start_ms, end_ms in runs:
+        # What follows the run is the map's own kiai there, read before any edit.
+        _beat, after = cursor.at(end_ms)
+        restore = bool(after is not None and after.kiai)
+        if kiai_now(start_ms):
+            counts["kept"] += 1
+        else:
+            counts[decide(start_ms, True)] += 1
+        for time_ms in [t for t in times if start_ms + 0.01 < t < end_ms - 0.01]:
+            if not kiai_now(time_ms):
+                counts[decide(time_ms, True)] += 1
+        if kiai_now(end_ms) == restore:
+            counts["kept"] += 1
+        else:
+            counts[decide(end_ms, restore)] += 1
+    for index, on in flips.items():
+        fields = _green_fields(section["lines"][index])
+        effects = int(float(fields[7])) if fields[7] else 0
+        fields[7] = str((effects | 1) if on else (effects & ~1))
+        section["lines"][index] = ",".join(fields)
+    for time_ms, on in inserts:
+        _beat, state = cursor.at(time_ms)
+        sv, sample_set, sample_index, volume = ((state.sv, state.sample_set, state.sample_index,
+                                                 state.volume) if state is not None else (1.0, 0, 0, 100))
+        _insert_timing_line(section, f"{stamp(time_ms)},{-100.0 / sv:.12g},{meter_at(time_ms)},"
+                                     f"{sample_set},{sample_index},{volume},0,{1 if on else 0}")
     timing = [line for line in section["lines"]
               if line.strip() and not line.strip().startswith("//")]
     beatmap["timing"] = {
         "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
         "greens": [line for line in timing if not _is_red_line(line.strip())],
     }
-    return {"added": added, "flipped": flipped, "kept": kept}
+    return counts
 
 
 def set_section_volumes(beatmap: dict, sections: list[dict]) -> dict:
@@ -4691,21 +4754,14 @@ def set_section_volumes(beatmap: dict, sections: list[dict]) -> dict:
                     and (point := _timing_point_fields(line)) is not None
                     and not point["red"] and abs(point["time"] - start_ms) <= 0.01), None)
         if hit is not None:
-            fields = [f.strip() for f in section["lines"][hit].split(",")]
-            while len(fields) < 8:
-                fields.append("")
+            fields = _green_fields(section["lines"][hit])
             fields[5] = str(target)
             section["lines"][hit] = ",".join(fields)
             flipped += 1
             continue
         sv, sample_set, sample_index, _volume, kiai = state_at(start_ms)
-        row = (f"{stamp(start_ms)},{-100.0 / sv:.12g},{meter_at(start_ms)},"
-               f"{sample_set},{sample_index},{target},0,{1 if kiai else 0}")
-        at = next((n for n, line in enumerate(section["lines"])
-                   if line.strip() and not line.strip().startswith("//")
-                   and (point := _timing_point_fields(line)) is not None
-                   and point["time"] > start_ms + 1e-6), len(section["lines"]))
-        section["lines"].insert(at, row)
+        _insert_timing_line(section, f"{stamp(start_ms)},{-100.0 / sv:.12g},{meter_at(start_ms)},"
+                                     f"{sample_set},{sample_index},{target},0,{1 if kiai else 0}")
         added += 1
     timing = [line for line in section["lines"]
               if line.strip() and not line.strip().startswith("//")]

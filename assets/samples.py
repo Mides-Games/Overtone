@@ -2,19 +2,21 @@
 
 osu!'s default samples belong to ppy and are not Overtone's to ship, so a map
 that names no custom samples plays these instead: the three sample sets osu!
-has, each with its four sounds, in its own character.
+has, each with its four sounds, in its own character, and the two a slider
+holds from head to tail (the slide, and the whistle slide), which loop.
 
     normal  bright and wooden: a tick, a two-tone ping, a crash, a clap
     soft    the same roles, rounder and lower, with less attack
     drum    a kit: kick, tom, cymbal, snare
+    slides  one second of airy hiss, and a held whistle, per set
 
 Standard library only, a seeded noise source and fixed float arithmetic, so
 anyone regenerates the same bytes with the repo's own interpreter:
 
     .venv/Scripts/python.exe assets/samples.py
 
-Outputs: assets/samples/<set>-hit<sound>.wav, 44.1 kHz 16-bit mono, the file
-names osu! itself uses. They are placeholders with the right roles, not
+Outputs: assets/samples/<set>-hit<sound>.wav and <set>-slider<slide|whistle>.wav,
+44.1 kHz 16-bit mono, the file names osu! itself uses. They are placeholders with the right roles, not
 imitations of any skin: a mapper who wants osu!'s own sounds points Overtone
 at their skin or keeps custom samples in the beatmap folder, which win.
 """
@@ -133,6 +135,38 @@ def clap(seed: int, centre: float, q: float, tail: float) -> list[float]:
     return mix((burst(0), 1.0, 0.0), (burst(1), 0.9, 0.009), (burst(2), 0.8, 0.019), (body, 0.9, 0.024))
 
 
+#: A slide's loop, in seconds: whole cycles of every tone and of the vibrato,
+#: so the end meets the start.
+LOOP = 1.0
+#: Loops sound for as long as a slider lasts: kept well under the hits.
+LOOP_PEAK = 0.3
+
+
+def sustain(partials, vibrato: float, depth: float) -> list[float]:
+    """Held sines at whole-number frequencies with a whole-number vibrato:
+    every phase comes back where it started at LOOP, so it loops without a
+    click."""
+    out = []
+    for i in range(seconds(LOOP)):
+        t = i / RATE
+        wobble = depth / vibrato * math.sin(2 * math.pi * vibrato * t)
+        out.append(sum(w * math.sin(2 * math.pi * f * t + wobble * f / partials[0][0])
+                       for f, w in partials))
+    return out
+
+
+def looped(x: list[float], fade: float = 0.1) -> list[float]:
+    """LOOP seconds of ``x`` (longer by ``fade``) whose end runs into its
+    start: the first ``fade`` blends, at equal power, into what follows the
+    end, so the last sample and the first are neighbours of one signal."""
+    n, f = seconds(LOOP), seconds(fade)
+    out = x[:n]
+    for i in range(f):
+        k = i / f
+        out[i] = x[i] * math.sqrt(k) + x[n + i] * math.sqrt(1 - k)
+    return out
+
+
 def design() -> dict[str, list[float]]:
     s = {}
     # normal: bright, wooden
@@ -155,12 +189,20 @@ def design() -> dict[str, list[float]]:
                               (tone(1.2, [(540, 0.25), (833, 0.2), (1187, 0.15)], 0.001, 0.35), 1.0, 0))
     s["drum-hitclap"] = mix((bandpass(noise(0.25, 81, 0.0005, 0.06), 2200, 0.7), 1.0, 0),
                             (tone(0.12, [(190, 1.0)], 0.001, 0.03), 0.6, 0))
+    # slides: what a slider's body holds from head to tail, looped
+    held = lambda seed: noise(LOOP + 0.1, seed, 0.0, 1e9)
+    s["normal-sliderslide"] = looped(bandpass(held(91), 4200, 0.7))
+    s["normal-sliderwhistle"] = sustain([(880, 1.0), (1760, 0.3)], 5, 6)
+    s["soft-sliderslide"] = looped(lowpass(bandpass(held(93), 1800, 0.6), 5000))
+    s["soft-sliderwhistle"] = sustain([(660, 1.0), (1320, 0.2)], 5, 5)
+    s["drum-sliderslide"] = looped(bandpass(held(95), 260, 0.8))
+    s["drum-sliderwhistle"] = sustain([(440, 1.0), (660, 0.3)], 4, 4)
     return s
 
 
-def to_wav(signal: list[float], path: Path) -> None:
+def to_wav(signal: list[float], path: Path, level: float = PEAK) -> None:
     peak = max(abs(v) for v in signal) or 1.0
-    frames = b"".join(struct.pack("<h", int(round(max(-1.0, min(1.0, v / peak * PEAK)) * 32767)))
+    frames = b"".join(struct.pack("<h", int(round(max(-1.0, min(1.0, v / peak * level)) * 32767)))
                       for v in signal)
     with wave.open(str(path), "wb") as out:
         out.setnchannels(1)
@@ -174,7 +216,7 @@ def main(out: Path = OUT) -> list[Path]:
     written = []
     for name, signal in design().items():
         path = out / f"{name}.wav"
-        to_wav(signal, path)
+        to_wav(signal, path, LOOP_PEAK if "-slider" in name else PEAK)
         written.append(path)
     return written
 

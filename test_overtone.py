@@ -4702,7 +4702,7 @@ class HitsoundSampleTests(unittest.TestCase):
         spec.loader.exec_module(samples)
         with tempfile.TemporaryDirectory() as tmp:
             made = samples.main(Path(tmp))
-            self.assertEqual(len(made), 12)
+            self.assertEqual(len(made), 18)
             for path in made:
                 committed = samples.OUT / path.name
                 with self.subTest(sample=path.name):
@@ -4710,6 +4710,19 @@ class HitsoundSampleTests(unittest.TestCase):
                     with wave.open(str(committed)) as w:
                         self.assertEqual((w.getnchannels(), w.getsampwidth(), w.getframerate()), (1, 2, 44100))
                         self.assertLess(w.getnframes() / 44100, 1.5)
+
+    def test_a_slide_loops_without_a_seam(self):
+        # Looped end to start, the jump is no bigger than the largest jump
+        # between two neighbours inside the file: nothing clicks.
+        import wave
+        slides = sorted((Path(__file__).resolve().parent / "assets" / "samples").glob("*-slider*.wav"))
+        self.assertEqual(len(slides), 6)
+        for path in slides:
+            with self.subTest(sample=path.name), wave.open(str(path)) as w:
+                x = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(float)
+                inside = np.abs(np.diff(x)).max()
+                self.assertLessEqual(abs(x[0] - x[-1]), inside)
+                self.assertEqual(w.getnframes(), 44100)
 
     def test_samples_are_found_as_osu_finds_them(self):
         from overtone import DEFAULT_SAMPLE_DIR, hitsound_playback, read_osu_beatmap

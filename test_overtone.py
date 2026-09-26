@@ -5195,6 +5195,78 @@ class HitsoundApplyTests(unittest.TestCase):
             self.assertEqual((same["edited"], same["changes"]), (1, {0: {"sample": {"volume": 40}}}))
 
 
+class HitsoundDifficultyTests(unittest.TestCase):
+    """Phase 6, H5 export: a mapset's hitsound difficulty."""
+
+    @staticmethod
+    def _write(tmp, name, objects, version, timing="0,500,4,2,0,70,1,0"):
+        text = _copy_map(objects, timing).replace(
+            "[Difficulty]", f"[Metadata]\nTitle:Song\nVersion:{version}\nBeatmapID:123\nBeatmapSetID:9\n\n[Difficulty]")
+        path = Path(tmp) / f"Artist - Song (Mapper) [{version}].osu"
+        path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+        return path
+
+    def test_every_sound_of_the_mapset_becomes_a_circle_that_plays_it(self):
+        from overtone import read_osu_beatmap, sound_events, write_hitsound_difficulty
+        with tempfile.TemporaryDirectory() as tmp:
+            hard = self._write(tmp, "hard", ["256,192,1000,1,8,0:0:0:0:",
+                                             "256,192,2000,2,0,L|356:192,1,140,2|0,0:0|0:0"], "Hard")
+            # The Normal sounds 2 ms off the Hard's clap (the same time) and once alone.
+            normal = self._write(tmp, "normal", ["256,192,1002,1,0,0:0:0:0:",
+                                                 "256,192,3000,1,4,3:0:0:60:"], "Normal")
+            preview = write_hitsound_difficulty(hard, [normal], preview=True)
+            self.assertFalse(Path(preview["dest"]).exists())
+            done = write_hitsound_difficulty(hard, [normal])
+            dest = Path(done["dest"])
+            written = dest.read_bytes()
+            again = None
+            try:
+                write_hitsound_difficulty(hard, [normal])
+            except ValueError as exc:
+                again = str(exc)
+            events = sound_events(read_osu_beatmap(dest))
+            want = sound_events(read_osu_beatmap(hard)) + sound_events(read_osu_beatmap(normal))[1:]
+            source = hard.read_bytes()
+        self.assertEqual(dest.name, "Artist - Song (Mapper) [Hitsounds].osu")
+        self.assertEqual({k: preview[k] for k in ("circles", "from_source", "from_others", "merged", "inexact")},
+                         {"circles": 4, "from_source": 3, "from_others": 1, "merged": 1, "inexact": 0})
+        self.assertIn("already exists", again)
+        objects = written.split(b"[HitObjects]\r\n")[1].split(b"\r\n")
+        self.assertEqual(objects[:4], [b"256,192,1000,1,8,2:2:0:70:", b"256,192,2000,1,2,2:2:0:70:",
+                                       b"256,192,2500,1,0,2:2:0:70:", b"256,192,3000,1,4,3:3:0:60:"])
+        # Each circle plays what it played where it came from (the slider's
+        # body is not a sound a circle can carry).
+        key = lambda e: (e["time"], e["sounds"], e["normal_set"], e["addition_set"], e["index"], e["volume"])
+        self.assertEqual([key(e) for e in events], [key(e) for e in want if e["part"] != "body"])
+        # Everything but the objects, the Version and the BeatmapID is the source's.
+        self.assertIn(b"Version:Hitsounds\r\nBeatmapID:0\r\nBeatmapSetID:9\r\n", written)
+        self.assertEqual(written.split(b"[HitObjects]")[0].replace(b"Version:Hitsounds\r\nBeatmapID:0",
+                                                                     b"Version:Hard\r\nBeatmapID:123"),
+                         source.split(b"[HitObjects]")[0])
+
+    def test_an_index_the_format_can_only_inherit_is_counted_not_guessed(self):
+        from overtone import hitsound_difficulty, read_osu_beatmap
+        # The source's green gives index 2 at 3000 ms; the Normal's sound there
+        # plays index 0 under its own lines, which a circle cannot say.
+        with tempfile.TemporaryDirectory() as tmp:
+            hard = self._write(tmp, "hard", ["256,192,1000,1,0,0:0:0:0:"], "Hard",
+                               timing="0,500,4,2,0,70,1,0\n2500,-100,4,2,2,70,0,0")
+            normal = self._write(tmp, "normal", ["256,192,3000,1,8,0:0:0:0:"], "Normal")
+            built = hitsound_difficulty(read_osu_beatmap(hard), [read_osu_beatmap(normal)])
+        self.assertEqual((built["circles"], built["inexact"], built["inexact_times"]), (2, 1, [3.0]))
+
+    def test_a_chord_keeps_its_first_sound_and_says_how_many_it_left(self):
+        from overtone import hitsound_difficulty, read_osu_beatmap
+        # Two notes of the source at one time with different sounds, and a
+        # third that sounds like the first: one circle, one sound left out.
+        with tempfile.TemporaryDirectory() as tmp:
+            hard = self._write(tmp, "hard", ["64,192,1000,1,8,0:0:0:0:", "192,192,1000,1,4,0:0:0:0:",
+                                             "320,192,1001,1,8,0:0:0:0:"], "Hard")
+            built = hitsound_difficulty(read_osu_beatmap(hard))
+        self.assertEqual((built["circles"], built["merged"], built["stacked"], built["stacked_times"]),
+                         (1, 2, 1, [1.0]))
+
+
 class AnalysisEvidenceTests(unittest.TestCase):
     """Phase 19, Evidence: the engine's alternatives, octave margin included."""
 

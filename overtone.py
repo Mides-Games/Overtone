@@ -7017,6 +7017,129 @@ def apply_proposals(src_path: str | os.PathLike[str], units: list[dict], accept=
     return {**write_object_hitsounds(target, changes, backup=False), "dest": str(target)}
 
 
+# -- H5 export: a hitsound difficulty -----------------------------------------
+
+#: The difficulty name, and the file's bracket, a hitsound difficulty takes.
+HITSOUND_DIFFICULTY = "Hitsounds"
+
+
+def _sound_key(event: dict) -> tuple:
+    """What a sound plays, resolved: two sounds with one key sound alike."""
+    return (tuple(event["sounds"]), event["normal_set"], event["addition_set"],
+            event["index"], event["volume"], event["file"])
+
+
+def hitsound_difficulty(source: dict, others=(), tolerance_ms: float = COPY_TOLERANCE_MS) -> dict:
+    """A mapset's hitsound difficulty, built in memory (H5, export).
+
+    One circle at every time a sound falls: each of the source's sounds
+    first, then every time another difficulty sounds where no circle is
+    within ``tolerance_ms`` yet, taking that difficulty's sound, the
+    ``others`` in the order given. Slider edges become circles; a body's
+    slide stays with its slider, which the circles cannot carry. Each circle
+    writes its sound in full (additions, both sets, index, volume, custom
+    file), so it plays what it played where it came from whatever the green
+    lines say, except an index of 0, which the format can only inherit.
+    Every circle is therefore checked through P-1 against its origin, and
+    the ones that differ are counted with their times, not guessed at. So
+    are the source's sounds that share their time with a different one (a
+    mania chord, stacked objects): one circle per time keeps the first, and
+    combining them would change what each object plays.
+    Returns the ``beatmap`` (the source's own sections, its metadata named
+    ``Hitsounds`` with no BeatmapID, its objects replaced) and counts.
+    """
+    import bisect
+    import copy
+    taken: list[float] = []
+    held: list[tuple[dict, int]] = []           # beside ``taken``: each circle's sound, origin
+    rows: list[tuple[float, dict, int]] = []
+    merged, stacked = 0, []
+    for rank, beatmap in enumerate([source, *others]):
+        for event in sound_events(beatmap):
+            if event["part"] == "body":
+                continue
+            t = float(event["time"])
+            k = bisect.bisect_left(taken, t)
+            near = [j for j in (k - 1, k) if 0 <= j < len(taken) and abs(taken[j] - t) <= tolerance_ms]
+            if near:
+                merged += 1
+                # The source's own sounds that share a time with a different
+                # one (a chord, stacked objects): one circle keeps the first.
+                circle, origin = held[near[0]]
+                if rank == 0 and origin == 0 and _sound_key(circle) != _sound_key(event):
+                    stacked.append(round(t / 1000.0, 3))
+                continue
+            taken.insert(k, t)
+            held.insert(k, (event, rank))
+            rows.append((t, event, rank))
+    rows.sort(key=lambda r: r[0])
+    lines = [f"256,192,{int(round(t))},1,{e['bits'] & 15},"
+             f"{_SET_NUMBER[e['normal_set']]}:{_SET_NUMBER[e['addition_set']]}:"
+             f"{e['index']}:{e['volume']}:{e['file']}" for t, e, _rank in rows]
+    out = copy.deepcopy(source)
+    for section in out["sections"]:
+        if section["name"] == "Metadata":
+            body = section["lines"]
+            endings = section.get("endings")
+            for key, value in (("Version", HITSOUND_DIFFICULTY), ("BeatmapID", "0")):
+                at = next((i for i, line in enumerate(body)
+                           if ":" in line and line.split(":", 1)[0].strip() == key), None)
+                if at is not None:
+                    body[at] = f"{key}:{value}"
+                else:
+                    body.append(f"{key}:{value}")
+                    if endings is not None and len(endings) == len(body) - 1:
+                        endings.append(None)
+            out["metadata"] = _osu_key_values(body)
+        elif section["name"] == "HitObjects":
+            section["lines"] = list(lines)
+            section["endings"] = [None] * len(lines)
+    if not any(s["name"] == "HitObjects" for s in out["sections"]):
+        raise ValueError("No [HitObjects] section to write the circles into.")
+    out["hitobjects"] = [_parse_hit_object(line) for line in lines]
+    check = sound_events(out)
+    inexact = [round(t / 1000.0, 3) for (t, e, _rank), got in zip(rows, check)
+               if _sound_key(got) != _sound_key(e)]
+    return {"beatmap": out, "circles": len(rows),
+            "from_source": sum(1 for r in rows if r[2] == 0),
+            "from_others": sum(1 for r in rows if r[2] > 0), "merged": merged,
+            "stacked": len(stacked), "stacked_times": stacked[:20],
+            "inexact": len(inexact), "inexact_times": inexact[:20]}
+
+
+def hitsound_difficulty_path(source_path: str | os.PathLike[str]) -> Path:
+    """``Artist - Title (Mapper) [Hitsounds].osu`` beside the source."""
+    src = Path(source_path)
+    stem = src.stem
+    if stem.endswith("]") and "[" in stem:
+        stem = stem[:stem.rfind("[")].rstrip()
+    return src.with_name(f"{stem} [{HITSOUND_DIFFICULTY}].osu")
+
+
+def write_hitsound_difficulty(source_path: str | os.PathLike[str], other_paths=(),
+                              dest: str | os.PathLike[str] | None = None,
+                              preview: bool = False) -> dict:
+    """A mapset's hitsound difficulty as a new .osu (H5, export).
+
+    Written beside the source as ``hitsound_difficulty_path`` names it, or at
+    ``dest``; either way it must not exist, since this never replaces a
+    file. Every section but the metadata's Version and BeatmapID and the
+    objects is the source's own, byte for byte. ``preview`` builds and
+    checks it and writes nothing. Logged in History as ``hsdiff``.
+    """
+    src = Path(source_path)
+    target = Path(dest) if dest is not None else hitsound_difficulty_path(src)
+    if target.exists():
+        raise ValueError(f"{target.name} already exists: remove or rename it first.")
+    built = hitsound_difficulty(read_osu_beatmap(src), [read_osu_beatmap(Path(p)) for p in other_paths])
+    result = {k: v for k, v in built.items() if k != "beatmap"}
+    if preview:
+        return {**result, "dest": str(target), "written": False}
+    write_osu_beatmap(target, built["beatmap"], backup=False, op="hsdiff",
+                      summary={"source": src.name, "circles": built["circles"]})
+    return {**result, "dest": str(target), "written": True}
+
+
 # -- P-3: which sample each sound plays --------------------------------------
 
 #: Overtone's own samples (assets/samples.py makes them): what plays where a

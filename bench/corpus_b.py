@@ -145,10 +145,6 @@ def quartiles(values: list[float]) -> dict | None:
             "q3": statistics.median(upper) if upper else ordered[-1]}
 
 
-def octave_label(octave: float) -> str:
-    return f"x{octave:g}"
-
-
 def tally(rows: list[dict], shift_ms: float = 0.0) -> dict:
     """What a set of rows says: shares within each bar, the signed error,
     BPM agreement and octaves. ``shift_ms`` is subtracted from every error
@@ -158,7 +154,7 @@ def tally(rows: list[dict], shift_ms: float = 0.0) -> dict:
     within = {f"{tol:g}": sum(abs(e - shift_ms) <= tol for e in errors)
               for tol in TOLERANCES_MS}
     bpm_errors = [r["bpm_error"] for r in rows if r["bpm_error"] is not None]
-    octaves = Counter(octave_label(r["octave"]) for r in rows if r["octave"] is not None)
+    octaves = Counter(f"x{r['octave']:g}" for r in rows if r["octave"] is not None)
     return {
         "lines": lines,
         "undetected": lines - len(errors),
@@ -175,17 +171,15 @@ def tally(rows: list[dict], shift_ms: float = 0.0) -> dict:
     }
 
 
-def mean_share(tracks: list[dict], tol: float) -> float | None:
-    """The tracks' own shares averaged, so each song weighs the same."""
-    shares = [t["tally"]["share"][f"{tol:g}"] for t in tracks if t["tally"]["lines"]]
-    return sum(shares) / len(shares) if shares else None
-
-
 def aggregate(tracks: list[dict]) -> dict:
-    rows = [row for t in tracks for row in t["rows"]]
-    summary = tally(rows)
+    """Every line pooled, and beside it the tracks' own shares averaged, so
+    one song's 236 red lines do not stand for twenty songs."""
+    summary = tally([row for t in tracks for row in t["rows"]])
     summary["tracks"] = len(tracks)
-    summary["track_mean_share"] = {f"{tol:g}": mean_share(tracks, tol) for tol in TOLERANCES_MS}
+    shares = [t["tally"]["share"] for t in tracks if t["tally"]["lines"]]
+    summary["track_mean_share"] = {
+        key: sum(s[key] for s in shares) / len(shares) if shares else None
+        for key in summary["share"]}
     return summary
 
 
@@ -335,15 +329,6 @@ def _pct(value: float | None, digits: int = 1) -> str:
     return "-" if value is None else f"{100.0 * value:.{digits}f}"
 
 
-def _ms(value: float | None) -> str:
-    return "-" if value is None else f"{value:+.1f}"
-
-
-def _octaves(counts: dict) -> str:
-    odd = {k: v for k, v in counts.items() if k != "x1"}
-    return ",".join(f"{k}:{v}" for k, v in odd.items()) or "-"
-
-
 def print_report(engine: str, tracks: list[dict], skipped: list[dict],
                  categories: dict, summary: dict) -> None:
     head = (f"{'track':<18} {'category':<12} {'path':<9} {'lines':>5} {'det':>4} "
@@ -354,15 +339,16 @@ def print_report(engine: str, tracks: list[dict], skipped: list[dict],
     for t in tracks:
         s = t["tally"]
         err = s["error_ms"]
+        median = "-" if err is None else f"{err['median']:+.1f}"
         iqr = "-" if err is None else f"{err['q1']:+.1f}..{err['q3']:+.1f}"
         sections = s["lines"] - s["undetected"]
         bpm_ok = (f"{s['bpm_within']['0.05']}/{sections}" if sections else "-")
         dbpm = "-" if s["bpm_error"] is None else f"{s['bpm_error']['median']:.2f}"
+        octaves = ",".join(f"{k}:{v}" for k, v in s["octaves"].items() if k != "x1") or "-"
         print(f"{t['id']:<18} {t['category']:<12} {t['path']:<9} {s['lines']:>5} "
               f"{t['detected']:>4} {_pct(s['share']['2'], 0):>4} {_pct(s['share']['5'], 0):>4} "
               f"{_pct(s['share']['10'], 0):>4} {_pct(s['share']['50'], 0):>4} "
-              f"{_ms(None if err is None else err['median']):>7} {iqr:>15} "
-              f"{bpm_ok:>8} {dbpm:>6} {_octaves(s['octaves']):>13} {t['seconds']:>6.1f}")
+              f"{median:>7} {iqr:>15} {bpm_ok:>8} {dbpm:>6} {octaves:>13} {t['seconds']:>6.1f}")
     for t in skipped:
         print(f"{t['id']:<18} {t['category']:<12} SKIPPED: {t['reason']}")
     print("path: the engine's own path (refused: no BPM given); lines: the map's red lines; "

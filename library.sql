@@ -5,7 +5,7 @@
 -- by a newer schema. bench/facts.py checks the two agree. A change to this
 -- file raises the version and adds its step to MIGRATIONS in the module.
 --
--- schema-version: 1
+-- schema-version: 2
 
 -- One row per song folder ("123456 Artist - Title").
 CREATE TABLE IF NOT EXISTS sets (
@@ -79,3 +79,26 @@ CREATE TABLE IF NOT EXISTS meta (
     key    TEXT PRIMARY KEY,
     value  TEXT NOT NULL
 );
+
+-- The library health check (version 2): each beatmap's red lines graded
+-- against the attacks of its own audio. A row holds while the .osu, its audio
+-- and the grading are what it was made from; a rerun grades only the rest.
+-- worst_ms is the largest disagreement among the flagged lines, the order a
+-- report lists them in; detail holds those lines, or why none was graded.
+CREATE TABLE IF NOT EXISTS health (
+    path            TEXT PRIMARY KEY,
+    size            INTEGER NOT NULL,
+    mtime_ns        INTEGER NOT NULL,
+    audio_size      INTEGER NOT NULL,
+    audio_mtime_ns  INTEGER NOT NULL,
+    grader          INTEGER NOT NULL,
+    engine          TEXT NOT NULL,
+    verdict         TEXT NOT NULL,
+    lines           INTEGER NOT NULL DEFAULT 0,
+    flagged         INTEGER NOT NULL DEFAULT 0,
+    worst_ms        REAL,
+    common_ms       REAL,
+    detail          TEXT NOT NULL DEFAULT '',
+    graded_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS health_verdict ON health(verdict, worst_ms);

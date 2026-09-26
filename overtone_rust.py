@@ -148,6 +148,42 @@ def analyze(path: str | os.PathLike[str], *, min_delta: float = 1.5, persistence
     return analysis_from_report(report)
 
 
+def attacks(path: str | os.PathLike[str], *, cli: Path | None = None,
+            timeout: float = TIMEOUT_S) -> tuple[np.ndarray, np.ndarray, float]:
+    """The audio's attacks (times in s, weights) and its length in seconds,
+    as ``grade_reference_timing`` takes them: what the library health check
+    grades a map's own red lines against.
+
+    From ``analyze --full``, whether or not the engine found a grid: attacks
+    are detected before any grid is fitted, so a song refused one (exit 3)
+    still has them. Raises :class:`SidecarUnavailable` without a binary and
+    ``RuntimeError`` with the loader's message when the file cannot be read.
+    """
+    binary = cli or find_cli()
+    if binary is None:
+        raise SidecarUnavailable("The Rust engine (overtone-cli) is not built.")
+    try:
+        done = subprocess.run([str(binary), "analyze", os.fspath(path), "--full"],
+                              capture_output=True, timeout=timeout,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"The Rust engine took over {timeout:.0f} s and was stopped.") from exc
+    except OSError as exc:
+        raise SidecarUnavailable(f"The Rust engine could not start: {exc}") from exc
+    try:
+        report = json.loads(done.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        report = None
+    if done.returncode == 1 and report is not None and "error" in report:
+        raise RuntimeError(f"Cannot load {Path(os.fspath(path)).name}: {report['error']}")
+    if done.returncode not in (0, 3) or report is None or "evidence" not in report:
+        detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
+        raise RuntimeError(f"The Rust engine failed (exit {done.returncode}): {detail}")
+    evidence = report["evidence"]
+    return (np.asarray(evidence["attack_times"], dtype=float),
+            np.asarray(evidence["attack_weights"], dtype=float), float(report["duration"]))
+
+
 def structure(path: str | os.PathLike[str], *, cli: Path | None = None,
               timeout: float = TIMEOUT_S) -> dict:
     """``overtone-cli structure``: phrase boundaries, labels with their

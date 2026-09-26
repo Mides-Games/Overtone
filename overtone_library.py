@@ -4,6 +4,9 @@ The index answers three questions without walking the folder again: which
 maps match what the user types (FTS5 full-text search), which maps use this
 exact audio file (a size lookup plus at most a hash or two, and the hashes
 are remembered), and what the folder holds (sets, difficulties, first BPM).
+A fourth costs seconds per song and is kept once answered: whose red lines
+disagree with their own audio (the health check, graded by the reference
+timing card's own grading).
 
 It is derived data. The Songs folder stays the truth: a scan reads each
 .osu's header, skips files whose size and modification time are unchanged,
@@ -31,13 +34,45 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import overtone as ta
+import overtone_rust
 
 SCHEMA_PATH = Path(__file__).resolve().with_name("library.sql")
 #: The version of ``library.sql`` this code reads and writes.
-SCHEMA_VERSION = 1
-#: ``MIGRATIONS[n]`` takes a version ``n - 1`` database to version ``n``.
-#: Version 1 is the schema file itself, so there is nothing here yet.
-MIGRATIONS: dict[int, str] = {}
+SCHEMA_VERSION = 2
+#: ``MIGRATIONS[n]`` takes a version ``n - 1`` database to version ``n``, as
+#: library.sql stood at version n: frozen here, since the file moves on. A
+#: test holds a migrated index to a new one.
+MIGRATIONS: dict[int, str] = {
+    2: """
+CREATE TABLE IF NOT EXISTS health (
+    path            TEXT PRIMARY KEY,
+    size            INTEGER NOT NULL,
+    mtime_ns        INTEGER NOT NULL,
+    audio_size      INTEGER NOT NULL,
+    audio_mtime_ns  INTEGER NOT NULL,
+    grader          INTEGER NOT NULL,
+    engine          TEXT NOT NULL,
+    verdict         TEXT NOT NULL,
+    lines           INTEGER NOT NULL DEFAULT 0,
+    flagged         INTEGER NOT NULL DEFAULT 0,
+    worst_ms        REAL,
+    common_ms       REAL,
+    detail          TEXT NOT NULL DEFAULT '',
+    graded_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS health_verdict ON health(verdict, worst_ms);
+""",
+}
+#: A health verdict, worst first, the order a report lists them in: a red
+#: line the attacks disagree with; the map or its audio could not be read;
+#: the audio is not in the folder; nothing in the audio vouches either way
+#: (every line too weak or with too few attacks); no red line at all; every
+#: graded line where the attacks put it.
+HEALTH_VERDICTS = ("check", "error", "no_audio", "unsure", "no_timing", "ok")
+#: Raised whenever the grading changes, so a rerun grades again what an older
+#: one judged. The engine that found the attacks is kept beside a verdict and
+#: does not stale it: both find the same attacks (the golden gate's 27/27).
+HEALTH_GRADER = 1
 #: The most beatmaps one search returns; the list is for picking, not reading.
 SEARCH_LIMIT = 200
 #: The longest a scan goes without telling how far it is. A first scan once
@@ -260,6 +295,65 @@ def _read_folder(folder: str, known: dict) -> dict:
         maps.append(("read", entry.path, (stat.st_size, stat.st_mtime_ns, raw)))
     return {"folder": folder, "error": None, "maps": maps,
             "files": {entry.name.lower(): entry for entry in files}}
+
+
+def _stat(path: str) -> tuple[int, int]:
+    """A file's size and modification time, or (-1, -1) when it is not there."""
+    try:
+        stat = os.stat(path)
+    except (OSError, ValueError):
+        return -1, -1
+    return stat.st_size, stat.st_mtime_ns
+
+
+def _attacks(audio: str, engine: str):
+    """The attacks of one audio file and its length in seconds, as
+    ``grade_reference_timing`` takes them."""
+    if engine == "rust":
+        return overtone_rust.attacks(audio)
+    y, sr = ta._load_audio(audio, lambda _message: None)
+    times, weights, _envelope = ta._detect_attacks(y, sr, ta.FIT_HOP)
+    return times, weights, y.size / sr
+
+
+def _health_verdict(report: dict) -> tuple[str, int, int, float | None, float | None, str]:
+    """A grade as the health table keeps it: the verdict, the lines graded
+    and flagged, the largest disagreement among the flagged, the map's
+    common shift, and the flagged lines with the evidence behind each."""
+    if not report["ok"]:
+        verdict = "no_timing" if report["reason"] == "no_red_lines" else "unsure"
+        return verdict, 0, 0, None, None, ""
+    lines = report["lines"]
+    flagged = [line for line in lines if line["verdict"] == "check"]
+    verdict = "check" if flagged else "ok" if report["counts"]["ok"] else "unsure"
+
+    def size(line: dict) -> float:
+        return max(abs(line["relative_ms"]) if "offset" in line["issues"] else 0.0,
+                   abs(line["drift_ms"]) if "drift" in line["issues"] else 0.0)
+
+    def rounded(value):
+        return None if value is None else round(value, 2)
+
+    detail = json.dumps([{"index": line["index"], "offset_ms": line["offset_ms"],
+                          "end_ms": round(line["end_ms"], 1), "bpm": round(line["bpm"], 3),
+                          "fitted_bpm": round(line["fitted_bpm"], 3), "issues": line["issues"],
+                          "relative_ms": rounded(line["relative_ms"]),
+                          "offset_se_ms": rounded(line["offset_se_ms"]),
+                          "drift_ms": rounded(line["drift_ms"]),
+                          "drift_se_ms": rounded(line["drift_se_ms"]),
+                          "attacks": line["attacks"], "share": round(line["share"], 3)}
+                         for line in flagged]) if flagged else ""
+    worst = round(max(size(line) for line in flagged), 2) if flagged else None
+    return verdict, len(lines), len(flagged), worst, report["common_offset_ms"], detail
+
+
+_UPSERT_HEALTH = (
+    "INSERT INTO health (path, size, mtime_ns, audio_size, audio_mtime_ns, grader, engine, "
+    "verdict, lines, flagged, worst_ms, common_ms, detail, graded_at) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(path) DO UPDATE SET "
+    + ", ".join(f"{c} = excluded.{c}" for c in (
+        "size", "mtime_ns", "audio_size", "audio_mtime_ns", "grader", "engine", "verdict",
+        "lines", "flagged", "worst_ms", "common_ms", "detail", "graded_at")))
 
 
 class Library:
@@ -605,3 +699,142 @@ class Library:
         matches.sort(key=lambda match: match["audio"])
         return {"root": meta.get("root"), "scanned": scanned, "same_size": same_size,
                 "matches": matches, "indexed": True, "scanned_at": meta.get("scanned_at")}
+
+    # -- health: each map's red lines against its own audio (Phase 21) -------
+    def health(self, engine: str | None = None, progress=None, limit: int | None = None,
+               stop=None) -> dict:
+        """Grade every indexed beatmap's red lines against its own audio.
+
+        One audio file at a time: its attacks are found once, by the Rust
+        sidecar (``engine`` "rust", the default when ``overtone-cli`` is
+        found) or by v3's detector ("python"), and each .osu of the set that
+        plays it is graded by ``grade_reference_timing`` from its first
+        object to its last, where it is played. A verdict is kept
+        with the sizes and times of the .osu and the audio it was made from
+        and ``HEALTH_GRADER``, committed with its audio file, so a run cut
+        short (``limit`` audio files graded, or ``stop`` set between two)
+        loses nothing, and the next run grades only what is new or changed.
+        Maps come from the last scan; ``progress``, when given, hears
+        ``(done, total)`` audio files of this run's work.
+        """
+        if engine is None:
+            engine = "rust" if overtone_rust.find_cli() is not None else "python"
+        if engine not in ("rust", "python"):
+            raise ValueError(f"No attack engine called {engine!r}.")
+        started = time.perf_counter()
+        work: list[tuple[str, tuple[int, int], list]] = []
+        with closing(self._connect()) as db, db:
+            db.execute("DELETE FROM health WHERE path NOT IN (SELECT path FROM beatmaps)")
+            kept = {row[0]: row[1:] for row in db.execute(
+                "SELECT path, size, mtime_ns, audio_size, audio_mtime_ns, grader FROM health")}
+            groups: dict[tuple[str, str], tuple[str, list[str]]] = {}
+            for path, folder, audio in db.execute(
+                    "SELECT b.path, s.folder, b.audio_file FROM beatmaps b "
+                    "JOIN sets s ON s.id = b.set_id ORDER BY s.folder, b.path"):
+                groups.setdefault((folder, audio.lower()), (audio, []))[1].append(path)
+        for (folder, _key), (audio, paths) in groups.items():
+            audio_path = os.path.join(folder, audio) if audio else ""
+            audio_stat = _stat(audio_path)
+            # A .osu gone since the scan is the next scan's to drop, not an error.
+            stale = [(path, stat) for path, stat in ((path, _stat(path)) for path in paths)
+                     if stat[0] >= 0 and kept.get(path) != (*stat, *audio_stat, HEALTH_GRADER)]
+            if stale:
+                work.append((audio_path, audio_stat, stale))
+        total = len(work) if limit is None else min(len(work), max(0, int(limit)))
+        if progress is not None:
+            progress(0, total)
+        done = graded = 0
+        with closing(self._connect()) as db:
+            for audio_path, audio_stat, stale in work[:total]:
+                if stop is not None and stop.is_set():
+                    break
+                rows = self._grade_audio(audio_path, audio_stat, stale, engine)
+                with db:
+                    db.executemany(_UPSERT_HEALTH, rows)
+                done += 1
+                graded += len(rows)
+                if progress is not None:
+                    progress(done, total)
+        return {"engine": engine, "graded": graded, "audio": done, "pending": len(work) - done,
+                "counts": self.health_report(())["counts"],
+                "seconds": round(time.perf_counter() - started, 3)}
+
+    @staticmethod
+    def _grade_audio(audio_path: str, audio_stat: tuple[int, int], stale: list,
+                     engine: str) -> list[tuple]:
+        """The health rows of the maps in ``stale`` that play one audio file.
+
+        A map is graded on the attacks between its first and last objects,
+        where it is played: a pack or a practice map covers part of a long
+        audio file, and its red lines said nothing of the songs around it
+        (one read 1,019 ms of drift from them). Difficulties that share their
+        red lines and that range, as most of a set's do, are graded once."""
+        now = _now()
+
+        def row(path, stat, verdict, lines=0, flagged=0, worst=None, common=None, detail=""):
+            return (path, *stat, *audio_stat, HEALTH_GRADER, engine, verdict, lines, flagged,
+                    worst, common, detail, now)
+
+        if audio_stat[0] < 0:
+            detail = f"{os.path.basename(audio_path) or 'No audio file'} is not in the folder."
+            return [row(path, stat, "no_audio", detail=detail) for path, stat in stale]
+        try:
+            times, weights, duration = _attacks(audio_path, engine)
+        except overtone_rust.SidecarUnavailable:
+            raise
+        except (RuntimeError, ValueError, OSError) as exc:
+            return [row(path, stat, "error", detail=str(exc)) for path, stat in stale]
+        rows, graded = [], {}
+        for path, stat in stale:
+            try:
+                beatmap = ta.read_osu_beatmap(path)
+            except (OSError, ValueError) as exc:
+                rows.append(row(path, stat, "error", detail=str(exc)))
+                continue
+            objects = [obj for obj in beatmap["hitobjects"] if "time" in obj]
+            first = min(obj["time"] for obj in objects) / 1000.0 if objects else 0.0
+            last = min(duration, max(obj.get("end_time", obj["time"]) for obj in objects)
+                       / 1000.0) if objects else duration
+            key = (tuple(ta._beatmap_red_rows(beatmap)), first, last)
+            if key not in graded:
+                # 0.1 s either side: the objects' own sounds belong to them.
+                inside = (times >= first - 0.1) & (times <= last + 0.1)
+                graded[key] = _health_verdict(ta.grade_reference_timing(
+                    beatmap, times[inside], weights[inside], last))
+            rows.append(row(path, stat, *graded[key]))
+        return rows
+
+    def health_report(self, verdicts=("check",), limit: int = SEARCH_LIMIT) -> dict:
+        """The graded maps with these verdicts, and the verdict counts over
+        the index (``ungraded``: maps no run has graded yet). Worst first: by
+        verdict, then by ``worst_ms``, the largest disagreement among a
+        flagged map's lines. Each flagged line comes with the evidence behind
+        it, as the reference timing card shows it: its offset against the
+        map's common shift (``relative_ms``) or its drift by the span's end,
+        each with its standard error, the attacks and the grid's share."""
+        limit = max(1, min(int(limit), SEARCH_LIMIT))
+        verdicts = [v for v in HEALTH_VERDICTS if v in verdicts]
+        with closing(self._connect()) as db:
+            counts = dict(db.execute("SELECT h.verdict, COUNT(*) FROM health h "
+                                     "JOIN beatmaps b ON b.path = h.path GROUP BY h.verdict"))
+            total = db.execute("SELECT COUNT(*) FROM beatmaps").fetchone()[0]
+            order = " ".join(f"WHEN '{v}' THEN {n}" for n, v in enumerate(HEALTH_VERDICTS))
+            rows = db.execute(
+                "SELECT h.path, s.folder, s.name, b.artist, b.title, b.version, b.mode, h.verdict, "
+                "h.lines, h.flagged, h.worst_ms, h.common_ms, h.detail, h.engine, h.graded_at "
+                "FROM health h JOIN beatmaps b ON b.path = h.path JOIN sets s ON s.id = b.set_id "
+                f"WHERE h.verdict IN ({', '.join('?' for _ in verdicts)}) "
+                f"ORDER BY CASE h.verdict {order} END, h.worst_ms DESC, s.folder, b.version "
+                "LIMIT ?", (*verdicts, limit)).fetchall() if verdicts else []
+        maps = [{"path": path, "folder": folder, "set": name, "artist": artist, "title": title,
+                 "version": version, "mode": mode, "verdict": verdict, "lines": lines,
+                 "flagged": flagged, "worst_ms": worst, "common_ms": common,
+                 "checks": json.loads(detail) if verdict == "check" and detail else [],
+                 "detail": detail if verdict in ("error", "no_audio") else "",
+                 "engine": engine, "graded_at": graded_at}
+                for (path, folder, name, artist, title, version, mode, verdict, lines, flagged,
+                     worst, common, detail, engine, graded_at) in rows]
+        graded = sum(counts.values())
+        return {"counts": {**{v: counts.get(v, 0) for v in HEALTH_VERDICTS},
+                           "ungraded": total - graded},
+                "maps": maps, "limited": len(rows) == limit}

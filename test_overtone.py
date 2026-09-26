@@ -4689,6 +4689,143 @@ class LibraryIndexTests(unittest.TestCase):
         self.assertFalse(self.ol.is_damaged(newer.exception))
         self.assertTrue(self.library.path.exists())      # never rewritten
 
+    def test_a_version_1_index_gains_the_health_table_and_keeps_its_maps(self):
+        import sqlite3
+        from contextlib import closing
+        self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
+        self.library.scan(self.songs)
+
+        def health_schema():
+            with closing(sqlite3.connect(self.library.path)) as db:
+                return (db.execute("PRAGMA user_version").fetchone()[0],
+                        sorted(" ".join(sql.split()) for (sql,) in db.execute(
+                            "SELECT sql FROM sqlite_master WHERE tbl_name = 'health' "
+                            "AND sql IS NOT NULL")))
+
+        fresh = health_schema()
+        with closing(sqlite3.connect(self.library.path)) as db:
+            db.execute("DROP TABLE health")
+            db.execute("PRAGMA user_version = 1")
+        self.assertEqual(self.library.stats()["beatmaps"], 2)     # opened: migrated
+        self.assertEqual(health_schema(), fresh)
+        self.assertEqual(fresh[0], self.ol.SCHEMA_VERSION)
+
+    def _clicks(self, name: str, duration: float = 24.0, **tempo) -> Path:
+        folder = self.songs / name
+        folder.mkdir(parents=True)
+        # A kick every 500 ms from 250 (``change_at``/``second_bpm`` move it on).
+        _click_track(folder / "audio.wav", 120.0, duration=duration, **tempo)
+        return folder
+
+    @staticmethod
+    def _timed(folder: Path, version: str, reds, audio: str = "audio.wav",
+               first: int = 1000, last: int = 23500) -> Path:
+        path = folder / f"Band - Clicks (Mapper) [{version}].osu"
+        path.write_text(_mapset_osu(version, audio=audio, reds=reds, objects=(first, last)),
+                        encoding="utf-8", newline="")
+        return path
+
+    def test_health_grades_each_map_against_its_audio_and_keeps_the_verdict(self):
+        from unittest import mock
+        clicks = self._clicks("1 Band - Clicks")
+        self._timed(clicks, "True", ((250, 500.0, 4), (8250, 500.0, 4), (16250, 500.0, 4)))
+        twin = self._timed(clicks, "Twin", ((250, 500.0, 4), (8250, 500.0, 4), (16250, 500.0, 4)))
+        moved = self._timed(clicks, "Moved", ((250, 500.0, 4), (8250, 500.0, 4), (16270, 500.0, 4)))
+        self._timed(clicks, "Untimed", ())
+        gone = self.songs / "2 Band - Gone"
+        gone.mkdir()
+        self._timed(gone, "Lost", ((250, 500.0, 4),), audio="missing.mp3")
+        self.library.scan(self.songs)
+        seen = []
+        run = self.library.health(engine="python", progress=lambda done, total: seen.append((done, total)))
+        json.dumps(run)
+        self.assertEqual((run["graded"], run["audio"], run["pending"]), (5, 2, 0))
+        self.assertEqual(seen, [(0, 2), (1, 2), (2, 2)])
+        report = self.library.health_report(self.ol.HEALTH_VERDICTS)
+        json.dumps(report)
+        # Worst first: the moved line, the missing audio, no timing, then the rest.
+        self.assertEqual([(m["version"], m["verdict"]) for m in report["maps"]],
+                         [("Moved", "check"), ("Lost", "no_audio"), ("Untimed", "no_timing"),
+                          ("True", "ok"), ("Twin", "ok")])
+        moved_report = report["maps"][0]
+        self.assertEqual([(c["index"], c["issues"]) for c in moved_report["checks"]], [(2, ["offset"])])
+        self.assertAlmostEqual(moved_report["checks"][0]["relative_ms"], -20.0, delta=2.0)
+        self.assertAlmostEqual(moved_report["worst_ms"], 20.0, delta=2.0)
+        self.assertEqual(report["counts"], {"check": 1, "error": 0, "no_audio": 1, "unsure": 0,
+                                            "no_timing": 1, "ok": 2, "ungraded": 0})
+        # A rerun grades nothing; a changed .osu is graded alone, a new grading
+        # grades everything again.
+        self.assertEqual(self.library.health(engine="python")["graded"], 0)
+        stat = moved.stat()
+        os.utime(moved, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+        self.assertEqual(self.library.health(engine="python")["graded"], 1)
+        with mock.patch.object(self.ol, "HEALTH_GRADER", self.ol.HEALTH_GRADER + 1):
+            self.assertEqual(self.library.health(engine="python")["graded"], 5)
+        twin.unlink()                    # gone since the scan: the next scan's to drop
+        with mock.patch.object(self.ol, "HEALTH_GRADER", self.ol.HEALTH_GRADER + 2):
+            run = self.library.health(engine="python")
+        self.assertEqual((run["graded"], run["counts"]["error"]), (4, 0))
+
+    def test_health_grades_a_map_where_it_is_played(self):
+        import soundfile as sf
+        # A pack: another song at 124 BPM, then this one on the map's 120 BPM
+        # grid from 12.25 s. Graded on every attack, a pack map read up to
+        # 1,019 ms of drift from the songs around it (-723 ms here); between
+        # its own first and last objects it is right.
+        folder = self.songs / "1 Various - Pack"
+        folder.mkdir(parents=True)
+        sr = 44100
+        kicks = np.r_[np.arange(0.25, 12.0, 60 / 124), np.arange(12.25, 24.0, 0.5)]
+        y = np.zeros(24 * sr, dtype=np.float32)
+        t = np.arange(int(0.04 * sr)) / sr
+        kick = (np.sin(2 * np.pi * 160 * t) * np.exp(-t / 0.006)).astype(np.float32)
+        for at in kicks:
+            y[int(at * sr):int(at * sr) + kick.size] += kick
+        sf.write(str(folder / "audio.wav"), y, sr)
+        self._timed(folder, "Its own part", ((250, 500.0, 4),), first=12500, last=23500)
+        self._timed(folder, "Whole file", ((250, 500.0, 4),), first=1000, last=23500)
+        self.library.scan(self.songs)
+        self.library.health(engine="python")
+        maps = self.library.health_report(self.ol.HEALTH_VERDICTS)["maps"]
+        self.assertEqual([(m["version"], m["verdict"]) for m in maps],
+                         [("Whole file", "check"), ("Its own part", "ok")])
+        self.assertGreater(maps[0]["worst_ms"], 20.0)
+
+    def test_health_stops_between_audio_files_and_resumes(self):
+        import threading
+        for n in (1, 2):
+            self._timed(self._clicks(f"{n} Band - Clicks{n}", duration=12.0), f"Map{n}",
+                        ((250, 500.0, 4),))
+        self.library.scan(self.songs)
+        stop = threading.Event()
+        stop.set()
+        self.assertEqual(self.library.health(engine="python", stop=stop)["graded"], 0)
+        first = self.library.health(engine="python", limit=1)
+        self.assertEqual((first["graded"], first["pending"], first["counts"]["ungraded"]), (1, 1, 1))
+        second = self.library.health(engine="python")
+        self.assertEqual((second["graded"], second["pending"], second["counts"]["ok"]), (1, 0, 2))
+        with self.assertRaises(ValueError):
+            self.library.health(engine="cobol")
+
+    def test_health_reads_the_same_verdicts_through_the_rust_engine(self):
+        import overtone_rust as rs
+        if rs.find_cli() is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        from unittest import mock
+        clicks = self._clicks("1 Band - Clicks")
+        self._timed(clicks, "True", ((250, 500.0, 4), (8250, 500.0, 4), (16250, 500.0, 4)))
+        self._timed(clicks, "Moved", ((250, 500.0, 4), (8250, 500.0, 4), (16270, 500.0, 4)))
+        self.library.scan(self.songs)
+        self.library.health(engine="python")
+        python = self.library.health_report(self.ol.HEALTH_VERDICTS)["maps"]
+        with mock.patch.object(self.ol, "HEALTH_GRADER", self.ol.HEALTH_GRADER + 1):
+            self.assertEqual(self.library.health(engine="rust")["graded"], 2)
+        rust = self.library.health_report(self.ol.HEALTH_VERDICTS)["maps"]
+        self.assertEqual([(m["version"], m["verdict"]) for m in rust],
+                         [(m["version"], m["verdict"]) for m in python])
+        self.assertEqual({m["engine"] for m in rust}, {"rust"})
+        self.assertAlmostEqual(rust[0]["worst_ms"], python[0]["worst_ms"], delta=0.5)
+
 
 def _structure_report(bounds, kinds, groups, levels, duration=64.0, energy=None):
     """``overtone-cli structure``'s JSON for hand-made sections."""

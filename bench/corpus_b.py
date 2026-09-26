@@ -12,6 +12,7 @@ longer hash the same is skipped and named, never guessed at.
     python bench/corpus_b.py --engine rust       # overtone-cli (OVERTONE_CLI)
     python bench/corpus_b.py --only vampires     # some tracks
     python bench/corpus_b.py --refresh --jobs 3  # analyse again, three at once
+    python bench/corpus_b.py --onsets            # and where each track's sound starts
 
 The question, per red line of the map: does the timing Overtone would export
 (whole-millisecond offsets, as the app writes them) put a beat within 5 ms
@@ -24,12 +25,19 @@ own (as a count) and not twice. A refused track misses every line. Reported:
 
 - the share of red lines within 2, 5, 10 and 50 ms, pooled over every line
   and as the mean of the tracks (the four drift maps hold most of the lines);
-- the signed error's median, quartiles and worst: real audio has read about
-  26 ms late against ranked maps (roadmap, Phase 22), and that is reported
-  as it is, never subtracted from the headline;
+- the signed error's median, quartiles and worst: real audio reads about
+  24 ms late against ranked maps, most of it the maps' own lines sitting
+  before the sound (``--onsets``), and that is reported as it is, never
+  subtracted from the headline;
 - per map section, the detected BPM against the map's, octave-normalised,
   and how many sections were read at another octave;
 - all of it per category, with each analysis's time.
+
+``--onsets`` also reads where each track's sound itself starts, against the
+map's beats and against Overtone's: the energy above 4 kHz averaged over
+each grid's beats, and the point where that average first holds 10 % of its
+rise. It decodes every track (about a minute) and splits the late reading
+into what the map's lines do and what the engine does.
 
 Analyses are cached in ``bench/.cache/corpus_b/`` (git-ignored), keyed by
 the audio's hash and the hash of the engine code that produced them, so a
@@ -50,6 +58,9 @@ from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
+
+import numpy as np
+from scipy import signal
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -181,6 +192,118 @@ def aggregate(tracks: list[dict]) -> dict:
         key: sum(s[key] for s in shares) / len(shares) if shares else None
         for key in summary["share"]}
     return summary
+
+
+# ---------------------------------------------------------------------------
+# Where the sound starts (--onsets): the late reading taken apart
+# ---------------------------------------------------------------------------
+
+#: A click, a snare and a hat all start at their first sample above this,
+#: where a kick's body or a bass swells for milliseconds.
+ONSET_HIGHPASS_HZ = 4000.0
+#: Each beat's window, before and after the beat, in seconds.
+ONSET_WINDOW_S = (0.100, 0.150)
+#: The sound starts where the average first holds this share of its rise.
+ONSET_RISE = 0.10
+
+
+def grid_beats(lines: list[tuple[float, float]], duration_s: float) -> list[float]:
+    """Beat times (s) of red lines ``(offset_ms, bpm)``: each line's beats up
+    to the next line, the first line run back to 0 s, as osu! runs it."""
+    beats = []
+    for n, (offset, bpm) in enumerate(lines):
+        step = 60000.0 / bpm
+        end = lines[n + 1][0] if n + 1 < len(lines) else duration_s * 1000.0
+        k = -math.floor(offset / step) if n == 0 else 0
+        while offset + k * step < end:
+            beats.append((offset + k * step) / 1000.0)
+            k += 1
+    return beats
+
+
+def high_band_energy(y, sr: int) -> np.ndarray:
+    """Energy above ONSET_HIGHPASS_HZ, filtered forwards and backwards and
+    averaged over a centred millisecond, so that it adds no lag of its own."""
+    sos = signal.butter(4, ONSET_HIGHPASS_HZ, "highpass", fs=sr, output="sos")
+    band = signal.sosfiltfilt(sos, np.asarray(y, dtype=np.float64))
+    width = int(round(0.001 * sr)) | 1
+    return np.convolve(band * band, np.ones(width) / width, mode="same")
+
+
+def sound_start_ms(energy: np.ndarray, sr: int, beats) -> dict | None:
+    """Where the sound starts against ``beats``, in ms, + when after them.
+
+    Each beat's window of ``energy`` is scaled to its own peak, so a loud bar
+    does not outvote a quiet one, and the windows are averaged. The start is
+    the last point before the average's peak (from 40 ms before the beat to
+    100 ms after) at or under ONSET_RISE of its rise from the level before the
+    beat (the median 100 to 40 ms before). ``contrast`` is that peak over that
+    level: how clear the average is. None when no beat has a whole window.
+    """
+    before, after = (int(round(s * sr)) for s in ONSET_WINDOW_S)
+    total = np.zeros(before + after)
+    count = 0
+    for beat in beats:
+        i = int(round(beat * sr))
+        if i < before or i + after > len(energy):
+            continue
+        window = energy[i - before:i + after]
+        peak = float(window.max())
+        if peak > 0:
+            total += window / peak
+            count += 1
+    if not count:
+        return None
+    mean = total / count
+    t = (np.arange(before + after) - before) / sr
+    floor = float(np.median(mean[(t >= -0.100) & (t <= -0.040)]))
+    zone = np.flatnonzero((t >= -0.040) & (t <= 0.100))
+    top = int(zone[np.argmax(mean[zone])])
+    level = floor + ONSET_RISE * (float(mean[top]) - floor)
+    below = np.flatnonzero(mean[:top + 1] <= level)
+    start = float(t[below[-1]]) if below.size else float(t[0])
+    return {"start_ms": 1000.0 * start, "contrast": float(mean[top]) / max(floor, 1e-12),
+            "beats": count}
+
+
+def measure_onsets(found: list[tuple[dict, Path]], analyses: dict[str, dict]) -> dict:
+    """--onsets: per track, where the sound starts after the map's beats and
+    after Overtone's, read from the audio itself (``sound_start_ms``)."""
+    print("\nwhere the sound starts, + when after the beat (energy above "
+          f"{ONSET_HIGHPASS_HZ / 1000:g} kHz, {ONSET_RISE:.0%} of its rise; c: its contrast):")
+    print(f"  {'track':<18} {'audio':<8} {'after the map':>16} {'after Overtone':>16}")
+    rows = []
+    for track, folder in found:
+        audio = folder / track["audio"]
+        y, sr = ta._load_audio(audio, lambda _message: None)
+        energy = high_band_energy(y, sr)
+        duration = len(y) / sr
+        kind = audio.suffix.lower().lstrip(".")
+        if kind == "mp3" and ta.mp3_gapless_info(audio).get("present"):
+            kind = "mp3 LAME"
+        on_map = sound_start_ms(energy, sr, grid_beats(
+            ta.read_osu_red_lines(folder / track["osu"]), duration))
+        lines = [(line[0], line[1]) for line in analyses[track["id"]]["lines"]]
+        on_overtone = sound_start_ms(energy, sr, grid_beats(lines, duration)) if lines else None
+        rows.append({"id": track["id"], "audio": kind, "map": on_map, "overtone": on_overtone})
+        cells = [f"{r['start_ms']:+6.1f} (c {r['contrast']:4.1f})" if r else f"{'-':>16}"
+                 for r in (on_map, on_overtone)]
+        print(f"  {track['id']:<18} {kind:<8} {cells[0]:>16} {cells[1]:>16}", flush=True)
+    summary = {}
+    for side in ("map", "overtone"):
+        for kind in ("all", "mp3 LAME", "mp3", "ogg"):
+            values = [r[side]["start_ms"] for r in rows
+                      if r[side] and kind in ("all", r["audio"])]
+            if values:
+                summary.setdefault(side, {})[kind] = quartiles(values)
+    for side, label in (("map", "the map's beats"), ("overtone", "Overtone's beats")):
+        if side in summary:
+            parts = ", ".join(f"{kind} {q['median']:+.1f} ({q['n']})"
+                              for kind, q in summary[side].items() if kind != "all")
+            q = summary[side]["all"]
+            print(f"  after {label}: median {q['median']:+.1f} ms, IQR {q['q1']:+.1f}..{q['q3']:+.1f} "
+                  f"over {q['n']} tracks; {parts}")
+    return {"tracks": rows, "summary": summary}
 
 
 # ---------------------------------------------------------------------------
@@ -415,6 +538,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--only", nargs="*", metavar="ID", help="score just these tracks")
     parser.add_argument("--refresh", action="store_true", help="analyse again, ignoring the cache")
     parser.add_argument("--jobs", type=int, default=1, help="analyses at once (each can take ~2 GB)")
+    parser.add_argument("--onsets", action="store_true",
+                        help="also read where each track's sound starts against the map's beats "
+                             "and Overtone's (decodes every track again)")
     parser.add_argument("--cli", help="overtone-cli binary (default: OVERTONE_CLI, then the build)")
     parser.add_argument("--json", help="where to write the summary "
                                        "(default: bench/.cache/corpus_b/summary-<engine>.json)")
@@ -511,6 +637,8 @@ def main(argv: list[str] | None = None) -> int:
     errors = [t for t in scored if t["path"] == "error"]
     for t in errors:
         print(f"ERROR {t['id']}: {t['message']}")
+    if args.onsets:
+        summary["onsets"] = measure_onsets(found, analyses)
 
     out = Path(args.json) if args.json else CACHE_DIR / f"summary-{args.engine}.json"
     out.parent.mkdir(parents=True, exist_ok=True)

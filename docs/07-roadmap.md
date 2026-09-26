@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 % |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **556** Python (385 engine + 171 web shell) · **263** Rust.
+Tests: **558** Python (387 engine + 171 web shell) · **263** Rust.
 
 ### What is pending, in order
 

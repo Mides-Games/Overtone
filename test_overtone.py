@@ -6344,6 +6344,35 @@ class CorpusBScoringTests(unittest.TestCase):
         self.assertEqual(cb.tally(rows)["within"]["5"], 0)
         self.assertEqual(cb.tally(rows, shift_ms=26.0)["within"]["5"], 2)
 
+    def test_grid_beats_run_the_first_line_back_and_stop_at_the_next(self):
+        cb = self._cb()
+        beats = cb.grid_beats([(1250.0, 120.0), (3000.0, 60.0)], 6.0)
+        self.assertEqual([round(b, 9) for b in beats],
+                         [0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.0, 4.0, 5.0])
+
+    def test_the_sound_start_is_read_against_a_grid_to_the_millisecond(self):
+        cb = self._cb()
+        sr = 44100
+        rng = np.random.default_rng(3)
+        t = np.arange(12 * sr) / sr
+        # A low bed under everything, and a hit 21 ms after every beat: the
+        # ranked maps' lines sit about that far before their songs' hits.
+        y = 0.2 * np.sin(2 * np.pi * 60 * t)
+        beats = np.arange(0.5, 11.5, 0.5)
+        n = int(0.03 * sr)
+        for beat in beats:
+            i = int(round((beat + 0.021) * sr))
+            y[i:i + n] += rng.standard_normal(n) * np.exp(-np.arange(n) / (0.005 * sr))
+        energy = cb.high_band_energy(y, sr)
+        late = cb.sound_start_ms(energy, sr, beats)
+        on_it = cb.sound_start_ms(energy, sr, beats + 0.021)
+        self.assertAlmostEqual(late["start_ms"], 21.0, delta=1.0)
+        self.assertAlmostEqual(on_it["start_ms"], 0.0, delta=1.0)
+        self.assertEqual(late["beats"], beats.size)
+        self.assertGreater(late["contrast"], 10.0)
+        # No beat with a whole window: no reading, rather than a made-up one.
+        self.assertIsNone(cb.sound_start_ms(energy, sr, [0.01, 11.95]))
+
     def test_a_changed_or_missing_file_is_refused_and_a_moved_set_is_found(self):
         cb = self._cb()
         with tempfile.TemporaryDirectory() as tmp:

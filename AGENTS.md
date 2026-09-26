@@ -25,7 +25,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (556 on 2026-09-26)
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (558 on 2026-09-26)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -54,6 +54,7 @@ named, and the analyses are cached per audio and engine hash, so a re-score take
 ```bash
 .venv/Scripts/python.exe bench/corpus_b.py                     # ranked red lines within 5 ms
 .venv/Scripts/python.exe bench/corpus_b.py --engine rust       # the same through overtone-cli
+.venv/Scripts/python.exe bench/corpus_b.py --onsets            # and where each track's sound starts
 ```
 
 And the Rust side:

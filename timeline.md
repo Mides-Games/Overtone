@@ -99,6 +99,9 @@ What the measurements say:
   - But the full band can rise well after the first edge: 12 ms after it on camisa-negra,
     and 20 ms on a synthetic kick whose body swells under a loud low bed. The fitted grids
     sit a median 7.9 ms after the sound on Corpus B.
+  - The re-timing explains about half of those 7.9 ms: moving each line by what the first
+    difference does to its attacks takes 3.5 ms off (median, below). The rest was not traced
+    here: the fit, the off-beats of grids read an octave up, or both.
 - **Corpus A sees neither.** Its fixtures are timed to the sample, not to osu!'s convention.
   Its drums start at full amplitude over silence or a soft pad, where the full band's rise
   and the first edge coincide.

@@ -76,6 +76,8 @@ later costs more than writing it down now.
 
 - A search reply that lands after a newer one is dropped: one-letter searches took up to
   331 ms under load, past the page's 120 ms typing pause.
+- A reader thread stops at the 16 MB a `.osu` may have, where the scan used to read an
+  oversized file whole before refusing it; the refusal still names the true size.
 - Schema 2. `MIGRATIONS[2]` is `library.sql`'s health table as it stands, frozen; a test
   holds an index migrated from version 1 to a new one, and a copy of the full local index
   migrated on open with its 25,165 maps.
@@ -94,9 +96,14 @@ full scan, warm, interleaved rounds   before 23.6 / 21.1 / 52.4 s, after 14.2 / 
                                       28.8 s; CPU time 21.5 s before, 22.1 s after
 first read, the cold path             Songs was warm after the first scan, so fresh copies
                                       of 1,211 .osu in 300 folders: 29.0, 28.5 s -> 7.1,
-                                      7.7 s (in both orders); small cold files 10.05 ms
-                                      each alone, 2.95 ms on 4 threads, 3.25 ms on 8
-first scan of Songs, after            not measured; from the copies' ratio, about 65 s
+                                      7.7 s (in both orders); again under the evening's
+                                      heavier load, 68.8, 65.7 s -> 16.9, 16.9 s; small
+                                      cold files 10.05 ms each alone, 2.95 ms on 4
+                                      threads, 3.25 ms on 8
+first scan of Songs, after            218.2 s, once, in the evening (its rescan took 3.8 s
+                                      against 1.3 s in the morning): not comparable with
+                                      the 263 s before, and whether the files were cold
+                                      again is not known
 peak working set                      +6 to +31 MB over the process's own ~100 MB
 rescan, nothing changed               1.29-1.38 s; interleaved 1.17-4.14 s before,
                                       0.98-1.57 s after

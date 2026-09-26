@@ -40,7 +40,7 @@ mock.patch.object(ta, "load_config", return_value={}).start()
 mock.patch.object(ta, "save_config", lambda data: None).start()
 import overtone_web as web  # noqa: E402
 
-API = web.Api(ARGS.audio)
+API = web.Api(ARGS.audio, save_projects=True)   # as the window builds it
 EVENTS: list[str] = []
 
 

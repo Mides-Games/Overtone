@@ -90,6 +90,10 @@ const I18N = {
     d_duration: "Duration", d_first: "First beat", d_engine: "Engine", d_residual: "Grid residual",
     d_pulse: "Pulse", d_sections: "Grid sections", d_hint: "Select a timing point in the list or on the tempo map to inspect it.",
     d_timing: "Analysis", d_timing_cached: "from the cache, {s} s",
+    project_offer: "You worked on this song's timing on {when}: {n} red lines. This analysis does not have that work.",
+    project_offer_locks: "You worked on this song's timing on {when}: {n} red lines ({locks} locked). This analysis does not have that work.",
+    project_restore: "Restore my work", project_keep: "Keep the analysis",
+    project_restored: "Your work is back: {n} red lines. Undo returns to the analysis.",
     stop: "Stop", stopping: "Stopping", stop_hint: "Stops when the current stage ends; the result on screen stays",
     analysis_stopped: "Analysis stopped after {s} s", analysis_stopped_kept: "Analysis stopped after {s} s — the result on screen stays",
     stage_load: "Audio", stage_attacks: "Attacks", stage_coherence: "Pulse scan", stage_octave: "Octave",
@@ -621,6 +625,10 @@ const I18N = {
     d_duration: "Duración", d_first: "Primer beat", d_engine: "Motor", d_residual: "Residuo de la rejilla",
     d_pulse: "Pulso", d_sections: "Secciones de rejilla", d_hint: "Elegí un timing point en la lista o en el mapa de tempo para inspeccionarlo.",
     d_timing: "Análisis", d_timing_cached: "desde la caché, {s} s",
+    project_offer: "Trabajaste el timing de esta canción el {when}: {n} líneas rojas. Este análisis no tiene ese trabajo.",
+    project_offer_locks: "Trabajaste el timing de esta canción el {when}: {n} líneas rojas ({locks} con candado). Este análisis no tiene ese trabajo.",
+    project_restore: "Restaurar mi trabajo", project_keep: "Quedarme con el análisis",
+    project_restored: "Tu trabajo volvió: {n} líneas rojas. Deshacer vuelve al análisis.",
     stop: "Detener", stopping: "Deteniendo", stop_hint: "Se detiene al terminar la etapa en curso; el resultado en pantalla se queda",
     analysis_stopped: "Análisis detenido a los {s} s", analysis_stopped_kept: "Análisis detenido a los {s} s — el resultado en pantalla se queda",
     stage_load: "Audio", stage_attacks: "Ataques", stage_coherence: "Barrido del pulso", stage_octave: "Octava",
@@ -1089,6 +1097,7 @@ function translate() {
   document.querySelectorAll("[data-i18n-aria]").forEach((el) => el.setAttribute("aria-label", t(el.dataset.i18nAria)));
   document.querySelectorAll("#langSwitch button").forEach((b) => b.classList.toggle("on", b.dataset.lang === S.lang));
   pbLoopLabel();
+  renderProjectOffer();
   renderSong();
   renderRecents();
   renderSongs();
@@ -1430,6 +1439,7 @@ window.overtone = {
       S.timings = reply && reply.ok ? reply : null;
       if (S.selected < 0) renderDetail();
     });
+    projectCheck();
     toast(t("done", { n: result.points.length, bpm: result.global_bpm.toFixed(2) }));
   },
   onError(detail) { S.pendingDrop = null; setBusy(false); toast(t("error", { detail }), true); },
@@ -1502,6 +1512,39 @@ function renderWarnings(list) {
   const shown = WARN.all || hidden <= 1 ? banners : banners.slice(0, WARN_SHOWN);
   $("warnings").innerHTML = shown.join("") + (hidden > 1
     ? `<button type="button" class="link warn-more" data-warn-all>${WARN.all ? t("warn_fewer") : t("warn_more", { n: hidden })}</button>` : "");
+}
+
+// The song's saved timing work (roadmap 14.1), offered back after an
+// analysis when it is not what the analysis gave; kept until a choice.
+const PROJECT = { state: null };
+
+async function projectCheck() {
+  PROJECT.state = null;
+  const reply = await api().project_state();
+  PROJECT.state = reply && reply.ok && reply.exists && reply.differs ? reply : null;
+  renderProjectOffer();
+}
+
+function renderProjectOffer() {
+  const box = $("projectOffer"), st = PROJECT.state;
+  box.hidden = !st;
+  box.innerHTML = !st ? "" : `<div class="banner info">${WARN_ICON}<div class="banner-text">
+      <div>${t(st.locks ? "project_offer_locks" : "project_offer", { when: esc(when(st.saved_at)), n: st.points, locks: st.locks })}</div>
+      <div class="banner-actions">
+        <button type="button" class="btn small primary" data-project="restore">${t("project_restore")}</button>
+        <button type="button" class="btn small" data-project="keep">${t("project_keep")}</button>
+      </div></div></div>`;
+}
+
+async function projectAction(action) {
+  if (action === "restore") {
+    const reply = await api().project_restore();
+    if (!reply.ok) { editFailure(reply); return; }
+    S.locks = reply.locks || [];
+    showEditResult(reply, t("project_restored", { n: reply.result.points.length }));
+  }
+  PROJECT.state = null;
+  renderProjectOffer();
 }
 
 function renderResult(r) {
@@ -5481,6 +5524,10 @@ function wire() {
   $("drop").onclick = openAudio;
   $("analyzeBtn").onclick = analyze;
   $("stopBtn").onclick = stopAnalysis;
+  $("projectOffer").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-project]");
+    if (b) projectAction(b.dataset.project);
+  });
   $("halfBtn").onclick = () => rescale(0.5);
   $("doubleBtn").onclick = () => rescale(2);
   $("rows").onclick = (e) => { const tr = e.target.closest("tr"); if (tr) selectPoint(+tr.dataset.i); };

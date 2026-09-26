@@ -65,6 +65,10 @@ TAP_LATENCY_LIMIT_MS = 250.0
 #: The trace needs the shape of the onset envelope, not its 40 k frames.
 ONSET_BINS = 1600
 LOOSE_RESIDUAL_MS = 5.0
+#: A song's timing work between sessions: JSON in <output folder>/Projects,
+#: its points and locks, keyed by the audio's SHA-256 (roadmap 14.1).
+PROJECT_FORMAT = "overtone-project"
+PROJECT_VERSION = 1
 
 
 # ---------------------------------------------------------------------------
@@ -298,9 +302,18 @@ class Api:
     of the js_api object, and the window must not be one of them.
     """
 
-    def __init__(self, initial_file: str = "", autorun: bool = False) -> None:
+    def __init__(self, initial_file: str = "", autorun: bool = False,
+                 save_projects: bool = False) -> None:
         self._window = None
         self._autorun = bool(initial_file) and autorun
+        #: Each song's timing work kept in a project file after every edit
+        #: (roadmap 14.1). Off unless the window asks: a bridge built for a
+        #: test or a check must never write into the user's Documents.
+        self._save_projects = bool(save_projects)
+        self._project_dirty = False
+        self._project_error = ""
+        #: (source, SHA-256) of the analysed audio, the project's key.
+        self._audio_sha: tuple[str, str] | None = None
         self._analysis: ta.Analysis | None = None
         self._busy = threading.Lock()
         #: Set by stop_analysis. The worker checks it at every stage the
@@ -372,6 +385,9 @@ class Api:
         self._history.append(list(self._analysis.points))
         del self._history[:-self.UNDO_DEPTH]
         self._future.clear()
+        # Every edit comes through here first: the song's project is saved
+        # with the next reply, once the edit is in place.
+        self._project_dirty = True
 
     def history_state(self) -> dict:
         return {"undo": bool(self._history), "redo": bool(self._future)}
@@ -385,6 +401,7 @@ class Api:
         self._future.append(list(self._analysis.points))
         self._analysis.points = self._history.pop()
         self._prune_locks()
+        self._project_dirty = True
         return {"ok": True, "result": self._payload(),
                 "selected": -1, "locks": self._lock_offsets(), **self.history_state()}
 
@@ -397,6 +414,7 @@ class Api:
         self._history.append(list(self._analysis.points))
         self._analysis.points = self._future.pop()
         self._prune_locks()
+        self._project_dirty = True
         return {"ok": True, "result": self._payload(),
                 "selected": -1, "locks": self._lock_offsets(), **self.history_state()}
 
@@ -522,6 +540,7 @@ class Api:
         self._stages = []
         self._t0 = time.perf_counter()
         self._engine_done = None
+        self._audio_sha = None              # the file may have changed at the same path
         threading.Thread(target=self._worker, args=(path, params), daemon=True).start()
         return {"ok": True}
 
@@ -608,6 +627,7 @@ class Api:
         else:
             self._locked = [lock for lock in self._locked
                             if abs(lock["offset_ms"] - point.offset_ms) >= 1e-6]
+        self._save_project()                  # a lock is work too; no payload follows
         return {"ok": True, "locked": self._is_locked(index),
                 "locks": self._lock_offsets()}
 
@@ -2315,6 +2335,8 @@ class Api:
         return self.set_settings({"output_folder": folder})
 
     def _payload(self) -> dict:
+        if self._project_dirty:
+            self._save_project()
         s = self._settings()
         return analysis_payload(self._analysis, {"subdivision": s["click_subdivision"],
                                                  "accent": s["click_accent"]})
@@ -2346,6 +2368,115 @@ class Api:
         folder = re.sub(r"^\d+\s+", "", source.parent.name)
         name = folder if " - " in folder else source.stem
         return ta._safe_component(name, "Overtone export")
+
+    # -- project: the song's timing work, kept between sessions (14.1) -----
+    def _audio_digest(self) -> str | None:
+        """The analysed file's SHA-256, read once per song; None when unreadable."""
+        source = str(self._analysis.source)
+        if self._audio_sha is None or self._audio_sha[0] != source:
+            import hashlib
+            digest = hashlib.sha256()
+            try:
+                with open(source, "rb") as handle:
+                    for chunk in iter(lambda: handle.read(1 << 20), b""):
+                        digest.update(chunk)
+            except OSError:
+                return None
+            self._audio_sha = (source, digest.hexdigest())
+        return self._audio_sha[1]
+
+    def _project_path(self, digest: str) -> Path:
+        """<output folder>/Projects/<song> [<first 8 of the SHA-256>].oto: the
+        song's name to find it by, its bytes so two songs named alike never
+        share one, and moving the audio keeps it."""
+        s = self._settings()
+        root = Path(s["output_folder"]) if s["output_folder"] else _default_output()
+        return root / "Projects" / f"{self._song_folder_name()} [{digest[:8]}].oto"
+
+    def _save_project(self) -> None:
+        """Write the song's points and locks, atomically. A failed save never
+        fails the edit that asked for it; project_state says why."""
+        self._project_dirty = False
+        if not self._save_projects or self._analysis is None:
+            return
+        digest = self._audio_digest()
+        if digest is None:
+            return
+        source = Path(str(self._analysis.source))
+        body = {"format": PROJECT_FORMAT, "version": PROJECT_VERSION, "app": ta.APP_VERSION,
+                "saved_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "audio": {"name": source.name, "path": str(source), "sha256": digest},
+                "points": [{"offset_ms": p.offset_ms, "bpm": p.bpm, "confidence": p.confidence,
+                            "meter": p.meter, "meter_known": p.meter_known, "manual": p.manual}
+                           for p in self._analysis.points],
+                "locks": [dict(lock) for lock in self._locked]}
+        target = self._project_path(digest)
+        partial = target.with_name(target.name + ".part")
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            partial.write_text(json.dumps(body, indent=1), encoding="utf-8")
+            os.replace(partial, target)
+            self._project_error = ""
+        except OSError as exc:
+            self._project_error = str(exc)
+
+    def _read_project(self) -> dict | None:
+        """This song's project when there is one and it is sound: its format,
+        its audio's hash, and every point a finite, positive red line."""
+        digest = self._audio_digest()
+        if digest is None:
+            return None
+        try:
+            with open(self._project_path(digest), encoding="utf-8") as handle:
+                body = json.load(handle)
+            if (body.get("format") != PROJECT_FORMAT or body.get("version") != PROJECT_VERSION
+                    or body["audio"]["sha256"] != digest):
+                return None
+            points = [ta.TimingPoint(float(p["offset_ms"]), float(p["bpm"]), float(p["confidence"]), 0,
+                                     int(p["meter"]), bool(p["meter_known"]), manual=bool(p["manual"]))
+                      for p in body["points"]]
+            locks = [{"offset_ms": float(lock["offset_ms"]), "bpm": float(lock["bpm"]),
+                      "meter": int(lock["meter"]), "meter_known": bool(lock["meter_known"])}
+                     for lock in body["locks"]]
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            return None
+        sound = all(np.isfinite(p.offset_ms) and np.isfinite(p.bpm) and p.bpm > 0
+                    and 0 < p.meter <= ta.MAX_METER for p in points)
+        if not points or not sound:
+            return None
+        return {"saved_at": str(body.get("saved_at", "")), "points": points, "locks": locks}
+
+    def project_state(self) -> dict:
+        """Whether this song has saved timing work that is not what is on
+        screen, so the page can offer it back after an analysis."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        project = self._read_project()
+        if project is None:
+            return {"ok": True, "exists": False, "error": self._project_error}
+        on_screen = [(round(p.offset_ms, 3), round(p.bpm, 6), p.meter) for p in self._analysis.points]
+        saved = [(round(p.offset_ms, 3), round(p.bpm, 6), p.meter) for p in project["points"]]
+        locks = sorted(round(lock["offset_ms"], 3) for lock in project["locks"])
+        differs = saved != on_screen or locks != sorted(round(o, 3) for o in self._lock_offsets())
+        return {"ok": True, "exists": True, "differs": differs, "saved_at": project["saved_at"],
+                "points": len(project["points"]), "locks": len(project["locks"]),
+                "error": self._project_error}
+
+    def project_restore(self) -> dict:
+        """Put the song's saved timing work back; undo returns to the analysis."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        project = self._read_project()
+        if project is None:
+            return {"ok": False, "key": "no_project"}
+        beats = np.asarray(self._analysis.beats, dtype=np.float64)
+        points = [ta.TimingPoint(p.offset_ms, p.bpm, p.confidence,
+                                 ta._nearest_beat_index(beats, p.offset_ms), p.meter,
+                                 p.meter_known, manual=p.manual) for p in project["points"]]
+        self._push_history()
+        self._analysis.points = sorted(points, key=lambda p: p.offset_ms)
+        self._locked = project["locks"]
+        return self._edited(0, None)
 
     def _export_target(self, filename: str, file_types) -> str | None:
         """Where an export goes: the output folder's folder for this song.
@@ -2502,6 +2633,9 @@ class Api:
             self._assisted = None       # a fit belongs to the song it was made on
             self._history.clear()
             self._future.clear()
+            # A fresh analysis is nobody's work: it must never overwrite the
+            # project it may be about to be offered back from.
+            self._project_dirty = False
             self._last_timings = self._timings(cached)
             self._emit("onResult", self._payload())
         except AnalysisStopped:
@@ -2895,7 +3029,7 @@ def main(argv: list[str] | None = None) -> None:
         _run_self_check(args[1] if len(args) > 1 else None)
     import webview
     files = [a for a in args if not a.startswith("--")]
-    api = Api(files[0] if files else "", autorun=bool(files))
+    api = Api(files[0] if files else "", autorun=bool(files), save_projects=True)
     # Before the window exists: the taskbar reads the id when the window opens.
     ta.claim_taskbar_identity()
     window = webview.create_window(

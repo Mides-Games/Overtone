@@ -2913,6 +2913,92 @@ class SelfCheckTests(unittest.TestCase):
         webview.start.assert_not_called()
 
 
+class ProjectTests(_IsolatedConfig):
+    """Each song's timing work kept between sessions (roadmap 14.1): saved
+    after every edit, offered back after an analysis, off unless asked."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.root = Path(scratch.name)
+        self.audio = self.root / "Artist - Title" / "audio.mp3"
+        self.audio.parent.mkdir()
+        self.audio.write_bytes(b"not really audio, but bytes to hash")
+        out = mock.patch.object(web, "_default_output", return_value=self.root / "out")
+        out.start()
+        self.addCleanup(out.stop)
+
+    def _fresh(self) -> ta.Analysis:
+        analysis = _analysis([ta.TimingPoint(1000.0, 120.0, 0.9, 1),
+                              ta.TimingPoint(9000.0, 150.0, 0.8, 21)])
+        analysis.source = str(self.audio)
+        return analysis
+
+    def _projects(self) -> list[Path]:
+        return sorted((self.root / "out" / "Projects").glob("*.oto"))
+
+    def test_an_edit_writes_the_project_and_an_analysis_does_not(self) -> None:
+        api = web.Api(save_projects=True)
+        api._analysis = self._fresh()
+        api._payload()                                   # an analysis reply: nothing written
+        self.assertEqual(self._projects(), [])
+        self.assertTrue(api.edit_nudge(1, 5.0)["ok"])
+        [project] = self._projects()
+        self.assertTrue(project.name.startswith("Artist - Title ["))
+        body = json.loads(project.read_text(encoding="utf-8"))
+        self.assertEqual(body["format"], web.PROJECT_FORMAT)
+        self.assertEqual([p["offset_ms"] for p in body["points"]], [1000.0, 9005.0])
+        self.assertFalse(project.with_name(project.name + ".part").exists())
+
+    def test_the_work_comes_back_and_undo_returns_to_the_analysis(self) -> None:
+        api = web.Api(save_projects=True)
+        api._analysis = self._fresh()
+        api.edit_nudge(1, 5.0)
+        api.set_locked(0, True)
+        # The next session: the same song analysed afresh.
+        later = web.Api(save_projects=True)
+        later._analysis = self._fresh()
+        state = later.project_state()
+        self.assertEqual((state["exists"], state["differs"], state["points"], state["locks"]),
+                         (True, True, 2, 1))
+        restored = later.project_restore()
+        self.assertEqual([p["offset_ms"] for p in restored["result"]["points"]], [1000.0, 9005.0])
+        self.assertEqual(restored["locks"], [1000.0])
+        self.assertFalse(later.project_state()["differs"])
+        undone = later.undo()
+        self.assertEqual([p["offset_ms"] for p in undone["result"]["points"]], [1000.0, 9000.0])
+
+    def test_off_unless_asked(self) -> None:
+        api = web.Api()                                  # as every test and the harness build it
+        api._analysis = self._fresh()
+        api.edit_nudge(1, 5.0)
+        api.set_locked(0, True)
+        self.assertEqual(self._projects(), [])
+        self.assertFalse(api.project_state()["exists"])
+
+    def test_a_damaged_or_foreign_project_is_not_offered(self) -> None:
+        api = web.Api(save_projects=True)
+        api._analysis = self._fresh()
+        api.edit_nudge(1, 5.0)
+        [project] = self._projects()
+        body = json.loads(project.read_text(encoding="utf-8"))
+        for broken in ("{not json", json.dumps({**body, "audio": {**body["audio"], "sha256": "0" * 64}}),
+                       json.dumps({**body, "points": [{**body["points"][0], "bpm": -1}]})):
+            with self.subTest(broken=broken[:30]):
+                project.write_text(broken, encoding="utf-8")
+                self.assertFalse(api.project_state()["exists"])
+                self.assertEqual(api.project_restore()["key"], "no_project")
+
+    def test_the_window_keeps_projects(self) -> None:
+        with mock.patch.dict("sys.modules", {"webview": mock.MagicMock()}), \
+                mock.patch.object(ta, "claim_taskbar_identity"), \
+                mock.patch.object(web, "warm_up"), \
+                mock.patch.object(web, "Api", wraps=web.Api) as bridge:
+            web.main([])
+        self.assertTrue(bridge.call_args.kwargs["save_projects"])
+
+
 class WarmUpTests(_IsolatedConfig):
     """The window runs both engines once in the background, so the user's
     first analysis does not pay for first-call compilation."""

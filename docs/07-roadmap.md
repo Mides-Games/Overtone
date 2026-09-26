@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **587** Python (403 engine + 184 web shell) · **270** Rust.
+Tests: **592** Python (403 engine + 189 web shell) · **270** Rust.
 
 ### What is pending, in order
 
@@ -393,7 +393,7 @@ corpus generator; they say the classes separate, not how they do on real songs.
 | Machine-readable output | `--json` | low | high | CLI | no | no | P1 | **done** for analyse |
 | Batch folder analysis | every audio file in a folder | low | high | CLI | no | no | P1 | **done** |
 | Batch hitsounding | many difficulties, one analysis reused | low | high | P6 | no | no | P1 | todo |
-| Project format | reopen a song with its edits without recomputing | med | high | P2 cache | no | no | P1 | todo — only the result cache exists |
+| Project format | reopen a song with its edits without recomputing | med | high | P2 cache | no | no | P1 | **done** for the timing work — each song's red lines and locks saved after every edit to `<output folder>/Projects/<song> [<sha>].oto` (JSON, atomic), offered back after its analysis, undo returning to the analysis; not kept: the undo history, the view, notes, earlier versions (14.1's full list) |
 | Watch mode | re-analyse on file change | low | low | CLI | no | no | P3 | todo |
 
 ---
@@ -479,7 +479,7 @@ presentation and I/O layers, not the engine, so they run in parallel with the re
 |---:|---|---|
 | 12 | Modern UI | **superseded** — the web shell (Phase 3) replaced the PySide6 plan |
 | 13 | Audio playback — transport, live click, scrubbing, MIDI tap | partial — Phase 4 transport, live click and loop; no scrub audio, no MIDI tap |
-| 14 | Project system — project file, auto-save, undo, **organised output folders**, batch | partial — undo/redo, result cache and the output folder (Phase 20); no project file, no auto-save |
+| 14 | Project system — project file, auto-save, undo, **organised output folders**, batch | partial — undo/redo, result cache and the output folder (Phase 20), and a project file per song saved after every edit; no journal, no batch |
 | 15 | Deep osu! integration — Songs browser, lazer, editor round-trip, sample library | partial — folder import, Songs browser; no lazer |
 | 16 | Localization + accessibility | partial — English/Spanish; no screen-reader work |
 | 17 | Plugins + reports | todo |

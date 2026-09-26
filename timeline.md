@@ -17,6 +17,51 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Each song's timing work kept between sessions
+
+Everything lived in memory. Closing the app lost every red line the user had moved, and
+opening the song again brought back the analysis from the result cache, as if nothing had
+been done; only an export or an inject kept the work. Roadmap, Phase 14: "Project format".
+
+### Changed
+
+- **A project file per song**: `<output folder>/Projects/<song> [<first 8 of the audio's
+  SHA-256>].oto`, JSON: the red lines with their confidence, meter and hand-placed flag,
+  and the locks, with the audio's name, path and hash. Written atomically after every
+  edit, undo, redo and lock; never after an analysis, so a fresh one cannot overwrite the
+  work it is about to be offered.
+- **Offered back after an analysis**: when the song's project is not what the analysis
+  gave, the Timing view says when the work was done and how many lines (and locks) it
+  holds: Restore my work, or Keep the analysis. Restoring is one undo step.
+- A project whose format, audio hash or points do not hold (a damaged file, another
+  song's, a BPM that is not positive) is not offered.
+- **Off unless the window asks** (`Api(save_projects=True)`): every test and every
+  earlier check built the bridge with the user's real Documents under it.
+
+### Hardening
+
+- The UI check's harness points USERPROFILE at its temp folder too, not LOCALAPPDATA
+  alone: exports and projects default to Documents\Overtone under it, and a check must not
+  write there.
+
+### Measured
+
+```
+through the harness page, synthetic "Secs" track
+  first analysis                    no project, no offer
+  +5 ms on line 2                   project written (3 lines); on screen = saved
+  analysed again (from the cache)   the offer: "You worked on this song's timing on …:
+                                    3 red lines. This analysis does not have that work."
+  Restore my work                   24315.1 ms back, "Your work is back: 3 red lines. Undo
+                                    returns to the analysis."; undo: 24310.1
+  a lock, analysed again, Spanish   "(1 con candado)"; Keep the analysis hides the offer
+  where it wrote                    the harness's temp Documents; the real one untouched
+Python unittest      587 -> 592 on master, all pass · facts ok · engine untouched, gates not re-run
+```
+
+Not measured: a project written by the installed app across a real restart; the harness
+builds a new bridge per start, so the "next session" above is a second analysis of the song.
+
 ## v4.0.0-dev — 2026-09-26 · Structure edges where the song repeats itself
 
 88 % of ranked maps' kiai starts had no structure edge within 2 bars. Measured first: the

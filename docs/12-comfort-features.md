@@ -196,6 +196,16 @@ recoverable after a crash, and portable to another machine.
 - Atomic write via `os.replace`.
 - Backup on save: last 5 versions kept.
 
+*Built 2026-09-26, the timing work:* JSON rather than TOML with a SQLite blob, since
+nothing large needs keeping (the analysis comes back from the result cache, the waveform
+from the audio). `<output folder>/Projects/<song> [<first 8 of its SHA-256>].oto` holds
+`format` (`overtone-project`), `version` (1), `app`, `saved_at`, `audio` (`name`,
+`path`, `sha256`), `points` (`offset_ms`, `bpm`, `confidence`, `meter`, `meter_known`,
+`manual`) and `locks`. It is written atomically after every edit, undo, redo and lock,
+never after an analysis; after a song's analysis the page offers it back when it differs,
+and restoring is one undo step. A project whose format, audio hash or points do not hold
+is not offered. Not kept yet: the undo history, the view, notes, the last five versions.
+
 ### Sub-phase 14.2 — Auto-save + crash recovery (2 days)
 
 - Journal of edits appended to `.oto.journal` on every change.

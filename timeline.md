@@ -17,6 +17,52 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · The .osu reader under a fuzzer
+
+### Changed
+
+- **`bench/fuzz_reader.py`**, one line like every other check: seeded mutant .osu files
+  (lines deleted, duplicated and swapped; fields replaced by hostile tokens such as `inf`,
+  `2**64`, `|||`; truncated or corrupted bytes; BOMs; stray line breaks) must read or be
+  refused with a ValueError, write back byte for byte, and pass 13 consumers of a parsed
+  map (sound events, the hitsound report, consistency and silence checks, playback, the
+  hitsound difficulty, snap audit, reference grading, alignment, the mod report, scroll
+  profile, proposals, the copier) with no other exception and no hang (faulthandler ends
+  a run stuck past 5 s with its stack). A failure saves the mutant for replay.
+
+### Fixed
+
+- **A section header with a stray space or tab came back without it** (`[General]\t`).
+  The reader matched the header stripped and the writer rebuilt it from the name; the
+  header line is now kept as written.
+- **Unicode line separators split lines osu! keeps whole.** `str.splitlines` breaks at
+  `\v`, `\f`, `\x1c`-`\x1e`, `\x85`, `\u2028` and `\u2029` besides CR and LF; osu!
+  reads lines at CR and LF only. A title holding one was two lines in the reader, and the
+  text-level writers (inject, hitsound fields, shift, the timing section) counted lines
+  the same wrong way, so an edit could land on the wrong line. Every split of .osu text
+  now goes through one helper that breaks where osu! does.
+- **A timing line with `inf` in a field crashed every sound-event reader**
+  (`OverflowError`), and `nan` or `inf` times and beat lengths were taken as numbers. Such
+  a line is now skipped as unreadable, as osu! skips it.
+- **A meter of 2**64 made the hitsound report ask for a 2**66-slot list.** A meter past
+  1024 reads as 4, the reader's rule for an unreadable one; the largest meter in the
+  25,174 local .osu files is 16.
+
+### Measured
+
+```
+bench/fuzz_reader.py, 3000 mutants per seed
+  seed 1 found the header, the line separators and inf; seed 3 found the meter
+  after the fixes, seeds 1-5: 15,000 mutants, none crashes, none hangs, every one read
+  is written back byte for byte; 125-162 per seed refused with a reason; slowest mutant
+  515 ms; 70-160 s a seed
+meters in 25,174 local .osu files: 1 to 16 (16 four times)
+the four regression tests fail on the old reader and pass on the new one
+Python unittest     528 -> 532, all pass
+benchmark.py 24/24 · bpm-snapshot 24/24 · golden.py 27/27 · coverage, measures,
+signatures, robustness, reference 24/24, assisted 70 · facts
+```
+
 ## v4.0.0-dev — 2026-09-26 · Missing hitsound samples: measured, not reported
 
 ### Rejected / tried and dropped

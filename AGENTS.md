@@ -36,6 +36,7 @@ Repository conventions for any AI agent or contributor working here.
 .venv/Scripts/python.exe bench/gates.py reference              # maps graded as timed
 .venv/Scripts/python.exe bench/gates.py assisted               # marked downbeats fit
 .venv/Scripts/python.exe bench/facts.py                        # stated counts and schema match the source
+.venv/Scripts/python.exe bench/fuzz_reader.py                  # 3000 mutant .osu files read, written back, consumed
 ```
 
 Every gate after the benchmark checks something the benchmark cannot see. `bpm-snapshot` pins the

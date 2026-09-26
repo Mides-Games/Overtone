@@ -302,7 +302,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Span-preserving writer | untouched fields come out byte-identical | high | **high** | reader | no | no | **P1** | **done** (Python) |
 | Atomic write + backup | temp+rename, `.bak` never overwritten | low | **high** | writer | no | no | **P1** | **done** |
 | Timing injection | red-line replacement, greens preserved, what plays unchanged | med | **high** | writer | no | no | **P1** | **done** — keeps sampleset/volume/kiai/SV since 2026-09-23 |
-| Parser fuzzing | fuzz the reader | low | high | reader | no | no | P1 | todo |
+| Parser fuzzing | fuzz the reader | low | high | reader | no | no | P1 | **done** — `bench/fuzz_reader.py`: mutant .osu files (lines, fields, bytes, BOMs, stray line breaks) through the reader, the byte-for-byte writer and 13 consumers of a parsed map; it found four bugs, each fixed with a test; 15,000 mutants on five seeds pass |
 | Beatmap folder import | audio + all difficulties from one folder | low | med | reader | no | no | P1 | **done** |
 | **Map vs detected compare** | per-section BPM/offset diff table | med | **high** | reader, P1 | no | no | **P1** | **done** |
 | Audio/object alignment | do the map's objects land on real attacks? | med | **high** | reader, attacks | no | no | **P1** | **done** |

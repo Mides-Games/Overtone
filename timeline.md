@@ -16,6 +16,34 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Inject diff, engine half: old beside new, drift included
+
+### Changed
+
+- **`inject_diff(osu_path, analysis)`**: the map's reds paired with the
+  analysis' new ones by order — what the inject actually writes — each pair
+  with both offsets, BPMs and meters, the deltas, and the drift an object at
+  the old span's end lands off the new grid (exact given the pairing; None
+  past the last line). Longer sides ride along as removed/added. Read only.
+
+### Fixed
+
+- Two of my own drafts before committing: the section scan broke out of the
+  file before reaching [TimingPoints], and the test misread the fixture's
+  green line as a third red — the drift it then "expected" was mine, not the
+  code's (−49.89 hand-verified: 7 ms shift plus 12.8 s at −1 BPM).
+
+### Measured
+
+```
+Python unittest              460 -> 463 (inject suites green)
+facts                        ok
+```
+
+No analysis code touched, so no benchmark run here.
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Inject the whole mapset from Export
 
 ### Changed

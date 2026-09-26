@@ -505,6 +505,69 @@ class OsuInjectTests(unittest.TestCase):
             self.assertTrue(summary["audio_mismatch"])
 
 
+class InjectDiffTests(unittest.TestCase):
+    FAKE_OSU = ("osu file format v14\n[General]\nAudioFilename: song.mp3\n"
+                "[TimingPoints]\n"
+                "353,266.666666666667,4,2,0,100,1,0\n"
+                "1000,500,4,2,0,60,0,0\n"
+                "13153,270.270270270270,4,2,0,85,1,1\n"
+                "[HitObjects]\n64,80,1000,1,0\n")
+
+    def _analysis(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(source="song.mp3",
+                               points=[TimingPoint(360.0, 224.0, 0.95, 1),
+                                       TimingPoint(14000.0, 222.0, 0.9, 60)])
+
+    def test_pairs_by_order_with_drift_and_leftovers(self) -> None:
+        from overtone import inject_diff
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_bytes(self.FAKE_OSU.replace("\n", "\r\n").encode("utf-8"))
+            diff = inject_diff(target, self._analysis())
+            json.dumps(diff)
+            self.assertEqual(len(diff["pairs"]), 2)
+            first, second = diff["pairs"]
+            self.assertEqual(first["old"], {"offset_ms": 353.0, "bpm": 225.0, "meter": 4})
+            self.assertEqual(first["new"], {"offset_ms": 360, "bpm": 224.0, "meter": 4})
+            self.assertEqual((first["delta_offset_ms"], first["delta_bpm"]), (7.0, -1.0))
+            self.assertAlmostEqual(first["drift_end_ms"], -49.89, places=2)
+            self.assertEqual(second["old"], {"offset_ms": 13153.0, "bpm": 222.0, "meter": 4})
+            self.assertEqual(second["new"], {"offset_ms": 14000, "bpm": 222.0, "meter": 4})
+            self.assertEqual((second["delta_offset_ms"], second["delta_bpm"]), (847.0, 0.0))
+            self.assertIsNone(second["drift_end_ms"])
+            self.assertEqual((diff["removed"], diff["added"]), ([], []))
+
+    def test_empty_sides_and_missing_points(self) -> None:
+        from types import SimpleNamespace
+        from overtone import inject_diff
+        with tempfile.TemporaryDirectory() as tmp:
+            bare = Path(tmp) / "bare.osu"
+            bare.write_text("[General]\n[TimingPoints]\n[HitObjects]\n", encoding="utf-8")
+            diff = inject_diff(bare, self._analysis())
+            self.assertEqual((diff["pairs"], diff["removed"]), ([], []))
+            self.assertEqual(len(diff["added"]), 2)
+            with self.assertRaises(ValueError):
+                inject_diff(bare, SimpleNamespace(source="song.mp3", points=[]))
+            with self.assertRaises(ValueError):
+                inject_diff(Path(tmp) / "missing.osu", self._analysis())
+
+    def test_extra_old_lines_ride_along_as_removed(self) -> None:
+        from types import SimpleNamespace
+        from overtone import inject_diff
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_bytes(self.FAKE_OSU.replace("\n", "\r\n").encode("utf-8"))
+            one = SimpleNamespace(source="song.mp3",
+                                  points=[TimingPoint(360.0, 224.0, 0.95, 1)])
+            diff = inject_diff(target, one)
+            json.dumps(diff)
+            self.assertEqual(len(diff["pairs"]), 1)
+            self.assertEqual(diff["removed"],
+                             [{"offset_ms": 13153.0, "bpm": 222.0, "meter": 4}])
+            self.assertEqual(diff["added"], [])
+
+
 class InjectMapsetTests(unittest.TestCase):
     FAKE_OSU = ("osu file format v14\n[General]\nAudioFilename: song.mp3\n"
                 "[TimingPoints]\n353,266.666666666667,4,2,0,100,1,0\n"

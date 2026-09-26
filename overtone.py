@@ -3737,6 +3737,67 @@ def inject_mapset(folder: str | os.PathLike[str], analysis: Analysis,
             "failed": sum(1 for f in files if not f["ok"])}
 
 
+def inject_diff(osu_path: str | os.PathLike[str], analysis: Analysis,
+                decimals: int = 0) -> dict:
+    """Each old red line beside its new value, and the drift it causes
+    (Phase 21, Inject diff).
+
+    Pairs the map's red lines with the analysis' new ones by order: the i-th
+    span's timing moves from the i-th old line to the i-th new one, which is
+    what the inject writes. ``drift_end_ms`` is where an object sitting at the
+    old span's end lands off the new grid — the offset shift plus the span
+    length times the beat change, exact given the pairing — or None past the
+    last old line, where no span ends. Lines beyond the shorter side ride
+    along as ``removed`` (the map's) or ``added`` (the analysis'). Read only,
+    plain JSON types.
+    """
+    path = Path(osu_path)
+    if not path.is_file():
+        raise ValueError(f"{path} is not a file.")
+    try:
+        text = path.read_bytes().decode("utf-8-sig")
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Could not read {path.name}: {exc}") from exc
+    old = []
+    inside = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped == "[TimingPoints]":
+            inside = True
+            continue
+        if inside and stripped.startswith("[") and stripped.endswith("]"):
+            break
+        if not inside:
+            continue
+        point = _timing_point_fields(stripped) if stripped else None
+        if point is not None and point["red"]:
+            old.append({"offset_ms": round(point["time"], 3),
+                        "bpm": round(60000.0 / point["beat_length"], 3),
+                        "meter": point["meter"]})
+    new = []
+    for line in osu_timing_text(analysis, decimals).splitlines():
+        point = _timing_point_fields(line.strip()) if line.strip() else None
+        if point is not None and point["red"]:
+            new.append({"offset_ms": round(point["time"], 3),
+                        "bpm": round(60000.0 / point["beat_length"], 3),
+                        "meter": point["meter"]})
+    if not new:
+        raise ValueError("This analysis has no usable timing points to inject.")
+    pairs = []
+    for i, (before, after) in enumerate(zip(old, new)):
+        end = old[i + 1]["offset_ms"] if i + 1 < len(old) else None
+        drift = None
+        if end is not None:
+            drift = round((after["offset_ms"] - before["offset_ms"])
+                          + (end - before["offset_ms"])
+                          * ((60000.0 / before["bpm"]) / (60000.0 / after["bpm"]) - 1), 2)
+        pairs.append({"old": before, "new": after,
+                      "delta_offset_ms": round(after["offset_ms"] - before["offset_ms"], 3),
+                      "delta_bpm": round(after["bpm"] - before["bpm"], 3),
+                      "drift_end_ms": drift})
+    return {"pairs": pairs, "removed": old[len(new):], "added": new[len(old):]}
+
+
 # ---------------------------------------------------------------------------
 # Audio swap (Phase 19): one mapset's times onto a new encode of its audio
 # ---------------------------------------------------------------------------

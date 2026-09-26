@@ -16,6 +16,25 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Bookmarks, engine half: merge, never delete
+
+### Changed
+
+- **`set_editor_bookmarks(beatmap, times_ms)`**: whole-millisecond section starts
+  merged into the map's own bookmarks, sorted — the mapper's survive, negatives
+  dropped, junk refusing the map instead of vanishing silently. Only the
+  bookmarks line moves. `[Editor]` is universal locally (500/500 maps), so a
+  missing one refuses rather than invents file structure.
+
+### Measured
+
+```
+Python unittest              442 -> 444 (writer suites green)
+facts                        ok
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Preview point: the chorus, or the loudest part
 
 ### Changed

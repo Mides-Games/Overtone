@@ -4880,6 +4880,31 @@ class StructureViewTests(unittest.TestCase):
         self.assertEqual(structure_view(report, self._analysis([], 1000.0))["sections"][0]["why"],
                          {"rule": "verse_single"})
 
+    def test_bookmarks_merge_sorted_and_keep_the_mappers(self):
+        from overtone import set_editor_bookmarks
+        beatmap = {"sections": [{"name": "Editor",
+                                 "lines": ["Bookmarks: 3000,1000", "DistanceSpacing: 1.2"]}],
+                   "editor": {}}
+        result = set_editor_bookmarks(beatmap, [2000.4, 1000.0, -50.0])
+        json.dumps(result)
+        self.assertEqual(result, {"added": 1, "total": 3})
+        self.assertEqual(beatmap["sections"][0]["lines"],
+                         ["Bookmarks: 1000, 2000, 3000", "DistanceSpacing: 1.2"])
+        self.assertEqual(beatmap["editor"]["Bookmarks"], "1000, 2000, 3000")
+
+    def test_bookmarks_append_when_missing_and_refuse_junk(self):
+        from overtone import set_editor_bookmarks
+        bare = {"sections": [{"name": "Editor", "lines": ["DistanceSpacing: 1.2"]}],
+                "editor": {}}
+        self.assertEqual(set_editor_bookmarks(bare, [500.0])["added"], 1)
+        self.assertIn("Bookmarks: 500", bare["sections"][0]["lines"])
+        junk = {"sections": [{"name": "Editor", "lines": ["Bookmarks: 1000,soon"]}],
+                "editor": {}}
+        with self.assertRaises(ValueError):
+            set_editor_bookmarks(junk, [2000.0])
+        with self.assertRaises(ValueError):
+            set_editor_bookmarks({"sections": []}, [2000.0])
+
 
 class AssistedTimingTests(unittest.TestCase):
     """Proposal P1: two marked downbeats seed the grid, the attacks do the rest."""

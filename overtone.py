@@ -6430,6 +6430,45 @@ def suggest_preview_time(sections: list[dict]) -> dict | None:
             "kind": chosen["kind"], "why": why}
 
 
+def set_editor_bookmarks(beatmap: dict, times_ms: list[float]) -> dict:
+    """Section starts as editor bookmarks (Phase 21, Bookmarks).
+
+    Merges whole-millisecond times into the map's own bookmarks, sorted —
+    the mapper's survive, nothing is ever deleted, negative times are
+    dropped (bookmarks live at or past zero). A bookmarks line with
+    unreadable entries refuses the map instead of silently dropping them.
+    Only the bookmarks line moves (appended at the section's end when the
+    map has none); every other byte waits for the writer. In place, like
+    the P-2 field edits. Returns added and total.
+    """
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "Editor"), None)
+    if section is None:
+        raise ValueError("No [Editor] section in this beatmap.")
+    kept: list[int] = []
+    index = next((i for i, line in enumerate(section["lines"])
+                  if line.strip().lower().startswith("bookmarks:")), None)
+    if index is not None:
+        for token in section["lines"][index].split(":", 1)[1].split(","):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                kept.append(int(token))
+            except ValueError:
+                raise ValueError(f"Unusable bookmarks: {token!r}.")
+    wanted = sorted({int(round(t)) for t in times_ms if t is not None} | set(kept))
+    wanted = [t for t in wanted if t >= 0]
+    if index is None:
+        section["lines"].append(f"Bookmarks: {', '.join(str(t) for t in wanted)}")
+    else:
+        head = section["lines"][index].split(":", 1)[0]
+        section["lines"][index] = f"{head}: {', '.join(str(t) for t in wanted)}"
+    editor = beatmap.setdefault("editor", {})
+    if isinstance(editor, dict):
+        editor["Bookmarks"] = ", ".join(str(t) for t in wanted)
+    return {"added": len(wanted) - len(kept), "total": len(wanted)}
+
+
 # ---------------------------------------------------------------------------
 # Assisted timing (proposal P1): two marked downbeats seed the grid
 # ---------------------------------------------------------------------------

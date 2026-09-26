@@ -44,6 +44,15 @@ before:
    a width: `resize_window` to 1280x800. With the pane hidden the layout has no
    width and every measurement is zero.
 
+   Keep one page on the harness: the tab `preview_start` names (usually `seed`).
+   Every harness page polls `/events` and each event goes to whichever polls
+   first, so a second tab silently takes an `onResult` and the first waits
+   forever. If `navigate` says a tab cannot navigate and opens another, close
+   one of the two (`tabs_context` lists them). The tab may also still hold the
+   page of an earlier check, old JavaScript and all: `navigate` to the URL
+   before driving it. A hidden pane throttles timers, the polling included, so
+   ask the bridge (`await api().…`) when an event seems late.
+
 3. **Drive the page through its own functions** with `javascript_tool`:
    `setView("structure")`, `analyze()`, `songsLoad()`, and read state from `S`,
    `STX`, `SONGS`, `P`, `VIEW`. Wait for async work in the same call with a

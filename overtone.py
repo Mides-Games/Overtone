@@ -2235,13 +2235,12 @@ def audio_file_report(path: str | os.PathLike[str]) -> dict:
     findings = []
     if clipped_share > AUDIO_CLIP_SHARE:
         findings.append({"key": "clipping", "level": "warn",
-                         "detail": f"{clipped_share * 100:.2f}% of samples at full scale."})
+                         "share_pct": round(clipped_share * 100.0, 2)})
     if lead_ms > AUDIO_LEAD_WARN_MS:
-        findings.append({"key": "long_lead", "level": "warn",
-                         "detail": f"{lead_ms:.0f} ms of near-silence before the first sound."})
+        findings.append({"key": "long_lead", "level": "warn", "lead_ms": lead_ms})
     if info.samplerate < AUDIO_RATE_FLOOR:
         findings.append({"key": "low_rate", "level": "info",
-                         "detail": f"{info.samplerate} Hz is under CD quality."})
+                         "sample_rate": int(info.samplerate)})
     return {"file": file.name, "format": str(info.format or ""), "subtype": subtype,
             "sample_rate": int(info.samplerate), "channels": int(info.channels),
             "duration_s": round(duration_s, 3), "bitrate_kbps": bitrate_kbps,

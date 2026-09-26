@@ -16,6 +16,28 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Audio file card in Mapset
+
+### Changed
+
+- **Audio-file card in Mapset**: the folder's own audio with its facts
+  (format, rate, channels, length, bitrate with its method, peak) and the
+  findings behind it, or a clean bill. Read only, runs with the mapset
+  check. EN/ES.
+
+### Measured
+
+```
+synthetic mapset                WAV facts exact, no findings; missing audio refused
+Python unittest                 467 -> 468, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages
+                                cross-checked. Harness pass owed, stated.
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Audio file check, engine half: facts plus stated bars
 
 ### Changed

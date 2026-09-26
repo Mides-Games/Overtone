@@ -2939,6 +2939,63 @@ class MapWriterTests(unittest.TestCase):
                          (1, 1))
         self.assertEqual(len(beatmap["timing"]["greens"]), 2)
 
+    @staticmethod
+    def _breaks_map(events: str, objects: str):
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+                 "[Events]"] + events.split("\n") + ["", "[TimingPoints]",
+                 "0,500,4,2,0,70,1,0", "", "[HitObjects]"] + objects.split("\n") + [""]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes("\r\n".join(lines).encode("utf-8"))
+            return read_osu_beatmap(path)
+
+    _BREAK_SECTIONS = [
+        {"start_s": 0.0, "end_s": 10.0, "kind": "verse", "level_db": -8.0},
+        {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -14.0},
+    ]
+
+    def test_suggest_breaks_cuts_quiet_gaps(self) -> None:
+        from overtone import suggest_breaks
+        beatmap = self._breaks_map(
+            "//Background and Video events\n//Break Periods",
+            "256,192,1000,1,0,0:0:0:0:\n256,192,2000,1,0,0:0:0:0:\n256,192,30000,1,0,0:0:0:0:")
+        spans = suggest_breaks(beatmap, self._BREAK_SECTIONS)
+        json.dumps(spans)
+        self.assertEqual(spans, [{"start_ms": 10000, "end_ms": 30000, "kind": "chorus",
+                                  "under_db": 6.0, "gap_s": 28.0}])
+
+    def test_suggest_breaks_silent_where_loud_or_short(self) -> None:
+        from overtone import suggest_breaks
+        beatmap = self._breaks_map(
+            "//Break Periods",
+            "256,192,1000,1,0,0:0:0:0:\n256,192,2000,1,0,0:0:0:0:\n256,192,6000,1,0,0:0:0:0:")
+        loud = [dict(s, level_db=-8.0) for s in self._BREAK_SECTIONS]
+        self.assertEqual(suggest_breaks(beatmap, loud), [])
+        self.assertEqual(suggest_breaks(beatmap, self._BREAK_SECTIONS), [])
+
+    def test_set_map_breaks_adds_after_the_comment_and_dedupes(self) -> None:
+        from overtone import set_map_breaks
+        beatmap = self._breaks_map(
+            "//Background and Video events\n//Break Periods",
+            "256,192,1000,1,0,0:0:0:0:")
+        self.assertEqual(set_map_breaks(beatmap, [(10000.0, 30000.0)]),
+                         {"added": 1, "kept": 0})
+        lines = next(s for s in beatmap["sections"] if s["name"] == "Events")["lines"]
+        self.assertEqual(lines[1:3], ["//Break Periods", "2,10000,30000"])
+        self.assertEqual(set_map_breaks(beatmap, [(10000.0, 30000.0)]),
+                         {"added": 0, "kept": 1})
+
+    def test_set_map_breaks_refuses_junk_and_missing_events(self) -> None:
+        from overtone import set_map_breaks
+        beatmap = self._breaks_map("//Break Periods", "256,192,1000,1,0,0:0:0:0:")
+        with self.assertRaises(ValueError):
+            set_map_breaks(beatmap, [(5000.0, 5000.0)])
+        with self.assertRaises(ValueError):
+            set_map_breaks(beatmap, [(9000.0, 4000.0)])
+        bare = self._kiai_map("0,500,4,2,0,70,1,0")
+        with self.assertRaises(ValueError):
+            set_map_breaks(bare, [(10000.0, 30000.0)])
+
 
 _CONTEXT_OSU = "\n".join([
     "osu file format v14",

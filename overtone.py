@@ -4421,6 +4421,106 @@ def set_chorus_kiai(beatmap: dict, spans: list[tuple[float, float]]) -> dict:
     return {"added": added, "flipped": flipped, "kept": kept}
 
 
+def suggest_breaks(beatmap: dict, sections: list[dict], min_length_s: float = 5.0,
+                 quiet_db: float = 6.0) -> list[dict]:
+    """Quiet spans long enough for a break (Phase 21, Breaks).
+
+    A break lives where the song goes quiet *and* the map goes silent: each
+    section at least ``quiet_db`` under the loudest one's level is covered,
+    adjacent quiet sections merged, and every gap between the map's own sound
+    events (see :func:`sound_events`) meeting that cover for at least
+    ``min_length_s`` becomes a span. Both bars are the tool's own, adjustable —
+    the preview shows each span's length and depth so the mapper judges, never
+    a claim about the client's. Read only, plain JSON types: ``start_ms``,
+    ``end_ms``, the section ``kind`` holding the span's start, ``under_db``
+    and the ``gap_s`` it was cut from.
+    """
+    usable = []
+    for section in sections or []:
+        try:
+            start = float(section["start_s"]) * 1000.0
+            end = float(section["end_s"]) * 1000.0
+            level = float(section.get("level_db", float("nan")))
+        except (TypeError, ValueError, KeyError):
+            continue
+        if not np.isfinite(level) or end <= start:
+            continue
+        usable.append((start, end, str(section.get("kind", "")), level))
+    if not usable:
+        return []
+    loudest = max(level for _s, _e, _k, level in usable)
+    quiet = sorted([(s, e, k, loudest - level)
+                    for s, e, k, level in usable if loudest - level >= quiet_db])
+    if not quiet:
+        return []
+    # One cover: adjacent quiet sections read as one silence.
+    cover: list[list] = []
+    for start, end, kind, under in quiet:
+        if cover and start <= cover[-1][1] + 1e-6:
+            cover[-1][1] = max(cover[-1][1], end)
+        else:
+            cover.append([start, end, kind, under])
+    times = sorted({float(e["time"]) for e in sound_events(beatmap)})
+    if len(times) < 2:
+        return []
+    minimum = float(min_length_s) * 1000.0
+    spans = []
+    for start, end, kind, under in cover:
+        for before, after in zip(times, times[1:]):
+            low, high = max(before, start), min(after, end)
+            if high - low >= minimum - 1e-6:
+                spans.append({
+                    "start_ms": int(round(low)), "end_ms": int(round(high)),
+                    "kind": kind, "under_db": round(under, 1),
+                    "gap_s": round((after - before) / 1000.0, 2),
+                })
+    return sorted(spans, key=lambda s: (s["start_ms"], s["end_ms"]))
+
+
+def set_map_breaks(beatmap: dict, spans: list[tuple[float, float]]) -> dict:
+    """Break spans as ``2,start,end`` lines in [Events] (Phase 21, Breaks).
+
+    A span already covered by a break line is kept, the rest are added after
+    the ``//Break Periods`` comment when the map has one, else at the
+    section's end — line order inside [Events] means nothing to the client,
+    every line is typed. Whole milliseconds; a span ending at or before its
+    start refuses the map, and a missing [Events] refuses it too, rather than
+    inventing file structure. Comments and blanks stay put. In place, like the
+    P-2 field edits. Returns added and kept.
+    """
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "Events"), None)
+    if section is None:
+        raise ValueError("No [Events] section in this beatmap.")
+    have: list[tuple[int, int]] = []
+    for line in section["lines"]:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("//"):
+            continue
+        fields = stripped.split(",")
+        if len(fields) >= 3 and fields[0].strip() == "2":
+            try:
+                have.append((int(float(fields[1])), int(float(fields[2]))))
+            except ValueError:
+                continue
+    added = kept = 0
+    fresh: list[str] = []
+    for start_ms, end_ms in spans:
+        start, end = int(round(float(start_ms))), int(round(float(end_ms)))
+        if end <= start:
+            raise ValueError(f"Break ends at or before its start: {start_ms} -> {end_ms}.")
+        if any(begin <= start + 1 and finish >= end - 1 for begin, finish in have):
+            kept += 1
+            continue
+        have.append((start, end))
+        fresh.append(f"2,{start},{end}")
+        added += 1
+    if fresh:
+        at = next((n + 1 for n, line in enumerate(section["lines"])
+                   if line.strip() == "//Break Periods"), len(section["lines"]))
+        section["lines"][at:at] = fresh
+    return {"added": added, "kept": kept}
+
+
 def beatmap_text(beatmap: dict) -> str:
     """Head plus sections in order, raw lines untouched, original newline."""
     newline = beatmap.get("newline", "\n")

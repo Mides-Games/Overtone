@@ -16,6 +16,30 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Breaks, engine half: quiet spans, cut on gaps
+
+### Changed
+
+- **`suggest_breaks(beatmap, sections)`**: sections 6 dB under the loudest,
+  merged where adjacent, cut by the map's own sound gaps — only intersections
+  5 s or longer become spans, each with its kind, depth and gap. Both bars are
+  the tool's own and adjustable; the preview will show them, never a claim
+  about the client's.
+- **`set_map_breaks(beatmap, spans)`**: spans as `2,start,end` lines after
+  `//Break Periods`, covered spans kept, zero-length spans and a missing
+  [Events] refusing the map. Comments and blanks stay put.
+
+### Measured
+
+```
+Python unittest              450 -> 454 (writer suites green)
+facts                        ok
+```
+
+No analysis code touched, so no benchmark run here.
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Kiai: chorus spans lit from Structure
 
 ### Changed

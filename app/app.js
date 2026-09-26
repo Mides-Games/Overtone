@@ -81,7 +81,8 @@ const I18N = {
     empty_title: "Time a song in one click",
     empty_body: "Open an audio file and Overtone finds every BPM change, offset and bar line.",
     stat_global: "Global BPM", stat_points: "Timing points", stat_beats: "Beats", stat_stability: "Stability", stat_engine: "Engine",
-    trace_title: "Tempo map", trace_sub: "Wheel to zoom · drag to pan · drag a red line to move it (it snaps to an attack; Alt moves it freely) · click selects, double-click plays",
+    trace_title: "Tempo map", trace_sub: "Wheel to zoom · drag to pan · drag a red line to move it (it snaps to an attack; Alt moves it freely) · click selects, double-click plays · Shift-drag marks a loop on the beats (Alt: anywhere), Shift-click clears it",
+    pb_loop_drawn: "Loop {a} – {b}", loop_set: "Loop {a} – {b}: {n} beats", loop_set_free: "Loop {a} – {b}: {s} s", loop_cleared: "Loop cleared: Loop section follows the playhead again",
     no_song: "No song open", no_song_hint: "Open an audio file to start", analyze_last: "Analyze the last song",
     k_open: "open", k_analyze: "analyze", table_hint: "↑ ↓ to move", f_preset: "Preset",
     d_song: "Song", d_point: "Timing point", d_offset: "Offset", d_beat: "Beat length", d_meter: "Meter",
@@ -595,7 +596,8 @@ const I18N = {
     empty_title: "Timea una canción con un clic",
     empty_body: "Abre un audio y Overtone encuentra cada cambio de BPM, offset y línea de compás.",
     stat_global: "BPM global", stat_points: "Timing points", stat_beats: "Beats", stat_stability: "Estabilidad", stat_engine: "Motor",
-    trace_title: "Mapa de tempo", trace_sub: "Rueda para acercar · arrastrá para desplazarte · arrastrá una línea roja para moverla (se imanta a un ataque; con Alt, libre) · clic elige, doble clic reproduce",
+    trace_title: "Mapa de tempo", trace_sub: "Rueda para acercar · arrastrá para desplazarte · arrastrá una línea roja para moverla (se imanta a un ataque; con Alt, libre) · clic elige, doble clic reproduce · Mayús+arrastre marca un bucle en los pulsos (con Alt, donde sea), Mayús+clic lo quita",
+    pb_loop_drawn: "Bucle {a} – {b}", loop_set: "Bucle {a} – {b}: {n} pulsos", loop_set_free: "Bucle {a} – {b}: {s} s", loop_cleared: "Bucle quitado: «Repetir sección» vuelve a seguir al cabezal",
     no_song: "Ninguna canción abierta", no_song_hint: "Abrí un archivo de audio para empezar", analyze_last: "Analizar la última canción",
     k_open: "abrir", k_analyze: "analizar", table_hint: "↑ ↓ para moverte", f_preset: "Preajuste",
     d_song: "Canción", d_point: "Timing point", d_offset: "Offset", d_beat: "Duración del beat", d_meter: "Compás",
@@ -1054,6 +1056,7 @@ function translate() {
   });
   document.querySelectorAll("[data-i18n-aria]").forEach((el) => el.setAttribute("aria-label", t(el.dataset.i18nAria)));
   document.querySelectorAll("#langSwitch button").forEach((b) => b.classList.toggle("on", b.dataset.lang === S.lang));
+  pbLoopLabel();
   renderSong();
   renderRecents();
   renderSongs();
@@ -3719,6 +3722,8 @@ const P = {
   ctx: null, buffer: null, bufferFor: null, loading: null, source: null,
   song: null, click: null, playing: false, startCtx: 0, startPos: 0, pos: 0,
   sched: 0, timer: 0, raf: 0, loop: null, rate: 1,
+  // A loop drawn on the map (Shift-drag), in seconds: {a, b}, or null.
+  userLoop: null,
   levels: { song_volume: 0.8, click_volume: 0.6, hitsound_volume: 0.7 },
 };
 const PB_LOOKAHEAD = 0.15, PB_TICK_MS = 25, PB_LEAD = 0.06;
@@ -4008,7 +4013,9 @@ function pbTick() {
 }
 
 function pbLoopFor(pos) {
-  // The section under the playhead: from its red line to the next one.
+  // A loop drawn on the map (Shift-drag) wins; otherwise the section under
+  // the playhead, from its red line to the next one.
+  if (P.userLoop) return { a: Math.max(0, P.userLoop.a), b: Math.min(P.userLoop.b, P.buffer.duration) };
   const r = S.result, i = governing(r, pos);
   const a = r.points[i].offset_ms / 1000;
   const b = i + 1 < r.points.length ? r.points[i + 1].offset_ms / 1000 : r.duration;
@@ -4099,9 +4106,12 @@ function pbDraw() {
   const ctx = canvas.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  if (P.loop && P.playing) {
+  // The loop that plays; a drawn one shows while paused too, and while it is drawn.
+  const drawing = TL.drag && TL.drag.kind === "loop" && TL.moved ? loopSpan(TL.drag.from, TL.drag.to) : null;
+  const band = drawing || (P.playing ? P.loop : ($("pbLoop").checked ? P.userLoop : null));
+  if (band) {
     ctx.fillStyle = C.loop;
-    ctx.fillRect(geom.X(P.loop.a), geom.y0 - 22, geom.X(P.loop.b) - geom.X(P.loop.a), geom.y1 - geom.y0 + 22);
+    ctx.fillRect(geom.X(band.a), geom.y0 - 22, geom.X(band.b) - geom.X(band.a), geom.y1 - geom.y0 + 22);
   }
   if (!P.playing && pos <= 0) return;
   const x = Math.round(geom.X(Math.min(pos, dur))) + 0.5;
@@ -4112,7 +4122,8 @@ function pbDraw() {
 function pbReset() {
   // A new song: its buffer, position and loop are the old song's no more.
   pbStop();
-  P.buffer = null; P.bufferFor = null; P.pos = 0; P.loop = null;
+  P.buffer = null; P.bufferFor = null; P.pos = 0; P.loop = null; P.userLoop = null;
+  pbLoopLabel();
   TAP.taps = [];
   renderTaps();
   pbDraw();
@@ -5148,10 +5159,48 @@ function tlSnap(s, free) {
   return best;
 }
 
+// A drawn loop's ends go on the nearest beat, so it repeats whole beats and
+// the click folds into it; Alt leaves an end where the pointer is.
+function tlBeat(s, free) {
+  const beats = S.result.trace.t;
+  if (free || !beats.length) return Math.min(Math.max(s, 0), S.result.duration);
+  const i = lowerBound(beats, s);
+  const near = [i - 1, i].filter((j) => j >= 0 && j < beats.length);
+  return near.reduce((best, j) => (Math.abs(beats[j] - s) < Math.abs(best - s) ? beats[j] : best), beats[near[0]]);
+}
+
+function loopSpan(from, to) {
+  return to === null || from === to ? null : { a: Math.min(from, to), b: Math.max(from, to) };
+}
+
+// m:ss.sss, as the transport's clock reads.
+function clock3(s) {
+  const m = Math.floor(s / 60), r = s - m * 60;
+  return `${m}:${r < 10 ? "0" : ""}${r.toFixed(3)}`;
+}
+
+function pbLoopLabel() {
+  $("pbLoopText").textContent = P.userLoop
+    ? t("pb_loop_drawn", { a: clock3(P.userLoop.a), b: clock3(P.userLoop.b) }) : t("pb_loop");
+}
+
+function setUserLoop(span) {
+  P.userLoop = span;
+  pbLoopLabel();
+  if (span) $("pbLoop").checked = true;
+  // Playing: go on in the new loop (or the section under the playhead again).
+  if (P.playing) pbPlay(span ? span.a : pbPosition());
+  else { if (span) P.pos = span.a; pbDraw(); }
+}
+
 function tlDown(ev) {
   if (ev.button !== 0 || !S.result || !geom) return;
   const x = tlX(ev), i = tlLineAt(x);
   TL.moved = false;
+  if (ev.shiftKey) {
+    TL.drag = { kind: "loop", x0: x, from: tlBeat(geom.S(x), ev.altKey), to: null };
+    return;
+  }
   TL.drag = i >= 0 && !(S.locks || []).includes(S.result.points[i].offset_ms)
     ? { kind: "line", i, x0: x, to: S.result.points[i].offset_ms / 1000 }
     : { kind: "pan", x0: x, a: VIEW.a, b: VIEW.b };
@@ -5166,6 +5215,8 @@ function tlMove(ev) {
     const ds = (dx / (geom.x1 - geom.x0)) * (TL.drag.b - TL.drag.a);
     VIEW.a = TL.drag.a - ds; VIEW.b = TL.drag.b - ds;
     $("trace").style.cursor = "grabbing";
+  } else if (TL.drag.kind === "loop") {
+    TL.drag.to = tlBeat(geom.S(x), ev.altKey);
   } else {
     TL.drag.to = tlSnap(geom.S(x), ev.altKey);
   }
@@ -5179,6 +5230,22 @@ async function tlUp() {
   $("trace").style.cursor = "";
   if (!drag) return;
   if (TL.moved) TL.suppressClick = true;
+  if (drag.kind === "loop") {
+    TL.suppressClick = true;                 // Shift-click clears; it does not select
+    const span = TL.moved ? loopSpan(drag.from, drag.to) : null;
+    if (span && span.b - span.a >= 0.05) {
+      // Whole beats when both ends sit on one; with Alt, its length instead.
+      const beats = S.result.trace.t, at = (s) => lowerBound(beats, s - 1e-9);
+      const whole = beats[at(span.a)] === span.a && beats[at(span.b)] === span.b;
+      setUserLoop(span);
+      toast(whole ? t("loop_set", { a: clock3(span.a), b: clock3(span.b), n: at(span.b) - at(span.a) })
+                  : t("loop_set_free", { a: clock3(span.a), b: clock3(span.b), s: (span.b - span.a).toFixed(3) }));
+    } else if (!TL.moved && P.userLoop) {
+      setUserLoop(null);
+      toast(t("loop_cleared"));
+    } else drawTrace();
+    return;
+  }
   if (drag.kind !== "line" || !TL.moved || !api()) { drawTrace(); return; }
   const p = S.result.points[drag.i];
   const reply = await api().edit_apply(drag.i, Math.round(drag.to * 1e6) / 1000, p.bpm);
@@ -5443,7 +5510,7 @@ function wire() {
     if (P.playing) pbPlay(pbPosition());
     else pbDraw();
   });
-  $("pbLoop").addEventListener("change", () => { if (P.playing) pbPlay(pbPosition()); });
+  $("pbLoop").addEventListener("change", () => { if (P.playing) pbPlay(pbPosition()); else pbDraw(); });
   document.querySelectorAll("#pbRate button").forEach((b) => b.onclick = () => {
     document.querySelectorAll("#pbRate button").forEach((o) => o.classList.toggle("on", o === b));
     if (P.playing) pbPlay(pbPosition());

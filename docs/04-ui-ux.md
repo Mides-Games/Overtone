@@ -238,6 +238,11 @@ Clicking a beat or a timing point with `⌥` starts playback from it. The click 
 mixed live in Rust against the *current* (including hand-edited) timing points, so the
 verification loop is: edit → hear it immediately.
 
+*Built 2026-09-26 (web shell):* the loop selection is drawn with Shift-drag on the tempo
+map, its ends on the nearest beats so it repeats whole beats (Alt: where the pointer
+lets go); it shows while paused, wins over the section loop, and a Shift-click clears it.
+`L` and `⇧L` are not bound yet.
+
 ---
 
 ## 6. Hitsound workspace

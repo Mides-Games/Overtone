@@ -27,7 +27,7 @@ sections within 0.05 BPM and 5 ms     24 / 24
 | **App** (web window) | ✅ Ten sections: Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export, History and Settings; analyse, edit, undo, lock, export, inject (one map or the whole mapset, with a diff), compare with a map, alignment, density, snap audit, re-snap, suggestions, mapset check, reference and assisted timing, the engine's alternatives, ramps, offset lab, map tools from the song's structure, audio swap, write history, mod report, osu! Songs browser — in English and Spanish, dark or light |
 | **osu! files** | ✅ Full reader; writer keeps every byte you did not ask to change |
 | **Hitsounds** | ✅ In the app: copy one difficulty's hitsounds onto the others, see where each addition falls, hear them with the song, a consistency check in the mod report, the Rust decision engine's proposals to tick, and volume and sample index to set by hand, all heard over the song before a preview, a write and an undo. Profiles and a sample bank come next |
-| **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, section loop at 100/75/50 %, taps, the percussive part alone, a difficulty's hitsounds as written or as they would be written |
+| **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, a section loop or one drawn on the map at 100/75/50 %, taps, the percussive part alone, a difficulty's hitsounds as written or as they would be written |
 | **Accuracy on real, live-played songs** | 📋 Planned, and measured first — today 1.6 % of 20 ranked maps' red lines land within 5 ms (Corpus B, `bench/corpus_b.py`) |
 | **Installer** (MSI) | 📋 Planned |
 
@@ -126,6 +126,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Play song + click inside the app | ✅ | One clock for both: attacks and clicks within 0.25 ms, measured; the click follows edits while playing |
 | Section loop at 75 / 50 % | ✅ | Resampled, so the pitch drops and every attack stays exactly in place; a pitch-kept stretch moved attacks ~24 ms |
 | Seek, section loop, playhead, play from a red line | ✅ | Space plays and pauses; double-click the tempo map to play from there |
+| Draw a loop on the map | ✅ | Shift-drag the tempo map: the loop's ends go on the nearest beats (Alt: anywhere), and it wins over the section loop until a Shift-click clears it |
 | Tap-along check, tap latency calibration | ✅ | How far your taps land from the click; calibrate once, remembered |
 | Metronome options | ✅ | 1-4 clicks per beat, bar accent; one sound |
 | Percussion only: the percussive part against the click | ✅ | A transport toggle; librosa's HPSS, cached per analysis |

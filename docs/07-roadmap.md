@@ -281,7 +281,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Transport | play/pause/seek inside the app | med | **high** | audio | no | no | **P1** | **done** — WebAudio, Space to play/pause, position bar |
 | Live click track | click synthesised against the *current* timing points | med | **high** | transport | no | no | **P1** | **done** — ``click_schedule``, the WAV export's own; scheduled 150 ms ahead, so an edit is heard on the next beat |
 | Playhead sync | position on the timeline at 60 Hz | low | high | transport | no | no | **P1** | **done** — its own layer over the tempo map |
-| Scrub + loop | scrubbing, loop selection, loop section | med | high | transport | no | no | P1 | partial — seek bar and loop section (sample-exact, the click folded into it); no drawn selection to loop, no audible scrub |
+| Scrub + loop | scrubbing, loop selection, loop section | med | high | transport | no | no | P1 | partial — seek bar, loop section (sample-exact, the click folded into it) and a loop drawn on the map (Shift-drag, ends on the beats; Alt anywhere); no audible scrub |
 | Play from beat / point | click a beat or red line to play from it | low | med | transport | no | no | P2 | **done** — from the selected red line, or double-click the map |
 | Grid editor | edit offset/BPM, ±1 ms nudge, ×2/÷2 | med | **high** | P1 | no | no | **P1** | **done** (web shell) |
 | Add / delete / split / merge | with recalculation | med | high | editor | no | no | **P1** | **done** (web shell) — split at the playhead on the section's beat, merge with the next; the sections involved refitted to their attacks, or kept with the reason |

@@ -17,6 +17,40 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · A loop drawn on the map
+
+The transport could loop the section under the playhead and nothing smaller or larger:
+a fill across two sections, or four bars inside a long one, meant looping the whole
+section. Roadmap, Phase 4: "Scrub + loop", its drawn selection.
+
+### Changed
+
+- **Shift-drag on the tempo map draws a loop.** Its ends go on the nearest beats of the
+  analysis, so it repeats whole beats and the click folds into it as it does in the
+  section loop; with Alt they stay where the pointer lets go. It shows on the map while
+  paused, the transport's check box reads "Loop 0:10.241 – 0:13.138", and it wins over
+  the section loop until a Shift-click clears it. Drawn while playing, playback goes on
+  inside it. A new song clears it.
+- The note gives the length in beats when both ends are on beats, in seconds otherwise.
+- The map's hint names the gesture in both languages. No Python changed.
+
+### Measured
+
+```
+Synthetic "Secs" track (145 -> 152 -> 145 BPM, 68 s), through the harness page
+  Shift-drag 10.2 -> 13.1 s     loop 10.2412 - 13.1377 s, both ends on beats: 7 beats,
+                                0.4138 s each = 145.0 BPM; band drawn inside, none outside
+  Alt+Shift-drag 20.1 -> 22.8   20.027 - 22.744 s, off the beats: "2.717 s"
+  drawn while playing           playback moved into it (30.231 -> 30.771 s 0.6 s later)
+  playing                       every position read stayed inside the loop
+  Shift-click                   cleared: "Loop section" again, band gone
+Python unittest      555, all pass (the page's bracket and stage-name checks included)
+```
+
+Not checked: the wrap at the loop's end by ear or by position. The harness pane was in
+the background and its audio clock ran slow (0.6 s in 4 s), so it never reached the end;
+the wrap is the section loop's own code, unchanged.
+
 ## v4.0.0-dev — 2026-09-26 · Edits start from the line as it is shown
 
 The roadmap asked for a snap indicator: say when export snapping moved an offset, so a

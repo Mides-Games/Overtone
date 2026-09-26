@@ -16,6 +16,152 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Re-snap objects from Map check
+
+### Changed
+
+- **Re-snap card in Map check**: any `.osu` previewed (to move, times
+  changing, staying with the first stayers listed) and moved with one
+  confirmation, backed up first — then inject. Runs before injecting, while
+  the map still has its old red lines; a second run writes nothing. EN/ES.
+
+### Measured
+
+```
+synthetic map                 1 moved 1 staying in preview, written with backup;
+                              second run 0 changed, nothing written
+Python unittest                 477 -> 479, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages, no
+                                duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
+## v4.0.0-dev — 2026-09-26 · Re-snap, engine half: snapped stays snapped
+
+### Changed
+
+- **`resnap_objects(beatmap, pairs)`**: object starts on the old grid move by
+  their span's drift onto the same beat of the new timing — slider heads move
+  with tails following the slider's own length, spinner and hold ends by the
+  drift at their time. Off-grid objects stay put and are listed with nearest
+  divisor and miss; times rewrite whole-millisecond over the files' own lines.
+
+### Measured
+
+```
++10 ms shift                   4 moved (circle, circle, slider head, spinner
+                               with end), 1 off-grid listed, bytes otherwise kept
+120 -> 150 BPM                  object at 1500 lands 1400, exactly
+diff shapes                     inject_diff pairs feed resnap directly
+Python unittest                 474 -> 477 (new suites green)
+facts                           ok
+```
+
+No analysis code touched, so no benchmark run here.
+
+---
+
+## v4.0.0-dev — 2026-09-26 · Snap divisors, one line per section in Timing
+
+### Changed
+
+- **Snap-divisors card in Timing**: read only, one line per section with its
+  divisor and the thirds/sixths counts behind it. EN/ES.
+
+### Measured
+
+```
+Python unittest                 473 -> 474, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages, no
+                                duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
+## v4.0.0-dev — 2026-09-26 · Snap divisors, engine half: thirds have to be loud
+
+### Changed
+
+- **`snap_divisors(analysis)`**: per section, every attack takes the coarsest
+  1/1-1/16 grid within 15 ms and the section reads 1/6, 1/3 or 1/4 — the
+  verdict following attack weight, with counts and weight shares reported so
+  the mapper judges.
+
+### Rejected / tried and dropped
+
+- **Count-share verdicts.** The first cut read 6 of 34 corpus sections as
+  1/3 or 1/6 on straight material. Probed: the drum samples re-trigger
+  detection ~166 ms in, which lands on the triplet grid exactly when the
+  tempo puts a third near it (120-132 BPM), all on one triplet slot; noise
+  fills both. Count shares hit 20 % on echoes, weight shares stay under 7 %,
+  so the verdict follows weight (10 % bar, 3 attacks). After the change 33
+  of 34 read 1/4; the one 1/3 is shuffle-96, whose swung hats sit 4 ms off
+  the triplet grid by construction — the honest mapping recommendation.
+
+### Measured
+
+```
+synthetic thirds/sixths/quarters/swing   exact verdicts; tight tol recovers other
+24-track corpus, 34 sections             33 read 1/4, 1 reads 1/3 (shuffle, by design)
+Python unittest                          469 -> 473 (new suites green)
+facts                                    ok
+```
+
+No writes anywhere in this change, so no backup logic; no analysis code
+touched, so no benchmark run here.
+
+---
+
+## v4.0.0-dev — 2026-09-26 · Constant scroll from Timing
+
+### Changed
+
+- **Constant-scroll card in Timing**: one difficulty's picker, preview counts
+  against its first red's BPM and a confirmed write greening every BPM change
+  away — sound, kiai and barlines never move, every file backed up first. EN/ES.
+
+### Measured
+
+```
+synthetic map, 120 -> 150     1 added at -125, written with backup; greens read
+                              exactly [-125]
+Python unittest                 467 -> 469, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages, no
+                                duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
+## v4.0.0-dev — 2026-09-26 · SV normaliser, engine half: greens cancel the BPM
+
+### Changed
+
+- **`set_constant_scroll(beatmap)`**: the first red's BPM is the reference;
+  every later red on another BPM gets a green carrying reference-over-own
+  (red before green), a green already there kept or rewritten to the value,
+  reference-tempo reds untouched and uncounted. New greens carry the audible
+  state and the red's own effects, so sound, kiai and barlines read as before.
+
+### Measured
+
+```
+120 -> 150 BPM               one green at -125 (150 x 0.8 = 120), sound_events
+                             identical, second run all kept
+Python unittest              464 -> 467 (writer suites green)
+facts                        ok
+```
+
+No analysis code touched, so no benchmark run here.
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Inject diff beside every preview
 
 ### Changed

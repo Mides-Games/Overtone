@@ -1792,6 +1792,134 @@ class SnapAuditTests(unittest.TestCase):
         self.assertEqual(snap_timing_points(points)[1].offset_ms, 21001.5)
 
 
+class SnapDivisorTests(unittest.TestCase):
+    """Where the song needs 1/3, 1/4 or 1/6, per section."""
+
+    @staticmethod
+    def _analysis(points, attacks_s, duration=60.0, weight=1.0):
+        analysis = Analysis("x.wav", duration, np.zeros(0), np.zeros(0),
+                            points, 128, 44100, 1.0)
+        analysis.attack_times = np.array(attacks_s, dtype=np.float64)
+        analysis.attack_weights = np.full(len(attacks_s), weight)
+        return analysis
+
+    def test_triplets_read_third_quarters_read_quarter(self) -> None:
+        from overtone import snap_divisors
+        points = [TimingPoint(1000.0, 120.0, 0.9, 0)]
+        triplets = [1.0 + k / 6.0 for k in range(13)]
+        report = snap_divisors(self._analysis(points, triplets))
+        json.dumps(report)
+        section = report["sections"][0]
+        self.assertEqual(section["divisor"], "1/3")
+        self.assertEqual((section["attacks"], section["thirds"]), (13, 8))
+        quarters = [1.0 + k * 0.125 for k in range(17)]
+        plain = snap_divisors(self._analysis(points, quarters))["sections"][0]
+        self.assertEqual((plain["divisor"], plain["thirds"], plain["sixths"]), ("1/4", 0, 0))
+
+    def test_sixth_notes_read_sixth_and_swing_reads_other(self) -> None:
+        from overtone import snap_divisors
+        points = [TimingPoint(1000.0, 120.0, 0.9, 0)]
+        sixths = [1.0 + (k + (1 / 6 if k % 2 == 0 else 5 / 6)) * 0.5 for k in range(6)]
+        sixths += [1.0, 2.0]
+        report = snap_divisors(self._analysis(points, sixths))["sections"][0]
+        self.assertEqual((report["divisor"], report["sixths"]), ("1/6", 6))
+        swung = [1.0 + k * 0.5 + (0.025 if k % 2 else 0.0) for k in range(9)]
+        off = snap_divisors(self._analysis(points, swung))["sections"][0]
+        self.assertEqual((off["divisor"], off["thirds"]), ("1/4", 0))
+        self.assertGreater(off["finer"], 0)
+        tight = snap_divisors(self._analysis(points, swung), tol_ms=5.0)["sections"][0]
+        self.assertEqual((tight["divisor"], tight["other"]), ("1/4", 4))
+
+    def test_sections_verdict_apart_and_empties_stay_quarter(self) -> None:
+        from overtone import snap_divisors
+        points = [TimingPoint(1000.0, 120.0, 0.9, 0), TimingPoint(5000.0, 120.0, 0.9, 10)]
+        attacks = [1.0 + k / 6.0 for k in range(13)] + [5.0 + k * 0.125 for k in range(9)]
+        report = snap_divisors(self._analysis(points, attacks))
+        self.assertEqual([s["divisor"] for s in report["sections"]], ["1/3", "1/4"])
+        self.assertEqual(snap_divisors(self._analysis(points, []))["sections"][0]["attacks"], 0)
+        self.assertEqual(snap_divisors(self._analysis(points, []))["sections"][0]["divisor"], "1/4")
+        bare = self._analysis([], [])
+        self.assertEqual(snap_divisors(bare), {"sections": []})
+        with self.assertRaises(ValueError):
+            snap_divisors(self._analysis(points, [1.0]), tol_ms=0)
+
+    def test_quiet_thirds_under_loud_quarters_stay_quarter(self) -> None:
+        from overtone import snap_divisors
+        points = [TimingPoint(1000.0, 120.0, 0.9, 0)]
+        quarters = [1.0 + k * 0.5 for k in range(9)]
+        thirds = [1.0 + k / 6.0 for k in (2, 4, 8, 10, 14, 16, 20, 22)]
+        analysis = self._analysis(points, quarters + thirds)
+        analysis.attack_weights = np.array([1.0] * 9 + [0.05] * 8)
+        section = snap_divisors(analysis)["sections"][0]
+        self.assertEqual(section["thirds"], 8)
+        self.assertLess(section["third_share"], 0.10)
+        self.assertEqual(section["divisor"], "1/4")
+
+
+class ResnapTests(unittest.TestCase):
+    @staticmethod
+    def _map(objects: str):
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+                 "[TimingPoints]", "1000,500,4,2,0,70,1,0", "", "[HitObjects]"] + \
+                objects.split("\n") + [""]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes("\r\n".join(lines).encode("utf-8"))
+            return read_osu_beatmap(path)
+
+    _SHIFT = [{"old": {"offset_ms": 1000.0, "bpm": 120.0, "meter": 4},
+               "new": {"offset_ms": 1010.0, "bpm": 120.0, "meter": 4},
+               "delta_offset_ms": 10.0, "delta_bpm": 0.0, "drift_end_ms": None}]
+
+    def test_shift_moves_snapped_lists_the_rest(self) -> None:
+        from overtone import resnap_objects
+        beatmap = self._map("256,192,1000,1,0,0:0:0:0:\n"
+                            "256,192,1500,1,0,0:0:0:0:\n"
+                            "256,192,2000,2,0,B|320:192,1,100,0:0:0:0:\n"
+                            "256,192,2500,12,0,3000,0:0:0:0:\n"
+                            "256,192,1300,1,0,0:0:0:0:")
+        result = resnap_objects(beatmap, self._SHIFT)
+        json.dumps(result)
+        self.assertEqual((result["moved"], result["skipped"]), (4, 0))
+        self.assertEqual([(o["time_ms"], o["kind"]) for o in result["left"]],
+                         [(1300.0, "circle")])
+        objects = beatmap["hitobjects"]
+        self.assertEqual([o["time"] for o in objects], [1010.0, 1510.0, 2010.0, 2510.0, 1300.0])
+        spinner = next(o for o in objects if o["kind"] == "spinner")
+        self.assertEqual(spinner["end_time"], 3010)
+        self.assertEqual(beatmap["hitobjects"][2]["hit_sound"], 0)
+
+    def test_tempo_change_scales_and_diff_shapes_fit(self) -> None:
+        from overtone import inject_diff, resnap_objects
+        from types import SimpleNamespace
+        beatmap = self._map("256,192,1500,1,0,0:0:0:0:")
+        pairs = [{"old": {"offset_ms": 1000.0, "bpm": 120.0, "meter": 4},
+                  "new": {"offset_ms": 1000.0, "bpm": 150.0, "meter": 4},
+                  "delta_offset_ms": 0.0, "delta_bpm": 30.0, "drift_end_ms": None}]
+        result = resnap_objects(beatmap, pairs)
+        self.assertEqual((result["moved"], beatmap["hitobjects"][0]["time"]), (1, 1400.0))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(("osu file format v14\n[General]\nAudioFilename: a.mp3\n"
+                              "[TimingPoints]\n1000,500,4,2,0,70,1,0\n"
+                              "[HitObjects]\n256,192,1500,1,0,0:0:0:0:\n").encode("utf-8"))
+            analysis = SimpleNamespace(source="a.mp3", points=[TimingPoint(1010.0, 120.0, 0.9, 0)])
+            diff = inject_diff(path, analysis)
+            beatmap = read_osu_beatmap(path)
+            moved = resnap_objects(beatmap, diff["pairs"])
+            self.assertEqual(moved["moved"], 1)
+            self.assertEqual(beatmap["hitobjects"][0]["time"], 1510.0)
+            self.assertEqual(read_osu_beatmap(path)["hitobjects"][0]["time"], 1500.0)
+
+    def test_no_pairs_or_no_objects_refuses(self) -> None:
+        from overtone import resnap_objects
+        beatmap = self._map("256,192,1000,1,0,0:0:0:0:")
+        with self.assertRaises(ValueError):
+            resnap_objects(beatmap, [])
+        with self.assertRaises(ValueError):
+            resnap_objects({"sections": []}, self._SHIFT)
+
+
 class NoiseBeforeTheMusicTests(unittest.TestCase):
     """The first red line starts where the grid starts, not at the first noise.
 
@@ -3108,6 +3236,33 @@ class MapWriterTests(unittest.TestCase):
         bare = self._kiai_map("0,500,4,2,0,70,1,0")
         with self.assertRaises(ValueError):
             set_map_breaks(bare, [(10000.0, 30000.0)])
+
+    def test_constant_scroll_compensates_bpm_changes(self) -> None:
+        from overtone import set_constant_scroll, sound_events
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n2000,400,4,2,1,70,1,0")
+        before = sound_events(beatmap)
+        result = set_constant_scroll(beatmap)
+        json.dumps(result)
+        self.assertEqual(result, {"added": 1, "flipped": 0, "kept": 0})
+        self.assertEqual(sound_events(beatmap), before)
+        self.assertEqual(beatmap["timing"]["greens"], ["2000,-125,4,2,1,70,0,0"])
+        self.assertEqual(set_constant_scroll(beatmap), {"added": 0, "flipped": 0, "kept": 1})
+
+    def test_constant_scroll_leaves_reference_tempo_alone(self) -> None:
+        from overtone import set_constant_scroll
+        same = self._kiai_map("1000,500,4,2,1,70,1,0\n2000,500,4,2,1,70,1,0")
+        self.assertEqual(set_constant_scroll(same), {"added": 0, "flipped": 0, "kept": 0})
+        single = self._kiai_map("1000,500,4,2,1,70,1,0")
+        self.assertEqual(set_constant_scroll(single), {"added": 0, "flipped": 0, "kept": 0})
+        with self.assertRaises(ValueError):
+            set_constant_scroll({"sections": []})
+
+    def test_constant_scroll_rewrites_a_wrong_green(self) -> None:
+        from overtone import set_constant_scroll
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n2000,400,4,2,1,70,1,0\n"
+                                 "2000,-100,4,2,1,70,0,0")
+        self.assertEqual(set_constant_scroll(beatmap), {"added": 0, "flipped": 1, "kept": 0})
+        self.assertEqual(beatmap["timing"]["greens"], ["2000,-125,4,2,1,70,0,0"])
 
 
 _CONTEXT_OSU = "\n".join([

@@ -4619,6 +4619,87 @@ def set_map_breaks(beatmap: dict, spans: list[tuple[float, float]]) -> dict:
     return {"added": added, "kept": kept}
 
 
+def set_constant_scroll(beatmap: dict) -> dict:
+    """Greens that cancel BPM changes, so scroll and slider speed stay
+    constant (Phase 21, SV normaliser).
+
+    The first red line's BPM is the reference: every later red with a
+    different BPM gets a green at its time carrying the multiplier the change
+    needs (reference over its own), red before green at the same time. A green
+    already there with that multiplier is kept; one with another gets only its
+    beat length rewritten. New greens carry the audible state in force there —
+    SV is scroll, not sound — and the red's own effects, so kiai and barlines
+    read exactly as before. Reds at the reference BPM are not this tool's
+    business and never count. In place, like the P-2 field edits. Returns
+    added, flipped and kept.
+    """
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "TimingPoints"), None)
+    if section is None:
+        raise ValueError("No [TimingPoints] section in this beatmap.")
+    rows = [(o, b, m) for o, b, m in _beatmap_red_rows(beatmap)
+            if np.isfinite(o) and np.isfinite(b) and b > 0]
+    if not rows:
+        raise ValueError("No usable red lines in this beatmap.")
+    reference = rows[0][1]
+    cursor = _TimingCursor(beatmap)
+
+    def stamp(time_ms: float) -> str:
+        whole = round(time_ms)
+        return str(int(whole)) if abs(time_ms - whole) < 1e-6 else f"{time_ms:.3f}"
+
+    def state_at(time_ms: float):
+        _beat, state = cursor.at(time_ms)
+        if state is None:
+            return 1.0, 0, 0, 100
+        return state.sv, state.sample_set, state.sample_index, state.volume
+
+    def red_effects(time_ms: float) -> int:
+        for line in section["lines"]:
+            point = _timing_point_fields(line.strip()) if line.strip() else None
+            if point is not None and point["red"] and abs(point["time"] - time_ms) < 1e-6:
+                return point["effects"]
+        return 0
+
+    added = flipped = kept = 0
+    for offset, bpm, meter in rows[1:]:
+        need = reference / bpm
+        if abs(need - 1.0) < 1e-9:
+            continue
+        value = -100.0 / need
+        hit = next((n for n, line in enumerate(section["lines"])
+                    if line.strip() and not line.strip().startswith("//")
+                    and (point := _timing_point_fields(line)) is not None
+                    and not point["red"] and abs(point["time"] - offset) <= 0.01), None)
+        if hit is not None:
+            fields = [f.strip() for f in section["lines"][hit].split(",")]
+            while len(fields) < 8:
+                fields.append("")
+            have = -100.0 / float(fields[1]) if float(fields[1]) < 0 else 1.0
+            if abs(have - need) <= 1e-9 * max(1.0, abs(need)):
+                kept += 1
+                continue
+            fields[1] = f"{value:.12g}"
+            section["lines"][hit] = ",".join(fields)
+            flipped += 1
+            continue
+        _, sample_set, sample_index, volume = state_at(offset)
+        row = (f"{stamp(offset)},{value:.12g},{meter},"
+               f"{sample_set},{sample_index},{volume},0,{red_effects(offset)}")
+        at = next((n for n, line in enumerate(section["lines"])
+                   if line.strip() and not line.strip().startswith("//")
+                   and (point := _timing_point_fields(line)) is not None
+                   and point["time"] > offset + 1e-6), len(section["lines"]))
+        section["lines"].insert(at, row)
+        added += 1
+    timing = [line for line in section["lines"]
+              if line.strip() and not line.strip().startswith("//")]
+    beatmap["timing"] = {
+        "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
+        "greens": [line for line in timing if not _is_red_line(line.strip())],
+    }
+    return {"added": added, "flipped": flipped, "kept": kept}
+
+
 def beatmap_text(beatmap: dict) -> str:
     """Head plus sections in order, raw lines untouched, original newline."""
     newline = beatmap.get("newline", "\n")
@@ -4971,6 +5052,170 @@ def snap_audit(beatmap: dict, analysis: Analysis | None = None,
             report["with_detected_timing"] = {"would_unsnap": would_unsnap,
                                               "would_snap": would_snap}
     return report
+
+
+#: An attack this far from a divisor tick still counts as on it. The snap
+#: audit's 2 ms is about objects, stored whole-millisecond; attacks are
+#: measured, with detection jitter on top, so the bar is looser — and it is
+#: the tool's own, adjustable, not the client's.
+DIVISOR_TOLERANCE_MS = 15.0
+#: A section needs a finer divisor when the attacks on thirds or sixths carry
+#: this share of its weight, with at least this many of them. Weighted, not
+#: counted: sample echoes and noise-floor detections sit on triplet grids by
+#: coincidence of tempo, but they are quiet next to the drums — on straight
+#: 120-132 BPM material they held up to 20 % of the count yet under 7 % of
+#: the weight, while real triplets hold both. One stray triplet is feel.
+DIVISOR_MIN_WSHARE = 0.10
+DIVISOR_MIN_COUNT = 3
+
+
+def snap_divisors(analysis: Analysis, tol_ms: float = DIVISOR_TOLERANCE_MS) -> dict:
+    """Where the song needs 1/3, 1/4 or 1/6, per section (Phase 21).
+
+    Every attack takes the coarsest of the 1/1-1/16 grids it sits on within
+    ``tol_ms`` — the same divisors the editor offers — and each section
+    counts how many need thirds (divisor 3), sixths (6 and nothing coarser),
+    finer grids (8 and up, past this row's scope but reported), or none (far
+    off-grid feel such as heavy shuffle lives here; the swing lane is its own
+    row). The verdict follows the weight, not the count: a section reads 1/6
+    past the count and weight bars, else 1/3, else 1/4 — a soft triplet still
+    counts, but the prominent rhythm decides. Read only, plain JSON types.
+    """
+    if tol_ms <= 0:
+        raise ValueError("Tolerance must be positive.")
+    points = [p for p in list(getattr(analysis, "points", None) or [])
+              if np.isfinite(getattr(p, "offset_ms", float("nan")))
+              and np.isfinite(getattr(p, "bpm", float("nan"))) and p.bpm > 0]
+    times = np.asarray(getattr(analysis, "attack_times", []), dtype=np.float64) * 1000.0
+    weights = np.asarray(getattr(analysis, "attack_weights", []), dtype=np.float64)
+    finite = np.isfinite(times)
+    times = times[finite]
+    weights = weights[finite] if weights.shape == finite.shape else np.ones_like(times)
+    weights = np.where(np.isfinite(weights) & (weights > 0), weights, 0.0)
+    duration_ms = float(getattr(analysis, "duration", 0.0) or 0.0) * 1000.0
+    out = []
+    for i, point in enumerate(points):
+        offset, bpm = float(point.offset_ms), float(point.bpm)
+        end = float(points[i + 1].offset_ms) if i + 1 < len(points) else duration_ms
+        beat_ms = 60000.0 / bpm
+        in_span = (times >= offset - 1e-6) & (times < end - 1e-6)
+        span, span_w = times[in_span], weights[in_span]
+        thirds = sixths = finer = other = 0
+        thirds_w = sixths_w = 0.0
+        for attack, weight in zip(span, span_w):
+            position = (float(attack) - offset) / beat_ms
+            hit = None
+            for divisor in SNAP_DIVISORS:
+                tick = round(position * divisor) / divisor
+                if abs(position - tick) * beat_ms <= float(tol_ms) + 1e-9:
+                    hit = divisor
+                    break
+            if hit is None:
+                other += 1
+            elif hit == 3:
+                thirds += 1
+                thirds_w += float(weight)
+            elif hit == 6:
+                sixths += 1
+                sixths_w += float(weight)
+            elif hit in (8, 12, 16):
+                finer += 1
+        total = len(span)
+        weight_total = float(span_w.sum())
+        sixth_share = sixths_w / weight_total if weight_total > 0 else 0.0
+        third_share = thirds_w / weight_total if weight_total > 0 else 0.0
+        if sixths >= DIVISOR_MIN_COUNT and sixth_share >= DIVISOR_MIN_WSHARE:
+            divisor = "1/6"
+        elif thirds >= DIVISOR_MIN_COUNT and third_share >= DIVISOR_MIN_WSHARE:
+            divisor = "1/3"
+        else:
+            divisor = "1/4"
+        out.append({"offset_ms": round(offset, 3), "bpm": round(bpm, 3),
+                    "attacks": int(total), "quarters": total - thirds - sixths - finer - other,
+                    "thirds": thirds, "sixths": sixths, "finer": finer, "other": other,
+                    "third_share": round(third_share, 3),
+                    "sixth_share": round(sixth_share, 3),
+                    "divisor": divisor})
+    return {"sections": out}
+
+
+def resnap_objects(beatmap: dict, pairs: list[dict]) -> dict:
+    """Move hit objects onto the new grid after a timing change (Phase 21).
+
+    ``pairs`` are :func:`inject_diff`'s: each old red beside its new value.
+    An object start that sat on the old grid — snapped before, snapped still,
+    by the snap audit's own 2 ms — moves by that span's drift, so it lands on
+    the same beat of the new timing; slider heads move and their tails follow
+    from the slider's own length under the new BPM, while spinner and hold
+    ends move by the drift at their own time. Anything else stays exactly
+    where the mapper put it and is listed, with its nearest divisor and miss:
+    swing, drags and deliberate offsets are not "fixed". Times are rewritten
+    whole-millisecond over the file's own object lines; every other byte of
+    each line survives. A move landing before zero is skipped, never written
+    negative. In place. Returns moved, left and skipped.
+    """
+    old_reds = [(float(p["old"]["offset_ms"]), float(p["old"]["bpm"])) for p in pairs]
+    new_reds = [(float(p["new"]["offset_ms"]), float(p["new"]["bpm"])) for p in pairs]
+    if not old_reds:
+        raise ValueError("No red-line pairs to resnap onto.")
+
+    def drift(time_ms: float) -> float:
+        index = 0
+        for i, red in enumerate(old_reds):
+            if red[0] <= time_ms + 1e-9:
+                index = i
+        old_off, old_bpm = old_reds[index]
+        new_off, new_bpm = new_reds[index]
+        return new_off + (time_ms - old_off) * ((60000.0 / new_bpm) / (60000.0 / old_bpm))
+
+    def shift(time_ms: float) -> int | None:
+        moved = int(round(drift(time_ms)))
+        return moved if moved >= 0 else None
+
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "HitObjects"), None)
+    if section is None:
+        raise ValueError("No [HitObjects] section in this beatmap.")
+    moved = skipped = 0
+    left: list[dict] = []
+    out: list[str] = []
+    for line in section["lines"]:
+        stripped = line.strip()
+        obj = _parse_hit_object(line) if stripped else None
+        if obj is None or obj.get("kind") == "unparsed" or "time" not in obj:
+            if stripped and not stripped.startswith("//"):
+                skipped += 1
+            out.append(line)
+            continue
+        snap = _snap_of(float(obj["time"]), old_reds)
+        if not snap["snapped"]:
+            left.append({"time_ms": float(obj["time"]), "kind": obj.get("kind", "unparsed"),
+                         "nearest_divisor": snap["divisor"], "off_ms": round(snap["off_ms"], 3)})
+            out.append(line)
+            continue
+        start = shift(float(obj["time"]))
+        if start is None:
+            skipped += 1
+            out.append(line)
+            continue
+        fields = line.split(",")
+        fields[2] = str(start)
+        if obj.get("kind") in ("spinner", "hold") and "end_time" in obj:
+            end = shift(float(obj["end_time"]))
+            if end is None:
+                skipped += 1
+                out.append(line)
+                continue
+            if obj["kind"] == "spinner":
+                fields[5] = str(end)
+            else:
+                _head, _, tail = fields[5].partition(":")
+                fields[5] = f"{end}:{tail}" if tail else str(end)
+        out.append(",".join(fields))
+        moved += 1
+    section["lines"] = out
+    objects = [line for line in out if line.strip() and not line.strip().startswith("//")]
+    beatmap["hitobjects"] = [_parse_hit_object(line) for line in objects]
+    return {"moved": moved, "left": left, "skipped": skipped}
 
 
 def suggest_missing_lines(analysis: Analysis, beatmap: dict,

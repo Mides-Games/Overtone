@@ -293,6 +293,14 @@ const I18N = {
     snap_no_reds: "This map has no red lines to snap to.",
     snap_unparsed: "{n} line(s) in [HitObjects] could not be read.",
     snap_starts: "Object starts only; slider, spinner and hold ends are not checked.",
+    rs_title: "Re-snap objects", rs_pick: "Choose .osu…", rs_apply: "Re-snap…",
+    rs_sub: "Move this map's snapped objects onto the detected grid after a timing change. Run it before injecting, while the map still has its old red lines — off-grid objects stay put and are listed.",
+    rs_would: "{moved} to move, {changed} times changing, {left} staying",
+    rs_left_row: "{t}ms {kind}",
+    rs_left_more: "+{n} more staying",
+    rs_confirm: "Move {n} objects in {file}? Off-grid objects stay.",
+    rs_done: "Moved {n} objects in {file}.",
+    rs_clean: "Every snapped object already sits on the detected grid.",
     ref_title: "Reference timing", ref_pick: "Grade a .osu…", ref_find: "Maps of this song…",
     ref_empty: "Choose any .osu of this song, hand-timed or ranked, to grade each red line against the attacks Overtone hears. Useful where detection is weakest: live bands, rubato, drift.",
     ref_counts: "{ok} ok · {check} to check · {weak} weak · {few} too few",
@@ -335,6 +343,17 @@ const I18N = {
     ramp_piecewise: "The sections already read fine: ramps add nothing.",
     ramp_used: "{n} hand-placed red lines.",
     ramp_no_ramps: "Fit first: there are no lines to use yet.",
+    sv_title: "Constant scroll",
+    sv_sub: "Greens that cancel this difficulty's BPM changes, so scroll and slider speed stay constant. Sound, kiai and barlines never move; every file is backed up first.",
+    sv_preview: "Preview", sv_apply: "Write greens",
+    sv_would: "{added} new, {flipped} rewritten, {kept} kept at {bpm} BPM into {file}.",
+    sv_confirm: "Write scroll greens at {bpm} BPM into {file}?",
+    sv_done: "Scroll constant at {bpm} BPM into {file}.",
+    sv_nothing: "Every section already scrolls at {bpm} BPM in {file}.",
+    div_title: "Snap divisors",
+    div_sub: "Which divisor each section needs, from the song's own attacks. Thirds and sixths past the weight bar read 1/3 and 1/6, the rest 1/4. Read only.",
+    div_row: "{at} · {bpm} BPM · {d}{extra}",
+    div_extra: " ({t} thirds, {s} sixths)",
     lab_title: "Offset lab",
     lab_sub: "What the file says about its own delay, and the first attack through each decoder side by side.",
     lab_header: "{encoder}: {delay} samples of delay ({delayMs} ms), {pad} of padding ({padMs} ms).",
@@ -712,6 +731,14 @@ const I18N = {
     snap_no_reds: "Este mapa no tiene líneas rojas con las que ajustar.",
     snap_unparsed: "No se pudieron leer {n} línea(s) de [HitObjects].",
     snap_starts: "Solo el inicio de cada objeto; no se revisan los finales de sliders, spinners ni holds.",
+    rs_title: "Re-snap de objetos", rs_pick: "Elegir .osu…", rs_apply: "Re-snapear…",
+    rs_sub: "Mueve los objetos snapeados de este mapa a la grilla detectada tras un cambio de timing. Correlo antes de inyectar, mientras el mapa conserva sus líneas rojas viejas — los objetos fuera del grid quedan y se listan.",
+    rs_would: "{moved} para mover, {changed} tiempos cambian, {left} quedan",
+    rs_left_row: "{t}ms {kind}",
+    rs_left_more: "+{n} más quedan",
+    rs_confirm: "¿Mover {n} objetos en {file}? Los fuera del grid quedan.",
+    rs_done: "Movidos {n} objetos en {file}.",
+    rs_clean: "Cada objeto snapeado ya está en la grilla detectada.",
     ref_title: "Timing de referencia", ref_pick: "Calificar un .osu…", ref_find: "Mapas de esta canción…",
     ref_empty: "Elegí cualquier .osu de esta canción, timeado a mano o rankeado, para calificar cada línea roja contra los ataques que Overtone escucha. Sirve donde la detección flaquea: bandas en vivo, rubato, deriva.",
     ref_counts: "{ok} ok · {check} a revisar · {weak} débiles · {few} con pocos ataques",
@@ -754,6 +781,17 @@ const I18N = {
     ramp_piecewise: "Las secciones ya leen bien: las rampas no agregan nada.",
     ramp_used: "{n} líneas rojas puestas a mano.",
     ramp_no_ramps: "Ajustá primero: todavía no hay líneas para usar.",
+    sv_title: "Scroll constante",
+    sv_sub: "Verdes que cancelan los cambios de BPM de esta dificultad, para que el scroll y los sliders vayan siempre igual. El sonido, el kiai y los compases no se mueven nunca; cada archivo se respalda antes.",
+    sv_preview: "Vista previa", sv_apply: "Escribir verdes",
+    sv_would: "{added} nuevas, {flipped} reescritas, {kept} iguales a {bpm} BPM en {file}.",
+    sv_confirm: "¿Escribir verdes de scroll a {bpm} BPM en {file}?",
+    sv_done: "Scroll constante a {bpm} BPM en {file}.",
+    sv_nothing: "Cada sección ya va a {bpm} BPM en {file}.",
+    div_title: "Divisores de snap",
+    div_sub: "Qué divisor necesita cada sección, según los ataques de la canción. Tresillos y seisillos que superan la barra de peso leen 1/3 y 1/6, el resto 1/4. Solo lectura.",
+    div_row: "{at} · {bpm} BPM · {d}{extra}",
+    div_extra: " ({t} tresillos, {s} seisillos)",
     lab_title: "Laboratorio de offset",
     lab_sub: "Lo que el archivo dice de su propio delay, y el primer ataque por cada decodificador lado a lado.",
     lab_header: "{encoder}: delay {delay} samples ({delayMs} ms), pad {pad} samples ({padMs} ms).",
@@ -904,7 +942,7 @@ function setView(view) {
   renderNeedSong();
   if (changed) $("content").scrollTop = 0;
   // The canvas measures its box: it can only be drawn while visible.
-  if (view === "timing" && S.result) { drawTrace(); waveLoad(); }
+  if (view === "timing" && S.result) { drawTrace(); waveLoad(); svMaps(); divsLoad(); }
   if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); }
   if (view === "hitsounds" && S.result) hsvLoad();
   if (view === "history") histLoad();
@@ -1009,7 +1047,7 @@ function setBusy(busy, message) {
 
 function syncActions() {
   const on = !!S.result && !S.busy;
-  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn", "cmpPick", "alignPick", "denPick", "snapPick", "refPick", "refFind", "asFit", "rpPick", "rpCopy"].forEach((id) => { $(id).disabled = !on; });
+  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn", "cmpPick", "alignPick", "denPick", "snapPick", "rsPick", "refPick", "refFind", "asFit", "rpPick", "rpCopy"].forEach((id) => { $(id).disabled = !on; });
   if (!on) {
     $("undoBtn").disabled = true;
     $("redoBtn").disabled = true;
@@ -1237,6 +1275,7 @@ function renderResult(r) {
   renderAlign();
   renderDensity();
   renderSnap();
+  renderResnap();
   renderRef();
   renderAssist();
   renderRamps();
@@ -1246,6 +1285,8 @@ function renderResult(r) {
   renderKiai();
   renderBreaks();
   renderInjectAll();
+  renderSv();
+  renderDivisors();
   if (S.view === "timing") waveLoad();
   evLoad();
   labLoad();
@@ -1899,6 +1940,90 @@ function renderBreaks() {
                                spans: p.spans.map(stxBrSpan).join(" · ") });
 }
 
+// ------------------------------------------------------------------ constant scroll
+// Phase 21, SV normaliser: greens cancelling one difficulty's BPM changes so
+// scroll and slider speed stay constant. The maps come from the transport
+// picker; preview counts, apply writes under a backup, and the card refreshes.
+const SV = { preview: null, for: "" };
+
+async function svMaps() {
+  const box = $("svMap");
+  let maps = [];
+  if (api()) {
+    const reply = await api().song_maps();
+    maps = reply.ok ? reply.maps : [];
+  }
+  const path = (S.result && S.result.path) || "";
+  if (SV.for !== path) { SV.for = path; SV.preview = null; }
+  const keep = box.value;
+  box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+  if (maps.some((m) => m.file === keep)) box.value = keep;
+  box.disabled = !maps.length;
+  renderSv();
+}
+
+async function svPreview() {
+  if (!api() || !S.result) return;
+  const file = $("svMap").value;
+  if (!file) return;
+  const reply = await api().scroll_preview(file);
+  if (!reply.ok) { editFailure(reply); return; }
+  SV.preview = { ...reply, file };
+  renderSv();
+}
+
+async function svApply() {
+  if (!api() || !S.result || !SV.preview) return;
+  const file = $("svMap").value;
+  if (SV.preview.file !== file) { await svPreview(); return; }
+  if (!SV.preview.added && !SV.preview.flipped) {
+    toast(t("sv_nothing", { bpm: SV.preview.reference_bpm, file })); return;
+  }
+  if (!confirm(t("sv_confirm", { bpm: SV.preview.reference_bpm, file }))) return;
+  const reply = await api().scroll_apply(file);
+  if (!reply.ok) { editFailure(reply); return; }
+  toast(t("sv_done", { bpm: reply.reference_bpm, file }));
+  SV.preview = null;
+  renderSv();
+}
+
+function renderSv() {
+  const card = $("svCard"), p = SV.preview;
+  card.hidden = !S.result;
+  if (!S.result) return;
+  $("svApply").disabled = !p || (!p.added && !p.flipped);
+  $("svResult").textContent = !p ? ""
+    : t("sv_would", { added: p.added, flipped: p.flipped, kept: p.kept, bpm: p.reference_bpm, file: p.file });
+}
+
+// ------------------------------------------------------------------ snap divisors
+// Phase 21: which divisor each section needs, from the song's own attacks.
+// Read only: one line per section, no preview, nothing to apply.
+const DIVS = { report: null, for: "" };
+
+async function divsLoad() {
+  DIVS.report = null;
+  if (api() && S.result) {
+    const reply = await api().snap_divisors();
+    if (reply.ok) DIVS.report = reply.report;
+  }
+  DIVS.for = (S.result && S.result.path) || "";
+  renderDivisors();
+}
+
+function renderDivisors() {
+  const card = $("divCard"), r = DIVS.report;
+  card.hidden = !S.result;
+  if (!S.result) return;
+  if (DIVS.for !== S.result.path) { divsLoad(); return; }
+  if (!r) { $("divBody").textContent = ""; return; }
+  $("divBody").innerHTML = r.sections.map((s) => {
+    const extra = (s.thirds || s.sixths)
+      ? t("div_extra", { t: s.thirds, s: s.sixths }) : "";
+    return `<div>${esc(t("div_row", { at: mmss(s.offset_ms / 1000), bpm: s.bpm, d: s.divisor, extra }))}</div>`;
+  }).join("");
+}
+
 // A section opens in Timing: the timeline zoomed to it, the playhead at its start.
 function stxShow(i) {
   const s = STX.view && STX.view.sections[i];
@@ -2446,6 +2571,71 @@ function renderSnap() {
       </table>
     </div>` : ""}
     <div class="card-sub mt-m">${t("snap_starts")}</div>`;
+}
+
+// ------------------------------------------------------------------ re-snap objects
+// After a timing change, snapped objects ride the drift onto the detected
+// grid; off-grid ones stay put and are listed. Runs before injecting, while
+// the map still has its old red lines.
+const RSNP = { path: null, preview: null, song: "" };
+
+async function resnapPick() {
+  if (!api() || !S.result || S.busy) return;
+  const target = await api().pick_osu(S.lastFolder || "");
+  if (!target) return;
+  const reply = await api().resnap_preview(target);
+  if (!reply.ok) { editFailure(reply); return; }
+  RSNP.path = target; RSNP.preview = reply;
+  RSNP.song = (S.result && S.result.path) || "";
+  renderResnap();
+}
+
+async function resnapApply() {
+  if (!api() || !S.result || S.busy || !RSNP.preview || !RSNP.path) return;
+  const p = RSNP.preview;
+  if (!p.changed) { toast(t("rs_clean")); return; }
+  const name = String(RSNP.path).split(/[\\/]/).pop();
+  if (!confirm(t("rs_confirm", { n: p.changed, file: name }))) return;
+  const reply = await api().resnap_apply(RSNP.path);
+  if (!reply.ok) { editFailure(reply); return; }
+  toast(t("rs_done", { n: reply.changed, file: name }));
+  const fresh = await api().resnap_preview(RSNP.path);
+  RSNP.preview = fresh.ok ? fresh : null;
+  renderResnap();
+}
+
+function renderResnap() {
+  const body = $("rsBody");
+  if (RSNP.song && S.result && RSNP.song !== S.result.path) { RSNP.path = null; RSNP.preview = null; }
+  const p = RSNP.preview;
+  if (!RSNP.path || !p) {
+    $("rsCount").hidden = true;
+    $("rsFile").textContent = "";
+    $("rsApply").disabled = true;
+    body.innerHTML = `<div class="card-sub">${t("rs_sub")}</div>`;
+    return;
+  }
+  $("rsFile").textContent = p.file;
+  const pill = $("rsCount");
+  pill.hidden = false;
+  pill.textContent = t("rs_would", { moved: p.moved, changed: p.changed, left: p.left.length });
+  $("rsApply").disabled = !p.changed;
+  const rows = p.left.slice(0, 10).map((o) => `
+    <tr>
+      <td class="num">${o.time_ms.toFixed(0)}</td>
+      <td>${esc(o.kind || "?")}</td>
+      <td class="num">1/${o.nearest_divisor}</td>
+      <td class="num neg">${o.off_ms.toFixed(1)}</td>
+    </tr>`).join("");
+  body.innerHTML = `
+    <div class="card-sub">${t("rs_would", { moved: p.moved, changed: p.changed, left: p.left.length })}</div>
+    ${rows ? `<div class="table-scroll mt-s">
+      <table>
+        <thead><tr><th>${t("snap_t_time")}</th><th>${t("snap_t_kind")}</th><th>${t("snap_t_div")}</th><th>${t("snap_t_off")}</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    ${p.left.length > 10 ? `<div class="card-sub">${t("rs_left_more", { n: p.left.length - 10 })}</div>` : ""}` : ""}`;
 }
 
 // ------------------------------------------------------------------ reference timing
@@ -4469,10 +4659,15 @@ function wire() {
   $("alignPick").onclick = alignOsu;
   $("denPick").onclick = densityOsu;
   $("snapPick").onclick = snapOsu;
+  $("rsPick").onclick = resnapPick;
+  $("rsApply").onclick = resnapApply;
   $("refPick").onclick = refPick;
   $("refFind").onclick = refFind;
   $("asFit").onclick = assistFit;
   $("rampFit").onclick = rampFit;
+  $("svPreview").onclick = svPreview;
+  $("svApply").onclick = svApply;
+  $("svMap").onchange = () => { SV.preview = null; renderSv(); };
   $("rampUse").onclick = rampUse;
   $("labCompare").onclick = labCompare;
   $("labStart").onclick = labStart;

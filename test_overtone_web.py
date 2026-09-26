@@ -561,6 +561,38 @@ class SnapBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().snap("C:/x.osu")["key"], "first")
         self.assertEqual(_api_with_points().snap("C:/does/not/exist.osu")["key"], "bad_file")
 
+    def test_resnap_preview_then_apply_moves_snapped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text("\n".join(
+                ["osu file format v14", "", "[TimingPoints]", "1000,500,4,1,0,100,1,0",
+                 "", "[HitObjects]", "64,192,1500,1,0,0:0:0:0:", "64,192,1300,1,0,0:0:0:0:",
+                 ""]), encoding="utf-8")
+            api = _api_with_points()
+            api._analysis.points = [ta.TimingPoint(1010.0, 120.0, 0.9, 0)]
+            prev = api.resnap_preview(str(target))
+            json.dumps(prev)
+            self.assertTrue(prev["ok"])
+            # Old red 1000 vs detected 1010: the snapped 1500 rides +10 ms,
+            # the off-grid 1300 stays listed. Runs before injecting, while the
+            # map still has its old red lines.
+            self.assertEqual((prev["moved"], prev["changed"]), (1, 1))
+            self.assertEqual([o["time_ms"] for o in prev["left"]], [1300.0])
+            done = api.resnap_apply(str(target))
+            self.assertEqual((done["written"], done["changed"]), (True, 1))
+            self.assertTrue(Path(str(target) + ".bak").is_file())
+            self.assertIn("64,192,1510,1,0,0:0:0:0:",
+                          target.read_text(encoding="utf-8"))
+            # A second run finds nothing on the old grid: the moved object is
+            # listed now, and nothing is written.
+            again = api.resnap_apply(str(target))
+            self.assertEqual((again["changed"], again["written"]), (0, False))
+
+    def test_resnap_needs_a_result_and_a_real_file(self) -> None:
+        self.assertEqual(web.Api().resnap_preview("C:/x.osu")["key"], "first")
+        self.assertEqual(web.Api().resnap_apply("C:/x.osu")["key"], "first")
+        self.assertEqual(_api_with_points().resnap_preview("C:/does/not/exist.osu")["key"], "bad_file")
+
 
 class ReferenceBridgeTests(_IsolatedConfig):
     """Reference timing: grade any map, load it as the working timing, find
@@ -1660,6 +1692,59 @@ class StructureBreaksBridgeTests(_IsolatedConfig):
                 self.assertEqual(api.structure_breaks_preview("map.osu")["key"], "no_rust")
             self.assertEqual(api.structure_breaks_preview("..\\map.osu")["key"], "bad_file")
         self.assertEqual(web.Api().structure_breaks_preview("map.osu")["key"], "first")
+
+
+class ScrollBridgeTests(_IsolatedConfig):
+    """Scroll greens that cancel BPM changes, previewed then written once."""
+
+    def _song(self, tmp: str) -> web.Api:
+        folder = Path(tmp)
+        (folder / "audio.mp3").write_bytes(b"ID3" + bytes(64))
+        (folder / "map.osu").write_bytes("\r\n".join(
+            ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+             "[TimingPoints]", "1000,500,4,2,1,70,1,0", "2000,400,4,2,1,70,1,0", "",
+             "[HitObjects]", "256,192,1000,1,0,0:0:0:0:", ""]).encode("utf-8"))
+        api = _api_with_points()
+        api._analysis.source = str(folder / "audio.mp3")
+        return api
+
+    def test_preview_counts_and_apply_writes_with_a_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            preview = api.scroll_preview("map.osu")
+            raw_before = Path(tmp, "map.osu").read_bytes()
+            done = api.scroll_apply("map.osu")
+            after = Path(tmp, "map.osu").read_bytes()
+            json.dumps([preview, done])
+            self.assertEqual((preview["reference_bpm"], preview["added"],
+                              preview["flipped"], preview["kept"]),
+                             (120.0, 1, 0, 0))
+            self.assertEqual((done["added"], done["written"]), (1, True))
+            self.assertNotEqual(raw_before, after)
+            greens = ta.read_osu_beatmap(Path(tmp) / "map.osu")["timing"]["greens"]
+            self.assertEqual(greens, ["2000,-125,4,2,1,70,0,0"])
+            self.assertTrue(Path(tmp, "map.osu.bak").is_file())
+
+    def test_without_maps_it_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            self.assertEqual(api.scroll_preview("..\\map.osu")["key"], "bad_file")
+        self.assertEqual(web.Api().scroll_preview("map.osu")["key"], "first")
+
+
+class DivisorsBridgeTests(_IsolatedConfig):
+    """Which divisor each section needs, from the song's own attacks."""
+
+    def test_report_names_thirds_and_refuses_without_a_song(self) -> None:
+        api = _api_with_points()
+        api._analysis.attack_times = np.array([1.0 + k / 6.0 for k in range(13)])
+        api._analysis.attack_weights = np.ones(13)
+        reply = api.snap_divisors()
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        section = reply["report"]["sections"][0]
+        self.assertEqual(section["divisor"], "1/3")
+        self.assertEqual(web.Api().snap_divisors()["key"], "first")
 
 
 class OffsetLabBridgeTests(_IsolatedConfig):

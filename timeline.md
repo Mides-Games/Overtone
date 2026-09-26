@@ -17,6 +17,96 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Phrase starts on the phrase's bar: measured, not shipped
+
+### Changed
+
+- Nothing in the app. The Structure view still snaps each phrase edge to the nearest proven
+  bar within 1.5 s. A rule that moves the edge to the bar where the level changes was built
+  and measured against ranked maps' kiai starts. It helped on the held-out sample, but by
+  less than the bar set before that sample was read, so it stays out (below).
+
+### Measured
+
+The truth is the kiai starts of ranked maps from the local Songs folder, read only. Each song
+contributes one standard difficulty, the one with the most objects. A map qualifies with a
+single red line (60-300 BPM, 3/4 or 4/4) and a kiai of 4 bars or more that starts 6 s or
+more from either end. Its red line counts as a proven bar, as reference timing loads it.
+
+A kiai start's bar is the bar line it sits on, or the next one when it starts on a pickup up
+to one beat before it. Of kiai starts on spans that long, 87.6 % sit on the downbeat and 6 %
+on such a pickup; the other mid-bar starts are left out.
+
+There were 1673 eligible songs, one per artist and title. A fixed seed shuffled them into two
+disjoint samples of 500: A chose the rule, and B was held out and read once, at the end. No
+audio file is shared; 36 of B's 481 titles recur in A as another cut or another song of that
+name. `overtone-cli structure` ran on every song (one MP3 did not decode). The chance of the
+exact bar is 20 %: one of the five bars in the ±2-bar window an edge is paired within.
+
+```
+                                 sample A (tuning)        sample B (held out)
+songs with a kiai start          484                      492
+kiai starts                      1189 (84 mid-bar out)    1252 (78 mid-bar out)
+  with an edge within 2 bars     144 (12.1 %)             145 (11.6 %)
+  within 4 bars                  16.3 %                   16.5 %
+inner edges per song             median 3                 median 3
+
+today (nearest proven bar), on those pairs
+  on the kiai's bar              42.4 %                   45.5 %
+  one bar early / late           26.4 / 16.0 %            21.4 / 17.9 %
+  two or more early / late       11.8 / 3.5 %             15.2 / 0.0 %
+the level rule (rejected below)
+  on the kiai's bar              64.6 %                   55.9 %
+  one bar early / late           15.3 / 3.5 %             26.2 / 5.5 %
+  two or more early / late       12.5 / 4.2 %             11.0 / 1.4 %
+  against today                  +40 fixed, -8 broken     +27 fixed, -12 broken,
+                                                          sign test p 0.024
+kiai ends (the next section's first bar, mostly falls), a guard
+  today / level rule             41.8 / 45.9 %            41.5 / 44.7 %
+all snapped edges on a 4-bar line from the red line (25 % by chance)
+  today                          30.5 %                   29.6 %
+```
+
+The larger limit is not the snap. About 88 % of kiai starts have no edge within 2 bars, so a
+structure stage that finds more edges would place more kiai than any snap rule can.
+
+### Rejected / tried and dropped
+
+- **The bar where the level changes most, the way the sections' levels go.** The rule looks
+  at the nearest proven bar and the proven bar either side of it. For each, it compares the
+  bar after the line with the bar before it on the report's energy lane. It takes the bar
+  with the largest rise when the section after is louder, or the largest fall otherwise, but
+  leaves the nearest bar only for 0.5 dB more.
+  - Reach 1-2 bars and margins 0-3 dB all read 55-65 % on A; 1 bar at 0.5 dB was best
+    (0.25 dB tied, and the larger margin was kept).
+  - On B it gained 10.3 points (95 % interval about 2-19), +27/-12, sign test p 0.024. The bar
+    set before B was read was +10 points and p < 0.01. The size cleared it; the p-value did
+    not.
+  - The gain halved from A to B, as a margin fitted to A would lead one to expect. Kiai ends
+    did not suffer (41.5 -> 44.7 %).
+  - It moves 47 % of all snapped edges off the nearest bar (1175 of 2482 on B), and the
+    median move from the novelty peak grows from 233 to 640 ms. Kiai starts and ends check
+    145 and 159 of those edges; the rest move unchecked.
+  - More songs would not settle it. Simulated from B's own result, a fresh sample clears the
+    bar about half the time, with the 673 unused songs or even with 1500: the size bar sits
+    at the effect itself. Whether about 10 points is worth shipping is a decision, not a
+    measurement.
+- **4-bar lines from the red line.** This takes the nearest bar on a 4-bar line, if one is
+  within a bar. Kiai starts do sit on those lines 47.7 % of the time (A; 25 % by chance), and
+  69 % of the gaps between a song's kiai starts are whole 4-bar multiples.
+  - The edges do not follow: 50.7 % on the kiai's bar against 42.4 % (+25/-13, p 0.07).
+  - It leans on a red line that sits on a phrase start: a mapper's does, a detected one need
+    not.
+  - A phase voted from the song's own edges: 43.8 %. A 0.5-2 dB bonus for those lines on top
+    of the level rule: net +2 to +4 pairs (p 0.56-0.69).
+- **Rises only.** 61.8 % on A's kiai starts, but kiai ends fell from 41.8 % to 28.1 %: edges
+  into quieter parts moved to a rise. The direction has to come from the song.
+- **The largest change either way.** 59.7 % on A. It can take the stop bar before a chorus,
+  whose fall can be as large as the chorus's rise.
+- **The direction read locally**, over 4 s either side of the novelty peak (what the kernel
+  sees): 56-58 % on A, below the sections' levels.
+- **Two bars either side for the level**: 56-57 % on A, below one bar.
+
 ## v4.0.0-dev — 2026-09-26 · The .osu reader under a fuzzer
 
 ### Changed

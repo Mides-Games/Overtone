@@ -41,11 +41,12 @@ and the Phase 21 map tools (inject everywhere with a diff, kiai, breaks, bookmar
 point, section volumes, SV normaliser, re-snap, snap divisors, audio file check).
 
 1. **Hitsounds, the rest** (Phase 6, [`15-hitsound-plan.md`](15-hitsound-plan.md)) — the
-   profiles in the app (more profiles first, each
-   measured against the mappers as H4 was), instrument lanes on the
-   timeline (P-4's evidence is there to draw); then H6 (sample
-   bank, recommendation) and H7 (a proposal from the audio alone). The clap-mismatch rule
-   waits until the templates hold on real audio.
+   profiles in the app (more profiles first, each measured against the mappers as H4
+   was); then H6 (sample bank, recommendation) and H7 (a proposal from the audio
+   alone). Two things wait until the instrument templates hold on real audio: the
+   clap-mismatch rule, and instrument lanes on the timeline. At the mappers' claps of 11
+   real songs the templates read snare or clap at a median 0.138 (timeline, H3 audio
+   half), so lanes drawn from them would show a precision they do not have.
 2. **Library focus** (Phase 19) — scan, rescan and search measured on a full Songs folder,
    then the library health check (Phase 21).
 3. **The Audio section** (Phase 19), and phrase starts on the phrase's own bar.
@@ -482,7 +483,7 @@ Report, Export, History, Settings); Audio is the one left.
 | Library focus | leave the Library category working well: scan/rescan with truthful folder progress, search fast on a full Songs folder, clear empty and error states, and the health check (Phase 21) listing maps whose timing disagrees with their audio | med | high | Library, index, compare | no | no | P1 | todo — measured on the local Songs folder (scan/rescan/search times) before it ships |
 | Timing | tempo map, points, editor, verdict | — | — | — | no | no | **P1** | **done** |
 | Map check | compare, alignment, validation, density and suggestions for the loaded difficulty | med | **high** | P5, P7 | no | no | **P1** | **done** — own section: compare, alignment, density, snap audit, suggestions |
-| Hitsounds | instrument lanes, per-object sound, exported hitsound difficulty | high | **high** | P6 | no | no | P1 | partial — the section is in: where each addition falls, every sound heard one by one (H2), the Propose card (H5) and the hitsound difficulty in Export; instrument lanes still to build |
+| Hitsounds | instrument lanes, per-object sound, exported hitsound difficulty | high | **high** | P6 | no | no | P1 | partial — the section is in: where each addition falls, every sound heard one by one (H2), the Propose card (H5) and the hitsound difficulty in Export; instrument lanes wait until the templates hold on real audio |
 | Audio | spectrogram, 7-band onset lanes, percussive/harmonic balance, energy with sections, tempo heatmap | med | med | P2 via bridge | no | opt | P2 | todo |
 | Export | every output in one place: `.osu` text, CSV, click, `.osz`, lazer decimals, other games | low | high | P5 | no | no | P1 | **done** — own section |
 | Settings | every option in Phase 20 | low | high | shell | no | no | P1 | **done** — its own section; detection stays in the drawer |

@@ -583,10 +583,18 @@ class SnapBridgeTests(_IsolatedConfig):
             self.assertTrue(Path(str(target) + ".bak").is_file())
             self.assertIn("64,192,1510,1,0,0:0:0:0:",
                           target.read_text(encoding="utf-8"))
-            # A second run finds nothing on the old grid: the moved object is
-            # listed now, and nothing is written.
+            # The file holds what this re-snap wrote: a second one reads the
+            # moved objects against the old red lines again, and those landing
+            # on another old tick move twice (165 of 746 on a real map). It
+            # refuses and writes nothing until the file changes.
+            written = target.read_bytes()
             again = api.resnap_apply(str(target))
-            self.assertEqual((again["changed"], again["written"]), (0, False))
+            self.assertEqual(again["key"], "resnapped")
+            self.assertTrue(api.resnap_preview(str(target))["resnapped"])
+            self.assertEqual(target.read_bytes(), written)
+            # Injecting the timing (or a restore) changes the bytes and frees it.
+            target.write_bytes(written.replace(b"1000,500,", b"1010,500,"))
+            self.assertFalse(api.resnap_preview(str(target))["resnapped"])
 
     def test_resnap_needs_a_result_and_a_real_file(self) -> None:
         self.assertEqual(web.Api().resnap_preview("C:/x.osu")["key"], "first")

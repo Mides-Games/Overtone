@@ -319,6 +319,7 @@ const I18N = {
     rs_confirm: "Move {n} objects in {file}? Off-grid objects stay.",
     rs_done: "Moved {n} objects in {file}.",
     rs_clean: "Every snapped object already sits on the detected grid.",
+    resnapped: "Re-snapped for this timing already: inject the timing into this file next. Re-snapping again would move these objects twice; History restores the file to start over.",
     ref_title: "Reference timing", ref_pick: "Grade a .osu…", ref_find: "Maps of this song…",
     ref_empty: "Choose any .osu of this song, hand-timed or ranked, to grade each red line against the attacks Overtone hears. Useful where detection is weakest: live bands, rubato, drift.",
     ref_counts: "{ok} ok · {check} to check · {weak} weak · {few} too few",
@@ -775,6 +776,7 @@ const I18N = {
     rs_confirm: "¿Mover {n} objetos en {file}? Los fuera del grid quedan.",
     rs_done: "Movidos {n} objetos en {file}.",
     rs_clean: "Cada objeto snapeado ya está en la grilla detectada.",
+    resnapped: "Ya se reajustó con este timing: inyectá el timing en este archivo a continuación. Reajustar otra vez movería estos objetos dos veces; Historial restaura el archivo para empezar de nuevo.",
     ref_title: "Timing de referencia", ref_pick: "Calificar un .osu…", ref_find: "Mapas de esta canción…",
     ref_empty: "Elegí cualquier .osu de esta canción, timeado a mano o rankeado, para calificar cada línea roja contra los ataques que Overtone escucha. Sirve donde la detección flaquea: bandas en vivo, rubato, deriva.",
     ref_counts: "{ok} ok · {check} a revisar · {weak} débiles · {few} con pocos ataques",
@@ -2695,9 +2697,11 @@ function renderResnap() {
   }
   $("rsFile").textContent = p.file;
   const pill = $("rsCount");
-  pill.hidden = false;
+  // Re-snapped already, the counts are a second move that will not happen.
+  pill.hidden = !!p.resnapped;
   pill.textContent = t("rs_would", { moved: p.moved, changed: p.changed, left: p.left.length });
-  $("rsApply").disabled = !p.changed;
+  // Re-snapped and not injected since: another apply would move them twice.
+  $("rsApply").disabled = !p.changed || !!p.resnapped;
   const rows = p.left.slice(0, 10).map((o) => `
     <tr>
       <td class="num">${o.time_ms.toFixed(0)}</td>
@@ -2705,7 +2709,7 @@ function renderResnap() {
       <td class="num">1/${o.nearest_divisor}</td>
       <td class="num neg">${o.off_ms.toFixed(1)}</td>
     </tr>`).join("");
-  body.innerHTML = `
+  body.innerHTML = p.resnapped ? `<div class="card-sub">${t("resnapped")}</div>` : `
     <div class="card-sub">${t("rs_would", { moved: p.moved, changed: p.changed, left: p.left.length })}</div>
     ${rows ? `<div class="table-scroll mt-s">
       <table>

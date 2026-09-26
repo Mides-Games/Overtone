@@ -294,6 +294,11 @@ class Api:
         self._ramps: tuple | None = None
         #: The bytes one hitsound apply replaced, for the one-level undo.
         self._decide_undo: dict | None = None
+        #: Files re-snapped, by resolved path, with the digest of the bytes
+        #: the re-snap wrote: while a file still holds exactly those bytes its
+        #: objects left its own red lines, and a second re-snap would move
+        #: them twice. Injecting or restoring changes the bytes and frees it.
+        self._resnapped: dict[str, str] = {}
         if initial_file:
             self._cfg["file"] = initial_file
 
@@ -1187,13 +1192,26 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "suggestions": suggestions, "file": Path(osu_path).name}
 
+    @staticmethod
+    def _digest(path: str | Path) -> tuple[str, str]:
+        import hashlib
+        resolved = Path(str(path)).resolve()
+        return str(resolved), hashlib.sha256(resolved.read_bytes()).hexdigest()
+
     def resnap_preview(self, osu_path: str) -> dict:
         """What moving this map's snapped objects onto the current grid would
-        move, and what would stay. Read only."""
+        move, and what would stay. Read only. ``resnapped`` is true while the
+        file still holds what a re-snap here wrote: its objects already left
+        its red lines, so the numbers are a second move, not a first."""
         if self._analysis is None:
             return {"ok": False, "key": "first"}
         if not Path(str(osu_path)).is_file():
             return {"ok": False, "key": "bad_file"}
+        try:
+            key, digest = self._digest(osu_path)
+        except OSError as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        resnapped = self._resnapped.get(key) == digest
         try:
             beatmap = ta.read_osu_beatmap(osu_path)
             diff = ta.inject_diff(osu_path, self._analysis,
@@ -1207,14 +1225,19 @@ class Api:
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "file": Path(osu_path).name, "moved": result["moved"],
-                "changed": changed, "left": result["left"], "skipped": result["skipped"]}
+                "changed": changed, "left": result["left"], "skipped": result["skipped"],
+                "resnapped": resnapped}
 
     def resnap_apply(self, osu_path: str) -> dict:
         """Move the snapped objects onto the current grid, the file backed up
-        first and logged. Writes nothing when no time would actually change."""
+        first and logged. Writes nothing when no time would actually change,
+        and refuses a file this already re-snapped that nothing has changed
+        since: the objects would move a second time."""
         preview = self.resnap_preview(osu_path)
         if not preview.get("ok"):
             return preview
+        if preview["resnapped"]:
+            return {"ok": False, "key": "resnapped"}
         if not preview["changed"]:
             return {**preview, "written": False, "backup": None}
         try:
@@ -1222,9 +1245,11 @@ class Api:
             diff = ta.inject_diff(osu_path, self._analysis,
                                   decimals=self._settings()["offset_decimals"])
             ta.resnap_objects(beatmap, diff["pairs"])
-            written = ta.write_osu_beatmap(osu_path, beatmap)
+            written = ta.write_osu_beatmap(osu_path, beatmap, op="resnap")
+            key, digest = self._digest(osu_path)
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
+        self._resnapped[key] = digest
         return {**preview, "written": True, "backup": written["backup"]}
 
     # -- reference timing: any map's red lines, graded by the attacks -------

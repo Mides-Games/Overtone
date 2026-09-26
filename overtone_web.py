@@ -1686,6 +1686,53 @@ class Api:
                 "kept": result["kept"], "written": written["bytes"] > 0,
                 "backup": written["backup"]}
 
+    # -- structure volume: hitsound volume from section energy ---------------
+    def _volumes_plan(self, file: str):
+        """The map plus the song's structure sections, or a refusal."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        view = self.structure()
+        if not view.get("ok"):
+            return view
+        try:
+            beatmap = ta.read_osu_beatmap(path)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return path, beatmap, view["view"]["sections"]
+
+    def structure_volumes_preview(self, file: str) -> dict:
+        """What writing section volumes would add, rewrite or keep. Read only."""
+        plan = self._volumes_plan(file)
+        if isinstance(plan, dict):
+            return plan
+        path, beatmap, sections = plan
+        try:
+            import copy
+            result = ta.set_section_volumes(copy.deepcopy(beatmap), sections)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name, "sections": len(sections),
+                "added": result["added"], "flipped": result["flipped"],
+                "kept": result["kept"]}
+
+    def structure_volumes_apply(self, file: str) -> dict:
+        """Write section volumes as green lines, the file backed up first and
+        logged. Recomputes: the preview never decides."""
+        plan = self._volumes_plan(file)
+        if isinstance(plan, dict):
+            return plan
+        path, beatmap, sections = plan
+        try:
+            result = ta.set_section_volumes(beatmap, sections)
+            written = ta.write_osu_beatmap(path, beatmap)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name, "sections": len(sections),
+                "added": result["added"], "flipped": result["flipped"],
+                "kept": result["kept"], "written": written["bytes"] > 0,
+                "backup": written["backup"]}
+
     def snap_divisors(self) -> dict:
         """Which divisor each section needs, from the song's own attacks.
         Read only: 1/3, 1/4 or 1/6 per section with the counts behind it."""

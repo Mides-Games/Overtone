@@ -4519,6 +4519,105 @@ def set_chorus_kiai(beatmap: dict, spans: list[tuple[float, float]]) -> dict:
     return {"added": added, "flipped": flipped, "kept": kept}
 
 
+def set_section_volumes(beatmap: dict, sections: list[dict]) -> dict:
+    """Hitsound volume from section energy, as greens (Phase 21, Volume).
+
+    Each section plays at the loudest section's volume scaled by their level
+    distance in dB — amplitude math, not taste — so a chorus hits harder than
+    its verse by exactly how much louder it is. The scale's anchor is the
+    volume in force at the loudest section's start, which the tool never
+    touches, so a second run reads its own greens as already right instead of
+    turning them down again. A section already at its target is kept,
+    including the loudest ones; a green already at a boundary gets only its
+    volume rewritten. New greens carry the audible state in force there, so
+    sets, index and kiai never move with the volume. In place, like the P-2
+    field edits. Returns added, flipped and kept.
+    """
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "TimingPoints"), None)
+    if section is None:
+        raise ValueError("No [TimingPoints] section in this beatmap.")
+    starts = []
+    for entry in sections or []:
+        try:
+            start = float(entry["start_s"]) * 1000.0
+            level = float(entry.get("level_db", float("nan")))
+        except (TypeError, ValueError, KeyError):
+            continue
+        if np.isfinite(start) and np.isfinite(level):
+            starts.append((start, level))
+    if not starts:
+        return {"added": 0, "flipped": 0, "kept": 0}
+    loudest = max(level for _s, level in starts)
+    # One boundary per start: contiguous sections never share one, but a
+    # hand-built list might, and two greens on the same millisecond are junk.
+    unique: list[tuple[float, float]] = []
+    for start, level in sorted(starts):
+        if not unique or abs(start - unique[-1][0]) > 0.01:
+            unique.append((start, level))
+    starts = unique
+    cursor = _TimingCursor(beatmap)
+    import bisect
+
+    def meter_at(time_ms: float) -> int:
+        rows = _beatmap_red_rows(beatmap)
+        i = bisect.bisect_right([o for o, _b, _m in rows], time_ms + 1e-6) - 1
+        return rows[max(i, 0)][2] if rows else 4
+
+    def stamp(time_ms: float) -> str:
+        whole = round(time_ms)
+        return str(int(whole)) if abs(time_ms - whole) < 1e-6 else f"{time_ms:.3f}"
+
+    def state_at(time_ms: float):
+        _beat, state = cursor.at(time_ms)
+        if state is None:
+            return 1.0, 0, 0, 100, False
+        sv = state.sv if state.sv > 0 else 1.0
+        return sv, state.sample_set, state.sample_index, state.volume, state.kiai
+
+    # The anchor the scale hangs from: the volume in force where the song is
+    # loudest. The tool never writes there (ratio 1, always kept), so the
+    # anchor survives its own runs and the scale never ratchets down.
+    anchor_start = min(starts, key=lambda s: (-s[1], s[0]))[0]
+    _beat, anchor = cursor.at(anchor_start)
+    reference = anchor.volume if anchor is not None else 100
+    added = flipped = kept = 0
+    for start_ms, level in sorted(starts):
+        target = max(0, min(100, int(round(reference * 10.0 ** ((level - loudest) / 20.0)))))
+        _beat, state = cursor.at(start_ms)
+        current = state.volume if state is not None else 100
+        if target == current:
+            kept += 1
+            continue
+        hit = next((n for n, line in enumerate(section["lines"])
+                    if line.strip() and not line.strip().startswith("//")
+                    and (point := _timing_point_fields(line)) is not None
+                    and not point["red"] and abs(point["time"] - start_ms) <= 0.01), None)
+        if hit is not None:
+            fields = [f.strip() for f in section["lines"][hit].split(",")]
+            while len(fields) < 8:
+                fields.append("")
+            fields[5] = str(target)
+            section["lines"][hit] = ",".join(fields)
+            flipped += 1
+            continue
+        sv, sample_set, sample_index, _volume, kiai = state_at(start_ms)
+        row = (f"{stamp(start_ms)},{-100.0 / sv:.12g},{meter_at(start_ms)},"
+               f"{sample_set},{sample_index},{target},0,{1 if kiai else 0}")
+        at = next((n for n, line in enumerate(section["lines"])
+                   if line.strip() and not line.strip().startswith("//")
+                   and (point := _timing_point_fields(line)) is not None
+                   and point["time"] > start_ms + 1e-6), len(section["lines"]))
+        section["lines"].insert(at, row)
+        added += 1
+    timing = [line for line in section["lines"]
+              if line.strip() and not line.strip().startswith("//")]
+    beatmap["timing"] = {
+        "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
+        "greens": [line for line in timing if not _is_red_line(line.strip())],
+    }
+    return {"added": added, "flipped": flipped, "kept": kept}
+
+
 def suggest_breaks(beatmap: dict, sections: list[dict], min_length_s: float = 5.0,
                  quiet_db: float = 6.0) -> list[dict]:
     """Quiet spans long enough for a break (Phase 21, Breaks).

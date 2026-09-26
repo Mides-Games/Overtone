@@ -6159,5 +6159,136 @@ class ModReportTests(unittest.TestCase):
         self.assertEqual(self._report()["counts"]["suggestion"], 0)
 
 
+class CorpusBScoringTests(unittest.TestCase):
+    """Phase 10.0: bench/corpus_b.py scores red lines against a map's, on
+    made-up lines and temporary files only; the Songs folder is never read."""
+
+    @staticmethod
+    def _cb():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "corpus_b", Path(__file__).resolve().parent / "bench" / "corpus_b.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_the_same_grid_whole_beats_away_matches_exactly(self):
+        cb = self._cb()
+        # osu! runs a red line's grid both ways: 8 beats later is the same grid.
+        rows = cb.score_track([(1000.0, 120.0)], [(5000.0, 120.0)])
+        self.assertAlmostEqual(rows[0]["error_ms"], 0.0, places=9)
+        self.assertEqual((rows[0]["octave"], rows[0]["bpm_error"]), (1.0, 0.0))
+
+    def test_the_error_is_signed_positive_when_overtone_is_late(self):
+        cb = self._cb()
+        late = cb.score_track([(1000.0, 150.0)], [(1026.0, 150.0)])
+        early = cb.score_track([(1000.0, 150.0)], [(1000.0 - 7.0 + 400.0, 150.0)])
+        self.assertAlmostEqual(late[0]["error_ms"], 26.0, places=9)
+        self.assertAlmostEqual(early[0]["error_ms"], -7.0, places=9)
+
+    def test_a_bpm_error_shows_where_the_grid_is_run_to(self):
+        cb = self._cb()
+        # 0.1 % fast, anchored 100 beats away: the grid walks 60 ms by the map's line.
+        rows = cb.score_track([(0.0, 100.0)], [(60000.0, 100.1)])
+        beat = 60000.0 / 100.1
+        self.assertAlmostEqual(rows[0]["error_ms"], 60000.0 - 100 * beat, places=6)
+        self.assertAlmostEqual(rows[0]["bpm_error"], 0.1, places=9)
+
+    def test_a_half_tempo_reading_is_split_and_counted_as_an_octave(self):
+        cb = self._cb()
+        # 100 BPM read for a 200 BPM map, its beats on the map's odd beats:
+        # its half beats land on the line. The octave is reported, not the gap.
+        rows = cb.score_track([(1000.0, 200.0)], [(1300.0, 100.0)])
+        self.assertAlmostEqual(rows[0]["error_ms"], 0.0, places=9)
+        self.assertEqual(rows[0]["octave"], 0.5)
+        self.assertEqual(cb.tally(rows)["octaves"], {"x0.5": 1})
+
+    def test_a_double_tempo_reading_is_used_as_it_is(self):
+        cb = self._cb()
+        on = cb.score_track([(1000.0, 100.0)], [(1300.0, 200.0)])
+        between = cb.score_track([(1000.0, 100.0)], [(1150.0, 200.0)])
+        self.assertAlmostEqual(on[0]["error_ms"], 0.0, places=9)
+        self.assertEqual(on[0]["octave"], 2.0)
+        self.assertAlmostEqual(abs(between[0]["error_ms"]), 150.0, places=9)
+
+    def test_the_governing_line_takes_half_a_map_beat_of_slack(self):
+        cb = self._cb()
+        detected = [(0.0, 120.0), (10150.0, 150.0)]
+        # At 150 BPM half a beat is 200 ms: a change found 150 ms late is still it.
+        self.assertEqual(cb.governing(detected, 10000.0, 400.0), 1)
+        self.assertEqual(cb.governing(detected, 9900.0, 400.0), 0)
+        # Before the first detected line, that line runs backwards.
+        self.assertEqual(cb.governing([(5000.0, 120.0)], 0.0, 500.0), 0)
+
+    def test_nothing_detected_misses_every_line(self):
+        cb = self._cb()
+        rows = cb.score_track([(0.0, 120.0), (5000.0, 130.0)], [])
+        summary = cb.tally(rows)
+        self.assertEqual((summary["lines"], summary["undetected"]), (2, 2))
+        self.assertEqual(summary["within"]["50"], 0)
+        self.assertEqual(summary["share"]["50"], 0.0)
+        self.assertIsNone(summary["error_ms"])
+
+    def test_pooled_shares_count_lines_and_the_mean_counts_tracks(self):
+        cb = self._cb()
+        drift = cb.score_track([(0.0, 120.0), (2000.0, 120.0), (4000.0, 120.0)], [(0.0, 120.0)])
+        single = cb.score_track([(0.0, 120.0)], [(30.0, 120.0)])
+        tracks = [{"tally": cb.tally(rows), "rows": rows} for rows in (drift, single)]
+        summary = cb.aggregate(tracks)
+        self.assertEqual(summary["within"]["5"], 3)
+        self.assertAlmostEqual(summary["share"]["5"], 0.75)
+        self.assertAlmostEqual(summary["track_mean_share"]["5"], 0.5)
+        self.assertEqual(summary["error_ms"]["median"], 0.0)
+        json.dumps(summary)
+
+    def test_a_shift_is_only_subtracted_when_asked(self):
+        cb = self._cb()
+        rows = cb.score_track([(0.0, 120.0), (4000.0, 120.0)], [(26.0, 120.0)])
+        self.assertEqual(cb.tally(rows)["within"]["5"], 0)
+        self.assertEqual(cb.tally(rows, shift_ms=26.0)["within"]["5"], 2)
+
+    def test_a_changed_or_missing_file_is_refused_and_a_moved_set_is_found(self):
+        cb = self._cb()
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = Path(tmp)
+            folder = songs / "123 Artist - Title"
+            folder.mkdir()
+            (folder / "map.osu").write_bytes(b"osu file format v14\r\n")
+            (folder / "audio.mp3").write_bytes(b"not really audio")
+            track = {"id": "t", "set_id": 123, "folder": folder.name, "osu": "map.osu",
+                     "audio": "audio.mp3", "sha1_osu": cb.sha1_file(folder / "map.osu"),
+                     "sha1_audio": cb.sha1_file(folder / "audio.mp3")}
+            self.assertTrue(cb.locate(track, songs)["ok"])
+            (folder / "audio.mp3").write_bytes(b"another encode")
+            where = cb.locate(track, songs)
+            self.assertFalse(where["ok"])
+            self.assertIn("audio changed", where["reason"])
+            (folder / "audio.mp3").write_bytes(b"not really audio")
+            moved = folder.rename(songs / "123 Artist - Title (1)")
+            self.assertEqual(cb.locate(track, songs)["folder"], moved)
+            (moved / "map.osu").write_bytes(b"osu file format v14\r\nedited\r\n")
+            self.assertFalse(cb.locate(track, songs)["ok"])
+
+    def test_the_manifest_holds_the_plans_categories_and_twenty_tracks(self):
+        cb = self._cb()
+        manifest = json.loads(cb.MANIFEST.read_text(encoding="utf-8"))
+        tracks = manifest["tracks"]
+        self.assertEqual(len(tracks), 20)
+        self.assertEqual(len({t["id"] for t in tracks}), 20)
+        counts = {name: sum(t["category"] == name for t in tracks)
+                  for name in manifest["categories"]}
+        # docs/10-precision-plan.md, "The reference set".
+        self.assertEqual(counts, {"edm": 4, "rock-pop": 4, "live-drift": 4,
+                                  "octave-swap": 3, "rubato-intro": 3, "signature": 2})
+        for track in tracks:
+            with self.subTest(track=track["id"]):
+                self.assertRegex(track["sha1_osu"], r"^[0-9a-f]{40}$")
+                self.assertRegex(track["sha1_audio"], r"^[0-9a-f]{40}$")
+                self.assertGreater(track["set_id"], 0)
+                self.assertTrue(track["folder"].startswith(f"{track['set_id']} "))
+                self.assertIn(track["status"], ("ranked", "approved", "loved"))
+                self.assertTrue(track["why"])
+
+
 if __name__ == "__main__":
     unittest.main()

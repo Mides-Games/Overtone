@@ -25,7 +25,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (532 on 2026-09-26)
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (543 on 2026-09-26)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -45,6 +45,16 @@ and all 24 rows would stay green. `golden.py check` compares **stage by stage**,
 divergence names its own stage instead of surfacing as a mystery at the output. When a
 reading changes on purpose, say why in `timeline.md` and re-run with `--update` / `dump`;
 never re-baseline to make a red gate green.
+
+Phase 10 work is also measured on **Corpus B**: 20 hand-timed ranked maps from the local
+osu! Songs folder, named by folder, file and SHA-1 in `bench/corpus_b.json` and never
+committed. It is a measurement, not a gate: a track whose files changed is skipped and
+named, and the analyses are cached per audio and engine hash, so a re-score takes a second.
+
+```bash
+.venv/Scripts/python.exe bench/corpus_b.py                     # ranked red lines within 5 ms
+.venv/Scripts/python.exe bench/corpus_b.py --engine rust       # the same through overtone-cli
+```
 
 And the Rust side:
 
@@ -127,6 +137,8 @@ bench/facts.py            the counts and lists the docs state, checked against t
 bench/golden/             27 committed vector files: the 24-case corpus plus the
                           proven-bar and signature fixtures from bench/gates.py
 bench/bpm_snapshot.json   pinned absolute BPM per fixture
+bench/corpus_b.py         Corpus B: the engine against 20 hand-timed ranked maps (Phase 10)
+bench/corpus_b.json       its manifest: Songs folders, files and SHA-1s, never the audio
 requirements.lock         exact versions behind the measured baseline
 proto/                    Python prototypes of the riskiest v4 algorithms,
                           measured against the corpus before any port

@@ -4,6 +4,8 @@ __pycache__/
 .venv/
 venv/
 bench/audio/
+# Corpus B's cached analyses and summaries (bench/corpus_b.py)
+bench/.cache/
 
 # Scoped so that .osu and .csv test fixtures can be committed (audit F-09):
 # only ignore exports dropped at the repo root or in exports/.

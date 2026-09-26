@@ -23,6 +23,14 @@ median error** — more than two ranked maps of the same audio give each other:
 82 % of their red lines within 5 ms, 74 % where the two maps' lines differ at
 all (319 pairs from the same Songs folder, measured 2026-09-26).
 
+Most of today's miss is not the engine's (10.0a, 2026-09-26). Overtone's lines
+read a median 24 ms after the maps', and ranked maps put their lines a median
+21.4 ms before the sound starts (100 held-out maps, IQR 18.1-23.9 ms). On
+Corpus B's eight one-line songs the sound starts 10-26 ms after the map's line,
+so an engine that writes the sound's own time cannot bring those lines within
+5 ms; whether the export follows the maps' convention is a decision.
+`bench/corpus_b.py --onsets` measures the two parts apart.
+
 ---
 
 ## The measurement discipline before anything else

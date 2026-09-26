@@ -26,7 +26,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Hitsound engine | **in the app** — the copier (H1), the Hitsounds section (H2), the consistency check (H3), and the decision engine in Rust (H4) behind the Propose card: tick by row or by bars, swap a proposal for one of its alternatives, set volume and sample index by hand, hear it all over the song as the write would make it, preview, write the file or a copy, undo (H5); a row's inspector says why each sound was proposed. Profiles, instrument lanes and a sample bank are still to build |
 | Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency, the percussive part alone, and a difficulty's hitsounds with its own samples, as written or as they would be written, slider slides looped head to tail |
 | UI verification | **done** 2026-09-26 — the 19 surfaces of 2026-09-25/26 exercised in the browser pane on two real mapsets, both themes and languages; it found app.js not loading and fifteen bugs in writes, counts and messages, all fixed; the two tools that needed a decision were decided the same day (timeline) |
-| Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 % |
+| Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **not started** — plan only |
 
 Tests: **558** Python (387 engine + 171 web shell) · **263** Rust.
@@ -56,9 +56,10 @@ point, section volumes, SV normaliser, re-snap, snap divisors, audio file check)
    sub-phase at a time from here, each measured on it.
 6. **Installer** (Phase 10.13) — MSI + portable ZIP.
 
-Two proposals wait on a decision, not on work: the Rhythm guide (`04-ui-ux.md` §9 rules out
-editing a beatmap beyond hitsounds and timing) and song import from a streaming link
-(blocked by the offline rule, see Phase 19).
+Three proposals wait on a decision, not on work: the Rhythm guide (`04-ui-ux.md` §9 rules out
+editing a beatmap beyond hitsounds and timing), song import from a streaming link
+(blocked by the offline rule, see Phase 19), and whether exported red lines follow ranked
+maps' convention, a median 21 ms before the sound, or the sound itself (10.0a).
 
 ### Bugs fixed on 2026-09-23
 
@@ -418,7 +419,9 @@ lines of 20 ranked maps, measured 2026-09-26 with `bench/corpus_b.py`; averaged 
 tracks it is 0.9 %, and within 50 ms 46.9 %. The "~5 %" quoted here before came from one
 track, *Vampires Will Never Hurt You* (4.7 % on 2026-09-22, method not recorded); Corpus B's
 scorer reads 5.9 % there. Two things set the gap: the red lines read a median 24-27 ms after
-the maps' (the Phase 22 row below), and one grid, or none, against a band that drifts.
+the maps', and one grid, or none, against a band that drifts. The 24 ms are explained (10.0a):
+ranked maps put their lines a median 21 ms before the sound starts, and Overtone's grids sit a
+few milliseconds after it.
 
 **Measurement first.** Nothing ships without a measured gain on Corpus B — 20 hand-timed
 ranked tracks across every category — while Corpus A (the 24 synthetic fixtures) stays
@@ -432,7 +435,7 @@ estimate with a number or is dropped.
 | # | Sub-phase | What it adds | Estimated gain | Status |
 |---|---|---|---:|:--:|
 | 10.0 | Corpus B | 20 ranked tracks + the scoring script | — | **done** — `bench/corpus_b.json` + `bench/corpus_b.py`: v3 1.6 % of 1,152 red lines within 5 ms (0.9 % per track, 46.9 % within 50 ms), Rust 1.4 % (5 of 20 refused); signed error a median +24.0 ms per track |
-| 10.0a | The late reading | explain the +24 ms Overtone reads after the mappers' lines on every category of Corpus B, steady songs included (so not drift); correct it only once the cause is found and shown, with Corpus A green | diagnostic: a constant subtracted takes v3 from 1.6 % to 14.4 % | todo (proposed 2026-09-26) |
+| 10.0a | The late reading | explain the +24 ms Overtone reads after the mappers' lines on every category of Corpus B, steady songs included (so not drift); correct it only once the cause is found and shown, with Corpus A green | diagnostic: a constant subtracted takes v3 from 1.6 % to 14.4 % | **explained, not corrected** (2026-09-26, `corpus_b.py --onsets`) — ranked maps put their lines a median 21.4 ms before the sound's first edge (100 held-out maps, IQR 18.1-23.9, all 100 before it; LAME MP3, other MP3 and OGG alike; the decode is exact), and Overtone's grids sit a median 7.9 ms after it (Corpus B), the re-timing following the full band's rise, which can come well after the first edge. The convention is not in the audio; re-timing on the first difference moved attacks onto the edge (Corpus A 0.16 → 0.08 ms) but made the tempo worse on 6 of 20 songs (better on 4), so dropped. Next: decide whether the export writes osu!'s convention (about -21 ms, at export, never in the engine); then a phase fitted on edge-timed attacks (estimated -3.5 ms) |
 | 10.0b | Human agreement as a mode | the mapper-against-mapper check (82 % of red lines within 5 ms on 319 pairs of ranked maps sharing one audio) as a repeatable bench mode, with a read-only `osu!.db` reader for ranked status; the 90-95 % target restated against it, which is a decision | — | todo (proposed 2026-09-26) |
 | 10.0c | Refusals on Corpus B | v3 refuses The Raven (pulse gap 0.024, under the 0.07 floor); Rust refuses 5 of 20 and reads FREEDOM DiVE as one 333.33 BPM line in 12/4 where v3 reads 222.22: each explained, and fixed only where the engine is wrong | — | todo (proposed 2026-09-26) |
 | 10.1 | Fingerprint & reuse | match the audio against the user's own `osu!/Songs`; exact when the song is already mapped. Scored on Corpus B only with each track's own mapset held out, or it finds its own answer | large when matched | todo |
@@ -626,7 +629,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Rust engine in the app | `overtone-cli analyze --json` sidecar, opt-in, v3 as fallback; `.opus` goes to v3 or is refused (v4 has no decoder, by decision) | med | **high** | P1 | no | no | **P1** | **done** — opt-in; v3 takes over with a note where Rust has no answer |
 | Fallback re-timing | re-time the fallback tracker's beats at sample resolution (they land 5–35 ms late) | med | **high** | — | no | no | P1 | todo |
-| Real-MP3 offset bias | measure the ~20–26 ms attack-vs-map bias on real MP3s before trusting absolute offsets | med | **high** | Corpus B | no | no | P1 | partial — measured 2026-09-24 by reference timing: 30 random ranked maps all read the attacks after their lines, median +26.2 ms (IQR +23.0..+30.9), OGG (+27.2, n=3) as MP3 (+26.1, n=27), so not the MP3 decoder; on Corpus B (2026-09-26) v3's own red lines sit a median +24.0 ms after the maps' (17 tracks; MP3 +19.6 over 15, OGG +32.7 over 2), and 1.6 % of them fall within 5 ms; not explained or corrected |
+| Real-MP3 offset bias | measure the ~20–26 ms attack-vs-map bias on real MP3s before trusting absolute offsets | med | **high** | Corpus B | no | no | P1 | **explained** (2026-09-26, 10.0a) — measured 2026-09-24 by reference timing: 30 random ranked maps all read the attacks after their lines, median +26.2 ms (IQR +23.0..+30.9), OGG (+27.2, n=3) as MP3 (+26.1, n=27); on Corpus B v3's red lines sit a median +24.0 ms after the maps'. Read from the audio itself, the sound starts a median 21.4 ms after ranked maps' lines (100 held-out maps, every decoder) and 7.9 ms before Overtone's (Corpus B): a convention of the maps plus a few ms of the engine, not the MP3 decoder. Not corrected: the correction waits on a decision (10.0a) |
 | Envelope memory bound | mel in chunks: ~2.65 → ~0.74 GB peak on long tracks; no silent MemoryError fallback | med | high | — | no | no | P1 | **done** — spectrogram and tempogram in blocks since audit #38 (3.7 → 0.55 GB peak on a 5-minute song, the same red lines); a failed envelope now reaches the caller instead of being swapped for the flux one (2026-09-26) |
 | Pre-warm the engine | load librosa and numba in the background at startup (~2.3 s off the first analysis) | low | med | shell | no | no | P2 | todo |
 | Linear section growth | refine the growth grid on a trailing window | med | med | — | no | no | P2 | todo |

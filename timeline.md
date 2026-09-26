@@ -17,6 +17,135 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · The late reading: ranked maps put their lines before the sound
+
+Corpus B read every category a median +24 ms after the mappers' red lines, steady songs
+included (roadmap 10.0a). The audio itself says whose milliseconds those are. Ranked maps put
+their red lines a median 21 ms before the sound starts: on 100 of 100 held-out maps, and on
+LAME MP3, other MP3 and OGG alike. Overtone puts its own a few milliseconds after the sound's
+first edge. The first part is not in the audio, so the engine cannot correct it. The second
+is the engine's; the correction tried for it made the tempo worse on six real songs and was
+dropped. No engine code changed. `--onsets` makes the split repeatable.
+
+### Changed
+
+- **`bench/corpus_b.py --onsets`**: where each track's sound starts, against the map's beats
+  and against Overtone's.
+  - The signal is the energy above 4 kHz. A click, a snare and a hat start there at their
+    first sample; a kick's body or a bass swells for milliseconds. It is filtered both ways
+    and smoothed over a centred millisecond, so it adds no lag.
+  - Each beat's window is scaled to its own peak and averaged. The start is the last point
+    before the average's peak at 10 % of its rise.
+  - On Corpus A's truth it reads the hits 0.45-0.48 ms early on 22 of the 24 fixtures (its
+    millisecond of smoothing). The two jittered fixtures read earlier, -4.8 and -12.1 ms:
+    the earliest hits set the reading, so it can understate a lead but never invent one.
+  - Two tests.
+
+### Measured
+
+```
+where the sound starts, + when after the beat (bench/corpus_b.py --onsets, cached analyses)
+  Corpus B, after the map's beats    median +21.3 ms, IQR +14.8..+23.8 (20 tracks)
+                                     LAME MP3 +19.1 (12), other MP3 +22.9 (6), OGG +18.1 (2)
+  Corpus B, after Overtone's beats   median -7.9 ms, IQR -14.4..-0.9 (19 tracks);
+                                     Rust's grids -4.9 (15 tracks)
+  the scorer, for comparison         Overtone's lines +24.0 ms after the maps' (17 tracks)
+held out, a one-off script (not committed): 100 ranked or loved osu!standard maps with one
+red line (94 ranked, 6 loved; status from a copy of osu!.db; no online or local offset; MP3
+or OGG; none of Corpus B's sets; one per audio file; the first 100 of 3,632 in a seeded
+shuffle)
+  after the map's beats              median +21.4 ms, IQR +18.1..+23.9, range +6.7..+42.4;
+                                     after the line on 100 of 100
+  by decoder (the 95 clear ones)     LAME MP3 +21.6 (52), other MP3 +22.6 (35), OGG +20.0 (8)
+  full band instead, same 84 maps    median +26.5 ms, IQR +21.9..+40.0 (width 18.2 ms, against
+                                     5.4 above 4 kHz): the lines follow the first high edge
+  within 5 ms of +21.4 ms            69 of 100, the most any one constant covers (19.7-21.7 ms)
+the engine's attacks against the sound (Corpus B, each map beat's nearest attack; one-off)
+  envelope peak                      the high band starts 19.5 ms before it (median; IQR 12.6..20.8)
+  re-timed attack                    1.1 ms before it (median; IQR 0.5..6.5); the full band 0.3
+synthetic kick, snare and hats over a pad, bass and noise bed, 128 BPM (one-off), re-timed
+  snares, any bed                    +0.04..+0.75 ms after the true onset
+  kicks, no bed or a light one       +0.5..+1.4 ms (+9 ms when rising over 20 ms, light bed)
+  kicks under the loud bed           +0.5..+2.0 ms with a click, rising in 0-5 ms; +4.6..+19.7
+                                     without one, or rising over 10 ms or more
+  envelope peaks, every case         +6.3..+15.7 ms, later as the bed grows
+decoder      libsndfile's MP3 (LAME encode, mpg123 decode) and Vorbis round trips of clicks:
+             0 samples of lag. Every LAME-tagged file of Corpus B decodes to its frames x 1152
+             less its delay and padding (12 of 12)
+diagnostic   less the held-out 21.4 ms, not fitted on Corpus B: 10.9 % of its red lines within
+             5 ms today (the scorer's diagnostic, fitted on Corpus B at +27.4 ms: 14.4 %)
+Corpus A     unchanged, no engine change: 24/24, 0.0000 BPM / 0.16 ms, re-run for this entry
+Corpus B     unchanged: v3 1.6 %, Rust 1.4 % within 5 ms, both analysed afresh for this entry
+Python unittest 556 -> 558 on master (543 -> 545 on its own base), all pass · facts ok · other engine gates not re-run (no engine
+                code changed)
+```
+
+What the measurements say:
+
+- **Most of the +24 ms is the maps'.** On 100 held-out ranked maps the sound starts a median
+  21.4 ms after the red line, after the line on every one of them, and on every decoder.
+  - The decode is exact (above).
+  - A decoder difference could not produce it anyway. An encoder delay that osu! kept would
+    put the sound later in osu! than here, and so the lines after the sound here, never
+    before it.
+  - Why ranked maps sit there is not in the audio. It may be osu!'s playback, or how mappers
+    place a line by ear; neither was measured here. The audio says only that it is one
+    convention, and how tight it is (IQR 18-24 ms).
+- **The rest is the engine's, a few milliseconds.**
+  - The envelope peaks about 20 ms after the sound starts (librosa's centred flux shifts it
+    9 frames, 26.1 ms, at the fitting hop).
+  - The re-timing takes that away: the attacks land on the full band's rise, a median 1 ms
+    after the first high edge.
+  - But the full band can rise well after the first edge: 12 ms after it on camisa-negra,
+    and 20 ms on a synthetic kick whose body swells under a loud low bed. The fitted grids
+    sit a median 7.9 ms after the sound on Corpus B.
+- **Corpus A sees neither.** Its fixtures are timed to the sample, not to osu!'s convention.
+  Its drums start at full amplitude over silence or a soft pad, where the full band's rise
+  and the first edge coincide.
+- **What is left to decide** (the roadmap's 10.0a row):
+  - Whether Overtone writes osu!'s convention (the sound's first edge less about 21 ms) or the
+    sound's own time. It belongs at the export, not in the engine, so Corpus A stays exact.
+  - The value would come from maps outside Corpus B, as above. A repeatable mode needs
+    10.0b's osu!.db reader.
+  - Only once that is settled can the engine's own few milliseconds be measured on Corpus B's
+    5 ms headline.
+
+### Rejected / tried and dropped
+
+- **Moving the engine by the convention.** The 21 ms are not in the audio. Shifting attacks or
+  lines by them inside the engine would move every Corpus A offset by four times its 5 ms
+  bar, to agree with a habit of osu! maps. It would be a constant, not a correction. Whether
+  the export should follow osu!'s convention is the decision above.
+- **Re-timing on the waveform's first difference** (a +6 dB-per-octave tilt, so the first
+  edge sets the rise, not the swell under it).
+  - It did what it was for. On all 20 tracks the high band now starts 0.3-0.5 ms before the
+    attacks; today it starts up to 12.3 ms before them, over 5 ms on six tracks. Corpus A
+    improved: 24/24, median 0.16 -> 0.08 ms, worst 2.26 -> 1.67 ms (shuffle-96). Corpus B's
+    offsets improved too: within 5 ms 1.6 -> 2.5 %, signed median +25.1 -> +18.4 ms, per
+    track +24.0 -> +21.8.
+  - But it moved the grid on real songs, worse on six and better on four. Steampunk Engines
+    went 165.00 -> 357.77 BPM, Nana Hitsuji 189.98 -> 81.42 in 3/4, and FREEDOM DiVE from one
+    line to 11 flipping between 444 and 889. Take You Down went 174.01 -> 87.03, and Palette
+    and Noble lost the 0.05 BPM bar on 7 of 7 and 4 of 10 sections. One Step Closer and Calm
+    Down Juliet went from the fallback tracker to the grid. In all, 72 -> 68 of 789 lines
+    within 0.05 BPM.
+  - Where there is no edge, it is worse. A 55 Hz kick swelling over 15 ms under a 70 Hz bed
+    reads +9.5 ms on the waveform and +13.7 ms on the first difference. With a 5 kHz click at
+    its onset it reads +0.015 ms.
+- **The first difference for the phase only**, the grids left as they are.
+  - Estimated, not run through the engine: today's grids, each line moved by the mean shift
+    of its inlier attacks.
+  - The shifts were -0.5 to -7.1 ms (median -3.5). Within 5 ms went 1.6 -> 2.1 %, and less the
+    held-out 21.4 ms, 10.9 -> 12.3 %.
+  - Not built. Until the convention is settled, Corpus B's one-line songs cannot come within
+    5 ms whatever the engine does (their sound starts 10-26 ms after their lines), so Corpus B
+    cannot show what it is worth.
+- **The envelope's centring as the cause.** librosa's onset strength shifts the envelope by
+  lag + n_fft / (2 x hop) frames, and its peaks do land about 20 ms after the sound. The
+  re-timing removes that on real songs as on Corpus A, so the red lines do not carry it.
+- **The MP3 decoder**, on the counts above: exact round trips, no difference between tagged
+  MP3, untagged MP3 and OGG, and a sign no decoder delay can produce.
+
 ## v4.0.0-dev — 2026-09-26 · The song before the first red line, hatched on the map
 
 A banner said when the first red line came late, but the map did not show the stretch it

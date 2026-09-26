@@ -405,6 +405,14 @@ smear (0.96 ms against 1.86 ms full-band) and is the candidate if this is picked
 again; it is built and tested but not wired into the engine, and nothing has been
 measured on the corpus.
 
+**Tried from the other side, 2026-09-26** (roadmap 10.0a): the walker on the waveform's
+first difference, so that a hit's first high edge sets the rise, not the swell under it.
+It put the attacks on that edge on all 20 Corpus B tracks and took Corpus A's median from
+0.16 to 0.08 ms. But it moved the tempo decisions on real songs, worse on six of the 20
+(Steampunk Engines read at 357.77 BPM instead of 165) and better on four, and a kick with
+no edge at all reads later on it. It was dropped as a walker change. The candidate is a
+phase fitted on edge-timed attacks, with the grids left as they are (timeline).
+
 ## B.7 Parallelism and caching
 
 - STFT frames and the coherence sweep over `rayon`; per-file parallelism for batch.

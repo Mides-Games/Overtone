@@ -68,7 +68,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | 2-D coherence map | 🦀 | Better seeds and a confidence map |
 | Bar-length change (4/4 → 3/4 keeping the beat) | 📋 | P5 |
 | Fallback beats re-timed at sample resolution | 📋 | P22 — they land 5–35 ms late today |
-| Real-audio offset bias measured and corrected | 📋 | P22 — measured, not explained: 30 ranked maps read the attacks +26 ms after their lines (median), OGG as much as MP3 |
+| Real-audio offset bias measured and corrected | 📋 | P22 — explained, not corrected: ranked maps put their lines a median 21 ms before the sound starts (100 held-out maps, every decoder), and Overtone's grids sit a few ms after it; following the maps' convention on export is a decision (10.0a) |
 | Human-level accuracy on real songs | 📋 | P10 — fingerprint reuse, percussive stem, neural beats, rippling tempo, ensemble |
 | Analysis mode fast / precise | 📋 | P20 |
 
@@ -331,7 +331,9 @@ offsets modulo one beat, which is why an off-beat red line could hide in it unti
 On Corpus B, 20 hand-timed ranked maps from a local osu! Songs folder (`bench/corpus_b.py`),
 1.6 % of their 1,152 red lines have an Overtone beat within 5 ms, and 47 % within 50 ms
 (measured 2026-09-26): the red lines read a median 24 ms after the mappers', and the grid does
-not follow a band that drifts. Closing that gap is [Phase 10](docs/10-precision-plan.md).
+not follow a band that drifts. Most of the 24 ms is the maps' own: ranked maps put their lines
+a median 21 ms before the sound starts (`bench/corpus_b.py --onsets`). Closing that gap is
+[Phase 10](docs/10-precision-plan.md).
 
 Rust speed, like for like: the whole pipeline over the corpus (decode, attacks, tempo)
 takes ~4.2 s against ~18.5 s for Python's `analyze_audio` — about 4×. An earlier "2.5 s"

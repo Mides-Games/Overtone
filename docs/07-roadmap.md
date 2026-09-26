@@ -11,20 +11,21 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 
 ---
 
-## Where we are — 2026-09-24
+## Where we are — 2026-09-26
 
-**Stage: the app is usable end to end, in sections, and can analyse with the Rust engine
-(opt-in; v3 stays the default and the fallback).**
+**Stage: the app is usable end to end in ten sections, hitsounds included, and can analyse
+with the Rust engine (opt-in; v3 stays the default and the fallback).**
 
 | Area | State |
 |---|---|
-| Timing engine (Python v3) | **works** — 24/24 corpus, median 0.0000 BPM / 0.16 ms, all gates green |
-| Timing engine (Rust v4) | **at parity, in the app** — matches v3 attack for attack and red line for red line on 27/27, ~4x faster end to end; Settings → Rust engine runs it through `overtone-cli`, and v3 takes over (with a note) where it has no answer |
-| App (web shell) | **usable** — sidebar sections (Library, Timing, Structure, Map check, Mapset, Report, Export, Settings); analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject, compare with a map, alignment, density, snap audit, suggestions, mapset check, reference timing, assisted timing, mod report, folder import, recents, osu! Songs browser, EN/ES |
-| osu! files | **works** — full reader, byte-identical writer, atomic write + backup |
-| Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks |
-| Hitsound engine | **half built, Rust only** — features, 13 instrument classes, musical role; no decision, editor or export; not in the app |
-| Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency |
+| Timing engine (Python v3) | **works** — 24/24 corpus, median 0.0000 BPM / 0.16 ms, all gates green (every Python and Rust gate re-run 2026-09-26) |
+| Timing engine (Rust v4) | **at parity, in the app** — matches v3 attack for attack and red line for red line on 27/27, ~4x faster end to end; Settings → Rust engine runs it through `overtone-cli`, and v3 takes over (with a note) where it has no answer. The same sidecar runs Structure (`structure`), Ramps (`ramps`) and the hitsound proposals (`hitsound`); `hitsound-evidence` prints each attack's classes and role from the command line |
+| App (web shell) | **usable** — ten sidebar sections: Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export, History, Settings. Analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject (one map or the whole mapset, with the diff), compare with a map, alignment, density, snap audit, re-snap, suggestions, mapset check, reference timing, assisted timing, evidence, ramps, offset lab, constant scroll, snap divisors, kiai / breaks / bookmarks / preview point / section volumes from the structure, audio swap, audio file check, write history with restore, mod report, folder import, recents, osu! Songs browser, EN/ES, dark and light |
+| osu! files | **works** — full reader, byte-identical writer, atomic write + backup, every write logged and restorable; hitsound fields edited in place, nothing else moves (P-2) |
+| Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks; in the mod report, claps that break the map's own pattern and finishes or claps over silence (H3) |
+| Hitsound engine | **in the app** — the copier (H1), the Hitsounds section (H2), the consistency check (H3), and the decision engine in Rust (H4) behind the Propose card: tick, preview, write the file or a copy, undo (H5). Volume and sample edits, hearing a proposal before it is written, explanations, profiles, instrument lanes and a sample bank are still to build |
+| Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency, the percussive part alone, and a difficulty's hitsounds with its own samples (slider bodies not yet) |
+| UI verification | **owed** — 19 surfaces added on 2026-09-25/26 are tested through the bridge but were never exercised in the browser pane; each of their timeline entries says "harness pass owed" |
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
@@ -33,26 +34,31 @@ Tests: **489** Python (335 engine + 154 web shell) · **263** Rust.
 ### What is pending, in order
 
 The audit backlog is closed: every finding fixed, recorded as already fixed, or decided
-([`13-audit-backlog.md`](13-audit-backlog.md)). The Rust engine is in the app, opt-in.
+([`13-audit-backlog.md`](13-audit-backlog.md)). Landed since 2026-09-24: the hitsound plan's
+P-1 to P-7 and H1 to H4, with H5's engine half and first surface; the sidebar modes
+Evidence, Write history, Audio swap, Offset lab and Ramps; the percussion-only audition;
+and the Phase 21 map tools (inject everywhere with a diff, kiai, breaks, bookmarks, preview
+point, section volumes, SV normaliser, re-snap, snap divisors, audio file check).
 
-1. **Hitsounds** (Phase 6) — the most requested feature, first since 2026-09-24. The plan
-   is [`15-hitsound-plan.md`](15-hitsound-plan.md): prerequisites P-1 to P-7 (sound events
-   from the map, a hitsound field writer, sample playback, evidence through the CLI,
-   object-attack matching, a real-map evaluation, an object lane), then H1 the hitsound
-   copier, H2 the Hitsounds section, H3 a consistency check, H4 the decision engine, H5 the
-   editor and export.
-2. **The next sidebar modes** (Phase 19) — Evidence, Write history, Audio swap.
-   In since 2026-09-24: Settings (Phase 20: output folder, offset precision, click,
-   interface size, cache), the timeline (Phase 3), playback (Phase 4, but for the
-   percussion-only audition) and the first six sidebar modes of
-   [Phase 19](#phase-19--app-sections).
-3. **Other languages** (Phase 24) — SQL is in: the SQLite library index behind the Songs
-   browser and same-audio lookup. Next TypeScript (needs Node.js) and a C# lazer gate
-   (needs the .NET SDK).
-4. **Percussion-only audition** (Phase 4) — hear the percussive part alone.
-5. **Map tools** (Phase 21) — kiai, preview point, SV normaliser, inject into every difficulty.
+1. **The owed harness passes** — the 19 surfaces above, once, with the `overtone-ui-check`
+   skill: a real song, both themes, both languages. Before new UI lands on top of them.
+2. **Hitsounds, the rest** (Phase 6, [`15-hitsound-plan.md`](15-hitsound-plan.md)) — volume
+   and sample edits and hearing a proposal before it is written (H5), the Export section's
+   hitsound surface, explanations and profiles in the app, instrument lanes on the
+   timeline (P-4's evidence is there to draw), slider bodies in playback; then H6 (sample
+   bank, recommendation) and H7 (a proposal from the audio alone). The clap-mismatch rule
+   waits until the templates hold on real audio.
+3. **Library focus** (Phase 19) — scan, rescan and search measured on a full Songs folder,
+   then the library health check (Phase 21).
+4. **The Audio section** (Phase 19), and phrase starts on the phrase's own bar.
+5. **Other languages** (Phase 24) — TypeScript (needs Node.js) and a C# lazer gate (needs
+   the .NET SDK). Neither is installed; ask before installing.
 6. **Real-audio accuracy** (Phase 10) — build Corpus B first, then one sub-phase at a time.
 7. **Installer** (Phase 10.13) — MSI + portable ZIP.
+
+Two proposals wait on a decision, not on work: the Rhythm guide (`04-ui-ux.md` §9 rules out
+editing a beatmap beyond hitsounds and timing) and song import from a streaming link
+(blocked by the offline rule, see Phase 19).
 
 ### Bugs fixed on 2026-09-23
 
@@ -117,7 +123,7 @@ broke something, which is why it is first.
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Toolchain | MSVC Build Tools + rustup MSVC target | — | — | — | no | no | **P0** | **done** |
-| Workspace skeleton | crates + dependency rules | low | high | toolchain | no | no | **P0** | **done** — 6 crates; `check-deps` rule not automated |
+| Workspace skeleton | crates + dependency rules | low | high | toolchain | no | no | **P0** | **done** — 7 crates; `check-deps` rule not automated |
 | `reference/python-v3` | move v3 in, keep it runnable | low | high | — | no | no | **P0** | **deferred** (2026-09-24) — `overtone.py` is still the app's default engine and its only `.osu` reader/writer, so a copy in `reference/` would keep changing; it moves once the Rust engine is the default and the osu! I/O is ported |
 | `requirements.lock` | exact versions behind the measured baseline — **F-05** | trivial | med | — | no | no | **P0** | **done** |
 | Golden-vector dump | per-stage attacks, seeds, octave, sections, points | med | **high** | — | no | no | **P0** | **done** |
@@ -163,7 +169,7 @@ The whole of [`05-dsp-pipeline.md`](05-dsp-pipeline.md) Part A, and nothing from
 | Sections | grow · re-seed · merge · crossing boundaries · refit | high | **high** | fit | no | no | **P0** | **done** |
 | Meter, confidence, points | downbeat anchoring, snapping, whole-ms export | med | high | sections | no | no | **P0** | **done** |
 | Analysis assembly | beats, local curve, global BPM, stability, residual | med | high | points | no | no | **P0** | **done** |
-| Unit tests ported | the v3 tests by name | med | **high** | all | no | no | **P0** | partial — 231 Rust tests; not every v3 name |
+| Unit tests ported | the v3 tests by name | med | **high** | all | no | no | **P0** | partial — 263 Rust tests; not every v3 name |
 | Property tests | ×2/÷2 identity, exact-grid recovery, monotone boundaries | low | high | all | no | no | P1 | partial |
 | Structured diagnostics | carried on the result, not in a progress string — closes **F-08** | low | med | all | no | no | P1 | **done** (Rust) |
 | **App uses the Rust engine** | Python binding (PyO3) or JSON subprocess, so the shell gets the speed-up | med | **high** | all | no | no | **P1** | **done** — JSON subprocess (`overtone-cli --full`), opt-in in Settings |
@@ -221,7 +227,11 @@ The two starred items were prototyped and measured in [`../proto/`](../proto/) b
 Rust was written: density detection **4/4 found, 0 false positives out of 23**; elastic
 grid **0.144–0.163 BPM** on realistic ramps. Details in [`../proto/README.md`](../proto/README.md).
 
-None of Phase 2 reaches the app yet: it lives in the Rust crates.
+What reaches the app goes through `overtone-cli`: structure and section labels (the
+Structure view), the elastic grid (the Ramps card in Timing) and the band features behind
+the hitsound evidence and decision. The per-section octave and the 2-D coherence map are
+measured by the bench and not used by the CLI yet. The percussion-only audition uses
+librosa's HPSS on the Python side.
 
 ---
 
@@ -313,8 +323,10 @@ were what was missing.
 
 ## Phase 6 — Hitsound engine
 
-All of [`06-hitsound-engine.md`](06-hitsound-engine.md). **Rust only; nothing of it is in
-the app yet.** The order of work, and what has to land first, is
+All of [`06-hitsound-engine.md`](06-hitsound-engine.md). **In the app since 2026-09-24/25:**
+the copier, the Hitsounds section, the consistency check in the mod report and the
+decision engine's proposals, with detection and decision in Rust behind `overtone-cli`.
+The order of work, and what has to land first, is
 [`15-hitsound-plan.md`](15-hitsound-plan.md): the prerequisite rows below (P-1 to P-7), then
 the copier, the section, the check, the decision engine, the editor.
 
@@ -339,7 +351,7 @@ the copier, the section, the check, the decision engine, the editor.
 | **Viterbi decision** | sequence labelling with consistency costs | high | **high** | all above | no | no | **P1** | **done** — `overtone-cli hitsound`: 19/19 synthetic exact, real clap/finish F1 above the rules on two samples |
 | Explanations | itemised terms + alternatives | med | **high** | decision | no | no | **P1** | todo |
 | Profiles | built-in + custom, as data | low | high | decision | no | no | **P1** | todo |
-| Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | partial — the object lane (P-7); instrument lanes need P-4 |
+| Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | partial — the object lane (P-7); instrument lanes still to draw, from P-4's evidence (done) |
 | Hitsound editor | change/remove/volume/sample | med | **high** | decision | no | no | **P1** | partial — engine half, bridge propose/preview/apply/one-level-undo, and the Decide card (tick, preview, write, copy, undo) short of a harness pass; volume/sample changes and pre-hearing proposals still to build |
 | Sample bank | import skin/folder, audition samples | med | high | P4 playback | no | no | P1 | todo |
 | Sample recommendation | map samples to roles by their spectrum | med | med | bank | no | no | P2 | todo |
@@ -357,7 +369,7 @@ corpus generator; they say the classes separate, not how they do on real songs.
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Validation rules | duplicates, very short sections, impossible changes, suspicious offsets, octave mistakes | med | **high** | P5 | no | no | **P1** | **done** — shown as banners |
-| Hitsound validation | missing samples, silent assignments, inconsistent patterns | med | high | P6 | no | no | P1 | todo |
+| Hitsound validation | missing samples, silent assignments, inconsistent patterns | med | high | P6 | no | no | P1 | partial — in the mod report since H3: claps that break the map's own pattern, finishes and claps with no attack under them; missing sample files are counted by the playback, not reported as findings yet |
 | Alignment report | objects not on attacks; attacks with no object | med | high | P5 | no | no | P1 | **done** |
 | Never auto-fix | every finding is a proposal with a consent step | low | **high** | rules | no | no | **P1** | **done** |
 | Density analysis | objects/s over time | low | med | P5 | no | no | P2 | **done** |
@@ -434,7 +446,7 @@ they do not ship; WiX is MS-RL with a maintenance-fee EULA; Tempora is CC BY-NC-
 code is never copied — only its ideas are reimplemented.
 
 **Escape valve.** Some tracks will stay unresolvable (real rubato, aesthetic timing
-choices). For those, an assisted mode — the user marks two downbeats — rebuilds the rest. 2026-09-24 as Assisted timing (Phase 19), with the marks typed in ms until playback them be tapped.
+choices). For those, an assisted mode — the user marks two downbeats — rebuilds the rest. Built on 2026-09-24 as Assisted timing (Phase 19): the marks are typed in ms, or tapped from a downbeat.
 
 ---
 
@@ -447,21 +459,23 @@ presentation and I/O layers, not the engine, so they run in parallel with the re
 |---:|---|---|
 | 12 | Modern UI | **superseded** — the web shell (Phase 3) replaced the PySide6 plan |
 | 13 | Audio playback — transport, live click, scrubbing, MIDI tap | partial — Phase 4 transport, live click and loop; no scrub audio, no MIDI tap |
-| 14 | Project system — project file, auto-save, undo, **organised output folders**, batch | partial — undo/redo and result cache; no project file, no output folders |
+| 14 | Project system — project file, auto-save, undo, **organised output folders**, batch | partial — undo/redo, result cache and the output folder (Phase 20); no project file, no auto-save |
 | 15 | Deep osu! integration — Songs browser, lazer, editor round-trip, sample library | partial — folder import, Songs browser; no lazer |
 | 16 | Localization + accessibility | partial — English/Spanish; no screen-reader work |
 | 17 | Plugins + reports | todo |
 | 18 | Advanced input — multi-monitor, loopback capture, video preview, MIDI | todo |
 
-**Output-file policy** (14.4b, not built yet): every artefact Overtone produces will live
-under `%USERPROFILE%\Documents\Overtone\`, never next to the installed app.
+**Output-file policy** (14.4b): the app's exports go under
+`%USERPROFILE%\Documents\Overtone\` unless told otherwise, never next to the installed app
+(Phase 20's output folder).
 
 ---
 
 ## Phase 19 — App sections
 
 One sidebar entry per job, each shippable on its own, all sharing the one
-loaded song. Today everything lives in the Timing view.
+loaded song. Ten are in (Library, Timing, Structure, Hitsounds, Map check, Mapset,
+Report, Export, History, Settings); Audio is the one left.
 
 | Section | What it holds | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
@@ -470,7 +484,7 @@ loaded song. Today everything lives in the Timing view.
 | Library focus | leave the Library category working well: scan/rescan with truthful folder progress, search fast on a full Songs folder, clear empty and error states, and the health check (Phase 21) listing maps whose timing disagrees with their audio | med | high | Library, index, compare | no | no | P1 | todo — measured on the local Songs folder (scan/rescan/search times) before it ships |
 | Timing | tempo map, points, editor, verdict | — | — | — | no | no | **P1** | **done** |
 | Map check | compare, alignment, validation, density and suggestions for the loaded difficulty | med | **high** | P5, P7 | no | no | **P1** | **done** — own section: compare, alignment, density, snap audit, suggestions |
-| Hitsounds | instrument lanes, per-object sound, exported hitsound difficulty | high | **high** | P6 | no | no | P1 | todo |
+| Hitsounds | instrument lanes, per-object sound, exported hitsound difficulty | high | **high** | P6 | no | no | P1 | partial — the section is in: where each addition falls, every sound heard one by one (H2) and the Propose card (H5); instrument lanes and an exported hitsound difficulty still to build |
 | Audio | spectrogram, 7-band onset lanes, percussive/harmonic balance, energy with sections, tempo heatmap | med | med | P2 via bridge | no | opt | P2 | todo |
 | Export | every output in one place: `.osu` text, CSV, click, `.osz`, lazer decimals, other games | low | high | P5 | no | no | P1 | **done** — own section |
 | Settings | every option in Phase 20 | low | high | shell | no | no | P1 | **done** — its own section; detection stays in the drawer |
@@ -673,14 +687,15 @@ Rejected: C++, Go, Java, Kotlin, Cython, Julia, R — the reasons are in the doc
 ## Sequencing
 
 ```
-P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─► P6 hitsounds (half) ─► P7 validation (half)
+P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─► P6 hitsounds (in the app, editor half) ─► P7 validation (half)
                            ├─► P3 UI (web shell ✓, timeline half)
-                           ├─► P4 playback ✗ / editor ✓
+                           ├─► P4 playback ✓ / editor ✓
                            └─► P5 osu! ✓ ─────────────► P8 automation (half) ─► P9 (suggestions ✓)
+                                                         P21 map tools (the P1 rows ✓)
 
-Next: map tools ─► hitsounds ─► Phase 10
-      ─► map tools ─► hitsounds ─► Phase 10 ─► installer
+Next: harness passes ─► hitsounds, the rest ─► Library focus ─► Phase 10 ─► installer
 ```
 
-P3, P4 and P5 are independent of each other. P6 is the largest body of work and waits on
-playback and the timeline, because a hitsound editor you cannot hear is not usable.
+P3, P4 and P5 are independent of each other. P6 was the largest body of work and waited on
+playback and the timeline, because a hitsound editor you cannot hear is not usable; both
+are in, and so is most of P6.

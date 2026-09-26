@@ -11,7 +11,10 @@ it needs everything else, and it is the step whose quality is hardest to prove.
 
 ---
 
-## 1. What exists
+## 1. What existed when the plan was written
+
+The state on 2026-09-24, before P-1. What landed since is in §2's status column and
+§3's headings; the Limit column is kept as the reason each prerequisite existed.
 
 | Piece | State | Where | Limit |
 |---|---|---|---|
@@ -137,7 +140,7 @@ alternatives and the terms behind it. Exposed as `overtone-cli hitsound <audio> 
   other, so the number is not "accuracy". It is "better than a rule", and both samples
   clear it.
 
-### H5 · Editor and export (needs H4, P-2, P-3, P-7) — engine half done 2026-09-25
+### H5 · Editor and export (needs H4, P-2, P-3, P-7) — engine half and the Propose card done 2026-09-25
 
 Accept, reject or change each proposal, per object or per section; volume and sample index;
 undo; audition every change. Export through P-2 with a preview, backups, and optionally a
@@ -148,7 +151,9 @@ refusing the whole apply — with preview, in-place backup writes and must-not-e
 copies. The editor surface is in: the Decide card ticks proposals, previews, writes
 the file or a copy with confirmation, undoes once, and refreshes report, transport
 and object lane; per-row and full-song playback audition what is written.
-Volume/sample changes and pre-hearing proposals stay future work.
+Volume/sample changes, pre-hearing proposals and the Export section's surface stay
+future work. The card is tested through the bridge; its browser (harness) pass is
+still owed.
 
 ### H6 · After it works
 
@@ -170,12 +175,15 @@ proposal on the same song once mapped).
 
 ---
 
-## 4. Decisions to make
+## 4. Decisions made
 
-1. **Default samples.** Overtone's own synthesised set, bundled (recommended: free to
-   ship, works with no skin), or ask for an osu! skin folder and play nothing without one.
-2. **The copier first** (recommended), or straight to the Hitsounds section.
-3. **Profile format:** JSON (recommended, no new dependency) or TOML as `06` wrote.
+All three went the recommended way:
+
+1. **Default samples:** Overtone's own synthesised set, bundled (`assets/samples.py`),
+   rather than asking for an osu! skin folder and playing nothing without one.
+2. **The copier first:** H1 shipped before the Hitsounds section.
+3. **Profile format:** JSON, no new dependency (`profiles/balanced.json`, read by
+   `overtone-hitsound`'s `profile.rs`), not TOML as `06` wrote.
 
 ## 5. Honest limits, restated
 

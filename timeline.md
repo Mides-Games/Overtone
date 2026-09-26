@@ -17,6 +17,35 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · A red line's bar length, set by hand
+
+The engine reads a section's meter where it can and guesses 4/4 where it cannot, and a
+bar-length change at the same BPM (4/4 to 3/4) it does not find at all: the measures gate
+names that case open. Nothing in the app let the mapper say what the bar is. Roadmap,
+Phase 5: "Bar-length change", its by-hand half.
+
+### Changed
+
+- **Beats per bar** in the point editor: 1 to 16, `set_meter` in the engine. The line
+  keeps its BPM and its offset where it is shown, and its meter is known from then on (the
+  mapper said so). The click's accents, the map's bar lines and the red line's "· 3/4"
+  chip follow it. One undo step; a locked line refuses, as with any edit.
+- 1 engine test, 1 bridge test.
+
+### Measured
+
+```
+synthetic "Secs" track through the harness page, line 2 (152 BPM, 24.3 to 46.0 s)
+  4/4 (a guess) -> 3/4 by hand   bar accents in the section 14 -> 19; offset 24310.1 ms
+                                 and 152.000 BPM unchanged; "Point #2: 3/4, the beat
+                                 unchanged"; undo: 4/4, 14
+  Spanish                        "Pulsos por compás"; the row fits the panel
+Python unittest      592 -> 594, all pass · facts ok
+engine gates         benchmark 24/24, bpm-snapshot 24/24, golden 27/27, reference 24/24,
+                     coverage, measures, signatures, robustness, assisted: all pass (no
+                     analysis sets a meter this way, so none could move)
+```
+
 ## v4.0.0-dev — 2026-09-26 · Each section's confidence along the tempo map
 
 How sure the engine was of each red line showed only as a bar in the points list, so a

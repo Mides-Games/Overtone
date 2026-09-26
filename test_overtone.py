@@ -463,6 +463,20 @@ class ManualEditTests(unittest.TestCase):
                                      np.ones(60), 20000.0)
         self.assertEqual((out[0].bpm, report["sections"][0]["kept"]), (120.0, "weak"))
 
+    def test_a_bar_length_change_keeps_the_beat(self):
+        from overtone import set_meter
+        points = [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(5000.6, 120.0, 0.9, 10, meter=4)]
+        out = set_meter(points, 1, 3)
+        # The bar is three beats now and known; the beat and the shown line stay.
+        self.assertEqual((out[1].meter, out[1].meter_known, out[1].manual), (3, True, True))
+        self.assertEqual((out[1].bpm, out[1].offset_ms), (120.0, 5000.0))
+        self.assertEqual(out[0], points[0])
+        for bad in (0, 17, 3.5, "3", True):
+            with self.subTest(meter=bad), self.assertRaises(ValueError):
+                set_meter(points, 1, bad)
+        with self.assertRaises(ValueError):
+            set_meter(points, 2, 3)
+
     def test_edits_start_from_the_line_as_it_is_shown(self):
         from overtone import merge_sections, split_section
         # Detected 0.6 ms after a beat of the grid before it: rounding noise,

@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **592** Python (403 engine + 189 web shell) · **270** Rust.
+Tests: **594** Python (404 engine + 190 web shell) · **270** Rust.
 
 ### What is pending, in order
 
@@ -319,7 +319,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | **Per-section meter** | each red line carries the bar its own section proved | med | high | meter | no | no | **P1** | **done** |
 | **Downbeat anchoring** | every red line lands on a downbeat | med | high | meter | no | no | **P1** | **done** |
 | Meter-change detection | split on time signature, not only on tempo | high | med | sections | no | no | P2 | **done** for a constant bar |
-| Bar-length change | 4/4 → 3/4 keeping the *beat* | high | med | meter | no | no | P2 | todo |
+| Bar-length change | 4/4 → 3/4 keeping the *beat* | high | med | meter | no | no | P2 | partial — by hand: the point editor's "Beats per bar" sets a red line's bar length (1–16), its BPM and shown offset kept, the meter known from then on; finding a bar-length change at the same BPM by itself stays open (the measures gate's downbeat-4-then-3) |
 | `.osz` export | audio + a minimal `.osu` in a zip | med | high | writer | no | no | P2 | **done** |
 
 The measure-based rows come from comparing against [Tempora](https://github.com/teamkongehund/Tempora),

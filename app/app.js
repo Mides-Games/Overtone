@@ -142,6 +142,8 @@ const I18N = {
     edited: "Point #{n}: {bpm} BPM · {ms} ms", added: "Added {bpm} BPM at {ms} ms", deleted: "Deleted point #{n}",
     section_rescaled: "Section #{n}: {bpm} BPM",
     e_split: "Split at playhead", e_merge: "Merge with next",
+    e_meter: "Beats per bar", e_meter_hint: "The bar's length from this red line to the next; the beat stays",
+    meter_set: "Point #{n}: {m}/4, the beat unchanged",
     e_split_hint: "A red line on this section's beat nearest the playhead; both halves are refitted to their attacks",
     e_merge_hint: "Removes the next red line and refits the whole span from this one",
     split_outside: "Put the playhead inside this section first",
@@ -677,6 +679,8 @@ const I18N = {
     edited: "Punto #{n}: {bpm} BPM · {ms} ms", added: "Añadido {bpm} BPM en {ms} ms", deleted: "Borrado el punto #{n}",
     section_rescaled: "Sección #{n}: {bpm} BPM",
     e_split: "Dividir en el cabezal", e_merge: "Unir con la siguiente",
+    e_meter: "Pulsos por compás", e_meter_hint: "El largo del compás desde esta línea roja hasta la siguiente; el pulso no cambia",
+    meter_set: "Punto #{n}: {m}/4, el pulso igual",
     e_split_hint: "Una línea roja en el pulso de esta sección más cercano al cabezal; las dos mitades se reajustan a sus ataques",
     e_merge_hint: "Quita la línea roja siguiente y reajusta todo el tramo desde esta",
     split_outside: "Primero poné el cabezal dentro de esta sección",
@@ -1653,6 +1657,12 @@ function renderDetail() {
         <button class="btn small" data-action="double-s">×2 §</button>
       </div>
       <div class="editor-row">
+        <label class="editor-label" for="editMeter">${t("e_meter")}</label>
+        <select class="input small editor-meter" id="editMeter" title="${t("e_meter_hint")}">
+          ${Array.from({ length: 16 }, (_, k) => k + 1).map((m) => `<option value="${m}" ${m === p.meter ? "selected" : ""}>${m}/4</option>`).join("")}
+        </select>
+      </div>
+      <div class="editor-row">
         <button class="btn small" data-action="split" title="${t("e_split_hint")}">${t("e_split")}</button>
         <button class="btn small" data-action="merge" title="${t("e_merge_hint")}" ${next ? "" : "disabled"}>${t("e_merge")}</button>
       </div>
@@ -1728,6 +1738,11 @@ async function editAction(action) {
       reply = await api().edit_merge(sel);
       if (reply.ok) message = t("merged_done", { first: refit(reply.report.sections[0]) });
     }
+  } else if (action === "meter") {
+    if (sel < 0) { toast(t("no_selection"), true); return; }
+    const meter = parseInt($("editMeter").value, 10);
+    reply = await api().edit_meter(sel, meter);
+    if (reply.ok) message = t("meter_set", { n: sel + 1, m: meter });
   } else if (action === "lock") {
     if (sel < 0) { toast(t("no_selection"), true); return; }
     const off = S.result.points[sel].offset_ms;
@@ -5661,6 +5676,9 @@ function wire() {
   $("detail").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-action]");
     if (btn) editAction(btn.dataset.action);
+  });
+  $("detail").addEventListener("change", (e) => {
+    if (e.target.id === "editMeter") editAction("meter");
   });
   $("cmpBody").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-show]");

@@ -325,6 +325,18 @@ class EditTests(_IsolatedConfig):
         api.undo()
         self.assertEqual(len(api._analysis.points), 2)
 
+    def test_a_bar_length_change_is_an_edit_like_any_other(self) -> None:
+        api = _api_with_points()
+        reply = api.edit_meter(1, 3)
+        self.assertTrue(reply["ok"])
+        point = reply["result"]["points"][1]
+        self.assertEqual((point["meter"], point["meter_known"]), (3, True))
+        self.assertEqual(api.undo()["result"]["points"][1]["meter"], 4)
+        self.assertEqual(api.edit_meter(1, 0)["key"], "error")
+        api.set_locked(1, True)
+        self.assertEqual(api.edit_meter(1, 3)["key"], "locked")
+        self.assertEqual(web.Api().edit_meter(0, 3)["key"], "first")
+
     def test_split_and_merge_refuse_what_they_cannot_do(self) -> None:
         api = self._tempo_change_api()
         self.assertEqual(api.edit_split(0, 100.0)["key"], "error")      # on the line itself

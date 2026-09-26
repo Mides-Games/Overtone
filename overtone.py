@@ -3144,6 +3144,27 @@ def nudge_timing_point(points: list[TimingPoint], beats: np.ndarray, index: int,
     return merged
 
 
+#: The bar lengths the editor offers, in beats: the largest in 25,174 local
+#: maps is 16 (MAX_METER bounds what the reader accepts, not what a mapper sets).
+EDIT_METERS = range(1, 17)
+
+
+def set_meter(points: list[TimingPoint], index: int, meter: int) -> list[TimingPoint]:
+    """Change one red line's bar length, in beats, keeping its beat: the BPM
+    and the offset where it is shown (``_shown_offset``). The bars from it to
+    the next line are counted in the new length, and since the mapper said so
+    the meter is known from here on."""
+    if not 0 <= index < len(points):
+        raise ValueError("No timing point at that index.")
+    if isinstance(meter, bool) or int(meter) != meter or int(meter) not in EDIT_METERS:
+        raise ValueError(f"A bar holds {EDIT_METERS.start} to {EDIT_METERS.stop - 1} beats.")
+    old = points[index]
+    merged = list(points)
+    merged[index] = TimingPoint(_shown_offset(points, index), old.bpm, old.confidence,
+                                old.beat_index, int(meter), True, manual=True)
+    return merged
+
+
 def rescale_section(points: list[TimingPoint], index: int, factor: float) -> list[TimingPoint]:
     """Multiply one section's BPM (per-section ×2/÷2 fix). The line stays
     where it is shown (``_shown_offset``)."""

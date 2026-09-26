@@ -725,6 +725,21 @@ class Api:
         self._analysis.points = points
         return self._edited(index, None)
 
+    def edit_meter(self, index: int, meter: int) -> dict:
+        """Change one red line's bar length (beats per bar), its beat kept."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if self._is_locked(index):
+            return {"ok": False, "key": "locked"}
+        try:
+            index = int(index)
+            points = ta.set_meter(self._analysis.points, index, meter)
+        except (ValueError, TypeError, IndexError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        self._push_history()
+        self._analysis.points = points
+        return self._edited(index, None)
+
     def edit_split(self, index: int, at_ms: float) -> dict:
         """Split one section where its tempo changes: a red line on its grid's
         beat nearest ``at_ms``, both halves refitted to their attacks."""

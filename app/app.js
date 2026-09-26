@@ -204,6 +204,14 @@ const I18N = {
     stx_bm_confirm: "Write {n} bookmarks into {file}? Its own bookmarks stay.",
     stx_bm_done: "{n} bookmarks into {file}.",
     stx_bm_nothing: "Every section start is already a bookmark in {file}.",
+    stx_kiai_title: "Kiai",
+    stx_kiai_sub: "Kiai on the chorus sections in one difficulty, written as green lines. Sound never changes — kiai is light, not sound; every file is backed up first.",
+    stx_kiai_preview: "Preview", stx_kiai_apply: "Write kiai",
+    stx_kiai_would: "{added} new, {flipped} flipped, {kept} kept over {n} choruses into {file}.",
+    stx_kiai_confirm: "Write kiai on {n} choruses into {file}?",
+    stx_kiai_done: "Kiai on {n} choruses into {file}.",
+    stx_kiai_nothing: "Kiai already matches the choruses in {file}.",
+    stx_kiai_nochorus: "No chorus sections in this song, so there is nothing to light.",
     stx_note: "Letters are families of sections that repeat. Edges snap to the nearest proven bar line within {snap} s: a bar near the change, not proof the phrase starts on it. A change within {edge} s of either end cannot be placed. Click a section to open it in Timing.",
     songs_title: "osu! Songs",
     songs_scan: "Scan",
@@ -593,6 +601,14 @@ const I18N = {
     stx_bm_confirm: "¿Escribir {n} bookmarks en {file}? Los suyos quedan.",
     stx_bm_done: "{n} bookmarks en {file}.",
     stx_bm_nothing: "Cada inicio de sección ya es bookmark en {file}.",
+    stx_kiai_title: "Kiai",
+    stx_kiai_sub: "Kiai en las secciones de estribillo en una dificultad, escrito como líneas verdes. El sonido no cambia nunca — el kiai es luz, no sonido; cada archivo se respalda antes.",
+    stx_kiai_preview: "Vista previa", stx_kiai_apply: "Escribir kiai",
+    stx_kiai_would: "{added} nuevas, {flipped} cambiadas, {kept} iguales en {n} estribillos en {file}.",
+    stx_kiai_confirm: "¿Escribir kiai en {n} estribillos en {file}?",
+    stx_kiai_done: "Kiai en {n} estribillos en {file}.",
+    stx_kiai_nothing: "El kiai ya coincide con los estribillos en {file}.",
+    stx_kiai_nochorus: "Esta canción no tiene secciones de estribillo, así que no hay nada que iluminar.",
     stx_note: "Las letras son familias de secciones que se repiten. Los bordes se ajustan a la línea de compás probada más cercana, a menos de {snap} s: un compás cerca del cambio, no la prueba de que la frase empiece ahí. Un cambio a menos de {edge} s de cada punta no se puede ubicar. Hacé clic en una sección para abrirla en Timing.",
     songs_title: "Songs de osu!",
     songs_scan: "Escanear",
@@ -845,7 +861,7 @@ function setView(view) {
   if (changed) $("content").scrollTop = 0;
   // The canvas measures its box: it can only be drawn while visible.
   if (view === "timing" && S.result) { drawTrace(); waveLoad(); }
-  if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); }
+  if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); }
   if (view === "hitsounds" && S.result) hsvLoad();
   if (view === "history") histLoad();
 }
@@ -1183,6 +1199,7 @@ function renderResult(r) {
   renderReport();
   renderTaps();
   renderBookmarks();
+  renderKiai();
   if (S.view === "timing") waveLoad();
   evLoad();
   labLoad();
@@ -1649,6 +1666,66 @@ function renderBookmarks() {
   $("stxBmApply").disabled = !p || !p.added;
   $("stxBmResult").textContent = !p ? ""
     : t("stx_bm_would", { added: p.added, total: p.total, file: p.file });
+}
+
+// ------------------------------------------------------------------ kiai
+// Phase 21: kiai on the chorus sections in one difficulty of the song.
+// The maps come from the transport picker; preview counts added, flipped
+// and kept, apply writes green lines under a backup, and the card refreshes.
+const STXK = { preview: null, for: "" };
+
+async function stxKiaiMaps() {
+  const box = $("stxKiaiMap");
+  let maps = [];
+  if (api()) {
+    const reply = await api().song_maps();
+    maps = reply.ok ? reply.maps : [];
+  }
+  const path = (S.result && S.result.path) || "";
+  if (STXK.for !== path) { STXK.for = path; STXK.preview = null; }
+  const keep = box.value;
+  box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+  if (maps.some((m) => m.file === keep)) box.value = keep;
+  box.disabled = !maps.length;
+  renderKiai();
+}
+
+async function stxKiaiPreview() {
+  if (!api() || !S.result) return;
+  const file = $("stxKiaiMap").value;
+  if (!file) return;
+  const reply = await api().structure_kiai_preview(file);
+  if (!reply.ok) {
+    if (reply.key === "no_chorus") { toast(t("stx_kiai_nochorus")); return; }
+    editFailure(reply); return;
+  }
+  STXK.preview = { ...reply, file };
+  renderKiai();
+}
+
+async function stxKiaiApply() {
+  if (!api() || !S.result || !STXK.preview) return;
+  const file = $("stxKiaiMap").value;
+  if (STXK.preview.file !== file) { await stxKiaiPreview(); return; }
+  if (!STXK.preview.added && !STXK.preview.flipped) { toast(t("stx_kiai_nothing", { file })); return; }
+  if (!confirm(t("stx_kiai_confirm", { n: STXK.preview.choruses, file }))) return;
+  const reply = await api().structure_kiai_apply(file);
+  if (!reply.ok) {
+    if (reply.key === "no_chorus") { toast(t("stx_kiai_nochorus")); return; }
+    editFailure(reply); return;
+  }
+  toast(t("stx_kiai_done", { n: reply.choruses, file }));
+  STXK.preview = null;
+  renderKiai();
+}
+
+function renderKiai() {
+  const card = $("stxKiaiCard"), p = STXK.preview;
+  card.hidden = !S.result;
+  if (!S.result) return;
+  $("stxKiaiApply").disabled = !p || (!p.added && !p.flipped);
+  $("stxKiaiResult").textContent = !p ? ""
+    : t("stx_kiai_would", { added: p.added, flipped: p.flipped, kept: p.kept, n: p.choruses, file: p.file });
 }
 
 // A section opens in Timing: the timeline zoomed to it, the playhead at its start.
@@ -4164,6 +4241,9 @@ function wire() {
   $("stxBmPreview").onclick = stxBmPreview;
   $("stxBmApply").onclick = stxBmApply;
   $("stxBmMap").onchange = () => { STXBM.preview = null; renderBookmarks(); };
+  $("stxKiaiPreview").onclick = stxKiaiPreview;
+  $("stxKiaiApply").onclick = stxKiaiApply;
+  $("stxKiaiMap").onchange = () => { STXK.preview = null; renderKiai(); };
   $("songsScan").onclick = () => songsScan();
   $("songsPick").onclick = songsPick;
   $("songsQuery").oninput = () => {

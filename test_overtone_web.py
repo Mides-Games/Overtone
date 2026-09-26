@@ -1513,6 +1513,61 @@ class StructureBookmarksBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().structure_bookmarks_preview("map.osu")["key"], "first")
 
 
+class StructureKiaiBridgeTests(_IsolatedConfig):
+    """Kiai on chorus sections, previewed then written once."""
+
+    VIEW = {"sections": [{"start_s": 0.0, "end_s": 16.0, "kind": "verse"},
+                          {"start_s": 16.0, "end_s": 32.0, "kind": "chorus"}]}
+
+    def _song(self, tmp: str) -> web.Api:
+        folder = Path(tmp)
+        (folder / "audio.mp3").write_bytes(b"ID3" + bytes(64))
+        (folder / "map.osu").write_bytes("\r\n".join(
+            ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+             "[TimingPoints]", "0,500,4,2,0,70,1,0", "",
+             "[HitObjects]", "256,192,1000,1,0,0:0:0:0:", ""]).encode("utf-8"))
+        api = _api_with_points()
+        api._analysis.source = str(folder / "audio.mp3")
+        return api
+
+    def test_preview_counts_and_apply_writes_greens_with_a_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": True, "view": self.VIEW}):
+                preview = api.structure_kiai_preview("map.osu")
+                before = ta.sound_events(ta.read_osu_beatmap(Path(tmp) / "map.osu"))
+                raw_before = Path(tmp, "map.osu").read_bytes()
+                done = api.structure_kiai_apply("map.osu")
+                after = Path(tmp, "map.osu").read_bytes()
+                json.dumps([preview, done])
+                self.assertEqual((preview["choruses"], preview["added"],
+                                  preview["flipped"], preview["kept"]),
+                                 (1, 2, 0, 0))
+                self.assertEqual((done["added"], done["flipped"], done["written"]),
+                                 (2, 0, True))
+                self.assertNotEqual(raw_before, after)
+                self.assertEqual(ta.sound_events(ta.read_osu_beatmap(Path(tmp) / "map.osu")),
+                                 before)
+                greens = ta.read_osu_beatmap(Path(tmp) / "map.osu")["timing"]["greens"]
+                self.assertEqual([(g.split(",")[0], g.split(",")[7]) for g in greens],
+                                 [("16000", "1"), ("32000", "0")])
+                self.assertTrue(Path(tmp, "map.osu.bak").is_file())
+
+    def test_without_a_chorus_or_maps_it_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            plain = {"ok": True, "view": {"sections": [{"start_s": 0.0, "end_s": 8.0,
+                                                         "kind": "verse"}]}}
+            with mock.patch.object(web.Api, "structure", return_value=plain):
+                self.assertEqual(api.structure_kiai_preview("map.osu")["key"], "no_chorus")
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": False, "key": "no_rust"}):
+                self.assertEqual(api.structure_kiai_preview("map.osu")["key"], "no_rust")
+            self.assertEqual(api.structure_kiai_preview("..\\map.osu")["key"], "bad_file")
+        self.assertEqual(web.Api().structure_kiai_preview("map.osu")["key"], "first")
+
+
 class OffsetLabBridgeTests(_IsolatedConfig):
     """The Offset lab: the header's numbers, both decoders side by side."""
 

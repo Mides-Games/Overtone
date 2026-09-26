@@ -16,6 +16,29 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Kiai: chorus spans lit from Structure
+
+### Changed
+
+- **Kiai card in Structure**: one difficulty's picker, preview counts (added,
+  flipped, kept) and a confirmed write putting kiai on the chorus sections as
+  green lines — sound never changes, every file backed up first. A song with
+  no chorus says so instead of writing nothing. EN/ES.
+
+### Measured
+
+```
+synthetic map, 1 chorus     2 added 0 flipped 0 kept, sound_events identical,
+                            backup kept; greens read 1 at the open, 0 at the close
+Python unittest                 448 -> 450, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages, no
+                                duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Kiai, engine half: chorus spans as green lines
 
 ### Changed

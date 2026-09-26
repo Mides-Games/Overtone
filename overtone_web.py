@@ -1480,6 +1480,57 @@ class Api:
                 "total": result["total"], "written": written["bytes"] > 0,
                 "backup": written["backup"]}
 
+    # -- structure kiai: kiai on chorus sections ------------------------------
+    def _kiai_plan(self, file: str):
+        """The map plus the song's chorus spans in ms, or a refusal."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        view = self.structure()
+        if not view.get("ok"):
+            return view
+        try:
+            beatmap = ta.read_osu_beatmap(path)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        spans = [(s["start_s"] * 1000.0, s["end_s"] * 1000.0)
+                 for s in view["view"]["sections"] if s.get("kind") == "chorus"]
+        if not spans:
+            return {"ok": False, "key": "no_chorus"}
+        return path, beatmap, spans
+
+    def structure_kiai_preview(self, file: str) -> dict:
+        """What writing kiai on the choruses would add, flip or keep. Read only."""
+        plan = self._kiai_plan(file)
+        if isinstance(plan, dict):
+            return plan
+        path, beatmap, spans = plan
+        try:
+            import copy
+            result = ta.set_chorus_kiai(copy.deepcopy(beatmap), spans)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name, "choruses": len(spans),
+                "added": result["added"], "flipped": result["flipped"],
+                "kept": result["kept"]}
+
+    def structure_kiai_apply(self, file: str) -> dict:
+        """Write kiai on the choruses as green lines, the file backed up
+        first and logged. Sound never changes: kiai is light, not sound."""
+        plan = self._kiai_plan(file)
+        if isinstance(plan, dict):
+            return plan
+        path, beatmap, spans = plan
+        try:
+            result = ta.set_chorus_kiai(beatmap, spans)
+            written = ta.write_osu_beatmap(path, beatmap)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name, "choruses": len(spans),
+                "added": result["added"], "flipped": result["flipped"],
+                "kept": result["kept"], "written": written["bytes"] > 0,
+                "backup": written["backup"]}
+
     # -- assisted timing: two marked downbeats seed the grid ---------------
     def assisted_fit(self, first_ms: float, second_ms: float, bars: int, meter: int) -> dict:
         """Fit the grid two marked downbeats imply. Read only: the answer (or

@@ -17,6 +17,35 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · A failed onset envelope is no longer swapped in silence
+
+The roadmap still listed the envelope's memory as open. Its blocks landed with audit #38
+(3.7 → 0.55 GB peak on a five-minute song, the same red lines); what was left was the
+row's second half, "no silent MemoryError fallback". `_onset_envelope` fell back to a
+spectral-flux envelope on any exception. The loader already zeroes samples that are not
+finite and refuses less than two seconds, so in an analysis that fallback could only catch
+a MemoryError or a bug, and answer with a different envelope: different attacks, a
+different grid, and a result that still read as the precision engine's.
+
+### Fixed
+
+- The flux envelope now takes only what librosa refuses as audio (`ParameterError`, for
+  callers that skip the loader). Anything else reaches the caller. In an analysis that is
+  the precision fit's own handler: it falls back to the beat tracker and says why in its
+  stage message, and the result carries the fallback engine's banner.
+
+### Measured
+
+```
+the new test on the old code        fails: "MemoryError not raised"
+what makes librosa's path raise     only samples that are not finite (ParameterError);
+                                    empty, 1, 100 and 2048 samples and silence all pass
+Python unittest      555 -> 556, all pass · facts ok
+engine gates         benchmark 24/24, bpm-snapshot 24/24, golden 27/27, reference 24/24,
+                     coverage, measures, signatures, robustness, assisted: all pass (no
+                     fixture reaches the fallback, so none could move)
+```
+
 ## v4.0.0-dev — 2026-09-26 · A loop drawn on the map
 
 The transport could loop the section under the playhead and nothing smaller or larger:

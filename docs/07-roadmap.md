@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 % |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **555** Python (384 engine + 171 web shell) · **263** Rust.
+Tests: **556** Python (385 engine + 171 web shell) · **263** Rust.
 
 ### What is pending, in order
 
@@ -627,7 +627,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Rust engine in the app | `overtone-cli analyze --json` sidecar, opt-in, v3 as fallback; `.opus` goes to v3 or is refused (v4 has no decoder, by decision) | med | **high** | P1 | no | no | **P1** | **done** — opt-in; v3 takes over with a note where Rust has no answer |
 | Fallback re-timing | re-time the fallback tracker's beats at sample resolution (they land 5–35 ms late) | med | **high** | — | no | no | P1 | todo |
 | Real-MP3 offset bias | measure the ~20–26 ms attack-vs-map bias on real MP3s before trusting absolute offsets | med | **high** | Corpus B | no | no | P1 | partial — measured 2026-09-24 by reference timing: 30 random ranked maps all read the attacks after their lines, median +26.2 ms (IQR +23.0..+30.9), OGG (+27.2, n=3) as MP3 (+26.1, n=27), so not the MP3 decoder; on Corpus B (2026-09-26) v3's own red lines sit a median +24.0 ms after the maps' (17 tracks; MP3 +19.6 over 15, OGG +32.7 over 2), and 1.6 % of them fall within 5 ms; not explained or corrected |
-| Envelope memory bound | mel in chunks: ~2.65 → ~0.74 GB peak on long tracks; no silent MemoryError fallback | med | high | — | no | no | P1 | todo |
+| Envelope memory bound | mel in chunks: ~2.65 → ~0.74 GB peak on long tracks; no silent MemoryError fallback | med | high | — | no | no | P1 | **done** — spectrogram and tempogram in blocks since audit #38 (3.7 → 0.55 GB peak on a 5-minute song, the same red lines); a failed envelope now reaches the caller instead of being swapped for the flux one (2026-09-26) |
 | Pre-warm the engine | load librosa and numba in the background at startup (~2.3 s off the first analysis) | low | med | shell | no | no | P2 | todo |
 | Linear section growth | refine the growth grid on a trailing window | med | med | — | no | no | P2 | todo |
 | Faster phase re-centring | a recurrence instead of one `exp` per shift | low | low | — | no | no | P3 | todo |

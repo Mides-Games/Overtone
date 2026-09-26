@@ -1676,6 +1676,23 @@ class BoundedMemoryTests(unittest.TestCase):
         self.assertLess(envelope / 2**20, 300)
         self.assertLess(tracker / 2**20, 400)
 
+    def test_a_failed_envelope_is_not_swapped_for_another_in_silence(self):
+        from unittest import mock
+        import overtone as ta
+        y = np.zeros(22050 * 3, dtype=np.float32)
+        y[::5000] = 1.0
+        # Out of memory mid-spectrogram: the caller hears of it. Any failure
+        # used to get the flux envelope instead, and a different grid.
+        with mock.patch.object(ta, "_mel_power", side_effect=MemoryError), \
+                self.assertRaises(MemoryError):
+            ta._onset_envelope(y, 22050, HOP)
+        # What librosa refuses as audio still gets the flux envelope.
+        y[100] = np.nan
+        with mock.patch.object(ta, "_fast_onset_envelope",
+                               wraps=ta._fast_onset_envelope) as flux:
+            ta._onset_envelope(y, 22050, HOP)
+        self.assertEqual(flux.call_count, 1)
+
 
 class LoadErrorMessageTests(unittest.TestCase):
     """A missing, empty or junk file says which it is (roadmap Phase 22).

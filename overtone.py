@@ -172,13 +172,19 @@ def _mel_power(y: np.ndarray, sr: int, hop: int) -> np.ndarray:
 
 
 def _onset_envelope(y: np.ndarray, sr: int, hop: int) -> np.ndarray:
-    """Normalized onset-strength envelope (librosa first, flux fallback)."""
+    """Normalized onset-strength envelope (librosa first, flux fallback).
+
+    The flux envelope is for what librosa refuses as audio (samples that are
+    not finite, which the loader already zeroes). It used to take any failure,
+    a MemoryError included, and a different envelope means different attacks
+    and a different grid, with nothing said: a failure now reaches the caller.
+    """
     try:
         env = librosa.onset.onset_strength(
             S=librosa.power_to_db(_mel_power(y, sr, hop)), sr=sr, hop_length=hop,
             n_fft=ONSET_N_FFT, aggregate=np.median,
         ).astype(np.float32)
-    except Exception:
+    except librosa.util.exceptions.ParameterError:
         env = _fast_onset_envelope(y, sr, hop)
     if env.size == 0:
         return env

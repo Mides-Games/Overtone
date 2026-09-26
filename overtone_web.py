@@ -901,6 +901,10 @@ class Api:
                            "keys": [e["keys"] for e in plan["events"]],
                            "volume": [e["volume"] for e in plan["events"]],
                            "adds": [e["adds"] for e in plan["events"]]},
+                "loops": {"t": [b["t"] for b in plan["loops"]],
+                          "end": [b["end"] for b in plan["loops"]],
+                          "keys": [b["keys"] for b in plan["loops"]],
+                          "volume": [b["volume"] for b in plan["loops"]]},
                 "objects": {"t": [o["t"] for o in plan["objects"]],
                             "end": [o["end"] for o in plan["objects"]],
                             "kind": [o["kind"] for o in plan["objects"]]},
@@ -1114,8 +1118,9 @@ class Api:
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         # Hitsound fields never move a sound, so both lists hold the same
-        # sounds in the same order.
-        differ = [b["t"] for a, b in zip(written["events"], plan["events"]) if a != b]
+        # sounds in the same order; a slider's slide is a sound too.
+        differ = sorted([b["t"] for part in ("events", "loops")
+                         for a, b in zip(written[part], plan[part]) if a != b])
         return {**reply, "proposal": True, "units": changes["units"],
                 "accepted": changes["accepted"], "edited": edited["edited"],
                 "chosen": len(choices or []), "differs": len(differ),

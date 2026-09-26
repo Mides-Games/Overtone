@@ -17,6 +17,43 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Slider bodies heard: the slide loops head to tail
+
+### Changed
+
+- **The transport plays a slider's body**: its slide in the normal set and, when the
+  slider has its whistle bit, the whistle slide in the addition set, looped from head to
+  tail at the body's volume and found by index as the hits are. A body already sounding
+  when playback starts, or when a section loop wraps, joins in at once; the loop's end
+  cuts it; at 75 and 50 % it lasts as long as the slower song does. Playing a difficulty
+  "as it would be written" counts a slide that changes (an edited slider's volume) among
+  the sounds unlike the file.
+- **Overtone's own samples gain six loops** (`assets/samples.py`): per set, one second of
+  hiss for the slide and a held whistle, at whole-number frequencies and vibrato so the
+  end meets the start; the hiss fades its start into what follows its end. They sit at 0.3
+  of full scale against the hits' 0.7, because a loop sounds for as long as a slider
+  lasts. The twelve hit samples come out byte-identical.
+- A custom filename on a slider stays with its hits: what osu! loops then is not verified
+  here, so nothing is guessed.
+
+### Measured
+
+```
+the generator: 18 samples, the 12 hits byte-identical to before; each of the 6 slides is
+44100 samples, and its end-to-start jump is no bigger than its largest step inside
+Jester [Trynna's Hard], in the browser (harness, silent)
+  456 slider bodies, all on Overtone's slides here, at the green lines' volume (40 %
+  around 53 s)
+  playback from inside a body (53.301 s, body 53.201-53.724): it joins at once for the
+  0.423 s left; at 50 % the same body holds 0.847 s of context time
+  the bodies after it start within 1 ms of their song times and stop at their tails
+  a 0.4 s section loop set by hand (this song has one section): the body is cut at the
+  loop's end and starts again at each wrap, once
+Python unittest     522 -> 524, all pass
+benchmark.py 24/24 · bpm-snapshot 24/24 · golden.py 27/27 · coverage, measures,
+signatures, robustness, reference 24/24, assisted 70 · facts
+```
+
 ## v4.0.0-dev — 2026-09-26 · Why a sound was proposed
 
 ### Changed

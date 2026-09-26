@@ -740,6 +740,7 @@ class HitsoundPlaybackBridgeTests(_IsolatedConfig):
         self.assertEqual(reply["samples"]["overtone:soft-hitnormal.wav"]["source"], "overtone")
         self.assertEqual((reply["events"]["adds"], reply["objects"]),
                          ([8], {"t": [1.0], "end": [None], "kind": ["circle"]}))
+        self.assertEqual(reply["loops"], {"t": [], "end": [], "keys": [], "volume": []})
 
     def test_an_ogg_stream_in_a_wav_header_is_unwrapped_and_nothing_else_is_touched(self) -> None:
         ogg = b"OggS" + bytes(20)
@@ -927,13 +928,16 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
             written = api.hitsound_playback("hard_hitsounded.osu")
         json.dumps(heard)
         self.assertEqual(untouched, before)
-        for part in ("events", "objects", "samples", "counts"):
+        for part in ("events", "loops", "objects", "samples", "counts"):
             self.assertEqual(heard[part], written[part], part)
         self.assertNotEqual(heard["events"], as_is["events"])
         self.assertEqual(heard["events"]["keys"][0], as_is["events"]["keys"][0])
         self.assertEqual((heard["proposal"], heard["units"], heard["accepted"], heard["differs"],
                           heard["first"]), (True, 3, 2, 2, 2.0))
         self.assertIn("map:drum-hitclap.wav", heard["samples"])
+        # The slider's body loops head to tail; the proposals leave it as it was.
+        self.assertEqual((heard["loops"]["t"], heard["loops"]["end"]), ([2.0], [2.25]))
+        self.assertEqual(heard["loops"], as_is["loops"])
 
     def test_hand_edits_need_no_proposal_and_are_heard_as_they_are_written(self) -> None:
         edits = [{"object": 1, "part": "circle", "edge": None, "time_ms": 1500.0,
@@ -952,7 +956,7 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
         self.assertEqual((preview["units"], preview["accepted"], preview["edited"],
                           preview["would_change"]), (0, 0, 1, 1))
         self.assertEqual(untouched, before)
-        for part in ("events", "objects", "samples", "counts"):
+        for part in ("events", "loops", "objects", "samples", "counts"):
             self.assertEqual(heard[part], written[part], part)
         self.assertEqual((heard["edited"], heard["differs"], heard["first"]), (1, 1, 1.5))
         self.assertEqual(heard["events"]["volume"][1], 0.35)
@@ -979,7 +983,7 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
                                    [[7, "circle", None, 0]], [[0, "circle", None]])]
         json.dumps([preview, heard])
         self.assertEqual((preview["chosen"], preview["accepted"], heard["chosen"]), (1, 2, 1))
-        for part in ("events", "objects", "samples", "counts"):
+        for part in ("events", "loops", "objects", "samples", "counts"):
             self.assertEqual(heard[part], written[part], part)
         # The first sound took its second alternative, the other kept its proposal.
         self.assertIn(b"256,192,1000,1,0,1:1:0:0:", text)

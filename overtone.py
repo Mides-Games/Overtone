@@ -7038,14 +7038,19 @@ def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str]) -> dict:
     ``soft-hitclap2.wav``, and so on, wav then ogg then mp3. Index 0, or a
     custom sample the folder does not have, plays Overtone's own. A custom
     filename that is missing falls back to the named samples, and is
-    counted. Slider bodies (the looping slide) are not played yet; they are
     counted. Volume is the sound's, never under osu!'s 5 %.
+
+    A slider's body holds its slide from head to tail, looped: the slide in
+    the normal set and, when the slider has its whistle bit, the whistle
+    slide in the addition set, found by index as the hits are. A custom
+    filename is left to the hits (what osu! loops then is not verified here).
 
     Returns ``events`` in song time (seconds) with the ``keys`` they play,
     a 0-1 ``volume`` and their ``adds`` (the whistle/finish/clap bits);
-    ``objects`` with their start, end (None for a circle) and kind, for the
-    timeline's object lane (P-7); ``samples``, each key's ``path`` and
-    ``source`` (``file``, ``map`` or ``overtone``); and ``counts`` of each.
+    ``loops``, each body's start, end, keys and volume; ``objects`` with
+    their start, end (None for a circle) and kind, for the timeline's object
+    lane (P-7); ``samples``, each key's ``path`` and ``source`` (``file``,
+    ``map`` or ``overtone``); and ``counts`` of each.
     """
     base = Path(folder)
     try:
@@ -7063,10 +7068,29 @@ def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str]) -> dict:
         counts[source] += 1
         return key
 
+    def named(stem: str, index: int) -> str:
+        """A named sample by index from the folder, else Overtone's own."""
+        found = None
+        if index >= 1:
+            numbered = stem + (str(index) if index > 1 else "")
+            found = next((listing[numbered + ext] for ext in SAMPLE_EXTENSIONS
+                          if numbered + ext in listing), None)
+        return (use(found, "map") if found is not None
+                else use(DEFAULT_SAMPLE_DIR / f"{stem}.wav", "overtone"))
+
+    def level(event: dict) -> float:
+        return max(MIN_SAMPLE_VOLUME, min(100, event["volume"])) / 100.0
+
+    loops: list[dict] = []
     all_events = sound_events(beatmap)
     for event in all_events:
         if event["part"] == "body":
             counts["slider_bodies"] += 1
+            keys = [named(f"{event['normal_set'] if sound == 'slide' else event['addition_set']}"
+                          f"-slider{sound}", event["index"]) for sound in event["sounds"]]
+            loops.append({"t": round(event["time"] / 1000.0, 6),
+                          "end": round(event["end"] / 1000.0, 6), "keys": keys,
+                          "volume": level(event)})
             continue
         counts["sounds"] += 1
         keys: list[str] = []
@@ -7079,18 +7103,12 @@ def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str]) -> dict:
         if not keys:
             for sound in event["sounds"]:
                 sample_set = event["normal_set"] if sound == "normal" else event["addition_set"]
-                stem = f"{sample_set}-hit{sound}"
-                found = None
-                if event["index"] >= 1:
-                    numbered = stem + (str(event["index"]) if event["index"] > 1 else "")
-                    found = next((listing[numbered + ext] for ext in SAMPLE_EXTENSIONS
-                                  if numbered + ext in listing), None)
-                keys.append(use(found, "map") if found is not None
-                            else use(DEFAULT_SAMPLE_DIR / f"{stem}.wav", "overtone"))
+                keys.append(named(f"{sample_set}-hit{sound}", event["index"]))
         events.append({"t": round(event["time"] / 1000.0, 6), "keys": keys,
-                       "volume": max(MIN_SAMPLE_VOLUME, min(100, event["volume"])) / 100.0,
+                       "volume": level(event),
                        "adds": event["bits"] & (HIT_WHISTLE | HIT_FINISH | HIT_CLAP)})
     events.sort(key=lambda e: e["t"])
+    loops.sort(key=lambda e: e["t"])
     by_object: dict[int, list[dict]] = {}
     for event in all_events:
         by_object.setdefault(event["object"], []).append(event)
@@ -7102,7 +7120,8 @@ def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str]) -> dict:
         objects.append({"t": round(float(obj["time"]) / 1000.0, 6), "kind": obj["kind"],
                         "end": None if end is None else round(end / 1000.0, 6)})
     objects.sort(key=lambda o: o["t"])
-    return {"events": events, "objects": objects, "samples": samples, "counts": counts}
+    return {"events": events, "loops": loops, "objects": objects, "samples": samples,
+            "counts": counts}
 
 
 # -- H2: where a map's hitsounds fall -----------------------------------------

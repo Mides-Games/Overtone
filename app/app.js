@@ -200,7 +200,7 @@ const I18N = {
     pb_hs: "Hitsounds from", pb_hs_off: "Off", pb_hs_vol: "Hitsounds",
     pb_hs_loading: "Loading the hitsounds of {name}…",
     pb_hs_proposal: "{name}, as it would be written",
-    pb_hs_ready: "Hitsounds of {name}: {n} sounds; {map} from the map's own samples, {own} from Overtone's. Slider bodies are not played yet.",
+    pb_hs_ready: "Hitsounds of {name}: {n} sounds and {bodies} slider slides; {map} from the map's own samples, {own} from Overtone's.",
     pb_hs_unreadable: "{n} sample(s) this window cannot decode stay silent.",
     hs_title: "Copy hitsounds", hs_preview: "Preview", hs_apply: "Copy hitsounds",
     hs_sub: "Each sound of the chosen difficulties takes the source's sound at the same moment (within 5 ms): additions, sample sets and index. Sounds with nothing under them are left as they are. Only hitsound fields change, and every file is backed up first.",
@@ -689,7 +689,7 @@ const I18N = {
     pb_hs: "Hitsounds de", pb_hs_off: "Apagados", pb_hs_vol: "Hitsounds",
     pb_hs_loading: "Cargando los hitsounds de {name}…",
     pb_hs_proposal: "{name}, como quedaría escrita",
-    pb_hs_ready: "Hitsounds de {name}: {n} sonidos; {map} con samples propios del mapa, {own} con los de Overtone. Los cuerpos de slider todavía no suenan.",
+    pb_hs_ready: "Hitsounds de {name}: {n} sonidos y {bodies} slides de slider; {map} con samples propios del mapa, {own} con los de Overtone.",
     pb_hs_unreadable: "{n} sample(s) que esta ventana no puede decodificar quedan en silencio.",
     hs_title: "Copiar hitsounds", hs_preview: "Vista previa", hs_apply: "Copiar hitsounds",
     hs_sub: "Cada sonido de las dificultades elegidas toma el sonido de la fuente en el mismo momento (a menos de 5 ms): adiciones, sample sets e índice. Los sonidos sin nada debajo quedan como están. Solo cambian los campos de hitsound, y cada archivo se respalda antes.",
@@ -3616,8 +3616,8 @@ P.clickShiftMs = 0;
 // ticked proposals and the hand edits made, not yet written; `heard` is what the
 // bridge counted then. Samples decode once per song: their keys name a file
 // of the song's folder, the same for every difficulty.
-const HSP = { file: "", proposal: false, heard: null, events: null, objects: null,
-              buffers: {}, decoded: {}, token: 0 };
+const HSP = { file: "", proposal: false, heard: null, events: null, loops: null, loopsMax: 0,
+              objects: null, buffers: {}, decoded: {}, token: 0 };
 // The transport's option for a difficulty as it would be written. A "/" is
 // never in a file name the bridge takes, so it cannot be a difficulty's own.
 const HS_PROPOSAL = "proposal/";
@@ -3629,8 +3629,8 @@ function hsLegend() {
 
 async function hsMaps() {
   const box = $("pbHs");
-  HSP.file = ""; HSP.proposal = false; HSP.heard = null; HSP.events = null; HSP.objects = null;
-  HSP.buffers = {}; HSP.decoded = {}; HSP.token++;
+  HSP.file = ""; HSP.proposal = false; HSP.heard = null; HSP.events = null; HSP.loops = null;
+  HSP.objects = null; HSP.buffers = {}; HSP.decoded = {}; HSP.token++;
   hsLegend();
   let maps = [];
   if (api()) {
@@ -3666,7 +3666,7 @@ async function hsPick(value) {
   const token = ++HSP.token;
   $("pbHs").value = value;
   if (HSP.file !== file || !file) {
-    HSP.events = null; HSP.objects = null;
+    HSP.events = null; HSP.loops = null; HSP.objects = null;
     hsLegend();
     if (S.result) drawTrace();
   }
@@ -3684,7 +3684,7 @@ async function hsPick(value) {
     else editFailure(reply);
     // A proposal that cannot be heard leaves the file as written playing.
     if (proposal) { hsPick(file).then(() => { if (HSV.report) renderHitsoundsView(); }); return; }
-    HSP.file = ""; HSP.proposal = false; HSP.events = null; HSP.objects = null;
+    HSP.file = ""; HSP.proposal = false; HSP.events = null; HSP.loops = null; HSP.objects = null;
     $("pbHs").value = "";
     hsLegend();
     if (S.result) drawTrace();
@@ -3703,6 +3703,9 @@ async function hsPick(value) {
   if (HSP.token !== token) return;
   HSP.buffers = buffers;
   HSP.events = reply.events;
+  HSP.loops = reply.loops;
+  // The longest body bounds the look back for one already sounding.
+  HSP.loopsMax = Math.max(0, ...reply.loops.t.map((t0, i) => reply.loops.end[i] - t0));
   HSP.objects = reply.objects;
   HSP.counts = reply.counts;
   HSP.heard = proposal ? { accepted: reply.accepted, units: reply.units, edited: reply.edited,
@@ -3710,7 +3713,8 @@ async function hsPick(value) {
   hsLegend();
   if (S.result) drawTrace();
   const c = reply.counts;
-  $("pbStatus").textContent = t("pb_hs_ready", { name, n: c.sounds, map: c.map + c.file, own: c.overtone }) +
+  $("pbStatus").textContent = t("pb_hs_ready", { name, n: c.sounds, bodies: c.slider_bodies,
+                                                 map: c.map + c.file, own: c.overtone }) +
     (unreadable ? ` ${t("pb_hs_unreadable", { n: unreadable })}` : "");
 }
 
@@ -3723,6 +3727,23 @@ function pbHitAt(when, keys, volume) {
     gain.gain.value = volume;
     src.connect(gain); gain.connect(P.hits);
     src.start(when);
+  }
+}
+
+// A slider's body: its slide, and whistle slide, looped from `when` to
+// `until` (context time) on the hitsound bus, so a stop cuts it too.
+function pbSlideAt(when, until, keys, volume) {
+  if (!(until > when)) return;
+  for (const key of keys) {
+    const buffer = HSP.buffers[key];
+    if (!buffer) continue;
+    const src = P.ctx.createBufferSource(), gain = P.ctx.createGain();
+    src.buffer = buffer;
+    src.loop = true;
+    gain.gain.value = volume;
+    src.connect(gain); gain.connect(P.hits);
+    src.start(when);
+    src.stop(until);
   }
 }
 
@@ -3743,6 +3764,21 @@ function pbTick() {
     if (hits) {
       for (let i = lowerBound(hits.t, s0); i < hits.t.length && hits.t[i] < s0 + len * P.rate; i++) {
         pbHitAt(P.startCtx + P.sched + (hits.t[i] - s0) / P.rate, hits.keys[i], hits.volume[i]);
+      }
+    }
+    const slides = HSP.loops;
+    if (slides && slides.t.length) {
+      const at = (s) => P.startCtx + P.sched + (s - s0) / P.rate;
+      const stop = (end) => at(Math.min(end, P.loop ? P.loop.b : Infinity));
+      const first = lowerBound(slides.t, s0);
+      // A body already sounding as playback starts, or as the loop wraps, joins in now.
+      if (P.sched === 0 || (P.loop && Math.abs(s0 - P.loop.a) < 1e-6)) {
+        for (let i = first - 1; i >= 0 && slides.t[i] >= s0 - HSP.loopsMax; i--) {
+          if (slides.end[i] > s0) pbSlideAt(at(s0), stop(slides.end[i]), slides.keys[i], slides.volume[i]);
+        }
+      }
+      for (let i = first; i < slides.t.length && slides.t[i] < s0 + len * P.rate; i++) {
+        pbSlideAt(at(slides.t[i]), stop(slides.end[i]), slides.keys[i], slides.volume[i]);
       }
     }
     P.sched += len > 1e-9 ? len : 1e-6;

@@ -4733,7 +4733,7 @@ class HitsoundSampleTests(unittest.TestCase):
                           "256,192,5000,1,0,0:0:0:0:boom.wav",  # a custom file, alone
                           "256,192,6000,1,0,0:0:0:0:gone.wav",  # missing: the named samples
                           "256,192,7000,1,0,0:0:0:2:",          # volume 2 %: floored at 5
-                          "256,192,8000,2,0,L|356:192,1,140"])  # a slider: its body is not played
+                          "256,192,8000,2,0,L|356:192,1,140"])  # a slider: its body loops apart
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)
             (folder / "map.osu").write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
@@ -4758,6 +4758,25 @@ class HitsoundSampleTests(unittest.TestCase):
         self.assertEqual([e["adds"] for e in plan["events"]][:2], [8, 8])
         self.assertTrue(all(Path(s["path"]).is_file() for s in plan["samples"].values()
                             if s["source"] == "overtone"))
+
+    def test_a_slider_body_loops_its_slide_and_whistle_slide(self):
+        from overtone import hitsound_playback, read_osu_beatmap
+        # A bare slider holds the slide; one with its whistle bit adds the
+        # whistle slide in its addition set, found by index like a hit.
+        text = _copy_map(["256,192,1000,2,0,L|356:192,1,140",
+                          "256,192,3000,2,2,L|356:192,2,140,0|0|0,0:0|0:0|0:0,0:3:2:40:"])
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            (folder / "map.osu").write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            (folder / "drum-sliderwhistle2.wav").write_bytes(b"RIFF")
+            plan = hitsound_playback(read_osu_beatmap(folder / "map.osu"), folder)
+        json.dumps(plan)
+        self.assertEqual(plan["loops"], [
+            {"t": 1.0, "end": 1.5, "keys": ["overtone:soft-sliderslide.wav"], "volume": 0.7},
+            {"t": 3.0, "end": 4.0, "keys": ["overtone:soft-sliderslide.wav", "map:drum-sliderwhistle2.wav"],
+             "volume": 0.4}])
+        self.assertEqual((plan["counts"]["slider_bodies"], plan["counts"]["sounds"]), (2, 5))
+        self.assertTrue(Path(plan["samples"]["overtone:soft-sliderslide.wav"]["path"]).is_file())
 
 
 class HitsoundReportTests(unittest.TestCase):

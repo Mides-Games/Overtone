@@ -1965,7 +1965,9 @@ function renderBreaks() {
   card.hidden = !S.result;
   if (!S.result) return;
   $("stxBreaksApply").disabled = !p || !p.spans.length;
+  // No span: the toast already said so, and "0 breaks into X: ." said nothing.
   $("stxBreaksResult").textContent = !p ? ""
+    : !p.spans.length ? t("stx_breaks_nothing")
     : t("stx_breaks_would", { n: p.spans.length, file: p.file,
                                spans: p.spans.map(stxBrSpan).join(" · ") });
 }
@@ -2335,7 +2337,9 @@ async function hsdWrite(copy) {
   if (!reply.ok) { editFailure(reply); return; }
   HSD.units = []; HSD.accepted = new Set(); HSD.undo = reply.undo;
   $("hsvDecidePrevText").textContent = "";
-  toast(t(copy ? "hsv_done_copy" : "hsv_done", { n: reply.changed.length, file: HSV.file }));
+  // A copy names the file it wrote, not the original it left alone.
+  const written = copy && reply.dest ? String(reply.dest).split(/[\\/]/).pop() : HSV.file;
+  toast(t(copy ? "hsv_done_copy" : "hsv_done", { n: reply.changed.length, file: written }));
   await hsvPick(HSV.file);
   if (HSP.file === HSV.file) await hsPick(HSV.file);
   renderHitsoundsView();
@@ -4056,7 +4060,13 @@ function renderSwapResult() {
 async function swPreview() {
   if (!api() || !S.mapset) return;
   const reply = await api().swap_preview(S.mapset.path, SW.current, $("swNew").value);
-  if (!reply.ok) { editFailure(reply); return; }
+  if (!reply.ok) {
+    // A refused choice leaves no preview behind: the last one named another file.
+    SW.preview = null;
+    renderSwapResult();
+    editFailure(reply);
+    return;
+  }
   SW.preview = { ...reply, choice: SW.current + "\n" + $("swNew").value };
   renderSwapResult();
 }
@@ -4068,9 +4078,10 @@ async function swApply() {
   const n = SW.preview.maps.filter((r) => r.ok).length;
   if (!n) return;
   if (!confirm(t("sw_confirm", { n, ms: SW.preview.shift.shift_ms.toFixed(1), file: $("swNew").value }))) return;
-  const reply = await api().swap_apply(S.mapset.path, SW.current, $("swNew").value);
+  const moved = $("swNew").value;
+  const reply = await api().swap_apply(S.mapset.path, SW.current, moved);
   if (!reply.ok) { editFailure(reply); return; }
-  toast(t("sw_done", { n: reply.maps.length }));
+  toast(t("sw_done", { n: reply.maps.length, file: moved }));
   SW.preview = null;
   runMapset(S.mapset.path, true);
   renderSwap();

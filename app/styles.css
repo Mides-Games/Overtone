@@ -627,6 +627,12 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); fon
 button.link:hover { text-decoration: underline; }
 tbody td.txt { text-align: left; width: 100%; }
 tbody td .pill { white-space: nowrap; }
+/* History has four text columns: under the rule above the time took the row
+   and the file names wrapped a word a line. The time, the tool and the
+   buttons keep one line; the two file names share the rest. */
+.hist-table tbody td.txt { width: auto; }
+.hist-table tbody td:nth-child(-n+2), .hist-table tbody td:last-child { white-space: nowrap; }
+.hist-table tbody td.txt:nth-child(3), .hist-table tbody td.txt:nth-child(4) { width: 50%; overflow-wrap: anywhere; }
 /* Taller than the tempo curve alone: the waveform and drift lanes sit under it. */
 .trace-wrap { position: relative; height: clamp(380px, 52vh, 560px); margin: 4px 14px 14px; }
 .trace-wrap canvas { width: 100%; height: 100%; display: block; border-radius: var(--r-lg); cursor: crosshair; }

@@ -182,7 +182,7 @@ tested through the bridge and in the browser (harness).
 ### H6 · After it works
 
 Sample bank import and sample-to-role recommendation (`06` §8), custom profiles in the app
-(a profile file in `profiles/` is already chosen by name beside Propose, since 2026-09-26;
+(a profile file in `profiles/` is already chosen by name on the Propose card, since 2026-09-26;
 editing one in the app is what is left), and only then the ML evaluation of `08`, against
 the template baseline.
 

@@ -17,16 +17,17 @@ later costs more than writing it down now.
 ---
 ---
 
-## v4.0.0-dev — 2026-09-26 · The hitsound profile, chosen beside Propose
+## v4.0.0-dev — 2026-09-26 · The hitsound profile, chosen on the Propose card
 
 ### Changed
 
-- **A Profile selector beside Propose** in the Hitsounds section's Propose card: Balanced
-  first, then every profile `profiles/` holds (Drum-focused today), named in English and
-  Spanish; a line under the buttons says what the chosen one does. The status names the
-  profile that decided the proposals shown, and when another is chosen afterwards the card
-  says so until Propose runs again. With Balanced alone there is nothing to choose: no
-  selector, no note, no name in the status, the card as it was.
+- **A Profile selector on its own line above Propose** in the Hitsounds section's Propose
+  card: Balanced first, then every profile `profiles/` holds (Drum-focused today), named in
+  English and Spanish, with a line under it saying what the chosen one does. Beside Propose
+  it pushed the buttons past a 1280 px window and left Undo alone on a second line. The
+  status names the profile that decided the proposals shown, and when another is chosen
+  afterwards the card says so until Propose runs again. With Balanced alone there is
+  nothing to choose: no selector, no note, no name in the status, the card as it was.
 - **The bridge lists the profiles**: `hitsound_profiles` gives `balanced` first, then every
   `profiles/<name>.json` whose name is lowercase letters, digits, `-` and `_`, and
   `hitsound_decide_propose(file, profile)` decides with the one named. Balanced stays the
@@ -46,10 +47,13 @@ later costs more than writing it down now.
 ### Measured
 
 ```
-Python unittest   534 -> 538, all pass (with the CLI built)
+Python unittest   600 -> 604, all pass (with the CLI built)
 facts
-the page itself: not checked in a browser yet (selector, note, status, both languages,
-1280 and 1024 px)
+the page, through the UI harness at 1280 px on a scratch song: both profiles listed, the
+selector held while proposing, the reply's profile named in the status (Balanced, then
+Drum-focused), the reminder while the choice differs from what decided the proposals,
+the row hidden with Balanced alone, the buttons on one line in English and Spanish,
+no page errors. Not checked: narrower windows.
 ```
 
 ## v4.0.0-dev — 2026-09-26 · Hitsound profiles held to their own style: Drum-focused ships, Minimal does not

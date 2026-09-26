@@ -1612,7 +1612,9 @@ class Api:
         """Bring the index in step with the Songs folder (the remembered one,
         else osu!'s default). Unchanged maps are skipped, so a rescan costs a
         folder listing; the first scan reads every header. The page hears
-        ``onLibraryProgress`` as folders are done."""
+        ``onLibraryProgress`` with the folders in the index, their total, and
+        how many rows of maps that are gone are being removed after the last
+        folder."""
         root = self._songs_root(folder)
         if not Path(root).is_dir():
             return {"ok": False, "key": "no_songs"}
@@ -1620,8 +1622,8 @@ class Api:
             return {"ok": False, "key": "scan_running"}
         try:
             report = overtone_library.Library().scan(
-                root, lambda done, total: self._emit("onLibraryProgress",
-                                                     {"done": done, "total": total}))
+                root, lambda done, total, removing: self._emit(
+                    "onLibraryProgress", {"done": done, "total": total, "removing": removing}))
         except (ValueError, OSError, sqlite3.Error) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         finally:

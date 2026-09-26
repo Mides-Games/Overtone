@@ -23,6 +23,8 @@ import os
 import re
 import sqlite3
 import time
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,8 +39,22 @@ SCHEMA_VERSION = 1
 MIGRATIONS: dict[int, str] = {}
 #: The most beatmaps one search returns; the list is for picking, not reading.
 SEARCH_LIMIT = 200
-#: How often, in folders, a scan reports progress.
-PROGRESS_EVERY = 100
+#: The longest a scan goes without telling how far it is. A first scan once
+#: sat 6-10 s between reports at one per 100 folders; a rescan of 4,800
+#: folders takes about a second, so it makes a handful.
+PROGRESS_SECONDS = 0.25
+#: The longest a scan holds read rows uncommitted: a scan stopped halfway
+#: keeps what it read. By time, not folders, so a rescan does not pay a disk
+#: flush per 100 folders it barely touched.
+COMMIT_SECONDS = 1.0
+#: Threads reading .osu files. The first read of a file is what a first scan
+#: waits on: small files never opened before took 10.05 ms each one at a
+#: time, 2.95 ms on 4 threads and 3.25 ms on 8 (0.24 ms once read), and a
+#: scan of 1,211 freshly copied maps went from 29.0 s to 7.1 s on 4. Parsing
+#: and every database write stay on the scanning thread.
+READERS = 4
+#: Folders read ahead of the one being written, per reader thread.
+READ_AHEAD = 8
 #: How many failures a scan names; the count is always complete.
 FAILURES_KEPT = 20
 
@@ -191,6 +207,43 @@ _ROW = ("b.id, b.path, b.artist, b.title, b.artist_unicode, b.title_unicode, b.c
         "b.version, b.mode, b.audio_file, b.red_lines, b.first_bpm, b.objects, s.folder, s.name")
 
 
+def _read_folder(folder: str, known: dict) -> dict:
+    """One song folder's files, for ``Library.scan`` to parse and write.
+
+    Runs on a reader thread, so it only lists, stats and reads: parsing
+    stays on the scanning thread, which keeps the Python work in one place
+    and lets these threads spend their time waiting on the disk. Each .osu
+    comes back ``unchanged`` (size and time as indexed), ``read`` (with its
+    bytes) or ``unreadable`` (it could not be opened: locked, no permission,
+    a path Windows will not open), and the folder's files by lower-case
+    name, for the audio the maps name. A folder that cannot be listed comes
+    back with ``error`` alone.
+    """
+    try:
+        with os.scandir(folder) as entries:
+            files = [entry for entry in entries if entry.is_file()]
+    except OSError as exc:
+        return {"folder": folder, "error": str(exc)}
+    maps: list[tuple[str, str, object]] = []
+    for entry in files:
+        if not entry.name.lower().endswith(".osu"):
+            continue
+        old = known.get(entry.path)
+        try:
+            stat = entry.stat()
+            if old is not None and old[0] == stat.st_size and old[1] == stat.st_mtime_ns:
+                maps.append(("unchanged", entry.path, None))
+                continue
+            with open(entry.path, "rb") as handle:
+                raw = handle.read()
+        except OSError as exc:
+            maps.append(("unreadable", entry.path, str(exc)))
+            continue
+        maps.append(("read", entry.path, (stat.st_size, stat.st_mtime_ns, raw)))
+    return {"folder": folder, "error": None, "maps": maps,
+            "files": {entry.name.lower(): entry for entry in files}}
+
+
 class Library:
     """One index file. Every call opens its own connection, so the bridge's
     threads can share one Library, and a scan never holds the file between
@@ -239,14 +292,20 @@ class Library:
 
         One folder level below ``root``, the shape of a Songs folder, plus
         ``root`` itself. Only .osu files whose size or modification time
-        changed are read; rows for files that are gone are deleted, so the
-        index holds one Songs folder, the last one scanned. What could not be
-        read is counted in ``failed`` and named in ``failures``, and is never
-        reported gone: a folder that cannot be listed, or a .osu that cannot
-        be opened, keeps what the index knew of it (the next scan tries
-        again), while a file that is not a beatmap loses its row.
-        ``progress``, when given, is called with ``(folders_done,
-        folders_total)``.
+        changed are read, ``READERS`` at a time; rows for files that are gone
+        are deleted, so the index holds one Songs folder, the last one
+        scanned. What could not be read is counted in ``failed`` and named
+        in ``failures``, and is never reported gone: a folder that cannot be
+        listed, or a .osu that cannot be opened, keeps what the index knew of
+        it (the next scan tries again), while a file that is not a beatmap
+        loses its row.
+
+        ``progress``, when given, is called with ``(done, total, removing)``:
+        ``done`` folders of ``total`` are in the index, from ``(0, total)``
+        as soon as the folder is listed, at most ``PROGRESS_SECONDS`` apart,
+        and ``(total, total)`` once the last is written. When rows of files
+        that are gone are about to be deleted, one more call says how many;
+        the scan returns when they are.
         """
         base = Path(os.path.abspath(root))
         if not base.is_dir():
@@ -257,13 +316,12 @@ class Library:
                 folders = [str(base)] + sorted(e.path for e in entries if e.is_dir())
         except OSError as exc:
             raise ValueError(f"Could not list {base}: {exc}") from exc
+        return self._scan(base, folders, progress, started)
+
+    def _scan(self, base: Path, folders: list[str], progress, started: float) -> dict:
+        total = len(folders)
         counts = {"added": 0, "updated": 0, "unchanged": 0, "removed": 0, "failed": 0}
         failures: list[dict] = []
-
-        def fail(path: str, detail: str) -> None:
-            counts["failed"] += 1
-            failures.append({"path": path, "detail": detail})
-
         with closing(self._connect()) as db, db:
             known = {row[0]: row[1:] for row in db.execute(
                 "SELECT path, size, mtime_ns, audio_file FROM beatmaps")}
@@ -276,77 +334,60 @@ class Library:
             unlisted: set[str] = set()   # folders that could not be listed
             not_maps: set[str] = set()   # .osu files that are not beatmaps
 
-            def set_of(folder: str) -> int:
+            def fail(path: str, detail: str) -> None:
+                counts["failed"] += 1
+                failures.append({"path": path, "detail": detail})
+
+            def write(found: dict) -> None:
+                folder = found["folder"]
+                if found["error"] is not None:
+                    unlisted.add(folder)
+                    fail(folder, found["error"])
+                    return
+                rows, audio_names, kept = [], set(), False
+                for kind, path, value in found["maps"]:
+                    if kind == "read":
+                        size, mtime_ns, raw = value
+                        try:
+                            header = _parse_osu_header(raw, os.path.basename(path))
+                        except ValueError as exc:
+                            # Not a beatmap (any more): its row goes, and it
+                            # counts as failed, never as removed.
+                            fail(path, str(exc))
+                            not_maps.add(path)
+                            continue
+                        rows.append((path, size, mtime_ns, header))
+                        audio_names.add(header["audio_file"].lower())
+                    elif kind == "unchanged":
+                        counts["unchanged"] += 1
+                        seen_maps.add(path)
+                        audio_names.add(known[path][2].lower())
+                        kept = True
+                    else:
+                        fail(path, value)
+                        # Could not open is not gone: the old row stays, and
+                        # since its size and time no longer match, the next
+                        # scan reads it again.
+                        if path in known:
+                            seen_maps.add(path)
+                            audio_names.add(known[path][2].lower())
+                            kept = True
+                if not rows and not kept:
+                    return
                 set_id = set_ids.get(folder)
                 if set_id is None:
                     set_id = db.execute("INSERT INTO sets (folder, name) VALUES (?, ?)",
                                         (folder, Path(folder).name)).lastrowid
                     set_ids[folder] = set_id
                 seen_sets.add(folder)
-                return set_id
-
-            for done, folder in enumerate(folders, 1):
-                if done % PROGRESS_EVERY == 0 or done == len(folders):
-                    # Committed as it goes: a scan stopped halfway keeps what
-                    # it read, and the next one starts from there.
-                    db.commit()
-                    if progress is not None:
-                        progress(done, len(folders))
-                try:
-                    with os.scandir(folder) as entries:
-                        files = [e for e in entries if e.is_file()]
-                except OSError as exc:
-                    # Not listed is not gone: what the index knew of it stays.
-                    unlisted.add(folder)
-                    fail(folder, str(exc))
-                    continue
-                osus = [e for e in files if e.name.lower().endswith(".osu")]
-                if not osus:
-                    continue
-                audio_names: set[str] = set()
-                for entry in osus:
-                    old = known.get(entry.path)
-                    try:
-                        stat = entry.stat()
-                        if old is not None and old[0] == stat.st_size and old[1] == stat.st_mtime_ns:
-                            counts["unchanged"] += 1
-                            seen_maps.add(entry.path)
-                            set_of(folder)
-                            audio_names.add(old[2].lower())
-                            continue
-                        with open(entry.path, "rb") as handle:
-                            raw = handle.read()
-                    except OSError as exc:
-                        fail(entry.path, str(exc))
-                        # Could not open is not gone: the old row stays, and
-                        # since its size and time no longer match, the next
-                        # scan reads it again.
-                        if old is not None:
-                            seen_maps.add(entry.path)
-                            set_of(folder)
-                            audio_names.add(old[2].lower())
-                        continue
-                    try:
-                        header = _parse_osu_header(raw, entry.name)
-                    except ValueError as exc:
-                        # Not a beatmap (any more): its row goes, and it counts
-                        # as failed, never as removed.
-                        fail(entry.path, str(exc))
-                        not_maps.add(entry.path)
-                        continue
-                    db.execute(_UPSERT_BEATMAP, (set_of(folder), entry.path, stat.st_size,
-                                                 stat.st_mtime_ns,
+                for path, size, mtime_ns, header in rows:
+                    db.execute(_UPSERT_BEATMAP, (set_id, path, size, mtime_ns,
                                                  *(header[c] for c in _BEATMAP_COLUMNS[3:])))
-                    seen_maps.add(entry.path)
-                    counts["updated" if old is not None else "added"] += 1
-                    audio_names.add(header["audio_file"].lower())
-                if folder not in seen_sets:
-                    continue
-                set_id = set_ids[folder]
-                by_name = {e.name.lower(): e for e in files}
-                for name in audio_names:
-                    entry = by_name.get(name)
-                    if not name or entry is None:
+                    counts["updated" if path in known else "added"] += 1
+                    seen_maps.add(path)
+                for name in sorted(audio_names):
+                    entry = found["files"].get(name) if name else None
+                    if entry is None:
                         continue
                     try:
                         stat = entry.stat()
@@ -361,12 +402,42 @@ class Library:
                                "set_id = excluded.set_id, size = excluded.size, "
                                "mtime_ns = excluded.mtime_ns, sha256 = NULL",
                                (entry.path, set_id, stat.st_size, stat.st_mtime_ns))
+
+            if progress is not None:
+                progress(0, total, 0)
+            reported = committed = time.perf_counter()
+            pool = ThreadPoolExecutor(READERS, thread_name_prefix="library-read")
+            try:
+                window = READERS * READ_AHEAD
+                ahead = deque(pool.submit(_read_folder, folder, known)
+                              for folder in folders[:window])
+                queued = len(ahead)
+                done = 0
+                while ahead:
+                    found = ahead.popleft().result()
+                    if queued < total:
+                        ahead.append(pool.submit(_read_folder, folders[queued], known))
+                        queued += 1
+                    write(found)
+                    done += 1
+                    now = time.perf_counter()
+                    if now - committed >= COMMIT_SECONDS:
+                        db.commit()
+                        committed = now
+                    if progress is not None and (done == total or now - reported >= PROGRESS_SECONDS):
+                        progress(done, total, 0)
+                        reported = now
+            finally:
+                pool.shutdown(wait=True, cancel_futures=True)
+
             def outside(path: str) -> bool:
                 return os.path.dirname(path) not in unlisted
 
             gone = [path for path in known
                     if path not in seen_maps and path not in not_maps and outside(path)]
             counts["removed"] = len(gone)
+            if progress is not None and gone:
+                progress(total, total, len(gone))
             db.executemany("DELETE FROM beatmaps WHERE path = ?",
                            [(path,) for path in gone + sorted(not_maps & known.keys())])
             db.executemany("DELETE FROM audio WHERE path = ?",
@@ -382,7 +453,7 @@ class Library:
                                ("failures", json.dumps(failures[:FAILURES_KEPT]))):
                 db.execute("INSERT INTO meta (key, value) VALUES (?, ?) "
                            "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
-        return {**self.stats(), **counts, "folders": len(folders),
+        return {**self.stats(), **counts, "folders": total,
                 "failures": failures[:FAILURES_KEPT], "seconds": round(seconds, 3)}
 
     # -- reading -------------------------------------------------------------

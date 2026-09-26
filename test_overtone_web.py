@@ -1191,6 +1191,19 @@ class LibraryBridgeTests(_IsolatedConfig):
             reset = api.library_reset()
         self.assertEqual(reset["index"]["beatmaps"], 0)
 
+    def test_the_page_hears_folders_in_the_index_from_zero_to_all(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = self._songs(tmp)
+            api = web.Api()
+            api._window = mock.Mock()
+            reply = api.library_scan(str(songs))
+        sent = [json.loads(call.args[0].split("onLibraryProgress(", 1)[1][:-1])
+                for call in api._window.evaluate_js.call_args_list
+                if "onLibraryProgress" in call.args[0]]
+        total = reply["report"]["folders"]
+        self.assertEqual(sent[0], {"done": 0, "total": total, "removing": 0})
+        self.assertEqual(sent[-1], {"done": total, "total": total, "removing": 0})
+
     def test_same_audio_answers_from_the_index_and_walks_when_it_finds_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             songs = self._songs(tmp)

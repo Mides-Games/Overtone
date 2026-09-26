@@ -4432,7 +4432,8 @@ class LibraryIndexTests(unittest.TestCase):
                   title="Kaze", unicode_title="風の歌", tags="vocaloid")
         (self.songs / "not a set").mkdir()
         seen = []
-        report = self.library.scan(self.songs, progress=lambda done, total: seen.append(total))
+        report = self.library.scan(self.songs,
+                                   progress=lambda done, total, removing: seen.append(total))
         json.dumps(report)
         self.assertEqual((report["sets"], report["beatmaps"], report["audio"]), (2, 3, 2))
         self.assertEqual((report["added"], report["failed"]), (3, 0))
@@ -4515,6 +4516,45 @@ class LibraryIndexTests(unittest.TestCase):
             self.library.stats()
         with self.assertRaises(ValueError):
             self.library.scan(self.tmp / "missing")
+
+    def test_progress_counts_folders_in_the_index_and_says_what_is_removed(self):
+        from unittest import mock
+        import shutil
+        for n in range(6):
+            self._set(f"{n} Band - Song{n}", b"OggS" + bytes(100 + n), ["Easy"], title=f"Song{n}")
+        (self.songs / "not a set").mkdir()
+        parsed: list[str] = []
+        real = self.ol._parse_osu_header
+
+        def parse(raw, name):
+            parsed.append(name)
+            return real(raw, name)
+
+        calls = []
+        with mock.patch.object(self.ol, "_parse_osu_header", parse), \
+                mock.patch.object(self.ol, "PROGRESS_SECONDS", 0.0):
+            report = self.library.scan(self.songs, progress=lambda done, total, removing:
+                                       calls.append((done, total, removing, len(parsed))))
+        total = report["folders"]                        # the root, 6 sets, "not a set"
+        self.assertEqual(total, 8)
+        # From (0, total) as soon as the folder is listed, one call per folder
+        # here, and a folder is counted only once its maps are parsed and
+        # written (both on the scanning thread, before the call): the reader
+        # threads' lead never shows. Before, each call ran one folder ahead
+        # of the work and the last came before the removals.
+        self.assertEqual([(d, t, r) for d, t, r, _p in calls],
+                         [(done, total, 0) for done in range(total + 1)])
+        self.assertEqual([p for _d, _t, _r, p in calls], [0, 0, 1, 2, 3, 4, 5, 6, 6])
+        for folder in ("0 Band - Song0", "1 Band - Song1"):
+            shutil.rmtree(self.songs / folder)
+        calls.clear()
+        with mock.patch.object(self.ol, "PROGRESS_SECONDS", 3600.0):
+            again = self.library.scan(self.songs, progress=lambda done, total, removing:
+                                      calls.append((done, total, removing)))
+        total = again["folders"]
+        # Throttled to the first and the last, and then the rows being removed.
+        self.assertEqual(calls, [(0, total, 0), (total, total, 0), (total, total, 2)])
+        self.assertEqual((again["removed"], again["beatmaps"]), (2, 4))
 
     def test_a_folder_that_cannot_be_listed_keeps_its_maps_and_is_named(self):
         from unittest import mock

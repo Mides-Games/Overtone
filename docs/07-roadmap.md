@@ -274,7 +274,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Uncovered-intro shading | hatch the audio before the first red line | low | med | timeline | no | no | P2 | **done** — hatched across every lane, and the hover says the first line's grid runs back there; the banner stays for a late first line |
 | Density ribbon | half- and double-time inside one reported section | med | med | P2 density | no | no | P2 | todo |
 | Measures on the map | bar ticks and signature regions | low | med | timeline | no | no | P2 | partial — meter column |
-| Keyboard map | every action reachable from the keyboard; `?` shows the sheet | low | med | shell | no | no | P2 | partial |
+| Keyboard map | every action reachable from the keyboard; `?` shows the sheet | low | med | shell | no | no | P2 | **done** — `?` shows every key; ←/→ seek 1 s (Shift: 10 ms), `[`/`]` the red lines, L loop, C click, 1–9 and 0 the rail, on top of Space, T, ↑/↓, Ctrl+O/Z/Y and Enter/F5; buttons reach by Tab. Not bound: mute, solo click, beat steps |
 | Cancellable analysis | stop button, stage names and timings | low | med | progress | no | no | P2 | **done** between stages — the engine is asked at each stage it announces and once more before a result replaces the one on screen, which stays |
 | Stop inside a stage | a stop that lands in seconds, not when the stage ends: attack detection ran 48 s on an eight-minute track, the fallback's transients 53 s on another (machine busy) | med | med | cancellable analysis | no | no | P2 | todo — checkpoints between the envelope's chunks (with the envelope memory bound), or the analysis in a worker process that can be ended |
 | Command palette | Ctrl+K search over every action | low | low | shell | no | no | P3 | todo |

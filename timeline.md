@@ -17,6 +17,50 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · A keyboard map: every key on one sheet
+
+The page answered Space, T, ↑/↓, Ctrl+O/Z/Y and Enter/F5, and said so nowhere but a hint
+under the transport. The transport itself had no keys: seeking, stepping between red lines
+and turning the loop or the click on meant the mouse. Roadmap, Phase 3: "Keyboard map".
+
+### Changed
+
+- **`?` shows the sheet**: every key with what it does, in both languages, as a modal
+  dialog; `?`, Esc and Close shut it, and while it is open no other key acts.
+- **New keys**: ←/→ seek 1 s and with Shift 10 ms; `[`/`]` go to the red line before or
+  after the playhead and select it; L turns the loop on and off (the drawn one when there
+  is one) and C the click, through the transport's own check boxes, with a note; 1–9 and 0
+  open the rail's ten sections in order. The transport's hint names `?`.
+
+### Fixed
+
+- **A focused list took shortcuts meant for the page**: an arrow on the hitsound source
+  list would also have sought, Enter started an analysis. Lists now keep their keys, as
+  fields and sliders did.
+- Found before it shipped: on a Spanish keyboard `[` and `]` are typed with AltGr, which
+  Windows reports as Ctrl+Alt, and the first cut refused any modifier. A key AltGr produced
+  now counts as a plain key; a real Ctrl+Alt chord still does nothing.
+
+### Measured
+
+```
+through the harness page (synthetic "Secs" track, red lines at 0.310, 24.310, 46.021 s)
+  ? / ? again / Close / a real Esc     open / shut / shut / shut; 15 rows, EN and ES
+  Space with the sheet open            nothing played
+  1, 0, 2                              Library, Settings, Timing
+  → from 30 s, ← twice, Shift+→        31, 29, 29.01 s
+  ] ] from 30 s, then [ [ [            46.021 (line 3); 24.310, 0.310, 0.310 (line 1 holds)
+  ] with AltGr / with Ctrl+Alt         46.021 / nothing
+  L, C                                 "Loop section: on", "Click: off"; boxes follow
+  → and 2 typed in the offset field    no seek, no view change; → on the list: no seek
+  960 x 640, Spanish                   the sheet fits (576 px), nothing cut
+web shell tests      181, all pass (the page's bracket and string checks included)
+```
+
+Not checked: a real `?` press. The harness's typing inserts text without key events, so
+`?` was dispatched as the key the browser reports; that is the character, whatever the
+layout.
+
 ## v4.0.0-dev — 2026-09-26 · An installer: a per-user MSI and a portable ZIP, in one line
 
 ### Changed

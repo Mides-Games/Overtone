@@ -241,7 +241,12 @@ verification loop is: edit → hear it immediately.
 *Built 2026-09-26 (web shell):* the loop selection is drawn with Shift-drag on the tempo
 map, its ends on the nearest beats so it repeats whole beats (Alt: where the pointer
 lets go); it shows while paused, wins over the section loop, and a Shift-click clears it.
-`L` and `⇧L` are not bound yet.
+
+*Keys as built (2026-09-26):* `Space`, `←` `→`, `⇧←` `⇧→` and `C` as above; `[` `]` go to
+the red line before or after the playhead and select it (AltGr counts as no modifier, as
+on a Spanish keyboard it types them); `L` turns the loop on and off, the drawn one when
+there is one; `1`–`9` and `0` are the rail's ten sections in order; `T` taps along; `?`
+shows every key. `⌥←` `⌥→`, `⇧L`, `M`, `K` and `⌘S` are not bound.
 
 ---
 

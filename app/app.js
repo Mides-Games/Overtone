@@ -500,7 +500,15 @@ const I18N = {
     no_osu: "osu! did not open — is it installed? ({detail})",
     pb_play: "Play / pause (Space)", pb_from_line: "From red line", pb_seek: "Position",
     pb_click: "Click", pb_perc: "Percussion only", pb_loop: "Loop section", pb_song: "Song", pb_click_vol: "Click",
-    pb_hint: "Space plays and pauses · double-click the tempo map to play from there · the click follows your edits",
+    pb_hint: "Space plays and pauses · double-click the tempo map to play from there · the click follows your edits · ? lists every key",
+    keys_title: "Keyboard", kb_space: "Space", kb_shift: "Shift", kb_enter: "Enter",
+    key_play: "Play / pause", key_seek: "Back / forward 1 s", key_seek_fine: "Back / forward 10 ms",
+    key_lines: "Previous / next red line: select it, the playhead on it",
+    key_points: "Previous / next timing point (Timing)", key_loop: "Loop on / off", key_click: "Click on / off",
+    key_tap: "Tap along with the click", key_views: "The menu's sections, in order",
+    key_open: "Open audio", key_analyze: "Analyze", key_undo: "Undo", key_redo: "Redo",
+    key_sheet: "This sheet", key_close: "Close a panel or this sheet",
+    key_toggled: "{what}: {state}", key_state_on: "on", key_state_off: "off",
     pb_loading: "Loading the song… {n}/{of}",
     pb_perc_preparing: "Separating the drums…",
     pb_perc_on: "Percussion only: the drums against the click. Untick to hear the full song.",
@@ -1023,7 +1031,15 @@ const I18N = {
     no_osu: "osu! no se abrió — ¿está instalado? ({detail})",
     pb_play: "Reproducir / pausar (Espacio)", pb_from_line: "Desde la línea roja", pb_seek: "Posición",
     pb_click: "Click", pb_perc: "Solo percusión", pb_loop: "Repetir sección", pb_song: "Canción", pb_click_vol: "Click",
-    pb_hint: "Espacio reproduce y pausa · doble clic en el mapa de tempo para reproducir desde ahí · el click sigue tus ediciones",
+    pb_hint: "Espacio reproduce y pausa · doble clic en el mapa de tempo para reproducir desde ahí · el click sigue tus ediciones · ? muestra todas las teclas",
+    keys_title: "Teclado", kb_space: "Espacio", kb_shift: "Mayús", kb_enter: "Intro",
+    key_play: "Reproducir / pausar", key_seek: "Atrás / adelante 1 s", key_seek_fine: "Atrás / adelante 10 ms",
+    key_lines: "Línea roja anterior / siguiente: la elige y pone el cabezal en ella",
+    key_points: "Timing point anterior / siguiente (Timing)", key_loop: "Bucle sí / no", key_click: "Click sí / no",
+    key_tap: "Marcar el pulso junto al click", key_views: "Las secciones del menú, en orden",
+    key_open: "Abrir audio", key_analyze: "Analizar", key_undo: "Deshacer", key_redo: "Rehacer",
+    key_sheet: "Esta hoja", key_close: "Cerrar un panel o esta hoja",
+    key_toggled: "{what}: {state}", key_state_on: "sí", key_state_off: "no",
     pb_loading: "Cargando la canción… {n}/{of}",
     pb_perc_preparing: "Separando la batería…",
     pb_perc_on: "Solo percusión: la batería contra el click. Destildá para oír la canción entera.",
@@ -5385,6 +5401,60 @@ function openDrawer(open) {
   }
 }
 
+// ------------------------------------------------------------------ keyboard
+// Every shortcut, as the sheet (?) lists it: alternatives, each a chord of
+// keys. Named keys are translated; the rest read as printed on the key.
+const KEYS = [
+  [[["kb_space"]], "key_play"],
+  [[["←"], ["→"]], "key_seek"],
+  [[["kb_shift", "←"], ["kb_shift", "→"]], "key_seek_fine"],
+  [[["["], ["]"]], "key_lines"],
+  [[["↑"], ["↓"]], "key_points"],
+  [[["L"]], "key_loop"],
+  [[["C"]], "key_click"],
+  [[["T"]], "key_tap"],
+  [[["1–9"], ["0"]], "key_views"],
+  [[["Ctrl", "O"]], "key_open"],
+  [[["kb_enter"], ["F5"]], "key_analyze"],
+  [[["Ctrl", "Z"]], "key_undo"],
+  [[["Ctrl", "Y"], ["Ctrl", "kb_shift", "Z"]], "key_redo"],
+  [[["?"]], "key_sheet"],
+  [[["Esc"]], "key_close"],
+];
+
+function renderKeys() {
+  const kbd = (k) => `<kbd>${esc(k.startsWith("kb_") ? t(k) : k)}</kbd>`;
+  $("keysList").innerHTML = KEYS.map(([alts, what]) =>
+    `<dt>${alts.map((chord) => chord.map(kbd).join(" + ")).join(" / ")}</dt><dd>${esc(t(what))}</dd>`).join("");
+}
+
+function openKeys() {
+  const sheet = $("keysSheet");
+  if (sheet.open) { sheet.close(); return; }
+  renderKeys();
+  sheet.showModal();
+}
+
+// [ and ]: the red line before or after the playhead, selected, the playhead on it.
+function jumpLine(dir) {
+  const pos = pbPosition(), lines = S.result.points.map((p) => p.offset_ms / 1000);
+  let i = -1;
+  if (dir > 0) i = lines.findIndex((s) => s > pos + 0.001);
+  else for (let k = lines.length - 1; k >= 0; k--) if (lines[k] < pos - 0.001) { i = k; break; }
+  if (i < 0) return;
+  selectPoint(i, false);
+  pbSeek(Math.max(0, lines[i]));
+}
+
+// L and C: the transport's own check boxes, so the view shows what the key did.
+function toggleCheck(id) {
+  const box = $(id);
+  box.checked = !box.checked;
+  box.dispatchEvent(new Event("change"));
+  toast(t("key_toggled", { what: box.closest("label").textContent.trim(),
+                           state: t(box.checked ? "key_state_on" : "key_state_off") }));
+}
+
 // ------------------------------------------------------------------ wiring
 let focusByKey = false;
 
@@ -5649,22 +5719,52 @@ function wire() {
   // keyboard, a click means the button merely kept focus afterwards.
   document.addEventListener("mousedown", () => { focusByKey = false; }, true);
   document.addEventListener("keydown", (e) => { if (e.key === "Tab") focusByKey = true; }, true);
+  // The digits walk the rail in the order it shows.
+  const viewKeys = {};
+  [...document.querySelectorAll("#nav [data-view]")].map((b) => b.dataset.view)
+    .filter((v, i, all) => all.indexOf(v) === i)
+    .forEach((view, i) => { if (i < 10) viewKeys[String((i + 1) % 10)] = view; });
+  $("keysClose").onclick = () => $("keysSheet").close();
   window.addEventListener("keydown", (e) => {
+    // The sheet is modal: it takes no shortcut but its own (Esc closes it natively).
+    if ($("keysSheet").open) {
+      if (e.key === "?") { e.preventDefault(); $("keysSheet").close(); }
+      return;
+    }
     if (e.key === "Escape") { openDrawer(false); return; }
-    if (e.key === " " && S.result && !(e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) {
+    // A field, a slider or a list keeps its own keys (an arrow moves a select).
+    const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName);
+    if (e.key === " " && S.result && !typing) {
       e.preventDefault();
       pbToggle();
       return;
     }
     if ((e.key === "t" || e.key === "T") && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat
-        && S.result && !(e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) {
+        && S.result && !typing) {
       e.preventDefault();
       tapNow(e);
       return;
     }
     // Typing an offset or a detection value must not trigger shortcuts:
     // Enter inside the point editor would otherwise start a full analysis.
-    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if (typing) return;
+    // AltGr types [ and ] on a Spanish keyboard, and Windows reports it as
+    // Ctrl+Alt: a key AltGr produced is a plain key, not a chord.
+    const plain = (e.getModifierState && e.getModifierState("AltGraph"))
+      || (!e.ctrlKey && !e.metaKey && !e.altKey);
+    if (e.key === "?" && plain) { e.preventDefault(); openKeys(); return; }
+    if (plain && !$("drawer").classList.contains("open")) {
+      if (viewKeys[e.key] && !e.shiftKey) { e.preventDefault(); setView(viewKeys[e.key]); return; }
+      if (S.result && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        const step = (e.shiftKey ? 0.01 : 1) * (e.key === "ArrowLeft" ? -1 : 1);
+        pbSeek(Math.min(Math.max(pbPosition() + step, 0), S.result.duration));
+        return;
+      }
+      if (S.result && (e.key === "[" || e.key === "]")) { e.preventDefault(); jumpLine(e.key === "]" ? 1 : -1); return; }
+      if (S.result && !e.repeat && (e.key === "l" || e.key === "L")) { e.preventDefault(); toggleCheck("pbLoop"); return; }
+      if (S.result && !e.repeat && (e.key === "c" || e.key === "C")) { e.preventDefault(); toggleCheck("pbClick"); return; }
+    }
     // Enter on a button reached with Tab (a nav item, an export) presses that
     // button; it must not be swallowed by the analyze shortcut below. A button
     // that only kept focus after a mouse click (Open audio) does not count,

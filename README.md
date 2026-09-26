@@ -112,7 +112,8 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Progress panel | ✅ | Finished stages ticked with their times, a running clock, Stop; the song panel keeps the times |
 | Drag red lines on the timeline | ✅ | Snaps to the nearest attack (Alt: free); one undo |
 | Map red lines drawn as ghosts on the timeline | ✅ | From the reference or compare card |
-| Command palette, full keyboard map | 📋 | P3 |
+| Keyboard map | ✅ | `?` lists every key: seek, red lines, loop, click, tap, the rail's sections, undo, analyze |
+| Command palette | 📋 | P3 |
 | Settings section: output folder, offset precision, click, interface size, cache | ✅ | Detection stays in its drawer |
 | Sections: Audio | 📋 | P19 — Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export, History and Settings exist |
 | Light and dark themes, or the system's | ✅ | Settings → Theme; UI scale and reduced motion too |

@@ -16,6 +16,33 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Percussion-only audition in the transport
+
+### Changed
+
+- **Percussion only toggle**: the HPSS stem through the same chunk transport as
+  the song, cached per analysis, decoded and looped like the song with the click
+  on top — judging timing against drums alone. The waveform lane follows the
+  buffer, so it shows what plays.
+
+### Measured
+
+```
+a real song, 90 s             HPSS 11.1 s once, cached; 99/99 strong attacks kept
+                              within 50 ms on the stem; 12 % of the energy
+Python unittest               438 -> 440, all pass
+benchmark.py                  24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                            unit-tested bridge only; ids, both languages, no
+                              duplicates cross-checked. Harness pass owed, stated.
+```
+
+No Rust resynthesis was written: the crate's HPSS stops at masks, and librosa's
+reference HPSS is already a dependency. Porting ISTFT for parity's sake alone
+would be code without a measurement behind it.
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Offset lab: the blind test with an interval
 
 ### Changed

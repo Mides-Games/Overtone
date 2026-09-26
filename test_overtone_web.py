@@ -1079,6 +1079,30 @@ class PlaybackBridgeTests(_IsolatedConfig):
         self.assertEqual(sr, ta.TARGET_SR)
         self.assertAlmostEqual(len(y) / sr, 3.0, delta=0.05)
 
+    def test_percussion_only_stages_cached_and_round_trips(self) -> None:
+        import base64
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            song = Path(tmp) / "song.mp3"
+            song.write_bytes(b"ID3" + bytes(64))
+            api = _api_with_points()
+            api._analysis.source = str(song)
+            fake = b"RIFF" + bytes(100)
+            with mock.patch.object(ta, "_load_audio", return_value=(np.zeros(44100, dtype=np.float32), 44100)) as load, \
+                    mock.patch.object(ta, "percussive_wav", return_value=fake) as stem:
+                opened = api.audio_open("percussion")
+                again = api.audio_open("percussion")
+            self.assertEqual((opened["size"], opened["chunks"], opened["mime"]),
+                             (len(fake), 1, "audio/wav"))
+            self.assertEqual(load.call_count, 1)
+            self.assertEqual(stem.call_count, 1)
+            got = b"".join(base64.b64decode(api.audio_chunk(i)["data"])
+                           for i in range(opened["chunks"]))
+            json.dumps(opened)
+            self.assertEqual(got, fake)
+            self.assertEqual(again["size"], len(fake))
+            self.assertEqual(web.Api().audio_open("percussion")["key"], "first")
+
     def test_levels_are_clamped_remembered_and_offered_back(self) -> None:
         api = web.Api()
         self.assertEqual(api.state()["playback"],

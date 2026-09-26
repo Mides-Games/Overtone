@@ -357,9 +357,11 @@ const I18N = {
     bad_stamp: "That is not an editor timestamp.",
     no_osu: "osu! did not open — is it installed? ({detail})",
     pb_play: "Play / pause (Space)", pb_from_line: "From red line", pb_seek: "Position",
-    pb_click: "Click", pb_loop: "Loop section", pb_song: "Song", pb_click_vol: "Click",
+    pb_click: "Click", pb_perc: "Percussion only", pb_loop: "Loop section", pb_song: "Song", pb_click_vol: "Click",
     pb_hint: "Space plays and pauses · double-click the tempo map to play from there · the click follows your edits",
     pb_loading: "Loading the song… {n}/{of}",
+    pb_perc_preparing: "Separating the drums…",
+    pb_perc_on: "Percussion only: the drums against the click. Untick to hear the full song.",
     pb_failed: "The song could not be played: {detail}",
     no_audio_staged: "The song is not loaded; press play again.",
     pb_rate: "Speed: slower lowers the pitch, so every attack stays exactly in place",
@@ -736,9 +738,11 @@ const I18N = {
     bad_stamp: "Eso no es un timestamp del editor.",
     no_osu: "osu! no se abrió — ¿está instalado? ({detail})",
     pb_play: "Reproducir / pausar (Espacio)", pb_from_line: "Desde la línea roja", pb_seek: "Posición",
-    pb_click: "Click", pb_loop: "Repetir sección", pb_song: "Canción", pb_click_vol: "Click",
+    pb_click: "Click", pb_perc: "Solo percusión", pb_loop: "Repetir sección", pb_song: "Canción", pb_click_vol: "Click",
     pb_hint: "Espacio reproduce y pausa · doble clic en el mapa de tempo para reproducir desde ahí · el click sigue tus ediciones",
     pb_loading: "Cargando la canción… {n}/{of}",
+    pb_perc_preparing: "Separando la batería…",
+    pb_perc_on: "Solo percusión: la batería contra el click. Destildá para oír la canción entera.",
     pb_failed: "No se pudo reproducir la canción: {detail}",
     no_audio_staged: "La canción no está cargada; volvé a darle play.",
     pb_rate: "Velocidad: más lento baja el tono, así cada ataque queda exactamente en su lugar",
@@ -2654,21 +2658,28 @@ async function pbFetch(kind) {
 async function pbLoad() {
   const path = S.result && S.result.path;
   if (!path) return false;
-  if (P.buffer && P.bufferFor === path) return true;
+  const perc = $("pbPerc") && $("pbPerc").checked;
+  const key = perc ? path + "|perc" : path;
+  if (P.buffer && P.bufferFor === key) return true;
   if (P.loading) return P.loading;
   P.loading = (async () => {
     const ctx = pbContext();
     try {
-      try {
-        P.buffer = await ctx.decodeAudioData(await pbFetch("file"));
-      } catch (err) {
-        // The browser cannot read every format Overtone can (AIFF): take
-        // Overtone's own decode instead of refusing.
-        P.buffer = await ctx.decodeAudioData(await pbFetch("wav"));
+      if (perc) {
+        $("pbStatus").textContent = t("pb_perc_preparing");
+        P.buffer = await ctx.decodeAudioData(await pbFetch("percussion"));
+      } else {
+        try {
+          P.buffer = await ctx.decodeAudioData(await pbFetch("file"));
+        } catch (err) {
+          // The browser cannot read every format Overtone can (AIFF): take
+          // Overtone's own decode instead of refusing.
+          P.buffer = await ctx.decodeAudioData(await pbFetch("wav"));
+        }
       }
-      P.bufferFor = path;
+      P.bufferFor = key;
       waveBuild();
-      $("pbStatus").textContent = t("pb_hint");
+      $("pbStatus").textContent = t(perc ? "pb_perc_on" : "pb_hint");
       return true;
     } catch (err) {
       P.buffer = null;
@@ -4139,6 +4150,11 @@ function wire() {
   };
   $("pbSeek").addEventListener("input", () => { if (S.result) pbSeek((+$("pbSeek").value / 1000) * S.result.duration); });
   $("pbClick").addEventListener("change", pbApplyLevels);
+  $("pbPerc").addEventListener("change", () => {
+    P.buffer = null;
+    if (P.playing) pbPlay(pbPosition());
+    else pbDraw();
+  });
   $("pbLoop").addEventListener("change", () => { if (P.playing) pbPlay(pbPosition()); });
   document.querySelectorAll("#pbRate button").forEach((b) => b.onclick = () => {
     document.querySelectorAll("#pbRate button").forEach((o) => o.classList.toggle("on", o === b));

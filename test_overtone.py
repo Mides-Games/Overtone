@@ -4595,6 +4595,31 @@ class OffsetLabTests(unittest.TestCase):
             self.assertEqual(mp3_gapless_info(Path(tmp) / "missing.mp3")["present"], False)
 
 
+class PercussionTests(unittest.TestCase):
+    """Phase 4, percussion-only audition: the drums as playable bytes."""
+
+    def test_percussive_stem_decodes_at_full_length(self):
+        import soundfile as sf
+        from overtone import percussive_wav
+        sr = 44100
+        t = np.arange(3 * sr) / sr
+        # Clicks over a sustained hum: drums plus something to remove.
+        y = (0.5 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)
+        for k in range(12):
+            start = int((0.5 + k * 0.2) * sr)
+            y[start:start + 400] += 0.9
+        room = tempfile.TemporaryDirectory()
+        self.addCleanup(room.cleanup)
+        raw = percussive_wav(y, sr)
+        self.assertTrue(raw.startswith(b"RIFF"))
+        path = str(Path(room.name) / "perc.wav")
+        with open(path, "wb") as handle:
+            handle.write(raw)
+        back, back_sr = sf.read(path, dtype="float32")
+        self.assertEqual((len(back), back_sr), (len(y), sr))
+        self.assertGreater(float(np.abs(back).max()), 0.0)
+
+
 class WriteHistoryTests(unittest.TestCase):
     """Phase 19, History: every .osu write logged, diffed and restorable."""
 

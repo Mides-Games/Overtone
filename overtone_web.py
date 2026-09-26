@@ -274,6 +274,9 @@ class Api:
         self._assisted: dict | None = None
         #: The song's bytes while the page fetches them for playback.
         self._audio_bytes: bytes | None = None
+        #: The percussive stem's WAV bytes with the analysis that made them:
+        #: HPSS costs seconds once, then rides the cache like structure.
+        self._percussion: tuple | None = None
         #: Held while the library index scans, so two scans never interleave.
         self._scanning = threading.Lock()
         #: The Rust engine's structure report, keyed by (path, size, mtime):
@@ -1470,14 +1473,27 @@ class Api:
 
         ``file`` is the song as it is on disk, for the browser to decode.
         ``wav`` is Overtone's own decode as 16-bit mono WAV, for a format the
-        browser cannot read (AIFF). Only the analysed file is ever served:
-        the page names no path.
+        browser cannot read (AIFF). ``percussion`` is the HPSS stem as WAV,
+        computed once per analysis under the one-heavy-job lock. Only the
+        analysed file is ever served: the page names no path.
         """
         if self._analysis is None:
             return {"ok": False, "key": "first"}
         source = Path(str(self._analysis.source))
         try:
-            if kind == "wav":
+            if kind == "percussion":
+                if self._percussion is None or self._percussion[0] is not self._analysis:
+                    if not self._busy.acquire(blocking=False):
+                        return {"ok": False, "key": "busy"}
+                    try:
+                        y, sr = ta._load_audio(source, lambda _message: None)
+                        payload = ta.percussive_wav(y, sr)
+                    finally:
+                        self._busy.release()
+                    self._percussion = (self._analysis, payload)
+                payload = self._percussion[1]
+                mime = "audio/wav"
+            elif kind == "wav":
                 payload = _wav_bytes(source)
                 mime = "audio/wav"
             else:

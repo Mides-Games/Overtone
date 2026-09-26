@@ -2092,6 +2092,25 @@ def _load_audio(path: str | os.PathLike[str],
     return y, int(sr)
 
 
+def percussive_wav(y: np.ndarray, sr: int) -> bytes:
+    """The percussive stem as 16-bit mono WAV bytes (Phase 4, audition).
+
+    librosa's HPSS, same length in and out, peak-normalized like a decode.
+    Thin on purpose: the bridge caches the bytes per analysis, and the only
+    promise made here is bytes that decode — attack preservation is measured
+    where it is used, not asserted here.
+    """
+    import io
+    _harmonic, percussive = librosa.effects.hpss(np.asarray(y, dtype=np.float32))
+    peak = float(np.max(np.abs(percussive)))
+    if peak > 1e-9:
+        percussive = (percussive / peak * 0.99).astype(np.float32)
+    buffer = io.BytesIO()
+    sf.write(buffer, np.asarray(percussive, dtype=np.float32), int(sr),
+             format="WAV", subtype="PCM_16")
+    return buffer.getvalue()
+
+
 def mp3_gapless_info(path: str | os.PathLike[str]) -> dict:
     """The MP3's own gapless numbers, read from its header (Phase 19, lab).
 

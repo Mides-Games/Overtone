@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **438** Python (302 engine + 136 web shell) · **263** Rust.
+Tests: **440** Python (303 engine + 137 web shell) · **263** Rust.
 
 ### What is pending, in order
 
@@ -280,7 +280,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | In-app preview | play song + click from the selected red line (WebAudio in the shell) | med | **high** | transport | no | no | **P1** | **done** |
 | Slow section loop | 4-bar loop of song + click at 100 / 75 / 50 %, pitch kept | med | high | transport | no | no | P1 | **done**, pitch not kept, by measurement — the section loop at 100/75/50 %, resampled: every attack exactly at t / rate. A pitch-kept stretch (librosa's phase vocoder) put attacks a median 23-24 ms late |
 | Tap-along check | tap along inside the app; show how far each tap lands from the grid | low | med | transport | no | no | P2 | **done** — T or the Tap button: taps placed at the sample then sounding (getOutputTimestamp; mapping within -1.1..+0.4 ms, measured), tempo of the run, offset from the click |
-| Percussion-only audition | hear just the percussive part (HPSS) to judge timing | med | med | P2 HPSS | no | no | P2 | todo |
+| Percussion-only audition | hear just the percussive part (HPSS) to judge timing | med | med | P2 HPSS | no | no | P2 | **done** — transport toggle, librosa stem cached per analysis over the chunk transport |
 | Latency calibration | measure output latency once so the click lines up with the audio | low | med | transport | no | no | P2 | not needed for listening — the song and the click share one AudioContext and one clock (measured within 0.25 ms). For tapping: **done** — the person's own latency, measured against the click and remembered |
 
 ---

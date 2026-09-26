@@ -561,6 +561,38 @@ class SnapBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().snap("C:/x.osu")["key"], "first")
         self.assertEqual(_api_with_points().snap("C:/does/not/exist.osu")["key"], "bad_file")
 
+    def test_resnap_preview_then_apply_moves_snapped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text("\n".join(
+                ["osu file format v14", "", "[TimingPoints]", "1000,500,4,1,0,100,1,0",
+                 "", "[HitObjects]", "64,192,1500,1,0,0:0:0:0:", "64,192,1300,1,0,0:0:0:0:",
+                 ""]), encoding="utf-8")
+            api = _api_with_points()
+            api._analysis.points = [ta.TimingPoint(1010.0, 120.0, 0.9, 0)]
+            prev = api.resnap_preview(str(target))
+            json.dumps(prev)
+            self.assertTrue(prev["ok"])
+            # Old red 1000 vs detected 1010: the snapped 1500 rides +10 ms,
+            # the off-grid 1300 stays listed. Runs before injecting, while the
+            # map still has its old red lines.
+            self.assertEqual((prev["moved"], prev["changed"]), (1, 1))
+            self.assertEqual([o["time_ms"] for o in prev["left"]], [1300.0])
+            done = api.resnap_apply(str(target))
+            self.assertEqual((done["written"], done["changed"]), (True, 1))
+            self.assertTrue(Path(str(target) + ".bak").is_file())
+            self.assertIn("64,192,1510,1,0,0:0:0:0:",
+                          target.read_text(encoding="utf-8"))
+            # A second run finds nothing on the old grid: the moved object is
+            # listed now, and nothing is written.
+            again = api.resnap_apply(str(target))
+            self.assertEqual((again["changed"], again["written"]), (0, False))
+
+    def test_resnap_needs_a_result_and_a_real_file(self) -> None:
+        self.assertEqual(web.Api().resnap_preview("C:/x.osu")["key"], "first")
+        self.assertEqual(web.Api().resnap_apply("C:/x.osu")["key"], "first")
+        self.assertEqual(_api_with_points().resnap_preview("C:/does/not/exist.osu")["key"], "bad_file")
+
 
 class ReferenceBridgeTests(_IsolatedConfig):
     """Reference timing: grade any map, load it as the working timing, find

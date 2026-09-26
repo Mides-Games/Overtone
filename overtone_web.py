@@ -1167,6 +1167,46 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "suggestions": suggestions, "file": Path(osu_path).name}
 
+    def resnap_preview(self, osu_path: str) -> dict:
+        """What moving this map's snapped objects onto the current grid would
+        move, and what would stay. Read only."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if not Path(str(osu_path)).is_file():
+            return {"ok": False, "key": "bad_file"}
+        try:
+            beatmap = ta.read_osu_beatmap(osu_path)
+            diff = ta.inject_diff(osu_path, self._analysis,
+                                  decimals=self._settings()["offset_decimals"])
+            import copy
+            work = copy.deepcopy(beatmap)
+            result = ta.resnap_objects(work, diff["pairs"])
+            before = [(o.get("time"), o.get("end_time")) for o in beatmap["hitobjects"]]
+            after = [(o.get("time"), o.get("end_time")) for o in work["hitobjects"]]
+            changed = sum(1 for b, a in zip(before, after) if b != a)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": Path(osu_path).name, "moved": result["moved"],
+                "changed": changed, "left": result["left"], "skipped": result["skipped"]}
+
+    def resnap_apply(self, osu_path: str) -> dict:
+        """Move the snapped objects onto the current grid, the file backed up
+        first and logged. Writes nothing when no time would actually change."""
+        preview = self.resnap_preview(osu_path)
+        if not preview.get("ok"):
+            return preview
+        if not preview["changed"]:
+            return {**preview, "written": False, "backup": None}
+        try:
+            beatmap = ta.read_osu_beatmap(osu_path)
+            diff = ta.inject_diff(osu_path, self._analysis,
+                                  decimals=self._settings()["offset_decimals"])
+            ta.resnap_objects(beatmap, diff["pairs"])
+            written = ta.write_osu_beatmap(osu_path, beatmap)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {**preview, "written": True, "backup": written["backup"]}
+
     # -- reference timing: any map's red lines, graded by the attacks -------
     def _attacks(self) -> tuple[np.ndarray, np.ndarray]:
         """The analysed song's attacks. The fallback tracker keeps none, and

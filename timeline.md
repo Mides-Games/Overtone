@@ -16,6 +16,29 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · Re-snap objects from Map check
+
+### Changed
+
+- **Re-snap card in Map check**: any `.osu` previewed (to move, times
+  changing, staying with the first stayers listed) and moved with one
+  confirmation, backed up first — then inject. Runs before injecting, while
+  the map still has its old red lines; a second run writes nothing. EN/ES.
+
+### Measured
+
+```
+synthetic map                 1 moved 1 staying in preview, written with backup;
+                              second run 0 changed, nothing written
+Python unittest                 477 -> 479, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages, no
+                                duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Re-snap, engine half: snapped stays snapped
 
 ### Changed

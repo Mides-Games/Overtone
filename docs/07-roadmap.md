@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **477** Python (328 engine + 149 web shell) · **263** Rust.
+Tests: **479** Python (328 engine + 151 web shell) · **263** Rust.
 
 ### What is pending, in order
 
@@ -578,7 +578,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Breaks | quiet spans long enough for a break | low | med | energy | no | no | P2 | **done** — sections 6 dB under the loudest cut by the map's own sound gaps (5 s or longer), Structure card with span preview and confirmed write with backup |
 | Volume by section | hitsound volume from section energy, as greens | low | med | energy, writer | no | no | P2 | todo |
 | SV normaliser | greens that cancel BPM changes so scroll and slider speed stay constant | med | **high** | writer | no | no | P1 | **done** — first red's BPM is the reference, greens carry reference-over-own with the audible state and the red's effects; Timing card with preview counts and confirmed write with backup |
-| Re-snap objects | move hit objects onto the new grid after a timing change | high | **high** | writer, P5 | no | no | P1 | todo |
+| Re-snap objects | move hit objects onto the new grid after a timing change | high | **high** | writer, P5 | no | no | P1 | **done** — snapped-before stays snapped via the diff's drift, off-grid listed never touched; Map check card with preview, one confirmation and backup |
 | Snap-divisor map | where the song needs 1/3, 1/4 or 1/6, per section | med | high | attacks | no | no | P1 | **done** — coarsest grid per attack within 15 ms, verdict by attack weight; read-only Timing card, one line per section |
 | Swing lane | where the music swings or sits off the grid | med | med | attacks | no | no | P2 | todo |
 | New mapset from audio | encode MP3/OGG at a target bitrate, trim lead silence and re-offset | med | high | `.osz` | no | no | P2 | partial — `.osz` without encoding |

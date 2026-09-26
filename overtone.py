@@ -4312,19 +4312,24 @@ def scan_beatmap_folder(folder: str | os.PathLike[str]) -> dict:
 # Full .osu reading (Phase 5, first row)
 # ---------------------------------------------------------------------------
 
-def _split_osu_sections(text: str) -> tuple[int, list[str], list[dict]]:
-    """Format version, pre-section head lines, and every section in file order.
+def _split_osu_sections(text: str) -> tuple[int, list[str], list[str], list[dict]]:
+    """Format version, pre-section head lines and their endings, and every
+    section in file order.
 
     Unknown sections ride along verbatim in ``sections`` — the span-preserving
     writer's contract is that a field nobody asked to change comes out
     byte-identical, and that starts with the reader losing nothing, including
-    the exact head lines before the first section.
+    the exact head lines before the first section and each line's own ending:
+    a CRLF file can hold a bare LF line, and ``endings`` (beside ``lines``)
+    and ``header_ending`` keep it one.
     """
     version = 0
     head: list[str] = []
+    head_endings: list[str] = []
     sections: list[dict] = []
     current: dict | None = None
-    for line in text.splitlines():
+    for line, raw in zip(text.splitlines(), text.splitlines(keepends=True)):
+        ending = raw[len(line):]
         stripped = line.strip()
         if version == 0 and stripped.startswith("osu file format v"):
             try:
@@ -4332,14 +4337,17 @@ def _split_osu_sections(text: str) -> tuple[int, list[str], list[dict]]:
             except ValueError:
                 pass
         if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
-            current = {"name": stripped[1:-1], "lines": []}
+            current = {"name": stripped[1:-1], "lines": [], "endings": [],
+                       "header_ending": ending}
             sections.append(current)
             continue
         if current is None:
             head.append(line)
+            head_endings.append(ending)
         else:
             current["lines"].append(line)
-    return version, head, sections
+            current["endings"].append(ending)
+    return version, head, head_endings, sections
 
 
 def _osu_key_values(lines: list[str]) -> dict:
@@ -4447,11 +4455,13 @@ def read_osu_beatmap(osu_path: str | os.PathLike[str]) -> dict:
     parsed views (``general``/``editor``/``metadata``/``difficulty``,
     ``timing`` reds plus green raws, ``hitobjects``). Hit sounds parse into
     ``normal_set``/``addition_set``/``index``/``volume``/``file``. ``head``,
+    ``head_endings``, each section's ``endings`` and ``header_ending``,
     ``newline`` and ``bom`` exist for one reason: the writer rebuilds from
-    them, so an untouched file comes back byte-identical.
+    them, so an untouched file comes back byte-identical, mixed line endings
+    included. ``newline`` is only for lines added since the read.
     """
     text, bom = _load_osu_text(osu_path)
-    version, head, sections = _split_osu_sections(text)
+    version, head, head_endings, sections = _split_osu_sections(text)
     by_name: dict[str, dict] = {}
     for section in sections:
         by_name.setdefault(section["name"], section)
@@ -4466,6 +4476,7 @@ def read_osu_beatmap(osu_path: str | os.PathLike[str]) -> dict:
     return {
         "format": version,
         "head": head,
+        "head_endings": head_endings,
         "newline": "\r\n" if "\r\n" in text else "\n",
         "trailing_newline": text.endswith(("\n", "\r")),
         "bom": bom,
@@ -4487,26 +4498,37 @@ def set_beatmap_reds(beatmap: dict, new_reds: list[str]) -> int:
 
     New reds take the position of the first old red (same rule as inject, but
     on the parsed structure instead of the file); with no old reds they append
-    at the end of the section. The ``timing`` view is refreshed, and the
-    replaced red count returns.
+    at the end of the section. Every other line keeps its own ending; the
+    k-th new red takes the k-th old red's, and reds beyond the old count take
+    none, so the writer gives them the file's ``newline``. The ``timing`` view
+    is refreshed, and the replaced red count returns.
     """
     section = next((s for s in beatmap["sections"] if s["name"] == "TimingPoints"), None)
     if section is None:
         raise ValueError("No [TimingPoints] section in this beatmap.")
-    replaced = sum(1 for line in section["lines"]
-                   if line.strip() and _is_red_line(line.strip()))
+    endings = _aligned_endings(section["lines"], section.get("endings"))
+    is_red = [bool(line.strip()) and _is_red_line(line.strip()) for line in section["lines"]]
+    red_endings = [ending for ending, red in zip(endings, is_red) if red]
+    new_endings = [red_endings[k] if k < len(red_endings) else None
+                   for k in range(len(new_reds))]
+    replaced = len(red_endings)
     out: list[str] = []
+    out_endings: list[str | None] = []
     done = False
-    for line in section["lines"]:
-        if line.strip() and _is_red_line(line.strip()):
+    for line, ending, red in zip(section["lines"], endings, is_red):
+        if red:
             if not done:
                 out.extend(new_reds)
+                out_endings.extend(new_endings)
                 done = True
         else:
             out.append(line)
+            out_endings.append(ending)
     if not done:
         out.extend(new_reds)
+        out_endings.extend(new_endings)
     section["lines"] = out
+    section["endings"] = out_endings
     timing = [line for line in out if line.strip() and not line.strip().startswith("//")]
     beatmap["timing"] = {
         "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
@@ -4874,25 +4896,51 @@ def set_constant_scroll(beatmap: dict) -> dict:
     }
     return {"added": added, "flipped": flipped, "kept": kept}
 
+def _aligned_endings(lines: list[str], endings: list | None) -> list[str | None]:
+    """``endings`` when they still pair one to one with ``lines``; otherwise
+    None for every line, since pairing by position would misplace them."""
+    if endings is None or len(endings) != len(lines):
+        return [None] * len(lines)
+    return list(endings)
+
 
 def beatmap_text(beatmap: dict) -> str:
-    """Head plus sections in order, raw lines untouched, original newline."""
+    """Head plus sections in order, raw lines untouched, each with its own ending.
+
+    A line keeps the ending it was read with, so a CRLF file holding one bare
+    LF comes back as it was. A line with no ending on record (added since the
+    read, or in a section whose ``lines`` changed length without its
+    ``endings``) takes ``newline``, as does a line that was last and no
+    longer is. The file ends with a line break exactly when it did.
+    """
     newline = beatmap.get("newline", "\n")
-    text = newline.join(beatmap.get("head", []) +
-                        [line for section in beatmap["sections"]
-                         for line in [f"[{section['name']}]"] + section["lines"]])
-    return text + newline if beatmap.get("trailing_newline", True) else text
+    head = beatmap.get("head", [])
+    rows = list(zip(head, _aligned_endings(head, beatmap.get("head_endings"))))
+    for section in beatmap["sections"]:
+        rows.append((f"[{section['name']}]", section.get("header_ending")))
+        rows.extend(zip(section["lines"],
+                        _aligned_endings(section["lines"], section.get("endings"))))
+    trailing = beatmap.get("trailing_newline", True)
+    out: list[str] = []
+    for n, (line, ending) in enumerate(rows):
+        if n == len(rows) - 1:
+            ending = (ending or newline) if trailing else ""
+        elif not ending:
+            ending = newline
+        out.append(line + ending)
+    return "".join(out)
 
 
 def write_osu_beatmap(osu_path: str | os.PathLike[str], beatmap: dict,
                       backup: bool = True) -> dict:
     """Write a parsed beatmap back (Phase 5, writer row).
 
-    Untouched sections come out byte-identical — same lines, same newline,
-    same BOM — because the reader kept them all. Atomic temp-plus-rename, and
-    backups follow inject's rules (_backup_before_write): written first, never
-    overwritten, skipped when there is no original to protect. ``backup`` in
-    the result is the path holding the replaced bytes, or None.
+    Untouched lines come out byte-identical — same text, same line ending
+    (each its own, mixed or not), same BOM — because the reader kept them
+    all. Atomic temp-plus-rename, and backups follow inject's rules
+    (_backup_before_write): written first, never overwritten, skipped when
+    there is no original to protect. ``backup`` in the result is the path
+    holding the replaced bytes, or None.
     """
     path = Path(osu_path)
     original = path.read_bytes() if path.is_file() else None

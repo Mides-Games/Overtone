@@ -1523,6 +1523,46 @@ Python unittest             353 -> 358, all pass
 
 ---
 
+## v4.0.0-dev — 2026-09-24 · Mixed line endings survive the beatmap writer
+
+### Fixed
+
+- **A map with mixed line endings changed on a write that edited nothing.** The section
+  reader split lines with `splitlines()`, which drops each line's ending, and
+  `beatmap_text` joined them all with one `newline` (CRLF whenever the file held any). A
+  CRLF map with one bare LF, as in "575767 BTS - Not Today", came back with that LF turned
+  into CRLF, breaking rule 5. `inject_osu_timing_points` already kept each line's own
+  ending; the reader and writer now do too:
+  - `read_osu_beatmap` records each line's ending: `head_endings`, and a section's
+    `endings` beside its `lines` plus `header_ending`.
+  - `beatmap_text` writes each line with its own ending. A line with none on record (one
+    added since the read) takes `newline`. The file ends with a line break exactly when
+    it did.
+  - `set_beatmap_reds` keeps the ending of every line it does not replace. The k-th new
+    red takes the k-th old red's ending; reds beyond the old count take `newline`.
+
+### Measured
+
+Local Songs folder, read only (every `.osu`, nothing written):
+
+```
+maps read                          25,171; 14 mix line endings (4 mapsets)
+read -> write, no edit             before: 14 differ (exactly the 14 mixed)   after: 0
+read -> set_beatmap_reds(its own   before: 14 change a line that is not a red,
+  reds) -> write                     or a red's ending                         after: 0
+read_osu_beatmap, 250 maps         8.4 -> 9.0 ms per map (+8 %); beatmap_text 0.12 ->
+                                   0.34 ms. Maps are read one at a time (the library
+                                   index does not use this reader)
+Python tests                       353 -> 354, all pass; benchmark 24/24, median
+                                   0.0000 BPM and 0.16 ms; every Python gate green
+```
+
+The second row checks everything outside the reds, byte for byte, with each red's ending.
+It does not compare whole files: `set_beatmap_reds` moves all reds to where the first one
+stood, by design.
+
+---
+
 ## v4.0.0-dev — 2026-09-24 · Hitsounds first: the plan
 
 ### Changed

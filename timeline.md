@@ -17,6 +17,86 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Harness pass: the 19 owed surfaces, and what they hid
+
+### Changed
+
+- **The 19 surfaces owed a browser pass were exercised in the browser pane**, on scratch
+  copies of two local mapsets (Culprate & Skorpion - Jester, 5 difficulties, a steady
+  172 BPM the precision engine reads; Lindsey Stirling - Master of Tides, 3 difficulties,
+  which goes to the fallback), in both themes and both languages: every card previewed,
+  every write applied to the copies and read back from disk, History diffing and
+  restoring them. The first thing it found is its own entry: app.js did not load.
+
+### Fixed
+
+- **Kiai lit almost nothing on a real map.** It touched only each chorus's edges: the
+  map's own greens inside a chorus carry a kiai bit (off) and switched it off at the first,
+  and at a seam between two choruses the close sorted after the next open. Master of
+  Tides read "Kiai on 9 choruses" and lit 4 % of the first. Touching choruses now light as
+  one run, every point inside reads kiai, and the end gives back the map's own kiai.
+- **Audio swap refused almost every encode with less silence up front**: it moved
+  AudioLeadIn, a wait before the song, and "AudioLeadIn: 0" landed below zero. It also
+  refused maps with a red line before zero, which osu! allows, counted greens as red
+  lines, and listed the folder's hitsound samples as new encodes, so the card showed on
+  every mapset with custom samples.
+- **Re-snap offered a second move.** After moving 746 objects the card previewed 165 more
+  against the map's old red lines; applying would have moved them twice. The bridge now
+  refuses while the file holds what the re-snap wrote.
+- **Ramps offered lines the engine itself turned down**: on real songs the fit cuts the
+  attacks' jitter into two-attack grids at any BPM, and Use loaded them. Use now follows
+  the engine's selector.
+- **History** logged six tools as a bare "write" and missed the hitsound undo; its time
+  column took the row while file names wrapped a word per line.
+- **Messages**: "0 breaks into X: ." for nothing to write, a hitsound copy's toast naming
+  the original, a raw "{file}" after a swap, a refused swap preview leaving the previous
+  one on screen. Bookmarks, in both writers, keep osu!'s comma-only format.
+
+### Hardening
+
+- An old green line short of fields is padded with osu!'s defaults, not empty fields
+  (osu! reads a character from them), and a line inserted into [TimingPoints] leaves every
+  other line's own ending alone (kiai and section volumes).
+
+### Measured
+
+```
+kiai, Master of Tides [FinallyV's Extra]  choruses lit before 0/0/0/0/54/0/48/0/90 %,
+                              the old tool the same (4 % of the first); now 100 % of each,
+                              0 % outside; 0 of 1876 sound events changed; a second run
+                              writes nothing
+audio swap, 3000 local maps   a timing line before zero 7.3 %, "AudioLeadIn: 0" 95.6 %;
+                              refused at +40 ms 6.1 % -> 0.2 %, at -40 ms 96.0 % -> 3.0 %
+                              (an object, preview or bookmark in the first 40 ms)
+ramps on real songs           Jester 184 lines at 173-794 BPM, Master of Tides 71 at
+                              16-459 BPM, both recommend_ramps false; the synthetic
+                              ramp-120-160 16 lines at 121-159 BPM, recommended
+re-snap, Master of Tides      746 moved; 165 more offered before, refused now
+UI                            EN/ES tables 704 -> 714 keys each, same placeholders;
+                              no raw key, empty {placeholder} or page overflow in the
+                              10 sections (Spanish, 1280x800); the light theme looked at
+                              in Structure, Mapset and History
+Python unittest               492 -> 499, all pass
+benchmark.py                  24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · coverage, measures, signatures, robustness,
+reference 24/24, assisted 70 · facts
+```
+
+### Found, not fixed (a decision each)
+
+- **Constant scroll** writes greens only at red lines: after a BPM change the map's own
+  greens stay relative to the new BPM, so the scroll holds only until the next green
+  (5.5 s on a scratch map with a 140 BPM change). Rescaling every green needs a rule that
+  keeps a second run from rescaling them again.
+- **Section volumes** write only at section starts: the map's own greens (volumes 60, 70,
+  85 in Master of Tides) take over at the next one, and a red line inside a section
+  (Jester's intro) sets its own volume back. Overwriting a mapper's volumes is not this tool's call to make.
+- **Ramps on real audio**: the lines are two-attack grids whose median, 344 BPM on a
+  172 BPM song, is the atomic pulse's rate; only the selector keeps them out of the map.
+- **Structure labels**: Jester reads as two sections (a 4 s intro, a 267 s "outro"); Master
+  of Tides as 9 choruses out of 11, so kiai lights nearly the whole song. A bookmark lands
+  at 0 ms for a section that starts with the song.
+
 ## v4.0.0-dev — 2026-09-26 · The app loads again: a merge had cut app.js short
 
 ### Fixed

@@ -24,7 +24,7 @@ sections within 0.05 BPM and 5 ms     24 / 24
 |---|---|
 | **Timing engine** (Python) | ✅ Works. Exact on the synthetic corpus; refuses audio with no pulse |
 | **Timing engine** (Rust v4) | ✅ At parity with Python, attack for attack and red line for red line; about 4× faster end to end on the corpus. In the app as an opt-in (Settings → Rust engine); Python takes over, and says so, where Rust has no answer |
-| **App** (web window) | ✅ Ten sections: Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export, History and Settings; analyse, edit, undo, lock, export, inject (one map or the whole mapset, with a diff), compare with a map, alignment, density, snap audit, re-snap, suggestions, mapset check, reference and assisted timing, the engine's alternatives, ramps, offset lab, map tools from the song's structure, audio swap, write history, mod report, osu! Songs browser — in English and Spanish, dark or light. The newest screens still owe a browser check ([timeline](timeline.md)) |
+| **App** (web window) | ✅ Ten sections: Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export, History and Settings; analyse, edit, undo, lock, export, inject (one map or the whole mapset, with a diff), compare with a map, alignment, density, snap audit, re-snap, suggestions, mapset check, reference and assisted timing, the engine's alternatives, ramps, offset lab, map tools from the song's structure, audio swap, write history, mod report, osu! Songs browser — in English and Spanish, dark or light |
 | **osu! files** | ✅ Full reader; writer keeps every byte you did not ask to change |
 | **Hitsounds** | ✅ In the app: copy one difficulty's hitsounds onto the others, see where each addition falls, hear them with the song, a consistency check in the mod report, and the Rust decision engine's proposals to tick, preview, write and undo. Volume and sample edits, profiles and a sample bank come next |
 | **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, section loop at 100/75/50 %, taps, the percussive part alone, a difficulty's hitsounds |
@@ -142,8 +142,8 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Decimal offsets for lazer | ✅ | Settings → Offset precision: 0-3 decimals for copy, `.osz` and inject; the CLI flag too |
 | lazer format specifics | 📋 | P5 |
 | Inject into every difficulty at once, with a diff | ✅ | Export; each old red line beside its new value and the drift it causes, one confirmation, every file backed up, one bad map stops nothing |
-| Kiai, breaks, bookmarks, section volumes and the preview point from the song's structure | ✅ | Structure view; each write previewed, confirmed and backed up; the preview point is suggested with its reason |
-| SV normaliser across BPM changes | ✅ | Timing's Constant scroll card: greens that keep scroll and slider speed constant, what plays kept |
+| Kiai, breaks, bookmarks, section volumes and the preview point from the song's structure | ✅ | Structure view; each write previewed, confirmed and backed up; the preview point is suggested with its reason. Section volumes are written at section starts only, so the map's own greens take over |
+| SV normaliser across BPM changes | 🟡 | Timing's Constant scroll card: a green at each red line, what plays kept. The map's own greens after a BPM change are not rescaled yet |
 | Re-snap objects after a timing change | ✅ | Map check; snapped objects stay snapped, off-grid ones are listed and never moved |
 | Export to Quaver and StepMania | 📋 | P21 |
 | Audio file check | ✅ | Mapset; bitrate, sample rate, length, clipping and lead-in against Overtone's own bars — no ranking number is encoded, none can be checked offline |

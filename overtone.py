@@ -3984,13 +3984,18 @@ def shift_osu_text(text: str, shift_ms: float, audio_name: str | None = None,
     """Every time of one .osu moved by ``shift_ms`` (Phase 19, Audio swap).
 
     Red and green offsets, object starts, spinner and hold ends, a set
-    PreviewTime, AudioLeadIn and editor bookmarks; optionally the
-    AudioFilename with it. Lines keep their shape and order — only the
+    PreviewTime and editor bookmarks; optionally the AudioFilename with it.
+    AudioLeadIn stays: it is a wait before the song starts, not a moment in
+    it, and moving it refused every encode with less silence up front on a
+    map with a lead-in of 0. Lines keep their shape and order — only the
     numbers move. Storyboard times are not parsed anywhere and stay as they
-    were, stated here instead of hidden. Anything landing before zero, and a
-    missing section the move needs, refuses the whole text: half a shifted
-    mapset is a corruption, not a subset. Returns the shifted text (split
-    lines, no trailing newline) with counts of reds and objects moved.
+    were, stated here instead of hidden. An object, preview or bookmark
+    landing before zero, and a missing section the move needs, refuses the
+    whole text: half a shifted mapset is a corruption, not a subset. Timing
+    lines may sit before zero, as osu! allows (a first red line at -3189 ms
+    refused a whole real mapset). Returns the shifted text (split
+    lines, no trailing newline) with the red lines and objects moved (every
+    timing line moves; greens are not counted as red lines).
     """
     lines = text.splitlines()
     section = ""
@@ -4018,8 +4023,10 @@ def shift_osu_text(text: str, shift_ms: float, audio_name: str | None = None,
             fields = line.split(",")
             if len(fields) < 2:
                 raise ValueError(f"Unusable timing line: {stripped[:40]}.")
-            fields[0] = move(fields[0])
-            moved["reds"] += 1
+            # A timing line may sit before zero — a first red line there lines
+            # the bars up — so only objects and marks refuse a negative time.
+            fields[0] = _shifted_number(fields[0], shift_ms, decimals)
+            moved["reds"] += _is_red_line(stripped)
             out.append(",".join(fields))
         elif section == "hitobjects":
             seen["objects"] = True
@@ -4044,9 +4051,9 @@ def shift_osu_text(text: str, shift_ms: float, audio_name: str | None = None,
             seen["general"] = True
             name, colon, value = line.partition(":")
             key = name.strip().lower()
-            if key in ("previewtime", "audioleadin") and colon:
+            if key == "previewtime" and colon:
                 number = value.strip()
-                if number and (key != "previewtime" or float(number) >= 0):
+                if number and float(number) >= 0:
                     out.append(f"{name.strip()}: {move(number)}")
                     continue
             if key == "audiofilename" and colon and audio_name is not None:
@@ -4061,7 +4068,7 @@ def shift_osu_text(text: str, shift_ms: float, audio_name: str | None = None,
                     marks = [move(mark) for mark in value.split(",") if mark.strip()]
                 except ValueError:
                     raise ValueError("A bookmark lands before zero: refusing.")
-                out.append(f"{name}: {', '.join(marks)}")
+                out.append(f"{name}: {','.join(marks)}")
                 continue
             out.append(line)
         else:
@@ -7260,14 +7267,17 @@ def set_editor_bookmarks(beatmap: dict, times_ms: list[float]) -> dict:
                 raise ValueError(f"Unusable bookmarks: {token!r}.")
     wanted = sorted({int(round(t)) for t in times_ms if t is not None} | set(kept))
     wanted = [t for t in wanted if t >= 0]
+    # Commas alone, as osu! writes the line: the mapper's own marks read back
+    # as they were, and the diff against the backup is the added numbers.
+    listed = ",".join(str(t) for t in wanted)
     if index is None:
-        section["lines"].append(f"Bookmarks: {', '.join(str(t) for t in wanted)}")
+        section["lines"].append(f"Bookmarks: {listed}")
     else:
         head = section["lines"][index].split(":", 1)[0]
-        section["lines"][index] = f"{head}: {', '.join(str(t) for t in wanted)}"
+        section["lines"][index] = f"{head}: {listed}"
     editor = beatmap.setdefault("editor", {})
     if isinstance(editor, dict):
-        editor["Bookmarks"] = ", ".join(str(t) for t in wanted)
+        editor["Bookmarks"] = listed
     return {"added": len(wanted) - len(kept), "total": len(wanted)}
 
 

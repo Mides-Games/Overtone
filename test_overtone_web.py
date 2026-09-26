@@ -1571,7 +1571,7 @@ class StructureBookmarksBridgeTests(_IsolatedConfig):
                                  (3, 3, 4))
                 self.assertEqual((done["added"], done["written"]), (3, True))
                 self.assertNotEqual(before, after)
-                self.assertIn(b"Bookmarks: 0, 1000, 16500, 32000", after)
+                self.assertIn(b"Bookmarks: 0,1000,16500,32000", after)
                 self.assertTrue(Path(tmp, "map.osu.bak").is_file())
 
     def test_without_sections_or_maps_it_says_so(self) -> None:

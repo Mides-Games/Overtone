@@ -5037,7 +5037,8 @@ class AudioSwapTests(unittest.TestCase):
             "100,100,5000,128,0,6000:0:0:0:0:", ""])
         shifted, moved = shift_osu_text(text, 26.0, audio_name="new.mp3")
         json.dumps(moved)
-        self.assertEqual((moved["reds"], moved["objects"]), (2, 4))
+        # One red line and one green: both move, one counts as a red line.
+        self.assertEqual((moved["reds"], moved["objects"]), (1, 4))
         self.assertIn("1026,500,4,2,0,70,1,0", shifted)
         self.assertIn("1526,-100,4,2,0,60,0,0", shifted)
         self.assertIn("256,192,1026,1,4,0:0:0:0:", shifted)
@@ -5045,8 +5046,9 @@ class AudioSwapTests(unittest.TestCase):
         self.assertIn("100,100,5026,128,0,6026:0:0:0:0:", shifted)
         self.assertIn("AudioFilename: new.mp3", shifted)
         self.assertIn("PreviewTime: 2026", shifted)
-        self.assertIn("AudioLeadIn: 526", shifted)
-        self.assertIn("Bookmarks: 1026, 2026", shifted)
+        # The lead-in is a wait before the song, not a moment in it.
+        self.assertIn("AudioLeadIn: 500", shifted)
+        self.assertIn("Bookmarks: 1026,2026", shifted)
         # The shifted text parses with every time moved.
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "map.osu"
@@ -5062,6 +5064,29 @@ class AudioSwapTests(unittest.TestCase):
             shift_osu_text(text, -2000.0)
         with self.assertRaises(ValueError):
             shift_osu_text("[General]\n", 10.0)
+
+    def test_an_encode_with_less_silence_moves_a_map_with_no_lead_in(self):
+        # Every real map writes "AudioLeadIn: 0", and moving it refused every
+        # negative shift at 0 ms although nothing timed landed before zero.
+        from overtone import shift_osu_text
+        text = _copy_map(["256,192,1000,1,0,0:0:0:0:"], timing="1000,500,4,2,0,70,1,0").replace(
+            "[General]\n", "[General]\nAudioLeadIn: 0\n")
+        shifted, moved = shift_osu_text(text, -40.0)
+        self.assertIn("AudioLeadIn: 0", shifted)
+        self.assertIn("960,500,4,2,0,70,1,0", shifted)
+        self.assertIn("256,192,960,1,0,0:0:0:0:", shifted)
+        self.assertEqual((moved["reds"], moved["objects"]), (1, 1))
+
+    def test_a_red_line_before_zero_moves_like_any_other(self):
+        # osu! allows a first red line before the song starts; the swap
+        # refused every map of a real set with one at -3189 ms.
+        from overtone import shift_osu_text
+        text = _copy_map(["256,192,1000,1,0,0:0:0:0:"], timing="-3189,500,4,2,0,70,1,0")
+        for shift, red, obj in ((40.0, "-3149,500,", "256,192,1040,"),
+                                (-40.0, "-3229,500,", "256,192,960,")):
+            shifted, _moved = shift_osu_text(text, shift)
+            self.assertIn(red, shifted)
+            self.assertIn(obj, shifted)
 
     def test_apply_moves_a_set_atomically_with_backups(self):
         from overtone import apply_audio_swap, preview_audio_swap, read_history
@@ -5420,9 +5445,10 @@ class StructureViewTests(unittest.TestCase):
         result = set_editor_bookmarks(beatmap, [2000.4, 1000.0, -50.0])
         json.dumps(result)
         self.assertEqual(result, {"added": 1, "total": 3})
+        # Commas alone, as osu! writes the line.
         self.assertEqual(beatmap["sections"][0]["lines"],
-                         ["Bookmarks: 1000, 2000, 3000", "DistanceSpacing: 1.2"])
-        self.assertEqual(beatmap["editor"]["Bookmarks"], "1000, 2000, 3000")
+                         ["Bookmarks: 1000,2000,3000", "DistanceSpacing: 1.2"])
+        self.assertEqual(beatmap["editor"]["Bookmarks"], "1000,2000,3000")
 
     def test_bookmarks_append_when_missing_and_refuse_junk(self):
         from overtone import set_editor_bookmarks

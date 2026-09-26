@@ -1,4 +1,4 @@
-"""Build Overtone's installer in one line, from a checkout.
+"""Build Overtone's installer and portable ZIP in one line, from a checkout.
 
     .venv\\Scripts\\python.exe installer\\build.py [--no-msi] [--no-verify] [--clean]
 
@@ -6,13 +6,14 @@ Each step is timed, and its output goes to ``build\\logs``:
 
 1. the Rust engine: ``cargo build --release -p overtone-cli``;
 2. PyInstaller (``installer/overtone.spec``): ``dist\\Overtone``, the tree the
-   MSI installs;
+   MSI installs and the ZIP holds;
 3. the smoke test on that tree (``installer/smoke.py``);
 4. the MSI, with WiX 5.0.2 (``installer/Overtone.wxs``), per user;
-5. the MSI unpacked into a temporary folder by an administrative install
-   (``msiexec /a``, which installs and registers nothing), compared with the
-   tree file for file and smoke-tested;
-6. sizes, SHA-256 and timings, printed and written beside the MSI.
+5. the portable ZIP: the same tree in one ``Overtone`` folder;
+6. both unpacked into temporary folders, the MSI by an administrative install
+   (``msiexec /a``, which installs and registers nothing), each compared with
+   the tree file for file and smoke-tested;
+7. sizes, SHA-256 and timings, printed and written beside the MSI.
 
 Nothing here reaches the network. The toolchain is set up once, per user and
 without an administrator (docs/11-msi-distribution.md, "Building it"), and a
@@ -20,8 +21,8 @@ missing piece stops the build before it starts, named. So does a venv whose
 wheels differ from ``requirements.lock`` or ``requirements-build.lock``: the
 bundle carries what the venv holds, and the lock is what was measured.
 
-``--no-msi`` builds and smoke-tests the tree only (no .NET or WiX needed);
-``--no-verify`` skips step 5; ``--clean`` rebuilds PyInstaller's cache.
+``--no-msi`` builds the tree and the ZIP only (no .NET or WiX needed);
+``--no-verify`` skips step 6; ``--clean`` rebuilds PyInstaller's cache.
 """
 from __future__ import annotations
 
@@ -36,6 +37,7 @@ import sys
 import tempfile
 import time
 import uuid
+import zipfile
 from datetime import datetime
 from importlib import metadata
 from pathlib import Path
@@ -226,6 +228,17 @@ def ice_findings(log: Path) -> dict[str, dict[str, int]]:
     return found
 
 
+def write_zip(tree: Path, target: Path) -> None:
+    """The tree under one top folder, so it unpacks into ``Overtone\\``."""
+    target.unlink(missing_ok=True)
+    partial = target.with_name(target.name + ".part")
+    with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        for path in sorted(tree.rglob("*")):
+            if path.is_file():
+                archive.write(path, f"{tree.name}/{path.relative_to(tree).as_posix()}")
+    os.replace(partial, target)
+
+
 def admin_image(msi: Path, target: Path, log: Path) -> Path:
     """The MSI's files, unpacked by an administrative install: Windows
     Installer lays them out and registers nothing. Returns the folder that
@@ -277,15 +290,16 @@ def tool_line(dotnet: Path | None) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--no-msi", action="store_true", help="the tree only")
+    parser.add_argument("--no-msi", action="store_true", help="the tree and the ZIP only")
     parser.add_argument("--no-verify", action="store_true",
-                        help="skip unpacking the MSI to smoke-test it")
+                        help="skip unpacking the MSI and the ZIP to smoke-test them")
     parser.add_argument("--clean", action="store_true", help="rebuild PyInstaller's cache")
     args = parser.parse_args()
 
     version = release.version()
     numbers = ".".join(str(n) for n in release.numeric_version(version))
     msi = release.DIST / f"Overtone-{version}-x64.msi"
+    portable = release.DIST / f"Overtone-{version}-x64-portable.zip"
 
     missing = [f"wheels: {problem}" for problem in wheel_problems()]
     if shutil.which("cargo") is None:
@@ -358,20 +372,31 @@ def main() -> int:
                 print(f"    {level}: {name} x{n}")
         if ice["error"]:
             return 1
+    started = time.perf_counter()
+    write_zip(release.TREE, portable)
+    steps.done("portable ZIP", started)
 
     expected = listing(release.TREE)
     checks = []
-    if not args.no_verify and not args.no_msi:
+    if not args.no_verify:
         with tempfile.TemporaryDirectory(prefix="overtone-verify-") as tmp:
+            scratch = Path(tmp)
+            if not args.no_msi:
+                started = time.perf_counter()
+                image = admin_image(msi, scratch / "msi", LOGS / "msiexec-admin.log")
+                steps.done("MSI administrative install", started)
+                checks.append(verify("MSI, installed files", image, expected, smoke))
             started = time.perf_counter()
-            image = admin_image(msi, Path(tmp) / "msi", LOGS / "msiexec-admin.log")
-            steps.done("MSI administrative install", started)
-            checks.append(verify("MSI, installed files", image, expected, smoke))
+            with zipfile.ZipFile(portable) as archive:
+                archive.extractall(scratch / "zip")
+            steps.done("ZIP unpacked", started)
+            checks.append(verify("ZIP, unpacked", scratch / "zip" / release.TREE.name,
+                                 expected, smoke))
 
     lines = [f"Overtone {version}, built {datetime.now():%Y-%m-%d %H:%M} from commit {git_head()}",
              f"toolchain: {tool_line(dotnet)}",
              f"tree: {len(expected)} files, {sum(s for s, _ in expected.values()) / 1e6:.1f} MB"]
-    for artefact in [msi] if not args.no_msi else []:
+    for artefact in ([msi] if not args.no_msi else []) + [portable]:
         lines.append(f"{artefact.name}: {artefact.stat().st_size / 1e6:.1f} MB, "
                      f"sha256 {sha256(artefact)}")
     if ice:

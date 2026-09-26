@@ -307,7 +307,7 @@ const I18N = {
     stx_vol_confirm: "Set the volume of {n} sections in {file}? The sections where the map sets its own stay as they are.",
     stx_vol_done: "Volumes set in {n} sections of {file}.",
     stx_vol_nothing: "Nothing to write in {file}: the sections read their volumes already, or the map sets its own.",
-    stx_note: "Letters are families of sections that repeat. Edges snap to the nearest proven bar line within {snap} s: a bar near the change, not proof the phrase starts on it. A change within {edge} s of either end cannot be placed. Click a section to open it in Timing.",
+    stx_note: "Letters are families of sections that repeat. Each edge moves to a proven bar line within {snap} s: the nearest, or the bar before or after it when the level changes more there, by {margin} dB or more, rising into a louder section or falling into a quieter one. A bar where the change lands, not proof the phrase starts on it. A change within {edge} s of either end cannot be placed. Click a section to open it in Timing.",
     songs_title: "osu! Songs",
     songs_scan: "Scan",
     songs_rescan: "Rescan",
@@ -838,7 +838,7 @@ const I18N = {
     stx_vol_confirm: "¿Ajustar el volumen de {n} secciones en {file}? Las secciones donde el mapa pone el suyo quedan como están.",
     stx_vol_done: "Volúmenes ajustados en {n} secciones de {file}.",
     stx_vol_nothing: "Nada para escribir en {file}: las secciones ya tienen su volumen, o el mapa pone el suyo.",
-    stx_note: "Las letras son familias de secciones que se repiten. Los bordes se ajustan a la línea de compás probada más cercana, a menos de {snap} s: un compás cerca del cambio, no la prueba de que la frase empiece ahí. Un cambio a menos de {edge} s de cada punta no se puede ubicar. Hacé clic en una sección para abrirla en Timing.",
+    stx_note: "Las letras son familias de secciones que se repiten. Cada borde se ajusta a una línea de compás probada a menos de {snap} s: la más cercana, o el compás anterior o el siguiente cuando el nivel cambia más ahí, por {margin} dB o más, subiendo hacia una sección más fuerte o bajando hacia una más suave. Un compás donde cae el cambio, no la prueba de que la frase empiece ahí. Un cambio a menos de {edge} s de cada punta no se puede ubicar. Hacé clic en una sección para abrirla en Timing.",
     songs_title: "Songs de osu!",
     songs_scan: "Escanear",
     songs_rescan: "Reescanear",
@@ -2057,7 +2057,7 @@ function renderStructure() {
       <thead><tr><th>${t("stx_h_start")}</th><th>${t("stx_h_bar")}</th><th>${t("stx_h_len")}</th><th>${t("stx_h_part")}</th><th>${t("stx_h_why")}</th><th>${t("stx_h_moved")}</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
-    <div class="card-sub mt-m">${t("stx_note", { snap: v.snap_s, edge })}</div>`;
+    <div class="card-sub mt-m">${t("stx_note", { snap: v.snap_s, edge, margin: v.phrase_margin_db })}</div>`;
 }
 
 // ------------------------------------------------------------------ bookmarks

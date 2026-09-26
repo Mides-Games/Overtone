@@ -3436,7 +3436,7 @@ def _reds_of_text(text: str) -> list[tuple[float, float]]:
     """Every red line of .osu text as ``(offset_ms, bpm)``."""
     reds = []
     in_timing = False
-    for line in text.splitlines():
+    for line in _osu_lines(text):
         stripped = line.strip()
         if stripped.startswith("["):
             in_timing = stripped.lower() == "[timingpoints]"
@@ -3589,6 +3589,8 @@ def _timing_point_fields(line: str) -> dict | None:
     try:
         time = float(fields[0])
         beat_length = float(fields[1])
+        if not (np.isfinite(time) and np.isfinite(beat_length)):
+            return None                      # "inf" or "nan": a line osu! cannot read
 
         def number(n: int, default: int) -> int:
             return int(float(fields[n])) if len(fields) > n and fields[n] else default
@@ -3597,7 +3599,7 @@ def _timing_point_fields(line: str) -> dict | None:
                 "meter": number(2, 4), "sample_set": number(3, 0),
                 "sample_index": number(4, 0), "volume": number(5, 100),
                 "effects": number(7, 0)}
-    except ValueError:
+    except (ValueError, OverflowError):
         return None
 
 
@@ -3676,7 +3678,7 @@ def inject_osu_timing_points(osu_path: str | os.PathLike[str],
     except UnicodeDecodeError as exc:
         raise ValueError(f"Could not decode {path.name} as UTF-8.") from exc
     newline = "\r\n" if b"\r\n" in raw else "\n"
-    lines = text.splitlines(keepends=True)  # every line keeps its own ending
+    lines = _osu_lines(text, keepends=True)  # every line keeps its own ending
 
     header_idx = next((n for n, line in enumerate(lines)
                        if line.strip() == "[TimingPoints]"), None)
@@ -3837,7 +3839,7 @@ def inject_diff(osu_path: str | os.PathLike[str], analysis: Analysis,
         raise ValueError(f"Could not read {path.name}: {exc}") from exc
     old = []
     inside = False
-    for line in text.splitlines():
+    for line in _osu_lines(text):
         stripped = line.strip()
         if stripped == "[TimingPoints]":
             inside = True
@@ -3997,7 +3999,7 @@ def shift_osu_text(text: str, shift_ms: float, audio_name: str | None = None,
     lines, no trailing newline) with the red lines and objects moved (every
     timing line moves; greens are not counted as red lines).
     """
-    lines = text.splitlines()
+    lines = _osu_lines(text)
     section = ""
     out: list[str] = []
     seen = {"timing": False, "objects": False, "general": False, "editor": False}
@@ -4152,10 +4154,23 @@ def _load_osu_text(osu_path: str | os.PathLike[str]) -> tuple[str, bool]:
         raise ValueError(f"Could not decode {path.name} as UTF-8.") from exc
 
 
+_OSU_LINE = re.compile(r"[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+\Z")
+
+
+def _osu_lines(text: str, keepends: bool = False) -> list[str]:
+    """The lines of .osu text as osu! reads them: broken at \\r\\n, \\r and \\n
+    only. ``str.splitlines`` also breaks at \\v, \\f, \\x1c-\\x1e, \\x85,
+    \\u2028 and \\u2029, which osu! keeps inside a line: a title holding one
+    was two lines here and one in the game, and a writer counting lines one
+    way while the reader counted the other could edit the wrong line."""
+    lines = _OSU_LINE.findall(text)
+    return lines if keepends else [line.rstrip("\r\n") for line in lines]
+
+
 def _timing_section_lines(osu_path: str | os.PathLike[str]) -> list[str]:
     """Raw body lines of the .osu [TimingPoints] section."""
     text, _bom = _load_osu_text(osu_path)
-    lines = text.splitlines()
+    lines = _osu_lines(text)
     header_idx = next((n for n, line in enumerate(lines)
                        if line.strip() == "[TimingPoints]"), None)
     if header_idx is None:
@@ -4304,7 +4319,7 @@ def scan_beatmap_folder(folder: str | os.PathLike[str]) -> dict:
             text = Path(beatmap).read_bytes().decode("utf-8-sig")
         except (OSError, ValueError):
             continue
-        named = next((line.split(":", 1)[1].strip() for line in text.splitlines()
+        named = next((line.split(":", 1)[1].strip() for line in _osu_lines(text)
                       if line.startswith("AudioFilename:")), "")
         if named and (root / named).is_file():
             audio, audio_from = root / named, beatmap
@@ -4335,7 +4350,8 @@ def _split_osu_sections(text: str) -> tuple[int, list[str], list[str], list[dict
     head_endings: list[str] = []
     sections: list[dict] = []
     current: dict | None = None
-    for line, raw in zip(text.splitlines(), text.splitlines(keepends=True)):
+    for raw in _osu_lines(text, keepends=True):
+        line = raw.rstrip("\r\n")
         ending = raw[len(line):]
         stripped = line.strip()
         if version == 0 and stripped.startswith("osu file format v"):
@@ -4344,8 +4360,10 @@ def _split_osu_sections(text: str) -> tuple[int, list[str], list[str], list[dict
             except ValueError:
                 pass
         if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
+            # ``header`` keeps the line as written (a stray space or tab around
+            # the brackets included), so the writer gives it back unchanged.
             current = {"name": stripped[1:-1], "lines": [], "endings": [],
-                       "header_ending": ending}
+                       "header": line, "header_ending": ending}
             sections.append(current)
             continue
         if current is None:
@@ -5149,7 +5167,7 @@ def beatmap_text(beatmap: dict) -> str:
     head = beatmap.get("head", [])
     rows = list(zip(head, _aligned_endings(head, beatmap.get("head_endings"))))
     for section in beatmap["sections"]:
-        rows.append((f"[{section['name']}]", section.get("header_ending")))
+        rows.append((section.get("header") or f"[{section['name']}]", section.get("header_ending")))
         rows.extend(zip(section["lines"],
                         _aligned_endings(section["lines"], section.get("endings"))))
     trailing = beatmap.get("trailing_newline", True)
@@ -5972,6 +5990,11 @@ REFERENCE_TOLERANCE_MS = MAP_OFFSET_TOLERANCE_MS
 REFERENCE_SIGMAS = 2.0
 
 
+#: A meter past this is no meter: the largest in 25,174 local maps is 16, and a
+#: fuzzed 2**64 made the hitsound report ask for a list of 2**66 slots.
+MAX_METER = 1024
+
+
 def _red_line_meter(line: str) -> int:
     """The meter field of one red line; 4 when it is missing or unreadable."""
     fields = line.strip().split(",")
@@ -5979,7 +6002,7 @@ def _red_line_meter(line: str) -> int:
         meter = int(fields[2])
     except (ValueError, IndexError):
         return 4
-    return meter if meter > 0 else 4
+    return meter if 0 < meter <= MAX_METER else 4
 
 
 def _beatmap_red_rows(beatmap: dict) -> list[tuple[float, float, int]]:
@@ -6674,7 +6697,7 @@ def write_object_hitsounds(osu_path: str | os.PathLike[str], changes: dict[int, 
     if not result["changed"] or dry_run:
         return {**result, "written": False, "backup": None}
     text, bom = _load_osu_text(path)
-    lines = text.splitlines(keepends=True)
+    lines = _osu_lines(text, keepends=True)
     start = next((i for i, line in enumerate(lines) if line.strip() == "[HitObjects]"), None)
     if start is None:
         raise ValueError("No [HitObjects] section in this beatmap.")

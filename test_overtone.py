@@ -4501,6 +4501,57 @@ class SoundEventTests(unittest.TestCase):
         self.assertEqual((events[0]["normal_set"], events[0]["volume"]), ("soft", 100))
 
 
+class ReaderFuzzRegressionTests(unittest.TestCase):
+    """What bench/fuzz_reader.py found: each case once, fast."""
+
+    @staticmethod
+    def _read(tmp, data: bytes):
+        from overtone import read_osu_beatmap
+        path = Path(tmp) / "map.osu"
+        path.write_bytes(data)
+        return path, read_osu_beatmap(path)
+
+    def test_a_header_with_stray_whitespace_comes_back_as_written(self):
+        from overtone import beatmap_text
+        text = _SOUND_MAP.replace("[General]", "[General]\t").replace("[HitObjects]", " [HitObjects] ")
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._read(tmp, text.replace("\n", "\r\n").encode("utf-8"))
+        self.assertEqual(beatmap_text(beatmap), text.replace("\n", "\r\n"))
+        self.assertEqual([s["name"] for s in beatmap["sections"]][0], "General")
+
+    def test_unicode_line_separators_stay_inside_their_line_as_in_osu(self):
+        from overtone import beatmap_text, write_object_hitsounds, read_osu_beatmap
+        # osu! breaks lines at CR and LF only; U+2028, U+0085 and \v are text.
+        text = _SOUND_MAP.replace("[Difficulty]", "[Metadata]\nTitle:A B\x85C\vD\n\n[Difficulty]")
+        data = text.replace("\n", "\r\n").encode("utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._read(tmp, data)
+            self.assertEqual(beatmap["metadata"]["Title"], "A B\x85C\vD")
+            self.assertEqual(beatmap_text(beatmap).encode("utf-8"), data)
+            # The text-level writer counts lines as the reader does: object 0 changes.
+            write_object_hitsounds(path, {0: {"bits": 4}}, backup=False)
+            after = path.read_bytes()
+            self.assertEqual(read_osu_beatmap(path)["hitobjects"][0]["hit_sound"], 4)
+        changed = [(a, b) for a, b in zip(data.split(b"\r\n"), after.split(b"\r\n")) if a != b]
+        self.assertEqual(changed, [(b"256,192,1000,1,8,0:0:0:0:", b"256,192,1000,1,4,0:0:0:0:")])
+
+    def test_a_timing_line_osu_cannot_read_is_skipped_not_fatal(self):
+        from overtone import sound_events
+        text = _SOUND_MAP.replace("2000,-50,4,3,2,40,0,0",
+                                  "2000,-50,inf,3,2,40,0,0\ninf,500,4,2,0,70,1,0\n1000,nan,4,2,0,70,1,0")
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._read(tmp, text.replace("\n", "\r\n").encode("utf-8"))
+        events = sound_events(beatmap)
+        self.assertEqual((events[0]["normal_set"], events[0]["volume"]), ("soft", 70))
+
+    def test_a_meter_beyond_any_real_map_reads_as_four(self):
+        from overtone import hitsound_report
+        text = _SOUND_MAP.replace("0,500,4,0,0,70,1,0", "0,500,18446744073709551616,0,0,70,1,0")
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._read(tmp, text.replace("\n", "\r\n").encode("utf-8"))
+        self.assertEqual(hitsound_report(beatmap)["meter"], 4)
+
+
 class HitsoundWriterTests(unittest.TestCase):
     """Phase 6, P-2: only the hitsound fields of the chosen objects change."""
 

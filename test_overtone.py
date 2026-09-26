@@ -3922,6 +3922,7 @@ class AddRedLineTests(unittest.TestCase):
                          [b"7000,400.000000000000,3,2,1,60,1,1\r\n", b"7000,-125,3,2,1,60,0,1\r\n"])
         self.assertTrue(after.startswith(b"\xef\xbb\xbf"))
         self.assertEqual((summary["greens_added"], summary["meter"], summary["offset_ms"]), (1, 3, 7000.0))
+        self.assertEqual(summary["map_bpm"], 120.0)  # the red at 1000 ms, in force there
         self.assertEqual([round(o) for o, _b in beatmap["timing"]["reds"]], [1000, 7000, 20000])
 
     def test_a_green_at_its_own_time_follows_it_and_needs_no_twin(self) -> None:
@@ -3943,6 +3944,7 @@ class AddRedLineTests(unittest.TestCase):
             write_osu_beatmap(path, beatmap, backup=False)
             added = self._added(before, path.read_bytes())
         self.assertEqual(added, [b"500,400.000000000000,3,2,1,70,1,0\r\n"])
+        self.assertEqual(summary["map_bpm"], 120.0)  # the map's first red, read back to the start
         self.assertEqual((summary["objects"], summary["sliders"]), (0, 0))
         self.assertIsNone(summary["max_end_shift_ms"])
 

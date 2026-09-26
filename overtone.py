@@ -5878,10 +5878,15 @@ def add_red_line(beatmap: dict, offset_ms: float, bpm: float, meter: int | None 
     What it does change is the beat that objects follow from its time to the
     next red line, which is the point; sliders there keep their length in
     beats, so their ends move with the tempo, and the summary says by how
-    much. Returns ``row``, ``offset_ms`` (as written), ``bpm``, ``meter``,
-    ``greens_added``, ``objects`` (under the new line), ``sliders`` (of
-    those), ``slider_ends_moved`` (by half a millisecond or more) and
-    ``max_end_shift_ms`` (signed, None without sliders). Plain JSON types.
+    much. ``map_bpm`` is the tempo of the map's own red line in force there:
+    a suggestion at twice or four times it is more often the same pulse
+    counted differently than a new tempo, and that is where slider ends move
+    furthest (on Corpus B, every shift past 25 ms). Returns ``row``,
+    ``offset_ms`` (as written), ``bpm``, ``meter``, ``map_bpm`` (None
+    without a red line), ``greens_added``, ``objects`` (under the new line),
+    ``sliders`` (of those), ``slider_ends_moved`` (by half a millisecond or
+    more) and ``max_end_shift_ms`` (signed, None without sliders). Plain JSON
+    types.
     """
     section = next((s for s in beatmap.get("sections", []) if s.get("name") == "TimingPoints"),
                    None)
@@ -5909,9 +5914,11 @@ def add_red_line(beatmap: dict, offset_ms: float, bpm: float, meter: int | None 
     clash = next((q for q in reds if abs(q["time"] - time_ms) < RED_LINE_CLASH_MS), None)
     if clash is not None:
         raise ValueError(f"A red line already sits at {clash['time']:g} ms.")
+    # The map's own red line in force there (its first, before it begins).
+    governing = [q for q in reds if q["time"] <= time_ms + 1e-6] or reds[:1]
+    in_force = governing[-1] if governing else None
     if meter is None:
-        governing = [q for q in reds if q["time"] <= time_ms + 1e-6] or reds[:1]
-        meter = max(1, governing[-1]["meter"]) if governing else 4
+        meter = max(1, in_force["meter"]) if in_force is not None else 4
     state = _states_at_events(points, [time_ms])[0]
     sample_set, sample_index, volume, kiai = (
         (state.sample_set, state.sample_index, state.volume, state.kiai) if state is not None
@@ -5998,7 +6005,9 @@ def add_red_line(beatmap: dict, offset_ms: float, bpm: float, meter: int | None 
             if old is not None and new is not None:
                 shifts.append(new - old)
     worst = max(shifts, key=abs) if shifts else None
-    return {"row": row, "offset_ms": time_ms, "bpm": bpm, "meter": int(meter),
+    map_bpm = (60000.0 / in_force["beat_length"]
+               if in_force is not None and in_force["beat_length"] > 0 else None)
+    return {"row": row, "offset_ms": time_ms, "bpm": bpm, "meter": int(meter), "map_bpm": map_bpm,
             "greens_added": len(added), "objects": len(under), "sliders": len(shifts),
             "slider_ends_moved": sum(1 for s in shifts if abs(s) >= 0.5),
             "max_end_shift_ms": None if worst is None else round(worst, 1)}

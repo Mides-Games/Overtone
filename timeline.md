@@ -16,6 +16,29 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-26 · SV normaliser, engine half: greens cancel the BPM
+
+### Changed
+
+- **`set_constant_scroll(beatmap)`**: the first red's BPM is the reference;
+  every later red on another BPM gets a green carrying reference-over-own
+  (red before green), a green already there kept or rewritten to the value,
+  reference-tempo reds untouched and uncounted. New greens carry the audible
+  state and the red's own effects, so sound, kiai and barlines read as before.
+
+### Measured
+
+```
+120 -> 150 BPM               one green at -125 (150 x 0.8 = 120), sound_events
+                             identical, second run all kept
+Python unittest              464 -> 467 (writer suites green)
+facts                        ok
+```
+
+No analysis code touched, so no benchmark run here.
+
+---
+
 ## v4.0.0-dev — 2026-09-26 · Inject diff beside every preview
 
 ### Changed

@@ -3109,6 +3109,33 @@ class MapWriterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             set_map_breaks(bare, [(10000.0, 30000.0)])
 
+    def test_constant_scroll_compensates_bpm_changes(self) -> None:
+        from overtone import set_constant_scroll, sound_events
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n2000,400,4,2,1,70,1,0")
+        before = sound_events(beatmap)
+        result = set_constant_scroll(beatmap)
+        json.dumps(result)
+        self.assertEqual(result, {"added": 1, "flipped": 0, "kept": 0})
+        self.assertEqual(sound_events(beatmap), before)
+        self.assertEqual(beatmap["timing"]["greens"], ["2000,-125,4,2,1,70,0,0"])
+        self.assertEqual(set_constant_scroll(beatmap), {"added": 0, "flipped": 0, "kept": 1})
+
+    def test_constant_scroll_leaves_reference_tempo_alone(self) -> None:
+        from overtone import set_constant_scroll
+        same = self._kiai_map("1000,500,4,2,1,70,1,0\n2000,500,4,2,1,70,1,0")
+        self.assertEqual(set_constant_scroll(same), {"added": 0, "flipped": 0, "kept": 0})
+        single = self._kiai_map("1000,500,4,2,1,70,1,0")
+        self.assertEqual(set_constant_scroll(single), {"added": 0, "flipped": 0, "kept": 0})
+        with self.assertRaises(ValueError):
+            set_constant_scroll({"sections": []})
+
+    def test_constant_scroll_rewrites_a_wrong_green(self) -> None:
+        from overtone import set_constant_scroll
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n2000,400,4,2,1,70,1,0\n"
+                                 "2000,-100,4,2,1,70,0,0")
+        self.assertEqual(set_constant_scroll(beatmap), {"added": 0, "flipped": 1, "kept": 0})
+        self.assertEqual(beatmap["timing"]["greens"], ["2000,-125,4,2,1,70,0,0"])
+
 
 _CONTEXT_OSU = "\n".join([
     "osu file format v14",

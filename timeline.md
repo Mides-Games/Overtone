@@ -17,6 +17,30 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Each section's confidence along the tempo map
+
+How sure the engine was of each red line showed only as a bar in the points list, so a
+weak section had to be looked up line by line. Roadmap, Phase 3: "Confidence ribbon".
+
+### Changed
+
+- A 4 px strip along the tempo plot's foot, each section in the colour of its line's
+  confidence bar in the list: 90 % and up, 75 % and up, below. The colours are chart tokens
+  pointing at the theme's own accent, blue and amber, so both themes follow; a pixel
+  separates two sections of the same colour. The legend names it, and the hover over the
+  map adds the governing line's confidence. No Python changed.
+
+### Measured
+
+```
+synthetic "Secs" track through the harness page, three lines (confidence set to 100, 80
+and 50 % in the page for the other two levels), a pixel read at each section's middle
+  dark    rgb(63,208,220) / rgb(169,150,255) / rgb(245,180,74)  = #3fd0dc #a996ff #f5b44a
+  light   rgb(10,115,127) / rgb(91,69,214) / rgb(143,94,8)      = #0a737f #5b45d6 #8f5e08
+  hover   "confidence 100%" under the red line's BPM
+web shell tests      189, all pass (the page's bracket and string checks included)
+```
+
 ## v4.0.0-dev — 2026-09-26 · Each song's timing work kept between sessions
 
 Everything lived in memory. Closing the app lost every red line the user had moved, and

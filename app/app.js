@@ -114,7 +114,7 @@ const I18N = {
     inspector_note: "Applied on the next Analyze. Shared with the classic window.",
     engine_precision: "precision grid", engine_legacy: "beat tracker fallback",
     constant: "constant", variable: "variable", points_n: "{n} points", meter_known: "bar found", meter_guess: "bar assumed",
-    time_at: "time", tempo_at: "tempo", line_at: "red line",
+    time_at: "time", tempo_at: "tempo", line_at: "red line", conf_at: "confidence",
     before_first: "before the first red line: its grid runs back here",
     warn_legacy: "No steady grid could be fitted, so this result comes from the fallback beat tracker. Check it by ear before mapping.",
     warn_loose: "The grid fits loosely (residual {ms} ms). The tempo may drift; listen to the click track.",
@@ -519,7 +519,7 @@ const I18N = {
     pb_failed: "The song could not be played: {detail}",
     no_audio_staged: "The song is not loaded; press play again.",
     pb_rate: "Speed: slower lowers the pitch, so every attack stays exactly in place",
-    lane_wave: "wave", tl_zoom: "{a} – {b}", tl_fit: "Show all", lg_drift: "drift",
+    lane_wave: "wave", tl_zoom: "{a} – {b}", tl_fit: "Show all", lg_drift: "drift", lg_conf: "confidence",
     tap_btn: "Tap (T)", tap_calibrate: "Calibrate to these taps", tap_assist: "Use for assisted timing", tap_clear: "Clear",
     tap_hint: "Play, then tap T on each beat: to check the timing by ear, to calibrate your taps (tap to the click alone), or to seed assisted timing (start on a downbeat).",
     tap_info: "{n} taps · {bpm} BPM · {where}",
@@ -649,7 +649,7 @@ const I18N = {
     inspector_note: "Se aplican en el próximo análisis. Compartidos con la ventana clásica.",
     engine_precision: "rejilla de precisión", engine_legacy: "tracker de respaldo",
     constant: "constante", variable: "variable", points_n: "{n} puntos", meter_known: "compás hallado", meter_guess: "compás supuesto",
-    time_at: "tiempo", tempo_at: "tempo", line_at: "línea roja",
+    time_at: "tiempo", tempo_at: "tempo", line_at: "línea roja", conf_at: "confianza",
     before_first: "antes de la primera línea roja: su grilla se extiende hacia atrás",
     warn_legacy: "No se pudo ajustar una rejilla estable; este resultado viene del tracker de respaldo. Revisalo de oído antes de mapear.",
     warn_loose: "La rejilla ajusta con holgura (residuo {ms} ms). El tempo puede derivar; escuchá la pista de clic.",
@@ -1054,7 +1054,7 @@ const I18N = {
     pb_failed: "No se pudo reproducir la canción: {detail}",
     no_audio_staged: "La canción no está cargada; volvé a darle play.",
     pb_rate: "Velocidad: más lento baja el tono, así cada ataque queda exactamente en su lugar",
-    lane_wave: "onda", tl_zoom: "{a} – {b}", tl_fit: "Ver todo", lg_drift: "deriva",
+    lane_wave: "onda", tl_zoom: "{a} – {b}", tl_fit: "Ver todo", lg_drift: "deriva", lg_conf: "confianza",
     tap_btn: "Tap (T)", tap_calibrate: "Calibrar con estos taps", tap_assist: "Usar para timing asistido", tap_clear: "Borrar",
     tap_hint: "Reproducí y tocá T en cada beat: para revisar el timing a oído, para calibrar tus taps (tocá solo con el click) o para arrancar el timing asistido (empezá en un tiempo fuerte).",
     tap_info: "{n} taps · {bpm} BPM · {where}",
@@ -4911,6 +4911,7 @@ const C_TOKENS = {
   ghost: "ghost", driftOk: "drift-ok", driftWarn: "drift-warn", driftBad: "drift-bad",
   playhead: "playhead", loop: "loop",
   objects: "objects", hsWhistle: "whistle", hsFinish: "finish", hsClap: "clap",
+  confHigh: "conf-high", confMid: "conf-mid", confLow: "conf-low",
 };
 const C = {};
 function chartInk() {
@@ -5212,6 +5213,17 @@ function drawTrace(hoverX) {
     ctx.restore();
   }
 
+  // Each section's confidence along the plot's foot, coloured as the points
+  // list's bars (90 % and up, 75 % and up, below), a pixel apart at each line.
+  ctx.save(); roundRect(ctx, x0, plotTop, x1 - x0, y1 - plotTop, 12); ctx.clip();
+  r.points.forEach((p, i) => {
+    const a = Math.max(X(bounds[i]), x0), b = Math.min(X(bounds[i + 1]), x1);
+    if (b <= a) return;
+    ctx.fillStyle = p.confidence >= 0.9 ? C.confHigh : p.confidence >= 0.75 ? C.confMid : C.confLow;
+    ctx.fillRect(a, y1 - 5, Math.max(1, b - a - 1), 4);
+  });
+  ctx.restore();
+
   // the compared map's red lines, as ghosts
   ctx.save(); clipAll();
   ctx.strokeStyle = C.ghost; ctx.lineWidth = 1.25; ctx.setLineDash([3, 4]);
@@ -5413,6 +5425,7 @@ function onTraceMove(ev) {
     <div class="row"><span class="k">${t("time_at")}</span><span class="num">${fmtTime(s)}</span></div>
     <div class="row"><span class="k">${t("tempo_at")}</span><span class="num">${(r.trace.bpm[j] || 0).toFixed(2)}</span></div>
     <div class="row"><span class="k">${t("line_at")}</span><span class="num">${g ? g.bpm.toFixed(3) : "—"}</span></div>
+    <div class="row"><span class="k">${t("conf_at")}</span><span class="num">${g ? `${Math.round(g.confidence * 100)}%` : "—"}</span></div>
     ${r.points.length && s < r.points[0].offset_ms / 1000 ? `<div class="row"><span class="k">${t("before_first")}</span></div>` : ""}`;
   tip.style.left = `${x}px`; tip.style.top = `${geom.y0}px`;
   tip.hidden = false;

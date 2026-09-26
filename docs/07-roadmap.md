@@ -262,7 +262,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Progress panel | per-stage ticks and timings, cancellable | low | med | shell | no | no | P1 | **done** (web shell) — each stage named, the finished ones ticked with their times, a running clock and Stop; the song panel keeps the times |
 | Dashboard | drop target, recents, folder entry points | low | med | shell | no | no | P1 | **done** |
 | Honesty banners | fallback engine, late first line, validation findings | low | **high** | shell | no | no | P1 | **done** |
-| Confidence ribbon | per-section confidence under the ruler | low | med | timeline | no | no | P2 | todo — per-point bars in the list only |
+| Confidence ribbon | per-section confidence under the ruler | low | med | timeline | no | no | P2 | **done** — a strip along the tempo plot's foot, each section in its list bar's colour (90 % and up, 75 % and up, below), in the legend, and the hover names the line's confidence |
 | Spectrogram layer | optional spectral energy | med | low-med | STFT | no | yes | P3 | todo |
 | Light theme | full token counterpart | low | low | tokens | no | no | P3 | **done** — one light token block, canvas ink included; Settings → Theme (System, Dark, Light) |
 | Zoom and pan | wheel zoom anchored at the cursor, drag to pan; beat grid and attack ticks when zoomed in | med | **high** | timeline | no | no | **P1** | **done** — beat grid, bars brighter; attacks show in the drift lane |

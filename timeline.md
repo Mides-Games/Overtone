@@ -16,6 +16,29 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Preview point: the chorus, or the loudest part
+
+### Changed
+
+- **`suggest_preview_time` in the Structure view**: the loudest chorus's start,
+  the loudest non-intro/outro part's without one, each with its reason. Read
+  only: a suggestion, never a write. EN/ES.
+
+### Measured
+
+```
+4 real songs                   3 fall back to the loudest part (labels fire
+                               rarely, as known); 1 with real choruses previews
+                               the loudest one's start at 36.5 s
+Python unittest                440 -> 442, all pass
+benchmark.py                   24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                             one render line plus one string per language,
+                               cross-checked. Harness pass owed, stated.
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Percussion-only audition in the transport
 
 ### Changed

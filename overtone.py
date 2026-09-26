@@ -6399,7 +6399,35 @@ def structure_view(report: dict, analysis: Analysis) -> dict:
         "rules": report.get("rules") or {},
         "snap_s": STRUCTURE_SNAP_S,
         "timings_s": report.get("timings_s") or {},
+        "preview": suggest_preview_time(sections),
     }
+
+
+def suggest_preview_time(sections: list[dict]) -> dict | None:
+    """Where a song-select preview should start (Phase 21, Preview point).
+
+    The loudest chorus's start; without a chorus, the loudest part that is
+    neither intro nor outro; without anything, nothing. Starts are the
+    snapped ones when they come from the view, so the point sits on a bar.
+    A suggestion with its reason, never a write. Plain JSON types.
+    """
+    if not sections:
+        return None
+
+    def pick(pool: list[dict]) -> dict:
+        return max(pool, key=lambda s: (float(s.get("level_db", 0.0)), -float(s.get("start_s", 0.0))))
+
+    choruses = [s for s in sections if s.get("kind") == "chorus"]
+    if choruses:
+        chosen, why = pick(choruses), "chorus_loudest"
+    else:
+        parts = [s for s in sections if s.get("kind") not in ("intro", "outro")]
+        if parts:
+            chosen, why = pick(parts), "loudest_part"
+        else:
+            chosen, why = pick(list(sections)), "loudest_only"
+    return {"time_s": float(chosen["start_s"]), "time_ms": int(round(float(chosen["start_s"]) * 1000)),
+            "kind": chosen["kind"], "why": why}
 
 
 # ---------------------------------------------------------------------------

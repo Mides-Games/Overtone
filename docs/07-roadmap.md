@@ -28,7 +28,7 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 | Precision plan (Phase 10) | **not started** — plan only |
 | Installer (MSI) | **not started** — plan only |
 
-Tests: **440** Python (303 engine + 137 web shell) · **263** Rust.
+Tests: **442** Python (305 engine + 137 web shell) · **263** Rust.
 
 ### What is pending, in order
 
@@ -572,7 +572,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Inject diff | each old red line beside its new value, and the drift it causes | low | **high** | inject | no | no | **P1** | todo |
 | Inject into every difficulty | one confirmation for the whole mapset | low | **high** | inject | no | no | **P1** | todo |
 | Kiai from structure | kiai on chorus sections, written as greens | med | high | P2 structure, writer | no | no | P1 | todo |
-| Preview point | suggest `PreviewTime` at the chorus | low | med | structure | no | no | P2 | todo |
+| Preview point | suggest `PreviewTime` at the chorus | low | med | structure | no | no | P2 | **done** — loudest chorus start, loudest part without one, in the Structure view with its reason |
 | Bookmarks | section starts as editor bookmarks | low | med | structure | no | no | P2 | todo |
 | Breaks | quiet spans long enough for a break | low | med | energy | no | no | P2 | todo |
 | Volume by section | hitsound volume from section energy, as greens | low | med | energy, writer | no | no | P2 | todo |

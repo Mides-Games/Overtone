@@ -196,6 +196,7 @@ const I18N = {
     stx_why_bridge: "Heard once, between the repeats.",
     stx_unsnapped: "no proven bar within {s} s",
     stx_one_family: "Every section reads as one family: on a full mix, the harmony of verse and chorus often looks alike, and the labels cannot tell them apart. The phrase edges and the energy still hold.",
+    stx_preview: "Preview point: {at} ({kind}).",
     stx_note: "Letters are families of sections that repeat. Edges snap to the nearest proven bar line within {snap} s: a bar near the change, not proof the phrase starts on it. A change within {edge} s of either end cannot be placed. Click a section to open it in Timing.",
     songs_title: "osu! Songs",
     songs_scan: "Scan",
@@ -577,6 +578,7 @@ const I18N = {
     stx_why_bridge: "Suena una vez, entre las repeticiones.",
     stx_unsnapped: "sin compás probado a menos de {s} s",
     stx_one_family: "Todas las secciones se leen como una sola familia: en una mezcla completa, la armonía de estrofa y estribillo suele parecerse, y las etiquetas no las distinguen. Los bordes de frase y la energía siguen valiendo.",
+    stx_preview: "Punto de preview: {at} ({kind}).",
     stx_note: "Las letras son familias de secciones que se repiten. Los bordes se ajustan a la línea de compás probada más cercana, a menos de {snap} s: un compás cerca del cambio, no la prueba de que la frase empiece ahí. Un cambio a menos de {edge} s de cada punta no se puede ubicar. Hacé clic en una sección para abrirla en Timing.",
     songs_title: "Songs de osu!",
     songs_scan: "Escanear",
@@ -1559,6 +1561,7 @@ function renderStructure() {
     </tr>`).join("");
   body.innerHTML = `
     <div class="stx-lane"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path class="energy" d="${path}"/></svg>${blocks}</div>
+    ${v.preview ? `<div class="card-sub mb-m">${t("stx_preview", { at: stxTime(v.preview.time_s), kind: t(STX_KIND[v.preview.kind]) })}</div>` : ""}
     ${v.one_family ? `<div class="card-sub mb-m">${t("stx_one_family")}</div>` : ""}
     <div class="table-scroll"><table class="stx-table">
       <thead><tr><th>${t("stx_h_start")}</th><th>${t("stx_h_bar")}</th><th>${t("stx_h_len")}</th><th>${t("stx_h_part")}</th><th>${t("stx_h_why")}</th><th>${t("stx_h_moved")}</th></tr></thead>

@@ -4845,6 +4845,29 @@ class StructureViewTests(unittest.TestCase):
         self.assertTrue(view["one_family"])
         self.assertEqual(view["sections"][0]["why"], {"rule": "verse_one_family", "repeats": 3})
 
+    def test_preview_starts_at_the_loudest_chorus(self):
+        from overtone import structure_view, suggest_preview_time
+        report = _structure_report([8.0, 24.0, 40.0, 50.0, 60.0],
+                                   ["intro", "verse", "chorus", "bridge", "chorus", "outro"],
+                                   [0, 1, 2, 3, 2, 4], [-12.0, -6.0, -1.0, -3.0, 0.0, -9.0], 70.0)
+        view = structure_view(report, self._analysis([], 70.0))
+        json.dumps(view)
+        self.assertEqual(view["preview"],
+                         {"time_s": 50.0, "time_ms": 50000, "kind": "chorus",
+                          "why": "chorus_loudest"})
+
+    def test_preview_without_a_chorus_takes_the_loudest_part(self):
+        from overtone import suggest_preview_time
+        sections = [{"kind": "intro", "level_db": 0.0, "start_s": 0.0},
+                    {"kind": "verse", "level_db": -3.0, "start_s": 10.0},
+                    {"kind": "bridge", "level_db": -1.0, "start_s": 30.0},
+                    {"kind": "outro", "level_db": -6.0, "start_s": 50.0}]
+        self.assertEqual(suggest_preview_time(sections)["why"], "loudest_part")
+        self.assertEqual(suggest_preview_time(sections)["time_s"], 30.0)
+        only_intro = [{"kind": "intro", "level_db": 0.0, "start_s": 0.0}]
+        self.assertEqual(suggest_preview_time(only_intro)["why"], "loudest_only")
+        self.assertIsNone(suggest_preview_time([]))
+
     def test_the_energy_lane_is_pooled_by_its_peaks(self):
         from overtone import STRUCTURE_LANE_POINTS, structure_view
         energy = np.full(2000, 0.1)

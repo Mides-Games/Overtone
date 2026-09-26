@@ -342,6 +342,10 @@ const I18N = {
     sv_confirm: "Write scroll greens at {bpm} BPM into {file}?",
     sv_done: "Scroll constant at {bpm} BPM into {file}.",
     sv_nothing: "Every section already scrolls at {bpm} BPM in {file}.",
+    div_title: "Snap divisors",
+    div_sub: "Which divisor each section needs, from the song's own attacks. Thirds and sixths past the weight bar read 1/3 and 1/6, the rest 1/4. Read only.",
+    div_row: "{at} · {bpm} BPM · {d}{extra}",
+    div_extra: " ({t} thirds, {s} sixths)",
     lab_title: "Offset lab",
     lab_sub: "What the file says about its own delay, and the first attack through each decoder side by side.",
     lab_header: "{encoder}: {delay} samples of delay ({delayMs} ms), {pad} of padding ({padMs} ms).",
@@ -768,6 +772,10 @@ const I18N = {
     sv_confirm: "¿Escribir verdes de scroll a {bpm} BPM en {file}?",
     sv_done: "Scroll constante a {bpm} BPM en {file}.",
     sv_nothing: "Cada sección ya va a {bpm} BPM en {file}.",
+    div_title: "Divisores de snap",
+    div_sub: "Qué divisor necesita cada sección, según los ataques de la canción. Tresillos y seisillos que superan la barra de peso leen 1/3 y 1/6, el resto 1/4. Solo lectura.",
+    div_row: "{at} · {bpm} BPM · {d}{extra}",
+    div_extra: " ({t} tresillos, {s} seisillos)",
     lab_title: "Laboratorio de offset",
     lab_sub: "Lo que el archivo dice de su propio delay, y el primer ataque por cada decodificador lado a lado.",
     lab_header: "{encoder}: delay {delay} samples ({delayMs} ms), pad {pad} samples ({padMs} ms).",
@@ -918,7 +926,7 @@ function setView(view) {
   renderNeedSong();
   if (changed) $("content").scrollTop = 0;
   // The canvas measures its box: it can only be drawn while visible.
-  if (view === "timing" && S.result) { drawTrace(); waveLoad(); svMaps(); }
+  if (view === "timing" && S.result) { drawTrace(); waveLoad(); svMaps(); divsLoad(); }
   if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); }
   if (view === "hitsounds" && S.result) hsvLoad();
   if (view === "history") histLoad();
@@ -1261,6 +1269,7 @@ function renderResult(r) {
   renderBreaks();
   renderInjectAll();
   renderSv();
+  renderDivisors();
   if (S.view === "timing") waveLoad();
   evLoad();
   labLoad();
@@ -1968,6 +1977,34 @@ function renderSv() {
   $("svApply").disabled = !p || (!p.added && !p.flipped);
   $("svResult").textContent = !p ? ""
     : t("sv_would", { added: p.added, flipped: p.flipped, kept: p.kept, bpm: p.reference_bpm, file: p.file });
+}
+
+// ------------------------------------------------------------------ snap divisors
+// Phase 21: which divisor each section needs, from the song's own attacks.
+// Read only: one line per section, no preview, nothing to apply.
+const DIVS = { report: null, for: "" };
+
+async function divsLoad() {
+  DIVS.report = null;
+  if (api() && S.result) {
+    const reply = await api().snap_divisors();
+    if (reply.ok) DIVS.report = reply.report;
+  }
+  DIVS.for = (S.result && S.result.path) || "";
+  renderDivisors();
+}
+
+function renderDivisors() {
+  const card = $("divCard"), r = DIVS.report;
+  card.hidden = !S.result;
+  if (!S.result) return;
+  if (DIVS.for !== S.result.path) { divsLoad(); return; }
+  if (!r) { $("divBody").textContent = ""; return; }
+  $("divBody").innerHTML = r.sections.map((s) => {
+    const extra = (s.thirds || s.sixths)
+      ? t("div_extra", { t: s.thirds, s: s.sixths }) : "";
+    return `<div>${esc(t("div_row", { at: mmss(s.offset_ms / 1000), bpm: s.bpm, d: s.divisor, extra }))}</div>`;
+  }).join("");
 }
 
 // A section opens in Timing: the timeline zoomed to it, the playhead at its start.

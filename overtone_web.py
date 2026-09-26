@@ -1646,6 +1646,13 @@ class Api:
                 "kept": result["kept"], "written": written["bytes"] > 0,
                 "backup": written["backup"]}
 
+    def snap_divisors(self) -> dict:
+        """Which divisor each section needs, from the song's own attacks.
+        Read only: 1/3, 1/4 or 1/6 per section with the counts behind it."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        return {"ok": True, "report": ta.snap_divisors(self._analysis)}
+
     # -- assisted timing: two marked downbeats seed the grid ---------------
     def assisted_fit(self, first_ms: float, second_ms: float, bars: int, meter: int) -> dict:
         """Fit the grid two marked downbeats imply. Read only: the answer (or

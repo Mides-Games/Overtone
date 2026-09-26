@@ -1700,6 +1700,21 @@ class ScrollBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().scroll_preview("map.osu")["key"], "first")
 
 
+class DivisorsBridgeTests(_IsolatedConfig):
+    """Which divisor each section needs, from the song's own attacks."""
+
+    def test_report_names_thirds_and_refuses_without_a_song(self) -> None:
+        api = _api_with_points()
+        api._analysis.attack_times = np.array([1.0 + k / 6.0 for k in range(13)])
+        api._analysis.attack_weights = np.ones(13)
+        reply = api.snap_divisors()
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        section = reply["report"]["sections"][0]
+        self.assertEqual(section["divisor"], "1/3")
+        self.assertEqual(web.Api().snap_divisors()["key"], "first")
+
+
 class OffsetLabBridgeTests(_IsolatedConfig):
     """The Offset lab: the header's numbers, both decoders side by side."""
 

@@ -1433,6 +1433,53 @@ class Api:
         return {"ok": True, "python_ms": python_ms, "rust_ms": rust_ms,
                 "delta_ms": round(rust_ms - python_ms, 3)}
 
+    # -- structure bookmarks: section starts as editor bookmarks ------------
+    def _bookmarks_plan(self, file: str):
+        """The map plus the song's section starts in ms, or a refusal."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        view = self.structure()
+        if not view.get("ok"):
+            return view
+        try:
+            beatmap = ta.read_osu_beatmap(path)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        starts = [s["start_s"] * 1000.0 for s in view["view"]["sections"]]
+        return path, beatmap, starts
+
+    def structure_bookmarks_preview(self, file: str) -> dict:
+        """What writing the section starts as bookmarks would add. Read only."""
+        plan = self._bookmarks_plan(file)
+        if isinstance(plan, dict):
+            return plan
+        path, beatmap, starts = plan
+        try:
+            import copy
+            result = ta.set_editor_bookmarks(copy.deepcopy(beatmap),
+                                             [round(s) for s in starts])
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name, "starts": len(starts),
+                "added": result["added"], "total": result["total"]}
+
+    def structure_bookmarks_apply(self, file: str) -> dict:
+        """Write the section starts into the map's bookmarks, merged with its
+        own, the file backed up first and logged."""
+        plan = self._bookmarks_plan(file)
+        if isinstance(plan, dict):
+            return plan
+        path, beatmap, starts = plan
+        try:
+            result = ta.set_editor_bookmarks(beatmap, [round(s) for s in starts])
+            written = ta.write_osu_beatmap(path, beatmap)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "file": path.name, "added": result["added"],
+                "total": result["total"], "written": written["bytes"] > 0,
+                "backup": written["backup"]}
+
     # -- assisted timing: two marked downbeats seed the grid ---------------
     def assisted_fit(self, first_ms: float, second_ms: float, bars: int, meter: int) -> dict:
         """Fit the grid two marked downbeats imply. Read only: the answer (or

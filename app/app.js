@@ -197,6 +197,13 @@ const I18N = {
     stx_unsnapped: "no proven bar within {s} s",
     stx_one_family: "Every section reads as one family: on a full mix, the harmony of verse and chorus often looks alike, and the labels cannot tell them apart. The phrase edges and the energy still hold.",
     stx_preview: "Preview point: {at} ({kind}).",
+    stx_bm_title: "Bookmarks",
+    stx_bm_sub: "Section starts as editor bookmarks in one difficulty, merged with its own. Nothing is ever deleted; every file is backed up first.",
+    stx_bm_preview: "Preview", stx_bm_apply: "Write bookmarks",
+    stx_bm_would: "{added} new of {total} bookmarks into {file}.",
+    stx_bm_confirm: "Write {n} bookmarks into {file}? Its own bookmarks stay.",
+    stx_bm_done: "{n} bookmarks into {file}.",
+    stx_bm_nothing: "Every section start is already a bookmark in {file}.",
     stx_note: "Letters are families of sections that repeat. Edges snap to the nearest proven bar line within {snap} s: a bar near the change, not proof the phrase starts on it. A change within {edge} s of either end cannot be placed. Click a section to open it in Timing.",
     songs_title: "osu! Songs",
     songs_scan: "Scan",
@@ -579,6 +586,13 @@ const I18N = {
     stx_unsnapped: "sin compás probado a menos de {s} s",
     stx_one_family: "Todas las secciones se leen como una sola familia: en una mezcla completa, la armonía de estrofa y estribillo suele parecerse, y las etiquetas no las distinguen. Los bordes de frase y la energía siguen valiendo.",
     stx_preview: "Punto de preview: {at} ({kind}).",
+    stx_bm_title: "Bookmarks",
+    stx_bm_sub: "Inicios de sección como bookmarks de editor en una dificultad, mezclados con los suyos. Nada se borra nunca; cada archivo se respalda antes.",
+    stx_bm_preview: "Vista previa", stx_bm_apply: "Escribir bookmarks",
+    stx_bm_would: "{added} nuevos de {total} bookmarks en {file}.",
+    stx_bm_confirm: "¿Escribir {n} bookmarks en {file}? Los suyos quedan.",
+    stx_bm_done: "{n} bookmarks en {file}.",
+    stx_bm_nothing: "Cada inicio de sección ya es bookmark en {file}.",
     stx_note: "Las letras son familias de secciones que se repiten. Los bordes se ajustan a la línea de compás probada más cercana, a menos de {snap} s: un compás cerca del cambio, no la prueba de que la frase empiece ahí. Un cambio a menos de {edge} s de cada punta no se puede ubicar. Hacé clic en una sección para abrirla en Timing.",
     songs_title: "Songs de osu!",
     songs_scan: "Escanear",
@@ -831,7 +845,7 @@ function setView(view) {
   if (changed) $("content").scrollTop = 0;
   // The canvas measures its box: it can only be drawn while visible.
   if (view === "timing" && S.result) { drawTrace(); waveLoad(); }
-  if (view === "structure" && S.result) stxLoad();
+  if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); }
   if (view === "hitsounds" && S.result) hsvLoad();
   if (view === "history") histLoad();
 }
@@ -1168,10 +1182,10 @@ function renderResult(r) {
   renderRamps();
   renderReport();
   renderTaps();
+  renderBookmarks();
   if (S.view === "timing") waveLoad();
   evLoad();
   labLoad();
-  renderLab();
 }
 
 function renderDetail() {
@@ -1568,6 +1582,73 @@ function renderStructure() {
       <tbody>${rows}</tbody>
     </table></div>
     <div class="card-sub mt-m">${t("stx_note", { snap: v.snap_s, edge })}</div>`;
+}
+
+// ------------------------------------------------------------------ bookmarks
+// Phase 21: section starts as editor bookmarks in one difficulty of the song.
+// The maps come from the transport picker; preview counts, apply merges with
+// the map's own bookmarks under a backup, and the card refreshes.
+const STXBM = { preview: null, for: "" };
+
+async function stxBmMaps() {
+  const box = $("stxBmMap");
+  let maps = [];
+  if (api()) {
+    const reply = await api().song_maps();
+    maps = reply.ok ? reply.maps : [];
+  }
+  const path = (S.result && S.result.path) || "";
+  if (STXBM.for !== path) { STXBM.for = path; STXBM.preview = null; }
+  const keep = box.value;
+  box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+  if (maps.some((m) => m.file === keep)) box.value = keep;
+  box.disabled = !maps.length;
+  renderBookmarks();
+}
+
+async function stxBmMaps() {
+  const box = $("stxBmMap");
+  let maps = [];
+  if (api()) {
+    const reply = await api().song_maps();
+    maps = reply.ok ? reply.maps : [];
+  }
+  const keep = box.value;
+  box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
+  if (maps.some((m) => m.file === keep)) box.value = keep;
+  box.disabled = !maps.length;
+}
+
+async function stxBmPreview() {
+  if (!api() || !S.result) return;
+  const file = $("stxBmMap").value;
+  if (!file) return;
+  const reply = await api().structure_bookmarks_preview(file);
+  if (!reply.ok) { editFailure(reply); return; }
+  STXBM.preview = { ...reply, file };
+  renderBookmarks();
+}
+
+async function stxBmApply() {
+  if (!api() || !S.result || !STXBM.preview) return;
+  const file = $("stxBmMap").value;
+  if (STXBM.preview.file !== file) { await stxBmPreview(); return; }
+  if (!STXBM.preview.added) { toast(t("stx_bm_nothing", { file })); return; }
+  if (!confirm(t("stx_bm_confirm", { n: STXBM.preview.added, file }))) return;
+  const reply = await api().structure_bookmarks_apply(file);
+  if (!reply.ok) { editFailure(reply); return; }
+  toast(t("stx_bm_done", { n: reply.added, file }));
+  STXBM.preview = null;
+  renderBookmarks();
+}
+
+function renderBookmarks() {
+  const card = $("stxBmCard"), p = STXBM.preview;
+  card.hidden = !S.result;
+  if (!S.result) return;
+  $("stxBmApply").disabled = !p || !p.added;
+  $("stxBmResult").textContent = !p ? ""
+    : t("stx_bm_would", { added: p.added, total: p.total, file: p.file });
 }
 
 // A section opens in Timing: the timeline zoomed to it, the playhead at its start.
@@ -4080,6 +4161,9 @@ function wire() {
     const el = e.target.closest("[data-stx]");
     if (el) stxShow(+el.dataset.stx);
   });
+  $("stxBmPreview").onclick = stxBmPreview;
+  $("stxBmApply").onclick = stxBmApply;
+  $("stxBmMap").onchange = () => { STXBM.preview = null; renderBookmarks(); };
   $("songsScan").onclick = () => songsScan();
   $("songsPick").onclick = songsPick;
   $("songsQuery").oninput = () => {

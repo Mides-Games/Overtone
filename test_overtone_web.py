@@ -1470,6 +1470,49 @@ class RampsBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().ramps_use()["key"], "first")
 
 
+class StructureBookmarksBridgeTests(_IsolatedConfig):
+    """Section starts as editor bookmarks, previewed then written once."""
+
+    VIEW = {"sections": [{"start_s": 0.0}, {"start_s": 16.5}, {"start_s": 32.0}]}
+
+    def _song(self, tmp: str) -> web.Api:
+        folder = Path(tmp)
+        (folder / "audio.mp3").write_bytes(b"ID3" + bytes(64))
+        (folder / "map.osu").write_bytes("\r\n".join(
+            ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+             "[Editor]", "Bookmarks: 1000", "", "[TimingPoints]", "0,500,4,2,0,70,1,0", "",
+             "[HitObjects]", "256,192,1000,1,0,0:0:0:0:", ""]).encode("utf-8"))
+        api = _api_with_points()
+        api._analysis.source = str(folder / "audio.mp3")
+        return api
+
+    def test_preview_counts_and_apply_merges_with_a_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": True, "view": self.VIEW}):
+                preview = api.structure_bookmarks_preview("map.osu")
+                before = Path(tmp, "map.osu").read_bytes()
+                done = api.structure_bookmarks_apply("map.osu")
+                after = Path(tmp, "map.osu").read_bytes()
+                json.dumps([preview, done])
+                self.assertEqual((preview["starts"], preview["added"], preview["total"]),
+                                 (3, 3, 4))
+                self.assertEqual((done["added"], done["written"]), (3, True))
+                self.assertNotEqual(before, after)
+                self.assertIn(b"Bookmarks: 0, 1000, 16500, 32000", after)
+                self.assertTrue(Path(tmp, "map.osu.bak").is_file())
+
+    def test_without_sections_or_maps_it_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            with mock.patch.object(web.Api, "structure",
+                                   return_value={"ok": False, "key": "no_rust"}):
+                self.assertEqual(api.structure_bookmarks_preview("map.osu")["key"], "no_rust")
+            self.assertEqual(api.structure_bookmarks_preview("..\\map.osu")["key"], "bad_file")
+        self.assertEqual(web.Api().structure_bookmarks_preview("map.osu")["key"], "first")
+
+
 class OffsetLabBridgeTests(_IsolatedConfig):
     """The Offset lab: the header's numbers, both decoders side by side."""
 

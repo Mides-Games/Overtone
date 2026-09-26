@@ -16,6 +16,28 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-09-25 · Bookmarks: section starts, merged not replaced
+
+### Changed
+
+- **Bookmarks card in Structure**: one difficulty's picker, preview counts, and a
+  confirmed write merging section starts into its editor bookmarks — the mapper's
+  survive, every file backed up first. EN/ES.
+
+### Measured
+
+```
+a real 3-map set, 11 sections   11 added onto 4 kept per map, 1 line moved each,
+                                0 non-bookmark moves, backups kept
+Python unittest                 444 -> 446, all pass
+benchmark.py                    24/24, median 0.0000 BPM / 0.16 ms (unchanged)
+bpm-snapshot 24/24 · golden.py 27/27 · facts
+UI                              unit-tested bridge only; ids, both languages, no
+                                duplicates cross-checked. Harness pass owed, stated.
+```
+
+---
+
 ## v4.0.0-dev — 2026-09-25 · Bookmarks, engine half: merge, never delete
 
 ### Changed

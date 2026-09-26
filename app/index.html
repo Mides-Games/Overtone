@@ -529,6 +529,22 @@
           </div>
           <div class="card-body" id="stxBody"></div>
         </div>
+
+        <div class="card cmp-card" id="stxBmCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="stx_bm_title">Bookmarks</div>
+            <div class="spacer"></div>
+            <button type="button" class="btn small" id="stxBmPreview"><span data-i18n="stx_bm_preview">Preview</span></button>
+            <button type="button" class="btn small primary" id="stxBmApply" disabled><span data-i18n="stx_bm_apply">Write bookmarks</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="stx_bm_sub">Section starts as editor bookmarks in one difficulty, merged with its own. Nothing is ever deleted; every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="hsv_map">Difficulty</span><select class="input" id="stxBmMap"></select></label>
+            </div>
+            <div class="card-sub" id="stxBmResult"></div>
+          </div>
+        </div>
       </section>
 
       <!-- hitsounds: what one difficulty plays, where its additions fall (Phase 6, H2) -->

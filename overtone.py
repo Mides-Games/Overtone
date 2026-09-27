@@ -6218,6 +6218,160 @@ def swing_lane(points: list, attack_times: np.ndarray, attack_weights: np.ndarra
             "window_beats": int(window_beats), "tol_ms": float(tol_ms)}
 
 
+# ---------------------------------------------------------------------------
+# Half- and double-time inside one reported section — audit F-11
+# ---------------------------------------------------------------------------
+#
+# `_grow_sections` extends a section while its inlier share holds, and that
+# share cannot move across an exact 2x change: the grid is continuous, so
+# every attack of the slow half still lands on the fast half's grid. What
+# moves is **coverage** on a subdivided grid, which the growth loop computes
+# and throws away.
+#
+# Coverage alone is not enough — a drop, a breakdown and a sparse bar all
+# lower it. The discriminator is **parity**: in a half-time region the filled
+# slots share one residue mod 2; in a thinned-out one they are scattered.
+#
+#     coverage ~0.5   "half the slots are empty"
+#     parity   ~1.0   "and it is every other one, not a random half"
+#
+# What this produces is what DSP §B.2 asks for: a hint, surfaced, never a
+# silent split. Mapping the whole track at the reported BPM stays defensible,
+# so nothing here moves a red line by itself.
+
+#: Windows are sized in beats of the reported grid. Eight beats is two bars of
+#: 4/4 — short enough to localise a change, long enough that one missed hit
+#: does not move the statistics.
+DENSITY_WINDOW_BEATS = 8
+#: Subdivisions of the reported beat to test. The signal is invisible at the
+#: beat itself: a half-time region still has an attack on every beat.
+DENSITY_SUBDIVISIONS = (2, 4)
+#: A window is "thinned" when at most this fraction of its slots is filled...
+DENSITY_COVERAGE_MAX = 0.70
+#: ...and at least this fraction of the filled weight shares a residue mod 2.
+#: Random thinning gives about 0.5; an exact half-time gives about 1.0.
+DENSITY_PARITY_MIN = 0.85
+#: Both sides of a proposed change must be this many windows long.
+DENSITY_MIN_RUN = 2
+#: The thinned run's coverage must sit this far under the rest of its section.
+DENSITY_COVERAGE_DROP = 0.2
+#: An attack this far from a slot still fills it (or 6 ms, whichever is more).
+DENSITY_TOL_RATIO = 0.12
+
+
+def density_window(times: np.ndarray, weights: np.ndarray, period: float,
+                   phase: float, tol_ratio: float = DENSITY_TOL_RATIO) -> tuple[float, float, int]:
+    """One window's (coverage, parity at m=2, inlier count) on a subdivided grid."""
+    times = np.asarray(times, dtype=np.float64)
+    if times.size == 0 or period <= 0:
+        return 0.0, 0.0, 0
+    k = np.round((times - phase) / period)
+    inlier = np.abs(times - (phase + k * period)) <= max(tol_ratio * period, 0.006)
+    n = int(inlier.sum())
+    if n < 4:
+        return 0.0, 0.0, n
+    ki = k[inlier].astype(np.int64)
+    slots = float(np.ptp(ki)) + 1.0
+    coverage = min(1.0, len(np.unique(ki)) / max(slots, 1.0))
+    # Weighted by attack strength, so a ghost note cannot carry the parity.
+    totals = np.bincount(np.mod(ki, 2),
+                         weights=np.asarray(weights, dtype=np.float64)[inlier], minlength=2)
+    return coverage, float(np.max(totals) / max(np.sum(totals), 1e-9)), n
+
+
+def _density_runs(thin: list[bool]) -> list[tuple[int, int]]:
+    """The runs of thinned windows long enough to be a region, as [a, b)."""
+    runs, start = [], None
+    for i, flag in enumerate(thin):
+        if flag and start is None:
+            start = i
+        elif not flag and start is not None:
+            runs.append((start, i))
+            start = None
+    if start is not None:
+        runs.append((start, len(thin)))
+    return [(a, b) for a, b in runs if b - a >= DENSITY_MIN_RUN]
+
+
+def _density_section(index: int, section: "GridSection", times: np.ndarray,
+                     weights: np.ndarray, window_beats: int) -> dict | None:
+    """The best-scoring pulse change inside one section, or None."""
+    span = window_beats * section.period
+    if span <= 0 or section.end_s - section.start_s < (2 * DENSITY_MIN_RUN + 1) * span:
+        return None
+    best = None
+    for sub in DENSITY_SUBDIVISIONS:
+        period = section.period / sub
+        rows, edge = [], section.start_s
+        while edge + span <= section.end_s + 1e-9:
+            inside = (times >= edge) & (times < edge + span)
+            coverage, parity, count = density_window(times[inside], weights[inside],
+                                                     period, section.phase)
+            rows.append({"at": edge, "coverage": coverage, "parity": parity, "n": count})
+            edge += span
+        if len(rows) < 2 * DENSITY_MIN_RUN + 1:
+            continue
+        thin = [r["coverage"] <= DENSITY_COVERAGE_MAX and r["parity"] >= DENSITY_PARITY_MIN
+                and r["n"] >= 4 for r in rows]
+        runs = _density_runs(thin)
+        # A run covering the whole section means the subdivision guess is
+        # simply too fine for this music, not that the pulse changes in it.
+        if not runs or all(b - a >= len(thin) - 1 for a, b in runs):
+            continue
+        a, b = max(runs, key=lambda r: r[1] - r[0])   # the first of equal lengths
+        covs = np.array([r["coverage"] for r in rows])
+        outside = np.r_[covs[:a], covs[b:]]
+        if outside.size == 0 or float(outside.mean()) - float(covs[a:b].mean()) < DENSITY_COVERAGE_DROP:
+            continue
+        from_s, to_s = float(rows[a]["at"]), float(rows[b - 1]["at"] + span)
+        # The change sits at whichever edge of the run is not a section edge: a
+        # half-time drop thins the tail, so it is where the run starts; a
+        # double-time chorus thins the head, so it is where the run ends.
+        # Reporting the start either way put the double-time case 25.6 s off.
+        at_head, at_tail = a == 0, b >= len(rows)
+        hint = {
+            "section": int(index), "subdivision": int(sub),
+            "from_s": round(from_s, 3), "to_s": round(to_s, 3),
+            "boundary_s": round(to_s if (at_head and not at_tail) else from_s, 3),
+            "thin_side": "head" if at_head else ("tail" if at_tail else "mid"),
+            "factor": 0.5,          # the thinned region reads half the reported rate
+            "coverage_in": round(float(covs[a:b].mean()), 3),
+            "coverage_out": round(float(outside.mean()), 3),
+            "parity_in": round(float(np.mean([r["parity"] for r in rows[a:b]])), 3),
+            "parity_out": round(float(np.mean([r["parity"] for r in rows[:a] + rows[b:]])), 3),
+            "windows": len(rows), "thinned": int(b - a),
+        }
+        # Rounded first, then multiplied and rounded again: two subdivisions
+        # within rounding of each other must pick the same one every run.
+        hint["score"] = round((hint["coverage_out"] - hint["coverage_in"]) * hint["parity_in"], 3)
+        if best is None or hint["score"] > best["score"]:
+            best = hint
+    return best
+
+
+def density_hints(analysis: "Analysis", window_beats: int = DENSITY_WINDOW_BEATS) -> list[dict]:
+    """Where one reported section holds a half- or double-time region (F-11).
+
+    Eight beats at a time, on the reported beat halved and quartered: a run of
+    windows that is both empty enough and regular enough is a pulse change,
+    not a drop. Each hint says which section, where the change sits, which end
+    thinned out, the coverage and parity in and out, and a score to rank it
+    by. Read only, plain JSON types: nothing here changes a BPM or a red line.
+    """
+    if window_beats < 1:
+        raise ValueError("A window needs at least one beat.")
+    times = np.asarray(getattr(analysis, "attack_times", []), dtype=np.float64)
+    weights = np.asarray(getattr(analysis, "attack_weights", []), dtype=np.float64)
+    sections = list(getattr(analysis, "sections", None) or [])
+    if times.size == 0 or weights.shape != times.shape or not sections:
+        return []
+    order = np.argsort(times)
+    times, weights = times[order], weights[order]
+    hints = [_density_section(n, s, times, weights, window_beats)
+             for n, s in enumerate(sections)]
+    return [h for h in hints if h is not None]
+
+
 def resnap_objects(beatmap: dict, pairs: list[dict]) -> dict:
     """Move hit objects onto the new grid after a timing change (Phase 21).
 

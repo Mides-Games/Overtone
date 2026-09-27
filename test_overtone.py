@@ -2407,6 +2407,103 @@ class SnapDivisorTests(unittest.TestCase):
         self.assertEqual(section["divisor"], "1/4")
 
 
+class DensityHintTests(unittest.TestCase):
+    """F-11: half- and double-time inside one reported section."""
+
+    @staticmethod
+    def _analysis(attacks, weights=None, start=0.0, end=80.0, period=0.5, phase=0.0):
+        section = GridSection(start, end, period, phase, len(attacks), 0.5, 0.95)
+        analysis = Analysis("x.wav", end, np.zeros(0), np.zeros(0), [], 128, 44100, 1.0)
+        analysis.sections = [section]
+        analysis.attack_times = np.asarray(attacks, dtype=float)
+        analysis.attack_weights = (np.ones(len(attacks)) if weights is None
+                                   else np.asarray(weights, dtype=float))
+        return analysis
+
+    @staticmethod
+    def _beats(n, step, start=0.0):
+        return [start + i * step for i in range(n)]
+
+    def test_a_half_time_tail_is_hinted_where_it_starts(self) -> None:
+        from overtone import density_hints
+        # 80 s at 120 BPM: eighths throughout, then only quarters from 40 s.
+        fast = self._beats(160, 0.25)
+        slow = self._beats(80, 0.5, start=40.0)
+        hints = density_hints(self._analysis(fast[:160] + slow, end=80.0))
+        json.dumps(hints)
+        self.assertEqual(len(hints), 1)
+        hint = hints[0]
+        self.assertEqual((hint["section"], hint["thin_side"], hint["factor"]), (0, "tail", 0.5))
+        self.assertAlmostEqual(hint["boundary_s"], 40.0, delta=4.0)
+        self.assertGreater(hint["coverage_out"] - hint["coverage_in"], 0.2)
+        self.assertGreaterEqual(hint["parity_in"], 0.85)
+
+    def test_a_double_time_head_reports_where_the_thinning_ends(self) -> None:
+        from overtone import density_hints
+        # the mirror image: the head is the thin one, so the change is its end
+        slow = self._beats(80, 0.5)
+        fast = self._beats(160, 0.25, start=40.0)
+        hint = density_hints(self._analysis(slow + fast, end=80.0))[0]
+        self.assertEqual(hint["thin_side"], "head")
+        self.assertAlmostEqual(hint["boundary_s"], 40.0, delta=4.0)
+
+    def test_a_sparse_stretch_is_not_a_pulse_change(self) -> None:
+        from overtone import density_hints
+        # Half the slots of the tail dropped at random: coverage falls as it
+        # would for a real change, parity does not. This is the discriminator.
+        rng = np.random.default_rng(7)
+        fast = self._beats(160, 0.25)
+        tail = [t for t in self._beats(160, 0.25, start=40.0) if rng.random() < 0.5]
+        hints = density_hints(self._analysis(fast + tail, end=80.0))
+        self.assertEqual(hints, [])
+
+    def test_a_section_thin_all_through_says_nothing(self) -> None:
+        from overtone import density_hints
+        # Quarters against a grid subdivided into eighths: every window is
+        # "thin", which means the subdivision is too fine, not that it changes.
+        self.assertEqual(density_hints(self._analysis(self._beats(160, 0.5), end=80.0)), [])
+
+    def test_a_section_too_short_to_hold_a_change_is_skipped(self) -> None:
+        from overtone import density_hints
+        # Five windows of eight beats are needed; at 120 BPM that is 20 s.
+        short = self._analysis(self._beats(40, 0.25), end=10.0)
+        self.assertEqual(density_hints(short), [])
+
+    def test_nothing_to_read(self) -> None:
+        from overtone import density_hints
+        bare = Analysis("x.wav", 60.0, np.zeros(0), np.zeros(0), [], 128, 44100, 1.0)
+        self.assertEqual(density_hints(bare), [])
+        self.assertEqual(density_hints(self._analysis([])), [])
+        with self.assertRaises(ValueError):
+            density_hints(self._analysis(self._beats(160, 0.25)), window_beats=0)
+
+    def test_the_window_statistic_separates_thinned_from_scattered(self) -> None:
+        from overtone import density_window
+        every_other = np.array([i * 0.5 for i in range(16)])
+        coverage, parity, n = density_window(every_other, np.ones(16), 0.25, 0.0)
+        self.assertEqual(n, 16)
+        self.assertAlmostEqual(coverage, 16 / 31, places=3)   # half the slots
+        self.assertAlmostEqual(parity, 1.0, places=6)         # all on one residue
+        scattered = np.array([0.0, 0.25, 0.75, 1.0, 1.5, 1.75, 2.25, 2.5])
+        _cov, par, _n = density_window(scattered, np.ones(8), 0.25, 0.0)
+        self.assertLess(par, 0.85)
+        # Under four inliers there is nothing to say.
+        self.assertEqual(density_window(np.array([0.0, 0.25]), np.ones(2), 0.25, 0.0),
+                         (0.0, 0.0, 2))
+        self.assertEqual(density_window(np.zeros(0), np.zeros(0), 0.25, 0.0), (0.0, 0.0, 0))
+
+    def test_a_quiet_ghost_note_cannot_carry_the_parity(self) -> None:
+        from overtone import density_window
+        # On-beat hits loud, a faint one between each: weighted, the parity
+        # still reads the half-time; counted, it would not.
+        times = np.array([i * 0.25 for i in range(16)])
+        weights = np.array([1.0 if i % 2 == 0 else 0.02 for i in range(16)])
+        _cov, weighted, _n = density_window(times, weights, 0.25, 0.0)
+        _cov, flat, _n = density_window(times, np.ones(16), 0.25, 0.0)
+        self.assertGreater(weighted, 0.9)
+        self.assertAlmostEqual(flat, 0.5, places=2)
+
+
 class SwingLaneTests(unittest.TestCase):
     """Where the off-beat eighth falls, eight beats at a time."""
 

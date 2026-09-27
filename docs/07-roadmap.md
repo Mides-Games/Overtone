@@ -597,7 +597,7 @@ above — metadata confirmation before anything downloads — is the starting po
 | Click track | sound, accent on downbeats, level, subdivision clicks | low | med | click | no | no | P2 | **done** — 1-4 clicks per beat, bar accent on/off, levels in the transport; one sound |
 | Theme and scale | light theme, UI scale 90–150 %, reduced motion | low | med | tokens | no | no | P2 | **done** — UI scale 80-150 %, reduced motion, light theme |
 | Shortcuts | rebind any action | low | low | keyboard map | no | no | P3 | todo |
-| Per-song presets | remember detection settings per song | low | med | project format | no | no | P2 | todo |
+| Per-song presets | remember detection settings per song | low | med | project format | no | no | P2 | **done** — the settings a song's last finished analysis ran with (not the engine), kept in the config by the audio's SHA-256 for 200 songs; choosing the song puts them back with a note and the previous ones a click away. Not in the project file: a project exists only after an edit |
 | Language | English and Spanish; more through translation files | low | med | i18n | no | no | P2 | partial |
 | Settings file | export/import settings to another PC | low | low | settings | no | no | P3 | todo |
 

@@ -113,6 +113,11 @@ const I18N = {
     warn_rust_fallback: "Analysed with the Python engine: {why}.",
     backend_rust: "Rust", backend_python: "Python",
     inspector_note: "Applied on the next Analyze. Shared with the classic window.",
+    songopt_applied: "This song's own settings are back: {what}.",
+    songopt_note: "These are this song's own settings, from its last analysis: {what}.",
+    songopt_back: "Use the previous ones", songopt_reverted: "Back to the settings you had before.",
+    songopt_custom: "{d} BPM · {p} beats · {c} %", songopt_pulse: "pulse {p}",
+    songopt_no_prefer: "no BPM preference", songopt_no_refine: "no re-anchoring",
     engine_precision: "precision grid", engine_legacy: "beat tracker fallback",
     constant: "constant", variable: "variable", points_n: "{n} points", meter_known: "bar found", meter_guess: "bar assumed",
     time_at: "time", tempo_at: "tempo", line_at: "red line", conf_at: "confidence",
@@ -666,6 +671,11 @@ const I18N = {
     warn_rust_fallback: "Analizado con el motor Python: {why}.",
     backend_rust: "Rust", backend_python: "Python",
     inspector_note: "Se aplican en el próximo análisis. Compartidos con la ventana clásica.",
+    songopt_applied: "Volvieron los ajustes propios de esta canción: {what}.",
+    songopt_note: "Estos son los ajustes propios de esta canción, de su último análisis: {what}.",
+    songopt_back: "Usar los anteriores", songopt_reverted: "Volviste a los ajustes que tenías antes.",
+    songopt_custom: "{d} BPM · {p} pulsos · {c} %", songopt_pulse: "pulso {p}",
+    songopt_no_prefer: "sin preferencia de BPM", songopt_no_refine: "sin reanclar",
     engine_precision: "rejilla de precisión", engine_legacy: "tracker de respaldo",
     constant: "constante", variable: "variable", points_n: "{n} puntos", meter_known: "compás hallado", meter_guess: "compás supuesto",
     time_at: "tiempo", tempo_at: "tempo", line_at: "línea roja", conf_at: "confianza",
@@ -1134,6 +1144,7 @@ function translate() {
   document.querySelectorAll("#langSwitch button").forEach((b) => b.classList.toggle("on", b.dataset.lang === S.lang));
   pbLoopLabel();
   renderProjectOffer();
+  renderSongOptions();
   renderSong();
   renderRecents();
   renderSongs();
@@ -1209,6 +1220,7 @@ function setFile(info) {
   $("analyzeBtn").disabled = !S.file || S.busy;
   $("emptyAnalyze").hidden = !S.file;
   renderNeedSong();
+  songOptionsFor(S.file);
 }
 
 function renderSong() {
@@ -1253,6 +1265,62 @@ function readOptions() {
   };
   for (const [k, isBad] of Object.entries(bad)) $(k).classList.toggle("bad", isBad);
   return Object.values(bad).some(Boolean) ? null : o;
+}
+
+// ------------------------------------------------------------------ per-song settings
+// A song remembers the detection settings its last analysis ran with (the
+// engine stays one setting): choosing it again puts them back, says so, and
+// keeps the ones they replaced one click away.
+const SONGOPT = { path: "", previous: null, options: null };
+const SONGOPT_KEYS = ["delta", "persistence", "confidence", "pulse", "prefer_map_bpm", "refine_beats"];
+
+function songOptionsText(o) {
+  const preset = Object.entries(S.presets || {}).find(([, p]) =>
+    +p.delta === +o.delta && +p.persistence === +o.persistence && +p.confidence === +o.confidence);
+  const parts = [preset ? t(`preset_${preset[0]}`)
+                        : t("songopt_custom", { d: o.delta, p: o.persistence, c: o.confidence })];
+  const pulse = document.querySelector(`#pulseSwitch [data-pulse="${o.pulse}"]`);
+  if (o.pulse !== "auto" && pulse) parts.push(t("songopt_pulse", { p: pulse.textContent }));
+  if (!o.prefer_map_bpm) parts.push(t("songopt_no_prefer"));
+  if (!o.refine_beats) parts.push(t("songopt_no_refine"));
+  return parts.join(" · ");
+}
+
+async function songOptionsFor(info) {
+  SONGOPT.path = ""; SONGOPT.previous = null; SONGOPT.options = null;
+  renderSongOptions();
+  if (!info || !info.exists || !api()) return;
+  const reply = await api().song_options(info.path);
+  if (!reply || !reply.ok || !reply.options || S.busy || !S.file || S.file.path !== info.path) return;
+  const now = readOptions();
+  if (!now || SONGOPT_KEYS.every((k) => now[k] === reply.options[k])) return;
+  Object.assign(SONGOPT, { path: info.path, previous: now, options: reply.options });
+  applyOptions({ ...now, ...reply.options });
+  renderSongOptions();
+  toast(t("songopt_applied", { what: songOptionsText(reply.options) }));
+}
+
+function renderSongOptions() {
+  const on = !!SONGOPT.previous && !!S.file && S.file.path === SONGOPT.path;
+  $("songOptNote").hidden = !on;
+  $("songOptText").textContent = on ? t("songopt_note", { what: songOptionsText(SONGOPT.options) }) : "";
+  $("settingsBtn").classList.toggle("song-own", on);
+}
+
+function songOptionsBack() {
+  if (!SONGOPT.previous) return;
+  applyOptions(SONGOPT.previous);
+  SONGOPT.previous = null;
+  renderSongOptions();
+  toast(t("songopt_reverted"));
+}
+
+// A setting changed by hand is the mapper's, no longer the song's (the
+// engine was never the song's).
+function songOptionsTouched(e) {
+  if (!SONGOPT.previous || (e && e.target.closest("#songOptNote, #rustEngine"))) return;
+  SONGOPT.previous = null;
+  renderSongOptions();
 }
 
 function markPreset() {
@@ -5915,6 +5983,10 @@ function wire() {
     readOptions(); markPreset();
   });
   ["delta", "persistence", "confidence"].forEach((id) => $(id).addEventListener("input", () => { readOptions(); markPreset(); }));
+  $("songOptBack").onclick = songOptionsBack;
+  $("drawer").addEventListener("input", songOptionsTouched);
+  $("drawer").addEventListener("change", songOptionsTouched);
+  ["pulseSwitch", "presetSwitch"].forEach((id) => $(id).addEventListener("click", songOptionsTouched));
   document.querySelectorAll("#langSwitch button").forEach((b) => b.onclick = () => {
     S.lang = b.dataset.lang; translate(); if (api()) api().set_language(S.lang);
   });

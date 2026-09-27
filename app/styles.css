@@ -313,6 +313,12 @@ button.link:focus-visible, .recent-item:focus-visible { border-radius: var(--r-x
 .btn.ghost { background: transparent; }
 .btn.small { height: 30px; padding: 0 12px; font-size: var(--fs-2); }
 .btn.icon { width: 36px; padding: 0; }
+/* The detection settings on screen are the song's own (per-song presets). */
+#settingsBtn { position: relative; }
+#settingsBtn.song-own::after {
+  content: ""; position: absolute; top: 5px; right: 5px;
+  width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+}
 
 .spinner {
   width: 15px; height: 15px; border-radius: 50%;

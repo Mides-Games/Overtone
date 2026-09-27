@@ -17,6 +17,52 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Each song's own detection settings, put back
+
+### Changed
+
+- **A song remembers the detection settings its last finished analysis ran with**: the
+  preset values, pulse, BPM preference and re-anchoring. Choosing the song again (Open,
+  recents, the Songs browser, a drop) puts them back in the Detection drawer when they
+  differ from the ones on screen, says so in a toast, marks the drawer's button with a dot,
+  and heads the drawer with a note naming them ("Steady · pulse ×2") and a button that puts
+  back the ones they replaced. Changing a setting by hand makes it the mapper's again: the
+  note goes, the change stays.
+- **The engine is not a song setting**: Rust or Python is a choice about speed, so it stays
+  one setting for every song.
+- `song_options(path)` in the bridge; kept in the config as `song_options`, keyed by the
+  first 16 hex digits of the audio's SHA-256, so a moved, copied or dropped file keeps
+  them; the 200 most recently analysed songs are kept.
+- **Not in the project file**, as the roadmap row had it: a project exists only once the
+  timing has been edited, and the settings matter from the first analysis on.
+
+### Hardening
+
+- A failed or stopped analysis leaves nothing. Settings that do not read back whole and
+  in range (a hand-edited config, a later shape) are ignored, never applied, and a
+  `song_options` that is not a map is dropped when the config is read.
+- The song's settings are stored before the result reaches the page, so a dropped file,
+  which the page chooses again when its result arrives, reads the settings that result
+  ran with.
+
+### Measured
+
+```
+Recognising a song (SHA-256 of its audio), on the 20 Corpus B audio files (2.2-11.5 MB,
+median 5.6 MB), read only: median 28 ms the first time, max 81 ms; the same file again
+(size and modification time unchanged) 0.2 ms
+Config: 182 bytes a song as written, 36 kB for 200 (the config's limit is 256 kB)
+Bridge commit: unit tests 625 OK; benchmark, bpm-snapshot 24/24, golden 27/27, reference
+24/24, assisted, coverage, measures, signatures, robustness (the engine file's only change
+is the config type)
+Python unittest   621 -> 625, all pass
+The page, through the UI harness at 1280 px with two scratch songs: song A analysed with
+Steady and pulse x2, song B with Variable and Auto; choosing B kept the settings on
+screen (it had none); choosing A again put Steady and x2 back, with the toast, the dot
+and the drawer's note; "Use the previous ones" restored Variable and Auto; a pulse
+clicked by hand kept its value and cleared the note; the note in Spanish; no page errors
+```
+
 ## v4.0.0-dev — 2026-09-26 · The fallback tracker's beats, moved onto their attacks
 
 When no grid fits, v3 falls back to the v2 beat tracker, and the roadmap said its beats land

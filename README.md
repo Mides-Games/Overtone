@@ -116,6 +116,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Keyboard map | ✅ | `?` lists every key: seek, red lines, loop, click, tap, the rail's sections, undo, analyze |
 | Command palette | 📋 | P3 |
 | Settings section: output folder, offset precision, click, interface size, cache | ✅ | Detection stays in its drawer |
+| Each song's own detection settings | ✅ | The ones its last analysis ran with, put back when the song is chosen again; the previous ones a click away |
 | Sections: Audio | 📋 | P19 — Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export, History and Settings exist |
 | Light and dark themes, or the system's | ✅ | Settings → Theme; UI scale and reduced motion too |
 

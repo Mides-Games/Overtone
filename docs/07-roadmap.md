@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **671** Python (454 engine + 217 web shell) · **270** Rust.
+Tests: **675** Python (454 engine + 221 web shell) · **271** Rust.
 
 ### What is pending, in order
 
@@ -178,7 +178,7 @@ The whole of [`05-dsp-pipeline.md`](05-dsp-pipeline.md) Part A, and nothing from
 | Sections | grow · re-seed · merge · crossing boundaries · refit | high | **high** | fit | no | no | **P0** | **done** |
 | Meter, confidence, points | downbeat anchoring, snapping, whole-ms export | med | high | sections | no | no | **P0** | **done** |
 | Analysis assembly | beats, local curve, global BPM, stability, residual | med | high | points | no | no | **P0** | **done** |
-| Unit tests ported | the v3 tests by name | med | **high** | all | no | no | **P0** | partial — 270 Rust tests; not every v3 name |
+| Unit tests ported | the v3 tests by name | med | **high** | all | no | no | **P0** | partial — 271 Rust tests; not every v3 name |
 | Property tests | ×2/÷2 identity, exact-grid recovery, monotone boundaries | low | high | all | no | no | P1 | partial |
 | Structured diagnostics | carried on the result, not in a progress string — closes **F-08** | low | med | all | no | no | P1 | **done** (Rust) |
 | **App uses the Rust engine** | Python binding (PyO3) or JSON subprocess, so the shell gets the speed-up | med | **high** | all | no | no | **P1** | **done** — JSON subprocess (`overtone-cli --full`), opt-in in Settings |
@@ -394,7 +394,7 @@ corpus generator; they say the classes separate, not how they do on real songs.
 | CLI rewrite | `analyze · timing · hitsound · validate · inject · export · bench` | med | **high** | P1, P5 | no | no | **P1** | partial — Python CLI covers analyse, CSV, click, .osz, inject, folders, and a map checked (`--check`, the mod report, exit 3 on findings); no hitsound or bench commands |
 | Machine-readable output | `--json` | low | high | CLI | no | no | P1 | **done** for analyse |
 | Batch folder analysis | every audio file in a folder | low | high | CLI | no | no | P1 | **done** |
-| Batch hitsounding | many difficulties, one analysis reused | low | high | P6 | no | no | P1 | todo |
+| Batch hitsounding | many difficulties, one analysis reused | low | high | P6 | no | no | P1 | partial — engine and bridge (2026-09-27): `overtone-cli hitsound` takes a mapset and reads the audio once, a map it cannot read costing the others nothing; the bridge proposes for every difficulty in one run and caches each. 8 difficulties in 19.1 s against 148.0 s one by one (7.8x), the same sounds map for map. The page still proposes one difficulty at a time |
 | Project format | reopen a song with its edits without recomputing | med | high | P2 cache | no | no | P1 | **done** for the timing work — each song's red lines and locks saved after every edit to `<output folder>/Projects/<song> [<sha>].oto` (JSON, atomic), offered back after its analysis, undo returning to the analysis; not kept: the undo history, the view, notes, earlier versions (14.1's full list) |
 | Watch mode | re-analyse on file change | low | low | CLI | no | no | P3 | todo |
 

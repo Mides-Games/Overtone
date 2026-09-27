@@ -411,12 +411,96 @@ fn hitsound_proposes_every_object_with_alternatives_and_terms() {
     for args in [
         &["hitsound"][..],
         &["hitsound", "a.wav"][..],
-        &["hitsound", "a.wav", "b.osu", "c.osu"][..],
+        &["hitsound", "a.wav", "--profile", "p.json"][..],
         &["hitsound", "a.wav", "b.osu", "--profile"][..],
     ] {
         let bad = run(args);
         assert_eq!(bad.status.code(), Some(2), "{args:?}");
     }
+}
+
+/// A map of circles on the 150 BPM clicks, every one playing `bits`.
+fn circles(times_ms: &[u32], bits: u8) -> String {
+    let mut map = String::from("osu file format v14\r\n[TimingPoints]\r\n500,400,4,2,1,70,1,0\r\n[HitObjects]\r\n");
+    for t in times_ms {
+        map.push_str(&format!("256,192,{t},1,{bits},0:0:0:0:\r\n"));
+    }
+    map
+}
+
+fn sorted_keys(value: &serde_json::Value) -> Vec<String> {
+    let mut keys: Vec<String> = value.as_object().unwrap().keys().cloned().collect();
+    keys.sort();
+    keys
+}
+
+#[test]
+fn hitsound_decides_several_maps_on_one_analysis() {
+    // Two difficulties of one song and a third that is not there: the song
+    // is analysed once, each map gets exactly the proposals its own run
+    // gives, and the missing one is that map's error alone.
+    let dir = scratch("hitsound-maps");
+    let audio = dir.join("clicks-150.wav");
+    write_wav(&audio, &clicks(150.0, 6.0));
+    let (easy, hard, gone) = (dir.join("easy.osu"), dir.join("hard.osu"), dir.join("insane.osu"));
+    std::fs::write(&easy, circles(&[500, 1300, 2100, 2900, 3700], 0)).unwrap();
+    std::fs::write(&hard, circles(&(0..12).map(|k| 500 + k * 400).collect::<Vec<_>>(), 2)).unwrap();
+    let (a, e, h, g) = (
+        audio.to_str().unwrap(),
+        easy.to_str().unwrap(),
+        hard.to_str().unwrap(),
+        gone.to_str().unwrap(),
+    );
+    let alone = [run(&["hitsound", a, e]), run(&["hitsound", a, h])];
+    let batched = run(&["hitsound", a, e, g, h]);
+    let no_audio = run(&["hitsound", "no-such.wav", e, h]);
+    std::fs::remove_dir_all(&dir).ok();
+
+    // One map keeps the one-map report, key for key.
+    let reports: Vec<serde_json::Value> = alone
+        .iter()
+        .map(|out| {
+            assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+            serde_json::from_slice(&out.stdout).unwrap()
+        })
+        .collect();
+    assert_eq!(
+        sorted_keys(&reports[0]),
+        ["duration", "map", "profile", "source", "templates", "timings_s", "units", "version"]
+    );
+    assert_eq!(
+        sorted_keys(&reports[0]["timings_s"]),
+        ["attacks", "decide", "decode", "evidence", "structure", "tempo"]
+    );
+    assert_ne!(reports[0]["units"], reports[1]["units"]);
+
+    // Several: the song once, then its maps in the order given; the one
+    // that cannot be read makes the exit 1 and fails no other.
+    assert_eq!(batched.status.code(), Some(1), "{}", String::from_utf8_lossy(&batched.stderr));
+    let report: serde_json::Value = serde_json::from_slice(&batched.stdout).unwrap();
+    assert_eq!(
+        sorted_keys(&report),
+        ["duration", "maps", "profile", "source", "templates", "timings_s", "version"]
+    );
+    assert_eq!(
+        sorted_keys(&report["timings_s"]),
+        ["attacks", "decode", "evidence", "structure", "tempo"]
+    );
+    assert_eq!((&report["duration"], &report["profile"]), (&reports[0]["duration"], &reports[0]["profile"]));
+    let maps = report["maps"].as_array().unwrap();
+    let paths: Vec<&str> = maps.iter().map(|m| m["map"].as_str().unwrap()).collect();
+    assert_eq!(paths, [e, g, h]);
+    assert_eq!(maps[0]["units"], reports[0]["units"]);
+    assert_eq!(maps[2]["units"], reports[1]["units"]);
+    assert!(maps[0]["timings_s"]["decide"].is_number());
+    assert!(maps[1]["error"].as_str().unwrap().starts_with("cannot read"), "{}", maps[1]);
+    assert_eq!(sorted_keys(&maps[1]), ["error", "map"]);
+
+    // An audio that cannot be read fails every map at once, and says which.
+    assert_eq!(no_audio.status.code(), Some(1));
+    let failed: serde_json::Value = serde_json::from_slice(&no_audio.stdout).unwrap();
+    assert!(failed["error"].as_str().unwrap().starts_with("cannot load"), "{failed}");
+    assert_eq!(failed["maps"], serde_json::json!([e, h]));
 }
 
 #[test]

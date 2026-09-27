@@ -1132,12 +1132,12 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
                 api.hitsound_decide_propose("hard.osu")
             preview = api.hitsound_decide_preview("hard.osu", None, None, choices)
             heard = api.hitsound_decide_playback("hard.osu", None, None, choices)
-            api.hitsound_decide_apply("hard.osu", None, True, None, choices)
-            written = api.hitsound_playback("hard_hitsounded.osu")
-            text = Path(tmp, "hard_hitsounded.osu").read_bytes()
             refused = [api.hitsound_decide_preview("hard.osu", None, None, bad)["key"]
                        for bad in ([[0, "circle", None, 2]], [[1, "circle", None, 0]],
                                    [[7, "circle", None, 0]], [[0, "circle", None]])]
+            api.hitsound_decide_apply("hard.osu", None, True, None, choices)
+            written = api.hitsound_playback("hard_hitsounded.osu")
+            text = Path(tmp, "hard_hitsounded.osu").read_bytes()
         json.dumps([preview, heard])
         self.assertEqual((preview["chosen"], preview["accepted"], heard["chosen"]), (1, 2, 1))
         for part in ("events", "loops", "objects", "samples", "counts"):
@@ -1251,6 +1251,180 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
         self.assertEqual(run.call_args_list[1].args[0],
                          ["cli.exe", "hitsound", "song.mp3", "hard.osu",
                           "--profile", str(Path("profiles", "quiet.json"))])
+
+    # -- every difficulty at once ---------------------------------------------
+    def _mapset(self, tmp: str) -> web.Api:
+        """The song with three difficulties that play it, and one that plays
+        another audio beside it."""
+        api = self._song(tmp)
+        for name in ("easy.osu", "normal.osu"):
+            Path(tmp, name).write_bytes("\r\n".join(self.LINES).encode("utf-8"))
+        other = [line.replace("audio.mp3", "other.mp3") for line in self.LINES]
+        Path(tmp, "other.osu").write_bytes("\r\n".join(other).encode("utf-8"))
+        return api
+
+    def _batch(self, audio, osu, profile=None):
+        """The sidecar's answer for several maps: each its units, and the
+        normal difficulty as a map that could not be read."""
+        return {"source": audio, "maps": [
+            {"map": path, "error": f"cannot read {path}: gone"} if Path(path).name == "normal.osu"
+            else {"map": path, "units": self.UNITS, "timings_s": {"decide": 0.01}}
+            for path in osu]}
+
+    def test_every_difficulty_is_proposed_on_one_run_and_each_is_cached(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._mapset(tmp)
+            before = {p.name: p.read_bytes() for p in Path(tmp).glob("*.osu")}
+            with mock.patch.object(web.overtone_rust, "hitsound", side_effect=self._batch) as run:
+                reply = api.hitsound_decide_propose_all()
+                cached = api.hitsound_decide_cached("hard.osu")
+                preview = api.hitsound_decide_preview("easy.osu", [[1, "circle", None]])
+                missing = api.hitsound_decide_cached("normal.osu")
+                proposed = api.hitsound_decide_proposed()
+            after = {p.name: p.read_bytes() for p in Path(tmp).glob("*.osu")}
+        json.dumps([reply, cached, preview, proposed])
+        # One run, every difficulty that plays this audio, in the picker's order.
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(run.call_args.args, (str(Path(tmp, "audio.mp3")),
+                                              [str(Path(tmp, n)) for n in ("easy.osu", "hard.osu",
+                                                                           "normal.osu")]))
+        self.assertIsNone(run.call_args.kwargs["profile"])
+        self.assertEqual((reply["ok"], reply["profile"]), (True, "balanced"))
+        self.assertEqual([(m["file"], m.get("units"), "error" in m) for m in reply["maps"]],
+                         [("easy.osu", 2, False), ("hard.osu", 2, False), ("normal.osu", None, True)])
+        self.assertIn("gone", reply["maps"][2]["error"])
+        # Each map's proposal, as one Propose would have answered it, from the cache.
+        self.assertEqual((cached["file"], cached["units"], cached["profile"]),
+                         ("hard.osu", self.UNITS, "balanced"))
+        self.assertEqual((preview["units"], preview["accepted"], preview["would_change"]), (2, 1, 1))
+        self.assertEqual(missing["key"], "no_proposal")
+        self.assertEqual([(m["file"], m["units"], m["profile"]) for m in proposed["maps"]],
+                         [("easy.osu", 2, "balanced"), ("hard.osu", 2, "balanced")])
+        self.assertEqual(after, before)
+
+    def test_proposing_every_difficulty_keeps_the_profile_rules_and_one_job_at_a_time(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as shelf:
+            Path(shelf, "quiet.json").write_text("{}", encoding="utf-8")
+            api = self._mapset(tmp)
+            with mock.patch.object(web, "PROFILE_DIR", Path(shelf)), \
+                    mock.patch.object(web.overtone_rust, "hitsound", side_effect=self._batch) as run:
+                refused = [api.hitsound_decide_propose_all(bad)["key"]
+                           for bad in ("../quiet", str(Path(shelf, "quiet.json")), "QUIET", 3)]
+                self.assertEqual(run.call_count, 0)
+                chosen = api.hitsound_decide_propose_all("quiet")
+                with api._busy:
+                    busy = api.hitsound_decide_propose_all()
+                self.assertEqual(run.call_count, 1)
+            with mock.patch.object(web.overtone_rust, "hitsound", return_value={"units": self.UNITS}):
+                one = api.hitsound_decide_propose("hard.osu")
+            listed = api.hitsound_decide_proposed()
+            with mock.patch.object(web.overtone_rust, "hitsound",
+                                   side_effect=web.overtone_rust.SidecarUnavailable("gone")):
+                unbuilt = api.hitsound_decide_propose_all()
+            with mock.patch.object(web.overtone_rust, "hitsound",
+                                   side_effect=RuntimeError("cannot load audio.mp3: bad")):
+                unreadable = api.hitsound_decide_propose_all()
+            # A song no difficulty in its folder plays.
+            api._analysis.source = str(Path(tmp, "moved.mp3"))
+            alone = api.hitsound_decide_propose_all()
+        self.assertEqual(refused, ["bad_profile"] * 4)
+        self.assertEqual(run.call_args_list[0].kwargs["profile"], Path(shelf, "quiet.json"))
+        self.assertEqual((chosen["profile"], busy["key"]), ("quiet", "busy"))
+        # A later Propose on one difficulty replaces its entry, profile and all.
+        self.assertEqual([(m["file"], m["profile"]) for m in listed["maps"]],
+                         [("easy.osu", "quiet"), ("hard.osu", "balanced")])
+        self.assertEqual(one["profile"], "balanced")
+        self.assertEqual((unbuilt["key"], unreadable["key"]), ("no_rust", "error"))
+        self.assertIn("cannot load", unreadable["detail"])
+        self.assertEqual(alone["key"], "hsv_none")
+        self.assertEqual(web.Api().hitsound_decide_propose_all()["key"], "first")
+        self.assertEqual(web.Api().hitsound_decide_proposed()["key"], "first")
+        self.assertEqual(web.Api().hitsound_decide_cached("hard.osu")["key"], "first")
+
+    def _analyse(self, api: web.Api, path: str) -> None:
+        """One analysis of ``path`` through the real worker, the engine mocked."""
+        done = threading.Event()
+        api._emit = lambda handler, _payload: done.set() if handler in ("onResult", "onError") else None
+
+        def engine(song, *_args, **_kwargs):
+            analysis = _analysis([ta.TimingPoint(1000.0, 120.0, 0.9, 0)])
+            analysis.source = song
+            return analysis
+
+        with mock.patch.object(web, "run_analysis", side_effect=engine):
+            self.assertTrue(api.analyze(path, {"delta": 1.5, "persistence": 12, "confidence": 75,
+                                               "pulse": "auto", "prefer_map_bpm": True,
+                                               "refine_beats": True})["ok"])
+            self.assertTrue(done.wait(30))
+        for _ in range(500):
+            if not api._busy.locked():
+                break
+            threading.Event().wait(0.01)
+
+    def test_a_write_spends_its_proposal_and_another_song_forgets_them(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as elsewhere:
+            api = self._mapset(tmp)
+            with mock.patch.object(web.overtone_rust, "hitsound", side_effect=self._batch):
+                api.hitsound_decide_propose_all()
+            written = api.hitsound_decide_apply("hard.osu")
+            after_write = api.hitsound_decide_cached("hard.osu")["key"]
+            untouched = api.hitsound_decide_cached("easy.osu")["ok"]
+            with mock.patch.object(web.overtone_rust, "hitsound", return_value={"units": self.UNITS}):
+                api.hitsound_decide_propose("hard.osu")
+            undone = api.hitsound_decide_undo()
+            after_undo = api.hitsound_decide_cached("hard.osu")["key"]
+            copied = api.hitsound_decide_apply("easy.osu", copy=True)
+            after_copy = api.hitsound_decide_cached("easy.osu")["key"]
+            # The copy plays the song too, so the next run proposes for it as well.
+            with mock.patch.object(web.overtone_rust, "hitsound", side_effect=self._batch):
+                api.hitsound_decide_propose_all()
+            self._analyse(api, str(Path(tmp, "audio.mp3")))
+            kept = [m["file"] for m in api.hitsound_decide_proposed()["maps"]]
+            # Another song whose folder has a map of the same name.
+            song = Path(elsewhere, "audio.mp3")
+            song.write_bytes(b"ID3" + bytes(80))
+            Path(elsewhere, "hard.osu").write_bytes("\r\n".join(self.LINES).encode("utf-8"))
+            self._analyse(api, str(song))
+            other = api.hitsound_decide_cached("hard.osu")
+        self.assertEqual((written["ok"], undone["ok"], copied["ok"], untouched), (True,) * 4)
+        self.assertEqual((after_write, after_undo, after_copy), ("no_proposal",) * 3)
+        # The same song analysed again keeps them; another song forgets them.
+        self.assertEqual(kept, ["easy.osu", "easy_hitsounded.osu", "hard.osu"])
+        self.assertEqual(other["key"], "no_proposal")
+
+    def test_the_sidecar_gets_every_map_on_one_command_line(self) -> None:
+        several = {"source": "song.mp3", "duration": 60.0, "maps": [
+            {"map": "easy.osu", "units": [], "timings_s": {"decide": 0.01}},
+            {"map": "gone.osu", "error": "cannot read gone.osu: missing"}], "timings_s": {}}
+        one = {"source": "song.mp3", "map": "easy.osu", "duration": 60.0, "units": [],
+               "profile": "balanced", "timings_s": {"evidence": 1.0, "decide": 0.02}}
+
+        def answer(code, report):
+            return mock.Mock(returncode=code, stdout=json.dumps(report).encode("utf-8"), stderr=b"")
+
+        with mock.patch.object(web.overtone_rust.subprocess, "run",
+                               side_effect=[answer(1, several), answer(0, one),
+                                            answer(1, {"source": "song.mp3", "maps": ["a", "b"],
+                                                       "error": "cannot load song.mp3"})]) as run:
+            partial = web.overtone_rust.hitsound("song.mp3", ["easy.osu", Path("gone.osu")],
+                                                 cli=Path("cli.exe"),
+                                                 profile=Path("profiles", "quiet.json"))
+            listed = web.overtone_rust.hitsound("song.mp3", ["easy.osu"], cli=Path("cli.exe"))
+            with self.assertRaises(RuntimeError) as failed:
+                web.overtone_rust.hitsound("song.mp3", ["a", "b"], cli=Path("cli.exe"))
+        self.assertEqual(run.call_args_list[0].args[0],
+                         ["cli.exe", "hitsound", "song.mp3", "easy.osu", "gone.osu",
+                          "--profile", str(Path("profiles", "quiet.json"))])
+        # A map that could not be read is its entry's error; the others stand.
+        self.assertEqual([("units" in m, m.get("error")) for m in partial["maps"]],
+                         [(True, None), (False, "cannot read gone.osu: missing")])
+        # A list of one answers in the same shape as a list of several.
+        self.assertEqual(listed["maps"], [{"map": "easy.osu", "units": [], "timings_s": {"decide": 0.02}}])
+        self.assertEqual((listed["timings_s"], listed["profile"]), ({"evidence": 1.0}, "balanced"))
+        self.assertNotIn("units", listed)
+        self.assertIn("cannot load", str(failed.exception))
+        with self.assertRaises(ValueError):
+            web.overtone_rust.hitsound("song.mp3", [], cli=Path("cli.exe"))
 
 
 class StructureBridgeTests(_IsolatedConfig):

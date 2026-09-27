@@ -17,6 +17,36 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · One analysis for every difficulty
+
+### Changed
+
+- **`overtone-cli hitsound <audio> <map.osu> [<map.osu> ...]`** takes a mapset, not one
+  map. Deciding a map's sounds is mostly the audio's work — decode, attacks, the evidence
+  behind every attack — and that work does not change with the map, so it is done once and
+  every map is decided on it. The report keeps its shape for one map; for several it holds
+  `maps`, one entry per map in the order given, each with its own `units` or its own
+  `error`, so a map that cannot be read costs the others nothing. Exit 1 still means the
+  audio or the profile could not be read.
+- **`overtone_rust.hitsound`** takes one map or a list of them, and **`Api`** grew three
+  calls on it: `hitsound_decide_propose_all` proposes for every difficulty beside the song
+  in one sidecar run and caches each map's units as the single proposal already was,
+  `hitsound_decide_cached` hands back a cached one without running anything, and
+  `hitsound_decide_proposed` says which difficulties hold one, with its profile and how
+  many sounds. One heavy job at a time, as before; nothing is written.
+
+### Measured
+
+```
+Take You Down (8 difficulties, MP3, 3:41): one by one 148.0 s, one call 19.1 s — 7.8x, and
+every map's sounds identical map for map (541, 520, 544, 447, 618, 580, 422, 334 units).
+Roar of the Jungle Dragon (7 difficulties, OGG, 5:21): 296.4 s against 40.1 s - 7.4x, the
+same 1,274 to 427 units map for map.
+
+675 Python tests and 271 Rust tests pass; the Rust side gained a test for a mapset whose
+second map cannot be read.
+```
+
 ## v4.0.0-dev — 2026-09-27 · Where the music swings
 
 ### Changed

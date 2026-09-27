@@ -391,9 +391,12 @@ class Api:
         #: The engine-evidence report for the live analysis object: attacks
         #: and sections never move under edits, so identity is the key.
         self._evidence: tuple | None = None
-        #: The decision's proposal units, keyed by .osu name: proposing runs
-        #: the CLI once, and accept/reject iterates the cache. A moved map
-        #: refuses at apply time through the proposal's own staleness guard.
+        #: The decision's proposal units and the profile behind them, keyed
+        #: by .osu name: proposing runs the CLI once (for one difficulty or
+        #: all of them), and accept/reject iterates the cache. A write or an
+        #: undo drops its file's entry, and another song all of them. A
+        #: moved map refuses at apply time through the proposal's own
+        #: staleness guard.
         self._decisions: dict[str, dict] = {}
         #: The last ramp fit, keyed by (analysis, drift, max lines): computing
         #: shells to the CLI, and Use reads the cache.
@@ -1405,8 +1408,79 @@ class Api:
         finally:
             self._busy.release()
         units = report.get("units", [])
-        self._decisions[str(path.name)] = {"units": units}
+        self._decisions[str(path.name)] = {"units": units, "profile": name}
         return {"ok": True, "file": str(path.name), "units": units, "profile": name}
+
+    def hitsound_decide_propose_all(self, profile: str | None = None) -> dict:
+        """Propose for every difficulty beside the song at once, the maps
+        :meth:`song_maps` lists: one run of the sidecar analyses the audio
+        once and decides each map on it, and each map's units are cached as
+        its own proposal is, so choosing another difficulty shows them
+        without running the sidecar again. A map the sidecar cannot read is
+        that map's error alone. The profile is a listed name, as for one
+        map; one heavy job at a time. Nothing is written."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        name = DEFAULT_PROFILE if profile is None else profile
+        if not isinstance(name, str) or name not in hitsound_profile_names():
+            return {"ok": False, "key": "bad_profile"}
+        maps = self.song_maps().get("maps", [])
+        if not maps:
+            return {"ok": False, "key": "hsv_none"}
+        folder = Path(str(self._analysis.source)).parent
+        paths = [str(folder / m["file"]) for m in maps]
+        if not self._busy.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        try:
+            report = overtone_rust.hitsound(
+                str(self._analysis.source), paths,
+                profile=None if name == DEFAULT_PROFILE else PROFILE_DIR / f"{name}.json")
+        except overtone_rust.SidecarUnavailable:
+            return {"ok": False, "key": "no_rust"}
+        except (RuntimeError, ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            self._busy.release()
+        # Each entry names the map it answers, as it was passed.
+        answered = {entry.get("map"): entry for entry in report.get("maps", [])}
+        rows = []
+        for m, path in zip(maps, paths):
+            entry = answered.get(path, {"error": "The engine did not answer for this map."})
+            if "units" in entry:
+                self._decisions[m["file"]] = {"units": entry["units"], "profile": name}
+                rows.append({"file": m["file"], "difficulty": m["difficulty"],
+                             "units": len(entry["units"])})
+            else:
+                rows.append({"file": m["file"], "difficulty": m["difficulty"],
+                             "error": str(entry.get("error", ""))})
+        return {"ok": True, "profile": name, "maps": rows}
+
+    def hitsound_decide_cached(self, file: str) -> dict:
+        """The proposal cached for one difficulty beside the song, as
+        :meth:`hitsound_decide_propose` answered it, without running the
+        sidecar: ``no_proposal`` when there is none."""
+        path = self._decide_file(file)
+        if isinstance(path, dict):
+            return path
+        cached = self._decisions.get(str(path.name))
+        if cached is None:
+            return {"ok": False, "key": "no_proposal"}
+        return {"ok": True, "file": str(path.name), "units": cached["units"],
+                "profile": cached.get("profile", DEFAULT_PROFILE)}
+
+    def hitsound_decide_proposed(self) -> dict:
+        """Which difficulties beside the song have a proposal cached, in
+        :meth:`song_maps` order, with its profile and how many sounds."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        rows = []
+        for m in self.song_maps().get("maps", []):
+            cached = self._decisions.get(m["file"])
+            if cached is not None:
+                rows.append({"file": m["file"], "difficulty": m["difficulty"],
+                             "profile": cached.get("profile", DEFAULT_PROFILE),
+                             "units": len(cached["units"])})
+        return {"ok": True, "maps": rows}
 
     def _decide_units(self, path: Path, edits, choices=None) -> list | dict:
         """The cached proposal's units, none when hand edits come alone (they
@@ -1524,6 +1598,9 @@ class Api:
             result = ta.apply_proposals(path, units, accepted, dest, edits=edits)
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
+        # Written, the proposal is spent, as the page clears it: choosing the
+        # difficulty again must not bring it back.
+        self._decisions.pop(str(path.name), None)
         if dest is None:
             self._decide_undo = {"path": str(path), "bytes": previous}
         else:
@@ -1592,6 +1669,8 @@ class Api:
             return {"ok": False, "key": "error", "detail": str(exc)}
         ta.log_write(path, "restore", str(backup) if backup else None, {"undo": "hitsounds"})
         self._decide_undo = None
+        # A proposal made since the write was decided on the bytes just replaced.
+        self._decisions.pop(path.name, None)
         return {"ok": True, "file": path.name, "backup": str(backup)}
 
     def inject_preview(self, osu_path: str) -> dict:
@@ -2971,6 +3050,10 @@ class Api:
             self._check_stop()
             if self._locked:
                 result.points = self._merge_locks(result.points, result.beats)
+            # Proposals are cached by .osu name, which another song's folder
+            # can share: they belong to the audio they were decided on.
+            if self._analysis is None or str(self._analysis.source) != str(result.source):
+                self._decisions.clear()
             self._analysis = result
             self._assisted = None       # a fit belongs to the song it was made on
             self._history.clear()

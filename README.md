@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-671%20Python%20%C2%B7%20270%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-675%20Python%20%C2%B7%20271%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -210,7 +210,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | A map checked, `--check map.osu` | ✅ | The Report section's lines, one per finding; exit 3 on findings, 0 clean |
 | Unified command set (`analyze · timing · hitsound · validate …`) | 📋 | P8 |
 | Rust engine as a JSON sidecar (`overtone-cli analyze --json` / `--full`) | ✅ | Exit codes: 0 grid, 3 refused, 1 unreadable, 2 usage |
-| The sidecar's other commands: `structure`, `ramps`, `hitsound`, `hitsound-evidence` | ✅ | The first three are what the Structure view, the Ramps card and the hitsound proposals run; `hitsound-evidence` prints each attack's class probabilities and role |
+| The sidecar's other commands: `structure`, `ramps`, `hitsound`, `hitsound-evidence` | ✅ | The first three are what the Structure view, the Ramps card and the hitsound proposals run; `hitsound` takes every difficulty of a song at once and reads the audio once for all of them; `hitsound-evidence` prints each attack's class probabilities and role |
 
 ### Distribution
 
@@ -317,7 +317,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 671 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 675 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage
@@ -330,7 +330,7 @@ instantly and exactly; the click track is the arbiter.
 .venv/Scripts/python.exe bench/gates.py real-audio     # six local songs keep analysing as pinned
 .venv/Scripts/python.exe bench/facts.py                # the numbers these docs state
 .venv/Scripts/python.exe bench/corpus_b.py             # 20 ranked maps' red lines (local osu! Songs)
-cargo test --workspace                                 # 270 tests
+cargo test --workspace                                 # 271 tests
 cargo run --release -q -p overtone-bench -- golden     # Rust vs Python, attack for attack
 ```
 

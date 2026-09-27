@@ -11,7 +11,8 @@
 //!                                          # with each term's contribution,
 //!                                          # and its musical role (JSON)
 //! overtone-cli hitsound song.mp3 map.osu  # per object: the proposed sound
-//!                       [--profile P.json] # with alternatives and terms (JSON)
+//!                       [more.osu ...]     # with alternatives and terms (JSON),
+//!                       [--profile P.json] # the audio read once for every map
 //! overtone-cli ramps song.mp3 [--drift MS] # the elastic curve as the fewest
 //!                       [--max-lines N]    # red lines within the drift (JSON)
 //! ```
@@ -62,6 +63,13 @@
 //! `--profile` reads another profile file; the baked `balanced` one decides
 //! otherwise.
 //!
+//! Several maps of one song share its analysis: the audio is analysed and
+//! its attacks' evidence extracted once, which is most of the work, then
+//! each map is decided on them. The report says the song once and its maps
+//! one by one, in the order given: `maps` holds each map's path with its
+//! `units`, or with its own `error` when it cannot be read, which fails no
+//! other map. One map prints the one-map report, as it always has.
+//!
 //! `ramps` turns the elastic tempo curve into the fewest red lines that
 //! keep every attack within the chosen drift: longest grids back to back,
 //! with the count-against-drift trade-off beside them so `--drift` is
@@ -70,11 +78,12 @@
 //! tempo (one line); only audio too short to fit on refuses, with a note.
 //!
 //! Exit codes: 0 a grid was found (for `structure`, the audio was read; for
-//! `hitsound-evidence`, the evidence was printed; for `hitsound`, the map
+//! `hitsound-evidence`, the evidence was printed; for `hitsound`, every map
 //! was proposed; for `ramps`, the lines were fitted); 3
 //! the engine refused (no grid in this audio, reason on stderr and in
-//! `diagnostics`); 1 the file could not be loaded; 2 the command line is
-//! wrong.
+//! `diagnostics`); 1 a file could not be loaded (for `hitsound` with several
+//! maps, a map that cannot be read still leaves the others proposed); 2 the
+//! command line is wrong.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -87,7 +96,7 @@ const USAGE: &str = "usage: overtone-cli analyze <audio> [--json | --full] [--de
 [--min-delta BPM] [--persistence BEATS] [--min-confidence C] [--no-map-bpm]\n       \
 overtone-cli structure <audio>\n       \
 overtone-cli hitsound-evidence <audio>\n       \
-overtone-cli hitsound <audio> <map.osu> [--profile <path>]\n       \
+overtone-cli hitsound <audio> <map.osu> [<map.osu> ...] [--profile <path>]\n       \
 overtone-cli ramps <audio> [--drift <ms>] [--max-lines <n>] [--decimals <n>]";
 
 /// The v3 CLI's defaults, which the golden vectors were dumped with.
@@ -393,15 +402,17 @@ fn source(path: &Path) -> String {
     path.display().to_string()
 }
 
-/// `hitsound <audio> <map.osu> [--profile <path>]`: the proposed sound of
-/// every decidable point, with alternatives and the terms behind each
-/// choice, as JSON. Exit 1 when the audio, the map or the profile cannot be
-/// read, 2 on a bad command; 0 otherwise, grid or no grid.
+/// `hitsound <audio> <map.osu> [<map.osu> ...] [--profile <path>]`: the
+/// proposed sound of every decidable point of each map, with alternatives
+/// and the terms behind each choice, as JSON. The audio is analysed and its
+/// evidence extracted once, however many maps follow. Exit 1 when the audio
+/// or the profile cannot be read, or a map (the others are still decided),
+/// 2 on a bad command; 0 otherwise, grid or no grid.
 fn hitsound(args: &[String]) -> ExitCode {
-    use overtone_hitsound::{baked, emission as em, evidence as ev, map, profile::Profile, viterbi as vit};
+    use overtone_hitsound::{baked, evidence as ev, map, profile::Profile};
     let mut rest = args.iter();
     let mut audio: Option<PathBuf> = None;
-    let mut map_path: Option<PathBuf> = None;
+    let mut map_paths: Vec<PathBuf> = Vec::new();
     let mut profile_path: Option<PathBuf> = None;
     while let Some(arg) = rest.next() {
         if arg == "--profile" {
@@ -417,19 +428,24 @@ fn hitsound(args: &[String]) -> ExitCode {
             return ExitCode::from(2);
         } else if audio.is_none() {
             audio = Some(PathBuf::from(arg));
-        } else if map_path.is_none() {
-            map_path = Some(PathBuf::from(arg));
         } else {
-            eprintln!("overtone-cli: hitsound takes one audio file and one map\n{USAGE}");
-            return ExitCode::from(2);
+            map_paths.push(PathBuf::from(arg));
         }
     }
-    let (Some(audio), Some(map_path)) = (audio, map_path) else {
-        eprintln!("overtone-cli: hitsound takes one audio file and one map\n{USAGE}");
+    let Some(audio) = audio.filter(|_| !map_paths.is_empty()) else {
+        eprintln!("overtone-cli: hitsound takes one audio file and one map or more\n{USAGE}");
         return ExitCode::from(2);
     };
+    // One map keeps the one-map report; several are answered map by map.
+    let several = map_paths.len() > 1;
     let fail = |message: String| {
-        println!("{}", json!({"source": source(&audio), "map": source(&map_path), "error": message}));
+        let report = if several {
+            json!({"source": source(&audio), "maps": map_paths.iter().map(|p| source(p)).collect::<Vec<_>>(),
+                   "error": message})
+        } else {
+            json!({"source": source(&audio), "map": source(&map_paths[0]), "error": message})
+        };
+        println!("{report}");
         ExitCode::from(1)
     };
     let profile_text = match &profile_path {
@@ -450,25 +466,115 @@ fn hitsound(args: &[String]) -> ExitCode {
             return fail(format!("cannot load {}: {e}", audio.display()));
         }
     };
-    let map_text = match std::fs::read(&map_path) {
-        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-        Err(e) => return fail(format!("cannot read {}: {e}", map_path.display())),
-    };
-    let beatmap = map::parse(&map_text);
+    // Each map is read on its own: one that cannot be read is its own error.
+    let beatmaps: Vec<Result<map::Beatmap, String>> = map_paths
+        .iter()
+        .map(|path| match std::fs::read(path) {
+            Ok(bytes) => Ok(map::parse(&String::from_utf8_lossy(&bytes))),
+            Err(e) => Err(format!("cannot read {}: {e}", path.display())),
+        })
+        .collect();
+    if let (false, Err(message)) = (several, &beatmaps[0]) {
+        return fail(message.clone());
+    }
 
+    // The evidence reads the audio alone, so every map is decided on it.
     let started = Instant::now();
-    let templates = baked::templates();
-    let rows = ev::evidence(
-        &song.y, song.sr, &song.times, &song.weights,
-        &song.out.settled_sections,
-        &song.measures.iter().map(|&(_, downbeat, bar)| (downbeat, bar)).collect::<Vec<_>>(),
-        &song.boundaries, &templates,
-    );
+    let rows = if beatmaps.iter().any(Result::is_ok) {
+        let templates = baked::templates();
+        ev::evidence(
+            &song.y, song.sr, &song.times, &song.weights,
+            &song.out.settled_sections,
+            &song.measures.iter().map(|&(_, downbeat, bar)| (downbeat, bar)).collect::<Vec<_>>(),
+            &song.boundaries, &templates,
+        )
+    } else {
+        Vec::new()
+    };
     let evidence_s = started.elapsed().as_secs_f64();
+    let decided: Vec<Result<(Vec<Value>, f64), String>> = beatmaps
+        .into_iter()
+        .map(|beatmap| beatmap.map(|beatmap| decide_map(&beatmap, &rows, &song.boundaries, &profile)))
+        .collect();
+    let profile_name = profile_path.map(|p| source(&p)).unwrap_or_else(|| "balanced".to_string());
+    let duration = song.y.len() as f64 / song.sr as f64;
+
+    if !several {
+        let Some(Ok((proposals, decide_s))) = decided.into_iter().next() else {
+            unreachable!("a map that could not be read failed above");
+        };
+        let report = json!({
+            "source": source(&audio),
+            "map": source(&map_paths[0]),
+            "duration": duration,
+            "units": proposals,
+            "templates": "baked",
+            "profile": profile_name,
+            "version": overtone_tempo::VERSION,
+            "timings_s": {"decode": song.decode_s, "attacks": song.attacks_s, "tempo": song.tempo_s,
+                          "structure": song.structure_s, "evidence": evidence_s, "decide": decide_s},
+        });
+        println!("{report}");
+        eprintln!(
+            "overtone-cli: {} proposals; evidence {evidence_s:.2} s + decide {decide_s:.2} s",
+            proposals.len()
+        );
+        return ExitCode::SUCCESS;
+    }
+    let (mut proposed, mut unread, mut decide_total) = (0usize, 0usize, 0.0);
+    let maps: Vec<Value> = map_paths
+        .iter()
+        .zip(decided)
+        .map(|(path, result)| match result {
+            Ok((units, decide_s)) => {
+                proposed += units.len();
+                decide_total += decide_s;
+                json!({"map": source(path), "units": units, "timings_s": {"decide": decide_s}})
+            }
+            Err(message) => {
+                eprintln!("overtone-cli: {message}");
+                unread += 1;
+                json!({"map": source(path), "error": message})
+            }
+        })
+        .collect();
+    let report = json!({
+        "source": source(&audio),
+        "duration": duration,
+        "maps": maps,
+        "templates": "baked",
+        "profile": profile_name,
+        "version": overtone_tempo::VERSION,
+        "timings_s": {"decode": song.decode_s, "attacks": song.attacks_s, "tempo": song.tempo_s,
+                      "structure": song.structure_s, "evidence": evidence_s},
+    });
+    println!("{report}");
+    eprintln!(
+        "overtone-cli: {} maps, {proposed} proposals{}; evidence {evidence_s:.2} s + decide {decide_total:.2} s",
+        map_paths.len(),
+        if unread > 0 { format!(", {unread} not read") } else { String::new() },
+    );
+    if unread > 0 {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// One map decided on the song's evidence: every decidable point's proposal
+/// as the report prints it, and the seconds the decision took (the JSON
+/// after it not counted).
+fn decide_map(
+    beatmap: &overtone_hitsound::map::Beatmap,
+    rows: &[overtone_hitsound::evidence::AttackEvidence],
+    boundaries: &[f64],
+    profile: &overtone_hitsound::profile::Profile,
+) -> (Vec<Value>, f64) {
+    use overtone_hitsound::{emission as em, evidence as ev, map, viterbi as vit};
     let ev_times: Vec<f64> = rows.iter().map(|row| row.time_s).collect();
 
     let started = Instant::now();
-    let (units, is_tail) = units_of(&beatmap);
+    let (units, is_tail) = units_of(beatmap);
     let times_ms: Vec<f64> = units.iter().map(|unit| unit.time_ms).collect();
     let placed = map::bar_slots(&beatmap.timing, &times_ms);
     let default_bank = match beatmap.sample_set {
@@ -503,7 +609,7 @@ fn hitsound(args: &[String]) -> ExitCode {
                 file: String::new(),
             },
         };
-        let scored = em::emission(&object, attack, default_bank, &profile);
+        let scored = em::emission(&object, attack, default_bank, profile);
         matrices.push(
             order
                 .iter()
@@ -514,7 +620,7 @@ fn hitsound(args: &[String]) -> ExitCode {
         );
         scored_rows.push(scored);
         let break_before = position > 0
-            && song.boundaries.iter().any(|&edge| {
+            && boundaries.iter().any(|&edge| {
                 edge * 1000.0 > units[chain[position - 1]].time_ms && edge * 1000.0 <= unit.time_ms
             });
         let bar_slot = match placed[i] {
@@ -528,7 +634,7 @@ fn hitsound(args: &[String]) -> ExitCode {
             phrase_break_before: break_before,
         });
     }
-    let decisions = vit::decide(&matrices, &order, &steps, &profile);
+    let decisions = vit::decide(&matrices, &order, &steps, profile);
     // Chain position per unit, so the output walk is linear, not quadratic.
     let mut position_of: Vec<Option<usize>> = vec![None; units.len()];
     for (position, &i) in chain.iter().enumerate() {
@@ -630,7 +736,7 @@ fn hitsound(args: &[String]) -> ExitCode {
                             &order,
                             &steps[position - 1],
                             &steps[position],
-                            &profile,
+                            profile,
                         ))
                     };
                     (
@@ -676,23 +782,7 @@ fn hitsound(args: &[String]) -> ExitCode {
             })
         })
         .collect();
-    let report = json!({
-        "source": source(&audio),
-        "map": source(&map_path),
-        "duration": song.y.len() as f64 / song.sr as f64,
-        "units": proposals,
-        "templates": "baked",
-        "profile": profile_path.map(|p| source(&p)).unwrap_or_else(|| "balanced".to_string()),
-        "version": overtone_tempo::VERSION,
-        "timings_s": {"decode": song.decode_s, "attacks": song.attacks_s, "tempo": song.tempo_s,
-                      "structure": song.structure_s, "evidence": evidence_s, "decide": decide_s},
-    });
-    println!("{report}");
-    eprintln!(
-        "overtone-cli: {} proposals; evidence {evidence_s:.2} s + decide {decide_s:.2} s",
-        proposals.len()
-    );
-    ExitCode::SUCCESS
+    (proposals, decide_s)
 }
 
 /// `ramps <audio>`: the elastic curve as the fewest red lines within the

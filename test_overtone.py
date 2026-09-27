@@ -7976,6 +7976,48 @@ class OtherGameExportTests(unittest.TestCase):
         self.assertFalse(verify_export(bare, "", "quaver")["ok"])
 
 
+class MelImageTests(unittest.TestCase):
+    """The drawn spectrogram: the analysis path's own mel, pooled and in dB."""
+
+    def test_it_is_the_analysis_bands_in_db_under_this_songs_peak(self) -> None:
+        from overtone import MEL_BANDS, MEL_TOP_DB, mel_image
+        sr = 22050
+        t = np.arange(int(sr * 3.0)) / sr
+        tone = (np.sin(2 * np.pi * 440 * t) * np.clip((t - 0.5) / 0.25, 0, 1)).astype(np.float32)
+        grid = mel_image(tone, sr, 120)
+        self.assertEqual(grid.shape, (MEL_BANDS, 120))
+        self.assertAlmostEqual(float(grid.max()), 0.0, places=5)   # the peak is 0 dB
+        self.assertGreaterEqual(float(grid.min()), -MEL_TOP_DB - 1e-6)
+        # the loudest row is the one 440 Hz lives in
+        from overtone import mel_frequencies
+        hz = mel_frequencies()
+        self.assertAlmostEqual(float(hz[int(np.argmax(grid.max(axis=1)))]), 440.0, delta=60.0)
+
+    def test_a_column_keeps_the_loudest_frame_under_it(self) -> None:
+        from overtone import mel_image
+        sr = 22050
+        y = np.zeros(int(sr * 4.0), dtype=np.float32)
+        y[sr * 2] = 1.0                       # one click, two seconds in
+        wide = mel_image(y, sr, 8)            # eight columns over four seconds
+        # pooled by max, the click's column still reaches the peak; a mean
+        # over ~85 frames would have buried it
+        self.assertAlmostEqual(float(wide.max()), 0.0, places=5)
+        loudest = int(np.argmax(wide.max(axis=0)))
+        self.assertEqual(loudest, 4, wide.max(axis=0).round(1))
+
+    def test_the_frequency_axis_is_the_one_the_engine_listens_on(self) -> None:
+        from overtone import MEL_BANDS, MEL_FMAX_HZ, mel_frequencies
+        hz = mel_frequencies()
+        self.assertEqual(hz.size, MEL_BANDS)
+        self.assertAlmostEqual(float(hz[-1]), MEL_FMAX_HZ, delta=1.0)
+        self.assertTrue(np.all(np.diff(hz) > 0))
+
+    def test_too_little_audio(self) -> None:
+        from overtone import MEL_BANDS, mel_image
+        self.assertEqual(mel_image(np.zeros(64, dtype=np.float32), 22050, 100).shape,
+                         (MEL_BANDS, 0))
+
+
 class BandFluxTests(unittest.TestCase):
     """Seven onset-flux bands, ported from the Rust front end."""
 

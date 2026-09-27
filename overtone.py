@@ -291,6 +291,51 @@ def band_edges() -> np.ndarray:
     return edges
 
 
+#: Mel bands the spectrogram is read on, and the top of its range. The same
+#: 128 bands to 11.025 kHz the analysis path itself uses, so the picture is
+#: the spectrum the engine listened to and not a second opinion drawn beside
+#: it. (`_mel_power` passes both to librosa; they live here to be reported.)
+MEL_BANDS = 128
+MEL_FMAX_HZ = 11025.0
+#: How far under the loudest cell a cell can be before it is simply black.
+#: librosa's own default for a display spectrogram, and the same floor the
+#: onset path uses on its own scale.
+MEL_TOP_DB = 80.0
+
+
+def mel_frequencies() -> np.ndarray:
+    """The centre frequency of each mel band, in Hz, for the axis labels."""
+    return librosa.mel_frequencies(n_mels=MEL_BANDS, fmax=MEL_FMAX_HZ)
+
+
+def mel_image(y: np.ndarray, sr: int, columns: int, hop: int | None = None) -> np.ndarray:
+    """The song's mel spectrogram in dB, pooled to ``columns``: (bands, columns).
+
+    Pooled by **maximum**, not by mean: a column of a drawn spectrogram stands
+    for tens of frames, and a mean turns every transient into a smear — the
+    opposite of what the picture is looked at for. Values are dB under the
+    loudest cell, clipped at :data:`MEL_TOP_DB`, so 0 is the loudest moment of
+    this song and the scale is the song's own.
+    """
+    hop = FIT_HOP if hop is None else hop
+    y = np.asarray(y, dtype=np.float32)
+    columns = max(1, int(columns))
+    if y.size < ONSET_N_FFT or hop < 1:
+        return np.zeros((MEL_BANDS, 0), dtype=np.float32)
+    power = _mel_power(y, sr, hop)                      # (bands, frames)
+    frames = power.shape[1]
+    if frames == 0:
+        return np.zeros((MEL_BANDS, 0), dtype=np.float32)
+    columns = min(columns, frames)
+    edges = np.linspace(0, frames, columns + 1).astype(int)
+    pooled = np.empty((power.shape[0], columns), dtype=np.float32)
+    for i in range(columns):
+        checkpoint()
+        pooled[:, i] = power[:, edges[i]:max(edges[i + 1], edges[i] + 1)].max(axis=1)
+    decibels = 10.0 * np.log10(np.maximum(pooled, 1e-10))
+    return np.maximum(decibels - decibels.max(), -MEL_TOP_DB).astype(np.float32)
+
+
 def band_flux(y: np.ndarray, sr: int, hop: int | None = None) -> np.ndarray:
     """Rectified dB flux per band: ``(frames, BAND_COUNT)``.
 

@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **675** Python (454 engine + 221 web shell) · **271** Rust.
+Tests: **689** Python (465 engine + 224 web shell) · **271** Rust.
 
 ### What is pending, in order
 
@@ -277,8 +277,8 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Density ribbon | half- and double-time inside one reported section | med | med | P2 density | no | no | P2 | todo |
 | Measures on the map | bar ticks and signature regions | low | med | timeline | no | no | P2 | **done** — the bar lines stay when the beats are too close to draw (bars 8 px apart or more), and a red line where the bar changes length names the signature on its chip ("150 · 3/4") |
 | Keyboard map | every action reachable from the keyboard; `?` shows the sheet | low | med | shell | no | no | P2 | **done** — `?` shows every key; ←/→ seek 1 s (Shift: 10 ms), `[`/`]` the red lines, L loop, C click, 1–9 and 0 the rail, on top of Space, T, ↑/↓, Ctrl+O/Z/Y and Enter/F5; buttons reach by Tab. Not bound: mute, solo click, beat steps |
-| Cancellable analysis | stop button, stage names and timings | low | med | progress | no | no | P2 | **done** between stages — the engine is asked at each stage it announces and once more before a result replaces the one on screen, which stays |
-| Stop inside a stage | a stop that lands in seconds, not when the stage ends: attack detection ran 48 s on an eight-minute track, the fallback's transients 53 s on another (machine busy) | med | med | cancellable analysis | no | no | P2 | todo — checkpoints between the envelope's chunks (with the envelope memory bound), or the analysis in a worker process that can be ended |
+| Cancellable analysis | stop button, stage names and timings | low | med | progress | no | no | P2 | **done** — the engine is asked at each stage it announces, inside the stages too (next row), and once more before a result replaces the one on screen, which stays |
+| Stop inside a stage | a stop that lands in seconds, not when the stage ends: attack detection ran 48 s on an eight-minute track, the fallback's transients 53 s on another (machine busy) | med | med | cancellable analysis | no | no | P2 | **done** — checkpoints in every stage's long loops, asked on the analysing thread only (the STFT, decode and octave tempogram split so each piece is the call it replaces, bit for bit), and the Rust engine's process ended. Pressed 25/50/75 % into each stage of four songs, a stop landed in a median 0.03 s, 0.5 s at most (before: 0.87 s, up to 36 s); no measurable cost on an analysis that is not stopped |
 | Command palette | Ctrl+K search over every action | low | low | shell | no | no | P3 | todo |
 
 ---
@@ -460,7 +460,7 @@ estimate with a number or is dropped.
 | 10.9 | Fine-tune on ranked maps | domain-specific model | +2 pts | todo |
 | 10.10 | Chord & cadence anchors | cadences as downbeat voters | +1 pt | todo |
 | 10.11 | Instrument specialists | trained kick/snare/hat detectors | +1 pt | todo |
-| 10.12 | UX for slow but precise | stage progress, cancel, cached intermediates | usability | partial — result cache, stage progress with timings, stop between stages; no cached intermediates |
+| 10.12 | UX for slow but precise | stage progress, cancel, cached intermediates | usability | partial — result cache, stage progress with timings, a stop that lands inside the running stage; no cached intermediates |
 | 10.13 | **MSI distribution** | one self-contained installer + portable ZIP — [`11-msi-distribution.md`](11-msi-distribution.md) | packaging | partial — 10.13.1 and 10.13.5 built, 10.13.2 in part (2026-09-26): `installer\build.py`, a per-user MSI and the ZIP, smoke-tested unpacked; no signing, licences or file associations |
 
 **Licences, checked at the source on 2026-09-23** (full table in `10-precision-plan.md`):

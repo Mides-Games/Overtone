@@ -129,6 +129,152 @@ read, no key falls through, no console error.
   map's own grid. The map's grid is what the mapper snapped to, so that is where their
   objects are read.
 
+## v4.0.0-dev — 2026-09-26 · A stop that lands inside the stage
+
+The stop landed only when the engine announced its next stage, so the running stage bounded
+the wait: 11 to 53 s on real songs with the machine busy, when the stop was added. Roadmap,
+Phase 3 "Stop inside a stage" and 10.12. Where the time goes inside the stages was measured
+first, and that decided where the engine now asks.
+
+### Changed
+
+- **The engine asks inside its long loops.** `checkpoint()` calls the stop request the
+  running thread installed with `stop_requests()` and raises `AnalysisStopped` when it says
+  yes; with none installed it is one thread-local read, so the CLI, the classic window and
+  every other thread run as they did. It is asked:
+  - in attack detection: between runs of a quarter of each spectrogram block's STFT (a
+    block whole took 0.5-1.6 s), before each block's mel projection, before `power_to_db`
+    and before `onset_strength`, and every 1024 re-timed attacks;
+  - in the pulse scan: each block of the coherence sweep, each seed candidate's fit, each
+    of the pulse gap's six passes;
+  - in the octave decision: each block of its tempogram, which it now reads in blocks of
+    8192 columns (one call took up to a second);
+  - in section growth: each pass and each growth step (189 refits make most of long-6min's
+    8.8 s stage), each merge, each boundary and each refit;
+  - in the fallback: the envelope as above, the pulse gap's passes, each tempogram block of
+    both tempo readings, and between the three trackers;
+  - in the load: the decode, now 2^20 frames at a time, each block mixed down on its own.
+- **`AnalysisStopped` is the engine's**, a `BaseException` as before: the precision fit's
+  fallback and the places that pass over librosa's failures catch `Exception`, never a stop.
+- **The Rust engine's process is ended on a stop.** `overtone_rust._run` starts
+  `overtone-cli` with `Popen` and reads its output in 50 ms slices, asking the same
+  checkpoint between them. A stop, the timeout or any other exit kills and reaps the
+  process before the exception leaves, and v3 does not take over, since `run_analysis`
+  falls back on `Exception` only. The five CLI calls share it instead of five copies.
+- **The bridge installs the request** around the engine, on the worker's thread only:
+  `stop_requests(self._stop.is_set)`. The stage announcements and the check before a result
+  replaces the one on screen stay as they were.
+- **The Stop button's hint** says it stops where the analysis is, without waiting for the
+  stage to end (EN/ES).
+- 14 tests: a stop asked as each looping stage begins lands inside it (8 stages, both
+  engines); asked for nothing, the engine returns what it returned; a checkpoint asks only
+  inside a request, which never reaches another thread (one started inside the block, one
+  outside); the STFT runs, the octave tempogram and the decode equal the one calls they
+  replace, bit for bit; a stopped or timed-out sidecar leaves no process, its output
+  arrives whole across slices, and one that cannot start says so; through the bridge, a
+  stop as attack detection begins lands before the envelope is finished (on the old code
+  the envelope was finished first), a stop ends the Rust engine's process without v3
+  taking over, and a refusal after a stop reads as the stop.
+
+### Fixed
+
+- **A stop pressed in the last stage of a song the engine then refuses never landed**: the
+  worker checked once more only on the way to a result, and the refusal showed instead. The
+  Raven, stopped in its transients stage, reported its refusal 1.8-4.4 s later. An engine
+  failure after a stop now reads as the stop, since the user asked for nothing more.
+
+### Hardening
+
+- **Every split is the one call it replaces, bit for bit.** The STFT runs are whole
+  batches of the 32 columns librosa.stft hands scipy's FFT at a time, written into one
+  matrix with librosa's layout, so the calls are its calls; the octave tempogram joins
+  from blocks as the fallback's tempo readings already do exactly, and the mean is taken on
+  the joined array; the decode reads as `sf.read` reads and mixes each row down as the
+  whole array was mixed.
+  - libsndfile seeks between the decode's blocks. That is exact for PCM; for MP3 and Ogg
+    the samples came out the same on all 20 Corpus B files (18 MP3, two of them at 48 kHz,
+    and 2 Ogg), and so did the whole loader's output on those and on three fixtures.
+- **Nothing global.** A request lives in a `threading.local` and is put back when its
+  block ends: a reference grade or a library scan on another thread never sees a stop.
+
+### Measured
+
+```
+where the time goes: cProfile after a warm-up, the machine loaded by other jobs
+  long-6min 6:00, grid         attacks 15.0 s: 16 spectrogram blocks of ~0.9 s (STFT 0.31,
+                               mel projection 0.41, power 0.19), power_to_db 0.65,
+                               onset_strength 0.55; sections 8.8 s: 189 refits of ~40 ms
+  Take You Down 2:15, grid     attacks 6.2 s: 6 blocks of ~1.05 s; sections 2.1 s, 1.4 of it
+                               in 13 seed scans
+  Vampires 5:27, fallback      transients 38.2 s: 110 tempogram blocks of 0.22 s plus 0.11 s
+                               of tempo reading each; attacks 14.5 s; tracking 3.9 s, 1.0 s
+                               once librosa's tracker is compiled
+  The Raven 7:57, refused      attacks 31.2 s: 32 blocks of ~1.2 s; load 2.5 s: decode 1.5,
+                               mix-down 0.8; pulse scan 3.8 s: 6 pulse-gap passes of 0.44 s
+the longest wait between two stop points in a stage (checkpoints, stage announcements, the
+engine's return), a full analysis of each song stamping every one
+  before                       the stage itself, up to 39 s (Vampires' transients)
+  one checkpoint a block       0.5-1.0 s, 1.6 s with the machine busier: a block
+  as committed                 0.55 s at most in any stage of the four songs (the fallback's
+                               beat_track), the machine loaded; 1.17 s (power_to_db on The
+                               Raven) with it busy enough to double every analysis. Mean
+                               wait by stage 0.01-0.37 s
+stop latency through the bridge, stop_analysis() to onStopped, pressed 25/50/75 % into each
+stage of the four songs (the middle of stages under 1 s)
+  before      37 stops, median 0.87 s, max 35.6 s (Vampires' transients); attack detection
+              3.6-6.0 s on long-6min and 2.3-7.5 s on The Raven; the 3 in The Raven's last
+              stage never landed (Fixed)
+  after       44 stops, median 0.06 s, max 0.40 s, the machine 2-3 times slower than for the
+              before run; an earlier run, before the last two edits, 42 stops, median 0.03
+              s, max 0.48 s (the fallback's tracker)
+  Rust        pressed 25/50/75 % into the CLI's run: before 4.54/2.83/2.19 s (FREEDOM DiVE,
+              48 kHz) and 2.58/1.76/0.52 s (long-6min); after 0.05/0.03 s (the third run
+              answered first) and 0.09/0.07/0.05 s; no overtone-cli process left behind
+the cost with no stop: CPU time with BLAS on one thread (the machine's other jobs inflate it
+less than wall time); 7 rounds, old / new / new inside a request as the app runs it, the
+order rotating each round; the outputs identical every run
+  long-6min        11.00 / 11.20 / 10.97 s; per-round ratio to old 1.034 / 1.012
+  Take You Down     4.23 /  4.38 /  4.31 s;                         1.007 / 1.021
+  single runs spread about 10 %; wall time 1.013-1.024. The rewritten pieces alone, old
+  against new: load 0.94-1.07, spectrogram 1.00-1.03, octave hints 1.14-1.18 (+0.06-0.16
+  s: the joined blocks, for an exact mean). A checkpoint is 0.3 us; 216-722 in an analysis
+Python unittest   675 -> 689, all pass (6 skipped, as on master)
+                  · facts ok · fuzz_reader 3000 mutants
+engine gates      benchmark 24/24 within 0.05 BPM and 5 ms, median 0.0000 BPM and 0.16 ms;
+                  bpm-snapshot 24/24 unchanged; golden 27/27 stage for stage; coverage,
+                  measures, signatures, robustness, reference 24/24, assisted (70 marked
+                  sections) and real-audio 6/6 all as they were
+```
+
+### Rejected / tried and dropped
+
+- **One checkpoint per spectrogram block**, the roadmap's "between the envelope's chunks".
+  Tried first: a block was the longest wait left, 0.5-1.0 s and 1.6 s with the machine
+  busier. Its STFT is about 70 % of it, so a checkpoint before the mel projection alone
+  would have left about a second; runs of its STFT leave the projection, 0.3-0.6 s.
+- **Smaller spectrogram blocks** instead of the runs (not tried): the block is where the
+  mel projection's float32 sums are cut, which is why `_mel_power` matches the one-shot call
+  only to ~2e-6. Another size would move every envelope by as much.
+- **Octave tempogram blocks of 1024 columns**, the fallback's size: 0.09-0.13 s of CPU over
+  the one call on a six to eight minute song, against 0.05-0.08 s for 8192, which still
+  stops within 0.3 s.
+- **The decode left whole**: 1.0 s for an eight-minute MP3, and 0.8 s more to mix it down,
+  in two calls a stop could not enter.
+- **The analysis in a worker process that can be ended**, the roadmap's other road (not
+  tried): every analysis would pay the imports and numba's compile again, or hold a second
+  process warm, to win the last half second.
+
+Left open:
+
+- `power_to_db` and `onset_strength` stay whole-track calls: 0.4-0.5 s each on a six to
+  eight minute song here, 1.2 s with the machine busy. They grow with the song, as do the
+  fallback's `beat_track` (0.5-0.9 s) and a resample; a 30-minute mix was not measured.
+- A first call compiles numba kernels in one piece. The window's warm-up takes them before
+  the first analysis, but not when the window opens with a song to analyse.
+- Formats libsndfile cannot read go to `librosa.load`, one call.
+- `structure`, `hitsound`, `ramps` and `attacks` share `_run` but run on threads with no
+  request: they end on their timeout as before, and have no Stop.
+
 ## v4.0.0-dev — 2026-09-26 · Real songs as a gate
 
 ### Changed

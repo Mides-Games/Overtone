@@ -311,11 +311,11 @@ def stage_id(message: str) -> str | None:
     return next((sid for text, sid in STAGES.items() if message.startswith(text)), None)
 
 
-class AnalysisStopped(BaseException):
-    """Raised through the engine from its progress callback when the user
-    stops an analysis. A BaseException, as asyncio's CancelledError is: the
-    engine falls back to the beat tracker on any ``Exception`` from the
-    precision fit, and a stop is not a failed fit."""
+#: What a stop raises through the engine: from the engine's own checkpoints
+#: inside its stages, from the progress callback between them, and from the
+#: worker before a result replaces the one on screen. The engine's class, a
+#: BaseException, so the engine's fallbacks never mistake it for a failure.
+AnalysisStopped = ta.AnalysisStopped
 
 
 # ---------------------------------------------------------------------------
@@ -351,8 +351,10 @@ class Api:
         self._launch_subdivision: float | None = None
         self._analysis: ta.Analysis | None = None
         self._busy = threading.Lock()
-        #: Set by stop_analysis. The worker checks it at every stage the
-        #: engine announces and once more before a result replaces the last.
+        #: Set by stop_analysis. The engine asks it at its checkpoints inside
+        #: every stage (on the worker's thread only), the worker at every
+        #: stage the engine announces and once more before a result replaces
+        #: the last.
         self._stop = threading.Event()
         #: The running analysis's stages as they began, in seconds from _t0,
         #: and when its engine returned (None while it runs).
@@ -626,9 +628,9 @@ class Api:
         return {"ok": True}
 
     def stop_analysis(self) -> dict:
-        """Stop the running analysis. The engine is asked between its stages,
-        so the stop lands when the current stage ends; the result on screen
-        before it stays, as after a failed analysis."""
+        """Stop the running analysis where it is: at the engine's next
+        checkpoint, or by ending the Rust engine's process. The result on
+        screen before it stays, as after a failed analysis."""
         if not self._busy.locked():
             return {"ok": False, "key": "not_running"}
         self._stop.set()
@@ -3037,7 +3039,10 @@ class Api:
                 result = self._cache_load(path, params)
             cached = result is not None
             if result is None:
-                result = run_analysis(path, params, self._emit_progress)
+                # This analysis's stop flag, asked at the engine's checkpoints
+                # on this thread alone (and the Rust engine's process ended).
+                with ta.stop_requests(self._stop.is_set):
+                    result = run_analysis(path, params, self._emit_progress)
                 self._engine_done = time.perf_counter() - self._t0
                 if not self._locked:
                     self._cache_save(path, params, result)
@@ -3045,8 +3050,8 @@ class Api:
                 # Content-keyed cache: the DSP is identical for byte twins,
                 # but the path on the payload must be this file's.
                 result.source = path
-            # The Rust engine is one stage, and a cached result none: a stop
-            # asked for meanwhile still keeps the result that was on screen.
+            # A cached result runs no stage, and an engine can answer as the
+            # stop is asked: either way the result that was on screen stays.
             self._check_stop()
             if self._locked:
                 result.points = self._merge_locks(result.points, result.beats)
@@ -3070,7 +3075,12 @@ class Api:
         except AnalysisStopped:
             self._emit("onStopped", self._timings(False))
         except Exception as exc:  # noqa: BLE001 -- the UI shows the message
-            self._emit("onError", str(exc))
+            # Stopped, then refused before a checkpoint came: the user asked
+            # for nothing more from this analysis, the refusal included.
+            if self._stop.is_set():
+                self._emit("onStopped", self._timings(False))
+            else:
+                self._emit("onError", str(exc))
         finally:
             self._busy.release()
 
@@ -3114,7 +3124,7 @@ class Api:
 
     def _emit_progress(self, message: str) -> None:
         """Each stage as it begins, with the time every earlier one took. The
-        engine calls this between its stages, so it is also where a stop lands."""
+        engine calls this between its stages, so a stop lands here too."""
         self._check_stop()
         now = time.perf_counter() - self._t0
         self._stages.append({"stage": stage_id(message), "message": message, "start_s": now})

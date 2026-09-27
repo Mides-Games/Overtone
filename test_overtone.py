@@ -1014,6 +1014,174 @@ class PrecisionEngineTests(unittest.TestCase):
                 analyze_audio(path, engine="precision")
 
 
+class StopInsideStageTests(unittest.TestCase):
+    """A stop lands inside the stage it is asked in (roadmap 10.12), asked for
+    nothing the engine runs as before, and a request is its own thread's."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.path = Path(cls._tmp.name) / "drums.wav"
+        _drum_track(cls.path, [(0.5, 150.0)], duration=24.0)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def _stop_in(self, stage: str, engine: str) -> list[str]:
+        """The stages announced when a stop asked for as soon as ``stage``
+        is announced has landed."""
+        import overtone as ta
+
+        said: list[str] = []
+        with ta.stop_requests(lambda: bool(said) and said[-1].startswith(stage)):
+            with self.assertRaises(ta.AnalysisStopped):
+                ta.analyze_audio(self.path, progress=said.append, engine=engine)
+        return said
+
+    def test_a_stop_lands_inside_every_stage_that_loops(self):
+        # Before, a stop waited for the next announcement, so each of these
+        # stages ran to its end first. The fallback's half/double stage has no
+        # loop, and a stop in it still lands as the next stage is announced.
+        for engine, stages in (("auto", ("Loading", "Detecting attacks", "Scanning pulse",
+                                         "Resolving the beat octave",
+                                         "Fitting tempo sections")),
+                               ("legacy", ("Extracting transients", "Tracking beats",
+                                           "Computing local tempo"))):
+            for stage in stages:
+                with self.subTest(stage=stage):
+                    said = self._stop_in(stage, engine)
+                    self.assertTrue(said[-1].startswith(stage), said)
+
+    def test_a_spectrogram_block_in_runs_is_librosas_own(self):
+        # The STFT a run of frames at a time, then the power and the mel
+        # projection whole: librosa's own values, bit for bit.
+        import librosa
+        from unittest import mock
+
+        import overtone as ta
+
+        y, sr = _load_audio(str(self.path), lambda _message: None)
+        frames, hop = 1500, ta.FIT_HOP
+        segment = np.pad(y, ta.ONSET_N_FFT // 2)[:(frames - 1) * hop + ta.ONSET_N_FFT]
+        whole = librosa.feature.melspectrogram(y=segment, sr=sr, n_fft=ta.ONSET_N_FFT,
+                                               hop_length=hop, center=False, fmax=11025,
+                                               n_mels=128)
+        for run in (ta.STFT_RUN, 100, 7):             # whole runs, ragged ends, one batch
+            with self.subTest(run=run), mock.patch.object(ta, "STFT_RUN", run):
+                ours = librosa.feature.melspectrogram(S=ta._block_power(segment, hop), sr=sr,
+                                                      n_fft=ta.ONSET_N_FFT, fmax=11025,
+                                                      n_mels=128)
+                self.assertTrue(np.array_equal(ours, whole))
+
+    def test_the_octave_tempogram_in_blocks_is_librosas_own(self):
+        import librosa
+        from unittest import mock
+
+        import overtone as ta
+
+        y, sr = _load_audio(str(self.path), lambda _message: None)
+        env = ta._onset_envelope(y, sr, ta.FIT_HOP)
+        coarse = env[:env.size // 4 * 4].reshape(-1, 4).max(axis=1).astype(np.float32)
+        whole = librosa.feature.tempogram(onset_envelope=coarse, sr=sr,
+                                          hop_length=4 * ta.FIT_HOP, win_length=192)
+        for columns in (None, 700):                           # several blocks, a ragged last
+            with self.subTest(columns=columns), mock.patch.object(ta, "TEMPOGRAM_BLOCK", 300):
+                blocks = np.concatenate(list(ta._tempogram(coarse, sr, 4 * ta.FIT_HOP, 192,
+                                                           columns=columns)), axis=-1)
+                self.assertTrue(np.array_equal(blocks, whole))
+
+    def test_the_decode_in_blocks_is_the_one_calls_samples(self):
+        # Several blocks and a ragged last one; lossy codecs seek between them.
+        import soundfile as sf
+        from unittest import mock
+
+        import overtone as ta
+
+        rng = np.random.default_rng(5)
+        cases = [(1, "WAV", "PCM_24"), (2, "WAV", "PCM_16"), (6, "WAV", "FLOAT"),
+                 (2, "OGG", "VORBIS")]
+        if "MP3" in sf.available_formats():
+            cases.append((2, "MP3", "MPEG_LAYER_III"))
+        with tempfile.TemporaryDirectory() as tmp:
+            for channels, form, subtype in cases:
+                path = Path(tmp) / f"{channels}.{form.lower()}"
+                data = (rng.standard_normal((44100 * 3 + 17, channels)) * 0.2).astype(np.float32)
+                sf.write(str(path), data[:, 0] if channels == 1 else data, 44100,
+                         format=form, subtype=subtype)
+                whole, rate = sf.read(str(path), dtype="float32", always_2d=False)
+                if whole.ndim == 2:
+                    whole = np.mean(whole, axis=1, dtype=np.float32)
+                with mock.patch.object(ta, "DECODE_BLOCK", 10_000):
+                    blocks, block_rate = ta._decode(path)
+                with self.subTest(form=form, channels=channels):
+                    self.assertEqual(block_rate, rate)
+                    self.assertEqual(blocks.dtype, np.float32)
+                    self.assertTrue(np.array_equal(blocks, whole))
+
+    def test_asked_for_nothing_the_engine_runs_as_before(self):
+        import overtone as ta
+
+        plain = ta.analyze_audio(self.path)
+        asked: list[int] = []
+        with ta.stop_requests(lambda: asked.append(1) or False):
+            listened = ta.analyze_audio(self.path)
+        self.assertGreater(len(asked), 20)
+        self.assertEqual(listened.points, plain.points)
+        np.testing.assert_array_equal(listened.beats, plain.beats)
+        np.testing.assert_array_equal(listened.attack_times, plain.attack_times)
+        np.testing.assert_array_equal(listened.onset, plain.onset)
+
+    def test_a_checkpoint_asks_only_inside_a_request(self):
+        import overtone as ta
+
+        self.assertIsNone(ta.checkpoint())              # nothing installed: nothing
+        asked: list[int] = []
+        with ta.stop_requests(lambda: asked.append(1) or False):
+            ta.checkpoint()
+            with ta.stop_requests(lambda: True):
+                with self.assertRaises(ta.AnalysisStopped):
+                    ta.checkpoint()
+            ta.checkpoint()                              # the outer request is back
+        ta.checkpoint()                                  # and none after the block
+        self.assertEqual(len(asked), 2)
+        # Not an Exception: the engine's fallbacks catch those and carry on.
+        self.assertFalse(issubclass(ta.AnalysisStopped, Exception))
+
+    def test_a_stop_request_never_reaches_another_thread(self):
+        import threading
+
+        import overtone as ta
+
+        seen: dict[str, str] = {}
+        inside, release = threading.Event(), threading.Event()
+
+        def ask(name: str) -> None:
+            try:
+                ta.checkpoint()
+                seen[name] = "ran on"
+            except ta.AnalysisStopped:
+                seen[name] = "stopped"
+
+        def stopping() -> None:
+            with ta.stop_requests(lambda: True):
+                child = threading.Thread(target=ask, args=("its child",))
+                child.start()
+                child.join()
+                inside.set()
+                release.wait(10)
+                ask("itself")
+
+        worker = threading.Thread(target=stopping)
+        worker.start()
+        self.assertTrue(inside.wait(10))
+        ask("another thread")
+        release.set()
+        worker.join()
+        self.assertEqual(seen, {"its child": "ran on", "another thread": "ran on",
+                                "itself": "stopped"})
+
+
 class ClassicWindowLayoutTests(unittest.TestCase):
     """The Tk window's Results header fits the window it opens in.
 
@@ -2034,6 +2202,66 @@ class RustSidecarTests(unittest.TestCase):
         self.assertEqual(rows, [line.split(",")[0]
                                 for line in osu_timing_text(theirs).splitlines()[1:]])
         self.assertIn("No rhythmic pulse", str(refused.exception))
+
+    #: A process that would outlive every test here, standing in for the CLI.
+    SLEEPER = [sys.executable, "-c", "import time; time.sleep(60)"]
+
+    @staticmethod
+    def _spied():
+        """Popen as ever, keeping every process it starts."""
+        import subprocess
+        from unittest import mock
+
+        started, real = [], subprocess.Popen
+
+        def spy(*args, **kwargs):
+            started.append(real(*args, **kwargs))
+            return started[-1]
+        return started, mock.patch.object(subprocess, "Popen", side_effect=spy)
+
+    def test_a_stop_ends_the_sidecar_and_leaves_no_process(self):
+        import time
+
+        import overtone as ta
+        import overtone_rust as rs
+
+        started, spy = self._spied()
+        asked_at = time.perf_counter() + 0.3
+        with spy, ta.stop_requests(lambda: time.perf_counter() >= asked_at):
+            with self.assertRaises(ta.AnalysisStopped):
+                rs._run(self.SLEEPER, timeout=60)
+        waited = time.perf_counter() - asked_at
+        self.assertEqual(len(started), 1)
+        self.assertIsNotNone(started[0].poll())         # ended, and reaped
+        self.assertLess(waited, 10.0)                   # not the 60 s it sleeps
+
+    def test_a_sidecar_past_its_timeout_is_ended_too(self):
+        import overtone_rust as rs
+
+        started, spy = self._spied()
+        with spy, self.assertRaises(RuntimeError) as raised:
+            rs._run(self.SLEEPER, timeout=0.5)
+        self.assertIn("was stopped", str(raised.exception))
+        self.assertIsNotNone(started[0].poll())
+
+    def test_what_the_sidecar_writes_arrives_whole(self):
+        # Read in slices between the stop checks, output larger than a pipe
+        # holds, written across several slices, loses nothing.
+        import overtone_rust as rs
+
+        code = ("import sys, time; sys.stdout.write('x' * 1000000); sys.stdout.flush(); "
+                "time.sleep(0.3); sys.stdout.write('y' * 2000000); sys.stderr.write('done')")
+        done = rs._run([sys.executable, "-c", code], timeout=60)
+        self.assertEqual(done.returncode, 0)
+        self.assertEqual(done.stdout, b"x" * 1000000 + b"y" * 2000000)
+        self.assertEqual(done.stderr, b"done")
+
+    def test_a_sidecar_that_cannot_start_is_unavailable(self):
+        import overtone_rust as rs
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(rs.SidecarUnavailable):
+                rs._run([str(Path(tmp) / "overtone-cli.exe"), "analyze"], timeout=5)
 
 
 class SnapAuditTests(unittest.TestCase):

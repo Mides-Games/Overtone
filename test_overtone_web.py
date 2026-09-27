@@ -1243,7 +1243,7 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
     def test_the_sidecar_gets_the_profile_file_on_its_command_line(self) -> None:
         done = mock.Mock(returncode=0, stdout=json.dumps({"units": []}).encode("utf-8"),
                          stderr=b"")
-        with mock.patch.object(web.overtone_rust.subprocess, "run", return_value=done) as run:
+        with mock.patch.object(web.overtone_rust, "_run", return_value=done) as run:
             web.overtone_rust.hitsound("song.mp3", "hard.osu", cli=Path("cli.exe"))
             web.overtone_rust.hitsound("song.mp3", "hard.osu", cli=Path("cli.exe"),
                                        profile=Path("profiles", "quiet.json"))
@@ -1402,7 +1402,9 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
         def answer(code, report):
             return mock.Mock(returncode=code, stdout=json.dumps(report).encode("utf-8"), stderr=b"")
 
-        with mock.patch.object(web.overtone_rust.subprocess, "run",
+        # _run is the seam: it spawns the process and hands back what it wrote,
+        # so this stays true whether it uses subprocess.run or polls a Popen.
+        with mock.patch.object(web.overtone_rust, "_run",
                                side_effect=[answer(1, several), answer(0, one),
                                             answer(1, {"source": "song.mp3", "maps": ["a", "b"],
                                                        "error": "cannot load song.mp3"})]) as run:
@@ -3422,7 +3424,7 @@ class AnalysisStopTests(_IsolatedConfig):
         self.assertEqual(api.analysis_timings()["key"], "first")      # none ran to the end
 
     def test_a_stop_while_the_engine_had_no_stage_to_end_still_holds(self) -> None:
-        # The Rust engine runs as one stage: the stop is honoured when it returns.
+        # An engine that answers as the stop is asked: its result is dropped.
         with tempfile.TemporaryDirectory() as tmp:
             wav = Path(tmp) / "a.wav"
             wav.write_bytes(b"RIFF....")
@@ -3436,6 +3438,117 @@ class AnalysisStopTests(_IsolatedConfig):
             events = self._run(api, wav, engine)
         self.assertEqual([kind for kind, _payload in events], ["onProgress", "onStopped"])
         self.assertIsNone(api._analysis)
+
+    def test_a_refusal_after_the_stop_is_a_stop(self) -> None:
+        # Pressed in the last stage of a song the engine then refuses, the
+        # stop used to go unseen and the refusal showed instead.
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "a.wav"
+            wav.write_bytes(b"RIFF....")
+            api = web.Api()
+
+            def engine(path, params, progress):
+                progress("Extracting transients and tempo hypotheses…")
+                api.stop_analysis()
+                raise ValueError("No rhythmic pulse found")
+
+            events = self._run(api, wav, engine)
+
+            def refused(path, params, progress):
+                raise ValueError("No rhythmic pulse found")
+
+            unasked = self._run(api, wav, refused)
+        self.assertEqual([kind for kind, _payload in events], ["onProgress", "onStopped"])
+        self.assertEqual(unasked, [("onError", "No rhythmic pulse found")])
+
+    def _watch(self, api: web.Api, on_progress=None):
+        """Events as they arrive, and an Event set by the one that ends the run."""
+        events: list[tuple[str, object, float]] = []
+        done = threading.Event()
+
+        def emit(handler, payload):
+            events.append((handler, payload, time.perf_counter()))
+            if handler == "onProgress" and on_progress:
+                on_progress(payload)
+            if handler in ("onResult", "onError", "onStopped"):
+                done.set()
+
+        api._emit = emit
+        return events, done
+
+    @staticmethod
+    def _let_go(api: web.Api) -> None:
+        for _ in range(500):
+            if not api._busy.locked():
+                return
+            threading.Event().wait(0.01)
+
+    def test_a_stop_lands_inside_the_stage_it_is_pressed_in(self) -> None:
+        # The real engine, stopped as attack detection begins: it stops in the
+        # envelope's first block, so the rest of the stage never runs. Asked
+        # between stages only, the whole stage ran before the stop landed.
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "drums.wav"
+            _drum_track(wav, [(0.5, 150.0)], duration=24.0)
+            api = web.Api()
+            before = _analysis([ta.TimingPoint(500, 150, 1, 0)])
+            api._analysis = before
+            pressed: list[float] = []
+
+            def press(info):
+                if info["stage"] == "attacks":
+                    pressed.append(time.perf_counter())
+                    api.stop_analysis()
+
+            events, done = self._watch(api, press)
+            with mock.patch.object(ta, "_pick_onsets", wraps=ta._pick_onsets) as picked:
+                self.assertTrue(api.analyze(str(wav), self.OPTIONS)["ok"])
+                self.assertTrue(done.wait(60))
+            self._let_go(api)
+        self.assertEqual([kind for kind, *_rest in events], ["onProgress", "onProgress", "onStopped"])
+        self.assertEqual([row["stage"] for row in events[-1][1]["stages"]], ["load", "attacks"])
+        picked.assert_not_called()                  # the envelope never reached its peaks
+        self.assertIs(api._analysis, before)
+        self.assertLess(events[-1][2] - pressed[0], 5.0)
+
+    def test_a_stop_ends_the_rust_engines_process(self) -> None:
+        import subprocess
+        import sys
+
+        started, real_popen, real_run = [], subprocess.Popen, web.overtone_rust._run
+        running = threading.Event()
+
+        def popen(*args, **kwargs):
+            started.append(real_popen(*args, **kwargs))
+            running.set()
+            return started[-1]
+
+        def cli(_args, timeout):
+            # In the CLI's place, a process that would run for a minute.
+            return real_run([sys.executable, "-c", "import time; time.sleep(60)"], timeout)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "a.wav"
+            wav.write_bytes(b"RIFF....")
+            api = web.Api()
+            events, done = self._watch(api)
+            with mock.patch.object(web.overtone_rust, "find_cli", return_value=Path(sys.executable)), \
+                    mock.patch.object(web.overtone_rust, "_run", side_effect=cli), \
+                    mock.patch.object(subprocess, "Popen", side_effect=popen), \
+                    mock.patch.object(ta, "analyze_audio") as python_engine:
+                self.assertTrue(api.analyze(str(wav), {**self.OPTIONS, "engine": "rust"})["ok"])
+                self.assertTrue(running.wait(30))
+                asked = time.perf_counter()
+                self.assertEqual(api.stop_analysis(), {"ok": True})
+                self.assertTrue(done.wait(30))
+                self._let_go(api)
+        self.assertEqual([(kind, payload.get("stage")) for kind, payload, _t in events[:1]],
+                         [("onProgress", "rust")])
+        self.assertEqual([kind for kind, *_rest in events], ["onProgress", "onStopped"])
+        self.assertEqual(len(started), 1)
+        self.assertIsNotNone(started[0].poll())     # the process was ended, and reaped
+        python_engine.assert_not_called()           # and v3 did not take over
+        self.assertLess(events[-1][2] - asked, 10.0)
 
     def test_timings_describe_the_analysis_on_screen(self) -> None:
         self.assertEqual(web.Api().analysis_timings()["key"], "first")

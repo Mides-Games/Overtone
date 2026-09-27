@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-675%20Python%20%C2%B7%20271%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-689%20Python%20%C2%B7%20271%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -77,7 +77,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Feature | Status | Notes |
 |---|:--:|---|
 | Open audio, drag and drop, beatmap folder import, recent files | ✅ | A file dropped on `Overtone.bat` opens straight into analysis |
-| Analysis on a background thread, each stage named and timed, with a stop | ✅ | The stop lands when the running stage ends; the result on screen stays |
+| Analysis on a background thread, each stage named and timed, with a stop | ✅ | The stop lands inside the running stage (within half a second on the songs measured) and ends the Rust engine's process; the result on screen stays |
 | Stats strip: global BPM, points, beats, stability, engine, residual | ✅ | |
 | Timeline: local BPM, waveform, drift lane, sections, red lines, hover readout | ✅ | Wheel zooms at the cursor, drag pans; click selects the governing red line; the stretch before the first red line is hatched; zoomed out, the bar lines stay; a red line where the bar changes names its signature; a strip along the foot shows each section's confidence |
 | Timing-point list with a detail panel | ✅ | ↑ / ↓ to move; the panel explains the selected point |
@@ -317,7 +317,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 675 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 689 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage

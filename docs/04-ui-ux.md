@@ -337,9 +337,10 @@ previous analysis stays on screen and interactive throughout.
 
 *Built 2026-09-26 (web shell):* the bar names each stage the engine announces, ticks the
 finished ones with their times and runs a clock; the song panel keeps the times after.
-Stop lands when the running stage ends, not at any point: the engine is asked between its
-stages, and one stage can be long (attack detection ran 48 s on an eight-minute track,
-with the machine busy). The result on screen stays.
+Stop lands inside the running stage: the engine asks at checkpoints in its long loops, on
+the analysing thread only, and the Rust engine's process is ended. On four songs a stop
+landed within half a second wherever it was pressed; asked only between stages, it had
+waited for the stage to end, up to 36 s. The result on screen stays.
 
 ---
 

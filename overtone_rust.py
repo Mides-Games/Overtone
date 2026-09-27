@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import Iterable
 
@@ -39,6 +40,9 @@ CLI_ENV = "OVERTONE_CLI"
 #: A six-minute song takes about 0.2 s; an hour, tens of seconds. Past this,
 #: something is wrong and v3 should take over.
 TIMEOUT_S = 300
+#: How often a running CLI is asked about, between reads of what it wrote:
+#: the longest a stop waits for the process to be ended.
+POLL_S = 0.05
 
 _HERE = Path(__file__).resolve().parent
 _EXE = "overtone-cli.exe" if os.name == "nt" else "overtone-cli"
@@ -80,6 +84,40 @@ def find_cli(search: Iterable[Path] | None = None) -> Path | None:
         if path.is_file():
             return path
     return None
+
+
+def _run(args: list[str], timeout: float) -> subprocess.CompletedProcess:
+    """Run the CLI to its end and return what it wrote.
+
+    It is ended, never left behind, when it overruns ``timeout``
+    (``RuntimeError``) or when the analysis on this thread is stopped:
+    between reads of its output, every POLL_S, ``overtone.checkpoint``
+    asks, and raises AnalysisStopped once a stop was asked for. Either way
+    the process is killed and reaped before the exception leaves. Raises
+    :class:`SidecarUnavailable` when it cannot start.
+    """
+    try:
+        process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except OSError as exc:
+        raise SidecarUnavailable(f"The Rust engine could not start: {exc}") from exc
+    deadline = time.monotonic() + timeout
+    try:
+        while True:
+            try:
+                # Retrying loses nothing: communicate keeps what it has read.
+                stdout, stderr = process.communicate(timeout=POLL_S)
+                break
+            except subprocess.TimeoutExpired as exc:
+                ta.checkpoint()
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(
+                        f"The Rust engine took over {timeout:.0f} s and was stopped.") from exc
+    except BaseException:
+        process.kill()
+        process.communicate()
+        raise
+    return subprocess.CompletedProcess(args, process.returncode, stdout, stderr)
 
 
 def analysis_from_report(report: dict) -> ta.Analysis:
@@ -125,13 +163,7 @@ def analyze(path: str | os.PathLike[str], *, min_delta: float = 1.5, persistence
             "--min-confidence", repr(float(min_confidence))]
     if not prefer_map_bpm:
         args.append("--no-map-bpm")
-    try:
-        done = subprocess.run(args, capture_output=True, timeout=timeout,
-                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"The Rust engine took over {timeout:.0f} s and was stopped.") from exc
-    except OSError as exc:
-        raise SidecarUnavailable(f"The Rust engine could not start: {exc}") from exc
+    done = _run(args, timeout)
     try:
         report = json.loads(done.stdout.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
@@ -162,14 +194,7 @@ def attacks(path: str | os.PathLike[str], *, cli: Path | None = None,
     binary = cli or find_cli()
     if binary is None:
         raise SidecarUnavailable("The Rust engine (overtone-cli) is not built.")
-    try:
-        done = subprocess.run([str(binary), "analyze", os.fspath(path), "--full"],
-                              capture_output=True, timeout=timeout,
-                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"The Rust engine took over {timeout:.0f} s and was stopped.") from exc
-    except OSError as exc:
-        raise SidecarUnavailable(f"The Rust engine could not start: {exc}") from exc
+    done = _run([str(binary), "analyze", os.fspath(path), "--full"], timeout)
     try:
         report = json.loads(done.stdout.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
@@ -195,14 +220,7 @@ def structure(path: str | os.PathLike[str], *, cli: Path | None = None,
     binary = cli or find_cli()
     if binary is None:
         raise SidecarUnavailable("The Rust engine (overtone-cli) is not built.")
-    try:
-        done = subprocess.run([str(binary), "structure", os.fspath(path)],
-                              capture_output=True, timeout=timeout,
-                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"The Rust engine took over {timeout:.0f} s and was stopped.") from exc
-    except OSError as exc:
-        raise SidecarUnavailable(f"The Rust engine could not start: {exc}") from exc
+    done = _run([str(binary), "structure", os.fspath(path)], timeout)
     try:
         report = json.loads(done.stdout.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
@@ -252,13 +270,7 @@ def hitsound(audio: str | os.PathLike[str],
     args = [str(binary), "hitsound", os.fspath(audio), *maps]
     if profile is not None:
         args += ["--profile", os.fspath(profile)]
-    try:
-        done = subprocess.run(args, capture_output=True, timeout=timeout,
-                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"The Rust engine took over {timeout:.0f} s and was stopped.") from exc
-    except OSError as exc:
-        raise SidecarUnavailable(f"The Rust engine could not start: {exc}") from exc
+    done = _run(args, timeout)
     try:
         report = json.loads(done.stdout.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
@@ -292,13 +304,7 @@ def ramps(audio: str | os.PathLike[str], drift_ms: float = 5.0,
             "--decimals", str(int(decimals))]
     if max_lines is not None:
         args += ["--max-lines", str(int(max_lines))]
-    try:
-        done = subprocess.run(args, capture_output=True, timeout=timeout,
-                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"The Rust engine took over {timeout:.0f} s and was stopped.") from exc
-    except OSError as exc:
-        raise SidecarUnavailable(f"The Rust engine could not start: {exc}") from exc
+    done = _run(args, timeout)
     try:
         report = json.loads(done.stdout.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):

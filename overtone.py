@@ -53,6 +53,7 @@ import re
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -148,6 +149,48 @@ class Analysis:
 
 
 # ---------------------------------------------------------------------------
+# Stopping an analysis
+# ---------------------------------------------------------------------------
+
+class AnalysisStopped(BaseException):
+    """Raised through the engine when the analysis running on this thread
+    was asked to stop (see ``checkpoint``). A BaseException, as asyncio's
+    CancelledError is: the engine falls back to the beat tracker on any
+    ``Exception`` from the precision fit, and passes over librosa's failures
+    in places, and a stop is not a failure."""
+
+
+#: Per thread on purpose: an analysis another thread runs meanwhile (a
+#: reference grade, a library scan) never sees this one's stop.
+_stop_requests = threading.local()
+
+
+def checkpoint() -> None:
+    """Where a long loop lets a stop land (roadmap 10.12).
+
+    Raises AnalysisStopped when the analysis running on this thread was asked
+    to stop; otherwise it costs a thread-local read. Nothing asks unless the
+    caller ran the analysis inside ``stop_requests``, so the CLI, the classic
+    window and every other thread run to the end as they always did.
+    """
+    asked = getattr(_stop_requests, "asked", None)
+    if asked is not None and asked():
+        raise AnalysisStopped()
+
+
+@contextmanager
+def stop_requests(asked: Callable[[], bool]):
+    """Let ``asked()`` stop what this thread analyses inside the block: every
+    checkpoint calls it, and a true answer raises AnalysisStopped there."""
+    previous = getattr(_stop_requests, "asked", None)
+    _stop_requests.asked = asked
+    try:
+        yield
+    finally:
+        _stop_requests.asked = previous
+
+
+# ---------------------------------------------------------------------------
 # Onset envelope
 # ---------------------------------------------------------------------------
 
@@ -170,6 +213,33 @@ def _fast_onset_envelope(y: np.ndarray, sr: int, hop: int) -> np.ndarray:
 SPECTROGRAM_BLOCK = 8192
 TEMPOGRAM_BLOCK = 1024
 ONSET_N_FFT = 2048
+#: Frames of a block's STFT computed between two stop checks: a quarter of a
+#: block, 0.1-0.2 s of work. A block whole took up to 1.6 s on a busy machine.
+STFT_RUN = 2048
+
+
+def _block_power(segment: np.ndarray, hop: int) -> np.ndarray:
+    """``|stft(segment)| ** 2``, uncentred: the power librosa's melspectrogram
+    computes from ``y=segment`` before its mel projection, a run of frames at
+    a time with a stop asked between runs.
+
+    librosa.stft hands scipy's FFT a fixed number of columns at a time
+    (MAX_MEM_BLOCK bytes of frames: 32 here). Runs of whole batches make
+    exactly its calls on exactly its frames, so the matrix is its matrix,
+    bit for bit; a test holds the result to librosa's own.
+    """
+    frames = 1 + (segment.size - ONSET_N_FFT) // hop
+    batch = max(1, librosa.util.MAX_MEM_BLOCK // (ONSET_N_FFT * segment.itemsize))
+    run = max(batch, STFT_RUN // batch * batch)
+    matrix = np.empty((1 + ONSET_N_FFT // 2, frames), dtype=np.complex64, order="F")
+    for first in range(0, frames, run):
+        checkpoint()
+        last = min(frames, first + run)
+        librosa.stft(segment[first * hop:(last - 1) * hop + ONSET_N_FFT], n_fft=ONSET_N_FFT,
+                     hop_length=hop, center=False, out=matrix[:, first:last])
+    power = np.abs(matrix) ** 2.0
+    checkpoint()                  # the mel projection comes next, a step of its own
+    return power
 
 
 def _mel_power(y: np.ndarray, sr: int, hop: int) -> np.ndarray:
@@ -185,8 +255,8 @@ def _mel_power(y: np.ndarray, sr: int, hop: int) -> np.ndarray:
     for first in range(0, frames, SPECTROGRAM_BLOCK):
         last = min(frames, first + SPECTROGRAM_BLOCK)
         blocks.append(librosa.feature.melspectrogram(
-            y=padded[first * hop:(last - 1) * hop + ONSET_N_FFT], sr=sr, n_fft=ONSET_N_FFT,
-            hop_length=hop, center=False, fmax=11025, n_mels=128))
+            S=_block_power(padded[first * hop:(last - 1) * hop + ONSET_N_FFT], hop),
+            sr=sr, n_fft=ONSET_N_FFT, fmax=11025, n_mels=128))
     return np.concatenate(blocks, axis=-1)
 
 
@@ -199,9 +269,15 @@ def _onset_envelope(y: np.ndarray, sr: int, hop: int) -> np.ndarray:
     and a different grid, with nothing said: a failure now reaches the caller.
     """
     try:
+        # The two whole-track calls after the blocks take about half a second
+        # each on an eight-minute song, so a stop is asked before each. The
+        # power is rebound, not kept: it is let go once it is in decibels.
+        spectrum = _mel_power(y, sr, hop)
+        checkpoint()
+        spectrum = librosa.power_to_db(spectrum)
+        checkpoint()
         env = librosa.onset.onset_strength(
-            S=librosa.power_to_db(_mel_power(y, sr, hop)), sr=sr, hop_length=hop,
-            n_fft=ONSET_N_FFT, aggregate=np.median,
+            S=spectrum, sr=sr, hop_length=hop, n_fft=ONSET_N_FFT, aggregate=np.median,
         ).astype(np.float32)
     except librosa.util.exceptions.ParameterError:
         env = _fast_onset_envelope(y, sr, hop)
@@ -255,8 +331,10 @@ def _regularity_score(frames: np.ndarray) -> float:
     return float(coverage - 6.0 * cv)
 
 
-def _tempogram(onset: np.ndarray, sr: int, hop: int, win_length: int):
-    """librosa.feature.tempogram(onset, center=True), in blocks of columns.
+def _tempogram(onset: np.ndarray, sr: int, hop: int, win_length: int,
+               columns: int | None = None):
+    """librosa.feature.tempogram(onset, center=True), in blocks of columns
+    (``columns`` each, TEMPOGRAM_BLOCK unless given).
 
     The envelope is padded once exactly as librosa pads it, and each block is
     the uncentred tempogram of its own slice: every column is the same window
@@ -266,8 +344,10 @@ def _tempogram(onset: np.ndarray, sr: int, hop: int, win_length: int):
     n = onset.shape[-1]
     half = win_length // 2
     padded = np.pad(onset, (half, half), mode="linear_ramp", end_values=[0, 0])
-    for first in range(0, n, TEMPOGRAM_BLOCK):
-        last = min(n, first + TEMPOGRAM_BLOCK)
+    step = columns or TEMPOGRAM_BLOCK
+    for first in range(0, n, step):
+        checkpoint()
+        last = min(n, first + step)
         yield librosa.feature.tempogram(onset_envelope=padded[first:last - 1 + win_length],
                                         sr=sr, hop_length=hop, win_length=win_length,
                                         center=False)
@@ -303,6 +383,7 @@ def _track_beats_hybrid(onset: np.ndarray, sr: int, hop: int,
     """
     candidates: list[np.ndarray] = []
     # 1) Dynamic-programming beat tracker (tight: less drift on steady music).
+    checkpoint()
     try:
         if tracker_bpm is None:
             tracker_bpm = _tempo_readings(onset, sr, hop)[1]
@@ -315,6 +396,7 @@ def _track_beats_hybrid(onset: np.ndarray, sr: int, hop: int,
     except Exception:
         pass
     # 2) Predominant local pulse, peak-picked at the prior tempo scale.
+    checkpoint()
     try:
         pulse = librosa.beat.plp(onset_envelope=onset, sr=sr, hop_length=hop,
                                  prior=prior_tempo if prior_tempo else None)
@@ -330,6 +412,7 @@ def _track_beats_hybrid(onset: np.ndarray, sr: int, hop: int,
     except Exception:
         pass
     # 3) Always-available peak fallback.
+    checkpoint()
     fallback = _peak_beats(onset, sr, hop)
     if len(fallback) >= 8:
         candidates.append(fallback)
@@ -851,6 +934,8 @@ def _retime_onsets(y: np.ndarray, sr: int, times: np.ndarray,
     ahead = int(round(ahead_s * sr))
     out = np.array(times, dtype=np.float64)
     for i, t in enumerate(times):
+        if i % 1024 == 0:
+            checkpoint()
         centre = int(round(t * sr))
         lo = max(0, centre - back)
         hi = min(y.size, centre + ahead)
@@ -914,6 +999,7 @@ def _coherence_curve(times: np.ndarray, weights: np.ndarray,
     t = times.astype(np.float64)
     w = weights.astype(np.float64)
     for start in range(0, freqs.size, block):
+        checkpoint()
         chunk = freqs[start:start + block]
         angle = 2.0 * np.pi * np.outer(t, chunk)
         out[start:start + chunk.size] = np.hypot(w @ np.cos(angle), w @ np.sin(angle))
@@ -1144,8 +1230,12 @@ def _tempo_hints(env: np.ndarray, sr: int, hop: int,
         usable = (env.size // decimate) * decimate
         coarse = env[:usable].reshape(-1, decimate).max(axis=1) if usable else env
         step = hop * decimate
-        gram = librosa.feature.tempogram(onset_envelope=coarse.astype(np.float32), sr=sr,
-                                         hop_length=step, win_length=192)
+        # librosa's tempogram, joined from blocks before the mean is taken, so
+        # a stop is asked between them: one call took up to a second. Its
+        # windows are short, so blocks this long cost little more than the
+        # call (0.05-0.08 s of CPU on a six to eight minute song).
+        gram = np.concatenate(list(_tempogram(coarse.astype(np.float32), sr, step, 192,
+                                              columns=8 * TEMPOGRAM_BLOCK)), axis=-1)
         agg = np.mean(gram, axis=1)
         freqs = librosa.tempo_frequencies(len(agg), hop_length=step, sr=sr)
         mask = np.isfinite(freqs) & (freqs >= 40) & (freqs <= 420)
@@ -1307,6 +1397,7 @@ def _seed_grid(times: np.ndarray, weights: np.ndarray, lo: float, hi: float,
             continue
         pool: list[tuple[float, float, float]] = []
         for period, phase, _coherence in _atomic_grid_candidates(w_times, w_weights):
+            checkpoint()
             fitted, fit_phase, _inlier = _refine_grid(w_times, w_weights, period, phase)
             share, coverage, rms = _grid_quality(w_times, w_weights, fitted, fit_phase)
             if rms > 0.09 * fitted * 1000.0:
@@ -1355,6 +1446,7 @@ def _grow_sections(times: np.ndarray, weights: np.ndarray, period: float, phase:
     # every 9 s at 576 s and left the rest with no section and no red line.
     limit = max(64, int(np.ceil((finish - start) / seed_s)) + 2)
     while start < finish - 1.0 and guard < limit:
+        checkpoint()
         guard += 1
         seed_hi = min(finish, start + max(seed_s, 12 * prior))
         # Short seed windows on purpose: a long one straddles the very tempo
@@ -1380,6 +1472,9 @@ def _grow_sections(times: np.ndarray, weights: np.ndarray, period: float, phase:
             local_period, local_phase, _ = _refine_grid(times[seed], weights[seed], prior, phase)
         edge = seed_hi
         while edge < finish:
+            # Each step refits the whole section so far: on a long song at one
+            # tempo, most of this stage's time.
+            checkpoint()
             nxt = min(finish, edge + max(step_s, 4 * local_period))
             chunk = (times > edge) & (times <= nxt)
             if int(chunk.sum()) < 3:
@@ -1415,6 +1510,7 @@ def _merge_sections(times: np.ndarray, weights: np.ndarray, sections: list[GridS
         return []
     merged: list[GridSection] = [sections[0]]
     for section in sections[1:]:
+        checkpoint()
         previous = merged[-1]
         same = abs(section.bpm - previous.bpm) < min_delta
         tiny = (section.end_s - section.start_s) < persistence * section.period
@@ -1425,6 +1521,7 @@ def _merge_sections(times: np.ndarray, weights: np.ndarray, sections: list[GridS
             merged.append(section)
     # A tail region can still be too short after fusing; fold it backwards.
     while len(merged) > 1 and (merged[-1].end_s - merged[-1].start_s) < persistence * merged[-1].period:
+        checkpoint()
         previous = merged[-2]
         fused = _refit_span(times, weights, previous.start_s, merged[-1].end_s,
                             previous.period, previous.phase)
@@ -1542,6 +1639,7 @@ def _settle_boundaries(times: np.ndarray, weights: np.ndarray,
         return sections
     for _ in range(rounds):
         for i in range(len(sections) - 1):
+            checkpoint()
             split = _tune_boundary(times, weights, sections[i], sections[i + 1])
             left, right = sections[i], sections[i + 1]
             sections[i] = GridSection(left.start_s, split, left.period, left.phase,
@@ -1550,6 +1648,7 @@ def _settle_boundaries(times: np.ndarray, weights: np.ndarray,
                                           right.inliers, right.residual_ms, right.coverage)
         refitted: list[GridSection] = []
         for section in sections:
+            checkpoint()
             fitted = _refit_span(times, weights, section.start_s, section.end_s,
                                  section.period, section.phase)
             refitted.append(fitted or section)
@@ -2052,6 +2151,42 @@ def _precision_engine(y: np.ndarray, sr: int, min_delta: float, persistence: int
 # Main analysis entry point
 # ---------------------------------------------------------------------------
 
+#: Frames decoded at a time: about 24 s of audio at 44.1 kHz, under a tenth
+#: of a second's work for an MP3, so a stop is asked that often.
+DECODE_BLOCK = 1 << 20
+
+
+def _decode(path: str | os.PathLike[str]) -> tuple[np.ndarray, int]:
+    """``sf.read(path, dtype="float32")`` mixed down to mono, a block at a time.
+
+    The one call decoded a whole song before a stop could land (1.0 s for an
+    eight-minute MP3, and 0.8 s more to mix it down). The blocks are read as
+    sf.read reads, from the start and no further than the header's length,
+    and each is mixed down on its own, row by row as the whole array was.
+    libsndfile seeks between blocks, which is exact for PCM; for MP3 and Ogg
+    the samples came out identical on all 20 Corpus B files.
+    """
+    with sf.SoundFile(path) as handle:
+        frames, channels = handle.frames, handle.channels
+        if handle.seekable():
+            handle.seek(0)
+        mono = np.empty(frames, dtype=np.float32)
+        done = 0
+        while done < frames:
+            checkpoint()
+            want = min(DECODE_BLOCK, frames - done)
+            if channels == 1:
+                got = len(handle.read(want, dtype="float32", out=mono[done:done + want]))
+            else:
+                block = handle.read(want, dtype="float32")
+                got = len(block)
+                mono[done:done + got] = np.mean(block, axis=1, dtype=np.float32)
+            done += got
+            if got < want:
+                break                 # the header promised more than the stream holds
+        return mono[:done], handle.samplerate
+
+
 def _load_audio(path: str | os.PathLike[str],
                 say: Callable[[str], None]) -> tuple[np.ndarray, int]:
     """Decode to mono float32 at 44.1 kHz, peak-normalized."""
@@ -2079,10 +2214,9 @@ def _load_audio(path: str | os.PathLike[str],
     try:
         # SoundFile decodes WAV/FLAC/OGG/MP3 directly and avoids an
         # unnecessary, expensive resample when already at 44.1 kHz.
-        y, sr = sf.read(path, dtype="float32", always_2d=False)
-        if isinstance(y, np.ndarray) and y.ndim == 2:
-            y = np.mean(y, axis=1, dtype=np.float32)
+        y, sr = _decode(path)
         if sr != TARGET_SR:
+            checkpoint()
             y = librosa.resample(y, orig_sr=sr, target_sr=TARGET_SR, res_type="soxr_hq")
             sr = TARGET_SR
     except Exception:
@@ -2100,6 +2234,7 @@ def _load_audio(path: str | os.PathLike[str],
                 f"Could not decode {name}: it is not audio this program can read, "
                 "or it is damaged."
             ) from exc
+    checkpoint()
     y = np.asarray(y, dtype=np.float32).reshape(-1)
     if not np.all(np.isfinite(y)):
         y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
@@ -2353,6 +2488,7 @@ def _pulse_clarity(onset: np.ndarray, sr: int, hop: int) -> float:
     fallback tracker's first call changed that tracker's global BPM on a real
     song (198.07 -> 199.27), and a safeguard must not move a result.
     """
+    checkpoint()          # a whole-track pass, called six times in a row
     env = np.asarray(onset, dtype=np.float64)
     k = np.arange(PULSE_WINDOW)
     half = PULSE_WINDOW // 2

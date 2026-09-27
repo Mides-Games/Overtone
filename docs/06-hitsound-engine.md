@@ -322,7 +322,15 @@ Samples/
 ```
 
 - Import a skin folder or a beatmap folder; detect which of the 12 base samples and which
-  custom indices exist, by filename convention.
+  custom indices exist, by filename convention. `sample_bank` does this since 2026-09-26,
+  reading a folder exactly as playback reads one: each set's four hits and the slide and
+  whistle slide a slider body loops, by the bare name (wav, then ogg, then mp3, any case),
+  every numbered name as a custom index, and apart the files that hold no audio and the
+  names no lookup reaches (an index 1 written out, an extension another one shadows).
+  Only a beatmap's folder has custom indices (osu!lazer's legacy skins keep that rule from
+  stable), so a skin's numbered files are listed and not played; 22 of 60 local skins
+  carry some (timeline, 2026-09-26). Playback asks a chosen skin between the map's
+  samples and Overtone's own.
 - Audition any sample; auditioning it **against the song at the selected object** is the
   feature that matters, and it is cheap once playback exists.
 - Analyse the samples themselves with the same feature extractor, then **recommend** a
@@ -334,6 +342,8 @@ Samples/
   one the folder lacks, nearly always an index-1 hitnormal the mapper meant the skin to
   play, so a missing sample is not a validation finding (timeline, same date). This
   replaces an earlier line here that called such a sound silent and a validation error.
+  The bank counts each missing sample and names what plays instead: the skin's, where
+  the chosen skin has it, else Overtone's own.
 
 ---
 

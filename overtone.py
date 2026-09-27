@@ -7527,7 +7527,43 @@ SAMPLE_EXTENSIONS = (".wav", ".ogg", ".mp3")
 MIN_SAMPLE_VOLUME = 5
 
 
-def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str]) -> dict:
+def _sample_listing(folder: str | os.PathLike[str] | None,
+                    sizes: dict[str, int] | None = None) -> dict[str, Path]:
+    """A folder's files by lower-cased name: a map names its samples in any
+    case, and osu! finds them on Windows whatever it is. No folder, or one
+    that cannot be read, lists nothing. ``sizes``, when given, takes each
+    file's size in bytes, which the listing carries on Windows at no cost."""
+    files: dict[str, Path] = {}
+    if folder is None:
+        return files
+    try:
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                try:
+                    if entry.is_file():
+                        name = entry.name.lower()
+                        files[name] = Path(entry.path)
+                        if sizes is not None:
+                            sizes[name] = entry.stat().st_size
+                except OSError:
+                    continue
+    except OSError:
+        pass
+    return files
+
+
+def _find_sample(listing: dict[str, Path], stem: str, index: int = 1) -> Path | None:
+    """``stem`` (``soft-hitclap``) at sample ``index`` in a folder's listing,
+    named as osu! names it: index 1 bare, 2 and up numbered
+    (``soft-hitclap2``), wav then ogg then mp3. Index 0 names no file."""
+    if index < 1:
+        return None
+    name = stem + (str(index) if index > 1 else "")
+    return next((listing[name + ext] for ext in SAMPLE_EXTENSIONS if name + ext in listing), None)
+
+
+def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str],
+                      skin: str | os.PathLike[str] | None = None) -> dict:
     """What every sound of a map plays, found as osu! finds it (P-3).
 
     A sound with a custom ``filename`` plays that file from the beatmap
@@ -7535,9 +7571,13 @@ def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str]) -> dict:
     normal set, each addition in the addition set) is looked up in the
     folder by index: index 1 is ``soft-hitclap.wav``, index 2
     ``soft-hitclap2.wav``, and so on, wav then ogg then mp3. Index 0, or a
-    custom sample the folder does not have, plays Overtone's own. A custom
-    filename that is missing falls back to the named samples, and is
-    counted. Volume is the sound's, never under osu!'s 5 %.
+    custom sample the folder does not have, plays the skin's: ``skin``, a
+    folder, asked for the bare name (``soft-hitclap``) whatever the index,
+    since only a beatmap's folder has custom indices (osu!lazer's legacy
+    skins keep that rule from stable; stable is not verified here). Without
+    a skin, or where it has none, Overtone's own plays. A custom filename
+    that is missing falls back to the named samples, and is counted. Volume
+    is the sound's, never under osu!'s 5 %.
 
     A slider's body holds its slide from head to tail, looped: the slide in
     the normal set and, when the slider has its whistle bit, the whistle
@@ -7549,16 +7589,13 @@ def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str]) -> dict:
     ``loops``, each body's start, end, keys and volume; ``objects`` with
     their start, end (None for a circle) and kind, for the timeline's object
     lane (P-7); ``samples``, each key's ``path`` and ``source`` (``file``,
-    ``map`` or ``overtone``); and ``counts`` of each.
+    ``map``, ``skin`` or ``overtone``); and ``counts`` of each.
     """
-    base = Path(folder)
-    try:
-        listing = {p.name.lower(): p for p in base.iterdir() if p.is_file()}
-    except OSError:
-        listing = {}
+    listing = _sample_listing(folder)
+    skin_listing = _sample_listing(skin)
     samples: dict[str, dict] = {}
     events: list[dict] = []
-    counts = {"sounds": 0, "file": 0, "map": 0, "overtone": 0, "missing_file": 0,
+    counts = {"sounds": 0, "file": 0, "map": 0, "skin": 0, "overtone": 0, "missing_file": 0,
               "slider_bodies": 0}
 
     def use(path: Path, source: str) -> str:
@@ -7568,13 +7605,12 @@ def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str]) -> dict:
         return key
 
     def named(stem: str, index: int) -> str:
-        """A named sample by index from the folder, else Overtone's own."""
-        found = None
-        if index >= 1:
-            numbered = stem + (str(index) if index > 1 else "")
-            found = next((listing[numbered + ext] for ext in SAMPLE_EXTENSIONS
-                          if numbered + ext in listing), None)
-        return (use(found, "map") if found is not None
+        """A named sample: the map's own by index, else the skin's, else Overtone's."""
+        found = _find_sample(listing, stem, index)
+        if found is not None:
+            return use(found, "map")
+        found = _find_sample(skin_listing, stem)
+        return (use(found, "skin") if found is not None
                 else use(DEFAULT_SAMPLE_DIR / f"{stem}.wav", "overtone"))
 
     def level(event: dict) -> float:
@@ -7621,6 +7657,134 @@ def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str]) -> dict:
     objects.sort(key=lambda o: o["t"])
     return {"events": events, "loops": loops, "objects": objects, "samples": samples,
             "counts": counts}
+
+
+# -- H6: a sample folder, read as playback reads it ----------------------------
+
+#: What playback plays of each sample set, in the bank's order: the four hits,
+#: then the slide and the whistle slide a slider body loops. Ticks it does not play.
+BANK_SOUNDS = ("hitnormal", "hitwhistle", "hitfinish", "hitclap", "sliderslide", "sliderwhistle")
+#: A lower-cased file name naming one of them: set, sound, index digits, extension.
+_BANK_NAME = re.compile(r"^(normal|soft|drum)-(" + "|".join(BANK_SOUNDS) + r")(\d*)("
+                        + "|".join(re.escape(ext) for ext in SAMPLE_EXTENSIONS) + r")$")
+#: How much of a WAV is read to find its data chunk; a header alone is 44 bytes.
+_WAV_HEAD_BYTES = 4096
+
+
+def _sample_empty(path: Path, size: int) -> bool:
+    """Whether a sample holds no audio: an empty file, or a WAV whose data
+    chunk is empty and ends the file, the header alone that mappers and
+    skinners use to mute a sound. A sample of digital silence is not
+    detected: that needs a decode. Anything unreadable counts as sound."""
+    if size == 0:
+        return True
+    # The data chunk must end the file inside the bytes read, so a larger
+    # file is never empty here: not opening it spares a cold disk a seek.
+    if path.suffix.lower() != ".wav" or size > _WAV_HEAD_BYTES:
+        return False
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(_WAV_HEAD_BYTES)
+    except OSError:
+        return False
+    if head[:4] != b"RIFF" or head[8:12] != b"WAVE":
+        return False
+    at = 12
+    while at + 8 <= len(head):
+        length = int.from_bytes(head[at + 4:at + 8], "little")
+        if head[at:at + 4] == b"data":
+            return length == 0 and at + 8 >= size
+        at += 8 + length + (length & 1)
+    return False
+
+
+def sample_bank(folder: str | os.PathLike[str], skin: str | os.PathLike[str] | None = None) -> dict:
+    """The hitsound samples a folder holds, named as osu! names them (H6).
+
+    ``folder`` is a skin or a beatmap folder, read as :func:`hitsound_playback`
+    reads one: for each sample set, the four hits and the two sounds a slider
+    body loops (:data:`BANK_SOUNDS`), each by its bare name (``soft-hitclap``:
+    what a skin plays, and what a map's index 1 asks its own folder for),
+    wav then ogg then mp3, in any case; and every numbered one
+    (``soft-hitclap2.wav``), a custom index a map asks its own folder for.
+    A skin's numbered files are listed and never played: playback asks a
+    skin for the bare name only (see :func:`hitsound_playback`).
+
+    A sound the folder lacks is not an error (``06`` §8): each missing cell
+    says what plays instead, the skin's (``skin``, a folder, when it has it)
+    or Overtone's own, as playback falls back. A file another extension of
+    the same name shadows, and a name no lookup reaches (index 0 or 1 written
+    out, a leading zero), are listed and never played. ``empty`` marks a
+    sample that holds no audio (:func:`_sample_empty`).
+
+    Read only. Returns the ``folder``, its ``kind`` (``beatmap`` when it holds
+    an .osu, else ``skin``), ``cells`` (set by set, sound by sound), ``custom``
+    (by index, then set and sound), the ``indices`` found, ``unused`` names
+    and ``counts``. Raises ValueError when ``folder`` is not a folder.
+    """
+    base = Path(folder)
+    if not base.is_dir():
+        raise ValueError(f"Not a folder: {base}")
+    sizes: dict[str, int] = {}
+    skin_sizes: dict[str, int] = {}
+    listing = _sample_listing(base, sizes)
+    skin_listing = _sample_listing(skin, skin_sizes)
+    named: dict[tuple[str, str, str], dict[str, Path]] = {}
+    unused: list[str] = []
+    for name, path in listing.items():
+        match = _BANK_NAME.match(name)
+        if match is None:
+            continue
+        sample_set, sound, digits, ext = match.groups()
+        if digits and (int(digits) < 2 or digits.startswith("0")):
+            unused.append(path.name)            # osu! asks for index 1 bare, 2 as "2"
+            continue
+        named.setdefault((sample_set, sound, digits), {})[ext] = path
+
+    def found(paths: dict[str, Path]) -> dict:
+        ordered = [paths[ext] for ext in SAMPLE_EXTENSIONS if ext in paths]
+        size = sizes.get(ordered[0].name.lower())
+        return {"file": ordered[0].name, "bytes": size,
+                "empty": size is not None and _sample_empty(ordered[0], size),
+                "shadowed": sorted(p.name for p in ordered[1:])}
+
+    def fallback(stem: str) -> dict:
+        path = _find_sample(skin_listing, stem)
+        if path is None:
+            return {"source": "overtone", "folder": str(DEFAULT_SAMPLE_DIR),
+                    "file": f"{stem}.wav", "empty": False}
+        size = skin_sizes.get(path.name.lower())
+        return {"source": "skin", "folder": str(path.parent), "file": path.name,
+                "empty": size is not None and _sample_empty(path, size)}
+
+    sets = list(SAMPLE_SET_NAMES.values())
+    cells = []
+    for sample_set in sets:
+        for sound in BANK_SOUNDS:
+            paths = named.get((sample_set, sound, ""))
+            cells.append({"set": sample_set, "sound": sound,
+                          **(found(paths) if paths else
+                             {"file": None, "bytes": None, "empty": False, "shadowed": []}),
+                          "fallback": None if paths else fallback(f"{sample_set}-{sound}")})
+    custom = sorted(({"set": s, "sound": sound, "index": int(digits), **found(paths)}
+                     for (s, sound, digits), paths in named.items() if digits),
+                    key=lambda c: (c["index"], sets.index(c["set"]), BANK_SOUNDS.index(c["sound"])))
+    hits = [c for c in cells if c["sound"].startswith("hit")]
+    slides = [c for c in cells if c["sound"].startswith("slider")]
+    missing = [c["fallback"]["source"] for c in cells if c["fallback"]]
+    return {
+        "folder": str(base), "name": base.name,
+        "kind": "beatmap" if any(name.endswith(".osu") for name in listing) else "skin",
+        "sets": sets, "sounds": list(BANK_SOUNDS), "cells": cells, "custom": custom,
+        "indices": sorted({c["index"] for c in custom}), "unused": sorted(unused),
+        "counts": {"hits": sum(c["file"] is not None for c in hits), "hits_of": len(hits),
+                   "slides": sum(c["file"] is not None for c in slides), "slides_of": len(slides),
+                   "custom": len(custom),
+                   "empty": sum(x["empty"] for x in cells + custom if x["file"]),
+                   "shadowed": sum(len(x["shadowed"]) for x in cells + custom),
+                   "unused": len(unused),
+                   "to_skin": missing.count("skin"), "to_overtone": missing.count("overtone")},
+    }
 
 
 # -- H2: where a map's hitsounds fall -----------------------------------------

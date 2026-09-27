@@ -5542,6 +5542,166 @@ class HitsoundSampleTests(unittest.TestCase):
         self.assertEqual((plan["counts"]["slider_bodies"], plan["counts"]["sounds"]), (2, 5))
         self.assertTrue(Path(plan["samples"]["overtone:soft-sliderslide.wav"]["path"]).is_file())
 
+    def test_a_skin_plays_where_the_map_has_nothing_and_only_by_its_bare_name(self):
+        from overtone import hitsound_playback, read_osu_beatmap
+        text = _copy_map(["256,192,1000,1,8,0:0:0:0:",          # index 0: the skin, never the map
+                          "256,192,2000,1,8,0:0:1:0:",          # index 1: the map's clap
+                          "256,192,3000,1,8,0:0:2:0:",          # index 2: not the skin's clap2
+                          "256,192,4000,2,0,L|356:192,1,140"])  # the body: the skin's slide
+        with tempfile.TemporaryDirectory() as tmp:
+            folder, skin = Path(tmp) / "map", Path(tmp) / "skin"
+            folder.mkdir()
+            skin.mkdir()
+            (folder / "map.osu").write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            (folder / "soft-hitclap.wav").write_bytes(b"RIFF")
+            for name in ("Soft-HitNormal.ogg", "soft-hitclap2.wav", "soft-sliderslide.wav"):
+                (skin / name).write_bytes(b"RIFF")
+            beatmap = read_osu_beatmap(folder / "map.osu")
+            plan = hitsound_playback(beatmap, folder, skin=skin)
+            plain = hitsound_playback(beatmap, folder)
+        json.dumps(plan)
+        keys = [e["keys"] for e in plan["events"]]
+        self.assertEqual(keys[:3], [["skin:soft-hitnormal.ogg", "overtone:soft-hitclap.wav"],
+                                    ["skin:soft-hitnormal.ogg", "map:soft-hitclap.wav"],
+                                    ["skin:soft-hitnormal.ogg", "overtone:soft-hitclap.wav"]])
+        self.assertEqual(plan["loops"][0]["keys"], ["skin:soft-sliderslide.wav"])
+        self.assertEqual(Path(plan["samples"]["skin:soft-hitnormal.ogg"]["path"]).parent, skin)
+        self.assertEqual((plan["counts"]["skin"], plan["counts"]["map"], plan["counts"]["overtone"]),
+                         (6, 1, 2))
+        # Without a skin, what was the skin's is Overtone's, as before skins.
+        self.assertEqual([e["keys"] for e in plain["events"]][0],
+                         ["overtone:soft-hitnormal.wav", "overtone:soft-hitclap.wav"])
+        self.assertEqual(plain["counts"]["skin"], 0)
+
+
+def _wav_bytes(frames: int) -> bytes:
+    """A 16-bit mono 44.1 kHz WAV of ``frames`` frames of silence; 0 frames
+    is the 44-byte header alone."""
+    import io
+    import wave
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(bytes(2 * frames))
+    return buffer.getvalue()
+
+
+class SampleBankTests(unittest.TestCase):
+    """Phase 6, H6: what a skin or beatmap folder holds, named as osu! names it."""
+
+    def test_a_skin_folder_is_read_as_playback_finds_its_samples(self):
+        from overtone import DEFAULT_SAMPLE_DIR, sample_bank
+        files = {"normal-hitnormal.wav": _wav_bytes(100),
+                 "soft-hitclap.wav": _wav_bytes(100), "Soft-HitClap.OGG": b"OggS",  # wav wins
+                 "drum-sliderslide.wav": _wav_bytes(0),        # a header alone: mutes the slide
+                 "drum-hitfinish.mp3": b"",                    # an empty file
+                 "normal-hitclap2.wav": _wav_bytes(10),        # a custom index
+                 "soft-hitnormal1.wav": _wav_bytes(10),        # index 1 is never numbered
+                 "drum-hitfinish02.ogg": b"OggS",              # nor with a leading zero
+                 "normal-slidertick.wav": _wav_bytes(10),      # ticks are not played
+                 "skin.ini": b"[General]", "cursor.png": b"\x89PNG"}
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, data in files.items():
+                (Path(tmp) / name).write_bytes(data)
+            bank = sample_bank(tmp)
+        json.dumps(bank)
+        self.assertEqual(bank["kind"], "skin")
+        self.assertEqual([(c["set"], c["sound"]) for c in bank["cells"]],
+                         [(s, sound) for s in ("normal", "soft", "drum")
+                          for sound in ("hitnormal", "hitwhistle", "hitfinish", "hitclap",
+                                        "sliderslide", "sliderwhistle")])
+        cell = {(c["set"], c["sound"]): c for c in bank["cells"]}
+        self.assertEqual((cell["normal", "hitnormal"]["file"], cell["normal", "hitnormal"]["empty"],
+                          cell["normal", "hitnormal"]["fallback"]), ("normal-hitnormal.wav", False, None))
+        self.assertEqual((cell["soft", "hitclap"]["file"], cell["soft", "hitclap"]["shadowed"]),
+                         ("soft-hitclap.wav", ["Soft-HitClap.OGG"]))
+        self.assertTrue(cell["drum", "sliderslide"]["empty"])
+        self.assertEqual((cell["drum", "hitfinish"]["bytes"], cell["drum", "hitfinish"]["empty"]), (0, True))
+        whistle = cell["normal", "hitwhistle"]
+        self.assertIsNone(whistle["file"])
+        self.assertEqual((whistle["fallback"]["source"], whistle["fallback"]["file"]),
+                         ("overtone", "normal-hitwhistle.wav"))
+        self.assertTrue((DEFAULT_SAMPLE_DIR / whistle["fallback"]["file"]).is_file())
+        self.assertEqual([(c["set"], c["sound"], c["index"], c["file"]) for c in bank["custom"]],
+                         [("normal", "hitclap", 2, "normal-hitclap2.wav")])
+        self.assertEqual((bank["indices"], bank["unused"]),
+                         ([2], ["drum-hitfinish02.ogg", "soft-hitnormal1.wav"]))
+        self.assertEqual(bank["counts"], {"hits": 3, "hits_of": 12, "slides": 1, "slides_of": 6,
+                                          "custom": 1, "empty": 2, "shadowed": 1, "unused": 2,
+                                          "to_skin": 0, "to_overtone": 14})
+
+    def test_a_beatmap_folders_missing_samples_fall_back_to_the_skin_then_overtone(self):
+        from overtone import sample_bank
+        with tempfile.TemporaryDirectory() as tmp:
+            folder, skin = Path(tmp) / "map", Path(tmp) / "skin"
+            folder.mkdir()
+            skin.mkdir()
+            (folder / "map.osu").write_bytes(b"osu file format v14\r\n")
+            (folder / "soft-hitnormal.wav").write_bytes(_wav_bytes(10))
+            (folder / "soft-hitclap3.ogg").write_bytes(b"OggS")
+            (skin / "soft-hitclap.wav").write_bytes(_wav_bytes(10))
+            (skin / "normal-sliderslide.wav").write_bytes(_wav_bytes(0))
+            bank = sample_bank(folder, skin=skin)
+        cell = {(c["set"], c["sound"]): c for c in bank["cells"]}
+        self.assertEqual(bank["kind"], "beatmap")
+        self.assertEqual(cell["soft", "hitnormal"]["file"], "soft-hitnormal.wav")
+        self.assertEqual(cell["soft", "hitclap"]["fallback"],
+                         {"source": "skin", "folder": str(skin), "file": "soft-hitclap.wav", "empty": False})
+        self.assertTrue(cell["normal", "sliderslide"]["fallback"]["empty"])
+        self.assertEqual(cell["drum", "hitclap"]["fallback"]["source"], "overtone")
+        self.assertEqual([(c["file"], c["index"]) for c in bank["custom"]], [("soft-hitclap3.ogg", 3)])
+        self.assertEqual((bank["counts"]["to_skin"], bank["counts"]["to_overtone"]), (2, 15))
+
+    def test_the_bank_says_what_playback_plays(self):
+        from overtone import hitsound_playback, read_osu_beatmap, sample_bank
+        # Every hit of every set asking index 1: each plays the bank's cell,
+        # or what the bank says plays instead.
+        objects = [f"256,192,{1000 + 500 * n},1,{bits},{s}:{s}:1:0:"
+                   for n, (s, bits) in enumerate((s, bits) for s in (1, 2, 3) for bits in (2, 4, 8))]
+        with tempfile.TemporaryDirectory() as tmp:
+            folder, skin = Path(tmp) / "map", Path(tmp) / "skin"
+            folder.mkdir()
+            skin.mkdir()
+            (folder / "map.osu").write_bytes(_copy_map(objects).replace("\n", "\r\n").encode("utf-8"))
+            for name in ("normal-hitnormal.wav", "soft-hitwhistle.ogg", "drum-hitclap.mp3"):
+                (folder / name).write_bytes(_wav_bytes(10))
+            for name in ("soft-hitnormal.wav", "normal-hitclap.wav", "drum-hitfinish.ogg"):
+                (skin / name).write_bytes(_wav_bytes(10))
+            plan = hitsound_playback(read_osu_beatmap(folder / "map.osu"), folder, skin=skin)
+            bank = sample_bank(folder, skin=skin)
+        heard = {key for e in plan["events"] for key in e["keys"]}
+        for cell in bank["cells"]:
+            if not cell["sound"].startswith("hit"):
+                continue
+            where = ("map", cell["file"]) if cell["file"] else (cell["fallback"]["source"],
+                                                               cell["fallback"]["file"])
+            with self.subTest(cell=(cell["set"], cell["sound"])):
+                self.assertIn(f"{where[0]}:{where[1].lower()}", heard)
+        self.assertEqual(len(heard), 12)
+
+    def test_an_empty_sample_is_one_that_holds_no_audio(self):
+        from overtone import _sample_empty
+        streamed = _wav_bytes(0) + bytes(400)       # a data size of 0, then sound anyway
+        cases = {"a.ogg": (b"", True), "b.wav": (_wav_bytes(0), True), "c.wav": (_wav_bytes(5), False),
+                 "d.wav": (streamed, False), "e.wav": (b"not a riff at all", False),
+                 "f.mp3": (b"ID3" + bytes(40), False)}
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, (data, empty) in cases.items():
+                path = Path(tmp) / name
+                path.write_bytes(data)
+                with self.subTest(name=name):
+                    self.assertEqual(_sample_empty(path, len(data)), empty)
+
+    def test_only_a_folder_is_read(self):
+        from overtone import sample_bank
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "file.wav").write_bytes(b"RIFF")
+            for bad in (Path(tmp) / "missing", Path(tmp) / "file.wav"):
+                with self.subTest(bad=bad.name), self.assertRaises(ValueError):
+                    sample_bank(bad)
+
 
 class HitsoundReportTests(unittest.TestCase):
     """Phase 6, H2: every sound's place in the bar, and where additions fall."""

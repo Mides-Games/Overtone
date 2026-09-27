@@ -17,6 +17,108 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · The sample bank, read: what a skin or beatmap folder holds
+
+P-3 promised samples found as osu! finds them, "beatmap folder custom index, then skin,
+then defaults", and the skin was never read: a sound the map's folder could not answer
+went straight to Overtone's own. The first half of H6 (`06` §8, roadmap Phase 6 "Sample
+bank") is the engine under the card that comes next: read a folder, and let playback ask
+a skin.
+
+### Changed
+
+- **`sample_bank(folder, skin=None)`** reads a skin or a beatmap folder with the same
+  lookup playback uses: for each set, the four hits and the slide and whistle slide a
+  slider body loops, each by its bare name, wav then ogg then mp3, in any case; every
+  numbered name (`soft-hitclap2.wav`) as a custom index. Each missing cell names what
+  plays instead: the skin's, when a skin is given and has it, else Overtone's own. Apart
+  it lists files that hold no audio (0 bytes, or a WAV whose empty data chunk ends the
+  file: the header alone that mutes a sound), files another extension of the same name
+  shadows, and names no lookup reaches (`soft-hitnormal1.wav`: osu! asks for index 1
+  bare; a leading zero). A folder with an .osu reads as a beatmap folder, any other as a
+  skin. Read only, and a listing plus the headers of WAVs up to 4 KB, nothing more.
+- **Playback asks a skin** (`hitsound_playback(beatmap, folder, skin=None)`): index 0, and
+  an index the map's folder lacks, play the skin's sample before Overtone's own. A skin
+  is asked for the bare name only: only a beatmap's folder has custom indices (the rule
+  osu!lazer's legacy skins keep for stable's sake; stable itself is not verified here),
+  so a skin's `soft-hitclap2.wav` is listed by the bank and never played. The source is
+  counted as `skin`. With no skin, every sound plays what it played before.
+- **`bench/sample_banks.py OSU_FOLDER`**: every skin, and 200 beatmap folders by a rule
+  written in the script before its first run (the Songs folders sorted by name, every
+  k-th from the first; `--offset` for a disjoint sample), read through `sample_bank`.
+- 6 engine tests: a skin folder cell by cell, a beatmap folder falling back to a skin
+  then to Overtone's, playback with a skin (bare names only), the bank agreeing with
+  what playback plays for every hit of every set, what counts as empty, a non-folder
+  refused.
+
+### Hardening
+
+- The measurement only lists folders and reads the first 4 KB of small WAVs under
+  `C:\osu!`: nothing was written, renamed or created there.
+
+### Measured
+
+```
+bench/sample_banks.py "C:\osu!": 60 skins, 200 of 4,801 beatmap folders (every 24th by name)
+
+skins (60)
+  the 12 hits          59 have all 12, one has 11
+  the 6 slides         53 have all 6; the fewest, 1
+  numbered samples     240 in 22 skins (6 to 14 each, index 2 for most, one up to 222):
+                       osu! plays none of them from a skin
+  empty samples        304 in 52 skins, 280 of them a slide or whistle slide
+                       (112 of 0 bytes, 192 a WAV header alone)
+  never played         26 unreachable names in 20 skins (an index 1 written out);
+                       140 files shadowed by another extension, in 9
+  extensions           .ogg 706 · .wav 597 · .mp3 0
+beatmap folders, the rule's 200 (bare names are what a map's index 1 asks for)
+  the 12 hits          min 0 · p25 0 · median 3 · p75 5 · max 11; none in 64, all 12 in 0
+  the 6 slides         none in 105; the most, 3
+  custom indices       in 102 folders, 1,536 samples: per folder with any, median 8,
+                       p75 13, max 193; the highest index a folder has, median 5.5,
+                       p75 22, max 100
+  empty samples        292 in 122 folders, 286 of them the slide; every one a WAV header
+                       alone, none of 0 bytes
+  never played         0 unreachable names; 43 shadowed files in 3 folders
+  extensions           .wav 1,679 · .ogg 570 · .mp3 0
+beatmap folders, a second 200 (--offset 13, disjoint)
+  the 12 hits          median 2; none in 77, all 12 in 1
+  custom indices       in 101 folders, 1,452 samples, up to 220 in a folder, index up to 999
+  empty samples        310 in 119 folders; .mp3 2
+
+reading one folder (sample_bank, this machine)
+  beatmap, cold        median 1.97 ms · p90 8.08 · max 176.68   (the second 200, no program
+                       had read them in this session)
+  beatmap, again       median 0.51 ms · p90 1.30 · max 5.06
+  beatmap, the rule's 200 read a second time today: median 0.48 ms · max 6.03
+  skins, warm          median 2.55 ms · p90 4.61 · max 8.50 (their one cold read was by
+                       the first version, below: median 12.16 · p90 229 · max 402)
+
+Python unittest   604 -> 610, all pass (6 skipped: overtone-cli is not built in this worktree)
+facts
+```
+
+A beatmap folder rarely holds a whole set, and nothing about that is wrong: the median
+has 3 of the 12 hits under their bare names, 64 of 200 have none, and 102 carry custom
+indices instead. What a map asks for and does not find plays the skin's, as `06` §8
+records. Skins are the opposite: 59 of 60 hold all 12, and most mute something with an
+empty file, which the bank shows as empty instead of as a sample.
+
+### Rejected / tried and dropped
+
+- **Reading every WAV's header to find the empty ones.** The first version opened each
+  WAV the bank found. On folders no program had read lately it took a median 58.76 ms per
+  beatmap folder (p90 190 ms, max 1,947 ms, the rule's 200). Timed step by step (a
+  scratch script, not committed) on a third disjoint 200, the rule from the 7th folder,
+  cold: the listing took a median 0.81 ms (0.29 s in all), a stat per
+  sample 1.21 ms (0.50 s), the headers of WAVs up to 4 KB 1.34 ms (1.55 s), and the
+  headers of larger WAVs 48.31 ms (21.41 s). Those last can never be empty here (the
+  data chunk must end the file inside the 4 KB read), so they are no longer opened, and
+  sizes come from the listing, which carries them on Windows. The rule's 200 and the 60
+  skins, read again after the change, give every count above unchanged.
+- **Detecting digital silence** (a sample of zeros) would need a decode of every sample,
+  ogg included; the bank marks only files with no audio at all, and says so.
+
 ## v4.0.0-dev — 2026-09-26 · Undoing a ×2/÷2 puts the whole pulse back
 
 ### Fixed

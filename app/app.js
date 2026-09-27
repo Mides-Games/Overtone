@@ -165,6 +165,8 @@ const I18N = {
     copied: "Timing points copied — paste into the .osu [TimingPoints].",
     clipboard_failed: "Could not reach the clipboard: {detail}",
     saved_to: "Saved to {path}",
+    osz_named_map: "named {artist} - {title}, as the song's own maps name it",
+    osz_named_tags: "named {artist} - {title}, from the audio's tags",
     injected: "Injected {added} red lines ({replaced} replaced, {greens} green kept).",
     inject_confirm: "Replace {reds} red lines with {n} new ones in {file}?{warn}",
     inject_diff_line: "{o}ms {ob} → {n}ms {nb}",
@@ -767,6 +769,8 @@ const I18N = {
     copied: "Timing points copiados — pegalos en el [TimingPoints] del .osu.",
     clipboard_failed: "No se pudo llegar al portapapeles: {detail}",
     saved_to: "Guardado en {path}",
+    osz_named_map: "con el nombre {artist} - {title}, como lo nombran los mapas de la canción",
+    osz_named_tags: "con el nombre {artist} - {title}, de las etiquetas del audio",
     injected: "Inyectadas {added} líneas rojas ({replaced} reemplazadas, {greens} verdes intactas).",
     inject_confirm: "¿Reemplazar {reds} líneas rojas por {n} nuevas en {file}?{warn}",
     inject_diff_line: "{o}ms {ob} → {n}ms {nb}",
@@ -2077,7 +2081,11 @@ async function saveAs(kind) {
     editFailure(reply);
     return;
   }
-  toast(t("saved_to", { path: reply.path }));
+  // A .osz says what it named the song, and where the name came from.
+  const meta = reply.metadata;
+  const named = meta && meta.from !== "none" && meta.from !== "given"
+    ? " · " + t(`osz_named_${meta.from}`, { artist: meta.artist_unicode, title: meta.title_unicode }) : "";
+  toast(t("saved_to", { path: reply.path }) + named);
 }
 
 async function injectOsu() {

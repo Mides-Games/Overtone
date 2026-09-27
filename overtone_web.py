@@ -962,7 +962,9 @@ class Api:
                                  decimals=self._settings()["offset_decimals"])
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
-        return {"ok": True, "path": target, "points": info["points"]}
+        # The song's name comes from its own maps or its tags: say which.
+        return {"ok": True, "path": target, "points": info["points"],
+                "metadata": info["metadata"]}
 
     def pick_osu(self, directory: str = "") -> str | None:
         import webview

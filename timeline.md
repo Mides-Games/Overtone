@@ -17,6 +17,95 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · A fallback result comes back from ÷2 then ×2
+
+Pressing ÷2 and then ×2 should give back the result the analysis gave. On the fallback
+tracker's results it did not where the tracker had doubled its own pulse: 11 of the 32
+fallback analyses of the retiming work ("The fallback tracker's beats, moved onto their
+attacks") came back changed, Calm Down Juliet with 10 red lines for 3. That work found it
+and left it open.
+
+### Fixed
+
+- **The analysis and the ×2/÷2 rebuild finished the tracker's beats in two copies of the
+  same steps, and held a beat with no peak under it differently.** After splitting the
+  tracked beats, both snap each beat to the loudest point of the onset envelope within ±25-90
+  ms. Where that point is the window's edge (a silent stretch, a neighbour's tail or rise),
+  the beat has no attack of its own. The analysis holds such a beat in place only at a pulse
+  the user asked for, and otherwise lets the snap drag it to the edge, up to 95.8 ms (holding
+  on the tracker's own doubling changed 9 of 27 real songs with no net gain, 2026-09-23). The
+  rebuild held it at every pulse above 1, the tracker's own doubling included, so a rebuild
+  at the analysis's own pulse was a different result.
+- **Both now end in one function, `_tracker_result`**, from the tracked beats to the red
+  lines; `_moved_by` then takes the lag off. The result keeps the pulse the tracker chose
+  itself (`Analysis.auto_subdivision`), and a beat with no peak under it is held only away
+  from it: the analysis's own rule, now the rebuild's as well. ÷2 then ×2, ×2 then ÷2, and ×2
+  after an analysis forced to ÷2 all come back to the tracker's own result.
+  - No analysis changes, field for field, and a rebuild away from the tracker's own pulse
+    holds its beats as before.
+- 3 tests on a 90 BPM kit with three silent seconds, which the tracker reads doubled: the
+  rebuild at its own pulse, both round trips, and ×2 after a forced ÷2 give the analysis
+  back. All three fail on the old code, 9 of the 47 beats up to 95.8 ms apart.
+
+### Measured
+
+```
+the 32 fallback analyses of the retiming work (Corpus A's 24 fixtures with the tracker forced,
+the 4 renders that fall back with engine auto, Corpus B's 4 fallback songs), each rebuilt at
+its own pulse; one-off scripts, not committed
+  before  11 of 32 differ, each where the tracker doubled its own pulse (17 of the 32; the
+          other 6 have no beat without a peak under it):
+            Corpus A  breakdown-175 2 -> 3 red lines, change-175-87.5, heavy-jitter-168,
+                      slow-92 (global 184.140 -> 184.584 BPM), with-drop-180
+            renders   ramp 100->140 16 -> 15 red lines (global 249.47 -> 253.56),
+                      free-then-steady
+            Corpus B  One Step Closer 4 -> 3 red lines, Vampires 22 -> 22 (12 of them
+                      different), Calm Down Juliet 3 -> 10, Day to Story 3 -> 5
+          over the 11: 60 red lines -> 68 (29 not given back, 37 new), 24 section BPMs not
+          given back, the global BPM moved on 7, 224 beats moved, added or dropped (up to
+          95.8 ms); x2 then /2 and /2 then x2 11 of 32 each
+  after   0 of 32 at the own pulse; x2 then /2 and /2 then x2 0 of 32
+the analyses themselves, old code against new, identical: 33 of 33 with pulse Auto (the 32
+          and the benchmark's degenerate ramp), every field but the new one; 50 of 50 with
+          the pulse forced x0.25-x4 or re-anchoring off, on 8 Corpus A fixtures and the
+          tests' kit, in beats, red lines, local tempo, meter, tracked beats and lag (5 of
+          the 50 the same refusal)
+for contrast, the precision engine on Corpus A: 24 of 24 already came back, own pulse and
+          x2 then /2
+Corpus B, the four fallback songs (bench/corpus_b.py --only, analysed afresh)
+          exported red lines identical; within 2/5/10/50 ms 6/16/31/150 of 249 before and
+          after, sections within 0.05 BPM 0 and within 1 BPM 44
+Python unittest  649 -> 652, all pass (overtone-cli built in the worktree, none skipped) · facts ok
+engine gates     benchmark 24/24 (0.0000 BPM / 0.16 ms), bpm-snapshot 24/24, golden 27/27,
+                 coverage, measures, signatures, robustness, reference 24/24, assisted 70,
+                 fuzz_reader 3000: each one's output line for line the same as on the
+                 unchanged tree (timings and temporary paths aside)
+Rust             no file changed; cargo test 270 pass, golden 27/27, nogrid, density 4/4 with
+                 0 false positives, elastic (worst 4.865 %, as documented), map: all pass
+```
+
+### Rejected / tried and dropped
+
+- **Agreeing the other way: holding those beats in the analysis too**, the rule the rebuild
+  had. Measured as the old rebuild at each analysis's own pulse, which is that rule with the
+  analysis's lag kept.
+  - Corpus B's four songs: the maps' red lines within 2/5/10/50 ms 6/16/31/150 -> 5/18/31/142
+    of 249; sections within 0.05 BPM 0 -> 6, within 1 BPM 44 -> 55. Calm Down Juliet 3 -> 10
+    red lines for the map's 7, Day to Story 3 -> 5 for its 5.
+  - Corpus A, the 11 fixtures the tracker reads doubled: slow-92 0.070 -> 0.292 BPM,
+    breakdown-175 0.150 -> 0.131 BPM with 3 sections for its 1 (2 before); the other nine
+    score the same.
+  - Mixed, and it would change 11 of the 32 analyses; on 27 real songs on 2026-09-23 it
+    made no net gain either. The analysis keeps its rule and the rebuild takes it.
+
+Left open:
+
+- With "Re-anchor beats to transients" off, the analysis leaves every beat where the tracker
+  put it, but a rebuild re-anchors them all: at its own pulse, 6 of 6 tried differ in every
+  beat (change-128-142 283.18 -> 280.73 BPM).
+- A pulse forced past ×4 of the tracked beats (×4 where the tracker doubled reads ×8) has no
+  way back through ×2/÷2: a rebuild takes ×0.25-×4 only.
+
 ## v4.0.0-dev — 2026-09-26 · A map checked from the command line
 
 ### Changed

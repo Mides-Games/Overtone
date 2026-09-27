@@ -1669,6 +1669,70 @@ class FallbackLagTests(unittest.TestCase):
         self.assertEqual(_tracker_lag(np.zeros(0, dtype=np.float32), sr, hits), 0.0)
 
 
+class FallbackRebuildTests(unittest.TestCase):
+    """A ×2 / ÷2 rebuild of a fallback result at its own pulse gives it back.
+
+    The analysis and the rebuild finished the tracker's beats in two copies of
+    the same steps, and held a beat with no peak under it differently: on the
+    tracker's own doubling the analysis let the refinement drag it to its
+    window's edge, the rebuild held it. ÷2 then ×2 changed 11 of 32 fallback
+    analyses; Calm Down Juliet came back with 10 red lines for 3.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import soundfile as sf
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.path = Path(cls._tmp.name) / "kit90-drop.wav"
+        _drum_track(cls.path, [(0.5, 90.0)], duration=16.0)
+        # Three silent seconds: the beats the doubled grid puts there have no
+        # peak under them.
+        y, sr = sf.read(str(cls.path), dtype="float32")
+        y[6 * sr:9 * sr] = 0.0
+        sf.write(str(cls.path), y, sr)
+        cls.analysis = analyze_audio(cls.path, engine="legacy")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def assertSameResult(self, got: Analysis, want: Analysis) -> None:
+        np.testing.assert_array_equal(got.beats, want.beats)
+        np.testing.assert_array_equal(got.local_bpms, want.local_bpms)
+        self.assertEqual(got.points, want.points)
+        self.assertEqual(
+            (got.subdivision, got.global_bpm, got.stability, got.meter, got.beat_shift_s),
+            (want.subdivision, want.global_bpm, want.stability, want.meter, want.beat_shift_s))
+
+    def test_the_trackers_own_doubling_comes_back(self):
+        from dataclasses import replace
+        analysis = self.analysis
+        self.assertEqual((analysis.engine, analysis.subdivision), ("legacy", 2))  # 90 BPM doubled
+        self.assertSameResult(rebuild_with_subdivision(analysis, analysis.subdivision), analysis)
+        # The silent seconds do leave beats with no peak under them: holding
+        # them, as rebuilds did at every pulse above 1, gives another result.
+        held = rebuild_with_subdivision(replace(analysis, auto_subdivision=0.0), 2.0)
+        self.assertFalse(np.array_equal(held.beats, analysis.beats))
+
+    def test_x2_then_half_and_half_then_x2_come_back(self):
+        for away in (4.0, 1.0):
+            with self.subTest(away=away):
+                there = rebuild_with_subdivision(self.analysis, away)
+                self.assertSameResult(rebuild_with_subdivision(there, 2.0), self.analysis)
+
+    def test_x2_after_an_analysis_forced_to_half_is_auto(self):
+        # Analysed at ÷2, then ×2: back on the pulse the tracker chose itself,
+        # so the result is Auto's. Each analysis reads its lag on its own
+        # beats; it is left out here so that the two compare exactly.
+        from unittest import mock
+        import overtone
+        with mock.patch.object(overtone, "_tracker_lag", return_value=0.0):
+            auto = analyze_audio(self.path, engine="legacy")
+            half = analyze_audio(self.path, engine="legacy", force_subdivision=0.5)
+        self.assertEqual(half.subdivision, 1.0)
+        self.assertSameResult(rebuild_with_subdivision(half, 2.0), auto)
+
+
 class OneWindowSignatureTests(unittest.TestCase):
     """A signature region exactly one window long is a region, wherever the song starts.
 

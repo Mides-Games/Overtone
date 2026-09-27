@@ -134,6 +134,12 @@ class Analysis:
     # base_frames stay where the tracker put them. 0 for the precision
     # engine, which re-times every attack on the waveform instead.
     beat_shift_s: float = 0.0
+    # The subdivision of base_frames the fallback tracker chose by itself
+    # (pulse Auto), before any factor the user asked for. Away from it a beat
+    # with no peak under it is held where the split put it, in the analysis
+    # and in a ×2 / ÷2 rebuild alike (_tracker_result). 0 for the precision
+    # engine; a result without it holds such beats above a subdivision of 1.
+    auto_subdivision: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -2438,12 +2444,64 @@ def _tracker_lag(y: np.ndarray, sr: int, beat_times: np.ndarray) -> float:
     return float(np.median(moved))
 
 
-def _moved_beats(beats: np.ndarray, points: list[TimingPoint],
-                 shift: float) -> tuple[np.ndarray, list[TimingPoint]]:
-    """The fallback tracker's beats moved by ``shift`` (none before 0 s), and
-    each of its red lines with the beat it sits on. The tempo is untouched."""
-    moved = np.maximum(np.asarray(beats, dtype=np.float64) + shift, 0.0)
-    return moved, [replace(p, offset_ms=float(moved[p.beat_index] * 1000.0)) for p in points]
+def _tracker_result(source: str, duration: float, onset: np.ndarray,
+                    base_frames: np.ndarray, sr: int, hop: int, subdivision: float,
+                    auto_subdivision: float, min_delta: float, persistence: int,
+                    min_confidence: float, refine: bool = True) -> Analysis:
+    """The fallback tracker's result at ``subdivision`` times the pulse of the
+    beats it tracked (``base_frames``), before its lag is taken off (_moved_by).
+
+    The analysis and the ×2 / ÷2 rebuild both end here, so a rebuild at the
+    analysis's own pulse gives the analysis back. Each used to run its own
+    copy of these steps, and the copies held a beat with no peak under it
+    differently: where the tracker doubled its own pulse, 11 of 32 fallback
+    analyses came back from ÷2 then ×2 changed, Calm Down Juliet with 10 red
+    lines for 3.
+    """
+    frames = _resubdivide(base_frames, subdivision)
+    if refine:
+        # Interpolated midpoints can sit up to half a beat away from the true
+        # attack, so widen the snap window proportionally to the beat length.
+        median_gap_s = (float(np.median(np.diff(np.asarray(frames, dtype=float)))) * hop / sr
+                        if len(frames) > 1 else 0.5)
+        frames = _refine_beats_to_transients(
+            frames, onset, sr, hop,
+            radius_ms=float(np.clip(0.30 * median_gap_s * 1000, 25, 90)),
+            # A beat with no peak under it is held only away from the pulse
+            # the tracker chose itself, where the user asked for the beats. On
+            # the tracker's own doubling holding changed 9 of 27 real songs
+            # with no net gain against their ranked maps (within 10 ms 0.128
+            # -> 0.125).
+            return_float=True,
+            hold_without_peak=subdivision > 1 and subdivision != auto_subdivision)
+    frames = _trim_leading_silence(frames, onset)
+    frames = _fill_missed_beats(frames)
+    beat_times = np.asarray(frames, dtype=np.float64) * hop / sr
+    local = _robust_local_bpms(beat_times)
+    valid = (local >= 30) & (local <= 600)
+    beats_v, local_v = beat_times[valid], local[valid]
+    candidates = _segment_tempi(beats_v, local_v, min_delta, persistence)
+    points = [point for point in candidates if point.confidence >= min_confidence]
+    if not points and candidates:
+        points = [max(candidates, key=lambda p: p.confidence)]
+    # The median of the measured beats. Averaging it with a nearby tempogram
+    # guide was tried: a guide is a bin a few tenths of a BPM wide, and on 16
+    # single-tempo corpus cases the average was further from the truth 14
+    # times (median error 0.39 against 0.17 BPM).
+    global_bpm = float(np.median(local_v)) if len(local_v) else 0.0
+    return Analysis(source, duration, beats_v, local_v, points, hop, sr, subdivision,
+                    global_bpm, _stability(local_v), _guess_meter(beats_v, onset, sr, hop),
+                    onset, np.asarray(base_frames, dtype=float),
+                    auto_subdivision=auto_subdivision)
+
+
+def _moved_by(result: Analysis, shift: float) -> Analysis:
+    """The fallback tracker's result with its beats moved by ``shift`` (none
+    before 0 s), and each red line with the beat it sits on. The tempo is
+    untouched."""
+    moved = np.maximum(np.asarray(result.beats, dtype=np.float64) + shift, 0.0)
+    points = [replace(p, offset_ms=float(moved[p.beat_index] * 1000.0)) for p in result.points]
+    return replace(result, beats=moved, points=points, beat_shift_s=shift)
 
 
 def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
@@ -2459,7 +2517,8 @@ def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
     Its beats sit on the onset envelope's peaks, after the sound starts, so
     with ``refine_beats`` they and the red lines on them are moved by the lag
     measured on the song (_tracker_lag). Sections, BPMs, the pulse and the
-    meter are still read on the tracker's own beats.
+    meter are still read on the tracker's own beats. From the tracked beats
+    on it is _tracker_result, which the ×2 / ÷2 rebuild runs as well.
     """
     say("Extracting transients and tempo hypotheses…")
     hop = HOP
@@ -2488,49 +2547,16 @@ def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
     # precision engine's: 0 or 1 is that pulse. It was read as an absolute
     # subdivision, so 1 switched the octave choice off and 0.5 / 0.25 were
     # dropped without a word.
-    subdivision = _choose_subdivision(onset, beat_frames, prefer_map_bpm, guides)
-    if factor:
-        subdivision *= float(factor)
-    beat_frames_raw = np.asarray(beat_frames, dtype=float).copy()
-    beat_frames = _resubdivide(beat_frames, subdivision)
-    if refine_beats:
-        # Interpolated midpoints can sit up to half a beat away from the true
-        # attack, so widen the snap window proportionally to the beat length.
-        median_gap_s = float(np.median(np.diff(np.asarray(beat_frames, dtype=float)))) * hop / sr if len(beat_frames) > 1 else 0.5
-        beat_frames = _refine_beats_to_transients(
-            beat_frames, onset, sr, hop,
-            radius_ms=float(np.clip(0.30 * median_gap_s * 1000, 25, 90)),
-            # Only when the user asked for more beats: on the tracker's own
-            # doubling, holding changed 9 of 27 real songs with no net gain
-            # against their ranked maps (within 10 ms 0.128 -> 0.125).
-            return_float=True,
-            hold_without_peak=subdivision > 1 and float(factor) not in (0.0, 1.0))
-    beat_frames = _trim_leading_silence(beat_frames, onset)
-    beat_frames = _fill_missed_beats(beat_frames)
-    beat_times = np.asarray(beat_frames, dtype=np.float64) * hop / sr
+    auto_subdivision = _choose_subdivision(onset, beat_frames, prefer_map_bpm, guides)
+    subdivision = auto_subdivision * float(factor) if factor else auto_subdivision
 
     say("Computing local tempo and persistent changes…")
-    local = _robust_local_bpms(beat_times)
-    valid = (local >= 30) & (local <= 600)
-    if int(valid.sum()) < 8:
+    result = _tracker_result(str(path), y.size / sr, onset, np.asarray(beat_frames, dtype=float),
+                             sr, hop, subdivision, float(auto_subdivision), min_delta,
+                             persistence, min_confidence, refine_beats)
+    if len(result.beats) < 8:
         raise ValueError("Detected tempo is outside the usable range.")
-    beats_v, local_v = beat_times[valid], local[valid]
-    candidates = _segment_tempi(beats_v, local_v, min_delta, persistence)
-    points = [point for point in candidates if point.confidence >= min_confidence]
-    if not points and candidates:
-        points = [max(candidates, key=lambda p: p.confidence)]
-
-    # The median of the measured beats, as rebuild_with_subdivision reports it.
-    # Averaging it with a nearby tempogram guide was tried: a guide is a bin a
-    # few tenths of a BPM wide, and on 16 single-tempo corpus cases the average
-    # was further from the truth 14 times (median error 0.39 against 0.17 BPM).
-    global_bpm = float(np.median(local_v)) if len(local_v) else 0.0
-    shift = _tracker_lag(y, sr, beats_v) if refine_beats else 0.0
-    moved, points = _moved_beats(beats_v, points, shift)
-    return Analysis(str(path), y.size / sr, moved, local_v, points, hop, sr,
-                    subdivision, global_bpm, _stability(local_v),
-                    _guess_meter(beats_v, onset, sr, hop), onset, beat_frames_raw,
-                    beat_shift_s=shift)
+    return _moved_by(result, _tracker_lag(y, sr, result.beats) if refine_beats else 0.0)
 
 
 def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
@@ -2631,8 +2657,11 @@ def rebuild_with_subdivision(analysis: Analysis, factor: float,
     """Re-resolve an existing analysis at another pulse octave, no re-analysis.
 
     Powers the GUI "×2 / ÷2" quick fix. With a precision analysis this is exact
-    — the fitted grids are simply read at a different beat rate. Raises
-    ``ValueError`` for an unsupported factor or an analysis with no stored grid.
+    — the fitted grids are simply read at a different beat rate. With the
+    fallback tracker's, the beats it tracked are split or thinned again and
+    finished by the analysis's own steps (_tracker_result), so a rebuild at
+    the analysis's own pulse gives the analysis back. Raises ``ValueError``
+    for an unsupported factor or an analysis with no stored grid.
     """
     if float(factor) not in ALLOWED_FACTORS:
         raise ValueError(f"Subdivision factor must be one of {sorted(ALLOWED_FACTORS)}.")
@@ -2654,35 +2683,14 @@ def rebuild_with_subdivision(analysis: Analysis, factor: float,
                         rebuilt.downbeat_class, rebuilt.fit_residual_ms, "precision")
     if analysis.base_frames is None or len(analysis.base_frames) < 4:
         raise ValueError("This analysis has no stored beat grid to rebuild from.")
-    frames = _resubdivide(analysis.base_frames, factor)
-    median_gap_s = (float(np.median(np.diff(np.asarray(frames, dtype=float)))) * analysis.hop_length
-                    / analysis.sample_rate) if len(frames) > 1 else 0.5
-    frames = _refine_beats_to_transients(
-        frames, analysis.onset, analysis.sample_rate, analysis.hop_length,
-        radius_ms=float(np.clip(0.30 * median_gap_s * 1000, 25, 90)),
-        return_float=True, hold_without_peak=factor > 1)
-    frames = _trim_leading_silence(frames, analysis.onset)
-    frames = _fill_missed_beats(frames)
-    beat_times = np.asarray(frames, dtype=np.float64) * analysis.hop_length / analysis.sample_rate
-    local = _robust_local_bpms(beat_times)
-    valid = (local >= 30) & (local <= 600)
-    beats_v, local_v = beat_times[valid], local[valid]
-    candidates = _segment_tempi(beats_v, local_v, min_delta, persistence)
-    points = [p for p in candidates if p.confidence >= min_confidence]
-    if not points and candidates:
-        points = [max(candidates, key=lambda p: p.confidence)]
-    global_bpm = float(np.median(local_v)) if len(local_v) else 0.0
+    rebuilt = _tracker_result(analysis.source, analysis.duration, analysis.onset,
+                              analysis.base_frames, analysis.sample_rate,
+                              analysis.hop_length, factor,
+                              float(getattr(analysis, "auto_subdivision", 0.0)),
+                              min_delta, persistence, min_confidence)
     # There is no audio here to read the lag on, so the song's own moves the
     # new beats; a rebuild's beats, read on the audio, lag within 2.5 ms of it.
-    shift = float(getattr(analysis, "beat_shift_s", 0.0))
-    moved, points = _moved_beats(beats_v, points, shift)
-    return Analysis(analysis.source, analysis.duration, moved, local_v, points,
-                    analysis.hop_length, analysis.sample_rate, factor, global_bpm,
-                    _stability(local_v),
-                    _guess_meter(beats_v, analysis.onset, analysis.sample_rate,
-                                 analysis.hop_length),
-                    analysis.onset, np.asarray(analysis.base_frames, dtype=float),
-                    beat_shift_s=shift)
+    return _moved_by(rebuilt, float(getattr(analysis, "beat_shift_s", 0.0)))
 
 
 # ---------------------------------------------------------------------------

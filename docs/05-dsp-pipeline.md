@@ -248,8 +248,10 @@ staircase, and the no-answer fixtures must say no.
 Since 2026-09-26 v3's tracker also moves its beats onto their attacks. They sit on the
 onset envelope's peaks, 7-17 ms after the attacks as the precision engine re-times them,
 so `_tracker_lag` re-times each beat on the waveform (`_retime_onsets`) and every beat and
-red line moves by the median shift; the tempo it read stays as it was (timeline). v4 has no
-tracker, so there is nothing to port.
+red line moves by the median shift; the tempo it read stays as it was (timeline). Its ×2/÷2
+rebuild finishes the tracked beats with the analysis's own steps (`_tracker_result`), which
+hold a beat with no peak under it only away from the pulse the tracker chose itself, so ÷2
+then ×2 gives the analysis back. v4 has no tracker, so there is nothing to port.
 
 ---
 

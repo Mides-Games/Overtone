@@ -2749,6 +2749,96 @@ class CacheTests(_IsolatedConfig):
             self.assertEqual([p["path"] for p in payloads], [fixed.source, str(b)])
 
 
+class LiveConfidenceTests(_IsolatedConfig):
+    """The confidence threshold, live: the analysis on screen's sections read
+    again at another minimum confidence, previewed, and applied as one edit."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        # One real grid analysis for the class: two tempi, so two sections.
+        cls._tmp = tempfile.TemporaryDirectory()
+        wav = Path(cls._tmp.name) / "two.wav"
+        _drum_track(wav, [(0.5, 128.0), (10.5, 140.0)], duration=20.0)
+        cls.analysis = ta.analyze_audio(str(wav), 1.5, 12, True, 0.75)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._tmp.cleanup()
+
+    def _api(self) -> web.Api:
+        import copy
+        api = web.Api()
+        api._analysis = copy.deepcopy(self.analysis)
+        return api
+
+    def test_the_threshold_the_analysis_ran_with_gives_its_own_lines(self) -> None:
+        api = self._api()
+        self.assertEqual(self.analysis.engine, "precision")
+        self.assertGreaterEqual(len(self.analysis.sections), 2)
+        reply = api.confidence_preview(75)
+        shown = web.analysis_payload(api._analysis)["points"]
+        self.assertTrue(reply["ok"])
+        self.assertEqual([(p["offset_ms"], p["bpm"]) for p in reply["points"]],
+                         [(p["offset_ms"], p["bpm"]) for p in shown])
+        json.dumps(reply)
+
+    def test_a_preview_changes_nothing(self) -> None:
+        api = self._api()
+        before = list(api._analysis.points)
+        for percent in (0, 40, 99.5, 100):
+            self.assertTrue(api.confidence_preview(percent)["ok"])
+        self.assertEqual(api._analysis.points, before)
+        self.assertEqual(api.history_state(), {"undo": False, "redo": False})
+        self.assertNotIn("confidence", api._cfg)
+        self.assertEqual(self.saved, [])
+
+    def test_apply_is_one_undoable_edit_that_keeps_locks_and_the_setting(self) -> None:
+        api = self._api()
+        original = list(api._analysis.points)
+        lock = {"offset_ms": 5000.0, "bpm": 128.0, "meter": 4, "meter_known": False}
+        api._locked = [lock]
+        fewer = [ta.TimingPoint(original[0].offset_ms, original[0].bpm, 0.99, 0)]
+        rebuilt = mock.Mock(points=fewer)
+        with mock.patch.object(ta, "rebuild_with_subdivision", return_value=rebuilt) as rebuild:
+            reply = api.confidence_apply(90)
+        self.assertTrue(reply["ok"])
+        self.assertEqual(rebuild.call_args.args[1:], (api._analysis.subdivision, 1.5, 12, 0.9))
+        # The rebuilt line, and the locked one kept beside it.
+        self.assertEqual([p.offset_ms for p in api._analysis.points], [original[0].offset_ms, 5000.0])
+        self.assertTrue(api._analysis.points[1].manual)
+        self.assertEqual(api._cfg["confidence"], "90")
+        self.assertTrue(api.undo()["ok"])
+        self.assertEqual(api._analysis.points, original)
+        json.dumps(reply["result"])
+
+    def test_apply_updates_the_songs_own_settings(self) -> None:
+        api = self._api()
+        with tempfile.TemporaryDirectory() as tmp:
+            song = Path(tmp) / "song.wav"
+            song.write_bytes(b"the song")
+            api._analysis.source = str(song)
+            options = {"delta": 1.5, "persistence": 12, "confidence": 75, "pulse": "auto",
+                       "prefer_map_bpm": True, "refine_beats": True}
+            api._remember_song_options(str(song), options)
+            self.assertTrue(api.confidence_apply(62.5)["ok"])
+            remembered = api.song_options(str(song))["options"]
+        self.assertEqual(remembered["confidence"], 62.5)
+        self.assertEqual(api._cfg["confidence"], "62.5")
+
+    def test_what_it_refuses(self) -> None:
+        self.assertEqual(web.Api().confidence_preview(50)["key"], "first")
+        self.assertEqual(web.Api().confidence_apply(50)["key"], "first")
+        fallback = web.Api()
+        fallback._analysis = _analysis([ta.TimingPoint(500.0, 150.0, 0.9, 0)], engine="legacy")
+        self.assertEqual(fallback.confidence_preview(50)["key"], "no_grid")
+        api = self._api()
+        before = list(api._analysis.points)
+        for bad in (-1, 100.5, float("nan"), "x", None, True):
+            self.assertEqual(api.confidence_preview(bad)["key"], "bad_values", bad)
+            self.assertEqual(api.confidence_apply(bad)["key"], "bad_values", bad)
+        self.assertEqual(api._analysis.points, before)
+
+
 class SongOptionsTests(_IsolatedConfig):
     """Per-song presets: a song remembers the detection settings its last
     finished analysis ran with, by its audio's bytes; past the limit the one

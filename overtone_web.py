@@ -616,6 +616,64 @@ class Api:
         return {"ok": True, "result": self._payload(),
                 "locks": self._lock_offsets(), **self.history_state()}
 
+    # -- live confidence threshold (Phase 20): the same sections, read again --
+    def _at_confidence(self, percent) -> list | dict:
+        """The red lines the analysis on screen gives at a minimum confidence
+        of ``percent``: its fitted sections read again, at its own pulse and
+        with the current minimum change and persistence, as the ×2/÷2 buttons
+        read them at another pulse. Only the grid engine keeps sections; a
+        fallback result refuses (``no_grid``)."""
+        analysis = self._analysis
+        if analysis is None:
+            return {"ok": False, "key": "first"}
+        if not analysis.sections:
+            return {"ok": False, "key": "no_grid"}
+        try:
+            value = float(percent)
+        except (TypeError, ValueError):
+            return {"ok": False, "key": "bad_values"}
+        if isinstance(percent, bool) or not np.isfinite(value) or not 0.0 <= value <= 100.0:
+            return {"ok": False, "key": "bad_values"}
+        params = self._params(self.state()["options"])
+        try:
+            rebuilt = ta.rebuild_with_subdivision(
+                analysis, analysis.subdivision, params["min_delta"], params["persistence"],
+                value / 100.0)
+        except ValueError as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return rebuilt.points
+
+    def confidence_preview(self, percent) -> dict:
+        """The red lines a minimum confidence of ``percent`` would give the
+        analysis on screen, snapped as the page shows them. Read only."""
+        points = self._at_confidence(percent)
+        if isinstance(points, dict):
+            return points
+        return {"ok": True, "percent": float(percent),
+                "points": [{"offset_ms": p.offset_ms, "bpm": p.bpm, "confidence": p.confidence}
+                           for p in ta.snap_timing_points(points)]}
+
+    def confidence_apply(self, percent) -> dict:
+        """Make the red lines on screen what ``percent`` gives, locked lines
+        kept, as one undoable edit; and keep ``percent`` as the setting the
+        next analysis starts from, the song's own included, so analysing it
+        again gives these lines. Nothing is analysed again here."""
+        points = self._at_confidence(percent)
+        if isinstance(points, dict):
+            return points
+        self._push_history()
+        self._analysis.points = self._merge_locks(points, self._analysis.beats)
+        value = float(percent)
+        self._cfg["confidence"] = str(int(value) if value.is_integer() else value)
+        source = str(self._analysis.source)
+        remembered = self.song_options(source)["options"]
+        if remembered is not None:
+            self._remember_song_options(source, {**remembered, "confidence": value})
+        else:
+            self._persist()
+        return {"ok": True, "result": self._payload(), "selected": -1,
+                "locks": self._lock_offsets(), **self.history_state()}
+
     # -- point locks (Phase 4: a verified point survives edits and re-analysis)
     def _lock_offsets(self) -> list:
         return [lock["offset_ms"] for lock in self._locked]

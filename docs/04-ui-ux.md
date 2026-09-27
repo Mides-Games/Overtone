@@ -167,6 +167,12 @@ what to do about it (÷2 or ×2 on that section, or a red line there), and puts 
 under it as percentages rather than as the raw coverage and parity. Both disappear, with
 the legend key, on a song that holds none.
 
+*Built 2026-09-27 (web shell), the theme in the rail:* a switch in the sidebar's foot,
+above the language one, showing the theme it would move to in an icon and in words. It sets
+the same preference the Settings three-way does, so the two never disagree; from System it
+resolves to the theme it was offering. The label goes on the collapsed rail and the name
+stays in `title` and `aria-label`.
+
 ### Rendering
 
 WebGL2: the waveform is one instanced quad draw over a peak texture; overlays are

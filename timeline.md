@@ -17,6 +17,36 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · The theme, one press away
+
+### Changed
+
+- **A theme switch in the rail**, under the views and above the language one, where
+  Settings' three-way (System / Dark / Light) was the only way to it. It shows the theme it
+  would move to — the sun while the dark one is on, the moon while the light one is — with
+  the words beside it saying the same, so the icon never carries it alone; on the narrow
+  rail the label goes and the name stays in `title` and `aria-label`, as the nav items do.
+  It writes the same setting, so the three-way follows it and the choice is remembered.
+  Pressed while the theme is **System**, it answers with the theme it was offering rather
+  than a third state.
+
+### Measured
+
+```
+Through the harness: dark to light and back, the setting, the Settings three-way and the
+button's own icon and words following each press; pressed from System it wrote "light",
+the theme it showed. Contrast of the label on the button 7.76:1 on the dark theme and
+6.78:1 on the light one. At 1100 px the rail collapses to 76 px and the button keeps its
+icon inside it with the name in title and aria-label. Both languages, including the label
+changing language while the light theme is on. No console error.
+```
+
+### Rejected / tried and dropped
+
+- **Three states in the rail.** The rail would then hold a copy of the Settings control,
+  and the press that matters — the one the request was about — would take two. System stays
+  where it was chosen; the rail switches between the two themes it can show.
+
 ## v4.0.0-dev — 2026-09-27 · The same timing, for the other games
 
 ### Changed

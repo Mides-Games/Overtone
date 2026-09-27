@@ -333,6 +333,7 @@ const I18N = {
     hs_done: "Hitsounds copied into {n} difficulties ({objects} objects). Backups kept beside each file.",
     hs_nothing: "Nothing to change: these difficulties already sound like {source}.",
     st_theme: "Theme", st_theme_system: "System", st_theme_dark: "Dark", st_theme_light: "Light",
+    theme_to_light: "Light theme", theme_to_dark: "Dark theme",
     nav_structure: "Structure",
     stx_sub: "Where the song's phrases change, what each part is, and why: every label beside the evidence it rests on. Read only.",
     stx_title: "Sections",
@@ -968,6 +969,7 @@ const I18N = {
     hs_done: "Hitsounds copiados en {n} dificultades ({objects} objetos). Los respaldos quedan junto a cada archivo.",
     hs_nothing: "Nada que cambiar: estas dificultades ya suenan como {source}.",
     st_theme: "Tema", st_theme_system: "Sistema", st_theme_dark: "Oscuro", st_theme_light: "Claro",
+    theme_to_light: "Tema claro", theme_to_dark: "Tema oscuro",
     nav_structure: "Estructura",
     stx_sub: "Dónde cambian las frases de la canción, qué es cada parte y por qué: cada etiqueta junto a la evidencia en la que se apoya. Solo lectura.",
     stx_title: "Secciones",
@@ -5428,8 +5430,33 @@ function stTheme() {
     chartInk();                       // canvas ink is read, not inherited
     if (S.result) drawTrace();
   }
+  themeButton(theme);
 }
 SYSTEM_LIGHT.addEventListener("change", stTheme);
+
+// The rail's own theme switch, beside the language one: always in reach,
+// where the Settings three-way (System / Dark / Light) was the only way in.
+// It shows the theme it would move to — the icon and the words together, so
+// the icon alone never has to carry it — and writes the same setting, so the
+// three-way follows and the choice is remembered like any other.
+function themeButton(theme) {
+  const button = $("themeBtn");
+  if (!button) return;
+  const key = theme === "dark" ? "theme_to_light" : "theme_to_dark";
+  button.classList.toggle("is-dark", theme === "dark");
+  button.title = t(key);
+  button.setAttribute("aria-label", t(key));
+  button.dataset.i18nTitle = key;
+  const label = $("themeLabel");
+  label.textContent = t(key);
+  label.dataset.i18n = key;
+}
+
+// Whatever is on screen now, the other one — from "System" too, which is
+// then answered with the theme the button offered rather than a third state.
+function themeToggle() {
+  stSet({ theme: document.documentElement.dataset.theme === "dark" ? "light" : "dark" });
+}
 
 function stApply() {
   const s = ST.settings;
@@ -6804,6 +6831,7 @@ function wire() {
   document.querySelectorAll("#langSwitch button").forEach((b) => b.onclick = () => {
     S.lang = b.dataset.lang; translate(); if (api()) api().set_language(S.lang);
   });
+  $("themeBtn").onclick = themeToggle;
   window.addEventListener("resize", () => drawTrace());
   // How the focused control got focus: Tab means the user is driving the
   // keyboard, a click means the button merely kept focus afterwards.

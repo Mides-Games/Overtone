@@ -2816,7 +2816,7 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
                 "cfg_version": "2", "prefer_map_bpm": "on", "refine_beats": None,
                 "delta": True, "language": 5, "recent": ["a.mp3", 7, None],
                 "file": "song.mp3", "persistence": "12", "theme": {"a": 1},
-                "future_key": {"kept": 1}}),
+                "song_options": ["x"], "future_key": {"kept": 1}}),
                 encoding="utf-8")
             # A key this version does not know is kept as it is (a newer
             # version wrote it); a known key of the wrong type is dropped.

@@ -49,6 +49,14 @@ OSZ_TYPES = ("osu! beatmap package (*.osz)", "All files (*.*)")
 #: after the analysis would leave all three pointing at nothing.
 DROP_DIR = Path(os.environ.get("LOCALAPPDATA", str(HERE))) / "Overtone" / "drops"
 PULSE_FACTORS = {"auto": 0.0, "/4": 0.25, "/2": 0.5, "x1": 1.0, "x2": 2.0, "x4": 4.0}
+#: Songs whose detection settings are remembered (per-song presets), the one
+#: analysed longest ago forgotten first: 182 bytes each in the config as it is
+#: written, so 200 take 36 kB of its 256 kB.
+SONG_OPTIONS_LIMIT = 200
+#: What a song remembers of the settings its analysis ran with. The engine is
+#: a preference about speed, not about the song, so it stays one setting.
+SONG_OPTION_KEYS = ("delta", "persistence", "confidence", "pulse", "prefer_map_bpm",
+                    "refine_beats")
 #: What the page is told a song is, so WebAudio knows how to decode it.
 AUDIO_MIME = {".wav": "audio/wav", ".flac": "audio/flac", ".ogg": "audio/ogg",
               ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac",
@@ -333,6 +341,11 @@ class Api:
         self._project_error = ""
         #: (source, SHA-256) of the analysed audio, the project's key.
         self._audio_sha: tuple[str, str] | None = None
+        #: path -> ((size, mtime), key): each song's key for its remembered
+        #: settings, read again only when the file changes.
+        self._song_keys: dict[str, tuple[tuple[int, int], str]] = {}
+        #: The page's options the running analysis was started with.
+        self._launch_options: dict = {}
         self._analysis: ta.Analysis | None = None
         self._busy = threading.Lock()
         #: Set by stop_analysis. The worker checks it at every stage the
@@ -560,6 +573,7 @@ class Api:
         self._t0 = time.perf_counter()
         self._engine_done = None
         self._audio_sha = None              # the file may have changed at the same path
+        self._launch_options = dict(options)
         threading.Thread(target=self._worker, args=(path, params), daemon=True).start()
         return {"ok": True}
 
@@ -2746,6 +2760,9 @@ class Api:
             # project it may be about to be offered back from.
             self._project_dirty = False
             self._last_timings = self._timings(cached)
+            # The song remembers the settings behind the result it is about
+            # to show, before the page can ask for them.
+            self._remember_song_options(path, self._launch_options)
             self._emit("onResult", self._payload())
         except AnalysisStopped:
             self._emit("onStopped", self._timings(False))
@@ -2931,6 +2948,73 @@ class Api:
                           "engine": "rust" if options.get("engine") == "rust" else "python"})
         recent = [path] + [p for p in self._cfg.get("recent", []) if p != path]
         self._cfg["recent"] = recent[:self.RECENT_LIMIT]
+        self._persist()
+
+    # -- per-song presets: the settings each song was last analysed with -----
+    def song_options(self, path: str) -> dict:
+        """The detection settings this song's last analysis ran with, for the
+        page to put back when the song is chosen again; ``options`` is None
+        when it has none (never analysed here, forgotten, or unreadable)."""
+        key = self._song_key(str(path))
+        stored = self._cfg.get("song_options")
+        entry = stored.get(key) if key is not None and isinstance(stored, dict) else None
+        return {"ok": True, "options": None if entry is None else self._song_options_clean(entry)}
+
+    def _song_key(self, path: str) -> str | None:
+        """The song's key for its remembered settings: its audio's SHA-256
+        (16 hex digits), so a copy, a moved file or a dropped one keeps them.
+        Read again only when the file's size or modification time changes."""
+        try:
+            stat = os.stat(path)
+        except OSError:
+            return None
+        stamp = (stat.st_size, stat.st_mtime_ns)
+        known = self._song_keys.get(path)
+        if known is not None and known[0] == stamp:
+            return known[1]
+        import hashlib
+        digest = hashlib.sha256()
+        try:
+            with open(path, "rb") as handle:
+                for chunk in iter(lambda: handle.read(1 << 20), b""):
+                    digest.update(chunk)
+        except OSError:
+            return None
+        key = digest.hexdigest()[:16]
+        self._song_keys[path] = (stamp, key)
+        return key
+
+    @staticmethod
+    def _song_options_clean(entry) -> dict | None:
+        """The remembered settings as the page's options, or None when one is
+        missing or out of range (a hand-edited config, a shape from before)."""
+        try:
+            o = {"delta": float(entry["delta"]), "persistence": int(entry["persistence"]),
+                 "confidence": float(entry["confidence"]), "pulse": entry["pulse"],
+                 "prefer_map_bpm": entry["prefer_map_bpm"], "refine_beats": entry["refine_beats"]}
+        except (TypeError, KeyError, ValueError, OverflowError):
+            return None
+        sound = (np.isfinite(o["delta"]) and o["delta"] > 0 and o["persistence"] >= 2
+                 and np.isfinite(o["confidence"]) and 0.0 <= o["confidence"] <= 100.0
+                 and isinstance(o["pulse"], str) and o["pulse"] in PULSE_FACTORS
+                 and isinstance(o["prefer_map_bpm"], bool) and isinstance(o["refine_beats"], bool))
+        return o if sound else None
+
+    def _remember_song_options(self, path: str, options: dict) -> None:
+        """Keep the settings a finished analysis ran with under its song's
+        key, as the most recent; past SONG_OPTIONS_LIMIT songs, the one
+        analysed longest ago is forgotten. Never fails the analysis."""
+        entry = self._song_options_clean(options)
+        key = self._song_key(path) if entry is not None else None
+        if key is None:
+            return
+        stored = self._cfg.get("song_options")
+        stored = dict(stored) if isinstance(stored, dict) else {}
+        stored.pop(key, None)
+        stored[key] = entry
+        while len(stored) > SONG_OPTIONS_LIMIT:
+            stored.pop(next(iter(stored)))
+        self._cfg["song_options"] = stored
         self._persist()
 
     def _persist(self) -> None:

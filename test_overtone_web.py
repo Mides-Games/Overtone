@@ -2749,6 +2749,101 @@ class CacheTests(_IsolatedConfig):
             self.assertEqual([p["path"] for p in payloads], [fixed.source, str(b)])
 
 
+class SongOptionsTests(_IsolatedConfig):
+    """Per-song presets: a song remembers the detection settings its last
+    finished analysis ran with, by its audio's bytes; past the limit the one
+    analysed longest ago is forgotten."""
+
+    OPTIONS = {"delta": 2.0, "persistence": 20, "confidence": 85, "pulse": "x2",
+               "prefer_map_bpm": False, "refine_beats": True, "engine": "rust"}
+    REMEMBERED = {"delta": 2.0, "persistence": 20, "confidence": 85.0, "pulse": "x2",
+                  "prefer_map_bpm": False, "refine_beats": True}
+
+    def _song(self, folder: str, name: str, content: bytes = b"the song's bytes") -> str:
+        path = Path(folder) / name
+        path.write_bytes(content)
+        return str(path)
+
+    def _analyse(self, api: web.Api, path: str, options: dict, engine) -> list[str]:
+        """One analysis through the real worker, ``engine`` as run_analysis."""
+        events: list[str] = []
+        done = threading.Event()
+
+        def emit(handler, _payload):
+            events.append(handler)
+            if handler in ("onResult", "onError", "onStopped"):
+                done.set()
+
+        api._emit = emit
+        with mock.patch.object(web, "run_analysis", side_effect=engine):
+            self.assertTrue(api.analyze(path, options)["ok"])
+            self.assertTrue(done.wait(30))
+        for _ in range(500):
+            if not api._busy.locked():
+                break
+            threading.Event().wait(0.01)
+        return events
+
+    def test_a_finished_analysis_is_remembered_by_the_songs_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = web.Api()
+            song = self._song(tmp, "audio.mp3")
+            events = self._analyse(api, song, self.OPTIONS,
+                                   lambda *_a, **_k: _analysis([ta.TimingPoint(500.0, 150.0, 0.9, 0)]))
+            self.assertIn("onResult", events)
+            reply = api.song_options(song)
+            # A copy elsewhere is the same song; other bytes are another.
+            copy = self._song(tmp, "copy.mp3")
+            other = self._song(tmp, "other.mp3", b"another song")
+            self.assertEqual(api.song_options(copy)["options"], self.REMEMBERED)
+            self.assertIsNone(api.song_options(other)["options"])
+        self.assertEqual(reply, {"ok": True, "options": self.REMEMBERED})
+        self.assertNotIn("engine", reply["options"])     # the engine stays one setting
+        self.assertEqual(len(api._cfg["song_options"]), 1)
+        json.dumps(reply)
+
+    def test_a_failed_analysis_leaves_nothing(self) -> None:
+        def broken(*_args, **_kwargs):
+            raise ValueError("No rhythmic pulse found")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            api = web.Api()
+            song = self._song(tmp, "noise.wav")
+            self.assertIn("onError", self._analyse(api, song, self.OPTIONS, broken))
+            self.assertIsNone(api.song_options(song)["options"])
+        self.assertNotIn("song_options", api._cfg)
+
+    def test_the_song_analysed_longest_ago_is_forgotten_first(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(web, "SONG_OPTIONS_LIMIT", 3):
+            api = web.Api()
+            songs = [self._song(tmp, f"{n}.mp3", f"song {n}".encode()) for n in range(4)]
+            for song in songs[:3]:
+                api._remember_song_options(song, self.OPTIONS)
+            api._remember_song_options(songs[0], {**self.OPTIONS, "pulse": "/2"})  # most recent again
+            api._remember_song_options(songs[3], self.OPTIONS)
+            kept = [api.song_options(song)["options"] for song in songs]
+        self.assertIsNone(kept[1])
+        self.assertEqual(kept[0]["pulse"], "/2")
+        self.assertEqual((kept[2], kept[3]), (self.REMEMBERED, self.REMEMBERED))
+        self.assertEqual(len(api._cfg["song_options"]), 3)
+
+    def test_what_cannot_be_trusted_reads_as_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = web.Api()
+            song = self._song(tmp, "audio.mp3")
+            key = api._song_key(song)
+            for bad in ({**self.REMEMBERED, "delta": -1}, {**self.REMEMBERED, "persistence": 1},
+                        {**self.REMEMBERED, "confidence": 101}, {**self.REMEMBERED, "pulse": "x3"},
+                        {**self.REMEMBERED, "prefer_map_bpm": "yes"}, {"delta": 2.0}, "x", None):
+                api._cfg["song_options"] = {key: bad}
+                self.assertIsNone(api.song_options(song)["options"], bad)
+            api._cfg["song_options"] = ["not", "a", "map"]
+            self.assertIsNone(api.song_options(song)["options"])
+            api._remember_song_options(song, {**self.OPTIONS, "delta": float("nan")})
+        self.assertEqual(api._cfg["song_options"], ["not", "a", "map"])    # nothing written
+        self.assertIsNone(api.song_options("C:/does/not/exist.mp3")["options"])
+
+
 class AnalysisStopTests(_IsolatedConfig):
     """Stage names and timings while an analysis runs, and stopping one."""
 

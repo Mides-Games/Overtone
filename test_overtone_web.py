@@ -2401,6 +2401,34 @@ class DivisorsBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().snap_divisors()["key"], "first")
 
 
+class OtherGameBridgeTests(_IsolatedConfig):
+    """The timing as Quaver's and StepMania's, with what the check found."""
+
+    def test_each_game_comes_back_with_its_text_and_its_check(self) -> None:
+        api = _api_with_points()      # 120 BPM from 1 s, 150 BPM from 9 s
+        for game, marker in (("quaver", "TimingPoints:"), ("stepmania", "#OFFSET:-1.000000;")):
+            reply = api.other_game_text(game)
+            json.dumps(reply)
+            self.assertTrue(reply["ok"], game)
+            self.assertIn(marker, reply["text"])
+            self.assertEqual((reply["game"], reply["check"]["ok"]), (game, True))
+            self.assertEqual(reply["check"]["lines"], 2)
+        # 8 s of 120 BPM is 16 beats
+        self.assertIn("16.000000=150.000000", api.other_game_text("stepmania")["text"])
+
+    def test_quaver_follows_the_offset_decimals_setting(self) -> None:
+        api = _api_with_points()
+        api._analysis.points[0] = ta.TimingPoint(1234.5, 120.0, 0.9, 0)
+        self.assertIn("StartTime: 1234\n", api.other_game_text("quaver")["text"])
+        api.set_settings({"offset_decimals": 3})
+        self.assertIn("StartTime: 1234.500\n", api.other_game_text("quaver")["text"])
+
+    def test_it_refuses_a_game_it_does_not_write_and_a_missing_song(self) -> None:
+        api = _api_with_points()
+        self.assertEqual(api.other_game_text("beatmania")["key"], "bad_game")
+        self.assertEqual(web.Api().other_game_text("quaver")["key"], "first")
+
+
 class PulseHintBridgeTests(_IsolatedConfig):
     """Where a reported section holds a half- or double-time region.
     (Named apart from DensityBridgeTests above, which is a map's object

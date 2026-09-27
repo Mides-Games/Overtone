@@ -7893,6 +7893,85 @@ class ModReportTests(unittest.TestCase):
         self.assertEqual(self._report()["counts"]["suggestion"], 0)
 
 
+class OtherGameExportTests(unittest.TestCase):
+    """The same red lines as Quaver's and StepMania's timing."""
+
+    @staticmethod
+    def _analysis(points):
+        pts = [TimingPoint(offset, bpm, 0.9, i) for i, (offset, bpm) in enumerate(points)]
+        return Analysis("x.wav", 300.0, np.zeros(0), np.zeros(0), pts, 128, 44100, 1.0)
+
+    ONE = [(1234.0, 150.0)]
+    THREE = [(1234.0, 150.0), (31234.0, 87.5), (61234.0, 175.0)]
+
+    def test_quaver_states_the_time_and_the_rate_as_they_are(self) -> None:
+        from overtone import quaver_timing_text
+        text = quaver_timing_text(self._analysis(self.THREE))
+        self.assertIn("TimingPoints:", text)
+        self.assertIn("- StartTime: 1234\n  Bpm: 150\n", text)
+        self.assertIn("- StartTime: 31234\n  Bpm: 87.5\n", text)
+        # a fractional offset only where it is asked for; whole ms by default
+        self.assertIn("StartTime: 1234.500",
+                      quaver_timing_text(self._analysis([(1234.5, 150.0)]), decimals=3))
+
+    def test_stepmania_negates_the_offset_and_counts_in_beats(self) -> None:
+        from overtone import stepmania_timing_text
+        text = stepmania_timing_text(self._analysis(self.THREE))
+        # beat 0 sits 1.234 s in, so the tag is its negative, in seconds
+        self.assertIn("#OFFSET:-1.234000;", text)
+        # 30 s of 150 BPM is 75 beats; 30 s of 87.5 is a further 43.75
+        self.assertIn("0.000000=150.000000", text)
+        self.assertIn("75.000000=87.500000", text)
+        self.assertIn("118.750000=175.000000", text)
+        self.assertTrue(text.rstrip().endswith(";"))
+
+    def test_both_read_back_as_the_grid_they_were_written_from(self) -> None:
+        from overtone import quaver_timing_text, stepmania_timing_text, verify_export
+        analysis = self._analysis(self.THREE)
+        for kind, text in (("quaver", quaver_timing_text(analysis)),
+                           ("stepmania", stepmania_timing_text(analysis))):
+            report = verify_export(analysis, text, kind)
+            json.dumps(report)
+            self.assertTrue(report["ok"], (kind, report))
+            self.assertEqual(report["lines"], 3)
+            # whole-millisecond offsets cost at most half of one
+            self.assertLessEqual(report["worst_ms"], 0.5, kind)
+
+    def test_the_check_catches_a_flipped_offset_and_a_beat_read_as_a_second(self) -> None:
+        from overtone import stepmania_timing_text, verify_export
+        analysis = self._analysis(self.THREE)
+        good = stepmania_timing_text(analysis)
+        flipped = good.replace("#OFFSET:-1.234000", "#OFFSET:1.234000")
+        self.assertFalse(verify_export(analysis, flipped, "stepmania")["ok"])
+        # the tempo change placed at second 30 instead of beat 75
+        seconds = good.replace("75.000000=87.500000", "30.000000=87.500000")
+        self.assertFalse(verify_export(analysis, seconds, "stepmania")["ok"])
+        # and a line lost outright
+        self.assertFalse(verify_export(analysis, good.replace(
+            "\n,118.750000=175.000000", ""), "stepmania")["ok"])
+
+    def test_stepmania_keeps_enough_decimals_for_a_long_chart(self) -> None:
+        from overtone import stepmania_timing_text, verify_export
+        # Three decimals of BPM walked a chart milliseconds off its own beats
+        # over an hour of them; six keeps it under a microsecond.
+        analysis = self._analysis([(137.0, 174.9993)])
+        coarse = verify_export(analysis, stepmania_timing_text(analysis, decimals=3),
+                               "stepmania", beats=10000)
+        fine = verify_export(analysis, stepmania_timing_text(analysis), "stepmania", beats=10000)
+        self.assertGreater(coarse["worst_ms"], fine["worst_ms"])
+        self.assertLess(fine["worst_ms"], 0.001)
+
+    def test_nothing_to_export(self) -> None:
+        from overtone import quaver_timing_text, stepmania_timing_text, verify_export
+        bare = self._analysis([])
+        for writer in (quaver_timing_text, stepmania_timing_text):
+            with self.assertRaises(ValueError):
+                writer(bare)
+        with self.assertRaises(ValueError):
+            verify_export(self._analysis(self.ONE), "", "sm-or-something")
+        self.assertFalse(verify_export(bare, "", "quaver")["ok"])
+
+
 class FixtureManifestTests(unittest.TestCase):
     """Phase 23: one list of bench fixtures, for Python and Rust both."""
 

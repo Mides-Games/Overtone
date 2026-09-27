@@ -930,6 +930,22 @@
           </div>
           <div class="export-row">
             <div class="export-text">
+              <div class="export-title" data-i18n="exp_qua_t">Quaver timing points</div>
+              <div class="card-sub" data-i18n="exp_qua_d">The red lines as a .qua TimingPoints block. Written from the format as documented — no game has opened one here, so check it once in the editor.</div>
+              <div class="card-sub" id="quaCheck"></div>
+            </div>
+            <button class="btn small" id="copyQuaBtn"><span data-i18n="actions_copy_qua">Copy .qua</span></button>
+          </div>
+          <div class="export-row">
+            <div class="export-text">
+              <div class="export-title" data-i18n="exp_sm_t">StepMania timing</div>
+              <div class="card-sub" data-i18n="exp_sm_d">#OFFSET and #BPMS for a .sm or .ssc. StepMania counts from beat 0 and states where it sits, so the offset is negative. Same caveat: no game has opened one here.</div>
+              <div class="card-sub" id="smCheck"></div>
+            </div>
+            <button class="btn small" id="copySmBtn"><span data-i18n="actions_copy_sm">Copy #BPMS</span></button>
+          </div>
+          <div class="export-row">
+            <div class="export-text">
               <div class="export-title" data-i18n="exp_csv_t">CSV table</div>
               <div class="card-sub" data-i18n="exp_csv_d">Offset, BPM, beat and confidence per point, for a spreadsheet.</div>
             </div>

@@ -14,6 +14,13 @@ const I18N = {
     mapcheck_sub: "One difficulty you mapped, checked against this analysis. Read only: nothing is written.",
     export_sub: "Everything here writes the current timing points, edits included.",
     exp_osu_t: "osu! timing points", exp_osu_d: "The red lines as [TimingPoints] text, ready to paste into a .osu.",
+    exp_qua_t: "Quaver timing points",
+    exp_qua_d: "The red lines as a .qua TimingPoints block. Written from the format as documented — no game has opened one here, so check it once in the editor.",
+    exp_sm_t: "StepMania timing",
+    exp_sm_d: "#OFFSET and #BPMS for a .sm or .ssc. StepMania counts from beat 0 and states where it sits, so the offset is negative. Same caveat: no game has opened one here.",
+    exp_game_ok: "Read back: {lines} line(s), every beat within {ms} ms of the timing above.",
+    exp_game_off: "Read back: the {lines} line(s) did not come back as written — do not use this text.",
+    actions_copy_qua: "Copy .qua", actions_copy_sm: "Copy #BPMS",
     exp_csv_t: "CSV table", exp_csv_d: "Offset, BPM, beat and confidence per point, for a spreadsheet.",
     exp_click_t: "Click track", exp_click_d: "A metronome WAV on these red lines, to hear any drift against the song.",
     exp_osz_t: ".osz package", exp_osz_d: "The audio plus a new beatmap carrying this timing.",
@@ -642,6 +649,13 @@ const I18N = {
     mapcheck_sub: "Una dificultad que mapeaste, contrastada con este análisis. Solo lectura: no se escribe nada.",
     export_sub: "Todo lo de acá escribe los timing points actuales, ediciones incluidas.",
     exp_osu_t: "Timing points de osu!", exp_osu_d: "Las líneas rojas como texto de [TimingPoints], listas para pegar en un .osu.",
+    exp_qua_t: "Timing points de Quaver",
+    exp_qua_d: "Las líneas rojas como un bloque TimingPoints de .qua. Escrito según el formato documentado: acá no lo abrió ningún juego, así que revisalo una vez en el editor.",
+    exp_sm_t: "Timing de StepMania",
+    exp_sm_d: "#OFFSET y #BPMS para un .sm o .ssc. StepMania cuenta desde el beat 0 y dice dónde cae, por eso el offset es negativo. Mismo aviso: acá no lo abrió ningún juego.",
+    exp_game_ok: "Releído: {lines} línea(s), cada beat a menos de {ms} ms del timing de arriba.",
+    exp_game_off: "Releído: las {lines} línea(s) no volvieron como se escribieron; no uses este texto.",
+    actions_copy_qua: "Copiar .qua", actions_copy_sm: "Copiar #BPMS",
     exp_csv_t: "Tabla CSV", exp_csv_d: "Offset, BPM, beat y confianza por punto, para una planilla.",
     exp_click_t: "Pista de clic", exp_click_d: "Un WAV de metrónomo sobre estas líneas rojas, para oír si derivan contra la canción.",
     exp_osz_t: "Paquete .osz", exp_osz_d: "El audio más un beatmap nuevo con este timing.",
@@ -1624,7 +1638,7 @@ function timingStages(tm) {
 
 function syncActions() {
   const on = !!S.result && !S.busy;
-  ["copyOsuBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn", "cmpPick", "alignPick", "denPick", "snapPick", "rsPick", "refPick", "refFind", "asFit", "rpPick", "rpCopy"].forEach((id) => { $(id).disabled = !on; });
+  ["copyOsuBtn", "copyQuaBtn", "copySmBtn", "csvBtn", "clickBtn", "oszBtn", "injectBtn", "cmpPick", "alignPick", "denPick", "snapPick", "rsPick", "refPick", "refFind", "asFit", "rpPick", "rpCopy"].forEach((id) => { $(id).disabled = !on; });
   if (!on) {
     $("undoBtn").disabled = true;
     $("redoBtn").disabled = true;
@@ -2101,6 +2115,23 @@ async function copyOsu() {
   if (!api() || !S.result) return;
   const reply = await api().osu_text();
   if (!reply.ok) { editFailure(reply); return; }
+  copyText(reply.text, "copied");
+}
+
+// The same timing for Quaver and StepMania. The reply carries what the
+// engine found by reading its own text back, and that goes on screen beside
+// the button: this app cannot open either game, so the one thing it can say
+// is how far the written grid sits from the one it just showed.
+async function copyOtherGame(game) {
+  if (!api() || !S.result) return;
+  const reply = await api().other_game_text(game);
+  const where = $(game === "quaver" ? "quaCheck" : "smCheck");
+  if (!reply.ok) { where.textContent = ""; editFailure(reply); return; }
+  const c = reply.check;
+  where.textContent = c.ok
+    ? t("exp_game_ok", { lines: c.lines, ms: c.worst_ms.toFixed(3) })
+    : t("exp_game_off", { lines: c.lines });
+  where.classList.toggle("warn-text", !c.ok);
   copyText(reply.text, "copied");
 }
 
@@ -6643,6 +6674,8 @@ function wire() {
     document.querySelector(".trace-card").scrollIntoView({ behavior: "smooth", block: "center" });
   });
   $("copyOsuBtn").onclick = copyOsu;
+  $("copyQuaBtn").onclick = () => copyOtherGame("quaver");
+  $("copySmBtn").onclick = () => copyOtherGame("stepmania");
   $("csvBtn").onclick = () => saveAs("save_csv");
   $("clickBtn").onclick = () => saveAs("save_click");
   $("oszBtn").onclick = () => saveAs("save_osz");

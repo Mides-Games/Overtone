@@ -928,6 +928,32 @@ class Api:
         return {"ok": True, "text": ta.osu_timing_text(
             self._analysis, decimals=self._settings()["offset_decimals"])}
 
+    #: The other games this writes timing for, by the id the page asks with.
+    OTHER_GAMES = ("quaver", "stepmania")
+
+    def other_game_text(self, game: str) -> dict:
+        """The same red lines as another game's timing, with the check.
+
+        Read only, and honest about its limits: the reply carries what
+        :func:`overtone.verify_export` found by reading the text back — how
+        far the written grid's beats sit from Overtone's — and no claim that
+        the game accepts the file, because none has opened one here.
+        """
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        if game not in self.OTHER_GAMES:
+            return {"ok": False, "key": "bad_game"}
+        try:
+            if game == "quaver":
+                text = ta.quaver_timing_text(
+                    self._analysis, decimals=self._settings()["offset_decimals"])
+            else:
+                text = ta.stepmania_timing_text(self._analysis)
+            check = ta.verify_export(self._analysis, text, game)
+        except (ValueError, TypeError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "game": game, "text": text, "check": check}
+
     def save_csv(self) -> dict:
         if self._analysis is None:
             return {"ok": False, "key": "first"}

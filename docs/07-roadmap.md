@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **710** Python (484 engine + 226 web shell) · **271** Rust.
+Tests: **719** Python (490 engine + 229 web shell) · **271** Rust.
 
 ### What is pending, in order
 
@@ -629,7 +629,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Metadata from tags | artist/title/source from the audio's tags, romanised and Unicode kept apart | low | med | `.osz` | no | no | P2 | **done** — a map beside the audio first (its [Metadata] as written), else the tags (Unicode as written, romanised only when ASCII); on 249 local audio files half carry a title tag, and those match the mapper's title 78 of 125 times |
 | Audio file check | bitrate, sample rate, length, clipping and lead-in against ranking rules | low | med | decode | no | no | P2 | **done** — header facts plus raw-decode measurements, findings on the tool's own bars (no ranking number encoded, none verifiable offline); Mapset card beside Audio swap |
 | Video offset | match the video's own audio track to the song | med | low | decode | no | no | P3 | todo |
-| Other games | export timing to Quaver (`.qua`) and StepMania (`.sm`/`.ssc`) | low | med | writer | no | no | P2 | todo |
+| Other games | export timing to Quaver (`.qua`) and StepMania (`.sm`/`.ssc`) | low | med | writer | no | no | P2 | **done** (2026-09-27) — both as text to copy, from Export. `verify_export` reads each back and compares its grid with Overtone's, which is the only check possible offline and is what the page reports; no game has opened one, and nothing claims otherwise. All 33 pinned readings round-trip: worst beat error 0.478 ms for Quaver (its whole-millisecond offsets) and 0.0005 ms for StepMania |
 | Import other formats | read Quaver / StepMania timing to compare against | low | low | reader | no | no | P3 | todo |
 | Library health check | scan a Songs folder and list maps whose timing disagrees with their audio | med | med | batch, compare, library index | no | no | P2 | partial — engine half (2026-09-26): every map graded by the reference grading where it plays, kept in the index, resumable, reruns grade only what changed; 5.1 s per audio file with the Rust sidecar, about 7 h for 5,236 local audio files (estimate). Its flags do not yet separate maps that move from steady ones (23 of 60 caught, 26 of 44 steady flagged), so the page waits on a decision about the rule and a hand-checked sample |
 | Sample kit analysis | classify a skin's samples and suggest a mapping | med | low | P6 | no | no | P3 | todo |

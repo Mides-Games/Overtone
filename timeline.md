@@ -17,6 +17,63 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · The same timing, for the other games
+
+### Changed
+
+- **`quaver_timing_text`** writes the red lines as a `.qua` `TimingPoints:` block. Quaver's
+  points carry an absolute `StartTime` in milliseconds and a `Bpm`, which is what a red
+  line already is, so the conversion is a change of spelling; the offset follows the app's
+  own decimals setting, whole milliseconds by default as for osu!.
+- **`stepmania_timing_text`** writes `#OFFSET` and `#BPMS` for a `.sm` or `.ssc`. Both
+  tags are where such a conversion goes wrong, so both are spelled out in the code:
+  StepMania counts from **beat 0**, which is the first red line, and `#OFFSET` says where
+  that beat sits **in seconds and negated** (a first beat 1.234 s in is `-1.234000`, which
+  is why real files carry negative offsets); every later change is a `beat=bpm` pair with
+  the beat counted forward through the tempi before it, so a change 30 s into a 150 BPM
+  song is beat 75, not second 30.
+- **`verify_export`** reads a written export back and compares its grid with Overtone's,
+  line for line. This is the only check available here and the reply says so plainly: no
+  game has opened one of these files, and nothing claims a game accepts them. What it does
+  catch is what actually goes wrong — a flipped sign, a beat read as a second, a lost line.
+- **`Api.other_game_text(game)`** and two rows in Export that copy the text and print what
+  the check found ("every beat within 0.477 ms of the timing above"), in amber with "do not
+  use this text" if it ever fails to read back.
+
+### Measured
+
+```
+Every reading this repo pins — the 27 golden vectors' points and the 6 real songs of the
+real-audio snapshot, 33 in all — written to both formats and read back: no failures.
+Worst beat error quaver 0.478 ms, stepmania 0.000500 ms. Quaver's is the whole-millisecond
+StartTime the app's default asks for (at most half a millisecond, per line); StepMania
+keeps the sub-millisecond offset, so it stays under a microsecond.
+
+Through the harness on halftime-150-75: Copy .qua gave `- StartTime: 500 / Bpm: 150.000674`
+and read back within 0.477 ms; Copy #BPMS gave `#OFFSET:-0.499528; #BPMS:0.000000=150.000674`
+within 0.005 ms. Both languages read, no console error.
+```
+
+### Fixed
+
+- **StepMania at three decimals walked off its own beats.** Three decimals is what most
+  hand-written files use, and rounding a BPM there alone put the pinned readings up to
+  3.7 ms from their own grid over an hour of beats — the engine fits finer than that. Six
+  decimals costs a few bytes and puts it under a microsecond. Found by `verify_export`
+  before either writer was wired to anything.
+
+### Rejected / tried and dropped
+
+- **Writing a whole `.qua` or `.sm` file.** Overtone has no notes for those games, and a
+  file with timing and no chart is not something either editor wants to open. The row asks
+  for timing, and timing is what transfers; the text goes to the clipboard for the editor
+  the mapper is already in.
+- **Comparing beat number against beat number across the whole song** in the check. A line
+  rounded half a millisecond earlier fits one more beat before the next one, and every beat
+  after that gets compared with its neighbour — which reads as a whole beat of error (413 ms
+  on `three-sections`) where there is half a millisecond of it. Each line is compared
+  against its own counterpart over its own beats instead.
+
 ## v4.0.0-dev — 2026-09-27 · One list of fixtures
 
 ### Changed

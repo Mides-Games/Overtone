@@ -777,6 +777,8 @@ tbody td .pill { white-space: nowrap; }
 .legend .key-swing { background: var(--chart-swing); }
 .legend .key-pulse { background: linear-gradient(90deg, var(--chart-pulse-half) 0 50%, var(--chart-pulse-double) 50%); }
 .ph-why { color: var(--dim); margin: 0 0 6px 0; }
+/* An export whose text did not read back as written: the words say so too. */
+.warn-text { color: var(--amber); }
 
 .tooltip {
   position: absolute; pointer-events: none;

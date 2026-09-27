@@ -7976,6 +7976,71 @@ class OtherGameExportTests(unittest.TestCase):
         self.assertFalse(verify_export(bare, "", "quaver")["ok"])
 
 
+class BandFluxTests(unittest.TestCase):
+    """Seven onset-flux bands, ported from the Rust front end."""
+
+    def test_the_edges_are_the_ported_ones(self) -> None:
+        from overtone import BAND_COUNT, band_edges
+        edges = band_edges()
+        self.assertEqual(len(edges), BAND_COUNT + 1)
+        # 40 Hz to 11.025 kHz, each band 2.23 times the last
+        self.assertAlmostEqual(edges[0], 40.0, places=6)
+        self.assertAlmostEqual(edges[-1], 11025.0, places=6)
+        ratios = edges[1:] / edges[:-1]
+        self.assertTrue(np.allclose(ratios, ratios[0]), ratios)
+        self.assertAlmostEqual(float(ratios[0]), (11025.0 / 40.0) ** (1 / 7), places=9)
+
+    def test_a_tone_moves_its_own_band(self) -> None:
+        from overtone import BAND_COUNT, band_edges, band_flux
+        sr, edges = 22050, band_edges()
+        for band in range(BAND_COUNT):
+            hz = float(np.sqrt(edges[band] * edges[band + 1]))   # mid of the band, in log
+            t = np.arange(int(sr * 2.0)) / sr
+            # Faded in over 250 ms on purpose: a tone switched on abruptly is a
+            # broadband click with a tone after it, and at 40-89 Hz -- four and
+            # a half bins wide at this n_fft -- the click wins its own band.
+            tone = np.sin(2 * np.pi * hz * t) * np.clip((t - 0.5) / 0.25, 0, 1)
+            flux = band_flux(tone.astype(np.float32), sr, 128)
+            self.assertEqual(flux.shape[1], BAND_COUNT)
+            peaks = flux.max(axis=0)
+            self.assertEqual(int(np.argmax(peaks)), band, f"{hz:.0f} Hz moved {peaks}")
+
+    def test_a_broadband_click_moves_every_band(self) -> None:
+        from overtone import band_flux
+        sr = 22050
+        click = np.zeros(int(sr * 2.0), dtype=np.float32)
+        click[sr] = 1.0
+        peaks = band_flux(click, sr, 128).max(axis=0)
+        self.assertTrue((peaks > 20.0).all(), peaks)
+
+    def test_the_frames_line_up_with_the_onset_envelope(self) -> None:
+        from overtone import FIT_HOP, _onset_envelope, band_flux
+        from test_overtone import _drum_track
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "beat.wav"
+            _drum_track(path, [(0.5, 120.0)], duration=6.0)
+            y, sr = __import__("soundfile").read(str(path), dtype="float32")
+        y = y if y.ndim == 1 else y.mean(axis=1)
+        flux = band_flux(y, sr, FIT_HOP)
+        envelope = _onset_envelope(y, sr, FIT_HOP)
+        # Same rows, so row k is the same moment in both curves -- and the two
+        # curves agree on where that is: their correlation peaks at no lag.
+        self.assertEqual(flux.shape[0], envelope.size)
+        a = flux.sum(axis=1) - flux.sum(axis=1).mean()
+        b = envelope - envelope.mean()
+        lags = range(-6, 7)
+        scores = [float(np.dot(a, np.roll(b, lag))) for lag in lags]
+        self.assertEqual(list(lags)[int(np.argmax(scores))], 0, scores)
+
+    def test_silence_and_too_little_audio(self) -> None:
+        from overtone import BAND_COUNT, band_flux
+        quiet = band_flux(np.zeros(22050, dtype=np.float32), 22050, 128)
+        self.assertEqual(quiet.shape[1], BAND_COUNT)
+        self.assertEqual(float(quiet.max()), 0.0)     # a floor everywhere is no flux
+        self.assertEqual(band_flux(np.zeros(64, dtype=np.float32), 22050, 128).shape,
+                         (0, BAND_COUNT))
+
+
 class ImportTimingTests(unittest.TestCase):
     """Another game's timing, read back as the red lines it states."""
 

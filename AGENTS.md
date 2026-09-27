@@ -25,7 +25,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (728 on 2026-09-27)
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (736 on 2026-09-27)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -148,7 +148,9 @@ bench/bpm_snapshot.json   pinned absolute BPM per fixture
 bench/corpus_b.py         Corpus B: the engine against 20 hand-timed ranked maps (Phase 10)
 bench/corpus_b.json       its manifest: Songs folders, files and SHA-1s, never the audio
 requirements.lock         exact versions behind the measured baseline
-proto/                    Python prototypes of the riskiest v4 algorithms,
+proto/                    Python prototypes of the riskiest v4 algorithms, and
+                          band_lanes.py, which prints the band flux as
+                          `overtone-bench bands` does so the two can be diffed,
                           measured against the corpus before any port
 crates/                   the v4 Rust workspace
   overtone-core/            shared types, unit newtypes, diagnostics

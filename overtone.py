@@ -260,6 +260,82 @@ def _mel_power(y: np.ndarray, sr: int, hop: int) -> np.ndarray:
     return np.concatenate(blocks, axis=-1)
 
 
+# -- multi-band flux: what started, not just that something did ---------------
+#
+# The default envelope answers "did anything start". A mapper looking at a
+# song wants "what started, and where": a kick moves the sub band, a hat the
+# top, a broadband click all seven. This is a port of
+# `crates/overtone-dsp/src/multiband.rs`, constant for constant, so the page
+# shows the same bands the Rust front end computes; a measurement holds the
+# two to each other on the corpus.
+
+#: Seven log-spaced bands over the mel path's own range, so both front ends
+#: cover the same spectrum: 40, 89, 199, 445, 992, 2214, 4940, 11025 Hz, each
+#: 2.23 times the last. These are **not** the hitsound features' musical
+#: bands (docs/06 §2): band i here is not band i there, and nothing above
+#: 11.025 kHz moves any of them, a cymbal's air shimmer included.
+BAND_COUNT = 7
+BAND_LO_HZ = 40.0
+BAND_HI_HZ = 11025.0
+#: The dB floor under the loudest band energy, as the default envelope's
+#: `power_to_db` uses. Global on purpose: one loud transient raises the floor
+#: everywhere, and a per-block floor would make the answer depend on blocking.
+BAND_TOP_DB = 80.0
+BAND_AMIN = 1e-10
+
+
+def band_edges() -> np.ndarray:
+    """The seven bands' eight edges in Hz."""
+    edges = BAND_LO_HZ * (BAND_HI_HZ / BAND_LO_HZ) ** (np.arange(BAND_COUNT + 1) / BAND_COUNT)
+    edges[BAND_COUNT] = BAND_HI_HZ
+    return edges
+
+
+def band_flux(y: np.ndarray, sr: int, hop: int | None = None) -> np.ndarray:
+    """Rectified dB flux per band: ``(frames, BAND_COUNT)``.
+
+    On the same frames, pad and hop as :func:`_onset_envelope`, so a peak at
+    row k is the same moment of audio in both and the lanes line up with the
+    attacks. Values are absolute dB flux, comparable between bands: no
+    per-band normalisation, which would invent peaks in a silent one.
+
+    ``hop`` defaults to the fitting envelope's ``FIT_HOP``, resolved here
+    because that constant is defined further down the module.
+    """
+    hop = FIT_HOP if hop is None else hop
+    y = np.asarray(y, dtype=np.float32)
+    if y.size < ONSET_N_FFT or hop < 1:
+        return np.zeros((0, BAND_COUNT), dtype=np.float32)
+    padded = np.pad(y, ONSET_N_FFT // 2, mode="constant")
+    frames = 1 + y.size // hop
+    bin_hz = sr / ONSET_N_FFT
+    edges = band_edges()
+    ranges = []
+    for b in range(BAND_COUNT):
+        lo = max(1, int(np.floor(edges[b] / bin_hz)))
+        hi = min(ONSET_N_FFT // 2 + 1, int(np.ceil(edges[b + 1] / bin_hz)))
+        ranges.append((lo, max(hi, lo + 1)))
+    energy = np.empty((frames, BAND_COUNT), dtype=np.float64)
+    for first in range(0, frames, SPECTROGRAM_BLOCK):
+        checkpoint()
+        last = min(frames, first + SPECTROGRAM_BLOCK)
+        power = _block_power(padded[first * hop:(last - 1) * hop + ONSET_N_FFT], hop)
+        for b, (lo, hi) in enumerate(ranges):
+            energy[first:last, b] = power[lo:hi, :].sum(axis=0)
+    energy = 10.0 * np.log10(np.maximum(energy, BAND_AMIN))
+    peak = float(energy.max()) if energy.size else 0.0
+    if np.isfinite(peak):
+        np.maximum(energy, peak - BAND_TOP_DB, out=energy)
+    # Front-padded exactly as the default envelope is, so row k means the same
+    # audio moment in both curves.
+    pad = 1 + ONSET_N_FFT // (2 * hop)
+    out = np.zeros((frames, BAND_COUNT), dtype=np.float32)
+    rise = np.maximum(np.diff(energy, axis=0), 0.0)
+    room = max(0, frames - min(pad, frames))
+    out[min(pad, frames):] = rise[:room]
+    return out
+
+
 def _onset_envelope(y: np.ndarray, sr: int, hop: int) -> np.ndarray:
     """Normalized onset-strength envelope (librosa first, flux fallback).
 

@@ -8,27 +8,27 @@
    "stages": {
     "load": {
      "cpu": 0.031,
-     "wall": 0.026
+     "wall": 0.027
     },
     "attacks": {
-     "cpu": 0.609,
-     "wall": 0.613
+     "cpu": 0.719,
+     "wall": 0.725
     },
     "coherence": {
      "cpu": 0.016,
-     "wall": 0.016
+     "wall": 0.019
     },
     "octave": {
-     "cpu": 0.062,
-     "wall": 0.07
+     "cpu": 0.078,
+     "wall": 0.073
     },
     "sections": {
-     "cpu": 0.047,
-     "wall": 0.049
+     "cpu": 0.031,
+     "wall": 0.032
     },
     "total": {
-     "cpu": 0.781,
-     "wall": 0.775
+     "cpu": 0.906,
+     "wall": 0.897
     }
    }
   },
@@ -36,28 +36,28 @@
    "engine": "precision",
    "stages": {
     "load": {
-     "cpu": 0.141,
-     "wall": 0.155
+     "cpu": 0.25,
+     "wall": 0.245
     },
     "attacks": {
-     "cpu": 3.766,
-     "wall": 3.775
+     "cpu": 4.422,
+     "wall": 4.49
     },
     "coherence": {
      "cpu": 0.016,
-     "wall": 0.016
+     "wall": 0.017
     },
     "octave": {
-     "cpu": 0.438,
-     "wall": 0.431
+     "cpu": 0.453,
+     "wall": 0.449
     },
     "sections": {
-     "cpu": 2.062,
-     "wall": 2.065
+     "cpu": 0.188,
+     "wall": 0.188
     },
     "total": {
-     "cpu": 6.469,
-     "wall": 6.49
+     "cpu": 5.328,
+     "wall": 5.389
     }
    }
   },
@@ -66,27 +66,27 @@
    "stages": {
     "load": {
      "cpu": 0.031,
-     "wall": 0.025
+     "wall": 0.032
     },
     "attacks": {
-     "cpu": 0.625,
-     "wall": 0.626
+     "cpu": 0.656,
+     "wall": 0.65
     },
     "coherence": {
      "cpu": 0.031,
-     "wall": 0.036
+     "wall": 0.039
     },
     "fallback": {
      "cpu": 0.0,
      "wall": 0.0
     },
     "transients": {
-     "cpu": 2.422,
-     "wall": 2.424
+     "cpu": 3.344,
+     "wall": 3.475
     },
     "tracking": {
-     "cpu": 0.078,
-     "wall": 0.075
+     "cpu": 0.094,
+     "wall": 0.096
     },
     "pulse": {
      "cpu": 0.0,
@@ -94,11 +94,11 @@
     },
     "local": {
      "cpu": 0.016,
-     "wall": 0.017
+     "wall": 0.019
     },
     "total": {
-     "cpu": 3.734,
-     "wall": 3.753
+     "cpu": 4.188,
+     "wall": 4.329
     }
    }
   }

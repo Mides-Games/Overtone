@@ -1422,6 +1422,16 @@ def _seed_grid(times: np.ndarray, weights: np.ndarray, lo: float, hi: float,
     return near[0][0], near[0][1]
 
 
+#: Beats of the grid carried forward through growth. Refitting everything
+#: since the section began made the loop quadratic -- on the six-minute
+#: fixture, 189 refits over 205,604 attack-rows, 3.16 s of a 10.9 s analysis
+#: -- and bought nothing the final fit does not do itself, since that one runs
+#: on the whole span. A window this long still spans 32 bars of 4/4, which is
+#: a longer lever arm than any growth step needs; a section shorter than it is
+#: fitted over everything, exactly as before.
+GROWTH_WINDOW_BEATS = 128
+
+
 def _grow_sections(times: np.ndarray, weights: np.ndarray, period: float, phase: float,
                    min_delta: float, persistence: int,
                    seed_s: float = 8.0, step_s: float = 2.0) -> list[GridSection]:
@@ -1484,8 +1494,14 @@ def _grow_sections(times: np.ndarray, weights: np.ndarray, period: float, phase:
                                              local_period, local_phase, tol_ratio=0.11)
             if share < 0.55 or rms > 0.09 * local_period * 1000.0:
                 break
-            whole = (times >= start - 0.5 * local_period) & (times <= nxt)
-            local_period, local_phase, _ = _refine_grid(times[whole], weights[whole],
+            # The grid carried forward is refit on a trailing window, not on
+            # everything since the section began: it only has to be good
+            # enough to judge the next chunk and to seed the final fit, and
+            # that one runs on the whole span anyway. A section shorter than
+            # the window is fitted exactly as it was.
+            from_s = max(start, nxt - GROWTH_WINDOW_BEATS * local_period)
+            recent = (times >= from_s - 0.5 * local_period) & (times <= nxt)
+            local_period, local_phase, _ = _refine_grid(times[recent], weights[recent],
                                                         local_period, local_phase)
             edge = nxt
         end = edge

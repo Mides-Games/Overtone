@@ -17,6 +17,63 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · Growth stops refitting the whole song
+
+### Changed
+
+- **The grid carried through section growth is refit on a trailing window** of
+  `GROWTH_WINDOW_BEATS` (128) beats, not on everything since the section began. Every
+  growth step refitting the whole span made the loop quadratic, and it bought nothing the
+  final fit does not do itself: when growth stops, the section is refit over its whole
+  span regardless, and that is the grid that gets reported. The window only has to be good
+  enough to judge the next chunk and to seed that final fit. A section shorter than the
+  window is fitted over everything, exactly as before — which is most of the corpus.
+
+### Measured
+
+```
+Nothing any pinned reading can see moved on the synthetic corpus: benchmark 24/24 within
+0.05 BPM and 5 ms at the same median 0.0000 BPM and 0.16 ms, bpm-snapshot 24/24 unchanged,
+and golden 27/27 **stage for stage** — the per-stage vectors are identical, because the
+final fit converges to the same grid from either seed.
+
+The cost, as the sections stage the engine announces (CPU, single-threaded, fastest of 2):
+  long-6min        2.719 s -> 0.188 s   14.5x   (its growth loop refitted 205,604
+                                                 attack-rows over 189 passes; now 26,056)
+  edm-174          0.047 s -> 0.031 s    1.5x
+  freedom-dive     1.297 s -> 1.500 s    0.9x
+  yui-again        1.344 s -> 1.250 s    1.1x
+  shinkou          1.109 s -> 1.234 s    0.9x
+  noble            1.344 s -> 1.281 s    1.0x
+
+**On real music it buys nothing measurable.** The win is on long-6min, which is six
+minutes at one tempo and so one very long growth run; real songs spend that stage in
+seeding and boundary settling instead, and those are untouched. The change is kept for
+the quadratic itself — a 15-minute mix at one tempo is the case it protects — not for a
+speed-up on the corpus, which there is not one of.
+
+Corpus B, 19 tracks analysed: 18 report red lines identical to the digit. camisa-negra
+changes, and for the better in kind: 3 lines become 1. It read (-333.8 ms, 194.00),
+(144409.7 ms, **388.00**) and (188946.2 ms, 194.00) — a section at four times the map's
+tempo, and a first line before the audio starts — and now reads one line at
+(286.7 ms, 194.00) against the ranked map's own single line at (270 ms, 97). Its distance
+from that line grows 14.8 -> 16.7 ms and its BPM error 0.0008 -> 0.0018, both far inside
+the 21-26 ms the maps' own lines sit from the sound. `bench/real_audio_snapshot.json` is
+pinned again for it, and `bench/perf_snapshot.json` for the sections stage.
+```
+
+### Rejected / tried and dropped
+
+- **Counting every `_refine_grid` call as the measure of this change.** The first profile
+  said Corpus B refitted 1,672,682 attack-rows before and 1,653,095 after, and reading
+  that as "no improvement" would have been as wrong as reading long-6min's 20x as a
+  general one: most of those calls are the seeding, the boundary settling and the final
+  per-section fits, which this does not touch. The stage the engine announces is what a
+  user waits for and what the perf gate holds, so that is what is quoted above.
+- **A shorter window.** 128 beats is 32 bars of 4/4 and already far longer a lever arm
+  than a growth step needs; since the stage is not where real songs spend their time,
+  shortening it would trade a reading's stability for a saving that does not show.
+
 ## v4.0.0-dev — 2026-09-27 · Another game's timing, read back
 
 ### Changed

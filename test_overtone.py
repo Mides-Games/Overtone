@@ -4003,6 +4003,24 @@ class SuggestTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             suggest_missing_lines(analysis, beatmap, tolerance_beats=0)
 
+    def test_an_octave_of_the_maps_own_tempo_is_marked(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(20500.0, 300.0, 0.8, 50),
+             TimingPoint(40500.0, 152.0, 0.8, 100), TimingPoint(50500.0, 37.8, 0.8, 110)])
+        found = suggest_missing_lines(analysis, _reds_map([(1000.0, 150.0)]))
+        # x2 and /4 of the map's 150 BPM in force are marked; 152 is not.
+        self.assertEqual([(s["map_bpm"], s["octave"]) for s in found],
+                         [(150.0, 2.0), (150.0, None), (150.0, 0.25)])
+        # Before the map's first red line its tempo still reads back.
+        early = suggest_missing_lines(
+            _validation_analysis([TimingPoint(500.0, 150.0, 0.9, 0),
+                                  TimingPoint(20500.0, 75.0, 0.8, 50)]),
+            _reds_map([(40000.0, 150.0)]))
+        self.assertEqual((early[0]["map_bpm"], early[0]["octave"]), (150.0, 0.5))
+        # No red line at all: nothing to be an octave of.
+        bare = suggest_missing_lines(analysis, _reds_map([]))
+        self.assertTrue(all(s["map_bpm"] is None and s["octave"] is None for s in bare))
+
     def test_the_meter_rides_along_when_proven(self) -> None:
         analysis = _validation_analysis(
             [TimingPoint(500.0, 150.0, 0.9, 0),

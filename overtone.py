@@ -5898,15 +5898,24 @@ def suggest_missing_lines(analysis: Analysis, beatmap: dict,
     with plain JSON types; a map with no reds proposes every section past the
     first, which is exactly timing-from-scratch assistance. ``meter`` is the
     bar the detector proved for that section, or None when it proved none.
+
+    ``map_bpm`` is the tempo of the map's red line in force there (its first
+    before it begins; None without one), and ``octave`` the factor (2, 4, 1/2,
+    1/4) the suggestion sits at from it, within the band the octave finding
+    uses, or None. Such a suggestion is more often the same pulse counted
+    differently than a change the map lacks: on Corpus B 6 of 23 are, and
+    they hold all five that move the slider ends under them past 25 ms.
     """
     if tolerance_beats <= 0:
         raise ValueError("Tolerance must be positive.")
     detected = snap_timing_points(list(getattr(analysis, "points", None) or []))
     try:
-        reds = [float(offset) for offset, _bpm in beatmap.get("timing", {}).get("reds", [])]
+        rows = sorted((float(offset), float(bpm))
+                      for offset, bpm in beatmap.get("timing", {}).get("reds", []))
     except (TypeError, ValueError):
-        reds = []
-    reds.sort()
+        rows = []
+    rows = [(offset, bpm) for offset, bpm in rows if np.isfinite(offset) and np.isfinite(bpm)]
+    reds = [offset for offset, _bpm in rows]
     suggestions: list[dict] = []
     for n in range(1, len(detected)):
         point = detected[n]
@@ -5915,12 +5924,28 @@ def suggest_missing_lines(analysis: Analysis, beatmap: dict,
         beat_ms = 60000.0 / point.bpm
         nearest = min((abs(red - point.offset_ms) for red in reds), default=float("inf"))
         if nearest > tolerance_beats * beat_ms:
+            in_force = ([bpm for offset, bpm in rows if offset <= point.offset_ms]
+                        or [bpm for _offset, bpm in rows[:1]])
+            map_bpm = in_force[-1] if in_force and in_force[-1] > 0 else None
             suggestions.append({"index": n, "offset_ms": point.offset_ms,
                                 "bpm": point.bpm,
                                 # Infinity is not JSON: no red line reads as null.
                                 "nearest_ms": None if nearest == float("inf") else nearest,
-                                "meter": int(point.meter) if point.meter_known else None})
+                                "meter": int(point.meter) if point.meter_known else None,
+                                "map_bpm": map_bpm,
+                                "octave": _octave_apart(point.bpm, map_bpm)})
     return suggestions
+
+
+def _octave_apart(bpm: float, reference: float | None) -> float | None:
+    """The factor (2, 4, 1/2 or 1/4) ``bpm`` sits at from ``reference``, when
+    within OCTAVE_BAND_LOG of it in log2, as the octave finding reads a jump
+    between sections; None for anything else, the same tempo included."""
+    if reference is None or not (bpm > 0 and reference > 0):
+        return None
+    apart = float(np.log2(bpm / reference))
+    return next((float(2.0 ** k) for k in (1, 2, -1, -2) if abs(apart - k) <= OCTAVE_BAND_LOG),
+                None)
 
 
 #: A red line closer than this to another is the same line written twice.

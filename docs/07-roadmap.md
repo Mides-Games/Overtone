@@ -601,7 +601,7 @@ above — metadata confirmation before anything downloads — is the starting po
 | Theme and scale | light theme, UI scale 90–150 %, reduced motion | low | med | tokens | no | no | P2 | **done** — UI scale 80-150 %, reduced motion, light theme |
 | Shortcuts | rebind any action | low | low | keyboard map | no | no | P3 | todo |
 | Per-song presets | remember detection settings per song | low | med | project format | no | no | P2 | **done** — the settings a song's last finished analysis ran with (not the engine), kept in the config by the audio's SHA-256 for 200 songs; choosing the song puts them back with a note and the previous ones a click away. Not in the project file: a project exists only after an edit |
-| The song's pulse, kept | a ×2 or ÷2 applied after an analysis kept with the song's settings, so analysing it again lands on the octave the mapper chose | low | med | per-song presets | no | no | P2 | todo (proposed 2026-09-26) |
+| The song's pulse, kept | a ×2 or ÷2 applied after an analysis kept with the song's settings, so analysing it again lands on the octave the mapper chose | low | med | per-song presets | no | no | P2 | **done** — a ×2/÷2 becomes the song's pulse setting, undo and redo move it back, the drawer follows; analysing again reproduces the ×2/÷2 on 16 of 18 (the fallback tracker's 2 wait on its rebuild fix) |
 | Language | English and Spanish; more through translation files | low | med | i18n | no | no | P2 | partial |
 | Settings file | export/import settings to another PC | low | low | settings | no | no | P3 | todo |
 

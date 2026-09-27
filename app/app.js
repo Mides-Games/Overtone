@@ -1591,6 +1591,7 @@ async function undo() {
   S.locks = reply.locks || [];
   showResult(reply.result);
   syncHistory(reply);
+  songPulseShown(reply.pulse);
   toast(t("undone"));
 }
 
@@ -1603,6 +1604,7 @@ async function redo() {
   S.locks = reply.locks || [];
   showResult(reply.result);
   syncHistory(reply);
+  songPulseShown(reply.pulse);
   toast(t("redone"));
 }
 
@@ -1658,6 +1660,14 @@ async function importFolderPath(folder) {
   }
 }
 
+// The pulse the song keeps after a ×2/÷2 or its undo, shown in the drawer:
+// the next Analyze lands on the octave on screen.
+function songPulseShown(pulse) {
+  if (typeof pulse !== "string") return;
+  document.querySelectorAll("#pulseSwitch button").forEach((b) => b.classList.toggle("on", b.dataset.pulse === pulse));
+  S.options = { ...S.options, pulse };
+}
+
 async function rescale(mult) {
   if (!api() || S.busy) return;
   const reply = await api().rescale(mult);
@@ -1666,6 +1676,7 @@ async function rescale(mult) {
   S.locks = reply.locks || [];
   showResult(reply.result);
   syncHistory(reply);
+  songPulseShown(reply.pulse);
   toast(t("rescaled", { f: reply.result.subdivision, n: reply.result.points.length, bpm: reply.result.global_bpm.toFixed(2) }));
 }
 

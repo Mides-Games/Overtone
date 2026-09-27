@@ -17,6 +17,29 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · A ×2 or ÷2 kept with the song
+
+### Changed
+
+- **The song keeps the octave on screen.** A ×2 or ÷2 after an analysis becomes the song's
+  own pulse setting (×2, ÷2...), so analysing it again lands where the mapper put it
+  instead of back on the octave the engine picked; while the analysis stands at the octave
+  it found, the song keeps the pulse option its analysis ran with (Auto stays Auto). Undo
+  and redo move it back and forth with the grid, and the Detection drawer's pulse follows.
+- `rescale`, `undo` and `redo` replies carry the pulse the song keeps when it changed.
+
+### Measured
+
+```
+Analysing again with the kept pulse against the ×2 or ÷2 it keeps, red lines compared
+line by line: identical on 16 of 18 (eight Corpus A fixtures and camisa-negra, ×2 and
+÷2 each); the 2 that differ are the fallback tracker's (ramp-180-140), whose rebuild at
+another pulse does not reproduce an analysis there (a fix in progress)
+The page, through the UI harness on a scratch song: Auto at 145 BPM; ×2 put the drawer
+and the song at ×2 (290 BPM); undo, Auto and 145; redo, ×2; Analyze, 290 BPM at ×2
+Python unittest   643 -> 645, all pass
+```
+
 ## v4.0.0-dev — 2026-09-26 · Suggestions at an octave of the map's tempo, marked in the list
 
 ### Changed

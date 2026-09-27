@@ -2429,6 +2429,52 @@ class OtherGameBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().other_game_text("quaver")["key"], "first")
 
 
+class AudioBandsBridgeTests(_IsolatedConfig):
+    """The Audio view's seven onset-flux lanes."""
+
+    def _song(self, tmp: str) -> web.Api:
+        from test_overtone import _drum_track
+        wav = Path(tmp) / "song.wav"
+        _drum_track(wav, [(0.5, 150.0)], duration=8.0)
+        api = _api_with_points()
+        api._analysis.source = str(wav)
+        return api
+
+    def test_the_lanes_come_back_scaled_by_one_peak(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            reply = api.audio_bands(columns=200)
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        self.assertEqual(len(reply["lanes"]), ta.BAND_COUNT)
+        self.assertEqual(len(reply["edges"]), ta.BAND_COUNT + 1)
+        self.assertEqual({len(lane) for lane in reply["lanes"]}, {200})
+        flat = [v for lane in reply["lanes"] for v in lane]
+        self.assertGreater(max(flat), 0.99)          # one column reaches the peak
+        self.assertGreaterEqual(min(flat), 0.0)      # and none is negative
+        self.assertGreater(reply["peak_db"], 0.0)
+        self.assertAlmostEqual(reply["span_s"], 8.0, delta=0.2)
+        self.assertFalse(api._busy.locked())
+
+    def test_the_song_is_decoded_once_however_often_it_is_asked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            with mock.patch.object(ta, "band_flux", wraps=ta.band_flux) as flux:
+                first = api.audio_bands(columns=64)
+                again = api.audio_bands(columns=128)
+        self.assertEqual(flux.call_count, 1)
+        self.assertEqual((len(first["lanes"][0]), len(again["lanes"][0])), (64, 128))
+
+    def test_what_it_refuses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            self.assertEqual(api.audio_bands(columns="lots")["key"], "error")
+            # out of range is clamped rather than refused: a column count is
+            # a drawing detail, not a claim about the song
+            self.assertEqual(len(api.audio_bands(columns=1)["lanes"][0]), 16)
+        self.assertEqual(web.Api().audio_bands()["key"], "first")
+
+
 class ImportTimingBridgeTests(_IsolatedConfig):
     """Another game's chart graded against the song, as an .osu is."""
 

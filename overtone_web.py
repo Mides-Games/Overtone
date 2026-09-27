@@ -381,6 +381,10 @@ class Api:
         #: (source, times, weights) detected for a reference grade when the
         #: engine that answered kept no attacks.
         self._ref_attacks: tuple | None = None
+        #: (source, flux, sample_rate) for the Audio view's lanes: decoding a
+        #: song to read its bands costs as much as an analysis, and the flux
+        #: does not change with the zoom, so it is read once per song.
+        self._bands: tuple | None = None
         #: The last assisted fit that was answered, waiting for "Add to timing".
         self._assisted: dict | None = None
         #: The song's bytes while the page fetches them for playback.
@@ -2584,6 +2588,56 @@ class Api:
                 self._busy.release()
         report = ta.swing_lane(analysis.points, times, weights, float(analysis.duration))
         return {"ok": True, "report": report}
+
+    #: Columns a band lane is drawn with. The flux has a frame every 2.9 ms —
+    #: 124,000 of them on a six-minute song — and no screen has the pixels,
+    #: so each column keeps the loudest frame under it: a lane is read for
+    #: where the hits are, and a mean would flatten every one of them.
+    BAND_COLUMNS = 1600
+
+    def audio_bands(self, columns: int = BAND_COLUMNS) -> dict:
+        """The song's onset flux in seven bands, for the Audio view.
+
+        Read only, and the audio is decoded once per song and kept: the flux
+        is the same for any zoom, so the page asks once and draws from it.
+        Values are scaled by the loudest column of **all** the bands, so the
+        lanes stay comparable — a quiet band looks quiet, which is the point.
+        """
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            columns = max(16, min(8000, int(columns)))
+        except (TypeError, ValueError):
+            return {"ok": False, "key": "error", "detail": "columns must be a number"}
+        source = str(self._analysis.source)
+        if self._bands is None or self._bands[0] != source:
+            if not self._busy.acquire(blocking=False):
+                return {"ok": False, "key": "busy"}
+            try:
+                y, sr = ta._load_audio(source, lambda _message: None)
+                flux = ta.band_flux(y, sr, ta.FIT_HOP)
+            except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
+                return {"ok": False, "key": "error", "detail": str(exc)}
+            finally:
+                self._busy.release()
+            self._bands = (source, flux, float(sr))
+        _source, flux, sr = self._bands
+        if flux.size == 0:
+            return {"ok": True, "lanes": [], "edges": ta.band_edges().round(1).tolist(),
+                    "columns": 0, "span_s": 0.0, "peak_db": 0.0}
+        frames = flux.shape[0]
+        columns = min(columns, frames)
+        edges = np.linspace(0, frames, columns + 1).astype(int)
+        lanes = np.empty((ta.BAND_COUNT, columns), dtype=np.float64)
+        for i in range(columns):
+            lanes[:, i] = flux[edges[i]:max(edges[i + 1], edges[i] + 1)].max(axis=0)
+        peak = float(lanes.max())
+        scaled = (lanes / peak) if peak > 0 else lanes
+        return {"ok": True,
+                "lanes": [row.round(3).tolist() for row in scaled],
+                "edges": ta.band_edges().round(1).tolist(),
+                "columns": int(columns), "peak_db": round(peak, 3),
+                "span_s": round(frames * ta.FIT_HOP / sr, 4)}
 
     def density_hints(self) -> dict:
         """Where a reported section holds a half- or double-time region.

@@ -7976,6 +7976,44 @@ class OtherGameExportTests(unittest.TestCase):
         self.assertFalse(verify_export(bare, "", "quaver")["ok"])
 
 
+class LoudnessCurveTests(unittest.TestCase):
+    """How loud the song is over time, against its own loudest moment."""
+
+    SR = 22050
+
+    def test_a_quiet_stretch_reads_lower_than_a_loud_one(self) -> None:
+        from overtone import loudness_curve
+        loud = np.ones(self.SR, dtype=np.float32) * 0.5
+        quiet = np.ones(self.SR, dtype=np.float32) * 0.005     # 40 dB down
+        curve, peak = loudness_curve(np.concatenate([loud, quiet]), self.SR, 20)
+        self.assertEqual(curve.size, 20)
+        self.assertAlmostEqual(float(curve[:10].mean()), 1.0, places=3)
+        self.assertAlmostEqual(float(curve[10:].mean()), 1.0 - 40.0 / 60.0, places=2)
+        self.assertAlmostEqual(peak, 10.0 * np.log10(0.25), places=2)
+
+    def test_it_is_rms_and_not_one_loud_sample(self) -> None:
+        from overtone import loudness_curve
+        # A column of near-silence with one full-scale sample is a quiet
+        # column; a peak reading would call it the loudest in the song.
+        y = np.ones(self.SR * 2, dtype=np.float32) * 0.2
+        y[self.SR + 5] = 1.0
+        curve, _peak = loudness_curve(y, self.SR, 20)
+        self.assertLess(float(curve.max()) - float(curve.min()), 0.05)
+
+    def test_silence_has_no_loudest_moment_to_be_read_against(self) -> None:
+        from overtone import LOUDNESS_SILENT_DB, loudness_curve
+        # Normalised against its own silence it would draw a full line.
+        curve, peak = loudness_curve(np.zeros(self.SR, dtype=np.float32), self.SR, 20)
+        self.assertLessEqual(peak, LOUDNESS_SILENT_DB)
+        self.assertEqual(float(curve.max()), 0.0)
+
+    def test_nothing_to_read(self) -> None:
+        from overtone import loudness_curve
+        curve, peak = loudness_curve(np.zeros(0, dtype=np.float32), self.SR, 20)
+        self.assertEqual((curve.size, peak), (0, 0.0))
+        self.assertEqual(loudness_curve(np.ones(4, dtype=np.float32), self.SR, 20)[0].size, 4)
+
+
 class PercussiveBalanceTests(unittest.TestCase):
     """How much of a moment is a hit rather than a note."""
 

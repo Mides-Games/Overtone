@@ -308,6 +308,44 @@ def mel_frequencies() -> np.ndarray:
     return librosa.mel_frequencies(n_mels=MEL_BANDS, fmax=MEL_FMAX_HZ)
 
 
+#: How far under the loudest moment the energy curve's floor sits. Wider than
+#: the spectrogram's 80 dB on purpose: this is one line about a whole song,
+#: and a quiet intro should still have somewhere to be drawn.
+LOUDNESS_FLOOR_DB = 60.0
+#: Under this, a file has no loudest moment to be read against. The curve is
+#: relative to the song's own peak, and a silent file normalised against its
+#: own silence would draw a full line — silence claiming to be loud. No music
+#: sits here: the quietest thing the corpus holds peaks near -40 dB RMS.
+LOUDNESS_SILENT_DB = -80.0
+
+
+def loudness_curve(y: np.ndarray, sr: int, columns: int) -> tuple[np.ndarray, float]:
+    """How loud the song is over time: ``columns`` values in 0..1, and its peak.
+
+    Root-mean-square per column, in dB under the loudest column, then mapped
+    so 0 is :data:`LOUDNESS_FLOOR_DB` under that peak and 1 is the peak
+    itself. RMS and not a sample maximum: a curve about how loud a *stretch*
+    is should not be set by one sample of one hit.
+    """
+    y = np.asarray(y, dtype=np.float32)
+    columns = max(1, int(columns))
+    if y.size == 0 or sr <= 0:
+        return np.zeros(0, dtype=np.float32), 0.0
+    columns = min(columns, y.size)
+    edges = np.linspace(0, y.size, columns + 1).astype(int)
+    power = np.empty(columns, dtype=np.float64)
+    for i in range(columns):
+        lo, hi = edges[i], max(edges[i + 1], edges[i] + 1)
+        block = y[lo:hi].astype(np.float64)
+        power[i] = float(np.dot(block, block) / block.size)
+    decibels = 10.0 * np.log10(np.maximum(power, 1e-12))
+    peak = float(decibels.max())
+    if peak <= LOUDNESS_SILENT_DB:
+        return np.zeros(columns, dtype=np.float32), round(peak, 3)
+    scaled = (decibels - peak + LOUDNESS_FLOOR_DB) / LOUDNESS_FLOOR_DB
+    return np.clip(scaled, 0.0, 1.0).astype(np.float32), round(peak, 3)
+
+
 # -- how much of a moment is a hit and how much is a note ---------------------
 #
 # Fitzgerald's median separation: a sustained partial is a horizontal line on

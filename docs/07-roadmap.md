@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **767** Python (518 engine + 249 web shell) · **271** Rust.
+Tests: **773** Python (524 engine + 249 web shell) · **271** Rust.
 
 ### What is pending, in order
 
@@ -178,7 +178,7 @@ The whole of [`05-dsp-pipeline.md`](05-dsp-pipeline.md) Part A, and nothing from
 | Sections | grow · re-seed · merge · crossing boundaries · refit | high | **high** | fit | no | no | **P0** | **done** |
 | Meter, confidence, points | downbeat anchoring, snapping, whole-ms export | med | high | sections | no | no | **P0** | **done** |
 | Analysis assembly | beats, local curve, global BPM, stability, residual | med | high | points | no | no | **P0** | **done** |
-| Unit tests ported | the v3 tests by name | med | **high** | all | no | no | **P0** | partial — 271 Rust tests; not every v3 name |
+| Unit tests ported | the v3 tests by name | med | **high** | all | no | no | **P0** | **done** (2026-09-27) — measured instead of guessed: `bench/parity.json` places all 155 engine stages the v3 tests touch, and `bench/parity.py` derives from it that **381 of 524** v3 engine tests touch a stage Rust holds, naming the `#[test]` functions that hold each one and failing when a rename leaves the claim behind. The other 143 are outside the Rust engine's surface and say so: 61 shell, 31 python-only, 29 bench, 16 the v2 fallback tracker Rust never grew. It measures the surface, not one Rust test per Python test |
 | Property tests | ×2/÷2 identity, exact-grid recovery, monotone boundaries | low | high | all | no | no | P1 | partial |
 | Structured diagnostics | carried on the result, not in a progress string — closes **F-08** | low | med | all | no | no | P1 | **done** (Rust) |
 | **App uses the Rust engine** | Python binding (PyO3) or JSON subprocess, so the shell gets the speed-up | med | **high** | all | no | no | **P1** | **done** — JSON subprocess (`overtone-cli --full`), opt-in in Settings |

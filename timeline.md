@@ -17,6 +17,52 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · Which v3 guarantees Rust holds, in writing
+
+### Changed
+
+- **`bench/parity.py` and `bench/parity.json`**: the roadmap's one open **P0**
+  row asked for "the v3 tests by name" and its status read *"partial — 271 Rust
+  tests; not every v3 name"*, a sentence nobody could act on. It names no
+  missing test, and it reads as debt when most of the difference is a
+  **boundary**: the Rust engine has no window, writes no map, and never grew
+  the v2 fallback tracker, so a good part of the Python engine's tests cannot
+  have a Rust twin. The boundary is now written down, one line per engine
+  stage, as `rust` (with the `#[test]` functions that hold it), `legacy` (the
+  v2 tracker), `python-only` (a stage only Python has, with which), `shell`
+  (window, report or file IO) or `bench`.
+- **The gate derives the rest and opens the crates to check it.** A test counts
+  as held in Rust when a stage it touches is `rust`; a stage a test touches
+  with no line fails rather than passing unnoticed; a Rust test named by a line
+  that no crate holds any more fails too, so a rename cannot leave a false
+  claim behind. `bench/facts.py` states the count with the other facts.
+
+### Measured
+
+```
+381 of 524 v3 engine tests touch a stage the Rust engine holds; 155 stages are
+placed, 52 of them in Rust. The remaining 143 tests are outside that surface
+and now say where they live instead: 61 shell, 31 python-only, 29 bench, 16 the
+v2 fallback tracker. Of those, 34 reach no engine stage by name at all (7
+classes, each placed by hand with its reason).
+
+What the number measures is the surface, not one Rust test per Python test: a
+stage with one Rust test beside twelve Python ones counts as held, so 381 is an
+upper bound on parity and reads as "no engine stage is untested in Rust". Two
+findings came out of building it, both now stated rather than assumed:
+`_fill_missed_beats`, `_choose_subdivision`, `_segment_tempi`,
+`_robust_local_bpms`, `_tracker_lag` and `_global_tempo_guides` belong to the
+v2 tracker, which Rust does not implement at all — the 16 tests over them are
+not a porting debt — and the gate's own accounting was wrong the first time:
+119 tests looked like they reached no engine stage because a fixture helper
+(`self._events(...)`) hid it, which is why a test with a bare body now takes
+the stages its class names between them.
+
+The gate was held to catching its three failure modes: a Rust test renamed out
+from under a line, a stage no line places, a line no test reaches. 773 Python
+tests pass (six new); facts, fixtures and the Rust workspace unchanged.
+```
+
 ## v4.0.0-dev — 2026-09-27 · Where the pulse is, all through the song
 
 ### Changed

@@ -17,6 +17,50 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · Audio: what started, not just that something did
+
+### Changed
+
+- **`band_flux` (engine)**: the onset flux split into seven log-spaced bands over the mel
+  path's own range — 40, 89, 199, 445, 992, 2214, 4940, 11025 Hz — on the same frames, pad
+  and hop as the default envelope, so row k is the same moment in both and the lanes line
+  up with the attacks. Values are absolute dB flux with one global floor, comparable
+  between bands: no per-band normalisation, which would invent a kick in a song that has
+  none. A port of `crates/overtone-dsp/src/multiband.rs`, constant for constant, because
+  the analysis on screen is the Python engine's and nothing surfaced this.
+- **`Api.audio_bands`** hands them to the page, each lane max-pooled to 1,600 columns (a
+  six-minute song has 124,000 frames and no screen has the pixels; a column keeps the
+  loudest frame under it, since a mean flattens exactly what a lane is read for) and all
+  of them scaled by one peak. The decode is kept per song: the flux does not change with
+  the zoom.
+- **An Audio section** in the rail, the first of the row's five parts: seven lanes, low
+  band at the foot, each labelled with its own edges, over the song's time axis.
+- **`overtone-bench bands`** prints what Rust reads — frames, per-band totals, each band's
+  loudest frame — and **`proto/band_lanes.py`** prints the same from the port, so the two
+  diff line for line. A measurement, not a gate.
+
+### Measured
+
+```
+Python against Rust on all 27 golden fixtures: frame counts identical everywhere, the
+loudest frame of every band identical in all 189 of them, and the worst relative
+difference in a band total 6.07e-06 (long-6min) — the same order as the mel path's own
+documented float32 divergence.
+
+What the bands say, checked against what they should: a tone faded in over 250 ms puts
+its peak flux in its own band for all seven, and a single-sample click moves every band
+(26.6 to 46.3 dB). A tone switched on **abruptly** does not, below about 200 Hz: it is a
+broadband click with a tone after it, and at 40-89 Hz — four and a half bins wide at this
+n_fft — the click wins the band. That is the front end working as specified, and the test
+fades its tones in for that reason.
+
+Through the harness on edm-174: all seven lanes drawn and labelled 40-89 up to 4.9k-11k,
+1,600 columns over 1:00, peak 39.8 dB; the hats put far more ink in the upper lanes than
+the kick does in the lower, which is what that fixture is. Both languages, no console
+error. 736 Python tests and 271 Rust tests pass; benchmark 24/24 at the same median
+0.0000 BPM and 0.16 ms, golden 27/27 stage for stage, every other gate unchanged.
+```
+
 ## v4.0.0-dev — 2026-09-27 · Growth stops refitting the whole song
 
 ### Changed

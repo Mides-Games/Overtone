@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **728** Python (495 engine + 233 web shell) · **271** Rust.
+Tests: **736** Python (500 engine + 236 web shell) · **271** Rust.
 
 ### What is pending, in order
 
@@ -509,7 +509,7 @@ Report, Export, History, Settings); Audio is the one left.
 | Timing | tempo map, points, editor, verdict | — | — | — | no | no | **P1** | **done** |
 | Map check | compare, alignment, validation, density and suggestions for the loaded difficulty | med | **high** | P5, P7 | no | no | **P1** | **done** — own section: compare, alignment, density, snap audit, suggestions |
 | Hitsounds | instrument lanes, per-object sound, exported hitsound difficulty | high | **high** | P6 | no | no | P1 | partial — the section is in: where each addition falls, every sound heard one by one (H2), the Propose card (H5) and the hitsound difficulty in Export; instrument lanes wait until the templates hold on real audio |
-| Audio | spectrogram, 7-band onset lanes, percussive/harmonic balance, energy with sections, tempo heatmap | med | med | P2 via bridge | no | opt | P2 | todo |
+| Audio | spectrogram, 7-band onset lanes, percussive/harmonic balance, energy with sections, tempo heatmap | med | med | P2 via bridge | no | opt | P2 | partial — the section exists with the **7-band onset lanes** (2026-09-27): `band_flux` ports the Rust front end constant for constant (identical frame counts and loudest frames on all 27 fixtures, worst band total 6.07e-06 apart), the bridge max-pools each lane to 1,600 columns scaled by one peak, and the view draws them low band at the foot. The spectrogram, the percussive/harmonic balance, energy with sections and the tempo heatmap are still to come |
 | Export | every output in one place: `.osu` text, CSV, click, `.osz`, lazer decimals, other games | low | high | P5 | no | no | P1 | **done** — own section |
 | Settings | every option in Phase 20 | low | high | shell | no | no | P1 | **done** — its own section; detection stays in the drawer |
 

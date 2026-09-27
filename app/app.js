@@ -592,7 +592,13 @@ const I18N = {
     st_cache_info: "{n} analyses · {mb} MB (keeps the latest {max}) · {path}",
     st_cache_cleared: "Cache cleared: each song is analysed again next time.",
     st_backups: "Backups: before any .osu is written, the bytes it replaces are kept beside it. The first is map.osu.bak and is never touched again; later ones are .bak2, .bak3…, so every earlier state survives.",
+    nav_audio: "Audio",
     nav_report: "Report",
+    audio_sub: "What started, not just that something did: the onset flux split into seven bands, from the kick's 40 Hz up to 11 kHz. A kick moves the bottom lane, a hat the top, a broadband click all seven. Read only.",
+    band_title: "Onset bands",
+    band_note: "{n} columns over {span}, loudest {db} dB of flux. Every lane is drawn against that one peak, so a quiet band looks quiet.",
+    band_reading: "Reading the song’s bands…",
+    band_none: "No flux to show for this song.",
     report_sub: "Every finding about one difficulty as osu! editor timestamps, ready to paste into a mod post. A timestamp opens the editor there. Read only: nothing is written.",
     rp_title: "Mod report", rp_pick: "Choose .osu…", rp_copy: "Copy all",
     rp_empty: "Choose the .osu of a difficulty to gather every finding about it: red lines to check, red lines it is missing, unsnapped objects, objects away from the music and hitsounds breaking the map's own pattern.",
@@ -1229,7 +1235,13 @@ const I18N = {
     st_cache_info: "{n} análisis · {mb} MB (guarda los últimos {max}) · {path}",
     st_cache_cleared: "Caché vaciada: cada canción se vuelve a analizar la próxima vez.",
     st_backups: "Backups: antes de escribir un .osu, los bytes que reemplaza se guardan a su lado. El primero es map.osu.bak y nunca se vuelve a tocar; los siguientes son .bak2, .bak3…, así sobrevive cada estado anterior.",
+    nav_audio: "Audio",
     nav_report: "Reporte",
+    audio_sub: "Qué empezó, no solo que algo empezó: el flujo de onsets partido en siete bandas, desde los 40 Hz del kick hasta 11 kHz. Un kick mueve el carril de abajo, un hat el de arriba, un clic de banda ancha los siete. Solo lectura.",
+    band_title: "Bandas de onsets",
+    band_note: "{n} columnas sobre {span}, pico de {db} dB de flujo. Cada carril se dibuja contra ese mismo pico, así que una banda silenciosa se ve silenciosa.",
+    band_reading: "Leyendo las bandas de la canción…",
+    band_none: "No hay flujo que mostrar para esta canción.",
     report_sub: "Cada hallazgo sobre una dificultad como timestamps del editor de osu!, listo para pegar en un mod. Un timestamp abre el editor ahí. Solo lectura: no se escribe nada.",
     rp_title: "Reporte de mod", rp_pick: "Elegir .osu…", rp_copy: "Copiar todo",
     rp_empty: "Elegí el .osu de una dificultad para juntar cada hallazgo sobre ella: líneas rojas a revisar, líneas rojas que le faltan, objetos sin snap, objetos lejos de la música e hitsounds que rompen el patrón del mapa.",
@@ -1321,8 +1333,8 @@ function translate() {
 // One analysed song is shared by every view: switching only changes what is
 // visible, never the session. Views that read the analysis show the
 // "analyze first" panel until there is one, instead of blank space.
-const VIEWS = ["library", "timing", "structure", "hitsounds", "mapcheck", "mapset", "report", "export", "history", "settings"];
-const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", structure: "nav_structure", hitsounds: "nav_hitsounds", mapcheck: "nav_mapcheck", mapset: "nav_mapset", report: "nav_report", export: "nav_export", history: "nav_history", settings: "nav_settings" };
+const VIEWS = ["library", "timing", "structure", "hitsounds", "mapcheck", "mapset", "audio", "report", "export", "history", "settings"];
+const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", structure: "nav_structure", hitsounds: "nav_hitsounds", mapcheck: "nav_mapcheck", mapset: "nav_mapset", audio: "nav_audio", report: "nav_report", export: "nav_export", history: "nav_history", settings: "nav_settings" };
 
 function needsResult(view) {
   const section = document.querySelector(`.content > [data-view="${view}"]`);
@@ -1350,6 +1362,7 @@ function setView(view) {
   if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); stxVolMaps(); }
   if (view === "hitsounds" && S.result) { hsvLoad(); sbView(); }
   if (view === "export" && S.result) hsdfMaps();
+  if (view === "audio" && S.result) bandsLoad();
   if (view === "history") histLoad();
 }
 
@@ -2864,6 +2877,88 @@ function renderSwing() {
         spans: r.spans.length === 1 ? t("swing_span") : t("swing_spans", { n: r.spans.length }),
       });
   $("swingBody").innerHTML = `<div>${esc(head)}</div>${spans.join("")}`;
+}
+
+// ------------------------------------------------------------------ audio bands
+// Seven onset-flux lanes, low band at the foot. The engine scales them all by
+// one peak, so a quiet band draws quiet: that comparison is the whole point,
+// and per-lane normalisation would invent a kick in a song that has none.
+const BANDS = { data: null, for: "", loading: false };
+
+async function bandsLoad() {
+  if (!api() || !S.result) return;
+  if (BANDS.for === S.result.path || BANDS.loading) { drawBands(); return; }
+  BANDS.loading = true;
+  $("bandNote").textContent = t("band_reading");
+  try {
+    const reply = await api().audio_bands();
+    if (!reply.ok) {
+      if (reply.key !== "busy") { $("bandNote").textContent = ""; editFailure(reply); }
+      return;
+    }
+    BANDS.data = reply;
+    BANDS.for = S.result.path;
+  } finally {
+    BANDS.loading = false;
+  }
+  drawBands();
+}
+
+function drawBands() {
+  const wrap = $("bandWrap"), canvas = $("bandCanvas"), data = BANDS.data;
+  if (!wrap || !canvas) return;
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  if (!W || !H) return;                   // Audio is not the visible view
+  const dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (!data || !data.lanes.length) {
+    $("bandNote").textContent = data ? t("band_none") : $("bandNote").textContent;
+    return;
+  }
+  $("bandNote").textContent = t("band_note", {
+    n: data.columns, span: mmss(data.span_s), db: data.peak_db.toFixed(1),
+  });
+  const padL = 74, padR = 14, padT = 8, padB = 22;
+  const x0 = padL, x1 = W - padR, plotH = H - padT - padB;
+  const lanes = data.lanes.length, gap = 4;
+  const laneH = (plotH - gap * (lanes - 1)) / lanes;
+  ctx.font = `11px ${getComputedStyle(document.body).getPropertyValue("--mono")}`;
+  ctx.textBaseline = "middle";
+  for (let b = 0; b < lanes; b++) {
+    // low band at the foot, as a spectrum is read
+    const top = padT + (lanes - 1 - b) * (laneH + gap);
+    ctx.fillStyle = C.plot;
+    roundRect(ctx, x0, top, x1 - x0, laneH, 6); ctx.fill();
+    const row = data.lanes[b];
+    ctx.fillStyle = C.onset;
+    for (let px = 0; px < x1 - x0; px++) {
+      const i0 = Math.floor((px / (x1 - x0)) * row.length);
+      const i1 = Math.max(i0 + 1, Math.ceil(((px + 1) / (x1 - x0)) * row.length));
+      let peak = 0;
+      for (let i = i0; i < i1 && i < row.length; i++) if (row[i] > peak) peak = row[i];
+      const h = peak * (laneH - 2);
+      if (h > 0.4) ctx.fillRect(x0 + px, top + laneH - 1 - h, 1, h);
+    }
+    ctx.fillStyle = C.gridText; ctx.textAlign = "right";
+    ctx.fillText(bandLabel(data.edges, b), x0 - 10, top + laneH / 2);
+  }
+  // the time axis, shared with the tempo map's own wording
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  const step = niceStep(data.span_s, Math.max(4, Math.floor((x1 - x0) / 110)));
+  for (let s = 0; s <= data.span_s + 1e-6; s += step) {
+    ctx.fillText(mmss(s), x0 + (s / data.span_s) * (x1 - x0), H - padB + 5);
+  }
+}
+
+// "40–89" and so on, in Hz or kHz, from the edges the engine sends.
+function bandLabel(edges, b) {
+  const one = (hz) => (hz >= 1000 ? `${(hz / 1000).toFixed(hz >= 10000 ? 0 : 1)}k` : String(Math.round(hz)));
+  return `${one(edges[b])}–${one(edges[b + 1])}`;
 }
 
 // ------------------------------------------------------------------ pulse hints
@@ -6839,7 +6934,7 @@ function wire() {
     S.lang = b.dataset.lang; translate(); if (api()) api().set_language(S.lang);
   });
   $("themeBtn").onclick = themeToggle;
-  window.addEventListener("resize", () => drawTrace());
+  window.addEventListener("resize", () => { drawTrace(); drawBands(); });
   // How the focused control got focus: Tab means the user is driving the
   // keyboard, a click means the button merely kept focus afterwards.
   document.addEventListener("mousedown", () => { focusByKey = false; }, true);

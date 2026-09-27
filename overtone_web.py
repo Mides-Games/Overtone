@@ -2442,6 +2442,27 @@ class Api:
             return {"ok": False, "key": "first"}
         return {"ok": True, "report": ta.snap_divisors(self._analysis)}
 
+    def swing_lane(self) -> dict:
+        """Where the music swings, eight beats of the working grid at a time.
+        Read only. A fallback result keeps no attacks: they are detected once,
+        as for a reference grading, so that case waits for any other heavy job."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        analysis = self._analysis
+        held = len(analysis.attack_times) > 0 or (
+            self._ref_attacks is not None and self._ref_attacks[0] == str(analysis.source))
+        if not held and not self._busy.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        try:
+            times, weights = self._attacks()
+        except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            if not held:
+                self._busy.release()
+        report = ta.swing_lane(analysis.points, times, weights, float(analysis.duration))
+        return {"ok": True, "report": report}
+
     # -- assisted timing: two marked downbeats seed the grid ---------------
     def assisted_fit(self, first_ms: float, second_ms: float, bars: int, meter: int) -> dict:
         """Fit the grid two marked downbeats imply. Read only: the answer (or

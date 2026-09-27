@@ -2225,6 +2225,53 @@ class DivisorsBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().snap_divisors()["key"], "first")
 
 
+class SwingBridgeTests(_IsolatedConfig):
+    """Where the music swings, on the working grid."""
+
+    def test_the_lane_follows_the_working_grid(self) -> None:
+        api = _api_with_points()  # 120 BPM from 1 s, 150 BPM from 9 s
+        swung = [1.0 + k * 0.5 + p for k in range(16) for p in (0.0, 0.33)]
+        straight = [9.0 + k * 0.4 + p for k in range(16) for p in (0.0, 0.2)]
+        api._analysis.attack_times = np.array(swung + straight)
+        api._analysis.attack_weights = np.ones(64)
+        reply = api.swing_lane()
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        windows = reply["report"]["windows"]
+        self.assertEqual([w["feel"] for w in windows[:4]], ["swing", "swing", "straight", "straight"])
+        self.assertEqual((windows[0]["snap"], reply["report"]["spans"][0]["end_ms"]), ("2/3", 9000.0))
+        # the grid is the working one: halve the second line and its eighths are its beats
+        api._analysis.points[1] = ta.TimingPoint(9000.0, 75.0, 0.8, 10)
+        self.assertEqual(api.swing_lane()["report"]["windows"][2]["bpm"], 75.0)
+        self.assertEqual(web.Api().swing_lane()["key"], "first")
+
+    def test_a_fallback_result_has_its_attacks_detected_once(self) -> None:
+        from test_overtone import _drum_track
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "legacy.wav"
+            _drum_track(wav, [(1.0, 150.0)], duration=20.0)
+            api = web.Api()
+            api._analysis = _analysis([ta.TimingPoint(1000.0, 150.0, 0.9, 0)], engine="legacy")
+            api._analysis.source = str(wav)
+            api._analysis.duration = 20.0
+            api._busy.acquire()
+            try:
+                self.assertEqual(api.swing_lane()["key"], "busy")
+            finally:
+                api._busy.release()
+            with mock.patch.object(ta, "_detect_attacks", wraps=ta._detect_attacks) as detect:
+                first = api.swing_lane()
+                api._busy.acquire()  # held attacks need no turn
+                try:
+                    again = api.swing_lane()
+                finally:
+                    api._busy.release()
+        self.assertTrue(first["ok"] and again["ok"])
+        self.assertEqual(detect.call_count, 1)
+        self.assertGreater(first["report"]["measured"], 0)
+        self.assertFalse(api._busy.locked())
+
+
 class StructureVolumesBridgeTests(_IsolatedConfig):
     """Hitsound volume from section energy, previewed then written once."""
 

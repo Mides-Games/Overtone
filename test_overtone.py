@@ -2179,6 +2179,120 @@ class SnapDivisorTests(unittest.TestCase):
         self.assertEqual(section["divisor"], "1/4")
 
 
+class SwingLaneTests(unittest.TestCase):
+    """Where the off-beat eighth falls, eight beats at a time."""
+
+    POINTS = [TimingPoint(1000.0, 120.0, 0.9, 0)]
+
+    @staticmethod
+    def _beats(places, beats=16, start=1.0, beat=0.5):
+        """An attack on each beat and at each of ``places`` within it."""
+        return np.array([start + k * beat + p * beat for k in range(beats) for p in (0.0,) + places])
+
+    def _lane(self, times, points=None, weights=None, duration=9.0, **kwargs):
+        from overtone import swing_lane
+        weights = np.ones(len(times)) if weights is None else np.asarray(weights, dtype=float)
+        report = swing_lane(self.POINTS if points is None else points, times, weights,
+                            duration, **kwargs)
+        json.dumps(report)
+        return report
+
+    def test_straight_eighths_read_straight(self) -> None:
+        report = self._lane(self._beats((0.5,)))
+        self.assertEqual([w["feel"] for w in report["windows"]], ["straight", "straight"])
+        self.assertEqual([w["at"] for w in report["windows"]], [0.5, 0.5])
+        self.assertEqual((report["swung"], report["measured"], report["spans"]), (0, 2, []))
+        self.assertEqual(report["windows"][0]["start_ms"], 1000.0)
+        self.assertEqual(report["windows"][1]["end_ms"], 9000.0)
+
+    def test_a_light_swing_reads_its_place_and_its_snap(self) -> None:
+        report = self._lane(self._beats((0.58,)))
+        window = report["windows"][0]
+        self.assertEqual((window["feel"], window["at"], window["ratio"], window["late_ms"]),
+                         ("swing", 0.58, 1.38, 40.0))
+        # 290 ms into a 500 ms beat: nothing coarser than 1/12 lands within 15 ms
+        self.assertEqual((window["snap"], window["divisor"], window["snap_off_ms"]), ("7/12", 12, -1.7))
+        self.assertEqual(len(report["spans"]), 1)
+        span = report["spans"][0]
+        self.assertEqual((span["start_ms"], span["end_ms"], span["windows"], span["at"], span["snap"]),
+                         (1000.0, 9000.0, 2, 0.58, "7/12"))
+
+    def test_triplet_swing_and_shuffle_land_on_the_snaps_mappers_use(self) -> None:
+        triplet = self._lane(self._beats((2 / 3,)))["windows"][0]
+        self.assertEqual((triplet["feel"], triplet["snap"], triplet["divisor"], triplet["ratio"]),
+                         ("swing", "2/3", 3, 2.0))
+        shuffle = self._lane(self._beats((0.75,)))["windows"][0]
+        self.assertEqual((shuffle["feel"], shuffle["snap"], shuffle["divisor"], shuffle["ratio"]),
+                         ("swing", "3/4", 4, 3.0))
+
+    def test_triplets_and_sixteenths_are_not_swing(self) -> None:
+        thirds = self._lane(self._beats((1 / 3, 2 / 3)))["windows"][0]
+        self.assertEqual((thirds["feel"], thirds["snap"]), ("triplets", "2/3"))
+        sixteenths = self._lane(self._beats((0.25, 0.5, 0.75)))["windows"][0]
+        self.assertEqual(sixteenths["feel"], "straight")
+
+    def test_the_beat_is_measured_from_its_own_attacks(self) -> None:
+        # the whole song 20 ms after its grid: the swing is where it was
+        window = self._lane(self._beats((0.58,)) + 0.02)["windows"][0]
+        self.assertEqual((window["feel"], window["at"], window["on_ms"]), ("swing", 0.58, 20.0))
+
+    def test_nothing_on_the_off_beat_says_none(self) -> None:
+        beats_only = self._lane(self._beats(()))
+        self.assertEqual([w["feel"] for w in beats_only["windows"]], ["none", "none"])
+        self.assertEqual(beats_only["measured"], 0)
+        silent = self._lane(np.zeros(0))
+        self.assertEqual([w["feel"] for w in silent["windows"]], ["none", "none"])
+        self.assertEqual(self._lane(np.zeros(0), points=[])["windows"], [])
+
+    def test_a_faint_straight_eighth_under_a_loud_swung_one(self) -> None:
+        times = self._beats((0.5, 0.66))
+        faint = np.tile([1.0, 0.2, 1.0], 16)
+        self.assertEqual(self._lane(times, weights=faint)["windows"][0]["feel"], "swing")
+        heard = np.tile([1.0, 0.3, 1.0], 16)
+        self.assertEqual(self._lane(times, weights=heard)["windows"][0]["feel"], "straight")
+
+    def test_a_swing_on_too_few_beats_is_not_one(self) -> None:
+        times = [1.0 + k * 0.5 + (0.33 if k % 8 < 3 else 0.25) for k in range(16)]
+        times = np.sort(np.concatenate([self._beats(()), times]))
+        self.assertEqual([w["feel"] for w in self._lane(times)["windows"]], ["straight", "straight"])
+
+    def test_windows_restart_at_red_lines_and_short_remainders_join(self) -> None:
+        points = [TimingPoint(1000.0, 120.0, 0.9, 0), TimingPoint(5500.0, 120.0, 0.9, 9)]
+        times = np.concatenate([self._beats((0.66,), beats=9), self._beats((0.5,), beats=13, start=5.5)])
+        report = self._lane(times, points=points, duration=12.0)
+        self.assertEqual([(w["beats"], w["feel"]) for w in report["windows"]],
+                         [(9, "swing"), (8, "straight"), (5, "straight")])
+        self.assertEqual([(s["start_ms"], s["end_ms"]) for s in report["spans"]], [(1000.0, 5500.0)])
+
+    def test_bad_input(self) -> None:
+        from overtone import swing_lane
+        with self.assertRaises(ValueError):
+            swing_lane(self.POINTS, np.zeros(0), np.zeros(0), 9.0, tol_ms=0)
+        with self.assertRaises(ValueError):
+            swing_lane(self.POINTS, np.zeros(0), np.zeros(0), 9.0, window_beats=1)
+        times = np.append(self._beats((0.58,)), [np.nan, np.inf])
+        report = self._lane(times, weights=np.ones(3))  # a weight per attack or none
+        self.assertEqual(report["windows"][0]["feel"], "swing")
+
+    def test_the_benchmark_fixtures_read_their_truth(self) -> None:
+        # bench/benchmark.py places each off-beat hat at step / 2 + swing * step
+        golden = Path(__file__).resolve().parent / "bench" / "golden"
+        for case, truth in (("swing-120", 0.58), ("shuffle-96", 0.66), ("edm-174", None)):
+            vector = json.loads((golden / f"{case}.json").read_text(encoding="utf-8"))
+            points = [TimingPoint(p["offset_ms"], p["bpm"], p["confidence"], 0)
+                      for p in vector["result"]["points"]]
+            report = self._lane(np.asarray(vector["attacks"]["times_s"]), points=points,
+                                weights=vector["attacks"]["weights"],
+                                duration=vector["result"]["duration_s"])
+            feels = {w["feel"] for w in report["windows"]}
+            if truth is None:
+                self.assertEqual(feels, {"straight"}, case)
+                continue
+            self.assertEqual(feels, {"swing"}, case)
+            for window in report["windows"]:
+                self.assertAlmostEqual(window["at"], truth, delta=0.005, msg=case)
+
+
 class ResnapTests(unittest.TestCase):
     @staticmethod
     def _map(objects: str):

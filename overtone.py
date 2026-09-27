@@ -5907,6 +5907,181 @@ def snap_divisors(analysis: Analysis, tol_ms: float = DIVISOR_TOLERANCE_MS) -> d
     return {"sections": out}
 
 
+#: The swing lane reads the song this many beats at a time: two bars of 4/4.
+#: A feel is a pattern that repeats, so one beat says nothing, and a window
+#: this short still changes where the song does.
+SWING_WINDOW_BEATS = 8
+#: How far either side of its beat a beat's own attacks are looked for.
+SWING_ON_SPAN = 0.2
+#: The latest the off-beat eighth is looked for, as a share of the beat: past
+#: a 5:1 swing it is the next beat's pickup, not an eighth.
+SWING_LATE_MAX = 0.84
+#: The swung eighth has to carry this share of the window's attack weight...
+SWING_MIN_SHARE = 0.10
+#: ...and the straight eighth at most this share of the swung one's. Measured
+#: on 34 local maps whose reading is the map's own pulse (12 of Corpus B, 22
+#: tagged swing or jazz): of the windows this calls swung, the mapper snapped
+#: their off-beats late too in 72 %, and 6 % of the straight windows had late
+#: objects. Neither bar is tuned to a song — every pair from 0.15-0.35 here and
+#: 0.05-0.20 above lands between 65 % and 87 %, at 6-7 % (2026-09-27).
+SWING_MAX_STRAIGHT = 0.25
+
+
+def _swing_peak(x: np.ndarray, w: np.ndarray, lo: float, hi: float, tol: float,
+                beat_ms: float) -> tuple[float | None, np.ndarray]:
+    """The weighted median of the values within ``tol`` of the densest place
+    between ``lo`` and ``hi`` (a 6 ms kernel, 1 ms steps), and which values
+    those are. None when nothing with weight lies there."""
+    zone = (x >= lo) & (x <= hi)
+    if hi <= lo or not zone.any() or float(w[zone].sum()) <= 0:
+        return None, np.zeros_like(zone)
+    grid = np.linspace(lo, hi, max(int((hi - lo) * beat_ms), 8))
+    sigma = max(6.0 / beat_ms, 1e-3)
+    density = (w[zone][None, :]
+               * np.exp(-0.5 * ((grid[:, None] - x[zone][None, :]) / sigma) ** 2)).sum(axis=1)
+    peak = float(grid[int(np.argmax(density))])
+    near = zone & (np.abs(x - peak) <= tol)
+    order = np.argsort(x[near])
+    cumulative = np.cumsum(w[near][order])
+    middle = min(int(np.searchsorted(cumulative, cumulative[-1] / 2.0)), len(order) - 1)
+    return float(x[near][order][middle]), near
+
+
+def _swing_window(phases: np.ndarray, weights: np.ndarray, beat_of: np.ndarray,
+                  beats: int, beat_ms: float, tol_ms: float) -> dict:
+    """One window's feel from its attacks' places within their beats."""
+    tol = tol_ms / beat_ms
+    need = (beats + 1) // 2
+
+    def on_beats(mask: np.ndarray) -> int:
+        return len(set(beat_of[mask].tolist()))
+
+    out = {"feel": "none", "at": None, "on_ms": None}
+    wrapped = np.where(phases > 1.0 - SWING_ON_SPAN, phases - 1.0, phases)
+    on_at, on = _swing_peak(wrapped, weights, -SWING_ON_SPAN, SWING_ON_SPAN, tol, beat_ms)
+    if on_at is None or on_beats(on) < need:
+        return out  # no beat of its own to measure the eighth from
+    out["on_ms"] = round(on_at * beat_ms, 1)
+    rel = phases - on_at
+    rel = np.where(rel < -SWING_ON_SPAN, rel + 1.0, rel)
+    straight = np.abs(rel - 0.5) <= tol
+    at, late = _swing_peak(rel, weights, 0.5 + 2.0 * tol, SWING_LATE_MAX, tol, beat_ms)
+    late_w = float(weights[late].sum()) if at is not None else 0.0
+    if (at is not None and at - 0.5 >= 2.0 * tol and on_beats(late) >= need
+            and float(weights[straight].sum()) <= SWING_MAX_STRAIGHT * late_w
+            and late_w >= SWING_MIN_SHARE * float(weights.sum())):
+        thirds = float(weights[np.abs(rel - 1.0 / 3.0) <= tol].sum())
+        triplet = abs(at - 2.0 / 3.0) * beat_ms <= tol_ms and thirds >= 0.5 * late_w
+        out.update(feel="triplets" if triplet else "swing", at=at)
+    elif on_beats(straight) >= need:
+        out.update(feel="straight", at=0.5)
+    return out
+
+
+def _swung(at: float, beat_ms: float, tol_ms: float) -> dict:
+    """A swung eighth's numbers: where (a share of the beat), the ratio of the
+    pair, how late in ms, and the coarsest editor snap within ``tol_ms``."""
+    out = {"at": round(at, 3), "ratio": round(at / (1.0 - at), 2),
+           "late_ms": round((at - 0.5) * beat_ms, 1),
+           "snap": None, "divisor": None, "snap_off_ms": None}
+    for divisor in SNAP_DIVISORS[1:]:
+        tick = round(at * divisor)
+        if abs(at - tick / divisor) * beat_ms <= float(tol_ms) + 1e-9:
+            common = int(np.gcd(tick, divisor))
+            out.update(snap=f"{tick // common}/{divisor // common}", divisor=divisor,
+                       snap_off_ms=round((at - tick / divisor) * beat_ms, 1))
+            break
+    return out
+
+
+def swing_lane(points: list, attack_times: np.ndarray, attack_weights: np.ndarray,
+               duration_s: float, tol_ms: float = DIVISOR_TOLERANCE_MS,
+               window_beats: int = SWING_WINDOW_BEATS) -> dict:
+    """Where the music swings, eight beats at a time (Phase 21).
+
+    Within each beat of the red lines' grid, where does the off-beat eighth
+    fall: halfway (straight), later (swing: 0.58 light, 0.67 the triplet
+    swing, 0.75 a hard shuffle), or on the thirds as well (triplets)? Measured
+    from the window's own beat -- the densest place its attacks sit around the
+    beats -- so a grid a few ms off moves nothing, and that beat's distance from
+    the grid comes back as ``on_ms``. A window swings when its late eighth sits
+    two tolerances past the straight one (the two never overlap), on at least
+    half its beats, with a tenth of the window's attack weight, and the
+    straight eighth is nearly empty; one that neither swings nor keeps a
+    straight eighth on half its beats says ``none``. For a swung window: the
+    coarsest editor snap within ``tol_ms`` of the eighth, and how far off.
+    Windows restart at each red line; a remainder under half a window joins
+    the one before. Consecutive swung windows of one feel and tempo make a
+    span, its eighth the median of theirs. Read only, plain JSON types.
+    """
+    if tol_ms <= 0:
+        raise ValueError("Tolerance must be positive.")
+    if window_beats < 2:
+        raise ValueError("A window needs at least two beats.")
+    points = [p for p in list(points or [])
+              if np.isfinite(getattr(p, "offset_ms", float("nan")))
+              and np.isfinite(getattr(p, "bpm", float("nan"))) and p.bpm > 0]
+    times = np.asarray(attack_times, dtype=np.float64) * 1000.0
+    weights = np.asarray(attack_weights, dtype=np.float64)
+    if weights.shape != times.shape:
+        weights = np.ones_like(times)
+    keep = np.isfinite(times) & np.isfinite(weights) & (weights > 0)
+    order = np.argsort(times[keep])
+    times, weights = times[keep][order], weights[keep][order]
+    duration_ms = float(duration_s or 0.0) * 1000.0
+    windows = []
+    for i, point in enumerate(points):
+        offset, bpm = float(point.offset_ms), float(point.bpm)
+        end = float(points[i + 1].offset_ms) if i + 1 < len(points) else duration_ms
+        beat_ms = 60000.0 / bpm
+        count = int(np.floor((end - offset) / beat_ms + 1e-9))
+        if count < 1:
+            continue
+        cuts = list(range(0, count, window_beats))
+        if len(cuts) > 1 and count - cuts[-1] < (window_beats + 1) // 2:
+            cuts.pop()
+        for k, first in enumerate(cuts):
+            last = cuts[k + 1] if k + 1 < len(cuts) else count
+            starts = offset + np.arange(first, last) * beat_ms
+            a, b = np.searchsorted(times, [starts[0], starts[-1] + beat_ms])
+            beat_of = np.searchsorted(starts, times[a:b], side="right") - 1
+            phases = (times[a:b] - starts[beat_of]) / beat_ms
+            feel = _swing_window(phases, weights[a:b], beat_of, last - first, beat_ms, tol_ms)
+            row = {"start_ms": round(float(starts[0]), 3),
+                   "end_ms": round(float(starts[-1] + beat_ms), 3),
+                   "bpm": round(bpm, 3), "beats": int(last - first),
+                   "feel": feel["feel"], "at": None, "ratio": None, "late_ms": None,
+                   "snap": None, "divisor": None, "snap_off_ms": None,
+                   "on_ms": feel["on_ms"]}
+            if feel["feel"] == "straight":
+                row["at"] = 0.5
+            elif feel["at"] is not None:
+                row.update(_swung(feel["at"], beat_ms, tol_ms))
+            windows.append(row)
+    spans = []
+    for row in windows:
+        if row["feel"] not in ("swing", "triplets"):
+            continue
+        last = spans[-1] if spans else None
+        # the next window starts where the last one ended (a dropped partial
+        # beat at a red line aside): a window of another feel between breaks it
+        if (last is not None and row["start_ms"] - last["end_ms"] < 30000.0 / row["bpm"]
+                and last["feel"] == row["feel"] and last["bpm"] == row["bpm"]):
+            last["_at"].append(row["at"])
+            last["end_ms"] = row["end_ms"]
+            last["windows"] += 1
+        else:
+            spans.append({"start_ms": row["start_ms"], "end_ms": row["end_ms"], "bpm": row["bpm"],
+                          "feel": row["feel"], "windows": 1, "_at": [row["at"]]})
+    for span in spans:
+        at = float(np.median(span.pop("_at")))
+        span.update(_swung(at, 60000.0 / span["bpm"], tol_ms))
+    return {"windows": windows, "spans": spans,
+            "swung": sum(r["feel"] in ("swing", "triplets") for r in windows),
+            "measured": sum(r["feel"] != "none" for r in windows),
+            "window_beats": int(window_beats), "tol_ms": float(tol_ms)}
+
+
 def resnap_objects(beatmap: dict, pairs: list[dict]) -> dict:
     """Move hit objects onto the new grid after a timing change (Phase 21).
 

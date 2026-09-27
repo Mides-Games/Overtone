@@ -17,6 +17,60 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · Where the music swings
+
+### Changed
+
+- **`swing_lane` (engine, read only)**: eight beats of the working grid at a time, where
+  the off-beat eighth falls inside the beat — halfway (straight), later (swing: about
+  0.58 a light one, 0.67 the triplet swing, 0.75 a shuffle), or on the thirds as well
+  (triplets). Each window is measured from **its own beat**, the densest place its attacks
+  sit around the red lines' beats, so a grid a few ms off moves no verdict, and that
+  distance comes back as `on_ms`. A window swings when the late eighth sits two tolerances
+  past the straight one (so the two can never be read for each other), on at least half its
+  beats, carrying a tenth of the window's attack weight, with the straight eighth nearly
+  empty; one with neither says `none` rather than guessing. Each swung window also reports
+  the pair's ratio, how many ms late, and the coarsest editor snap within 15 ms
+  (`2/3`, `3/4`, `7/12`…) — what a mapper would actually set. Consecutive swung windows of
+  one feel and tempo merge into a span.
+- **`Api.swing_lane`** hands it to the page. A fallback result keeps no attacks, so they
+  are detected once per song as a reference grading does, and that case alone waits its
+  turn behind another heavy job.
+
+### Measured
+
+```
+Corpus A, the two fixtures whose swing is known exactly (bench/benchmark.py places each
+off-beat hat at step/2 + swing*step): swing-120 reads 0.580 on all 15 windows against a
+truth of 0.58, shuffle-96 reads 0.660 on all 12 against 0.66. The other 13 Corpus A
+tracks: not one swung window.
+
+Against the mappers, on 34 local maps whose reading is the map's own pulse (12 of
+Corpus B, 22 tagged swing or jazz), the map's objects read in the map's own grid so its
+21-24 ms line convention moves nothing: of 185 windows called swung, the mapper snapped
+the off-beats late in 134 (72 %); of 1,525 called straight, only 98 (6 %) had late
+objects. Where both say swing, the engine's eighth sits a median 0.001 of the beat from
+the mapper's (IQR -0.020..+0.034, n=134). Every threshold pair from 0.15-0.35 (straight
+eighth) and 0.05-0.20 (weight share) lands between 65 % and 87 %, at 6-7 %, so neither
+bar is tuned to a song.
+
+23 further tracks read another pulse than their map (half or double, mostly) and cannot
+be compared window for window; the-raven is refused by the engine as before.
+```
+
+### Rejected / tried and dropped
+
+- **Measuring the phase from the red line's own beat.** A window's attacks then carry the
+  grid's offset error, and on real songs that error is not small: of the 3,741 windows with
+  a beat of their own, 1,091 (29 %) sit past 15 ms from the grid's beat, enough to read a
+  swung eighth for a straight one. Reading each window's own beat first costs one more peak
+  and removes it.
+- **Judging the mapper's objects in the engine's grid** (how this was first scored). The
+  maps' lines sit 21-24 ms before the attacks, which at 178 BPM drags a mapper's 2/3 below
+  the cut and reads as disagreement: the same rule scored 43 % that way and 72 % in the
+  map's own grid. The map's grid is what the mapper snapped to, so that is where their
+  objects are read.
+
 ## v4.0.0-dev — 2026-09-26 · Real songs as a gate
 
 ### Changed

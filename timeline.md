@@ -17,6 +17,41 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · Loudness, with the sections behind it
+
+### Changed
+
+- **`loudness_curve` (engine)**: how loud the song is over time, as RMS per column in dB
+  under its own loudest column, mapped so the foot is 60 dB below that. RMS and not a
+  sample maximum: a curve about how loud a *stretch* is must not be set by one sample of
+  one hit.
+- **`Api.audio_energy`** and a lane in the Audio view, under the spectrogram, with the
+  Structure view's own sections shaded behind it and named where there is room for the
+  word. Those sections come from the Rust sidecar, so the curve stands without them and
+  the card says which case it is rather than drawing an empty lane.
+
+### Fixed
+
+- **Silence read as full loudness.** The curve is relative to the song's own peak, and a
+  file with nothing in it normalised against its own silence drew a solid line at the top.
+  A peak under −80 dB now has no loudest moment to be read against and the curve is flat
+  zero. `_silence` read 1.00 everywhere before; it reads 0.00 now.
+
+### Measured
+
+```
+On with-drop-180, whose drop is 30-36 s of 70 by construction: the curve reads 0.92 at
+26 s, 0.71 at 31, 0.00 at 33 and 0.73 at 38. Through the harness, with the sidecar built,
+the structure sections came back 0-30, 30-39 and 39-70 — the middle one is that drop, so
+the two pictures agree about where the song stops. Without the sidecar the lane draws the
+same curve and the card says the sections come from an engine that is not built here.
+
+_silence 0.00 everywhere (it was 1.00), _ambient 0.88-1.00 for continuous pads. 0.01 s a
+song, from the decode the rest of the Audio view already made. 758 Python tests pass;
+benchmark 24/24 at the same median 0.0000 BPM and 0.16 ms, golden 27/27 stage for stage,
+every other gate unchanged.
+```
+
 ## v4.0.0-dev — 2026-09-27 · Hits against notes
 
 ### Changed

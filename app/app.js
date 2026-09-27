@@ -595,6 +595,11 @@ const I18N = {
     nav_audio: "Audio",
     nav_report: "Report",
     audio_sub: "What started, not just that something did: the onset flux split into seven bands, from the kick's 40 Hz up to 11 kHz. A kick moves the bottom lane, a hat the top, a broadband click all seven. Read only.",
+    eng_title: "Loudness and sections",
+    eng_note: "Peak {peak} dB RMS, and {floor} dB under it at the foot. The {n} sections behind it are the ones the Structure view found.",
+    eng_note_bare: "Peak {peak} dB RMS, and {floor} dB under it at the foot. No sections behind it: those come from the Rust engine, which is not built here.",
+    eng_reading: "Reading how loud the song is…",
+    eng_loudest: "loudest",
     bal_title: "Hits against notes",
     bal_note: "{pct} % of this song’s sound is hits rather than notes, weighted by how loud each moment is. Above the halfway line a moment is more hit than note.",
     bal_reading: "Separating hits from notes…",
@@ -1246,6 +1251,11 @@ const I18N = {
     nav_audio: "Audio",
     nav_report: "Reporte",
     audio_sub: "Qué empezó, no solo que algo empezó: el flujo de onsets partido en siete bandas, desde los 40 Hz del kick hasta 11 kHz. Un kick mueve el carril de abajo, un hat el de arriba, un clic de banda ancha los siete. Solo lectura.",
+    eng_title: "Volumen y secciones",
+    eng_note: "Pico {peak} dB RMS, y {floor} dB por debajo en el suelo. Las {n} secciones de atrás son las que encontró la vista Estructura.",
+    eng_note_bare: "Pico {peak} dB RMS, y {floor} dB por debajo en el suelo. Sin secciones detrás: vienen del motor Rust, que acá no está compilado.",
+    eng_reading: "Leyendo qué tan fuerte suena la canción…",
+    eng_loudest: "más fuerte",
     bal_title: "Golpes frente a notas",
     bal_note: "El {pct} % del sonido de esta canción son golpes y no notas, ponderado por lo fuerte que suena cada momento. Por encima de la línea media, un momento es más golpe que nota.",
     bal_reading: "Separando golpes de notas…",
@@ -2910,8 +2920,102 @@ const SPEC = { data: null, image: null, for: "", loading: false };
 // in turn: both at once and the second is refused while the first holds it.
 async function audioLoad() {
   await specLoad();
+  await engLoad();
   await balLoad();
   await bandsLoad();
+}
+
+// ------------------------------------------------------------------ loudness
+// How loud the song is over time, with the structure's own sections behind
+// it where there are any. The sections come from the Rust sidecar, so the
+// curve has to stand on its own without them, and say so.
+const ENG = { data: null, for: "", loading: false };
+
+async function engLoad() {
+  if (!api() || !S.result) return;
+  if (ENG.for === S.result.path || ENG.loading) { drawEng(); return; }
+  ENG.loading = true;
+  $("engNote").textContent = t("eng_reading");
+  try {
+    const reply = await api().audio_energy();
+    if (!reply.ok) {
+      $("engNote").textContent = reply.key === "busy" ? t("audio_busy") : "";
+      if (reply.key !== "busy") editFailure(reply);
+      return;
+    }
+    ENG.data = reply;
+    ENG.for = S.result.path;
+  } finally {
+    ENG.loading = false;
+  }
+  // Best effort: without the sidecar there are no phrases, and the curve is
+  // still worth drawing, so a refusal here is not the lane's failure.
+  if (!STX.view || STX.file !== S.result.path) {
+    try {
+      const phrases = await api().structure();
+      if (phrases.ok) { STX.view = phrases.view; STX.file = phrases.file; }
+    } catch (err) { /* the curve stands without them */ }
+  }
+  drawEng();
+}
+
+function drawEng() {
+  const wrap = $("engWrap"), canvas = $("engCanvas"), data = ENG.data;
+  if (!wrap || !canvas) return;
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  if (!W || !H) return;
+  const dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (!data || !data.curve.length) return;
+  const sections = (STX.view && STX.view.sections) || [];
+  $("engNote").textContent = sections.length
+    ? t("eng_note", { peak: data.peak_db.toFixed(1), floor: data.floor_db, n: sections.length })
+    : t("eng_note_bare", { peak: data.peak_db.toFixed(1), floor: data.floor_db });
+  const padL = 74, padR = 14, padT = 8, padB = 22;
+  const x0 = padL, x1 = W - padR, y0 = padT, y1 = H - padB;
+  ctx.fillStyle = C.plot;
+  roundRect(ctx, x0, y0, x1 - x0, y1 - y0, 6); ctx.fill();
+  const span = Math.max(data.span_s, 1e-3);
+  const T = (s) => x0 + (Math.min(Math.max(s, 0), span) / span) * (x1 - x0);
+  ctx.save();
+  roundRect(ctx, x0, y0, x1 - x0, y1 - y0, 6); ctx.clip();
+  // the sections behind the curve, alternating as the tempo map shades its own
+  sections.forEach((s, i) => {
+    const a = T(s.start_s), b = T(s.end_s);
+    if (b <= a) return;
+    if (i % 2 === 1) { ctx.fillStyle = C.section; ctx.fillRect(a, y0, b - a, y1 - y0); }
+    ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(Math.round(a) + 0.5, y0);
+    ctx.lineTo(Math.round(a) + 0.5, y1); ctx.stroke();
+  });
+  const X = (i) => x0 + (i / Math.max(data.curve.length - 1, 1)) * (x1 - x0);
+  const Y = (v) => y1 - v * (y1 - y0);
+  ctx.beginPath();
+  data.curve.forEach((v, i) => (i ? ctx.lineTo(X(i), Y(v)) : ctx.moveTo(X(i), Y(v))));
+  ctx.lineWidth = 2; ctx.strokeStyle = C.tempo; ctx.lineJoin = "round"; ctx.stroke();
+  ctx.lineTo(X(data.curve.length - 1), y1); ctx.lineTo(X(0), y1); ctx.closePath();
+  ctx.fillStyle = C.fill; ctx.fill();
+  // each section named where it starts, while there is room for the word
+  ctx.font = `11px ${getComputedStyle(document.body).getPropertyValue("--mono")}`;
+  ctx.fillStyle = C.gridText; ctx.textAlign = "left"; ctx.textBaseline = "top";
+  sections.forEach((s) => {
+    const label = t(`stx_${s.kind}`) || s.kind;
+    if (T(s.end_s) - T(s.start_s) > ctx.measureText(label).width + 10) {
+      ctx.fillText(label, T(s.start_s) + 4, y0 + 3);
+    }
+  });
+  ctx.restore();
+  ctx.fillStyle = C.gridText; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  ctx.fillText(t("eng_loudest"), x0 - 10, Y(1) + 6);
+  ctx.fillText(`${data.floor_db}`, x0 - 10, Y(0) - 6);
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  const step = niceStep(span, Math.max(4, Math.floor((x1 - x0) / 110)));
+  for (let s = 0; s <= span + 1e-6; s += step) ctx.fillText(mmss(s), T(s), y1 + 5);
 }
 
 // ------------------------------------------------------------------ hits vs notes
@@ -5738,7 +5842,7 @@ function stTheme() {
     // The spectrogram is painted once into its own bitmap, from the theme's
     // ink: that bitmap is the one thing here that does not follow a token.
     if (SPEC.data && SPEC.image) SPEC.image = specPaint(SPEC.data);
-    if (S.result) { drawTrace(); drawBands(); drawSpec(); drawBal(); }
+    if (S.result) { drawTrace(); drawBands(); drawSpec(); drawBal(); drawEng(); }
   }
   themeButton(theme);
 }
@@ -7142,7 +7246,7 @@ function wire() {
     S.lang = b.dataset.lang; translate(); if (api()) api().set_language(S.lang);
   });
   $("themeBtn").onclick = themeToggle;
-  window.addEventListener("resize", () => { drawTrace(); drawBands(); drawSpec(); drawBal(); });
+  window.addEventListener("resize", () => { drawTrace(); drawBands(); drawSpec(); drawBal(); drawEng(); });
   // How the focused control got focus: Tab means the user is driving the
   // keyboard, a click means the button merely kept focus afterwards.
   document.addEventListener("mousedown", () => { focusByKey = false; }, true);

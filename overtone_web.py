@@ -2612,6 +2612,38 @@ class Api:
         self._bands = (source, flux, float(sr), y)
         return None
 
+    #: Columns the energy curve gets, and the balance lane's: both are one
+    #: line about a whole song, and a wider line reads better than a comb.
+    ENERGY_COLUMNS = 700
+
+    def audio_energy(self, columns: int = ENERGY_COLUMNS) -> dict:
+        """How loud the song is over time, 0 to 1, from the Audio view's decode.
+
+        Read only. ``peak_db`` is the loudest column's RMS, which is what the
+        curve is drawn against; a file with nothing in it says so with a peak
+        under :data:`overtone.LOUDNESS_SILENT_DB` and a flat zero, rather than
+        normalising silence against itself into a full line.
+        """
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            columns = max(16, min(4000, int(columns)))
+        except (TypeError, ValueError):
+            return {"ok": False, "key": "error", "detail": "columns must be a number"}
+        source = str(self._analysis.source)
+        if self._bands is None or self._bands[0] != source:
+            loaded = self._read_bands(source)
+            if loaded is not None:
+                return loaded
+        _source, _flux, sr, y = self._bands
+        try:
+            curve, peak = ta.loudness_curve(y, int(sr), columns)
+        except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "curve": curve.round(4).tolist(), "peak_db": peak,
+                "floor_db": -ta.LOUDNESS_FLOOR_DB, "columns": int(curve.size),
+                "span_s": round(len(y) / float(sr), 4)}
+
     #: Columns the balance lane gets. Fewer than the lanes': it is a texture
     #: over tenths of a second and a wider line reads better than a comb.
     BALANCE_COLUMNS = 700

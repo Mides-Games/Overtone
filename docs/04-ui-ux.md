@@ -206,7 +206,15 @@ Editing is direct: click a cell, type, `↵`. Offset and BPM accept arithmetic (
   fresh coherence scan, so a half moves at most 0.8–1.25× and cannot flip an octave.
 - Hand-edited points carry 100 % confidence and are marked as user-owned, as in v3 — with
   the addition that the badge says *why* it is 100 % ("you set this").
-- Every edit is undoable. One undo stack per project, `⌘Z` / `⇧⌘Z`.
+- Every edit is undoable. One undo stack per project, `⌘Z` / `⇧⌘Z`. *Built 2026-09-26
+  (web shell):* undoing a `×2`/`÷2` puts back the whole analysis it rebuilt (grid, pulse,
+  global tempo, the locks' BPMs), not only the point list, and the song keeps the octave
+  on screen as its own pulse setting.
+- *Built 2026-09-26 (web shell), the confidence tried live:* beside the minimum confidence
+  in the Detection drawer, a slider reads a grid analysis's sections again at another
+  value; the timeline dashes the red lines it would add and fades the ones it would
+  drop, and the drawer's veil lifts so the timeline stays readable and scrollable. Applied,
+  it is one undoable edit.
 
 ---
 
@@ -278,6 +286,13 @@ listening to.
 Selecting an object opens the inspector with the decision, the confidence, the itemised
 evidence and the alternatives — the explainability requirement is a first-class screen,
 designed in [`06-hitsound-engine.md`](06-hitsound-engine.md) §7.
+
+*Built 2026-09-26 (web shell):* the Profile selector sits on its own line in the Propose
+card, above the buttons, with a line saying what the chosen profile does; and a Samples
+card lists what a folder holds (the song's, the playback skin, another), set by sound,
+plays any sample alone or at the selected sound over the song, and chooses the skin
+playback asks for a sound the map's folder lacks. The instrument lanes above are not
+built: they wait until the templates hold on real audio.
 
 ---
 

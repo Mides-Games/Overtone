@@ -412,6 +412,7 @@ Nothing here is promised. Each item is a hypothesis with a way to test it.
 | Full drum transcription | complete kit transcription | high | med | classifier | yes | opt | P3 | todo |
 | Timing suggestions | list red lines a map is missing | med | med | P7 | no | no | P2 | **done** — shown in the compare card |
 | Apply a suggestion | write one suggested red line into the `.osu`, with backup and consent | med | med | suggestions, writer | no | no | P2 | **done** — Add beside each suggestion in Map check: that red line alone, carrying the sounds in force, a green where slider velocity needs one; the confirmation names the objects and slider ends it moves and warns at ×2/×4 the map's tempo; backed up, logged |
+| Octave-marked suggestions | mark in the list itself a suggestion at ×2 or ×4 the map's own tempo there, not only in the consent: on Corpus B 5 of 23 were, and they alone moved slider ends past 25 ms | low | med | suggestions | no | no | P2 | todo (proposed 2026-09-26) |
 | Waveform annotation | user notes pinned to timeline positions | low | low | P3 | no | no | P3 | todo |
 | Plugin API | third-party analysis stages | high | low | P0 rules | no | no | P3 | todo |
 | WASM engine | the core in a browser | med | low | P1 | no | no | P3 | todo |
@@ -592,6 +593,7 @@ above — metadata confirmation before anything downloads — is the starting po
 | Offset precision | whole ms (stable) or decimals (lazer) on every export | low | med | writer | no | no | P1 | **done** — 0-3 decimals for copy, .osz and inject |
 | Octave preference | prefer 120–300 BPM, or a custom range | low | med | engine | no | no | P2 | partial — on/off toggle |
 | Live confidence threshold | a slider that shows which candidate points would appear | low | med | engine | no | no | P2 | **done** — beside the minimum confidence in the Detection drawer: the grid analysis's sections read again, the lines it would add dashed on the map and the ones it would drop faded; applied as one undoable edit. Corpus B: candidates below 75 % on 13 of 15 grid tracks; Corpus A: none |
+| Live threshold on a fallback result | the same trial for the beat tracker's result, read again from its stored beats, once a rebuild at its own pulse reproduces it (11 of 32 do not, a fix in progress) | low | low-med | fallback rebuild | no | no | P3 | todo (proposed 2026-09-26) |
 | Analysis mode | fast (Rust) or precise (every Phase 10 voter) | low | med | P10, P22 | no | no | P2 | todo |
 | Backup policy | one pristine `.bak` (today) or timestamped backups | low | med | writer | no | no | P2 | **not needed** — every state is already kept (`.bak` pristine, then `.bak2`, `.bak3`…); the Settings section says so |
 | Cache | size limit, location, clear button | low | low | cache | no | no | P2 | **done** but a settable limit — entries, size, folder, clear |
@@ -599,6 +601,7 @@ above — metadata confirmation before anything downloads — is the starting po
 | Theme and scale | light theme, UI scale 90–150 %, reduced motion | low | med | tokens | no | no | P2 | **done** — UI scale 80-150 %, reduced motion, light theme |
 | Shortcuts | rebind any action | low | low | keyboard map | no | no | P3 | todo |
 | Per-song presets | remember detection settings per song | low | med | project format | no | no | P2 | **done** — the settings a song's last finished analysis ran with (not the engine), kept in the config by the audio's SHA-256 for 200 songs; choosing the song puts them back with a note and the previous ones a click away. Not in the project file: a project exists only after an edit |
+| The song's pulse, kept | a ×2 or ÷2 applied after an analysis kept with the song's settings, so analysing it again lands on the octave the mapper chose | low | med | per-song presets | no | no | P2 | todo (proposed 2026-09-26) |
 | Language | English and Spanish; more through translation files | low | med | i18n | no | no | P2 | partial |
 | Settings file | export/import settings to another PC | low | low | settings | no | no | P3 | todo |
 

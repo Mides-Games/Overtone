@@ -138,7 +138,17 @@ The single most important component, and the reason the stack choice went to a w
 | Tempo curve | local BPM curve | own y-axis, drawn *above* the waveform, not overlaid on it |
 | Confidence ribbon | per-section confidence | thin band under the ruler; colour by confidence |
 | Hitsound lanes | hitsound analysis | separate stacked lanes, toggleable |
+| Swing lane | the swing lane's windows | where the off-beat eighth falls in the beat; only while something swings |
 | Playhead + selection | transport | |
+
+*Built 2026-09-27 (web shell), the swing lane:* a 34 px lane under the waveform, drawn
+only when the song has a swung stretch — the lanes stack up from the drift lane's foot and
+the conditional ones take no room when they are off, so a straight song's chart is
+unchanged. A window is one mark at the height of its eighth (0.5 at the foot, 0.84 at the
+top), with the straight half, 2/3 and 3/4 ruled across; swung marks are drawn thicker than
+straight ones, and the feel also carries in the Swing card's own words, never in colour
+alone. Its inks are the tempo curve's, the drift lane's amber and the objects' grey, each
+already read against this panel.
 
 ### Rendering
 

@@ -196,6 +196,7 @@
               <span><i class="key-ghost"></i><span data-i18n="lg_ghost">map lines</span></span>
               <span><i class="key-drift"></i><span data-i18n="lg_drift">drift</span></span>
               <span><i class="key-conf"></i><span data-i18n="lg_conf">confidence</span></span>
+              <span class="swing-key" hidden><i class="key-swing"></i><span data-i18n="lg_swing">swing</span></span>
               <span class="hs-key" hidden><i class="key-whistle"></i><span data-i18n="lg_whistle">whistle</span></span>
               <span class="hs-key" hidden><i class="key-finish"></i><span data-i18n="lg_finish">finish</span></span>
               <span class="hs-key" hidden><i class="key-clap"></i><span data-i18n="lg_clap">clap</span></span>
@@ -332,6 +333,16 @@
             </div>
           </div>
           <div class="card-body card-sub" id="divBody"></div>
+        </div>
+
+        <div class="card cmp-card" id="swingCard" hidden>
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="swing_title">Swing</div>
+              <div class="card-sub" data-i18n="swing_sub">Where the off-beat eighth falls inside the beat, eight beats at a time: halfway is straight, later is swing. Measured from each window's own beat, so a grid a few ms off changes nothing. Read only — the snap is what you would set in the editor.</div>
+            </div>
+          </div>
+          <div class="card-body card-sub" id="swingBody"></div>
         </div>
 
         <div class="card cmp-card" id="labCard" hidden>

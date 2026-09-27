@@ -512,6 +512,17 @@ const I18N = {
     div_sub: "Which divisor each section needs, from the song's own attacks. Thirds and sixths past the weight bar read 1/3 and 1/6, the rest 1/4. Read only.",
     div_row: "{at} · {bpm} BPM · {d}{extra}",
     div_extra: " ({t} thirds, {s} sixths)",
+    swing_title: "Swing",
+    swing_sub: "Where the off-beat eighth falls inside the beat, eight beats at a time: halfway is straight, later is swing. Measured from each window's own beat, so a grid a few ms off changes nothing. Read only — the snap is what you would set in the editor.",
+    swing_row: "{from} – {to} · {what} · {at} of the beat{snap} · ratio {ratio} · {late} ms late",
+    swing_snap: " ({snap})",
+    swing_swing: "swing",
+    swing_triplets: "triplets",
+    swing_none: "Straight all through: none of the {measured} windows read swung.",
+    swing_nothing: "No window had a beat of its own to measure.",
+    swing_count: "{n} of {measured} windows swung, in {spans}.",
+    swing_span: "1 stretch",
+    swing_spans: "{n} stretches",
     lab_title: "Offset lab",
     lab_sub: "What the file says about its own delay, and the first attack through each decoder side by side.",
     lab_header: "{encoder}: {delay} samples of delay ({delayMs} ms), {pad} of padding ({padMs} ms).",
@@ -588,7 +599,8 @@ const I18N = {
     pb_failed: "The song could not be played: {detail}",
     no_audio_staged: "The song is not loaded; press play again.",
     pb_rate: "Speed: slower lowers the pitch, so every attack stays exactly in place",
-    lane_wave: "wave", tl_zoom: "{a} – {b}", tl_fit: "Show all", lg_drift: "drift", lg_conf: "confidence",
+    lane_wave: "wave", lane_swing: "swing", lg_swing: "swing",
+    tl_zoom: "{a} – {b}", tl_fit: "Show all", lg_drift: "drift", lg_conf: "confidence",
     tap_btn: "Tap (T)", tap_calibrate: "Calibrate to these taps", tap_assist: "Use for assisted timing", tap_clear: "Clear",
     tap_hint: "Play, then tap T on each beat: to check the timing by ear, to calibrate your taps (tap to the click alone), or to seed assisted timing (start on a downbeat).",
     tap_info: "{n} taps · {bpm} BPM · {where}",
@@ -1116,6 +1128,17 @@ const I18N = {
     div_sub: "Qué divisor necesita cada sección, según los ataques de la canción. Tresillos y seisillos que superan la barra de peso leen 1/3 y 1/6, el resto 1/4. Solo lectura.",
     div_row: "{at} · {bpm} BPM · {d}{extra}",
     div_extra: " ({t} tresillos, {s} seisillos)",
+    swing_title: "Swing",
+    swing_sub: "Dónde cae la corchea a contratiempo dentro del pulso, de ocho en ocho pulsos: a la mitad es recto, más tarde es swing. Se mide desde el pulso propio de cada ventana, así que una rejilla desviada unos ms no cambia nada. Solo lectura: el snap es el que pondrías en el editor.",
+    swing_row: "{from} – {to} · {what} · {at} del pulso{snap} · proporción {ratio} · {late} ms más tarde",
+    swing_snap: " ({snap})",
+    swing_swing: "swing",
+    swing_triplets: "tresillos",
+    swing_none: "Recto de principio a fin: ninguna de las {measured} ventanas lee swing.",
+    swing_nothing: "Ninguna ventana tuvo un pulso propio que medir.",
+    swing_count: "{n} de {measured} ventanas con swing, en {spans}.",
+    swing_span: "1 tramo",
+    swing_spans: "{n} tramos",
     lab_title: "Laboratorio de offset",
     lab_sub: "Lo que el archivo dice de su propio delay, y el primer ataque por cada decodificador lado a lado.",
     lab_header: "{encoder}: delay {delay} samples ({delayMs} ms), pad {pad} samples ({padMs} ms).",
@@ -1192,7 +1215,8 @@ const I18N = {
     pb_failed: "No se pudo reproducir la canción: {detail}",
     no_audio_staged: "La canción no está cargada; volvé a darle play.",
     pb_rate: "Velocidad: más lento baja el tono, así cada ataque queda exactamente en su lugar",
-    lane_wave: "onda", tl_zoom: "{a} – {b}", tl_fit: "Ver todo", lg_drift: "deriva", lg_conf: "confianza",
+    lane_wave: "onda", lane_swing: "swing", lg_swing: "swing",
+    tl_zoom: "{a} – {b}", tl_fit: "Ver todo", lg_drift: "deriva", lg_conf: "confianza",
     tap_btn: "Tap (T)", tap_calibrate: "Calibrar con estos taps", tap_assist: "Usar para timing asistido", tap_clear: "Borrar",
     tap_hint: "Reproducí y tocá T en cada beat: para revisar el timing a oído, para calibrar tus taps (tocá solo con el click) o para arrancar el timing asistido (empezá en un tiempo fuerte).",
     tap_info: "{n} taps · {bpm} BPM · {where}",
@@ -1278,7 +1302,7 @@ function setView(view) {
   renderNeedSong();
   if (changed) $("content").scrollTop = 0;
   // The canvas measures its box: it can only be drawn while visible.
-  if (view === "timing" && S.result) { drawTrace(); waveLoad(); svMaps(); divsLoad(); }
+  if (view === "timing" && S.result) { drawTrace(); waveLoad(); svMaps(); divsLoad(); swingLoad(); }
   if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); stxVolMaps(); }
   if (view === "hitsounds" && S.result) { hsvLoad(); sbView(); }
   if (view === "export" && S.result) hsdfMaps();
@@ -1880,6 +1904,7 @@ function renderResult(r) {
   renderInjectAll();
   renderSv();
   renderDivisors();
+  renderSwing();
   if (S.view === "timing") waveLoad();
   evLoad();
   labLoad();
@@ -2733,6 +2758,50 @@ function renderDivisors() {
       ? t("div_extra", { t: s.thirds, s: s.sixths }) : "";
     return `<div>${esc(t("div_row", { at: mmss(s.offset_ms / 1000), bpm: s.bpm, d: s.divisor, extra }))}</div>`;
   }).join("");
+}
+
+// ------------------------------------------------------------------ swing lane
+// Phase 21: where the off-beat eighth falls inside the beat, eight beats at a
+// time. Read only: a lane on the tempo map (only while something swings) and
+// one line per swung stretch.
+const SWING = { report: null, for: "" };
+
+async function swingLoad() {
+  SWING.report = null;
+  if (api() && S.result) {
+    const reply = await api().swing_lane();
+    if (reply.ok) SWING.report = reply.report;
+  }
+  SWING.for = (S.result && S.result.path) || "";
+  renderSwing();
+  drawTrace();  // the lane appears or goes, and the other lanes move with it
+}
+
+function renderSwing() {
+  const card = $("swingCard"), r = SWING.report;
+  card.hidden = !S.result;
+  // the legend's swing key shows while the lane does
+  document.querySelectorAll(".legend .swing-key").forEach((el) => {
+    el.hidden = !(r && r.spans.length);
+  });
+  if (!S.result) return;
+  if (SWING.for !== S.result.path) { swingLoad(); return; }
+  if (!r) { $("swingBody").textContent = ""; return; }
+  const spans = r.spans.map((s) => {
+    const what = t(s.feel === "triplets" ? "swing_triplets" : "swing_swing");
+    return `<div>${esc(t("swing_row", {
+      from: mmss(s.start_ms / 1000), to: mmss(s.end_ms / 1000), what,
+      at: s.at.toFixed(2), snap: s.snap ? t("swing_snap", { snap: s.snap }) : "",
+      ratio: s.ratio.toFixed(2), late: s.late_ms.toFixed(0),
+    }))}</div>`;
+  });
+  const head = !r.measured ? t("swing_nothing")
+    : !r.swung ? t("swing_none", { measured: r.measured })
+      : t("swing_count", {
+        n: r.swung, measured: r.measured,
+        spans: r.spans.length === 1 ? t("swing_span") : t("swing_spans", { n: r.spans.length }),
+      });
+  $("swingBody").innerHTML = `<div>${esc(head)}</div>${spans.join("")}`;
 }
 
 // A section opens in Timing: the timeline zoomed to it, the playhead at its start.
@@ -5598,6 +5667,7 @@ const C_TOKENS = {
   playhead: "playhead", loop: "loop",
   objects: "objects", hsWhistle: "whistle", hsFinish: "finish", hsClap: "clap",
   confHigh: "conf-high", confMid: "conf-mid", confLow: "conf-low", trial: "trial",
+  swing: "swing", swingTriplets: "swing-triplets", swingStraight: "swing-straight",
 };
 const C = {};
 function chartInk() {
@@ -5622,10 +5692,11 @@ function roundRect(ctx, x, y, w, h, r) {
 
 // The tempo map is a timeline: a visible window of the song (zoom, pan), the
 // local tempo on top, then the waveform and the drift lane under it.
-const LANES = { wave: 58, objects: 44, drift: 46, gap: 10 };
+const LANES = { wave: 58, objects: 44, swing: 34, drift: 46, gap: 10 };
 const TL_MIN_SPAN = 0.5;          // seconds: the closest zoom
 const TL_SNAP_PX = 6;             // a dragged red line snaps to an attack this close
 const DRIFT_MS = 30;              // the drift lane's half height
+const SWING_LATE_MAX = 0.84;      // the swing lane's top: the engine's own bound
 const VIEW = { a: 0, b: 0, for: null };
 const WAVE = { for: null, bin: 256, rate: 0, min: null, max: null };
 let DRIFT = { for: null, dev: null };
@@ -5730,12 +5801,19 @@ function drawTrace(hoverX) {
 
   const v = tlView(r), span = v.b - v.a, dur = Math.max(r.duration, 1e-3);
   const x0 = PAD.l, x1 = W - PAD.r;
-  // The object lane (P-7) sits between the waveform and the drift lane,
-  // only while a difficulty's hitsounds are picked.
+  // The lanes stack up from the drift lane's foot, and the two conditional
+  // ones take no room when they are off: the object lane (P-7) only while a
+  // difficulty's hitsounds are picked, the swing lane only when the song swings.
   const lane = !!(HSP.events && HSP.objects);
-  const yD1 = H - PAD.b, yD0 = yD1 - LANES.drift;
-  const yO1 = lane ? yD0 - LANES.gap : yD0, yO0 = lane ? yO1 - LANES.objects : yD0;
-  const yW1 = (lane ? yO0 : yD0) - LANES.gap, yW0 = yW1 - LANES.wave;
+  const swung = !!(SWING.report && SWING.report.spans.length);
+  let foot = H - PAD.b;
+  const yD1 = foot, yD0 = yD1 - LANES.drift;
+  foot = yD0;
+  let yS0 = foot, yS1 = foot;
+  if (swung) { yS1 = foot - LANES.gap; yS0 = yS1 - LANES.swing; foot = yS0; }
+  let yO0 = foot, yO1 = foot;
+  if (lane) { yO1 = foot - LANES.gap; yO0 = yO1 - LANES.objects; foot = yO0; }
+  const yW1 = foot - LANES.gap, yW0 = yW1 - LANES.wave;
   const y0 = PAD.t, y1 = yW0 - LANES.gap;
   const X = (s) => x0 + ((s - v.a) / span) * (x1 - x0);
   const Sx = (x) => v.a + ((x - x0) / (x1 - x0)) * span;
@@ -5749,10 +5827,11 @@ function drawTrace(hoverX) {
   if (hi - lo < 4) { const mid = (hi + lo) / 2; lo = mid - 2; hi = mid + 2; }
   const padY = (hi - lo) * 0.12; lo -= padY; hi += padY;
   const Y = (b) => y1 - ((b - lo) / (hi - lo)) * (y1 - y0);
-  geom = { x0, x1, y0, y1, yW0, yW1, yO0, yO1, yD0, yD1, dur, X, S: Sx, Y, lo, hi };
+  geom = { x0, x1, y0, y1, yW0, yW1, yO0, yO1, yS0, yS1, yD0, yD1, dur, X, S: Sx, Y, lo, hi };
 
   const plotTop = y0 - 22;
-  const panels = [[plotTop, y1], [yW0, yW1], [yD0, yD1]].concat(lane ? [[yO0, yO1]] : []);
+  const panels = [[plotTop, y1], [yW0, yW1], [yD0, yD1]]
+    .concat(lane ? [[yO0, yO1]] : []).concat(swung ? [[yS0, yS1]] : []);
   ctx.fillStyle = C.plot;
   for (const [a, b] of panels) { roundRect(ctx, x0, a, x1 - x0, b - a, 12); ctx.fill(); }
   const clipAll = () => { ctx.beginPath(); for (const [a, b] of panels) ctx.rect(x0, a, x1 - x0, b - a); ctx.clip(); };
@@ -5842,6 +5921,26 @@ function drawTrace(hoverX) {
     }
   }
 
+  // swing lane: where each window's off-beat eighth falls inside the beat,
+  // with the straight half and the two snaps a mapper would reach for ruled in
+  if (swung) {
+    const top = yS0 + 6, bot = yS1 - 6;
+    const Yp = (p) => bot - ((p - 0.5) / (SWING_LATE_MAX - 0.5)) * (bot - top);
+    ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
+    for (const p of [0.5, 2 / 3, 0.75]) {
+      const y = Math.round(Yp(p)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    }
+    for (const w of SWING.report.windows) {
+      if (w.at === null || w.end_ms / 1000 < v.a || w.start_ms / 1000 > v.b) continue;
+      const a = X(w.start_ms / 1000), b = X(w.end_ms / 1000), y = Math.round(Yp(w.at)) + 0.5;
+      ctx.strokeStyle = w.feel === "swing" ? C.swing
+        : w.feel === "triplets" ? C.swingTriplets : C.swingStraight;
+      ctx.lineWidth = w.feel === "straight" ? 1.5 : 3;
+      ctx.beginPath(); ctx.moveTo(a, y); ctx.lineTo(Math.max(a + 1.5, b - 1), y); ctx.stroke();
+    }
+  }
+
   // drift lane: each attack's distance from the grid osu! will play
   const dmid = (yD0 + yD1) / 2, dh = (yD1 - yD0) / 2 - 4;
   ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
@@ -5873,6 +5972,7 @@ function drawTrace(hoverX) {
   for (let b = Math.ceil(lo / ystep) * ystep; b <= hi; b += ystep) ctx.fillText(Number.isInteger(b) ? b : b.toFixed(1), x0 - 10, Y(b));
   ctx.fillText(t("lane_wave"), x0 - 10, wmid);
   if (lane) ctx.fillText(t("lane_objects"), x0 - 10, (yO0 + yO1) / 2);
+  if (swung) ctx.fillText(t("lane_swing"), x0 - 10, (yS0 + yS1) / 2);
   ctx.fillText(`±${DRIFT_MS}`, x0 - 10, dmid);
 
   // time axis, over the visible window

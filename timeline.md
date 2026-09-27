@@ -36,6 +36,14 @@ later costs more than writing it down now.
 - **`Api.swing_lane`** hands it to the page. A fallback result keeps no attacks, so they
   are detected once per song as a reference grading does, and that case alone waits its
   turn behind another heavy job.
+- **A lane on the tempo map**, under the waveform, and a Swing card in the Timing view.
+  The lane draws each window as a mark at the height its eighth sits (0.5 at its foot, the
+  engine's 0.84 bound at its top) with the straight half, 2/3 and 3/4 ruled across, so a
+  stretch that drifts from the triplet swing towards the shuffle is visible as a slope
+  rather than a number. It takes no room at all on a song that does not swing: the lanes
+  stack from the drift lane's foot and the two conditional ones (objects, swing) collapse,
+  so a straight song's chart is exactly what it was. The card names each swung stretch with
+  its editor snap, the ratio and how many ms late, or says the song reads straight.
 
 ### Measured
 
@@ -56,6 +64,14 @@ bar is tuned to a song.
 
 23 further tracks read another pulse than their map (half or double, mostly) and cannot
 be compared window for window; the-raven is refused by the engine as before.
+
+Through the browser harness, on Fleeting Lullaby (the fallback tracker's path, so the
+bridge detects the attacks): 44 of 49 measured windows swung, in 13 stretches, the first
+reading 0.64 of the beat and snapping to 2/3 — the card and the lane say the same. The
+lane holds 34 px under the waveform without touching the drift lane, and 1,512 pixels of
+its ink are drawn. On edm-174 nothing swings: the card says so, the lane and its legend
+key are gone, and the waveform sits 10 px above the drift lane as before. Both languages
+read, no key falls through, no console error.
 ```
 
 ### Rejected / tried and dropped

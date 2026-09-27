@@ -7711,8 +7711,10 @@ def sample_bank(folder: str | os.PathLike[str], skin: str | os.PathLike[str] | N
     skin for the bare name only (see :func:`hitsound_playback`).
 
     A sound the folder lacks is not an error (``06`` §8): each missing cell
-    says what plays instead, the skin's (``skin``, a folder, when it has it)
-    or Overtone's own, as playback falls back. A file another extension of
+    says what plays instead, as playback falls back. In a beatmap folder
+    that is the skin's (``skin``, a folder, when it has it), else Overtone's
+    own; in a skin, Overtone's own, since choosing a skin replaces the one
+    in use rather than falling back to it. A file another extension of
     the same name shadows, and a name no lookup reaches (index 0 or 1 written
     out, a leading zero), are listed and never played. ``empty`` marks a
     sample that holds no audio (:func:`_sample_empty`).
@@ -7728,7 +7730,8 @@ def sample_bank(folder: str | os.PathLike[str], skin: str | os.PathLike[str] | N
     sizes: dict[str, int] = {}
     skin_sizes: dict[str, int] = {}
     listing = _sample_listing(base, sizes)
-    skin_listing = _sample_listing(skin, skin_sizes)
+    kind = "beatmap" if any(name.endswith(".osu") for name in listing) else "skin"
+    skin_listing = _sample_listing(skin if kind == "beatmap" else None, skin_sizes)
     named: dict[tuple[str, str, str], dict[str, Path]] = {}
     unused: list[str] = []
     for name, path in listing.items():
@@ -7773,8 +7776,7 @@ def sample_bank(folder: str | os.PathLike[str], skin: str | os.PathLike[str] | N
     slides = [c for c in cells if c["sound"].startswith("slider")]
     missing = [c["fallback"]["source"] for c in cells if c["fallback"]]
     return {
-        "folder": str(base), "name": base.name,
-        "kind": "beatmap" if any(name.endswith(".osu") for name in listing) else "skin",
+        "folder": str(base), "name": base.name, "kind": kind,
         "sets": sets, "sounds": list(BANK_SOUNDS), "cells": cells, "custom": custom,
         "indices": sorted({c["index"] for c in custom}), "unused": sorted(unused),
         "counts": {"hits": sum(c["file"] is not None for c in hits), "hits_of": len(hits),

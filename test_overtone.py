@@ -5654,6 +5654,22 @@ class SampleBankTests(unittest.TestCase):
         self.assertEqual([(c["file"], c["index"]) for c in bank["custom"]], [("soft-hitclap3.ogg", 3)])
         self.assertEqual((bank["counts"]["to_skin"], bank["counts"]["to_overtone"]), (2, 15))
 
+    def test_a_skins_missing_samples_never_fall_back_to_another_skin(self):
+        # Choosing a skin replaces the one in use: what it lacks plays
+        # Overtone's own, whichever skin plays now.
+        from overtone import sample_bank
+        with tempfile.TemporaryDirectory() as tmp:
+            candidate, in_use = Path(tmp) / "candidate", Path(tmp) / "in use"
+            candidate.mkdir()
+            in_use.mkdir()
+            (candidate / "normal-hitnormal.wav").write_bytes(_wav_bytes(10))
+            (in_use / "soft-hitclap.wav").write_bytes(_wav_bytes(10))
+            bank = sample_bank(candidate, skin=in_use)
+        cell = {(c["set"], c["sound"]): c for c in bank["cells"]}
+        self.assertEqual(bank["kind"], "skin")
+        self.assertEqual(cell["soft", "hitclap"]["fallback"]["source"], "overtone")
+        self.assertEqual((bank["counts"]["to_skin"], bank["counts"]["to_overtone"]), (0, 17))
+
     def test_the_bank_says_what_playback_plays(self):
         from overtone import hitsound_playback, read_osu_beatmap, sample_bank
         # Every hit of every set asking index 1: each plays the bank's cell,

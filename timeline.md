@@ -51,6 +51,13 @@ a skin.
   what playback plays for every hit of every set, what counts as empty, a non-folder
   refused.
 
+### Fixed
+
+- **A skin's missing samples fell back to the skin in use** when the bank read a skin
+  with one given, as the Samples card would when it shows a skin to choose: choosing a
+  skin replaces the one in use, so what a skin lacks plays Overtone's own. Only a beatmap
+  folder's missing samples fall back to a skin. 1 engine test.
+
 ### Hardening
 
 - The measurement only lists folders and reads the first 4 KB of small WAVs under
@@ -94,8 +101,8 @@ reading one folder (sample_bank, this machine)
   skins, warm          median 2.55 ms · p90 4.61 · max 8.50 (their one cold read was by
                        the first version, below: median 12.16 · p90 229 · max 402)
 
-Python unittest   604 -> 610, all pass (6 skipped: overtone-cli is not built in this worktree)
-facts
+Python unittest   604 -> 611, all pass (6 skipped: overtone-cli is not built in this worktree)
+facts             ok; no analysis code changed, so the engine gates were not run
 ```
 
 A beatmap folder rarely holds a whole set, and nothing about that is wrong: the median

@@ -145,7 +145,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Timing injection that keeps what the map plays | ✅ | Measured on a ranked map: 0 of 1341 objects change sound or scroll |
 | Legacy two-field timing lines | ✅ | |
 | `.osz` from a song: audio + a minimal `.osu` | ✅ | |
-| Decimal offsets for lazer | ✅ | Settings → Offset precision: 0-3 decimals for copy, `.osz` and inject; the CLI flag too |
+| Decimal offsets for lazer | ✅ | Settings → Offset precision: 0-3 decimals for copy, `.osz` and inject; the CLI flag too. The 270 lazer (v128) maps here read, write back byte for byte and inject like stable's |
 | lazer format specifics | 📋 | P5 |
 | Inject into every difficulty at once, with a diff | ✅ | Export; each old red line beside its new value and the drift it causes, one confirmation, every file backed up, one bad map stops nothing |
 | Kiai, breaks, bookmarks, section volumes and the preview point from the song's structure | ✅ | Structure view; each write previewed, confirmed and backed up; the preview point is suggested with its reason. Section volumes leave every section where the map sets its own volumes alone |

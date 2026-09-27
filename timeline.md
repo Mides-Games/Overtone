@@ -17,6 +17,24 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · osu!lazer's maps, measured: read, written back and timed like stable's
+
+### Measured
+
+```
+The local Songs folder, read only (scratchpad lazer_scan.py): 25,174 .osu files by their
+first line: v14 23,562, v128 (osu!lazer's export) 270, older versions 1,333, no version
+line 9.
+The 270 lazer maps: 270 read and written back byte for byte; an inject dry run with a
+one-line analysis ok on 270; decimal offsets in the timing points of 3 (read, kept on
+every write that does not change them, and written by Overtone when Settings → Offset
+precision asks for decimals); a decimal object time in none. Nothing failed.
+```
+
+The roadmap row asked for lazer's decimal offsets and ".osu v14+ specifics": the first is
+built (Offset precision, 0-3 decimals); the second, measured on every lazer map here,
+turned out to need nothing the reader and writer did not already do.
+
 ## v4.0.0-dev — 2026-09-26 · The confidence tried live on a fallback result too
 
 ### Changed

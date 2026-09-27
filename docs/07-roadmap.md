@@ -317,7 +317,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Beatmap folder import | audio + all difficulties from one folder | low | med | reader | no | no | P1 | **done** |
 | **Map vs detected compare** | per-section BPM/offset diff table | med | **high** | reader, P1 | no | no | **P1** | **done** |
 | Audio/object alignment | do the map's objects land on real attacks? | med | **high** | reader, attacks | no | no | **P1** | **done** |
-| lazer compatibility | decimal offsets, `.osu` v14+ specifics | low | med | writer | no | no | P2 | todo |
+| lazer compatibility | decimal offsets, `.osu` v14+ specifics | low | med | writer | no | no | P2 | **done** — decimal offsets in Settings → Offset precision (0-3); measured on the 270 local v128 maps (osu!lazer's export): all read and written back byte for byte, an inject dry run ok on all; 3 carry decimal timing offsets, none a decimal object time (2026-09-26) |
 | **Per-section meter** | each red line carries the bar its own section proved | med | high | meter | no | no | **P1** | **done** |
 | **Downbeat anchoring** | every red line lands on a downbeat | med | high | meter | no | no | **P1** | **done** |
 | Meter-change detection | split on time signature, not only on tempo | high | med | sections | no | no | P2 | **done** for a constant bar |

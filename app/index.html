@@ -994,6 +994,11 @@
     <div class="field">
       <label for="confidence" data-i18n="f_conf">Min confidence (%)</label>
       <input class="input num" id="confidence" type="number" step="1" min="0" max="100">
+      <input type="range" class="pb-seek conf-range" id="confidenceRange" min="0" max="100" step="1" data-i18n-aria="f_conf" aria-label="Min confidence (%)">
+      <div class="conf-live" id="confLive" hidden>
+        <div class="card-sub" id="confLiveText"></div>
+        <button type="button" class="btn small" id="confLiveApply"><span data-i18n="conf_apply">Apply to this analysis</span></button>
+      </div>
     </div>
     <div class="field">
       <label data-i18n="f_pulse">Pulse (octave)</label>

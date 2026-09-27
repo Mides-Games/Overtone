@@ -118,6 +118,11 @@ const I18N = {
     songopt_back: "Use the previous ones", songopt_reverted: "Back to the settings you had before.",
     songopt_custom: "{d} BPM · {p} beats · {c} %", songopt_pulse: "pulse {p}",
     songopt_no_prefer: "no BPM preference", songopt_no_refine: "no re-anchoring",
+    conf_live_same: "At {v} %: the same red lines as now ({lines}).",
+    conf_live_diff: "At {v} %: {lines}, against {now} now. On the map, dashed: the ones it would add; faded: the ones it would drop.",
+    conf_apply: "Apply to this analysis",
+    conf_applied: "At {v} % now: {lines}. Undo puts back the ones before.",
+    conf_line: "1 red line", conf_lines: "{n} red lines",
     engine_precision: "precision grid", engine_legacy: "beat tracker fallback",
     constant: "constant", variable: "variable", points_n: "{n} points", meter_known: "bar found", meter_guess: "bar assumed",
     time_at: "time", tempo_at: "tempo", line_at: "red line", conf_at: "confidence",
@@ -676,6 +681,11 @@ const I18N = {
     songopt_back: "Usar los anteriores", songopt_reverted: "Volviste a los ajustes que tenías antes.",
     songopt_custom: "{d} BPM · {p} pulsos · {c} %", songopt_pulse: "pulso {p}",
     songopt_no_prefer: "sin preferencia de BPM", songopt_no_refine: "sin reanclar",
+    conf_live_same: "Con {v} %: las mismas líneas rojas que ahora ({lines}).",
+    conf_live_diff: "Con {v} %: {lines}, contra {now} ahora. En el mapa, punteadas: las que agregaría; tenues: las que quitaría.",
+    conf_apply: "Aplicar a este análisis",
+    conf_applied: "Ahora con {v} %: {lines}. Deshacer vuelve a las de antes.",
+    conf_line: "1 línea roja", conf_lines: "{n} líneas rojas",
     engine_precision: "rejilla de precisión", engine_legacy: "tracker de respaldo",
     constant: "constante", variable: "variable", points_n: "{n} puntos", meter_known: "compás hallado", meter_guess: "compás supuesto",
     time_at: "tiempo", tempo_at: "tempo", line_at: "línea roja", conf_at: "confianza",
@@ -1243,6 +1253,7 @@ function applyOptions(o) {
   $("delta").value = o.delta;
   $("persistence").value = o.persistence;
   $("confidence").value = o.confidence;
+  $("confidenceRange").value = o.confidence;
   $("preferMap").checked = o.prefer_map_bpm;
   $("refineBeats").checked = o.refine_beats;
   $("rustEngine").checked = o.engine === "rust";
@@ -1323,6 +1334,79 @@ function songOptionsTouched(e) {
   renderSongOptions();
 }
 
+// ------------------------------------------------------------------ live confidence
+// A minimum confidence tried on the analysis on screen: its fitted sections
+// read again (nothing analysed), the red lines it would add dashed on the
+// map and the ones it would drop faded, until it is applied or left.
+const CONF = { percent: null, points: null, added: [], removed: new Set(), timer: 0, seq: 0 };
+
+function confLiveUsable() {
+  return !!(S.result && S.result.sections && S.result.sections.length && !S.busy && api());
+}
+
+function confLiveClear(redraw = true) {
+  clearTimeout(CONF.timer);
+  CONF.seq++;
+  Object.assign(CONF, { percent: null, points: null, added: [], removed: new Set() });
+  renderConfLive();
+  if (redraw && S.result) drawTrace();
+}
+
+function confLiveSchedule() {
+  clearTimeout(CONF.timer);
+  const v = parseFloat($("confidence").value);
+  if (!confLiveUsable() || !(v >= 0 && v <= 100)) { confLiveClear(); return; }
+  CONF.timer = setTimeout(() => confLivePreview(v), 120);
+}
+
+async function confLivePreview(v) {
+  const seq = ++CONF.seq;
+  const reply = await api().confidence_preview(v);
+  if (seq !== CONF.seq || !confLiveUsable()) return;
+  if (!reply.ok) { confLiveClear(); return; }
+  const now = S.result.points.map((p) => p.offset_ms);
+  const next = reply.points.map((p) => p.offset_ms);
+  const near = (a, list) => list.some((b) => Math.abs(a - b) < 1);
+  Object.assign(CONF, {
+    percent: v, points: reply.points,
+    added: next.filter((o) => !near(o, now)).map((o) => o / 1000),
+    removed: new Set(now.flatMap((o, i) => (near(o, next) ? [] : [i]))),
+  });
+  renderConfLive();
+  drawTrace();
+}
+
+function confLines(n) {
+  return n === 1 ? t("conf_line") : t("conf_lines", { n });
+}
+
+function renderConfLive() {
+  const on = CONF.points !== null && confLiveUsable();
+  $("confLive").hidden = !on;
+  $("scrim").classList.toggle("see-through", on);
+  if (!on) return;
+  const same = !CONF.added.length && !CONF.removed.size;
+  $("confLiveText").textContent = same
+    ? t("conf_live_same", { v: CONF.percent, lines: confLines(CONF.points.length) })
+    : t("conf_live_diff", { v: CONF.percent, lines: confLines(CONF.points.length),
+                            now: S.result.points.length });
+  $("confLiveApply").disabled = same;
+}
+
+async function confLiveApply() {
+  if (!confLiveUsable() || CONF.percent === null) return;
+  const v = CONF.percent;
+  const reply = await api().confidence_apply(v);
+  if (!reply.ok) { editFailure(reply); return; }
+  S.selected = -1;
+  S.locks = reply.locks || [];
+  S.options = { ...S.options, confidence: v };
+  confLiveClear(false);
+  showResult(reply.result);
+  syncHistory(reply);
+  toast(t("conf_applied", { v, lines: confLines(reply.result.points.length) }));
+}
+
 function markPreset() {
   const d = parseFloat($("delta").value), p = parseInt($("persistence").value, 10), c = parseFloat($("confidence").value);
   document.querySelectorAll("#presetSwitch button").forEach((b) => {
@@ -1343,6 +1427,7 @@ function setBusy(busy, message) {
   $("progress").hidden = !busy;
   clearInterval(PROG.timer);
   if (busy) {
+    confLiveClear();
     progressReset(message);
     PROG.timer = setInterval(renderProgress, 200);
   }
@@ -1558,6 +1643,8 @@ function mmss(s) { const m = Math.floor(s / 60), r = Math.round(s - m * 60); ret
 
 function showResult(result) {
   const sameSong = !!S.result && S.result.path === result.path;
+  // A new point list (analysis, edit, undo) is not the one a trial was read against.
+  if (CONF.points !== null) confLiveClear(false);
   S.result = result;
   S.compare = null;  // these cards belong to one map and one point list
   S.align = null;
@@ -5110,7 +5197,7 @@ const C_TOKENS = {
   ghost: "ghost", driftOk: "drift-ok", driftWarn: "drift-warn", driftBad: "drift-bad",
   playhead: "playhead", loop: "loop",
   objects: "objects", hsWhistle: "whistle", hsFinish: "finish", hsClap: "clap",
-  confHigh: "conf-high", confMid: "conf-mid", confLow: "conf-low",
+  confHigh: "conf-high", confMid: "conf-mid", confLow: "conf-low", trial: "trial",
 };
 const C = {};
 function chartInk() {
@@ -5430,6 +5517,12 @@ function drawTrace(hoverX) {
     const x = Math.round(X(s)) + 0.5;
     ctx.beginPath(); ctx.moveTo(x, plotTop + 22); ctx.lineTo(x, yD1); ctx.stroke();
   }
+  // the red lines a confidence being tried would add, dashed in their own ink
+  ctx.strokeStyle = C.trial; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+  for (const s of CONF.added) {
+    const x = Math.round(X(s)) + 0.5;
+    ctx.beginPath(); ctx.moveTo(x, plotTop); ctx.lineTo(x, yD1); ctx.stroke();
+  }
   ctx.setLineDash([]);
   ctx.restore();
 
@@ -5441,6 +5534,8 @@ function drawTrace(hoverX) {
     const s = dragging && dragging.i === i ? dragging.to : p.offset_ms / 1000;
     const x = Math.round(X(s)) + 0.5;
     if (x < x0 - 60 || x > x1 + 1) return;
+    // A line the confidence being tried would drop is drawn faded.
+    ctx.globalAlpha = CONF.removed.has(i) ? 0.3 : 1;
     ctx.strokeStyle = C.red; ctx.lineWidth = i === S.selected || (dragging && dragging.i === i) ? 2 : 1.25;
     ctx.beginPath(); ctx.moveTo(x, plotTop); ctx.lineTo(x, yD1); ctx.stroke();
     // A red line where the bar changes length says so: the signature's region starts here.
@@ -5453,6 +5548,7 @@ function drawTrace(hoverX) {
     const top = y0 - 20 + row * 24;
     ctx.fillStyle = C.red; roundRect(ctx, x, top, w, 20, 4); ctx.fill();
     ctx.fillStyle = C.redInk; ctx.fillText(label, x + 8, top + 10.5);
+    ctx.globalAlpha = 1;
   });
 
   // hover cursor
@@ -5661,6 +5757,8 @@ function openDrawer(open) {
     drawerOpener.focus();
     drawerOpener = null;
   }
+  // A confidence tried and left is not applied: the map shows what is.
+  if (!open && wasOpen) confLiveClear();
 }
 
 // ------------------------------------------------------------------ keyboard
@@ -5980,9 +6078,24 @@ function wire() {
   document.querySelectorAll("#presetSwitch button").forEach((b) => b.onclick = () => {
     const p = S.presets[b.dataset.preset]; if (!p) return;
     $("delta").value = p.delta; $("persistence").value = p.persistence; $("confidence").value = p.confidence;
+    $("confidenceRange").value = p.confidence;
     readOptions(); markPreset();
+    // A preset moves the minimum change and persistence too, which reading
+    // the sections again at another confidence alone would not show.
+    confLiveClear();
   });
   ["delta", "persistence", "confidence"].forEach((id) => $(id).addEventListener("input", () => { readOptions(); markPreset(); }));
+  // The confidence, typed or slid, is tried on the analysis on screen.
+  $("confidence").addEventListener("input", () => {
+    $("confidenceRange").value = $("confidence").value;
+    confLiveSchedule();
+  });
+  $("confidenceRange").addEventListener("input", () => {
+    $("confidence").value = $("confidenceRange").value;
+    readOptions(); markPreset();
+    confLiveSchedule();
+  });
+  $("confLiveApply").onclick = confLiveApply;
   $("songOptBack").onclick = songOptionsBack;
   $("drawer").addEventListener("input", songOptionsTouched);
   $("drawer").addEventListener("change", songOptionsTouched);

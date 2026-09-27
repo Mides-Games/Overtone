@@ -17,6 +17,44 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · The confidence threshold, tried live on the tempo map
+
+### Changed
+
+- **A slider beside the minimum confidence** in the Detection drawer. With a grid analysis
+  on screen, moving it (or typing a value) reads that analysis's fitted sections again at
+  the new confidence, as ×2 and ÷2 read them at another pulse, so nothing is analysed
+  again. The tempo map dashes the red lines it would add and fades the ones it would drop,
+  and a line under the slider says how many there would be against how many there are.
+  "Apply to this analysis" makes them the red lines on screen as one undoable edit, locked
+  lines kept, and keeps the value as the setting the next analysis starts from, the
+  song's own included. Closing the drawer, a preset, an analysis or an edit leaves the
+  trial unapplied.
+- **The drawer's veil lifts while a confidence is tried**: the map stays sharp, and the
+  wheel and drags reach it, to bring into view the lines the drawer covers.
+- `confidence_preview(percent)` and `confidence_apply(percent)` in the bridge. A fallback
+  result keeps no sections and answers `no_grid`; there the value still applies on the
+  next analysis, as before.
+
+### Measured
+
+```
+Corpus A (31 grid analyses of bench/audio) and Corpus B (15 grid analyses; 4 of its 20
+fall back to the tracker, 1 is refused), each analysed at the defaults, then read again
+at 0 to 90 %:
+  read again at 75 %: the same number of red lines as the analysis on 46 of 46, and
+  the same offsets and BPMs on the six fixtures compared line by line
+  Corpus A: no candidate below 75 %, so the threshold changes nothing on any of 31
+  Corpus B: candidates below 75 % on 13 of 15 (confidence 0.32 to 0.74); at 0 %
+  Noble reads 15 red lines where 75 % shows 1, and camisa-negra reads 7 at 50-60 %,
+  5 at 70 %, 3 at 75 % and 1 at 80-90 %
+Python unittest   625 -> 630, all pass
+The page, through the UI harness at 1280 px on a scratch copy of camisa-negra: at 60 %
+7 red lines against 3 (4 dashed), at 80 % 1 against 3 (3 faded), at 75 % the same 3 with
+Apply off; Apply gave 7 and Undo 3; closing the drawer left the trial; the wheel zoomed
+the map with the drawer open; English and Spanish; no page errors
+```
+
 ## v4.0.0-dev — 2026-09-26 · Each song's own detection settings, put back
 
 ### Changed

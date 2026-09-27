@@ -591,7 +591,7 @@ above — metadata confirmation before anything downloads — is the starting po
 | Output folder | where exports go; `Documents\Overtone\<Artist - Title>\` by default | low | high | 14.4b | no | no | P1 | **done** — asked (the dialog opens there) or not (a free name, never over an earlier export) |
 | Offset precision | whole ms (stable) or decimals (lazer) on every export | low | med | writer | no | no | P1 | **done** — 0-3 decimals for copy, .osz and inject |
 | Octave preference | prefer 120–300 BPM, or a custom range | low | med | engine | no | no | P2 | partial — on/off toggle |
-| Live confidence threshold | a slider that shows which candidate points would appear | low | med | engine | no | no | P2 | todo |
+| Live confidence threshold | a slider that shows which candidate points would appear | low | med | engine | no | no | P2 | **done** — beside the minimum confidence in the Detection drawer: the grid analysis's sections read again, the lines it would add dashed on the map and the ones it would drop faded; applied as one undoable edit. Corpus B: candidates below 75 % on 13 of 15 grid tracks; Corpus A: none |
 | Analysis mode | fast (Rust) or precise (every Phase 10 voter) | low | med | P10, P22 | no | no | P2 | todo |
 | Backup policy | one pristine `.bak` (today) or timestamped backups | low | med | writer | no | no | P2 | **not needed** — every state is already kept (`.bak` pristine, then `.bak2`, `.bak3`…); the Settings section says so |
 | Cache | size limit, location, clear button | low | low | cache | no | no | P2 | **done** but a settable limit — entries, size, folder, clear |

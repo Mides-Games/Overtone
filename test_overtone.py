@@ -7976,6 +7976,74 @@ class OtherGameExportTests(unittest.TestCase):
         self.assertFalse(verify_export(bare, "", "quaver")["ok"])
 
 
+class PercussiveBalanceTests(unittest.TestCase):
+    """How much of a moment is a hit rather than a note."""
+
+    SR = 44100
+
+    def _clicks(self, seconds=3.0, width=0.002):
+        rng = np.random.default_rng(3)
+        y = np.zeros(int(self.SR * seconds), dtype=np.float32)
+        for at in range(self.SR // 2, y.size, self.SR // 2):
+            k = int(self.SR * width)
+            y[at:at + k] = rng.standard_normal(k).astype(np.float32)
+        return y
+
+    def _chord(self, seconds=3.0):
+        t = np.arange(int(self.SR * seconds)) / self.SR
+        return (sum(np.sin(2 * np.pi * f * t) for f in (220, 277, 330)) / 3).astype(np.float32)
+
+    def test_hits_read_high_and_held_notes_read_low(self) -> None:
+        from overtone import percussive_balance
+        _lane, _heard, clicks = percussive_balance(self._clicks(), self.SR, 40)
+        _lane, _heard, chord = percussive_balance(self._chord(), self.SR, 40)
+        self.assertGreater(clicks, 0.9, "a 2 ms click is a hit")
+        self.assertLess(chord, 0.2, "three held notes are notes")
+        self.assertGreater(clicks - chord, 0.7)
+
+    def test_silence_does_not_vote(self) -> None:
+        from overtone import percussive_balance
+        # The clicks are 2 ms every half second: unweighted, the silence
+        # between them would drown them and the song would read tonal.
+        _lane, _heard, loud = percussive_balance(self._clicks(), self.SR, 40)
+        quiet = np.zeros(int(self.SR * 3.0), dtype=np.float32)
+        quiet[:self.SR] = self._clicks(1.0)
+        _lane, _heard, mixed = percussive_balance(quiet, self.SR, 40)
+        self.assertGreater(loud, 0.9)
+        self.assertGreater(mixed, 0.9)      # two thirds silence, same answer
+
+    def test_the_lane_follows_the_song_where_there_is_one_to_follow(self) -> None:
+        from overtone import percussive_balance
+        half = np.concatenate([self._chord(2.0), self._clicks(2.0)])
+        lane, heard, whole = percussive_balance(half, self.SR, 40)
+        self.assertEqual((lane.size, heard.size), (40, 40))
+        notes = lane[:18][heard[:18] > 0.002]
+        hits = lane[22:][heard[22:] > 0.002]
+        self.assertLess(float(notes.mean()), 0.25)     # notes first
+        self.assertGreater(float(hits.mean()), 0.6)    # then hits
+        self.assertTrue(0.0 <= whole <= 1.0)
+        self.assertTrue(np.all((lane >= 0.0) & (lane <= 1.0)))
+
+    def test_a_silent_column_is_marked_unheard_rather_than_called_tonal(self) -> None:
+        from overtone import percussive_balance
+        # Its share is 0, and 0 on this lane reads as "all notes" -- which
+        # would be a claim about silence instead of a reading of it.
+        y = np.concatenate([self._chord(2.0), np.zeros(int(self.SR * 1.0), dtype=np.float32)])
+        lane, heard, _whole = percussive_balance(y, self.SR, 30)
+        self.assertGreater(float(heard[:19].min()), 0.05)
+        self.assertEqual(float(heard[-6:].max()), 0.0)
+        self.assertEqual(float(lane[-6:].max()), 0.0)
+        self.assertAlmostEqual(float(heard.max()), 1.0, places=6)
+
+    def test_nothing_to_separate(self) -> None:
+        from overtone import percussive_balance
+        lane, heard, whole = percussive_balance(np.zeros(64, dtype=np.float32), self.SR, 40)
+        self.assertEqual((lane.size, heard.size, whole), (0, 0, 0.0))
+        lane, heard, whole = percussive_balance(np.zeros(self.SR, dtype=np.float32), self.SR, 40)
+        self.assertEqual(whole, 0.0)        # silence has no balance to report
+        self.assertEqual((float(lane.max()), float(heard.max())), (0.0, 0.0))
+
+
 class MelImageTests(unittest.TestCase):
     """The drawn spectrogram: the analysis path's own mel, pooled and in dB."""
 

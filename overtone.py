@@ -308,6 +308,90 @@ def mel_frequencies() -> np.ndarray:
     return librosa.mel_frequencies(n_mels=MEL_BANDS, fmax=MEL_FMAX_HZ)
 
 
+# -- how much of a moment is a hit and how much is a note ---------------------
+#
+# Fitzgerald's median separation: a sustained partial is a horizontal line on
+# a spectrogram, so a median along **time** keeps it and erases transients; a
+# hit is a vertical line, so a median along **frequency** keeps it and erases
+# partials. Soft Wiener masks split each cell between the two, and the
+# percussive mask's share of a frame's energy is how much of that moment was
+# a hit.
+#
+# Run on the analysis path's own mel grid rather than on linear bins, because
+# 1025 bins cost 22 s of median filtering on a one-minute song against 1.4 s
+# on 128 mel bands, and the answer moves by 0.003. That grid is not the one
+# `crates/overtone-dsp/src/hpss.rs` uses, so its kernels do not carry over:
+# a mel filterbank smears a partial across neighbouring bands, and the
+# frequency kernel has to step over that smear. Both were chosen by what they
+# do to signals whose truth is known (timeline, 2026-09-27).
+
+#: The time median's span. Measured on 2 ms clicks, 40 ms noise snares, a
+#: 55 Hz kick decaying over 150 ms, a held tone and a held chord: at 100 ms
+#: a click reads 1.000 percussive, a snare 0.981, a tone 0.000 and a chord
+#: 0.102, and a kick 0.543 — half transient, half body, which is what a kick
+#: is. Longer kernels widen the gap no further and start claiming the body
+#: too: 0.788 at 150 ms, 0.988 at 300.
+HPSS_KERNEL_MS = 100.0
+#: The frequency median's span, in mel bands. The gap between the worst hit
+#: and the worst tonal signal peaks here at every kernel length tried
+#: (+0.879 at 100 ms, against +0.539 at 3 bands): fewer bands leave a smeared
+#: partial standing and a chord reads 0.41 percussive.
+HPSS_KERNEL_BANDS = 13
+#: Frames for this measure. A balance is a texture over tenths of a second,
+#: and halving the frame rate from the fitting envelope's halves the cost
+#: while moving the answer by 0.003.
+HPSS_HOP = 256
+
+
+def percussive_balance(y: np.ndarray, sr: int, columns: int,
+                       hop: int = HPSS_HOP) -> tuple[np.ndarray, np.ndarray, float]:
+    """How much of each moment is a hit rather than a note.
+
+    Returns ``columns`` shares in 0..1, the same columns' **loudness** as a
+    fraction of the loudest one, and the whole song's own share. Everything
+    is weighted by energy: a silent frame has no balance to report, and
+    averaging it in as zero would make a quiet song read tonal.
+
+    The loudness comes back because a silent column's share is 0 and 0 means
+    "all notes" on the lane, which is a claim about silence rather than a
+    reading of it. What is drawn is broken where nothing was heard.
+    """
+    y = np.asarray(y, dtype=np.float32)
+    columns = max(1, int(columns))
+    empty = (np.zeros(0, dtype=np.float32), np.zeros(0, dtype=np.float32), 0.0)
+    if y.size < ONSET_N_FFT or hop < 1:
+        return empty
+    power = _mel_power(y, sr, hop)                      # (bands, frames)
+    if power.shape[1] == 0:
+        return empty
+    checkpoint()
+    span = max(3, int(round(HPSS_KERNEL_MS / 1000.0 * sr / hop)) | 1)
+    harmonic = median_filter(power, size=(1, span), mode="nearest")
+    checkpoint()
+    percussive = median_filter(power, size=(HPSS_KERNEL_BANDS, 1), mode="nearest")
+    denominator = harmonic * harmonic + percussive * percussive
+    mask = np.where(denominator > 0, (percussive * percussive)
+                    / np.maximum(denominator, 1e-30), 0.0)
+    energy = power.sum(axis=0)
+    share = np.where(energy > 0, (power * mask).sum(axis=0)
+                     / np.maximum(energy, 1e-30), 0.0)
+    columns = min(columns, share.size)
+    edges = np.linspace(0, share.size, columns + 1).astype(int)
+    pooled = np.zeros(columns, dtype=np.float32)
+    loudness = np.zeros(columns, dtype=np.float32)
+    for i in range(columns):
+        lo, hi = edges[i], max(edges[i + 1], edges[i] + 1)
+        weight = float(energy[lo:hi].sum())
+        loudness[i] = weight / max(hi - lo, 1)
+        if weight > 0:
+            pooled[i] = (share[lo:hi] * energy[lo:hi]).sum() / weight
+    peak = float(loudness.max())
+    if peak > 0:
+        loudness /= peak
+    whole = float((share * energy).sum() / energy.sum()) if energy.sum() > 0 else 0.0
+    return pooled, loudness, whole
+
+
 def mel_image(y: np.ndarray, sr: int, columns: int, hop: int | None = None) -> np.ndarray:
     """The song's mel spectrogram in dB, pooled to ``columns``: (bands, columns).
 

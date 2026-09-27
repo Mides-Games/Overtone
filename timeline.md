@@ -166,8 +166,8 @@ beatmap folders, a second 200 (--offset 13, disjoint)
   empty samples        310 in 119 folders; .mp3 2
 
 reading one folder (sample_bank, this machine)
-  beatmap, cold        median 1.97 ms · p90 8.08 · max 176.68   (the second 200, no program
-                       had read them in this session)
+  beatmap, first read  median 1.97 ms · p90 8.08 · max 176.68   (the second 200, which no
+                       run of this session had read: cold, as far as it can tell)
   beatmap, again       median 0.51 ms · p90 1.30 · max 5.06
   beatmap, the rule's 200 read a second time today: median 0.48 ms · max 6.03
   skins, warm          median 2.55 ms · p90 4.61 · max 8.50 (their one cold read was by
@@ -186,10 +186,10 @@ empty file, which the bank shows as empty instead of as a sample.
 ### Rejected / tried and dropped
 
 - **Reading every WAV's header to find the empty ones.** The first version opened each
-  WAV the bank found. On folders no program had read lately it took a median 58.76 ms per
-  beatmap folder (p90 190 ms, max 1,947 ms, the rule's 200). Timed step by step (a
+  WAV the bank found. On the rule's 200, read for the first time in this session, it took
+  a median 58.76 ms per beatmap folder (p90 190 ms, max 1,947 ms). Timed step by step (a
   scratch script, not committed) on a third disjoint 200, the rule from the 7th folder,
-  cold: the listing took a median 0.81 ms (0.29 s in all), a stat per
+  also unread before: the listing took a median 0.81 ms (0.29 s in all), a stat per
   sample 1.21 ms (0.50 s), the headers of WAVs up to 4 KB 1.34 ms (1.55 s), and the
   headers of larger WAVs 48.31 ms (21.41 s). Those last can never be empty here (the
   data chunk must end the file inside the 4 KB read), so they are no longer opened, and

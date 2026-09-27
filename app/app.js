@@ -1420,7 +1420,11 @@ function songOptionsTouched(e) {
 const CONF = { percent: null, points: null, added: [], removed: new Set(), timer: 0, seq: 0 };
 
 function confLiveUsable() {
-  return !!(S.result && S.result.sections && S.result.sections.length && !S.busy && api());
+  // The grid engine's sections, or the fallback tracker's stored beats: both
+  // are read again at another confidence (the bridge refuses anything else).
+  const rereadable = S.result && ((S.result.sections && S.result.sections.length)
+                                  || S.result.engine === "legacy");
+  return !!(rereadable && !S.busy && api());
 }
 
 function confLiveClear(redraw = true) {

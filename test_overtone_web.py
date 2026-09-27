@@ -2946,6 +2946,20 @@ class LiveConfidenceTests(_IsolatedConfig):
         self.assertEqual(remembered["confidence"], 62.5)
         self.assertEqual(api._cfg["confidence"], "62.5")
 
+    def test_a_fallback_result_is_read_again_from_its_beats(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "kit.wav"
+            _drum_track(wav, [(0.5, 128.0), (8.5, 140.0)], duration=16.0)
+            api = web.Api()
+            api._analysis = ta.analyze_audio(str(wav), 1.5, 12, True, 0.75, engine="legacy")
+        self.assertEqual(api._analysis.engine, "legacy")
+        reply = api.confidence_preview(75)
+        shown = web.analysis_payload(api._analysis)["points"]
+        self.assertTrue(reply["ok"])
+        self.assertEqual([(p["offset_ms"], p["bpm"]) for p in reply["points"]],
+                         [(p["offset_ms"], p["bpm"]) for p in shown])
+        self.assertTrue(api.confidence_preview(10)["ok"])
+
     def test_what_it_refuses(self) -> None:
         self.assertEqual(web.Api().confidence_preview(50)["key"], "first")
         self.assertEqual(web.Api().confidence_apply(50)["key"], "first")

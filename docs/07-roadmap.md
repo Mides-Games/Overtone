@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **653** Python (439 engine + 214 web shell) · **270** Rust.
+Tests: **654** Python (439 engine + 215 web shell) · **270** Rust.
 
 ### What is pending, in order
 
@@ -593,7 +593,7 @@ above — metadata confirmation before anything downloads — is the starting po
 | Offset precision | whole ms (stable) or decimals (lazer) on every export | low | med | writer | no | no | P1 | **done** — 0-3 decimals for copy, .osz and inject |
 | Octave preference | prefer 120–300 BPM, or a custom range | low | med | engine | no | no | P2 | partial — on/off toggle |
 | Live confidence threshold | a slider that shows which candidate points would appear | low | med | engine | no | no | P2 | **done** — beside the minimum confidence in the Detection drawer: the grid analysis's sections read again, the lines it would add dashed on the map and the ones it would drop faded; applied as one undoable edit. Corpus B: candidates below 75 % on 13 of 15 grid tracks; Corpus A: none |
-| Live threshold on a fallback result | the same trial for the beat tracker's result, read again from its stored beats; a rebuild at its own pulse reproduces it since 2026-09-26 (32 of 32 fallback analyses, 11 did not) | low | low-med | fallback rebuild | no | no | P3 | todo (proposed 2026-09-26) |
+| Live threshold on a fallback result | the same trial for the beat tracker's result, read again from its stored beats; a rebuild at its own pulse reproduces it since 2026-09-26 (32 of 32 fallback analyses, 11 did not) | low | low-med | fallback rebuild | no | no | P3 | **done** — the slider reads a fallback result's beats again; 7 of 7 fallback results identical at their own 75 %, and the threshold moves red lines on all 7 |
 | Analysis mode | fast (Rust) or precise (every Phase 10 voter) | low | med | P10, P22 | no | no | P2 | todo |
 | Backup policy | one pristine `.bak` (today) or timestamped backups | low | med | writer | no | no | P2 | **not needed** — every state is already kept (`.bak` pristine, then `.bak2`, `.bak3`…); the Settings section says so |
 | Cache | size limit, location, clear button | low | low | cache | no | no | P2 | **done** but a settable limit — entries, size, folder, clear |

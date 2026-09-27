@@ -17,6 +17,25 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · The confidence tried live on a fallback result too
+
+### Changed
+
+- **The confidence slider now works on the beat tracker's results.** It reads a fallback
+  result's stored beats again at another minimum confidence, as ×2 and ÷2 do, now that a
+  rebuild at the result's own pulse gives the result back. Only a result with neither
+  fitted sections nor stored beats still refuses.
+
+### Measured
+
+```
+The four Corpus B songs that fall back to the tracker (audio read only) and Corpus A's
+three ramps: read again at their own 75 %, 7 of 7 identical to the analysis. The
+threshold moves red lines on all 7: Vampires 26 at 0 %, 22 at 75 %, 9 at 90 %;
+ramp-120-160 10, 8 and 1; Calm Down Juliet 6, 3 and 1
+Python unittest   653 -> 654, all pass
+```
+
 ## v4.0.0-dev — 2026-09-26 · Re-anchoring off holds through ÷2 and ×2
 
 With "Re-anchor beats to transients" off, the fallback analysis leaves every beat where the

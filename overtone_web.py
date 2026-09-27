@@ -666,12 +666,13 @@ class Api:
         """The red lines the analysis on screen gives at a minimum confidence
         of ``percent``: its fitted sections read again, at its own pulse and
         with the current minimum change and persistence, as the ×2/÷2 buttons
-        read them at another pulse. Only the grid engine keeps sections; a
-        fallback result refuses (``no_grid``)."""
+        read them at another pulse, and a fallback result's stored beats the
+        same way (a rebuild at its own pulse gives it back since 2026-09-26).
+        A result with neither refuses (``no_grid``), as ×2/÷2 does."""
         analysis = self._analysis
         if analysis is None:
             return {"ok": False, "key": "first"}
-        if not analysis.sections:
+        if not analysis.sections and analysis.base_frames is None:
             return {"ok": False, "key": "no_grid"}
         try:
             value = float(percent)

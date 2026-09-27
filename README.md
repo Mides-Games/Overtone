@@ -28,7 +28,7 @@ sections within 0.05 BPM and 5 ms     24 / 24
 | **osu! files** | ✅ Full reader; writer keeps every byte you did not ask to change |
 | **Hitsounds** | ✅ In the app: copy one difficulty's hitsounds onto the others, see where each addition falls, hear them with the song, a consistency check in the mod report, the Rust decision engine's proposals to tick, and volume and sample index to set by hand, all heard over the song before a preview, a write and an undo; the proposals' profile chosen on the Propose card (Balanced or Drum-focused). A sample bank comes next |
 | **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, a section loop or one drawn on the map at 100/75/50 %, taps, the percussive part alone, a difficulty's hitsounds as written or as they would be written |
-| **Accuracy on real, live-played songs** | 📋 Planned, and measured first — today 1.6 % of 20 ranked maps' red lines land within 5 ms (Corpus B, `bench/corpus_b.py`) |
+| **Accuracy on real, live-played songs** | 📋 Planned, and measured first — today 1.7 % of 20 ranked maps' red lines land within 5 ms (Corpus B, `bench/corpus_b.py`) |
 | **Installer** (MSI) | 🟡 Built, not published: `installer\build.py` makes a per-user MSI (no administrator) and a portable ZIP in one line, and smoke-tests both unpacked. Unsigned, and the licence notices are not packaged yet |
 
 Nothing here claims a number that was not measured. Targets are marked as targets.
@@ -339,7 +339,7 @@ offsets modulo one beat, which is why an off-beat red line could hide in it unti
 
 **Synthetic drums are cleaner than records.** Read the corpus numbers as an upper bound.
 On Corpus B, 20 hand-timed ranked maps from a local osu! Songs folder (`bench/corpus_b.py`),
-1.6 % of their 1,152 red lines have an Overtone beat within 5 ms, and 47 % within 50 ms
+1.7 % of their 1,152 red lines have an Overtone beat within 5 ms, and 48 % within 50 ms
 (measured 2026-09-26): the red lines read a median 24 ms after the mappers', and the grid does
 not follow a band that drifts. Most of the 24 ms is the maps' own: ranked maps put their lines
 a median 21 ms before the sound starts (`bench/corpus_b.py --onsets`). Closing that gap is

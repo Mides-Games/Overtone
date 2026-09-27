@@ -26,7 +26,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Hitsound engine | **in the app** — the copier (H1), the Hitsounds section (H2), the consistency check (H3), and the decision engine in Rust (H4) behind the Propose card: tick by row or by bars, swap a proposal for one of its alternatives, set volume and sample index by hand, hear it all over the song as the write would make it, preview, write the file or a copy, undo (H5); a row's inspector says why each sound was proposed; the profile is chosen on the Propose card (Balanced, or Drum-focused, measured on its own style's maps). Instrument lanes and a sample bank are still to build |
 | Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency, the percussive part alone, and a difficulty's hitsounds with its own samples, as written or as they would be written, slider slides looped head to tail |
 | UI verification | **done** 2026-09-26 — the 19 surfaces of 2026-09-25/26 exercised in the browser pane on two real mapsets, both themes and languages; it found app.js not loading and fifteen bugs in writes, counts and messages, all fixed; the two tools that needed a decision were decided the same day (timeline) |
-| Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.6 % of 1,152 ranked red lines within 5 ms, the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
+| Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
 Tests: **625** Python (423 engine + 202 web shell) · **270** Rust.
@@ -421,10 +421,11 @@ Nothing here is promised. Each item is a hypothesis with a way to test it.
 ## Phase 10 — Human-level timing accuracy
 
 Documented in full in [`10-precision-plan.md`](10-precision-plan.md). **Measured, nothing
-shipped.** The goal: push accuracy on real songs from today's **1.6 %** of ranked red lines
+shipped.** The goal: push accuracy on real songs from today's **1.7 %** of ranked red lines
 with an Overtone beat within 5 ms towards 90 %+, offline. That is v3 on Corpus B, 1,152 red
 lines of 20 ranked maps, measured 2026-09-26 with `bench/corpus_b.py`; averaged over the
-tracks it is 0.9 %, and within 50 ms 46.9 %. The "~5 %" quoted here before came from one
+tracks it is 2.6 %, and within 50 ms 47.9 % (1.6 %, 0.9 % and 46.9 % before the fallback
+tracker's beats moved onto their attacks, the same day). The "~5 %" quoted here before came from one
 track, *Vampires Will Never Hurt You* (4.7 % on 2026-09-22, method not recorded); Corpus B's
 scorer reads 5.9 % there. Two things set the gap: the red lines read a median 24-27 ms after
 the maps', and one grid, or none, against a band that drifts. The 24 ms are explained (10.0a):

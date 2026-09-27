@@ -13,8 +13,9 @@ budgeted.
 
 The baseline this phase is measured against is **Corpus B** (below): 20 ranked
 maps from the local osu! Songs folder, 1,152 hand-placed red lines. On
-2026-09-26 the v3 engine put **1.6 % of them within 5 ms** (0.9 % averaged over
-the tracks, 46.9 % within 50 ms; `bench/corpus_b.py`). The first baseline
+2026-09-26 the v3 engine put **1.7 % of them within 5 ms** (2.6 % averaged over
+the tracks, 47.9 % within 50 ms; `bench/corpus_b.py`), after the fallback tracker's beats
+moved onto their attacks; 1.6 %, 0.9 % and 46.9 % before, the same day. The first baseline
 quoted here, 4.7 % on one of those maps
 (`2437969 My Chemical Romance - Vampires Will Never Hurt You`, 236 red lines,
 2026-09-22), was measured by a method not recorded; Corpus B's scorer reads
@@ -668,7 +669,7 @@ gain. `bpm-snapshot` and Corpus A gates remain green throughout.
 
 | After phase | % within 5 ms | Median error |
 |---|---:|---:|
-| today (Corpus B, v3, 2026-09-26) | 1.6 % | 35 ms |
+| today (Corpus B, v3, 2026-09-26) | 1.7 % | 34 ms |
 | 10.1 (fingerprint) | ~40 %† | ~20 ms† |
 | 10.2 (source sep) | ~48 % | ~15 ms |
 | 10.3 (neural) | ~65 % | ~8 ms |

@@ -1732,6 +1732,16 @@ class FallbackRebuildTests(unittest.TestCase):
         self.assertEqual(half.subdivision, 1.0)
         self.assertSameResult(rebuild_with_subdivision(half, 2.0), auto)
 
+    def test_with_re_anchoring_off_a_rebuild_leaves_the_beats_as_tracked(self):
+        # Re-anchoring off leaves every beat where the tracker's split put it
+        # (and reads no lag); a rebuild re-anchored them all regardless, so at
+        # its own pulse every beat moved.
+        off = analyze_audio(self.path, engine="legacy", refine_beats=False)
+        self.assertSameResult(rebuild_with_subdivision(off, off.subdivision), off)
+        doubled = analyze_audio(self.path, engine="legacy", refine_beats=False,
+                                force_subdivision=2)
+        self.assertSameResult(rebuild_with_subdivision(off, doubled.subdivision), doubled)
+
 
 class OneWindowSignatureTests(unittest.TestCase):
     """A signature region exactly one window long is a region, wherever the song starts.

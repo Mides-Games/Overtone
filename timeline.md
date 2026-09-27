@@ -17,6 +17,49 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Re-anchoring off holds through ÷2 and ×2
+
+With "Re-anchor beats to transients" off, the fallback analysis leaves every beat where the
+tracker's split puts it, but a ×2/÷2 rebuild re-anchored them all regardless: at its own
+pulse every beat moved, on each of 6 analyses tried (left open in the entry below).
+
+### Fixed
+
+- **A rebuild re-anchored the tracker's beats whatever the analysis had been asked.** The
+  switch reaches the analysis as `refine_beats`, and the rebuild never saw it. The result now
+  keeps it (`Analysis.refine_beats`) and the rebuild hands it to `_tracker_result`, so with
+  the switch off a rebuild leaves its beats where the split puts them, as the analysis does.
+  Its lag stays 0: without re-anchoring the analysis reads none.
+- 1 test on the entry below's kit with the switch off: the rebuild at its own pulse gives the
+  analysis back, and ×2 gives what the analysis forced to ×2 gives. It fails on the old code,
+  all 47 beats different, up to 95.8 ms.
+
+### Measured
+
+```
+re-anchoring off, 5 Corpus A fixtures with the tracker forced and the tests' kit; one-off
+script, not committed
+  rebuilt at its own pulse      0 of 6 identical -> 6 of 6. Before, every beat moved (up to
+                                95.8 ms) and change-128-142 read 280.73 BPM for 283.18
+  rebuilt at x2 and /2, against the analysis forced to that pulse
+                                0 of 12 identical -> 12 of 12. Before, change-128-142 at x4
+                                came to 19 red lines for the forced analysis's 2
+re-anchoring on, as in the entry below: the 32 fallback analyses 0 of 32 differ at their own
+  pulse, x2 then /2 and /2 then x2 0 of 32; against the code before both entries the
+  analyses are identical, 33 of 33 with pulse Auto and 50 of 50 forced or re-anchoring off
+  (compared as the entry below compares them)
+Corpus B, the four fallback songs (bench/corpus_b.py --only, analysed afresh)
+                                exported red lines identical, 6/16/31/150 of 249 within
+                                2/5/10/50 ms
+Python unittest  652 -> 653, all pass (none skipped) · facts ok
+engine gates     benchmark 24/24 (0.0000 BPM / 0.16 ms), bpm-snapshot 24/24, golden 27/27,
+                 coverage, measures, signatures, robustness, reference 24/24, assisted 70,
+                 fuzz_reader 3000: each one's output line for line the same as on the tree
+                 before both entries (timings and temporary paths aside)
+Rust             no file changed; cargo test 270 pass, golden 27/27, nogrid, density 4/4 with
+                 0 false positives, elastic, map: all pass
+```
+
 ## v4.0.0-dev — 2026-09-26 · A fallback result comes back from ÷2 then ×2
 
 Pressing ÷2 and then ×2 should give back the result the analysis gave. On the fallback

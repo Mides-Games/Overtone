@@ -140,6 +140,11 @@ class Analysis:
     # and in a ×2 / ÷2 rebuild alike (_tracker_result). 0 for the precision
     # engine; a result without it holds such beats above a subdivision of 1.
     auto_subdivision: float = 0.0
+    # Whether the fallback tracker's beats were re-anchored to transients
+    # (analyze_audio's refine_beats); a ×2 / ÷2 rebuild re-anchors its own
+    # only then. The precision engine's rebuild reads its fitted grids and
+    # re-anchors nothing, so it never reads this.
+    refine_beats: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -2456,7 +2461,9 @@ def _tracker_result(source: str, duration: float, onset: np.ndarray,
     copy of these steps, and the copies held a beat with no peak under it
     differently: where the tracker doubled its own pulse, 11 of 32 fallback
     analyses came back from ÷2 then ×2 changed, Calm Down Juliet with 10 red
-    lines for 3.
+    lines for 3. ``refine`` is the analysis's refine_beats, which the result
+    keeps: without it the beats stay where the split put them, in a rebuild
+    as in the analysis.
     """
     frames = _resubdivide(base_frames, subdivision)
     if refine:
@@ -2492,7 +2499,7 @@ def _tracker_result(source: str, duration: float, onset: np.ndarray,
     return Analysis(source, duration, beats_v, local_v, points, hop, sr, subdivision,
                     global_bpm, _stability(local_v), _guess_meter(beats_v, onset, sr, hop),
                     onset, np.asarray(base_frames, dtype=float),
-                    auto_subdivision=auto_subdivision)
+                    auto_subdivision=auto_subdivision, refine_beats=refine)
 
 
 def _moved_by(result: Analysis, shift: float) -> Analysis:
@@ -2687,7 +2694,8 @@ def rebuild_with_subdivision(analysis: Analysis, factor: float,
                               analysis.base_frames, analysis.sample_rate,
                               analysis.hop_length, factor,
                               float(getattr(analysis, "auto_subdivision", 0.0)),
-                              min_delta, persistence, min_confidence)
+                              min_delta, persistence, min_confidence,
+                              bool(getattr(analysis, "refine_beats", True)))
     # There is no audio here to read the lag on, so the song's own moves the
     # new beats; a rebuild's beats, read on the audio, lag within 2.5 ms of it.
     return _moved_by(rebuilt, float(getattr(analysis, "beat_shift_s", 0.0)))

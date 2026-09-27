@@ -595,6 +595,10 @@ const I18N = {
     nav_audio: "Audio",
     nav_report: "Report",
     audio_sub: "What started, not just that something did: the onset flux split into seven bands, from the kick's 40 Hz up to 11 kHz. A kick moves the bottom lane, a hat the top, a broadband click all seven. Read only.",
+    spec_title: "Spectrogram",
+    spec_note: "{rows} mel bands to 11 kHz over {span}, {cols} columns. Each column keeps the loudest frame under it, and {floor} dB under this song’s loudest moment is black.",
+    spec_reading: "Reading the song’s spectrum…",
+    audio_busy: "The song is busy with another job. Open Audio again in a moment.",
     band_title: "Onset bands",
     band_note: "{n} columns over {span}, loudest {db} dB of flux. Every lane is drawn against that one peak, so a quiet band looks quiet.",
     band_reading: "Reading the song’s bands…",
@@ -1238,6 +1242,10 @@ const I18N = {
     nav_audio: "Audio",
     nav_report: "Reporte",
     audio_sub: "Qué empezó, no solo que algo empezó: el flujo de onsets partido en siete bandas, desde los 40 Hz del kick hasta 11 kHz. Un kick mueve el carril de abajo, un hat el de arriba, un clic de banda ancha los siete. Solo lectura.",
+    spec_title: "Espectrograma",
+    spec_note: "{rows} bandas mel hasta 11 kHz sobre {span}, {cols} columnas. Cada columna guarda el frame más fuerte que cae debajo, y {floor} dB por debajo del momento más fuerte de esta canción es negro.",
+    spec_reading: "Leyendo el espectro de la canción…",
+    audio_busy: "La canción está ocupada con otro trabajo. Volvé a abrir Audio en un momento.",
     band_title: "Bandas de onsets",
     band_note: "{n} columnas sobre {span}, pico de {db} dB de flujo. Cada carril se dibuja contra ese mismo pico, así que una banda silenciosa se ve silenciosa.",
     band_reading: "Leyendo las bandas de la canción…",
@@ -1362,7 +1370,7 @@ function setView(view) {
   if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); stxVolMaps(); }
   if (view === "hitsounds" && S.result) { hsvLoad(); sbView(); }
   if (view === "export" && S.result) hsdfMaps();
-  if (view === "audio" && S.result) bandsLoad();
+  if (view === "audio" && S.result) audioLoad();
   if (view === "history") histLoad();
 }
 
@@ -2884,6 +2892,112 @@ function renderSwing() {
 // one peak, so a quiet band draws quiet: that comparison is the whole point,
 // and per-lane normalisation would invent a kick in a song that has none.
 const BANDS = { data: null, for: "", loading: false };
+const SPEC = { data: null, image: null, for: "", loading: false };
+
+// The spectrogram arrives as one byte a cell — 128 rows of dB under the
+// song's own loudest moment — and is painted once into an offscreen canvas
+// at its true size. Drawing then scales that, so a resize costs a blit and
+// not a repaint of 180,000 cells.
+// The spectrogram and the lanes come from one decode, so they are asked for
+// in turn: both at once and the second is refused while the first holds it.
+async function audioLoad() {
+  await specLoad();
+  await bandsLoad();
+}
+
+async function specLoad() {
+  if (!api() || !S.result) return;
+  if (SPEC.for === S.result.path || SPEC.loading) { drawSpec(); return; }
+  SPEC.loading = true;
+  $("specNote").textContent = t("spec_reading");
+  try {
+    const reply = await api().audio_spectrogram();
+    if (!reply.ok) {
+      // Busy is not a failure: another heavy job has the song. Say so, and
+      // leave it to be asked again rather than sitting on "reading…".
+      $("specNote").textContent = reply.key === "busy" ? t("audio_busy") : "";
+      if (reply.key !== "busy") editFailure(reply);
+      return;
+    }
+    SPEC.data = reply;
+    SPEC.image = reply.columns ? specPaint(reply) : null;
+    SPEC.for = S.result.path;
+  } finally {
+    SPEC.loading = false;
+  }
+  drawSpec();
+}
+
+// One cell is one pixel, low band at the foot. The ramp goes from the plot's
+// own background at the floor to the tempo ink at the loudest, so the picture
+// belongs to the theme rather than to a palette of its own.
+function specPaint(data) {
+  const bytes = atob(data.cells);
+  const off = document.createElement("canvas");
+  off.width = data.columns; off.height = data.rows;
+  const ctx = off.getContext("2d");
+  const image = ctx.createImageData(data.columns, data.rows);
+  const low = rgbOf(C.plot), high = rgbOf(C.tempo);
+  for (let row = 0; row < data.rows; row++) {
+    const y = data.rows - 1 - row;                    // band 0 at the foot
+    for (let col = 0; col < data.columns; col++) {
+      const v = bytes.charCodeAt(row * data.columns + col) / 255;
+      const at = (y * data.columns + col) * 4;
+      image.data[at] = low[0] + (high[0] - low[0]) * v;
+      image.data[at + 1] = low[1] + (high[1] - low[1]) * v;
+      image.data[at + 2] = low[2] + (high[2] - low[2]) * v;
+      image.data[at + 3] = 255;
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  return off;
+}
+
+function rgbOf(colour) {
+  const probe = document.createElement("canvas").getContext("2d");
+  probe.fillStyle = colour;
+  const m = probe.fillStyle.match(/^#(..)(..)(..)$/);
+  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)]
+    : (probe.fillStyle.match(/\d+/g) || [0, 0, 0]).slice(0, 3).map(Number);
+}
+
+function drawSpec() {
+  const wrap = $("specWrap"), canvas = $("specCanvas"), data = SPEC.data;
+  if (!wrap || !canvas) return;
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  if (!W || !H) return;
+  const dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (!data || !SPEC.image) return;
+  $("specNote").textContent = t("spec_note", {
+    rows: data.rows, cols: data.columns, span: mmss(data.span_s), floor: data.floor_db,
+  });
+  const padL = 74, padR = 14, padT = 8, padB = 22;
+  const x0 = padL, x1 = W - padR, y0 = padT, y1 = H - padB;
+  ctx.save();
+  roundRect(ctx, x0, y0, x1 - x0, y1 - y0, 6); ctx.clip();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(SPEC.image, x0, y0, x1 - x0, y1 - y0);
+  ctx.restore();
+  // A few mel rows named in Hz, and the same time axis the lanes carry.
+  ctx.font = `11px ${getComputedStyle(document.body).getPropertyValue("--mono")}`;
+  ctx.fillStyle = C.gridText; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (const row of [0, 32, 64, 96, 127]) {
+    const hz = data.hz[row];
+    const y = y1 - ((row + 0.5) / data.rows) * (y1 - y0);
+    ctx.fillText(hz >= 1000 ? `${(hz / 1000).toFixed(1)}k` : String(Math.round(hz)), x0 - 10, y);
+  }
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  const step = niceStep(data.span_s, Math.max(4, Math.floor((x1 - x0) / 110)));
+  for (let s = 0; s <= data.span_s + 1e-6; s += step) {
+    ctx.fillText(mmss(s), x0 + (s / data.span_s) * (x1 - x0), y1 + 5);
+  }
+}
 
 async function bandsLoad() {
   if (!api() || !S.result) return;
@@ -2893,7 +3007,8 @@ async function bandsLoad() {
   try {
     const reply = await api().audio_bands();
     if (!reply.ok) {
-      if (reply.key !== "busy") { $("bandNote").textContent = ""; editFailure(reply); }
+      $("bandNote").textContent = reply.key === "busy" ? t("audio_busy") : "";
+      if (reply.key !== "busy") editFailure(reply);
       return;
     }
     BANDS.data = reply;
@@ -5530,7 +5645,10 @@ function stTheme() {
   if (document.documentElement.dataset.theme !== theme) {
     document.documentElement.dataset.theme = theme;
     chartInk();                       // canvas ink is read, not inherited
-    if (S.result) drawTrace();
+    // The spectrogram is painted once into its own bitmap, from the theme's
+    // ink: that bitmap is the one thing here that does not follow a token.
+    if (SPEC.data && SPEC.image) SPEC.image = specPaint(SPEC.data);
+    if (S.result) { drawTrace(); drawBands(); drawSpec(); }
   }
   themeButton(theme);
 }
@@ -6934,7 +7052,7 @@ function wire() {
     S.lang = b.dataset.lang; translate(); if (api()) api().set_language(S.lang);
   });
   $("themeBtn").onclick = themeToggle;
-  window.addEventListener("resize", () => { drawTrace(); drawBands(); });
+  window.addEventListener("resize", () => { drawTrace(); drawBands(); drawSpec(); });
   // How the focused control got focus: Tab means the user is driving the
   // keyboard, a click means the button merely kept focus afterwards.
   document.addEventListener("mousedown", () => { focusByKey = false; }, true);

@@ -17,6 +17,49 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · The spectrum the engine listened to
+
+### Changed
+
+- **`mel_image` (engine)**: the song's mel spectrogram in dB, pooled to a given number of
+  columns. The same 128 bands to 11.025 kHz the analysis path itself reads, through the
+  same `_mel_power`, so the picture is the spectrum the engine listened to and not a second
+  opinion drawn beside it. Pooled by **maximum**: a drawn column stands for tens of frames
+  and a mean turns every transient into a smear, which is the opposite of what a
+  spectrogram is looked at for. 0 dB is this song's loudest moment and −80 its floor, so
+  the scale is the song's own.
+- **`Api.audio_spectrogram`** sends it as 128 rows of one byte a cell, base64: a float a
+  cell would be 180,000 numbers of JSON for one picture. The decode is now shared with the
+  band lanes through `_read_bands`, so the Audio view reads the song once for both.
+- **The Audio section draws it** above the lanes, low band at the foot, with a few mel rows
+  named in Hz and the same time axis. The ramp runs from the plot's own background at the
+  floor to the tempo ink at the loudest, so the picture belongs to the theme.
+
+### Fixed
+
+- **The two Audio pictures asked for the song at once and one lost.** Both go through the
+  same single-job lock, so opening the section fired the spectrogram and the lanes
+  together and the lanes came back `busy` — which the page swallowed, leaving "Reading the
+  song's bands…" on screen for good. They are asked for in turn now, and a `busy` reply
+  says so instead of being ignored.
+- **The spectrogram did not follow the theme.** It is painted once into its own bitmap
+  from the theme's ink, which makes it the one thing in the app that does not follow a CSS
+  token; switching theme left it in the old colours. It is repainted with the rest now —
+  which the rail's new theme button makes easy to notice.
+
+### Measured
+
+```
+Through the harness on edm-174: 128 rows by 1,400 columns over 1:00, 239 kB of base64 for
+the whole picture, the frequency axis running 0 Hz to 11,025 Hz and the beat's striations
+visible across it. Pressing the theme button four times alternates the theme and repaints
+the bitmap each time (its corner goes rgb(21,19,28) to rgb(252,251,254) and back), with no
+unhandled rejection. Both languages read, no key missing.
+
+743 Python tests pass; benchmark 24/24 at the same median 0.0000 BPM and 0.16 ms, golden
+27/27 stage for stage, bpm-snapshot, real-audio and perf unchanged.
+```
+
 ## v4.0.0-dev — 2026-09-27 · Audio: what started, not just that something did
 
 ### Changed

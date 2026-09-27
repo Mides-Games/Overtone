@@ -2429,6 +2429,62 @@ class OtherGameBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().other_game_text("quaver")["key"], "first")
 
 
+class ImportTimingBridgeTests(_IsolatedConfig):
+    """Another game's chart graded against the song, as an .osu is."""
+
+    def _api(self, tmp: str) -> web.Api:
+        api = _api_with_points()
+        api._analysis.source = str(Path(tmp) / "song.wav")
+        api._analysis.attack_times = np.array([1.0 + k * 0.5 for k in range(120)])
+        api._analysis.attack_weights = np.ones(120)
+        api._analysis.duration = 70.0
+        return api
+
+    def test_a_quaver_chart_grades_and_says_its_audio_was_not_checked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._api(tmp)
+            path = Path(tmp) / "chart.qua"
+            path.write_text("TimingPoints:\n- StartTime: 1000\n  Bpm: 120\n", encoding="utf-8")
+            reply = api.reference_grade(str(path))
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        self.assertEqual((reply["format"], reply["same_audio"]), ("quaver", None))
+        self.assertEqual(reply["report"]["lines"][0]["verdict"], "ok")
+        self.assertFalse(api._busy.locked())
+
+    def test_a_stepmania_chart_reads_through_the_same_call(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._api(tmp)
+            path = Path(tmp) / "chart.sm"
+            path.write_text("#OFFSET:-1.0;\n#BPMS:0.0=120.0;\n", encoding="utf-8")
+            reply = api.reference_grade(str(path))
+        self.assertEqual(reply["format"], "stepmania")
+        self.assertAlmostEqual(reply["report"]["lines"][0]["offset_ms"], 1000.0, places=3)
+
+    def test_an_osu_is_still_told_whether_the_audio_is_the_same(self) -> None:
+        from test_overtone import _drum_track
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._api(tmp)
+            _drum_track(Path(tmp) / "song.wav", [(1.0, 120.0)], duration=20.0)
+            path = Path(tmp) / "map.osu"
+            path.write_text("osu file format v14\r\n\r\n[General]\r\nAudioFilename: song.wav\r\n"
+                            "\r\n[TimingPoints]\r\n1000,500,4,2,0,70,1,0\r\n", encoding="utf-8")
+            reply = api.reference_grade(str(path))
+        # the .osu path still answers it; an import leaves it unanswered
+        self.assertEqual((reply["format"], reply["same_audio"]), ("osu", True))
+
+    def test_a_file_it_cannot_read_says_why(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._api(tmp)
+            path = Path(tmp) / "empty.qua"
+            path.write_text("AudioFile: a.mp3\n", encoding="utf-8")
+            reply = api.reference_grade(str(path))
+            self.assertEqual(reply["key"], "error")
+            self.assertIn("no timing", reply["detail"].lower())
+            self.assertEqual(api.reference_grade(str(Path(tmp) / "gone.sm"))["key"], "bad_file")
+        self.assertFalse(api._busy.locked())
+
+
 class PulseHintBridgeTests(_IsolatedConfig):
     """Where a reported section holds a half- or double-time region.
     (Named apart from DensityBridgeTests above, which is a map's object

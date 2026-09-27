@@ -40,7 +40,10 @@ LOGO_PNG = HERE / "assets" / "logo.png"
 
 AUDIO_TYPES = ("Audio files (*.wav;*.flac;*.ogg;*.mp3;*.m4a;*.aac;*.opus;*.aiff)",
                "All files (*.*)")
-OSU_TYPES = ("osu! beatmap (*.osu)", "All files (*.*)")
+#: The picker offers the other games' timing beside osu!'s own, since the
+#: reference grading reads all of them.
+OSU_TYPES = ("osu! beatmap (*.osu)", "Timing from another game (*.qua;*.sm;*.ssc)",
+             "All files (*.*)")
 CSV_TYPES = ("CSV (*.csv)", "All files (*.*)")
 WAV_TYPES = ("WAV (*.wav)", "All files (*.*)")
 OSZ_TYPES = ("osu! beatmap package (*.osz)", "All files (*.*)")
@@ -1959,27 +1962,39 @@ class Api:
         return self._ref_attacks[1], self._ref_attacks[2]
 
     def reference_grade(self, osu_path: str) -> dict:
-        """Grade each red line of any .osu against the song's attacks. Read
-        only; says whether the map's audio is this exact file."""
+        """Grade each red line of a chart against the song's attacks.
+
+        An ``.osu``, or another game's timing — a Quaver ``.qua`` or a
+        StepMania ``.sm``/``.ssc``, which state the same red lines in their
+        own spelling and are read into the same shape. Read only. Whether the
+        chart's audio is this exact file is answered for an ``.osu`` and left
+        unanswered for the others, which name their audio but are not read
+        for it.
+        """
         if self._analysis is None:
             return {"ok": False, "key": "first"}
-        if not Path(str(osu_path)).is_file():
+        target = Path(str(osu_path))
+        if not target.is_file():
             return {"ok": False, "key": "bad_file"}
+        imported = target.suffix.lower() in ta.TIMING_FORMATS
         # Detecting attacks decodes the song: one heavy job at a time.
         if not self._busy.acquire(blocking=False):
             return {"ok": False, "key": "busy"}
         try:
-            beatmap = ta.read_osu_beatmap(osu_path)
+            beatmap = (ta.read_timing_file(target) if imported
+                       else ta.read_osu_beatmap(osu_path))
             times, weights = self._attacks()
             report = ta.grade_reference_timing(beatmap, times, weights,
                                                float(self._analysis.duration))
-            same = ta.same_audio(osu_path, beatmap, self._analysis.source)
+            same = None if imported else ta.same_audio(osu_path, beatmap,
+                                                       self._analysis.source)
         except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
             return {"ok": False, "key": "error", "detail": str(exc)}
         finally:
             self._busy.release()
         return {"ok": True, "report": report, "same_audio": same,
-                "path": str(osu_path), "file": Path(osu_path).name}
+                "format": beatmap.get("timing_format", "osu"),
+                "path": str(osu_path), "file": target.name}
 
     def reference_load(self, osu_path: str) -> dict:
         """Make a map's red lines the working timing, as hand-placed points.

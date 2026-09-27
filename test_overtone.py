@@ -7949,6 +7949,10 @@ class OtherGameExportTests(unittest.TestCase):
         # and a line lost outright
         self.assertFalse(verify_export(analysis, good.replace(
             "\n,118.750000=175.000000", ""), "stepmania")["ok"])
+        # text the reader refuses is a failed check, not an exception thrown
+        broken = verify_export(analysis, good.replace("=87.500000", "=0"), "stepmania")
+        self.assertFalse(broken["ok"])
+        self.assertIn("BPM", broken["detail"])
 
     def test_stepmania_keeps_enough_decimals_for_a_long_chart(self) -> None:
         from overtone import stepmania_timing_text, verify_export
@@ -7970,6 +7974,110 @@ class OtherGameExportTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify_export(self._analysis(self.ONE), "", "sm-or-something")
         self.assertFalse(verify_export(bare, "", "quaver")["ok"])
+
+
+class ImportTimingTests(unittest.TestCase):
+    """Another game's timing, read back as the red lines it states."""
+
+    QUA = """AudioFile: audio.mp3
+Mode: Keys4
+BPMDoesNotAffectScrollVelocity: true
+EditorLayers: []
+TimingPoints:
+- StartTime: 1234
+  Bpm: 150
+- StartTime: 31234
+  Bpm: 87.5
+  Signature: Quadruple
+SliderVelocities:
+- StartTime: 5000
+  Multiplier: 1.5
+HitObjects:
+- StartTime: 1234
+  Lane: 1
+"""
+    SSC = """#VERSION:0.83;
+#TITLE:A Song;   // a comment
+#OFFSET:-1.234000;
+#BPMS:0.000000=150.000000
+,75.000000=87.500000;
+#NOTEDATA:;
+#OFFSET:-9.999;
+#BPMS:0.000=999.000;
+"""
+
+    def _write(self, tmp, name, text):
+        path = Path(tmp) / name
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_a_quaver_file_gives_its_red_lines(self) -> None:
+        from overtone import read_timing_file
+        with tempfile.TemporaryDirectory() as tmp:
+            read = read_timing_file(self._write(tmp, "a.qua", self.QUA))
+        json.dumps(read)
+        self.assertEqual(read["timing_format"], "quaver")
+        # the scroll changes carry a StartTime of their own and are not timing
+        self.assertEqual(read["timing"]["reds"], [[1234.0, 150.0], [31234.0, 87.5]])
+
+    def test_a_stepmania_file_undoes_the_offset_and_the_beat_numbers(self) -> None:
+        from overtone import read_timing_file
+        with tempfile.TemporaryDirectory() as tmp:
+            read = read_timing_file(self._write(tmp, "a.ssc", self.SSC))
+        # beat 75 of 150 BPM is 30 s after a first line 1.234 s in
+        self.assertEqual(read["timing"]["reds"], [[1234.0, 150.0], [31234.0, 87.5]])
+        # the per-chart tags after #NOTEDATA belong to one difficulty, not the song
+        self.assertEqual(read["timing_format"], "stepmania")
+
+    def test_what_was_exported_comes_back(self) -> None:
+        from overtone import (quaver_timing_text, read_timing_file, stepmania_timing_text)
+        points = [TimingPoint(1234.0, 150.0, 0.9, 0), TimingPoint(31234.0, 87.5, 0.9, 75),
+                  TimingPoint(61234.0, 175.0, 0.9, 120)]
+        analysis = Analysis("x.wav", 300.0, np.zeros(0), np.zeros(0), points, 128, 44100, 1.0)
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, text in (("out.qua", quaver_timing_text(analysis)),
+                               ("out.sm", stepmania_timing_text(analysis))):
+                read = read_timing_file(self._write(tmp, name, text))
+                for (offset, bpm), point in zip(read["timing"]["reds"], points):
+                    self.assertAlmostEqual(offset, point.offset_ms, delta=0.5, msg=name)
+                    self.assertAlmostEqual(bpm, point.bpm, places=5, msg=name)
+
+    def test_the_read_shape_is_what_the_grading_already_grades(self) -> None:
+        from overtone import grade_reference_timing, read_timing_file
+        # attacks on the map's own grid: it should grade as timed
+        attacks = np.array([1.234 + k * 0.4 for k in range(200)])
+        with tempfile.TemporaryDirectory() as tmp:
+            read = read_timing_file(self._write(
+                tmp, "a.qua", "TimingPoints:\n- StartTime: 1234\n  Bpm: 150\n"))
+            report = grade_reference_timing(read, attacks, np.ones(attacks.size), 90.0)
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["lines"][0]["verdict"], "ok")
+
+    def test_what_it_refuses(self) -> None:
+        from overtone import read_timing_file
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):           # not a format it reads
+                read_timing_file(self._write(tmp, "a.osu", "osu file format v14"))
+            with self.assertRaises(ValueError):           # not there
+                read_timing_file(Path(tmp) / "gone.qua")
+            with self.assertRaises(ValueError):           # nothing in it
+                read_timing_file(self._write(tmp, "empty.qua", "AudioFile: a.mp3\n"))
+            with self.assertRaises(ValueError):
+                read_timing_file(self._write(tmp, "empty.sm", "#TITLE:A;\n"))
+            # Quaver states each time outright, so a point with no Bpm costs
+            # only itself and is skipped rather than guessed at
+            partial = read_timing_file(self._write(
+                tmp, "partial.qua",
+                "TimingPoints:\n- StartTime: 500\n- StartTime: 1000\n  Bpm: 120\n"))
+            self.assertEqual(partial["timing"]["reds"], [[1000.0, 120.0]])
+            # StepMania accumulates, so a rate that cannot be played takes
+            # every beat after it with it: refused, with the reason
+            for body in ("#OFFSET:0;\n#BPMS:0=0,4=120;\n",
+                         "#OFFSET:0;\n#BPMS:0=120,8=-150;\n",
+                         "#OFFSET:0;\n#BPMS:0=120,eight=150;\n"):
+                with self.assertRaises(ValueError) as refused:
+                    read_timing_file(self._write(tmp, "bad.sm", body))
+                self.assertTrue(str(refused.exception))
 
 
 class FixtureManifestTests(unittest.TestCase):

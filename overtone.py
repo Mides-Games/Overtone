@@ -2928,32 +2928,89 @@ def stepmania_timing_text(analysis: "Analysis", decimals: int = STEPMANIA_DECIMA
 
 
 def _quaver_points(text: str) -> list[tuple[float, float]]:
-    """The (offset_ms, bpm) a Quaver block states, read back from the text
-    itself rather than from what it was meant to say."""
-    points, start = [], None
-    for line in text.splitlines():
+    """The (offset_ms, bpm) a ``.qua`` states, from its ``TimingPoints:``.
+
+    Read with the block in mind rather than by hunting for field names:
+    ``SliderVelocities:`` holds entries with a ``StartTime`` of their own, and
+    a reader that took every ``StartTime`` it saw would import the scroll
+    changes as tempo. A top-level key ends the block; a point with no ``Bpm``
+    is skipped rather than guessed at.
+    """
+    points, inside, start, bpm = [], False, None, None
+
+    def keep() -> None:
+        if start is not None and bpm is not None:
+            points.append((start, bpm))
+
+    for raw in text.replace("\r\n", "\n").split("\n"):
+        line = raw.split("#", 1)[0] if raw.lstrip().startswith("#") else raw
         stripped = line.strip()
-        if stripped.startswith("- StartTime:"):
-            start = float(stripped.split(":", 1)[1])
-        elif stripped.startswith("Bpm:") and start is not None:
-            points.append((start, float(stripped.split(":", 1)[1])))
-            start = None
-    return points
+        if line[:1] not in (" ", "\t", "-", "") and ":" in line:
+            if inside:
+                keep()
+                start = bpm = None
+            inside = line.split(":", 1)[0].strip() == "TimingPoints"
+            continue
+        if not inside or not stripped:
+            continue
+        if stripped.startswith("- "):
+            keep()
+            start = bpm = None
+            stripped = stripped[2:].strip()
+        for key, value in (part.split(":", 1) for part in [stripped] if ":" in part):
+            name, text_value = key.strip(), value.strip()
+            try:
+                if name == "StartTime":
+                    start = float(text_value)
+                elif name == "Bpm":
+                    bpm = float(text_value)
+            except ValueError:
+                pass
+    keep()
+    return sorted(p for p in points if np.isfinite(p[0]) and np.isfinite(p[1]) and p[1] > 0)
 
 
 def _stepmania_points(text: str) -> list[tuple[float, float]]:
     """The same for StepMania's tags, undoing the offset's sign and turning
-    its beat numbers back into times."""
+    its beat numbers back into times.
+
+    ``//`` comments are dropped first, and only the **first** ``#OFFSET`` and
+    ``#BPMS`` are read: a ``.ssc`` may repeat both per chart after
+    ``#NOTEDATA``, and those belong to one difficulty, not to the song.
+
+    A rate that cannot be played — zero, negative (StepMania's warps) or not
+    a number — raises rather than being dropped. Here the times are
+    **accumulated** through the tempi before them, so a pair thrown away does
+    not just lose itself: every beat after it lands somewhere else. Quaver
+    states each time absolutely, so there a bad point costs only itself.
+    """
+    body = "\n".join(line.split("//", 1)[0] for line in text.replace("\r\n", "\n").split("\n"))
     offset_s, pairs = 0.0, []
-    body = text.replace("\r\n", "\n")
+    seen_offset = seen_bpms = False
     for tag in body.split("#"):
-        if tag.startswith("OFFSET:"):
-            offset_s = float(tag.split(":", 1)[1].split(";")[0])
-        elif tag.startswith("BPMS:"):
-            for pair in tag.split(":", 1)[1].split(";")[0].replace("\n", "").split(","):
-                if "=" in pair:
-                    at, bpm = pair.split("=")
-                    pairs.append((float(at), float(bpm)))
+        name, _, rest = tag.partition(":")
+        if name.strip().upper() == "OFFSET" and not seen_offset:
+            try:
+                offset_s = float(rest.split(";")[0].strip())
+                seen_offset = True
+            except ValueError:
+                pass
+        elif name.strip().upper() == "BPMS" and not seen_bpms:
+            seen_bpms = True
+            for pair in rest.split(";")[0].replace("\n", "").split(","):
+                if "=" not in pair:
+                    continue
+                at, _, bpm = pair.partition("=")
+                try:
+                    beat, rate = float(at), float(bpm)
+                except ValueError:
+                    raise ValueError(f"#BPMS holds {pair.strip()!r}, which is not "
+                                     "a beat and a rate.") from None
+                if not (np.isfinite(beat) and np.isfinite(rate) and rate > 0):
+                    raise ValueError(
+                        f"#BPMS sets {rate} BPM at beat {beat}: beats are counted through "
+                        "the rates before them, so nothing after that can be placed.")
+                pairs.append((beat, rate))
     pairs.sort()
     points, time_ms = [], -offset_s * 1000.0
     for i, (beat, bpm) in enumerate(pairs):
@@ -2962,6 +3019,43 @@ def _stepmania_points(text: str) -> list[tuple[float, float]]:
             time_ms += (beat - previous_beat) * (60000.0 / previous_bpm)
         points.append((time_ms, bpm))
     return points
+
+
+#: What `read_timing_file` reads, by the extension it reads it from.
+TIMING_FORMATS = {".qua": "quaver", ".sm": "stepmania", ".ssc": "stepmania"}
+#: A timing file is tags and numbers; anything this size is not one.
+MAX_TIMING_BYTES = 16 * 1024 * 1024
+
+
+def read_timing_file(path: str | os.PathLike[str]) -> dict:
+    """Another game's timing, as the red lines it states.
+
+    The counterpart of :func:`quaver_timing_text` and
+    :func:`stepmania_timing_text`, and the same conventions in reverse: a
+    ``.sm``'s beat numbers become times through the tempi before them, and its
+    negated ``#OFFSET`` becomes where the first line sits. The result carries
+    ``timing.reds``, which is the shape :func:`grade_reference_timing` already
+    grades, so an imported chart is compared with the song exactly as an
+    ``.osu`` is. Reading only: nothing is written and no BPM is changed.
+    """
+    target = Path(path)
+    kind = TIMING_FORMATS.get(target.suffix.lower())
+    if kind is None:
+        raise ValueError(f"{target.name}: not a timing file this reads "
+                         f"({', '.join(sorted(TIMING_FORMATS))}).")
+    if not target.is_file():
+        raise ValueError(f"{target} is not a file.")
+    if target.stat().st_size > MAX_TIMING_BYTES:
+        raise ValueError(f"{target.name} is too large to be a timing file.")
+    text = target.read_bytes().decode("utf-8", errors="replace")
+    points = (_quaver_points if kind == "quaver" else _stepmania_points)(text)
+    if not points:
+        raise ValueError(f"{target.name}: no timing found in it.")
+    # Not "format": read_osu_beatmap already uses that for the .osu file
+    # version, and both dicts reach the same grading and the same bridge.
+    return {"timing_format": kind, "file": target.name, "path": str(target),
+            "timing": {"reds": [[round(offset, 3), bpm] for offset, bpm in points]},
+            "hitobjects": []}
 
 
 def verify_export(analysis: "Analysis", text: str, kind: str, beats: int = 4000) -> dict:
@@ -2983,7 +3077,13 @@ def verify_export(analysis: "Analysis", text: str, kind: str, beats: int = 4000)
     readers = {"quaver": _quaver_points, "stepmania": _stepmania_points}
     if kind not in readers:
         raise ValueError(f"Unknown export: {kind}")
-    ours, theirs = _export_lines(analysis), readers[kind](text)
+    ours = _export_lines(analysis)
+    try:
+        theirs = readers[kind](text)
+    except ValueError as exc:
+        # A check reports; it does not raise because what it read is broken.
+        return {"ok": False, "lines": len(ours), "read_back": 0, "worst_ms": None,
+                "worst_bpm": None, "kind": kind, "detail": str(exc)}
     if not ours or len(theirs) != len(ours):
         return {"ok": False, "lines": len(ours), "read_back": len(theirs),
                 "worst_ms": None, "worst_bpm": None, "kind": kind}

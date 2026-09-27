@@ -17,6 +17,54 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · Another game's timing, read back
+
+### Changed
+
+- **`read_timing_file`** reads a Quaver `.qua` or a StepMania `.sm`/`.ssc` into the red
+  lines it states — the counterpart of the two writers added the same day, and the same
+  conventions in reverse: a `.sm`'s beat numbers become times through the tempi before
+  them, and its negated `#OFFSET` becomes where the first line sits. What comes back is
+  the shape `grade_reference_timing` already grades, so **`Api.reference_grade` takes one
+  of these where it took an `.osu`** and the whole Map check card works unchanged: the
+  file picker offers them, every line is graded against the song's own attacks, and the
+  card names the game it came from.
+- Whether the chart's audio is this exact file is answered for an `.osu` and left
+  unanswered for the others, which name their audio but are not read for it; the card says
+  so in its own banner rather than borrowing the `.osu` wording about a missing file.
+
+### Fixed
+
+- **The verification readers were not reader enough to be imports.** Written to check what
+  the exporters had just written, they took every `StartTime` they saw — and a real `.qua`
+  carries `SliderVelocities:` entries with a `StartTime` of their own, which would have
+  been imported as tempo changes. They now read the `TimingPoints:` block as a block. The
+  StepMania one drops `//` comments and reads only the **first** `#OFFSET` and `#BPMS`: a
+  `.ssc` may repeat both per chart after `#NOTEDATA`, and those belong to one difficulty.
+- **A rate that cannot be played is refused for StepMania and skipped for Quaver**, and
+  the difference is the formats': StepMania accumulates times through the tempi, so a pair
+  thrown away does not lose only itself — every beat after it lands somewhere else. Quaver
+  states each time outright, so there a point with no `Bpm` costs only itself. The first
+  version dropped both alike and silently moved a chart's whole tail; a test holds each
+  now.
+- **`verify_export` reports a text it cannot read instead of raising through its caller.**
+  It is a check; a broken file is a result it has.
+
+### Measured
+
+```
+Through the harness on edm-174, analysed at 174.000 BPM with its line at 431.3 ms: the
+.qua and .sm this very analysis wrote were read back and graded against the song — both
+one line, verdict "ok", the .sm at 431.3 ms and the .qua at 431, which is the whole
+millisecond its export rounds to. Two hand-written charts of another song (150 and
+87.5 BPM) graded "weak" and "check" against it, as they should. The card named the game
+and said the audio was not checked, in both languages; no console error.
+
+Both readers were also given a realistic file each: the .qua's SliderVelocities were not
+read as timing, and the .ssc's per-chart #OFFSET and #BPMS after #NOTEDATA were not read
+as the song's. 728 Python tests pass; fuzz_reader still reads 3000 mutant .osu files.
+```
+
 ## v4.0.0-dev — 2026-09-27 · The theme, one press away
 
 ### Changed

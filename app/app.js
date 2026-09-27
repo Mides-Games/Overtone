@@ -481,6 +481,7 @@ const I18N = {
     ref_same: "Same audio as the analyzed file, byte for byte.",
     ref_other: "This map's audio is not the analyzed file byte for byte: offsets may not carry over between two encodes.",
     ref_unknown: "The map's audio file was not found next to it, so it could not be compared.",
+    ref_imported: "Timing read from another game's file. Its audio was not checked against this one, so an offset only carries over if both play the same encode.",
     ref_no_reds: "This map has no red lines to grade.",
     ref_no_attacks: "No attacks were found in this song to grade against.",
     ref_hint: "Positive: the music comes after the red line. ± is two standard errors: a line is flagged past 5 ms and past its own ±.",
@@ -1117,6 +1118,7 @@ const I18N = {
     ref_same: "Mismo audio que el archivo analizado, byte por byte.",
     ref_other: "El audio de este mapa no es el archivo analizado byte por byte: los offsets pueden no trasladarse entre dos codificaciones.",
     ref_unknown: "No se encontró el audio del mapa junto a él, así que no se pudo comparar.",
+    ref_imported: "Timing leído del archivo de otro juego. Su audio no se comparó con este, así que un offset solo se traslada si ambos reproducen la misma codificación.",
     ref_no_reds: "Este mapa no tiene líneas rojas para calificar.",
     ref_no_attacks: "No se encontraron ataques en esta canción contra los que calificar.",
     ref_hint: "Positivo: la música llega después de la línea roja. ± son dos errores estándar: una línea se marca pasados 5 ms y pasado su propio ±.",
@@ -4159,7 +4161,8 @@ async function refGrade(target) {
   if (!api() || !S.result || S.busy) return;
   const reply = await api().reference_grade(target);
   if (!reply.ok) { editFailure(reply); return; }
-  S.ref = { path: reply.path, file: reply.file, report: reply.report, same: reply.same_audio };
+  S.ref = { path: reply.path, file: reply.file, report: reply.report, same: reply.same_audio,
+            format: reply.format || "osu" };
   renderRef();
 }
 
@@ -4226,7 +4229,11 @@ function renderRef() {
       const c = report.counts;
       pill.hidden = false;
       pill.textContent = t("ref_counts", { ok: c.ok, check: c.check, weak: c.weak, few: c.too_few });
-      const audio = ref.same === true ? ["info", "ref_same"] : ref.same === false ? ["", "ref_other"] : ["info", "ref_unknown"];
+      // Timing read from another game names the game and says the audio was
+      // not checked, rather than the .osu wording about a missing file.
+      const audio = ref.format !== "osu" ? ["info", "ref_imported"]
+        : ref.same === true ? ["info", "ref_same"]
+        : ref.same === false ? ["", "ref_other"] : ["info", "ref_unknown"];
       const notes = [...report.findings.map((f) => [f.level === "info" ? "info" : "", t(REF_STR[f.key] || "error", f.values)]),
                      [audio[0], t(audio[1])]];
       const banners = notes.map(([level, text]) => `

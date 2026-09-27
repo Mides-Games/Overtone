@@ -528,6 +528,13 @@ const I18N = {
     swing_count: "{n} of {measured} windows swung, in {spans}.",
     swing_span: "1 stretch",
     swing_spans: "{n} stretches",
+    ph_title: "Half and double time",
+    ph_sub: "A stretch inside one reported section where the song changes pulse. The grid keeps fitting, because every hit of the slow half still lands on the fast half's grid; what changes is how many slots are filled, and whether the filled ones fall on every other beat. Read only — nothing here moves a red line.",
+    ph_none: "No section holds a half- or double-time stretch.",
+    ph_row_half: "From {at}: section {n} reads {bpm} BPM, but {from} – {to} plays at {reads}. Half-time from there — ÷2 on that section, or a red line at {at}.",
+    ph_row_double: "Until {at}: section {n} reads {bpm} BPM, but {from} – {to} plays at {reads}. Double-time up to there — ×2 on that section, or a red line at {at}.",
+    ph_why: "{thinned} of {windows} windows, on the beat split in {sub}: {cin} % of the slots filled against {cout} % elsewhere, and {pin} % of the weight on every other one against {pout} %.",
+    lg_pulse: "half/double",
     lab_title: "Offset lab",
     lab_sub: "What the file says about its own delay, and the first attack through each decoder side by side.",
     lab_header: "{encoder}: {delay} samples of delay ({delayMs} ms), {pad} of padding ({padMs} ms).",
@@ -1149,6 +1156,13 @@ const I18N = {
     swing_count: "{n} de {measured} ventanas con swing, en {spans}.",
     swing_span: "1 tramo",
     swing_spans: "{n} tramos",
+    ph_title: "Mitad y doble de tempo",
+    ph_sub: "Un tramo dentro de una misma sección donde la canción cambia de pulso. La rejilla sigue encajando, porque cada golpe de la mitad lenta cae igual en la rejilla de la rápida; lo que cambia es cuántas casillas se llenan, y si las llenas caen una sí y una no. Solo lectura: nada de esto mueve una línea roja.",
+    ph_none: "Ninguna sección tiene un tramo a mitad ni a doble de tempo.",
+    ph_row_half: "Desde {at}: la sección {n} lee {bpm} BPM, pero {from} – {to} suena a {reads}. Mitad de tempo desde ahí: ÷2 en esa sección, o una línea roja en {at}.",
+    ph_row_double: "Hasta {at}: la sección {n} lee {bpm} BPM, pero {from} – {to} suena a {reads}. Doble de tempo hasta ahí: ×2 en esa sección, o una línea roja en {at}.",
+    ph_why: "{thinned} de {windows} ventanas, sobre el pulso dividido en {sub}: {cin} % de las casillas llenas frente a {cout} % en el resto, y {pin} % del peso una sí y una no frente a {pout} %.",
+    lg_pulse: "mitad/doble",
     lab_title: "Laboratorio de offset",
     lab_sub: "Lo que el archivo dice de su propio delay, y el primer ataque por cada decodificador lado a lado.",
     lab_header: "{encoder}: delay {delay} samples ({delayMs} ms), pad {pad} samples ({padMs} ms).",
@@ -1312,7 +1326,9 @@ function setView(view) {
   renderNeedSong();
   if (changed) $("content").scrollTop = 0;
   // The canvas measures its box: it can only be drawn while visible.
-  if (view === "timing" && S.result) { drawTrace(); waveLoad(); svMaps(); divsLoad(); swingLoad(); }
+  if (view === "timing" && S.result) {
+    drawTrace(); waveLoad(); svMaps(); divsLoad(); swingLoad(); phLoad();
+  }
   if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); stxVolMaps(); }
   if (view === "hitsounds" && S.result) { hsvLoad(); sbView(); }
   if (view === "export" && S.result) hsdfMaps();
@@ -1915,6 +1931,7 @@ function renderResult(r) {
   renderSv();
   renderDivisors();
   renderSwing();
+  renderPulseHints();
   if (S.view === "timing") waveLoad();
   evLoad();
   labLoad();
@@ -2812,6 +2829,57 @@ function renderSwing() {
         spans: r.spans.length === 1 ? t("swing_span") : t("swing_spans", { n: r.spans.length }),
       });
   $("swingBody").innerHTML = `<div>${esc(head)}</div>${spans.join("")}`;
+}
+
+// ------------------------------------------------------------------ pulse hints
+// F-11: a stretch inside one reported section that reads half or double the
+// rate. Read only — a ribbon on the tempo map marking the stretch and the
+// beat the change sits on, and one line per hint with the evidence behind it.
+const PH = { hints: null, for: "" };
+
+async function phLoad() {
+  PH.hints = null;
+  if (api() && S.result) {
+    const reply = await api().density_hints();
+    if (reply.ok) PH.hints = reply.hints;
+  }
+  PH.for = (S.result && S.result.path) || "";
+  renderPulseHints();
+  drawTrace();  // the ribbon appears or goes with the hints
+}
+
+// The direction as the mapper would read it: a thinned tail is the song
+// going half-time from there; a thinned head was double-time until there.
+function phWay(hint) {
+  return hint.thin_side === "head" ? "double" : "half";
+}
+
+function renderPulseHints() {
+  const card = $("phCard"), hints = PH.hints;
+  card.hidden = !S.result;
+  document.querySelectorAll(".legend .ph-key").forEach((el) => {
+    el.hidden = !(hints && hints.length);
+  });
+  if (!S.result) return;
+  if (PH.for !== S.result.path) { phLoad(); return; }
+  if (!hints) { $("phBody").textContent = ""; return; }
+  if (!hints.length) { $("phBody").textContent = t("ph_none"); return; }
+  const sections = S.result.sections || [];
+  $("phBody").innerHTML = hints.map((h) => {
+    const bpm = (sections[h.section] || {}).bpm || 0;
+    const read = bpm > 0 ? (phWay(h) === "half" ? bpm * h.factor : bpm / h.factor) : 0;
+    const head = t(phWay(h) === "half" ? "ph_row_half" : "ph_row_double", {
+      at: mmss(h.boundary_s), from: mmss(h.from_s), to: mmss(h.to_s),
+      bpm: bpm.toFixed(bpm % 1 ? 2 : 0), reads: read.toFixed(read % 1 ? 2 : 0),
+      n: h.section + 1,
+    });
+    const why = t("ph_why", {
+      cin: Math.round(h.coverage_in * 100), cout: Math.round(h.coverage_out * 100),
+      pin: Math.round(h.parity_in * 100), pout: Math.round(h.parity_out * 100),
+      sub: h.subdivision, thinned: h.thinned, windows: h.windows,
+    });
+    return `<div>${esc(head)}</div><div class="ph-why">${esc(why)}</div>`;
+  }).join("");
 }
 
 // A section opens in Timing: the timeline zoomed to it, the playhead at its start.
@@ -5725,6 +5793,7 @@ const C_TOKENS = {
   objects: "objects", hsWhistle: "whistle", hsFinish: "finish", hsClap: "clap",
   confHigh: "conf-high", confMid: "conf-mid", confLow: "conf-low", trial: "trial",
   swing: "swing", swingTriplets: "swing-triplets", swingStraight: "swing-straight",
+  phHalf: "pulse-half", phDouble: "pulse-double",
 };
 const C = {};
 function chartInk() {
@@ -6053,6 +6122,29 @@ function drawTrace(hoverX) {
     ctx.lineWidth = 2; ctx.strokeStyle = C.tempo; ctx.lineJoin = "round"; ctx.stroke();
     ctx.lineTo(X(tt[tt.length - 1]), y1); ctx.lineTo(X(tt[0]), y1); ctx.closePath();
     ctx.fillStyle = C.fill; ctx.fill();
+    ctx.restore();
+  }
+
+  // Pulse hints: the stretch that reads half or double, as a band over the
+  // confidence ribbon, with the beat the change sits on marked through the
+  // plot. Nothing here is a red line — it is evidence, and the card says why.
+  if (PH.hints && PH.hints.length) {
+    ctx.save(); roundRect(ctx, x0, plotTop, x1 - x0, y1 - plotTop, 12); ctx.clip();
+    for (const h of PH.hints) {
+      const a = Math.max(X(h.from_s), x0), b = Math.min(X(h.to_s), x1);
+      if (b > a) {
+        ctx.fillStyle = phWay(h) === "half" ? C.phHalf : C.phDouble;
+        ctx.fillRect(a, y1 - 12, Math.max(1, b - a), 5);
+      }
+      const at = X(h.boundary_s);
+      if (at >= x0 && at <= x1) {
+        ctx.strokeStyle = phWay(h) === "half" ? C.phHalf : C.phDouble;
+        ctx.lineWidth = 1.5; ctx.setLineDash([2, 3]);
+        ctx.beginPath(); ctx.moveTo(Math.round(at) + 0.5, plotTop);
+        ctx.lineTo(Math.round(at) + 0.5, y1 - 7); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
     ctx.restore();
   }
 

@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **694** Python (470 engine + 224 web shell) · **271** Rust.
+Tests: **704** Python (478 engine + 226 web shell) · **271** Rust.
 
 ### What is pending, in order
 
@@ -274,7 +274,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Verdict strip | which engine answered, its residual, and whether to trust it, in one line | low | high | shell | no | no | P1 | partial — banners + engine pill |
 | Snap indicator | say when export snapping moved an offset, so a ±1 ms nudge is not silently undone | low | med | editor | no | no | P2 | **done** without an indicator, by fixing the cause — snapping never moves a hand-placed line, and every edit now starts from the line as it is shown, so a nudge moves the shown and written line by exactly its step |
 | Uncovered-intro shading | hatch the audio before the first red line | low | med | timeline | no | no | P2 | **done** — hatched across every lane, and the hover says the first line's grid runs back there; the banner stays for a late first line |
-| Density ribbon | half- and double-time inside one reported section | med | med | P2 density | no | no | P2 | todo |
+| Density ribbon | half- and double-time inside one reported section | med | med | P2 density | no | no | P2 | **done** (2026-09-27) — `density_hints` in the engine (the prototype moved in, identical to it and to the Rust detector on all 27 fixtures: 4/4 real changes, 0 false positives of 23), a bridge call, and a band on the tempo map with a card saying what to do — ÷2/×2 on that section or a red line there — and the coverage and parity behind it. Corpus B: 5 hints on 19 tracks, none where the map already changes octave because the engine had split those sections itself. Nothing is moved automatically, by decision (DSP §B.2) |
 | Measures on the map | bar ticks and signature regions | low | med | timeline | no | no | P2 | **done** — the bar lines stay when the beats are too close to draw (bars 8 px apart or more), and a red line where the bar changes length names the signature on its chip ("150 · 3/4") |
 | Keyboard map | every action reachable from the keyboard; `?` shows the sheet | low | med | shell | no | no | P2 | **done** — `?` shows every key; ←/→ seek 1 s (Shift: 10 ms), `[`/`]` the red lines, L loop, C click, 1–9 and 0 the rail, on top of Space, T, ↑/↓, Ctrl+O/Z/Y and Enter/F5; buttons reach by Tab. Not bound: mute, solo click, beat steps |
 | Cancellable analysis | stop button, stage names and timings | low | med | progress | no | no | P2 | **done** — the engine is asked at each stage it announces, inside the stages too (next row), and once more before a result replaces the one on screen, which stays |

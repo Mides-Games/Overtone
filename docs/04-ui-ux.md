@@ -139,6 +139,7 @@ The single most important component, and the reason the stack choice went to a w
 | Confidence ribbon | per-section confidence | thin band under the ruler; colour by confidence |
 | Hitsound lanes | hitsound analysis | separate stacked lanes, toggleable |
 | Swing lane | the swing lane's windows | where the off-beat eighth falls in the beat; only while something swings |
+| Pulse hints | density hints | a band over the confidence ribbon where a section holds half- or double-time, with the change dashed through the plot |
 | Playhead + selection | transport | |
 
 *Built 2026-09-27 (web shell), the swing lane:* a 34 px lane under the waveform, drawn
@@ -157,6 +158,14 @@ moment it is picked, because picking one asks for its cached units before it wou
 engine — the set is decided once and browsed freely (0.55-0.75 s a switch, against the
 19 s a proposal costs). Propose stays for one difficulty on its own, or with another
 profile.
+
+*Built 2026-09-27 (web shell), half and double time:* a 5 px band just over the
+confidence ribbon marks the stretch a hint covers, and the beat the change sits on is
+dashed through the plot in the same ink — amber where the song halves, blue where it
+doubles. Neither is carried by colour alone: the card names the direction in words, says
+what to do about it (÷2 or ×2 on that section, or a red line there), and puts the evidence
+under it as percentages rather than as the raw coverage and parity. Both disappear, with
+the legend key, on a song that holds none.
 
 ### Rendering
 

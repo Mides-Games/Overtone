@@ -17,6 +17,72 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · Half and double time, said out loud
+
+### Changed
+
+- **`density_hints` (engine, read only)** — audit F-11. A section that goes half- or
+  double-time keeps one reported BPM, because the grid is continuous: every hit of the slow
+  half still lands on the fast half's grid, so the inlier share the growth loop watches
+  never moves. What moves is **coverage** on the beat halved and quartered, which that loop
+  computes and throws away. Coverage alone would flag a drop, a breakdown and a sparse bar
+  too; the discriminator is **parity** — in a half-time stretch the filled slots share one
+  residue mod 2, in a thinned-out one they are scattered. Eight beats at a time: a run of
+  windows both empty enough (≤ 70 % of slots) and regular enough (≥ 85 % of the weight on
+  one residue), at least two windows long, at least 0.2 of coverage under the rest of its
+  section, and not the whole section (that means the subdivision guess is too fine). Each
+  hint says where the change sits, which end thinned out, the coverage and parity in and
+  out, and a score. It changes no BPM and no red line: DSP §B.2 asks for a hint, surfaced.
+  - The detector already existed in Rust (`crates/overtone-tempo/src/density.rs`) and as
+    `proto/density.py`, but the analysis on screen is the Python engine's and nothing
+    surfaced it. This is the prototype, moved into the engine with its constants named.
+- **`Api.density_hints`** hands them to the page. It costs nothing beyond the attacks the
+  analysis already holds, so it takes no turn among the heavy jobs; the fallback tracker
+  reports no sections, so it has nothing to look inside.
+- **A ribbon on the tempo map and a card** in the Timing view: the stretch as a band over
+  the confidence ribbon, the beat the change sits on dashed through the plot, and one line
+  per hint saying what to do about it — ÷2 or ×2 on that section, or a red line there —
+  with the evidence under it in words ("8 of 17 windows, 53 % of the slots filled against
+  98 % elsewhere, 100 % of the weight on every other one against 64 %"). Half and double
+  have inks of their own and are named in the text, never carried by colour alone.
+
+### Measured
+
+```
+Corpus A and the coverage fixtures (27 cases): identical to proto/density.py in every
+field of every hint, and identical to the Rust detector's own gate to the digits it
+prints — 4 of 4 real changes found (halftime-150-75 at 29.3 s, halftime-175-87.5 and
+change-175-87.5 at 33.5 s, doubletime-110-220 at 27.0 s), 0 false positives on the other
+23. The Rust gate reads the same coverage and parity pairs: 0.53/0.98 and 1.00/0.64,
+0.62/0.98 and 0.94/0.69, 0.54/1.00 and 0.99/0.70.
+
+Corpus B, 19 of 20 tracks analysed (the-raven is refused by the engine as before): 5 hints
+in all. None of them on the three tracks whose maps alternate octave — calm-down-juliet,
+jungle-dragon, martyr — and that is the detector working as specified rather than failing:
+it only looks *inside* one reported section, and the engine had already split those into
+0, 6 and 12 sections, so the change was reported and there was nothing left to find. The
+5 fall on tracks whose maps keep one BPM throughout (noble 3, nana-hitsuji 1,
+camisa-negra 1), which is what a half-time feel looks like to a mapper who kept one red
+line. They are not checked by ear, so they are reported as what they are: hints.
+
+Through the browser harness on halftime-150-75: the card reads "From 0:29: section 1
+reads 150.00 BPM, but 0:29 – 0:55 plays at 75.00", the band covers 1,997 pixels against
+the 2,000 its stretch spans (not the whole plot), and the boundary is dashed at 0:29. On
+edm-174 the card says no section holds one, and the band and its legend key are gone.
+Both languages read, no key missing and no placeholder mismatched, no console error.
+```
+
+### Rejected / tried and dropped
+
+- **Calling the Rust sidecar for the hints.** It has the detector already, but the result
+  on screen is usually the Python engine's, and its sections are what a hint indexes; going
+  out to the sidecar would have meant a second analysis to index against. The port is held
+  to the prototype field for field instead, and both to the Rust gate's printed numbers.
+- **Splitting the section automatically.** The whole point of F-11 is that mapping the
+  track at the reported BPM stays defensible: a half-time chorus is a feel, and the mapper
+  decides whether it deserves a red line. The hint says what it found and what the two
+  ways out are.
+
 ## v4.0.0-dev — 2026-09-27 · A budget for every stage
 
 ### Changed

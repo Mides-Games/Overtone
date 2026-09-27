@@ -2612,6 +2612,73 @@ class Api:
         self._bands = (source, flux, float(sr), y)
         return None
 
+    #: Rows the tempo map is drawn with: the swept rates are binned into this
+    #: many bands of log2 period, so a column is a picture rather than 1,047
+    #: numbers of JSON.
+    TEMPO_MAP_ROWS = 128
+
+    def tempo_map(self, rows: int = TEMPO_MAP_ROWS) -> dict:
+        """Where the pulse is, over the whole song: R(t, f) as a picture.
+
+        One byte a cell, base64, with the rows evenly spaced in **log2
+        period** so an octave is the same height anywhere on it. The ridge —
+        the strongest peak each window, followed with octave continuity —
+        comes back beside it, and so do the red lines the analysis actually
+        reports, because the two are not the same thing: R peaks at the pulse
+        *and at every multiple of it*, so a ridge sitting an octave above the
+        reported BPM is the sweep being honest, not a disagreement.
+
+        A fallback result keeps no attacks; they are detected once per song
+        as a reference grading does, so that case waits its turn.
+        """
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            rows = max(16, min(512, int(rows)))
+        except (TypeError, ValueError):
+            return {"ok": False, "key": "error", "detail": "rows must be a number"}
+        analysis = self._analysis
+        held = len(analysis.attack_times) > 0 or (
+            self._ref_attacks is not None and self._ref_attacks[0] == str(analysis.source))
+        if not held and not self._busy.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        try:
+            times, weights = self._attacks()
+        except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            if not held:
+                self._busy.release()
+        centres, freqs, columns = ta.coherence_map(times, weights)
+        if columns.size == 0:
+            return {"ok": True, "rows": 0, "columns": 0, "cells": "", "centres": [],
+                    "bpm_lo": 0.0, "bpm_hi": 0.0, "ridge": [], "points": []}
+        # Bin the swept rates into rows of equal log2 period: an octave is
+        # then the same height wherever it sits, which is how tempo is read.
+        periods = 1.0 / freqs
+        logs = np.log2(periods)
+        lo, hi = float(logs.min()), float(logs.max())
+        which = np.clip(((logs - lo) / max(hi - lo, 1e-12) * (rows - 1)).round().astype(int),
+                        0, rows - 1)
+        binned = np.zeros((rows, columns.shape[0]), dtype=np.float64)
+        for row in range(rows):
+            members = which == row
+            if members.any():
+                binned[row] = columns[:, members].max(axis=1)
+        packed = np.clip(np.rint(binned * 255.0), 0, 255).astype(np.uint8)
+        at, period, _r = ta.map_ridge(centres, freqs, columns)
+        return {"ok": True, "rows": int(rows), "columns": int(columns.shape[0]),
+                "cells": base64.b64encode(packed.tobytes()).decode("ascii"),
+                "centres": np.asarray(centres).round(3).tolist(),
+                # the row axis, as BPM at the slowest and fastest rate swept
+                "bpm_lo": round(60.0 / float(2 ** hi), 3),
+                "bpm_hi": round(60.0 / float(2 ** lo), 3),
+                "ridge": [[round(float(t), 3), round(60.0 / float(p), 3)]
+                          for t, p in zip(at, period)],
+                "points": [[round(float(p.offset_ms) / 1000.0, 3), round(float(p.bpm), 3)]
+                           for p in ta.snap_timing_points(analysis.points)
+                           if np.isfinite(p.bpm) and p.bpm > 0]}
+
     #: Columns the energy curve gets, and the balance lane's: both are one
     #: line about a whole song, and a wider line reads better than a comb.
     ENERGY_COLUMNS = 700

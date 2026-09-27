@@ -2429,6 +2429,68 @@ class OtherGameBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().other_game_text("quaver")["key"], "first")
 
 
+class TempoMapBridgeTests(_IsolatedConfig):
+    """R(t, f) as a picture, with what the timing reports over it."""
+
+    def _api(self, bpm=150.0, seconds=60.0) -> web.Api:
+        api = _api_with_points()
+        step = 60.0 / bpm
+        api._analysis.attack_times = np.arange(0.0, seconds, step)
+        api._analysis.attack_weights = np.ones(api._analysis.attack_times.size)
+        api._analysis.duration = seconds
+        api._analysis.points = [ta.TimingPoint(0.0, bpm, 0.95, 0)]
+        return api
+
+    def test_the_picture_and_the_lines_over_it(self) -> None:
+        import base64
+        api = self._api()
+        reply = api.tempo_map(rows=64)
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["rows"], 64)
+        self.assertGreater(reply["columns"], 10)
+        self.assertEqual(len(base64.b64decode(reply["cells"])), 64 * reply["columns"])
+        self.assertLess(reply["bpm_lo"], 60.0)
+        self.assertGreater(reply["bpm_hi"], 600.0)
+        # what the timing reports travels with it: the two are not the same
+        self.assertEqual(reply["points"], [[0.0, 150.0]])
+        self.assertGreater(len(reply["ridge"]), 10)
+        # every ridge reading explains the same hits: a multiple of the pulse
+        for _at, bpm in reply["ridge"]:
+            self.assertAlmostEqual(round(bpm / 150.0), bpm / 150.0, delta=0.03)
+        self.assertFalse(api._busy.locked())
+
+    def test_a_song_with_too_few_attacks_says_so_rather_than_drawing(self) -> None:
+        api = self._api()
+        api._analysis.attack_times = np.array([0.0, 10.0, 20.0, 30.0])
+        api._analysis.attack_weights = np.ones(4)
+        reply = api.tempo_map()
+        self.assertEqual((reply["ok"], reply["columns"], reply["cells"]), (True, 0, ""))
+
+    def test_a_fallback_result_has_its_attacks_detected_once(self) -> None:
+        from test_overtone import _drum_track
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "legacy.wav"
+            _drum_track(wav, [(1.0, 150.0)], duration=40.0)
+            api = _api_with_points()
+            api._analysis.source = str(wav)
+            api._analysis.attack_times = np.zeros(0)
+            api._analysis.attack_weights = np.zeros(0)
+            api._analysis.duration = 40.0
+            with mock.patch.object(ta, "_detect_attacks", wraps=ta._detect_attacks) as detect:
+                first = api.tempo_map(rows=32)
+                api.tempo_map(rows=32)
+        self.assertTrue(first["ok"])
+        self.assertEqual(detect.call_count, 1)
+        self.assertGreater(first["columns"], 0)
+        self.assertFalse(api._busy.locked())
+
+    def test_what_it_refuses(self) -> None:
+        api = self._api()
+        self.assertEqual(api.tempo_map(rows="many")["key"], "error")
+        self.assertEqual(web.Api().tempo_map()["key"], "first")
+
+
 class AudioEnergyBridgeTests(_IsolatedConfig):
     """How loud the song is over time, for the Audio view."""
 

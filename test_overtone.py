@@ -7976,6 +7976,63 @@ class OtherGameExportTests(unittest.TestCase):
         self.assertFalse(verify_export(bare, "", "quaver")["ok"])
 
 
+class CoherenceMapTests(unittest.TestCase):
+    """Where the pulse is, over the whole track."""
+
+    @staticmethod
+    def _beats(bpm, seconds, start=0.0):
+        step = 60.0 / bpm
+        return np.arange(start, start + seconds, step)
+
+    def test_the_grid_is_shared_and_stepped_by_the_window(self) -> None:
+        from overtone import MAP_PERIOD_RANGE, map_frequencies
+        wide, narrow = map_frequencies(12.0), map_frequencies(6.0)
+        self.assertAlmostEqual(float(wide[0]), 1.0 / MAP_PERIOD_RANGE[1], places=9)
+        self.assertLessEqual(float(wide[-1]), 1.0 / MAP_PERIOD_RANGE[0] + 1e-9)
+        # a shorter window resolves less, so it is swept more coarsely
+        self.assertAlmostEqual(float(np.diff(wide).mean()), 0.2 / 12.0, places=9)
+        self.assertAlmostEqual(float(np.diff(narrow).mean()), 0.2 / 6.0, places=9)
+
+    def test_a_steady_pulse_is_bright_at_its_own_rate(self) -> None:
+        from overtone import coherence_map, map_ridge
+        times = self._beats(150.0, 60.0)
+        centres, freqs, columns = coherence_map(times, np.ones(times.size))
+        self.assertGreater(columns.shape[0], 10)
+        self.assertEqual(columns.shape[1], freqs.size)
+        _at, period, r = map_ridge(centres, freqs, columns)
+        self.assertGreater(float(np.median(r)), 0.95)
+        # the ridge takes the strongest peak, which for a plain pulse train is
+        # a multiple of it: every one of them explains the same hits
+        ratios = (60.0 / period) / 150.0
+        self.assertTrue(np.allclose(ratios, np.round(ratios), atol=0.02), ratios)
+
+    def test_a_change_of_tempo_moves_the_ridge_by_its_own_ratio(self) -> None:
+        from overtone import coherence_map, map_ridge
+        times = np.concatenate([self._beats(128.0, 40.0), self._beats(142.0, 40.0, 40.0)])
+        centres, freqs, columns = coherence_map(times, np.ones(times.size))
+        at, period, _r = map_ridge(centres, freqs, columns)
+        early = (60.0 / period)[at < 25.0]
+        late = (60.0 / period)[at > 55.0]
+        self.assertGreater(early.size, 0)
+        self.assertGreater(late.size, 0)
+        self.assertAlmostEqual(float(late.mean() / early.mean()), 142.0 / 128.0, delta=0.03)
+
+    def test_a_window_with_too_little_in_it_gets_no_column(self) -> None:
+        from overtone import MAP_MIN_ATTACKS, coherence_map
+        sparse = np.array([0.0, 5.0, 10.0, 20.0, 30.0])      # under the bar
+        centres, _freqs, columns = coherence_map(sparse, np.ones(sparse.size))
+        self.assertEqual((centres.size, columns.shape[0]), (0, 0))
+        self.assertGreaterEqual(MAP_MIN_ATTACKS, 8)
+
+    def test_nothing_to_sweep(self) -> None:
+        from overtone import BAND_COUNT, coherence_map, map_ridge  # noqa: F401
+        centres, freqs, columns = coherence_map(np.zeros(0), np.zeros(0))
+        self.assertEqual((centres.size, columns.shape[0]), (0, 0))
+        self.assertGreater(freqs.size, 0)                    # the grid is fixed
+        at, period, r = map_ridge(centres, freqs, columns)
+        self.assertEqual((at.size, period.size, r.size), (0, 0, 0))
+
+
 class LoudnessCurveTests(unittest.TestCase):
     """How loud the song is over time, against its own loudest moment."""
 

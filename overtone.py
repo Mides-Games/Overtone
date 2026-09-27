@@ -1249,6 +1249,103 @@ def _coherence_curve(times: np.ndarray, weights: np.ndarray,
     return out / total
 
 
+# -- the pulse over the whole track, as a surface --------------------------
+#
+# The seed scan anchors on one densest window because the sweep is expensive
+# in NumPy; this walks the same sweep across the track, so the pulse can be
+# *seen* rather than inferred from where sections ended up. A port of
+# `crates/overtone-tempo/src/map.rs` (DSP §B.3) as far as the surface and its
+# ridge go; what Rust does with it afterwards — seeding, replacing the
+# tempogram — stays there.
+
+#: Sliding window and hop, in seconds. Twelve seconds holds enough attacks
+#: for R(f) to have a peak worth reading, and two is fine enough to see a
+#: change arrive.
+MAP_WIDTH_S = 12.0
+MAP_HOP_S = 2.0
+#: The pulse rates swept, as periods. The candidate sweep's own range.
+MAP_PERIOD_RANGE = (0.055, 1.35)
+#: Attacks a window needs before its column is worth a ridge point.
+MAP_MIN_ATTACKS = 8
+#: A peak this far under the column's best is not a candidate for the ridge.
+MAP_PEAK_FLOOR = 0.3
+
+
+def map_frequencies(width: float = MAP_WIDTH_S) -> np.ndarray:
+    """The frequency grid every column shares, so columns compare.
+
+    Stepped at ``0.2 / width``: one window resolves two lobes no closer than
+    that, which is the candidate sweep's own rule.
+    """
+    lo, hi = 1.0 / MAP_PERIOD_RANGE[1], 1.0 / MAP_PERIOD_RANGE[0]
+    step = max(0.2 / max(width, 1e-9), 1e-4)
+    return np.arange(lo, hi + 1e-12, step)
+
+
+def coherence_map(times: np.ndarray, weights: np.ndarray,
+                  width: float = MAP_WIDTH_S,
+                  hop: float = MAP_HOP_S) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """``R(t, f)`` over the track: (centres_s, freqs_hz, columns).
+
+    One row of ``columns`` per window, each the phase agreement of that
+    window's attacks at every swept rate. A window with fewer than
+    :data:`MAP_MIN_ATTACKS` carries no peak worth tracking and is skipped
+    rather than given a noisy one.
+    """
+    times = np.asarray(times, dtype=np.float64)
+    weights = np.asarray(weights, dtype=np.float64)
+    freqs = map_frequencies(width)
+    if times.size == 0 or width <= 0 or hop <= 0 or weights.shape != times.shape:
+        return np.zeros(0), freqs, np.zeros((0, freqs.size), dtype=np.float32)
+    order = np.argsort(times)
+    times, weights = times[order], weights[order]
+    centres, columns = [], []
+    edge = float(times[0])
+    last = float(times[-1])
+    while edge + width <= last + 1e-9:
+        checkpoint()
+        inside = (times >= edge) & (times < edge + width)
+        if int(inside.sum()) >= MAP_MIN_ATTACKS:
+            columns.append(_coherence_curve(times[inside], weights[inside], freqs))
+            centres.append(edge + 0.5 * width)
+        edge += hop
+    if not columns:
+        return np.zeros(0), freqs, np.zeros((0, freqs.size), dtype=np.float32)
+    return (np.asarray(centres), freqs,
+            np.asarray(columns, dtype=np.float32))
+
+
+def map_ridge(centres: np.ndarray, freqs: np.ndarray,
+              columns: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Follow the strongest peak through the map: (centres, periods, R).
+
+    Each window takes the peak nearest the last one in log2, among those
+    above :data:`MAP_PEAK_FLOOR` of its column's best. Without that
+    continuity a window whose 2x harmonic momentarily wins reads as a tempo
+    doubling; at a real change the old multiple collapses outright, so
+    stickiness cannot hide one.
+    """
+    out_at, out_period, out_r = [], [], []
+    previous = None
+    for centre, column in zip(np.asarray(centres), np.asarray(columns)):
+        best = float(column.max()) if column.size else 0.0
+        if not np.isfinite(best) or best <= 1e-6:
+            continue
+        rises = np.flatnonzero((column[1:-1] >= column[:-2]) & (column[1:-1] > column[2:])) + 1
+        peaks = rises[column[rises] >= MAP_PEAK_FLOOR * best]
+        if peaks.size == 0:
+            peaks = np.array([int(np.argmax(column))])
+        if previous is None:
+            chosen = int(peaks[np.argmax(column[peaks])])
+        else:
+            chosen = int(peaks[np.argmin(np.abs(np.log2(1.0 / freqs[peaks]) - previous))])
+        previous = float(np.log2(1.0 / freqs[chosen]))
+        out_at.append(float(centre))
+        out_period.append(float(1.0 / freqs[chosen]))
+        out_r.append(float(column[chosen]))
+    return np.asarray(out_at), np.asarray(out_period), np.asarray(out_r)
+
+
 def _atomic_grid_candidates(times: np.ndarray, weights: np.ndarray,
                             period_range: tuple[float, float] = (0.055, 1.35),
                             keep: int = 10) -> list[tuple[float, float, float]]:

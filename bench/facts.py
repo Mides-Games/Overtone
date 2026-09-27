@@ -127,6 +127,18 @@ def main() -> int:
           f"{len(fx.committed())} in {fx.MANIFEST.name}")
     problems += [f"{fx.MANIFEST.name}: {line}" for line in drifted]
 
+    # Where each v3 engine guarantee lives: the claim the roadmap's P0 row
+    # makes is this manifest, so state its count with the others and fail on a
+    # stage nobody has placed rather than on a sentence going quietly stale.
+    import parity
+    manifest, touched = parity.committed(), parity.tests()
+    said = parity.verdict(manifest, touched)
+    total = sum(len(per) for per in touched.values())
+    print(f"rust parity: {len(said['held'])} of {total} v3 engine tests held in Rust, "
+          f"{len(manifest.get('symbols', {}))} stages placed")
+    problems += [f"{parity.MANIFEST.name}: {line}"
+                 for line in parity.problems(manifest, touched, parity.rust_tests())]
+
     for problem in problems:
         print("MISMATCH", problem)
     print("facts: ok" if not problems else f"facts: {len(problems)} mismatch(es)")

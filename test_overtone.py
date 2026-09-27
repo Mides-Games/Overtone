@@ -8645,5 +8645,85 @@ class CorpusBScoringTests(unittest.TestCase):
                 self.assertTrue(track["why"])
 
 
+class ParityGateTests(unittest.TestCase):
+    """Phase 23: bench/parity.py says which v3 guarantees the Rust engine holds.
+
+    The manifest is the claim; these hold it to the code, and hold the gate to
+    catching the three ways it can go stale."""
+
+    @staticmethod
+    def _parity():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "parity", Path(__file__).resolve().parent / "bench" / "parity.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_the_manifest_matches_the_engine_and_the_crates(self) -> None:
+        # The gate bench/parity.py runs, here too: a stage added with no line
+        # in the manifest, or a Rust test renamed out from under one, fails the
+        # suite and not only the gate.
+        parity = self._parity()
+        self.assertEqual(
+            parity.problems(parity.committed(), parity.tests(), parity.rust_tests()), [])
+
+    def test_every_v3_test_is_placed_somewhere(self) -> None:
+        parity = self._parity()
+        touched = parity.tests()
+        said = parity.verdict(parity.committed(), touched)
+        total = sum(len(per) for per in touched.values())
+        placed = len(said["held"]) + sum(len(v) for v in said["outside"].values())
+        self.assertEqual(placed, total)
+        # Held is the headline, so it must not be able to read high by accident:
+        # a test counts as held only through a symbol the manifest calls rust.
+        symbols = parity.committed()["symbols"]
+        for name in said["held"]:
+            cls, test = name.split(".")
+            self.assertTrue(any(symbols[s]["where"] == "rust" for s in touched[cls][test]), name)
+
+    def test_a_renamed_rust_test_is_caught(self) -> None:
+        parity = self._parity()
+        manifest = {"format": 1, "classes": {},
+                    "symbols": {"snap_timing_points": {
+                        "where": "rust", "rust": ["overtone-tempo/src/points.rs::gone"]}}}
+        touched = {"T": {"test_a": {"snap_timing_points"}}}
+        found = parity.problems(manifest, touched, {"overtone-tempo/src/points.rs::here"})
+        self.assertTrue(any("no crate holds" in line for line in found), found)
+
+    def test_an_untriaged_stage_and_a_stale_line_are_both_caught(self) -> None:
+        parity = self._parity()
+        manifest = {"format": 1, "classes": {},
+                    "symbols": {"gone_from_the_tests": {"where": "shell", "why": "why"}}}
+        touched = {"T": {"test_a": {"brand_new_stage"}}}
+        found = parity.problems(manifest, touched, set())
+        self.assertTrue(any("brand_new_stage" in line and "does not say where" in line
+                            for line in found), found)
+        self.assertTrue(any("gone_from_the_tests" in line and "no test touches it" in line
+                            for line in found), found)
+
+    def test_a_reason_is_required_and_the_vocabulary_is_closed(self) -> None:
+        parity = self._parity()
+        manifest = {"format": 1, "classes": {"Blind": {"where": "nowhere", "why": ""}},
+                    "symbols": {"a": {"where": "shell"}, "b": {"where": "invented", "why": "x"},
+                                "c": {"where": "rust", "rust": []}}}
+        touched = {"T": {"test_a": {"a", "b", "c"}}, "Blind": {"test_b": set()}}
+        found = "\n".join(parity.problems(manifest, touched, set()))
+        self.assertIn("no reason given", found)
+        self.assertIn("unknown 'where'", found)
+        self.assertIn("no test named", found)
+
+    def test_a_fixture_driven_test_is_placed_with_its_class(self) -> None:
+        # SoundEventTests reaches the engine only through its own _events
+        # helper; counting it as reaching nothing would have left 119 tests
+        # unaccounted for, which is how this was found.
+        parity = self._parity()
+        touched = parity.tests()
+        self.assertIn("sound_events", touched["SoundEventTests"]
+                      ["test_circles_inherit_from_the_timing_point_then_the_map"])
+        blind = {cls for cls, per in touched.items() if not any(per.values())}
+        self.assertEqual(blind, set(parity.committed()["classes"]))
+
+
 if __name__ == "__main__":
     unittest.main()

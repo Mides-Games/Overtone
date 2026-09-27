@@ -1,0 +1,776 @@
+{
+ "classes": {
+  "CorpusBScoringTests": {
+   "where": "bench",
+   "why": "bench/corpus_b.py scoring a map against its own red lines"
+  },
+  "FixtureManifestTests": {
+   "where": "bench",
+   "why": "bench/fixtures.py, the one list of bench fixtures"
+  },
+  "HitsoundEvalTests": {
+   "where": "bench",
+   "why": "the hitsound eval harness, scored against baselines, not a stage"
+  },
+  "LoadErrorMessageTests": {
+   "where": "shell",
+   "why": "the app own wording for a file it cannot read; the sidecar says its own in cli.rs::a_missing_file_and_a_bad_command_line_say_so"
+  },
+  "LogoIconTests": {
+   "where": "shell",
+   "why": "the committed window icon, at every size Windows asks for"
+  },
+  "ParityGateTests": {
+   "where": "bench",
+   "why": "bench/parity.py itself, which reads this file"
+  },
+  "PerfGateTests": {
+   "where": "bench",
+   "why": "bench/gates.py perf, which times the stages it is given"
+  },
+  "TaskbarIdentityTests": {
+   "where": "shell",
+   "why": "the Windows app identity the taskbar groups by"
+  }
+ },
+ "format": 1,
+ "symbols": {
+  "Analysis": {
+   "rust": [
+    "overtone-cli/tests/cli.rs::full_carries_the_evidence_an_analysis_object_needs"
+   ],
+   "where": "rust"
+  },
+  "BAND_COUNT": {
+   "rust": [
+    "overtone-dsp/src/multiband.rs::band_edges_cover_the_mel_range"
+   ],
+   "where": "rust"
+  },
+  "CONFIG_PATH": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "DEFAULT_LANGUAGE": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "DEFAULT_SAMPLE_DIR": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "FIT_HOP": {
+   "rust": [
+    "overtone-dsp/src/lib.rs::attacks_land_on_the_clicks"
+   ],
+   "where": "rust"
+  },
+  "GridSection": {
+   "rust": [
+    "overtone-tempo/src/sections.rs::a_constant_track_grows_one_section"
+   ],
+   "where": "rust"
+  },
+  "HOP": {
+   "rust": [
+    "overtone-dsp/src/envelope.rs::front_pad_is_nine_frames_at_hop_128"
+   ],
+   "where": "rust"
+  },
+  "LEGACY_CONFIG_PATH": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "LOUDNESS_SILENT_DB": {
+   "where": "python-only",
+   "why": "the Audio view RMS curve; the nearest Rust has is structure::energy_map"
+  },
+  "MAP_MIN_ATTACKS": {
+   "rust": [
+    "overtone-tempo/src/map.rs::empty_input_maps_to_nothing"
+   ],
+   "where": "rust"
+  },
+  "MAP_PERIOD_RANGE": {
+   "rust": [
+    "overtone-tempo/src/map.rs::a_ramp_slopes_without_jumps"
+   ],
+   "where": "rust"
+  },
+  "MEL_BANDS": {
+   "rust": [
+    "overtone-dsp/src/mel.rs::filterbank_is_slaney_normalised"
+   ],
+   "where": "rust"
+  },
+  "MEL_FMAX_HZ": {
+   "rust": [
+    "overtone-dsp/src/mel.rs::mel_round_trips"
+   ],
+   "where": "rust"
+  },
+  "MEL_TOP_DB": {
+   "rust": [
+    "overtone-dsp/src/envelope.rs::top_db_floor_is_global_not_per_frame"
+   ],
+   "where": "rust"
+  },
+  "MIN_PULSE_GAP": {
+   "rust": [
+    "overtone-tempo/src/pulse.rs::envelope_gap_matches_v3"
+   ],
+   "where": "rust"
+  },
+  "MIN_SAMPLE_VOLUME": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "STRUCTURE_LANE_POINTS": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "STRUCTURE_PHRASE_MARGIN_DB": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "ScrollMovesSliders": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "TimingAnalyzerApp": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "TimingPoint": {
+   "rust": [
+    "overtone-core/src/lib.rs::units_round_trip",
+    "overtone-tempo/src/points.rs::osu_text_writes_whole_ms_and_the_proved_meter"
+   ],
+   "where": "rust"
+  },
+  "_TimingCursor": {
+   "rust": [
+    "overtone-hitsound/src/map.rs::missing_sections_fall_back_to_defaults",
+    "overtone-hitsound/src/map.rs::slider_span_follows_beat_and_green_velocity"
+   ],
+   "where": "rust"
+  },
+  "_atomic_grid_candidates": {
+   "rust": [
+    "overtone-tempo/src/lib.rs::seeding_finds_the_atom_on_a_clean_grid"
+   ],
+   "where": "rust"
+  },
+  "_choose_subdivision": {
+   "where": "legacy",
+   "why": "the v2 fallback tracker, which the Rust engine does not implement"
+  },
+  "_expand_fit": {
+   "rust": [
+    "overtone-tempo/src/fit.rs::expand_absorbs_a_one_percent_seed_error"
+   ],
+   "where": "rust"
+  },
+  "_fill_missed_beats": {
+   "where": "legacy",
+   "why": "the v2 fallback tracker, which the Rust engine does not implement"
+  },
+  "_global_tempo_guides": {
+   "where": "legacy",
+   "why": "the v2 fallback tracker, which the Rust engine does not implement"
+  },
+  "_grow_sections": {
+   "rust": [
+    "overtone-tempo/src/sections.rs::growth_covers_a_fifteen_minute_mix"
+   ],
+   "where": "rust"
+  },
+  "_is_red_line": {
+   "rust": [
+    "overtone-hitsound/src/map.rs::red_green_and_legacy_timing_lines_parse_and_junk_skips"
+   ],
+   "where": "rust"
+  },
+  "_load_audio": {
+   "rust": [
+    "overtone-audio/src/lib.rs::the_load_contract_holds",
+    "overtone-audio/src/lib.rs::missing_file_is_an_io_error_not_a_panic"
+   ],
+   "where": "rust"
+  },
+  "_meter_from_grid": {
+   "rust": [
+    "overtone-tempo/src/octave.rs::meter_finds_four_four_when_the_downbeat_is_accented",
+    "overtone-tempo/src/octave.rs::meter_refuses_to_guess_without_accents"
+   ],
+   "where": "rust"
+  },
+  "_onset_envelope": {
+   "rust": [
+    "overtone-dsp/src/envelope.rs::envelope_length_matches_frame_count",
+    "overtone-dsp/src/envelope.rs::top_db_floor_is_global_not_per_frame"
+   ],
+   "where": "rust"
+  },
+  "_parse_red_line": {
+   "rust": [
+    "overtone-hitsound/src/map.rs::red_green_and_legacy_timing_lines_parse_and_junk_skips"
+   ],
+   "where": "rust"
+  },
+  "_points_from_sections": {
+   "rust": [
+    "overtone-tempo/src/points.rs::a_single_exact_section_gives_one_downbeat_point"
+   ],
+   "where": "rust"
+  },
+  "_pulse_gap": {
+   "rust": [
+    "overtone-tempo/src/pulse.rs::envelope_gap_matches_v3"
+   ],
+   "where": "rust"
+  },
+  "_pulse_log10p": {
+   "rust": [
+    "overtone-tempo/src/pulse.rs::chance_matches_v3_and_tells_a_grid_from_scattered_times"
+   ],
+   "where": "rust"
+  },
+  "_recentre_phase": {
+   "rust": [
+    "overtone-tempo/src/fit.rs::recentre_picks_the_dense_cluster_not_the_mean"
+   ],
+   "where": "rust"
+  },
+  "_retime_onsets": {
+   "rust": [
+    "overtone-dsp/src/retime.rs::retiming_removes_detector_latency"
+   ],
+   "where": "rust"
+  },
+  "_robust_local_bpms": {
+   "where": "legacy",
+   "why": "the v2 fallback tracker, which the Rust engine does not implement"
+  },
+  "_sample_empty": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "_segment_tempi": {
+   "where": "legacy",
+   "why": "the v2 fallback tracker, which the Rust engine does not implement"
+  },
+  "_tracker_lag": {
+   "where": "legacy",
+   "why": "the v2 fallback tracker, which the Rust engine does not implement"
+  },
+  "_tune_boundary": {
+   "rust": [
+    "overtone-tempo/src/sections.rs::tune_boundary_finds_the_grid_crossing"
+   ],
+   "where": "rust"
+  },
+  "_write_synced": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "add_red_line": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "add_timing_point": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "alignment_report": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "analysis_evidence": {
+   "rust": [
+    "overtone-cli/tests/cli.rs::full_carries_the_evidence_an_analysis_object_needs",
+    "overtone-tempo/src/octave.rs::hint_score_takes_the_best_hint"
+   ],
+   "where": "rust"
+  },
+  "analysis_report": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "analysis_summary": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "analyze_audio": {
+   "rust": [
+    "overtone-cli/tests/cli.rs::a_click_track_reads_its_tempo",
+    "overtone-cli/tests/cli.rs::white_noise_is_refused_with_its_reason"
+   ],
+   "where": "rust"
+  },
+  "analyze_batch": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "apply_assisted_grid": {
+   "where": "python-only",
+   "why": "two marked downbeats seeding the grid: Python only"
+  },
+  "apply_audio_swap": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "apply_proposals": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "assisted_grid": {
+   "where": "python-only",
+   "why": "two marked downbeats seeding the grid: Python only"
+  },
+  "attack_object_context": {
+   "rust": [
+    "overtone-hitsound/src/map.rs::bar_slots_read_sixteenths_against_the_red_lines",
+    "overtone-hitsound/src/role.rs::analyze_marks_backbeats_and_ghosts"
+   ],
+   "where": "rust"
+  },
+  "audio_file_report": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "band_edges": {
+   "rust": [
+    "overtone-dsp/src/multiband.rs::band_edges_cover_the_mel_range"
+   ],
+   "where": "rust"
+  },
+  "band_flux": {
+   "rust": [
+    "overtone-dsp/src/multiband.rs::band_peaks_align_with_the_burst"
+   ],
+   "where": "rust"
+  },
+  "beatmap_text": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "click_schedule": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "coherence_map": {
+   "rust": [
+    "overtone-tempo/src/map.rs::a_constant_grid_reads_flat_and_confident"
+   ],
+   "where": "rust"
+  },
+  "compare_map_timing": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "copy_hitsounds": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "delete_timing_point": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "density_hints": {
+   "rust": [
+    "overtone-tempo/src/density.rs::a_halftime_tail_is_found_where_it_starts"
+   ],
+   "where": "rust"
+  },
+  "density_report": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "density_window": {
+   "rust": [
+    "overtone-tempo/src/density.rs::scores_compare_as_the_prototype_rounds_them"
+   ],
+   "where": "rust"
+  },
+  "detect_bar": {
+   "rust": [
+    "overtone-tempo/src/points.rs::detect_bar_finds_four_and_refuses_uniform"
+   ],
+   "where": "rust"
+  },
+  "diff_reds": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "downbeat_times": {
+   "rust": [
+    "overtone-tempo/src/points.rs::a_proven_bar_anchors_the_red_line_to_a_downbeat"
+   ],
+   "where": "rust"
+  },
+  "edit_changes": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "export_click_track": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "export_csv": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "export_osz": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "find_same_audio_maps": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "grade_reference_timing": {
+   "where": "python-only",
+   "why": "reference grading of a map own red lines: Python only"
+  },
+  "hitsound_consistency": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "hitsound_difficulty": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "hitsound_playback": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "hitsound_report": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "hitsound_silence_check": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "inject_diff": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "inject_mapset": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "inject_osu_timing_points": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "load_config": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "log_write": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "loudness_curve": {
+   "where": "python-only",
+   "why": "the Audio view RMS curve; the nearest Rust has is structure::energy_map"
+  },
+  "main": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "map_frequencies": {
+   "rust": [
+    "overtone-tempo/src/map.rs::empty_input_maps_to_nothing"
+   ],
+   "where": "rust"
+  },
+  "map_ridge": {
+   "rust": [
+    "overtone-tempo/src/map.rs::a_step_shows_exactly_one_change",
+    "overtone-tempo/src/map.rs::an_exact_halving_is_not_a_ridge_change"
+   ],
+   "where": "rust"
+  },
+  "mapset_report": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "match_sound_events": {
+   "rust": [
+    "overtone-hitsound/src/emission.rs::match_attack_takes_the_nearest_inside_tolerance"
+   ],
+   "where": "rust"
+  },
+  "mel_frequencies": {
+   "rust": [
+    "overtone-dsp/src/mel.rs::mel_scale_is_slaney_not_htk"
+   ],
+   "where": "rust"
+  },
+  "mel_image": {
+   "rust": [
+    "overtone-dsp/src/mel.rs::filterbank_has_the_shape_librosa_has"
+   ],
+   "where": "rust"
+  },
+  "merge_sections": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "meter_segments": {
+   "rust": [
+    "overtone-tempo/src/points.rs::meter_regions_split_a_constant_bar_with_two_signatures"
+   ],
+   "where": "rust"
+  },
+  "mod_editor_link": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "mod_report": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "mod_timestamp": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "mp3_gapless_info": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "nudge_timing_point": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "osu_beatmap_text": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "osu_timing_text": {
+   "rust": [
+    "overtone-tempo/src/points.rs::osu_text_writes_whole_ms_and_the_proved_meter",
+    "overtone-tempo/src/points.rs::osu_text_rounds_and_falls_back_as_v3_does"
+   ],
+   "where": "rust"
+  },
+  "percussive_balance": {
+   "rust": [
+    "overtone-dsp/src/hpss.rs::an_isolated_hit_reads_as_percussive",
+    "overtone-dsp/src/hpss.rs::a_few_frames_separate_exactly_as_the_whole_track_does"
+   ],
+   "where": "rust"
+  },
+  "percussive_wav": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "points_from_meter": {
+   "rust": [
+    "overtone-tempo/src/points.rs::per_section_meter_comes_from_each_section"
+   ],
+   "where": "rust"
+  },
+  "preview_audio_swap": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "proposal_changes": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "quaver_timing_text": {
+   "where": "python-only",
+   "why": "another game timing, written: Python only"
+  },
+  "read_history": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "read_osu_beatmap": {
+   "rust": [
+    "overtone-hitsound/src/map.rs::every_object_kind_parses_with_its_sound",
+    "overtone-hitsound/src/map.rs::red_green_and_legacy_timing_lines_parse_and_junk_skips"
+   ],
+   "where": "rust"
+  },
+  "read_osu_red_lines": {
+   "rust": [
+    "overtone-hitsound/src/map.rs::red_green_and_legacy_timing_lines_parse_and_junk_skips"
+   ],
+   "where": "rust"
+  },
+  "read_timing_file": {
+   "where": "python-only",
+   "why": "another game timing, read back: Python only"
+  },
+  "rebuild_with_subdivision": {
+   "rust": [
+    "overtone-tempo/src/points.rs::subdivision_doubling_is_exact_and_keeps_the_offset"
+   ],
+   "where": "rust"
+  },
+  "reference_points": {
+   "where": "python-only",
+   "why": "reference grading of a map own red lines: Python only"
+  },
+  "rescale_section": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "resnap_objects": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "restore_write": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "same_audio": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "sample_bank": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "save_config": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "scan_beatmap_folder": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "scroll_profile": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "section_measures": {
+   "rust": [
+    "overtone-tempo/src/points.rs::per_section_meter_comes_from_each_section"
+   ],
+   "where": "rust"
+  },
+  "set_beatmap_reds": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "set_chorus_kiai": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "set_constant_scroll": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "set_editor_bookmarks": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "set_map_breaks": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "set_meter": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "set_object_hitsounds": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "set_section_volumes": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "shift_osu_text": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "shift_samples": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "snap_audit": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "snap_divisors": {
+   "where": "python-only",
+   "why": "the per-section snap audit reads a map, which the Rust engine never does"
+  },
+  "snap_timing_points": {
+   "rust": [
+    "overtone-tempo/src/points.rs::snapping_only_nudges_onto_the_previous_grid"
+   ],
+   "where": "rust"
+  },
+  "sound_events": {
+   "rust": [
+    "overtone-hitsound/src/map.rs::every_object_kind_parses_with_its_sound",
+    "overtone-hitsound/src/emission.rs::hit_sound_bits_decode_in_whistle_finish_clap_order"
+   ],
+   "where": "rust"
+  },
+  "split_section": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "stepmania_timing_text": {
+   "where": "python-only",
+   "why": "another game timing, written: Python only"
+  },
+  "structure_view": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "suggest_breaks": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "suggest_missing_lines": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "suggest_preview_time": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "suggest_section_pulse": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "swing_lane": {
+   "where": "python-only",
+   "why": "where the off-beat eighth falls: a v4 Python stage, with no Rust module"
+  },
+  "update_timing_point": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "validate_timing_points": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "verify_export": {
+   "where": "python-only",
+   "why": "reads an exported timing text back: Python only"
+  },
+  "write_hitsound_difficulty": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "write_object_hitsounds": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "write_osu_beatmap": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  }
+ }
+}

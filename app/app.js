@@ -595,6 +595,10 @@ const I18N = {
     nav_audio: "Audio",
     nav_report: "Report",
     audio_sub: "What started, not just that something did: the onset flux split into seven bands, from the kick's 40 Hz up to 11 kHz. A kick moves the bottom lane, a hat the top, a broadband click all seven. Read only.",
+    tmap_title: "Where the pulse is",
+    tmap_note: "How well the hits agree on every rate from {lo} to {hi} BPM, over {n} windows of 12 s. Bright means that rate explains them. The red line is what the timing actually reports; the bright band can sit an octave above it, because a rate that explains the hits explains twice it too.",
+    tmap_reading: "Sweeping every pulse rate…",
+    tmap_none: "Too few attacks to sweep: a window needs eight.",
     eng_title: "Loudness and sections",
     eng_note: "Peak {peak} dB RMS, and {floor} dB under it at the foot. The {n} sections behind it are the ones the Structure view found.",
     eng_note_bare: "Peak {peak} dB RMS, and {floor} dB under it at the foot. No sections behind it: those come from the Rust engine, which is not built here.",
@@ -1251,6 +1255,10 @@ const I18N = {
     nav_audio: "Audio",
     nav_report: "Reporte",
     audio_sub: "Qué empezó, no solo que algo empezó: el flujo de onsets partido en siete bandas, desde los 40 Hz del kick hasta 11 kHz. Un kick mueve el carril de abajo, un hat el de arriba, un clic de banda ancha los siete. Solo lectura.",
+    tmap_title: "Dónde está el pulso",
+    tmap_note: "Qué tan de acuerdo están los golpes con cada ritmo de {lo} a {hi} BPM, sobre {n} ventanas de 12 s. Brillante significa que ese ritmo los explica. La línea roja es lo que el timing reporta de verdad; la banda brillante puede quedar una octava por encima, porque un ritmo que explica los golpes también explica su doble.",
+    tmap_reading: "Barriendo cada ritmo de pulso…",
+    tmap_none: "Muy pocos ataques para barrer: una ventana necesita ocho.",
     eng_title: "Volumen y secciones",
     eng_note: "Pico {peak} dB RMS, y {floor} dB por debajo en el suelo. Las {n} secciones de atrás son las que encontró la vista Estructura.",
     eng_note_bare: "Pico {peak} dB RMS, y {floor} dB por debajo en el suelo. Sin secciones detrás: vienen del motor Rust, que acá no está compilado.",
@@ -2920,9 +2928,116 @@ const SPEC = { data: null, image: null, for: "", loading: false };
 // in turn: both at once and the second is refused while the first holds it.
 async function audioLoad() {
   await specLoad();
+  await tmapLoad();
   await engLoad();
   await balLoad();
   await bandsLoad();
+}
+
+// ------------------------------------------------------------------ tempo map
+// R(t, f) as a surface: how well the attacks agree on every pulse rate, all
+// through the song. Bright where a rate explains the hits. The rows are even
+// in log2 period, so an octave is the same height anywhere on it.
+const TMAP = { data: null, image: null, for: "", loading: false };
+
+async function tmapLoad() {
+  if (!api() || !S.result) return;
+  if (TMAP.for === S.result.path || TMAP.loading) { drawTmap(); return; }
+  TMAP.loading = true;
+  $("tmapNote").textContent = t("tmap_reading");
+  try {
+    const reply = await api().tempo_map();
+    if (!reply.ok) {
+      $("tmapNote").textContent = reply.key === "busy" ? t("audio_busy") : "";
+      if (reply.key !== "busy") editFailure(reply);
+      return;
+    }
+    TMAP.data = reply;
+    TMAP.image = reply.columns ? tmapPaint(reply) : null;
+    TMAP.for = S.result.path;
+  } finally {
+    TMAP.loading = false;
+  }
+  drawTmap();
+}
+
+function tmapPaint(data) {
+  const bytes = atob(data.cells);
+  const off = document.createElement("canvas");
+  off.width = data.columns; off.height = data.rows;
+  const ctx = off.getContext("2d");
+  const image = ctx.createImageData(data.columns, data.rows);
+  const low = rgbOf(C.plot), high = rgbOf(C.tempo);
+  for (let row = 0; row < data.rows; row++) {
+    // row 0 is the longest period: slow at the foot, fast at the top
+    const y = data.rows - 1 - row;
+    for (let col = 0; col < data.columns; col++) {
+      const v = bytes.charCodeAt(row * data.columns + col) / 255;
+      const at = (y * data.columns + col) * 4;
+      image.data[at] = low[0] + (high[0] - low[0]) * v;
+      image.data[at + 1] = low[1] + (high[1] - low[1]) * v;
+      image.data[at + 2] = low[2] + (high[2] - low[2]) * v;
+      image.data[at + 3] = 255;
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  return off;
+}
+
+function drawTmap() {
+  const wrap = $("tmapWrap"), canvas = $("tmapCanvas"), data = TMAP.data;
+  if (!wrap || !canvas) return;
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  if (!W || !H) return;
+  const dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (!data || !TMAP.image) {
+    if (data) $("tmapNote").textContent = t("tmap_none");
+    return;
+  }
+  $("tmapNote").textContent = t("tmap_note", {
+    lo: Math.round(data.bpm_lo), hi: Math.round(data.bpm_hi), n: data.columns,
+  });
+  const padL = 74, padR = 14, padT = 8, padB = 22;
+  const x0 = padL, x1 = W - padR, y0 = padT, y1 = H - padB;
+  const first = data.centres[0], last = data.centres[data.centres.length - 1];
+  const span = Math.max(last - first, 1e-6);
+  const T = (s) => x0 + ((s - first) / span) * (x1 - x0);
+  // even in log2 period, which is even in log2 BPM the other way up
+  const lo = Math.log2(data.bpm_lo), hi = Math.log2(data.bpm_hi);
+  const B = (bpm) => y1 - ((Math.log2(bpm) - lo) / Math.max(hi - lo, 1e-12)) * (y1 - y0);
+  ctx.save();
+  roundRect(ctx, x0, y0, x1 - x0, y1 - y0, 6); ctx.clip();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(TMAP.image, x0, y0, x1 - x0, y1 - y0);
+  // What the engine actually reports, over what the sweep sees. The ridge
+  // can sit an octave above it: R peaks at the pulse and at its multiples.
+  ctx.strokeStyle = C.red; ctx.lineWidth = 2; ctx.lineJoin = "round";
+  ctx.beginPath();
+  data.points.forEach(([at, bpm], i) => {
+    const y = B(Math.min(Math.max(bpm, data.bpm_lo), data.bpm_hi));
+    const next = data.points[i + 1];
+    if (i === 0) ctx.moveTo(x0, y); else ctx.lineTo(T(at), y);
+    ctx.lineTo(next ? T(next[0]) : x1, y);
+  });
+  if (data.points.length) ctx.stroke();
+  ctx.restore();
+  ctx.font = `11px ${getComputedStyle(document.body).getPropertyValue("--mono")}`;
+  ctx.fillStyle = C.gridText; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (const bpm of [60, 90, 120, 180, 240, 360, 600]) {
+    if (bpm < data.bpm_lo || bpm > data.bpm_hi) continue;
+    ctx.fillText(String(bpm), x0 - 10, B(bpm));
+  }
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  const step = niceStep(span, Math.max(4, Math.floor((x1 - x0) / 110)));
+  for (let s = Math.ceil(first / step) * step; s <= last + 1e-6; s += step) {
+    ctx.fillText(mmss(s), T(s), y1 + 5);
+  }
 }
 
 // ------------------------------------------------------------------ loudness
@@ -5842,7 +5957,8 @@ function stTheme() {
     // The spectrogram is painted once into its own bitmap, from the theme's
     // ink: that bitmap is the one thing here that does not follow a token.
     if (SPEC.data && SPEC.image) SPEC.image = specPaint(SPEC.data);
-    if (S.result) { drawTrace(); drawBands(); drawSpec(); drawBal(); drawEng(); }
+    if (TMAP.data && TMAP.image) TMAP.image = tmapPaint(TMAP.data);
+    if (S.result) { drawTrace(); drawBands(); drawSpec(); drawBal(); drawEng(); drawTmap(); }
   }
   themeButton(theme);
 }
@@ -7246,7 +7362,7 @@ function wire() {
     S.lang = b.dataset.lang; translate(); if (api()) api().set_language(S.lang);
   });
   $("themeBtn").onclick = themeToggle;
-  window.addEventListener("resize", () => { drawTrace(); drawBands(); drawSpec(); drawBal(); drawEng(); });
+  window.addEventListener("resize", () => { drawTrace(); drawBands(); drawSpec(); drawBal(); drawEng(); drawTmap(); });
   // How the focused control got focus: Tab means the user is driving the
   // keyboard, a click means the button merely kept focus afterwards.
   document.addEventListener("mousedown", () => { focusByKey = false; }, true);

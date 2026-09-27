@@ -17,6 +17,45 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · Where the pulse is, all through the song
+
+### Changed
+
+- **`coherence_map` and `map_ridge` (engine)**: `R(t, f)` over the whole track — the same
+  phase-agreement sweep the seed scan runs, walked across the song on a 12 s window every
+  2 s, on a frequency grid every column shares so columns compare. The ridge follows the
+  strongest peak with octave continuity: without it a window whose 2x harmonic momentarily
+  wins reads as a tempo doubling. A port of `crates/overtone-tempo/src/map.rs` (DSP §B.3)
+  as far as the surface and its ridge; what Rust does with it afterwards stays there.
+- **`Api.tempo_map`** sends it as a picture — one byte a cell, base64, rows even in **log2
+  period** so an octave is the same height anywhere — with the ridge and, beside it, the
+  red lines the analysis actually reports. Those are not the same thing and the card says
+  so: R peaks at the pulse **and at every multiple of it**, so a bright band an octave
+  above the reported BPM is the sweep being honest, not a disagreement.
+- **The Audio view draws it**, closing the row: spectrogram, tempo map, loudness with
+  sections, hits against notes, and the seven onset bands.
+
+### Measured
+
+```
+On change-128-142, which steps at 30 s by construction: the reported lines come back
+128 BPM at 0.4 s and 142 at 30.4 — the fixture's own truth — and the ridge reads 768 BPM
+then 852, which is 6x each. The same step, six octaves up, which is what a coherence ridge
+does and why the reported line is drawn over the surface rather than instead of it. On the
+canvas the red line sits higher in the second half (row 303 against 318), so faster reads
+higher, and 7,203 pixels of ridge are lit.
+
+The sweep is 0.04-0.05 s a song — 24 windows of a 1,047-point grid. A window with fewer
+than 8 attacks carries no peak worth tracking and is skipped; a song with too few says so
+instead of drawing noise. A fallback result keeps no attacks, so they are detected once
+per song as a reference grading does.
+
+Both pictures repaint with the theme (the heatmap's corner goes rgb(22,20,29) to
+rgb(251,250,254) on the rail's theme button). Both languages read, no console error.
+767 Python tests pass; benchmark 24/24 at the same median 0.0000 BPM and 0.16 ms, golden
+27/27 stage for stage, every other gate unchanged.
+```
+
 ## v4.0.0-dev — 2026-09-27 · Loudness, with the sections behind it
 
 ### Changed

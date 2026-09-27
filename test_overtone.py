@@ -7796,6 +7796,65 @@ class ModReportTests(unittest.TestCase):
         self.assertEqual(self._report()["counts"]["suggestion"], 0)
 
 
+class PerfGateTests(unittest.TestCase):
+    """Phase 23: bench/gates.py perf decides on two clocks and two bars each.
+    The rule is tested on numbers alone; the gate's own runs measure."""
+
+    @staticmethod
+    def _gates():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "gates", Path(__file__).resolve().parent / "bench" / "gates.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _t(cpu, wall=None):
+        return {"cpu": cpu, "wall": cpu if wall is None else wall}
+
+    def test_the_machines_own_spread_passes(self) -> None:
+        g = self._gates()
+        # 1.11x was the worst an unchanged stage measured here over four runs.
+        self.assertEqual(g._perf_slower(self._t(0.047), self._t(0.052)), [])
+        self.assertEqual(g._perf_slower(self._t(3.766), self._t(4.180)), [])
+
+    def test_one_bar_alone_never_fails_a_stage(self) -> None:
+        g = self._gates()
+        # 4x, but 0.048 s: the clock's own step, not a regression.
+        self.assertEqual(g._perf_slower(self._t(0.016), self._t(0.064)), [])
+        # +2 s, but 1.5x: a long stage growing with the corpus, not by an order.
+        self.assertEqual(g._perf_slower(self._t(4.0), self._t(6.0)), [])
+
+    def test_a_stage_that_burns_cpu_is_named_on_both_clocks(self) -> None:
+        g = self._gates()
+        reasons = g._perf_slower(self._t(0.047), self._t(2.047))
+        self.assertEqual(len(reasons), 2)
+        self.assertTrue(reasons[0].startswith("CPU 0.047 -> 2.047"))
+        self.assertTrue(reasons[1].startswith("wall"))
+
+    def test_a_stage_that_only_waits_is_caught_by_wall_alone(self) -> None:
+        g = self._gates()
+        # The case the CPU bars cannot see: a lock, a poll, a sleep.
+        reasons = g._perf_slower(self._t(0.047, 0.049), self._t(0.047, 1.546))
+        self.assertEqual(reasons, ["wall 0.049 -> 1.546 s"])
+
+    def test_every_pinned_case_names_a_fixture_and_an_engine(self) -> None:
+        g = self._gates()
+        snapshot = json.loads(
+            (Path(__file__).resolve().parent / "bench" / "perf_snapshot.json")
+            .read_text(encoding="utf-8"))
+        self.assertEqual(snapshot["format"], g.PERF_FORMAT)
+        self.assertEqual(sorted(snapshot["cases"]), sorted(g.PERF_CASES))
+        engines = {case["engine"] for case in snapshot["cases"].values()}
+        # both paths are pinned, so a stage of either can be held
+        self.assertEqual(engines, {"precision", "legacy"})
+        for name, case in snapshot["cases"].items():
+            self.assertIn("total", case["stages"], name)
+            for stage, clocks in case["stages"].items():
+                self.assertEqual(sorted(clocks), ["cpu", "wall"], f"{name}/{stage}")
+
+
 class CorpusBScoringTests(unittest.TestCase):
     """Phase 10.0: bench/corpus_b.py scores red lines against a map's, on
     made-up lines and temporary files only; the Songs folder is never read."""

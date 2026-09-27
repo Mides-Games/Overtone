@@ -17,6 +17,58 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · A budget for every stage
+
+### Changed
+
+- **`bench/gates.py perf`**: every stage the engine announces is held to the CPU and wall
+  seconds it cost when pinned in `bench/perf_snapshot.json`. Three cases, one per path the
+  engine takes: a short grid track, the six-minute one where the heavy stages actually
+  cost something, and a ramp, which no grid fits, so the fallback tracker's stages are
+  timed too. Nothing else here would notice a stage that became ten times slower — every
+  accuracy gate stays green while someone waits.
+  - **Single-threaded, in a child process of its own.** numpy's and numba's pools are
+    sized when they are imported, so the gate re-runs itself with them pinned to one
+    thread; it is still one command. It matters: with the pools free, attack detection on
+    edm-174 cost 1.72, 2.94 and 3.11 CPU seconds for identical work.
+  - **Two clocks, two bars each.** CPU says whether the engine does more work; wall says
+    whether the user waits longer, which CPU cannot see at all when a stage starts waiting
+    on a lock or a poll — and the engine now checkpoints inside its loops. A stage fails
+    past 2x **and** +0.3 s of CPU, or 3x **and** +1 s of wall; one bar alone would fail a
+    16 ms stage that landed on the other side of the clock's own step.
+  - The fastest of three runs counts, which also discards the first, where numba compiles.
+    A stage that disappears, a new one, and an engine that changed path all fail too.
+  - `--update` pins again, for a change said here; `--only` and `--runs` narrow a run.
+- CLAUDE.md, AGENTS.md and the README list it with the other gates.
+
+### Measured
+
+```
+Pinned on this machine, single-threaded, fastest of 3: edm-174 0.78 s total (attacks 0.61,
+octave 0.06, sections 0.05), long-6min 6.47 s (attacks 3.77, sections 2.06, octave 0.44),
+_ramp 3.73 s on the fallback (transients 2.42, attacks 0.63). The whole gate: 37 s.
+
+Two further runs against that baseline: every stage inside its budget, the worst unchanged
+stage reading 1.11x on CPU and 1.06x on wall — the 2x bar sits well clear of the spread.
+
+Both kinds of regression, injected into the sections stage and caught by name:
+1.5 s of waiting (CPU 0.047 -> 0.047, wall 0.049 -> 1.546) failed on wall alone, and the
+total stayed "ok" at 2.9x, which is the argument for holding each stage rather than the
+run; 2 s of arithmetic (CPU 0.047 -> 2.047) failed on both clocks.
+
+With the pools left free, the same unchanged stage measured 1.72-3.11 CPU seconds
+(CPU over wall 2.06-3.60) — a gate built on that would have failed on its second run.
+```
+
+### Rejected / tried and dropped
+
+- **CPU time alone.** It was the first design, for the reason that a busy machine steals
+  wall time from every stage at once. A deliberate `sleep(1)` inside a stage then passed
+  the gate untouched: CPU time cannot see a stage that waits, and waiting is exactly what
+  the new checkpoints could introduce. Both clocks are held, the wall one loosely.
+- **Letting the thread pools alone and widening the bars instead.** The spread reached
+  3.6x for identical work, which is wider than the regressions worth catching.
+
 ## v4.0.0-dev — 2026-09-27 · One analysis for every difficulty
 
 ### Changed

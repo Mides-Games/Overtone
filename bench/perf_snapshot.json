@@ -1,0 +1,106 @@
+{
+ "_comment": "CPU and wall seconds per stage on the machine that pinned it, single-threaded; bench/gates.py perf --update rewrites it",
+ "format": 1,
+ "runs": 3,
+ "cases": {
+  "edm-174": {
+   "engine": "precision",
+   "stages": {
+    "load": {
+     "cpu": 0.031,
+     "wall": 0.026
+    },
+    "attacks": {
+     "cpu": 0.609,
+     "wall": 0.613
+    },
+    "coherence": {
+     "cpu": 0.016,
+     "wall": 0.016
+    },
+    "octave": {
+     "cpu": 0.062,
+     "wall": 0.07
+    },
+    "sections": {
+     "cpu": 0.047,
+     "wall": 0.049
+    },
+    "total": {
+     "cpu": 0.781,
+     "wall": 0.775
+    }
+   }
+  },
+  "long-6min": {
+   "engine": "precision",
+   "stages": {
+    "load": {
+     "cpu": 0.141,
+     "wall": 0.155
+    },
+    "attacks": {
+     "cpu": 3.766,
+     "wall": 3.775
+    },
+    "coherence": {
+     "cpu": 0.016,
+     "wall": 0.016
+    },
+    "octave": {
+     "cpu": 0.438,
+     "wall": 0.431
+    },
+    "sections": {
+     "cpu": 2.062,
+     "wall": 2.065
+    },
+    "total": {
+     "cpu": 6.469,
+     "wall": 6.49
+    }
+   }
+  },
+  "_ramp": {
+   "engine": "legacy",
+   "stages": {
+    "load": {
+     "cpu": 0.031,
+     "wall": 0.025
+    },
+    "attacks": {
+     "cpu": 0.625,
+     "wall": 0.626
+    },
+    "coherence": {
+     "cpu": 0.031,
+     "wall": 0.036
+    },
+    "fallback": {
+     "cpu": 0.0,
+     "wall": 0.0
+    },
+    "transients": {
+     "cpu": 2.422,
+     "wall": 2.424
+    },
+    "tracking": {
+     "cpu": 0.078,
+     "wall": 0.075
+    },
+    "pulse": {
+     "cpu": 0.0,
+     "wall": 0.005
+    },
+    "local": {
+     "cpu": 0.016,
+     "wall": 0.017
+    },
+    "total": {
+     "cpu": 3.734,
+     "wall": 3.753
+    }
+   }
+  }
+ }
+}

@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **689** Python (465 engine + 224 web shell) · **271** Rust.
+Tests: **694** Python (470 engine + 224 web shell) · **271** Rust.
 
 ### What is pending, in order
 
@@ -141,7 +141,7 @@ broke something, which is why it is first.
 | **Octave-agreement gate** | pins absolute BPM per fixture — closes **F-07** | low | **high** | — | no | no | **P0** | **done** |
 | **Density-change gate** | measures the coverage signal — closes **F-11** | low | high | — | no | no | **P0** | **done** |
 | Pulse-hint regression test | documents the one-directional hint gap | trivial | low | — | no | no | P1 | **done** |
-| Perf gate | per-stage budget vs measured baseline | low | med | corpus | no | no | P1 | todo |
+| Perf gate | per-stage budget vs measured baseline | low | med | corpus | no | no | P1 | **done** (2026-09-27) — `bench/gates.py perf`: each announced stage held to the CPU and wall seconds pinned in `bench/perf_snapshot.json`, on three cases covering the grid engine, the long track and the fallback. Single-threaded in a child process (free pools swung the same stage 1.72-3.11 CPU s); fails past 2x and +0.3 s of CPU or 3x and +1 s of wall, so an unchanged stage's 1.11x passes while an injected 1.5 s wait and 2 s of arithmetic were both caught by name |
 | `.gitignore` scoping | stop ignoring `*.osu` repo-wide — **F-09** | trivial | low | — | no | no | P1 | **done** |
 
 **What the gates cover:**

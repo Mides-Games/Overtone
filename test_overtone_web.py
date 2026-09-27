@@ -2429,6 +2429,54 @@ class OtherGameBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().other_game_text("quaver")["key"], "first")
 
 
+class AudioSpectrogramBridgeTests(_IsolatedConfig):
+    """The Audio view's spectrogram, one byte a cell."""
+
+    def _song(self, tmp: str) -> web.Api:
+        from test_overtone import _drum_track
+        wav = Path(tmp) / "song.wav"
+        _drum_track(wav, [(0.5, 150.0)], duration=8.0)
+        api = _api_with_points()
+        api._analysis.source = str(wav)
+        return api
+
+    def test_the_grid_is_the_bands_by_the_columns_asked_for(self) -> None:
+        import base64
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            reply = api.audio_spectrogram(columns=200)
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        self.assertEqual((reply["rows"], reply["columns"]), (ta.MEL_BANDS, 200))
+        cells = base64.b64decode(reply["cells"])
+        self.assertEqual(len(cells), ta.MEL_BANDS * 200)
+        self.assertEqual(max(cells), 255)          # the song's loudest cell
+        self.assertEqual(len(reply["hz"]), ta.MEL_BANDS)
+        self.assertEqual(reply["floor_db"], -ta.MEL_TOP_DB)
+        self.assertAlmostEqual(reply["span_s"], 8.0, delta=0.2)
+        self.assertFalse(api._busy.locked())
+
+    def test_it_shares_one_decode_with_the_lanes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            with mock.patch.object(ta, "_load_audio", wraps=ta._load_audio) as load:
+                api.audio_spectrogram(columns=64)
+                api.audio_bands(columns=64)
+                api.audio_spectrogram(columns=128)
+        self.assertEqual(load.call_count, 1)
+
+    def test_what_it_refuses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            self.assertEqual(api.audio_spectrogram(columns="wide")["key"], "error")
+            api._busy.acquire()
+            try:
+                self.assertEqual(api.audio_spectrogram()["key"], "busy")
+            finally:
+                api._busy.release()
+        self.assertEqual(web.Api().audio_spectrogram()["key"], "first")
+
+
 class AudioBandsBridgeTests(_IsolatedConfig):
     """The Audio view's seven onset-flux lanes."""
 

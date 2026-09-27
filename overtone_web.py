@@ -381,9 +381,9 @@ class Api:
         #: (source, times, weights) detected for a reference grade when the
         #: engine that answered kept no attacks.
         self._ref_attacks: tuple | None = None
-        #: (source, flux, sample_rate) for the Audio view's lanes: decoding a
-        #: song to read its bands costs as much as an analysis, and the flux
-        #: does not change with the zoom, so it is read once per song.
+        #: (source, flux, sample_rate, samples) for the Audio view: decoding
+        #: a song costs what an analysis does, and neither the flux nor the
+        #: spectrogram changes with the zoom, so both are drawn from one read.
         self._bands: tuple | None = None
         #: The last assisted fit that was answered, waiting for "Add to timing".
         self._assisted: dict | None = None
@@ -2595,6 +2595,64 @@ class Api:
     #: where the hits are, and a mean would flatten every one of them.
     BAND_COLUMNS = 1600
 
+    def _read_bands(self, source: str) -> dict | None:
+        """Decode the song once for the Audio view and keep it: the waveform,
+        its rate and its band flux. Both pictures there are drawn from this,
+        and decoding costs what an analysis does. ``None`` once it is in
+        hand; a refusal to hand straight back otherwise."""
+        if not self._busy.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        try:
+            y, sr = ta._load_audio(source, lambda _message: None)
+            flux = ta.band_flux(y, sr, ta.FIT_HOP)
+        except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        finally:
+            self._busy.release()
+        self._bands = (source, flux, float(sr), y)
+        return None
+
+    #: Columns a drawn spectrogram gets. Wider than a screen on purpose, so
+    #: the picture survives a window resize without being read again.
+    SPECTROGRAM_COLUMNS = 1400
+
+    def audio_spectrogram(self, columns: int = SPECTROGRAM_COLUMNS) -> dict:
+        """The song's mel spectrogram, ready to draw.
+
+        128 rows by ``columns``, one byte a cell: 0 is the floor (80 dB under
+        the song's loudest moment) and 255 is that moment. A float per cell
+        would be 180,000 numbers of JSON for one picture, so the grid travels
+        as base64 bytes and the page paints it through an ImageData. Read
+        only, and the decode is shared with the band lanes.
+        """
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            columns = max(16, min(4000, int(columns)))
+        except (TypeError, ValueError):
+            return {"ok": False, "key": "error", "detail": "columns must be a number"}
+        source = str(self._analysis.source)
+        if self._bands is None or self._bands[0] != source:
+            loaded = self._read_bands(source)
+            if loaded is not None:
+                return loaded
+        _source, _flux, sr, y = self._bands
+        try:
+            grid = ta.mel_image(y, int(sr), columns)
+        except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        if grid.size == 0:
+            return {"ok": True, "rows": 0, "columns": 0, "cells": "",
+                    "hz": [], "span_s": 0.0, "floor_db": -ta.MEL_TOP_DB}
+        # -80..0 dB to 0..255, floor first so the darkest cell is a true zero.
+        cells = np.rint((grid + ta.MEL_TOP_DB) * (255.0 / ta.MEL_TOP_DB))
+        packed = np.clip(cells, 0, 255).astype(np.uint8)
+        return {"ok": True, "rows": int(packed.shape[0]), "columns": int(packed.shape[1]),
+                "cells": base64.b64encode(packed.tobytes()).decode("ascii"),
+                "hz": ta.mel_frequencies().round(1).tolist(),
+                "floor_db": -ta.MEL_TOP_DB,
+                "span_s": round(len(y) / float(sr), 4)}
+
     def audio_bands(self, columns: int = BAND_COLUMNS) -> dict:
         """The song's onset flux in seven bands, for the Audio view.
 
@@ -2611,17 +2669,10 @@ class Api:
             return {"ok": False, "key": "error", "detail": "columns must be a number"}
         source = str(self._analysis.source)
         if self._bands is None or self._bands[0] != source:
-            if not self._busy.acquire(blocking=False):
-                return {"ok": False, "key": "busy"}
-            try:
-                y, sr = ta._load_audio(source, lambda _message: None)
-                flux = ta.band_flux(y, sr, ta.FIT_HOP)
-            except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
-                return {"ok": False, "key": "error", "detail": str(exc)}
-            finally:
-                self._busy.release()
-            self._bands = (source, flux, float(sr))
-        _source, flux, sr = self._bands
+            loaded = self._read_bands(source)
+            if loaded is not None:
+                return loaded
+        _source, flux, sr, _y = self._bands
         if flux.size == 0:
             return {"ok": True, "lanes": [], "edges": ta.band_edges().round(1).tolist(),
                     "columns": 0, "span_s": 0.0, "peak_db": 0.0}

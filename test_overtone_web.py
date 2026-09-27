@@ -2960,6 +2960,55 @@ class LiveConfidenceTests(_IsolatedConfig):
         self.assertEqual(api._analysis.points, before)
 
 
+class SongPulseTests(_IsolatedConfig):
+    """The song keeps the octave on screen: a ×2/÷2 the mapper chose is kept
+    with its settings, and undoing it gives the song back its own pulse."""
+
+    OPTIONS = {"delta": 1.5, "persistence": 12, "confidence": 75, "pulse": "auto",
+               "prefer_map_bpm": True, "refine_beats": True}
+
+    def _analysed(self, folder: str) -> tuple[web.Api, str]:
+        wav = Path(folder) / "drums.wav"
+        _drum_track(wav, [(0.5, 128.0)], duration=16.0)
+        api = web.Api()
+        api._analysis = ta.analyze_audio(str(wav), 1.5, 12, True, 0.75)
+        return api, str(wav)
+
+    def test_a_pulse_change_is_kept_and_so_is_its_undo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api, wav = self._analysed(tmp)
+            # As a finished analysis leaves it: the options and the octave found.
+            api._launch_options = dict(self.OPTIONS)
+            api._launch_subdivision = float(api._analysis.subdivision)
+            api._remember_song_options(wav, self.OPTIONS)
+            kept = lambda: api.song_options(wav)["options"]["pulse"]
+            doubled = api.rescale(2)
+            after_x2 = kept()
+            undone = api.undo()
+            after_undo = kept()
+            redone = api.redo()
+            after_redo = kept()
+            api.undo()
+            nudged = api.edit_nudge(0, 5.0)        # a point edit leaves the pulse alone
+            after_nudge = kept()
+        self.assertEqual((doubled["pulse"], after_x2), ("x2", "x2"))
+        self.assertEqual((undone["pulse"], after_undo), ("auto", "auto"))
+        self.assertEqual((redone["pulse"], after_redo), ("x2", "x2"))
+        self.assertTrue(nudged["ok"])
+        self.assertEqual(after_nudge, "auto")
+        self.assertIsNone(api.undo()["pulse"])       # undoing the nudge swaps no analysis
+
+    def test_a_song_without_settings_of_its_own_keeps_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api, wav = self._analysed(tmp)
+            reply = api.rescale(2)
+            stored = api.song_options(wav)["options"]
+        self.assertTrue(reply["ok"])
+        self.assertIsNone(reply["pulse"])
+        self.assertIsNone(stored)
+        self.assertNotIn("song_options", api._cfg)
+
+
 class SongOptionsTests(_IsolatedConfig):
     """Per-song presets: a song remembers the detection settings its last
     finished analysis ran with, by its audio's bytes; past the limit the one

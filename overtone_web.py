@@ -344,8 +344,11 @@ class Api:
         #: path -> ((size, mtime), key): each song's key for its remembered
         #: settings, read again only when the file changes.
         self._song_keys: dict[str, tuple[tuple[int, int], str]] = {}
-        #: The page's options the running analysis was started with.
+        #: The page's options the running analysis was started with, and the
+        #: pulse that analysis found: while the one on screen stays at that
+        #: octave the song keeps its own pulse option, else the octave on screen.
         self._launch_options: dict = {}
+        self._launch_subdivision: float | None = None
         self._analysis: ta.Analysis | None = None
         self._busy = threading.Lock()
         #: Set by stop_analysis. The worker checks it at every stage the
@@ -429,17 +432,44 @@ class Api:
         # with the next reply, once the edit is in place.
         self._project_dirty = True
 
-    def _step(self, source: list, target: list) -> None:
+    def _step(self, source: list, target: list) -> str | None:
         """Put the newest snapshot of ``source`` back in place, keeping what it
-        replaces on ``target`` (with the locks when the snapshot has them)."""
+        replaces on ``target`` (with the locks when the snapshot has them).
+        Returns the pulse the song now keeps when the step changed the
+        analysis (a ×2/÷2 undone or redone), else None."""
         analysis, points, locks = source.pop()
         target.append(self._snapshot(locks is not None))
+        replaced = analysis is not self._analysis
         self._analysis = analysis
         self._analysis.points = points
         if locks is not None:
             self._locked = locks
         self._prune_locks()
         self._project_dirty = True
+        return self._keep_song_pulse() if replaced else None
+
+    def _keep_song_pulse(self) -> str | None:
+        """The song keeps the octave on screen: its analysis's own pulse
+        option while the analysis stands at the octave it found, else that
+        octave forced, so analysing it again lands where the mapper put it.
+        Returns the pulse option it now keeps, None for a song with no
+        settings of its own."""
+        if self._analysis is None:
+            return None
+        source = str(self._analysis.source)
+        remembered = self.song_options(source)["options"]
+        if remembered is None:
+            return None
+        factor = float(self._analysis.subdivision)
+        if self._launch_subdivision is not None and abs(factor - self._launch_subdivision) < 1e-9:
+            pulse = self._launch_options.get("pulse", "auto")
+        else:
+            pulse = next((key for key, value in PULSE_FACTORS.items() if value == factor), None)
+        if pulse not in PULSE_FACTORS:
+            return None
+        if remembered["pulse"] != pulse:
+            self._remember_song_options(source, {**remembered, "pulse": pulse})
+        return pulse
 
     def history_state(self) -> dict:
         return {"undo": bool(self._history), "redo": bool(self._future)}
@@ -451,8 +481,8 @@ class Api:
             return {"ok": False, "key": "first"}
         if not self._history:
             return {"ok": False, "key": "no_undo"}
-        self._step(self._history, self._future)
-        return {"ok": True, "result": self._payload(),
+        pulse = self._step(self._history, self._future)
+        return {"ok": True, "result": self._payload(), "pulse": pulse,
                 "selected": -1, "locks": self._lock_offsets(), **self.history_state()}
 
     def redo(self) -> dict:
@@ -461,8 +491,8 @@ class Api:
             return {"ok": False, "key": "first"}
         if not self._future:
             return {"ok": False, "key": "no_redo"}
-        self._step(self._future, self._history)
-        return {"ok": True, "result": self._payload(),
+        pulse = self._step(self._future, self._history)
+        return {"ok": True, "result": self._payload(), "pulse": pulse,
                 "selected": -1, "locks": self._lock_offsets(), **self.history_state()}
 
     # -- state -----------------------------------------------------------
@@ -628,7 +658,7 @@ class Api:
         self._analysis = rebuilt
         for lock in self._locked:
             lock["bpm"] *= rebuilt.subdivision / analysis.subdivision
-        return {"ok": True, "result": self._payload(),
+        return {"ok": True, "result": self._payload(), "pulse": self._keep_song_pulse(),
                 "locks": self._lock_offsets(), **self.history_state()}
 
     # -- live confidence threshold (Phase 20): the same sections, read again --
@@ -2927,6 +2957,7 @@ class Api:
             self._last_timings = self._timings(cached)
             # The song remembers the settings behind the result it is about
             # to show, before the page can ask for them.
+            self._launch_subdivision = float(result.subdivision)
             self._remember_song_options(path, self._launch_options)
             self._emit("onResult", self._payload())
         except AnalysisStopped:

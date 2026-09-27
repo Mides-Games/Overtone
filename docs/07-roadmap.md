@@ -660,7 +660,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Gate | What it catches | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Golden fails on a missing stage | a skipped stage counts as a failure, not a pass | low | high | golden | no | no | P1 | **done** |
-| Real-audio smoke set | a handful of local songs that must keep analysing, never refused | low | **high** | — | no | no | P1 | todo |
+| Real-audio smoke set | a handful of local songs that must keep analysing, never refused | low | **high** | — | no | no | P1 | **done** — `bench/gates.py real-audio`: six Corpus B tracks, one or two per engine path, pinned in `bench/real_audio_snapshot.json`; tracks not held here are skipped and named (2026-09-26) |
 | Robustness gate | the audit's probes (short audio, odd rates, junk `.osu`, read-only files) as one command | low | high | — | no | no | P1 | **done** — `gates.py robustness`; the CLI tests run the same probes on v4 |
 | One fixture manifest | Python and Rust read the same list; no Rust gate passes on missing audio | med | med | bench | no | no | P2 | todo |
 | Facts check | documented test counts and crate lists checked against the repo | low | med | — | no | no | P2 | **done** — `bench/facts.py` |

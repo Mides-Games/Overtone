@@ -327,6 +327,7 @@ instantly and exactly; the click track is the arbiter.
 .venv/Scripts/python.exe bench/gates.py robustness     # the audit's edge-case probes
 .venv/Scripts/python.exe bench/gates.py reference      # hand-timed maps graded by the attacks
 .venv/Scripts/python.exe bench/gates.py assisted       # two marked downbeats seed the grid
+.venv/Scripts/python.exe bench/gates.py real-audio     # six local songs keep analysing as pinned
 .venv/Scripts/python.exe bench/facts.py                # the numbers these docs state
 .venv/Scripts/python.exe bench/corpus_b.py             # 20 ranked maps' red lines (local osu! Songs)
 cargo test --workspace                                 # 270 tests

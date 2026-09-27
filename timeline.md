@@ -17,6 +17,32 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Real songs as a gate
+
+### Changed
+
+- **`bench/gates.py real-audio`**: six real songs of the local Songs folder must keep
+  analysing, never refused, on the same engine path and to the readings pinned in
+  `bench/real_audio_snapshot.json` (global BPM and every red line's BPM within 0.01, the
+  same count of red lines), as `bpm-snapshot` pins the synthetic corpus. The songs are
+  Corpus B tracks, named by folder, file and SHA-1 in `bench/corpus_b.json`, one or two per
+  path the engine takes on real music: a steady grid (take-you-down), an octave swap
+  (camisa-negra), a drifting live band (shinkou), a rubato intro (noble), a signature
+  change (palette) and the fallback tracker (calm-down-juliet). The audio is the user's
+  and never committed: a track this machine does not hold, or holds changed, is skipped
+  and named, and with none held nothing is checked, which the gate says. `--update`
+  pins again, for a change said in the timeline.
+- CLAUDE.md, AGENTS.md and the README list it with the other gates.
+
+### Measured
+
+```
+Pinned on this machine: 6 of 6 tracks analysed, 5 on the grid engine, 1 on the fallback
+tracker; 119 s. A second run: 6 of 6 as pinned. A reading moved by hand (palette's
+global BPM + 1): the gate fails and names it. The Songs folder moved away: both tracks
+asked for skipped and named, exit 0
+```
+
 ## v4.0.0-dev — 2026-09-26 · A .osz named after its song, not "Unknown Artist"
 
 ### Changed

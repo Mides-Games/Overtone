@@ -150,6 +150,14 @@ straight ones, and the feel also carries in the Swing card's own words, never in
 alone. Its inks are the tempo curve's, the drift lane's amber and the objects' grey, each
 already read against this panel.
 
+*Built 2026-09-27 (web shell), a whole mapset proposed at once:* "Every difficulty" beside
+Propose decides every difficulty of the song on one reading of the audio and says how many
+came back, naming any it could not read. Each difficulty then shows its own proposal the
+moment it is picked, because picking one asks for its cached units before it would ask the
+engine — the set is decided once and browsed freely (0.55-0.75 s a switch, against the
+19 s a proposal costs). Propose stays for one difficulty on its own, or with another
+profile.
+
 ### Rendering
 
 WebGL2: the waveform is one instanced quad draw over a peak texture; overlays are

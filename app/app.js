@@ -194,6 +194,11 @@ const I18N = {
     hsv_decide_title: "Propose and edit hitsounds",
     hsv_decide_sub: "The decision engine proposes every object's sound; volume and sample index are yours to set. Tick what to keep, hear it over the song, preview, then write the file or a copy. Each write is backed up, and one undo restores it.",
     hsv_propose: "Propose", hsv_proposing: "Deciding every sound…",
+    hsv_propose_all: "Every difficulty",
+    hsv_all_done: "{n} difficulties decided on one reading of the song.",
+    hsv_all_one: "1 difficulty decided.",
+    hsv_all_some: "{n} of {of} difficulties decided; {bad} could not be read.",
+    hsv_all_some_one: "{n} of {of} difficulties decided; 1 could not be read.",
     hsv_profile: "Profile", hsv_prof_balanced: "Balanced",
     hsv_prof_balanced_note: "Balanced, the default: every instrument heard can take its sound, placed by the beat.",
     hsv_prof_drum_focused: "Drum-focused",
@@ -810,6 +815,11 @@ const I18N = {
     hsv_decide_title: "Proponer y editar hitsounds",
     hsv_decide_sub: "El motor propone el sonido de cada objeto; el volumen y el índice de sample los ponés vos. Tildá lo que queda, escuchalo sobre la canción, previsualizá, y escribí el archivo o una copia. Cada escritura se respalda, y un deshacer lo restaura.",
     hsv_propose: "Proponer", hsv_proposing: "Decidiendo cada sonido…",
+    hsv_propose_all: "Todas las dificultades",
+    hsv_all_done: "{n} dificultades decididas con una sola lectura de la canción.",
+    hsv_all_one: "1 dificultad decidida.",
+    hsv_all_some: "{n} de {of} dificultades decididas; {bad} no se pudieron leer.",
+    hsv_all_some_one: "{n} de {of} dificultades decididas; 1 no se pudo leer.",
     hsv_profile: "Perfil", hsv_prof_balanced: "Equilibrado",
     hsv_prof_balanced_note: "Equilibrado, el de siempre: cada instrumento que se oye puede llevar su sonido, ubicado según el pulso.",
     hsv_prof_drum_focused: "Centrado en la batería",
@@ -2862,6 +2872,13 @@ async function hsvPick(file) {
   if (HSV.file !== file) return;
   if (!reply.ok) { editFailure(reply); return; }
   HSV.report = reply.report;
+  // A run over the whole mapset already decided this difficulty: show what it
+  // found instead of asking the sidecar for this one map again.
+  if (HSD.file !== file) {
+    const cached = await api().hitsound_decide_cached(file);
+    if (HSV.file !== file) return;
+    if (cached.ok) hsdAdopt(file, cached.units, cached.profile);
+  }
   renderHitsoundsView();
   // The same difficulty in the transport: its samples load for the ▶ buttons.
   if (HSP.file !== file) { $("pbHs").value = file; hsPick(file).then(renderHitsoundsView); }
@@ -3113,6 +3130,7 @@ function hsdRender() {
   const mine = HSD.file === HSV.file, units = mine && HSD.units.length > 0, has = hsdHas();
   $("hsvDecideCard").hidden = !HSV.report;
   $("hsvPropose").disabled = HSD.proposing || !HSV.file;
+  $("hsvProposeAll").disabled = HSD.proposing || !$("hsvMap").options.length;
   $("hsvProfile").disabled = HSD.proposing;
   $("hsvProfileNote").textContent = hsdProfileNote();
   $("hsvDecideAll").disabled = $("hsvDecideNone").disabled = !units;
@@ -3196,6 +3214,18 @@ function hsdEditClear() {
   hsdTicked();
 }
 
+// One proposal's units become the decision state: every sound ticked, no
+// runner-up chosen, no hand edit, nothing to undo.
+function hsdAdopt(file, units, profile) {
+  HSD.file = file;
+  HSD.proposedWith = profile || HSD.profile;
+  HSD.units = units;
+  HSD.byKey = new Map(units.map((u) => [hsdKey(u.object, u.part, u.edge), u]));
+  HSD.choice = new Map();
+  HSD.accepted = new Set(HSD.byKey.keys());
+  HSD.undo = false;
+}
+
 async function hsvPropose() {
   if (!api() || !HSV.file || HSD.proposing) return;
   HSD.proposing = true; hsdRender();
@@ -3207,15 +3237,42 @@ async function hsvPropose() {
       else editFailure(reply);
       return;
     }
-    HSD.file = HSV.file;
-    HSD.proposedWith = reply.profile || HSD.profile;
-    HSD.units = reply.units;
-    HSD.byKey = new Map(reply.units.map((u) => [hsdKey(u.object, u.part, u.edge), u]));
-    HSD.choice = new Map();
-    HSD.accepted = new Set(HSD.byKey.keys());
-    HSD.undo = false;
+    hsdAdopt(HSV.file, reply.units, reply.profile);
   } finally {
     HSD.proposing = false;
+  }
+  renderHitsoundsView();
+  hsdTicked();
+}
+
+// Every difficulty beside the song in one run of the sidecar: deciding is
+// mostly the song's work, and the song is the same, so a set costs about
+// what one map costs. Each map's proposal is cached, so moving between
+// difficulties afterwards asks for nothing.
+async function hsvProposeAll() {
+  if (!api() || HSD.proposing) return;
+  HSD.proposing = true; hsdRender();
+  let reply;
+  try {
+    reply = await api().hitsound_decide_propose_all(HSD.profile);
+  } finally {
+    HSD.proposing = false;
+  }
+  if (!reply.ok) {
+    if (reply.key === "no_rust") toast(t("hsv_no_rust"), true);
+    else editFailure(reply);
+    renderHitsoundsView();
+    return;
+  }
+  const bad = reply.maps.filter((m) => m.error !== undefined).length;
+  const done = reply.maps.length - bad;
+  toast(bad ? t(bad === 1 ? "hsv_all_some_one" : "hsv_all_some", { n: done, of: reply.maps.length, bad })
+    : t(done === 1 ? "hsv_all_one" : "hsv_all_done", { n: done }));
+  // the difficulty on screen shows its own share of the run
+  const mine = HSV.file && reply.maps.find((m) => m.file === HSV.file);
+  if (mine && mine.error === undefined) {
+    const cached = await api().hitsound_decide_cached(HSV.file);
+    if (cached.ok && HSV.file === cached.file) hsdAdopt(HSV.file, cached.units, cached.profile);
   }
   renderHitsoundsView();
   hsdTicked();
@@ -6351,6 +6408,7 @@ function wire() {
   });
   $("hsvMore").onclick = () => { HSV.shown += HSV_PAGE; renderHitsoundsView(); };
   $("hsvPropose").onclick = () => hsvPropose();
+  $("hsvProposeAll").onclick = () => hsvProposeAll();
   $("hsvProfile").onchange = () => { HSD.profile = $("hsvProfile").value; hsdRender(); };
   $("hsvDecideAll").onclick = () => hsdSetAll(true);
   $("hsvDecideNone").onclick = () => hsdSetAll(false);

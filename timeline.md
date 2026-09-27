@@ -34,6 +34,12 @@ later costs more than writing it down now.
   `hitsound_decide_cached` hands back a cached one without running anything, and
   `hitsound_decide_proposed` says which difficulties hold one, with its profile and how
   many sounds. One heavy job at a time, as before; nothing is written.
+- **"Every difficulty"** beside Propose in the Hitsounds view runs that one pass and says
+  how many difficulties came back, naming any the sidecar could not read. Afterwards each
+  difficulty shows its own proposal the moment it is picked: choosing one asks for its
+  cached units before it would ask the sidecar, so the whole set is decided once and
+  browsed freely. The single Propose is untouched, for a difficulty proposed again on its
+  own or with another profile.
 
 ### Measured
 
@@ -45,6 +51,12 @@ same 1,274 to 427 units map for map.
 
 675 Python tests and 271 Rust tests pass; the Rust side gained a test for a mapset whose
 second map cannot be read.
+
+Through the browser harness on that same set: "Every difficulty" took 18.9 s for the eight
+and said so, the difficulty on screen showing its 541 proposals; moving to each of the next
+four then took 0.55-0.75 s, each with its own cached sounds (520, 544, 447, 618) — the same
+counts the CLI gives map by map. Both languages read; the Spanish count of unreadable maps
+needed a singular of its own.
 ```
 
 ## v4.0.0-dev — 2026-09-27 · Where the music swings

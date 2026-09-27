@@ -2597,10 +2597,25 @@ class LockTests(_IsolatedConfig):
             # A global pulse change carries the locks with their sections.
             first_bpm = api._analysis.points[0].bpm
             api.set_locked(0, True)
+            before = web.analysis_payload(api._analysis)
             self.assertTrue(api.rescale(2)["ok"])
             by_offset = {lock["offset_ms"]: lock["bpm"] for lock in api._locked}
             self.assertAlmostEqual(by_offset[api._analysis.points[0].offset_ms],
                                    2 * first_bpm, places=6)
+            doubled = web.analysis_payload(api._analysis)
+            # Undo puts the whole pulse back, not only the point list: the grid,
+            # the global tempo and the locks. It used to leave the doubled grid
+            # under the old points, and the next x2 went to x4.
+            undone = api.undo()["result"]
+            for key in ("subdivision", "global_bpm", "beat_count", "points"):
+                self.assertEqual(undone[key], before[key], key)
+            by_offset = {lock["offset_ms"]: lock["bpm"] for lock in api._locked}
+            self.assertAlmostEqual(by_offset[api._analysis.points[0].offset_ms], first_bpm, places=6)
+            redone = api.redo()["result"]
+            for key in ("subdivision", "global_bpm", "beat_count", "points"):
+                self.assertEqual(redone[key], doubled[key], key)
+            api.undo()
+            self.assertEqual(api.rescale(2)["result"]["subdivision"], 2.0)
 
 
 class CacheTests(_IsolatedConfig):
@@ -3273,6 +3288,9 @@ class ProjectTests(_IsolatedConfig):
         self.assertFalse(later.project_state()["differs"])
         undone = later.undo()
         self.assertEqual([p["offset_ms"] for p in undone["result"]["points"]], [1000.0, 9000.0])
+        # The project's locks go back with its points: the fresh analysis had none.
+        self.assertEqual(undone["locks"], [])
+        self.assertEqual(later.redo()["locks"], [1000.0])
 
     def test_off_unless_asked(self) -> None:
         api = web.Api()                                  # as every test and the harness build it

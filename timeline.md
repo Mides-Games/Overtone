@@ -17,6 +17,28 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Undoing a ×2/÷2 puts the whole pulse back
+
+### Fixed
+
+- **Undo after a ×2 or ÷2 left the doubled grid under the old red lines.** The undo stack
+  kept point lists only, and a pulse change is the one edit that replaces the analysis
+  itself: its beats, pulse and global tempo, and the locks' BPMs with them. Undo put the
+  points back and left the rest, so the tempo map read 256 BPM under a 128 BPM red line,
+  the click followed the old points over the new grid, and the next ×2 went to ×4. Each
+  entry now keeps the analysis it replaced and, when the edit changed them, the locks.
+- **Undoing a restored project now drops its locks too**: restoring was the other edit that
+  replaces the locks, and undo brought back the points without them.
+
+### Measured
+
+```
+A 128 BPM drum track, x2 then undo then x2: the grid read 128 -> 256 -> 256 -> 512 BPM
+(beats 32 -> 65 -> 65 -> 131) before the fix; 128 -> 256 -> 128 -> 256 (32 -> 65 -> 32
+-> 65) after, the locks' BPM back to 128 on undo and 256 on redo
+Python unittest   630, all pass (the lock and project tests hold undo and redo now)
+```
+
 ## v4.0.0-dev — 2026-09-26 · The confidence threshold, tried live on the tempo map
 
 ### Changed

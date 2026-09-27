@@ -359,10 +359,12 @@ class Api:
         #: The timings of the analysis that produced the result on screen.
         self._last_timings: dict | None = None
         self._cfg = ta.load_config()
-        #: Undo/redo stacks: snapshots of the point list before each mutation.
-        #: A fresh analysis replaces the whole map, so it clears both.
-        self._history: list[list] = []
-        self._future: list[list] = []
+        #: Undo/redo stacks: what each mutation replaced, as (analysis, its
+        #: point list, the locks or None). The analysis is kept because a ×2/÷2
+        #: swaps in a rebuilt one, beats and all; the locks only when the
+        #: mutation changed them too. A fresh analysis clears both.
+        self._history: list[tuple] = []
+        self._future: list[tuple] = []
         #: Locked points, by value: the editor refuses them and a fresh
         #: analysis re-merges them, so a verified red line survives both.
         #: Value-based on purpose — neighbours can come and go without
@@ -411,29 +413,45 @@ class Api:
     #: Cap, so an evening of nudging cannot grow memory without bound.
     UNDO_DEPTH = 50
 
-    def _push_history(self) -> None:
+    def _snapshot(self, locks: bool) -> tuple:
+        return (self._analysis, list(self._analysis.points),
+                [dict(lock) for lock in self._locked] if locks else None)
+
+    def _push_history(self, locks: bool = False) -> None:
+        """Keep what the coming mutation replaces; ``locks`` when it changes
+        the locks too (a ×2/÷2 rescales them, a project brings its own)."""
         if self._analysis is None:
             return
-        self._history.append(list(self._analysis.points))
+        self._history.append(self._snapshot(locks))
         del self._history[:-self.UNDO_DEPTH]
         self._future.clear()
         # Every edit comes through here first: the song's project is saved
         # with the next reply, once the edit is in place.
         self._project_dirty = True
 
+    def _step(self, source: list, target: list) -> None:
+        """Put the newest snapshot of ``source`` back in place, keeping what it
+        replaces on ``target`` (with the locks when the snapshot has them)."""
+        analysis, points, locks = source.pop()
+        target.append(self._snapshot(locks is not None))
+        self._analysis = analysis
+        self._analysis.points = points
+        if locks is not None:
+            self._locked = locks
+        self._prune_locks()
+        self._project_dirty = True
+
     def history_state(self) -> dict:
         return {"undo": bool(self._history), "redo": bool(self._future)}
 
     def undo(self) -> dict:
-        """Restore the point list from before the last edit."""
+        """Put back what the last edit replaced: its point list, and after a
+        ×2/÷2 the analysis it rebuilt (beats, pulse, locks)."""
         if self._analysis is None:
             return {"ok": False, "key": "first"}
         if not self._history:
             return {"ok": False, "key": "no_undo"}
-        self._future.append(list(self._analysis.points))
-        self._analysis.points = self._history.pop()
-        self._prune_locks()
-        self._project_dirty = True
+        self._step(self._history, self._future)
         return {"ok": True, "result": self._payload(),
                 "selected": -1, "locks": self._lock_offsets(), **self.history_state()}
 
@@ -443,10 +461,7 @@ class Api:
             return {"ok": False, "key": "first"}
         if not self._future:
             return {"ok": False, "key": "no_redo"}
-        self._history.append(list(self._analysis.points))
-        self._analysis.points = self._future.pop()
-        self._prune_locks()
-        self._project_dirty = True
+        self._step(self._future, self._history)
         return {"ok": True, "result": self._payload(),
                 "selected": -1, "locks": self._lock_offsets(), **self.history_state()}
 
@@ -609,7 +624,7 @@ class Api:
                 params["min_confidence"])
         except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
             return {"ok": False, "key": "error", "detail": str(exc)}
-        self._push_history()
+        self._push_history(locks=True)
         self._analysis = rebuilt
         for lock in self._locked:
             lock["bpm"] *= rebuilt.subdivision / analysis.subdivision
@@ -2654,7 +2669,7 @@ class Api:
         points = [ta.TimingPoint(p.offset_ms, p.bpm, p.confidence,
                                  ta._nearest_beat_index(beats, p.offset_ms), p.meter,
                                  p.meter_known, manual=p.manual) for p in project["points"]]
-        self._push_history()
+        self._push_history(locks=True)
         self._analysis.points = sorted(points, key=lambda p: p.offset_ms)
         self._locked = project["locks"]
         return self._edited(0, None)

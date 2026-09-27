@@ -571,9 +571,9 @@ const I18N = {
     no_osu: "osu! did not open — is it installed? ({detail})",
     pb_play: "Play / pause (Space)", pb_from_line: "From red line", pb_seek: "Position",
     pb_click: "Click", pb_perc: "Percussion only", pb_loop: "Loop section", pb_song: "Song", pb_click_vol: "Click",
-    pb_hint: "Space plays and pauses · double-click the tempo map to play from there · the click follows your edits · ? lists every key",
+    pb_hint: "Space plays and pauses · double-click the tempo map to play from there · stopped, the seek bar and the arrow keys sound where they land · the click follows your edits · ? lists every key",
     keys_title: "Keyboard", kb_space: "Space", kb_shift: "Shift", kb_enter: "Enter",
-    key_play: "Play / pause", key_seek: "Back / forward 1 s", key_seek_fine: "Back / forward 10 ms",
+    key_play: "Play / pause", key_seek: "Back / forward 1 s (stopped: heard there)", key_seek_fine: "Back / forward 10 ms (stopped: heard there)",
     key_lines: "Previous / next red line: select it, the playhead on it",
     key_points: "Previous / next timing point (Timing)", key_loop: "Loop on / off", key_click: "Click on / off",
     key_tap: "Tap along with the click", key_views: "The menu's sections, in order",
@@ -1173,9 +1173,9 @@ const I18N = {
     no_osu: "osu! no se abrió — ¿está instalado? ({detail})",
     pb_play: "Reproducir / pausar (Espacio)", pb_from_line: "Desde la línea roja", pb_seek: "Posición",
     pb_click: "Click", pb_perc: "Solo percusión", pb_loop: "Repetir sección", pb_song: "Canción", pb_click_vol: "Click",
-    pb_hint: "Espacio reproduce y pausa · doble clic en el mapa de tempo para reproducir desde ahí · el click sigue tus ediciones · ? muestra todas las teclas",
+    pb_hint: "Espacio reproduce y pausa · doble clic en el mapa de tempo para reproducir desde ahí · en pausa, la barra y las flechas suenan donde caen · el click sigue tus ediciones · ? muestra todas las teclas",
     keys_title: "Teclado", kb_space: "Espacio", kb_shift: "Mayús", kb_enter: "Intro",
-    key_play: "Reproducir / pausar", key_seek: "Atrás / adelante 1 s", key_seek_fine: "Atrás / adelante 10 ms",
+    key_play: "Reproducir / pausar", key_seek: "Atrás / adelante 1 s (en pausa: se oye ahí)", key_seek_fine: "Atrás / adelante 10 ms (en pausa: se oye ahí)",
     key_lines: "Línea roja anterior / siguiente: la elige y pone el cabezal en ella",
     key_points: "Timing point anterior / siguiente (Timing)", key_loop: "Bucle sí / no", key_click: "Click sí / no",
     key_tap: "Marcar el pulso junto al click", key_views: "Las secciones del menú, en orden",
@@ -4747,6 +4747,7 @@ async function pbPlay(from, swap) {
   const ctx = pbContext();
   if (ctx.state === "suspended") await ctx.resume();
   pbStop();
+  try { if (SCRUB.source) SCRUB.source.stop(); } catch (err) { /* already ended */ }
   let pos = Math.min(Math.max(0, from ?? P.pos), P.buffer.duration - 0.01);
   // Any other play ends an audition; an audition plays through, never looped.
   P.swap = swap || null;
@@ -4795,9 +4796,57 @@ function pbStop() {
 
 function pbToggle() { if (P.playing) pbStop(); else pbPlay(); }
 
-function pbSeek(pos) {
+// ``scrub``: the mapper moved the position (the seek bar, the arrow keys, a
+// jump to a red line), so while the song is stopped a grain of it plays there.
+function pbSeek(pos, scrub = false) {
   if (P.playing) pbPlay(pos);
-  else { P.pos = Math.max(0, pos); pbDraw(); }
+  else {
+    P.pos = Math.max(0, pos);
+    pbDraw();
+    if (scrub) pbScrubAt(P.pos);
+  }
+}
+
+// ------------------------------------------------------------------ scrub
+// A stopped song heard where the position moves to: a short grain of it,
+// faded in and out so it does not click, one at a time (each cuts the one
+// before) and at most one per SCRUB_EVERY_MS, the newest position kept.
+const SCRUB_GRAIN_S = 0.12, SCRUB_FADE_S = 0.008, SCRUB_EVERY_MS = 45;
+const SCRUB = { last: -1e9, pending: null, timer: 0, source: null, grains: 0 };
+
+function pbScrubAt(pos) {
+  if (P.playing || !S.result || !api()) return;
+  // Not decoded yet: fetch it now, so the next move is heard.
+  if (!P.buffer || !P.bufferFor || !P.bufferFor.startsWith(S.result.path)) { pbLoad(); return; }
+  const now = performance.now(), wait = SCRUB_EVERY_MS - (now - SCRUB.last);
+  if (wait > 0) {
+    SCRUB.pending = pos;
+    if (!SCRUB.timer) {
+      SCRUB.timer = setTimeout(() => {
+        SCRUB.timer = 0;
+        const next = SCRUB.pending;
+        SCRUB.pending = null;
+        if (next !== null) pbScrubAt(next);
+      }, wait);
+    }
+    return;
+  }
+  SCRUB.last = now;
+  const ctx = P.ctx;
+  if (ctx.state === "suspended") ctx.resume();
+  try { if (SCRUB.source) SCRUB.source.stop(); } catch (err) { /* already ended */ }
+  const src = ctx.createBufferSource(), env = ctx.createGain(), t0 = ctx.currentTime + 0.005;
+  const at = Math.min(Math.max(0, pos), Math.max(0, P.buffer.duration - SCRUB_GRAIN_S));
+  src.buffer = P.buffer;
+  env.gain.setValueAtTime(0, t0);
+  env.gain.linearRampToValueAtTime(1, t0 + SCRUB_FADE_S);
+  env.gain.setValueAtTime(1, t0 + SCRUB_GRAIN_S - SCRUB_FADE_S);
+  env.gain.linearRampToValueAtTime(0, t0 + SCRUB_GRAIN_S);
+  src.connect(env);
+  env.connect(P.song);
+  src.start(t0, at, SCRUB_GRAIN_S);
+  SCRUB.source = src;
+  SCRUB.grains++;
 }
 
 function pbButtons() {
@@ -4844,6 +4893,8 @@ function pbDraw() {
 function pbReset() {
   // A new song: its buffer, position and loop are the old song's no more.
   pbStop();
+  clearTimeout(SCRUB.timer);
+  SCRUB.timer = 0; SCRUB.pending = null;
   P.buffer = null; P.bufferFor = null; P.pos = 0; P.loop = null; P.userLoop = null;
   pbLoopLabel();
   TAP.taps = [];
@@ -6140,7 +6191,7 @@ function jumpLine(dir) {
   else for (let k = lines.length - 1; k >= 0; k--) if (lines[k] < pos - 0.001) { i = k; break; }
   if (i < 0) return;
   selectPoint(i, false);
-  pbSeek(Math.max(0, lines[i]));
+  pbSeek(Math.max(0, lines[i]), true);
 }
 
 // L and C: the transport's own check boxes, so the view shows what the key did.
@@ -6362,7 +6413,7 @@ function wire() {
     const i = S.selected >= 0 ? S.selected : governing(S.result, pbPosition());
     pbPlay(S.result.points[i].offset_ms / 1000);
   };
-  $("pbSeek").addEventListener("input", () => { if (S.result) pbSeek((+$("pbSeek").value / 1000) * S.result.duration); });
+  $("pbSeek").addEventListener("input", () => { if (S.result) pbSeek((+$("pbSeek").value / 1000) * S.result.duration, true); });
   $("pbClick").addEventListener("change", pbApplyLevels);
   $("pbPerc").addEventListener("change", () => {
     P.buffer = null;
@@ -6502,7 +6553,7 @@ function wire() {
       if (S.result && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
         e.preventDefault();
         const step = (e.shiftKey ? 0.01 : 1) * (e.key === "ArrowLeft" ? -1 : 1);
-        pbSeek(Math.min(Math.max(pbPosition() + step, 0), S.result.duration));
+        pbSeek(Math.min(Math.max(pbPosition() + step, 0), S.result.duration), true);
         return;
       }
       if (S.result && (e.key === "[" || e.key === "]")) { e.preventDefault(); jumpLine(e.key === "]" ? 1 : -1); return; }

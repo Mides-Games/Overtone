@@ -17,6 +17,30 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · A stopped song heard where the position lands
+
+### Changed
+
+- **Scrubbing is heard.** With the song stopped, moving the position by hand (dragging the
+  seek bar, the arrow keys, Shift and an arrow for 10 ms steps, a jump to the previous or
+  next red line) plays a 120 ms grain of the song there, faded in and out over 8 ms so it
+  does not click, through the song's own volume (and the percussive part alone when that is
+  what plays). Each grain cuts the one before, and a drag is heard at most once per 45 ms,
+  the newest position kept, so a fast drag ends on the grain where it stops. A place found
+  by eye can be checked by ear without playing from a second before it.
+- Moves the page makes by itself (opening a section, a hitsound row) stay silent, and a
+  playing song still just jumps. The transport's hint and the keyboard sheet say so.
+
+### Measured
+
+```
+The page, through the UI harness (audio routed to a silent output, as always) on a scratch
+song: 40 seek-bar moves over 887 ms gave 15 grains, the last one at the final position
+(9.452 s); five Shift+Right presses 80 ms apart gave five grains 10 ms apart; a move while
+playing restarted the song and added no grain; every grain 120 ms long; no page errors
+Python unittest   645, all pass (the page's two languages still hold the same keys)
+```
+
 ## v4.0.0-dev — 2026-09-26 · A ×2 or ÷2 kept with the song
 
 ### Changed

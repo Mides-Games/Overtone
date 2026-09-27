@@ -290,7 +290,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Transport | play/pause/seek inside the app | med | **high** | audio | no | no | **P1** | **done** — WebAudio, Space to play/pause, position bar |
 | Live click track | click synthesised against the *current* timing points | med | **high** | transport | no | no | **P1** | **done** — ``click_schedule``, the WAV export's own; scheduled 150 ms ahead, so an edit is heard on the next beat |
 | Playhead sync | position on the timeline at 60 Hz | low | high | transport | no | no | **P1** | **done** — its own layer over the tempo map |
-| Scrub + loop | scrubbing, loop selection, loop section | med | high | transport | no | no | P1 | partial — seek bar, loop section (sample-exact, the click folded into it) and a loop drawn on the map (Shift-drag, ends on the beats; Alt anywhere); no audible scrub |
+| Scrub + loop | scrubbing, loop selection, loop section | med | high | transport | no | no | P1 | **done** — seek bar, loop section (sample-exact, the click folded into it), a loop drawn on the map (Shift-drag, ends on the beats; Alt anywhere), and the scrub heard: stopped, the seek bar, the arrow keys and the red-line jumps play a 120 ms grain where they land (2026-09-26) |
 | Play from beat / point | click a beat or red line to play from it | low | med | transport | no | no | P2 | **done** — from the selected red line, or double-click the map |
 | Grid editor | edit offset/BPM, ±1 ms nudge, ×2/÷2 | med | **high** | P1 | no | no | **P1** | **done** (web shell) |
 | Add / delete / split / merge | with recalculation | med | high | editor | no | no | **P1** | **done** (web shell) — split at the playhead on the section's beat, merge with the next; the sections involved refitted to their attacks, or kept with the reason |
@@ -482,7 +482,7 @@ presentation and I/O layers, not the engine, so they run in parallel with the re
 | Phase | Adds | Status |
 |---:|---|---|
 | 12 | Modern UI | **superseded** — the web shell (Phase 3) replaced the PySide6 plan |
-| 13 | Audio playback — transport, live click, scrubbing, MIDI tap | partial — Phase 4 transport, live click and loop; no scrub audio, no MIDI tap |
+| 13 | Audio playback — transport, live click, scrubbing, MIDI tap | partial — Phase 4 transport, live click, loop and scrub heard while stopped; no MIDI tap |
 | 14 | Project system — project file, auto-save, undo, **organised output folders**, batch | partial — undo/redo, result cache and the output folder (Phase 20), and a project file per song saved after every edit; no journal, no batch |
 | 15 | Deep osu! integration — Songs browser, lazer, editor round-trip, sample library | partial — folder import, Songs browser; no lazer |
 | 16 | Localization + accessibility | partial — English/Spanish; no screen-reader work |

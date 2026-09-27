@@ -17,6 +17,38 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · A .osz named after its song, not "Unknown Artist"
+
+### Changed
+
+- **A `.osz` takes its song's name.** From the web window it was always "Unknown Artist"
+  and the audio's file name; from the command line too, unless `--artist` and `--title`
+  said otherwise. Now a map beside the audio that plays it names it best, and its
+  [Metadata] is taken as the mapper wrote it (romanised and Unicode fields apart, and the
+  source). Without one, the audio's own tags answer (ID3, Vorbis comments, RIFF INFO,
+  through libsndfile): a tag goes to the Unicode field as written, and to the romanised
+  one only when it is plain ASCII, since romanising is a judgement Overtone does not make;
+  otherwise the romanised title stays the file name, as before. A name given on the
+  command line still wins, and names both fields.
+- **The Unicode fields are written apart**: `TitleUnicode` and `ArtistUnicode` were copies
+  of the romanised ones. A value with a line break is written on one line.
+- The window's save says what it named the song and where the name came from.
+
+### Measured
+
+```
+Every 20th folder of the local Songs folder (241), each audio file a map there plays (249:
+215 .mp3, 34 .ogg), its tags against that map's [Metadata], read only:
+  tags readable                        249
+  a title tag                          125 (of those, 105 plain ASCII)
+  an artist tag                        115
+  the tag equals the map's field       title 78 of 125, artist 85 of 115 (Unicode or
+                                       romanised, case aside)
+  read time                            median 19 ms a file, max 548 ms
+libmpg123 prints a note to stderr for some malformed ID3 frames; the tag is still read
+Python unittest   654 -> 658, all pass
+```
+
 ## v4.0.0-dev — 2026-09-26 · osu!lazer's maps, measured: read, written back and timed like stable's
 
 ### Measured

@@ -2565,6 +2565,68 @@ class OszExportTests(unittest.TestCase):
             self.assertIn(f"AudioFilename: {written['audio']}", text)
             self.assertEqual(written["points"], 2)
 
+    @staticmethod
+    def _tagged(path: Path, **tags) -> Path:
+        import soundfile as sf
+        with sf.SoundFile(str(path), "w", samplerate=44100, channels=1, format="WAV") as handle:
+            for key, value in tags.items():
+                setattr(handle, key, value)
+            handle.write(np.zeros(4410, dtype=np.float32))
+        return path
+
+    @staticmethod
+    def _osu_in(out: Path) -> tuple[str, str]:
+        import zipfile
+        with zipfile.ZipFile(out) as archive:
+            name = next(n for n in archive.namelist() if n.endswith(".osu"))
+            return name, archive.read(name).decode("utf-8")
+
+    def test_the_song_is_named_by_its_tags_unicode_kept_apart(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = self._tagged(Path(tmp) / "track01.wav", title="信仰は儚き人間の為に", artist="YUI")
+            written = export_osz(self._analysis(), Path(tmp) / "map.osz", audio)
+            name, text = self._osu_in(Path(tmp) / "map.osz")
+        self.assertEqual(written["metadata"]["from"], "tags")
+        self.assertIn("TitleUnicode:信仰は儚き人間の為に\n", text)
+        self.assertIn("Title:track01\n", text)          # no romanisation invented
+        self.assertIn("Artist:YUI\n", text)
+        self.assertIn("ArtistUnicode:YUI\n", text)
+        self.assertTrue(name.startswith("YUI - track01 (Overtone)"), name)
+
+    def test_a_map_beside_the_audio_names_it_best(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = self._tagged(Path(tmp) / "audio.wav", title="Wrong", artist="Wrong")
+            (Path(tmp) / "a.osu").write_text(
+                "osu file format v14\n\n[General]\nAudioFilename: other.mp3\n\n[Metadata]\n"
+                "Title:Not This\nArtist:Not This\n", encoding="utf-8")
+            (Path(tmp) / "b.osu").write_text(
+                "osu file format v14\n\n[General]\nAudioFilename: audio.wav\n\n[Metadata]\n"
+                "Title:Shinkou wa Hakanaki Ningen no Tame ni\nTitleUnicode:信仰は儚き人間の為に\n"
+                "Artist:KISIDA KYODAN\nArtistUnicode:岸田教団\nSource:Touhou\n", encoding="utf-8")
+            written = export_osz(self._analysis(), Path(tmp) / "map.osz", audio)
+            _name, text = self._osu_in(Path(tmp) / "map.osz")
+        self.assertEqual(written["metadata"]["from"], "map")
+        for line in ("Title:Shinkou wa Hakanaki Ningen no Tame ni", "TitleUnicode:信仰は儚き人間の為に",
+                     "Artist:KISIDA KYODAN", "ArtistUnicode:岸田教団", "Source:Touhou"):
+            self.assertIn(line + "\n", text)
+
+    def test_a_name_given_wins_and_nothing_found_falls_back(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = self._tagged(Path(tmp) / "song.wav", title="Tagged", artist="Tagger")
+            written = export_osz(self._analysis(), Path(tmp) / "a.osz", audio, {"title": "Mine"})
+            _name, text = self._osu_in(Path(tmp) / "a.osz")
+            bare = export_osz(self._analysis(), Path(tmp) / "b.osz", self._audio(Path(tmp) / "plain.wav"))
+        # The title given is both title fields; the artist still comes from the tags.
+        for line in ("Title:Mine", "TitleUnicode:Mine", "Artist:Tagger"):
+            self.assertIn(line + "\n", text)
+        self.assertEqual(written["metadata"]["from"], "tags")
+        self.assertEqual((bare["metadata"]["from"], bare["metadata"]["title"]), ("none", "plain"))
+
+    def test_a_tag_with_a_line_break_stays_one_field(self):
+        text = osu_beatmap_text(self._analysis(), "song.mp3", {"title": "Two\nLines", "artist": "A\r\nB"})
+        self.assertIn("Title:Two Lines\n", text)
+        self.assertIn("ArtistUnicode:A B\n", text)
+
     def test_the_audio_keeps_its_extension_whatever_its_name(self):
         import zipfile
         long_name = ("Some Artist Name feat. Another Artist - A Rather Long Song "

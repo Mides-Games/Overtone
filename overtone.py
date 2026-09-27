@@ -3415,6 +3415,62 @@ def _safe_component(text: str, fallback: str) -> str:
     return cleaned.strip(". ")[:80].rstrip(". ") or fallback
 
 
+def _romanised(text: str) -> bool:
+    """osu!'s romanised metadata fields take printable ASCII only."""
+    return bool(text) and all(32 <= ord(ch) < 127 for ch in text)
+
+
+def song_metadata(audio_path: str | os.PathLike[str]) -> dict:
+    """What a beatmap made for this audio should call it (Phase 21: metadata
+    from tags).
+
+    A map beside it that plays this audio knows best: its [Metadata] as the
+    mapper wrote it, romanised and Unicode fields apart, with its source.
+    Otherwise the audio's own tags (ID3, Vorbis comments, RIFF INFO, as
+    libsndfile reads them): a tag goes to the Unicode field as written, and to
+    the romanised one only when it is plain ASCII, since romanising is a
+    judgement, not a lookup. Fields found go under ``title``,
+    ``title_unicode``, ``artist``, ``artist_unicode`` and ``source``; missing
+    ones are left out, so a caller's defaults stay; ``from`` says which of
+    "map", "tags" or "none" answered. An unreadable map or tag is skipped,
+    never raised.
+    """
+    path = Path(audio_path)
+    try:
+        maps = sorted(path.parent.glob("*.osu"))
+    except OSError:
+        maps = []
+    for osu in maps:
+        try:
+            beatmap = read_osu_beatmap(osu)
+        except (OSError, ValueError):
+            continue
+        general = beatmap.get("general") or {}
+        if str(general.get("AudioFilename", "")).strip().lower() != path.name.lower():
+            continue
+        meta = beatmap.get("metadata") or {}
+        found = {"title": meta.get("Title", ""), "title_unicode": meta.get("TitleUnicode", ""),
+                 "artist": meta.get("Artist", ""), "artist_unicode": meta.get("ArtistUnicode", ""),
+                 "source": meta.get("Source", "")}
+        found = {key: " ".join(str(value).split()) for key, value in found.items()}
+        found = {key: value for key, value in found.items() if value}
+        if found.get("title") or found.get("artist"):
+            return {**found, "from": "map"}
+    try:
+        with sf.SoundFile(str(path)) as handle:
+            tags = handle.copy_metadata()
+    except (RuntimeError, OSError, ValueError, TypeError):
+        tags = {}
+    out: dict = {}
+    for key in ("title", "artist"):
+        value = " ".join(str(tags.get(key, "") or "").split())
+        if value:
+            out[f"{key}_unicode"] = value
+            if _romanised(value):
+                out[key] = value
+    return {**out, "from": "tags" if out else "none"}
+
+
 def osu_beatmap_text(analysis: "Analysis", audio_filename: str,
                      metadata: dict | None = None, decimals: int = 0) -> str:
     """A complete, openable .osu carrying this analysis and nothing else.
@@ -3435,7 +3491,12 @@ def osu_beatmap_text(analysis: "Analysis", audio_filename: str,
         "source": "",
         "tags": "",
     }
-    meta.update({k: v for k, v in (metadata or {}).items() if v is not None})
+    # One line each: a tag can hold a line break, which would end the field.
+    meta.update({k: " ".join(str(v).split()) for k, v in (metadata or {}).items()
+                 if v is not None})
+    # The Unicode fields as given, else the romanised ones, as before.
+    meta["title_unicode"] = meta.get("title_unicode") or meta["title"]
+    meta["artist_unicode"] = meta.get("artist_unicode") or meta["artist"]
 
     timing = "\n".join(
         row for row in osu_timing_text(analysis, decimals).splitlines()
@@ -3466,9 +3527,9 @@ def osu_beatmap_text(analysis: "Analysis", audio_filename: str,
         "",
         "[Metadata]",
         f"Title:{meta['title']}",
-        f"TitleUnicode:{meta['title']}",
+        f"TitleUnicode:{meta['title_unicode']}",
         f"Artist:{meta['artist']}",
-        f"ArtistUnicode:{meta['artist']}",
+        f"ArtistUnicode:{meta['artist_unicode']}",
         f"Creator:{meta['creator']}",
         f"Version:{meta['version']}",
         f"Source:{meta['source']}",
@@ -3510,7 +3571,10 @@ def export_osz(analysis: "Analysis", destination: str | os.PathLike[str],
 
     The archive is built in a temporary file and renamed into place, so an
     interrupted export cannot leave a half-written .osz that osu! will refuse
-    and the user will not think to delete.
+    and the user will not think to delete. What the caller does not name comes
+    from the song (``song_metadata``: a map beside it, else the audio's tags),
+    then from the file's name; ``metadata`` in the result says what was used
+    and where it came from.
     """
     import zipfile
 
@@ -3525,6 +3589,20 @@ def export_osz(analysis: "Analysis", destination: str | os.PathLike[str],
     # Drop keys the caller passed as None -- a CLI flag that was not given
     # arrives as None, and keeping it would shadow the default with "None".
     meta = {k: v for k, v in (metadata or {}).items() if v is not None}
+    given = bool(meta.get("title") or meta.get("artist"))
+    found = song_metadata(source)
+    taken = []
+    for field in ("title", "artist"):
+        # A name the caller gave is both fields' unless it gave the Unicode one too.
+        if field not in meta:
+            for key in (field, f"{field}_unicode"):
+                if key in found and key not in meta:
+                    meta[key] = found[key]
+                    taken.append(key)
+    if "source" in found and "source" not in meta:
+        meta["source"] = found["source"]
+        taken.append("source")
+    origin = found["from"] if taken else "given" if given else "none"
     meta.setdefault("title", source.stem)
     artist = _safe_component(meta.get("artist", "Unknown Artist"), "Unknown Artist")
     title = _safe_component(meta.get("title", "Untitled"), "Untitled")
@@ -3555,7 +3633,12 @@ def export_osz(analysis: "Analysis", destination: str | os.PathLike[str],
         raise
     return {"osu": osu_name, "audio": audio_name,
             "points": len(snap_timing_points(list(analysis.points))),
-            "bytes": target.stat().st_size}
+            "bytes": target.stat().st_size,
+            "metadata": {"title": meta["title"], "artist": meta.get("artist", "Unknown Artist"),
+                         "title_unicode": meta.get("title_unicode") or meta["title"],
+                         "artist_unicode": (meta.get("artist_unicode")
+                                            or meta.get("artist", "Unknown Artist")),
+                         "from": origin}}
 
 
 # ---------------------------------------------------------------------------

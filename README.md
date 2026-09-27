@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-654%20Python%20%C2%B7%20270%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-658%20Python%20%C2%B7%20270%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -144,7 +144,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Atomic writes with a `.bak` that is never overwritten | ✅ | |
 | Timing injection that keeps what the map plays | ✅ | Measured on a ranked map: 0 of 1341 objects change sound or scroll |
 | Legacy two-field timing lines | ✅ | |
-| `.osz` from a song: audio + a minimal `.osu` | ✅ | |
+| `.osz` from a song: audio + a minimal `.osu` | ✅ | Named as the song's own maps name it, else by the audio's tags (Unicode and romanised fields apart) |
 | Decimal offsets for lazer | ✅ | Settings → Offset precision: 0-3 decimals for copy, `.osz` and inject; the CLI flag too. The 270 lazer (v128) maps here read, write back byte for byte and inject like stable's |
 | lazer format specifics | 📋 | P5 |
 | Inject into every difficulty at once, with a diff | ✅ | Export; each old red line beside its new value and the drift it causes, one confirmation, every file backed up, one bad map stops nothing |
@@ -317,7 +317,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 654 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 658 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage

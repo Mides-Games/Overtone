@@ -414,6 +414,7 @@ const I18N = {
     sug_add_line: "{o} ms · {b} BPM · {m} beats a bar, with the sample set, volume and kiai the map plays there",
     sug_add_green: "A green line at the same time keeps the slider velocity the map had there",
     sug_add_octave: "Careful: that is {k} the map's own {b} BPM here, which is more often the same pulse counted differently than a new tempo",
+    sug_octave_tip: "An octave of the map's own {b} BPM here: more often the same pulse counted differently than a new tempo.",
     sug_add_objects: "{n} objects follow the new beat until the next red line",
     sug_add_sliders: "{n} slider ends move; the furthest by {d} ms, {dir}",
     sug_earlier: "earlier", sug_later: "later",
@@ -1015,6 +1016,7 @@ const I18N = {
     sug_add_line: "{o} ms · {b} BPM · {m} pulsos por compás, con el sample set, el volumen y el kiai que el mapa tiene ahí",
     sug_add_green: "Una línea verde en el mismo tiempo mantiene la velocidad de sliders que el mapa tenía ahí",
     sug_add_octave: "Ojo: es {k} los {b} BPM del propio mapa aquí, y eso suele ser el mismo pulso contado de otra forma más que un tempo nuevo",
+    sug_octave_tip: "Una octava de los {b} BPM del propio mapa aquí: suele ser el mismo pulso contado de otra forma más que un tempo nuevo.",
     sug_add_objects: "{n} objetos siguen el nuevo pulso hasta la próxima línea roja",
     sug_add_sliders: "{n} finales de slider se mueven; el que más, {d} ms {dir}",
     sug_earlier: "antes", sug_later: "después",
@@ -3593,7 +3595,8 @@ function renderCompare() {
     <tr>
       <td><span class="idx">${s.index + 1}</span></td>
       <td class="num">${s.offset_ms.toFixed(1)}</td>
-      <td class="num">${s.bpm.toFixed(3)}</td>
+      <td class="num">${s.bpm.toFixed(3)}${s.octave
+        ? ` <span class="pill amber" title="${esc(t("sug_octave_tip", { b: s.map_bpm.toFixed(3) }))}">${octaveLabel(s.octave)}</span>` : ""}</td>
       <td class="num">${s.nearest_ms === null ? "—" : s.nearest_ms.toFixed(1)}</td>
       <td><div class="sug-actions">
         <button class="btn small" data-show="${s.index}">${t("sug_show")}</button>
@@ -3625,6 +3628,11 @@ function renderCompare() {
     </div>` : ""}`;
 }
 
+// ×2, ×4, ÷2 or ÷4: how a suggestion's tempo stands to the map's own there.
+function octaveLabel(factor) {
+  return factor >= 1 ? `×${Math.round(factor)}` : `÷${Math.round(1 / factor)}`;
+}
+
 // One suggestion into the map (Phase 9): the preview names what the write
 // adds and what it moves, nothing is written without that consent, and the
 // list is read again after, since the new red line answers its suggestion.
@@ -3640,11 +3648,9 @@ async function suggestAdd(index) {
   const lines = [t("sug_add_line", { o: s.offset_ms, b: s.bpm.toFixed(3), m: s.meter })];
   // Twice or four times the map's own tempo there is more often the same
   // pulse counted differently than a change the map lacks (Corpus B: every
-  // slider shift past 25 ms came from one of these).
-  const ratio = s.map_bpm ? s.bpm / s.map_bpm : null;
-  const octave = ratio && [[2, "×2"], [4, "×4"], [0.5, "÷2"], [0.25, "÷4"]]
-    .find(([k]) => Math.abs(ratio / k - 1) <= 0.03);
-  if (octave) lines.push(t("sug_add_octave", { k: octave[1], b: s.map_bpm.toFixed(3) }));
+  // slider shift past 25 ms came from one of these). The engine says which.
+  const octave = prev.suggestion.octave;
+  if (octave) lines.push(t("sug_add_octave", { k: octaveLabel(octave), b: prev.suggestion.map_bpm.toFixed(3) }));
   if (s.greens_added) lines.push(t("sug_add_green"));
   if (s.objects) lines.push(t("sug_add_objects", { n: s.objects }));
   if (s.slider_ends_moved) {

@@ -412,7 +412,7 @@ Nothing here is promised. Each item is a hypothesis with a way to test it.
 | Full drum transcription | complete kit transcription | high | med | classifier | yes | opt | P3 | todo |
 | Timing suggestions | list red lines a map is missing | med | med | P7 | no | no | P2 | **done** — shown in the compare card |
 | Apply a suggestion | write one suggested red line into the `.osu`, with backup and consent | med | med | suggestions, writer | no | no | P2 | **done** — Add beside each suggestion in Map check: that red line alone, carrying the sounds in force, a green where slider velocity needs one; the confirmation names the objects and slider ends it moves and warns at ×2/×4 the map's tempo; backed up, logged |
-| Octave-marked suggestions | mark in the list itself a suggestion at ×2 or ×4 the map's own tempo there, not only in the consent: on Corpus B 5 of 23 were, and they alone moved slider ends past 25 ms | low | med | suggestions | no | no | P2 | todo (proposed 2026-09-26) |
+| Octave-marked suggestions | mark in the list itself a suggestion at ×2 or ×4 the map's own tempo there, not only in the consent: on Corpus B 5 of 23 were, and they alone moved slider ends past 25 ms | low | med | suggestions | no | no | P2 | **done** — a pill beside the suggestion's BPM (×2, ×4, ÷2, ÷4) with the map's tempo in its tooltip; one rule, the octave finding's band, for the list and the consent. Corpus B: 6 of 23 marked, all 5 slider shifts past 25 ms among them |
 | Waveform annotation | user notes pinned to timeline positions | low | low | P3 | no | no | P3 | todo |
 | Plugin API | third-party analysis stages | high | low | P0 rules | no | no | P3 | todo |
 | WASM engine | the core in a browser | med | low | P1 | no | no | P3 | todo |

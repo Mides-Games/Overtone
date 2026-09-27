@@ -17,6 +17,35 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · Suggestions at an octave of the map's tempo, marked in the list
+
+### Changed
+
+- **A suggestion at ×2, ×4, ÷2 or ÷4 the map's own tempo says so in the list**, beside
+  its BPM, with the map's tempo in its tooltip: such a line is more often the same pulse
+  counted differently than a change the map lacks, and before this the list showed it like
+  any other, the warning coming only in the consent to add it.
+- **One rule for both places**: each suggestion carries `map_bpm` (the map's red line in
+  force there, its first before it begins) and `octave`, read with the band the octave
+  finding already uses between sections (0.15 in log2). The consent now reads the
+  engine's answer instead of a narrower rule of its own (3 %), which let a suggestion at
+  2.14× the map's tempo through unmarked.
+
+### Measured
+
+```
+Corpus B, the 20 ranked maps (read only) with master's Corpus B analyses:
+  suggestions                        23 on 5 maps
+  marked as an octave                6 (×4 once, ×2 five times; 1.975 to 4.000 the
+                                     map's tempo)
+  moving slider ends past 25 ms      5, all 5 among the marked (159 to 559 ms)
+  unmarked                           17, all within 4 % of the map's tempo
+Engine commit, on the master before the sample bank: unit tests 631 OK; benchmark,
+bpm-snapshot 24/24, golden 27/27, reference 24/24, assisted, coverage, measures,
+signatures, robustness; fuzz_reader 3000
+Python unittest   642 -> 643 on the master with the sample bank, all pass
+```
+
 ## v4.0.0-dev — 2026-09-26 · The Samples card: a folder's samples heard, and the skin playback asks
 
 The bank (next entry) had no page, and nothing let a mapper point playback at their own

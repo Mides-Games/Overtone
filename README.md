@@ -430,19 +430,21 @@ sliders quedan igual).
 
 - **Qué funciona hoy (✅):** análisis, editor con deshacer, bloqueo de puntos, exportación
   (`.osu`, CSV, pista de clic, `.osz`), inyección con vista previa (un mapa o el mapset
-  entero, con el diff), comparación con un mapa, alineación, densidad y sugerencias,
+  entero, con el diff), comparación con un mapa, alineación, densidad y sugerencias (cada una se agrega
+sola al mapa, con copia de seguridad y tras confirmar),
   la canción con el clic dentro de la app, la estructura (kiai, breaks, bookmarks,
   volúmenes por sección), hitsounds (copiarlos entre dificultades, ver dónde cae cada
   uno, escucharlos, revisar su consistencia, aceptar o no las propuestas del motor, con
   el perfil Equilibrado o Centrado en la batería, y poner volumen e índice de sample a
   mano, todo escuchado antes de escribirlo) y el historial de escrituras con
-  restauración; en inglés y español, oscuro o claro.
+  restauración; cada canción recuerda los ajustes de detección de su último análisis;
+en inglés y español, oscuro o claro.
 - **Motor en Rust (🦀):** da los mismos resultados que Python y es unas 4 veces más rápido
   de punta a punta; la app lo usa como opción (Ajustes → motor Rust) y para Estructura,
   Rampas y las propuestas de hitsounds.
 - **Próximo (📋):** el resto de los hitsounds (carriles de instrumentos, banco de
-  samples), la sección Audio, precisión en canciones reales e
-  instalador `.msi`.
+  samples), la sección Audio y precisión en canciones reales. El instalador `.msi`
+  y el ZIP portable ya se construyen en una línea; falta publicarlos.
 
 Uso: doble clic en `Overtone.bat`, abrí un audio, **Analizar**, revisá el mapa de tempo,
 escuchá la pista de clic y usá **Inyectar .osu…**. La octava (92 vs 184) sigue siendo

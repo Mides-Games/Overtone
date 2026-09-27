@@ -7893,6 +7893,82 @@ class ModReportTests(unittest.TestCase):
         self.assertEqual(self._report()["counts"]["suggestion"], 0)
 
 
+class FixtureManifestTests(unittest.TestCase):
+    """Phase 23: one list of bench fixtures, for Python and Rust both."""
+
+    @staticmethod
+    def _fx():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "fixtures", Path(__file__).resolve().parent / "bench" / "fixtures.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_the_committed_manifest_matches_the_definitions(self) -> None:
+        # The check bench/facts.py runs, here too: a case added on one side
+        # and not written to the manifest fails the suite, not just the gate.
+        self.assertEqual(self._fx().drift(), [])
+
+    def test_every_python_case_is_listed_with_the_command_that_renders_it(self) -> None:
+        import sys
+        bench = str(Path(__file__).resolve().parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import benchmark as bm
+        import gates
+        listed = self._fx().derive()
+        for name in list(bm.CASES) + list(gates.COVERAGE_CASES) + list(gates.MEASURE_CASES):
+            self.assertIn(name, listed, name)
+            self.assertTrue(listed[name]["render"].startswith("python "), name)
+        # the three coverage fixtures are the ones with no golden vector, and
+        # the reason the Rust bench could not find them by walking bench/golden
+        for name in gates.COVERAGE_CASES:
+            self.assertFalse(listed[name]["golden"], name)
+            self.assertTrue(listed[name]["density"], name)
+
+    def test_golden_is_read_from_the_committed_vectors(self) -> None:
+        listed = self._fx().derive()
+        vectors = {p.stem for p in (Path(__file__).resolve().parent / "bench" / "golden")
+                   .glob("*.json")}
+        self.assertEqual({n for n, e in listed.items() if e["golden"]}, vectors)
+        # one measure case has no vector on purpose; saying otherwise here
+        # would be a second list to drift
+        self.assertFalse(listed["downbeat-3-4"]["golden"])
+
+    def test_the_density_gate_measures_the_vectors_and_the_coverage_cases(self) -> None:
+        listed = self._fx().derive()
+        density = {n for n, e in listed.items() if e["density"]}
+        golden = {n for n, e in listed.items() if e["golden"]}
+        signature = {n for n, e in listed.items() if e["signature"]}
+        self.assertEqual(density, (golden | {"halftime-175-87.5", "halftime-150-75",
+                                             "doubletime-110-220"}) - signature)
+        self.assertEqual(signature, {"signature-changes"})
+
+    def test_drift_is_named_in_both_directions(self) -> None:
+        fx = self._fx()
+        listed = fx.derive()
+        name = next(iter(listed))
+        gone = {k: v for k, v in listed.items() if k != name}
+        self.assertEqual(fx.drift(gone), [f"{name}: in the code, not in fixtures.json"])
+        extra = {**listed, "made-up-case": dict(listed[name])}
+        self.assertEqual(fx.drift(extra), ["made-up-case: in fixtures.json, not in the code"])
+        changed = {k: dict(v) for k, v in listed.items()}
+        changed[name]["density"] = not changed[name]["density"]
+        self.assertEqual(len(fx.drift(changed)), 1)
+        self.assertTrue(fx.drift(changed)[0].startswith(f"{name}: "))
+
+    def test_an_older_manifest_is_not_read_as_this_one(self) -> None:
+        fx = self._fx()
+        body = json.loads(fx.MANIFEST.read_text(encoding="utf-8"))
+        self.assertEqual(body["format"], fx.FORMAT)
+        with tempfile.TemporaryDirectory() as tmp:
+            older = Path(tmp) / "fixtures.json"
+            older.write_text(json.dumps({**body, "format": fx.FORMAT + 1}), encoding="utf-8")
+            self.assertEqual(fx.committed(older), {})
+            self.assertEqual(fx.committed(Path(tmp) / "absent.json"), {})
+
+
 class PerfGateTests(unittest.TestCase):
     """Phase 23: bench/gates.py perf decides on two clocks and two bars each.
     The rule is tested on numbers alone; the gate's own runs measure."""

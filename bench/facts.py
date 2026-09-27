@@ -118,6 +118,15 @@ def main() -> int:
     if members != crates:
         problems.append(f"Cargo.toml: workspace members {members}, crates/ holds {crates}")
 
+    # The fixture manifest the Rust bench reads, against the Python
+    # definitions and the committed vectors it is derived from. Adding a case
+    # on one side and forgetting the other is the drift this catches.
+    import fixtures as fx
+    drifted = fx.drift()
+    print(f"fixtures: {len(fx.derive())} in the code, "
+          f"{len(fx.committed())} in {fx.MANIFEST.name}")
+    problems += [f"{fx.MANIFEST.name}: {line}" for line in drifted]
+
     for problem in problems:
         print("MISMATCH", problem)
     print("facts: ok" if not problems else f"facts: {len(problems)} mismatch(es)")

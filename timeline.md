@@ -17,6 +17,55 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · One list of fixtures
+
+### Changed
+
+- **`bench/fixtures.json`**, written by **`bench/fixtures.py`** from the definitions that
+  already existed (`benchmark.CASES`, `gates.COVERAGE_CASES`, `gates.MEASURE_CASES`, the
+  signature fixture, the degenerate ones and the elastic ramps) plus the committed golden
+  vectors. Each entry says the exact command that renders that fixture and which gates
+  need it: `golden` (a vector is committed, so the stage, map and elastic gates walk it),
+  `density` (the density gate must measure it) and `signature` (judged by
+  `gates.py signatures`, skipped by the others).
+- **The Rust bench reads it** instead of walking `bench/golden/*.json` for its cases, and
+  its hand-written copy of the three coverage fixtures' names is gone, as is the hard-coded
+  list of signature fixtures and the guesswork in `render_hint`. A manifest that is absent,
+  unparseable or of another format is named with the command that writes it, rather than
+  read as this one.
+- **`bench/facts.py` holds the committed manifest to what Python derives**, so a fixture
+  added on one side and not written to the other fails a check already run before every
+  commit — and a test says the same thing inside the suite.
+
+### Fixed
+
+- **A fixture added on the Python side was invisible to the Rust gates.** They took their
+  cases from `bench/golden/*.json`, which by design does not hold the three coverage
+  fixtures (`halftime-175-87.5`, `halftime-150-75`, `doubletime-110-220`) — so the density
+  gate carried a hand-written copy of those three names to add them back. A fourth would
+  have been silently unmeasured. `downbeat-3-4` is a second case of the same shape: a
+  measure fixture with no vector on purpose, which no Rust gate could see.
+
+### Measured
+
+```
+The five Rust gates read the same cases as before and answer identically: golden 27/27
+attack for attack, density 4/4 real changes with worst 1.54 s off and 0 false positives,
+nogrid, elastic (median invented drift 0.000 %) and map all pass. 271 Rust tests and 710
+Python tests pass.
+
+The drift, demonstrated: a fourth coverage fixture added to gates.COVERAGE_CASES made
+facts.py say "halftime-200-100: in the code, not in fixtures.json"; after
+`bench/fixtures.py --update`, the Rust density gate listed it, printed the command that
+renders it and failed with "1 case(s) have no audio: nothing was measured for them".
+Before this, that fixture reached no Rust gate at all.
+
+The audio-missing hazard the row also names was checked and was already covered: with
+bench/audio/ empty, and with one file in it, all five Rust gates fail (golden, nogrid,
+density, elastic, map). A manifest of a future format is refused by name; an absent one
+is reported with the command that writes it.
+```
+
 ## v4.0.0-dev — 2026-09-27 · Half and double time, said out loud
 
 ### Changed

@@ -650,19 +650,76 @@ fn check_case(root: &Path, name: &str) -> Result<Report> {
     })
 }
 
+/// One fixture as `bench/fixtures.json` lists it.
+#[derive(Debug, Clone, Deserialize)]
+struct Fixture {
+    /// The exact command that renders it, printed when it is not there.
+    render: String,
+    /// A golden vector is committed for it, so the stage, map and elastic
+    /// gates walk it.
+    golden: bool,
+    /// The density gate must measure it.
+    density: bool,
+    /// Its beat tempo steps with the time signature over a constant bar, so
+    /// the density and map gates have no truth for it and read those real
+    /// steps as false changes; `gates.py signatures` judges it instead.
+    signature: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct Fixtures {
+    format: u32,
+    fixtures: std::collections::BTreeMap<String, Fixture>,
+}
+
+/// Bumped with the manifest's shape, so an older file is named rather than
+/// read as this one.
+const FIXTURES_FORMAT: u32 = 1;
+
+/// The one list of fixtures, as Python derives it from its own definitions
+/// and the committed vectors (`bench/fixtures.py`; `bench/facts.py` holds the
+/// file to them). Read here rather than rebuilt, so neither side carries a
+/// copy of the other's list: the three coverage fixtures have no golden
+/// vector, and walking `bench/golden/` for cases used to miss them until a
+/// hand-written copy of their names was added back for the density gate.
+fn fixtures(root: &Path) -> Result<std::collections::BTreeMap<String, Fixture>> {
+    let path = root.join("bench/fixtures.json");
+    let text = std::fs::read_to_string(&path).with_context(|| {
+        format!(
+            "reading {} (write it with `python bench/fixtures.py --update`)",
+            path.display()
+        )
+    })?;
+    let manifest: Fixtures =
+        serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
+    if manifest.format != FIXTURES_FORMAT {
+        bail!(
+            "{} is format {}, this bench reads {FIXTURES_FORMAT} -- write it again with \
+             `python bench/fixtures.py --update`",
+            path.display(),
+            manifest.format
+        );
+    }
+    Ok(manifest.fixtures)
+}
+
+/// The fixtures a golden vector is committed for, in one order.
 fn all_cases(root: &Path) -> Result<Vec<String>> {
-    let dir = root.join("bench/golden");
-    let mut names: Vec<String> = std::fs::read_dir(&dir)
-        .with_context(|| format!("listing {}", dir.display()))?
-        .filter_map(|entry| {
-            let path = entry.ok()?.path();
-            (path.extension()? == "json")
-                .then(|| path.file_stem()?.to_str().map(str::to_owned))
-                .flatten()
-        })
-        .collect();
-    names.sort();
-    Ok(names)
+    Ok(fixtures(root)?
+        .into_iter()
+        .filter(|(_, fixture)| fixture.golden)
+        .map(|(name, _)| name)
+        .collect())
+}
+
+/// The fixtures the density gate measures: every one with a vector plus the
+/// coverage ones, which have none.
+fn density_cases(root: &Path) -> Result<Vec<String>> {
+    Ok(fixtures(root)?
+        .into_iter()
+        .filter(|(_, fixture)| fixture.density)
+        .map(|(name, _)| name)
+        .collect())
 }
 
 /// (change time, ratio) of the exact 2x relationships the detector should find.
@@ -678,28 +735,23 @@ fn density_truth(name: &str) -> Option<(f64, f64)> {
     }
 }
 
-/// Golden fixtures whose beat tempo steps with the time signature over a
-/// constant bar (300 -> 150 -> 200 BPM in beats). The density and map gates
-/// have no truth for them, and read those real steps as false changes; the
-/// signatures gate judges them. Added with the proven-bar golden fixtures,
-/// they made both gates fail until this list existed.
-const SIGNATURE_FIXTURES: [&str; 1] = ["signature-changes"];
-
-/// Density cases rendered outside the 24-case corpus.
-const DENSITY_EXTRAS: [&str; 3] = ["halftime-175-87.5", "halftime-150-75", "doubletime-110-220"];
 /// Real density changes the density gate is documented to find (4/4).
 const DENSITY_TRUTH_CASES: usize = 4;
 
-/// The command that renders a bench fixture (bench/audio/ is not committed).
-fn render_hint(name: &str) -> &'static str {
-    if name.starts_with("ramp-") {
-        "render it with `python proto/elastic.py`"
-    } else if DENSITY_EXTRAS.contains(&name) {
-        "render it with `python bench/gates.py coverage`"
-    } else if name.starts_with('_') {
-        "render it with `python bench/benchmark.py`"
-    } else {
-        "render it with `python bench/golden.py dump`"
+/// Whether the signature gate judges this fixture instead of the others.
+fn is_signature(root: &Path, name: &str) -> bool {
+    fixtures(root)
+        .ok()
+        .and_then(|all| all.get(name).map(|fixture| fixture.signature))
+        .unwrap_or(false)
+}
+
+/// The command that renders a bench fixture (bench/audio/ is not committed),
+/// as the manifest gives it.
+fn render_hint(root: &Path, name: &str) -> String {
+    match fixtures(root).ok().and_then(|all| all.get(name).cloned()) {
+        Some(fixture) => format!("render it with `{}`", fixture.render),
+        None => format!("{name} is in no fixture list -- see bench/fixtures.py"),
     }
 }
 
@@ -742,7 +794,7 @@ fn resample_mode() -> Result<()> {
 fn structure_mode(root: &Path, name: &str) -> Result<()> {
     let audio = root.join("bench/audio").join(format!("{name}.wav"));
     if !audio.is_file() {
-        bail!("{name} is missing -- {}", render_hint(name));
+        bail!("{name} is missing -- {}", render_hint(root, name));
     }
     let started = std::time::Instant::now();
     let (y, sr) = overtone_audio::load(&audio).map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -784,15 +836,10 @@ fn structure_mode(root: &Path, name: &str) -> Result<()> {
 }
 
 fn density_mode(root: &Path, only: &[String]) -> Result<()> {
-    let mut names = all_cases(root)?;
-    // Required, not optional: skipped when absent, they let the gate pass
-    // with nothing measured (bench/audio/ is not committed).
-    for extra in DENSITY_EXTRAS {
-        if !names.contains(&extra.to_string()) {
-            names.push(extra.to_string());
-        }
-    }
-    names.sort();
+    // Every fixture the manifest marks for this gate, coverage ones included:
+    // required, not optional, since one skipped for being unrendered would let
+    // the gate pass with less measured than its documented count.
+    let names = density_cases(root)?;
     let names: Vec<String> = if only.is_empty() {
         names
     } else {
@@ -812,13 +859,13 @@ fn density_mode(root: &Path, only: &[String]) -> Result<()> {
     let mut misses: Vec<String> = Vec::new();
     let mut missing = 0usize;
     for name in &names {
-        if SIGNATURE_FIXTURES.contains(&name.as_str()) {
+        if is_signature(root, name) {
             println!("{name:<20}  (signature steps: judged by `gates.py signatures`)");
             continue;
         }
         let audio = root.join("bench/audio").join(format!("{name}.wav"));
         if !audio.is_file() {
-            println!("{name:<20}  MISSING — {}", render_hint(name));
+            println!("{name:<20}  MISSING — {}", render_hint(root, name));
             missing += 1;
             continue;
         }
@@ -933,11 +980,11 @@ fn elastic_may_bend(name: &str) -> bool {
 /// gain rule the reference itself sits ~3 % from), so what is gated is the
 /// property both implementations share: the elastic residual stays two
 /// orders of magnitude above the piecewise one, and the selector keeps v3.
-fn elastic_is_steps(name: &str) -> bool {
+fn elastic_is_steps(root: &Path, name: &str) -> bool {
     matches!(
         name,
         "change-128-142" | "secs-2" | "secs-3" | "three-sections"
-    ) || SIGNATURE_FIXTURES.contains(&name)
+    ) || is_signature(root, name)
 }
 
 fn elastic_mode(root: &Path, only: &[String]) -> Result<()> {
@@ -956,7 +1003,7 @@ fn elastic_mode(root: &Path, only: &[String]) -> Result<()> {
         }
         let audio = root.join("bench/audio").join(format!("{name}.wav"));
         if !audio.is_file() {
-            println!("{name:<16}  MISSING — {}", render_hint(name));
+            println!("{name:<16}  MISSING — {}", render_hint(root, name));
             failures += 1;
             continue;
         }
@@ -1034,7 +1081,7 @@ fn elastic_mode(root: &Path, only: &[String]) -> Result<()> {
                 drifts.push(drift);
                 let v3_rms = golden.result.fit_residual_ms;
                 // Steps are gated on the selector signal, not the digit.
-                let ok = if elastic_is_steps(&name) {
+                let ok = if elastic_is_steps(root, &name) {
                     report.rms_ms > 5.0 && v3_rms < 1.0
                 } else {
                     drift <= 0.01 || elastic_may_bend(&name)
@@ -1103,11 +1150,9 @@ fn map_truth_changes(name: &str) -> Vec<f64> {
 
 fn map_mode(root: &Path, only: &[String]) -> Result<()> {
     use overtone_tempo::map;
-    let mut names = all_cases(root)?;
-    for extra in DENSITY_EXTRAS
-        .iter()
-        .chain(["ramp-120-160", "ramp-180-140", "ramp-90-200"].iter())
-    {
+    // The density cases plus the ramps: the ridge has to slope on those.
+    let mut names = density_cases(root)?;
+    for extra in ["ramp-120-160", "ramp-180-140", "ramp-90-200"] {
         if !names.contains(&extra.to_string()) {
             names.push(extra.to_string());
         }
@@ -1125,13 +1170,13 @@ fn map_mode(root: &Path, only: &[String]) -> Result<()> {
         if !only.is_empty() && !only.contains(name) {
             continue;
         }
-        if SIGNATURE_FIXTURES.contains(&name.as_str()) {
+        if is_signature(root, name) {
             println!("{name:<20}  (signature steps: judged by `gates.py signatures`)");
             continue;
         }
         let audio = root.join("bench/audio").join(format!("{name}.wav"));
         if !audio.is_file() {
-            println!("{name:<20}  MISSING — {}", render_hint(name));
+            println!("{name:<20}  MISSING — {}", render_hint(root, name));
             failures += 1;
             continue;
         }
@@ -1227,7 +1272,7 @@ fn nogrid_mode(root: &Path) -> Result<()> {
     for name in cases {
         let audio = root.join("bench/audio").join(format!("{name}.wav"));
         if !audio.is_file() {
-            println!("{name:<10}  MISSING — {}", render_hint(name));
+            println!("{name:<10}  MISSING — {}", render_hint(root, name));
             failures += 1;
             continue;
         }

@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **704** Python (478 engine + 226 web shell) · **271** Rust.
+Tests: **710** Python (484 engine + 226 web shell) · **271** Rust.
 
 ### What is pending, in order
 
@@ -662,7 +662,7 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Golden fails on a missing stage | a skipped stage counts as a failure, not a pass | low | high | golden | no | no | P1 | **done** |
 | Real-audio smoke set | a handful of local songs that must keep analysing, never refused | low | **high** | — | no | no | P1 | **done** — `bench/gates.py real-audio`: six Corpus B tracks, one or two per engine path, pinned in `bench/real_audio_snapshot.json`; tracks not held here are skipped and named (2026-09-26) |
 | Robustness gate | the audit's probes (short audio, odd rates, junk `.osu`, read-only files) as one command | low | high | — | no | no | P1 | **done** — `gates.py robustness`; the CLI tests run the same probes on v4 |
-| One fixture manifest | Python and Rust read the same list; no Rust gate passes on missing audio | med | med | bench | no | no | P2 | todo |
+| One fixture manifest | Python and Rust read the same list; no Rust gate passes on missing audio | med | med | bench | no | no | P2 | **done** (2026-09-27) — `bench/fixtures.json`, derived by `bench/fixtures.py` from the Python definitions and the committed vectors, read by the Rust bench for its cases and its render hints; `facts.py` and a test hold the file to the code. It closed a real gap: the three coverage fixtures had no golden vector, so the Rust gates could not see them and the density gate carried a copy of their names — a fourth reached no gate at all. Missing audio already failed all five Rust gates, checked with an empty bench/audio/ |
 | Facts check | documented test counts and crate lists checked against the repo | low | med | — | no | no | P2 | **done** — `bench/facts.py` |
 | Bench times the tempo stage | the Rust-vs-Python speed claim compares like with like | low | low | bench | no | no | P3 | **done** — #54 |
 | `.gitattributes` | `.osu` fixtures keep their CRLF | trivial | low | — | no | no | P3 | **done** |

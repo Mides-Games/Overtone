@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-704%20Python%20%C2%B7%20271%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-710%20Python%20%C2%B7%20271%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -317,7 +317,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 704 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 710 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage
@@ -329,6 +329,7 @@ instantly and exactly; the click track is the arbiter.
 .venv/Scripts/python.exe bench/gates.py assisted       # two marked downbeats seed the grid
 .venv/Scripts/python.exe bench/gates.py real-audio     # six local songs keep analysing as pinned
 .venv/Scripts/python.exe bench/gates.py perf           # no stage got slower than its baseline
+.venv/Scripts/python.exe bench/fixtures.py             # Python and Rust read one fixture list
 .venv/Scripts/python.exe bench/facts.py                # the numbers these docs state
 .venv/Scripts/python.exe bench/corpus_b.py             # 20 ranked maps' red lines (local osu! Songs)
 cargo test --workspace                                 # 271 tests

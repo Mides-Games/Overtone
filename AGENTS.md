@@ -25,7 +25,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (704 on 2026-09-27)
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (710 on 2026-09-27)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -37,6 +37,7 @@ Repository conventions for any AI agent or contributor working here.
 .venv/Scripts/python.exe bench/gates.py assisted               # marked downbeats fit
 .venv/Scripts/python.exe bench/gates.py real-audio             # 6 local songs analyse as pinned
 .venv/Scripts/python.exe bench/gates.py perf                   # every stage inside its time budget
+.venv/Scripts/python.exe bench/fixtures.py                     # the fixture manifest matches the code
 .venv/Scripts/python.exe bench/facts.py                        # stated counts and schema match the source
 .venv/Scripts/python.exe bench/fuzz_reader.py                  # 3000 mutant .osu files read, written back, consumed
 ```
@@ -137,6 +138,8 @@ bench/benchmark.py        synthetic accuracy harness, exact ground truth
 bench/gates.py            octave snapshot, density-change and measure gates
                           (the things the accuracy benchmark cannot see)
 bench/golden.py           per-stage golden vectors; the harness Rust gets pointed at
+bench/fixtures.py         the one list of bench fixtures, derived from the definitions;
+bench/fixtures.json       what it writes, and what the Rust bench reads for its cases
 bench/facts.py            the counts and lists the docs state, checked against the source,
                           and library.sql's schema version against the code's
 bench/golden/             27 committed vector files: the 24-case corpus plus the

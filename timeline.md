@@ -17,6 +17,64 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · Hits against notes
+
+### Changed
+
+- **`percussive_balance` (engine)**: how much of each moment is a hit rather than a note,
+  by Fitzgerald's median separation — a sustained partial is a horizontal line on a
+  spectrogram and a median along time keeps it; a hit is a vertical line and a median along
+  frequency keeps it; soft Wiener masks split each cell, and the percussive mask's share of
+  a frame's energy is the answer. Everything is weighted by energy, including the song's own
+  figure: a silent frame has no balance to report, and averaging it in as zero would make a
+  quiet song read tonal.
+- **`Api.audio_balance`** and a lane in the Audio view, under the spectrogram: 0 at the
+  foot is all note, 1 at the top all hit, with the halfway line drawn and the song's own
+  percentage in words.
+
+### Measured
+
+```
+It runs on the analysis path's mel grid, not on linear bins: 1025 bins cost 22.3 s of
+median filtering on a one-minute song against 1.4 s on 128 mel bands, and the answer moves
+by 0.003. That is a different grid from `crates/overtone-dsp/src/hpss.rs`, whose kernels
+therefore do not carry over — a mel filterbank smears a partial across neighbouring bands
+and the frequency median has to step over that smear. Both kernels were chosen by what
+they do to signals whose truth is known (2 ms clicks, 40 ms noise snares, a 55 Hz kick
+decaying over 150 ms, a held tone, a held chord), energy-weighted:
+
+  time kernel   freq bands   click   snare    kick    tone   chord   worst gap
+       100 ms            3   1.000   0.986   0.654   0.302   0.462      +0.524
+       100 ms           13   1.000   0.981   0.543   0.000   0.102      +0.879
+       150 ms           13   1.000   1.000   0.788   0.000   0.102      +0.898
+       300 ms           13   1.000   1.000   0.988   0.000   0.103      +0.897
+
+13 bands wins the gap at every kernel length; at 3 a smeared partial survives and a chord
+reads 0.46 percussive. 100 ms is kept over the marginally wider 150 and 300: past it the
+gap stops growing and the kick's reading climbs from 0.543 to 0.788 and 0.988, which
+claims its sustained body is a transient. A kick being about half hit and half body is
+what a kick is.
+
+On fixtures whose nature is known: _ambient (overlapping pads, no percussion) 0.011,
+_noise (white noise) 0.486 — neither a line nor a transient, so the masks split it near
+half, which is the honest answer rather than 1.0 — and the drum corpus 0.26-0.27, where a
+continuous pad carries most of the energy and brief hits carry the rest. 1-2 s per song,
+from the decode the other two Audio pictures already made.
+
+Through the harness on edm-174: the lane drew 25,940 pixels of curve, the card read
+"26 % of this song's sound is hits rather than notes", both languages, no console error.
+751 Python tests pass; benchmark 24/24 at the same median 0.0000 BPM and 0.16 ms, golden
+27/27 stage for stage, every other gate unchanged.
+```
+
+### Fixed
+
+- **A silent column said "all notes".** Its share is 0, and 0 on this lane is a reading,
+  not an absence — a claim about silence rather than of it. The engine returns each
+  column's loudness beside its share and the lane is broken where nothing was heard. Found
+  by a test that expected a stretch of clicks to average high and got 0.33, because the
+  silence between them was being drawn as tonal.
+
 ## v4.0.0-dev — 2026-09-27 · The spectrum the engine listened to
 
 ### Changed

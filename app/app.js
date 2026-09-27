@@ -595,6 +595,10 @@ const I18N = {
     nav_audio: "Audio",
     nav_report: "Report",
     audio_sub: "What started, not just that something did: the onset flux split into seven bands, from the kick's 40 Hz up to 11 kHz. A kick moves the bottom lane, a hat the top, a broadband click all seven. Read only.",
+    bal_title: "Hits against notes",
+    bal_note: "{pct} % of this song’s sound is hits rather than notes, weighted by how loud each moment is. Above the halfway line a moment is more hit than note.",
+    bal_reading: "Separating hits from notes…",
+    bal_all_hit: "all hit", bal_all_note: "all note",
     spec_title: "Spectrogram",
     spec_note: "{rows} mel bands to 11 kHz over {span}, {cols} columns. Each column keeps the loudest frame under it, and {floor} dB under this song’s loudest moment is black.",
     spec_reading: "Reading the song’s spectrum…",
@@ -1242,6 +1246,10 @@ const I18N = {
     nav_audio: "Audio",
     nav_report: "Reporte",
     audio_sub: "Qué empezó, no solo que algo empezó: el flujo de onsets partido en siete bandas, desde los 40 Hz del kick hasta 11 kHz. Un kick mueve el carril de abajo, un hat el de arriba, un clic de banda ancha los siete. Solo lectura.",
+    bal_title: "Golpes frente a notas",
+    bal_note: "El {pct} % del sonido de esta canción son golpes y no notas, ponderado por lo fuerte que suena cada momento. Por encima de la línea media, un momento es más golpe que nota.",
+    bal_reading: "Separando golpes de notas…",
+    bal_all_hit: "todo golpe", bal_all_note: "todo nota",
     spec_title: "Espectrograma",
     spec_note: "{rows} bandas mel hasta 11 kHz sobre {span}, {cols} columnas. Cada columna guarda el frame más fuerte que cae debajo, y {floor} dB por debajo del momento más fuerte de esta canción es negro.",
     spec_reading: "Leyendo el espectro de la canción…",
@@ -2902,7 +2910,89 @@ const SPEC = { data: null, image: null, for: "", loading: false };
 // in turn: both at once and the second is refused while the first holds it.
 async function audioLoad() {
   await specLoad();
+  await balLoad();
   await bandsLoad();
+}
+
+// ------------------------------------------------------------------ hits vs notes
+// The percussive share of each moment, 0 at the foot (all note) to 1 at the
+// top (all hit). One curve, so it says its own number too: a lane read
+// without a figure beside it invites the eye to guess.
+const BAL = { data: null, for: "", loading: false };
+
+async function balLoad() {
+  if (!api() || !S.result) return;
+  if (BAL.for === S.result.path || BAL.loading) { drawBal(); return; }
+  BAL.loading = true;
+  $("balNote").textContent = t("bal_reading");
+  try {
+    const reply = await api().audio_balance();
+    if (!reply.ok) {
+      $("balNote").textContent = reply.key === "busy" ? t("audio_busy") : "";
+      if (reply.key !== "busy") editFailure(reply);
+      return;
+    }
+    BAL.data = reply;
+    BAL.for = S.result.path;
+  } finally {
+    BAL.loading = false;
+  }
+  drawBal();
+}
+
+function drawBal() {
+  const wrap = $("balWrap"), canvas = $("balCanvas"), data = BAL.data;
+  if (!wrap || !canvas) return;
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  if (!W || !H) return;
+  const dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (!data || !data.lane.length) return;
+  $("balNote").textContent = t("bal_note", { pct: Math.round(data.whole * 100) });
+  const padL = 74, padR = 14, padT = 8, padB = 22;
+  const x0 = padL, x1 = W - padR, y0 = padT, y1 = H - padB;
+  ctx.fillStyle = C.plot;
+  roundRect(ctx, x0, y0, x1 - x0, y1 - y0, 6); ctx.fill();
+  const X = (i) => x0 + (i / Math.max(data.lane.length - 1, 1)) * (x1 - x0);
+  const Y = (v) => y1 - v * (y1 - y0);
+  // halfway is the line a mapper reads against: more hit than note above it
+  ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x0, Math.round(Y(0.5)) + 0.5);
+  ctx.lineTo(x1, Math.round(Y(0.5)) + 0.5); ctx.stroke();
+  // Drawn only where the song was heard: a silent column's share is 0, and
+  // 0 on this lane reads as "all notes", which is a claim about silence.
+  const HEARD = 0.002;
+  ctx.lineWidth = 2; ctx.strokeStyle = C.tempo; ctx.lineJoin = "round";
+  let run = [];
+  const flush = () => {
+    if (run.length > 1) {
+      ctx.beginPath();
+      run.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.stroke();
+      ctx.lineTo(run[run.length - 1][0], y1); ctx.lineTo(run[0][0], y1); ctx.closePath();
+      ctx.fillStyle = C.fill; ctx.fill();
+    }
+    run = [];
+  };
+  data.lane.forEach((v, i) => {
+    if ((data.heard[i] ?? 1) < HEARD) flush();
+    else run.push([X(i), Y(v)]);
+  });
+  flush();
+  ctx.font = `11px ${getComputedStyle(document.body).getPropertyValue("--mono")}`;
+  ctx.fillStyle = C.gridText; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  ctx.fillText(t("bal_all_hit"), x0 - 10, Y(1) + 6);
+  ctx.fillText(t("bal_all_note"), x0 - 10, Y(0) - 6);
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  const step = niceStep(data.span_s, Math.max(4, Math.floor((x1 - x0) / 110)));
+  for (let s = 0; s <= data.span_s + 1e-6; s += step) {
+    ctx.fillText(mmss(s), x0 + (s / data.span_s) * (x1 - x0), y1 + 5);
+  }
 }
 
 async function specLoad() {
@@ -5648,7 +5738,7 @@ function stTheme() {
     // The spectrogram is painted once into its own bitmap, from the theme's
     // ink: that bitmap is the one thing here that does not follow a token.
     if (SPEC.data && SPEC.image) SPEC.image = specPaint(SPEC.data);
-    if (S.result) { drawTrace(); drawBands(); drawSpec(); }
+    if (S.result) { drawTrace(); drawBands(); drawSpec(); drawBal(); }
   }
   themeButton(theme);
 }
@@ -7052,7 +7142,7 @@ function wire() {
     S.lang = b.dataset.lang; translate(); if (api()) api().set_language(S.lang);
   });
   $("themeBtn").onclick = themeToggle;
-  window.addEventListener("resize", () => { drawTrace(); drawBands(); drawSpec(); });
+  window.addEventListener("resize", () => { drawTrace(); drawBands(); drawSpec(); drawBal(); });
   // How the focused control got focus: Tab means the user is driving the
   // keyboard, a click means the button merely kept focus afterwards.
   document.addEventListener("mousedown", () => { focusByKey = false; }, true);

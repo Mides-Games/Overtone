@@ -2612,6 +2612,36 @@ class Api:
         self._bands = (source, flux, float(sr), y)
         return None
 
+    #: Columns the balance lane gets. Fewer than the lanes': it is a texture
+    #: over tenths of a second and a wider line reads better than a comb.
+    BALANCE_COLUMNS = 700
+
+    def audio_balance(self, columns: int = BALANCE_COLUMNS) -> dict:
+        """How much of each moment is a hit rather than a note, 0 to 1.
+
+        Read only, from the Audio view's own decode. ``whole`` is the song's
+        own share, weighted by energy like the lane: a silent frame has no
+        balance to report."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        try:
+            columns = max(16, min(4000, int(columns)))
+        except (TypeError, ValueError):
+            return {"ok": False, "key": "error", "detail": "columns must be a number"}
+        source = str(self._analysis.source)
+        if self._bands is None or self._bands[0] != source:
+            loaded = self._read_bands(source)
+            if loaded is not None:
+                return loaded
+        _source, _flux, sr, y = self._bands
+        try:
+            lane, loudness, whole = ta.percussive_balance(y, int(sr), columns)
+        except Exception as exc:  # noqa: BLE001 -- shown to the user verbatim
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "lane": lane.round(4).tolist(), "whole": round(whole, 4),
+                "heard": loudness.round(4).tolist(),
+                "columns": int(lane.size), "span_s": round(len(y) / float(sr), 4)}
+
     #: Columns a drawn spectrogram gets. Wider than a screen on purpose, so
     #: the picture survives a window resize without being read again.
     SPECTROGRAM_COLUMNS = 1400

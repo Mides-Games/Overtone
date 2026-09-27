@@ -2429,6 +2429,51 @@ class OtherGameBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().other_game_text("quaver")["key"], "first")
 
 
+class AudioBalanceBridgeTests(_IsolatedConfig):
+    """How much of each moment is a hit rather than a note."""
+
+    def _song(self, tmp: str) -> web.Api:
+        from test_overtone import _drum_track
+        wav = Path(tmp) / "song.wav"
+        _drum_track(wav, [(0.5, 150.0)], duration=8.0)
+        api = _api_with_points()
+        api._analysis.source = str(wav)
+        return api
+
+    def test_the_lane_comes_back_with_what_was_heard(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            reply = api.audio_balance(columns=120)
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        self.assertEqual((len(reply["lane"]), len(reply["heard"])), (120, 120))
+        self.assertTrue(all(0.0 <= v <= 1.0 for v in reply["lane"]))
+        self.assertTrue(0.0 <= reply["whole"] <= 1.0)
+        self.assertAlmostEqual(max(reply["heard"]), 1.0, places=4)
+        self.assertAlmostEqual(reply["span_s"], 8.0, delta=0.2)
+        self.assertFalse(api._busy.locked())
+
+    def test_it_shares_the_decode_with_the_other_two(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            with mock.patch.object(ta, "_load_audio", wraps=ta._load_audio) as load:
+                api.audio_balance(columns=32)
+                api.audio_spectrogram(columns=32)
+                api.audio_bands(columns=32)
+        self.assertEqual(load.call_count, 1)
+
+    def test_what_it_refuses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            self.assertEqual(api.audio_balance(columns=None)["key"], "error")
+            api._busy.acquire()
+            try:
+                self.assertEqual(api.audio_balance()["key"], "busy")
+            finally:
+                api._busy.release()
+        self.assertEqual(web.Api().audio_balance()["key"], "first")
+
+
 class AudioSpectrogramBridgeTests(_IsolatedConfig):
     """The Audio view's spectrogram, one byte a cell."""
 

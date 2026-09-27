@@ -743,6 +743,41 @@
           </table></div>
           <div class="card-body"><button type="button" class="link" id="hsvMore" hidden></button></div>
         </div>
+
+        <!-- the sample bank: what a folder holds, heard alone or over the song (Phase 6, H6) -->
+        <div class="card cmp-card" id="sbCard">
+          <div class="card-head">
+            <div class="card-title" data-i18n="sb_title">Samples</div>
+            <span class="pill" id="sbKind" hidden></span>
+            <div class="spacer"></div>
+            <div class="segmented" id="sbSource">
+              <button type="button" data-src="song" class="on" data-i18n="sb_src_song">This song's folder</button>
+              <button type="button" data-src="skin" data-i18n="sb_src_skin">Playback skin</button>
+              <button type="button" data-src="pick" data-i18n="sb_src_pick">Another folder…</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-sub" data-i18n="sb_sub">The hitsound samples a folder holds, named as osu! names them: each set's four hits and the two sounds a slider body loops, then the numbered ones. Click one to hear it; a missing one plays what would play instead. The folder is only read.</div>
+            <div class="sb-folder"><b id="sbName"></b><span class="card-sub" id="sbCounts"></span></div>
+            <div class="sb-scroll"><table class="sb-grid">
+              <thead><tr><th></th><th data-i18n="sb_hitnormal">normal</th><th data-i18n="lg_whistle">whistle</th>
+                <th data-i18n="lg_finish">finish</th><th data-i18n="lg_clap">clap</th>
+                <th data-i18n="sb_sliderslide">slide</th><th data-i18n="sb_sliderwhistle">whistle slide</th></tr></thead>
+              <tbody id="sbRows"></tbody>
+            </table></div>
+            <div class="sb-custom" id="sbCustom"></div>
+            <div class="card-sub" id="sbNotes"></div>
+            <div class="sb-actions">
+              <span class="card-sub" id="sbSkinText"></span>
+              <button type="button" class="btn small" id="sbUse" hidden><span data-i18n="sb_use">Use for playback</span></button>
+              <button type="button" class="btn small" id="sbStop" hidden><span data-i18n="sb_stop">Stop using a skin</span></button>
+            </div>
+            <div class="sb-actions">
+              <button type="button" class="btn small" id="sbHear" disabled><span data-i18n="sb_hear">Hear it at the selected sound</span></button>
+              <span class="card-sub" id="sbHearText"></span>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- report: every finding about one difficulty, as modders post them -->

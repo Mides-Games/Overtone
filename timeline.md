@@ -17,6 +17,78 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · The Samples card: a folder's samples heard, and the skin playback asks
+
+The bank (next entry) had no page, and nothing let a mapper point playback at their own
+skin. `06` §8 names the part that matters: hearing a sample against the song at the
+selected object. The transport made it cheap, so it is in.
+
+### Changed
+
+- **A Samples card at the end of the Hitsounds section**, reading this song's folder, the
+  playback skin, or another folder (a folder dialog that opens in osu!'s Skins beside the
+  Songs folder, or beside the skin in use). The bank is a grid, set by set: the four hits,
+  the slide and the whistle slide. A cell gives the file's format and size, "empty" for a
+  file with no audio, and "→ skin" or "→ Overtone" for a missing one, its title naming the
+  file that plays instead. Under it, the custom indices (on a skin: numbered files osu!
+  never asks a skin for), and the names never played, with why. A line counts it all.
+- **Every sample heard.** A click plays it alone and keeps it; a missing cell plays what
+  plays in its place, and an empty one says it plays nothing. **Hear it at the selected
+  sound** plays the song from a second before the sound selected in the Sounds table, the
+  kept sample in that sound's place at the sound's own volume, the transport's other
+  hitsounds as they are, and stops 1.5 s after it: one sample swapped for the sounds at
+  one moment, in the scheduler that already plays the hitsounds, with no loop.
+- **The playback skin is a setting** (`skin_folder`, through `set_settings`). "Use for
+  playback" offers any folder without maps but the song's own; "Stop using a skin" clears
+  it. The transport loads what it plays again with it, and its status and the Hitsounds
+  summary count the skin's samples beside the map's and Overtone's. A skin folder that
+  moved is said on the card, and Overtone's own play meanwhile.
+- **A mute is not a decode failure.** A sample with no audio in it was counted among the
+  ones "this window cannot decode"; it is now said as a mute and not decoded. Skins mute
+  their slides this way (previous entry).
+- Bridge: `sample_bank(folder)`, `pick_sample_folder()`, `sample_audition(folder, file)`;
+  `hitsound_playback` and `hitsound_decide_playback` pass the skin. English and Spanish.
+  5 bridge tests; the settings test holds the new key.
+
+### Hardening
+
+- The folders are only read. The bank, the dialog and the audition list and read files;
+  choosing a skin writes only the app's own config, which tests and the harness replace.
+- `sample_audition` reads only a file named as a hitsound sample (set, sound, index, then
+  .wav, .ogg or .mp3), alone, inside an absolute folder: an .osu, the song's audio, a
+  name with a path in it and a relative folder are refused. `skin_folder` is an absolute
+  folder that exists, or empty; anything but a string is refused.
+
+### Measured
+
+```
+the page, through the UI harness at 1280x800 (its own functions driven, its sound at gain 0),
+on "2543600 NOA LONE - way up (nightcore & cut ver)" (expert: 262 sounds, 81 slider slides)
+and the local skin "-    rafis blue cursor"
+  the song's folder   7 of 12 hits, 1 of 6 slider sounds, 10 missing to Overtone's, 3 empty;
+                      custom indices 2 and 3, 14 samples
+  the skin            12 of 12 and 6 of 6, 10 empty; 12 numbered, not played; 1 never played;
+                      15 shadowed; its name (a leading dash, runs of spaces) read as it is
+  use for playback    the transport: 462 map / 149 Overtone's -> 462 map / 149 the skin's;
+                      the song's folder: its 10 missing now the skin's; stop: 149 Overtone's
+  heard alone         the song's clap (1.48 s), a missing whistle from the skin (0.80 s);
+                      an empty slide said as playing nothing
+  over the song       a clap at 20.302 s (bar 18 · 2): the song from 19.302, the sample
+                      scheduled once, at 20.302 and the sound's 70 %; no map sound there,
+                      its neighbours at 20.155 and 20.449 played; stopped at 21.802
+  a skin that moved   (a scratch folder, then deleted) said in both languages, the song's
+                      folder shown, Overtone's own played, no error
+  layout              no horizontal overflow; 18 cells of 137 px, no text cut; the head and
+                      both action rows on one line in English and Spanish; light theme
+                      read from the theme's tokens
+  console             no errors
+Python unittest   611 -> 616, all pass (6 skipped: overtone-cli is not built in this worktree)
+facts             ok
+```
+
+Not checked: narrower windows, and anything heard (the harness is silent by design); the
+timings above are song times, not the harness's.
+
 ## v4.0.0-dev — 2026-09-26 · The sample bank, read: what a skin or beatmap folder holds
 
 P-3 promised samples found as osu! finds them, "beatmap folder custom index, then skin,

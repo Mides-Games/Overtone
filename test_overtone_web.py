@@ -22,7 +22,7 @@ import numpy as np
 import overtone_web as web
 import overtone as ta
 
-from test_overtone import _drum_track
+from test_overtone import _drum_track, _wav_bytes
 
 def _analysis(points, beats=None, engine="precision", residual=0.4, onset_frames=5000):
     beats = np.arange(0.5, 60.0, 0.4) if beats is None else np.asarray(beats, dtype=float)
@@ -831,6 +831,111 @@ class HitsoundPlaybackBridgeTests(_IsolatedConfig):
                                            "hitsound_volume": float("nan")})["ok"])
 
 
+class SampleBankBridgeTests(_IsolatedConfig):
+    """The Samples card (H6): a folder's samples read, heard, and a skin for playback."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        root = Path(scratch.name)
+        self.song, self.skin = root / "Songs" / "1 Artist - Title", root / "Skins" / "My Skin"
+        self.song.mkdir(parents=True)
+        self.skin.mkdir(parents=True)
+        (self.song / "audio.mp3").write_bytes(b"ID3" + bytes(64))
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+                 "[TimingPoints]", "0,500,4,2,0,70,1,0", "",
+                 "[HitObjects]", "256,192,1000,1,8,0:0:0:0:", "256,192,2000,1,8,0:0:1:0:", ""]
+        (self.song / "hard.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        (self.song / "soft-hitclap.wav").write_bytes(_wav_bytes(20))
+        (self.song / "soft-hitclap2.ogg").write_bytes(b"OggS")
+        (self.skin / "soft-hitnormal.wav").write_bytes(_wav_bytes(30))
+        (self.skin / "soft-hitclap.wav").write_bytes(_wav_bytes(0))    # the skin mutes its clap
+        self.api = _api_with_points()
+        self.api._analysis.source = str(self.song / "audio.mp3")
+
+    def _files(self) -> dict:
+        return {p: (p.stat().st_size, p.stat().st_mtime_ns, p.read_bytes())
+                for folder in (self.song, self.skin) for p in folder.iterdir()}
+
+    def test_the_songs_folder_and_any_other_are_read_and_nothing_is_written(self) -> None:
+        before = self._files()
+        song = self.api.sample_bank()
+        other = self.api.sample_bank(str(self.skin))
+        json.dumps([song, other])
+        self.assertEqual(self._files(), before)
+        self.assertEqual(self.saved, [])
+        self.assertEqual((song["bank"]["kind"], song["song"], song["in_use"], song["skin"]),
+                         ("beatmap", True, False, ""))
+        self.assertEqual([(c["file"], c["index"]) for c in song["bank"]["custom"]],
+                         [("soft-hitclap2.ogg", 2)])
+        self.assertEqual((other["bank"]["kind"], other["song"], other["bank"]["counts"]["hits"]),
+                         ("skin", False, 2))
+        for bad in ("relative\\folder", str(self.song / "missing"), str(self.song / "hard.osu")):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.api.sample_bank(bad)["key"], "bad_folder")
+        self.assertEqual(web.Api().sample_bank()["key"], "first")
+
+    def test_the_skin_is_a_setting_and_playback_asks_it(self) -> None:
+        reply = self.api.set_settings({"skin_folder": str(self.skin)})
+        self.assertEqual(reply["settings"]["skin_folder"], str(self.skin))
+        self.assertEqual(self.saved[-1]["skin_folder"], str(self.skin))
+        played = self.api.hitsound_playback("hard.osu")
+        self.assertEqual(played["events"]["keys"], [["skin:soft-hitnormal.wav", "skin:soft-hitclap.wav"],
+                                                    ["skin:soft-hitnormal.wav", "map:soft-hitclap.wav"]])
+        self.assertEqual(base64.b64decode(played["samples"]["skin:soft-hitnormal.wav"]["data"]),
+                         (self.skin / "soft-hitnormal.wav").read_bytes())
+        # The skin's muted clap is a mute, not a sample the page failed to decode.
+        self.assertEqual((played["samples"]["skin:soft-hitclap.wav"]["empty"],
+                          played["samples"]["map:soft-hitclap.wav"]["empty"]), (True, False))
+        self.assertEqual((played["counts"]["skin"], played["counts"]["map"]), (3, 1))
+        # The song's folder falls back to it; the skin itself reads as the one in use.
+        cells = {(c["set"], c["sound"]): c for c in self.api.sample_bank()["bank"]["cells"]}
+        self.assertEqual(cells["soft", "hitnormal"]["fallback"]["source"], "skin")
+        self.assertTrue(self.api.sample_bank(str(self.skin))["in_use"])
+        # Gone from disk: kept as chosen, and Overtone's own play meanwhile.
+        self.skin.rename(self.skin.with_name("Moved"))
+        self.assertEqual(self.api.settings()["settings"]["skin_folder"], str(self.skin))
+        self.assertEqual(self.api.hitsound_playback("hard.osu")["events"]["keys"][0],
+                         ["overtone:soft-hitnormal.wav", "overtone:soft-hitclap.wav"])
+        self.assertEqual(self.api.set_settings({"skin_folder": ""})["settings"]["skin_folder"], "")
+
+    def test_only_a_real_folder_is_kept_as_the_skin(self) -> None:
+        for bad, key in ((7, "bad_values"), (None, "bad_values"), ("My Skin", "bad_folder"),
+                         (str(self.skin / "missing"), "bad_folder"),
+                         (str(self.skin / "soft-hitnormal.wav"), "bad_folder")):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.api.set_settings({"skin_folder": bad})["key"], key)
+        self.assertEqual(self.saved, [])
+
+    def test_a_sample_is_heard_by_its_name_and_nothing_else_is_read(self) -> None:
+        heard = self.api.sample_audition(str(self.song), "soft-hitclap.wav")
+        json.dumps(heard)
+        self.assertEqual(base64.b64decode(heard["data"]), (self.song / "soft-hitclap.wav").read_bytes())
+        self.assertFalse(heard["empty"])
+        self.assertTrue(self.api.sample_audition(str(self.skin), "soft-hitclap.wav")["empty"])
+        self.assertTrue(self.api.sample_audition(str(ta.DEFAULT_SAMPLE_DIR), "drum-hitclap.wav")["ok"])
+        for folder, name in ((str(self.song), "hard.osu"), (str(self.song), "audio.mp3"),
+                             (str(self.song), "..\\Skins\\My Skin\\soft-hitnormal.wav"),
+                             (str(self.song), "soft-hitclap.txt"), (str(self.song), "soft-hitwhistle.wav"),
+                             (str(self.song), ""), ("relative", "soft-hitclap.wav"), ("", "soft-hitclap.wav")):
+            with self.subTest(folder=folder, name=name):
+                self.assertEqual(self.api.sample_audition(folder, name)["key"], "sb_gone")
+
+    def test_the_folder_dialog_opens_in_the_skins_beside_the_songs_folder(self) -> None:
+        self.api._cfg["songs_folder"] = str(self.song.parent)
+        window = mock.Mock()
+        window.create_file_dialog.return_value = [str(self.skin)]
+        self.api._window = window
+        reply = self.api.pick_sample_folder()
+        self.assertEqual((reply["ok"], reply["bank"]["name"]), (True, "My Skin"))
+        self.assertEqual(window.create_file_dialog.call_args.kwargs["directory"], str(self.skin.parent))
+        self.assertEqual(self.saved, [])                 # picking is only reading
+        window.create_file_dialog.return_value = None
+        self.assertEqual(self.api.pick_sample_folder()["key"], "cancelled")
+        self.assertEqual(web.Api().pick_sample_folder()["key"], "cancelled")
+
+
 class HitsoundCopyBridgeTests(_IsolatedConfig):
     """The copier in the Mapset view: a preview that writes nothing, then the copy."""
 
@@ -1480,15 +1585,16 @@ class SettingsBridgeTests(_IsolatedConfig):
         reply = api.settings()
         json.dumps(reply)
         self.assertEqual(reply["settings"], {
-            "output_folder": "", "export_ask": True, "offset_decimals": 0,
+            "output_folder": "", "skin_folder": "", "export_ask": True, "offset_decimals": 0,
             "click_subdivision": 1, "click_accent": True, "ui_scale": 1.0,
             "reduced_motion": False, "theme": "dark"})
         self.assertTrue(reply["output_default"].endswith(str(Path("Documents") / "Overtone")))
         api._cfg.update({"offset_decimals": 9, "click_subdivision": 5, "ui_scale": "huge",
-                         "export_ask": "no", "output_folder": 7})
+                         "export_ask": "no", "output_folder": 7, "skin_folder": ["C:/"]})
         s = api.settings()["settings"]
         self.assertEqual((s["offset_decimals"], s["click_subdivision"], s["ui_scale"],
-                          s["export_ask"], s["output_folder"]), (0, 1, 1.0, True, ""))
+                          s["export_ask"], s["output_folder"], s["skin_folder"]),
+                         (0, 1, 1.0, True, "", ""))
 
     def test_the_theme_is_dark_unless_asked_and_only_a_known_one_is_kept(self) -> None:
         api = web.Api()

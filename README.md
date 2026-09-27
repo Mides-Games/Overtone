@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-637%20Python%20%C2%B7%20270%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-642%20Python%20%C2%B7%20270%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -26,7 +26,7 @@ sections within 0.05 BPM and 5 ms     24 / 24
 | **Timing engine** (Rust v4) | ✅ At parity with Python, attack for attack and red line for red line; about 4× faster end to end on the corpus. In the app as an opt-in (Settings → Rust engine); Python takes over, and says so, where Rust has no answer |
 | **App** (web window) | ✅ Ten sections: Library, Timing, Structure, Hitsounds, Map check, Mapset, Report, Export, History and Settings; analyse, edit, undo, lock, export, inject (one map or the whole mapset, with a diff), compare with a map, alignment, density, snap audit, re-snap, suggestions, mapset check, reference and assisted timing, the engine's alternatives, ramps, offset lab, map tools from the song's structure, audio swap, write history, mod report, osu! Songs browser — in English and Spanish, dark or light |
 | **osu! files** | ✅ Full reader; writer keeps every byte you did not ask to change |
-| **Hitsounds** | ✅ In the app: copy one difficulty's hitsounds onto the others, see where each addition falls, hear them with the song, a consistency check in the mod report, the Rust decision engine's proposals to tick, and volume and sample index to set by hand, all heard over the song before a preview, a write and an undo; the proposals' profile chosen on the Propose card (Balanced or Drum-focused). The sample bank's engine is in; its card comes next |
+| **Hitsounds** | ✅ In the app: copy one difficulty's hitsounds onto the others, see where each addition falls, hear them with the song, a consistency check in the mod report, the Rust decision engine's proposals to tick, and volume and sample index to set by hand, all heard over the song before a preview, a write and an undo; the proposals' profile chosen on the Propose card (Balanced or Drum-focused); and a Samples card: a skin's or a beatmap folder's samples, each heard alone or over the song in place of a selected sound, and the skin playback asks |
 | **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, a section loop or one drawn on the map at 100/75/50 %, taps, the percussive part alone, a difficulty's hitsounds as written or as they would be written |
 | **Accuracy on real, live-played songs** | 📋 Planned, and measured first — today 1.7 % of 20 ranked maps' red lines land within 5 ms (Corpus B, `bench/corpus_b.py`) |
 | **Installer** (MSI) | 🟡 Built, not published: `installer\build.py` makes a per-user MSI (no administrator) and a portable ZIP in one line, and smoke-tests both unpacked. Unsigned, and the licence notices are not packaged yet |
@@ -95,7 +95,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Reference timing: grade any map's red lines against the attacks | ✅ | Offset, drift and fitted BPM per line, each with its standard error; load a map as the working timing; find every map of the same audio in a Songs folder |
 | Structure: the song's sections, each label with the evidence behind it | ✅ | Rust engine; edges snap to proven bar lines, a section opens in Timing. Labels are heuristics and say which rule decided them |
 | Hitsounds section: where each addition falls in the bar, every sound heard one by one | ✅ | Read only; against the map's own red lines, in sixteenths. The object lane shows them on the timeline |
-| Hear a difficulty's hitsounds with the song | ✅ | The transport's "Hitsounds from"; the map's own samples, else Overtone's (osu!'s defaults are not ours to ship). A slider's body loops its slide, and whistle slide, head to tail |
+| Hear a difficulty's hitsounds with the song | ✅ | The transport's "Hitsounds from"; the map's own samples, else the skin chosen on the Samples card, else Overtone's (osu!'s defaults are not ours to ship). A slider's body loops its slide, and whistle slide, head to tail |
 | Hitsound copier: one difficulty's hitsounds onto the others | ✅ | Mapset view; by time within 5 ms, a preview first, only hitsound fields change, backups kept |
 | osu! Songs browser: your whole Songs folder, searched as you type | ✅ | A SQLite index: a rescan reads only what changed, and maps of the same audio come back in milliseconds |
 | Mod report: every finding as osu! editor timestamps | ✅ | Red lines to check, missing red lines, unsnapped objects, objects away from the music; copy all, or open the editor at a timestamp |
@@ -198,7 +198,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Why a sound was proposed: what was heard under it, and every term the engine added up | ✅ | A row's inspector in the Hitsounds section (docs/06 §7 at the level of the terms); the features behind each instrument are in `overtone-cli hitsound-evidence` |
 | A hitsound difficulty: a circle at every sound of the mapset, to hitsound in one place | ✅ | Export section; each circle plays its sound exactly, or the card counts the ones that cannot; copy it to every difficulty with the copier |
 | Profiles | ✅ | Balanced, and Drum-focused, which beat it on maps hitsounded in its own style, as mapped and stripped bare; chosen on the Propose card, or `overtone-cli hitsound --profile profiles/drum_focused.json`. Minimal was built and measured, and did not beat it bare, so it does not ship |
-| Sample bank | 🟡 | Engine only: a skin or beatmap folder read as playback reads it (each set's hits and slides, custom indices, empty and never-played files, what a missing one falls back to), and playback plays a chosen skin between the map's samples and Overtone's own. The card comes next |
+| Sample bank | ✅ | Hitsounds section, Samples card: the song's folder, the playback skin or any folder, read as playback reads it (each set's hits and slides, custom indices, empty and never-played files, what a missing one falls back to); every sample heard alone, or over the song in place of the sound selected in the table; the skin playback asks between the map's samples and Overtone's own, chosen there. Only read |
 
 ### Command line
 
@@ -315,7 +315,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 637 tests
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 642 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage

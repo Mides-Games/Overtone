@@ -1132,18 +1132,24 @@ class Api:
         if Path(name).name != name or not name.lower().endswith(".osu") or not path.is_file():
             return {"ok": False, "key": "bad_file"}
         try:
-            return self._playback_reply(name, ta.hitsound_playback(ta.read_osu_beatmap(path), folder))
+            return self._playback_reply(name, ta.hitsound_playback(ta.read_osu_beatmap(path), folder,
+                                                                   skin=self._skin()))
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
 
     @staticmethod
     def _playback_reply(name: str, plan: dict) -> dict:
         """A playback plan as the page schedules it: columns of events and
-        objects, and the bytes of each sample they play."""
+        objects, and the bytes of each sample they play. A sample with no
+        audio in it (a mute) says so, so the page does not count it as one
+        it failed to decode."""
         samples = {}
         for key, sample in plan["samples"].items():
-            data = _playable_sample(Path(sample["path"]).read_bytes())
-            samples[key] = {"source": sample["source"], "name": Path(sample["path"]).name,
+            path = Path(sample["path"])
+            raw = path.read_bytes()
+            data = _playable_sample(raw)
+            samples[key] = {"source": sample["source"], "name": path.name,
+                            "empty": ta._sample_empty(path, len(raw)),
                             "data": base64.b64encode(data).decode("ascii")}
         return {"ok": True, "file": name,
                 "events": {"t": [e["t"] for e in plan["events"]],
@@ -1174,6 +1180,81 @@ class Api:
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return {"ok": True, "file": name, "report": report}
+
+    # -- sample bank (Phase 6, H6) ---------------------------------------------
+    def _skin(self) -> Path | None:
+        """The skin folder playback asks before Overtone's own samples: the
+        one chosen in the settings, while it is still there."""
+        folder = self._settings()["skin_folder"]
+        return Path(folder) if folder and Path(folder).is_dir() else None
+
+    @staticmethod
+    def _same_folder(a: Path | None, b: Path | None) -> bool:
+        if a is None or b is None:
+            return False
+        return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+    def sample_bank(self, folder: str = "") -> dict:
+        """What a sample folder holds, named as osu! names it (H6): ``folder``,
+        or with none the analysed song's own, whose missing samples fall back
+        to the skin playback uses. Read only; nothing is remembered."""
+        if folder:
+            base = Path(str(folder))
+        elif self._analysis is None:
+            return {"ok": False, "key": "first"}
+        else:
+            base = Path(str(self._analysis.source)).parent
+        if not base.is_absolute() or not base.is_dir():
+            return {"ok": False, "key": "bad_folder"}
+        skin = self._skin()
+        try:
+            bank = ta.sample_bank(base, skin=skin)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        song = self._analysis is not None and self._same_folder(
+            base, Path(str(self._analysis.source)).parent)
+        return {"ok": True, "bank": bank, "song": song, "in_use": self._same_folder(base, skin),
+                "skin": str(skin) if skin else ""}
+
+    def _skins_start(self) -> str:
+        """Where the Samples card's folder dialog opens: beside the skin in
+        use, else osu!'s Skins beside the Songs folder, else anywhere."""
+        skin = self._skin()
+        if skin is not None:
+            return str(skin.parent)
+        skins = Path(self._songs_root()).parent / "Skins"
+        return str(skins) if skins.is_dir() else ""
+
+    def pick_sample_folder(self) -> dict:
+        """A folder dialog for the Samples card, and the bank of the folder
+        chosen. Only read: choosing it for playback is a setting of its own."""
+        import webview
+        if self._window is None:
+            return {"ok": False, "key": "cancelled"}
+        chosen = self._window.create_file_dialog(webview.FOLDER_DIALOG,
+                                                 directory=self._skins_start())
+        if not chosen:
+            return {"ok": False, "key": "cancelled"}
+        return self.sample_bank(chosen[0] if isinstance(chosen, (list, tuple)) else str(chosen))
+
+    def sample_audition(self, folder: str, file: str) -> dict:
+        """One sample's bytes, for the page to hear: ``file`` is a hitsound
+        sample's name (``soft-hitclap2.wav``), alone, inside ``folder``, an
+        absolute folder the bank named (Overtone's own samples included).
+        Nothing that is not named as a sample is read."""
+        base, name = Path(str(folder or "")), str(file or "")
+        path = base / name
+        if (not name or Path(name).name != name or not HITSOUND_SAMPLE_NAME.match(name)
+                or Path(name).suffix.lower() not in ta.SAMPLE_EXTENSIONS
+                or not base.is_absolute() or not path.is_file()):
+            return {"ok": False, "key": "sb_gone"}
+        try:
+            raw = path.read_bytes()
+        except OSError as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "folder": str(base), "file": name,
+                "empty": ta._sample_empty(path, len(raw)),
+                "data": base64.b64encode(_playable_sample(raw)).decode("ascii")}
 
     # -- hitsound copier (Phase 6, H1) ---------------------------------------
     @staticmethod
@@ -1371,11 +1452,12 @@ class Api:
         try:
             accepted = None if accept is None else {tuple(a) for a in accept}
             beatmap = ta.read_osu_beatmap(path)
-            written = ta.hitsound_playback(beatmap, path.parent)
+            skin = self._skin()
+            written = ta.hitsound_playback(beatmap, path.parent, skin=skin)
             changes = ta.proposal_changes(beatmap, units, accepted)
             edited = ta.edit_changes(beatmap, edits, changes["changes"])
             ta.set_object_hitsounds(beatmap, edited["changes"])
-            plan = ta.hitsound_playback(beatmap, path.parent)
+            plan = ta.hitsound_playback(beatmap, path.parent, skin=skin)
             reply = self._playback_reply(str(path.name), plan)
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
@@ -2467,8 +2549,12 @@ class Api:
         subdivision = _number(cfg.get("click_subdivision"), 1, int)
         scale = _number(cfg.get("ui_scale"), 1.0, float)
         folder = cfg.get("output_folder")
+        skin = cfg.get("skin_folder")
         return {
             "output_folder": folder if isinstance(folder, str) and folder.strip() else "",
+            # The skin playback asks before Overtone's own samples (H6); kept
+            # as chosen even if it moves, and asked only while it is there.
+            "skin_folder": skin if isinstance(skin, str) and skin.strip() else "",
             "export_ask": cfg.get("export_ask", True) is not False,
             "offset_decimals": decimals if 0 <= decimals <= MAX_OFFSET_DECIMALS else 0,
             "click_subdivision": subdivision if subdivision in ta.CLICK_SUBDIVISIONS else 1,
@@ -2492,6 +2578,12 @@ class Api:
                 if key == "output_folder":
                     value = str(value or "").strip()
                     if value and not Path(value).is_dir():
+                        return {"ok": False, "key": "bad_folder"}
+                elif key == "skin_folder":              # "" plays no skin
+                    if not isinstance(value, str):
+                        return {"ok": False, "key": "bad_values"}
+                    value = value.strip()
+                    if value and not (Path(value).is_absolute() and Path(value).is_dir()):
                         return {"ok": False, "key": "bad_folder"}
                 elif key in ("export_ask", "click_accent", "reduced_motion"):
                     if not isinstance(value, bool):

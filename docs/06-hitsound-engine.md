@@ -332,7 +332,9 @@ Samples/
   carry some (timeline, 2026-09-26). Playback asks a chosen skin between the map's
   samples and Overtone's own.
 - Audition any sample; auditioning it **against the song at the selected object** is the
-  feature that matters, and it is cheap once playback exists.
+  feature that matters, and it is cheap once playback exists. Both are in the Samples card
+  since 2026-09-26: the song plays from a second before the sound selected in the Sounds
+  table, with the sample in that sound's place at its volume, and stops after it.
 - Analyse the samples themselves with the same feature extractor, then **recommend** a
   mapping: a sample whose spectral profile is kick-like is offered for the kick role. This
   makes profiles portable across sample sets instead of hard-coding "drum-hitnormal".

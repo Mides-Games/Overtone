@@ -252,6 +252,44 @@ const I18N = {
     pb_hs_proposal: "{name}, as it would be written",
     pb_hs_ready: "Hitsounds of {name}: {n} sounds and {bodies} slider slides; {map} from the map's own samples, {own} from Overtone's.",
     pb_hs_unreadable: "{n} sample(s) this window cannot decode stay silent.",
+    pb_hs_ready_skin: "Hitsounds of {name}: {n} sounds and {bodies} slider slides; {map} from the map's own samples, {skin} from the skin, {own} from Overtone's.",
+    pb_hs_empty: "{n} sample(s) hold no audio and mute their sound.",
+    hsv_samples_v_skin: "{map} the map's · {skin} the skin's · {own} Overtone's",
+    sb_title: "Samples",
+    sb_sub: "The hitsound samples a folder holds, named as osu! names them: each set's four hits and the two sounds a slider body loops, then the numbered ones. Click one to hear it; a missing one plays what would play instead. The folder is only read.",
+    sb_src_song: "This song's folder", sb_src_skin: "Playback skin", sb_src_pick: "Another folder…",
+    sb_kind_skin: "skin", sb_kind_beatmap: "beatmap folder",
+    sb_hitnormal: "normal", sb_sliderslide: "slide", sb_sliderwhistle: "whistle slide",
+    sb_counts: "{hits} of 12 hits · {slides} of 6 slider sounds",
+    sb_counts_empty: "{n} with no audio in them: they mute their sound",
+    sb_missing_skin: "{n} missing: {skin} play the skin's, {own} Overtone's own",
+    sb_missing_all_skin: "{n} missing: the skin's play instead",
+    sb_missing_own: "{n} missing: Overtone's own play instead",
+    sb_cell_title: "{file} · {kb} KB",
+    sb_cell_empty: "empty", sb_cell_empty_title: "{file} holds no audio: it mutes this sound",
+    sb_cell_skin: "→ skin", sb_cell_own: "→ Overtone",
+    sb_cell_skin_title: "Not in this folder: the skin's {file} plays",
+    sb_cell_own_title: "Not in this folder: Overtone's own {file} plays",
+    sb_custom_beatmap: "Custom indices {list}: {n} samples a map asks this folder for by index",
+    sb_custom_skin: "{n} numbered samples: osu! asks a skin for no index, so none of them plays",
+    sb_unused: "Never played, {n}: {names}. Index 1 takes no number, and no index starts with a zero.",
+    sb_shadowed: "Shadowed, {n}: {names}. A file of the same name that osu! looks for first (wav, then ogg, then mp3) plays instead.",
+    sb_more: "{n} more",
+    sb_skin_none: "Playback asks no skin: what a map's folder lacks plays Overtone's own samples.",
+    sb_skin_is: "Playback skin: {name}. What a map's folder lacks plays its samples, else Overtone's own.",
+    sb_skin_gone: "The playback skin is not there any more ({path}): Overtone's own samples play instead.",
+    sb_use: "Use for playback", sb_stop: "Stop using a skin",
+    sb_used: "Playback now asks {name} for what a map's folder lacks.",
+    sb_stopped: "Playback asks no skin now: Overtone's own samples fill in.",
+    sb_hear: "Hear it at the selected sound",
+    sb_hear_pick: "Click a sample, then select a sound in the Sounds table: the song plays from a second before it, with the sample in that sound's place.",
+    sb_hear_sound: "Select a sound in the Sounds table: the song plays from a second before it, with {sample} in that sound's place.",
+    sb_hear_ready: "{sample} in place of the sound at {time} (bar {bar} · {beat}), from a second before.",
+    sb_hear_no_map: "No difficulty beside this song plays its audio, so there is no sound to hear it at.",
+    sb_hearing: "Playing {sample} at {time}…",
+    sb_loading: "Reading the folder…",
+    sb_gone: "That sample is not in its folder any more: read the folder again.",
+    sb_empty_heard: "{file} holds no audio: it plays nothing.",
     hs_title: "Copy hitsounds", hs_preview: "Preview", hs_apply: "Copy hitsounds",
     hs_sub: "Each sound of the chosen difficulties takes the source's sound at the same moment (within 5 ms): additions, sample sets and index. Sounds with nothing under them are left as they are. Only hitsound fields change, and every file is backed up first.",
     hs_source: "From", hs_targets: "Onto",
@@ -815,6 +853,44 @@ const I18N = {
     pb_hs_proposal: "{name}, como quedaría escrita",
     pb_hs_ready: "Hitsounds de {name}: {n} sonidos y {bodies} slides de slider; {map} con samples propios del mapa, {own} con los de Overtone.",
     pb_hs_unreadable: "{n} sample(s) que esta ventana no puede decodificar quedan en silencio.",
+    pb_hs_ready_skin: "Hitsounds de {name}: {n} sonidos y {bodies} slides de slider; {map} con samples propios del mapa, {skin} con los del skin, {own} con los de Overtone.",
+    pb_hs_empty: "{n} sample(s) sin audio silencian su sonido.",
+    hsv_samples_v_skin: "{map} del mapa · {skin} del skin · {own} de Overtone",
+    sb_title: "Samples",
+    sb_sub: "Los samples de hitsound de una carpeta, con los nombres que usa osu!: los cuatro golpes de cada set y los dos sonidos que repite el cuerpo de un slider, y después los numerados. Hacé clic en uno para escucharlo; uno que falta suena con lo que sonaría en su lugar. La carpeta solo se lee.",
+    sb_src_song: "Carpeta de esta canción", sb_src_skin: "Skin de reproducción", sb_src_pick: "Otra carpeta…",
+    sb_kind_skin: "skin", sb_kind_beatmap: "carpeta de beatmap",
+    sb_hitnormal: "normal", sb_sliderslide: "slide", sb_sliderwhistle: "whistle slide",
+    sb_counts: "{hits} de 12 golpes · {slides} de 6 sonidos de slider",
+    sb_counts_empty: "{n} sin audio: silencian su sonido",
+    sb_missing_skin: "faltan {n}: {skin} suenan con los del skin, {own} con los de Overtone",
+    sb_missing_all_skin: "faltan {n}: suenan los del skin en su lugar",
+    sb_missing_own: "faltan {n}: suenan los de Overtone en su lugar",
+    sb_cell_title: "{file} · {kb} KB",
+    sb_cell_empty: "vacío", sb_cell_empty_title: "{file} no tiene audio: silencia este sonido",
+    sb_cell_skin: "→ skin", sb_cell_own: "→ Overtone",
+    sb_cell_skin_title: "No está en esta carpeta: suena {file} del skin",
+    sb_cell_own_title: "No está en esta carpeta: suena {file} de Overtone",
+    sb_custom_beatmap: "Índices propios {list}: {n} samples que un mapa le pide a esta carpeta por índice",
+    sb_custom_skin: "{n} samples numerados: osu! no le pide índices a un skin, así que ninguno suena",
+    sb_unused: "Nunca suenan, {n}: {names}. El índice 1 no lleva número, y ningún índice empieza con cero.",
+    sb_shadowed: "Tapados, {n}: {names}. Suena en su lugar un archivo del mismo nombre que osu! busca antes (wav, después ogg, después mp3).",
+    sb_more: "{n} más",
+    sb_skin_none: "La reproducción no usa skin: lo que le falta a la carpeta de un mapa suena con los samples de Overtone.",
+    sb_skin_is: "Skin de reproducción: {name}. Lo que le falta a la carpeta de un mapa suena con sus samples, o si no con los de Overtone.",
+    sb_skin_gone: "El skin de reproducción ya no está ({path}): suenan los samples de Overtone en su lugar.",
+    sb_use: "Usar para la reproducción", sb_stop: "Dejar de usar un skin",
+    sb_used: "La reproducción ahora usa {name} para lo que le falta a la carpeta de un mapa.",
+    sb_stopped: "La reproducción ya no usa skin: completan los samples de Overtone.",
+    sb_hear: "Escucharlo en el sonido elegido",
+    sb_hear_pick: "Hacé clic en un sample y después elegí un sonido en la tabla Sonidos: la canción suena desde un segundo antes, con el sample en lugar de ese sonido.",
+    sb_hear_sound: "Elegí un sonido en la tabla Sonidos: la canción suena desde un segundo antes, con {sample} en lugar de ese sonido.",
+    sb_hear_ready: "{sample} en lugar del sonido de {time} (compás {bar} · {beat}), desde un segundo antes.",
+    sb_hear_no_map: "Ninguna dificultad junto a esta canción usa su audio, así que no hay sonido donde escucharlo.",
+    sb_hearing: "Sonando {sample} en {time}…",
+    sb_loading: "Leyendo la carpeta…",
+    sb_gone: "Ese sample ya no está en su carpeta: volvé a leer la carpeta.",
+    sb_empty_heard: "{file} no tiene audio: no suena nada.",
     hs_title: "Copiar hitsounds", hs_preview: "Vista previa", hs_apply: "Copiar hitsounds",
     hs_sub: "Cada sonido de las dificultades elegidas toma el sonido de la fuente en el mismo momento (a menos de 5 ms): adiciones, sample sets e índice. Los sonidos sin nada debajo quedan como están. Solo cambian los campos de hitsound, y cada archivo se respalda antes.",
     hs_source: "Desde", hs_targets: "Hacia",
@@ -1160,6 +1236,7 @@ function translate() {
   renderSongs();
   renderStructure();
   if (HSV.report) renderHitsoundsView();
+  sbRender();
   renderNeedSong();
   renderMapset();
   if (typeof renderCopier === "function") renderCopier();
@@ -1197,7 +1274,7 @@ function setView(view) {
   // The canvas measures its box: it can only be drawn while visible.
   if (view === "timing" && S.result) { drawTrace(); waveLoad(); svMaps(); divsLoad(); }
   if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); stxVolMaps(); }
-  if (view === "hitsounds" && S.result) hsvLoad();
+  if (view === "hitsounds" && S.result) { hsvLoad(); sbView(); }
   if (view === "export" && S.result) hsdfMaps();
   if (view === "history") histLoad();
 }
@@ -2744,7 +2821,7 @@ function renderHitsoundsView() {
       ${stat(t("hsv_sounds_n"), n)}
       ${HSV_ADDS.map((a) => stat(t("lg_" + a), r.additions[a].total, `${pct(r.additions[a].total)} %`)).join("")}
       ${stat(t("hsv_sets"), `<span class="card-sub">${esc(setsText)}</span>`)}
-      ${c ? stat(t("hsv_samples"), `<span class="card-sub">${esc(t("hsv_samples_v", { map: c.map + c.file, own: c.overtone }))}</span>`) : ""}
+      ${c ? stat(t("hsv_samples"), `<span class="card-sub">${esc(t(c.skin ? "hsv_samples_v_skin" : "hsv_samples_v", { map: c.map + c.file, skin: c.skin, own: c.overtone }))}</span>`) : ""}
     </div>`;
   const peak = Math.max(1e-9, ...HSV_ADDS.flatMap((a) => r.additions[a].slots.map((x) => (r.additions[a].total ? x / r.additions[a].total : 0))));
   $("hsvWhere").innerHTML = HSV_ADDS.map((a) => hsvChart(a, r.additions[a], r.meter, peak)).join("");
@@ -2787,6 +2864,7 @@ function renderHitsoundsView() {
   $("hsvMore").textContent = t("hsv_more", { n: Math.min(more, HSV_PAGE) });
   hsdRender();
   hsdWhy();
+  sbRenderHear();
 }
 
 // ▶ plays one sound now, with the samples the transport loaded for this map.
@@ -3182,6 +3260,220 @@ async function hsMapsRefresh() {
   box.disabled = !maps.length;
   hsProposalOption(hsdHas() ? HSD.file : "");
   box.value = keep;
+}
+
+// ------------------------------------------------------------------ samples
+// Phase 6, H6: the sample bank. A folder's samples as playback reads them:
+// the song's own folder, the playback skin, or any folder picked. Every cell
+// plays its sample, or what plays in its place; the last one heard can play
+// over the song in place of the sound selected in the Sounds table. The skin
+// playback asks is a setting, and changing it reloads what the transport holds.
+const SB = { reply: null, source: "song", for: "", sel: null, buffers: new Map(), token: 0,
+             loading: false, skinFound: null };
+// The song before and after the sound an audition replaces, in seconds.
+const SB_LEAD = 1, SB_TAIL = 1.5;
+
+function sbSkin() { return (ST.settings && ST.settings.skin_folder) || ""; }
+function sbBase(path) { return String(path).split(/[\\/]/).filter(Boolean).pop() || String(path); }
+
+// A few names, then how many more.
+function sbList(names, max = 4) {
+  return names.slice(0, max).join(", ") + (names.length > max ? `, ${t("sb_more", { n: names.length - max })}` : "");
+}
+
+// Where a cell's or a numbered sample's sound comes from: its own file, or
+// for a missing cell the skin's or Overtone's, named so a hearing says which.
+function sbWhere(entry) {
+  const bank = SB.reply.bank;
+  if (entry.file) return { folder: bank.folder, file: entry.file, label: entry.file };
+  const f = entry.fallback;
+  return { folder: f.folder, file: f.file,
+           label: `${f.source === "skin" ? sbBase(f.folder) : "Overtone"} · ${f.file}` };
+}
+
+function sbIsSel(where) { return !!SB.sel && SB.sel.folder === where.folder && SB.sel.file === where.file; }
+
+// The shown folder again: the song's own, the playback skin's, or the one picked.
+async function sbLoad(source) {
+  if (!api()) return;
+  if (source === "skin" && !sbSkin()) source = "song";
+  const folder = source === "skin" ? sbSkin() : source === "pick" && SB.reply ? SB.reply.bank.folder : "";
+  const token = ++SB.token;
+  SB.loading = true;
+  $("sbCounts").textContent = t("sb_loading");
+  const reply = await api().sample_bank(folder);
+  if (token !== SB.token) return;
+  SB.loading = false;
+  sbTake(reply, source);
+}
+
+async function sbPick() {
+  if (!api()) return;
+  const token = ++SB.token;
+  const reply = await api().pick_sample_folder();
+  if (token !== SB.token) return;
+  SB.loading = false;
+  if (!reply.ok) { if (reply.key !== "cancelled") editFailure(reply); sbRender(); return; }
+  sbTake(reply, "pick");
+}
+
+function sbTake(reply, source) {
+  if (!reply.ok) {
+    // A playback skin that moved away is said on the card, which shows the
+    // song's folder instead.
+    if (source === "skin" && reply.key === "bad_folder") { SB.skinFound = false; sbLoad("song"); return; }
+    editFailure(reply);
+    SB.reply = null;
+    sbRender();
+    return;
+  }
+  SB.reply = reply; SB.source = source; SB.buffers = new Map();
+  SB.for = source === "song" && S.result ? S.result.path : SB.for;
+  SB.skinFound = sbSkin() ? !!reply.skin : null;
+  sbRender();
+}
+
+// The Hitsounds view opened: the song's folder is read again for a new song.
+function sbView() {
+  if (!S.result) return;
+  if (!SB.reply || (SB.source === "song" && SB.for !== S.result.path)) sbLoad(SB.source);
+  else sbRender();
+}
+
+function sbCell(c, i) {
+  const where = sbWhere(c), on = sbIsSel(where) ? " on" : "";
+  if (c.file) {
+    const ext = c.file.split(".").pop().toLowerCase();
+    const kb = c.bytes === null ? "?" : (c.bytes / 1024).toFixed(1);
+    const title = c.empty ? t("sb_cell_empty_title", { file: c.file }) : t("sb_cell_title", { file: c.file, kb });
+    return `<button type="button" class="sb-cell${c.empty ? " empty" : ""}${on}" data-sb-cell="${i}" title="${esc(title)}">`
+      + `${esc(c.empty ? t("sb_cell_empty") : `${ext} · ${kb} KB`)}</button>`;
+  }
+  const skin = c.fallback.source === "skin";
+  const title = t(skin ? "sb_cell_skin_title" : "sb_cell_own_title", { file: c.fallback.file })
+    + (c.fallback.empty ? ` · ${t("sb_cell_empty")}` : "");
+  return `<button type="button" class="sb-cell miss${c.fallback.empty ? " empty" : ""}${on}" data-sb-cell="${i}" title="${esc(title)}">`
+    + `${esc(t(skin ? "sb_cell_skin" : "sb_cell_own"))}</button>`;
+}
+
+function sbRender() {
+  const r = SB.reply, bank = r && r.bank, skin = sbSkin();
+  document.querySelectorAll("#sbSource button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.src === SB.source);
+    if (b.dataset.src === "skin") b.disabled = !skin;
+  });
+  $("sbKind").hidden = !bank;
+  $("sbName").textContent = bank ? bank.name : "";
+  $("sbRows").innerHTML = "";
+  $("sbCustom").innerHTML = "";
+  $("sbNotes").textContent = "";
+  if (bank) {
+    $("sbKind").textContent = t(bank.kind === "skin" ? "sb_kind_skin" : "sb_kind_beatmap");
+    const c = bank.counts, missing = c.to_skin + c.to_overtone;
+    const missingKey = !c.to_skin ? "sb_missing_own" : !c.to_overtone ? "sb_missing_all_skin" : "sb_missing_skin";
+    $("sbCounts").textContent = [t("sb_counts", { hits: c.hits, slides: c.slides }),
+      missing ? t(missingKey, { n: missing, skin: c.to_skin, own: c.to_overtone }) : "",
+      c.empty ? t("sb_counts_empty", { n: c.empty }) : ""].filter(Boolean).join(" · ");
+    $("sbRows").innerHTML = bank.sets.map((set) => `<tr><td>${esc(set)}</td>${bank.sounds.map((sound) => {
+      const i = bank.cells.findIndex((x) => x.set === set && x.sound === sound);
+      return `<td>${i < 0 ? "" : sbCell(bank.cells[i], i)}</td>`;
+    }).join("")}</tr>`).join("");
+    if (bank.custom.length) {
+      const head = bank.kind === "skin" ? t("sb_custom_skin", { n: bank.custom.length })
+        : t("sb_custom_beatmap", { list: sbList(bank.indices.map(String), 12), n: bank.custom.length });
+      $("sbCustom").innerHTML = `<div class="card-sub">${esc(head)}</div><div class="chips">`
+        + bank.custom.map((x, i) => `<button type="button" class="chip${x.empty ? " empty" : ""}${sbIsSel(sbWhere(x)) ? " on" : ""}" data-sb-custom="${i}"`
+          + ` title="${esc(x.empty ? t("sb_cell_empty_title", { file: x.file }) : t("sb_cell_title", { file: x.file, kb: x.bytes === null ? "?" : (x.bytes / 1024).toFixed(1) }))}">${esc(x.file)}</button>`).join("")
+        + `</div>`;
+    }
+    const shadowed = [...bank.cells, ...bank.custom].flatMap((x) => x.shadowed || []);
+    $("sbNotes").textContent = [bank.unused.length ? t("sb_unused", { n: bank.unused.length, names: sbList(bank.unused) }) : "",
+      shadowed.length ? t("sb_shadowed", { n: shadowed.length, names: sbList(shadowed) }) : ""].filter(Boolean).join(" ");
+  } else {
+    $("sbCounts").textContent = SB.loading ? t("sb_loading") : "";
+  }
+  $("sbSkinText").textContent = !skin ? t("sb_skin_none")
+    : SB.skinFound === false ? t("sb_skin_gone", { path: skin }) : t("sb_skin_is", { name: sbBase(skin) });
+  // A skin is a folder without maps, and never the song's own folder.
+  $("sbUse").hidden = !(bank && bank.kind === "skin" && !r.song && !r.in_use);
+  $("sbStop").hidden = !skin;
+  sbRenderHear();
+}
+
+// The sound an audition would replace: the row selected in the Sounds table.
+function sbSound() {
+  return HSV.report && HSV.selected !== null ? HSV.report.sounds[HSV.selected] || null : null;
+}
+
+function sbRenderHear() {
+  const s = sbSound(), sel = SB.sel, hearing = P.playing && P.swap && P.swap.label ? P.swap : null;
+  $("sbHear").disabled = !(sel && s);
+  $("sbHearText").textContent = hearing ? t("sb_hearing", { sample: hearing.label, time: fmtTime(hearing.t) })
+    : !$("hsvMap").options.length ? t("sb_hear_no_map")
+    : !sel ? t("sb_hear_pick")
+    : !s ? t("sb_hear_sound", { sample: sel.label })
+    : t("sb_hear_ready", { sample: sel.label, time: fmtTime(s.t), bar: s.bar ?? "—", beat: slotLabel(s.slot, s.meter) });
+}
+
+// A sample's decode, once per folder load: {empty, buffer}, or null when it
+// cannot be read or decoded (said in a toast).
+async function sbBuffer(where) {
+  const key = `${where.folder}|${where.file}`;
+  if (SB.buffers.has(key)) return SB.buffers.get(key);
+  const reply = await api().sample_audition(where.folder, where.file);
+  if (!reply.ok) { editFailure(reply); return null; }
+  let got = { empty: true, buffer: null };
+  if (!reply.empty) {
+    const raw = atob(reply.data), bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    try { got = { empty: false, buffer: await pbContext().decodeAudioData(bytes.buffer) }; }
+    catch (err) { toast(t("pb_hs_unreadable", { n: 1 }), true); return null; }
+  }
+  SB.buffers.set(key, got);
+  return got;
+}
+
+// A cell or a numbered sample clicked: heard now, alone, and kept for the song.
+async function sbHearAlone(where) {
+  if (!api()) return;
+  SB.sel = where;
+  sbRender();
+  const got = await sbBuffer(where);
+  if (!got) return;
+  if (got.empty) { toast(t("sb_empty_heard", { file: where.file })); return; }
+  const ctx = pbContext();
+  if (ctx.state === "suspended") await ctx.resume();
+  pbBufferAt(ctx.currentTime + 0.02, got.buffer, 1);
+}
+
+// The kept sample over the song: from a second before the selected sound, in
+// its place (a mute plays silence there), at the sound's own volume.
+async function sbHearAtSound() {
+  const s = sbSound(), where = SB.sel;
+  if (!api() || !s || !where) return;
+  const got = await sbBuffer(where);
+  if (!got) return;
+  await pbPlay(Math.max(0, s.t - SB_LEAD), {
+    t: s.t, buffer: got.buffer, label: where.label, until: s.t + SB_TAIL,
+    volume: Math.max(0.05, Math.min(1, (s.volume ?? 100) / 100)), onEnd: sbRenderHear });
+  sbRenderHear();
+}
+
+// The playback skin chosen or dropped: kept as a setting, and what the
+// transport holds is loaded again with it.
+async function sbSetSkin(folder) {
+  if (!api()) return;
+  const reply = await api().set_settings({ skin_folder: folder });
+  if (!reply.ok) { editFailure(reply); return; }
+  stTake(reply);
+  SB.skinFound = folder ? true : null;
+  toast(folder ? t("sb_used", { name: sbBase(folder) }) : t("sb_stopped"));
+  for (const key of Object.keys(HSP.decoded)) if (key.startsWith("skin:")) delete HSP.decoded[key];
+  if (HSP.file) {
+    await hsPick($("pbHs").value);
+    if (HSV.report) renderHitsoundsView();
+  }
+  await sbLoad(SB.source === "skin" && !folder ? "song" : SB.source);
 }
 
 async function dropAnalyze(file) {
@@ -4302,8 +4594,10 @@ async function hsPick(value) {
     return;
   }
   const ctx = pbContext(), buffers = {};
-  let unreadable = 0;
+  let unreadable = 0, empty = 0;
   for (const [key, s] of Object.entries(reply.samples)) {
+    // A file with no audio in it mutes its sound: nothing to decode or play.
+    if (s.empty) { empty++; continue; }
     if (!HSP.decoded[key]) {
       const raw = atob(s.data), bytes = new Uint8Array(raw.length);
       for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
@@ -4324,20 +4618,25 @@ async function hsPick(value) {
   hsLegend();
   if (S.result) drawTrace();
   const c = reply.counts;
-  $("pbStatus").textContent = t("pb_hs_ready", { name, n: c.sounds, bodies: c.slider_bodies,
-                                                 map: c.map + c.file, own: c.overtone }) +
+  $("pbStatus").textContent = t(c.skin ? "pb_hs_ready_skin" : "pb_hs_ready",
+                                { name, n: c.sounds, bodies: c.slider_bodies, map: c.map + c.file,
+                                  skin: c.skin, own: c.overtone }) +
+    (empty ? ` ${t("pb_hs_empty", { n: empty })}` : "") +
     (unreadable ? ` ${t("pb_hs_unreadable", { n: unreadable })}` : "");
+}
+
+// One decoded sample on the hitsound bus, so a stop cuts it and the level applies.
+function pbBufferAt(when, buffer, volume) {
+  const src = P.ctx.createBufferSource(), gain = P.ctx.createGain();
+  src.buffer = buffer;
+  gain.gain.value = volume;
+  src.connect(gain); gain.connect(P.hits);
+  src.start(when);
 }
 
 function pbHitAt(when, keys, volume) {
   for (const key of keys) {
-    const buffer = HSP.buffers[key];
-    if (!buffer) continue;
-    const src = P.ctx.createBufferSource(), gain = P.ctx.createGain();
-    src.buffer = buffer;
-    gain.gain.value = volume;
-    src.connect(gain); gain.connect(P.hits);
-    src.start(when);
+    if (HSP.buffers[key]) pbBufferAt(when, HSP.buffers[key], volume);
   }
 }
 
@@ -4371,11 +4670,18 @@ function pbTick() {
     for (let i = lowerBound(clicks.t, s0); i < clicks.t.length && clicks.t[i] < s0 + len * P.rate; i++) {
       pbClickAt(P.startCtx + P.sched + (clicks.t[i] - s0) / P.rate + (P.clickShiftMs || 0) / 1000, clicks.level[i]);
     }
+    // An audition (the Samples card): one sample in place of the sounds at one moment.
+    const swap = P.swap;
     const hits = HSP.events;
     if (hits) {
       for (let i = lowerBound(hits.t, s0); i < hits.t.length && hits.t[i] < s0 + len * P.rate; i++) {
+        if (swap && Math.abs(hits.t[i] - swap.t) < 1e-3) continue;
         pbHitAt(P.startCtx + P.sched + (hits.t[i] - s0) / P.rate, hits.keys[i], hits.volume[i]);
       }
+    }
+    if (swap && !swap.done && swap.t >= s0 && swap.t < s0 + len * P.rate) {
+      if (swap.buffer) pbBufferAt(P.startCtx + P.sched + (swap.t - s0) / P.rate, swap.buffer, swap.volume);
+      swap.done = true;
     }
     const slides = HSP.loops;
     if (slides && slides.t.length) {
@@ -4394,6 +4700,14 @@ function pbTick() {
     }
     P.sched += len > 1e-9 ? len : 1e-6;
   }
+  // An audition stops on its own a moment after its sample.
+  if (P.swap && pbPosition() >= P.swap.until) {
+    const done = P.swap;
+    pbStop();
+    P.swap = null;
+    if (done.onEnd) done.onEnd();
+    return;
+  }
   if (!P.loop && pbPosition() >= P.buffer.duration) { pbStop(); P.pos = 0; pbDraw(); }
 }
 
@@ -4407,14 +4721,19 @@ function pbLoopFor(pos) {
   return b - a > 0.05 ? { a: Math.max(0, a), b: Math.min(b, P.buffer.duration) } : null;
 }
 
-async function pbPlay(from) {
+// `swap`, from an audition: {t, buffer, volume, until, label, onEnd}, the
+// sample to play at song time t in place of the sounds there, when to stop,
+// and what the Samples card calls it meanwhile.
+async function pbPlay(from, swap) {
   if (!api() || !S.result) return;
   if (!(await pbLoad())) return;
   const ctx = pbContext();
   if (ctx.state === "suspended") await ctx.resume();
   pbStop();
   let pos = Math.min(Math.max(0, from ?? P.pos), P.buffer.duration - 0.01);
-  P.loop = $("pbLoop").checked ? pbLoopFor(pos) : null;
+  // Any other play ends an audition; an audition plays through, never looped.
+  P.swap = swap || null;
+  P.loop = !P.swap && $("pbLoop").checked ? pbLoopFor(pos) : null;
   if (P.loop && (pos < P.loop.a || pos >= P.loop.b)) pos = P.loop.a;
   const source = ctx.createBufferSource();
   source.buffer = P.buffer;
@@ -4468,6 +4787,7 @@ function pbButtons() {
   // SVG elements have no .hidden property: the attribute is what hides them.
   $("pbPlayIcon").toggleAttribute("hidden", P.playing);
   $("pbPauseIcon").toggleAttribute("hidden", !P.playing);
+  sbRenderHear();                                // an audition says while it plays
 }
 
 function pbFrame() {
@@ -5903,13 +6223,31 @@ function wire() {
     document.querySelectorAll("#hsvRows tr.sel").forEach((tr) => tr.classList.remove("sel"));
     row.classList.add("sel");
     hsdWhy();
+    sbRenderHear();
   });
   $("hsvWhy").addEventListener("click", (e) => {
     if (!e.target.closest("[data-why-close]")) return;
     HSV.selected = null;
     document.querySelectorAll("#hsvRows tr.sel").forEach((tr) => tr.classList.remove("sel"));
     hsdWhy();
+    sbRenderHear();
   });
+  $("sbSource").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-src]");
+    if (!b || b.disabled) return;
+    if (b.dataset.src === "pick") sbPick(); else sbLoad(b.dataset.src);
+  });
+  $("sbRows").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-sb-cell]");
+    if (b && SB.reply) sbHearAlone(sbWhere(SB.reply.bank.cells[+b.dataset.sbCell]));
+  });
+  $("sbCustom").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-sb-custom]");
+    if (b && SB.reply) sbHearAlone(sbWhere(SB.reply.bank.custom[+b.dataset.sbCustom]));
+  });
+  $("sbUse").onclick = () => { if (SB.reply) sbSetSkin(SB.reply.bank.folder); };
+  $("sbStop").onclick = () => sbSetSkin("");
+  $("sbHear").onclick = sbHearAtSound;
   $("stxBody").addEventListener("click", (e) => {
     const el = e.target.closest("[data-stx]");
     if (el) stxShow(+el.dataset.stx);

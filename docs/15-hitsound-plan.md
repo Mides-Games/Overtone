@@ -189,9 +189,11 @@ the template baseline.
 The bank's engine is in (2026-09-26): `sample_bank` reads a skin or a beatmap folder as
 playback reads it, and playback asks a chosen skin before Overtone's own samples, which
 closes the gap P-3's row names ("beatmap folder custom index, then skin, then defaults":
-the skin had never been read). The card that picks a folder, shows it and auditions its
-samples is next; recommending samples for roles needs the feature extractor on the
-samples, and is not started.
+the skin had never been read). The Samples card (same day) shows the song's folder, the
+playback skin or any folder picked, plays each sample alone or over the song in place of
+the sound selected in the Sounds table, and chooses the skin playback asks, a setting.
+Recommending samples for roles needs the feature extractor on the samples, and is not
+started.
 
 ### H7 · Audio-only proposal (proposed 2026-09-26, todo)
 

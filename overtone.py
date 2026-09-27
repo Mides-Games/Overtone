@@ -10187,6 +10187,10 @@ def main() -> None:
     parser.add_argument("--inject", metavar="MAP.OSU", help="Inject red lines into an .osu [TimingPoints] (backup .bak, greens kept)")
     parser.add_argument("--no-backup", action="store_true", help="Skip the .bak backup when injecting")
     parser.add_argument("--no-map-preference", action="store_true", help="Do not prefer 120-300 mapping BPM when resolving the octave")
+    parser.add_argument("--check", metavar="MAP.OSU",
+                        help="Check a map against this audio and print the modder's report instead of "
+                             "red lines (red lines to check, changes the map lacks, snapping, objects "
+                             "away from the music); exits 3 when it finds something, 0 when clean")
     args = parser.parse_args()
 
     def note(message: str) -> None:
@@ -10216,8 +10220,8 @@ def main() -> None:
         raise SystemExit(2)
     force = 0.0 if args.subdivision == "auto" else float(args.subdivision)
     if Path(args.audio).is_dir():
-        single = [flag for flag in ("--click", "--osz", "--inject", "--stats", "--decimal-offsets")
-                  if flag in given]
+        single = [flag for flag in ("--click", "--osz", "--inject", "--stats", "--decimal-offsets",
+                                    "--check") if flag in given]
         if single:
             note(f"Error: {'/'.join(single)} need a single audio file, not a folder")
             raise SystemExit(2)
@@ -10255,8 +10259,30 @@ def main() -> None:
     except (ValueError, RuntimeError, OSError) as exc:
         note(f"Error: {exc}")
         raise SystemExit(1)
+    check = None
+    if args.check:
+        # The mod report the app's Report section posts, for one map: read
+        # only, and scriptable, since a finding changes the exit code.
+        try:
+            beatmap = read_osu_beatmap(args.check)
+            times = np.asarray(analysis.attack_times, dtype=np.float64)
+            weights = np.asarray(analysis.attack_weights, dtype=np.float64)
+            if times.size == 0:     # the fallback tracker keeps none: found here, once
+                y, sr = _load_audio(args.audio, lambda _message: None)
+                times, weights, _envelope = _detect_attacks(y, sr, FIT_HOP)
+            check = mod_report(beatmap, times, weights, float(analysis.duration), analysis)
+        except (ValueError, OSError, RuntimeError) as exc:
+            note(f"Error checking {args.check}: {exc}")
+            raise SystemExit(1)
     if args.json:
-        print(json.dumps(analysis_report(analysis), indent=2))
+        report = analysis_report(analysis)
+        print(json.dumps(report if check is None else {"analysis": report, "check": check},
+                         indent=2))
+    elif check is not None:
+        if args.stats:
+            print(analysis_summary(analysis))
+            print()
+        print(check["text"] or "No findings.")
     else:
         if args.stats:
             print(analysis_summary(analysis))
@@ -10290,6 +10316,9 @@ def main() -> None:
              + (" [audio mismatch!]" if summary["audio_mismatch"] else ""))
         if summary["backup"]:
             note(f"Backup: {summary['backup']}")
+    # A check that found something says so to a script, as a linter does.
+    if check is not None and check["items"]:
+        raise SystemExit(3)
 
 
 if __name__ == "__main__":

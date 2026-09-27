@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **645** Python (431 engine + 214 web shell) · **270** Rust.
+Tests: **649** Python (435 engine + 214 web shell) · **270** Rust.
 
 ### What is pending, in order
 
@@ -391,7 +391,7 @@ corpus generator; they say the classes separate, not how they do on real songs.
 
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
-| CLI rewrite | `analyze · timing · hitsound · validate · inject · export · bench` | med | **high** | P1, P5 | no | no | **P1** | partial — Python CLI covers analyse, CSV, click, .osz, inject, folders |
+| CLI rewrite | `analyze · timing · hitsound · validate · inject · export · bench` | med | **high** | P1, P5 | no | no | **P1** | partial — Python CLI covers analyse, CSV, click, .osz, inject, folders, and a map checked (`--check`, the mod report, exit 3 on findings); no hitsound or bench commands |
 | Machine-readable output | `--json` | low | high | CLI | no | no | P1 | **done** for analyse |
 | Batch folder analysis | every audio file in a folder | low | high | CLI | no | no | P1 | **done** |
 | Batch hitsounding | many difficulties, one analysis reused | low | high | P6 | no | no | P1 | todo |

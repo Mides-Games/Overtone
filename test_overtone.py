@@ -4384,6 +4384,68 @@ def _run_cli(argv, analysis=None):
     return code, out.getvalue(), err.getvalue()
 
 
+class CliCheckTests(unittest.TestCase):
+    """``--check MAP.osu``: the modder's report for one map, from the command
+    line, with an exit code a script can read (3: findings, 0: clean)."""
+
+    @staticmethod
+    def _analysis():
+        analysis = _grid_analysis([(1000.0, 120.0)])
+        # Attacks on the 120 BPM grid from 1 s, as the grid engine keeps them.
+        analysis.attack_times = np.arange(1.0, 29.0, 0.5)
+        analysis.attack_weights = np.ones_like(analysis.attack_times)
+        return analysis
+
+    @staticmethod
+    def _map(tmp: str, red_ms: int) -> Path:
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: song.wav", "",
+                 "[Difficulty]", "SliderMultiplier:1.4", "",
+                 "[TimingPoints]", f"{red_ms},500,4,1,0,100,1,0", "", "[HitObjects]"]
+        lines += [f"256,192,{1000 + k * 500},1,0,0:0:0:0:" for k in range(40)]
+        path = Path(tmp) / "map.osu"
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
+
+    def test_a_map_off_the_music_is_reported_and_exits_3(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            osu = self._map(tmp, 1010)
+            before = osu.read_bytes()
+            code, out, err = _run_cli([str(Path(tmp) / "song.wav"), "--check", str(osu)],
+                                      self._analysis())
+            self.assertEqual(osu.read_bytes(), before)            # read only
+        self.assertEqual(code, 3, err)
+        self.assertRegex(out, r"\d\d:\d\d:\d\d\d")                # editor timestamps
+        self.assertNotIn("500.000000000000", out)                 # no red lines on stdout
+
+    def test_a_clean_map_exits_0(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out, err = _run_cli([str(Path(tmp) / "song.wav"), "--check",
+                                       str(self._map(tmp, 1000))], self._analysis())
+        self.assertIn(code, (0, None), err)
+        self.assertEqual(out.strip(), "No findings.")
+
+    def test_json_carries_the_analysis_and_the_check(self) -> None:
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out, _err = _run_cli([str(Path(tmp) / "song.wav"), "--json", "--check",
+                                        str(self._map(tmp, 1010))], self._analysis())
+        body = json.loads(out)
+        self.assertEqual(code, 3)
+        self.assertEqual(set(body), {"analysis", "check"})
+        self.assertTrue(body["check"]["items"])
+        self.assertIn("points", body["analysis"])
+
+    def test_refusals(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            code, _out, err = _run_cli([tmp, "--check", "map.osu"], self._analysis())
+            self.assertEqual(code, 2)
+            self.assertIn("--check", err)
+            code, _out, err = _run_cli([str(Path(tmp) / "song.wav"), "--check",
+                                        str(Path(tmp) / "gone.osu")], self._analysis())
+            self.assertEqual(code, 1)
+            self.assertIn("Error checking", err)
+
+
 class CliOutputTests(unittest.TestCase):
     def test_a_click_path_soundfile_cannot_write_is_an_error_not_a_traceback(self):
         analysis = _grid_analysis([(1000.0, 120.0)])

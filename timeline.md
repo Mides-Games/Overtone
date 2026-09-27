@@ -17,6 +17,30 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-26 · A map checked from the command line
+
+### Changed
+
+- **`--check MAP.osu`**: after the analysis, the command line prints the modder's report
+  for that map instead of the red lines, the one the Report section posts: red lines to
+  check with their error, tempo changes the map lacks, objects off the map's own grid or
+  away from the music, each under its editor timestamp. It exits 3 when it found something
+  and 0 when the map is clean ("No findings."), so a script can tell; errors stay 1 and
+  usage 2. With `--json` the output is `{"analysis": ..., "check": ...}`. The map is only
+  read. A fallback result keeps no attacks, so they are found once for the check.
+- A folder with `--check` is refused, as the other single-file flags are.
+
+### Measured
+
+```
+Three Corpus B maps (read only), as a process: palette 14 findings, yui-again 115,
+calm-down-juliet 11; exit 3 each; 12.0, 16.5 and 80.5 s (the last one's analysis falls
+back to the tracker, and its attacks are found for the check); every map's bytes
+unchanged. The first line of each is the whole map sitting 22-32 ms from the attacks,
+the late reading the precision plan explains (10.0a)
+Python unittest   645 -> 649, all pass
+```
+
 ## v4.0.0-dev — 2026-09-26 · A stopped song heard where the position lands
 
 ### Changed

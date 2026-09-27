@@ -2544,6 +2544,17 @@ class Api:
         report = ta.swing_lane(analysis.points, times, weights, float(analysis.duration))
         return {"ok": True, "report": report}
 
+    def density_hints(self) -> dict:
+        """Where a reported section holds a half- or double-time region.
+
+        Read only, and a hint: the evidence for it, never a change to the
+        timing. Costs nothing beyond the attacks the analysis already keeps,
+        so it needs no turn among the heavy jobs. The fallback tracker reports
+        no sections, so it has none to look inside and the list is empty."""
+        if self._analysis is None:
+            return {"ok": False, "key": "first"}
+        return {"ok": True, "hints": ta.density_hints(self._analysis)}
+
     # -- assisted timing: two marked downbeats seed the grid ---------------
     def assisted_fit(self, first_ms: float, second_ms: float, bars: int, meter: int) -> dict:
         """Fit the grid two marked downbeats imply. Read only: the answer (or

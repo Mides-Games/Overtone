@@ -2401,6 +2401,41 @@ class DivisorsBridgeTests(_IsolatedConfig):
         self.assertEqual(web.Api().snap_divisors()["key"], "first")
 
 
+class PulseHintBridgeTests(_IsolatedConfig):
+    """Where a reported section holds a half- or double-time region.
+    (Named apart from DensityBridgeTests above, which is a map's object
+    density: two classes of one name in a file silently lose the first.)"""
+
+    def test_the_hint_carries_its_evidence_and_changes_nothing(self) -> None:
+        api = _api_with_points()
+        section = ta.GridSection(0.0, 80.0, 0.5, 0.0, 400, 0.5, 0.95)
+        api._analysis.sections = [section]
+        eighths = [i * 0.25 for i in range(160)]
+        quarters = [40.0 + i * 0.5 for i in range(80)]
+        api._analysis.attack_times = np.array(eighths + quarters)
+        api._analysis.attack_weights = np.ones(240)
+        before = [(p.offset_ms, p.bpm) for p in api._analysis.points]
+        reply = api.density_hints()
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        self.assertEqual(len(reply["hints"]), 1)
+        hint = reply["hints"][0]
+        self.assertEqual((hint["section"], hint["thin_side"]), (0, "tail"))
+        self.assertIn("coverage_in", hint)
+        self.assertIn("parity_in", hint)
+        # a hint, never an edit: the timing is exactly as it was
+        self.assertEqual([(p.offset_ms, p.bpm) for p in api._analysis.points], before)
+        self.assertEqual(web.Api().density_hints()["key"], "first")
+
+    def test_a_result_with_no_sections_has_nothing_to_look_inside(self) -> None:
+        api = _api_with_points()          # the fallback tracker reports none
+        api._analysis.attack_times = np.zeros(0)
+        api._analysis.attack_weights = np.zeros(0)
+        reply = api.density_hints()
+        self.assertEqual((reply["ok"], reply["hints"]), (True, []))
+        self.assertFalse(api._busy.locked())
+
+
 class SwingBridgeTests(_IsolatedConfig):
     """Where the music swings, on the working grid."""
 

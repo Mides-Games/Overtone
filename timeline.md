@@ -17,6 +17,45 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-28 · Every sound a map plays gets its context
+
+### Fixed
+
+- **The map context skipped a quarter of what a map plays.** It matched each
+  attack to the nearest *object start*, and said so — "slider ends and repeat
+  hits stay future work". osu! plays a slider at every edge it has, head, each
+  repeat and tail, and a spinner at its end, and each of those carries its own
+  `edgeSounds`. Over five ranked maps, 1,653 of 6,207 sound events (27 %) are
+  those edges, and the context had no row for any of them.
+- **Worse than missing: wrong.** An attack landing on a repeat or a tail was
+  matched to the object's start, so the context reported the *head's* sound for
+  it — and on those same maps 1,179 of the 1,653 (71 %) play something else.
+  The reader now matches every sound event (`sound_events`, P-1), reports which
+  edge answered, and reports what that edge itself plays.
+
+### Changed
+
+- **The nearest-match stopped scanning every object for every attack.** Both
+  sides are sorted, so one `searchsorted` and its two neighbours find it: on a
+  1,263-object map the scan alone was 1.84 s, and the whole context is now
+  0.05 s.
+- A spinner's *start* now answers with nothing, because nothing plays there.
+  Saying so is better than pointing at an object that will never carry a sound.
+
+### Measured
+
+```
+Five ranked maps of the local library, the difficulty with the most objects:
+4,565 objects, 6,207 sound events, 36 % more events than objects.
+
+  1,653 (27 %)  repeats, tails and spinner ends: no context at all before
+  1,179 (71 % of those)  play something other than their object's first edge,
+                         which is what the old context reported for them
+
+Cost, on the 1,263-object map: the nearest-match scan 1.84 s before, the whole
+context 0.05 s now, for the same 1,263 attacks.
+```
+
 ## v4.0.0-dev — 2026-09-28 · Whether to trust the reading, in one line
 
 ### Changed

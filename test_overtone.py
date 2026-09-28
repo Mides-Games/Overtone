@@ -4384,6 +4384,9 @@ _CONTEXT_OSU = "\n".join([
     "[General]",
     "AudioFilename: audio.mp3",
     "",
+    "[Difficulty]",
+    "SliderMultiplier:1.0",
+    "",
     "[TimingPoints]",
     "1000,400,4,1,0,100,1,0",
     "",
@@ -4394,6 +4397,27 @@ _CONTEXT_OSU = "\n".join([
     "400,100,1400,5,0,0:0:0:0:",
     "100,300,5000,1,0,0:0:0:0:",
     "256,192,8000,8,0,9000,0:0:0:0:",
+    "",
+])
+
+#: A slider with one repeat, each edge sounding differently: head whistle,
+#: repeat clap, tail plain, landing at 6000, 6800 and 7600 ms. Its own map,
+#: because _CONTEXT_OSU is shared with the alignment and density tests and an
+#: object added there moves their counts.
+_SLIDER_OSU = "\n".join([
+    "osu file format v14",
+    "",
+    "[General]",
+    "AudioFilename: audio.mp3",
+    "",
+    "[Difficulty]",
+    "SliderMultiplier:1.0",
+    "",
+    "[TimingPoints]",
+    "1000,400,4,1,0,100,1,0",
+    "",
+    "[HitObjects]",
+    "100,100,6000,6,0,L|300:100,2,200,2|8|0,0:0|0:0|0:0,0:0:0:0:",
     "",
 ])
 
@@ -4411,24 +4435,63 @@ class ObjectContextTests(unittest.TestCase):
         return rows
 
     def test_patterns_combos_and_sounds(self) -> None:
-        rows = self._context([1.005, 1.103, 1.198, 1.402, 5.0, 8.0, 30.0])
+        rows = self._context([1.005, 1.103, 1.198, 1.402, 5.0, 30.0])
         kinds = [r["object"]["kind"] if r["object"] else None for r in rows]
-        self.assertEqual(kinds, ["circle", "circle", "circle", "circle", "circle", "spinner", None])
+        self.assertEqual(kinds, ["circle", "circle", "circle", "circle", "circle", None])
         self.assertEqual([r["pattern"] for r in rows],
-                         ["stream", "stream", "stream", "jump", "single", "single", "none"])
-        self.assertEqual([r["combo"] for r in rows], [1, 1, 1, 2, 2, 2, None])
+                         ["stream", "stream", "stream", "jump", "single", "none"])
+        self.assertEqual([r["combo"] for r in rows], [1, 1, 1, 2, 2, None])
         self.assertEqual([r["new_combo"] for r in rows],
-                         [True, False, False, True, False, False, False])
+                         [True, False, False, True, False, False])
         third = rows[2]
         self.assertAlmostEqual(third["object"]["dt_ms"], 2.0)
         self.assertEqual(third["spacing_prev_ms"], 100.0)
         self.assertEqual(third["spacing_next_ms"], 200.0)
         self.assertEqual(third["hitsound"]["sound"], 2)
+        self.assertEqual(third["hitsound"]["sounds"], ["normal", "whistle"])
         self.assertEqual(third["hitsound"]["sample"]["volume"], 25)
-        stray = rows[6]
+        stray = rows[5]
         self.assertIsNone(stray["object"])
         self.assertIsNone(stray["spacing_prev_ms"])
         self.assertEqual(stray["hitsound"], {})
+
+    def _slider_context(self, attacks):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(_SLIDER_OSU, encoding="utf-8")
+            beatmap = read_osu_beatmap(target)
+        times = np.array(attacks, dtype=np.float64)
+        return attack_object_context(times, np.ones(times.size), beatmap)
+
+    def test_every_edge_a_slider_sounds_has_its_own_context(self) -> None:
+        # The gap this closed: matching attacks to object starts left a
+        # slider's repeat and tail with no context at all, and reported the
+        # head's sound for all three. On one ranked set, 28 % of what the map
+        # plays was invisible that way.
+        head, repeat, tail = self._slider_context([6.0, 6.8, 7.6])
+        self.assertEqual([r["object"]["part"] for r in (head, repeat, tail)],
+                         ["head", "repeat", "tail"])
+        self.assertEqual([r["object"]["edge"] for r in (head, repeat, tail)], [0, 1, 2])
+        # Each edge plays what the mapper wrote for it, not what the head plays.
+        self.assertEqual(head["hitsound"]["sounds"], ["normal", "whistle"])
+        self.assertEqual(repeat["hitsound"]["sounds"], ["normal", "clap"])
+        self.assertEqual(tail["hitsound"]["sounds"], ["normal"])
+        # They are one object, so combo and kind are the slider's, and the
+        # spacing between them is the slider's own rhythm.
+        for row in (head, repeat, tail):
+            self.assertEqual(row["object"]["kind"], "slider")
+            self.assertEqual(row["combo"], repeat["combo"])
+        self.assertEqual(repeat["spacing_prev_ms"], 800.0)
+        self.assertEqual(repeat["spacing_next_ms"], 800.0)
+
+    def test_a_spinner_sounds_at_its_end_and_not_at_its_start(self) -> None:
+        # osu! plays a spinner when it finishes. An attack on its start has
+        # nothing to carry a sound, and saying so is better than pointing at
+        # an object that will not play one.
+        start, end = self._context([8.0, 9.0])
+        self.assertIsNone(start["object"])
+        self.assertEqual(end["object"]["part"], "spinner_end")
+        self.assertEqual(end["object"]["kind"], "spinner")
 
     def test_tolerance_boundary_and_empty_map(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

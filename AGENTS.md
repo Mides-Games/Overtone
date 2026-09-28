@@ -25,7 +25,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (793 on 2026-09-27)
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (795 on 2026-09-27)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -38,7 +38,7 @@ Repository conventions for any AI agent or contributor working here.
 .venv/Scripts/python.exe bench/gates.py real-audio             # 6 local songs analyse as pinned
 .venv/Scripts/python.exe bench/gates.py perf                   # every stage inside its time budget
 .venv/Scripts/python.exe bench/fixtures.py                     # the fixture manifest matches the code
-.venv/Scripts/python.exe bench/parity.py                       # 382 of 533 v3 engine tests held in Rust
+.venv/Scripts/python.exe bench/parity.py                       # 384 of 535 v3 engine tests held in Rust
 .venv/Scripts/python.exe bench/fit_kits.py --verify             # every genre kit renders what it says
 .venv/Scripts/python.exe bench/facts.py                        # stated counts and schema match the source
 .venv/Scripts/python.exe bench/fuzz_reader.py                  # 3000 mutant .osu files read, written back, consumed

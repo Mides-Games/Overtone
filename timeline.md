@@ -17,6 +17,72 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · Hitsounds by genre, measured instead of guessed
+
+### Changed
+
+- **The metrical criterion is no longer taste.** `role_fit` decided whether a
+  finish belongs here and where a clap goes, and its own comment said what it
+  was: *"Starting points, not measurements"*. It gave beats 2, 3 and 4 the same
+  score, and whistles a penalty on the beat. Measured against 748 mapsets of
+  the user's own library, both are wrong: rock puts 26 % of its claps on beat 2
+  and 25 % on beat 4 against 10 % on beat 3, and whistles land on the beat as
+  often as off it in every genre measured.
+- **`bench/genre_corpus.py` measures it, genre by genre**, with the engine's
+  own reader and `hitsound_report`, which resolves what osu! actually plays and
+  places each sound on a sixteenth of the map's own bar. Genre comes from the
+  mapper's tags, most specific first, plus a list of bands whose genre is not in
+  doubt. The manifest holds folder names, the file measured and its SHA-1, and
+  the counts — no map text, no audio, no samples.
+- **Eight profiles ship with their table**: `metal`, `metalcore`, `punk`,
+  `rock`, `jrock`, `pop`, `funk`, `electronic`. `profiles/<genre>.json` gained a
+  `metrical` block — the share of that addition's placements per slot — and the
+  Rust decision reads it where the map's own bar slot is known, falling back to
+  the old rule where it is not (no table, no proven bar, a triplet no sixteenth
+  names). `balanced` ships no table, so its decisions are bit-for-bit what they
+  were. The Propose card lists profiles by file name, so the eight appear there
+  with no page change.
+- **Jazz ships no table.** It is the one genre whose table lost to the rule on
+  maps it never saw, and 28 mapsets of swing and mixed meters have not measured
+  enough to overrule anything. Saying so is the point of measuring.
+
+### Measured
+
+```
+Estimator, chosen on a third of the maps held back for choosing, never on the
+third scored: pooled counts with 2 % of the mass spread evenly beat the mean of
+each map's shares and the median of them, at five smoothing levels each
+(-3.066 bits against -3.077 for the next).
+
+Held out, one third of each genre's maps never seen by the table, with the hand
+rule given its own best temperature on the middle third, in bits a placement
+(uniform is -4):
+
+  genre       clap          finish        whistle
+  rock        -3.26 -> -2.86 -2.57 -> -2.25 -4.16 -> -3.12
+  punk        -3.38 -> -3.16 -2.71 -> -2.50 -4.15 -> -3.09
+  metal       -3.85 -> -3.56 -2.89 -> -2.87 -4.13 -> -3.47
+  metalcore   -3.94 -> -3.91 -2.92 -> -2.75 -4.14 -> -3.20
+  jrock       -3.50 -> -3.28 -3.17 -> -2.76 -4.14 -> -3.13
+  pop         -3.23 -> -3.07 -2.75 -> -2.40 -4.11 -> -3.23
+  funk        -3.29 -> -2.95 -3.05 -> -2.70 -4.07 -> -3.83
+  electronic  -3.06 -> -2.89 -2.78 -> -2.64 -4.08 -> -3.70
+  jazz        -3.59 -> -3.68 -3.25 -> -3.21 -4.06 -> -4.32   <- no table shipped
+
+25 of 27 cells go to the table, median +0.29 bits a placement. The two losses
+are jazz, which is why it keeps the rule.
+
+What the genres differ by, and it is not small: the share of claps on beats 2
+and 4 runs from 72 % in pop and electronic through 61 % in rock and punk to
+30 % in metal and 24 % in metalcore, where claps follow the snare wherever the
+band puts it. The plain hit's bank differs too — metal plays the drum bank 51 %
+of the time, pop the soft bank 63 % — and additions are soft in 72-98 % of every
+genre. Additions an object: 1.27 pop, 1.18 rock, 0.94 metal, 0.85 funk.
+
+End to end, through overtone-cli on the maps the table never saw:
+not measured end to end yet
+```
+
 ## v4.0.0-dev — 2026-09-27 · What the window shows while it opens
 
 ### Changed

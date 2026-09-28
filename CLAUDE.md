@@ -64,7 +64,7 @@ named, and the analyses are cached per audio and engine hash, so a re-score take
 And the Rust side:
 
 ```bash
-cargo test --workspace                                 # all pass (277 on 2026-09-27)
+cargo test --workspace                                 # all pass (280 on 2026-09-27)
 cargo run --release -q -p overtone-bench -- golden     # 27/27 attack for attack
 cargo run --release -q -p overtone-bench -- nogrid     # noise, pads, silence refused
 cargo run --release -q -p overtone-bench -- density    # 4/4 changes, 0 false positives
@@ -148,6 +148,8 @@ bench/facts.py            the counts and lists the docs state, checked against t
 bench/golden/             27 committed vector files: the 24-case corpus plus the
                           proven-bar and signature fixtures from bench/gates.py
 bench/bpm_snapshot.json   pinned absolute BPM per fixture
+bench/genre_corpus.py     where each genre puts its hitsounds, measured from the
+bench/genre_corpus.json   user's Songs folder; writes profiles/<genre>.json
 bench/corpus_b.py         Corpus B: the engine against 20 hand-timed ranked maps (Phase 10)
 bench/corpus_b.json       its manifest: Songs folders, files and SHA-1s, never the audio
 requirements.lock         exact versions behind the measured baseline

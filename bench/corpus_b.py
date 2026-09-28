@@ -80,7 +80,7 @@ HEADLINE_MS = 5.0
 #: a map and a detection different tempi.
 BPM_TOLERANCES = (0.05, 1.0)
 #: Bumped when the cached analysis changes shape.
-CACHE_FORMAT = 1
+CACHE_FORMAT = 3
 #: v3's refusals: no BPM rather than a guess. The Rust engine refuses with
 #: SidecarRefused. Any other exception is an error, and is reported as one.
 V3_REFUSALS = ("Not enough beats detected", "No rhythmic pulse found",
@@ -385,6 +385,23 @@ def exported_lines(analysis) -> list[list[float]]:
     return lines
 
 
+def octave_margin(analysis) -> float | None:
+    """The weakest section's octave margin, or None when there is none to read.
+
+    ``analysis_evidence`` reports it per section: the seeded candidate's
+    coherence less the strongest an octave away. The smallest over the
+    sections is what a verdict has to stand on, since one section read an
+    octave out is a wrong answer for the whole track.
+    """
+    try:
+        evidence = ta.analysis_evidence(analysis)
+    except Exception:  # noqa: BLE001 -- evidence is a report, never a blocker
+        return None
+    margins = [s["octave_margin"] for s in evidence.get("sections", [])
+               if s.get("octave_margin") is not None]
+    return min(margins) if margins else None
+
+
 def analyse(audio: str, engine: str, cli: str | None) -> dict:
     """Run one engine on one file. Never raises: a refusal or an error is an
     answer, recorded with the engine's own message."""
@@ -399,7 +416,20 @@ def analyse(audio: str, engine: str, cli: str | None) -> dict:
         result.update(lines=exported_lines(analysis), path=str(analysis.engine),
                       global_bpm=float(analysis.global_bpm),
                       attacks=int(len(analysis.attack_times)),
-                      duration_s=float(analysis.duration))
+                      duration_s=float(analysis.duration),
+                      # What the engine says about its own answer, kept beside
+                      # what the mapper says about it: the two together are
+                      # what calibrates a verdict the app can show.
+                      residual_ms=float(analysis.fit_residual_ms),
+                      stability=float(analysis.stability),
+                      sections=int(len(analysis.sections)),
+                      confidence=(min((p.confidence for p in analysis.points), default=0.0)),
+                      # The weakest section's octave margin: how much better
+                      # the seeded grid cohered than the best grid an octave
+                      # away. A grid read at twice the tempo fits beautifully,
+                      # so residual and stability cannot see that mistake and
+                      # this is the only number that can.
+                      octave_margin=octave_margin(analysis))
     except Exception as exc:  # noqa: BLE001 - every failure is reported, none hidden
         refused = type(exc).__name__ == "SidecarRefused" or (
             isinstance(exc, ValueError) and str(exc).startswith(V3_REFUSALS))
@@ -602,7 +632,13 @@ def main(argv: list[str] | None = None) -> int:
                        "format": Path(track["audio"]).suffix.lower(),
                        "path": analysis["path"], "message": analysis.get("message"),
                        "detected": len(detected), "seconds": analysis["seconds"],
-                       "cached": analysis["cached"], "tally": tally(rows), "rows": rows})
+                       "cached": analysis["cached"], "tally": tally(rows), "rows": rows,
+                       # The engine's own account of the answer, so a verdict
+                       # shown in the app can be calibrated against the
+                       # mapper's rather than guessed at.
+                       "said": {key: analysis.get(key) for key in
+                                ("residual_ms", "stability", "sections", "confidence",
+                                 "attacks", "duration_s", "octave_margin")}})
 
     categories = {}
     for name in manifest["categories"]:

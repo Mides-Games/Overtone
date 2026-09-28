@@ -17,6 +17,45 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · The map's own tags pick its hitsound profile
+
+### Changed
+
+- **`hitsound_genre` moves into the engine**, where the app and the bench read
+  the same one. The genre a map claims decided which corpus its profile's table
+  was measured from; letting the app preselect with a second copy of that rule
+  would mean a song graded under one genre and hitsounded under another. A test
+  holds `bench/genre_corpus.py` to the engine's function by identity.
+- **The Propose card preselects**: opening a difficulty asks the bridge what
+  its metadata claims, and the option says so — *Rock — suggested for this map*
+  — with the note carrying that genre's own measurement rather than an
+  assertion that it differs. The band list wins over the tags, because a My
+  Chemical Romance map tagged "rock alternative punk mcr metal emo" names four
+  genres and only the artist settles it.
+- **A suggestion, never a choice.** The moment the user picks, their pick
+  stands and opening another map does not undo it; the suggested one stays
+  marked, since what the map asked for is worth seeing even when you decide
+  against it. A genre with no profile suggests nothing — jazz is measured and
+  deliberately has none — and nothing is decided until Propose is pressed.
+
+### Measured
+
+```
+Through the harness on a rock mapset copied out of the library (nothing is
+written into Songs): analysed at 201.4 BPM, the Hitsounds view loaded, and the
+bridge answered "rock" for a map tagged "Opening Intro English Alternative Rock
+TMBG". The card preselected Rock, the option read "Rock — suggested for this
+map" and the note "Rock, measured on 110 mapsets: 61 % of claps on beats 2 and
+4…". Picking Metal set the chosen profile to metal and left it there across a
+reload of the same map, with Rock still marked as the suggestion. Spanish reads
+"sugerido para este mapa" and the Metal note in Spanish. No console error.
+
+Nine tests: the classifier (band over tags, the more specific tag, whole words
+only, nothing claimed rather than guessed, a beatmap's own metadata) and the
+bridge (a genre that has a profile, one that does not, no map, a path that is
+not a bare .osu beside the song, and the bench reading the same function).
+```
+
 ## v4.0.0-dev — 2026-09-27 · Hitsounds by genre, measured instead of guessed
 
 ### Changed

@@ -1413,10 +1413,32 @@ class Api:
             return {"ok": False, "key": "bad_file"}
         return path
 
-    def hitsound_profiles(self) -> dict:
+    def hitsound_profiles(self, file: str | None = None) -> dict:
         """The hitsound profiles the Propose card offers, by name,
-        ``balanced`` (the default) first."""
-        return {"ok": True, "profiles": hitsound_profile_names(), "default": DEFAULT_PROFILE}
+        ``balanced`` (the default) first.
+
+        With a map, ``suggested`` names the profile its own metadata asks for
+        (:func:`overtone.beatmap_genre`, the classifier the profiles were
+        measured with) when one of that name is on disk; ``""`` when the map
+        says nothing, when its genre has no profile, or when it cannot be
+        read. A suggestion, never a choice: the page preselects it and the
+        user can pick another, and nothing is decided until Propose is pressed.
+        """
+        names = hitsound_profile_names()
+        suggested = ""
+        name = str(file or "")
+        # The same bare-name-beside-the-song rule every map call here uses: a
+        # path never comes from the page.
+        if name and self._analysis is not None and Path(name).name == name                 and name.lower().endswith(".osu"):
+            path = Path(str(self._analysis.source)).parent / name
+            if path.is_file():
+                try:
+                    genre = ta.beatmap_genre(ta.read_osu_beatmap(path))
+                except (ValueError, OSError):
+                    genre = ""
+                suggested = genre if genre in names else ""
+        return {"ok": True, "profiles": names, "default": DEFAULT_PROFILE,
+                "suggested": suggested}
 
     def hitsound_decide_propose(self, file: str, profile: str | None = None) -> dict:
         """Propose every decidable point's sound through the Rust sidecar,

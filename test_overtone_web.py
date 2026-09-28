@@ -4341,5 +4341,58 @@ class SplashTests(unittest.TestCase):
             self.assertIn(web.startup_theme(), ("dark", "light"))
 
 
+class ProfileSuggestionTests(unittest.TestCase):
+    """The Propose card's profile, preselected from the map's own genre."""
+
+    def _api(self, tags: str, artist: str = "A Band"):
+        api = web.Api()
+        folder = Path(self.tmp.name)
+        (folder / "song.osu").write_text(
+            "osu file format v14\n\n[General]\nAudioFilename: a.mp3\n\n"
+            f"[Metadata]\nTitle: T\nArtist: {artist}\nTags: {tags}\n\n"
+            "[TimingPoints]\n0,500,4,2,0,70,1,0\n\n[HitObjects]\n", encoding="utf-8")
+        api._analysis = mock.Mock(source=str(folder / "a.mp3"))
+        return api
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_a_maps_tags_choose_a_profile_that_exists(self) -> None:
+        reply = self._api("rock alternative").hitsound_profiles("song.osu")
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["suggested"], "rock")
+        self.assertIn("rock", reply["profiles"])
+        # A suggestion changes nothing else: the list and the default stand.
+        self.assertEqual(reply["profiles"][0], web.DEFAULT_PROFILE)
+
+    def test_a_genre_with_no_profile_suggests_nothing(self) -> None:
+        # Jazz is measured and deliberately ships no profile, so the card must
+        # not offer one; the name must not leak through as a choice either.
+        reply = self._api("jazz swing").hitsound_profiles("song.osu")
+        self.assertEqual(reply["suggested"], "")
+        self.assertNotIn("jazz", reply["profiles"])
+
+    def test_no_map_no_suggestion_and_no_error(self) -> None:
+        self.assertEqual(web.Api().hitsound_profiles()["suggested"], "")
+        self.assertEqual(self._api("rock").hitsound_profiles("")["suggested"], "")
+        # A name that is not a bare .osu beside the song is refused quietly:
+        # the card still lists its profiles.
+        for name in ("../song.osu", "song.txt", "gone.osu"):
+            reply = self._api("rock").hitsound_profiles(name)
+            self.assertTrue(reply["ok"], name)
+            self.assertEqual(reply["suggested"], "", name)
+
+    def test_the_bench_corpus_reads_the_same_classifier(self) -> None:
+        # The profiles' tables were measured with one classifier and the app
+        # picks with another only if someone copies it: this fails then.
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "genre_corpus", Path(web.__file__).parent / "bench" / "genre_corpus.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.assertIs(module.genre_of, web.ta.hitsound_genre)
+
+
 if __name__ == "__main__":
     unittest.main()

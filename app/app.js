@@ -210,6 +210,15 @@ const I18N = {
     hsv_prof_balanced_note: "Balanced, the default: every instrument heard can take its sound, placed by the beat.",
     hsv_prof_drum_focused: "Drum-focused",
     hsv_prof_drum_focused_note: "Drum-focused: kick, snare, hats and cymbals choose the sounds; vocals and melody only keep the plain sound; a finish leans to where a combo starts.",
+    hsv_prof_rock: "Rock", hsv_prof_rock_note: "Rock, measured on 110 mapsets: 61 % of claps on beats 2 and 4, the finish on the downbeat, whistles wherever the melody is.",
+    hsv_prof_punk: "Punk", hsv_prof_punk_note: "Punk, measured on 109 mapsets: the backbeat almost without exception, and the most additions an object of any rock genre here.",
+    hsv_prof_metal: "Metal", hsv_prof_metal_note: "Metal, measured on 110 mapsets: the clap follows the snare wherever the band puts it, so only 30 % of them land on beats 2 and 4, and the plain hit plays the drum bank half the time.",
+    hsv_prof_metalcore: "Metalcore", hsv_prof_metalcore_note: "Metalcore, measured on 65 mapsets: the flattest clap of all of them (24 % on beats 2 and 4) — the pattern is the drummer's, not the bar's.",
+    hsv_prof_jrock: "J-rock", hsv_prof_jrock_note: "J-rock, measured on 110 mapsets: between rock and pop, with more off-beat whistles than either.",
+    hsv_prof_pop: "Pop", hsv_prof_pop_note: "Pop, measured on 110 mapsets: the strictest backbeat here (72 % of claps on 2 and 4) and the finish almost only on the downbeat.",
+    hsv_prof_funk: "Funk", hsv_prof_funk_note: "Funk, measured on 29 mapsets: the backbeat plus whistles on the syncopated sixteenths, and the fewest additions an object.",
+    hsv_prof_electronic: "Electronic", hsv_prof_electronic_note: "Electronic, measured on 110 mapsets: a backbeat as strict as pop's, with more of the plain hit on the drum bank.",
+    hsv_prof_suggested: "suggested for this map",
     hsv_prof_again: "The proposals shown were decided with {used}: press Propose to decide with {chosen}.",
     bad_profile: "That hitsound profile is not in the profiles folder.",
     hsv_proposed: "{n} proposals", hsv_decide_all: "All", hsv_decide_none: "None",
@@ -870,6 +879,15 @@ const I18N = {
     hsv_prof_balanced_note: "Equilibrado, el de siempre: cada instrumento que se oye puede llevar su sonido, ubicado según el pulso.",
     hsv_prof_drum_focused: "Centrado en la batería",
     hsv_prof_drum_focused_note: "Centrado en la batería: bombo, caja, hi-hats y platillos eligen los sonidos; la voz y la melodía solo mantienen el sonido liso; un finish tiende a caer donde empieza un combo.",
+    hsv_prof_rock: "Rock", hsv_prof_rock_note: "Rock, medido en 110 mapsets: el 61 % de los claps en los tiempos 2 y 4, el finish en el primero, y los whistles donde esté la melodía.",
+    hsv_prof_punk: "Punk", hsv_prof_punk_note: "Punk, medido en 109 mapsets: el contratiempo casi sin excepción, y las adiciones por objeto más altas de los géneros de rock.",
+    hsv_prof_metal: "Metal", hsv_prof_metal_note: "Metal, medido en 110 mapsets: el clap sigue a la caja donde la ponga la banda, así que solo el 30 % cae en los tiempos 2 y 4, y el golpe liso usa el banco drum la mitad de las veces.",
+    hsv_prof_metalcore: "Metalcore", hsv_prof_metalcore_note: "Metalcore, medido en 65 mapsets: el clap más plano de todos (24 % en los tiempos 2 y 4) — el patrón es del baterista, no del compás.",
+    hsv_prof_jrock: "J-rock", hsv_prof_jrock_note: "J-rock, medido en 110 mapsets: entre el rock y el pop, con más whistles a contratiempo que ninguno de los dos.",
+    hsv_prof_pop: "Pop", hsv_prof_pop_note: "Pop, medido en 110 mapsets: el contratiempo más estricto de todos (72 % de los claps en 2 y 4) y el finish casi solo en el primer tiempo.",
+    hsv_prof_funk: "Funk", hsv_prof_funk_note: "Funk, medido en 29 mapsets: el contratiempo más whistles en las semicorcheas sincopadas, y las adiciones por objeto más bajas.",
+    hsv_prof_electronic: "Electrónica", hsv_prof_electronic_note: "Electrónica, medida en 110 mapsets: un contratiempo tan estricto como el del pop, con más golpe liso en el banco drum.",
+    hsv_prof_suggested: "sugerido para este mapa",
     hsv_prof_again: "Las propuestas que ves se decidieron con {used}: tocá Proponer para decidir con {chosen}.",
     bad_profile: "Ese perfil de hitsounds no está en la carpeta de perfiles.",
     hsv_proposed: "{n} propuestas", hsv_decide_all: "Todas", hsv_decide_none: "Ninguna",
@@ -3489,6 +3507,7 @@ async function hsvPick(file) {
     HSD.edits = new Map(); HSD.undo = false;
   }
   HSV.file = file; HSV.report = null; HSV.shown = HSV_PAGE; HSV.selected = null;
+  hsdProfilesLoad(file);
   $("hsvDecidePrevText").textContent = "";
   const reply = await api().hitsound_report(file);
   if (HSV.file !== file) return;
@@ -3621,7 +3640,8 @@ function hsvPlay(i) {
 // bridge can refuse them if that sound moved.
 const HSD = { file: "", units: [], byKey: new Map(), accepted: new Set(), choice: new Map(),
               edits: new Map(), undo: false, proposing: false,
-              profiles: ["balanced"], profile: "balanced", proposedWith: "" };
+              profiles: ["balanced"], profile: "balanced", proposedWith: "",
+              suggested: "", picked: false };
 
 // Hitsound profiles by name, as the bridge lists them (balanced first): a
 // profile the page has words for shows them, any other its file's name.
@@ -3635,18 +3655,26 @@ function hsdProfilesRender() {
   const box = $("hsvProfile");
   box.innerHTML = HSD.profiles.map((name) => {
     const key = "hsv_prof_" + name;
-    return `<option value="${esc(name)}"${key in I18N.en ? ` data-i18n="${key}"` : ""}>${esc(hsdProfileLabel(name))}</option>`;
+    const label = hsdProfileLabel(name)
+      // Marked whether or not the user has picked another: what the map's own
+      // tags asked for is worth seeing even when you decide against it.
+      + (name === HSD.suggested ? ` — ${t("hsv_prof_suggested")}` : "");
+    return `<option value="${esc(name)}">${esc(label)}</option>`;
   }).join("");
   box.value = HSD.profile;
   $("hsvProfileField").hidden = HSD.profiles.length < 2;
 }
 
-async function hsdProfilesLoad() {
+async function hsdProfilesLoad(file) {
   if (!api()) return;
-  const reply = await api().hitsound_profiles();
+  const reply = await api().hitsound_profiles(file || "");
   if (!reply || !reply.ok) return;
   HSD.profiles = reply.profiles;
+  HSD.suggested = reply.suggested || "";
   if (!HSD.profiles.includes(HSD.profile)) HSD.profile = reply.default;
+  // The map's own tags choose, until the user does: their pick is theirs, and
+  // opening another map must not quietly undo it.
+  if (HSD.suggested && !HSD.picked) HSD.profile = HSD.suggested;
   hsdProfilesRender();
 }
 
@@ -7089,7 +7117,9 @@ function wire() {
   $("hsvMore").onclick = () => { HSV.shown += HSV_PAGE; renderHitsoundsView(); };
   $("hsvPropose").onclick = () => hsvPropose();
   $("hsvProposeAll").onclick = () => hsvProposeAll();
-  $("hsvProfile").onchange = () => { HSD.profile = $("hsvProfile").value; hsdRender(); };
+  $("hsvProfile").onchange = () => {
+    HSD.profile = $("hsvProfile").value; HSD.picked = true; hsdRender();
+  };
   $("hsvDecideAll").onclick = () => hsdSetAll(true);
   $("hsvDecideNone").onclick = () => hsdSetAll(false);
   $("hsvDecidePreview").onclick = () => hsdPreview();

@@ -17,6 +17,47 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-28 · The classifier is worse than its own best feature
+
+### Measured
+
+- **On real music the classifier barely tells a clapped attack from a bare
+  one.** Over 7,772 held-out attacks of songs the numbers below never fitted
+  on, `P(snare)+P(clap)` ranks a clapped attack above a bare one **52.6 %** of
+  the time. Chance is 50.
+
+```
+  the classifier as it ships                     0.526
+  the best single feature (percussive ratio)     0.687
+  the same features, knots on real audio, refit  0.743
+```
+
+- **It is beaten by one of its own ingredients**, and by three of them: the
+  percussive ratio alone reads 0.687, flux 0.680, the low-mid ratio 0.670. A
+  classifier that scores worse than a feature it already carries is not short
+  of evidence; it is throwing evidence away.
+- **The knots are where it goes.** The response curves were placed on isolated
+  synthetic drums. The percussive ratio has to reach 0.45 before it counts for
+  anything, and real attacks sit between 0.08 and 0.44 — so the single most
+  discriminating feature contributes **zero almost everywhere**. Flatness asks
+  for 0.25 and real claps read 0.036. The weights never see those features,
+  whatever they are set to, because the clipping happens first.
+- **Put the same curves where the data is and the same features reach 0.743**,
+  fitted on two thirds of the songs and scored on the other third. Nothing was
+  added: the features, the shapes and the fitter are the ones already there.
+
+### Rejected / tried and dropped
+
+- **Shipping that fit.** A mapper's clap labels one thing — snare-or-clap —
+  and the classifier has thirteen classes. Re-placing two of them from this
+  label would leave the other eleven on synthetic knots and the softmax
+  comparing the two domains against each other. What this measures is the
+  headroom, and the headroom is large; spending it needs labels for more than
+  one class, which is what the P-6 corpus row is for.
+- **Re-fitting the weights alone** (keeping the knots): 0.534, against 0.526.
+  It confirms the diagnosis rather than fixing anything — the weights are not
+  where the loss is.
+
 ## v4.0.0-dev — 2026-09-28 · The templates lean on the features that say nothing
 
 ### Measured

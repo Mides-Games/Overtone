@@ -8,6 +8,7 @@ measures the one change that looks likely to fix it.
 
     python bench/templates_on_real_audio.py            # the mix, as shipped
     python bench/templates_on_real_audio.py --features # which features separate at all
+    python bench/templates_on_real_audio.py --fit      # and how far they reach unclipped
     python bench/templates_on_real_audio.py --stem     # and the percussive half
 
 Mapper claps are the truth here for a reason: a mapper who puts a clap on a
@@ -211,12 +212,127 @@ def features(limit: int) -> int:
     return 0
 
 
+#: The features the fit below reads, in no particular order: everything the
+#: templates already measure.
+FIT_FEATURES = (
+    "flux", "percussive_ratio", "low_mid_ratio", "sub_ratio", "flatness",
+    "decay_tau_s", "high_mid_ratio", "high_ratio", "mid_ratio", "zcr",
+    "harmonicity", "air_ratio", "sustain_s", "rise_s", "sub_attacks",
+)
+
+
+def auc_of(scores, labels) -> float:
+    """[`auc`] for scores that carry their labels beside them."""
+    scores = np.asarray(scores, dtype=float)
+    labels = np.asarray(labels, dtype=bool)
+    return auc(list(scores[labels]), list(scores[~labels]))
+
+
+def _rows(limit: int) -> list[dict]:
+    """Every attack of every song, with its features and whether it was
+    clapped. One evidence run a song."""
+    out = []
+    for folder, audio, events in songs(limit):
+        found = evidence(audio)
+        if not found:
+            continue
+        times = np.asarray([a["time_s"] * 1000.0 for a in found["attacks"]])
+        near = set()
+        for event in events:
+            i = int(np.argmin(np.abs(times - event["time"])))
+            if abs(times[i] - event["time"]) <= TOLERANCE_MS:
+                near.add(i)
+        for i, attack in enumerate(found["attacks"]):
+            values = {}
+            for cls in attack["classes"]:
+                for term in cls["terms"]:
+                    values[term["feature"]] = term["value"]
+            shipped = {c["class"]: c["probability"] for c in attack["classes"]}
+            out.append({"song": folder, "clapped": i in near, "values": values,
+                        "shipped": shipped.get("snare", 0.0) + shipped.get("clap", 0.0)})
+        print(f"{folder[:44]:<46} {len(near):5d} clapped of {len(found['attacks'])}",
+              flush=True)
+    return out
+
+
+def _fit(x: np.ndarray, y: np.ndarray, rounds: int = 600, rate: float = 1.0,
+         ridge: float = 1e-3) -> np.ndarray:
+    """Plain gradient descent on a logistic loss: fifteen features and a
+    comparison to make, not a product to ship."""
+    w = np.zeros(x.shape[1])
+    for _ in range(rounds):
+        p = 1.0 / (1.0 + np.exp(-x @ w))
+        w -= rate * (x.T @ (p - y) / max(len(y), 1) + ridge * w)
+    return w
+
+
+def fitted(limit: int) -> int:
+    """How far the hand-built features reach when nothing clips them.
+
+    The templates' response curves were placed on isolated synthetic drums,
+    and on real music most of what they measure falls outside them — the
+    percussive ratio has to reach 0.45 to count for anything and real attacks
+    sit at 0.08-0.44, so the single most discriminating feature contributes
+    zero almost everywhere. This puts each curve between the tenth and
+    ninetieth percentile of the songs it is fitted on, fits the weights there,
+    and scores songs the fit never saw.
+
+    It is a measurement, not a model to ship: one label (a mapper's clap) over
+    two of thirteen classes cannot re-place the other eleven.
+    """
+    rows = _rows(limit)
+    if not rows:
+        print("nothing read")
+        return 0
+    order = sorted({r["song"] for r in rows})
+    fit_on = set(order[: max(1, int(len(order) * 2 / 3))])
+    train = [r for r in rows if r["song"] in fit_on]
+    test = [r for r in rows if r["song"] not in fit_on]
+    if not train or not test:
+        print("need at least two songs")
+        return 0
+    y_train = np.asarray([r["clapped"] for r in train], dtype=float)
+    y_test = np.asarray([r["clapped"] for r in test], dtype=float)
+    knots = {}
+    for feature in FIT_FEATURES:
+        values = np.asarray([r["values"].get(feature, 0.0) for r in train], dtype=float)
+        lo, hi = np.percentile(values, [10, 90])
+        knots[feature] = (float(lo), float(hi if hi > lo else lo + 1e-6))
+
+    def matrix(rows_in):
+        return np.asarray([
+            [min(1.0, max(0.0, (r["values"].get(f, 0.0) - knots[f][0])
+                          / (knots[f][1] - knots[f][0])))
+             for f in FIT_FEATURES] + [1.0]
+            for r in rows_in])
+
+    weights = _fit(matrix(train), y_train)
+    print(f"\n{len(order)} songs, {len(train)} attacks fitted, {len(test)} held out "
+          f"({int(y_test.sum())} of them clapped)\n")
+    print(f"{'the classifier as it ships':<46} {auc_of([r['shipped'] for r in test], y_test):.3f}")
+    best = max(FIT_FEATURES,
+               key=lambda f: abs(auc_of([r['values'].get(f, 0.0) for r in test], y_test) - 0.5))
+    print(f"{'the best single feature (' + best + ')':<46} "
+          f"{auc_of([r['values'].get(best, 0.0) for r in test], y_test):.3f}")
+    print(f"{'the same features, knots on real audio, refit':<46} "
+          f"{auc_of(matrix(test) @ weights, y_test):.3f}")
+    print("\nweights, largest first:")
+    for name, weight in sorted(zip(FIT_FEATURES + ("bias",), weights),
+                               key=lambda kv: -abs(kv[1]))[:8]:
+        span = (f"   over {knots[name][0]:.3f}..{knots[name][1]:.3f}"
+                if name in knots else "")
+        print(f"  {name:<18} {weight:+.2f}{span}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     want = int(args[args.index("--songs") + 1]) if "--songs" in args else 12
     with_stem = "--stem" in args
     if "--features" in args and CLI.is_file() and CORPUS.is_file():
         return features(want)
+    if "--fit" in args and CLI.is_file() and CORPUS.is_file():
+        return fitted(want)
     if not CLI.is_file():
         print("No overtone-cli built: cargo build --release -p overtone-cli")
         return 0

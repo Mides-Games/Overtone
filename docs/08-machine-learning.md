@@ -13,6 +13,8 @@ computation**, not narrated alongside a black box.
 ## 1. Verdicts
 
 | Task | Do the hand-tuned features plateau? | ML verdict |
+
+> **Measured, 2026-09-28.** Not yet, and not for the reason this table assumed. On real songs the shipped classifier separates a mapper's clap from a bare attack at AUC 0.526, worse than the percussive ratio alone (0.687); its response curves were placed on synthetic drums and clip the informative features to zero. The same features, the same shapes, curves placed on real ranges and refit: 0.743. The plateau has not been reached because the features have not been placed on the problem (`bench/templates_on_real_audio.py --fit`).
 |---|---|---|
 | Tempo / offset estimation | **No** — the fit is exact (0.0000 BPM median, measured) | **Never.** A learned estimator would be strictly worse and unexplainable |
 | Section boundaries (tempo changes) | No — the grid-crossing method is exact by construction | **No.** Nothing to learn |

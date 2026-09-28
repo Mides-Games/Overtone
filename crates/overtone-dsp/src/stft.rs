@@ -10,6 +10,7 @@
 //! Frame count follows from the padding: `1 + len(y) / hop`.
 
 use rayon::prelude::*;
+use realfft::num_complex::Complex;
 use realfft::RealFftPlanner;
 
 use crate::mel::MelBank;
@@ -103,6 +104,152 @@ where
         .collect()
 }
 
+/// Complex STFT frames `frames` of `y`: exactly the spectra
+/// [`map_frame_range`] reduces, kept before the magnitude is taken.
+///
+/// Phase is what an inverse transform needs, and a mask applied to these and
+/// sent through [`istft`] gives back a signal rather than a picture. Held
+/// whole, so this is for the few frames around a moment; a track's worth is
+/// the gigabyte [`power_spectrogram`] warns about.
+pub fn complex_frame_range(
+    y: &[f32],
+    n_fft: usize,
+    hop: usize,
+    frames: std::ops::Range<usize>,
+) -> Vec<Vec<Complex<f64>>> {
+    let pad = n_fft / 2;
+    let window = hann_periodic(n_fft);
+    let mut planner = RealFftPlanner::<f64>::new();
+    let fft = planner.plan_fft_forward(n_fft);
+    frames
+        .into_par_iter()
+        .map_init(
+            || (fft.make_input_vec(), fft.make_output_vec()),
+            |(input, output), frame| {
+                let start = frame * hop;
+                for (i, slot) in input.iter_mut().enumerate() {
+                    let sample = (start + i)
+                        .checked_sub(pad)
+                        .and_then(|s| y.get(s))
+                        .map_or(0.0, |&v| v as f64);
+                    *slot = sample * window[i];
+                }
+                fft.process(input, output).expect("fft sizes are fixed");
+                output.clone()
+            },
+        )
+        .collect()
+}
+
+/// Overlap-add `frames` back into samples, the inverse of
+/// [`complex_frame_range`].
+///
+/// `first` is the frame index the first row came from, and the result runs
+/// from signal sample `first * hop - n_fft / 2` for `len` samples. Each frame
+/// is windowed again on the way out and the sum is divided by the summed
+/// window squares, which is what makes a Hann analysis window at this hop
+/// reconstruct rather than modulate. Where no frame covers a sample — outside
+/// the range, or at the very edges — the divisor is zero and the sample comes
+/// back zero, said plainly rather than amplified by a floor.
+pub fn istft(
+    frames: &[Vec<Complex<f64>>],
+    n_fft: usize,
+    hop: usize,
+    first: usize,
+    len: usize,
+) -> Vec<f32> {
+    let pad = n_fft / 2;
+    let window = hann_periodic(n_fft);
+    let mut planner = RealFftPlanner::<f64>::new();
+    let fft = planner.plan_fft_inverse(n_fft);
+    let mut out = vec![0.0f64; len];
+    let mut weight = vec![0.0f64; len];
+    let mut spectrum = fft.make_input_vec();
+    let mut samples = fft.make_output_vec();
+    let start_sample = (first * hop) as i64 - pad as i64;
+    for (row, frame) in frames.iter().enumerate() {
+        if frame.len() != spectrum.len() {
+            continue;
+        }
+        spectrum.copy_from_slice(frame);
+        if fft.process(&mut spectrum, &mut samples).is_err() {
+            continue;
+        }
+        let at = start_sample + (row * hop) as i64;
+        for (i, (&sample, &w)) in samples.iter().zip(window.iter()).enumerate() {
+            let index = at + i as i64;
+            if index < 0 {
+                continue;
+            }
+            let index = index as usize;
+            if index >= len {
+                break;
+            }
+            // realfft's inverse is unnormalised: dividing by n_fft here is
+            // what makes a round trip give the samples back.
+            out[index] += sample / n_fft as f64 * w;
+            weight[index] += w * w;
+        }
+    }
+    out.iter()
+        .zip(weight.iter())
+        .map(|(&v, &w)| if w > 1e-9 { (v / w) as f32 } else { 0.0 })
+        .collect()
+}
+
+/// [`istft`] into buffers the caller owns, so a track can be rebuilt a block
+/// at a time: each call adds its frames' contribution to `out` and their
+/// squared window to `weight`, and the caller divides once at the end. A
+/// per-block divide would leave a seam at every boundary, since the frames
+/// either side of one share the samples between them.
+pub fn istft_into(
+    frames: &[Vec<Complex<f64>>],
+    n_fft: usize,
+    hop: usize,
+    first: usize,
+    out: &mut [f64],
+    weight: &mut [f64],
+) {
+    let pad = n_fft / 2;
+    let window = hann_periodic(n_fft);
+    let mut planner = RealFftPlanner::<f64>::new();
+    let fft = planner.plan_fft_inverse(n_fft);
+    let mut spectrum = fft.make_input_vec();
+    let mut samples = fft.make_output_vec();
+    let start_sample = (first * hop) as i64 - pad as i64;
+    for (row, frame) in frames.iter().enumerate() {
+        if frame.len() != spectrum.len() {
+            continue;
+        }
+        spectrum.copy_from_slice(frame);
+        if fft.process(&mut spectrum, &mut samples).is_err() {
+            continue;
+        }
+        let at = start_sample + (row * hop) as i64;
+        for (i, (&sample, &w)) in samples.iter().zip(window.iter()).enumerate() {
+            let index = at + i as i64;
+            if index < 0 {
+                continue;
+            }
+            let index = index as usize;
+            if index >= out.len() {
+                break;
+            }
+            out[index] += sample / n_fft as f64 * w;
+            weight[index] += w * w;
+        }
+    }
+}
+
+/// Finish an overlap-add: `out` divided by `weight`, zero where nothing
+/// covered the sample.
+pub fn overlap_finish(out: &[f64], weight: &[f64]) -> Vec<f32> {
+    out.iter()
+        .zip(weight.iter())
+        .map(|(&v, &w)| if w > 1e-9 { (v / w) as f32 } else { 0.0 })
+        .collect()
+}
+
 /// Power spectrogram `|STFT|^2`, frames along the outer axis.
 ///
 /// Returns `frames` rows of `n_fft / 2 + 1` bins, which is over a gigabyte
@@ -126,6 +273,63 @@ pub fn mel_power_spectrogram(y: &[f32], n_fft: usize, hop: usize, bank: &MelBank
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_signal_survives_the_round_trip_through_its_frames() {
+        // Analysis, then synthesis, with nothing done in between: the samples
+        // come back. Everything the percussive features do sits between those
+        // two, so this is the check that the pair is a pair.
+        let sr = 44_100.0;
+        let y: Vec<f32> = (0..8192)
+            .map(|i| {
+                let t = i as f64 / sr;
+                (0.6 * (std::f64::consts::TAU * 220.0 * t).sin()
+                    + 0.3 * (std::f64::consts::TAU * 1310.0 * t).sin()) as f32
+            })
+            .collect();
+        let (n_fft, hop) = (2048, 128);
+        let frames = frame_count(y.len(), hop);
+        let spectra = complex_frame_range(&y, n_fft, hop, 0..frames);
+        let back = istft(&spectra, n_fft, hop, 0, y.len());
+        // The first and last half-window are covered by fewer frames; inside,
+        // the reconstruction is the signal.
+        let edge = n_fft;
+        let worst = y[edge..y.len() - edge]
+            .iter()
+            .zip(&back[edge..y.len() - edge])
+            .map(|(&a, &b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
+        assert!(worst < 1e-4, "worst sample differs by {worst}");
+    }
+
+    #[test]
+    fn a_frame_range_comes_back_where_it_was_taken_from() {
+        let y: Vec<f32> = (0..4096).map(|i| ((i % 97) as f32 / 97.0) - 0.5).collect();
+        let (n_fft, hop) = (512, 128);
+        // Frames 8..24 cover signal samples 8*128 - 256 .. 24*128 + 256.
+        let spectra = complex_frame_range(&y, n_fft, hop, 8..24);
+        let from = 8 * hop - n_fft / 2;
+        let back = istft(&spectra, n_fft, hop, 8, y.len());
+        let inside = from + n_fft..(24 * hop) - n_fft / 2;
+        let worst = inside
+            .clone()
+            .map(|i| (y[i] - back[i]).abs())
+            .fold(0.0f32, f32::max);
+        assert!(worst < 1e-4, "worst sample differs by {worst}");
+        // Outside the frames it says zero rather than guessing.
+        assert_eq!(back[0], 0.0);
+        assert_eq!(back[y.len() - 1], 0.0);
+    }
+
+    #[test]
+    fn silence_and_an_empty_range_are_not_special_cases() {
+        assert!(istft(&[], 512, 128, 0, 64).iter().all(|&v| v == 0.0));
+        let quiet = vec![0.0f32; 2048];
+        let spectra = complex_frame_range(&quiet, 512, 128, 0..4);
+        assert!(istft(&spectra, 512, 128, 0, quiet.len())
+            .iter()
+            .all(|&v| v.abs() < 1e-9));
+    }
 
     #[test]
     fn frames_read_the_padding_exactly_as_a_padded_copy() {

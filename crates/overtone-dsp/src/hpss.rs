@@ -13,6 +13,8 @@
 //! residual needs margin design this step deliberately skips (a complementary
 //! mask pair leaves nothing over). Two-way now, residual open.
 
+use realfft::num_complex::Complex;
+
 use rayon::prelude::*;
 
 use crate::stft;
@@ -84,6 +86,105 @@ pub fn separate_with(power: &[Vec<f64>], kernel_time: usize, kernel_freq: usize)
         harmonic,
         percussive,
     }
+}
+
+/// The percussive share of each bin, `0..=1`, for a block of power frames.
+///
+/// The same Wiener masks [`separate_with`] applies, handed out instead of
+/// multiplied in: a mask is a gain, so it can be applied to the complex
+/// spectrum the frames came from and sent back through an inverse transform.
+/// That is what reads a *signal* rather than a picture, which is what the
+/// per-attack features need.
+pub fn percussive_mask(power: &[Vec<f64>], kernel_time: usize, kernel_freq: usize)
+                       -> Vec<Vec<f64>> {
+    if power.is_empty() {
+        return Vec::new();
+    }
+    let kt = kernel_time | 1;
+    let kf = kernel_freq | 1;
+    let harm_med = median_axis_time(power, kt);
+    let perc_med = median_axis_freq(power, kf);
+    harm_med
+        .iter()
+        .zip(perc_med.iter())
+        .map(|(hm_row, pm_row)| {
+            hm_row
+                .iter()
+                .zip(pm_row.iter())
+                .map(|(&hm, &pm)| {
+                    let z = hm.max(pm);
+                    if z <= 0.0 {
+                        return 0.0;
+                    }
+                    let (wh, wp) = ((hm / z).powi(2), (pm / z).powi(2));
+                    if wh + wp <= 0.0 { 0.0 } else { wp / (wh + wp) }
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// The percussive half of a whole track, as samples.
+///
+/// Read a block of frames at a time, with the time median's own margin either
+/// side of each block so the masks are the ones a whole-track separation
+/// gives, and overlap-added into one buffer. A six-minute track's complex
+/// spectrogram is about two gigabytes held whole; this holds a block, and the
+/// output is the size of the audio.
+///
+/// The per-attack alternative — separating the window around each attack —
+/// costs a separation per attack: on a three-minute song with 550 attacks that
+/// was 71 s against 7.3 s for the whole evidence pass before it. Once per
+/// track is the same answer for the price of one.
+pub fn percussive_signal(y: &[f32], n_fft: usize, hop: usize) -> Vec<f32> {
+    percussive_signal_with(y, n_fft, hop, BLOCK_FRAMES)
+}
+
+/// Frames separated at a time. Bigger costs memory, smaller costs the margin
+/// again per block; the answer is the same either way, which is what
+/// `a_track_separates_in_blocks_as_it_would_whole` holds it to.
+pub const BLOCK_FRAMES: usize = 512;
+
+/// [`percussive_signal`] with an explicit block size.
+pub fn percussive_signal_with(y: &[f32], n_fft: usize, hop: usize, block: usize) -> Vec<f32> {
+    let block = block.max(1);
+    let total = stft::frame_count(y.len(), hop);
+    if y.is_empty() || total == 0 {
+        return vec![0.0; y.len()];
+    }
+    let margin = (KERNEL_TIME | 1) / 2 + 1;
+    let mut out = vec![0.0f64; y.len()];
+    let mut weight = vec![0.0f64; y.len()];
+    let mut at = 0usize;
+    while at < total {
+        let stop = (at + block).min(total);
+        let from = at.saturating_sub(margin);
+        let to = (stop + margin).min(total);
+        let spectra = stft::complex_frame_range(y, n_fft, hop, from..to);
+        let power: Vec<Vec<f64>> = spectra
+            .iter()
+            .map(|frame| frame.iter().map(|c| c.re * c.re + c.im * c.im).collect())
+            .collect();
+        let mask = percussive_mask(&power, KERNEL_TIME, KERNEL_FREQ);
+        // Only this block's own frames are added; the margin was read for the
+        // median and is left to the block it belongs to.
+        let keep_from = at - from;
+        let keep_to = keep_from + (stop - at);
+        let masked: Vec<Vec<Complex<f64>>> = spectra[keep_from..keep_to]
+            .iter()
+            .zip(mask[keep_from..keep_to].iter())
+            .map(|(frame, gains)| {
+                frame
+                    .iter()
+                    .zip(gains.iter())
+                    .map(|(c, &g)| c * g)
+                    .collect()
+            })
+            .collect();
+        stft::istft_into(&masked, n_fft, hop, at, &mut out, &mut weight);
+        at = stop;
+    }
+    stft::overlap_finish(&out, &weight)
 }
 
 /// Harmonic and percussive power on STFT frames `frames` of `y` only,
@@ -213,7 +314,7 @@ mod tests {
         y.iter().map(|v| v / peak * 0.99).collect()
     }
 
-    /// Share of each component's energy in the bins around `freq` (±60 Hz),
+    /// Share of each component's energy in the bins around `freq` (Â±60 Hz),
     /// summed over frames past the first 0.5 s (past the start transient).
     fn band_shares(sep: &Separation, sr: u32, n_fft: usize, freq: f64) -> (f64, f64) {
         let bin = (freq * n_fft as f64 / sr as f64).round() as usize;
@@ -228,6 +329,68 @@ mod tests {
             }
         }
         (h, p)
+    }
+
+
+    #[test]
+    fn a_track_separates_in_blocks_as_it_would_whole() {
+        // The property the blocking has to keep: the same samples out,
+        // whatever the block size. The overlap-add is finished once at the
+        // end for exactly this reason - dividing per block would leave a seam
+        // at every boundary, since the frames either side share samples.
+        let sr = 44_100usize;
+        let hop = 128usize;
+        let mut y = vec![0.0f32; sr];
+        for (i, v) in y.iter_mut().enumerate() {
+            *v = 0.4 * (std::f64::consts::TAU * 220.0 * i as f64 / sr as f64).sin() as f32;
+        }
+        for at in (sr / 5..y.len()).step_by(sr / 5) {
+            for i in 0..64 {
+                if at + i < y.len() {
+                    y[at + i] += 0.9 * (1.0 - i as f32 / 64.0);
+                }
+            }
+        }
+        let whole = percussive_signal_with(&y, 2048, hop, 1 << 20);
+        let blocked = percussive_signal_with(&y, 2048, hop, 64);
+        assert_eq!(whole.len(), y.len());
+        let worst = whole
+            .iter()
+            .zip(&blocked)
+            .map(|(&a, &b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
+        assert!(worst < 1e-6, "block size changed the answer by {worst}");
+    }
+
+    #[test]
+    fn the_percussive_signal_keeps_the_clicks_and_drops_the_tone() {
+        let sr = 44_100usize;
+        let hop = 128usize;
+        let mut y = vec![0.0f32; sr];
+        for (i, v) in y.iter_mut().enumerate() {
+            *v = 0.4 * (std::f64::consts::TAU * 220.0 * i as f64 / sr as f64).sin() as f32;
+        }
+        let clicks: Vec<usize> = (1..5).map(|k| k * sr / 5).collect();
+        for &at in &clicks {
+            for i in 0..64 {
+                y[at + i] += 0.9 * (1.0 - i as f32 / 64.0);
+            }
+        }
+        let percussive = percussive_signal(&y, 2048, hop);
+        let energy = |signal: &[f32], from: usize, to: usize| -> f64 {
+            signal[from.min(signal.len())..to.min(signal.len())]
+                .iter()
+                .map(|&v| (v as f64) * (v as f64))
+                .sum()
+        };
+        let at_click = energy(&percussive, clicks[1], clicks[1] + 512);
+        let between = energy(&percussive, clicks[1] + 4096, clicks[1] + 4608);
+        assert!(at_click > 20.0 * between,
+                "click {at_click:.6} against tone {between:.6}");
+        // And the tone is what was dropped: the mix has far more there.
+        let mix_between = energy(&y, clicks[1] + 4096, clicks[1] + 4608);
+        assert!(mix_between > 20.0 * between,
+                "the tone survived: mix {mix_between:.6}, percussive {between:.6}");
     }
 
     #[test]

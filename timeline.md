@@ -17,6 +17,51 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-28 · Why the templates do not hear real drums
+
+### Measured
+
+- **The precondition the instrument lanes wait on is re-measured**, against the
+  Rust classifier rather than the Python one it was set with, and it still is
+  not met: over 12 ranked songs and 2,724 mapper claps, `P(snare)+P(clap)` has
+  a median of **0.168** where the Python templates measured 0.138 on 11 songs.
+  A lane drawn from that would be a lane of noise — only 21 % of mapper claps
+  read above 0.50.
+- **And the cause is not the templates.** They read their spectral and temporal
+  features from the mix, where a snare sits under guitars, vocals and
+  everything else; only one feature, the percussive ratio, comes from a
+  separation. Reading the same songs from their percussive half instead takes
+  the median from **0.171 to 0.458** on the six songs measured both ways —
+  every song improves, one from 0.060 to 0.606 — and the share at or above 0.25
+  from 41 % to 65 %.
+- `bench/templates_on_real_audio.py` is that measurement, so the number the
+  lanes wait on can be taken again rather than quoted from a year ago.
+
+```
+12 songs, 2,724 mapper claps, the mix as the engine reads it:
+  deciles 0.017 / 0.047 / 0.168 / 0.448 / 0.675   at or above 0.25: 40 %
+
+6 of those songs, both ways:
+  mix              1,598 claps   deciles 0.018 / 0.045 / 0.171 / 0.451 / 0.674
+  percussive stem  1,623 claps   deciles 0.038 / 0.150 / 0.458 / 0.773 / 0.921
+                                 at or above 0.25: 41 % -> 65 %
+```
+
+### Rejected / tried and dropped
+
+- **Shipping the instrument lanes anyway.** The row has waited on a number
+  since the Python probe, and the number is still short. Drawing a lane that is
+  right a fifth of the time would make the engine look certain where it is
+  guessing, which is the failure this project keeps refusing.
+- **Feeding the classifier an averaged percussive spectrogram** instead of its
+  own window FFT. The separation runs at hop 128 with a 2048-point window, so
+  the attack window spans 45 overlapping frames; averaging them is a different
+  estimator from the single windowed FFT the features are defined by and the
+  calibration was fitted to. Reading a percussive *signal* keeps the estimator
+  and changes only the input, which is the right shape for the change — and it
+  needs an inverse STFT the crate does not have yet. That is the work the row
+  now waits on, with a measured ceiling to aim at.
+
 ## v4.0.0-dev — 2026-09-28 · Every sound a map plays gets its context
 
 ### Fixed

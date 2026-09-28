@@ -153,6 +153,8 @@ bench/facts.py            the counts and lists the docs state, checked against t
 bench/golden/             27 committed vector files: the 24-case corpus plus the
                           proven-bar and signature fixtures from bench/gates.py
 bench/bpm_snapshot.json   pinned absolute BPM per fixture
+bench/templates_on_real_audio.py  whether the instrument templates hear real drums,
+                          at the places mappers put claps
 bench/genre_samples.py    what a genre's hitsounds sound like, from the files its
 bench/genre_samples.json  maps ship; bench/fit_kits.py aims the synthesiser at it
 assets/kits.json          and writes the settings a genre's kit is rendered from

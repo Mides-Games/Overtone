@@ -17,6 +17,61 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-28 · The separation was not the cause. The corpus is
+
+### Fixed
+
+- **Yesterday's conclusion was wrong, and this is the correction.** The entry
+  above it says the instrument templates read the mix and would read real drums
+  far better from the percussive half — median `P(snare)+P(clap)` 0.171 against
+  0.458 at mappers' claps. Built into the engine, the separation measured
+  **0.138**, which is *worse* than the mix. The probe that found 0.458 had
+  changed two things at once: `librosa.load(sr=22050)` resamples as well as
+  separates, and the resampling is what moved the number.
+- Isolated on the same three songs, one change at a time:
+  the stem at 22 kHz reads **0.314**, the same stem at 44.1 kHz **0.156**, a
+  gentler mask at 44.1 kHz **0.188**, and the mix itself 0.171-0.195. Cutting
+  everything above 11 kHz is the whole effect; separating is inside the noise.
+
+### Measured
+
+- **What is wrong is the calibration's domain, and it is visible feature by
+  feature.** At real mapper claps, against what the snare template asks for:
+
+```
+  feature           p10     median      p90     the snare template wants
+  air_ratio       0.000      0.003    0.025     falling  [0.05, 0.20]   fine
+  high_mid_ratio  0.095      0.214    0.354     rising   [0.10, 0.35]   half
+  flatness        0.016      0.036    0.051     rising   [0.25, 0.55]   none
+```
+
+  Flatness is the one that matters: the corpus renders claps and snares as
+  band-passed noise, which is flat, and the knots ask for 0.25 and up. A real
+  clap inside a mix measures 0.036 — a tenth of the first knot — so that
+  feature contributes nothing for practically every real drum, and it is one of
+  the features the snare and clap templates lean on. Cutting at 11 kHz nudges
+  the ratio, which is why the 22 kHz stem looked like a fix.
+
+### Changed
+
+- **An inverse STFT, and a whole-track percussive signal.** `complex_frame_range`
+  keeps the phase a mask needs, `istft`/`istft_into` put frames back into
+  samples, and `hpss::percussive_signal` rebuilds a track's percussive half a
+  block at a time — the same answer at any block size, which is the test it is
+  held to, and the reason the overlap-add is finished once rather than per
+  block. They are not wired into the features, because the measurement above
+  says not to; they are what the next attempt needs, and they are tested.
+- The per-attack alternative is measured too, so nobody tries it again:
+  separating around each attack cost **71 s** against 7.3 s for the whole
+  evidence pass, and once per track costs 9.4 s.
+
+### Rejected / tried and dropped
+
+- **Reading the per-attack features from the percussive signal.** It is the
+  obvious idea, it is implemented, and on real songs it reads 0.138 where the
+  mix reads 0.171-0.195. A change that makes the measured number worse does not
+  ship, however good the reasoning sounded.
+
 ## v4.0.0-dev — 2026-09-28 · Why the templates do not hear real drums
 
 ### Measured

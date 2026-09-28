@@ -29,6 +29,14 @@ pub const GROW_RMS_RATIO: f64 = 0.09;
 /// Rounds of boundary-search / refit alternation in `_settle_boundaries`.
 pub const SETTLE_ROUNDS: usize = 2;
 
+/// Beats of the grid carried forward through growth. Refitting everything
+/// since the section began made the loop quadratic, and bought nothing the
+/// final fit does not do itself, since that one runs on the whole span. A
+/// window this long still spans 32 bars of 4/4, which is a longer lever arm
+/// than any growth step needs; a section shorter than it is fitted over
+/// everything, exactly as before. Ported from v3, which measured it.
+pub const GROWTH_WINDOW_BEATS: f64 = 128.0;
+
 fn section_of(start: f64, end: f64, grid: Grid, q: fit::Quality) -> GridSection {
     GridSection {
         start: Seconds(start),
@@ -149,8 +157,15 @@ pub fn grow_sections_with(
             if q.share < GROW_SHARE_MIN || q.residual_ms > GROW_RMS_RATIO * local_period * 1000.0 {
                 break;
             }
+            // The grid carried forward is refit on a trailing window, not on
+            // everything since the section began: it only has to be good
+            // enough to judge the next chunk and to seed the final fit, and
+            // that one runs on the whole span anyway. A section shorter than
+            // the window is fitted exactly as it was — v3 `_grow_sections`,
+            // which shed the same quadratic in Python on 2026-09-27.
+            let from_s = start.max(nxt - GROWTH_WINDOW_BEATS * local_period);
             let (w_times, w_weights) = masked(times, weights, |t| {
-                t >= start - 0.5 * local_period && t <= nxt
+                t >= from_s - 0.5 * local_period && t <= nxt
             });
             let (grid, _) = fit::refine(&w_times, &w_weights, grid);
             local_period = grid.period;

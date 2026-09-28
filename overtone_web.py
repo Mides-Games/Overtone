@@ -75,7 +75,15 @@ THEMES = ("system", "dark", "light")
 TAP_LATENCY_LIMIT_MS = 250.0
 #: The trace needs the shape of the onset envelope, not its 40 k frames.
 ONSET_BINS = 1600
-LOOSE_RESIDUAL_MS = 5.0
+#: A grid residual past this is worth saying out loud. 5 ms was the first
+#: guess and Corpus B refused it: over the 15 ranked tracks the precision
+#: engine answers, a residual over 5 ms fires on all 15, and 10 of those are
+#: readings that land on the mapper's own red lines. A warning that always
+#: fires says nothing. Real music sits at 11-28 ms; 30 ms fires on exactly one
+#: track of the 15, and that one is the reading a mapper would reject
+#: (i-remember, 38.7 ms, none of its lines within 50 ms). Measured 2026-09-28,
+#: bench/corpus_b.py.
+LOOSE_RESIDUAL_MS = 30.0
 #: A song's timing work between sessions: JSON in <output folder>/Projects,
 #: its points and locks, keyed by the audio's SHA-256 (roadmap 14.1).
 PROJECT_FORMAT = "overtone-project"

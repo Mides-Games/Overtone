@@ -140,7 +140,12 @@ class WarningTests(unittest.TestCase):
         self.assertNotIn("v_dup_points", after)
 
     def test_loose_grid_is_flagged(self) -> None:
-        self.assertIn("warn_loose", self.keys(_analysis([ta.TimingPoint(500, 150, 1, 0)], residual=14.6)))
+        self.assertIn("warn_loose", self.keys(_analysis([ta.TimingPoint(500, 150, 1, 0)], residual=34.6)))
+        # 14.6 ms is where real music sits (Corpus B: 11-28 ms over the
+        # 15 ranked tracks the precision engine answers), so it must not
+        # warn: a warning that fires on every song says nothing.
+        self.assertNotIn("warn_loose", self.keys(
+            _analysis([ta.TimingPoint(500, 150, 1, 0)], residual=14.6)))
 
 
 class ApiTests(_IsolatedConfig):
@@ -4392,6 +4397,48 @@ class ProfileSuggestionTests(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         self.assertIs(module.genre_of, web.ta.hitsound_genre)
+
+
+class VerdictStripTests(unittest.TestCase):
+    """The one line that says whether to trust a reading, and the numbers
+    behind it. Both sides hold the same thresholds, because the page and the
+    bridge showed the user contradictory things when they did not: the banner
+    called an 18.2 ms fit loose while the strip said nothing looked wrong."""
+
+    APP = Path(__file__).resolve().parent / "app"
+
+    def test_the_strip_is_on_the_page_in_both_languages(self) -> None:
+        html = (self.APP / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="verdict"', html)
+        self.assertLess(html.index('id="verdict"'), html.index('id="warnings"'),
+                        "the verdict sits above the warnings it summarises")
+        js = (self.APP / "app.js").read_text(encoding="utf-8")
+        for key in ("vd_quiet", "vd_fell_back", "vd_wobbles", "vd_loose",
+                    "vd_fit", "vd_steady", "vd_line", "vd_lines"):
+            self.assertEqual(js.count(f"{key}:"), 2, f"{key} in English and Spanish")
+
+    def test_the_page_and_the_bridge_doubt_at_the_same_number(self) -> None:
+        import re
+        js = (self.APP / "app.js").read_text(encoding="utf-8")
+        page = float(re.search(r"const VERDICT_RESIDUAL_MS = ([\d.]+);", js).group(1))
+        self.assertEqual(page, web.LOOSE_RESIDUAL_MS)
+        # And that number is the corpus's, not a guess: 5 ms fired on all 15
+        # ranked tracks the precision engine answers, 10 of them good readings.
+        self.assertEqual(web.LOOSE_RESIDUAL_MS, 30.0)
+        self.assertEqual(float(re.search(r"const VERDICT_STABILITY = ([\d.]+);", js).group(1)),
+                         0.9)
+
+    def test_a_real_songs_residual_no_longer_warns(self) -> None:
+        # Corpus B's precision tracks run 11-28 ms; only i-remember, the one
+        # reading a mapper would reject, is past 30.
+        for residual, warns in ((11.4, False), (18.2, False), (27.9, False),
+                                (38.7, True)):
+            keys = self.keys(_analysis([ta.TimingPoint(500, 150, 1, 0)], residual=residual))
+            self.assertEqual("warn_loose" in keys, warns, f"{residual} ms")
+
+    @staticmethod
+    def keys(analysis) -> list:
+        return [note["key"] for note in web.analysis_payload(analysis)["warnings"]]
 
 
 if __name__ == "__main__":

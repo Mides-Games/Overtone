@@ -17,6 +17,65 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-28 · Whether to trust the reading, in one line
+
+### Changed
+
+- **A verdict strip under the stats**: which engine answered, how far the
+  attacks sit from its grid, how steady the local tempo is, how many red lines
+  — and then, in words, whether any of that is worth doubting. What it may say
+  was calibrated on Corpus B, the 20 ranked maps whose red lines a person
+  placed, not chosen by taste.
+- **Its quiet state does not say the reading is good.** It says nothing looks
+  wrong, and then names the octave as the thing these numbers cannot check,
+  because that is exactly what the corpus showed: of the 14 readings the engine
+  could not fault, 4 were still wrong, every one of them by an octave, with
+  residuals of 11-17 ms and stability 0.90-0.98. A grid read at twice the tempo
+  fits beautifully. The strip points at ×2/÷2 instead of claiming a verdict it
+  cannot support.
+
+### Fixed
+
+- **The loose-fit warning fired on every real song.** `LOOSE_RESIDUAL_MS` was
+  5 ms, and over the 15 ranked tracks the precision engine answers it fires on
+  all 15 — 10 of which land on the mapper's own red lines. A warning that
+  always fires says nothing, and this one contradicted the new strip on screen:
+  the banner called an 18.2 ms fit loose while the strip said nothing looked
+  wrong. Real music sits at 11-28 ms; the threshold is 30 ms, where it fires on
+  exactly one track of the 15, and that one is the reading a mapper would
+  reject. A test now holds the page and the bridge to the same number, since
+  disagreeing about it is what put two contradictory sentences on screen.
+
+### Measured
+
+```
+Corpus B, 20 ranked maps, with the engine's own account of each answer recorded
+beside the mapper's (bench/corpus_b.py grew residual, stability, section count,
+weakest confidence and octave margin; cache format 3).
+
+A reading worth keeping: at least half the mapper's red lines have a beat of
+ours within 50 ms, and at least half the sections read at the mapper's octave.
+11 of the 20 qualify.
+
+Of the 9 that do not, the engine's own numbers can flag 5:
+  * it fell back or refused          doubts 5, 4 of them bad
+  * stability under 0.9              doubts 6, 5 of them bad
+  * residual over 30 ms              doubts 1, 1 of them bad
+  * the two together                 doubts 6, 5 of them bad; trusts 14, 4 bad
+
+The 4 it cannot flag are diary-of-jane, camisa-negra, imagination and noble -
+every one an octave error, and every one with a residual of 11-17 ms and
+stability 0.90-0.98.
+
+The octave margin does not save it either. It is reported per section as the
+seeded candidate's coherence less the strongest an octave away, and over the
+corpus the three worst margins (-0.29, -0.21, -0.19) belong to camisa-negra
+and noble (bad) but also palette (good), while diary-of-jane and imagination
+sit at exactly 0.0000 alongside steampunk-engines and yui-again, which are
+fine. It separates nothing here, which is why the strip says the octave is
+unchecked rather than pretending to check it.
+```
+
 ## v4.0.0-dev — 2026-09-28 · The Rust engine stops doing the same work twice
 
 ### Fixed

@@ -3796,19 +3796,55 @@ def _run_self_check(report: str | None) -> None:
 # Window
 # ---------------------------------------------------------------------------
 
-def _dark_caption(window) -> None:
-    """Dark title bar even when Windows itself is in light mode.
+#: The window's own colours, matched to the page's ``--bg`` so the frame the
+#: system paints before the first HTML frame is not a flash of another colour.
+#: Kept here beside the window because that is the only place that needs them;
+#: app/styles.css is where they are decided.
+WINDOW_BG = {"dark": "#121019", "light": "#f5f4f8"}
 
-    pywebview only darkens the caption when the system theme is dark; the app
-    is dark either way, and a white caption over it looks broken. Runs on the
-    ``shown`` event because the native form does not exist before that.
+
+def startup_theme() -> str:
+    """``dark`` or ``light``: the saved theme, with ``system`` resolved.
+
+    Read before the window exists, because the background colour and the
+    caption are set once at creation. ``system`` asks Windows which app theme
+    it is in (read only, HKCU); anything unreadable is dark, which is the
+    app's own default.
+    """
+    try:
+        theme = ta.load_config().get("theme")
+    except Exception:  # noqa: BLE001 -- a broken config must not stop the window
+        theme = None
+    if theme in ("dark", "light"):
+        return theme
+    if sys.platform == "win32":
+        try:
+            import winreg
+            with winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER,
+                    r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize") as key:
+                light, _kind = winreg.QueryValueEx(key, "AppsUseLightTheme")
+                return "light" if int(light) == 1 else "dark"
+        except Exception:  # noqa: BLE001 -- no key, no value, no permission: dark
+            pass
+    return "dark"
+
+
+def _dark_caption(window) -> None:
+    """The title bar in the app's own theme, whatever Windows is in.
+
+    pywebview darkens the caption only when the *system* theme is dark, and
+    the app has its own light and dark themes now (the rail's theme button),
+    so the two disagreed: a light app under a dark caption, or the reverse.
+    Runs on the ``shown`` event because the native form does not exist before
+    that.
     """
     if sys.platform != "win32":
         return
     try:
         import ctypes
         hwnd = int(window.native.Handle.ToInt32())
-        on = ctypes.c_int(1)
+        on = ctypes.c_int(1 if startup_theme() == "dark" else 0)
         # DWMWA_USE_IMMERSIVE_DARK_MODE = 20 (Windows 10 20H1+ and 11)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(on), ctypes.sizeof(on))
     except Exception:  # noqa: BLE001 -- decoration must never block startup
@@ -3826,7 +3862,8 @@ def main(argv: list[str] | None = None) -> None:
     ta.claim_taskbar_identity()
     window = webview.create_window(
         "Overtone", url=str(APP_DIR / "index.html"), js_api=api,
-        width=1320, height=880, min_size=(960, 640), background_color="#0B0F17")
+        width=1320, height=880, min_size=(960, 640),
+        background_color=WINDOW_BG[startup_theme()])
     api._window = window
     window.events.shown += lambda: _dark_caption(window)
     # The first analysis would pay for first-call compilation: pay it now,

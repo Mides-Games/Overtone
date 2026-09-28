@@ -4282,5 +4282,64 @@ class AppScriptTests(unittest.TestCase):
         self.assertEqual([k for k in en if en[k] != es[k]], [])
 
 
+class SplashTests(unittest.TestCase):
+    """What the window shows while boot() is still fetching: the page's own
+    overlay, and the frame colours the system paints before the first HTML
+    frame. Both are startup, and both used to be wrong in their own way."""
+
+    APP = Path(__file__).resolve().parent / "app"
+
+    def test_the_overlay_covers_the_shell_before_anything_else(self) -> None:
+        html = (self.APP / "index.html").read_text(encoding="utf-8")
+        # First in the body: the skeleton behind it must never paint first.
+        self.assertLess(html.index('id="splash"'), html.index('class="app"'))
+        self.assertIn('data-i18n="splash_loading"', html)
+        css = (self.APP / "styles.css").read_text(encoding="utf-8")
+        self.assertIn(".splash {", css)
+        # Reduced motion is honoured both ways the app knows: its own class and
+        # the system setting.
+        self.assertIn("body.reduce-motion .splash-bars i", css)
+        self.assertIn("prefers-reduced-motion", css.split(".splash {")[1])
+
+    def test_it_comes_down_on_boot_and_on_a_bridge_that_never_answers(self) -> None:
+        js = (self.APP / "app.js").read_text(encoding="utf-8")
+        self.assertIn("function splashHide()", js)
+        # Called when boot has the config and the first view...
+        boot = js[js.index("async function boot()"):]
+        self.assertIn("splashHide();", boot[:boot.index("\nwindow.addEventListener")])
+        # ...and armed with a timeout, so a bridge that never answers leaves a
+        # usable window rather than a covered one.
+        self.assertIn("setTimeout(splashHide, 6000)", js)
+        # Removed from the page, not merely faded: a transparent overlay still
+        # takes every click.
+        self.assertIn("el.remove()", js)
+
+    def test_the_window_colours_are_the_page_colours(self) -> None:
+        # The frame is painted before any CSS, so its colour is written twice —
+        # here and in styles.css. This is the test that keeps the two the same.
+        import re
+        css = (self.APP / "styles.css").read_text(encoding="utf-8")
+        dark = css[css.index(":root {"):]
+        light = css[css.index(':root[data-theme="light"] {'):]
+        want = {
+            "dark": re.search(r"--bg:\s*(#[0-9a-fA-F]{6})", dark).group(1),
+            "light": re.search(r"--bg:\s*(#[0-9a-fA-F]{6})", light).group(1),
+        }
+        self.assertEqual({k: v.lower() for k, v in web.WINDOW_BG.items()}, want)
+
+    def test_the_saved_theme_decides_and_a_broken_config_is_dark(self) -> None:
+        # Never the real config: patched, like every other test here.
+        for saved, want in (("light", "light"), ("dark", "dark")):
+            with mock.patch.object(web.ta, "load_config", return_value={"theme": saved}):
+                self.assertEqual(web.startup_theme(), want)
+        with mock.patch.object(web.ta, "load_config", side_effect=OSError("gone")):
+            self.assertEqual(web.startup_theme(), "dark")
+        with mock.patch.object(web.ta, "load_config", return_value={"theme": "nonsense"}):
+            self.assertIn(web.startup_theme(), ("dark", "light"))
+        # "system" asks Windows, and answers one of the two either way.
+        with mock.patch.object(web.ta, "load_config", return_value={"theme": "system"}):
+            self.assertIn(web.startup_theme(), ("dark", "light"))
+
+
 if __name__ == "__main__":
     unittest.main()

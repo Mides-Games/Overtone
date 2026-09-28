@@ -17,6 +17,51 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · What the window shows while it opens
+
+### Changed
+
+- **A startup overlay.** `boot()` needs a round trip to the bridge for the
+  config, the language and the first view; until it came back the window showed
+  the shell raw — the sidebar in English whatever the language, empty cards, no
+  logo. The overlay covers that and says what the app is while it waits: five
+  bars at the heights of the harmonic series (1, 1/2, 1/3, 1/4, 1/5) pulsing one
+  after another on a 500 ms beat, which is 120 BPM. A timing tool should open
+  in time.
+- **It comes down on boot, never before 420 ms and never after 6 s.** A flash
+  reads as a glitch, and a bridge that never answers must not leave the window
+  covered: the page behind it is usable, and a covered window looks hung. It is
+  then **removed from the page**, not merely faded — a transparent overlay still
+  takes every click, which is the way this goes wrong.
+
+### Fixed
+
+- **The title bar ignored the app's own theme.** `_dark_caption` forced a dark
+  caption always, with the comment "the app is dark either way" — true when it
+  was written, false since the theme button landed: a light app sat under a dark
+  caption. The caption and the window's `background_color` now both follow the
+  saved theme, with `system` asking Windows which app theme it is in (read only)
+  and anything unreadable falling back to dark, the app's own default.
+
+### Measured
+
+```
+Through the harness at 1280x900, with the overlay measured where it paints
+rather than from a screenshot: it covers 1280x900 from (0, 0) at z-index 200,
+background rgb(18, 16, 25) in dark and rgb(245, 244, 248) in light, which are
+the page's own --bg either way; the five bars stand 74, 45.9, 32.6, 23.7 and
+17.8 px, animation splash-pulse at 0.5 s, 100 ms apart. After boot the element
+is gone from the page and the point at the centre of the window belongs to the
+app behind it. With reduced motion asked for, both animations read `none` and
+the progress line fills its 168 px track instead of sweeping. Both languages
+read: "Starting up…" and "Abriendo…". No console error.
+
+The window's two colours are now written in two places — styles.css and
+overtone_web.py, because the frame is painted before any CSS — so a test reads
+--bg out of each theme's block and holds WINDOW_BG to it. 777 Python tests pass
+(four new).
+```
+
 ## v4.0.0-dev — 2026-09-27 · The three properties, over generated tracks
 
 ### Changed

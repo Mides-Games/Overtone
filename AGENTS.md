@@ -84,8 +84,12 @@ names its own stage. Current state: all 27 vectors -- including 8 red lines on a
 proven bar and the measure-grid path -- match every attack within 0.0001 ms, every anchor seed within 2.6e-7 s of period, and **every octave
 decision exactly** — which is the stage audit finding F-07 says nothing in v3
 tests. The whole pipeline over the corpus -- decode, attacks and tempo -- takes
-about 4.2 s against about 18.5 s for Python's `analyze_audio` (both measured on
-2026-09-23; this machine's timings vary by up to a third between runs).
+about 5.6 s (2026-09-28, 27 vectors: 1.25 s decode, 2.65 s attacks, 1.71 s
+tempo, down from 7.96 s before that day's growth-window and envelope work)
+against about 18.5 s for Python's `analyze_audio` (2026-09-23, 24 vectors, not
+re-measured since). This machine's timings vary by up to a third between runs,
+so a comparison is only worth making between numbers taken minutes apart on the
+same build -- which is how those two Rust figures were taken.
 
 `cargo run --release -q -p overtone-bench -- candidates <case>` prints the
 coherence candidates beside v3's when a seed diverges.

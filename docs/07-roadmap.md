@@ -220,7 +220,7 @@ Part B of the DSP doc, in the order its gates can be met.
 
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
-| Parallel + cache | rayon stages, content-keyed cache | med | **high** | P1 | no | no | **P1** | partial — result cache in the shell (re-analysis 2.04 s → 0.02 s); no rayon stages |
+| Parallel + cache | rayon stages, content-keyed cache | med | **high** | P1 | no | no | **P1** | **done** (2026-09-28) — the result cache in the shell (re-analysis 2.04 s → 0.02 s), and the stages: the STFT, HPSS, the structure matrix and the coherence sweep were already parallel, and the onset envelope's decibel and flux passes now are too (0.254 → 0.069 s and 0.185 → 0.031 s on a six-minute track, bit for bit the same envelope). The larger win was not threads: growth was refitting a whole section on every step, and a 128-beat trailing window takes that stage from 1.001 to 0.121 s. The analysis of a six-minute track runs 1.98 → 0.69 s, the 27-case corpus 7.96 → 5.61 s, and 27/27 still match v3 stage for stage |
 | **Per-section octave** | half/double-time regions get their own beat rate — **F-11** | med | **high** | P1, fixture | no | no | **P1** | **ported** — matches the prototype 4/4, 0 FP |
 | 2-D coherence map | `R(t,f)` full-track: better seeds + confidence map | med | high | P1 | no | no | P1 | **ported** |
 | **Elastic grid** | tempo model for ramps; a **selector** beside the piecewise fit | **high** | **high** | IRLS | no | no | **P1** | **ported** as polynomial-in-k — 0.16 BPM on realistic ramps; extreme ramp needs the spline |

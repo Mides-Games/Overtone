@@ -17,6 +17,57 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-28 · The Rust engine stops doing the same work twice
+
+### Fixed
+
+- **Growth refitted a whole section on every step.** The loop carries a grid
+  forward and refits it each time it takes in another chunk, and the refit ran
+  over everything since the section began — quadratic in the number of steps,
+  for nothing the final fit does not do itself, since that one runs on the
+  whole span anyway. v3 shed this on 2026-09-27; the Rust engine still carried
+  it, which also means the two had quietly grown different. Both now use a
+  trailing window of 128 beats, and a section shorter than the window is fitted
+  over everything exactly as before.
+
+### Changed
+
+- **The onset envelope's two per-frame passes go wide.** A six-minute track is
+  124,032 frames of 128 mel bands, and the decibel conversion and the flux
+  difference each walked all 15.9 million values one at a time. Neither frame
+  reads another's answer, so both run in parallel: the decibel pass keeps its
+  global maximum by reducing maxima, which is the same number in any order, and
+  the flux pass collects back in frame order. Bit for bit the same envelope.
+- **The roadmap row said "no rayon stages", and that was already wrong**: the
+  STFT, HPSS, the structure matrix and the coherence sweep were parallel
+  before today. What was missing was not threads but the quadratic above — the
+  single biggest win here came from doing less work, not from doing it on more
+  cores.
+
+### Measured
+
+```
+Against a baseline binary rebuilt from the previous commit on the same machine,
+minutes apart, median of three runs on the six-minute fixture:
+
+                       before     after
+  attacks              0.76 s     0.44 s     1.7x
+  tempo                1.22 s     0.25 s     4.9x
+  the analysis         1.98 s     0.69 s     2.9x
+
+Per stage, from the same fixture instrumented: growth 1.001 -> 0.121 s, the
+decibel pass 0.254 -> 0.069 s, the flux pass 0.185 -> 0.031 s. The seed scan
+(0.008 s), the octave hints (0.09 s) and settling (0.000 s) were never the
+cost.
+
+Over the 27 golden cases, the same binaries: decode 1.04 -> 1.25 s (noise,
+this machine varies by a third), attacks 4.01 -> 2.65 s, tempo 2.91 -> 1.71 s,
+7.96 -> 5.61 s for the corpus.
+
+Nothing moved: 27/27 cases match v3 stage for stage, nogrid, density, elastic
+and map are unchanged, and 280 Rust tests pass.
+```
+
 ## v4.0.0-dev — 2026-09-27 · Kits fitted to what each genre sounds like
 
 ### Changed

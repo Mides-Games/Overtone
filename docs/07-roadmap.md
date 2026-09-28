@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **773** Python (524 engine + 249 web shell) · **271** Rust.
+Tests: **773** Python (524 engine + 249 web shell) · **277** Rust.
 
 ### What is pending, in order
 
@@ -179,7 +179,8 @@ The whole of [`05-dsp-pipeline.md`](05-dsp-pipeline.md) Part A, and nothing from
 | Meter, confidence, points | downbeat anchoring, snapping, whole-ms export | med | high | sections | no | no | **P0** | **done** |
 | Analysis assembly | beats, local curve, global BPM, stability, residual | med | high | points | no | no | **P0** | **done** |
 | Unit tests ported | the v3 tests by name | med | **high** | all | no | no | **P0** | **done** (2026-09-27) — measured instead of guessed: `bench/parity.json` places all 155 engine stages the v3 tests touch, and `bench/parity.py` derives from it that **381 of 524** v3 engine tests touch a stage Rust holds, naming the `#[test]` functions that hold each one and failing when a rename leaves the claim behind. The other 143 are outside the Rust engine's surface and say so: 61 shell, 31 python-only, 29 bench, 16 the v2 fallback tracker Rust never grew. It measures the surface, not one Rust test per Python test |
-| Property tests | ×2/÷2 identity, exact-grid recovery, monotone boundaries | low | high | all | no | no | P1 | partial |
+| Property tests | ×2/÷2 identity, exact-grid recovery, monotone boundaries | low | high | all | no | no | P1 | **done** (2026-09-27) — `crates/overtone-tempo/tests/properties.rs`: the three claims over generated tracks (240 cases each, 60 where growth runs), plus snapping idempotent and bounded and whole-ms output in order. A seeded SplitMix64 generator rather than a property crate, since the build is offline and a printed seed is what a failure actually needs. Three of six failed first: two were the half-a-slot arithmetic a seed error obeys (over the track, and over the 8 s seed window), the third is the row below |
+| ×2/÷2 offset slack | the displayed factor must not tip which bar the first line lands on | low | med | points | no | no | P2 | todo — measured 2026-09-27: the slack in `_points_from_sections` is a quarter of the *displayed* beat, so ×2 moves the first red line 0.455 s on very-noisy-132 (1 of 76 line-and-factor pairs over the 27 golden vectors; the other 6 are ÷2 landing on a beat it declares, which is correct). Reading the slack from the section's own grid leaves factor 1 bit-identical on all 27 and removes it — both engines, so it wants the gate run |
 | Structured diagnostics | carried on the result, not in a progress string — closes **F-08** | low | med | all | no | no | P1 | **done** (Rust) |
 | **App uses the Rust engine** | Python binding (PyO3) or JSON subprocess, so the shell gets the speed-up | med | **high** | all | no | no | **P1** | **done** — JSON subprocess (`overtone-cli --full`), opt-in in Settings |
 

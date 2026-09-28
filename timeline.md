@@ -17,6 +17,51 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · The three properties, over generated tracks
+
+### Changed
+
+- **`crates/overtone-tempo/tests/properties.rs`**: the roadmap's three property
+  claims — x2/div2 identity, exact-grid recovery, monotone boundaries — each had
+  one hand-built example inside the crate. An example pins the case that once
+  broke; what it cannot do is find the input nobody thought of. The same claims
+  now run over hundreds of generated tracks, with two more riding along
+  (snapping is idempotent and bounded, a written line is whole milliseconds in
+  order). No property-testing crate: the build is offline and its dependency
+  set is the measured one, a generator is twenty lines of SplitMix64, and every
+  failure prints the seed that made it.
+
+### Measured
+
+```
+Three of the six properties failed on the first run, and all three failures
+were the tests being wrong about the engine rather than the engine being wrong
+- which is the useful half of writing them down:
+
+1. A least-squares pass assigns each attack to the nearest slot of the grid it
+   is given, so a seed error of e per period has walked half a slot after
+   0.5/e of them. At 1.5 % over 400 beats the fit came back 0.65 % off. That is
+   the ladder being asked for something it cannot do, and exactly why the
+   pipeline seeds inside an 8 s window and widens with `expand`.
+2. The same arithmetic applies to the seed window itself: a 0.109 s atom fits
+   73 beats into 8 s, where 1 % is three quarters of a slot, and the seed pass
+   locks wrong before widening can help (seed 34). What a seed scan must
+   deliver is not "1 %" but a fraction of a slot over its own window.
+3. The x2/div2 identity is weaker than it reads. A red line must sit on a beat
+   of the grid it declares, so at div2 half the beats no longer exist and the
+   line moves to a surviving one: 6 of 76 line-and-factor pairs over the 27
+   golden vectors, and correct. The seventh is not: the slack in
+   `points_from_sections` is a quarter of the *displayed* beat, so the user's
+   factor tips the ceil by a whole bar - on very-noisy-132 the first red line
+   moves 0.455 s at x2. Read from the section's own grid instead, factor 1 is
+   bit-identical on all 27 vectors and that case goes away. It is engine
+   behaviour in both languages, so it waits for its own change and the gates;
+   the property asserts the bar bound that holds today and names the case.
+
+277 Rust tests pass (six new, 3.1 s for the file). No Python or engine file
+changed, so every Python gate is untouched.
+```
+
 ## v4.0.0-dev — 2026-09-27 · Which v3 guarantees Rust holds, in writing
 
 ### Changed

@@ -332,9 +332,17 @@ def main(argv: list[str] | None = None) -> int:
                         help="profile file to decide with (the CLI's balanced otherwise)")
     parser.add_argument("--style", choices=STYLES, default=None,
                         help="only songs whose mapper hitsounded in this style")
+    parser.add_argument("--genre", default=None,
+                        help="maps from bench/genre_corpus.json instead of the index")
+    parser.add_argument("--third", choices=("build", "choose", "score"), default=None,
+                        help="with --genre, which third of that genre's maps by set-id order")
     parser.add_argument("--bare", action="store_true",
                         help="propose on a copy with every hitsound stripped")
     args = parser.parse_args(argv)
+
+    if args.genre:
+        pairs = genre_pairs(args.genre, args.third, args.offset, args.limit)
+        return run_pairs(pairs, args)
 
     from overtone_library import default_path
     db = open_index_readonly(args.db or str(default_path()))
@@ -346,8 +354,6 @@ def main(argv: list[str] | None = None) -> int:
             paths = select_maps(db, args.min_objects, (args.offset + args.limit) * 8)
     finally:
         db.close()
-    cli = args.cli or default_cli()
-
     if not args.style:
         # One map per audio file: the same song proposed twice measures
         # nothing. The offset skips songs, not map rows — a set holds many
@@ -366,7 +372,53 @@ def main(argv: list[str] | None = None) -> int:
     if not pairs:
         print("eval: no maps selected; is the index scanned?")
         return 1
+    return run_pairs(pairs, args)
 
+
+def genre_pairs(genre: str, third: str | None, offset: int, limit: int
+                ) -> list[tuple[str, str]]:
+    """(audio, map) for one genre of ``bench/genre_corpus.json``.
+
+    The corpus is the same one the profiles are measured from, so ``--third
+    score`` is exactly the maps a ``--third build`` profile never saw. A set
+    whose file no longer hashes the same is skipped and named, as Corpus B
+    does: the numbers must not quietly come from another version of a map.
+    """
+    manifest = HERE / "genre_corpus.json"
+    if not manifest.is_file():
+        print(f"eval: no {manifest.name}; run bench/genre_corpus.py --update first")
+        return []
+    body = json.loads(manifest.read_text(encoding="utf-8"))
+    songs = Path(body["songs_folder"])
+    rows = body.get("genres", {}).get(genre, {}).get("sets", [])
+    if third:
+        keep = {"build": 0, "choose": 1, "score": 2}[third]
+        rows = [r for n, r in enumerate(rows) if n % 3 == keep]
+    out: list[tuple[str, str]] = []
+    for row in rows[offset:]:
+        if len(out) >= limit:
+            break
+        osu = songs / row["folder"] / row["file"]
+        if not osu.is_file():
+            print(f"eval: skip {row['folder'][:50]}: the file is gone", flush=True)
+            continue
+        import hashlib
+        if hashlib.sha1(osu.read_bytes()).hexdigest() != row["sha1"]:
+            print(f"eval: skip {row['folder'][:50]}: it changed since it was measured",
+                  flush=True)
+            continue
+        try:
+            audio = osu.parent / read_osu_header(str(osu)).get("audio_file", "")
+        except (ValueError, OSError):
+            continue
+        if audio.is_file():
+            out.append((str(audio), str(osu)))
+    return out
+
+
+def run_pairs(pairs: list[tuple[str, str]], args) -> int:
+    """Propose on every (audio, map) pair and print the summary."""
+    cli = args.cli or default_cli()
     started = time.perf_counter()
     results: list[dict] = []
     errors = 0

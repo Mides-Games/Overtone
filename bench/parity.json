@@ -351,6 +351,10 @@
    ],
    "where": "rust"
   },
+  "beatmap_genre": {
+   "where": "python-only",
+   "why": "which profile a map's own tags ask for: the shell picks, and the Rust decision takes the profile file it is given"
+  },
   "beatmap_text": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
@@ -440,6 +444,10 @@
   "hitsound_difficulty": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "hitsound_genre": {
+   "where": "python-only",
+   "why": "which profile a map's own tags ask for: the shell picks, and the Rust decision takes the profile file it is given"
   },
   "hitsound_playback": {
    "where": "shell",

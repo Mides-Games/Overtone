@@ -16,6 +16,8 @@ import numpy as np
 
 from overtone import (
     HOP,
+    hitsound_genre,
+    beatmap_genre,
     MIN_PULSE_GAP,
     _load_audio,
     _onset_envelope,
@@ -8723,6 +8725,49 @@ class ParityGateTests(unittest.TestCase):
                       ["test_circles_inherit_from_the_timing_point_then_the_map"])
         blind = {cls for cls, per in touched.items() if not any(per.values())}
         self.assertEqual(blind, set(parity.committed()["classes"]))
+
+
+class GenreTests(unittest.TestCase):
+    """Which genre a song's own metadata claims, for the hitsound profile."""
+
+    def test_the_band_wins_over_the_tags(self) -> None:
+        # The map this was checked against tags itself "rock alternative punk
+        # mcr metal emo": four genres, and only the artist settles it.
+        self.assertEqual(
+            hitsound_genre("My Chemical Romance", "rock alternative punk mcr metal emo"),
+            "rock")
+        self.assertEqual(hitsound_genre("Bring Me The Horizon", "pop"), "metalcore")
+
+    def test_the_more_specific_tag_wins(self) -> None:
+        self.assertEqual(hitsound_genre("", "metalcore metal rock"), "metalcore")
+        self.assertEqual(hitsound_genre("", "metal rock"), "metal")
+        self.assertEqual(hitsound_genre("", "punk rock"), "punk")
+        self.assertEqual(hitsound_genre("", "rock"), "rock")
+
+    def test_a_tag_is_a_whole_word(self) -> None:
+        # "poprock" is not pop, and a title word cannot smuggle a genre in.
+        self.assertEqual(hitsound_genre("", "poprock"), "")
+        self.assertEqual(hitsound_genre("", "metallic"), "")
+        # Commas are separators, not letters: "pop,rock" is two tags.
+        self.assertEqual(hitsound_genre("", "pop,rock"), "rock")
+        self.assertEqual(hitsound_genre("", ""), "")
+        self.assertEqual(hitsound_genre("", "   "), "")
+
+    def test_nothing_is_claimed_rather_than_guessed(self) -> None:
+        self.assertEqual(hitsound_genre("Some Vocaloid Producer", "vocaloid anime"), "")
+
+    def test_a_beatmap_reads_its_own_metadata(self) -> None:
+        text = "\n".join([
+            "osu file format v14", "", "[General]", "AudioFilename: a.mp3", "",
+            "[Metadata]", "Title: T", "Artist: Some Band",
+            "Tags: japanese rock j-rock", "",
+            "[TimingPoints]", "0,500,4,2,0,70,1,0", "", "[HitObjects]", ""])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "song.osu"
+            path.write_text(text, encoding="utf-8")
+            self.assertEqual(beatmap_genre(read_osu_beatmap(str(path))), "jrock")
+        self.assertEqual(beatmap_genre({}), "")
+        self.assertEqual(beatmap_genre({"metadata": "not a dict"}), "")
 
 
 if __name__ == "__main__":

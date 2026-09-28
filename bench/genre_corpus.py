@@ -60,31 +60,11 @@ SLOTS_PER_BEAT = 4
 SLOTS = 16
 ADDITIONS = ("whistle", "finish", "clap")
 
-#: Genre by tag, most specific first: a set lands in the first that matches, so
-#: a metalcore map is not counted as plain rock as well.
-TAGS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("metalcore", ("metalcore", "post-hardcore", "deathcore")),
-    ("metal", ("metal", "heavy metal", "death metal", "thrash")),
-    ("punk", ("pop punk", "punk rock", "punk")),
-    ("jrock", ("j-rock", "jrock", "japanese rock")),
-    ("rock", ("rock", "alternative rock", "hard rock", "indie rock")),
-    ("funk", ("funk", "funky", "disco")),
-    ("jazz", ("jazz", "swing", "bossa nova")),
-    ("pop", ("pop", "j-pop", "k-pop", "synthpop")),
-    ("electronic", ("electronic", "edm", "house", "dubstep", "drum and bass")),
-)
-
-#: Bands whose sets join a pool whatever their tags say, because the genre is
-#: not in doubt and a mapper's tags often are. Lowercase, matched as a
-#: substring of the artist field.
-BANDS: dict[str, tuple[str, ...]] = {
-    "rock": ("my chemical romance", "pierce the veil", "paramore", "green day",
-             "fall out boy", "linkin park", "sleeping with sirens", "all time low"),
-    "metalcore": ("bring me the horizon", "asking alexandria", "of mice & men",
-                  "architects", "a day to remember"),
-    "metal": ("metallica", "avenged sevenfold", "bullet for my valentine",
-              "system of a down", "trivium", "slipknot", "babymetal", "band-maid"),
-}
+#: Genre comes from the engine's own classifier (``overtone.hitsound_genre``),
+#: which is what the app uses to preselect a profile. One definition: a song
+#: graded under one genre here and hitsounded under another in the app would
+#: make every number on this page a lie.
+genre_of = ov.hitsound_genre
 
 #: Mapsets measured per genre, newest set id first: modern hitsounding, and a
 #: cap so one huge genre does not decide the estimator for the rest.
@@ -123,19 +103,6 @@ def header(path: Path) -> dict:
     except OSError:
         return {}
     return out
-
-
-def genre_of(artist: str, tags: str) -> str | None:
-    """The pool a set belongs to, by band first and by tag second."""
-    artist = (artist or "").lower()
-    for name, bands in BANDS.items():
-        if any(band in artist for band in bands):
-            return name
-    text = " " + (tags or "").lower().replace(",", " ") + " "
-    for name, words in TAGS:
-        if any(f" {word} " in text for word in words):
-            return name
-    return None
 
 
 def pools(songs: Path) -> dict[str, list[Path]]:

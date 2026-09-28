@@ -7932,6 +7932,66 @@ def _event_sample(state: "_PlayState | None", default_set: int, normal_raw: int,
                     "index": index_raw, "volume": volume_raw, "file": file}}
 
 
+# -- Genre: which hitsound profile a song asks for ---------------------------
+
+#: Genre by tag, most specific first: a set lands in the first that matches, so
+#: a metalcore map is not counted as plain rock as well. These are the words
+#: mappers actually write in ``Tags``, and the list is the one
+#: ``bench/genre_corpus.py`` measured each profile's table with — the same
+#: classifier both times, or a song would be graded under one genre and
+#: hitsounded under another.
+GENRE_TAGS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("metalcore", ("metalcore", "post-hardcore", "deathcore")),
+    ("metal", ("metal", "heavy metal", "death metal", "thrash")),
+    ("punk", ("pop punk", "punk rock", "punk")),
+    ("jrock", ("j-rock", "jrock", "japanese rock")),
+    ("rock", ("rock", "alternative rock", "hard rock", "indie rock")),
+    ("funk", ("funk", "funky", "disco")),
+    ("jazz", ("jazz", "swing", "bossa nova")),
+    ("pop", ("pop", "j-pop", "k-pop", "synthpop")),
+    ("electronic", ("electronic", "edm", "house", "dubstep", "drum and bass")),
+)
+
+#: Bands whose genre is not in doubt, read before the tags, because a mapper's
+#: tags often are. Lowercase, matched as a substring of the artist field.
+GENRE_BANDS: dict[str, tuple[str, ...]] = {
+    "rock": ("my chemical romance", "pierce the veil", "paramore", "green day",
+             "fall out boy", "linkin park", "sleeping with sirens", "all time low"),
+    "metalcore": ("bring me the horizon", "asking alexandria", "of mice & men",
+                  "architects", "a day to remember"),
+    "metal": ("metallica", "avenged sevenfold", "bullet for my valentine",
+              "system of a down", "trivium", "slipknot", "babymetal", "band-maid"),
+}
+
+
+def hitsound_genre(artist: str, tags: str) -> str:
+    """The genre a song's own metadata claims, or ``""`` when nothing does.
+
+    The band list wins over the tags: a My Chemical Romance map tagged
+    "emo alternative" is rock whatever the tags left out. Tags are matched as
+    whole words, so "poprock" is not "pop" and a title word cannot smuggle a
+    genre in. Never guesses from the audio — that is a measurement nobody has
+    made here yet, and a wrong guess picks the wrong hitsounds.
+    """
+    name = (artist or "").lower()
+    for genre, bands in GENRE_BANDS.items():
+        if any(band in name for band in bands):
+            return genre
+    text = " " + (tags or "").lower().replace(",", " ") + " "
+    for genre, words in GENRE_TAGS:
+        if any(f" {word} " in text for word in words):
+            return genre
+    return ""
+
+
+def beatmap_genre(beatmap: dict) -> str:
+    """:func:`hitsound_genre` of a read beatmap's own metadata."""
+    meta = beatmap.get("metadata") if isinstance(beatmap, dict) else None
+    if not isinstance(meta, dict):
+        return ""
+    return hitsound_genre(str(meta.get("Artist", "")), str(meta.get("Tags", "")))
+
+
 def sound_events(beatmap: dict) -> list[dict]:
     """Every sound a map's objects make, resolved to what osu! plays (P-1).
 

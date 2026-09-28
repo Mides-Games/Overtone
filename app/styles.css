@@ -1010,6 +1010,38 @@ body.reduce-motion .splash-line span { width: 100%; }
   .splash-line span { width: 100%; }
 }
 
+/* ---------------------------------------------------------------- verdict */
+/* The one line that says whether to trust the reading. Two states only, and
+   the quiet one is not green: on Corpus B, 4 of the 14 readings the engine
+   could not fault were still wrong, every one of them by an octave. Claiming
+   "good" there would be claiming something nobody measured. */
+.verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: -4px 0 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  font-size: var(--fs-2);
+  color: var(--muted);
+  line-height: 1.45;
+}
+.verdict[hidden] { display: none; }
+.verdict .verdict-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.verdict.doubt { border-color: color-mix(in srgb, var(--amber) 45%, var(--border)); }
+.verdict.doubt { background: var(--amber-soft); }
+.verdict.doubt .verdict-dot { background: var(--amber); }
+.verdict b { color: var(--text); font-weight: 600; }
+
 /* ------------------------------------------------------------ responsive */
 @media (max-width: 1240px) {
   :root { --sidebar: 76px; }

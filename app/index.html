@@ -210,6 +210,14 @@
           </div>
         </div>
 
+        <!-- One line under the stats: which engine answered, what it says about
+             its own fit, and whether that is worth doubting. The thresholds are
+             Corpus B's, not taste: see verdict() in app.js. -->
+        <div class="verdict" id="verdict" hidden>
+          <i class="verdict-dot"></i>
+          <div class="verdict-text"><b id="verdictFacts"></b> <span id="verdictSays"></span></div>
+        </div>
+
         <div class="warnings" id="projectOffer" hidden></div>
         <div class="warnings" id="warnings"></div>
 

@@ -95,6 +95,12 @@ const I18N = {
     k_open: "open", k_analyze: "analyze", table_hint: "↑ ↓ to move", f_preset: "Preset",
     d_song: "Song", d_point: "Timing point", d_offset: "Offset", d_beat: "Beat length", d_meter: "Meter",
     d_conf: "Confidence", d_span: "Governs", d_until: "until {t}", d_end: "to the end", d_bars: "{n} bars",
+    vd_fit: "fit {ms} ms", vd_steady: "steady {n}%",
+    vd_line: "one red line", vd_lines: "{n} red lines",
+    vd_loose: "Check this: the attacks sit {ms} ms from the grid on average, well past what live playing explains. The grid is probably on the wrong beat.",
+    vd_quiet: "Nothing here looks wrong. The octave is what these numbers cannot check — a grid read at double tempo fits just as well — so if the beat feels half or double, use ×2 or ÷2.",
+    vd_fell_back: "Check this: the precision engine found no grid it could stand on, and the fallback tracker answered instead.",
+    vd_wobbles: "Check this: the local tempo wanders ({n}% steady). Either the band drifts and the drift lane will show it, or the grid is on the wrong beat.",
     d_duration: "Duration", d_first: "First beat", d_engine: "Engine", d_residual: "Grid residual",
     d_pulse: "Pulse", d_sections: "Grid sections", d_hint: "Select a timing point in the list or on the tempo map to inspect it.",
     d_timing: "Analysis", d_timing_cached: "from the cache, {s} s",
@@ -764,6 +770,12 @@ const I18N = {
     k_open: "abrir", k_analyze: "analizar", table_hint: "↑ ↓ para moverte", f_preset: "Preajuste",
     d_song: "Canción", d_point: "Timing point", d_offset: "Offset", d_beat: "Duración del beat", d_meter: "Compás",
     d_conf: "Confianza", d_span: "Gobierna", d_until: "hasta {t}", d_end: "hasta el final", d_bars: "{n} compases",
+    vd_fit: "ajuste {ms} ms", vd_steady: "constante {n}%",
+    vd_line: "una línea roja", vd_lines: "{n} líneas rojas",
+    vd_loose: "Revisá esto: los ataques caen a {ms} ms de la rejilla en promedio, mucho más de lo que explica tocar en vivo. Lo más probable es que la rejilla esté en el pulso equivocado.",
+    vd_quiet: "Nada de esto se ve mal. La octava es lo que estos números no pueden comprobar — una rejilla leída al doble de tempo encaja igual de bien — así que si el pulso se siente a la mitad o al doble, usá ×2 o ÷2.",
+    vd_fell_back: "Revisá esto: el motor de precisión no encontró una rejilla en la que apoyarse y respondió el tracker de respaldo.",
+    vd_wobbles: "Revisá esto: el tempo local se mueve (constante {n}%). O la banda va a la deriva y el carril de deriva lo muestra, o la rejilla está en el pulso equivocado.",
     d_duration: "Duración", d_first: "Primer beat", d_engine: "Motor", d_residual: "Residuo de la rejilla",
     d_pulse: "Pulso", d_sections: "Secciones de rejilla", d_hint: "Elegí un timing point en la lista o en el mapa de tempo para inspeccionarlo.",
     d_timing: "Análisis", d_timing_cached: "desde la caché, {s} s",
@@ -1969,6 +1981,57 @@ async function projectAction(action) {
   renderProjectOffer();
 }
 
+// The verdict strip. What it may say is decided by Corpus B, 20 ranked maps
+// whose red lines a person placed (bench/corpus_b.py, measured 2026-09-28):
+//
+//   * Of the 9 readings a mapper would reject, the engine's own numbers can
+//     flag 5: it fell back or refused (4 of them), or the local tempo curve is
+//     unstable, stability under 0.9 (the fifth, and one good reading with it).
+//   * Of the 14 it cannot fault, 4 were still wrong -- every one by an octave,
+//     with residuals of 11-17 ms and stability 0.90-0.98. A grid read at twice
+//     the tempo fits beautifully, which is exactly why those numbers cannot
+//     see it, and the octave margin does not separate them either (the three
+//     worst margins on the corpus are good readings).
+//
+// So the quiet state says nothing looks wrong, never that it is right, and
+// names the octave as the thing to check by ear, because that is the one
+// mistake these numbers are blind to and the user can settle it in a second.
+const VERDICT_STABILITY = 0.9;
+// The same number the loose-fit banner uses, and for the same reason: on the
+// corpus a residual over 30 ms fires on one of the 15 ranked tracks the
+// precision engine answers, and that one is the reading a mapper would reject.
+const VERDICT_RESIDUAL_MS = 30.0;
+
+function verdict(r) {
+  if (!r) return null;
+  const precise = r.engine === "precision";
+  const facts = [
+    t(precise ? "engine_precision" : "engine_legacy"),
+    precise ? t("vd_fit", { ms: r.residual_ms.toFixed(1) }) : null,
+    t("vd_steady", { n: Math.round(r.stability * 100) }),
+    r.points.length === 1 ? t("vd_line") : t("vd_lines", { n: r.points.length }),
+  ].filter(Boolean).join(" · ");
+  if (!precise) return { doubt: true, facts, says: t("vd_fell_back") };
+  if (r.stability < VERDICT_STABILITY) {
+    return { doubt: true, facts,
+             says: t("vd_wobbles", { n: Math.round(r.stability * 100) }) };
+  }
+  if (r.residual_ms > VERDICT_RESIDUAL_MS) {
+    return { doubt: true, facts, says: t("vd_loose", { ms: r.residual_ms.toFixed(1) }) };
+  }
+  return { doubt: false, facts, says: t("vd_quiet") };
+}
+
+function renderVerdict(r) {
+  const said = verdict(r);
+  const box = $("verdict");
+  box.hidden = !said;
+  if (!said) return;
+  box.classList.toggle("doubt", said.doubt);
+  $("verdictFacts").textContent = said.facts;
+  $("verdictSays").textContent = said.says;
+}
+
 function renderResult(r) {
   const precise = r.engine === "precision", stable = r.stability >= 0.75;
   $("statGlobal").textContent = r.global_bpm.toFixed(2);
@@ -1979,6 +2042,7 @@ function renderResult(r) {
     + (precise ? `<span class="pill">${r.residual_ms.toFixed(2)} ms</span>` : "");
   renderSong();
 
+  renderVerdict(r);
   renderWarnings(r.warnings);
 
   $("tableCount").textContent = t("points_n", { n: r.points.length });

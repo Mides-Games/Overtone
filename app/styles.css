@@ -925,6 +925,91 @@ tbody tr:last-child td { border-bottom: 0; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 .toast.error { border-color: color-mix(in srgb, var(--red) 50%, transparent); color: var(--red-ink); }
 
+/* ----------------------------------------------------------------- splash */
+/* Shown while boot() fetches the config and the strings. The window used to
+   open on an untranslated skeleton: the sidebar in English whatever the
+   language, empty cards, no logo. This covers that, and says the app is a
+   timing tool while it does: five bars at the harmonic series' heights,
+   pulsing one after another on a 500 ms beat (120 BPM). */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  transition: opacity 260ms ease;
+}
+.splash[hidden] { display: none; }
+.splash.going { opacity: 0; pointer-events: none; }
+.splash-card {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 0 24px;
+  text-align: center;
+}
+.splash-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+  height: 74px;
+}
+.splash-bars i {
+  width: 10px;
+  height: var(--h);
+  border-radius: 5px 5px 2px 2px;
+  background: linear-gradient(to top, var(--accent), color-mix(in srgb, var(--accent) 45%, var(--surface-3)));
+  transform-origin: bottom center;
+  /* One beat per bar, five bars, so the phrase is 500 ms and the eye reads a
+     pulse rather than a spinner. */
+  animation: splash-pulse 500ms cubic-bezier(.22, .68, .36, 1) infinite;
+  animation-delay: calc(var(--n) * 100ms);
+}
+@keyframes splash-pulse {
+  0%   { transform: scaleY(.55); opacity: .55; }
+  18%  { transform: scaleY(1);   opacity: 1; }
+  100% { transform: scaleY(.55); opacity: .55; }
+}
+.splash-name {
+  font-size: var(--fs-5);
+  font-weight: 650;
+  letter-spacing: .02em;
+  color: var(--text);
+}
+.splash-sub {
+  font-size: var(--fs-2);
+  color: var(--muted);
+}
+.splash-line {
+  width: 168px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.splash-line span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: splash-sweep 1.15s ease-in-out infinite;
+}
+@keyframes splash-sweep {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(260%); }
+}
+/* No motion asked for: the mark stands still and the bars keep their heights,
+   which still reads as the app rather than as a frozen spinner. */
+body.reduce-motion .splash-bars i,
+body.reduce-motion .splash-line span { animation: none; }
+body.reduce-motion .splash-line span { width: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  .splash-bars i, .splash-line span { animation: none; }
+  .splash-line span { width: 100%; }
+}
+
 /* ------------------------------------------------------------ responsive */
 @media (max-width: 1240px) {
   :root { --sidebar: 76px; }

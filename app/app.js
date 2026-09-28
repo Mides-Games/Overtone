@@ -4,7 +4,7 @@
 
 const I18N = {
   en: {
-    tagline: "Timing for osu! maps", nav_timing: "Timing", offline: "offline, nothing leaves this PC",
+    tagline: "Timing for osu! maps", splash_loading: "Starting up…", nav_timing: "Timing", offline: "offline, nothing leaves this PC",
     nav_sections: "Sections", nav_library: "Library", nav_mapcheck: "Map check", nav_export: "Export", nav_history: "History", nav_settings: "Settings",
     close: "Close",
     need_title: "Nothing analyzed yet",
@@ -663,7 +663,7 @@ const I18N = {
     error: "Error: {detail}",
   },
   es: {
-    tagline: "Timing para mapas de osu!", nav_timing: "Timing", offline: "sin conexión, nada sale de esta PC",
+    tagline: "Timing para mapas de osu!", splash_loading: "Abriendo…", nav_timing: "Timing", offline: "sin conexión, nada sale de esta PC",
     nav_sections: "Secciones", nav_library: "Biblioteca", nav_mapcheck: "Revisar mapa", nav_export:
     "Exportar", nav_history: "Historial", nav_settings: "Ajustes",
     close: "Cerrar",
@@ -7434,6 +7434,31 @@ function wire() {
   });
 }
 
+// --------------------------------------------------------------- splash ---
+// The overlay comes down when boot() has the config, the strings and the first
+// view, never before 420 ms (a flash reads as a glitch) and never after 6 s
+// (a bridge that never answers must not leave the window covered: the page
+// behind it is still usable, and a covered window looks hung).
+const SPLASH = { shown: performance.now(), done: false };
+
+function splashHide() {
+  if (SPLASH.done) return;
+  SPLASH.done = true;
+  const el = $("splash");
+  if (!el) return;
+  const wait = Math.max(0, 420 - (performance.now() - SPLASH.shown));
+  setTimeout(() => {
+    el.classList.add("going");
+    // Removed from the page, not just faded: a transparent overlay still eats
+    // every click, which is the way this goes wrong.
+    const drop = () => { el.hidden = true; el.remove(); };
+    el.addEventListener("transitionend", drop, { once: true });
+    setTimeout(drop, 400);
+  }, wait);
+}
+
+setTimeout(splashHide, 6000);
+
 async function boot() {
   wire();
   const st = await api().state();
@@ -7463,6 +7488,7 @@ async function boot() {
   setView(S.view);  // Library until an analysis finishes
   syncActions();
   syncLocks();
+  splashHide();
   if (st.autorun && S.file) analyze();
 }
 

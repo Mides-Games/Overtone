@@ -7,8 +7,8 @@ from, so the lanes waited. This re-measures it against the Rust classifier, and
 measures the one change that looks likely to fix it.
 
     python bench/templates_on_real_audio.py            # the mix, as shipped
+    python bench/templates_on_real_audio.py --features # which features separate at all
     python bench/templates_on_real_audio.py --stem     # and the percussive half
-    python bench/templates_on_real_audio.py --songs 12 --stem
 
 Mapper claps are the truth here for a reason: a mapper who puts a clap on a
 beat is telling us a snare or a clap is audible there, over thousands of
@@ -138,10 +138,85 @@ def deciles(values: list[float]) -> str:
             f"{at(.75):.3f} / {at(.9):.3f}")
 
 
+def auc(positive: list[float], negative: list[float]) -> float:
+    """The chance a random clapped attack reads higher than a random bare one.
+
+    0.5 is a feature that says nothing; below 0.5 it separates the other way,
+    which is as useful and means the response curve should fall, not rise.
+    Ranks, with ties counted as half.
+    """
+    if not positive or not negative:
+        return float("nan")
+    values = np.concatenate([np.asarray(positive), np.asarray(negative)])
+    order = values.argsort()
+    ranks = np.empty_like(order, dtype=float)
+    ranks[order] = np.arange(1, values.size + 1)
+    _, inverse, counts = np.unique(values, return_inverse=True, return_counts=True)
+    sums = np.zeros(counts.size)
+    np.add.at(sums, inverse, ranks)
+    ranks = (sums / counts)[inverse]
+    n_pos = len(positive)
+    return (ranks[:n_pos].sum() - n_pos * (n_pos + 1) / 2) / (n_pos * len(negative))
+
+
+def features(limit: int) -> int:
+    """Which features tell a clapped attack from a bare one, on real music.
+
+    Before any knot moves, the prior question: does the feature separate the
+    attacks mappers clap from the attacks they do not? One that does not should
+    lose its weight rather than gain new knots, and one that separates the
+    other way has its curve pointing the wrong way.
+    """
+    clapped: dict[str, list[float]] = {}
+    bare: dict[str, list[float]] = {}
+    songs_read = 0
+    for folder, audio, events in songs(limit):
+        found = evidence(audio)
+        if not found:
+            continue
+        songs_read += 1
+        times = np.asarray([a["time_s"] * 1000.0 for a in found["attacks"]])
+        near = set()
+        for event in events:
+            i = int(np.argmin(np.abs(times - event["time"])))
+            if abs(times[i] - event["time"]) <= TOLERANCE_MS:
+                near.add(i)
+        for i, attack in enumerate(found["attacks"]):
+            into = clapped if i in near else bare
+            for cls in attack["classes"]:
+                for term in cls["terms"]:
+                    into.setdefault(term["feature"], []).append(term["value"])
+        print(f"{folder[:44]:<46} {len(near)} of {len(found['attacks'])} attacks clapped",
+              flush=True)
+    if not clapped:
+        print("nothing read")
+        return 0
+    print(f"\n{songs_read} songs   {len(clapped['flux'])} clapped attacks, "
+          f"{len(bare.get('flux', []))} not")
+    print(f"\n{'feature':<18} {'AUC':>6}   {'clapped p25/med/p75':>26}   {'bare':>22}")
+    rows = []
+    for feature, yes in clapped.items():
+        no = bare.get(feature, [])
+        if no:
+            rows.append((abs(auc(yes, no) - 0.5), feature, yes, no))
+    for _spread, feature, yes, no in sorted(rows, reverse=True):
+        ys, ns = sorted(yes), sorted(no)
+
+        def q(v, s):
+            return v[min(len(v) - 1, int(s * len(v)))]
+
+        print(f"{feature:<18} {auc(yes, no):6.3f}   "
+              f"{q(ys, .25):8.3f} {q(ys, .5):8.3f} {q(ys, .75):8.3f}   "
+              f"{q(ns, .25):6.3f} {q(ns, .5):6.3f} {q(ns, .75):6.3f}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     want = int(args[args.index("--songs") + 1]) if "--songs" in args else 12
     with_stem = "--stem" in args
+    if "--features" in args and CLI.is_file() and CORPUS.is_file():
+        return features(want)
     if not CLI.is_file():
         print("No overtone-cli built: cargo build --release -p overtone-cli")
         return 0

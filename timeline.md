@@ -17,6 +17,55 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-28 · The templates lean on the features that say nothing
+
+### Measured
+
+- **Before moving a knot, the prior question**: on real music, does a feature
+  separate the attacks mappers clap from the attacks they do not?
+  `bench/templates_on_real_audio.py --features` answers it over 5 ranked songs,
+  2,770 clapped attacks against 14,948 bare ones, as the chance a random
+  clapped attack reads higher than a random bare one.
+
+```
+  feature            AUC     clapped p25/med/p75        bare p25/med/p75
+  flux             0.683     0.355  0.455  0.554        0.285  0.356  0.441
+  percussive_ratio 0.678     0.122  0.246  0.444        0.085  0.133  0.217
+  low_mid_ratio    0.657     0.166  0.262  0.405        0.089  0.163  0.310
+  sub_ratio        0.363     0.006  0.019  0.075        0.010  0.089  0.184
+  decay_tau_s      0.422     0.282  0.876  2.000        0.420  2.000  2.000
+  flatness         0.417     0.019  0.031  0.041        0.027  0.035  0.053
+  high_ratio       0.570     0.007  0.016  0.031        0.005  0.012  0.023
+  high_mid_ratio   0.560     0.057  0.092  0.140        0.042  0.080  0.127
+  zcr              0.525     harmonicity 0.521   f0 0.517   formant 0.510
+  rise_s           0.509     mid_ratio 0.494   centroid_hz 0.492   air 0.479
+  sustain_s        0.461     sub_attacks 0.451
+```
+
+- **The two best discriminators are not in the snare or clap template at all.**
+  Flux (0.683) and low-mid ratio (0.657) are absent from both; percussive ratio
+  (0.678) is the one they do carry. Meanwhile the snare template's heaviest
+  term is the mid ratio, which reads 0.494 — a coin toss — and the clap
+  template weights sub-attacks at 1.0, which reads 0.451.
+- **Flatness points the wrong way.** The snare template asks for it to rise
+  from 0.25 to 0.55; on real audio clapped attacks read *lower* than bare ones
+  (0.031 against 0.035, AUC 0.417) and never reach the first knot at all. It is
+  not that the knots are misplaced — the curve is upside down for real music.
+- What this does not say is that the templates are wrong about drums. They were
+  fitted on isolated synthetic hits and they separate those cleanly; the
+  measurement is about a mix, where a snare arrives with a bass note, a guitar
+  and a voice inside the same window.
+
+### Rejected / tried and dropped
+
+- **Re-setting the knots from these numbers and re-baking.** The weights are
+  fitted on the synthetic corpus, so a term the corpus cannot see gets a weight
+  near zero however well it separates real music: adding flux and low-mid to
+  the snare template and re-fitting on synthetic drums would change nothing
+  where it matters. The fit has to see real audio before the knots are worth
+  moving, and that is a corpus and a fitting path, not an edit — stated here
+  with its numbers so the next attempt starts from them.
+
 ## v4.0.0-dev — 2026-09-28 · The separation was not the cause. The corpus is
 
 ### Fixed

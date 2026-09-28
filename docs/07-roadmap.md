@@ -407,7 +407,7 @@ Nothing here is promised. Each item is a hypothesis with a way to test it.
 
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
-| Drum classifier (CNN) | small mel-patch model vs calibrated templates | high | med-high | P6 corpus | **yes** | opt | P2 | todo |
+| Drum classifier (CNN) | small mel-patch model vs calibrated templates | high | med-high | P6 corpus | **yes** | opt | P2 | todo — and the case for it is now measured rather than assumed. On 5 ranked songs (2,770 clapped attacks against 14,948 bare), the hand-built features that separate a mapper's clap at all are flux (AUC 0.683), percussive ratio (0.678) and low-mid ratio (0.657); the snare template's heaviest term, the mid ratio, reads 0.494, and flatness points the wrong way (0.417, never reaching its first knot). Two of the three that work are not in the templates. Whether the hand-built features plateau is exactly the question this row asks, and this is the first half of the answer (`--features`) |
 | Vocal onset model | the weakest classifier; the best ML candidate | high | med | P6 | **yes** | opt | P2 | todo |
 | Learned structure | section labels from a small embedding | high | low-med | P2 | **yes** | opt | P3 | todo |
 | Full drum transcription | complete kit transcription | high | med | classifier | yes | opt | P3 | todo |

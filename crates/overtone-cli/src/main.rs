@@ -609,7 +609,11 @@ fn decide_map(
                 file: String::new(),
             },
         };
-        let scored = em::emission(&object, attack, default_bank, profile);
+        let slot = match placed[i] {
+            (_bar, Some(slot), meter) if meter > 0 => Some((slot as u32, (meter * 4) as u32)),
+            _ => None,
+        };
+        let scored = em::emission(&object, attack, slot, default_bank, profile);
         matrices.push(
             order
                 .iter()

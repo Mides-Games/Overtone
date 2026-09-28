@@ -448,7 +448,11 @@ mod tests {
                     file: String::new(),
                 },
             };
-            let scored = em::emission(&object, Some(&attack), em::Bank::Normal, &profile);
+            let slot = match place {
+                &(_bar, Some(slot), meter) if meter > 0 => Some((slot as u32, (meter * 4) as u32)),
+                _ => None,
+            };
+            let scored = em::emission(&object, Some(&attack), slot, em::Bank::Normal, &profile);
             emissions.push(
                 states
                     .iter()

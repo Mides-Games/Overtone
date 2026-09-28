@@ -82,6 +82,16 @@ pub struct Role {
     /// whose bar was not proven are 0.5. `None` with no grid -- it read 1.0,
     /// a downbeat, for every attack outside the sections.
     pub metrical_weight: Option<f64>,
+    /// Which sixteenth of the bar the attack sits on, 0 being the downbeat,
+    /// with how many the bar holds: `(slot, slots_per_bar)`. This is the place
+    /// a measured profile is indexed by, the same quantity the Python
+    /// `hitsound_report` counts, so a profile built from maps and a decision
+    /// made here mean the same thing by "beat 2".
+    ///
+    /// `None` unless a bar was proven and the attack sits on a sixteenth of
+    /// it: a triplet or a 1/8 slot has no sixteenth to name, and guessing one
+    /// would file a swung eighth under a straight one.
+    pub bar_slot: Option<(u32, u32)>,
     /// Bars since the phrase start (fractional).
     pub bars_since_phrase_start: f64,
     /// Bars to the phrase end (fractional).
@@ -149,7 +159,7 @@ pub fn analyze(
         .iter()
         .enumerate()
         .map(|(idx, &t)| {
-            let (division, grid_residual_ms, metrical_weight, bar_len) =
+            let (division, grid_residual_ms, metrical_weight, bar_len, bar_slot) =
                 match section_at(sections, t) {
                     Some((n, s)) if s.period > 0.0 => {
                         let (downbeat, bar_beats) = bars.get(n).copied().unwrap_or((0, 1));
@@ -157,11 +167,11 @@ pub fn analyze(
                         let beat = ((t - s.phase) / s.period).round() as i64;
                         let bar = (s.period * bar_beats.max(1) as f64).max(1e-9);
                         let weight = metrical_weight(beat - downbeat as i64, bar_beats, d);
-                        (Some(d), Some(r), Some(weight), bar)
+                        (Some(d), Some(r), Some(weight), bar, bar_slot(t, s, downbeat, bar_beats, d))
                     }
                     // No grid: no division, no residual, no metrical weight.
                     // Phrase positions still need a length; a second stands in.
-                    _ => (None, None, None, 1.0),
+                    _ => (None, None, None, 1.0, None),
                 };
 
             let (since, to) = phrase_position(t, &edges, bar_len);
@@ -211,6 +221,7 @@ pub fn analyze(
                 division,
                 grid_residual_ms,
                 metrical_weight,
+                bar_slot,
                 bars_since_phrase_start: since,
                 bars_to_phrase_end: to,
                 section_boundary_s,
@@ -221,6 +232,27 @@ pub fn analyze(
         })
         .collect()
 }
+
+/// Which sixteenth of the bar `t` lands on, and how many the bar holds.
+///
+/// `None` when no bar was proven (`bar_beats <= 1`: nothing says which beat is
+/// the 1, so no slot can be named) or when the attack does not sit on a
+/// sixteenth — a triplet eighth is a real slot with no sixteenth to call it,
+/// and rounding it into one would count a swung eighth as a straight one.
+fn bar_slot(t: f64, s: GridSection, downbeat: usize, bar_beats: usize, division: u32)
+            -> Option<(u32, u32)> {
+    if bar_beats <= 1 || !matches!(division, 1 | 2 | 4) {
+        return None;
+    }
+    let slots = (bar_beats * SLOTS_PER_BEAT as usize) as i64;
+    let sixteenths = ((t - s.phase) / s.period * SLOTS_PER_BEAT as f64).round() as i64;
+    let from_one = sixteenths - (downbeat * SLOTS_PER_BEAT as usize) as i64;
+    Some((from_one.rem_euclid(slots) as u32, slots as u32))
+}
+
+/// Sixteenths a beat is divided into, which is the resolution a mapper snaps
+/// hitsounds at and the resolution a measured profile is counted in.
+pub const SLOTS_PER_BEAT: u32 = 4;
 
 /// The section governing time `t`, with its index: the last one whose span
 /// contains it.

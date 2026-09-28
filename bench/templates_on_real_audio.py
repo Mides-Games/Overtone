@@ -9,6 +9,7 @@ measures the one change that looks likely to fix it.
     python bench/templates_on_real_audio.py            # the mix, as shipped
     python bench/templates_on_real_audio.py --features # which features separate at all
     python bench/templates_on_real_audio.py --fit      # and how far they reach unclipped
+    python bench/templates_on_real_audio.py --classes  # snare against crash, the softmax's own question
     python bench/templates_on_real_audio.py --stem     # and the percussive half
 
 Mapper claps are the truth here for a reason: a mapper who puts a clap on a
@@ -325,6 +326,147 @@ def fitted(limit: int) -> int:
     return 0
 
 
+def songs_with_both(limit: int):
+    """Songs whose mapper used both claps and finishes enough to learn from.
+
+    A clap says snare-or-clap and a finish says crash. A moment carrying both
+    is a crash landing on a snare — 21 % of finishes over the first eight songs
+    — and belongs to neither label, so it is left out of both.
+    """
+    if not CORPUS.is_file():
+        return
+    body = json.loads(CORPUS.read_text(encoding="utf-8"))
+    root = Path(body["songs_folder"])
+    seen: set[Path] = set()
+    given = 0
+    for genre in GENRES:
+        for row in body["genres"].get(genre, {}).get("sets", []):
+            if given >= limit:
+                return
+            folder = root / row["folder"]
+            osu = folder / row["file"]
+            if not osu.is_file():
+                continue
+            try:
+                beatmap = ta.read_osu_beatmap(str(osu))
+            except Exception:  # noqa: BLE001
+                continue
+            audio = folder / beatmap["general"].get("AudioFilename", "")
+            if not audio.is_file() or audio in seen:
+                continue
+            events = [e for e in ta.sound_events(beatmap) if e["part"] != "body"]
+            claps = [e for e in events
+                     if "clap" in e["sounds"] and "finish" not in e["sounds"]]
+            finishes = [e for e in events
+                        if "finish" in e["sounds"] and "clap" not in e["sounds"]]
+            if len(claps) < MIN_CLAPS or len(finishes) < 10:
+                continue
+            seen.add(audio)
+            given += 1
+            yield row["folder"], audio, claps, finishes
+
+
+def _softmax_fit(x, y, classes, rounds=800, rate=1.0, ridge=1e-3):
+    """One weight vector per class, fitted together, because in the engine the
+    classes compete rather than each answering on its own."""
+    w = np.zeros((len(classes), x.shape[1]))
+    index = {c: i for i, c in enumerate(classes)}
+    target = np.zeros((len(y), len(classes)))
+    for i, label in enumerate(y):
+        target[i, index[label]] = 1.0
+    for _ in range(rounds):
+        scores = x @ w.T
+        scores -= scores.max(axis=1, keepdims=True)
+        p = np.exp(scores)
+        p /= p.sum(axis=1, keepdims=True)
+        w -= rate * ((p - target).T @ x / max(len(y), 1) + ridge * w)
+    return w
+
+
+def classes(limit: int) -> int:
+    """Two labelled classes against the background, and against each other.
+
+    One label asks whether a feature can find a clap. Two ask the question a
+    softmax actually puts: is this a snare or a crash? The engine's own answer
+    to that on real music is 0.491 — a coin toss — and the curves are why.
+    """
+    rows = []
+    for folder, audio, claps, finishes in songs_with_both(limit):
+        found = evidence(audio)
+        if not found:
+            continue
+        times = np.asarray([a["time_s"] * 1000.0 for a in found["attacks"]])
+        label: dict[int, str] = {}
+        for name, events in (("snare", claps), ("cymbal", finishes)):
+            for event in events:
+                i = int(np.argmin(np.abs(times - event["time"])))
+                if abs(times[i] - event["time"]) <= TOLERANCE_MS:
+                    label.setdefault(i, name)
+        for i, attack in enumerate(found["attacks"]):
+            values = {}
+            for cls in attack["classes"]:
+                for term in cls["terms"]:
+                    values[term["feature"]] = term["value"]
+            shipped = {c["class"]: c["probability"] for c in attack["classes"]}
+            rows.append({
+                "song": folder, "label": label.get(i, "other"), "values": values,
+                "p_snare": shipped.get("snare", 0.0) + shipped.get("clap", 0.0),
+                "p_cymbal": shipped.get("cymbal", 0.0) + shipped.get("ride", 0.0),
+            })
+        print(f"{folder[:42]:<44} "
+              f"{sum(1 for v in label.values() if v == 'snare'):4d} snare, "
+              f"{sum(1 for v in label.values() if v == 'cymbal'):4d} cymbal, "
+              f"{len(found['attacks'])} attacks", flush=True)
+    if not rows:
+        print("nothing read")
+        return 0
+
+    order = sorted({r["song"] for r in rows})
+    fit_on = set(order[: max(1, int(len(order) * 2 / 3))])
+    train = [r for r in rows if r["song"] in fit_on]
+    test = [r for r in rows if r["song"] not in fit_on]
+    if not train or not test:
+        print("need at least two songs")
+        return 0
+    knots = {}
+    for feature in FIT_FEATURES:
+        values = np.asarray([r["values"].get(feature, 0.0) for r in train], dtype=float)
+        lo, hi = np.percentile(values, [10, 90])
+        knots[feature] = (float(lo), float(hi if hi > lo else lo + 1e-6))
+
+    def matrix(rows_in):
+        return np.asarray([
+            [min(1.0, max(0.0, (r["values"].get(f, 0.0) - knots[f][0])
+                          / (knots[f][1] - knots[f][0])))
+             for f in FIT_FEATURES] + [1.0]
+            for r in rows_in])
+
+    names = ["snare", "cymbal", "other"]
+    weights = _softmax_fit(matrix(train), [r["label"] for r in train], names)
+    scores = matrix(test) @ weights.T
+    scores -= scores.max(axis=1, keepdims=True)
+    p = np.exp(scores)
+    p /= p.sum(axis=1, keepdims=True)
+
+    print(f"\n{len(order)} songs, {len(train)} attacks fitted, {len(test)} held out: "
+          f"{sum(1 for r in test if r['label'] == 'snare')} snare, "
+          f"{sum(1 for r in test if r['label'] == 'cymbal')} cymbal")
+    print(f"\n{'':34} {'as it ships':>12} {'refit on real':>14}")
+    for i, name in enumerate(("snare", "cymbal")):
+        is_class = [r["label"] == name for r in test]
+        shipped = [r["p_snare"] if name == "snare" else r["p_cymbal"] for r in test]
+        print(f"{name + ' against everything else':<34} {auc_of(shipped, is_class):12.3f} "
+              f"{auc_of(p[:, i], is_class):14.3f}")
+    pair = [(n, r) for n, r in enumerate(test) if r["label"] in ("snare", "cymbal")]
+    if pair:
+        idx = [n for n, _r in pair]
+        is_cymbal = [r["label"] == "cymbal" for _n, r in pair]
+        shipped = [r["p_cymbal"] - r["p_snare"] for _n, r in pair]
+        print(f"{'cymbal against snare only':<34} {auc_of(shipped, is_cymbal):12.3f} "
+              f"{auc_of(p[idx, 1] - p[idx, 0], is_cymbal):14.3f}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     want = int(args[args.index("--songs") + 1]) if "--songs" in args else 12
@@ -333,6 +475,8 @@ def main(argv: list[str] | None = None) -> int:
         return features(want)
     if "--fit" in args and CLI.is_file() and CORPUS.is_file():
         return fitted(want)
+    if "--classes" in args and CLI.is_file() and CORPUS.is_file():
+        return classes(want)
     if not CLI.is_file():
         print("No overtone-cli built: cargo build --release -p overtone-cli")
         return 0

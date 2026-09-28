@@ -17,6 +17,42 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-28 · A crash and a snare read the same to the engine
+
+### Measured
+
+- **Two labels instead of one.** A mapper's clap says snare-or-clap and a
+  finish says crash, and a moment carrying both is a crash on a snare (21 % of
+  finishes), which belongs to neither. Over 12 ranked songs, 7,772 held-out
+  attacks with 1,301 snares and 152 crashes among them, fitted on the other
+  eight songs:
+
+```
+                                  as it ships    curves on real audio
+  snare against everything else         0.525                   0.753
+  cymbal against everything else        0.563                   0.636
+  cymbal against snare only             0.491                   0.810
+```
+
+- **The last row is the one that matters.** Asked which of two sounds a moment
+  is — the question a softmax puts every time it decides — the engine answers
+  0.491 on real music. That is a coin toss, on the distinction its whole
+  hitsound proposal rests on: a crash takes a finish, a snare takes a clap.
+- **Fitted together on real audio, the same features answer at 0.810.** Nothing
+  was added, no class was invented; the curves were placed between the tenth
+  and ninetieth percentile of real attacks and the three classes were fitted as
+  one softmax, so they compete exactly as they do in the engine.
+- This also answers the worry that re-placing the curves would unbalance the
+  classes against each other: the mutual separation is what improves most.
+
+### Rejected / tried and dropped
+
+- **Shipping this fit.** It knows three classes — snare, crash, everything else
+  — and the engine has thirteen. Dropping ten of them would lose the kick, the
+  hats, the toms and every melodic class, which are what keep a clap off a bass
+  note. What this measures is that the ceiling is far above where the engine
+  sits, and that the gap is placement rather than evidence.
+
 ## v4.0.0-dev — 2026-09-28 · The classifier is worse than its own best feature
 
 ### Measured

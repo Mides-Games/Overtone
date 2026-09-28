@@ -8,6 +8,10 @@
    "where": "bench",
    "why": "bench/fixtures.py, the one list of bench fixtures"
   },
+  "GenreKitTests": {
+   "where": "bench",
+   "why": "assets/samples.py and the kits fitted into assets/kits.json: a generator, not an engine stage"
+  },
   "HitsoundEvalTests": {
    "where": "bench",
    "why": "the hitsound eval harness, scored against baselines, not a stage"

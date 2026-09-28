@@ -17,6 +17,67 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-27 · Kits fitted to what each genre sounds like
+
+### Changed
+
+- **`bench/genre_samples.py` measures what a genre's hitsounds sound like.**
+  The profiles say *where* each genre puts its additions; this says *what* it
+  puts there, from the sample files those same mapsets ship: how long the hit
+  rings, how bright it is, how much of it is noise, and where its energy sits
+  across seven bands. Nothing of anyone's audio is copied, kept or shipped —
+  the files are read where they lie and reduced to per-genre medians.
+- **`bench/fit_kits.py` aims Overtone's own synthesiser at those medians.** It
+  searches the generator's parameters for the setting whose *synthesised* sound
+  lands nearest the target, and `assets/kits.json` ships the settings. A kit is
+  a description of a sound fitted to a measurement, never a recording of one,
+  which is the only way to ship one at all.
+- **One shape for every role**, because the roles are not what their names say:
+  a `drum-hitclap` in these maps centres at 168 Hz (a tom) and a rock
+  `soft-hitwhistle` reads a zero-crossing rate of 0.37 (a hat). Noise and tone
+  at one centre in any balance, one hit or a flam of three, between two
+  cutoffs.
+- **A kit is rendered, not carried.** Eight genres of sounds would be four
+  megabytes of generated wav in the repository; the settings are a few
+  kilobytes and a sound takes a tenth of a second to make. `write_kit` puts
+  them in a folder under osu!'s custom sample index, *beside* a map's own
+  samples rather than over them, and a name already taken is kept and reported
+  rather than overwritten.
+
+### Measured
+
+```
+Measured first: 10,695 sample files over the 748 corpus mapsets, each reduced to
+decay, attack, centroid, rolloff, noisiness and seven band ratios, then taken to
+a median per genre and role. What that shows before anything is synthesised is
+that the names lie: a drum-hitclap in these maps centres at 168 Hz and a rock
+soft-hitwhistle reads a zero-crossing rate of 0.37. Metal alone ships 3,525 of
+those files; funk 176.
+
+Fitted second, in two stages because the two halves of a hit barely see each
+other - the spectrum is decided in the first 50 ms, the envelope in the rest.
+Searching them together is 51,840 renders a role and an hour and a half; apart
+it is about 1,400 and forty seconds, and a refine pass afterwards keeps the
+answer from being a grid point rather than a sound.
+
+42 of the 60 measured roles land inside the tolerance of 0.55 and ship; the
+18 that do not are named in the report and left out. Per genre: metal 9 sounds
+(from 641 files), rock 6 (148), electronic, jrock, metalcore and punk 5 each,
+pop 3, funk and jazz 2. The errors run 0.11 to 0.54, and the worst centroid a
+shipped sound misses its target by is a fifth of an octave.
+
+The first attempt did not get near: every role had its own shape, and all nine
+rock roles came back between 1.15 and 12.83. The breakdown said why - a crash
+with only a floor cutoff reads 9.7 kHz whatever the target says, and a
+three-burst clap peaks on its third burst, so its measured attack was 26 ms
+against the 1.7 ms wanted. One shape spanning noise and tone fixed both.
+
+bench/fit_kits.py --verify renders all 42 from what is committed and holds each
+to the target it was fitted to: every one renders what it says, in 9 s. The
+settings are 13 KB; the wav files they make would be about four megabytes, so
+they are rendered when a kit is used, not carried.
+```
+
 ## v4.0.0-dev — 2026-09-27 · The map's own tags pick its hitsound profile
 
 ### Changed

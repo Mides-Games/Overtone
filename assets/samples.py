@@ -21,6 +21,7 @@ imitations of any skin: a mapper who wants osu!'s own sounds points Overtone
 at their skin or keeps custom samples in the beatmap folder, which win.
 """
 
+import json
 import math
 import struct
 import wave
@@ -209,6 +210,106 @@ def to_wav(signal: list[float], path: Path, level: float = PEAK) -> None:
         out.setsampwidth(2)
         out.setframerate(RATE)
         out.writeframes(frames)
+
+
+# -- Genre kits --------------------------------------------------------------
+#
+# ``assets/kits.json`` holds, per genre, the settings whose sound lands nearest
+# what that genre's own maps measure (``bench/genre_samples.py`` measures the
+# target, ``bench/fit_kits.py`` searches for the settings). Only the settings
+# are committed: a kit is a description of a sound, and rendering one takes a
+# tenth of a second, so carrying four megabytes of generated wav files in the
+# repository would be paying storage for arithmetic.
+#
+# Nothing here is anyone's recording. The measurement is five numbers a file
+# long, and what comes out is this generator with different arguments.
+
+KITS = HERE / "kits.json"
+
+
+def fade_in(x: list[float], attack: float) -> list[float]:
+    """A linear rise over ``attack`` seconds: a hand hitting a skin softly."""
+    n = seconds(attack)
+    if n <= 1:
+        return x
+    return [v * min(1.0, i / n) for i, v in enumerate(x)]
+
+
+def hit(centre: float, q: float, decay: float, attack: float, noise_mix: float,
+        tone_mix: float, cut: float, top: float, bursts: int,
+        cap: float = 2.2) -> list[float]:
+    """One shape for every role, because the roles are not what their names say.
+
+    Giving each role its own shape — a clap as three bursts of band-passed
+    noise, a whistle as two sine partials — was the first design, and the
+    measurement refused all of it: a ``drum-hitclap`` in these maps centres at
+    168 Hz (a tom, not a clap) and a rock ``soft-hitwhistle`` reads a
+    zero-crossing rate of 0.37 (a hat, not a tone). So one shape spans them:
+    noise and tone at the same centre in any balance, one hit or a flam of
+    three, between two cutoffs.
+
+    ``cap`` shortens the render; the fitter uses it while it is choosing a
+    spectrum, which is decided in the first 50 ms.
+    """
+    length = min(cap, max(0.05, decay * 4))
+    parts = []
+    if noise_mix > 0.0:
+        if bursts > 1:
+            burst = lambda k: bandpass(noise(0.012, 31 + k, 0.0005, 0.004), centre, q)
+            body = bandpass(noise(length, 39, 0.001, decay), centre, q)
+            hiss = mix((burst(0), 1.0, 0.0), (burst(1), 0.8, 0.009),
+                       (burst(2), 0.65, 0.019), (body, 0.85, 0.024))
+        else:
+            hiss = bandpass(noise(length, 21, 0.001, decay), centre, q)
+        if cut > 30.0:
+            hiss = highpass(hiss, cut)
+        if top < 18000.0:
+            hiss = lowpass(hiss, top)
+        parts.append((hiss, noise_mix, 0.0))
+    if tone_mix > 0.0:
+        body = tone(length, [(centre, 1.0), (centre * 2, 0.3), (centre * 3.2, 0.12)],
+                    0.0008, decay)
+        if top < 18000.0:
+            body = lowpass(body, top)
+        parts.append((body, tone_mix, 0.0))
+    if not parts:
+        parts.append((noise(length, 21, 0.001, decay), 1.0, 0.0))
+    return fade_in(mix(*parts), attack)
+
+
+def kit(genre: str) -> dict[str, list[float]]:
+    """A genre's sounds, by the file name osu! plays them under."""
+    if not KITS.is_file():
+        return {}
+    body = json.loads(KITS.read_text(encoding="utf-8"))
+    return {name: hit(**row["params"])
+            for name, row in body.get("kits", {}).get(genre, {}).items()}
+
+
+def write_kit(genre: str, out: Path, index: int = 0,
+              replace: bool = False) -> dict[str, list[Path]]:
+    """Render a genre's kit into ``out`` as ``<bank>-<sound><index>.wav``.
+
+    ``index`` is osu!'s custom sample index: written with one, the files sit
+    *beside* a map's own samples instead of over them, which is what makes this
+    safe to run in a folder somebody else filled. A name already taken is kept
+    and reported rather than overwritten — the mapper's sample is theirs, and a
+    generated one is never worth losing it for. ``replace`` is the caller
+    saying they know.
+
+    Returns ``{"written": [...], "kept": [...]}``.
+    """
+    out.mkdir(parents=True, exist_ok=True)
+    written, kept = [], []
+    suffix = str(index) if index > 1 else ""
+    for name, signal in kit(genre).items():
+        path = out / f"{name}{suffix}.wav"
+        if path.exists() and not replace:
+            kept.append(path)
+            continue
+        to_wav(signal, path)
+        written.append(path)
+    return {"written": written, "kept": kept}
 
 
 def main(out: Path = OUT) -> list[Path]:

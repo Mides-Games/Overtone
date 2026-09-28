@@ -8770,5 +8770,103 @@ class GenreTests(unittest.TestCase):
         self.assertEqual(beatmap_genre({"metadata": "not a dict"}), "")
 
 
+class GenreKitTests(unittest.TestCase):
+    """The fitted kits: what is committed is a description of a sound, so
+    these hold the description to the file it claims to render."""
+
+    @staticmethod
+    def _syn():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "samples", Path(__file__).resolve().parent / "assets" / "samples.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def _kits(self) -> dict:
+        syn = self._syn()
+        self.assertTrue(syn.KITS.is_file(), "assets/kits.json ships with the app")
+        body = json.loads(syn.KITS.read_text(encoding="utf-8"))
+        self.assertEqual(body["format"], 1)
+        return body
+
+    def test_every_sound_names_a_bank_and_a_sound_osu_plays(self) -> None:
+        banks = ("normal", "soft", "drum")
+        sounds = ("hitnormal", "hitwhistle", "hitfinish", "hitclap")
+        body = self._kits()
+        self.assertGreaterEqual(len(body["kits"]), 5, "a kit for most genres")
+        for genre, kit in body["kits"].items():
+            self.assertRegex(genre, r"^[a-z][a-z0-9_-]{1,39}$")
+            for name, row in kit.items():
+                bank, _dash, sound = name.partition("-")
+                self.assertIn(bank, banks, name)
+                self.assertIn(sound, sounds, name)
+                self.assertEqual(row["role"], sound, name)
+                self.assertLessEqual(row["error"], body["tolerance"], name)
+                self.assertGreaterEqual(row["from_maps"], 5, name)
+
+    def test_the_settings_are_a_sound_and_not_a_number_salad(self) -> None:
+        for genre, kit in self._kits()["kits"].items():
+            for name, row in kit.items():
+                p = row["params"]
+                with self.subTest(kit=f"{genre}/{name}"):
+                    self.assertTrue(20.0 <= p["centre"] <= 16000.0)
+                    self.assertTrue(0.0 < p["decay"] <= 2.0)
+                    self.assertTrue(0.0 <= p["attack"] <= 0.25)
+                    self.assertTrue(0.0 <= p["noise_mix"] <= 1.5)
+                    self.assertTrue(0.0 <= p["tone_mix"] <= 1.5)
+                    self.assertGreater(p["noise_mix"] + p["tone_mix"], 0.0,
+                                       "a sound with neither noise nor tone is silence")
+                    self.assertLess(p["cut"], p["top"], "the floor is under the ceiling")
+                    self.assertIn(p["bursts"], (1, 3))
+
+    def test_a_kit_renders_and_is_written_beside_a_mappers_own_samples(self) -> None:
+        syn = self._syn()
+        genre = sorted(self._kits()["kits"])[0]
+        sounds = syn.kit(genre)
+        self.assertTrue(sounds)
+        for name, signal in sounds.items():
+            with self.subTest(sound=name):
+                self.assertGreater(len(signal), 400)
+                # Not silence. The raw level says nothing beyond that: a narrow
+                # band-pass at a low centre comes out at 0.004 and is a fine
+                # sound, because to_wav normalises to its own peak. What the
+                # player hears is the file, so that is what is checked below.
+                self.assertGreater(max(abs(v) for v in signal), 1e-5)
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            # A custom index, so the files sit beside a map's own.
+            got = syn.write_kit(genre, folder, index=7)
+            self.assertTrue(got["written"])
+            self.assertEqual(got["kept"], [])
+            import wave
+            for path in got["written"]:
+                self.assertTrue(path.name.endswith("7.wav"), path.name)
+                self.assertGreater(path.stat().st_size, 1000)
+                with wave.open(str(path), "rb") as read:
+                    self.assertEqual((read.getnchannels(), read.getsampwidth(),
+                                      read.getframerate()), (1, 2, 44100), path.name)
+                    frames = read.readframes(read.getnframes())
+                peak = max(abs(int.from_bytes(frames[i:i + 2], "little", signed=True))
+                           for i in range(0, len(frames), 2))
+                # Every sample peaks where the generator says, whatever level
+                # the arithmetic happened to land on: the file is what plays.
+                self.assertAlmostEqual(peak / 32767, syn.PEAK, delta=0.01, msg=path.name)
+            # Run again: a name already taken is kept, never overwritten.
+            again = syn.write_kit(genre, folder, index=7)
+            self.assertEqual(again["written"], [])
+            self.assertEqual(len(again["kept"]), len(got["written"]))
+            # And the mapper's own sample is what a replace has to be asked for.
+            forced = syn.write_kit(genre, folder, index=7, replace=True)
+            self.assertEqual(len(forced["written"]), len(got["written"]))
+
+    def test_an_unknown_genre_renders_nothing(self) -> None:
+        syn = self._syn()
+        self.assertEqual(syn.kit("no-such-genre"), {})
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(syn.write_kit("no-such-genre", Path(tmp)),
+                             {"written": [], "kept": []})
+
+
 if __name__ == "__main__":
     unittest.main()

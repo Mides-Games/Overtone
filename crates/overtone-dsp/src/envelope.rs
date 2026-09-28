@@ -12,6 +12,8 @@
 //!   so the envelope is not a purely local function of the audio.
 //! * the mel basis is Slaney-normalised, not HTK — see [`crate::mel`].
 
+use rayon::prelude::*;
+
 use crate::{mel, stft};
 
 /// `librosa.power_to_db` with librosa's defaults: `ref=1.0`, `amin=1e-10`,
@@ -20,25 +22,33 @@ use crate::{mel, stft};
 fn power_to_db(spec: &mut [Vec<f64>]) {
     const AMIN: f64 = 1e-10;
     const TOP_DB: f64 = 80.0;
-    let mut peak = f64::NEG_INFINITY;
-    for row in spec.iter_mut() {
-        for value in row.iter_mut() {
-            *value = 10.0 * value.max(AMIN).log10();
-            if *value > peak {
-                peak = *value;
+    // A frame at a time, in parallel: every value is its own log, and the
+    // maximum of maxima is the maximum, so the answer does not depend on the
+    // order the threads finish in. On a six-minute track this pass is 15.9
+    // million values.
+    let peak = spec
+        .par_iter_mut()
+        .map(|row| {
+            let mut best = f64::NEG_INFINITY;
+            for value in row.iter_mut() {
+                *value = 10.0 * value.max(AMIN).log10();
+                if *value > best {
+                    best = *value;
+                }
             }
-        }
-    }
+            best
+        })
+        .reduce(|| f64::NEG_INFINITY, f64::max);
     // ref = 1.0 contributes 10*log10(1) = 0, so there is nothing to subtract.
     if peak.is_finite() {
         let floor = peak - TOP_DB;
-        for row in spec.iter_mut() {
+        spec.par_iter_mut().for_each(|row| {
             for value in row.iter_mut() {
                 if *value < floor {
                     *value = floor;
                 }
             }
-        }
+        });
     }
 }
 
@@ -89,20 +99,25 @@ pub fn onset_envelope(y: &[f32], sr: u32, hop: usize, n_fft: usize) -> Vec<f32> 
     if frames < 2 {
         return Vec::new();
     }
-
     power_to_db(&mut mel_spec);
 
     // Rectified first difference along time, then the median across bands.
     // lag = 1, and max_size = 1 means the reference spectrum *is* the
     // spectrum, so this is a plain difference.
-    let mut flux = Vec::with_capacity(frames - 1);
-    let mut scratch = vec![0.0f64; n_mels];
-    for frame in 1..frames {
-        for band in 0..n_mels {
-            scratch[band] = (mel_spec[frame][band] - mel_spec[frame - 1][band]).max(0.0);
-        }
-        flux.push(median(&mut scratch));
-    }
+    // Each frame reads its own row and the one before it and writes one
+    // number: no frame sees another's answer, so this runs in parallel and
+    // `collect` puts them back in order. The median of 128 bands is a sort a
+    // frame, which is what makes the pass worth splitting at all.
+    let flux: Vec<f64> = (1..frames)
+        .into_par_iter()
+        .map(|frame| {
+            let mut scratch = [0.0f64; 128];
+            for band in 0..n_mels {
+                scratch[band] = (mel_spec[frame][band] - mel_spec[frame - 1][band]).max(0.0);
+            }
+            median(&mut scratch[..n_mels])
+        })
+        .collect();
 
     // Front-pad by `lag + n_fft / (2 * hop)` and truncate to the spectrogram
     // length. This is what `center=True` means for the envelope, and it is

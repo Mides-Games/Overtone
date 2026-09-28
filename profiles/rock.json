@@ -1,0 +1,186 @@
+{
+  "_comment": "rock: balanced's affinity with the metrical table measured from 110 rock mapsets in the user's Songs folder (bench/genre_corpus.py, 2026-09-27). The table is the share of that addition's placements landing on each sixteenth of a 4/4 bar, pooled over the maps and smoothed by 2 %. Held out against the hand-written rule: whistle +1.04 bits, finish +0.32 bits, clap +0.40 bits.",
+  "affinity": {
+    "kick": [
+      {
+        "bank": "drum",
+        "additions": [],
+        "w": 1.0
+      }
+    ],
+    "snare": [
+      {
+        "bank": "drum",
+        "additions": [
+          "clap"
+        ],
+        "w": 1.0
+      },
+      {
+        "bank": "normal",
+        "additions": [
+          "clap"
+        ],
+        "w": 0.6
+      }
+    ],
+    "clap": [
+      {
+        "bank": "normal",
+        "additions": [
+          "clap"
+        ],
+        "w": 1.0
+      }
+    ],
+    "hat_closed": [
+      {
+        "bank": "soft",
+        "additions": [],
+        "w": 0.9
+      }
+    ],
+    "hat_open": [
+      {
+        "bank": "soft",
+        "additions": [
+          "whistle"
+        ],
+        "w": 0.55
+      }
+    ],
+    "tom": [
+      {
+        "bank": "drum",
+        "additions": [],
+        "w": 0.8
+      }
+    ],
+    "cymbal": [
+      {
+        "bank": "normal",
+        "additions": [
+          "finish"
+        ],
+        "w": 1.0
+      }
+    ],
+    "ride": [
+      {
+        "bank": "soft",
+        "additions": [
+          "whistle"
+        ],
+        "w": 0.7
+      }
+    ],
+    "bass": [
+      {
+        "bank": "drum",
+        "additions": [],
+        "w": 0.7
+      }
+    ],
+    "guitar": [
+      {
+        "bank": "normal",
+        "additions": [
+          "finish"
+        ],
+        "w": 0.7
+      }
+    ],
+    "keys": [
+      {
+        "bank": "soft",
+        "additions": [],
+        "w": 0.6
+      }
+    ],
+    "vocal": [
+      {
+        "bank": "soft",
+        "additions": [
+          "whistle"
+        ],
+        "w": 0.85
+      }
+    ],
+    "other": [
+      {
+        "bank": "inherit",
+        "additions": [],
+        "w": 0.3
+      }
+    ]
+  },
+  "weights": {
+    "role": 1.0,
+    "energy": 0.6,
+    "context": 0.8,
+    "prior": 1.2
+  },
+  "transition": {
+    "stream_consistency": 1.4,
+    "phrase_symmetry": 0.9,
+    "finish_spacing": 1.1,
+    "switch_cost": 0.5
+  },
+  "metrical": {
+    "slots_per_bar": 16,
+    "whistle": [
+      0.192667,
+      0.003379,
+      0.064246,
+      0.008767,
+      0.141877,
+      0.005142,
+      0.091919,
+      0.007969,
+      0.154683,
+      0.005907,
+      0.075522,
+      0.008734,
+      0.145902,
+      0.004443,
+      0.083039,
+      0.005807
+    ],
+    "finish": [
+      0.531509,
+      0.002412,
+      0.023496,
+      0.005068,
+      0.086915,
+      0.00291,
+      0.039766,
+      0.003242,
+      0.102189,
+      0.00374,
+      0.028975,
+      0.005898,
+      0.09339,
+      0.00457,
+      0.060684,
+      0.005234
+    ],
+    "clap": [
+      0.095184,
+      0.005508,
+      0.037273,
+      0.011682,
+      0.262058,
+      0.007893,
+      0.050942,
+      0.011342,
+      0.105446,
+      0.011001,
+      0.052006,
+      0.012066,
+      0.254905,
+      0.014791,
+      0.051708,
+      0.016196
+    ]
+  }
+}

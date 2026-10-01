@@ -16,10 +16,14 @@
    "where": "bench",
    "why": "the hitsound eval harness, scored against baselines, not a stage"
   },
-  "LoadErrorMessageTests": {
-   "where": "shell",
-   "why": "the app own wording for a file it cannot read; the sidecar says its own in cli.rs::a_missing_file_and_a_bad_command_line_say_so"
-  },
+ "InstallerSbomTests": {
+  "where": "bench",
+  "why": "installer/sbom.py, the licence inventory for publishing: packaging, not an engine stage"
+ },
+ "LoadErrorMessageTests": {
+  "where": "shell",
+  "why": "the app own wording for a file it cannot read; the sidecar says its own in cli.rs::a_missing_file_and_a_bad_command_line_say_so"
+ },
   "LogoIconTests": {
    "where": "shell",
    "why": "the committed window icon, at every size Windows asks for"

@@ -17,6 +17,28 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-30 · The pinned wheels' licences, inventoried
+
+### Changed
+
+- **`installer/sbom.py` + `sbom.json`** (Phase 10.13, SBOM groundwork). The
+  MSI/ZIP tree bundles the venv's wheels, so publishing needs their licence
+  notices, starting from knowing what is in there: every pin of
+  `requirements.lock` (shipped) and `requirements-build.lock` (build-time
+  only) with the licence its installed metadata declares, as a short
+  identifier (SPDX, OSI classifier, or short License line, else an explicit
+  UNKNOWN). `sbom.py --check` fails on drift, and a unit test holds the
+  committed file to both locks.
+
+### Measured
+
+- 37 wheels: 31 shipped. One LGPL (soxr), one MPL (certifi) and 2 UNKNOWNs
+  (clr-loader, pyinstaller-hooks-contrib) flagged for the notice-gathering
+  step; scipy's multi-kilobyte License field (GPL text included) stays out
+  of the inventory by rule. Native bits no wheel carries (libsndfile, Tcl/Tk,
+  WebView2, MSVC runtime, Python itself) are out of scope here by decision.
+- 803 Python tests (539 + 264), 287 Rust; facts green.
+
 ## v4.0.0-dev — 2026-09-30 · The hitsound role reads the map's red lines
 
 ### Changed

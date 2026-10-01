@@ -1,0 +1,227 @@
+{
+ "format": 1,
+ "packages": {
+  "certifi": {
+   "version": "2026.7.22",
+   "installed": "2026.7.22",
+   "licence": "Mozilla Public License 2.0 (MPL 2.0)",
+   "shipped": true
+  },
+  "cffi": {
+   "version": "2.1.1",
+   "installed": "2.1.1",
+   "licence": "MIT-0",
+   "shipped": true
+  },
+  "charset-normalizer": {
+   "version": "3.5.1",
+   "installed": "3.5.1",
+   "licence": "MIT",
+   "shipped": true
+  },
+  "cloudpickle": {
+   "version": "3.1.2",
+   "installed": "3.1.2",
+   "licence": "BSD License",
+   "shipped": true
+  },
+  "decorator": {
+   "version": "5.3.1",
+   "installed": "5.3.1",
+   "licence": "BSD-2-Clause",
+   "shipped": true
+  },
+  "idna": {
+   "version": "3.20",
+   "installed": "3.20",
+   "licence": "BSD-3-Clause",
+   "shipped": true
+  },
+  "joblib": {
+   "version": "1.6.0",
+   "installed": "1.6.0",
+   "licence": "BSD-3-Clause",
+   "shipped": true
+  },
+  "lazy-loader": {
+   "version": "0.6",
+   "installed": "0.6",
+   "licence": "BSD-3-Clause",
+   "shipped": true
+  },
+  "librosa": {
+   "version": "1.0.0",
+   "installed": "1.0.0",
+   "licence": "ISC License (ISCL)",
+   "shipped": true
+  },
+  "llvmlite": {
+   "version": "0.49.0",
+   "installed": "0.49.0",
+   "licence": "BSD-2-Clause AND Apache-2.0 WITH LLVM-exception",
+   "shipped": true
+  },
+  "msgpack": {
+   "version": "1.2.2",
+   "installed": "1.2.2",
+   "licence": "Apache-2.0",
+   "shipped": true
+  },
+  "narwhals": {
+   "version": "2.26.0",
+   "installed": "2.26.0",
+   "licence": "MIT",
+   "shipped": true
+  },
+  "numba": {
+   "version": "0.67.0",
+   "installed": "0.67.0",
+   "licence": "BSD License",
+   "shipped": true
+  },
+  "numpy": {
+   "version": "2.5.3",
+   "installed": "2.5.3",
+   "licence": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
+   "shipped": true
+  },
+  "packaging": {
+   "version": "26.3",
+   "installed": "26.3",
+   "licence": "Apache-2.0 OR BSD-2-Clause",
+   "shipped": true
+  },
+  "platformdirs": {
+   "version": "4.11.12",
+   "installed": "4.11.12",
+   "licence": "MIT",
+   "shipped": true
+  },
+  "pooch": {
+   "version": "1.9.0",
+   "installed": "1.9.0",
+   "licence": "BSD-3-Clause",
+   "shipped": true
+  },
+  "pycparser": {
+   "version": "3.0",
+   "installed": "3.0",
+   "licence": "BSD-3-Clause",
+   "shipped": true
+  },
+  "requests": {
+   "version": "2.34.2",
+   "installed": "2.34.2",
+   "licence": "Apache Software License",
+   "shipped": true
+  },
+  "scikit-learn": {
+   "version": "1.9.1",
+   "installed": "1.9.1",
+   "licence": "BSD-3-Clause",
+   "shipped": true
+  },
+  "scipy": {
+   "version": "1.18.1",
+   "installed": "1.18.1",
+   "licence": "BSD License",
+   "shipped": true
+  },
+  "soundfile": {
+   "version": "0.14.0",
+   "installed": "0.14.0",
+   "licence": "BSD License",
+   "shipped": true
+  },
+  "soxr": {
+   "version": "1.1.0",
+   "installed": "1.1.0",
+   "licence": "LGPL-2.1-or-later",
+   "shipped": true
+  },
+  "threadpoolctl": {
+   "version": "3.7.0",
+   "installed": "3.7.0",
+   "licence": "BSD-3-Clause",
+   "shipped": true
+  },
+  "typing-extensions": {
+   "version": "4.16.0",
+   "installed": "4.16.0",
+   "licence": "PSF-2.0",
+   "shipped": true
+  },
+  "urllib3": {
+   "version": "2.8.0",
+   "installed": "2.8.0",
+   "licence": "MIT",
+   "shipped": true
+  },
+  "bottle": {
+   "version": "0.13.4",
+   "installed": "0.13.4",
+   "licence": "MIT License",
+   "shipped": true
+  },
+  "clr-loader": {
+   "version": "0.3.1",
+   "installed": "0.3.1",
+   "licence": "UNKNOWN",
+   "shipped": true
+  },
+  "proxy-tools": {
+   "version": "0.1.0",
+   "installed": "0.1.0",
+   "licence": "MIT License",
+   "shipped": true
+  },
+  "pythonnet": {
+   "version": "3.1.0",
+   "installed": "3.1.0",
+   "licence": "MIT",
+   "shipped": true
+  },
+  "pywebview": {
+   "version": "6.2.1",
+   "installed": "6.2.1",
+   "licence": "BSD License",
+   "shipped": true
+  },
+  "altgraph": {
+   "version": "0.17.5",
+   "installed": "0.17.5",
+   "licence": "MIT License",
+   "shipped": false
+  },
+  "pefile": {
+   "version": "2024.8.26",
+   "installed": "2024.8.26",
+   "licence": "MIT",
+   "shipped": false
+  },
+  "pyinstaller": {
+   "version": "6.22.3",
+   "installed": "6.22.3",
+   "licence": "GNU General Public License v2 (GPLv2)",
+   "shipped": false
+  },
+  "pyinstaller-hooks-contrib": {
+   "version": "2026.7",
+   "installed": "2026.7",
+   "licence": "Apache Software License",
+   "shipped": false
+  },
+  "pywin32-ctypes": {
+   "version": "0.2.3",
+   "installed": "0.2.3",
+   "licence": "BSD-3-Clause",
+   "shipped": false
+  },
+  "setuptools": {
+   "version": "84.0.0",
+   "installed": "84.0.0",
+   "licence": "MIT",
+   "shipped": false
+  }
+ }
+}

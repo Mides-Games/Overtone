@@ -8931,5 +8931,89 @@ class GenreKitTests(unittest.TestCase):
                              {"written": [], "kept": []})
 
 
+class InstallerSbomTests(unittest.TestCase):
+    """Phase 10.13: installer/sbom.json inventories every pinned wheel.
+
+    Licence strings come from the venv at generation time
+    (``installer/sbom.py``), so these pin the parsing, the short-identifier
+    rule and the drift check on synthetic inputs -- plus the one fact about
+    the real files that needs no venv: every lock pin is inventoried at its
+    pinned version, so a lock changed without re-running fails the suite.
+    """
+
+    @staticmethod
+    def _sbom():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "sbom", Path(__file__).resolve().parent / "installer" / "sbom.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _dist(expr="", license="", classifiers=()):
+        from email.message import Message
+        meta = Message()
+        if expr:
+            meta["License-Expression"] = expr
+        if license:
+            meta["License"] = license
+        for classifier in classifiers:
+            meta["Classifier"] = classifier
+        return type("Dist", (), {"metadata": meta, "version": "1.0"})()
+
+    def test_pins_read_name_and_version_and_skip_noise(self) -> None:
+        sbom = self._sbom()
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = Path(tmp) / "requirements.lock"
+            lock.write_text("# a comment\n\nnumpy==2.5.3  # trailing\n"
+                            "scipy==1.18.1\n", encoding="utf-8")
+            self.assertEqual(sbom.pins(lock),
+                             [("numpy", "2.5.3"), ("scipy", "1.18.1")])
+
+    def test_licence_is_a_short_identifier_or_an_honest_unknown(self) -> None:
+        sbom = self._sbom()
+        self.assertEqual(sbom.licence_of(self._dist(expr="MIT OR Apache-2.0")),
+                         "MIT OR Apache-2.0")
+        self.assertEqual(sbom.licence_of(self._dist(
+            classifiers=["License :: OSI Approved :: BSD-3-Clause"])),
+            "BSD-3-Clause")
+        self.assertEqual(sbom.licence_of(self._dist(license="MIT")), "MIT")
+        # A full licence text (scipy's License field carries kilobytes, GPL
+        # included) is not an identifier: it stays out of the inventory.
+        self.assertEqual(sbom.licence_of(self._dist(license="Copyright (c)\n" + "x" * 5000)),
+                         "UNKNOWN")
+        self.assertEqual(sbom.licence_of(self._dist()), "UNKNOWN")
+
+    def test_drift_names_missing_moved_and_removed_pins(self) -> None:
+        sbom = self._sbom()
+        committed = {"format": 1, "packages": {
+            "numpy": {"version": "2.5.3"}, "old": {"version": "1.0"}}}
+        fresh = {"format": 1, "packages": {
+            "numpy": {"version": "2.5.4"}, "scipy": {"version": "1.18.1"}}}
+        found = sbom.drift(committed, fresh)
+        self.assertEqual(len(found), 3)
+        self.assertTrue(any("scipy" in line and "not inventoried" in line
+                            for line in found))
+        self.assertTrue(any("numpy" in line and "2.5.4" in line
+                            for line in found))
+        self.assertTrue(any("old" in line and "stays inventoried" in line
+                            for line in found))
+        self.assertEqual(sbom.drift(fresh, fresh), [])
+
+    def test_the_committed_inventory_covers_both_locks(self) -> None:
+        import json
+        sbom = self._sbom()
+        root = Path(__file__).resolve().parent
+        committed = json.loads((root / "installer" / "sbom.json")
+                               .read_text(encoding="utf-8"))
+        fresh = {"format": 1, "packages": {}}
+        for lock, shipped in sbom.LOCKS:
+            for name, version in sbom.pins(lock):
+                fresh["packages"][name] = {"version": version,
+                                           "shipped": shipped}
+        self.assertEqual(sbom.drift(committed, fresh), [])
+
+
 if __name__ == "__main__":
     unittest.main()

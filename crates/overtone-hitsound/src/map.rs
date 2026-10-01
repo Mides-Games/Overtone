@@ -8,6 +8,8 @@
 //! lines are skipped. Infallible on text by construction; file errors stay
 //! with the caller.
 
+use crate::role::{grid_position, metrical_weight};
+
 /// `normal:addition:index:volume:file`, short forms padded like Python.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HitSample {
@@ -416,6 +418,41 @@ pub fn bar_slots(timing: &[TimingPoint], times: &[f64]) -> Vec<(i64, Option<i64>
         .collect()
 }
 
+/// `(beat subdivision, metrical weight)` of one map time on its own red
+/// lines, for the hand role rule where no measured table speaks (docs/06
+/// §11).
+///
+/// The governing red line opens its bar — its offset is the phase, its beat
+/// length the period, its meter the bar, slot 0 the downbeat — exactly as
+/// `bar_slots` counts it, since both answer "where in the bar the mapper put
+/// this". `None` with no red lines: then the fitted grid's role stands, as
+/// where there is no map at all. Times in milliseconds, as the map speaks
+/// them.
+pub fn map_role(timing: &[TimingPoint], t_ms: f64) -> Option<(u32, f64)> {
+    let mut reds: Vec<(f64, f64, i64)> = timing
+        .iter()
+        .filter(|p| p.uninherited && p.beat_len > 0.0)
+        .map(|p| {
+            let meter = if p.meter > 0 { p.meter } else { 4 };
+            (p.offset, 60_000.0 / p.beat_len, meter)
+        })
+        .collect();
+    reds.sort_by(|a, b| a.0.total_cmp(&b.0));
+    if reds.is_empty() {
+        return None;
+    }
+    let mut span = 0usize;
+    for (i, red) in reds.iter().enumerate() {
+        if red.0 <= t_ms + 1e-6 {
+            span = i;
+        }
+    }
+    let (offset, bpm, meter) = reds[span];
+    let (division, _) = grid_position(t_ms / 1000.0, 60.0 / bpm, offset / 1000.0);
+    let beat = ((t_ms - offset) / (60_000.0 / bpm)).round() as i64;
+    Some((division, metrical_weight(beat, meter as usize, division)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,6 +535,32 @@ mod tests {
         let map = parse("[TimingPoints]\n1000,-50,4,2,1,60,1,0\n");
         assert_eq!(map.timing.len(), 1);
         assert!(!map.timing[0].uninherited);
+    }
+
+    #[test]
+    fn map_role_reads_division_and_weight_off_the_red_lines() {
+        // 120 BPM 4/4 from t = 1000 ms: the red line opens the bar, so its
+        // downbeat reads (1, 1.0), beat 2 (1, 0.5), beat 3 (1, 0.7), an 8th
+        // (2, 0.25) and a 16th (4, 0.10) — whatever the audio grid says.
+        // Before the first line its grid extends backwards. No red lines:
+        // no map role, and the fitted grid's stands.
+        let red = TimingPoint {
+            offset: 1000.0,
+            beat_len: 500.0,
+            meter: 4,
+            sample_set: 0,
+            sample_index: 0,
+            volume: 0,
+            uninherited: true,
+        };
+        let timing = vec![red];
+        assert_eq!(map_role(&timing, 1000.0), Some((1, 1.0)));
+        assert_eq!(map_role(&timing, 1500.0), Some((1, 0.5)));
+        assert_eq!(map_role(&timing, 2000.0), Some((1, 0.7)));
+        assert_eq!(map_role(&timing, 1250.0), Some((2, 0.25)));
+        assert_eq!(map_role(&timing, 1125.0), Some((4, 0.10)));
+        assert_eq!(map_role(&timing, 500.0), Some((1, 0.5)));
+        assert_eq!(map_role(&[], 1500.0), None);
     }
 
     #[test]

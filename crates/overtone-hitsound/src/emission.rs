@@ -109,9 +109,13 @@ fn metrical_fit(additions: &[Addition], slot: Option<(u32, u32)>, table: &Metric
 /// Guessed, and measurably wrong where a measured table exists: over 27
 /// genre-and-addition cells of the user's library it loses 25 of them, worst
 /// on whistles, which real maps put on the beat as often as off it (timeline,
-/// the genre profiles). It stays as the answer for a profile with no table,
-/// for a bar that was never proven, and for an attack on a slot no sixteenth
-/// names.
+/// the genre profiles) — 72.6 % quarters, 26.7 % 8ths, 0.7 % 16ths over
+/// 1,241 mapper whistles (`bench/eval_proposals.py --style drum --bare`),
+/// yet neither rewarding quarters (it whistles bare kicks) nor staying
+/// neutral (affinity alone proposes fewer) holds up, so the hand rule stays
+/// until whistles get a measured table or a fitted rule of their own. It
+/// stays as the answer for a profile with no table, for a bar that was never
+/// proven, and for an attack on a slot no sixteenth names.
 fn role_fit(additions: &[Addition], division: Option<u32>, weight: Option<f64>) -> f64 {
     let (division, weight) = match (division, weight) {
         (Some(d), Some(w)) => (d, w),
@@ -162,6 +166,7 @@ pub fn emission(
     object: &HitObject,
     attack: Option<&AttackEvidence>,
     bar_slot: Option<(u32, u32)>,
+    map_role: Option<(u32, f64)>,
     map_default_bank: Bank,
     profile: &Profile,
 ) -> Vec<Scored> {
@@ -202,7 +207,20 @@ pub fn emission(
                 .as_ref()
                 .and_then(|table| metrical_fit(&additions, slot, table))
                 .unwrap_or_else(|| {
-                    role_fit(&additions, attack.role.division, attack.role.metrical_weight)
+                    // The map's own grid where the caller read one: it is
+                    // what the mapper snapped to, and the audio grid's
+                    // downbeat agrees with it only a quarter of the time
+                    // (docs/06 §11). The fitted grid's where there is no map.
+                    match map_role {
+                        Some((division, weight)) => {
+                            role_fit(&additions, Some(division), Some(weight))
+                        }
+                        None => role_fit(
+                            &additions,
+                            attack.role.division,
+                            attack.role.metrical_weight,
+                        ),
+                    }
                 })
         });
         let context = context_fit(object.new_combo, !additions.is_empty());
@@ -314,7 +332,7 @@ mod tests {
     #[test]
     fn terms_replay_the_score() {
         let profile = balanced();
-        let scored = emission(&circle(0), None, None, Bank::Normal, &profile);
+        let scored = emission(&circle(0), None, None, None, Bank::Normal, &profile);
         assert_eq!(scored.len(), 24);
         for row in &scored {
             let replay: f64 = row.terms.iter().map(|&(_, v)| v).sum();
@@ -331,8 +349,8 @@ mod tests {
     #[test]
     fn the_mapper_prior_moves_exactly_its_weight() {
         let profile = balanced();
-        let bare = emission(&circle(0), None, None, Bank::Normal, &profile);
-        let clapped = emission(&circle(8), None, None, Bank::Normal, &profile);
+        let bare = emission(&circle(0), None, None, None, Bank::Normal, &profile);
+        let clapped = emission(&circle(8), None, None, None, Bank::Normal, &profile);
         let top = |rows: &[Scored]| {
             rows.iter()
                 .find(|r| r.candidate.additions == [false, false, true])
@@ -363,16 +381,45 @@ mod tests {
                 .1
         };
         let attack = attack_on_grid();
-        let beat_two = emission(&circle(0), Some(&attack), Some((4, 16)), Bank::Normal, &profile);
-        let beat_three = emission(&circle(0), Some(&attack), Some((8, 16)), Bank::Normal, &profile);
+        let beat_two = emission(&circle(0), Some(&attack), Some((4, 16)), None, Bank::Normal, &profile);
+        let beat_three = emission(&circle(0), Some(&attack), Some((8, 16)), None, Bank::Normal, &profile);
         assert!(clap(&beat_two) > clap(&beat_three) + 0.2,
                 "beat 2 {} against beat 3 {}", clap(&beat_two), clap(&beat_three));
         // The hand rule is what answers when the profile has no table, and it
         // reads those two slots the same.
         let hand = balanced();
-        let two = emission(&circle(0), Some(&attack), Some((4, 16)), Bank::Normal, &hand);
-        let three = emission(&circle(0), Some(&attack), Some((8, 16)), Bank::Normal, &hand);
+        let two = emission(&circle(0), Some(&attack), Some((4, 16)), None, Bank::Normal, &hand);
+        let three = emission(&circle(0), Some(&attack), Some((8, 16)), None, Bank::Normal, &hand);
         assert!((clap(&two) - clap(&three)).abs() < 1e-9, "the rule cannot tell them apart");
+    }
+
+    #[test]
+    fn the_maps_role_beats_the_audios_where_they_disagree() {
+        // The audio grid calls this attack a downbeat (weight 1.0); the
+        // map's red lines call it beat 2 (weight 0.5). A clap belongs on the
+        // backbeat, so the map's reading must decide the hand term
+        // (docs/06 §11): 0.6 from the map against -0.2 from the audio.
+        let profile = balanced();
+        let clap = |rows: &[Scored]| {
+            rows.iter()
+                .find(|r| r.candidate.additions == [false, false, true]
+                      && r.candidate.bank == Bank::Soft)
+                .expect("a soft clap")
+                .terms
+                .iter()
+                .find(|(name, _)| *name == "role")
+                .expect("a role term")
+                .1
+        };
+        let mut attack = attack_on_grid();
+        attack.role.division = Some(1);
+        attack.role.metrical_weight = Some(1.0);
+        let from_map = emission(&circle(0), Some(&attack), None, Some((1, 0.5)), Bank::Normal, &profile);
+        let from_audio = emission(&circle(0), Some(&attack), None, None, Bank::Normal, &profile);
+        assert!((clap(&from_map) - profile.role_weight * 0.6).abs() < 1e-9,
+                "map beat 2: {}", clap(&from_map));
+        assert!((clap(&from_audio) - profile.role_weight * -0.2).abs() < 1e-9,
+                "audio downbeat: {}", clap(&from_audio));
     }
 
     #[test]
@@ -392,12 +439,12 @@ mod tests {
                 .expect("a role term")
                 .1
         };
-        let no_slot = emission(&circle(0), Some(&attack), None, Bank::Normal, &profile);
-        let hand = emission(&circle(0), Some(&attack), None, Bank::Normal, &balanced());
+        let no_slot = emission(&circle(0), Some(&attack), None, None, Bank::Normal, &profile);
+        let hand = emission(&circle(0), Some(&attack), None, None, Bank::Normal, &balanced());
         assert!((role_term(&no_slot) - role_term(&hand)).abs() < 1e-9,
                 "without a slot the rule decides");
         // A bar of another length is not this table's bar either.
-        let other_meter = emission(&circle(0), Some(&attack), Some((0, 12)), Bank::Normal, &profile);
+        let other_meter = emission(&circle(0), Some(&attack), Some((0, 12)), None, Bank::Normal, &profile);
         assert!((role_term(&other_meter) - role_term(&hand)).abs() < 1e-9,
                 "a 3/4 bar has no measured table here");
     }

@@ -421,14 +421,17 @@ What building the two showed about what a profile can say:
   it on the object. An `inherit` row resolves to the object's own set, else the map's
   `[General]` set — not the green line's — so on a map whose green lines change the set,
   a plain proposal can name a set the object does not play now.
-- **Its role term reads the audio's bar, not the map's.** On the 22 songs the profiles
+- **Its role term read the audio's bar, not the map's.** On the 22 songs the profiles
   were tuned on, the audio grid gives no role at all on 5, and elsewhere the metrical
   weight it gives equals the one the map's own red lines give at a median of 12 % (minimal
   maps) and 28 % (drum-led) of the map's beats: it finds the beats, rarely which one opens
   the bar. On a map with no hitsounds yet, every profile places claps about as often
-  right as a clap is there at all. Reading the role from the map's red lines when a map is
-  given is an engine change, not a profile, and until then a sparse profile cannot beat a
-  prolific one on bare claps.
+  right as a clap is there at all. Since 2026-09-30 the decide step reads each object's
+  division and weight off its governing red line (`map::map_role`) wherever the profile
+  has no measured table: bare clap F1 0.331 → 0.429, finish 0.093 → 0.403 (12 drum-style
+  maps, Balanced). The whistle hand rule does not follow it there -- mapper whistles sit
+  72.6 % on quarters, yet rewarding quarters whistles bare kicks and staying neutral
+  proposes fewer whistles than either, so that rule waits for a table or a fit of its own.
 
 ---
 

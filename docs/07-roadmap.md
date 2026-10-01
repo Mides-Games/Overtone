@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **799** Python (535 engine + 264 web shell) · **285** Rust.
+Tests: **799** Python (535 engine + 264 web shell) · **287** Rust.
 
 ### What is pending, in order
 
@@ -44,15 +44,16 @@ point, section volumes, SV normaliser, re-snap, snap divisors, audio file check)
    (sample recommendation; the bank is in) and H7 (a proposal from the audio alone). Profiles are
    in the app: Drum-focused beat Balanced on its own style's maps and is chosen beside
    Propose; Minimal did not on bare claps and does not ship (timeline, 2026-09-26). The
-   role term reading the map's red lines instead of the audio's bar is what bare maps
-   need next, for every profile (`06` §11). Two things wait until the instrument templates hold on real audio: the
+   role term reads the map's red lines instead of the audio's bar since 2026-09-30
+   (`06` §11; bare clap 0.331 → 0.429, finish 0.093 → 0.403); the whistle hand rule
+   does not follow it there (measured both ways, both lose). Two things wait until the instrument templates hold on real audio: the
    clap-mismatch rule, and instrument lanes on the timeline. At the mappers' claps of 11
    real songs the templates read snare or clap at a median 0.138 (timeline, H3 audio
    half), so lanes drawn from them would show a precision they do not have.
 2. **Library focus** (Phase 19) — scan, rescan and search measured and fixed on
-   2026-09-26; the page's states wait for the browser harness. Next, the library health
-   check's page (Phase 21): its engine grades and caches every map, and what it should
-   list waits on a decision (timeline, 2026-09-26).
+   2026-09-26; the page's states wait for the browser harness. The library health
+   check's page is in since 2026-09-30 (counts, a resumable run, flags with evidence
+   marked actionable or weak); a hand-checked precision sample is still open.
 3. **The Audio section** (Phase 19), and section labels from repetition.
 4. **Other languages** (Phase 24) — TypeScript (needs Node.js) and a C# lazer gate (needs
    the .NET SDK). Node is not installed; ask before installing it. The .NET SDK is, per

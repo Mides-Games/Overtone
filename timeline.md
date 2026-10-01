@@ -17,6 +17,37 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-30 · The hitsound role reads the map's red lines
+
+### Changed
+
+- **`map::map_role` and a map-first hand rule** (docs/06 §11). The hand role
+  rule read the audio grid's division and weight, which match the map's bars
+  a quarter of the time; on bare maps every profile placed claps at chance.
+  Where the caller read a map grid -- the CLI's decide step always has one
+  -- the hand rule now uses the object's division and weight off its
+  governing red line (slot 0 the downbeat, as `bar_slots` counts it).
+  Measured tables, the silence behavior and `hitsound-evidence` (audio-only
+  by design) are untouched.
+
+### Measured
+
+- 12 drum-style bare maps, Balanced, same sample before and after: clap F1
+  0.331 → 0.429, finish 0.093 → 0.403. Two Rust unit tests pin the rule and
+  its priority over the audio grid (the priority one fails inverted).
+- 799 Python tests (535 + 264), 287 Rust; workspace, facts and parity green.
+
+### Rejected / tried and dropped
+
+- **Moving the whistle arm with the role.** Mapper whistles sit 72.6 % on
+  quarters over 1,241 whistles of the same sample, so the old off-beat
+  preference had the sign backwards -- but rewarding quarters whistles bare
+  kicks (a Viterbi arrangement test holds that), and staying neutral
+  proposes fewer whistles than either (F1 0.124 against 0.165). Position
+  alone cannot tell melody-on-beat from drums-on-beat, so the hand whistle
+  rule stays until it gets a measured table or a fit of its own; the
+  marginal stands as the datum for that work.
+
 ## v4.0.0-dev — 2026-09-30 · The library health check gets its page
 
 ### Changed

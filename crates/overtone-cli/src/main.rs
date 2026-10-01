@@ -577,6 +577,10 @@ fn decide_map(
     let (units, is_tail) = units_of(beatmap);
     let times_ms: Vec<f64> = units.iter().map(|unit| unit.time_ms).collect();
     let placed = map::bar_slots(&beatmap.timing, &times_ms);
+    let map_roles: Vec<Option<(u32, f64)>> = times_ms
+        .iter()
+        .map(|&t| map::map_role(&beatmap.timing, t))
+        .collect();
     let default_bank = match beatmap.sample_set {
         2 => em::Bank::Soft,
         3 => em::Bank::Drum,
@@ -613,7 +617,7 @@ fn decide_map(
             (_bar, Some(slot), meter) if meter > 0 => Some((slot as u32, (meter * 4) as u32)),
             _ => None,
         };
-        let scored = em::emission(&object, attack, slot, default_bank, profile);
+        let scored = em::emission(&object, attack, slot, map_roles[i], default_bank, profile);
         matrices.push(
             order
                 .iter()

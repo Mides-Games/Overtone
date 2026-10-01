@@ -421,6 +421,22 @@ const I18N = {
     library_damaged: "The library index is damaged: Rescan rebuilds it from the folder.",
     songs_nothing: "No map matches “{q}”.",
     songs_limited: "The first {n} maps: type more to narrow them.",
+    health_title: "Timing health",
+    health_run: "Check timing",
+    health_stop: "Stop",
+    health_starting: "Starting…",
+    health_progress: "Grading {done} of {total} audio files…",
+    health_counts: "{check} to check · {ok} ok · {unsure} unsure · {ungraded} ungraded",
+    health_none: "Grade every map's red lines against its own audio.",
+    health_done: "Timing check: {n} maps graded in {s} s.",
+    health_look: "Worth a look",
+    health_weak: "Weak lead",
+    health_limited: "The first {n}, worst first.",
+    health_off: "{ms} ms off the map's shift",
+    health_drift: "drifts {ms} ms",
+    health_fit: "{n} attacks · {share}% fit",
+    health_running: "A timing check is already running.",
+    health_no_rust: "The timing check runs on the Rust engine (overtone-cli), and it is not built here: cargo build --release -p overtone-cli.",
     songs_diff: "diff",
     songs_diffs: "diffs",
     scan_running: "A scan is already running.",
@@ -1096,6 +1112,22 @@ const I18N = {
     library_damaged: "El índice de la biblioteca está dañado: Reescanear lo reconstruye desde la carpeta.",
     songs_nothing: "Ningún mapa coincide con “{q}”.",
     songs_limited: "Los primeros {n} mapas: escribí más para acotar.",
+    health_title: "Salud del timing",
+    health_run: "Revisar timing",
+    health_stop: "Detener",
+    health_starting: "Iniciando…",
+    health_progress: "Graduando {done} de {total} audios…",
+    health_counts: "{check} por revisar · {ok} ok · {unsure} dudosos · {ungraded} sin graduar",
+    health_none: "Graduá las líneas rojas de cada mapa contra su propio audio.",
+    health_done: "Revisión de timing: {n} mapas graduados en {s} s.",
+    health_look: "Para revisar",
+    health_weak: "Pista débil",
+    health_limited: "Los primeros {n}, del peor al mejor.",
+    health_off: "{ms} ms fuera del corrimiento del mapa",
+    health_drift: "deriva {ms} ms",
+    health_fit: "{n} ataques · {share}% de ajuste",
+    health_running: "Ya hay una revisión de timing en curso.",
+    health_no_rust: "La revisión de timing usa el motor Rust (overtone-cli), y acá no está compilado: cargo build --release -p overtone-cli.",
     songs_diff: "dific.",
     songs_diffs: "dific.",
     scan_running: "Ya hay un escaneo en curso.",
@@ -1849,6 +1881,13 @@ window.overtone = {
     toast(t(S.result ? "analysis_stopped_kept" : "analysis_stopped", { s }));
   },
   onLibraryProgress(progress) { SONGS.progress = progress; renderSongs(); },
+  onHealthProgress(progress) { HEALTH.progress = progress; renderHealth(); },
+  onHealthDone(reply) {
+    HEALTH.running = false; HEALTH.progress = null;
+    if (reply.ok) toast(t("health_done", { n: reply.run.graded, s: reply.run.seconds }));
+    else toast(t(reply.key === "no_rust" ? "health_no_rust" : reply.key, { detail: reply.detail || "" }), true);
+    healthLoad();
+  },
   onResult(result) {
     setBusy(false);
     // A dragged file has no remembered entry yet: the staged copy Python
@@ -2536,6 +2575,78 @@ function renderSongs() {
       <span class="meta num">${set.beatmaps.length} ${t(set.beatmaps.length === 1 ? "songs_diff" : "songs_diffs")}${songBpm(set)}</span>
     </button>`;
   }).join("") + (res.limited ? `<div class="card-sub">${t("songs_limited", { n: res.beatmaps })}</div>` : "");
+}
+
+// ------------------------------------------------------------------ timing health
+// Every library map's red lines graded against its own audio
+// (overtone_library.health). A flag is a lead, never a verdict of wrong
+// timing: only a line resting on a solid fit is "worth a look"; the rest are
+// weak leads, marked as such instead of counted as maps to fix.
+const HEALTH = { state: null, report: null, running: false, progress: null };
+
+async function healthLoad() {
+  if (!api()) return;
+  const reply = await api().health_state();
+  HEALTH.state = reply;
+  HEALTH.running = !!(reply.ok && reply.running);
+  if (reply.ok) await healthReport();
+  renderHealth();
+}
+
+async function healthReport() {
+  const reply = await api().health_report("check");
+  if (reply.ok) HEALTH.report = reply;
+  else if (reply.key === "library_damaged") HEALTH.state = { ...(HEALTH.state || {}), ...reply };
+}
+
+async function healthStart() {
+  if (!api()) return;
+  const reply = await api().health_start();
+  if (!reply.ok) { toast(t(reply.key), true); return; }
+  HEALTH.running = true; HEALTH.progress = null;
+  renderHealth();
+}
+
+async function healthStop() { if (api()) await api().health_stop(); }
+
+function healthInfoText() {
+  const st = HEALTH.state;
+  if (HEALTH.running) {
+    const p = HEALTH.progress;
+    return !p ? t("health_starting") : t("health_progress", { done: p.done, total: p.total });
+  }
+  if (st && st.key === "library_damaged") return t("library_damaged");
+  if (st && st.ok) {
+    const c = st.counts;
+    return t("health_counts", { check: c.check, ok: c.ok, unsure: c.unsure, ungraded: c.ungraded });
+  }
+  return t("health_none");
+}
+
+function renderHealth() {
+  $("healthRun").hidden = HEALTH.running;
+  $("healthStop").hidden = !HEALTH.running;
+  $("healthInfo").textContent = healthInfoText();
+  const list = $("healthList");
+  const maps = (HEALTH.report && HEALTH.report.maps) || [];
+  if (!maps.length) { list.innerHTML = ""; return; }
+  list.innerHTML = maps.map((m) => `<div class="health-row">
+    <div class="health-head">
+      <span class="name">${esc(m.artist)} - ${esc(m.title)} <span class="muted">[${esc(m.version)}]</span></span>
+      <span class="pill ${m.actionable ? "amber" : ""}">${t(m.actionable ? "health_look" : "health_weak")}</span>
+      <span class="meta num">${m.worst_ms === null ? "—" : `${m.worst_ms.toFixed(1)} ms`}</span>
+    </div>
+    <div class="health-ev">${(m.checks || []).map(healthLine).join("")}</div>
+  </div>`).join("")
+    + (HEALTH.report.limited ? `<div class="card-sub">${t("health_limited", { n: maps.length })}</div>` : "");
+}
+
+function healthLine(c) {
+  const parts = [];
+  if (c.relative_ms !== null && c.relative_ms !== undefined) parts.push(t("health_off", { ms: c.relative_ms.toFixed(1) }));
+  if (c.drift_ms !== null && c.drift_ms !== undefined) parts.push(t("health_drift", { ms: c.drift_ms.toFixed(1) }));
+  parts.push(t("health_fit", { n: c.attacks, share: Math.round((c.share || 0) * 100) }));
+  return `<div>#${(c.index || 0) + 1} · ${parts.join(" · ")}</div>`;
 }
 
 // ------------------------------------------------------------------ structure
@@ -7278,6 +7389,8 @@ function wire() {
   $("stxVolMap").onchange = () => { STXV.preview = null; renderVolumes(); };
   $("songsScan").onclick = () => songsScan();
   $("songsPick").onclick = songsPick;
+  $("healthRun").onclick = healthStart;
+  $("healthStop").onclick = healthStop;
   $("songsQuery").oninput = () => {
     clearTimeout(SONGS.timer);
     SONGS.timer = setTimeout(() => { SONGS.query = $("songsQuery").value; songsSearch(); }, 120);
@@ -7566,6 +7679,7 @@ async function boot() {
   renderTaps();
   stLoad();
   songsLoad();
+  healthLoad();
   $("pbSongVol").value = String(Math.round(P.levels.song_volume * 100));
   $("pbClickVol").value = String(Math.round(P.levels.click_volume * 100));
   $("pbHsVol").value = String(Math.round(P.levels.hitsound_volume * 100));

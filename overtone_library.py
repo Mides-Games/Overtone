@@ -358,6 +358,25 @@ _UPSERT_HEALTH = (
         "size", "mtime_ns", "audio_size", "audio_mtime_ns", "grader", "engine", "verdict",
         "lines", "flagged", "worst_ms", "common_ms", "detail", "graded_at")))
 
+#: A flagged line is worth a look only when its grid is solidly evidenced.
+#: The false-positive flags measured on 2026-09-26 came from spans of 11-19
+#: attacks and grids explaining about 41 % of the attacks. Attack counts
+#: overlap a real flag (14 attacks, share 1.0 on clean clicks), so the share
+#: is what separates them and the attacks floor is only a sanity level above
+#: the grading's own minimum (8): a coherent short span stays actionable,
+#: an incoherent one reads as a weak lead.
+HEALTH_MIN_ATTACKS = 12
+HEALTH_MIN_SHARE = 0.60
+
+
+def health_actionable(checks: list[dict] | None) -> bool:
+    """Whether a flagged map is worth a look: at least one of its flagged
+    lines rests on a solid fit — enough attacks, and a grid that explains a
+    good share of them. A flag is a lead, never a verdict of wrong timing."""
+    return any(int(line.get("attacks", 0) or 0) >= HEALTH_MIN_ATTACKS
+               and float(line.get("share", 0.0) or 0.0) >= HEALTH_MIN_SHARE
+               for line in checks or [])
+
 
 class Library:
     """One index file. Every call opens its own connection, so the bridge's

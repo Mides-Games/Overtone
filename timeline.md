@@ -17,6 +17,37 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-30 · The library health check gets its page
+
+### Changed
+
+- **Timing health in Library** (Phase 19/21). The engine half graded every
+  map and kept it; there was no page, and its flags could not separate steady
+  maps from moving ones (26 of 44 steady flagged). The page lists flags with
+  the evidence behind each line and marks a map worth a look only when a
+  flagged line rests on a solid fit (12 or more attacks, share 0.60 or more);
+  the rest read as weak leads, never as wrong maps.
+- **The rule decision** (the roadmap's open item): presentation-layer, no
+  engine change. Attack counts overlap a real flag (14 attacks, share 1.0 on
+  clean clicks) with the artifacts (11-19 attacks, share 0.41), so the share
+  separates and the count is only a sanity floor above the grading's own
+  minimum of 8.
+- `Api.health_state/health_start/health_stop/health_report`: a resumable run
+  on a worker thread (never blocks a bridge call), progress and end as JS
+  events, stoppable at the next audio file; the report carries per-map
+  evidence and the actionable mark.
+
+### Measured
+
+- Synthetic: a +20 ms moved line grades `check` with relative −20 ms and
+  reads actionable; its on-grid twin reads `ok` (bridge tests).
+- Real, 20 audio files and 91 maps through the Rust sidecar: 41 flagged, 32
+  actionable, 9 weak leads at share 0.52–0.59 — the mediocre-fit flags the
+  audit worried about, demoted instead of listed as wrong.
+- 799 Python tests (535 engine + 264 web shell), 285 Rust; facts and parity
+  green. No precision claim: separating moving from steady maps still wants
+  the hand-checked sample.
+
 ## v4.0.0-dev — 2026-09-28 · A crash and a snare read the same to the engine
 
 ### Measured

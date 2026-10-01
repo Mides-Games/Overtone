@@ -167,6 +167,16 @@
           <input class="input" id="songsQuery" type="search" autocomplete="off" spellcheck="false" hidden>
           <div class="stack songs-list" id="songsList"></div>
         </div>
+        <!-- the library health check: maps whose red lines disagree with their audio -->
+        <div class="songs health" id="health">
+          <div class="songs-head">
+            <div class="recents-title" data-i18n="health_title">Timing health</div>
+            <span class="songs-info" id="healthInfo"></span>
+            <button class="btn small" id="healthStop" hidden><span data-i18n="health_stop">Stop</span></button>
+            <button class="btn small" id="healthRun"><span data-i18n="health_run">Check timing</span></button>
+          </div>
+          <div class="stack health-list" id="healthList"></div>
+        </div>
       </section>
 
       <!-- shown instead of a view that needs the analysed song -->

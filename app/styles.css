@@ -552,6 +552,14 @@ button.link:focus-visible, .recent-item:focus-visible { border-radius: var(--r-x
 .songs-list .recent-item .name { display: block; }
 .songs-list .recent-item .name .muted { font-weight: 400; }
 .songs-list .diffs { display: block; color: var(--dim); font-size: var(--fs-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.health-list { gap: 6px; max-height: 440px; overflow: auto; }
+.health-row { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 16px; }
+.health-head { display: flex; align-items: center; gap: 12px; }
+.health-head .name { font-weight: 600; font-size: var(--fs-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.health-head .name .muted { font-weight: 400; }
+.health-head .pill { flex: none; }
+.health-head .meta { color: var(--dim); font-size: var(--fs-1); margin-left: auto; flex: none; }
+.health-ev { color: var(--dim); font-size: var(--fs-1); margin-top: 4px; }
 kbd {
   display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; margin-right: 3px;
   border-radius: var(--r-xs); border: 1px solid var(--border-strong); border-bottom-width: 2px;

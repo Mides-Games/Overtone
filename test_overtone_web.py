@@ -1599,6 +1599,86 @@ class LibraryBridgeTests(_IsolatedConfig):
                           if m["beatmaps"]], ["2 Late - Add"])
 
 
+class HealthBridgeTests(_IsolatedConfig):
+    """Library health check: grade the folder in the background, list the
+    flags with their evidence, and mark only solid fits worth a look."""
+
+    @staticmethod
+    def _set(tmp: str) -> Path:
+        from test_overtone import _click_track, _mapset_osu
+        folder = Path(tmp) / "Songs" / "1 Band - Clicks"
+        folder.mkdir(parents=True)
+        _click_track(folder / "audio.wav", 120.0, duration=24.0)
+        reds = ((250, 500.0, 4), (8250, 500.0, 4), (16250, 500.0, 4))
+        (folder / "Band - Clicks (Mapper) [True].osu").write_text(
+            _mapset_osu("True", audio="audio.wav", reds=reds, objects=(1000, 23000)),
+            encoding="utf-8", newline="")
+        moved = ((250, 500.0, 4), (8250, 500.0, 4), (16270, 500.0, 4))
+        (folder / "Band - Clicks (Mapper) [Moved].osu").write_text(
+            _mapset_osu("Moved", audio="audio.wav", reds=moved, objects=(1000, 23000)),
+            encoding="utf-8", newline="")
+        return folder.parent
+
+    @staticmethod
+    def _wait(api: web.Api, timeout: float = 240.0) -> None:
+        end = time.monotonic() + timeout
+        while api._health.locked():
+            if time.monotonic() > end:
+                raise AssertionError("the health worker did not finish")
+            time.sleep(0.05)
+
+    def test_state_before_any_grade_is_all_ungraded(self) -> None:
+        with mock.patch.object(web.overtone_rust, "find_cli", return_value=None):
+            reply = web.Api().health_state()
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        self.assertEqual((reply["running"], reply["engine"]), (False, "python"))
+        self.assertEqual(reply["counts"]["ungraded"], 0)
+
+    def test_one_run_at_a_time_and_stop_when_idle(self) -> None:
+        api = web.Api()
+        api._health.acquire()
+        try:
+            self.assertEqual(api.health_start()["key"], "health_running")
+        finally:
+            api._health.release()
+        self.assertEqual(api.health_stop()["key"], "not_running")
+
+    def test_actionable_needs_a_solid_fit(self) -> None:
+        hl = web.overtone_library
+        solid = [{"attacks": 14, "share": 1.0}]
+        few = [{"attacks": 10, "share": 0.95}]
+        weak = [{"attacks": 14, "share": 0.41}]
+        self.assertTrue(hl.health_actionable(solid))
+        self.assertFalse(hl.health_actionable(few))
+        self.assertFalse(hl.health_actionable(weak))
+        self.assertFalse(hl.health_actionable([]))
+        self.assertFalse(hl.health_actionable(None))
+
+    def test_grade_in_the_background_then_report_marks_the_moved_line(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = self._set(tmp)
+            api = web.Api()
+            api.library_scan(str(songs))
+            with mock.patch.object(web.overtone_rust, "find_cli", return_value=None):
+                self.assertTrue(api.health_start()["ok"])
+                self._wait(api)
+                state = api.health_state()
+                report = api.health_report("check")
+                oks = api.health_report(("ok",))
+            json.dumps([state, report, oks])
+        self.assertFalse(state["running"])
+        self.assertEqual((state["counts"]["check"], state["counts"]["ok"]), (1, 1))
+        self.assertEqual([m["version"] for m in report["maps"]], ["Moved"])
+        moved = report["maps"][0]
+        self.assertTrue(moved["actionable"])
+        self.assertEqual(report["actionable"], 1)
+        self.assertEqual([(c["index"], c["issues"]) for c in moved["checks"]], [(2, ["offset"])])
+        self.assertAlmostEqual(moved["checks"][0]["relative_ms"], -20.0, delta=3.0)
+        self.assertAlmostEqual(moved["worst_ms"], 20.0, delta=3.0)
+        self.assertEqual([m["version"] for m in oks["maps"]], ["True"])
+
+
 class AssistedBridgeTests(_IsolatedConfig):
     """Assisted timing: fit from two marks, then add the line in one undo."""
 

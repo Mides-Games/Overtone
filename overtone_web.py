@@ -402,6 +402,10 @@ class Api:
         self._percussion: tuple | None = None
         #: Held while the library index scans, so two scans never interleave.
         self._scanning = threading.Lock()
+        #: Held while the library health check grades, so two runs never
+        #: interleave; the event stops it at the next audio file.
+        self._health = threading.Lock()
+        self._health_stop = threading.Event()
         #: The Rust engine's structure report, keyed by (path, size, mtime):
         #: the audio is read once, the bars are re-applied on every call.
         self._structure: tuple[tuple, dict] | None = None
@@ -2154,6 +2158,66 @@ class Api:
         except OSError as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         return self.library_state()
+
+    # -- library health check: each map's red lines against its own audio ---
+    def health_state(self) -> dict:
+        """Verdict counts over the index, the engine a run would use, and
+        whether one is going. Read only."""
+        try:
+            report = overtone_library.Library().health_report(())
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            return self._library_error(exc)
+        return {"ok": True, "counts": report["counts"],
+                "engine": "rust" if overtone_rust.find_cli() else "python",
+                "running": self._health.locked()}
+
+    def health_start(self) -> dict:
+        """Start grading what is new or changed, on a worker thread: progress
+        and the end arrive as ``onHealthProgress`` / ``onHealthDone``. A run is
+        resumable, so a stopped one loses nothing it already wrote."""
+        if not self._health.acquire(blocking=False):
+            return {"ok": False, "key": "health_running"}
+        self._health_stop.clear()
+        threading.Thread(target=self._health_worker, daemon=True).start()
+        return {"ok": True}
+
+    def health_stop(self) -> dict:
+        """Stop the run at the next audio file; what it graded is kept."""
+        if not self._health.locked():
+            return {"ok": False, "key": "not_running"}
+        self._health_stop.set()
+        return {"ok": True}
+
+    def _health_worker(self) -> None:
+        try:
+            run = overtone_library.Library().health(
+                progress=lambda done, total: self._emit(
+                    "onHealthProgress", {"done": done, "total": total}),
+                stop=self._health_stop)
+            self._emit("onHealthDone", {"ok": True, "run": run})
+        except overtone_rust.SidecarUnavailable:
+            self._emit("onHealthDone", {"ok": False, "key": "no_rust"})
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            self._emit("onHealthDone", self._library_error(exc))
+        finally:
+            self._health_stop.clear()
+            self._health.release()
+
+    def health_report(self, verdicts=("check",), limit: int = 100) -> dict:
+        """The graded maps with these verdicts, worst first, each with its
+        evidence and whether any of its lines is solid enough to be worth a
+        look (``actionable``); ``actionable`` also counts them for the card."""
+        if isinstance(verdicts, str):              # JS passes one verdict bare
+            verdicts = (verdicts,)
+        try:
+            report = overtone_library.Library().health_report(verdicts, limit)
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            return self._library_error(exc)
+        for m in report["maps"]:
+            m["actionable"] = (m["verdict"] == "check"
+                               and overtone_library.health_actionable(m.get("checks")))
+        report["actionable"] = sum(1 for m in report["maps"] if m["actionable"])
+        return {"ok": True, **report}
 
     # -- structure: the Rust engine's phrases on this song's bars -----------
     def structure(self) -> dict:

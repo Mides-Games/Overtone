@@ -25,7 +25,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (795 on 2026-09-27)
+.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (799 on 2026-09-30)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -65,7 +65,7 @@ named, and the analyses are cached per audio and engine hash, so a re-score take
 And the Rust side:
 
 ```bash
-cargo test --workspace                                 # all pass (285 on 2026-09-28)
+cargo test --workspace                                 # all pass (285 on 2026-09-30)
 cargo run --release -q -p overtone-bench -- golden     # 27/27 attack for attack
 cargo run --release -q -p overtone-bench -- nogrid     # noise, pads, silence refused
 cargo run --release -q -p overtone-bench -- density    # 4/4 changes, 0 false positives

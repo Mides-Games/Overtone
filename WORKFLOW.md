@@ -4,6 +4,22 @@ Todo cambio en este repo recorre estos pasos, en orden, sin saltarse ninguno.
 Está pegada a las reglas de `AGENTS.md` (un cambio lógico por commit, sin
 trailers, todo gate en una línea local).
 
+## 0. Elegir la tarea y la opción
+
+Las opciones no se consultan: se eligen solas, por el criterio del momento.
+A igualdad de condiciones gana la **mejor**, la **más recomendada** o la
+**más solicitada** en ese momento:
+
+- **Mejor:** la que más acerca el objetivo medido — la tabla de
+  `docs/07-roadmap.md`, su columna Pri y su "What is pending, in order".
+- **Más recomendada:** la que la documentación marca como siguiente paso o
+  como desbloqueo de las demás.
+- **Más solicitada:** la que más pesa para quien lo usa.
+
+Si ninguna destaca, manda el orden del roadmap. La elección y el criterio que
+la decidió se anotan (en el cuerpo del commit o en `timeline.md`), para que
+se pueda auditar.
+
 ## 1. Programar
 
 - Un cambio lógico por tarea. Si asoman dos, se parte en dos.
@@ -66,4 +82,4 @@ Si no cambió nada, se omite sin culpa.
 ## 7. Proseguir con la siguiente tarea
 
 Actualizar la tabla de `docs/07-roadmap.md` si una fase cambió de estado, y
-volver al paso 1.
+volver al paso 0.

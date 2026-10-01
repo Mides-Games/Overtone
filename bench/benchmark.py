@@ -41,6 +41,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import overtone as ta  # noqa: E402
 

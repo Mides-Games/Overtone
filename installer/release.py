@@ -32,7 +32,7 @@ RUST_CLI = "overtone-cli.exe"
 #: hitsound profiles and the library index's schema. The asset generators
 #: (``assets/*.py``) are build tools and stay out.
 DATA = ("app", "assets/logo.ico", "assets/logo.png", "assets/samples", "profiles",
-        "library.sql")
+        "python/library.sql")
 #: Never bundled from inside a data folder: a frontend toolchain's leftovers.
 SKIP_DIRS = {"node_modules", "dist", "__pycache__"}
 

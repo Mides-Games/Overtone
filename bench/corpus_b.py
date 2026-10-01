@@ -63,6 +63,7 @@ import numpy as np
 from scipy import signal
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT))
 
 import overtone as ta  # noqa: E402

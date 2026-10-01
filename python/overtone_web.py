@@ -9,7 +9,7 @@ calls exactly what the Tk GUI calls (``analyze_audio``, ``snap_timing_points``,
 
 Run it with the repo interpreter::
 
-    .venv/Scripts/python.exe overtone_web.py [audio-file]
+    .venv/Scripts/python.exe python/overtone_web.py [audio-file]
 
 Preferences are shared with the Tk GUI through ``~/.overtone.json``, so both
 frontends remember the same file and detection settings.
@@ -34,9 +34,12 @@ import overtone_library
 import overtone_rust
 
 HERE = Path(__file__).resolve().parent
-APP_DIR = HERE / "app"
-ICON_ICO = HERE / "assets" / "logo.ico"
-LOGO_PNG = HERE / "assets" / "logo.png"
+#: Source checkout: the engine lives in ``python/``, data at the repo root.
+#: Frozen build: modules sit beside the data inside the contents folder.
+ROOT = HERE if getattr(sys, "frozen", False) else HERE.parent
+APP_DIR = ROOT / "app"
+ICON_ICO = ROOT / "assets" / "logo.ico"
+LOGO_PNG = ROOT / "assets" / "logo.png"
 
 AUDIO_TYPES = ("Audio files (*.wav;*.flac;*.ogg;*.mp3;*.m4a;*.aac;*.opus;*.aiff)",
                "All files (*.*)")
@@ -50,7 +53,7 @@ OSZ_TYPES = ("osu! beatmap package (*.osz)", "All files (*.*)")
 #: Dropped files are staged here so "analyze the last song", the song header
 #: and .osz export keep working after the drag: a temp file that vanishes
 #: after the analysis would leave all three pointing at nothing.
-DROP_DIR = Path(os.environ.get("LOCALAPPDATA", str(HERE))) / "Overtone" / "drops"
+DROP_DIR = Path(os.environ.get("LOCALAPPDATA", str(ROOT))) / "Overtone" / "drops"
 PULSE_FACTORS = {"auto": 0.0, "/4": 0.25, "/2": 0.5, "x1": 1.0, "x2": 2.0, "x4": 4.0}
 #: Songs whose detection settings are remembered (per-song presets), the one
 #: analysed longest ago forgotten first: 182 bytes each in the config as it is
@@ -91,7 +94,7 @@ PROJECT_VERSION = 1
 #: Hitsound profiles the Propose card offers (docs/06 §11): the JSON files
 #: in ``profiles/`` beside the app, by name. The page chooses a name from
 #: that list; a path never comes from the page.
-PROFILE_DIR = HERE / "profiles"
+PROFILE_DIR = ROOT / "profiles"
 #: The profile the CLI bakes in: always offered, and decided without a file.
 DEFAULT_PROFILE = "balanced"
 _PROFILE_NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
@@ -222,7 +225,7 @@ def _clicks(analysis: ta.Analysis, click: dict) -> dict:
 def _default_songs() -> Path:
     """Where osu! (stable) keeps its songs when installed with the defaults.
     Read when asked, so a test that moves LOCALAPPDATA moves it too."""
-    return Path(os.environ.get("LOCALAPPDATA", str(HERE))) / "osu!" / "Songs"
+    return Path(os.environ.get("LOCALAPPDATA", str(ROOT))) / "osu!" / "Songs"
 
 
 def _wav_bytes(path: Path) -> bytes:
@@ -3520,7 +3523,7 @@ class Api:
 
     @staticmethod
     def _cache_dir() -> Path:
-        directory = Path(os.environ.get("LOCALAPPDATA", str(HERE))) / "Overtone" / "cache"
+        directory = Path(os.environ.get("LOCALAPPDATA", str(ROOT))) / "Overtone" / "cache"
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
@@ -3966,7 +3969,7 @@ def main(argv: list[str] | None = None) -> None:
         threading.Thread(target=warm_up, name="warm-up", daemon=True).start()
     webview.start(gui="edgechromium", icon=str(ICON_ICO) if ICON_ICO.is_file() else None,
                   private_mode=False,
-                  storage_path=str(Path(os.environ.get("LOCALAPPDATA", HERE)) / "Overtone" / "webview"))
+                  storage_path=str(Path(os.environ.get("LOCALAPPDATA", ROOT)) / "Overtone" / "webview"))
 
 
 if __name__ == "__main__":

@@ -10,12 +10,16 @@ import base64
 import contextlib
 import json
 import os
+import sys
 import tempfile
 import threading
 import time
 import unittest
 from pathlib import Path
 from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np
 
@@ -3831,7 +3835,7 @@ class AnalysisStopTests(_IsolatedConfig):
         self.assertEqual(web.stage_id("No fittable grid — falling back to the beat tracker… "
                                       "(ValueError: x)"), "fallback")
         self.assertIsNone(web.stage_id("Something new…"))
-        page = (Path(web.__file__).parent / "app" / "app.js").read_text(encoding="utf-8")
+        page = (Path(web.__file__).parent.parent / "app" / "app.js").read_text(encoding="utf-8")
         for sid in web.STAGES.values():
             self.assertEqual(page.count(f"stage_{sid}:"), 2, sid)    # English and Spanish
 
@@ -4310,14 +4314,14 @@ class WarmUpTests(_IsolatedConfig):
     def test_the_installer_bundles_every_file_the_app_reads(self) -> None:
         import importlib.util
         spec = importlib.util.spec_from_file_location(
-            "installer_release", web.HERE / "installer" / "release.py")
+            "installer_release", web.ROOT / "installer" / "release.py")
         release = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(release)
         bundled = {(Path(folder) / Path(source).name).as_posix()
                    for source, folder in release.data_files()}
         for purpose, paths in web.resource_files().items():
             for path in paths:
-                self.assertIn(path.relative_to(web.HERE).as_posix(), bundled, purpose)
+                self.assertIn(path.relative_to(web.ROOT).as_posix(), bundled, purpose)
 
 
 class AppScriptTests(unittest.TestCase):
@@ -4329,7 +4333,7 @@ class AppScriptTests(unittest.TestCase):
     declared twice is the other merge scar (the second declaration silently
     wins, or the page refuses to load)."""
 
-    SOURCE = Path(__file__).resolve().parent / "app" / "app.js"
+    SOURCE = Path(__file__).resolve().parent.parent / "app" / "app.js"
 
     def test_the_brackets_balance(self) -> None:
         self.assertEqual(_bracket_problems(self.SOURCE.read_text(encoding="utf-8")), [])
@@ -4372,7 +4376,7 @@ class SplashTests(unittest.TestCase):
     overlay, and the frame colours the system paints before the first HTML
     frame. Both are startup, and both used to be wrong in their own way."""
 
-    APP = Path(__file__).resolve().parent / "app"
+    APP = Path(__file__).resolve().parent.parent / "app"
 
     def test_the_overlay_covers_the_shell_before_anything_else(self) -> None:
         html = (self.APP / "index.html").read_text(encoding="utf-8")
@@ -4473,7 +4477,7 @@ class ProfileSuggestionTests(unittest.TestCase):
         # picks with another only if someone copies it: this fails then.
         import importlib.util
         spec = importlib.util.spec_from_file_location(
-            "genre_corpus", Path(web.__file__).parent / "bench" / "genre_corpus.py")
+            "genre_corpus", Path(web.__file__).parent.parent / "bench" / "genre_corpus.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         self.assertIs(module.genre_of, web.ta.hitsound_genre)
@@ -4485,7 +4489,7 @@ class VerdictStripTests(unittest.TestCase):
     bridge showed the user contradictory things when they did not: the banner
     called an 18.2 ms fit loose while the strip said nothing looked wrong."""
 
-    APP = Path(__file__).resolve().parent / "app"
+    APP = Path(__file__).resolve().parent.parent / "app"
 
     def test_the_strip_is_on_the_page_in_both_languages(self) -> None:
         html = (self.APP / "index.html").read_text(encoding="utf-8")

@@ -31,6 +31,7 @@ from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -330,7 +331,7 @@ def check(names: list[str], audio_dir: Path, engine: str) -> int:
     if failures:
         print(f"\n{failures}/{len(names)} case(s) diverged from the golden vectors.")
         print("A stage name above localises the change. If it is intended, record why")
-        print("in timeline.md and re-run `dump`.")
+        print("in docs/timeline.md and re-run `dump`.")
         return 1
     print(f"\n{len(names)}/{len(names)} cases match stage for stage.")
     return 0

@@ -8818,7 +8818,11 @@ def write_hitsound_difficulty(source_path: str | os.PathLike[str], other_paths=(
 
 #: Overtone's own samples (assets/samples.py makes them): what plays where a
 #: map names no custom sample. osu!'s own defaults are not Overtone's to ship.
-DEFAULT_SAMPLE_DIR = Path(__file__).resolve().parent / "assets" / "samples"
+#: Source checkout: the engine lives in ``python/``, data at the repo root.
+#: Frozen build: modules sit beside the data inside the contents folder.
+_HERE = Path(__file__).resolve().parent
+ROOT = _HERE if getattr(sys, "frozen", False) else _HERE.parent
+DEFAULT_SAMPLE_DIR = ROOT / "assets" / "samples"
 #: What a beatmap folder's samples may be, in the order osu! looks for them.
 SAMPLE_EXTENSIONS = (".wav", ".ogg", ".mp3")
 #: osu!'s floor: a sound is never quieter than this, whatever the map says.
@@ -10296,13 +10300,12 @@ class TimingAnalyzerApp:
         """
         try:
             import os
-            here = os.path.dirname(os.path.abspath(__file__))
-            png = os.path.join(here, "assets", "logo.png")
+            png = os.path.join(str(ROOT), "assets", "logo.png")
             if os.path.isfile(png):
                 self._icon = self.tk.PhotoImage(file=png)  # kept: Tk drops it otherwise
                 self.root.iconphoto(True, self._icon)
                 return
-            ico = os.path.join(here, "assets", "logo.ico")
+            ico = os.path.join(str(ROOT), "assets", "logo.ico")
             if os.path.isfile(ico):
                 self.root.iconbitmap(ico)
         except Exception:

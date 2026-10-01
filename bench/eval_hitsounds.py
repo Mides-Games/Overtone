@@ -39,6 +39,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT))
 
 import overtone as ov

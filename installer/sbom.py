@@ -31,7 +31,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 SBOM = HERE / "sbom.json"
 #: (lock file, shipped in the tree). Runtime first, so it wins on overlap.
-LOCKS = ((ROOT / "requirements.lock", True),
+LOCKS = ((ROOT / "python" / "requirements.lock", True),
          (HERE / "requirements-build.lock", False))
 
 

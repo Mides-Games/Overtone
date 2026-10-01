@@ -14,7 +14,7 @@ and drops rows for files that are gone. Deleting the database loses nothing
 but the time of the next scan, which is why a damaged one is rebuilt rather
 than repaired.
 
-The schema is ``library.sql`` beside this file. Its ``schema-version`` line
+The schema is ``python/library.sql``. Its ``schema-version`` line
 is ``SCHEMA_VERSION`` here, stored in ``PRAGMA user_version``; a database
 from a newer schema is refused, never rewritten.
 """
@@ -26,6 +26,7 @@ import math
 import os
 import re
 import sqlite3
+import sys
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -36,7 +37,11 @@ from pathlib import Path
 import overtone as ta
 import overtone_rust
 
-SCHEMA_PATH = Path(__file__).resolve().with_name("library.sql")
+#: Source checkout: the engine lives in ``python/``, data at the repo root.
+#: Frozen build: modules sit beside the data inside the contents folder.
+_HERE = Path(__file__).resolve().parent
+ROOT = _HERE if getattr(sys, "frozen", False) else _HERE.parent
+SCHEMA_PATH = ROOT / "python" / "library.sql"
 #: The version of ``library.sql`` this code reads and writes.
 SCHEMA_VERSION = 2
 #: ``MIGRATIONS[n]`` takes a version ``n - 1`` database to version ``n``, as

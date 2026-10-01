@@ -9,7 +9,7 @@
 # accuracy-critical path. Install from this file before trusting a comparison
 # across machines:
 #
-#   python -m pip install -r requirements.lock
+#   python -m pip install -r python/requirements.lock
 #
 # Platform: Windows 11 26200, CPython 3.14.4, x86_64.
 certifi==2026.7.22

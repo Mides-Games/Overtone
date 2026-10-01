@@ -69,7 +69,7 @@ def wheel_problems() -> list[str]:
     installed = {_canonical(dist.metadata["Name"]): dist.version
                  for dist in metadata.distributions()}
     problems = []
-    for lock in (release.ROOT / "requirements.lock", HERE / "requirements-build.lock"):
+    for lock in (release.ROOT / "python" / "requirements.lock", HERE / "requirements-build.lock"):
         for name, version in _pins(lock).items():
             if installed.get(name) != version:
                 problems.append(f"{name} {installed.get(name, 'missing')}, "

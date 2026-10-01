@@ -52,8 +52,8 @@ def analysis(script: str) -> Analysis:
     )
 
 
-app = analysis("overtone_web.py")
-cli = analysis("overtone.py")
+app = analysis("python/overtone_web.py")
+cli = analysis("python/overtone.py")
 
 app_exe = EXE(
     PYZ(app.pure), app.scripts, [],

@@ -17,7 +17,7 @@ A igualdad de condiciones gana la **mejor**, la **más recomendada** o la
 - **Más solicitada:** la que más pesa para quien lo usa.
 
 Si ninguna destaca, manda el orden del roadmap. La elección y el criterio que
-la decidió se anotan (en el cuerpo del commit o en `timeline.md`), para que
+la decidió se anotan (en el cuerpo del commit o en `docs/timeline.md`), para que
 se pueda auditar.
 
 ## 1. Programar
@@ -36,7 +36,7 @@ cargo test --workspace                                   # Rust, todo
 cargo run --release -q -p overtone-bench -- golden      # paridad vs v3
 cargo run --release -q -p overtone-bench -- density     # hints F-11
 cargo run --release -q -p overtone-bench -- elastic     # rampas + deriva
-.venv/Scripts/python.exe -m unittest test_overtone
+.venv/Scripts/python.exe -m unittest discover -s tests
 .venv/Scripts/python.exe bench/benchmark.py
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot
 .venv/Scripts/python.exe bench/golden.py check
@@ -55,10 +55,16 @@ Si el paso 1 no trae su test (unitario o gate), volver al paso 1.
 
 ## 4. Commitear
 
+El formato vive en `AGENTS.md` y no se negocia: commits, ramas y títulos de
+PR en **inglés**, asunto `type(scope/task): short imperative description`
+(e.g. `fix(engine/octave): prefer the mapped pulse on ties`), tipos
+`feature · fix · refactor · perf · bench · test · docs · chore`, rama
+`type/short-topic` (e.g. `chore/repo-layout`).
+
 - Rama primero si el trabajo está en curso; nunca sobre la rama base a medias.
-- Mensaje imperativo corto + cuerpo con el **porqué** (el diff ya dice el
+- Asunto en una línea + cuerpo con el **porqué** (el diff ya dice el
   qué). Sin `Co-Authored-By`, sin firmas de herramienta.
-- El cuerpo cita la medición del paso 3.
+- El cuerpo cita la medición del paso 3 y los gates corridos con su resultado.
 - Antes de cerrar el commit: todo `.rs` nuevo tiene su línea `mod` y todo
   cambio necesario está staged (`git status` + compilar con solo lo staged
   en la cabeza). Dos commits incompletos por esta causa bastan para la regla.
@@ -83,3 +89,38 @@ Si no cambió nada, se omite sin culpa.
 
 Actualizar la tabla de `docs/07-roadmap.md` si una fase cambió de estado, y
 volver al paso 0.
+
+## Definición de hecho
+
+Una tarea está hecha cuando cumple todo esto, sin excepciones:
+
+1. Los gates del paso 2 están verdes con números, no con sensaciones.
+2. `bench/facts.py` no reporta discrepancias (los conteos que los docs
+   afirman siguen siendo los del código).
+3. `docs/timeline.md` tiene su entrada con las secciones Changed / Fixed /
+   Hardening / Measured, y `Rejected / tried and dropped` si se abandonó un
+   enfoque (el razonamiento es lo caro; se escribe una vez y se hereda siempre).
+4. `docs/07-roadmap.md` refleja el estado real de las fases tocadas.
+5. El diff pasó la auditoría del paso 5 sin pendientes.
+
+## Pull requests
+
+Sin bots ni plantillas automáticas: los checks corren en local. Cada PR
+hecho con `gh` responde tres cosas y trae la checklist marcada:
+
+- Qué cambió y por qué (una o dos frases; el diff ya dice el cómo).
+- Gates corridos con su resultado (comando + números, pega la salida).
+- Checklist:
+  - [ ] un cambio lógico por commit, formato `type(scope/task): …` en inglés
+  - [ ] gates verdes + `bench/facts.py` ok
+  - [ ] entrada en `docs/timeline.md` (o "sin entrada porque …")
+  - [ ] roadmap actualizado si cambió una fase
+
+## Documentos nuevos
+
+- Los docs de diseño llevan el siguiente número libre (`docs/NN-nombre.md`) y
+  una fila en la tabla de documentación del `README.md`.
+- Los docs de proceso (rutinas, plantillas) van sin número en `docs/` con
+  nombre en minúsculas (`workflow.md`, `timeline.md`).
+- `docs/timeline.md` es el changelog: no crear un `CHANGELOG.md` aparte que
+  haya que mantener en paralelo.

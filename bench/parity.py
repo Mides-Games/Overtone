@@ -43,6 +43,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
+sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT))
 
 import overtone as ov  # noqa: E402
@@ -116,7 +117,7 @@ def tests() -> dict[str, dict[str, set[str]]]:
     one behaviour either way, and the alternative — a per-test line in the
     manifest for every fixture-driven test — is a second copy of the test file.
     """
-    tree = ast.parse((ROOT / "test_overtone.py").read_text(encoding="utf-8"))
+    tree = ast.parse((ROOT / "tests" / "test_overtone.py").read_text(encoding="utf-8"))
     pool = _engine_symbols(tree)
     helpers: dict[str, set[str]] = {}
     for node in tree.body:

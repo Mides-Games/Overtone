@@ -45,6 +45,7 @@ TIMEOUT_S = 300
 POLL_S = 0.05
 
 _HERE = Path(__file__).resolve().parent
+_ROOT = _HERE.parent
 _EXE = "overtone-cli.exe" if os.name == "nt" else "overtone-cli"
 
 
@@ -75,8 +76,8 @@ def candidates() -> list[Path]:
     app), then the workspace's release and debug builds."""
     found = [Path(os.environ[CLI_ENV])] if os.environ.get(CLI_ENV) else []
     return found + [_HERE / _EXE,
-                    _HERE / "target" / "release" / _EXE,
-                    _HERE / "target" / "debug" / _EXE]
+                    _ROOT / "target" / "release" / _EXE,
+                    _ROOT / "target" / "debug" / _EXE]
 
 
 def find_cli(search: Iterable[Path] | None = None) -> Path | None:

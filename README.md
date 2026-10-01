@@ -237,15 +237,15 @@ Windows, Python 3.14:
 
 ```bash
 python -m venv .venv
-.venv/Scripts/python.exe -m pip install -r requirements.lock
+.venv/Scripts/python.exe -m pip install -r python/requirements.lock
 ```
 
 Then double-click **`Overtone.bat`**, or from a terminal:
 
 ```bash
-.venv/Scripts/python.exe overtone_web.py [audio-file]   # the app (Edge WebView2 window)
-.venv/Scripts/python.exe overtone.py                    # the classic Tk window
-.venv/Scripts/python.exe overtone.py song.wav --stats   # command line
+.venv/Scripts/python.exe python/overtone_web.py [audio-file]   # the app (Edge WebView2 window)
+.venv/Scripts/python.exe python/overtone.py                    # the classic Tk window
+.venv/Scripts/python.exe python/overtone.py song.wav --stats   # command line
 .venv/Scripts/python.exe installer/build.py             # the MSI and portable ZIP, in dist/
 ```
 
@@ -317,7 +317,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # 803 tests
+.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # 803 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage
@@ -395,35 +395,35 @@ timed decoding and attack detection only.
 | [13 · Audit backlog](docs/13-audit-backlog.md) | The audit's findings, every one closed |
 | [14 · Other languages](docs/14-other-languages.md) | Which features another language serves better, and how they stay in step |
 | [15 · Hitsound plan](docs/15-hitsound-plan.md) | What hitsounds need first, and what ships in which order |
-| [timeline.md](timeline.md) | Engineering log, with what was tried and dropped |
+| [timeline](docs/timeline.md) | Engineering log, with what was tried and dropped |
+| [workflow](docs/workflow.md) | The per-task routine: program, test, measure, commit, audit |
 
 ---
 
 ## Development
 
 ```
-overtone.py               Python engine + classic Tk window + CLI
-overtone_web.py           the app: pywebview window + JSON bridge to the engine
-overtone_library.py       the library index: your Songs folder in SQLite
-library.sql               the index's schema
+python/                   Python v3 engine + classic Tk window + CLI + web bridge + library
+  overtone_library.py       the library index: your Songs folder in SQLite
+tests/                    engine, I/O, classic-window and bridge tests (+ fixtures)
 app/                      the app's frontend (HTML/CSS/JS, nothing from the network)
 Overtone.bat              double-click launcher
 installer/                the MSI and portable ZIP: PyInstaller spec, WiX source,
                           the one-line build and its smoke test
-test_overtone.py          engine, I/O and classic-window tests
-test_overtone_web.py      bridge tests (never touch your real config)
 bench/                    benchmark, gates, golden vectors
 crates/                   Rust workspace: core, audio, dsp, tempo, hitsound, bench, cli
 profiles/                 hitsound profiles as JSON
 proto/                    prototypes measured before any port
 assets/                   generated logo, icon and Overtone's own hitsound samples
-docs/                     design documents and plans
+docs/                     design documents, plans, workflow routine, timeline
 ```
 
-Conventions: one logical change per commit, each fix with a test that fails on the old
-code; no accuracy or speed claim without a measurement in the same commit; `.osu` writes
-atomic and backed up; offline only; no GitHub Actions — every gate is a local one-liner.
-The routine is in [WORKFLOW.md](WORKFLOW.md), the rules in [CLAUDE.md](CLAUDE.md).
+Conventions: one logical change per commit, commits and branches in English
+as `type(scope/task): short imperative description` (see `AGENTS.md`); each
+fix with a test that fails on the old code; no accuracy or speed claim
+without a measurement in the same commit; `.osu` writes atomic and backed
+up; offline only; no GitHub Actions — every gate is a local one-liner.
+The routine is in [docs/workflow.md](docs/workflow.md), the rules in [CLAUDE.md](CLAUDE.md).
 
 ---
 

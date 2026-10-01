@@ -37,7 +37,7 @@ What the script does, in order, each step timed and logged to `build\logs`:
    locks are what was measured), or if a tool is missing, naming it;
 2. `cargo build --release -p overtone-cli`;
 3. PyInstaller, `installer\overtone.spec`: two executables over one `_internal`. The app's
-   files (`app\`, `assets\logo.*`, `assets\samples\`, `profiles\`, `library.sql`, listed
+   files (`app\`, `assets\logo.*`, `assets\samples\`, `profiles\`, `python\library.sql`, listed
    once in `installer\release.py`) land at their repository paths, which is where the code
    looks for them; the Rust engine lands beside the modules, where `overtone_rust` looks,
    and beside the MSVC runtime it links;
@@ -222,7 +222,7 @@ Overtone\
 └─ _internal\                   # PyInstaller's contents folder
    ├─ python314.dll, base_library.zip, VCRUNTIME140*.dll …
    ├─ numpy\ scipy\ librosa\ numba\ llvmlite\ sklearn\ webview\ pythonnet\ …
-   ├─ app\  assets\  profiles\  library.sql     # the app's files, at their repo paths
+   ├─ app\  assets\  profiles\  python\library.sql  # the app's files, at their repo paths
    └─ overtone-cli.exe          # the Rust engine, where overtone_rust finds it
 ```
 

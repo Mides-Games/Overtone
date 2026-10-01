@@ -42,6 +42,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent / "python"))
 sys.path.insert(0, str(HERE.parent))
 
 from eval_hitsounds import (CLAP_SLOTS, FINISH_SLOTS, MIN_CLAPS, MIN_FINISHES,

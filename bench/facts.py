@@ -29,8 +29,8 @@ def rust_tests() -> int:
 
 
 def python_tests() -> tuple[int, int]:
-    count = [len(re.findall(r"^\s+def test_", (ROOT / name).read_text(encoding="utf-8"), re.M))
-             for name in ("test_overtone.py", "test_overtone_web.py")]
+    count = [len(re.findall(r"^\s+def test_", (ROOT / "tests" / name).read_text(encoding="utf-8"), re.M))
+              for name in ("test_overtone.py", "test_overtone_web.py")]
     return count[0], count[1]
 
 
@@ -52,9 +52,9 @@ def library_schema() -> tuple[int | None, int | None]:
     """The schema version library.sql states, and the one overtone_library.py
     reads. Two languages describe one database; this is where they meet."""
     sql = re.search(r"^--\s*schema-version:\s*(\d+)",
-                    (ROOT / "library.sql").read_text(encoding="utf-8"), re.M)
+                    (ROOT / "python" / "library.sql").read_text(encoding="utf-8"), re.M)
     code = re.search(r"^SCHEMA_VERSION = (\d+)",
-                     (ROOT / "overtone_library.py").read_text(encoding="utf-8"), re.M)
+                     (ROOT / "python" / "overtone_library.py").read_text(encoding="utf-8"), re.M)
     return (int(sql.group(1)) if sql else None), (int(code.group(1)) if code else None)
 
 

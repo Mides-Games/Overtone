@@ -3,16 +3,35 @@
 Repository conventions for any AI agent or contributor working here.
 `AGENTS.md` is a symlink-equivalent of this file — keep the two identical.
 
-## Commits and pull requests
+## Commits, branches and pull requests
+
+Commits, branch names and PR titles are in **English**. Code, comments and
+commit messages are English; only the app's own UI strings stay bilingual
+(EN/ES).
 
 - **Do not add `Co-Authored-By` trailers.** No AI attribution lines, no
   `Generated with …` footers, no tool signatures in commit messages or PR descriptions.
   Commits are authored by the repository owner.
-- Commit messages: a short imperative subject, then a body explaining **why**, not what.
-  The diff already says what. Match the existing style — see
-  `v3.0: least-squares grid engine — exact BPM and offsets`.
+- Commit subject: `type(scope/task): short imperative description`, e.g.
+  `fix(engine/octave): prefer the mapped pulse on ties`,
+  `feature(app/export): add gain option to the click track`.
+  Types: `feature` (new capability), `fix` (bug fix), `refactor` (same
+  behaviour, clearer structure), `perf` (faster — with numbers), `bench`
+  (benchmark, gates or golden vectors), `test` (tests only), `docs`
+  (documentation only), `chore` (layout, dependencies, tooling).
+  Scope is the area (`engine`, `app`, `bench`, `rust`, `hitsound`, `docs`,
+  `repo`) plus the task after a slash. Description in lowercase, imperative,
+  no trailing period, one line.
+- Body explains **why**, not what. The diff already says what. A `perf` or
+  accuracy claim names its measurement; a gate change names the gates run
+  and their result.
 - One logical change per commit. A DSP change and a UI change are two commits.
 - Never commit on the default branch when the change is in progress; branch first.
+  Branch names share the subject's shape without the description:
+  `type/short-topic`, e.g. `chore/repo-layout`, `fix/octave-hint`.
+- PRs go through `gh`. The description answers three things: what changed,
+  why, and which gates were run with what result. The checklist and the
+  definition of done live in `docs/workflow.md`.
 
 ## CI
 
@@ -25,7 +44,7 @@ Repository conventions for any AI agent or contributor working here.
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest test_overtone test_overtone_web   # all pass (803 on 2026-09-30)
+.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (803 on 2026-09-30)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -48,7 +67,7 @@ Every gate after the benchmark checks something the benchmark cannot see. `bpm-s
 **octave** — the benchmark normalizes it away, so a change there could halve every BPM
 and all 24 rows would stay green. `golden.py check` compares **stage by stage**, so a
 divergence names its own stage instead of surfacing as a mystery at the output. When a
-reading changes on purpose, say why in `timeline.md` and re-run with `--update` / `dump`;
+reading changes on purpose, say why in `docs/timeline.md` and re-run with `--update` / `dump`;
 never re-baseline to make a red gate green.
 
 Phase 10 work is also measured on **Corpus B**: 20 hand-timed ranked maps from the local
@@ -105,17 +124,17 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
 ## Engineering rules
 
 1. **Never claim a performance or accuracy improvement without a measurement in the same
-   commit.** The repo has a benchmark; use it. `timeline.md` records numbers, including
+   commit.** The repo has a benchmark; use it. `docs/timeline.md` records numbers, including
    "not measured" when that is the truth.
 2. **Do not invent precision.** Report confidence, state uncertainty, and refuse rather
    than guess. White noise must not return a BPM.
-3. **Keep `timeline.md` current.** One entry per release, with the same sections:
+3. **Keep `docs/timeline.md` current.** One entry per release, with the same sections:
    Changed / Fixed / Hardening / Measured, plus `Rejected / tried and dropped` whenever an
    approach was abandoned — the reasoning is the expensive part.
-4. **The v3 Python engine stays runnable** for as long as the comparison is meaningful. It
-   is the only way "equal or better" can be audited. It stays `overtone.py` at the root
-   while the app runs on it; it moves to `reference/python-v3` once the Rust engine is the
-   default and the osu! I/O is ported (deferred 2026-09-24, see the roadmap's Phase 0).
+4. **The v3 Python engine stays runnable** in `python/` for as long as the
+   comparison is meaningful. It is the only way "equal or better" can be audited.
+   A copy in `reference/python-v3` stays deferred (2026-09-24, see the roadmap's
+   Phase 0): it would keep changing while v3 is the app's default engine.
 5. **`.osu` writes are atomic, backed up, and never overwrite an existing `.bak`.**
    A field the user did not ask to change comes out byte-identical, CRLF included.
 6. Offline only. No network calls, no telemetry, no update checks, no external APIs.
@@ -125,21 +144,30 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
 
 ## Layout
 
+The root holds almost nothing on purpose: `README.md`, the launcher
+(`Overtone.bat`), the workspace (`Cargo.toml`, `Cargo.lock`), the agent
+rules (`AGENTS.md`, `CLAUDE.md` — identical) and the Git plumbing
+(`.gitignore`, `.gitattributes`). Everything else lives in a folder:
+
 ```
-overtone.py               v3 engine, osu! I/O, classic Tk GUI + CLI (the app's default)
-overtone_web.py           web shell host: pywebview window + JSON bridge to the engine
-overtone_rust.py          the v4 engine through overtone-cli, as v3's Analysis (opt-in)
-overtone_library.py       the library index: a Songs folder in SQLite, searched (FTS5)
-library.sql               the index's schema, versioned; facts.py checks the version
+python/                   v3 engine, osu! I/O, classic Tk GUI + CLI (the app's default)
+  overtone.py               engine, classic window and command line
+  overtone_web.py           web shell host: pywebview window + JSON bridge to the engine
+  overtone_rust.py          the v4 engine through overtone-cli, as v3's Analysis (opt-in)
+  overtone_library.py       the library index: a Songs folder in SQLite, searched (FTS5)
+  library.sql               the index's schema, versioned; facts.py checks the version
+  requirements.txt          lower bounds; requirements.lock pins the measured baseline
+tests/                    Python suite (run from the root with unittest discover)
+  test_overtone.py          engine, I/O and classic-window tests
+  test_overtone_web.py      web bridge tests (never touch the real config)
+  fixtures/                 hand-timed samples the tests read
 app/                      web shell frontend (HTML/CSS/JS, no network)
 Overtone.bat              double-click launcher
 installer/                the MSI and portable ZIP: PyInstaller spec, WiX source, the
                           one-line build (installer/build.py) and its smoke test
-test_overtone.py          engine, I/O and classic-window tests
-test_overtone_web.py      web bridge tests (never touch the real config)
+profiles/                 hitsound profiles as JSON
 assets/                   generated logo (assets/logo.py), window icon and Overtone's own
                           hitsound samples (assets/samples.py)
-fixtures/                 hand-timed samples the tests read
 bench/benchmark.py        synthetic accuracy harness, exact ground truth
 bench/gates.py            octave snapshot, density-change and measure gates
                           (the things the accuracy benchmark cannot see)
@@ -162,7 +190,6 @@ bench/genre_corpus.py     where each genre puts its hitsounds, measured from the
 bench/genre_corpus.json   user's Songs folder; writes profiles/<genre>.json
 bench/corpus_b.py         Corpus B: the engine against 20 hand-timed ranked maps (Phase 10)
 bench/corpus_b.json       its manifest: Songs folders, files and SHA-1s, never the audio
-requirements.lock         exact versions behind the measured baseline
 proto/                    Python prototypes of the riskiest v4 algorithms, and
                           band_lanes.py, which prints the band flux as
                           `overtone-bench bands` does so the two can be diffed,
@@ -179,16 +206,18 @@ crates/                   the v4 Rust workspace
 docs/                     audit, stack evaluation, architecture, UI, DSP, hitsounds,
                           roadmap, ML evaluation, naming, precision plan, MSI
                           distribution, comfort features, audit backlog,
-                          other languages, hitsound plan
-WORKFLOW.md               the per-task routine: program, test, measure, commit, audit
-timeline.md               engineering log
+                          other languages, hitsound plan, workflow, timeline
+  workflow.md               the per-task routine: program, test, measure, commit, audit
+  timeline.md               engineering log
 ```
 
 ## Environment notes
 
 - Python reference runs in `.venv` (Python 3.14; numpy 2.5.3, scipy 1.18.1, librosa 1.0.0,
-  numba 0.67.0). `requirements.txt` has lower bounds only — pin a `requirements.lock`
-  before trusting a benchmark comparison across machines.
+  numba 0.67.0). `python/requirements.txt` has lower bounds only — pin a `python/requirements.lock`
+  before trusting a benchmark comparison across machines. The suite runs from the
+  repository root (`python -m unittest discover -s tests`); `bench/` and `tests/`
+  put `python/` on `sys.path`, so the engine is imported, never copied.
 - Rust: rustup 1.29 / rustc 1.98.1 on `x86_64-pc-windows-msvc`, with Visual Studio
   Build Tools 2022 17.14 supplying the linker. `Cargo.lock` is committed.
 - The local folder is `Overtone-master`, matching the `<Name>-master` convention used by

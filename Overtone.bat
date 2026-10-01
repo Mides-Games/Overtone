@@ -9,4 +9,4 @@ if not exist "%PY%" (
     pause
     exit /b 1
 )
-start "Overtone" "%PY%" "%HERE%overtone_web.py" %*
+start "Overtone" "%PY%" "%HERE%python\overtone_web.py" %*

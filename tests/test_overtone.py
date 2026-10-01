@@ -12,6 +12,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import numpy as np
 
 from overtone import (
@@ -2603,7 +2606,7 @@ class SwingLaneTests(unittest.TestCase):
 
     def test_the_benchmark_fixtures_read_their_truth(self) -> None:
         # bench/benchmark.py places each off-beat hat at step / 2 + swing * step
-        golden = Path(__file__).resolve().parent / "bench" / "golden"
+        golden = Path(__file__).resolve().parent.parent / "bench" / "golden"
         for case, truth in (("swing-120", 0.58), ("shuffle-96", 0.66), ("edm-174", None)):
             vector = json.loads((golden / f"{case}.json").read_text(encoding="utf-8"))
             points = [TimingPoint(p["offset_ms"], p["bpm"], p["confidence"], 0)
@@ -6181,7 +6184,7 @@ class HitsoundSampleTests(unittest.TestCase):
     def test_the_committed_samples_are_what_the_generator_makes(self):
         import importlib.util
         import wave
-        spec = importlib.util.spec_from_file_location("samples", Path(__file__).resolve().parent / "assets" / "samples.py")
+        spec = importlib.util.spec_from_file_location("samples", Path(__file__).resolve().parent.parent / "assets" / "samples.py")
         samples = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(samples)
         with tempfile.TemporaryDirectory() as tmp:
@@ -6199,7 +6202,7 @@ class HitsoundSampleTests(unittest.TestCase):
         # Looped end to start, the jump is no bigger than the largest jump
         # between two neighbours inside the file: nothing clicks.
         import wave
-        slides = sorted((Path(__file__).resolve().parent / "assets" / "samples").glob("*-slider*.wav"))
+        slides = sorted((Path(__file__).resolve().parent.parent / "assets" / "samples").glob("*-slider*.wav"))
         self.assertEqual(len(slides), 6)
         for path in slides:
             with self.subTest(sample=path.name), wave.open(str(path)) as w:
@@ -6544,7 +6547,7 @@ class HitsoundEvalTests(unittest.TestCase):
         import importlib.util
         spec = importlib.util.spec_from_file_location(
             "eval_hitsounds",
-            Path(__file__).resolve().parent / "bench" / "eval_hitsounds.py")
+            Path(__file__).resolve().parent.parent / "bench" / "eval_hitsounds.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
@@ -6610,7 +6613,7 @@ class HitsoundProposalEvalTests(unittest.TestCase):
         import importlib.util
         spec = importlib.util.spec_from_file_location(
             "eval_proposals",
-            Path(__file__).resolve().parent / "bench" / "eval_proposals.py")
+            Path(__file__).resolve().parent.parent / "bench" / "eval_proposals.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
@@ -6740,7 +6743,7 @@ class HitsoundProposalEvalTests(unittest.TestCase):
         # matches a candidate: a silent row. And every class must appear.
         classes = {"kick", "snare", "clap", "hat_closed", "hat_open", "tom", "cymbal", "other",
                    "ride", "bass", "guitar", "keys", "vocal"}
-        folder = Path(__file__).resolve().parent / "profiles"
+        folder = Path(__file__).resolve().parent.parent / "profiles"
         shipped = sorted(folder.glob("*.json"))
         self.assertIn(folder / "balanced.json", shipped)
         for path in shipped:
@@ -6767,7 +6770,7 @@ class HitsoundProposalEvalTests(unittest.TestCase):
         if cli is None:
             self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
         ev = self._eval()
-        folder = Path(__file__).resolve().parent / "profiles"
+        folder = Path(__file__).resolve().parent.parent / "profiles"
         lines = [f"256,192,{500 + 500 * k},{5 if k % 4 == 0 else 1},0,0:0:0:0:" for k in range(20)]
         with tempfile.TemporaryDirectory() as tmp:
             audio, osu = Path(tmp) / "drums.wav", Path(tmp) / "drums.osu"
@@ -7837,7 +7840,7 @@ class LogoIconTests(unittest.TestCase):
     @staticmethod
     def _entries():
         import struct
-        data = (Path(__file__).resolve().parent / "assets" / "logo.ico").read_bytes()
+        data = (Path(__file__).resolve().parent.parent / "assets" / "logo.ico").read_bytes()
         _, kind, count = struct.unpack("<HHH", data[:6])
         entries = {}
         for k in range(count):
@@ -7886,8 +7889,11 @@ class TaskbarIdentityTests(unittest.TestCase):
                 "p = ctypes.c_wchar_p()\n"
                 "ctypes.windll.shell32.GetCurrentProcessExplicitAppUserModelID(ctypes.byref(p))\n"
                 "print(ok, p.value)\n")
+        env = dict(os.environ,
+                   PYTHONPATH=str(Path(__file__).resolve().parent.parent / "python"))
         out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
-                             cwd=str(Path(__file__).resolve().parent), timeout=120)
+                             cwd=str(Path(__file__).resolve().parent), timeout=120,
+                             env=env)
         self.assertEqual(out.stdout.split(), ["True", "Overtone.TimingWorkbench"], out.stderr)
 
 
@@ -8422,7 +8428,7 @@ class FixtureManifestTests(unittest.TestCase):
     def _fx():
         import importlib.util
         spec = importlib.util.spec_from_file_location(
-            "fixtures", Path(__file__).resolve().parent / "bench" / "fixtures.py")
+            "fixtures", Path(__file__).resolve().parent.parent / "bench" / "fixtures.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
@@ -8434,7 +8440,7 @@ class FixtureManifestTests(unittest.TestCase):
 
     def test_every_python_case_is_listed_with_the_command_that_renders_it(self) -> None:
         import sys
-        bench = str(Path(__file__).resolve().parent / "bench")
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
         if bench not in sys.path:
             sys.path.insert(0, bench)
         import benchmark as bm
@@ -8451,7 +8457,7 @@ class FixtureManifestTests(unittest.TestCase):
 
     def test_golden_is_read_from_the_committed_vectors(self) -> None:
         listed = self._fx().derive()
-        vectors = {p.stem for p in (Path(__file__).resolve().parent / "bench" / "golden")
+        vectors = {p.stem for p in (Path(__file__).resolve().parent.parent / "bench" / "golden")
                    .glob("*.json")}
         self.assertEqual({n for n, e in listed.items() if e["golden"]}, vectors)
         # one measure case has no vector on purpose; saying otherwise here
@@ -8499,7 +8505,7 @@ class PerfGateTests(unittest.TestCase):
     def _gates():
         import importlib.util
         spec = importlib.util.spec_from_file_location(
-            "gates", Path(__file__).resolve().parent / "bench" / "gates.py")
+            "gates", Path(__file__).resolve().parent.parent / "bench" / "gates.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
@@ -8537,7 +8543,7 @@ class PerfGateTests(unittest.TestCase):
     def test_every_pinned_case_names_a_fixture_and_an_engine(self) -> None:
         g = self._gates()
         snapshot = json.loads(
-            (Path(__file__).resolve().parent / "bench" / "perf_snapshot.json")
+            (Path(__file__).resolve().parent.parent / "bench" / "perf_snapshot.json")
             .read_text(encoding="utf-8"))
         self.assertEqual(snapshot["format"], g.PERF_FORMAT)
         self.assertEqual(sorted(snapshot["cases"]), sorted(g.PERF_CASES))
@@ -8558,7 +8564,7 @@ class CorpusBScoringTests(unittest.TestCase):
     def _cb():
         import importlib.util
         spec = importlib.util.spec_from_file_location(
-            "corpus_b", Path(__file__).resolve().parent / "bench" / "corpus_b.py")
+            "corpus_b", Path(__file__).resolve().parent.parent / "bench" / "corpus_b.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
@@ -8720,7 +8726,7 @@ class ParityGateTests(unittest.TestCase):
     def _parity():
         import importlib.util
         spec = importlib.util.spec_from_file_location(
-            "parity", Path(__file__).resolve().parent / "bench" / "parity.py")
+            "parity", Path(__file__).resolve().parent.parent / "bench" / "parity.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
@@ -8841,7 +8847,7 @@ class GenreKitTests(unittest.TestCase):
     def _syn():
         import importlib.util
         spec = importlib.util.spec_from_file_location(
-            "samples", Path(__file__).resolve().parent / "assets" / "samples.py")
+            "samples", Path(__file__).resolve().parent.parent / "assets" / "samples.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
@@ -8945,7 +8951,7 @@ class InstallerSbomTests(unittest.TestCase):
     def _sbom():
         import importlib.util
         spec = importlib.util.spec_from_file_location(
-            "sbom", Path(__file__).resolve().parent / "installer" / "sbom.py")
+            "sbom", Path(__file__).resolve().parent.parent / "installer" / "sbom.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
@@ -9004,7 +9010,7 @@ class InstallerSbomTests(unittest.TestCase):
     def test_the_committed_inventory_covers_both_locks(self) -> None:
         import json
         sbom = self._sbom()
-        root = Path(__file__).resolve().parent
+        root = Path(__file__).resolve().parent.parent
         committed = json.loads((root / "installer" / "sbom.json")
                                .read_text(encoding="utf-8"))
         fresh = {"format": 1, "packages": {}}

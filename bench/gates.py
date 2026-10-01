@@ -45,6 +45,7 @@ from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -161,7 +162,7 @@ def bpm_snapshot(names: list[str], audio_dir: Path, engine: str, update: bool) -
         print(f"\n{len(failures)} case(s) changed their reading:")
         for line in failures:
             print(f"  {line}")
-        print("\nIf a change is intended, say why in timeline.md and re-run with --update.")
+        print("\nIf a change is intended, say why in docs/timeline.md and re-run with --update.")
         return 1
     print(f"\n{len(names)}/{len(names)} readings unchanged.")
     return 0

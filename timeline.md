@@ -17,6 +17,36 @@ later costs more than writing it down now.
 ---
 ---
 
+## v4.0.0-dev — 2026-09-30 · Corpus B refusals, explained; the tie-break stands
+
+### Measured
+
+- **Four Rust-only refusals are by design.** one-step-closer, vampires,
+  calm-down-juliet and day-to-story refuse with `no_coherent_pulse` (best
+  share 0.26–0.47); v3-precision refuses them too and the legacy fallback
+  answers (4, 22, 3 and 3 lines). Rust has no fallback by design and the app
+  falls back to v3, so there is nothing to fix.
+- **The Raven is refused by both** (Rust share 0.46): even the fallback's
+  periodicity gate fails (gap 0.024 under the 0.07 floor) on the 363-line
+  prog epic. Genuinely hard; assisted timing is the route.
+- **FREEDOM DiVE is understood to the stage.** Attacks identical (4,668 and
+  4,668), sections identical, global BPM identical (222.22), same 2,160 ms
+  bar grid with downbeats 69 bars apart -- and the points stage diverges: v3
+  keeps the opening 8-beat segment (807 ms, 222.22, matching the map's 4/4 at
+  222.22) while Rust keeps a mid-track 12-beat one (149.8 s, 333.33). The
+  three meter segments score 0.386/0.386/0.374, all under the 0.75 bar, and
+  12 µs of upstream phase noise moves the winning score 4.3e-4, flipping the
+  best-confidence survivor.
+
+### Rejected / tried and dropped
+
+- **Keeping the earliest weak survivor.** It repairs FREEDOM DiVE (BPM 0/1 →
+  1/1) but moves jungle-dragon 3/7 → 0/7 and noble 5/10 → 0/10 within
+  0.05 BPM on Corpus B (BPM −7 net): weak survivors are track-dependent
+  noise, and neither max nor earliest dominates. Reverted and re-verified;
+  the divergence stands as understood, not safely fixable by tie-break. A
+  real fix lives upstream (phase noise) or in a better confidence model.
+
 ## v4.0.0-dev — 2026-09-30 · The pinned wheels' licences, inventoried
 
 ### Changed

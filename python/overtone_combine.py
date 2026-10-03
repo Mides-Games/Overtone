@@ -377,6 +377,33 @@ def _sample_facts(beatmap: dict, timing_lines: list[str], folder: Path) -> tuple
     return facts, repairs
 
 
+def _in_range(objects: list[dict], span: dict) -> tuple[int, int]:
+    """How many objects the range keeps, and how many of those outlast it.
+
+    An object belongs to the range when it **starts** inside it. A spinner or
+    a hold that starts inside and ends past the end is kept and counted
+    separately: cutting it would change what the mapper wrote, extending the
+    range would change what the user asked for, so the builder says so and
+    leaves the choice where it belongs. A derived range cannot produce one —
+    the tail padding is longer than the gap it would need — which is why this
+    only shows up on a range somebody typed.
+    """
+    start, end = span["start_ms"], span["end_ms"]
+    kept = 0
+    overrun = 0
+    for obj in objects:
+        if obj.get("kind") == "unparsed":
+            continue
+        time = float(obj["time"])
+        if time < start - 1e-6 or time > end + 1e-6:
+            continue
+        kept += 1
+        finish = obj.get("end_time")
+        if finish is not None and float(finish) > end + 1e-6:
+            overrun += 1
+    return kept, overrun
+
+
 def _bookmarks(editor: dict) -> list[float]:
     marks: list[float] = []
     for text in str(editor.get("Bookmarks", "")).split(","):
@@ -561,6 +588,17 @@ def read_segment(osu_path: str | os.PathLike[str], *,
         objects, audio_facts, start_ms, end_ms, lead_ms, tail_ms)
     repairs.extend(range_repairs)
     refusals.extend(range_refusals)
+    kept, overrun = _in_range(beatmap.get("hitobjects", []), span)
+    objects.update({"in_range": kept, "ends_past_range": overrun})
+    if overrun:
+        repairs.append(_repair(
+            "objects_end_past_range",
+            f"{overrun} object(s) start inside the range and end after it; they are kept "
+            f"whole and their sound runs into the next segment.", count=overrun))
+    if kept == 0 and objects["played"]:
+        refusals.append({"code": "range_holds_nothing",
+                         "why": f"No object of the map starts inside "
+                                f"{span['start_ms']:.0f}-{span['end_ms']:.0f} ms."})
 
     approach = _number(difficulty, "ApproachRate")
     overall = _number(difficulty, "OverallDifficulty")
@@ -597,3 +635,175 @@ def read_segment(osu_path: str | os.PathLike[str], *,
         "repairs": repairs, "refusals": refusals, "usable": not refusals,
     })
     return segment
+
+
+# ---------------------------------------------------------------------------
+# The compilation document (Phase 25, row 25.1)
+# ---------------------------------------------------------------------------
+
+#: What a plan does when the caller says nothing. Every one of these can be
+#: given per plan, and the two paddings per segment.
+DEFAULT_SETTINGS: dict = {
+    #: Silence before the first segment's range, so a compilation does not
+    #: open on a hit. osu!'s own AudioLeadIn exists for the same reason.
+    "lead_in_ms": 2000.0,
+    #: Silence between two segments. Long enough for osu! to draw a break in,
+    #: which is row 25.11's job and this one's reason for a default this wide.
+    "gap_ms": 2000.0,
+    #: The padding a derived range keeps around the objects.
+    "lead_ms": DEFAULT_LEAD_MS,
+    "tail_ms": DEFAULT_TAIL_MS,
+    #: Refuse instead of repairing: one odd thing in one source and the plan
+    #: says no. For a build somebody else will play.
+    "strict": False,
+}
+
+#: Per-segment keys a source may carry beside its path. ``gap_before_ms``
+#: overrides the plan's gap for the junction in front of this segment, and
+#: ``gain_db`` is carried for row 25.6, which is the only thing that reads it.
+SOURCE_KEYS = ("osu", "audio", "start_ms", "end_ms", "lead_ms", "tail_ms",
+               "gap_before_ms", "gain_db")
+
+#: Ceilings, so a wrong plan fails before it writes. Past these the result is
+#: not a marathon map, it is a mistake with a long render time.
+MAX_TOTAL_MS = 2 * 60 * 60 * 1000.0
+MAX_TOTAL_OBJECTS = 200_000
+
+
+def _source_spec(source) -> dict:
+    """One entry of ``sources`` as a dict, whatever shape it arrived in."""
+    if isinstance(source, (str, os.PathLike)):
+        return {"osu": source}
+    if not isinstance(source, dict):
+        raise ValueError(f"A source is a path or a dict, not {type(source).__name__}.")
+    spec = dict(source)
+    unknown = sorted(set(spec) - set(SOURCE_KEYS))
+    if unknown:
+        raise ValueError(f"Unknown key(s) on a source: {', '.join(unknown)}. "
+                         f"Known: {', '.join(SOURCE_KEYS)}.")
+    if not spec.get("osu"):
+        raise ValueError("A source needs an 'osu' path.")
+    return spec
+
+
+def plan_compilation(sources, settings: dict | None = None) -> dict:
+    """Several sources as one ordered, placed, checked compilation document.
+
+    The order given is the order built — an order *proposed* is row 25.19, and
+    it will propose, not apply. Each segment keeps its own range; the plan
+    says where that range lands in the output (``at_ms``) and what every
+    timestamp of that map moves by to get there (``shift_ms``).
+
+    **The shift is a whole number of milliseconds and the gap absorbs the
+    remainder.** osu!stable writes object times as integers, so a shift with a
+    fraction in it would turn every whole millisecond in a source into a
+    rounded one — a map's own snapping, lost to arithmetic nobody asked for.
+    Moving the junction by less than a millisecond instead costs nothing
+    anybody can hear.
+
+    What refuses the whole plan: a segment that refused itself, two segments
+    in different modes or with different mania key counts, a segment with no
+    song to cut, the ceilings above, and — under ``strict`` — any repair at
+    all. What does not: anything the reader could resolve, which comes back in
+    ``repairs`` with the segment it belongs to.
+
+    Plain JSON throughout, deliberately: the document is the thing a build is
+    resumed from and a report is written from, so it has to survive being
+    written to a file and read back without the sources.
+    """
+    chosen = {**DEFAULT_SETTINGS, **(settings or {})}
+    unknown = sorted(set(chosen) - set(DEFAULT_SETTINGS))
+    if unknown:
+        raise ValueError(f"Unknown setting(s): {', '.join(unknown)}. "
+                         f"Known: {', '.join(DEFAULT_SETTINGS)}.")
+    specs = [_source_spec(source) for source in sources]
+    if not specs:
+        raise ValueError("A compilation needs at least one source.")
+
+    segments: list[dict] = []
+    for spec in specs:
+        segment = read_segment(
+            spec["osu"], audio=spec.get("audio"),
+            start_ms=spec.get("start_ms"), end_ms=spec.get("end_ms"),
+            lead_ms=float(spec.get("lead_ms", chosen["lead_ms"])),
+            tail_ms=float(spec.get("tail_ms", chosen["tail_ms"])))
+        segment["gain_db"] = float(spec.get("gain_db") or 0.0)
+        segment["gap_before_ms"] = (None if spec.get("gap_before_ms") is None
+                                    else float(spec["gap_before_ms"]))
+        segments.append(segment)
+
+    refusals: list[dict] = []
+    repairs: list[dict] = []
+    for n, segment in enumerate(segments):
+        for repair in segment["repairs"]:
+            repairs.append({"segment": n, **repair})
+        for refusal in segment["refusals"]:
+            refusals.append({"segment": n, **refusal})
+        if segment["usable"] and segment["audio"]["path"] is None:
+            refusals.append({"segment": n, "code": "segment_without_audio",
+                             "why": f"{Path(segment['osu']).name} has no song to cut; "
+                                    f"a segment has to bring its own audio."})
+
+    modes = sorted({segment["mode"] for segment in segments})
+    if len(modes) > 1:
+        refusals.append({"segment": None, "code": "mode_mismatch",
+                         "why": "The sources are in different game modes ("
+                                + ", ".join(MODE_NAMES.get(m, str(m)) for m in modes)
+                                + "); one map holds one mode."})
+    keys = sorted({segment["keys"] for segment in segments
+                   if segment["mode"] == 3 and segment["keys"] is not None})
+    if len(keys) > 1:
+        refusals.append({"segment": None, "code": "keys_mismatch",
+                         "why": f"The mania sources want different key counts "
+                                f"({', '.join(str(k) for k in keys)}); one map holds one."})
+
+    # Placement. The cursor is where the next segment's range would start; the
+    # shift that gets it there is rounded, and ``at_ms`` follows the shift
+    # rather than the cursor, so the objects stay on whole milliseconds.
+    cursor = float(chosen["lead_in_ms"])
+    junctions: list[dict] = []
+    for n, segment in enumerate(segments):
+        gap = float(chosen["gap_ms"] if segment["gap_before_ms"] is None
+                    else segment["gap_before_ms"])
+        if n:
+            junctions.append({"after": n - 1, "before": n,
+                              "ends_ms": round(cursor, 3),
+                              "gap_ms": round(gap, 3),
+                              "starts_ms": round(cursor + gap, 3)})
+            cursor += gap
+        start = segment["range"]["start_ms"]
+        shift = float(round(cursor - start))
+        segment["shift_ms"] = shift
+        segment["at_ms"] = round(start + shift, 3)
+        segment["ends_at_ms"] = round(segment["at_ms"] + segment["range"]["duration_ms"], 3)
+        cursor = segment["at_ms"] + segment["range"]["duration_ms"]
+
+    totals = {
+        "segments": len(segments),
+        "duration_ms": round(cursor, 3),
+        "objects": sum(segment["objects"].get("in_range", 0) for segment in segments),
+        "reds": sum(segment["timing"]["reds"] for segment in segments),
+        "greens": sum(segment["timing"]["greens"] for segment in segments),
+        "songs": len({segment["audio"]["path"] for segment in segments
+                      if segment["audio"]["path"]}),
+    }
+    if totals["duration_ms"] > MAX_TOTAL_MS:
+        refusals.append({"segment": None, "code": "too_long",
+                         "why": f"The compilation would run "
+                                f"{totals['duration_ms'] / 60000.0:.0f} minutes, past the "
+                                f"{MAX_TOTAL_MS / 60000.0:.0f}-minute ceiling."})
+    if totals["objects"] > MAX_TOTAL_OBJECTS:
+        refusals.append({"segment": None, "code": "too_many_objects",
+                         "why": f"The compilation would hold {totals['objects']} objects, "
+                                f"past the {MAX_TOTAL_OBJECTS} ceiling."})
+    if chosen["strict"] and repairs:
+        refusals.append({"segment": None, "code": "strict_repairs",
+                         "why": f"Strict: {len(repairs)} repair(s) across "
+                                f"{len({r['segment'] for r in repairs})} segment(s), and "
+                                f"strict builds nothing it had to work around."})
+
+    return {"format": PLAN_FORMAT, "settings": chosen, "segments": segments,
+            "junctions": junctions, "totals": totals,
+            "mode": modes[0] if len(modes) == 1 else None,
+            "keys": keys[0] if len(keys) == 1 else None,
+            "repairs": repairs, "refusals": refusals, "usable": not refusals}

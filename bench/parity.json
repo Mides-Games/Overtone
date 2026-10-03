@@ -1,5 +1,9 @@
 {
  "classes": {
+  "CombinePlanTests": {
+   "where": "python-only",
+   "why": "overtone_combine.py: where each borrowed range lands in a compilation, which no Rust crate holds"
+  },
   "CombineSegmentTests": {
    "where": "python-only",
    "why": "overtone_combine.py: what a compilation reads out of one source map, which no Rust crate holds"

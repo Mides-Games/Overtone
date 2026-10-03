@@ -9298,5 +9298,151 @@ class CombineSegmentTests(unittest.TestCase):
         self.assertEqual(self._codes(segment), {"objects_before_first_red"})
         self.assertEqual(segment["repairs"][0]["at"], 500.0)
 
+class CombinePlanTests(unittest.TestCase):
+    """Where each borrowed range lands in a compilation, and what refuses one."""
+
+    def _map(self, folder: Path, *, mode: int = 0, keys: int = 4, first: float = 1200,
+             last: float = 9000, reds=("1000,400,4,2,0,80,1,0",), spinner: str = "",
+             audio: str | None = "song.wav", seconds: float = 15.0) -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        rows = [f"100,100,{first:g},1,0,0:0:0:0:", f"64,64,{last:g},1,0,0:0:0:0:"]
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", f"Mode: {mode}", "",
+                 "[Metadata]", "Title:Song", "Artist:Artist", "Creator:Mapper",
+                 "Version:Hard", "",
+                 "[Difficulty]", f"CircleSize:{keys}", "OverallDifficulty:7",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[Events]", "",
+                 "[TimingPoints]", *reds, "",
+                 "[HitObjects]", *rows, *([spinner] if spinner else []), ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        if audio:
+            ta.sf.write(str(folder / audio),
+                        np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        return folder / "map.osu"
+
+    def _plan(self, sources, settings=None) -> dict:
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        json.dumps(plan)
+        return plan
+
+    def test_two_maps_are_placed_in_order_behind_the_lead_in(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a")
+            second = self._map(Path(tmp) / "b", first=2000, last=10000)
+            plan = self._plan([first, second])
+        # Segment 0 runs 0-11000 of its own song and lands behind the 2 s
+        # lead-in; segment 1 runs 0-12000 of its own and follows a 2 s gap.
+        self.assertEqual([(s["at_ms"], s["shift_ms"], s["ends_at_ms"])
+                          for s in plan["segments"]],
+                         [(2000.0, 2000.0, 13000.0), (15000.0, 15000.0, 27000.0)])
+        self.assertEqual(plan["junctions"], [{"after": 0, "before": 1, "ends_ms": 13000.0,
+                                              "gap_ms": 2000.0, "starts_ms": 15000.0}])
+        self.assertEqual((plan["totals"]["duration_ms"], plan["totals"]["objects"],
+                          plan["totals"]["segments"], plan["totals"]["songs"]),
+                         (27000.0, 4, 2, 2))
+        self.assertEqual((plan["format"], plan["mode"], plan["usable"]), (1, 0, True))
+
+    def test_a_whole_millisecond_shift_keeps_a_whole_millisecond_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a"), "start_ms": 1000.5,
+                      "end_ms": 11000.0}
+            plan = self._plan([source])
+        segment = plan["segments"][0]
+        # The cursor wants the range at 2000; the shift is rounded to a whole
+        # millisecond and the range lands half a millisecond late instead of
+        # every object in it losing its snap.
+        self.assertEqual(segment["shift_ms"], 1000.0)
+        self.assertEqual(segment["shift_ms"], int(segment["shift_ms"]))
+        self.assertEqual(segment["at_ms"], 2000.5)
+
+    def test_a_gap_set_on_one_junction_overrides_the_plans(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a")
+            second = {"osu": self._map(Path(tmp) / "b"), "gap_before_ms": 500.0}
+            plan = self._plan([first, second], {"gap_ms": 4000.0, "lead_in_ms": 0.0})
+        self.assertEqual(plan["junctions"][0]["gap_ms"], 500.0)
+        self.assertEqual((plan["segments"][0]["at_ms"], plan["segments"][1]["at_ms"]),
+                         (0.0, 11500.0))
+
+    def test_different_modes_and_different_key_counts_both_refuse(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            standard = self._map(Path(tmp) / "a")
+            mania = self._map(Path(tmp) / "b", mode=3, keys=4)
+            other = self._map(Path(tmp) / "c", mode=3, keys=7)
+            mixed = self._plan([standard, mania])
+            mania_only = self._plan([mania, other])
+        self.assertEqual([r["code"] for r in mixed["refusals"]], ["mode_mismatch"])
+        self.assertIn("osu", mixed["refusals"][0]["why"])
+        self.assertEqual([r["code"] for r in mania_only["refusals"]], ["keys_mismatch"])
+        self.assertFalse(mixed["usable"] or mania_only["usable"])
+
+    def test_a_segment_with_no_song_refuses_the_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a", audio=None)])
+        self.assertEqual([r["code"] for r in plan["refusals"]], ["segment_without_audio"])
+        self.assertEqual(plan["refusals"][0]["segment"], 0)
+        # The segment itself read fine; it is the plan that cannot use it.
+        self.assertTrue(plan["segments"][0]["usable"])
+
+    def test_a_refused_segment_refuses_the_plan_and_says_which(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a")
+            second = self._map(Path(tmp) / "b", reds=())
+            plan = self._plan([first, second])
+        self.assertEqual([(r["segment"], r["code"]) for r in plan["refusals"]],
+                         [(1, "no_timing")])
+        self.assertFalse(plan["usable"])
+
+    def test_strict_refuses_a_plan_it_would_have_had_to_repair(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", first=1200.5)
+            lenient = self._plan([source])
+            strict = self._plan([source], {"strict": True})
+        self.assertEqual([r["code"] for r in lenient["repairs"]], ["objects_decimal_times"])
+        self.assertTrue(lenient["usable"])
+        self.assertEqual([r["code"] for r in strict["refusals"]], ["strict_repairs"])
+
+    def test_an_unknown_setting_or_source_key_is_an_error_not_a_default(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a")
+            with self.assertRaises(ValueError):
+                overtone_combine.plan_compilation([source], {"gap": 500.0})
+            with self.assertRaises(ValueError):
+                overtone_combine.plan_compilation([{"osu": source, "fade_ms": 10.0}])
+            with self.assertRaises(ValueError):
+                overtone_combine.plan_compilation([])
+
+    def test_the_totals_count_only_the_objects_inside_each_range(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a"), "start_ms": 5000.0,
+                      "end_ms": 11000.0}
+            plan = self._plan([source])
+        segment = plan["segments"][0]
+        self.assertEqual((segment["objects"]["played"], segment["objects"]["in_range"]),
+                         (2, 1))
+        self.assertEqual(plan["totals"]["objects"], 1)
+        self.assertIn("range_cuts_objects", [r["code"] for r in plan["repairs"]])
+
+    def test_an_object_that_outlasts_a_typed_range_is_kept_and_counted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a",
+                                       spinner="256,192,9500,12,0,13000,0:0:0:0:"),
+                      "start_ms": 0.0, "end_ms": 11000.0}
+            plan = self._plan([source])
+        self.assertEqual(plan["segments"][0]["objects"]["ends_past_range"], 1)
+        self.assertIn("objects_end_past_range", [r["code"] for r in plan["repairs"]])
+        self.assertTrue(plan["usable"])
+
+    def test_a_plan_past_the_length_ceiling_refuses(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a")],
+                              {"lead_in_ms": overtone_combine.MAX_TOTAL_MS})
+        self.assertEqual([r["code"] for r in plan["refusals"]], ["too_long"])
+
 if __name__ == "__main__":
     unittest.main()

@@ -18,6 +18,34 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-10-03 · H7 engine: hitsound proposals with no map
+
+### Changed
+
+- **`overtone-cli hitsound <audio>` with no map** proposes on the song
+  alone: strong attacks on the detected grid (weight ≥ 0.5, residual ≤ 5 ms;
+  null-residual passing on loudness) become the object set — no combos, no
+  prior, the map-default bank, no bar numbers and so no phrase-symmetry
+  bonus — decided by the same emission+Viterbi core H4 runs, reported with
+  `"mode": "audio-only"`. `Unit.object` is now `Option` (null for these).
+  The bridge takes `osu=None` for it. Bare `hitsound` still exits 2; a
+  missing audio file exits 1.
+- **`bench/eval_audio_only.py`** (a measurement, like Corpus B): H4 vs
+  audio-only joined at ±50 ms (coverage, same-sound agreement), plus mapper
+  clap/finish/whistle F1 over the same join, tails aside on both sides.
+
+### Measured
+
+- On 6 mapped songs: median H4 coverage 0.31, same-sound agreement 0.12;
+  mapper clap F1 0.29, whistle 0.06 (finish too rare to score) against
+  P-6's clap rule 0.59. The bare-map control localises the gap: full H4 vs
+  H4 on sounds-stripped copies agrees only 0.19, while stripped-H4 vs
+  audio-only agrees 0.50 — half the gap is the mapper prior, which
+  audio-only lacks by design, and the rest is different unit sets plus no
+  combos or symmetry. Modest for a v1, and honest about why.
+- The app surface is still open (a Propose that needs no map, and somewhere
+  to write it), so H7 stays open in the roadmap with the engine marked done.
+
 ## v4.0.0-dev — 2026-10-03 · hitsound-classify; isolated one-shots don't transfer
 
 ### Changed

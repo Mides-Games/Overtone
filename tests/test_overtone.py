@@ -2178,6 +2178,29 @@ class RustSidecarTests(unittest.TestCase):
             with self.assertRaises(rs.SidecarUnavailable):
                 rs.ramps("song.wav")
 
+    def test_audio_only_sends_no_map_and_returns_its_units(self):
+        import overtone_rust as rs
+        report = {"mode": "audio-only", "source": "song.wav",
+                  "units": [{"object": None, "part": "attack", "edge": None,
+                             "time_ms": 500.0,
+                             "proposal": {"bank": "drum", "additions": ["clap"]}}]}
+        seen = {}
+
+        def fake_run(args, timeout):
+            seen["args"] = args
+            import json
+            import subprocess
+            return subprocess.CompletedProcess(
+                args, 0, json.dumps(report).encode("utf-8"), b"")
+
+        from unittest import mock
+        with mock.patch.object(rs, "find_cli", return_value=Path("cli")), \
+                mock.patch.object(rs, "_run", side_effect=fake_run):
+            out = rs.hitsound("song.wav", None)
+        self.assertEqual(seen["args"], [str(Path("cli")), "hitsound", "song.wav"])
+        self.assertEqual(out["mode"], "audio-only")
+        self.assertEqual(out["units"], report["units"])
+
     def test_the_rust_engine_reads_what_v3_reads(self):
         import overtone as ta
         import overtone_rust as rs
@@ -6784,6 +6807,25 @@ class HitsoundProposalEvalTests(unittest.TestCase):
             self.assertEqual(len(report["units"]), 20, name)
             self.assertEqual(report["profile"], "balanced" if name == "baked"
                              else str(folder / name), name)
+
+    def test_audio_only_proposes_on_strong_attacks(self):
+        import overtone_rust as rs
+        cli = rs.find_cli()
+        if cli is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "drums.wav"
+            _drum_track(audio, [(0.5, 120.0)], duration=11.0)
+            report = rs.hitsound(str(audio), None, cli=cli)
+        self.assertEqual(report["mode"], "audio-only")
+        units = report["units"]
+        self.assertTrue(units)
+        for unit in units:
+            self.assertIsNone(unit["object"])
+            self.assertEqual(unit["part"], "attack")
+            self.assertIn(unit["proposal"]["bank"], ("normal", "soft", "drum"))
+            self.assertTrue(all(a in ("whistle", "finish", "clap")
+                                for a in unit["proposal"]["additions"]))
 
 
 class HitsoundApplyTests(unittest.TestCase):

@@ -199,18 +199,31 @@ one-shots (textbook kick reads snare, a clap reads kick), so no mapping is offer
 and recommend waits with the lanes and the clap-mismatch rule until the templates
 hold on real audio (timeline).
 
-### H7 · Audio-only proposal (proposed 2026-09-26, todo)
+### H7 · Audio-only proposal (proposed 2026-09-26, engine done 2026-10-03)
 
-Today H4 takes `<audio> <map>`: it needs a difficulty's objects and refuses
-without them. The ask, noted 2026-09-26: drop an audio file with no map, have
+Today H4 takes `<audio> <map>`; `overtone-cli hitsound <audio>` with no map
+now proposes on the song alone: strong attacks on the detected grid (weight
+≥ 0.5, residual ≤ 5 ms, null-residual passing on loudness) become the object
+set — no combos, no prior, the map-default bank, no bar numbers and so no
+phrase-symmetry bonus — decided by the same emission+Viterbi core, reported
+with `"mode": "audio-only"`. The bridge takes `osu=None` for it.
+
+Measured on 6 mapped songs (`bench/eval_audio_only.py`, a measurement, not
+a gate): median H4 coverage 0.31, same-sound agreement 0.12; mapper clap F1
+0.29 (whistle 0.06) against P-6's clap rule 0.59. The bare-map control
+localises the gap: H4 on the same objects with sounds stripped agrees with
+full H4 only 0.19, and bare-H4 with audio-only 0.50 — half the gap is the
+mapper prior, which audio-only has by design, and the rest is different unit
+sets plus no combos or symmetry. The open question from 2026-09-26 is
+answered this way; what is still open is the app surface (a Propose that
+needs no map, and somewhere to write it).
+
+The original ask, kept for the record: drop an audio file with no map, have
 the song's own analysis (attacks → instrument classes + musical role) propose
-what hitsounds go where. The open question is what object rhythm to propose on
-when there is no map to hang sounds on — the likely shape is strong attacks on
-the detected grid as the object set, with the proposal marked as what the song
-suggests rather than what fits an existing difficulty. Needs H4's decision
-plus P-4 evidence; evaluation against P-6 mapper agreement does not apply
-without a map, so it needs its own gate (e.g. class agreement with H4's
-proposal on the same song once mapped).
+what hitsounds go where, marked as what the song suggests rather than what
+fits an existing difficulty. Its suggested gate (class agreement with H4's
+proposal on the same song once mapped) is measured above as same-sound
+agreement plus mapper F1 in `bench/eval_audio_only.py`.
 
 ---
 

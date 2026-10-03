@@ -410,13 +410,78 @@ fn hitsound_proposes_every_object_with_alternatives_and_terms() {
     assert_eq!(missing_map.status.code(), Some(1));
     for args in [
         &["hitsound"][..],
-        &["hitsound", "a.wav"][..],
-        &["hitsound", "a.wav", "--profile", "p.json"][..],
         &["hitsound", "a.wav", "b.osu", "--profile"][..],
     ] {
         let bad = run(args);
         assert_eq!(bad.status.code(), Some(2), "{args:?}");
     }
+    // No map is the audio-only proposal now, not a usage error: a missing
+    // audio file fails the load instead.
+    for args in [
+        &["hitsound", "a.wav"][..],
+        &["hitsound", "a.wav", "--profile", "p.json"][..],
+    ] {
+        let bad = run(args);
+        assert_eq!(bad.status.code(), Some(1), "{args:?}");
+    }
+}
+
+#[test]
+fn hitsound_without_a_map_proposes_on_the_songs_own_attacks() {
+    // H7: strong attacks on the detected grid become the object set — no
+    // object numbers, no combos, no prior — marked audio-only. Silence has
+    // nothing strong, so it proposes nothing and still exits 0.
+    let dir = scratch("hitsound-audio-only");
+    let audio = dir.join("clicks-150.wav");
+    write_wav(&audio, &clicks(150.0, 6.0));
+    let silence = dir.join("silence.wav");
+    write_wav(&silence, &vec![0.0f32; 44_100 * 3]);
+    let out = run(&["hitsound", audio.to_str().unwrap()]);
+    let quiet = run(&["hitsound", silence.to_str().unwrap()]);
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["mode"], "audio-only");
+    assert_eq!(report["templates"], "baked");
+    assert_eq!(report["profile"], "balanced");
+    let units = report["units"].as_array().unwrap();
+    assert!(!units.is_empty());
+    for unit in units {
+        assert!(unit["object"].is_null());
+        assert_eq!(unit["part"], "attack");
+        assert!(unit["edge"].is_null());
+        assert_eq!(unit["tail"], false);
+        assert!(unit["follows"].is_null());
+        // Heard is its own attack: the click under it, within the P-5 window.
+        let heard = &unit["heard"];
+        let at = heard["time_ms"].as_f64().unwrap();
+        assert!((at - unit["time_ms"].as_f64().unwrap()).abs() <= 50.0, "{heard}");
+        let proposal = &unit["proposal"];
+        assert!(proposal["bank"].is_string());
+        assert!(proposal["additions"].is_array());
+        assert!((0.0..=1.0).contains(&proposal["probability"].as_f64().unwrap()));
+        assert!(!unit["alternatives"].as_array().unwrap().is_empty());
+        assert_eq!(unit["terms"].as_array().unwrap().len(), 4);
+    }
+    // Times run with the clicks: the first strong attack sits on the grid.
+    let first = units[0]["time_ms"].as_f64().unwrap();
+    assert!((first - 500.0).abs() < 100.0, "{first}");
+
+    assert_eq!(
+        quiet.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&quiet.stderr)
+    );
+    let empty: serde_json::Value = serde_json::from_slice(&quiet.stdout).unwrap();
+    assert_eq!(empty["mode"], "audio-only");
+    assert!(empty["units"].as_array().unwrap().is_empty());
 }
 
 /// A map of circles on the 150 BPM clicks, every one playing `bits`.

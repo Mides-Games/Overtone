@@ -69,6 +69,11 @@
 //! `--profile` reads another profile file; the baked `balanced` one decides
 //! otherwise.
 //!
+//! With no map, `hitsound` proposes on the song alone (H7): strong attacks
+//! on the detected grid become the object set, with no combos, no prior
+//! and no bar numbers. The report carries `"mode": "audio-only"` instead
+//! of a map: what the song suggests, not what fits a difficulty.
+//!
 //! Several maps of one song share its analysis: the audio is analysed and
 //! its attacks' evidence extracted once, which is most of the work, then
 //! each map is decided on them. The report says the song once and its maps
@@ -104,7 +109,7 @@ const USAGE: &str = "usage: overtone-cli analyze <audio> [--json | --full] [--de
 overtone-cli structure <audio>\n       \
 overtone-cli hitsound-evidence <audio>\n       \
 overtone-cli hitsound-classify <sample.wav> [<sample.wav> ...]\n       \
-overtone-cli hitsound <audio> <map.osu> [<map.osu> ...] [--profile <path>]\n       \
+overtone-cli hitsound <audio> [<map.osu> ...] [--profile <path>]\n       \
 overtone-cli ramps <audio> [--drift <ms>] [--max-lines <n>] [--decimals <n>]";
 
 /// The v3 CLI's defaults, which the golden vectors were dumped with.
@@ -410,12 +415,15 @@ fn source(path: &Path) -> String {
     path.display().to_string()
 }
 
-/// `hitsound <audio> <map.osu> [<map.osu> ...] [--profile <path>]`: the
-/// proposed sound of every decidable point of each map, with alternatives
-/// and the terms behind each choice, as JSON. The audio is analysed and its
-/// evidence extracted once, however many maps follow. Exit 1 when the audio
-/// or the profile cannot be read, or a map (the others are still decided),
-/// 2 on a bad command; 0 otherwise, grid or no grid.
+/// `hitsound <audio> [<map.osu> ...] [--profile <path>]`: the proposed
+/// sound of every decidable point of each map, with alternatives and the
+/// terms behind each choice, as JSON. With no map the song alone is
+/// proposed on (H7): strong attacks on the detected grid, no combos, no
+/// prior, no bar numbers, reported with `"mode": "audio-only"`. The audio
+/// is analysed and its evidence extracted once, however many maps follow.
+/// Exit 1 when the audio or the profile cannot be read, or a map (the
+/// others are still decided), 2 on a bad command; 0 otherwise, grid or
+/// no grid.
 fn hitsound(args: &[String]) -> ExitCode {
     use overtone_hitsound::{baked, evidence as ev, map, profile::Profile};
     let mut rest = args.iter();
@@ -440,16 +448,21 @@ fn hitsound(args: &[String]) -> ExitCode {
             map_paths.push(PathBuf::from(arg));
         }
     }
-    let Some(audio) = audio.filter(|_| !map_paths.is_empty()) else {
-        eprintln!("overtone-cli: hitsound takes one audio file and one map or more\n{USAGE}");
+    let Some(audio) = audio else {
+        eprintln!("overtone-cli: hitsound takes one audio file, with one map or more, or alone\n{USAGE}");
         return ExitCode::from(2);
     };
-    // One map keeps the one-map report; several are answered map by map.
+    // No map: H7 proposes on the song's own analysis (strong attacks on the
+    // detected grid), marked audio-only. One map keeps the one-map report;
+    // several are answered map by map.
+    let audio_only = map_paths.is_empty();
     let several = map_paths.len() > 1;
     let fail = |message: String| {
         let report = if several {
             json!({"source": source(&audio), "maps": map_paths.iter().map(|p| source(p)).collect::<Vec<_>>(),
                    "error": message})
+        } else if audio_only {
+            json!({"source": source(&audio), "mode": "audio-only", "error": message})
         } else {
             json!({"source": source(&audio), "map": source(&map_paths[0]), "error": message})
         };
@@ -482,13 +495,16 @@ fn hitsound(args: &[String]) -> ExitCode {
             Err(e) => Err(format!("cannot read {}: {e}", path.display())),
         })
         .collect();
-    if let (false, Err(message)) = (several, &beatmaps[0]) {
-        return fail(message.clone());
+    if !several && !audio_only {
+        if let Err(message) = &beatmaps[0] {
+            return fail(message.clone());
+        }
     }
 
-    // The evidence reads the audio alone, so every map is decided on it.
+    // The evidence reads the audio alone, so every map is decided on it —
+    // and so is the audio-only proposal, which has no map at all.
     let started = Instant::now();
-    let rows = if beatmaps.iter().any(Result::is_ok) {
+    let rows = if audio_only || beatmaps.iter().any(Result::is_ok) {
         let templates = baked::templates();
         ev::evidence(
             &song.y, song.sr, &song.times, &song.weights,
@@ -506,6 +522,27 @@ fn hitsound(args: &[String]) -> ExitCode {
         .collect();
     let profile_name = profile_path.map(|p| source(&p)).unwrap_or_else(|| "balanced".to_string());
     let duration = song.y.len() as f64 / song.sr as f64;
+
+    if audio_only {
+        let (proposals, decide_s) = decide_audio(&rows, &song.boundaries, &profile);
+        let report = json!({
+            "source": source(&audio),
+            "mode": "audio-only",
+            "duration": duration,
+            "units": proposals,
+            "templates": "baked",
+            "profile": profile_name,
+            "version": overtone_tempo::VERSION,
+            "timings_s": {"decode": song.decode_s, "attacks": song.attacks_s, "tempo": song.tempo_s,
+                          "structure": song.structure_s, "evidence": evidence_s, "decide": decide_s},
+        });
+        println!("{report}");
+        eprintln!(
+            "overtone-cli: {} audio-only proposals; evidence {evidence_s:.2} s + decide {decide_s:.2} s",
+            proposals.len()
+        );
+        return ExitCode::SUCCESS;
+    }
 
     if !several {
         let Some(Ok((proposals, decide_s))) = decided.into_iter().next() else {
@@ -578,10 +615,7 @@ fn decide_map(
     boundaries: &[f64],
     profile: &overtone_hitsound::profile::Profile,
 ) -> (Vec<Value>, f64) {
-    use overtone_hitsound::{emission as em, evidence as ev, map, viterbi as vit};
-    let ev_times: Vec<f64> = rows.iter().map(|row| row.time_s).collect();
-
-    let started = Instant::now();
+    use overtone_hitsound::{emission as em, map};
     let (units, is_tail) = units_of(beatmap);
     let times_ms: Vec<f64> = units.iter().map(|unit| unit.time_ms).collect();
     let placed = map::bar_slots(&beatmap.timing, &times_ms);
@@ -594,6 +628,93 @@ fn decide_map(
         3 => em::Bank::Drum,
         _ => em::Bank::Normal,
     };
+    let step_bars: Vec<Option<(i64, i64)>> = placed
+        .iter()
+        .map(|&(bar, slot, _)| slot.map(|s| (bar, s)))
+        .collect();
+    decide_units(
+        &units, &is_tail, &placed, &step_bars, &map_roles, default_bank, rows, boundaries,
+        profile,
+    )
+}
+
+/// H7's object set: strong attacks on the detected grid, decided by the
+/// same core as map units. No combos start one, no prior follows mapper
+/// sounds, the bank stays the map default, and steps carry no bar numbers
+/// — so no phrase-symmetry bonus fires: this is what the song suggests,
+/// not what fits a difficulty.
+fn decide_audio(
+    rows: &[overtone_hitsound::evidence::AttackEvidence],
+    boundaries: &[f64],
+    profile: &overtone_hitsound::profile::Profile,
+) -> (Vec<Value>, f64) {
+    use overtone_hitsound::emission as em;
+    let kept: Vec<&overtone_hitsound::evidence::AttackEvidence> =
+        rows.iter().filter(|row| strong_attack(row)).collect();
+    if kept.is_empty() {
+        return (Vec::new(), 0.0);
+    }
+    let units: Vec<Unit> = kept
+        .iter()
+        .map(|row| Unit {
+            object: None,
+            part: "attack",
+            edge: None,
+            time_ms: row.time_s * 1000.0,
+            hit_sound: 0,
+            normal_set: 0,
+            new_combo: false,
+        })
+        .collect();
+    // The audio role already counts sixteenths per bar; the map grid counts
+    // beats, so quarters of that. Steps stay barn-less on purpose.
+    let placed: Vec<(i64, Option<i64>, i64)> = kept
+        .iter()
+        .map(|row| match row.role.bar_slot {
+            Some((slot, slots)) => (0, Some(slot as i64), (slots / 4) as i64),
+            None => (0, None, 4),
+        })
+        .collect();
+    let step_bars = vec![None; units.len()];
+    let map_roles = vec![None; units.len()];
+    let is_tail = vec![false; units.len()];
+    decide_units(
+        &units, &is_tail, &placed, &step_bars, &map_roles, em::Bank::Normal, rows, boundaries,
+        profile,
+    )
+}
+
+/// A unit iff the attack is strong and sits on the detected grid: loud
+/// enough to carry a hitsound, close enough to a grid line to hang a role
+/// on. Attacks with no grid information (before the music starts, a
+/// gridless fallback) pass on loudness alone; their role stays nulls.
+fn strong_attack(row: &overtone_hitsound::evidence::AttackEvidence) -> bool {
+    const MIN_UNIT_WEIGHT: f32 = 0.5;
+    const MAX_UNIT_RESIDUAL_MS: f64 = 5.0;
+    row.weight >= MIN_UNIT_WEIGHT
+        && row
+            .role
+            .grid_residual_ms
+            .map_or(true, |r| r.abs() <= MAX_UNIT_RESIDUAL_MS)
+}
+
+/// Every decidable point's proposal as the report prints it: the shared
+/// core behind map units and audio-only units.
+fn decide_units(
+    units: &[Unit],
+    is_tail: &[bool],
+    placed: &[(i64, Option<i64>, i64)],
+    step_bars: &[Option<(i64, i64)>],
+    map_roles: &[Option<(u32, f64)>],
+    default_bank: overtone_hitsound::emission::Bank,
+    rows: &[overtone_hitsound::evidence::AttackEvidence],
+    boundaries: &[f64],
+    profile: &overtone_hitsound::profile::Profile,
+) -> (Vec<Value>, f64) {
+    use overtone_hitsound::{emission as em, evidence as ev, map, viterbi as vit};
+    let ev_times: Vec<f64> = rows.iter().map(|row| row.time_s).collect();
+
+    let started = Instant::now();
     // Chain units decide by Viterbi; tails follow the object under them.
     let chain: Vec<usize> = (0..units.len()).filter(|&i| !is_tail[i]).collect();
     let order = em::Candidate::all();
@@ -639,10 +760,7 @@ fn decide_map(
             && boundaries.iter().any(|&edge| {
                 edge * 1000.0 > units[chain[position - 1]].time_ms && edge * 1000.0 <= unit.time_ms
             });
-        let bar_slot = match placed[i] {
-            (bar, Some(slot), _) => Some((bar, slot)),
-            _ => None,
-        };
+        let bar_slot = step_bars[i];
         steps.push(vit::Step {
             time_s: unit.time_ms / 1000.0,
             new_combo: unit.new_combo,
@@ -1060,10 +1178,11 @@ fn analyse_audio(audio: &Path) -> Result<SongAnalysis, String> {
 }
 
 /// One decidable point of a map: a circle, a slider edge, a spinner end or
-/// a hold, with the sound it carries now.
+/// a hold, with the sound it carries now. Audio-only units (H7) carry no
+/// object: they are strong attacks on the detected grid, not map objects.
 #[derive(Clone)]
 struct Unit {
-    object: usize,
+    object: Option<usize>,
     part: &'static str,
     edge: Option<usize>,
     time_ms: f64,
@@ -1081,7 +1200,7 @@ fn units_of(map: &overtone_hitsound::map::Beatmap) -> (Vec<Unit>, Vec<bool>) {
     let mut paired: Vec<(Unit, bool)> = Vec::new();
     for (n, object) in map.objects.iter().enumerate() {
         let base = Unit {
-            object: n,
+            object: Some(n),
             part: "circle",
             edge: None,
             time_ms: object.time,

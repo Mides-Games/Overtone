@@ -460,5 +460,13 @@ criterio tuyo: **×2 / ÷2** la corrige al instante.
 
 ## License
 
-MIT, as declared in `Cargo.toml`. A `LICENSE` file has not been added to the repository
-yet.
+MIT, in [`LICENSE`](LICENSE) and declared in `Cargo.toml`.
+
+A release's tree carries `LICENSE.txt` and `THIRD-PARTY-NOTICES.txt` beside the
+executables: every bundled wheel, every Rust crate and every native library with its
+version, its licence and its own notice text, gathered by `installer
+otices.py` and
+gated by `installer
+otices.py --check`. The copyleft parts (libsndfile and libsoxr
+under LGPL-2.1, Symphonia and certifi under MPL-2.0) carry the offer of source the
+licence asks for.

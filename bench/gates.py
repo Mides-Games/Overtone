@@ -1348,7 +1348,48 @@ def combine(audio_dir: Path) -> int:
               == {"25.8", "25.9", "25.10", "25.13"},
               ", ".join(sorted(entry["row"] for entry in report["pending"])))
 
+        # The audio: lossless first, because it can be compared sample for
+        # sample, then the format the builder actually writes.
         print()
+        for name in ("wav", "mp3"):
+            audio = Path(tmp) / f"combined.{name}"
+            started = time.perf_counter()
+            built = tc.build_audio(plan, audio, audio_format=name)
+            spent = time.perf_counter() - started
+            landed = tc.verify_audio(plan, audio)
+            frame_ms = 1000.0 / built["sample_rate"]
+            print(f"{name}: {built['duration_ms'] / 1000.0:.1f} s, "
+                  f"{built['bytes'] / 1e6:.1f} MB, {built['sample_rate']} Hz "
+                  f"x{built['channels']}, written in {spent:.1f} s, "
+                  f"checked in {time.perf_counter() - started - spent:.1f} s")
+            check(f"{name}: as long as the plan says",
+                  abs(built["duration_ms"] - built["planned_ms"]) <= frame_ms,
+                  f"{built['duration_ms']:.3f} ms written, "
+                  f"{built['planned_ms']:.3f} planned")
+            check(f"{name}: every segment landed where the plan put it",
+                  landed["ok"], f"worst {landed['worst_shift_ms']} ms, peaks "
+                  + ", ".join(f"{row['peak']}" for row in landed["segments"]))
+            if name == "wav":
+                # Nothing is normalised, filtered or mixed: past the 5 ms
+                # declick ramp it is the sources' own samples.
+                same = True
+                for n, segment in enumerate(plan["segments"]):
+                    rate = built["sample_rate"]
+                    fade = int(round(built["segments"][n]["declick_ms"] * rate / 1000.0))
+                    at = int(round(segment["at_ms"] * rate / 1000.0))
+                    start = int(round(segment["range"]["start_ms"] * rate / 1000.0))
+                    length = built["segments"][n]["frames"]
+                    mine = sf.read(str(audio), dtype="float32", always_2d=True,
+                                   start=at + fade, stop=at + length - fade)[0]
+                    theirs = sf.read(segment["audio"]["path"], dtype="float32",
+                                     always_2d=True, start=start + fade,
+                                     stop=start + length - fade)[0]
+                    same = same and mine.shape == theirs.shape \
+                        and bool(np.array_equal(mine, theirs))
+                check("wav: the samples written are the samples read", same,
+                      "bit for bit past the declick ramp")
+            print()
+
         rng = random.Random(7)
         seed_text = Path(sources[0]["osu"]).read_bytes().decode("utf-8")
         read, refused, crashed = 0, 0, 0

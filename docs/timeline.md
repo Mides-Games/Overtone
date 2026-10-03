@@ -18,6 +18,63 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-10-03 · Phase 25 step 2: the audio cut, and nothing to compensate
+
+### Changed
+
+- **`build_audio`** writes one audio file holding every segment's range where
+  the plan put it. The plan's `at_ms` is the authority, not a running sum:
+  the shift was rounded to a whole millisecond so the objects could keep
+  their snapping, and the audio has to land on the same rounding or the two
+  drift apart. Each segment goes in at `round(at_ms * rate / 1000)` frames
+  with silence in front of it, so what the plan calls a gap is simply the
+  silence between two of them.
+- Written a block at a time: the peak working set is one block, not one
+  compilation — two hours of 44.1 kHz stereo float32 in one buffer would be
+  2.5 GB. A segment whose song runs at another rate is resampled in one
+  piece (`resample_poly`, exact rational arithmetic) and the report says
+  which segments that happened to.
+- Output rate is the highest any segment brings, so nothing is downsampled
+  into a compilation, and stereo if any segment is stereo. Nothing is
+  normalised, nothing is filtered: past a 5 ms declick ramp at the edges of a
+  range that brought its own padding, the samples written are the sources'
+  own, bit for bit. A range somebody typed gets no ramp at all — it starts
+  where they said, hit or no hit.
+- **`verify_audio`** reads the written file back and correlates each
+  segment's own window against its own song (`shift_samples`, the audio
+  swap's aligner), so row 25.5 can be said to hold rather than hoped to. The
+  gate runs it on both formats.
+
+### Fixed
+
+- **The junction check correlated past the end of a segment**, into the gap
+  and the next song, and read a peak of 0.643 where the answer is 1.000. The
+  window is now the segment's own length. Found by the test for it.
+
+### Measured
+
+- **MP3 is gapless here, so there is nothing to compensate.** libsndfile
+  1.2.2 encodes through LAME 3.100, writes the tag (delay 576 samples,
+  padding 972) and strips it again on read: a click written at *t* comes back
+  at *t* — 0.0 ms on four probes through a 45 s file, frame count identical,
+  correlation peak 1.000. Row 25.5 was written expecting to measure a delay
+  and fold it into the offsets; the measurement says the fold is zero.
+- The gate's three-song, 162 s compilation: **WAV 14.3 MB written in 0.3 s,
+  samples bit for bit the sources' own, every segment at 0.0 ms, peaks
+  1.000**; **MP3 1.3 MB in 0.9 s, every segment at 0.0 ms, peaks 0.998**.
+  Checking each costs 0.3-0.5 s.
+- Tests 857 (593 engine + 264 web shell), 10 of them new.
+
+### Rejected / tried and dropped
+
+- **Ogg Vorbis as the default**, which the phase was written around because
+  it is sample-exact and osu! reads it. Writing more than about ten seconds
+  of 44.1 kHz stereo through this libsndfile build **kills the process**:
+  exit 127, no exception, nothing written (5 s and 10 s fine; 20 s, 30 s and
+  45 s dead, reproducible). **Opus** refuses 44.1 kHz outright — it takes 8,
+  12, 16, 24 and 48 kHz. So the format decision was made by what survives,
+  not by what reads best on paper.
+
 ## v4.0.0-dev — 2026-10-03 · Phase 25 step 1: a compilation's plan, read and shift
 
 ### Changed

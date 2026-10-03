@@ -18,6 +18,50 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-10-03 · The compilation builder, specified; §9's line redrawn
+
+Documentation only. Nothing was built, measured on the corpus or shipped.
+
+### Changed
+
+- **Phase 25 — Compilation builder (marathon maps)** in the roadmap, asked for with
+  `frankhjwx/osu-map-combiner` as the reference: several maps and their songs into one
+  map and one audio file, every borrowed object on the beat of the sound it had. Twenty
+  rows, the build order, every timestamp the shift has to touch, the repair pass for
+  half-wrong input, what it refuses, and the gate (`gates.py combine`) that would hold
+  it. The reference's source was read, not run; the comparison table says which of its
+  choices this repo cannot make (timing points found by substring, format v14 hardcoded,
+  the sixth field read as a slider end time when it is a curve, a spinner's end time and
+  a mania hold's `end:sample` in turn, breaks and events dropped, `SliderMultiplier`
+  compensated only for negative BPM, GB18030 filenames, FFmpeg).
+- **`04-ui-ux.md` §9** drew its line where the reason for it was. "No beatmap editing
+  beyond hitsounds and timing" now reads: Overtone never draws, moves or reshapes an
+  object on its own; copying whole maps' objects unchanged and moving them in time with
+  their audio is bookkeeping and allowed. Decided by the owner, 2026-10-03. The Rhythm
+  guide, which would invent objects from the audio, is still out — so the proposals
+  waiting on a decision go from three to two.
+- The sidebar gains a **Compile** entry in the target layout and the proposed-modes
+  table.
+
+### Measured
+
+- **libsndfile 1.2.2, already pinned behind `soundfile`, writes audio as well as reads
+  it**: `sf.available_formats()` lists MPEG Layer I/II/III and OGG with Vorbis and Opus
+  subtypes. So the reference tool's hard FFmpeg dependency is not needed here, for the
+  same reason FFmpeg left the engine in the first place (audit **F-06**), and the phase
+  can cut and join audio offline with what is installed. The encoder's own delay is not
+  measured yet — row 25.5 exists to measure it rather than assume it is zero.
+
+### Rejected / tried and dropped
+
+- **Tempo-matched junctions** (25.20) are written down as unlikely, not planned. Phase 4
+  measured the phase vocoder moving attacks a median 23-24 ms when it was tried for the
+  pitch-kept slow loop, which is the error this whole phase exists to avoid. It ships
+  only if a measurement on the corpus says otherwise.
+- **Per-segment combo colours** are not a trade-off, they are impossible: osu! holds one
+  `[Colours]` block per map and cannot change it mid-map. Per-segment *backgrounds* can
+  be done, through an `.osb` with timed fades, and that is row 25.12.
+
 ## v4.0.0-dev — 2026-10-03 · H7 engine: hitsound proposals with no map
 
 ### Changed

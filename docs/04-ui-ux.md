@@ -375,6 +375,10 @@ waited for the stage to end, up to 36 s. The result on screen stays.
 ## 9. What is deliberately not in the UI
 
 - No mixer, no EQ, no effects. This is an analyser, not a DAW.
-- No beatmap *editing* beyond hitsounds and timing. osu!'s editor exists.
+- No beatmap *editing* beyond hitsounds and timing. osu!'s editor exists. Overtone never
+  draws, moves or reshapes an object on its own. Copying whole maps' objects unchanged and
+  moving them in time with their audio — the compilation builder, roadmap Phase 25, decided
+  by the owner 2026-10-03 — is bookkeeping, and allowed; inventing objects from the audio,
+  as the Rhythm guide proposal would, is still out.
 - No account, no sync, no telemetry, no update check. Offline is a feature.
 - No onboarding tour. The dashboard is one drop target and a list.

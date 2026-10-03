@@ -66,9 +66,13 @@ point, section volumes, SV normaliser, re-snap, snap divisors, audio file check)
    published, code signing, the portable `data\` folder, file associations, and one real
    install and uninstall. Built so far: the one-line build, the per-user MSI and the ZIP
    ([`11`](11-msi-distribution.md)).
+7. **Compilation builder** (Phase 25, asked 2026-10-03) — several maps and their songs into
+   one map and one audio file, each object keeping the beat it had. No new engine work: the
+   phase is assembly, bookkeeping and refusals, and it is specified row by row.
 
-Three proposals wait on a decision, not on work: the Rhythm guide (`04-ui-ux.md` §9 rules out
-editing a beatmap beyond hitsounds and timing), song import from a streaming link
+Two proposals wait on a decision, not on work: the Rhythm guide (`04-ui-ux.md` §9 still rules
+out inventing objects from the audio, after the 2026-10-03 carve-out that lets a compilation
+copy whole maps), song import from a streaming link
 (blocked by the offline rule, see Phase 19), and whether exported red lines follow ranked
 maps' convention, a median 21 ms before the sound, or the sound itself (10.0a).
 
@@ -544,11 +548,12 @@ number and confidence. Every write goes through the atomic writer and keeps a ba
 | Audio swap | the shift between a mapset's old and new audio from full-waveform correlation (onsets biased sub-frame shifts by a frame in the probe), refused on a tempo mismatch; on consent every time in every difficulty moves, with backup | med | high | writer, attacks | no | no | P2 | **done** — correlation at 11 kHz (±0.005 ms on real music), tempo twins and different cuts refused, Mapset card with preview and confirmed apply |
 | Offset lab | MP3 encoder delay read from the file header, the first attack through each decoder side by side, and a blind listening test that reports the preferred click shift with an interval | med | med | both decoders, P4 transport | no | no | P2 | **done** — header numbers, decoder side-by-side, and an 18-trial blind 2AFC with Wilson intervals in Timing |
 | Rhythm guide | a separate guide difficulty with circles on strong attacks snapped to the detected grid (per band; optional taiko don/kat hint), ambiguous snaps left out and listed | med | high | attacks, sections, `.osz` writer | no | no | P2 | needs a decision: `04-ui-ux.md` §9 rules out beatmap editing beyond hitsounds and timing |
+| Compile | many maps and their songs into one map and one audio file: ordered segments, every object keeping the beat it had, hitsounds remapped, slider velocity restored per segment, the junctions proven against the source audio afterwards | **high** | high | P5 reader/writer, P6 bank, P4 transport, structure, library | no | no | **P1** | todo — written out as [Phase 25](#phase-25--compilation-builder-marathon-maps) (asked 2026-10-03) |
 
 Target sidebar, grouped by job: **Library** · **Timing** (Evidence and Ramps as tabs) ·
 **Structure** · **Map check** (Snap audit and Reference inside) · **Mapset** ·
-**Hitsounds** · **Audio** (Offset lab inside) · **Export** · **Report** · **History** ·
-**Settings**.
+**Hitsounds** · **Audio** (Offset lab inside) · **Compile** · **Export** · **Report** ·
+**History** · **Settings**.
 
 Build order:
 
@@ -699,6 +704,177 @@ Rejected: C++, Go, Java, Kotlin, Cython, Julia, R — the reasons are in the doc
 
 ---
 
+## Phase 25 — Compilation builder (marathon maps)
+
+One map out of many: pick difficulties from several songs, put them in an order, and get a
+single `.osu` and a single audio file in which every borrowed object falls on the same beat
+of the same sound it fell on in its own map. Asked for on 2026-10-03, with
+[`frankhjwx/osu-map-combiner`](https://github.com/frankhjwx/osu-map-combiner) named as the
+reference: one script, FFmpeg required, a config file of about thirteen fields (`osuPath`,
+artist and title with their Unicode twins, difficulty name, mapper, AR/CS/OD/HP, `dstPath`,
+`generateAudio`). Its source was read on 2026-10-03, not run here. What it leaves out is
+most of the specification:
+
+| The reference | What breaks | This phase |
+|---|---|---|
+| Timing points found with `"Timing" in line` | Matches a path or a comment that happens to contain the word, and misses nothing else because every line in the section is one | The committed reader (`read_osu_beatmap`): every section kept in file order, reds parsed, greens raw, unknown keys surviving a round trip |
+| Hardcoded format `v14` | Refuses or mangles v5–v13 and lazer's own files | Every version the reader takes, the version written chosen and reported |
+| The sixth field treated as a slider end time | In the format the sixth field is a slider's curve, a spinner's end time and a mania hold's `end:sample`; one rule cannot serve the three | One rule per object kind, and `unparsed` objects carried through untouched with a count |
+| Breaks, combo colours, events, editor settings dropped | Hit the compilation as HP drain with no break, a black background and lost bookmarks | Breaks rebuilt at the junctions, bookmarks and preview point merged, backgrounds per segment through an `.osb`, every dropped event counted and named |
+| `SliderMultiplier` adjusted only for negative BPM | Every slider of every segment but one scrolls and ticks at the wrong speed | Per-segment velocity compensation on green lines, with a refusal when a slider cannot be represented |
+| Filenames encoded GB18030 | Mangles any non-Chinese Unicode title | Unicode metadata kept as it is, filenames made ASCII-safe through the existing `_safe_component` |
+| FFmpeg required | A second install, and a network to get it | libsndfile, already pinned: it writes MPEG Layer III and Ogg Vorbis offline (verified 2026-10-03, libsndfile 1.2.2 through soundfile) — the same reason FFmpeg left the engine (**F-06**) |
+| Zero crossfade, a blind 5 s cut, 3 s fades | A click at every junction, and a cut that can land inside a hit | Cuts at a sample the builder names, fades and crossfades per junction, and the junction proven against the source audio afterwards |
+| No validation | A missing audio file, an empty folder or a broken object ends in a traceback | A repair pass that reports, and a dry run that shows the whole plan before anything is written |
+
+Nothing here is new engine work. The pieces exist: the reader and the byte-identical writer
+with its atomic write, backup and write log (Phase 5), the sample bank and sample-index
+machinery (Phase 6), `shift_samples`/`audio_shift` for proving a cut landed where it says,
+`mp3_gapless_info` for an MP3's own encoder delay, the structure view for picking a chorus,
+the library index for finding the maps, snap audit and reference timing for checking the
+result, and `export_osz` for the output. The phase is assembly, bookkeeping and refusals.
+
+### The decision this needed
+
+[`04-ui-ux.md`](04-ui-ux.md) §9 ruled out "beatmap *editing* beyond hitsounds and timing".
+A compilation copies objects, so the rule had to be settled before the phase could be
+written. Decided by the owner on 2026-10-03, and the rule now draws the line where the
+reason for it was: **Overtone never draws, moves or reshapes an object on its own.** It may
+copy whole maps' objects unchanged and move them in time together with their audio, which
+is bookkeeping, not mapping. Inventing objects from the audio stays out, so the Rhythm
+guide's decision is untouched.
+
+Credit is part of the feature, not a footnote: every source mapper, difficulty and song is
+named in the output — in `Tags`, in a `credits.txt` beside the `.osu`, and in the build
+report — and the builder says in the UI that posting someone's map inside a compilation is
+the mapper's call, not the tool's.
+
+### The compilation document
+
+The plan is data before it is a file: an ordered list of segments plus the settings that
+apply to all of them, saved as JSON beside the cache so a build is reproducible, a long
+build can be resumed, and a report can be re-read without the sources.
+
+```
+{ "segments": [ { "osu": <path>, "audio": <path>, "range": {...}, "trim": {...},
+                  "gain_db": 0.0, "transition": {...}, "repairs": [...] } ],
+  "settings": { "audio": {...}, "difficulty": {...}, "hitsounds": {...},
+                "events": {...}, "metadata": {...}, "output": {...} },
+  "report": { "refusals": [...], "warnings": [...], "measured": {...} } }
+```
+
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| 25.1 Compilation document | the plan as JSON: ordered segments, per-segment settings, global settings, repairs and refusals; reproducible, resumable, diffable | low | **high** | P5 reader | no | no | **P1** | todo |
+| 25.2 Segment read and repair | each source through `read_osu_beatmap`, then the repair pass below: every fix logged with the line it touched, nothing guessed silently | med | **high** | 25.1 | no | no | **P1** | todo |
+| 25.3 Time shift, every field | one rule per timestamp the format has (list below), applied as whole milliseconds so a stable client reads what lazer reads | med | **high** | 25.2 | no | no | **P1** | todo |
+| 25.4 Audio cut and join | decode each range through the existing loader, cut at a named sample, join, write one file; Ogg Vorbis by default and MPEG Layer III on request, both through libsndfile | med | **high** | 25.1 | no | no | **P1** | todo |
+| 25.5 Decoder-delay accounting | an MP3 source's own encoder delay from its LAME tag (`mp3_gapless_info`) taken off the cut, and the output encoder's round-trip delay measured by correlation and folded into the offsets; said out loud when a source has no tag to read | med | **high** | 25.4 | no | no | **P1** | todo |
+| 25.6 Loudness match | per-segment gain so one song does not arrive twice as loud: integrated loudness per segment, one target, the applied dB shown per segment and capped against clipping with true-peak headroom | med | high | 25.4 | no | no | **P1** | todo |
+| 25.7 Junction placement | where one segment ends and the next begins: a gap in milliseconds or in bars of the next map's own grid, the next segment starting on a downbeat, fade in/out lengths, and an optional crossfade — each junction its own settings | med | **high** | 25.4, P5 reds | no | no | **P1** | todo |
+| 25.8 Hitsound merge | sample indices remapped so no two segments collide, custom sample files copied and renamed, identical files deduplicated by content hash, per-object `filename` overrides followed, and a segment's bank kept whole: what a segment sounded like is what it sounds like | med | **high** | P6 sample bank | no | no | **P1** | todo |
+| 25.9 Slider velocity compensation | `SliderMultiplier` and `SliderTickRate` are one value per difficulty, so each segment gets a green line that restores its own slider velocity, and a refusal naming the sliders whose velocity cannot be represented at the chosen multiplier | med | **high** | 25.3 | no | no | **P1** | todo |
+| 25.10 Difficulty reconciliation | AR, OD, HP, CS and stack leniency cannot vary inside one map: pick a segment's values, a hand-set value or the median, and show every segment's deviation from what was picked, in its own units | low | high | 25.1 | no | no | **P1** | todo |
+| 25.11 Breaks, kiai, bookmarks, preview | a break written into every junction gap long enough for osu! to honour one, each segment's kiai spans kept, every source bookmark shifted plus one per junction so the result is navigable, and the preview point taken from a chosen segment | low | high | 25.3 | no | no | **P1** | todo |
+| 25.12 Events and backgrounds | one background, or each segment's own through an `.osb` with timed fades; video and storyboard dropped with a count and a reason rather than silently | med | med | 25.3 | no | no | P2 | todo |
+| 25.13 Metadata and credits | a title and artist from a template or by hand, Unicode kept, every source mapper and song in `Tags`, a `credits.txt`, and the per-segment credit in the report | low | high | 25.1 | no | no | **P1** | todo |
+| 25.14 The Compile section | its own sidebar section: pick from the library or drop files, drag to reorder, a card per segment (source, range, trim, gain, transition, repairs), the whole compilation on one timeline, the dry-run report, then Build with the stage ticks the other sections use | high | **high** | 25.1–25.13, P3 shell | no | no | **P1** | todo |
+| 25.15 Build report and proof | after a build: each junction's audio correlated against its source so the cut is proven, not assumed; snap audit over the result; each segment's red lines graded against the built audio by reference timing; and the whole thing read back through the writer to prove it is byte-stable | med | **high** | 25.4, snap audit, reference timing | no | no | **P1** | todo |
+| 25.16 Output | a folder in the Songs directory, an `.osz`, or a dry run that writes nothing; sources opened read-only and never written, even to fix them | low | **high** | `export_osz` | no | no | **P1** | todo |
+| 25.17 Gates | `bench/gates.py combine`: object times preserved relative to their segment to the millisecond, red-line BPM preserved exactly, sample indices unique and resolvable, audio length the sum of the ranges within tolerance, every junction's first attack where the `.osu` says within a pinned budget, 0 new unsnapped objects, and a byte-stable round trip — plus the malformed corpus through `fuzz_reader.py`'s mutants | med | **high** | 25.15 | no | no | **P1** | todo |
+| 25.18 Pick by section | take a segment straight from the structure view: this song's chorus, from phrase edge to phrase edge on a proven downbeat, instead of a hand-typed range | med | high | P2 structure, 25.1 | no | no | P2 | todo |
+| 25.19 Order suggestion | an order proposed with its reason: smallest tempo jump at each junction, or energy rising across the set, never applied on its own | med | med | 25.1 | no | no | P2 | todo |
+| 25.20 Tempo-matched junction | stretch the tail of one segment into the head of the next so the beat never breaks | high | low | 25.7 | no | no | P3 | **unlikely** — the phase vocoder moved attacks a median 23-24 ms when Phase 4 measured it for the slow loop, which is exactly the error this phase exists to avoid. It ships only if a measurement on the corpus says otherwise |
+
+### Every timestamp the shift has to touch
+
+The list is the specification; missing one is the bug that makes a compilation unplayable
+halfway through. Each is shifted by its segment's offset, rounded to whole milliseconds,
+and checked afterwards to be in order:
+
+- **Hit objects** — `time` for every kind; a spinner's end time (sixth field); a mania
+  hold's end time (`end:sample`, sixth field); nothing inside a slider's curve, which is
+  geometry, not time.
+- **Timing points** — reds and greens alike, by their offset only; a red's beat length,
+  meter, sample set, index, volume and effects are copied untouched.
+- **`[Events]`** — break periods (`2,start,end`), background and video start times,
+  storyboard command times if a storyboard is kept at all.
+- **`[General]`** — `PreviewTime`, and `AudioLeadIn` recomputed for the result rather than
+  copied from a segment.
+- **`[Editor]`** — `Bookmarks`, every one of them.
+- **Not shifted, and worth saying so** — combo colours, which osu! cannot change mid-map;
+  `StackLeniency`, AR, OD, HP and CS, which are one value per map (25.10); and the
+  `.osb`'s own sprite names.
+
+### When the input is half-wrong
+
+The reason the reference tool breaks is that it assumes the files are right. This is the
+repair pass, and every one of these is reported with the segment, the line and what was
+done — a build never repairs quietly, and a strict mode refuses instead of repairing:
+
+- A format version the reader takes but the writer must choose for (v5 to lazer's own).
+- A BOM, CRLF, LF or mixed line endings; the writer already round-trips all three.
+- `AudioFilename` with the wrong case, a wrong extension or a path separator, and the
+  audio sitting in the folder under a slightly different name.
+- Audio missing, empty, zero-length, a tag-only file, or not audio at all — the loader's
+  own messages, per segment, with the rest of the plan still shown.
+- Objects before the first timing point, after the audio ends, or out of time order.
+- No timing points at all, duplicate reds at one offset, a red with a non-finite or
+  negative beat length, greens before the first red.
+- Broken or truncated objects, which stay `unparsed` and are carried through or dropped by
+  the chosen policy, with a count either way.
+- Custom sample files missing, empty, or named outside the `set-hitsoundN` convention;
+  per-object `filename` overrides pointing at a file that is not there.
+- A `Mode` that differs between segments, and a mania key count that differs — refused,
+  not repaired (below).
+- Unicode titles, non-Latin filenames, and names too long for the filesystem.
+- A segment whose own timing is wrong: the result's reference grade says so per segment,
+  so a bad source map is named instead of quietly making the compilation feel off.
+- Hit object times with decimals (lazer): kept or rounded by the chosen output version,
+  and the rounding reported.
+
+### What it will refuse
+
+A refusal with a reason beats a file that loads and plays wrong:
+
+- Segments in different game modes, or mania segments with different key counts.
+- A segment whose audio cannot be decoded, when it is not dropped from the plan.
+- A slider whose velocity cannot be represented at the chosen `SliderMultiplier` (25.9),
+  naming the sliders and what multiplier would hold them.
+- An output longer than a pinned ceiling, or more objects than a pinned ceiling.
+- Writing into a folder that already holds a map, unless the user says to add to it.
+- Overwriting a source file, ever.
+
+### Build order
+
+1. 25.1, 25.2, 25.3 and the gate rows of 25.17 that cover them: the plan, the read and the
+   shift, measured on the committed fixtures, before any audio is touched.
+2. 25.4, 25.5 and 25.16 dry run: one audio file out, the cut proven by correlation
+   (25.15's junction check) before anything else is built on it.
+3. 25.8, 25.9, 25.10, 25.11: the parts that decide whether a segment *plays* like its
+   source. Hitsounds first — they are the reference tool's one real trick and the easiest
+   to get subtly wrong.
+4. 25.13, 25.16 whole output, 25.15 report.
+5. 25.14, the section, once the pieces behind it refuse correctly; the browser harness
+   over it in both themes and languages, as Phase 19 did.
+6. 25.6, 25.7's crossfades, 25.12, then 25.18 and 25.19.
+
+The one-heavy-job-at-a-time rule applies throughout: a five-song compilation is five
+decodes, and they run one after the other with the progress panel naming which.
+
+### Open questions
+
+- **The audio format to write.** Ogg Vorbis is sample-exact and osu! reads it; MPEG Layer
+  III is what mapsets ship and what players expect, and libsndfile's encoder has its own
+  delay. 25.5 measures that delay rather than guessing it, and the default follows the
+  measurement.
+- **Whether a segment may be a map's own section** rather than the whole map, which is
+  25.18's premise but also a question about what a compilation is for.
+- **Where the compilation document lives** — beside the cache, or in the output folder so
+  it travels with the mapset.
+
+---
+
 ## Rejected ideas
 
 | Idea | Verdict |
@@ -726,6 +902,7 @@ P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─�
                            ├─► P4 playback ✓ / editor ✓
                            └─► P5 osu! ✓ ─────────────► P8 automation (half) ─► P9 (suggestions ✓)
                                                          P21 map tools (the P1 rows ✓)
+                                                         P25 compilation builder (todo)
 
 Next: harness passes ─► hitsounds, the rest ─► Library focus ─► Phase 10 ─► installer
 ```

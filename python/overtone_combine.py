@@ -1068,25 +1068,25 @@ def _segment_lines(segment: dict, beatmap: dict, floor_ms: float, decimals: int,
 def _header_sections(plan: dict, audio_name: str, preview_ms: float | None,
                      bookmarks: list[float], background: str | None,
                      breaks: list[tuple], decimals: int,
-                     values: dict | None = None) -> list[str]:
+                     values: dict | None = None,
+                     metadata: dict | None = None) -> list[str]:
     """Everything above [TimingPoints], from the first segment plus the plan.
 
     Deliberately thin. The difficulty numbers are whichever set
-    :func:`difficulty_plan` settled on; metadata and credits are row 25.13,
-    and until that lands they come from the first segment and the report says
-    so, which is better than a second set of defaults nobody chose.
+    :func:`difficulty_plan` settled on and the names whatever
+    :func:`metadata_plan` chose; what is left is the handful of fields osu!
+    needs a value for and nobody has an opinion about.
     """
     first = plan["segments"][0]
     difficulty = values if values is not None else first["difficulty"]
+    names = metadata or {}
     mode = plan["mode"] if plan["mode"] is not None else 0
 
     def number(value, fallback: str) -> str:
         return fallback if value is None else f"{float(value):g}"
 
-    metadata = first["metadata"]
-
     def text(key: str, fallback: str = "") -> str:
-        value = metadata.get(key)
+        value = names.get(key)
         return fallback if value is None else str(value).strip()
 
     lines = [f"osu file format v{WRITE_FORMAT}", "",
@@ -1110,14 +1110,14 @@ def _header_sections(plan: dict, audio_name: str, preview_ms: float | None,
              "TimelineZoom: 1",
              "",
              "[Metadata]",
-             f"Title:{text('Title', 'Compilation')}",
-             f"TitleUnicode:{text('TitleUnicode') or text('Title', 'Compilation')}",
-             f"Artist:{text('Artist', 'Various Artists')}",
-             f"ArtistUnicode:{text('ArtistUnicode') or text('Artist', 'Various Artists')}",
-             f"Creator:{text('Creator', 'Overtone')}",
-             "Version:Compilation",
-             f"Source:{text('Source')}",
-             f"Tags:{text('Tags')}",
+             f"Title:{text('title', 'Compilation')}",
+             f"TitleUnicode:{text('title_unicode') or text('title', 'Compilation')}",
+             f"Artist:{text('artist', VARIOUS_ARTISTS)}",
+             f"ArtistUnicode:{text('artist_unicode') or text('artist', VARIOUS_ARTISTS)}",
+             f"Creator:{text('creator', DEFAULT_CREATOR)}",
+             f"Version:{text('version', DEFAULT_VERSION)}",
+             f"Source:{text('source')}",
+             f"Tags:{text('tags')}",
              "BeatmapID:0",
              "BeatmapSetID:-1",
              "",
@@ -1182,7 +1182,8 @@ def _between_objects(periods: list[tuple], times: list[float]) -> tuple[list, in
 def combine_beatmap(plan: dict, audio_name: str = "audio.mp3",
                     decimals: int = WRITE_DECIMALS,
                     samples: dict | None = None,
-                    difficulty="first") -> tuple[str, dict]:
+                    difficulty="first",
+                    metadata: dict | None = None) -> tuple[str, dict]:
     """The compilation as one ``.osu``: every borrowed timestamp where it belongs.
 
     What moves, and the rule for each, is the specification this row exists
@@ -1212,10 +1213,12 @@ Hitsounds travel with their segment: every sample index is remapped so no
     ``SliderMultiplier`` still moves at its own speed. A segment that cannot
     be compensated inside a green line's range refuses the build by name.
 
-    Returns the text and a report. The report's ``pending`` list is the honest
-    part: the metadata is still the first segment's (row 25.13), and nothing
-    credits the other mappers yet. Each entry names the row that will answer
-    it, so what this builds today is not mistaken for what it will build.
+``metadata`` is what the compilation says it is (:func:`metadata_plan`):
+    the chosen names, and every source mapper in ``Tags`` beside the
+    ``credits.txt`` the output folder gets.
+
+    Returns the text and a report carrying each plan it settled, so a build
+    can be explained afterwards from the report alone.
 
     Writing the file is row 25.16; this returns text, which is also what makes
     it testable against a reader.
@@ -1228,6 +1231,8 @@ Hitsounds travel with their segment: every sample index is remapped so no
         raise ValueError(f"Plan format {plan.get('format')!r} is not {PLAN_FORMAT}.")
 
     chosen = samples if samples is not None else sample_plan(plan)
+    named = metadata if metadata and "values" in (metadata or {}) \
+        else metadata_plan(plan, metadata)
     settled = difficulty_plan(plan, difficulty)
     if settled["refusals"]:
         raise ValueError("The difficulty refused: " + "; ".join(
@@ -1312,13 +1317,15 @@ Hitsounds travel with their segment: every sample index is remapped so no
 
     first = plan["segments"][0]
     pending: list[dict] = []
-    pending.append({"row": "25.13", "code": "metadata_from_first_segment",
-                    "what": "Title, artist, creator and tags are the first segment's; "
-                            "nothing credits the other mappers yet."})
+    if named["creator_from"] == "default":
+        pending.append({"row": "25.13", "code": "creator_is_a_placeholder",
+                        "what": f"Creator says {DEFAULT_CREATOR!r}: osu! wants the name "
+                                f"of whoever posts this, and no source mapper made this "
+                                f"compilation."})
 
     body = _header_sections(plan, audio_name, preview, sorted(bookmarks),
                             first["background"], sorted(breaks), decimals,
-                            settled["values"])
+                            settled["values"], named["values"])
     body.append("[TimingPoints]")
     body.extend(text for _t, _r, text in
                 sorted(timing, key=lambda row: (row[0], row[1])))
@@ -1329,8 +1336,10 @@ Hitsounds travel with their segment: every sample index is remapped so no
 
     report = {"audio_name": audio_name, "format": WRITE_FORMAT, "decimals": decimals,
               "segments": per_segment, "samples": chosen, "difficulty": settled,
+              "metadata": named,
               "objects": len(objects), "timing_lines": len(timing),
               "bookmarks": len(bookmarks), "breaks": len(breaks),
+              "background": first["background"],
               "junction_breaks": added,
               "preview_ms": None if preview is None else round(preview, 3),
               "duration_ms": plan["totals"]["duration_ms"],
@@ -1982,3 +1991,347 @@ def _scaled_green(raw: str, ratio: float, decimals: int) -> str:
     sv = (-100.0 / beat) * ratio
     fields[1] = _beat_text(-100.0 / sv)
     return ",".join(fields)
+
+
+# ---------------------------------------------------------------------------
+# Metadata and credits (Phase 25, row 25.13)
+# ---------------------------------------------------------------------------
+
+#: The fields the caller may set by hand. ``tags`` replaces the generated
+#: list; everything else stands in for one chosen value.
+METADATA_FIELDS = ("title", "title_unicode", "artist", "artist_unicode",
+                   "creator", "version", "source", "tags")
+
+#: What goes in ``Creator`` when nobody says. It is a placeholder on purpose:
+#: osu! wants the uploader's own name there, and no source mapper made this
+#: compilation. The report says ``creator_from: "default"`` so a UI can ask.
+DEFAULT_CREATOR = "Overtone"
+
+#: The difficulty name, which is one map however many songs it holds.
+DEFAULT_VERSION = "Compilation"
+
+#: What ``Artist`` says when the songs do not agree, as mapsets write it.
+VARIOUS_ARTISTS = "Various Artists"
+
+#: Tags every compilation carries, so one can be found as what it is.
+COMPILATION_TAGS = ("overtone", "compilation", "marathon")
+
+
+def _field(segment: dict, key: str) -> str:
+    value = (segment.get("metadata") or {}).get(key)
+    return "" if value is None else " ".join(str(value).split())
+
+
+def _one_of(values: list, fallback: str) -> str:
+    """The value they all share, or ``fallback`` when they do not agree."""
+    found = [value for value in values if value]
+    return found[0] if found and len(set(found)) == 1 and len(found) == len(values) \
+        else fallback
+
+
+def _tag_tokens(text: str) -> list[str]:
+    return [token for token in str(text).split() if token]
+
+
+def metadata_plan(plan: dict, metadata: dict | None = None) -> dict:
+    """What the compilation says it is, and who made what inside it.
+
+    A compilation is other people's work in one file, so the credit is part
+    of the feature and not a footnote: every source mapper and song goes into
+    ``Tags`` and into a ``credits.txt`` the build writes beside the map, and
+    the report carries the same list per segment.
+
+    What is chosen rather than copied: the artist is the one the songs agree
+    on, else "Various Artists"; the title is the one they agree on, else
+    "Compilation (N songs)"; the difficulty name is "Compilation"; and the
+    creator is a **placeholder**, because osu! wants the uploader's own name
+    there and no source mapper made this. Anything the caller gives wins, and
+    the Unicode twins follow their romanised field unless they are given too.
+
+    Nothing here decides whether a compilation may be posted. That is the
+    mappers' call, and :func:`credits_text` says so in the file.
+    """
+    given = {key: value for key, value in (metadata or {}).items() if value is not None}
+    unknown = sorted(set(given) - set(METADATA_FIELDS))
+    if unknown:
+        raise ValueError(f"Unknown metadata field(s): {', '.join(unknown)}. "
+                         f"Known: {', '.join(METADATA_FIELDS)}.")
+    segments = plan["segments"]
+    shared_artist = _one_of([_field(segment, "Artist") for segment in segments], "")
+    shared_title = _one_of([_field(segment, "Title") for segment in segments], "")
+    artist = str(given.get("artist") or shared_artist or VARIOUS_ARTISTS)
+    title = str(given.get("title") or shared_title
+                or f"Compilation ({len(segments)} songs)")
+    # A Unicode twin only means something while the romanised field is still
+    # the songs' own: under a label this builder invented it would be a
+    # different name for a different thing.
+    own_artist = bool(shared_artist) and artist == shared_artist
+    own_title = bool(shared_title) and title == shared_title
+    unicode_artist = str(
+        given.get("artist_unicode")
+        or (_one_of([_field(s, "ArtistUnicode") for s in segments], "")
+            if own_artist else "") or artist)
+    unicode_title = str(
+        given.get("title_unicode")
+        or (_one_of([_field(s, "TitleUnicode") for s in segments], "")
+            if own_title else "") or title)
+
+    credits: list[dict] = []
+    tokens: list[str] = []
+    seen: set[str] = set()
+
+    def add(text: str) -> None:
+        for token in _tag_tokens(text):
+            if token.lower() not in seen:
+                seen.add(token.lower())
+                tokens.append(token)
+
+    for n, segment in enumerate(segments):
+        song = " - ".join(part for part in (_field(segment, "Artist"),
+                                            _field(segment, "Title")) if part)
+        credits.append({"segment": n, "at_ms": segment["at_ms"],
+                        "song": song or Path(segment["osu"]).stem,
+                        "difficulty": _field(segment, "Version") or segment["name"],
+                        "mapper": _field(segment, "Creator"),
+                        "file": Path(segment["osu"]).name})
+        add(_field(segment, "Creator"))
+        add(_field(segment, "Artist"))
+    for tag in COMPILATION_TAGS:
+        add(tag)
+    tags = str(given["tags"]) if "tags" in given else " ".join(tokens)
+
+    return {"values": {"title": title, "title_unicode": unicode_title,
+                       "artist": artist, "artist_unicode": unicode_artist,
+                       "creator": str(given.get("creator") or DEFAULT_CREATOR),
+                       "version": str(given.get("version") or DEFAULT_VERSION),
+                       "source": str(given.get("source") or ""), "tags": tags},
+            "from": {field: ("given" if field in given else "chosen")
+                     for field in METADATA_FIELDS},
+            "creator_from": "given" if given.get("creator") else "default",
+            "credits": credits,
+            "mappers": sorted({row["mapper"] for row in credits if row["mapper"]})}
+
+
+def credits_text(plan: dict, metadata: dict | None = None) -> str:
+    """The ``credits.txt`` that travels with the mapset.
+
+    Plain text, one line per song, in the order they play. It names the
+    mapper, the difficulty and the file every segment came from, and it says
+    the one thing the tool cannot decide: whether these mappers are willing
+    to have their work in somebody else's compilation.
+    """
+    settled = metadata if metadata and "values" in (metadata or {}) \
+        else metadata_plan(plan, metadata)
+    values = settled["values"]
+    lines = [f"{values['artist']} - {values['title']} [{values['version']}]",
+             "",
+             "A compilation built with Overtone. Every song and every pattern in it is",
+             "somebody else's work, listed below in the order it plays.",
+             "",
+             "Whether a map may be used in a compilation is its mapper's call, not this",
+             "tool's: ask them, and credit them wherever this is posted.",
+             ""]
+    for row in settled["credits"]:
+        start = row["at_ms"] / 1000.0
+        lines.append(f"{int(start) // 60:d}:{int(start) % 60:02d}  {row['song']}")
+        detail = [part for part in (f"[{row['difficulty']}]" if row["difficulty"] else "",
+                                    f"mapped by {row['mapper']}" if row["mapper"] else "",
+                                    row["file"]) if part]
+        lines.append("      " + "  |  ".join(detail))
+    if settled["creator_from"] == "default":
+        lines.extend(["",
+                      f"The Creator field says {DEFAULT_CREATOR!r}: set it to the name of",
+                      "whoever is posting this before uploading it anywhere."])
+    return "\r\n".join(lines) + "\r\n"
+
+
+# ---------------------------------------------------------------------------
+# The output: a folder, an .osz, or a dry run (Phase 25, rows 25.16 and 25.15)
+# ---------------------------------------------------------------------------
+
+#: The credit list every built mapset carries.
+CREDITS_NAME = "credits.txt"
+
+#: What the build calls itself in the write history, so History says which
+#: tool wrote a file.
+WRITE_OP = "compile"
+
+
+def _osu_filename(values: dict) -> str:
+    """``Artist - Title (Creator) [Version].osu``, made safe for a filesystem."""
+    artist = ta._safe_component(values["artist"], VARIOUS_ARTISTS)
+    title = ta._safe_component(values["title"], "Compilation")
+    creator = ta._safe_component(values["creator"], DEFAULT_CREATOR)
+    version = ta._safe_component(values["version"], DEFAULT_VERSION)
+    return f"{artist} - {title} ({creator}) [{version}].osu"
+
+
+def _refuse_source_folder(plan: dict, folder: Path) -> None:
+    """Never write where a source lives. A compilation reads other people's
+    folders and has no business writing in one, even its own name."""
+    out = folder.resolve()
+    for segment in plan["segments"]:
+        if Path(segment["folder"]).resolve() == out:
+            raise ValueError(
+                f"{folder} is {Path(segment['osu']).name}'s own folder; a compilation "
+                f"never writes where it read.")
+
+
+def _zip_folder(folder: Path, target: Path) -> dict:
+    """The folder's files as one flat ``.osz``, built in a temp file and
+    renamed into place, so an interrupted write cannot leave an archive osu!
+    refuses and nobody thinks to delete."""
+    import zipfile
+
+    spare = target.with_name(target.name + ".part")
+    try:
+        with zipfile.ZipFile(spare, "w", zipfile.ZIP_DEFLATED) as archive:
+            for path in sorted(folder.iterdir()):
+                if path.is_file() and path.suffix.lower() != ".osz":
+                    archive.write(path, path.name)
+        os.replace(spare, target)
+    except BaseException:
+        spare.unlink(missing_ok=True)
+        raise
+    return {"path": str(target), "name": target.name, "bytes": target.stat().st_size}
+
+
+def build_compilation(plan: dict, folder: str | os.PathLike[str], *,
+                      audio_format: str = DEFAULT_AUDIO_FORMAT,
+                      audio_name: str | None = None,
+                      metadata: dict | None = None,
+                      difficulty="first",
+                      samples: dict | None = None,
+                      decimals: int = WRITE_DECIMALS,
+                      osz=False, dry_run: bool = False,
+                      allow_existing: bool = False,
+                      verify: bool = True) -> dict:
+    """The whole compilation as a mapset folder, an ``.osz``, or neither.
+
+    Everything is settled before anything is written: the sample remap, the
+    difficulty, the metadata and the beatmap text itself, which is what
+    refuses a build that cannot be made. ``dry_run`` stops there and returns
+    the same report with the list of files it *would* write — the thing to
+    show somebody before they commit a folder to it.
+
+    The order on disk is audio, samples, beatmap, credits, background, and
+    the ``.osu`` goes through the engine's atomic writer and the write
+    history, so History names this build like any other write.
+
+    Refuses a folder that already holds a beatmap unless ``allow_existing``,
+    and refuses a source's own folder always: a compilation reads other
+    people's folders and has no business writing in one.
+
+    ``verify`` reads the result back (row 25.15): each segment's audio
+    correlated against its own song, the snap audit on the written map, and
+    the beatmap text through the reader and writer again. A second decode, so
+    it can be turned off, and on by default because a build nobody checked is
+    a build nobody can trust.
+    """
+    out = Path(folder)
+    if out.exists() and not out.is_dir():
+        raise ValueError(f"{out} is not a folder.")
+    _refuse_source_folder(plan, out)
+    if out.is_dir() and not allow_existing:
+        existing = sorted(path.name for path in out.iterdir()
+                          if path.suffix.lower() == ".osu")
+        if existing:
+            raise ValueError(f"{out.name} already holds {existing[0]!r}. Say "
+                             f"allow_existing to add this compilation to it.")
+
+    chosen = samples if samples is not None else sample_plan(plan)
+    named = metadata if metadata and "values" in (metadata or {}) \
+        else metadata_plan(plan, metadata)
+    audio_file = audio_name or f"audio.{audio_format}"
+    text, beatmap = combine_beatmap(plan, audio_name=audio_file, decimals=decimals,
+                                    samples=chosen, difficulty=difficulty,
+                                    metadata=named)
+    credits = credits_text(plan, named)
+    osu_file = _osu_filename(named["values"])
+    background = beatmap.get("background")
+    files = [{"name": audio_file, "kind": "audio", "bytes": None},
+             *({"name": entry["name"], "kind": "sample", "bytes": entry["bytes"]}
+               for entry in chosen["files"]),
+             {"name": osu_file, "kind": "beatmap", "bytes": len(text.encode("utf-8"))},
+             {"name": CREDITS_NAME, "kind": "credits",
+              "bytes": len(credits.encode("utf-8"))}]
+    if background:
+        files.append({"name": background, "kind": "background", "bytes": None})
+    report = {"folder": str(out), "osu": osu_file, "audio_name": audio_file,
+              "written": False, "dry_run": bool(dry_run), "files": files,
+              "beatmap": beatmap, "samples": chosen, "metadata": named,
+              "difficulty": beatmap["difficulty"], "credits": credits,
+              "totals": plan["totals"], "osz": None, "checks": None}
+    if dry_run:
+        return report
+
+    out.mkdir(parents=True, exist_ok=True)
+    audio = build_audio(plan, out / audio_file, audio_format=audio_format)
+    copied = build_samples(plan, out, chosen)
+    payload = text.encode("utf-8")
+    ta._atomic_write_bytes(out / osu_file, payload)
+    ta.log_write(out / osu_file, WRITE_OP, None,
+                 {"bytes": len(payload), "segments": plan["totals"]["segments"],
+                  "objects": beatmap["objects"], "audio": audio_file})
+    ta._atomic_write_bytes(out / CREDITS_NAME, credits.encode("utf-8"))
+    if background:
+        source = next((Path(segment["folder"]) / background
+                       for segment in plan["segments"]
+                       if (Path(segment["folder"]) / background).is_file()), None)
+        if source is not None and not (out / background).is_file():
+            import shutil
+
+            shutil.copyfile(source, out / background)
+        elif source is None:
+            report["files"] = [entry for entry in report["files"]
+                               if entry["kind"] != "background"]
+            beatmap["notes"].append(
+                {"segment": None, "code": "background_missing",
+                 "what": f"The map names {background!r} as its background and no source "
+                         f"folder holds it; the compilation has none."})
+    for entry in report["files"]:
+        path = out / entry["name"]
+        entry["bytes"] = path.stat().st_size if path.is_file() else None
+    report.update({"written": True, "audio": audio, "copied": copied})
+    if osz:
+        if isinstance(osz, bool):
+            artist = ta._safe_component(named["values"]["artist"], VARIOUS_ARTISTS)
+            title = ta._safe_component(named["values"]["title"], "Compilation")
+            target = out.parent / f"{artist} - {title}.osz"
+        else:
+            target = Path(osz)
+        report["osz"] = _zip_folder(out, target)
+    if verify:
+        report["checks"] = verify_build(plan, out / osu_file, out / audio_file, text)
+    return report
+
+
+def verify_build(plan: dict, osu_path: str | os.PathLike[str],
+                 audio_path: str | os.PathLike[str],
+                 text: str | None = None) -> dict:
+    """What a built compilation looks like read back (Phase 25, row 25.15).
+
+    Three questions, each answered from the files rather than the report that
+    made them: did every segment's audio land where the map says (the audio
+    swap's own aligner), is anything off the grid or before it (the snap
+    audit, which is what a mapper would ask), and does the beatmap come back
+    through the reader and writer byte for byte.
+    """
+    built = ta.read_osu_beatmap(osu_path)
+    audio = verify_audio(plan, audio_path)
+    try:
+        info = ta.sf.info(str(audio_path))
+        duration = info.frames / info.samplerate
+    except Exception:                                  # libsndfile raises its own types
+        duration = None
+    snap = ta.snap_audit(built, duration_s=duration)
+    round_trip = ta.beatmap_text(built) == (text if text is not None
+                                            else ta._load_osu_text(osu_path)[0])
+    return {"audio": audio, "round_trip": bool(round_trip),
+            "snap": {"objects": snap.get("objects"), "red_lines": snap.get("red_lines"),
+                     "unsnapped": len(snap.get("unsnapped", [])),
+                     "before_first_red": len(snap.get("before_first_red", [])),
+                     "past_audio": len(snap.get("past_audio") or [])},
+            "ok": bool(round_trip) and bool(audio["ok"])
+                  and not snap.get("unsnapped") and not snap.get("before_first_red")
+                  and not (snap.get("past_audio") or [])}

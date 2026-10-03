@@ -1151,9 +1151,9 @@ def perf(names: list[str], audio_dir: Path, runs: int, update: bool) -> int:
 #: beat length is a repeating decimal, taken from the middle of its song so
 #: its grid has to be pinned by the builder rather than carried; and a case
 #: with four red lines, so the bookkeeping is not measured on one.
-COMBINE_PLAN = ({"case": "edm-174"},
+COMBINE_PLAN = ({"case": "edm-174", "sample": b"RIFFedm-174 clap"},
                 {"case": "odd-222.22", "start_ms": 20000.0, "end_ms": 40000.0},
-                {"case": "secs-4", "multiplier": "2.0"})
+                {"case": "secs-4", "multiplier": "2.0", "sample": b"RIFFsecs-4 clap"})
 
 #: Beats between two objects of a source map. Objects are stored whole, which
 #: is how osu!stable writes them, so they sit up to half a millisecond off
@@ -1165,10 +1165,12 @@ COMBINE_BEATS_APART = 4
 COMBINE_MUTANTS = 60
 
 
-def _combine_source(folder: Path, case: str, multiplier: str = "1.4") -> Path:
+def _combine_source(folder: Path, case: str, multiplier: str = "1.4",
+                    sample: bytes | None = None) -> Path:
     """A map on ``case``'s own audio: the golden vector's red lines, circles on
-    their beats from end to end, a green asking for a custom sample, a break
-    and bookmarks."""
+    their beats from end to end, a green asking for custom sample index 3, a
+    break and bookmarks. ``sample`` writes that index's file, so two sources
+    can ask for one filename with two different sounds in it."""
     vector = json.loads((HERE / "golden" / f"{case}.json").read_text(encoding="utf-8"))
     points = [(float(p["offset_ms"]), float(p["bpm"]))
               for p in vector["result"]["points"] if float(p["bpm"]) > 0]
@@ -1197,10 +1199,12 @@ def _combine_source(folder: Path, case: str, multiplier: str = "1.4") -> Path:
              "ApproachRate:9", f"SliderMultiplier:{multiplier}", "SliderTickRate:1", "",
              "[Events]", f"2,{marks[0] + 400},{marks[1] - 400}", "",
              "[TimingPoints]", *reds,
-             f"{round(first + 8 * beat)},-125,4,3,5,60,0,1", "",
+             f"{round(first + 8 * beat)},-125,4,3,3,60,0,1", "",
              "[HitObjects]", *objects, ""]
     path = folder / f"{case}.osu"
     path.write_bytes("\r\n".join(lines).encode("utf-8"))
+    if sample is not None:
+        (folder / "soft-hitclap3.wav").write_bytes(sample)
     return path
 
 
@@ -1268,10 +1272,11 @@ def combine(audio_dir: Path) -> int:
             if not audio.exists():
                 bm.build_track(audio, seed=zlib.crc32(case.encode()), **bm.CASES[case])
             source = {"osu": str(_combine_source(Path(tmp) / case, case,
-                                                 spec.get("multiplier", "1.4"))),
+                                                 spec.get("multiplier", "1.4"),
+                                                 spec.get("sample"))),
                       "audio": str(audio)}
             source.update({k: v for k, v in spec.items()
-                           if k not in ("case", "multiplier")})
+                           if k not in ("case", "multiplier", "sample")})
             sources.append(source)
         plan = tc.plan_compilation(sources)
         print(f"plan: {plan['totals']['segments']} segments, "
@@ -1345,8 +1350,78 @@ def combine(audio_dir: Path) -> int:
               f"{len(text)} characters")
         check("the result says what later rows still owe",
               {entry["row"] for entry in report["pending"]}
-              == {"25.8", "25.9", "25.10", "25.13"},
+              == {"25.13"},
               ", ".join(sorted(entry["row"] for entry in report["pending"])))
+
+        # The difficulty: one set of numbers, and the slider speed the
+        # segments that did not choose them keep anyway.
+        print()
+        settled = report["difficulty"]
+        print("difficulty: " + ", ".join(f"{field} {value:g}"
+                                         for field, value in settled["values"].items()))
+        lines = [row for row in next(s["lines"] for s in built["sections"]
+                                     if s["name"] == "TimingPoints") if row.strip()]
+        reds = [row for row in lines if ta._is_red_line(row)]
+        greens = {round(float(row.split(",")[0]), 3): -100.0 / float(row.split(",")[1])
+                  for row in lines if not ta._is_red_line(row)}
+        floor = 0.0
+        for n, segment in enumerate(plan["segments"]):
+            ratio = settled["segments"][n]["sv_ratio"]
+            mine = [float(row.split(",")[0]) for row in reds
+                    if floor - 1e-6 <= float(row.split(",")[0]) <= segment["ends_at_ms"]]
+            floor = segment["ends_at_ms"]
+            if abs(ratio - 1.0) <= 1e-9:
+                # These sources put their own green eight beats in, never on
+                # a red line, so a green on one would be this builder's.
+                check(f"segment {n}: its own multiplier, nothing added",
+                      all(round(at, 3) not in greens for at in mine),
+                      f"{len(mine)} red line(s), no green invented")
+                continue
+            held = [at for at in mine
+                    if abs(greens.get(round(at, 3), 0.0) - ratio) <= 1e-6]
+            check(f"segment {n}: every red is followed by its {ratio:.4g}x",
+                  len(held) == len(mine) and bool(mine),
+                  f"{len(held)} of {len(mine)} red line(s) carry it")
+        differing = {field for row in settled["segments"]
+                     for field in row["deviations"]}
+        check("what a segment gave up is named", "slider_multiplier" in differing,
+              ", ".join(sorted(differing)) or "nothing differs")
+        check("a break covers every junction",
+              report["junction_breaks"] == len(plan["junctions"]),
+              f"{report['junction_breaks']} of {len(plan['junctions'])} junction(s), "
+              f"{report['breaks']} break(s) in the file")
+        check("a bookmark marks every segment",
+              report["bookmarks"] >= len(plan["segments"]),
+              f"{report['bookmarks']} bookmark(s) for "
+              f"{len(plan['segments'])} segment(s)")
+
+        # The hitsounds: two sources asked for one filename with two
+        # different sounds in it, and both have to survive.
+        print()
+        samples = tc.sample_plan(plan)
+        maps = [row["index_map"] for row in samples["segments"]]
+        wanted = [set(row.values()) for row in maps]
+        check("every segment got its own sample indices",
+              all(not (a & b) for n, a in enumerate(wanted) for b in wanted[n + 1:]),
+              f"{maps}")
+        asked = [row.split(",")[4] for row in
+                 next(s["lines"] for s in built["sections"]
+                      if s["name"] == "TimingPoints") if row.strip()]
+        check("the written lines ask for the new indices",
+              set(asked) >= {str(v) for row in maps for v in row.values()},
+              f"indices in the file: {sorted(set(asked))}")
+        bank = Path(tmp) / "bank"
+        copied = tc.build_samples(plan, bank, samples)
+        names = sorted(path.name for path in bank.iterdir())
+        bodies = {path.name: path.read_bytes() for path in bank.iterdir()}
+        check("both custom samples were copied, neither replaced",
+              len(names) == 2 and len(set(bodies.values())) == 2,
+              f"{names}, {copied['copied']} copied, {copied['bytes']} bytes")
+        check("no source folder was written to",
+              all(not any(p.name.startswith("soft-hitclap") and p.name != "soft-hitclap3.wav"
+                          for p in Path(source["osu"]).parent.iterdir())
+                  for source in sources),
+              "sources hold only their own samples")
 
         # The audio: lossless first, because it can be compared sample for
         # sample, then the format the builder actually writes.

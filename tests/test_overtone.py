@@ -9552,7 +9552,10 @@ class CombineAssemblyTests(unittest.TestCase):
         rows = self._section(text, "TimingPoints")
         red = rows[0].split(",")
         self.assertEqual(red[1], "400")                    # the governing beat length
-        self.assertEqual(red[3:], ["3", "5", "60", "1", "1"])   # soft set 5, 60 %, kiai
+        # Drum set, 60 %, kiai on, and the slider velocity restored by a green
+        # after it. The sample index the source asked for was 5 and reads 1
+        # here: the compilation gives every segment its own indices (25.8).
+        self.assertEqual(red[3:], ["3", "1", "60", "1", "1"])
         self.assertEqual(rows[1].split(",")[1], "-125")    # 0.8x restored after the red
         self.assertEqual(rows[1].split(",")[6], "0")       # as a green
 
@@ -9563,22 +9566,35 @@ class CombineAssemblyTests(unittest.TestCase):
                       "start_ms": 13000.0, "end_ms": 19000.0}
             _plan, text, _report = self._built([source])
         rows = self._section(text, "TimingPoints")
-        # Its own fields, shifted and nothing else: a red says everything about
-        # the state at its own time, so there is nothing to pin in front of it.
-        self.assertEqual(rows, ["2000,400,4,1,2,90,1,0"])
+        # Its own fields, shifted, with one thing moved: a red says everything
+        # about the state at its own time, so there is nothing to pin in front
+        # of it, and the sample index it asked for (2) is the compilation's
+        # own (1), because the file that index names is this map's.
+        self.assertEqual(rows, ["2000,400,4,1,1,90,1,0"])
 
     def test_breaks_bookmarks_and_the_preview_move_with_their_segment(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             plan, text, report = self._built([self._map(Path(tmp) / "a"),
                                               self._map(Path(tmp) / "b")])
         shifts = [segment["shift_ms"] for segment in plan["segments"]]
-        self.assertEqual([row for row in self._section(text, "Events")
-                          if row.startswith("2,")],
-                         [f"2,{17500 + shifts[0]:.0f},{18500 + shifts[0]:.0f}",
-                          f"2,{17500 + shifts[1]:.0f},{18500 + shifts[1]:.0f}"])
-        self.assertIn(f"Bookmarks: {15000 + shifts[0]:.0f},{19000 + shifts[0]:.0f},"
+        # Each segment's own bookmarks move with it, and one is added where
+        # each segment starts, so the result can be navigated song by song.
+        self.assertIn(f"Bookmarks: {2000 + 0:.0f},{15000 + shifts[0]:.0f},"
+                      f"{19000 + shifts[0]:.0f},{plan['segments'][1]['at_ms']:.0f},"
                       f"{15000 + shifts[1]:.0f},{19000 + shifts[1]:.0f}", text)
         self.assertEqual(report["preview_ms"], 15500 + shifts[0])
+        # One break over the junction, from the first segment's last sound to
+        # the second's first object: it swallowed both segments' own breaks,
+        # which sat in the silence it covers, and the one hanging off the end
+        # of the second segment was dropped for having no object after it.
+        after, before = report["segments"]
+        self.assertEqual([row for row in self._section(text, "Events")
+                          if row.startswith("2,")],
+                         [f"2,{after['last_sound_ms'] + 200:.0f},"
+                          f"{before['first_object_ms'] - 200:.0f}"])
+        self.assertEqual((report["breaks"], report["junction_breaks"]), (1, 1))
+        self.assertEqual([note["code"] for note in report["notes"]
+                          if note["code"] == "breaks_dropped"], ["breaks_dropped"])
 
     def test_what_falls_outside_the_range_is_left_out(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -9589,7 +9605,9 @@ class CombineAssemblyTests(unittest.TestCase):
         # 17500 begins where the range ends, the bookmarks sit either side of
         # it, and the preview point at 15500 is before it.
         self.assertEqual(len(self._times(text, "HitObjects")), 1)
-        self.assertEqual((report["breaks"], report["bookmarks"]), (0, 0))
+        # No break survives (the source's sat past the range) and the only
+        # bookmark is the one marking where the segment starts.
+        self.assertEqual((report["breaks"], report["bookmarks"]), (0, 1))
         self.assertIsNone(report["preview_ms"])
 
     def test_the_result_reads_back_and_round_trips_byte_identical(self) -> None:
@@ -9630,13 +9648,16 @@ class CombineAssemblyTests(unittest.TestCase):
                 self._map(Path(tmp) / "a",
                           objects=[*self.OBJECTS, "64,64,18000,1,0,0:0:0:0:kick.wav"]),
                 self._map(Path(tmp) / "b", multiplier="2.0")])
-        pending = {entry["code"]: entry for entry in report["pending"]}
-        # Both segments carry a custom sample index -- their green line asks
-        # for index 5 -- and only the first names a file.
-        self.assertEqual(pending["samples_not_remapped"]["segments"], [0, 1])
-        self.assertEqual(pending["multiplier_not_reconciled"]["segments"], [1])
-        self.assertEqual({entry["row"] for entry in report["pending"]},
-                         {"25.8", "25.9", "25.10", "25.13"})
+        self.assertEqual([entry["row"] for entry in report["pending"]], ["25.13"])
+        # The second segment was made at SliderMultiplier 2.0 against the 1.4
+        # written, so its sliders keep their speed through a green line.
+        self.assertEqual([row["sv_ratio"] for row in report["difficulty"]["segments"]],
+                         [1.0, 2.0 / 1.4])
+        self.assertEqual(report["difficulty"]["values"]["slider_multiplier"], 1.4)
+        # Both segments ask for a custom sample index -- their green line
+        # wants 5 -- so each gets one of its own, and 25.8 owes nothing.
+        self.assertEqual([row["index_map"] for row in report["samples"]["segments"]],
+                         [{"5": 1}, {"5": 2}])
 
     def test_a_gap_shorter_than_a_beat_refuses_instead_of_moving_the_grid(self) -> None:
         import overtone_combine
@@ -9844,6 +9865,461 @@ class CombineAudioTests(unittest.TestCase):
         self.assertFalse(check["checked"])
         self.assertIn("11025", check["why"])
         self.assertTrue(check["ok"])
+
+class CombineSampleTests(unittest.TestCase):
+    """Whose hitsound plays: every segment's indices and files made its own."""
+
+    def _map(self, folder: Path, *, timing=("1000,400,4,2,3,80,1,0",),
+             objects=("100,100,1200,1,0,0:0:0:0:",), samples=(), seconds: float = 6.0,
+             multiplier: str = "1.4") -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "Mode: 0", "",
+                 "[Metadata]", "Title:Song", "Artist:A", "Creator:M",
+                 f"Version:{folder.name}", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", f"SliderMultiplier:{multiplier}",
+                 "SliderTickRate:1", "",
+                 "[Events]", "",
+                 "[TimingPoints]", *timing, "",
+                 "[HitObjects]", *objects, ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        ta.sf.write(str(folder / "song.wav"),
+                    np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        for name, payload in samples:
+            (folder / name).write_bytes(payload)
+        return folder / "map.osu"
+
+    def _plan(self, sources, settings=None):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        return plan
+
+    def _samples(self, sources, settings=None):
+        import overtone_combine
+        plan = self._plan(sources, settings)
+        samples = overtone_combine.sample_plan(plan)
+        json.dumps(samples)
+        return plan, samples
+
+    @staticmethod
+    def _lines(text: str, name: str) -> list[str]:
+        body = text.split(f"[{name}]")[1].split("[")[0]
+        return [row for row in body.splitlines()
+                if row.strip() and not row.strip().startswith("//")]
+
+    def test_two_segments_asking_for_one_index_get_one_each(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", samples=[("soft-hitclap3.wav", b"first")])
+            second = self._map(Path(tmp) / "b", samples=[("soft-hitclap3.wav", b"second")])
+            _plan, samples = self._samples([first, second])
+        self.assertEqual([row["index_map"] for row in samples["segments"]],
+                         [{"3": 1}, {"3": 2}])
+        # Index 1 writes the bare name, 2 and up carry the number: the two
+        # files that were both soft-hitclap3.wav cannot collide any more.
+        self.assertEqual([(entry["name"], Path(entry["from"]).parent.name)
+                          for entry in samples["files"]],
+                         [("soft-hitclap.wav", "a"), ("soft-hitclap2.wav", "b")])
+        self.assertEqual(samples["indices_used"], 2)
+
+    def test_the_rewritten_lines_ask_for_the_new_index(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", samples=[("soft-hitclap3.wav", b"first")])
+            second = self._map(
+                Path(tmp) / "b", timing=("1000,400,4,2,3,80,1,0",),
+                objects=("100,100,1200,1,0,0:0:3:60:",),
+                samples=[("soft-hitclap3.wav", b"second")])
+            plan = self._plan([first, second])
+            text, report = overtone_combine.combine_beatmap(plan)
+        self.assertEqual([row.split(",")[4] for row in self._lines(text, "TimingPoints")],
+                         ["1", "2"])
+        # The object of the second segment asked for index 3 by hand.
+        hit = [row for row in self._lines(text, "HitObjects") if row.endswith(":60:")]
+        self.assertEqual(hit[0].split(",")[5], "0:0:2:60:")
+        self.assertEqual(report["samples"]["indices_used"], 2)
+
+    def test_index_zero_is_never_remapped(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                               objects=("100,100,1200,1,0,0:0:0:0:",))
+            plan = self._plan([source])
+            text, _report = overtone_combine.combine_beatmap(plan)
+            _plan, samples = self._samples([source])
+        # On a timing point 0 means "the skin's", on an object "whatever the
+        # timing point says". Both are instructions, not files.
+        self.assertEqual(samples["segments"][0]["index_map"], {})
+        self.assertEqual(self._lines(text, "TimingPoints")[0].split(",")[4], "0")
+        self.assertEqual(self._lines(text, "HitObjects")[0].split(",")[5], "0:0:0:0:")
+
+    def test_a_file_an_object_names_keeps_its_name_where_it_can(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                               objects=("100,100,1200,1,0,0:0:0:0:kick.wav",),
+                               samples=[("kick.wav", b"kick")])
+            _plan, samples = self._samples([source])
+        self.assertEqual(samples["segments"][0]["renames"], {})
+        self.assertEqual([entry["name"] for entry in samples["files"]], ["kick.wav"])
+
+    def test_two_segments_naming_one_file_differently_rename_the_second(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                              objects=("100,100,1200,1,0,0:0:0:0:kick.wav",),
+                              samples=[("kick.wav", b"one")])
+            second = self._map(Path(tmp) / "b", timing=("1000,400,4,2,0,80,1,0",),
+                               objects=("100,100,1200,1,0,0:0:0:0:kick.wav",),
+                               samples=[("kick.wav", b"another")])
+            plan = self._plan([first, second])
+            samples = overtone_combine.sample_plan(plan)
+            text, _report = overtone_combine.combine_beatmap(plan, samples=samples)
+        self.assertEqual(samples["segments"][1]["renames"], {"kick.wav": "kick-2.wav"})
+        self.assertEqual(sorted(entry["name"] for entry in samples["files"]),
+                         ["kick-2.wav", "kick.wav"])
+        self.assertEqual(samples["collisions_avoided"], 1)
+        # And the object that named it asks for the new name.
+        named = [row.split(",")[5] for row in self._lines(text, "HitObjects")]
+        self.assertEqual(named, ["0:0:0:0:kick.wav", "0:0:0:0:kick-2.wav"])
+
+    def test_two_segments_naming_the_same_bytes_share_one_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            same = b"the same sound"
+            first = self._map(Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                              objects=("100,100,1200,1,0,0:0:0:0:kick.wav",),
+                              samples=[("kick.wav", same)])
+            second = self._map(Path(tmp) / "b", timing=("1000,400,4,2,0,80,1,0",),
+                               objects=("100,100,1200,1,0,0:0:0:0:kick.wav",),
+                               samples=[("kick.wav", same)])
+            _plan, samples = self._samples([first, second])
+        self.assertEqual([entry["name"] for entry in samples["files"]], ["kick.wav"])
+        self.assertEqual(samples["shared_by_content"], 1)
+        self.assertEqual(samples["segments"][1]["renames"], {})
+
+    def test_an_index_with_no_file_is_said_to_fall_back(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", timing=("1000,400,4,2,7,80,1,0",))
+            _plan, samples = self._samples([source])
+        # Not a fault: osu! plays the skin's sound for an index the folder
+        # does not have, and the remapped index is just as absent.
+        self.assertEqual(samples["segments"][0]["falls_back"], [7])
+        self.assertEqual(samples["files"], [])
+        self.assertEqual(samples["segments"][0]["index_map"], {"7": 1})
+
+    def test_the_samples_are_copied_into_the_folder_and_not_moved(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", samples=[("soft-hitclap3.wav", b"first"),
+                                                         ("drum-hitfinish3.ogg", b"x")])
+            plan = self._plan([source])
+            out = Path(tmp) / "out"
+            first = overtone_combine.build_samples(plan, out)
+            again = overtone_combine.build_samples(plan, out)
+            self.assertEqual((first["copied"], first["already_there"], first["failed"]),
+                             (2, 0, []))
+            self.assertEqual((again["copied"], again["already_there"]), (0, 2))
+            self.assertEqual(sorted(p.name for p in out.iterdir()),
+                             ["drum-hitfinish.ogg", "soft-hitclap.wav"])
+            self.assertTrue((Path(tmp) / "a" / "soft-hitclap3.wav").is_file())
+            self.assertEqual((out / "soft-hitclap.wav").read_bytes(), b"first")
+
+    def test_a_mania_holds_sample_is_rewritten_after_its_end_time(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(
+                Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                objects=("64,192,1200,128,0,2200:0:0:3:60:kick.wav",),
+                samples=[("kick.wav", b"k"), ("soft-hitclap3.wav", b"c")])
+            plan = self._plan([source])
+            text, _report = overtone_combine.combine_beatmap(plan)
+        row = self._lines(text, "HitObjects")[0].split(",")
+        # The end time and the sample share the sixth field: the time moves by
+        # the segment's +2000 ms shift, the sample's index becomes the
+        # compilation's, and the volume and the filename stay put.
+        self.assertEqual(row[5], "4200:0:0:1:60:kick.wav")
+
+    def test_a_sliders_sample_is_the_eleventh_field(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            slider = ("100,100,1200,2,0,L|300:200,1,100,0|0,0:0|0:0,0:0:3:60:kick.wav")
+            source = self._map(Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                               objects=(slider,),
+                               samples=[("kick.wav", b"k"),
+                                        ("soft-hitclap3.wav", b"c")])
+            plan = self._plan([source])
+            text, _report = overtone_combine.combine_beatmap(plan)
+        row = self._lines(text, "HitObjects")[0].split(",")
+        self.assertEqual(row[5:10], ["L|300:200", "1", "100", "0|0", "0:0|0:0"])
+        self.assertEqual(row[10], "0:0:1:60:kick.wav")
+
+class CombineDifficultyTests(unittest.TestCase):
+    """The one set of numbers a compilation can hold, and the slider speed it owes."""
+
+    def _map(self, folder: Path, *, multiplier: str = "1.4", tick: str = "1",
+             ar: str = "9", od: str = "7", hp: str = "5", cs: str = "4",
+             stack: str = "0.7", greens=(), seconds: float = 6.0) -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "Mode: 0",
+                 f"StackLeniency: {stack}", "",
+                 "[Metadata]", "Title:Song", "Artist:A", "Creator:M",
+                 f"Version:{folder.name}", "",
+                 "[Difficulty]", f"HPDrainRate:{hp}", f"CircleSize:{cs}",
+                 f"OverallDifficulty:{od}", f"ApproachRate:{ar}",
+                 f"SliderMultiplier:{multiplier}", f"SliderTickRate:{tick}", "",
+                 "[Events]", "",
+                 "[TimingPoints]", "1000,400,4,2,0,80,1,0", *greens, "",
+                 "[HitObjects]", "100,100,2000,1,0,0:0:0:0:",
+                 "200,200,2400,1,0,0:0:0:0:", ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        ta.sf.write(str(folder / "song.wav"),
+                    np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        return folder / "map.osu"
+
+    def _settled(self, sources, choice="first"):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        settled = overtone_combine.difficulty_plan(plan, choice)
+        json.dumps(settled)
+        return plan, settled
+
+    @staticmethod
+    def _timing(text: str) -> list[str]:
+        body = text.split("[TimingPoints]")[1].split("[")[0]
+        return [row for row in body.splitlines()
+                if row.strip() and not row.strip().startswith("//")]
+
+    def test_the_first_segments_numbers_are_written_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, settled = self._settled([self._map(Path(tmp) / "a", ar="9", od="7"),
+                                            self._map(Path(tmp) / "b", ar="7", od="4")])
+        self.assertEqual(settled["from"], "first")
+        self.assertEqual((settled["values"]["ar"], settled["values"]["od"]), (9.0, 7.0))
+        self.assertEqual(settled["segments"][0]["deviations"], {})
+        # The second map is played at numbers its mapper did not choose, and
+        # the report says so in each field's own units.
+        self.assertEqual(settled["segments"][1]["deviations"]["ar"],
+                         {"theirs": 7.0, "written": 9.0, "off": -2.0})
+
+    def test_the_median_can_be_asked_for_instead(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, settled = self._settled([self._map(Path(tmp) / "a", ar="7"),
+                                            self._map(Path(tmp) / "b", ar="9"),
+                                            self._map(Path(tmp) / "c", ar="8")],
+                                           "median")
+        self.assertEqual((settled["from"], settled["values"]["ar"]), ("median", 8.0))
+
+    def test_numbers_can_be_given_by_hand(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", ar="9", od="7")
+            _plan, settled = self._settled([source], {"ar": 9.5})
+            plan = overtone_combine.plan_compilation([source])
+            with self.assertRaises(ValueError):
+                overtone_combine.difficulty_plan(plan, {"approach": 9.5})
+            with self.assertRaises(ValueError):
+                overtone_combine.difficulty_plan(plan, "lowest")
+        self.assertEqual((settled["from"], settled["values"]["ar"]), ("given", 9.5))
+        self.assertEqual(settled["values"]["od"], 7.0)   # the rest is the first's
+
+    def test_a_segment_made_at_another_multiplier_keeps_its_slider_speed(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", multiplier="1.4")
+            second = self._map(Path(tmp) / "b", multiplier="2.0")
+            plan = overtone_combine.plan_compilation([first, second])
+            text, report = overtone_combine.combine_beatmap(plan)
+        rows = self._timing(text)
+        self.assertEqual([row["sv_ratio"] for row in report["difficulty"]["segments"]],
+                         [1.0, 2.0 / 1.4])
+        # 2.0 under a map written at 1.4 is 1.4286x, and -100/1.4286 is -70.
+        greens = [row for row in rows if row.split(",")[1].startswith("-")]
+        self.assertEqual(len(greens), 1)
+        self.assertEqual(greens[0].split(",")[1], "-70")
+        # And it sits on the red line it follows, which resets velocity to 1.
+        self.assertEqual(greens[0].split(",")[0],
+                         [row for row in rows if not row.split(",")[1].startswith("-")]
+                         [1].split(",")[0])
+
+    def test_a_green_the_source_had_is_scaled_not_replaced(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", multiplier="1.4")
+            second = self._map(Path(tmp) / "b", multiplier="2.0",
+                               greens=("1500,-125,4,3,2,60,0,1",))
+            plan = overtone_combine.plan_compilation([first, second])
+            text, _report = overtone_combine.combine_beatmap(plan)
+        green = next(row for row in self._timing(text) if row.split(",")[5] == "60")
+        # 0.8x of its own map is 1.1429x of this one, and -100/1.1429 is -87.5.
+        # The sample set, index, volume and kiai are the mapper's own.
+        self.assertEqual(green.split(",")[1], "-87.5")
+        self.assertEqual(green.split(",")[2:], ["4", "3", "1", "60", "0", "1"])
+
+    def test_a_velocity_a_green_line_cannot_carry_refuses_by_name(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", multiplier="3.0")
+            second = self._map(Path(tmp) / "slow", multiplier="0.1")
+            plan = overtone_combine.plan_compilation([first, second])
+            settled = overtone_combine.difficulty_plan(plan)
+            with self.assertRaises(ValueError) as caught:
+                overtone_combine.combine_beatmap(plan)
+        self.assertEqual([r["code"] for r in settled["refusals"]],
+                         ["velocity_out_of_range"])
+        self.assertIn("slow", settled["refusals"][0]["why"])
+        self.assertIn("0.1x-10x", str(caught.exception))
+
+    def test_a_tick_rate_that_differs_is_reported_not_fixed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, settled = self._settled([self._map(Path(tmp) / "a", tick="1"),
+                                            self._map(Path(tmp) / "b", tick="2")])
+        # Nothing in a green line touches the tick rate, so this one is a
+        # deviation the build reports and does not pretend to fix.
+        self.assertEqual(settled["tick_rate_differs"], [1])
+        self.assertEqual(settled["segments"][1]["deviations"]["slider_tick_rate"]["off"],
+                         1.0)
+
+    def test_nothing_is_added_when_the_multipliers_agree(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = overtone_combine.plan_compilation(
+                [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b")])
+            text, report = overtone_combine.combine_beatmap(plan)
+        rows = self._timing(text)
+        self.assertEqual([row["sv_ratio"] for row in report["difficulty"]["segments"]],
+                         [1.0, 1.0])
+        self.assertEqual(len(rows), 2)      # one red each, and no green invented
+        self.assertTrue(all(not row.split(",")[1].startswith("-") for row in rows))
+
+class CombineJunctionTests(unittest.TestCase):
+    """What happens where one song stops and the next one starts."""
+
+    def _map(self, folder: Path, *, greens=(), breaks=(), bookmarks: str = "",
+             preview: str = "-1", objects=None, seconds: float = 8.0) -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        rows = objects or ["100,100,2000,1,0,0:0:0:0:",
+                           "256,192,2400,12,0,3400,0:0:0:0:"]
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", f"PreviewTime: {preview}",
+                 "Mode: 0", "",
+                 *(["[Editor]", f"Bookmarks: {bookmarks}", ""] if bookmarks else []),
+                 "[Metadata]", "Title:Song", "Artist:A", "Creator:M",
+                 f"Version:{folder.name}", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[Events]", *breaks, "",
+                 "[TimingPoints]", "1000,400,4,2,0,80,1,0", *greens, "",
+                 "[HitObjects]", *rows, ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        ta.sf.write(str(folder / "song.wav"),
+                    np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        return folder / "map.osu"
+
+    def _built(self, sources, settings=None, **kwargs):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        text, report = overtone_combine.combine_beatmap(plan, **kwargs)
+        json.dumps(report)
+        return plan, text, report
+
+    @staticmethod
+    def _rows(text: str, name: str) -> list[str]:
+        body = text.split(f"[{name}]")[1].split("[")[0]
+        return [row for row in body.splitlines()
+                if row.strip() and not row.strip().startswith("//")]
+
+    def test_a_break_fills_a_junction_gap_long_enough_for_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, report = self._built([self._map(Path(tmp) / "a"),
+                                               self._map(Path(tmp) / "b")])
+        after, before = report["segments"]
+        # The silence between two songs is silence, not health draining away.
+        self.assertEqual([row for row in self._rows(text, "Events")
+                          if row.startswith("2,")],
+                         [f"2,{after['last_sound_ms'] + 200:.0f},"
+                          f"{before['first_object_ms'] - 200:.0f}"])
+        self.assertEqual(report["junction_breaks"], 1)
+        # It opens after the spinner stops, not when it starts.
+        self.assertEqual(after["last_sound_ms"] - after["last_object_ms"], 1000.0)
+
+    def test_a_gap_too_short_for_a_break_gets_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # 600 ms of silence: wide enough to pin the next segment's grid
+            # (one beat is 400), too narrow for a break once the 200 ms of
+            # air either side of one is taken off.
+            _plan, text, report = self._built(
+                [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b")],
+                {"gap_ms": 600.0, "lead_ms": 0.0, "tail_ms": 0.0})
+        self.assertEqual(report["junction_breaks"], 0)
+        self.assertEqual([row for row in self._rows(text, "Events")
+                          if row.startswith("2,")], [])
+
+    def test_the_junction_breaks_and_bookmarks_can_be_turned_off(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, report = self._built(
+                [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b")],
+                {"junction_breaks": False, "junction_bookmarks": False})
+        self.assertEqual((report["junction_breaks"], report["bookmarks"]), (0, 0))
+        self.assertNotIn("Bookmarks:", text)
+
+    def test_a_bookmark_marks_where_each_segment_starts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, text, report = self._built(
+                [self._map(Path(tmp) / "a", bookmarks="2000"),
+                 self._map(Path(tmp) / "b")])
+        starts = [segment["at_ms"] for segment in plan["segments"]]
+        marks = [float(mark) for mark in
+                 next(row for row in self._rows(text, "Editor")
+                      if row.startswith("Bookmarks:")).split(":")[1].split(",")]
+        self.assertEqual(report["bookmarks"], 3)      # one each, plus the source's
+        self.assertEqual(sorted(marks), sorted(starts + [2000.0 + plan["segments"][0]
+                                                         ["shift_ms"]]))
+
+    def test_the_preview_point_can_be_taken_from_a_chosen_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sources = [self._map(Path(tmp) / "a", preview="2200"),
+                       self._map(Path(tmp) / "b", preview="2600")]
+            _plan, _text, first = self._built(sources)
+            plan, text, second = self._built(sources, {"preview_from": 1})
+        self.assertEqual(first["preview_ms"], 2200.0 + plan["segments"][0]["shift_ms"])
+        self.assertEqual(second["preview_ms"], 2600.0 + plan["segments"][1]["shift_ms"])
+        self.assertIn(f"PreviewTime: {second['preview_ms']:.0f}", text)
+
+    def test_a_kiai_span_arrives_with_its_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kiai = self._map(Path(tmp) / "a", greens=("1500,-100,4,2,0,80,0,1",))
+            # A typed range that starts inside the kiai: the pinned red line
+            # has to carry it, or the segment plays unlit.
+            _plan, text, _report = self._built(
+                [{"osu": kiai, "start_ms": 1800.0, "end_ms": 5000.0},
+                 self._map(Path(tmp) / "b")])
+        rows = self._rows(text, "TimingPoints")
+        self.assertEqual(rows[0].split(",")[7], "1")   # the pin, kiai on
+        self.assertEqual(rows[0].split(",")[6], "1")   # and it is a red line
+        # The second segment's own red says nothing about kiai, so it is off
+        # again from there: a span cannot leak into the next song.
+        self.assertEqual(rows[-1].split(",")[7], "0")
+
+    def test_two_breaks_that_meet_become_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # The first map's own break runs from just after its last sound
+            # into the silence the junction break covers.
+            _plan, text, report = self._built(
+                [self._map(Path(tmp) / "a", breaks=("2,3600,4200",)),
+                 self._map(Path(tmp) / "b")])
+        periods = [row for row in self._rows(text, "Events") if row.startswith("2,")]
+        self.assertEqual(len(periods), 1)
+        self.assertEqual(report["breaks"], 1)
+        start, end = (float(value) for value in periods[0].split(",")[1:])
+        after, before = report["segments"]
+        self.assertEqual((start, end), (after["last_sound_ms"] + 200.0,
+                                        before["first_object_ms"] - 200.0))
 
 if __name__ == "__main__":
     unittest.main()

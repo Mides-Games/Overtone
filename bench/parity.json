@@ -8,9 +8,21 @@
    "where": "python-only",
    "why": "overtone_combine.py: the compilation audio cut, joined and checked back, which no Rust crate holds"
   },
+  "CombineDifficultyTests": {
+   "where": "python-only",
+   "why": "overtone_combine.py: the one set of difficulty numbers a compilation holds and the slider speed it owes, which no Rust crate holds"
+  },
+  "CombineJunctionTests": {
+   "where": "python-only",
+   "why": "overtone_combine.py: what happens where one song stops and the next starts, which no Rust crate holds"
+  },
   "CombinePlanTests": {
    "where": "python-only",
    "why": "overtone_combine.py: where each borrowed range lands in a compilation, which no Rust crate holds"
+  },
+  "CombineSampleTests": {
+   "where": "python-only",
+   "why": "overtone_combine.py: whose hitsound plays in a compilation, which no Rust crate holds"
   },
   "CombineSegmentTests": {
    "where": "python-only",

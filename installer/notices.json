@@ -26,7 +26,7 @@
    "name": "Tcl/Tk",
    "version": "8.6",
    "licence": "TCL (BSD-style)",
-   "what": "the classic window's toolkit: tcl86t.dll, tk86t.dll, _tkinter.pyd and the Tcl scripts beside them, which overtone-py.exe opens the Tk window with. The web shell window does not use it",
+   "what": "the classic window's toolkit: tcl86t.dll, tk86t.dll, _tkinter.pyd and the script folders beside them (_tcl_data, _tk_data, tcl8), which overtone-py.exe opens the Tk window with. The web shell window does not use it",
    "source": "https://www.tcl-lang.org/software/tcltk/",
    "from_path": ["tcl/tk8.6/license.terms"]
   },
@@ -42,7 +42,7 @@
    "name": "Microsoft Visual C++ runtime",
    "version": "14.x",
    "licence": "Microsoft Visual Studio redistributable terms",
-   "what": "VCRUNTIME140.dll, VCRUNTIME140_1.dll and the api-ms-win-crt-* stubs PyInstaller copies beside Python; overtone-cli.exe links the same runtime, which is why it sits in _internal rather than beside Overtone.exe",
+   "what": "VCRUNTIME140.dll and VCRUNTIME140_1.dll, which PyInstaller copies beside Python; overtone-cli.exe links the same runtime, which is why it sits in _internal rather than beside Overtone.exe",
    "source": "https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files",
    "terms": "redistributable with an application under the Visual Studio licence terms that ship with the toolchain that built it; Microsoft supplies no notice file to copy, and the terms are at the address above"
   },

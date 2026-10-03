@@ -31,6 +31,8 @@ from __future__ import annotations
 import os
 from pathlib import Path, PurePath
 
+import numpy as np
+
 import overtone as ta
 
 #: The compilation document's own format. A document from a newer one is
@@ -1197,3 +1199,260 @@ def combine_beatmap(plan: dict, audio_name: str = "audio.mp3",
               "duration_ms": plan["totals"]["duration_ms"],
               "notes": notes, "pending": pending}
     return text, report
+
+
+# ---------------------------------------------------------------------------
+# The audio cut and join (Phase 25, rows 25.4 and 25.5)
+# ---------------------------------------------------------------------------
+
+#: What the builder will write, and what it will not.
+#:
+#: **MP3** is the default because it is measured gapless here: libsndfile 1.2.2
+#: encodes through LAME 3.100, writes the tag (delay 576 samples, padding 972)
+#: and strips it again on read, so a click written at *t* comes back at *t* —
+#: 0.0 ms on four probes through a 45 s file, frame count identical,
+#: correlation peak 1.000 (2026-10-03). It is also what mapsets ship.
+#:
+#: **WAV** is offered for a lossless check, and is what the gate measures
+#: sample for sample.
+#:
+#: **Ogg Vorbis is not offered.** Writing more than about ten seconds of
+#: 44.1 kHz stereo through this libsndfile build kills the process — exit
+#: 127, no exception to catch, nothing written (measured 2026-10-03: 5 s and
+#: 10 s fine, 20 s, 30 s and 45 s all dead). **Opus** refuses 44.1 kHz
+#: outright: it takes 8, 12, 16, 24 and 48 kHz only.
+AUDIO_FORMATS: dict = {
+    "mp3": {"format": "MP3", "subtype": "MPEG_LAYER_III"},
+    "wav": {"format": "WAV", "subtype": "PCM_16"},
+}
+DEFAULT_AUDIO_FORMAT = "mp3"
+
+#: Audio is written a block at a time: the peak working set is one block, not
+#: one compilation. Two hours of 44.1 kHz stereo float32 in one buffer would
+#: be 2.5 GB, and the rule on this machine is one heavy job at a time. A
+#: segment that needs resampling is the exception and says so.
+BLOCK_S = 4.0
+
+#: A linear fade this long at each end of a segment, so a cut that lands in
+#: loud audio does not click. Only where the range brought padding of its
+#: own: a range somebody typed starts where they said it starts, and
+#: softening a hit there would be this builder editing the music. Real fades
+#: and crossfades are row 25.7.
+DECLICK_MS = 5.0
+
+#: How much of each segment the junction check correlates against its source.
+VERIFY_WINDOW_S = 8.0
+
+#: A segment that lands further than this from where the plan put it fails the
+#: check. The cut is sample-accurate arithmetic, so this is a tripwire for a
+#: wrong assumption, not a tolerance anybody should need.
+VERIFY_TOLERANCE_MS = 1.0
+
+
+def _as_channels(block, channels: int):
+    """A block of frames as ``channels`` channels: mono spread, extra dropped."""
+    block = np.asarray(block, dtype="float32")
+    if block.ndim == 1:
+        block = block[:, None]
+    if block.shape[1] == channels:
+        return block
+    if block.shape[1] == 1:
+        return np.repeat(block, channels, axis=1)
+    return block[:, :channels]
+
+
+def _declick(block, offset: int, total: int, fade: int):
+    """A linear ramp over the first and last ``fade`` frames of the segment,
+    applied to whichever part of it this block holds."""
+    if fade <= 0 or total <= 0:
+        return block
+    index = np.arange(offset, offset + len(block), dtype="float64")
+    gain = np.ones(len(block), dtype="float64")
+    rising = index < fade
+    gain[rising] = (index[rising] + 0.5) / fade
+    falling = index >= total - fade
+    gain[falling] = np.minimum(gain[falling], (total - index[falling] - 0.5) / fade)
+    return (block * np.clip(gain, 0.0, 1.0)[:, None]).astype("float32")
+
+
+def _resampled(block, source_rate: int, rate: int):
+    """One segment's frames at the output rate, each channel the same way."""
+    import math
+
+    if source_rate == rate:
+        return block
+    divisor = math.gcd(int(source_rate), int(rate))
+    up, down = int(rate) // divisor, int(source_rate) // divisor
+    out = ta.signal.resample_poly(np.asarray(block, dtype="float64"), up, down, axis=0)
+    return np.asarray(out, dtype="float32")
+
+
+def _output_shape(plan: dict) -> tuple[int, int, list]:
+    """The rate and channel count to write, read from the files themselves.
+
+    The highest rate any segment brings, so nothing is downsampled on the way
+    into a compilation, and stereo if any segment is stereo. The plan's own
+    numbers came from a header read and are only in the report; this opens
+    the files, because that is what is about to be decoded.
+    """
+    rates, channels, opened = [], [], []
+    for segment in plan["segments"]:
+        path = segment["audio"]["path"]
+        if not path:
+            raise ValueError(f"{Path(segment['osu']).name} has no song to cut.")
+        try:
+            info = ta.sf.info(str(path))
+        except Exception as exc:                   # libsndfile raises its own types
+            raise ValueError(f"Could not read {Path(path).name}: {exc}") from exc
+        rates.append(int(info.samplerate))
+        channels.append(int(info.channels))
+        opened.append({"path": path, "rate": int(info.samplerate),
+                       "channels": int(info.channels)})
+    return max(rates), (2 if max(channels) > 1 else 1), opened
+
+
+def build_audio(plan: dict, path: str | os.PathLike[str], *,
+                audio_format: str = DEFAULT_AUDIO_FORMAT,
+                block_s: float = BLOCK_S) -> dict:
+    """One audio file holding every segment's range, where the plan put it.
+
+    The plan's ``at_ms`` is the authority, not the arithmetic of adding
+    durations up: the shift was rounded to a whole millisecond so the objects
+    could keep their snapping, and the audio has to land on the same rounding
+    or the two drift apart. So each segment is written at ``round(at_ms *
+    rate / 1000)`` frames, with silence in front of it, and what the plan
+    calls a gap is simply the silence left between two of them.
+
+    Written a block at a time, so the peak working set is one block and not
+    one compilation. A segment whose song runs at a different rate than the
+    output is resampled in one piece — ``scipy.signal.resample_poly``, exact
+    rational arithmetic — and that piece is the only thing here that scales
+    with a segment's length; the report says which segments it happened to.
+
+    Nothing is normalised and nothing is faded except ``DECLICK_MS`` at the
+    edges of a range that brought its own padding. A gain somebody set on a
+    segment is applied; choosing one is row 25.6.
+    """
+    if not plan.get("usable"):
+        why = "; ".join(r.get("why") or r.get("code", "?")
+                        for r in plan.get("refusals", ())) or "no reason given"
+        raise ValueError(f"This plan refused: {why}")
+    if audio_format not in AUDIO_FORMATS:
+        raise ValueError(f"Unknown audio format {audio_format!r}. "
+                         f"Known: {', '.join(AUDIO_FORMATS)}.")
+    out = Path(path)
+    rate, channels, sources = _output_shape(plan)
+    rows: list[dict] = []
+    written = 0
+    with ta.sf.SoundFile(str(out), mode="w", samplerate=rate, channels=channels,
+                         **AUDIO_FORMATS[audio_format]) as sink:
+        for segment, source in zip(plan["segments"], sources):
+            span = segment["range"]
+            source_rate = source["rate"]
+            at_frame = int(round(float(segment["at_ms"]) * rate / 1000.0))
+            if at_frame > written:
+                silence = np.zeros((at_frame - written, channels), dtype="float32")
+                sink.write(silence)
+                written += len(silence)
+            start = int(round(span["start_ms"] * source_rate / 1000.0))
+            stop = int(round(span["end_ms"] * source_rate / 1000.0))
+            gain = 10.0 ** (float(segment.get("gain_db") or 0.0) / 20.0)
+            fade = (int(round(DECLICK_MS * rate / 1000.0))
+                    if span["from"] == "objects" else 0)
+            frames = max(0, stop - start)
+            total = int(round(frames * rate / source_rate))
+            before = written
+            if source_rate != rate:
+                block = ta.sf.read(source["path"], start=start, stop=stop,
+                                   dtype="float32", always_2d=True)[0]
+                block = _resampled(_as_channels(block, channels), source_rate, rate)
+                block = _declick(block, 0, len(block), fade)
+                sink.write(block * gain if gain != 1.0 else block)
+                written += len(block)
+            else:
+                step = max(1, int(round(block_s * source_rate)))
+                for offset in range(start, stop, step):
+                    block = ta.sf.read(source["path"], start=offset,
+                                       stop=min(offset + step, stop),
+                                       dtype="float32", always_2d=True)[0]
+                    if not len(block):
+                        break
+                    block = _declick(_as_channels(block, channels),
+                                     written - before, total, fade)
+                    sink.write(block * gain if gain != 1.0 else block)
+                    written += len(block)
+            rows.append({"segment": len(rows), "at_ms": segment["at_ms"],
+                         "frames": written - before,
+                         "duration_ms": round((written - before) / rate * 1000.0, 3),
+                         "source_rate": source_rate, "resampled": source_rate != rate,
+                         "gain_db": round(float(segment.get("gain_db") or 0.0), 2),
+                         "declick_ms": round(fade / rate * 1000.0, 3)})
+    return {"path": str(out), "name": out.name, "format": audio_format,
+            "sample_rate": rate, "channels": channels, "frames": written,
+            "duration_ms": round(written / rate * 1000.0, 3),
+            "bytes": out.stat().st_size, "segments": rows,
+            "planned_ms": plan["totals"]["duration_ms"]}
+
+
+def verify_audio(plan: dict, audio_path: str | os.PathLike[str],
+                 window_s: float = VERIFY_WINDOW_S,
+                 tolerance_ms: float = VERIFY_TOLERANCE_MS) -> dict:
+    """Where each segment actually landed, read back out of the written file.
+
+    The cut is arithmetic and the arithmetic is above; this measures it
+    anyway, by correlating the first seconds of each segment in the output
+    against the same seconds of its own song (``shift_samples``, the audio
+    swap's own aligner). A wrong assumption about an encoder's delay, a
+    resampler's offset or a frame count shows up here as a shift, which is
+    the only way row 25.5 can be said to hold rather than hoped to.
+
+    A second decode, so it is a check to run, not part of the build. Each
+    segment is reported with its shift and the correlation's peak; a refusal
+    from the aligner is carried as the reason instead of raising.
+    """
+    out = Path(audio_path)
+    info = ta.sf.info(str(out))
+    rate = int(info.samplerate)
+    rows: list[dict] = []
+    worst = 0.0
+    if rate % 11025:
+        return {"path": str(out), "sample_rate": rate, "checked": False,
+                "why": f"{rate} Hz is not a multiple of 11025, which the aligner "
+                       f"downsamples to; nothing was measured.",
+                "segments": [], "worst_shift_ms": None, "ok": True}
+    for n, segment in enumerate(plan["segments"]):
+        source = segment["audio"]["path"]
+        # Never past the segment's own end: a window that runs into the gap
+        # and the next song correlates its own silence and reads 0.64 where
+        # the answer is 1.00, which is how this was found.
+        span = min(float(window_s) * 1000.0, segment["range"]["duration_ms"])
+        row: dict = {"segment": n, "at_ms": segment["at_ms"], "window_ms": round(span, 3),
+                     "shift_ms": None, "peak": None, "why": None}
+        try:
+            source_rate = int(ta.sf.info(str(source)).samplerate)
+            theirs = ta.sf.read(source, dtype="float32", always_2d=True,
+                                start=int(round(segment["range"]["start_ms"]
+                                                * source_rate / 1000.0)),
+                                stop=int(round((segment["range"]["start_ms"] + span)
+                                               * source_rate / 1000.0)))[0]
+            mine = ta.sf.read(str(out), dtype="float32", always_2d=True,
+                              start=int(round(segment["at_ms"] * rate / 1000.0)),
+                              stop=int(round((segment["at_ms"] + span)
+                                             * rate / 1000.0)))[0]
+            theirs = _resampled(theirs.mean(axis=1)[:, None], source_rate, rate)[:, 0]
+            found = ta.shift_samples(np.asarray(theirs, dtype="float64"),
+                                     np.asarray(mine.mean(axis=1), dtype="float64"),
+                                     rate)
+            row.update({"shift_ms": found["shift_ms"], "peak": found["peak"]})
+            worst = max(worst, abs(found["shift_ms"]))
+        except (ValueError, RuntimeError) as exc:
+            row["why"] = str(exc)
+        except Exception as exc:                   # libsndfile raises its own types
+            row["why"] = f"{type(exc).__name__}: {exc}"
+        rows.append(row)
+    measured = [row for row in rows if row["shift_ms"] is not None]
+    return {"path": str(out), "sample_rate": rate, "checked": True,
+            "segments": rows, "measured": len(measured),
+            "worst_shift_ms": round(worst, 3) if measured else None,
+            "tolerance_ms": tolerance_ms,
+            "ok": bool(measured) and worst <= tolerance_ms}

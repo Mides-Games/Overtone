@@ -9650,5 +9650,200 @@ class CombineAssemblyTests(unittest.TestCase):
                 overtone_combine.combine_beatmap(plan)
         self.assertIn("Widen the gap", str(caught.exception))
 
+class CombineAudioTests(unittest.TestCase):
+    """One audio file out of several songs, and the check that it landed right."""
+
+    SR = 44100
+
+    def _song(self, path: Path, seconds: float = 6.0, bpm: float = 150.0,
+              seed: int = 1, rate: int | None = None, channels: int = 2) -> None:
+        """A click track: a burst on every beat over quiet noise, so a cut is
+        both audible and alignable."""
+        import overtone as ta
+        rate = rate or self.SR
+        rng = np.random.default_rng(seed)
+        frames = int(rate * seconds)
+        y = (rng.standard_normal((frames, channels)) * 0.02).astype("float32")
+        burst = (np.hanning(256) * np.sin(2 * np.pi * 900.0 * np.arange(256) / rate)
+                 * 0.8).astype("float32")
+        at = 0.4
+        while at < seconds - 0.1:
+            start = int(at * rate)
+            for channel in range(channels):
+                y[start:start + 256, channel] += burst
+            at += 60.0 / bpm
+        ta.sf.write(str(path), y, rate)
+
+    def _map(self, folder: Path, *, bpm: float = 150.0, seconds: float = 6.0,
+             seed: int = 1, rate: int | None = None, channels: int = 2,
+             last_ms: float = 3000.0) -> Path:
+        folder.mkdir(parents=True, exist_ok=True)
+        self._song(folder / "song.wav", seconds, bpm, seed, rate, channels)
+        beat = 60000.0 / bpm
+        objects = [f"100,100,{round(400 + k * 4 * beat)},1,0,0:0:0:0:"
+                   for k in range(int((last_ms - 400) / (4 * beat)) + 1)]
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "PreviewTime: 1000",
+                 "Mode: 0", "",
+                 "[Metadata]", "Title:Song", "Artist:A", "Creator:M", "Version:V", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[Events]", "",
+                 "[TimingPoints]", f"400,{beat:.12f},4,2,0,80,1,0", "",
+                 "[HitObjects]", *objects, ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        return folder / "map.osu"
+
+    def _build(self, tmp: str, sources, settings=None, audio_format: str = "wav"):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        out = Path(tmp) / f"combined.{audio_format}"
+        report = overtone_combine.build_audio(plan, out, audio_format=audio_format)
+        json.dumps(report)
+        return plan, out, report
+
+    @staticmethod
+    def _read(path: Path, start: int = 0, stop: int | None = None):
+        import overtone as ta
+        return ta.sf.read(str(path), dtype="float32", always_2d=True,
+                          start=start, stop=stop)[0]
+
+    def test_the_written_audio_is_as_long_as_the_plan_says(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, out, report = self._build(
+                tmp, [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b", bpm=174.0)])
+            frames = len(self._read(out))
+        # To within a frame: the plan counts in milliseconds and the file in
+        # samples, and a segment's start and end round separately.
+        self.assertAlmostEqual(report["duration_ms"], plan["totals"]["duration_ms"],
+                               delta=1000.0 / 44100.0)
+        self.assertEqual((report["frames"], report["sample_rate"], report["channels"]),
+                         (frames, 44100, 2))
+        self.assertEqual([row["resampled"] for row in report["segments"]], [False, False])
+
+    def test_every_segment_lands_where_the_plan_put_it(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, out, _report = self._build(
+                tmp, [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b", bpm=174.0)])
+            check = overtone_combine.verify_audio(plan, out)
+            json.dumps(check)
+        # The output holds the source's own samples, so the aligner has an
+        # exact answer to find: a shift of nothing, at a correlation of one.
+        self.assertTrue(check["ok"], check)
+        self.assertEqual(check["worst_shift_ms"], 0.0)
+        self.assertEqual([row["peak"] for row in check["segments"]], [1.0, 1.0])
+
+    def test_the_samples_written_are_the_samples_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a")
+            plan, out, report = self._build(tmp, [source])
+            segment = plan["segments"][0]
+            fade = int(round(report["segments"][0]["declick_ms"] * 44100 / 1000.0))
+            at = int(round(segment["at_ms"] * 44100 / 1000.0))
+            start = int(round(segment["range"]["start_ms"] * 44100 / 1000.0))
+            length = report["segments"][0]["frames"]
+            mine = self._read(out, at + fade, at + length - fade)
+            theirs = self._read(Path(tmp) / "a" / "song.wav",
+                                start + fade, start + length - fade)
+        # Lossless out, so past the declick ramp it is the same audio, bit for
+        # bit. Nothing is normalised, nothing is filtered, nothing is mixed.
+        self.assertEqual(mine.shape, theirs.shape)
+        self.assertTrue(np.array_equal(mine, theirs))
+
+    def test_the_gap_between_two_segments_is_silence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, out, report = self._build(
+                tmp, [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b")],
+                {"gap_ms": 1500.0})
+            ends = int(round(plan["segments"][0]["ends_at_ms"] * 44100 / 1000.0))
+            starts = int(round(plan["segments"][1]["at_ms"] * 44100 / 1000.0))
+            gap = self._read(out, ends, starts)
+            lead = self._read(out, 0, int(round(plan["segments"][0]["at_ms"]
+                                                * 44100 / 1000.0)))
+        self.assertEqual(len(gap), int(round(1500.0 * 44100 / 1000.0)))
+        self.assertEqual(float(np.abs(gap).max()), 0.0)
+        self.assertEqual(float(np.abs(lead).max()), 0.0)   # and so is the lead-in
+
+    def test_a_mono_song_beside_a_stereo_one_comes_out_stereo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, out, report = self._build(
+                tmp, [self._map(Path(tmp) / "a", channels=1),
+                      self._map(Path(tmp) / "b")])
+            written = self._read(out)
+        self.assertEqual(report["channels"], 2)
+        self.assertEqual(written.shape[1], 2)
+        # The mono segment is the same in both channels, not silent in one.
+        at = int(round(report["segments"][0]["at_ms"] * 44100 / 1000.0))
+        head = written[at + 1000:at + 5000]
+        self.assertTrue(np.array_equal(head[:, 0], head[:, 1]))
+
+    def test_a_song_at_another_rate_is_resampled_and_said_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, out, report = self._build(
+                tmp, [self._map(Path(tmp) / "a", rate=22050), self._map(Path(tmp) / "b")])
+        self.assertEqual(report["sample_rate"], 44100)       # nothing is downsampled
+        self.assertEqual([row["resampled"] for row in report["segments"]], [True, False])
+        self.assertEqual([row["source_rate"] for row in report["segments"]],
+                         [22050, 44100])
+        # The resampled segment still lasts what the plan says it lasts.
+        self.assertAlmostEqual(report["segments"][0]["duration_ms"],
+                               plan["segments"][0]["range"]["duration_ms"], delta=0.1)
+
+    def test_a_gain_set_on_a_segment_is_applied(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            quiet = {"osu": self._map(Path(tmp) / "a"), "gain_db": -6.0}
+            plan, out, report = self._build(tmp, [quiet])
+            at = int(round(plan["segments"][0]["at_ms"] * 44100 / 1000.0))
+            mine = self._read(out, at, at + report["segments"][0]["frames"])
+            theirs = self._read(Path(tmp) / "a" / "song.wav")
+        self.assertEqual(report["segments"][0]["gain_db"], -6.0)
+        peaks = (float(np.abs(mine).max()), float(np.abs(theirs).max()))
+        self.assertAlmostEqual(peaks[0] / peaks[1], 10.0 ** (-6.0 / 20.0), places=3)
+
+    def test_a_range_somebody_typed_is_not_faded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            typed = {"osu": self._map(Path(tmp) / "a"), "start_ms": 1000.0,
+                     "end_ms": 4000.0}
+            plan, out, report = self._build(tmp, [typed])
+            at = int(round(plan["segments"][0]["at_ms"] * 44100 / 1000.0))
+            mine = self._read(out, at, at + 64)
+            theirs = self._read(Path(tmp) / "a" / "song.wav",
+                                int(round(1000.0 * 44100 / 1000.0)),
+                                int(round(1000.0 * 44100 / 1000.0)) + 64)
+        # A derived range brought 2000 ms of padding and gets the 5 ms ramp; a
+        # typed one starts where it was told, hit or no hit.
+        self.assertEqual(report["segments"][0]["declick_ms"], 0.0)
+        self.assertTrue(np.array_equal(mine, theirs))
+
+    def test_an_unknown_format_or_a_plan_that_refused_raises(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = overtone_combine.plan_compilation([self._map(Path(tmp) / "a")])
+            with self.assertRaises(ValueError):
+                overtone_combine.build_audio(plan, Path(tmp) / "x.ogg",
+                                             audio_format="ogg")
+            mania = self._map(Path(tmp) / "b")
+            mania.write_bytes(mania.read_bytes().replace(b"Mode: 0", b"Mode: 3"))
+            refused = overtone_combine.plan_compilation([self._map(Path(tmp) / "c"),
+                                                         mania])
+            self.assertFalse(refused["usable"])
+            with self.assertRaises(ValueError):
+                overtone_combine.build_audio(refused, Path(tmp) / "y.wav")
+
+    def test_the_check_says_when_it_could_not_measure(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, out, report = self._build(
+                tmp, [self._map(Path(tmp) / "a", rate=8000)])
+            check = overtone_combine.verify_audio(plan, out)
+        # The aligner downsamples to 11025 Hz and takes only multiples of it.
+        # Saying so beats a number nobody can trust.
+        self.assertEqual(report["sample_rate"], 8000)
+        self.assertFalse(check["checked"])
+        self.assertIn("11025", check["why"])
+        self.assertTrue(check["ok"])
+
 if __name__ == "__main__":
     unittest.main()

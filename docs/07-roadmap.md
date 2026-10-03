@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **847** Python (583 engine + 264 web shell) · **291** Rust.
+Tests: **857** Python (593 engine + 264 web shell) · **291** Rust.
 
 ### What is pending, in order
 
@@ -69,9 +69,10 @@ point, section volumes, SV normaliser, re-snap, snap divisors, audio file check)
 7. **Compilation builder** (Phase 25, asked 2026-10-03) — several maps and their songs into
    one map and one audio file, each object keeping the beat it had. Step 1 of its build
    order is in (2026-10-03): the document, the segment reader with its repairs, the shift
-   over every field, and the `combine` gate that measures all three. Next is step 2 — the
-   audio cut and join (25.4), the decoder delay (25.5) and the dry run — and nothing writes
-   a file until 25.16.
+   over every field, and the `combine` gate that measures all three. Step 2's audio is in
+   too: the cut and join (25.4) and the decoder delay (25.5), measured to 0.0 ms through
+   both formats it writes. Next: the hitsounds (25.8), the slider velocity (25.9) and the
+   difficulty and metadata rows, then the output folder (25.16) and the section (25.14).
 
 Two proposals wait on a decision, not on work: the Rhythm guide (`04-ui-ux.md` §9 still rules
 out inventing objects from the audio, after the 2026-10-03 carve-out that lets a compilation
@@ -771,8 +772,8 @@ build can be resumed, and a report can be re-read without the sources.
 | 25.1 Compilation document | the plan as JSON: ordered segments, per-segment settings, global settings, repairs and refusals; reproducible, resumable, diffable | low | **high** | P5 reader | no | no | **P1** | **done** 2026-10-03 — `plan_compilation`: the order given is the order built, each segment placed by a **whole-millisecond** shift with the junction absorbing the remainder, so a source's own snapping is never re-rounded. Refuses two modes, two mania key counts, a segment with no song, the length and object ceilings, and under `strict` any repair at all |
 | 25.2 Segment read and repair | each source through `read_osu_beatmap`, then the repair pass below: every fix logged with the line it touched, nothing guessed silently | med | **high** | 25.1 | no | no | **P1** | **done** 2026-10-03 — `read_segment` in `python/overtone_combine.py`: 20 repair codes, each saying whether anything was actually done, and five refusals. A file that will not read comes back refused, not raised, so a plan can show all five songs including the broken one |
 | 25.3 Time shift, every field | one rule per timestamp the format has (list below), applied as whole milliseconds so a stable client reads what lazer reads | med | **high** | 25.2 | no | no | **P1** | **done** 2026-10-03 — `combine_beatmap`: object starts, spinner and hold ends, every timing offset, breaks, bookmarks and the preview point, each by its own rule; a slider's curve untouched. Each segment is pinned at its start with the grid and sound its own map had there, the governing red line placed by **whole beats** so the phase is the mapper's (measured: worst 2.84e-04 ms off its own beat, which is the three decimals the file writes). The report's `pending` list names what rows 25.8, 25.9, 25.10 and 25.13 still owe |
-| 25.4 Audio cut and join | decode each range through the existing loader, cut at a named sample, join, write one file; Ogg Vorbis by default and MPEG Layer III on request, both through libsndfile | med | **high** | 25.1 | no | no | **P1** | todo |
-| 25.5 Decoder-delay accounting | an MP3 source's own encoder delay from its LAME tag (`mp3_gapless_info`) taken off the cut, and the output encoder's round-trip delay measured by correlation and folded into the offsets; said out loud when a source has no tag to read | med | **high** | 25.4 | no | no | **P1** | todo |
+| 25.4 Audio cut and join | decode each range, cut at a named sample, join, write one file | med | **high** | 25.1 | no | no | **P1** | **done** 2026-10-03 — `build_audio`: each segment written at `round(at_ms * rate / 1000)` frames, so the audio lands on the same rounding the objects did; a block at a time, so the peak working set is one block and not one compilation. **MP3 by default, and Ogg is not offered**: writing more than about ten seconds of 44.1 kHz stereo Vorbis kills the process in this libsndfile build (exit 127, nothing to catch), and Opus refuses 44.1 kHz. WAV is there for a lossless check. Output rate is the highest any segment brings, stereo if any is stereo, resampled per segment with `resample_poly` |
+| 25.5 Decoder-delay accounting | the output encoder's round-trip delay measured rather than assumed, and the sources' own delay with it | med | **high** | 25.4 | no | no | **P1** | **done** 2026-10-03 — measured, and **there is nothing to compensate**: libsndfile 1.2.2 encodes MP3 through LAME 3.100, writes the gapless tag (delay 576, padding 972) and strips it again on read, so a click written at *t* comes back at *t* — 0.0 ms on four probes through a 45 s file, frame count identical, correlation peak 1.000. `verify_audio` keeps it honest per build by correlating each segment against its own song (`shift_samples`), and the gate runs it on every format. What osu!'s own decoder does with the same file is the Offset lab's question, not this row's |
 | 25.6 Loudness match | per-segment gain so one song does not arrive twice as loud: integrated loudness per segment, one target, the applied dB shown per segment and capped against clipping with true-peak headroom | med | high | 25.4 | no | no | **P1** | todo |
 | 25.7 Junction placement | where one segment ends and the next begins: a gap in milliseconds or in bars of the next map's own grid, the next segment starting on a downbeat, fade in/out lengths, and an optional crossfade — each junction its own settings | med | **high** | 25.4, P5 reds | no | no | **P1** | todo |
 | 25.8 Hitsound merge | sample indices remapped so no two segments collide, custom sample files copied and renamed, identical files deduplicated by content hash, per-object `filename` overrides followed, and a segment's bank kept whole: what a segment sounded like is what it sounds like | med | **high** | P6 sample bank | no | no | **P1** | todo |
@@ -867,10 +868,13 @@ decodes, and they run one after the other with the progress panel naming which.
 
 ### Open questions
 
-- **The audio format to write.** Ogg Vorbis is sample-exact and osu! reads it; MPEG Layer
-  III is what mapsets ship and what players expect, and libsndfile's encoder has its own
-  delay. 25.5 measures that delay rather than guessing it, and the default follows the
-  measurement.
+- ~~**The audio format to write.**~~ **Answered 2026-10-03, by measurement.** MP3, through
+  libsndfile's LAME: a click written at *t* comes back at *t* (0.0 ms on four probes, frame
+  count identical, correlation peak 1.000), and it is what mapsets ship. Ogg Vorbis is out
+  for a reason nobody would have guessed: writing more than about ten seconds of 44.1 kHz
+  stereo kills the process in this build — exit 127, no exception, nothing written — and
+  Opus takes only 8, 12, 16, 24 and 48 kHz. WAV stays available for a lossless check, and
+  is what the gate compares sample for sample.
 - **Whether a segment may be a map's own section** rather than the whole map, which is
   25.18's premise but also a question about what a compilation is for.
 - **Where the compilation document lives** — beside the cache, or in the output folder so

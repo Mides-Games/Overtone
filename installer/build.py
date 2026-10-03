@@ -160,6 +160,27 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def write_licence_rtf(target: Path) -> Path:
+    """Overtone's licence, as the only format the licence page can read.
+
+    WixUI's licence control takes RTF, so the page is generated from
+    ``LICENSE`` at build time rather than kept beside it as a second copy
+    that could drift. A blank line starts a paragraph; inside one, the
+    control does the wrapping.
+    """
+    text = (release.ROOT / "LICENSE").read_text(encoding="utf-8")
+    if not text.isascii():
+        raise SystemExit("LICENSE is not ASCII: the licence page would need an RTF codepage")
+    paragraphs = [" ".join(block.split()) for block in re.split(r"\n\s*\n", text.strip())]
+    body = "\\par\\par\n".join(
+        block.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+        for block in paragraphs)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Segoe UI;}}\\fs18\n"
+                      + body + "\n}\n", encoding="ascii")
+    return target
+
+
 def write_wix_files(tree: Path, target: Path) -> tuple[int, int]:
     """The tree as WiX source, ComponentGroup ``AppFiles``: every folder one
     component, holding its files, with an HKCU value as key path and a
@@ -366,11 +387,13 @@ def main() -> int:
         wix = release.BUILD / "wix"
         shutil.rmtree(wix, ignore_errors=True)
         folders, count = write_wix_files(release.TREE, wix / "files.wxs")
+        rtf = write_licence_rtf(wix / "license.rtf")
         wix_run = [str(dotnet), "tool", "run", "wix", "--"]
         steps.run(f"MSI (WiX, {count} files in {folders} folders)",
                   wix_run + ["build", "Overtone.wxs", str(wix / "files.wxs"), "-arch", "x64",
                              "-ext", WIX_EXTENSION, "-d", f"SourceDir={release.TREE}",
-                             "-d", f"Version={numbers}", "-intermediatefolder", str(wix / "obj"),
+                             "-d", f"Version={numbers}", "-d", f"LicenseRtf={rtf}",
+                             "-intermediatefolder", str(wix / "obj"),
                              "-pdb", str(wix / "Overtone.wixpdb"), "-o", str(msi)],
                   HERE, env=dotnet_env(dotnet))
         # Windows Installer's own consistency evaluators; warnings are listed,

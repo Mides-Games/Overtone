@@ -4,7 +4,8 @@
   (MS-RL; installer\dotnet-tools.json pins it) from the tree PyInstaller made:
 
     dotnet tool run wix build Overtone.wxs -arch x64 -ext WixToolset.UI.wixext
-      -d SourceDir=<dist\Overtone> -d Version=<4.0.0> -o <the .msi>
+      -d SourceDir=<dist\Overtone> -d Version=<0.1.0> -d LicenseRtf=<license.rtf>
+      -o <the .msi>
 
   Per user, without an administrator: Scope="perUser" leaves ALLUSERS empty
   and marks the package as needing no elevated privileges, and the program
@@ -71,16 +72,14 @@
       <ComponentRef Id="StartMenuShortcut" />
     </Feature>
 
-    <!-- Welcome, destination folder, install, finish. The licence page is
-         skipped: the repository has no LICENSE file yet (README, "License"),
-         and packaging the licences, Overtone's and the bundled libraries',
-         is roadmap 10.13.3. -->
+    <!-- Welcome, licence, destination folder, install, finish: WixUI_InstallDir's
+         own order, no dialog skipped. The licence page shows Overtone's MIT,
+         which build.py renders to RTF from the repository's LICENSE, so the two
+         cannot drift. The bundled libraries' notices are far too long for a
+         dialog and ship as files instead: LICENSE.txt and
+         THIRD-PARTY-NOTICES.txt in the program folder, written by
+         installer\notices.py. -->
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
-    <UI>
-      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg"
-               Order="2" Condition="NOT Installed" />
-      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg"
-               Order="2" />
-    </UI>
   </Package>
 </Wix>

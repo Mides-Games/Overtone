@@ -26,6 +26,7 @@ So this file holds two gates:
     python bench/gates.py assisted            # two marked downbeats seed the grid
     python bench/gates.py real-audio          # local songs keep analysing, readings pinned
     python bench/gates.py real-audio --update
+    python bench/gates.py combine             # a compilation keeps every borrowed grid
 
 Both exit non-zero on failure. Neither renders new audio for the main corpus —
 they reuse ``bench/audio/`` — but ``coverage`` has two fixtures of its own,
@@ -37,6 +38,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import subprocess
 import sys
 import time
@@ -52,7 +54,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import soundfile as sf  # noqa: E402
 
 import benchmark as bm  # noqa: E402
+import fuzz_reader as fuzz  # noqa: E402  -- its mutants, for half-wrong sources
 import overtone as ta  # noqa: E402
+import overtone_combine as tc  # noqa: E402
 import overtone_web as wb  # noqa: E402  -- the stage names the page shows
 
 HERE = Path(__file__).resolve().parent
@@ -1139,12 +1143,240 @@ def perf(names: list[str], audio_dir: Path, runs: int, update: bool) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Compilation builder — what the shift has to preserve (Phase 25, row 25.17)
+# ---------------------------------------------------------------------------
+
+#: What the gate compiles, and why these three: a whole BPM; 222.222, whose
+#: beat length is a repeating decimal, taken from the middle of its song so
+#: its grid has to be pinned by the builder rather than carried; and a case
+#: with four red lines, so the bookkeeping is not measured on one.
+COMBINE_PLAN = ({"case": "edm-174"},
+                {"case": "odd-222.22", "start_ms": 20000.0, "end_ms": 40000.0},
+                {"case": "secs-4", "multiplier": "2.0"})
+
+#: Beats between two objects of a source map. Objects are stored whole, which
+#: is how osu!stable writes them, so they sit up to half a millisecond off
+#: their own beat before this builder touches anything.
+COMBINE_BEATS_APART = 4
+
+#: Mutants of a source map the gate throws at the reader. It must come back
+#: with repairs or a refusal — never with anything but a ValueError.
+COMBINE_MUTANTS = 60
+
+
+def _combine_source(folder: Path, case: str, multiplier: str = "1.4") -> Path:
+    """A map on ``case``'s own audio: the golden vector's red lines, circles on
+    their beats from end to end, a green asking for a custom sample, a break
+    and bookmarks."""
+    vector = json.loads((HERE / "golden" / f"{case}.json").read_text(encoding="utf-8"))
+    points = [(float(p["offset_ms"]), float(p["bpm"]))
+              for p in vector["result"]["points"] if float(p["bpm"]) > 0]
+    end_ms = float(vector["result"]["duration_s"]) * 1000.0 - 500.0
+    reds, objects = [], []
+    for n, (offset, bpm) in enumerate(points):
+        beat = 60000.0 / bpm
+        stop = points[n + 1][0] if n + 1 < len(points) else end_ms
+        reds.append(f"{offset:.3f},{beat:.12f},4,2,0,80,1,0")
+        # One beat in, so rounding the object to a whole millisecond cannot
+        # put it before the red line it belongs to.
+        time = offset + beat
+        while time < min(stop, end_ms):
+            objects.append(f"100,100,{round(time)},1,0,0:0:0:0:")
+            time += COMBINE_BEATS_APART * beat
+    first, beat = points[0][0], 60000.0 / points[0][1]
+    marks = [round(first + 16 * beat), round(first + 32 * beat)]
+    folder.mkdir(parents=True, exist_ok=True)
+    lines = ["osu file format v14", "",
+             "[General]", f"AudioFilename: {case}.wav", f"PreviewTime: {marks[0]}",
+             "Mode: 0", "StackLeniency: 0.7", "",
+             "[Editor]", f"Bookmarks: {marks[0]},{marks[1]}", "",
+             "[Metadata]", f"Title:{case}", "Artist:Overtone", "Creator:gates",
+             f"Version:{case}", "Tags:gate", "",
+             "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+             "ApproachRate:9", f"SliderMultiplier:{multiplier}", "SliderTickRate:1", "",
+             "[Events]", f"2,{marks[0] + 400},{marks[1] - 400}", "",
+             "[TimingPoints]", *reds,
+             f"{round(first + 8 * beat)},-125,4,3,5,60,0,1", "",
+             "[HitObjects]", *objects, ""]
+    path = folder / f"{case}.osu"
+    path.write_bytes("\r\n".join(lines).encode("utf-8"))
+    return path
+
+
+def _beat_lengths(beatmap: dict) -> set:
+    """Every red line's beat length, exactly as the file writes it."""
+    lines = next(s["lines"] for s in beatmap["sections"] if s["name"] == "TimingPoints")
+    return {line.split(",")[1].strip() for line in lines
+            if line.strip() and ta._is_red_line(line.strip())}
+
+
+def _governing(beatmap: dict, at_ms: float) -> tuple[float, float]:
+    """The red line in force at a time, as ``(offset, beat length)``."""
+    reds = sorted((p for p in (ta._timing_point_fields(line.strip())
+                               for line in next(s["lines"] for s in beatmap["sections"]
+                                                if s["name"] == "TimingPoints")
+                               if line.strip() and not line.strip().startswith("//"))
+                   if p is not None and p["red"] and p["beat_length"] > 0),
+                  key=lambda p: p["time"])
+    use = next((p for p in reversed(reds) if p["time"] <= at_ms + 1e-6), reds[0])
+    return use["time"], use["beat_length"]
+
+
+def combine(audio_dir: Path) -> int:
+    """Three maps on three songs compiled into one, then measured against them.
+
+    The claim the whole phase rests on is that an object keeps the place it
+    had in its own segment and the grid under it keeps the phase its mapper
+    set. So the gate recomputes both from the sources instead of believing the
+    report: every object's offset from its segment's start, every red line's
+    beat length digit for digit, the distance from each object to its own
+    governing red line in beats, and the result's own snap audit — which is
+    the question a mapper would actually ask of a compilation.
+
+    Then the same reader is handed 60 mutants of a source map, because the
+    tool this phase was asked against ends in a traceback on input that is
+    merely ordinary.
+    """
+    import tempfile
+
+    print("A compilation of three songs, measured against the maps it borrowed from.")
+    print("Object offsets inside a segment, red-line beat lengths, the phase of each")
+    print("object in its own beat, and the result's snap audit: a shift that moves")
+    print("one of them is a shift that broke somebody's map.\n")
+    failures: list[str] = []
+
+    def check(label: str, ok: bool, detail: str) -> None:
+        if not ok:
+            failures.append(f"{label}: {detail}")
+        print(f"  {label:<46} {'ok' if ok else 'FAIL'}  {detail}")
+
+    def verdict() -> int:
+        if failures:
+            print("\ncombine FAILED:")
+            for line in failures:
+                print(f"  {line}")
+            return 1
+        print("\nGate passed: every borrowed object and every grid came through intact.")
+        return 0
+
+    with tempfile.TemporaryDirectory() as tmp:
+        sources = []
+        for spec in COMBINE_PLAN:
+            case = spec["case"]
+            audio = audio_dir / f"{case}.wav"
+            if not audio.exists():
+                bm.build_track(audio, seed=zlib.crc32(case.encode()), **bm.CASES[case])
+            source = {"osu": str(_combine_source(Path(tmp) / case, case,
+                                                 spec.get("multiplier", "1.4"))),
+                      "audio": str(audio)}
+            source.update({k: v for k, v in spec.items()
+                           if k not in ("case", "multiplier")})
+            sources.append(source)
+        plan = tc.plan_compilation(sources)
+        print(f"plan: {plan['totals']['segments']} segments, "
+              f"{plan['totals']['duration_ms'] / 1000.0:.1f} s, "
+              f"{plan['totals']['objects']} objects, "
+              f"{plan['totals']['reds']} red lines, "
+              f"{len(plan['repairs'])} repair(s)")
+        for repair in plan["repairs"]:
+            print(f"  repair   segment {repair['segment']}  {repair['code']}")
+        check("the plan is usable", plan["usable"],
+              "; ".join(r["code"] for r in plan["refusals"]) or "no refusals")
+        if not plan["usable"]:
+            return verdict()
+
+        text, report = tc.combine_beatmap(plan, audio_name="combined.wav")
+        out = Path(tmp) / "combined.osu"
+        out.write_bytes(text.encode("utf-8"))
+        built = ta.read_osu_beatmap(out)
+        theirs = _beat_lengths(built)
+        print()
+
+        worst_place, worst_phase, written = 0.0, 0.0, 0
+        for n, segment in enumerate(plan["segments"]):
+            source = ta.read_osu_beatmap(segment["osu"])
+            start, end = segment["range"]["start_ms"], segment["range"]["end_ms"]
+            at, shift = segment["at_ms"], segment["shift_ms"]
+            kept = sorted(float(o["time"]) for o in source["hitobjects"]
+                          if start - 1e-6 <= float(o["time"]) <= end + 1e-6)
+            mine = sorted(float(o["time"]) for o in built["hitobjects"]
+                          if at - 1e-6 <= float(o["time"]) <= segment["ends_at_ms"] + 1e-6)
+            place = max((abs((b - at) - (s - start)) for s, b in zip(kept, mine)),
+                        default=0.0)
+            phase = 0.0
+            for source_time, built_time in zip(kept, mine):
+                red, beat = _governing(source, source_time)
+                built_red, built_beat = _governing(built, built_time)
+                if abs(built_beat - beat) > 1e-9:
+                    phase = float("inf")
+                    break
+                off = ((built_time - built_red) - (source_time - red) + beat / 2) % beat
+                phase = max(phase, abs(off - beat / 2))
+            worst_place, worst_phase = max(worst_place, place), max(worst_phase, phase)
+            written += len(mine)
+            print(f"segment {n} ({Path(segment['osu']).stem}): {len(kept)} objects, "
+                  f"at {at / 1000.0:.1f} s, shift {shift:+.0f} ms, "
+                  f"{'pinned' if start > _governing(source, start)[0] else 'carried'} grid")
+            check(f"segment {n}: every object kept its place",
+                  len(kept) == len(mine) and place <= 1e-9,
+                  f"{len(mine)} written, worst {place:.2e} ms off")
+            check(f"segment {n}: every object kept its phase", phase <= 0.001,
+                  f"worst {phase:.2e} ms from its own beat")
+            missing = _beat_lengths(source) - theirs
+            check(f"segment {n}: its beat lengths, digit for digit", not missing,
+                  f"{len(_beat_lengths(source))} beat length(s), {len(missing)} missing")
+
+        print()
+        check("every object of every segment was written",
+              written == plan["totals"]["objects"],
+              f"{written} of {plan['totals']['objects']}")
+        audit = ta.snap_audit(built, duration_s=plan["totals"]["duration_ms"] / 1000.0)
+        check("nothing came off the grid", bool(audit["ok"]) and not audit["unsnapped"],
+              f"{len(audit.get('unsnapped', []))} unsnapped of {audit['objects']}")
+        check("no object before its own grid", not audit["before_first_red"],
+              f"{len(audit['before_first_red'])} before the first red line")
+        check("no object past the audio", not audit["past_audio"],
+              f"{len(audit['past_audio'] or [])} past "
+              f"{plan['totals']['duration_ms'] / 1000.0:.1f} s")
+        times = [float(o["time"]) for o in built["hitobjects"]]
+        check("objects in time order", times == sorted(times), f"{len(times)} objects")
+        check("the writer gives the text back", ta.beatmap_text(built) == text,
+              f"{len(text)} characters")
+        check("the result says what later rows still owe",
+              {entry["row"] for entry in report["pending"]}
+              == {"25.8", "25.9", "25.10", "25.13"},
+              ", ".join(sorted(entry["row"] for entry in report["pending"])))
+
+        print()
+        rng = random.Random(7)
+        seed_text = Path(sources[0]["osu"]).read_bytes().decode("utf-8")
+        read, refused, crashed = 0, 0, 0
+        for n in range(COMBINE_MUTANTS):
+            mutant = Path(tmp) / f"mutant{n}.osu"
+            mutant.write_bytes(fuzz.mutate(seed_text, rng))
+            try:
+                segment = tc.read_segment(mutant, audio=sources[0]["audio"])
+            except ValueError:
+                refused += 1
+            except Exception as exc:  # noqa: BLE001 -- the gate reports crashes
+                crashed += 1
+                print(f"  mutant {n}: {type(exc).__name__}: {exc}"[:110])
+            else:
+                read += 1
+                refused += 0 if segment["usable"] else 1
+        check(f"{COMBINE_MUTANTS} mutant maps read or refused", crashed == 0,
+              f"{read} read ({refused} of them refused), {crashed} crashed")
+
+    return verdict()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("gate",
                         choices=("bpm-snapshot", "coverage", "measures", "signatures",
                                  "robustness", "reference", "assisted", "real-audio",
-                                 "perf"))
+                                 "perf", "combine"))
     parser.add_argument("--only", nargs="*", metavar="CASE",
                         help="bpm-snapshot / real-audio / perf: run just these cases")
     parser.add_argument("--update", action="store_true",
@@ -1182,6 +1414,8 @@ def main() -> None:
             print("--runs must be at least 1")
             raise SystemExit(2)
         raise SystemExit(perf(names, audio_dir, args.runs, args.update))
+    if args.gate == "combine":
+        raise SystemExit(combine(audio_dir))
     if args.gate == "bpm-snapshot":
         names = args.only or list(bm.CASES)
         unknown = [n for n in names if n not in bm.CASES]

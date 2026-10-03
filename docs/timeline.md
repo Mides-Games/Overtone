@@ -18,6 +18,78 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-10-03 · Phase 25 step 1: a compilation's plan, read and shift
+
+### Changed
+
+- **`python/overtone_combine.py`**, a new module, holds the compilation
+  builder's first three rows. Nothing writes a file yet: `read_segment` reads
+  one source and says what is wrong with it, `plan_compilation` places an
+  ordered list of them, and `combine_beatmap` returns the assembled `.osu` as
+  text.
+- **The shift is a whole number of milliseconds and the junction absorbs the
+  remainder.** osu!stable writes object times as integers, so a fractional
+  shift would re-round every whole millisecond a source had — a mapper's own
+  snapping, lost to arithmetic nobody asked for. Half a millisecond on a gap
+  this builder invented is inaudible.
+- **Each segment is pinned at its start with the grid and the sound its own
+  map had there**: the governing red line's own beat length, taken from that
+  line's raw digits, placed by **whole beats** so the phase is the one the
+  mapper set, plus the sample set, index, volume, kiai and slider velocity in
+  force at that moment. Without it a segment inherits whatever state the
+  previous song ended in. A red sitting at or after the range's start is left
+  alone — a red says everything about the state at its own time, and
+  restating it would overwrite its fields with an earlier green's.
+- **`bench/gates.py combine`** (row 25.17's first half) compiles three songs
+  and measures the result against the maps it borrowed from, recomputing
+  rather than believing the report.
+- The report carries a `pending` list naming what rows 25.8, 25.9, 25.10 and
+  25.13 still owe — unremapped hitsound indices, unreconciled slider
+  multipliers, the first segment's difficulty and its metadata — so what the
+  builder writes today is not mistaken for what it will write.
+
+### Fixed
+
+- **A map naming `song.wav` for a `Song.WAV` read as correct on Windows.**
+  `(folder / name).is_file()` answers with the file it has whatever the case,
+  so the mismatch that silences a mapset on a case-sensitive filesystem was
+  invisible from here. The folder's own listing is now the truth, and finds it
+  on either platform. Found by the test for it failing.
+- **The pin's safety check compared against the first object of the map, not
+  of the range**, so a range typed into the middle of a song refused a
+  junction that was fine. Found by the gate on its second run, on the one
+  case given a typed range.
+
+### Hardening
+
+- 60 mutants of a source map from `fuzz_reader.mutate` go through the reader
+  each time the gate runs: 60 read, 6 of them refused, 0 crashed.
+- A file that will not read comes back refused rather than raising, so a plan
+  of five songs can show all five including the broken one. An unknown
+  setting or source key raises instead of silently keeping the default.
+- The reader never decodes audio — the length comes from the header — so a
+  plan of several songs is not several heavy jobs.
+
+### Measured
+
+- Three songs compiled (edm-174; odd-222.22 from the middle of its song, so
+  its grid has to be pinned; secs-4, four red lines, a different
+  `SliderMultiplier`): 116 objects, **worst displacement inside a segment
+  0.00e+00 ms**, worst phase error 1.14e-13 ms on a carried grid and
+  **2.84e-04 ms on the pinned one** — the three decimals the file writes, 20
+  nanoseconds of audio at 44.1 kHz. Every beat length digit for digit, 0 of
+  116 objects off the grid or before it, and the writer gives the text back
+  byte for byte. The gate runs in 2.0 s.
+- Tests 847 (583 engine + 264 web shell), 42 of them new.
+
+### Rejected / tried and dropped
+
+- **Putting the pinned red line at the segment's start** instead of stepping
+  the mapper's own line there by whole beats. It is simpler, and it moves
+  every bar line in the segment by however far that start happens to sit from
+  the mapper's beat — up to a whole beat, which is 270 ms on the gate's
+  222.222 BPM case.
+
 ## v4.0.0-dev — 2026-10-03 · The compilation builder, specified; §9's line redrawn
 
 Documentation only. Nothing was built, measured on the corpus or shipped.

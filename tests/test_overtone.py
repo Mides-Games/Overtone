@@ -9063,5 +9063,592 @@ class InstallerSbomTests(unittest.TestCase):
         self.assertEqual(sbom.drift(committed, fresh), [])
 
 
+class CombineSegmentTests(unittest.TestCase):
+    """What a compilation reads out of one source map, and what it repairs."""
+
+    LINES = [
+        "osu file format v14", "",
+        "[General]", "AudioFilename: song.wav", "AudioLeadIn: 0", "PreviewTime: 8000",
+        "SampleSet: Soft", "StackLeniency: 0.7", "Mode: 0", "",
+        "[Editor]", "Bookmarks: 4000,8000", "BeatDivisor: 4", "",
+        "[Metadata]", "Title:Song", "TitleUnicode:Song", "Artist:Artist",
+        "ArtistUnicode:Artist", "Creator:Mapper", "Version:Hard", "Source:", "Tags:tag", "",
+        "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+        "ApproachRate:8.5", "SliderMultiplier:1.6", "SliderTickRate:1", "",
+        "[Events]", '0,0,"bg.jpg",0,0', "2,3000,4000", "",
+        "[TimingPoints]", "1000,400,4,2,0,80,1,0", "2000,-100,4,2,1,70,0,1",
+        "20000,500,4,2,0,80,1,0", "",
+        "[HitObjects]",
+        "100,100,1200,1,0,0:0:0:0:",
+        "200,200,2000,2,0,L|300:200,1,100,0|0,0:0|0:0,0:0:0:0:",
+        "256,192,5000,12,0,7000,0:0:0:0:",
+        "64,64,9000,1,0,0:0:0:0:",
+        "",
+    ]
+
+    def _with(self, section: str, rows, replace: bool = False) -> list[str]:
+        """``self.LINES`` with ``rows`` added to (or standing in for) a section."""
+        lines = list(self.LINES)
+        at = lines.index(f"[{section}]")
+        end = lines.index("", at)
+        body = [] if replace else lines[at + 1:end]
+        return lines[:at + 1] + body + list(rows) + lines[end:]
+
+    def _replaced(self, old: str, new: str) -> list[str]:
+        return [new if line == old else line for line in self.LINES]
+
+    def _folder(self, tmp: str, lines=None, audio: str | None = "song.wav",
+                seconds: float = 15.0, extra=()) -> Path:
+        import overtone as ta
+        folder = Path(tmp)
+        text = "\r\n".join(self.LINES if lines is None else lines)
+        (folder / "map.osu").write_bytes(text.encode("utf-8"))
+        if audio:
+            ta.sf.write(str(folder / audio),
+                        np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        for name in extra:
+            (folder / name).write_bytes(b"")
+        return folder / "map.osu"
+
+    def _segment(self, path: Path, **kwargs) -> dict:
+        import overtone_combine
+        segment = overtone_combine.read_segment(path, **kwargs)
+        json.dumps(segment)                 # the document is JSON or it is not a document
+        return segment
+
+    @staticmethod
+    def _codes(segment: dict) -> set:
+        return {repair["code"] for repair in segment["repairs"]}
+
+    def test_a_map_and_its_song_read_as_one_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp))
+        self.assertEqual((segment["name"], segment["format"], segment["mode_name"]),
+                         ("Hard", 14, "osu"))
+        self.assertIsNone(segment["keys"])  # only mania has a key count
+        self.assertEqual((segment["objects"]["circle"], segment["objects"]["slider"],
+                          segment["objects"]["spinner"], segment["objects"]["played"]),
+                         (2, 1, 1, 4))
+        self.assertEqual((segment["objects"]["first_ms"], segment["objects"]["last_ms"]),
+                         (1200.0, 9000.0))
+        self.assertEqual((segment["timing"]["reds"], segment["timing"]["greens"],
+                          segment["timing"]["first_bpm"]), (2, 1, 150.0))
+        # The range is the objects plus the padding, and the song is long enough
+        # to hold it: 1200 - 2000 clamps to 0, 9000 + 2000 stands.
+        self.assertEqual((segment["range"]["start_ms"], segment["range"]["end_ms"],
+                          segment["range"]["from"]), (0.0, 11000.0, "objects"))
+        self.assertTrue(segment["range"]["holds_every_object"])
+        self.assertEqual((segment["audio"]["how"], segment["audio"]["duration_ms"]),
+                         ("named", 15000.0))
+        self.assertEqual(segment["breaks"], [{"start_ms": 3000.0, "end_ms": 4000.0}])
+        self.assertEqual((segment["bookmarks"], segment["preview_ms"],
+                          segment["background"]), ([4000.0, 8000.0], 8000.0, "bg.jpg"))
+        self.assertEqual((segment["difficulty"]["ar"], segment["difficulty"]["od"],
+                          segment["difficulty"]["slider_multiplier"],
+                          segment["difficulty"]["stack_leniency"]), (8.5, 7.0, 1.6, 0.7))
+        self.assertEqual((segment["repairs"], segment["refusals"], segment["usable"]),
+                         ([], [], True))
+
+    def test_a_given_range_is_kept_and_cut_to_the_song(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp), start_ms=3000.0, end_ms=20000.0)
+        self.assertEqual((segment["range"]["start_ms"], segment["range"]["end_ms"],
+                          segment["range"]["from"]), (3000.0, 15000.0, "given"))
+        self.assertFalse(segment["range"]["holds_every_object"])
+        self.assertEqual(self._codes(segment), {"range_past_audio", "range_cuts_objects"})
+        self.assertTrue(all(repair["fixed"] for repair in segment["repairs"]))
+
+    def test_the_padding_runs_past_a_short_song_without_a_word(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, seconds=9.5))
+        # The padding is this reader's own invention: cutting it to the song is
+        # not news. An object past the end would be, and there is none here.
+        self.assertEqual(segment["range"]["end_ms"], 9500.0)
+        self.assertEqual(segment["repairs"], [])
+
+    def test_audio_named_in_the_wrong_case_is_found_and_said(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, audio="Song.WAV"))
+        self.assertEqual(segment["audio"]["how"], "case")
+        self.assertEqual(self._codes(segment), {"audio_case"})
+        self.assertTrue(segment["repairs"][0]["fixed"])
+        self.assertEqual(segment["audio"]["duration_ms"], 15000.0)
+
+    def test_the_folders_only_audio_is_taken_as_a_labelled_guess(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, audio="other.wav"))
+        self.assertEqual(segment["audio"]["how"], "guessed")
+        self.assertEqual(self._codes(segment), {"audio_guessed"})
+        self.assertIn("other.wav", segment["audio"]["path"])
+
+    def test_an_audio_filename_carrying_a_path_is_read_as_its_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            lines = self._replaced("AudioFilename: song.wav",
+                                   "AudioFilename: ..\\sounds\\song.wav")
+            segment = self._segment(self._folder(tmp, lines=lines))
+        self.assertEqual(segment["audio"]["how"], "named")
+        self.assertEqual(self._codes(segment), {"audio_path"})
+
+    def test_a_song_that_is_not_there_is_reported_and_the_map_still_reads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, audio=None))
+        self.assertEqual((segment["audio"]["how"], segment["audio"]["duration_ms"]),
+                         ("missing", None))
+        self.assertEqual(self._codes(segment), {"audio_missing"})
+        # Not a refusal: the map is readable and the plan is what decides
+        # whether a segment with no song can be built (it cannot).
+        self.assertTrue(segment["usable"])
+        self.assertEqual(segment["range"]["end_ms"], 11000.0)
+
+    def test_a_map_with_no_red_line_is_refused_and_still_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=self._with("TimingPoints", [],
+                                                                       replace=True)))
+        self.assertEqual([r["code"] for r in segment["refusals"]], ["no_timing"])
+        self.assertFalse(segment["usable"])
+        self.assertEqual(segment["objects"]["played"], 4)  # the rest is still reported
+
+    def test_a_map_with_nothing_to_play_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=self._with("HitObjects", [],
+                                                                       replace=True)))
+        self.assertEqual([r["code"] for r in segment["refusals"]], ["no_objects"])
+        self.assertFalse(segment["usable"])
+
+    def test_a_file_that_is_not_there_is_refused_not_raised(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self._folder(tmp)
+            segment = self._segment(Path(tmp) / "gone.osu")
+        self.assertEqual([r["code"] for r in segment["refusals"]], ["unreadable"])
+        self.assertEqual((segment["usable"], segment["repairs"]), (False, []))
+
+    def test_objects_out_of_order_and_with_decimal_times_are_reported(self) -> None:
+        rows = ["100,100,1200,1,0,0:0:0:0:", "64,64,9000,1,0,0:0:0:0:",
+                "128,128,2000.5,1,0,0:0:0:0:"]
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(
+                tmp, lines=self._with("HitObjects", rows, replace=True)))
+        self.assertEqual(self._codes(segment), {"objects_unordered", "objects_decimal_times"})
+        self.assertEqual((segment["objects"]["out_of_order"],
+                          segment["objects"]["decimal_times"]), (1, 1))
+        self.assertEqual(segment["objects"]["first_ms"], 1200.0)
+
+    def test_a_broken_object_line_is_counted_and_hides_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(
+                tmp, lines=self._with("HitObjects", ["not,an,object"])))
+        self.assertEqual(self._codes(segment), {"objects_unparsed"})
+        self.assertEqual((segment["objects"]["unparsed"], segment["objects"]["played"]),
+                         (1, 4))
+
+    def test_a_held_note_ends_the_segment_after_it_starts(self) -> None:
+        lines = self._replaced("Mode: 0", "Mode: 3")
+        at = lines.index("[HitObjects]")
+        lines = lines[:at + 1] + ["64,192,9000,128,0,12000:0:0:0:0:"] + lines[at + 1:]
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=lines))
+        self.assertEqual((segment["mode_name"], segment["keys"]), ("mania", 4))
+        self.assertEqual((segment["objects"]["hold"], segment["objects"]["last_ms"]),
+                         (1, 12000.0))
+        self.assertEqual(segment["range"]["end_ms"], 14000.0)
+
+    def test_custom_sample_indices_and_named_files_are_collected(self) -> None:
+        rows = ["64,64,9500,1,0,0:0:0:0:kept.wav", "64,64,9800,1,0,0:0:0:0:gone.wav"]
+        lines = self._replaced("2000,-100,4,2,1,70,0,1", "2000,-100,4,2,3,70,0,1")
+        at = lines.index("[HitObjects]")
+        lines = lines[:at + 1] + rows + lines[at + 1:]
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=lines, extra=("kept.wav",)))
+        self.assertEqual(segment["samples"]["indices"], [3])
+        self.assertEqual(segment["samples"]["files"], ["gone.wav", "kept.wav"])
+        self.assertEqual(segment["samples"]["missing"], ["gone.wav"])
+        self.assertIn("samples_missing", self._codes(segment))
+
+    def test_video_and_storyboard_lines_are_counted_as_not_carried(self) -> None:
+        rows = ['1,0,"clip.mp4"', 'Sprite,Background,Centre,"sb.png",320,240']
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=self._with("Events", rows)))
+        self.assertEqual(segment["events"], {"video": 1, "storyboard": 1})
+        self.assertEqual(self._codes(segment), {"events_video", "events_storyboard"})
+        self.assertEqual(segment["background"], "bg.jpg")  # the background still reads
+
+    def test_a_map_with_no_approach_rate_reads_the_overall_difficulty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(
+                tmp, lines=[line for line in self.LINES
+                            if not line.startswith("ApproachRate")]))
+        self.assertEqual((segment["difficulty"]["ar"], segment["difficulty"]["od"]),
+                         (7.0, 7.0))
+        self.assertEqual(self._codes(segment), {"difficulty_ar_from_od"})
+
+    def test_duplicate_reds_and_a_green_with_no_beat_are_reported(self) -> None:
+        rows = ["500,-100,4,2,0,80,0,0", "1000,500,4,2,0,80,1,0"]
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=self._with("TimingPoints", rows)))
+        self.assertEqual(segment["timing"]["duplicate_reds"], [1000.0])
+        self.assertEqual(segment["timing"]["greens_before_red"], 1)
+        self.assertEqual(self._codes(segment),
+                         {"timing_duplicate_reds", "timing_green_before_red"})
+
+    def test_an_object_before_the_first_red_line_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(
+                tmp, lines=self._replaced("100,100,1200,1,0,0:0:0:0:",
+                                          "100,100,500,1,0,0:0:0:0:")))
+        self.assertEqual(self._codes(segment), {"objects_before_first_red"})
+        self.assertEqual(segment["repairs"][0]["at"], 500.0)
+
+class CombinePlanTests(unittest.TestCase):
+    """Where each borrowed range lands in a compilation, and what refuses one."""
+
+    def _map(self, folder: Path, *, mode: int = 0, keys: int = 4, first: float = 1200,
+             last: float = 9000, reds=("1000,400,4,2,0,80,1,0",), spinner: str = "",
+             audio: str | None = "song.wav", seconds: float = 15.0) -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        rows = [f"100,100,{first:g},1,0,0:0:0:0:", f"64,64,{last:g},1,0,0:0:0:0:"]
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", f"Mode: {mode}", "",
+                 "[Metadata]", "Title:Song", "Artist:Artist", "Creator:Mapper",
+                 "Version:Hard", "",
+                 "[Difficulty]", f"CircleSize:{keys}", "OverallDifficulty:7",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[Events]", "",
+                 "[TimingPoints]", *reds, "",
+                 "[HitObjects]", *rows, *([spinner] if spinner else []), ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        if audio:
+            ta.sf.write(str(folder / audio),
+                        np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        return folder / "map.osu"
+
+    def _plan(self, sources, settings=None) -> dict:
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        json.dumps(plan)
+        return plan
+
+    def test_two_maps_are_placed_in_order_behind_the_lead_in(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a")
+            second = self._map(Path(tmp) / "b", first=2000, last=10000)
+            plan = self._plan([first, second])
+        # Segment 0 runs 0-11000 of its own song and lands behind the 2 s
+        # lead-in; segment 1 runs 0-12000 of its own and follows a 2 s gap.
+        self.assertEqual([(s["at_ms"], s["shift_ms"], s["ends_at_ms"])
+                          for s in plan["segments"]],
+                         [(2000.0, 2000.0, 13000.0), (15000.0, 15000.0, 27000.0)])
+        self.assertEqual(plan["junctions"], [{"after": 0, "before": 1, "ends_ms": 13000.0,
+                                              "gap_ms": 2000.0, "starts_ms": 15000.0}])
+        self.assertEqual((plan["totals"]["duration_ms"], plan["totals"]["objects"],
+                          plan["totals"]["segments"], plan["totals"]["songs"]),
+                         (27000.0, 4, 2, 2))
+        self.assertEqual((plan["format"], plan["mode"], plan["usable"]), (1, 0, True))
+
+    def test_a_whole_millisecond_shift_keeps_a_whole_millisecond_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a"), "start_ms": 1000.5,
+                      "end_ms": 11000.0}
+            plan = self._plan([source])
+        segment = plan["segments"][0]
+        # The cursor wants the range at 2000; the shift is rounded to a whole
+        # millisecond and the range lands half a millisecond late instead of
+        # every object in it losing its snap.
+        self.assertEqual(segment["shift_ms"], 1000.0)
+        self.assertEqual(segment["shift_ms"], int(segment["shift_ms"]))
+        self.assertEqual(segment["at_ms"], 2000.5)
+
+    def test_a_gap_set_on_one_junction_overrides_the_plans(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a")
+            second = {"osu": self._map(Path(tmp) / "b"), "gap_before_ms": 500.0}
+            plan = self._plan([first, second], {"gap_ms": 4000.0, "lead_in_ms": 0.0})
+        self.assertEqual(plan["junctions"][0]["gap_ms"], 500.0)
+        self.assertEqual((plan["segments"][0]["at_ms"], plan["segments"][1]["at_ms"]),
+                         (0.0, 11500.0))
+
+    def test_different_modes_and_different_key_counts_both_refuse(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            standard = self._map(Path(tmp) / "a")
+            mania = self._map(Path(tmp) / "b", mode=3, keys=4)
+            other = self._map(Path(tmp) / "c", mode=3, keys=7)
+            mixed = self._plan([standard, mania])
+            mania_only = self._plan([mania, other])
+        self.assertEqual([r["code"] for r in mixed["refusals"]], ["mode_mismatch"])
+        self.assertIn("osu", mixed["refusals"][0]["why"])
+        self.assertEqual([r["code"] for r in mania_only["refusals"]], ["keys_mismatch"])
+        self.assertFalse(mixed["usable"] or mania_only["usable"])
+
+    def test_a_segment_with_no_song_refuses_the_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a", audio=None)])
+        self.assertEqual([r["code"] for r in plan["refusals"]], ["segment_without_audio"])
+        self.assertEqual(plan["refusals"][0]["segment"], 0)
+        # The segment itself read fine; it is the plan that cannot use it.
+        self.assertTrue(plan["segments"][0]["usable"])
+
+    def test_a_refused_segment_refuses_the_plan_and_says_which(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a")
+            second = self._map(Path(tmp) / "b", reds=())
+            plan = self._plan([first, second])
+        self.assertEqual([(r["segment"], r["code"]) for r in plan["refusals"]],
+                         [(1, "no_timing")])
+        self.assertFalse(plan["usable"])
+
+    def test_strict_refuses_a_plan_it_would_have_had_to_repair(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", first=1200.5)
+            lenient = self._plan([source])
+            strict = self._plan([source], {"strict": True})
+        self.assertEqual([r["code"] for r in lenient["repairs"]], ["objects_decimal_times"])
+        self.assertTrue(lenient["usable"])
+        self.assertEqual([r["code"] for r in strict["refusals"]], ["strict_repairs"])
+
+    def test_an_unknown_setting_or_source_key_is_an_error_not_a_default(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a")
+            with self.assertRaises(ValueError):
+                overtone_combine.plan_compilation([source], {"gap": 500.0})
+            with self.assertRaises(ValueError):
+                overtone_combine.plan_compilation([{"osu": source, "fade_ms": 10.0}])
+            with self.assertRaises(ValueError):
+                overtone_combine.plan_compilation([])
+
+    def test_the_totals_count_only_the_objects_inside_each_range(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a"), "start_ms": 5000.0,
+                      "end_ms": 11000.0}
+            plan = self._plan([source])
+        segment = plan["segments"][0]
+        self.assertEqual((segment["objects"]["played"], segment["objects"]["in_range"]),
+                         (2, 1))
+        self.assertEqual(plan["totals"]["objects"], 1)
+        self.assertIn("range_cuts_objects", [r["code"] for r in plan["repairs"]])
+
+    def test_an_object_that_outlasts_a_typed_range_is_kept_and_counted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a",
+                                       spinner="256,192,9500,12,0,13000,0:0:0:0:"),
+                      "start_ms": 0.0, "end_ms": 11000.0}
+            plan = self._plan([source])
+        self.assertEqual(plan["segments"][0]["objects"]["ends_past_range"], 1)
+        self.assertIn("objects_end_past_range", [r["code"] for r in plan["repairs"]])
+        self.assertTrue(plan["usable"])
+
+    def test_a_plan_past_the_length_ceiling_refuses(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a")],
+                              {"lead_in_ms": overtone_combine.MAX_TOTAL_MS})
+        self.assertEqual([r["code"] for r in plan["refusals"]], ["too_long"])
+
+class CombineAssemblyTests(unittest.TestCase):
+    """The compilation .osu: every borrowed timestamp where it belongs, nothing else moved."""
+
+    OBJECTS = ["100,100,15000,1,0,0:0:0:0:",
+               "200,200,15400,2,0,L|300:200,1,100,0|0,0:0|0:0,0:0:0:0:",
+               "256,192,16000,12,0,17000,0:0:0:0:"]
+
+    def _map(self, folder: Path, *, red: str = "1000,400,4,2,0,80,1,0",
+             greens=("2000,-125,4,3,5,60,0,1",), objects=None, mode: int = 0,
+             multiplier: str = "1.4", seconds: float = 20.0,
+             breaks=("2,17500,18500",), bookmarks: str = "15000,19000") -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "PreviewTime: 15500",
+                 f"Mode: {mode}", "StackLeniency: 0.5", "",
+                 "[Editor]", f"Bookmarks: {bookmarks}", "",
+                 "[Metadata]", "Title:Song", "Artist:Artist", "Creator:Mapper",
+                 "Version:Hard", "Tags:one", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", f"SliderMultiplier:{multiplier}", "SliderTickRate:1", "",
+                 "[Events]", '0,0,"bg.jpg",0,0', *breaks, "",
+                 "[TimingPoints]", red, *greens, "",
+                 "[HitObjects]", *(self.OBJECTS if objects is None else objects), ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        ta.sf.write(str(folder / "song.wav"),
+                    np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        return folder / "map.osu"
+
+    def _built(self, sources, settings=None, **kwargs):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        text, report = overtone_combine.combine_beatmap(plan, **kwargs)
+        json.dumps(report)
+        return plan, text, report
+
+    @staticmethod
+    def _section(text: str, name: str) -> list[str]:
+        body = text.split(f"[{name}]")[1]
+        rows = body.split("[")[0].splitlines()
+        return [row for row in rows if row.strip() and not row.strip().startswith("//")]
+
+    def _times(self, text: str, name: str) -> list[float]:
+        return [float(row.split(",")[2] if name == "HitObjects" else row.split(",")[0])
+                for row in self._section(text, name)]
+
+    def test_every_object_keeps_its_place_inside_its_own_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, text, report = self._built([self._map(Path(tmp) / "a"),
+                                              self._map(Path(tmp) / "b")])
+        times = self._times(text, "HitObjects")
+        self.assertEqual(len(times), 6)
+        for n, segment in enumerate(plan["segments"]):
+            at, start = segment["at_ms"], segment["range"]["start_ms"]
+            for source, built in zip([15000.0, 15400.0, 16000.0], times[n * 3:n * 3 + 3]):
+                # The one claim the whole phase rests on: a borrowed object sits
+                # exactly as far into its segment as it sat into its range.
+                self.assertAlmostEqual(built - at, source - start, places=9)
+        self.assertEqual(report["objects"], 6)
+
+    def test_the_grid_keeps_the_phase_the_mapper_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # 266.666666666667 ms a beat and a first object that is not on a
+            # beat: rounding the pinned red line anywhere would show up here.
+            _plan, text, _report = self._built(
+                [self._map(Path(tmp) / "a", red="353,266.666666666667,4,2,0,100,1,0",
+                           greens=(), objects=["100,100,15100,1,0,0:0:0:0:"])])
+        red = self._times(text, "TimingPoints")[0]
+        beat = 266.666666666667
+        source = (15100.0 - 353.0) % beat
+        built = (self._times(text, "HitObjects")[0] - red) % beat
+        # Whole beats is the only arithmetic the pin does, so the object's
+        # place in its beat survives to the thousandth of a millisecond the
+        # file writes -- 20 nanoseconds of audio at 44.1 kHz.
+        self.assertLess(abs(built - source), 0.001)
+        self.assertNotEqual(round(source, 3), 0.0)   # and it is not on the beat
+
+    def test_a_spinner_and_a_hold_move_at_both_ends(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, _report = self._built([self._map(
+                Path(tmp) / "a", mode=3,
+                objects=["256,192,15000,12,0,17000,0:0:0:0:",
+                         "64,192,15500,128,0,16500:0:0:0:0:"])])
+        rows = self._section(text, "HitObjects")
+        # Both ends are the sixth field, and the field means something
+        # different in each: a bare time for the spinner, ``end:sample`` for
+        # the hold. The shift here is -11000.
+        self.assertEqual(rows[0].split(",")[2:6], ["4000", "12", "0", "6000"])
+        self.assertEqual(rows[1].split(",")[2:6],
+                         ["4500", "128", "0", "5500:0:0:0:0:"])
+
+    def test_a_sliders_curve_comes_out_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, _report = self._built([self._map(Path(tmp) / "a")])
+        slider = next(row for row in self._section(text, "HitObjects") if ",2," in row)
+        fields = slider.split(",")
+        self.assertEqual(fields[5:], "L|300:200,1,100,0|0,0:0|0:0,0:0:0:0:".split(","))
+
+    def test_a_segment_starts_in_the_state_its_own_map_was_in(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # The green at 2000 is outside the range (which starts at 13000),
+            # so without a pin the segment would play in the state the file
+            # before it left behind: normal samples, full volume, no kiai, 1.0x.
+            _plan, text, _report = self._built([self._map(Path(tmp) / "a")])
+        rows = self._section(text, "TimingPoints")
+        red = rows[0].split(",")
+        self.assertEqual(red[1], "400")                    # the governing beat length
+        self.assertEqual(red[3:], ["3", "5", "60", "1", "1"])   # soft set 5, 60 %, kiai
+        self.assertEqual(rows[1].split(",")[1], "-125")    # 0.8x restored after the red
+        self.assertEqual(rows[1].split(",")[6], "0")       # as a green
+
+    def test_a_red_at_the_range_start_is_not_restated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a", red="13000,400,4,1,2,90,1,0",
+                                       greens=()),
+                      "start_ms": 13000.0, "end_ms": 19000.0}
+            _plan, text, _report = self._built([source])
+        rows = self._section(text, "TimingPoints")
+        # Its own fields, shifted and nothing else: a red says everything about
+        # the state at its own time, so there is nothing to pin in front of it.
+        self.assertEqual(rows, ["2000,400,4,1,2,90,1,0"])
+
+    def test_breaks_bookmarks_and_the_preview_move_with_their_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, text, report = self._built([self._map(Path(tmp) / "a"),
+                                              self._map(Path(tmp) / "b")])
+        shifts = [segment["shift_ms"] for segment in plan["segments"]]
+        self.assertEqual([row for row in self._section(text, "Events")
+                          if row.startswith("2,")],
+                         [f"2,{17500 + shifts[0]:.0f},{18500 + shifts[0]:.0f}",
+                          f"2,{17500 + shifts[1]:.0f},{18500 + shifts[1]:.0f}"])
+        self.assertIn(f"Bookmarks: {15000 + shifts[0]:.0f},{19000 + shifts[0]:.0f},"
+                      f"{15000 + shifts[1]:.0f},{19000 + shifts[1]:.0f}", text)
+        self.assertEqual(report["preview_ms"], 15500 + shifts[0])
+
+    def test_what_falls_outside_the_range_is_left_out(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a"),
+                      "start_ms": 15600.0, "end_ms": 17500.0}
+            _plan, text, report = self._built([source])
+        # Only the spinner at 16000 starts inside the range. The break at
+        # 17500 begins where the range ends, the bookmarks sit either side of
+        # it, and the preview point at 15500 is before it.
+        self.assertEqual(len(self._times(text, "HitObjects")), 1)
+        self.assertEqual((report["breaks"], report["bookmarks"]), (0, 0))
+        self.assertIsNone(report["preview_ms"])
+
+    def test_the_result_reads_back_and_round_trips_byte_identical(self) -> None:
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, _report = self._built([self._map(Path(tmp) / "a"),
+                                                self._map(Path(tmp) / "b")])
+            out = Path(tmp) / "out.osu"
+            out.write_bytes(text.encode("utf-8"))
+            beatmap = ta.read_osu_beatmap(out)
+            self.assertEqual(ta.beatmap_text(beatmap), text)
+        self.assertEqual(beatmap["format"], 14)
+        self.assertEqual(len(beatmap["hitobjects"]), 6)
+        self.assertEqual(beatmap["general"]["AudioFilename"], "audio.mp3")
+        self.assertEqual([time for time, _bpm in beatmap["timing"]["reds"]],
+                         sorted(time for time, _bpm in beatmap["timing"]["reds"]))
+
+    def test_a_plan_that_refused_is_not_assembled(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = overtone_combine.plan_compilation(
+                [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b", mode=3)])
+            with self.assertRaises(ValueError) as caught:
+                overtone_combine.combine_beatmap(plan)
+        self.assertIn("different game modes", str(caught.exception))
+
+    def test_an_object_line_with_no_time_is_left_out_and_counted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, report = self._built([self._map(
+                Path(tmp) / "a", objects=[*self.OBJECTS, "not,an,object"])])
+        self.assertEqual(len(self._times(text, "HitObjects")), 3)
+        self.assertEqual([note["code"] for note in report["notes"]
+                          if note["code"] == "objects_dropped"], ["objects_dropped"])
+
+    def test_the_report_names_what_the_later_rows_still_owe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, _text, report = self._built([
+                self._map(Path(tmp) / "a",
+                          objects=[*self.OBJECTS, "64,64,18000,1,0,0:0:0:0:kick.wav"]),
+                self._map(Path(tmp) / "b", multiplier="2.0")])
+        pending = {entry["code"]: entry for entry in report["pending"]}
+        # Both segments carry a custom sample index -- their green line asks
+        # for index 5 -- and only the first names a file.
+        self.assertEqual(pending["samples_not_remapped"]["segments"], [0, 1])
+        self.assertEqual(pending["multiplier_not_reconciled"]["segments"], [1])
+        self.assertEqual({entry["row"] for entry in report["pending"]},
+                         {"25.8", "25.9", "25.10", "25.13"})
+
+    def test_a_gap_shorter_than_a_beat_refuses_instead_of_moving_the_grid(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a")
+            second = {"osu": self._map(Path(tmp) / "b",
+                                       objects=["100,100,15100,1,0,0:0:0:0:"]),
+                      "gap_before_ms": 1.0, "lead_ms": 0.0}
+            plan = overtone_combine.plan_compilation([first, second])
+            with self.assertRaises(ValueError) as caught:
+                overtone_combine.combine_beatmap(plan)
+        self.assertIn("Widen the gap", str(caught.exception))
+
 if __name__ == "__main__":
     unittest.main()

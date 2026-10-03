@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **805** Python (541 engine + 264 web shell) · **291** Rust.
+Tests: **847** Python (583 engine + 264 web shell) · **291** Rust.
 
 ### What is pending, in order
 
@@ -67,8 +67,11 @@ point, section volumes, SV normaliser, re-snap, snap divisors, audio file check)
    install and uninstall. Built so far: the one-line build, the per-user MSI and the ZIP
    ([`11`](11-msi-distribution.md)).
 7. **Compilation builder** (Phase 25, asked 2026-10-03) — several maps and their songs into
-   one map and one audio file, each object keeping the beat it had. No new engine work: the
-   phase is assembly, bookkeeping and refusals, and it is specified row by row.
+   one map and one audio file, each object keeping the beat it had. Step 1 of its build
+   order is in (2026-10-03): the document, the segment reader with its repairs, the shift
+   over every field, and the `combine` gate that measures all three. Next is step 2 — the
+   audio cut and join (25.4), the decoder delay (25.5) and the dry run — and nothing writes
+   a file until 25.16.
 
 Two proposals wait on a decision, not on work: the Rhythm guide (`04-ui-ux.md` §9 still rules
 out inventing objects from the audio, after the 2026-10-03 carve-out that lets a compilation
@@ -765,9 +768,9 @@ build can be resumed, and a report can be re-read without the sources.
 
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
-| 25.1 Compilation document | the plan as JSON: ordered segments, per-segment settings, global settings, repairs and refusals; reproducible, resumable, diffable | low | **high** | P5 reader | no | no | **P1** | todo |
-| 25.2 Segment read and repair | each source through `read_osu_beatmap`, then the repair pass below: every fix logged with the line it touched, nothing guessed silently | med | **high** | 25.1 | no | no | **P1** | todo |
-| 25.3 Time shift, every field | one rule per timestamp the format has (list below), applied as whole milliseconds so a stable client reads what lazer reads | med | **high** | 25.2 | no | no | **P1** | todo |
+| 25.1 Compilation document | the plan as JSON: ordered segments, per-segment settings, global settings, repairs and refusals; reproducible, resumable, diffable | low | **high** | P5 reader | no | no | **P1** | **done** 2026-10-03 — `plan_compilation`: the order given is the order built, each segment placed by a **whole-millisecond** shift with the junction absorbing the remainder, so a source's own snapping is never re-rounded. Refuses two modes, two mania key counts, a segment with no song, the length and object ceilings, and under `strict` any repair at all |
+| 25.2 Segment read and repair | each source through `read_osu_beatmap`, then the repair pass below: every fix logged with the line it touched, nothing guessed silently | med | **high** | 25.1 | no | no | **P1** | **done** 2026-10-03 — `read_segment` in `python/overtone_combine.py`: 20 repair codes, each saying whether anything was actually done, and five refusals. A file that will not read comes back refused, not raised, so a plan can show all five songs including the broken one |
+| 25.3 Time shift, every field | one rule per timestamp the format has (list below), applied as whole milliseconds so a stable client reads what lazer reads | med | **high** | 25.2 | no | no | **P1** | **done** 2026-10-03 — `combine_beatmap`: object starts, spinner and hold ends, every timing offset, breaks, bookmarks and the preview point, each by its own rule; a slider's curve untouched. Each segment is pinned at its start with the grid and sound its own map had there, the governing red line placed by **whole beats** so the phase is the mapper's (measured: worst 2.84e-04 ms off its own beat, which is the three decimals the file writes). The report's `pending` list names what rows 25.8, 25.9, 25.10 and 25.13 still owe |
 | 25.4 Audio cut and join | decode each range through the existing loader, cut at a named sample, join, write one file; Ogg Vorbis by default and MPEG Layer III on request, both through libsndfile | med | **high** | 25.1 | no | no | **P1** | todo |
 | 25.5 Decoder-delay accounting | an MP3 source's own encoder delay from its LAME tag (`mp3_gapless_info`) taken off the cut, and the output encoder's round-trip delay measured by correlation and folded into the offsets; said out loud when a source has no tag to read | med | **high** | 25.4 | no | no | **P1** | todo |
 | 25.6 Loudness match | per-segment gain so one song does not arrive twice as loud: integrated loudness per segment, one target, the applied dB shown per segment and capped against clipping with true-peak headroom | med | high | 25.4 | no | no | **P1** | todo |
@@ -781,7 +784,7 @@ build can be resumed, and a report can be re-read without the sources.
 | 25.14 The Compile section | its own sidebar section: pick from the library or drop files, drag to reorder, a card per segment (source, range, trim, gain, transition, repairs), the whole compilation on one timeline, the dry-run report, then Build with the stage ticks the other sections use | high | **high** | 25.1–25.13, P3 shell | no | no | **P1** | todo |
 | 25.15 Build report and proof | after a build: each junction's audio correlated against its source so the cut is proven, not assumed; snap audit over the result; each segment's red lines graded against the built audio by reference timing; and the whole thing read back through the writer to prove it is byte-stable | med | **high** | 25.4, snap audit, reference timing | no | no | **P1** | todo |
 | 25.16 Output | a folder in the Songs directory, an `.osz`, or a dry run that writes nothing; sources opened read-only and never written, even to fix them | low | **high** | `export_osz` | no | no | **P1** | todo |
-| 25.17 Gates | `bench/gates.py combine`: object times preserved relative to their segment to the millisecond, red-line BPM preserved exactly, sample indices unique and resolvable, audio length the sum of the ranges within tolerance, every junction's first attack where the `.osu` says within a pinned budget, 0 new unsnapped objects, and a byte-stable round trip — plus the malformed corpus through `fuzz_reader.py`'s mutants | med | **high** | 25.15 | no | no | **P1** | todo |
+| 25.17 Gates | `bench/gates.py combine`: object times preserved relative to their segment to the millisecond, red-line BPM preserved exactly, sample indices unique and resolvable, audio length the sum of the ranges within tolerance, every junction's first attack where the `.osu` says within a pinned budget, 0 new unsnapped objects, and a byte-stable round trip — plus the malformed corpus through `fuzz_reader.py`'s mutants | med | **high** | 25.15 | no | no | **P1** | **half** 2026-10-03 — the rows that cover 25.1-25.3 are in and green in 2.0 s: three songs compiled (edm-174, odd-222.22 from the middle of its song so its grid must be pinned, secs-4 with four red lines), every object's offset inside its segment unchanged to 0.00e+00 ms, every beat length digit for digit, 0 of 116 objects off the grid or before it, the writer giving the text back, and 60 `fuzz_reader` mutants read or refused with nothing crashing. The audio and hitsound rows wait for 25.4 and 25.8 |
 | 25.18 Pick by section | take a segment straight from the structure view: this song's chorus, from phrase edge to phrase edge on a proven downbeat, instead of a hand-typed range | med | high | P2 structure, 25.1 | no | no | P2 | todo |
 | 25.19 Order suggestion | an order proposed with its reason: smallest tempo jump at each junction, or energy rising across the set, never applied on its own | med | med | 25.1 | no | no | P2 | todo |
 | 25.20 Tempo-matched junction | stretch the tail of one segment into the head of the next so the beat never breaks | high | low | 25.7 | no | no | P3 | **unlikely** — the phase vocoder moved attacks a median 23-24 ms when Phase 4 measured it for the slow loop, which is exactly the error this phase exists to avoid. It ships only if a measurement on the corpus says otherwise |

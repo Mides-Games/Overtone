@@ -807,3 +807,393 @@ def plan_compilation(sources, settings: dict | None = None) -> dict:
             "mode": modes[0] if len(modes) == 1 else None,
             "keys": keys[0] if len(keys) == 1 else None,
             "repairs": repairs, "refusals": refusals, "usable": not refusals}
+
+
+# ---------------------------------------------------------------------------
+# The shift and the assembly (Phase 25, row 25.3)
+# ---------------------------------------------------------------------------
+
+#: The format the builder writes. Sources are read from v3 up; one version is
+#: written, and it is the one osu!stable writes itself.
+WRITE_FORMAT = 14
+
+#: Places kept on a time that does not land on a whole millisecond. Whole
+#: milliseconds stay whole — what osu!stable reads — and a source that came
+#: from lazer keeps its decimals rather than being rounded into place.
+WRITE_DECIMALS = 3
+
+
+def _ms_text(value: float, decimals: int = WRITE_DECIMALS) -> str:
+    """A time as the writer puts it: whole when it is whole, else ``decimals``
+    places. The rule ``_shifted_number`` uses, for numbers this module makes
+    rather than moves."""
+    whole = round(value)
+    if abs(value - whole) < 0.5 * 10 ** -decimals:
+        return str(int(whole))
+    return f"{value:.{decimals}f}"
+
+
+def _shift_object_line(raw: str, shift: float, decimals: int) -> str:
+    """One object line moved, every other character of it untouched.
+
+    The sixth field is three different things and each needs its own rule: a
+    slider's curve (geometry, not a time), a spinner's end time, and a mania
+    hold's ``end:sample``. The reference tool treats it as a slider end time,
+    which is the one thing it never is.
+    """
+    fields = raw.split(",")
+    fields[2] = ta._shifted_number(fields[2], shift, decimals)
+    if len(fields) > 5:
+        type_bits = int(fields[3])
+        if type_bits & 128:                                  # mania hold
+            head, colon, tail = fields[5].partition(":")
+            fields[5] = ta._shifted_number(head, shift, decimals) + colon + tail
+        elif type_bits & 8:                                  # spinner
+            fields[5] = ta._shifted_number(fields[5], shift, decimals)
+    return ",".join(fields)
+
+
+def _shift_timing_line(raw: str, shift: float, decimals: int) -> str:
+    """One timing line moved. Only the offset moves: a beat length, meter,
+    sample set, volume and effects mean the same thing wherever they sit."""
+    fields = raw.split(",")
+    fields[0] = ta._shifted_number(fields[0], shift, decimals)
+    return ",".join(fields)
+
+
+def _points_of(beatmap: dict) -> list[dict]:
+    """Every timing point with its raw line, in file order."""
+    section = next((s for s in beatmap.get("sections", [])
+                    if s.get("name") == "TimingPoints"), None)
+    points = []
+    for raw in (section or {}).get("lines", []):
+        text = str(raw).strip()
+        if not text or text.startswith("//"):
+            continue
+        fields = _timing_point_fields(text)
+        if fields is None:
+            continue
+        points.append({**fields, "raw": text})
+    return sorted(points, key=lambda p: (p["time"], 0 if p["red"] else 1))
+
+
+def _state_red(governing: dict, time_ms: float, state, decimals: int) -> str:
+    """The segment's own grid and sound, pinned at its start.
+
+    Built from the governing red line's **raw** fields, so the beat length
+    keeps the digits the mapper's editor wrote (266.666666666667 rounded to
+    three places is a different tempo). The sample set, index, volume and kiai
+    come from the state actually in force at that moment, which a green line
+    may have changed since that red.
+    """
+    fields = governing["raw"].split(",")
+    while len(fields) < 8:
+        fields.append(ta._GREEN_FIELD_DEFAULTS[len(fields)])
+    fields[0] = _ms_text(time_ms, decimals)
+    fields[3] = str(int(state.sample_set))
+    fields[4] = str(int(state.sample_index))
+    fields[5] = str(int(state.volume))
+    fields[6] = "1"
+    fields[7] = str((int(fields[7] or 0) & ~1) | (1 if state.kiai else 0))
+    return ",".join(fields[:8])
+
+
+def _state_green(time_ms: float, state, decimals: int) -> str | None:
+    """The slider velocity in force at the segment's start, if it is not 1.
+
+    A red line resets velocity to 1.0, so the green that was carrying 0.8x in
+    the source has to be restated or the segment's first sliders are faster
+    than the mapper made them. The cross-map part — this segment's
+    ``SliderMultiplier`` against the one the compilation writes — is row 25.9,
+    and until it lands this green carries the source's own number only.
+    """
+    if abs(state.sv - 1.0) <= 1e-9:
+        return None
+    beat = -100.0 / state.sv
+    return (f"{_ms_text(time_ms, decimals)},{_ms_text(beat, 6)},4,"
+            f"{int(state.sample_set)},{int(state.sample_index)},"
+            f"{int(state.volume)},0,{1 if state.kiai else 0}")
+
+
+def _segment_lines(segment: dict, beatmap: dict, floor_ms: float,
+                   decimals: int) -> tuple[list[tuple], list[tuple], list[dict], list[dict]]:
+    """One segment's timing lines and object lines, placed.
+
+    Returns ``(timing, objects, notes, refusals)``, each timing and object
+    entry a ``(time, red_first, text)`` tuple so the caller can merge the
+    segments and sort once.
+    """
+    shift = float(segment["shift_ms"])
+    start, end = segment["range"]["start_ms"], segment["range"]["end_ms"]
+    at = float(segment["at_ms"])
+    notes: list[dict] = []
+    refusals: list[dict] = []
+    points = _points_of(beatmap)
+    reds = [p for p in points if p["red"] and p["beat_length"] > 0]
+    if not reds:
+        return [], [], notes, [{"code": "no_timing",
+                                "why": "The segment has no usable red line."}]
+
+    # The red in force at the segment's start: the last one at or before it,
+    # else the first one in the map (what osu! itself reads before its first
+    # timing point).
+    governing = next((p for p in reversed(reds) if p["time"] <= start + 1e-6), reds[0])
+    timing: list[tuple] = []
+    # A red line carries its own sample set, index, volume and kiai, and resets
+    # slider velocity, so a red sitting at or after the range's start already
+    # says everything about the state there: nothing to pin, and restating it
+    # would overwrite that red's own fields with an earlier green's.
+    if governing["time"] < start - 1e-6:
+        _beat, state = ta._TimingCursor(beatmap).at(start)
+        # Phase, not position: the grid must keep the beat it had, so the pinned
+        # red sits at the governing red's own shifted time stepped by **whole
+        # beats** into the gap in front of the segment. Rounding it into place
+        # instead would move every bar line in the segment by the same error.
+        beat = float(governing["beat_length"])
+        red_at = governing["time"] + shift
+        steps = 0
+        if red_at < floor_ms:
+            steps = int((floor_ms - red_at) / beat) + 1
+            red_at += steps * beat
+        notes.append({"code": "grid_pinned",
+                      "what": f"The grid is pinned at {red_at:.3f} ms: the governing red "
+                              f"line's own phase, stepped {steps} beat(s) forward so it "
+                              f"falls in this segment's own time and not the one before."})
+        # The first object **of this range**, not of the map: a range typed
+        # into the middle of a song leaves every earlier object behind, and
+        # comparing against one of those refused a junction that was fine.
+        first_object = min((float(obj["time"]) for obj in beatmap.get("hitobjects", [])
+                            if obj.get("kind") != "unparsed"
+                            and start - 1e-6 <= float(obj["time"]) <= end + 1e-6),
+                           default=None)
+        if first_object is not None and red_at > first_object + shift + 1e-6:
+            refusals.append({
+                "code": "junction_too_tight",
+                "why": f"The gap in front of this segment is shorter than one of its "
+                       f"beats ({beat:.0f} ms), so its grid cannot be pinned before its "
+                       f"first object. Widen the gap to at least {beat:.0f} ms."})
+            return [], [], notes, refusals
+        timing.append((red_at, 0, _state_red(governing, red_at, state, decimals)))
+        green = _state_green(max(at, red_at), state, decimals)
+        if green is not None:
+            timing.append((max(at, red_at), 1, green))
+
+    for point in points:
+        if point["time"] < start - 1e-6 or point["time"] > end + 1e-6:
+            continue
+        timing.append((point["time"] + shift, 0 if point["red"] else 1,
+                       _shift_timing_line(point["raw"], shift, decimals)))
+
+    objects: list[tuple] = []
+    dropped = 0
+    for obj in beatmap.get("hitobjects", []):
+        if obj.get("kind") == "unparsed":
+            dropped += 1
+            continue
+        time = float(obj["time"])
+        if time < start - 1e-6 or time > end + 1e-6:
+            continue
+        objects.append((time + shift, 0,
+                        _shift_object_line(str(obj["raw"]).strip(), shift, decimals)))
+    if dropped:
+        notes.append({"code": "objects_dropped",
+                      "what": f"{dropped} object line(s) that do not read as objects were "
+                              f"left out: a line with no time cannot be placed."})
+    return timing, objects, notes, refusals
+
+
+def _header_sections(plan: dict, audio_name: str, preview_ms: float | None,
+                     bookmarks: list[float], background: str | None,
+                     breaks: list[tuple], decimals: int) -> list[str]:
+    """Everything above [TimingPoints], from the first segment plus the plan.
+
+    Deliberately thin. Metadata, credits and the difficulty reconciliation are
+    rows 25.13 and 25.10; until they land these come from the first segment and
+    the report says so, which is better than a second set of defaults nobody
+    chose.
+    """
+    first = plan["segments"][0]
+    difficulty = first["difficulty"]
+    mode = plan["mode"] if plan["mode"] is not None else 0
+
+    def number(value, fallback: str) -> str:
+        return fallback if value is None else f"{float(value):g}"
+
+    metadata = first["metadata"]
+
+    def text(key: str, fallback: str = "") -> str:
+        value = metadata.get(key)
+        return fallback if value is None else str(value).strip()
+
+    lines = [f"osu file format v{WRITE_FORMAT}", "",
+             "[General]",
+             f"AudioFilename: {audio_name}",
+             "AudioLeadIn: 0",
+             f"PreviewTime: {-1 if preview_ms is None else int(round(preview_ms))}",
+             "Countdown: 0",
+             "SampleSet: Normal",
+             f"StackLeniency: {number(difficulty['stack_leniency'], '0.7')}",
+             f"Mode: {mode}",
+             "LetterboxInBreaks: 0",
+             "WidescreenStoryboard: 0",
+             "",
+             "[Editor]",
+             *([f"Bookmarks: {','.join(_ms_text(m, decimals) for m in bookmarks)}"]
+               if bookmarks else []),
+             "DistanceSpacing: 1",
+             "BeatDivisor: 4",
+             "GridSize: 4",
+             "TimelineZoom: 1",
+             "",
+             "[Metadata]",
+             f"Title:{text('Title', 'Compilation')}",
+             f"TitleUnicode:{text('TitleUnicode') or text('Title', 'Compilation')}",
+             f"Artist:{text('Artist', 'Various Artists')}",
+             f"ArtistUnicode:{text('ArtistUnicode') or text('Artist', 'Various Artists')}",
+             f"Creator:{text('Creator', 'Overtone')}",
+             "Version:Compilation",
+             f"Source:{text('Source')}",
+             f"Tags:{text('Tags')}",
+             "BeatmapID:0",
+             "BeatmapSetID:-1",
+             "",
+             "[Difficulty]",
+             f"HPDrainRate:{number(difficulty['hp'], '5')}",
+             f"CircleSize:{number(difficulty['cs'], '4')}",
+             f"OverallDifficulty:{number(difficulty['od'], '5')}",
+             f"ApproachRate:{number(difficulty['ar'], '5')}",
+             f"SliderMultiplier:{number(difficulty['slider_multiplier'], '1.4')}",
+             f"SliderTickRate:{number(difficulty['slider_tick_rate'], '1')}",
+             "",
+             "[Events]",
+             "//Background and Video events"]
+    if background:
+        lines.append(f'0,0,"{background}",0,0')
+    lines.append("//Break Periods")
+    for start, end in breaks:
+        lines.append(f"2,{_ms_text(start, decimals)},{_ms_text(end, decimals)}")
+    lines.extend(["//Storyboard Layer 0 (Background)", "//Storyboard Layer 1 (Fail)",
+                  "//Storyboard Layer 2 (Pass)", "//Storyboard Layer 3 (Foreground)",
+                  "//Storyboard Layer 4 (Overlay)", "//Storyboard Sound Samples", ""])
+    return lines
+
+
+def combine_beatmap(plan: dict, audio_name: str = "audio.mp3",
+                    decimals: int = WRITE_DECIMALS) -> tuple[str, dict]:
+    """The compilation as one ``.osu``: every borrowed timestamp where it belongs.
+
+    What moves, and the rule for each, is the specification this row exists
+    for: object starts; a spinner's and a mania hold's end; every timing
+    point's offset; the breaks; the bookmarks; the preview point. What does not
+    move: a slider's curve, which is geometry, and the fields that say what a
+    line *means* rather than when it happens.
+
+    Each segment is pinned at its start with the grid and the sound its own map
+    had there — the governing red line's own beat length, built from that
+    line's raw digits, placed by whole beats so the phase is the phase the
+    mapper set, plus the sample set, index, volume, kiai and slider velocity in
+    force at that moment. Without that pinning a segment inherits the state the
+    previous song happened to end in.
+
+    Returns the text and a report. The report's ``pending`` list is the honest
+    part: the hitsound indices are not remapped yet (row 25.8), the slider
+    multipliers are not reconciled (25.9), the difficulty numbers come from the
+    first segment (25.10), and the metadata is its metadata (25.13). Each entry
+    names the row that will answer it, so what this builds today is not
+    mistaken for what it will build.
+
+    Writing the file is row 25.16; this returns text, which is also what makes
+    it testable against a reader.
+    """
+    if not plan.get("usable"):
+        why = "; ".join(r.get("why") or r.get("code", "?")
+                        for r in plan.get("refusals", ())) or "no reason given"
+        raise ValueError(f"This plan refused: {why}")
+    if int(plan.get("format") or 0) != PLAN_FORMAT:
+        raise ValueError(f"Plan format {plan.get('format')!r} is not {PLAN_FORMAT}.")
+
+    timing: list[tuple] = []
+    objects: list[tuple] = []
+    bookmarks: list[float] = []
+    breaks: list[tuple] = []
+    notes: list[dict] = []
+    refusals: list[dict] = []
+    per_segment: list[dict] = []
+    preview: float | None = None
+    floor_ms = 0.0
+
+    for n, segment in enumerate(plan["segments"]):
+        beatmap = ta.read_osu_beatmap(segment["osu"])
+        shift = float(segment["shift_ms"])
+        start, end = segment["range"]["start_ms"], segment["range"]["end_ms"]
+        rows, hits, segment_notes, segment_refusals = _segment_lines(
+            segment, beatmap, floor_ms, decimals)
+        timing.extend(rows)
+        objects.extend(hits)
+        notes.extend({"segment": n, **note} for note in segment_notes)
+        refusals.extend({"segment": n, **refusal} for refusal in segment_refusals)
+        for mark in segment["bookmarks"]:
+            if start - 1e-6 <= mark <= end + 1e-6:
+                bookmarks.append(mark + shift)
+        for period in segment["breaks"]:
+            if period["end_ms"] <= start or period["start_ms"] >= end:
+                continue
+            breaks.append((max(period["start_ms"], start) + shift,
+                           min(period["end_ms"], end) + shift))
+        if preview is None and segment["preview_ms"] is not None \
+                and start - 1e-6 <= segment["preview_ms"] <= end + 1e-6:
+            preview = segment["preview_ms"] + shift
+        per_segment.append({"segment": n, "name": segment["name"],
+                            "at_ms": segment["at_ms"], "shift_ms": shift,
+                            "objects": len(hits), "timing_lines": len(rows)})
+        floor_ms = float(segment["ends_at_ms"])
+
+    if refusals:
+        raise ValueError("The assembly refused: " + "; ".join(
+            f"segment {r['segment']}: {r['why']}" for r in refusals))
+
+    first = plan["segments"][0]
+    written_multiplier = first["difficulty"]["slider_multiplier"]
+    pending: list[dict] = []
+    if len(plan["segments"]) > 1:
+        sampled = [n for n, s in enumerate(plan["segments"])
+                   if s["samples"]["indices"] or s["samples"]["files"]]
+        if sampled:
+            pending.append({"row": "25.8", "code": "samples_not_remapped",
+                            "what": "Custom hitsound indices and files are carried as "
+                                    "written, so two segments can claim the same number.",
+                            "segments": sampled})
+        differing = [n for n, s in enumerate(plan["segments"])
+                     if s["difficulty"]["slider_multiplier"] != written_multiplier]
+        if differing:
+            pending.append({"row": "25.9", "code": "multiplier_not_reconciled",
+                            "what": f"These segments were made at a different "
+                                    f"SliderMultiplier than the "
+                                    f"{written_multiplier} written, so their sliders "
+                                    f"move at the wrong speed.",
+                            "segments": differing})
+        pending.append({"row": "25.10", "code": "difficulty_from_first_segment",
+                        "what": "HP, CS, OD, AR and stack leniency are the first "
+                                "segment's: one map holds one set of them."})
+    pending.append({"row": "25.13", "code": "metadata_from_first_segment",
+                    "what": "Title, artist, creator and tags are the first segment's; "
+                            "nothing credits the other mappers yet."})
+
+    body = _header_sections(plan, audio_name, preview, sorted(bookmarks),
+                            first["background"], sorted(breaks), decimals)
+    body.append("[TimingPoints]")
+    body.extend(text for _t, _r, text in
+                sorted(timing, key=lambda row: (row[0], row[1])))
+    body.extend(["", "[HitObjects]"])
+    body.extend(text for _t, _r, text in sorted(objects, key=lambda row: row[0]))
+    body.append("")
+    text = "\r\n".join(body)
+
+    report = {"audio_name": audio_name, "format": WRITE_FORMAT, "decimals": decimals,
+              "segments": per_segment,
+              "objects": len(objects), "timing_lines": len(timing),
+              "bookmarks": len(bookmarks), "breaks": len(breaks),
+              "preview_ms": None if preview is None else round(preview, 3),
+              "duration_ms": plan["totals"]["duration_ms"],
+              "notes": notes, "pending": pending}
+    return text, report

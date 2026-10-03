@@ -1,5 +1,9 @@
 {
  "classes": {
+  "CombineAssemblyTests": {
+   "where": "python-only",
+   "why": "overtone_combine.py: the compilation .osu, every borrowed timestamp shifted, which no Rust crate holds"
+  },
   "CombinePlanTests": {
    "where": "python-only",
    "why": "overtone_combine.py: where each borrowed range lands in a compilation, which no Rust crate holds"

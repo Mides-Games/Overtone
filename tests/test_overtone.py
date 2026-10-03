@@ -9444,5 +9444,211 @@ class CombinePlanTests(unittest.TestCase):
                               {"lead_in_ms": overtone_combine.MAX_TOTAL_MS})
         self.assertEqual([r["code"] for r in plan["refusals"]], ["too_long"])
 
+class CombineAssemblyTests(unittest.TestCase):
+    """The compilation .osu: every borrowed timestamp where it belongs, nothing else moved."""
+
+    OBJECTS = ["100,100,15000,1,0,0:0:0:0:",
+               "200,200,15400,2,0,L|300:200,1,100,0|0,0:0|0:0,0:0:0:0:",
+               "256,192,16000,12,0,17000,0:0:0:0:"]
+
+    def _map(self, folder: Path, *, red: str = "1000,400,4,2,0,80,1,0",
+             greens=("2000,-125,4,3,5,60,0,1",), objects=None, mode: int = 0,
+             multiplier: str = "1.4", seconds: float = 20.0,
+             breaks=("2,17500,18500",), bookmarks: str = "15000,19000") -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "PreviewTime: 15500",
+                 f"Mode: {mode}", "StackLeniency: 0.5", "",
+                 "[Editor]", f"Bookmarks: {bookmarks}", "",
+                 "[Metadata]", "Title:Song", "Artist:Artist", "Creator:Mapper",
+                 "Version:Hard", "Tags:one", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", f"SliderMultiplier:{multiplier}", "SliderTickRate:1", "",
+                 "[Events]", '0,0,"bg.jpg",0,0', *breaks, "",
+                 "[TimingPoints]", red, *greens, "",
+                 "[HitObjects]", *(self.OBJECTS if objects is None else objects), ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        ta.sf.write(str(folder / "song.wav"),
+                    np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        return folder / "map.osu"
+
+    def _built(self, sources, settings=None, **kwargs):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        text, report = overtone_combine.combine_beatmap(plan, **kwargs)
+        json.dumps(report)
+        return plan, text, report
+
+    @staticmethod
+    def _section(text: str, name: str) -> list[str]:
+        body = text.split(f"[{name}]")[1]
+        rows = body.split("[")[0].splitlines()
+        return [row for row in rows if row.strip() and not row.strip().startswith("//")]
+
+    def _times(self, text: str, name: str) -> list[float]:
+        return [float(row.split(",")[2] if name == "HitObjects" else row.split(",")[0])
+                for row in self._section(text, name)]
+
+    def test_every_object_keeps_its_place_inside_its_own_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, text, report = self._built([self._map(Path(tmp) / "a"),
+                                              self._map(Path(tmp) / "b")])
+        times = self._times(text, "HitObjects")
+        self.assertEqual(len(times), 6)
+        for n, segment in enumerate(plan["segments"]):
+            at, start = segment["at_ms"], segment["range"]["start_ms"]
+            for source, built in zip([15000.0, 15400.0, 16000.0], times[n * 3:n * 3 + 3]):
+                # The one claim the whole phase rests on: a borrowed object sits
+                # exactly as far into its segment as it sat into its range.
+                self.assertAlmostEqual(built - at, source - start, places=9)
+        self.assertEqual(report["objects"], 6)
+
+    def test_the_grid_keeps_the_phase_the_mapper_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # 266.666666666667 ms a beat and a first object that is not on a
+            # beat: rounding the pinned red line anywhere would show up here.
+            _plan, text, _report = self._built(
+                [self._map(Path(tmp) / "a", red="353,266.666666666667,4,2,0,100,1,0",
+                           greens=(), objects=["100,100,15100,1,0,0:0:0:0:"])])
+        red = self._times(text, "TimingPoints")[0]
+        beat = 266.666666666667
+        source = (15100.0 - 353.0) % beat
+        built = (self._times(text, "HitObjects")[0] - red) % beat
+        # Whole beats is the only arithmetic the pin does, so the object's
+        # place in its beat survives to the thousandth of a millisecond the
+        # file writes -- 20 nanoseconds of audio at 44.1 kHz.
+        self.assertLess(abs(built - source), 0.001)
+        self.assertNotEqual(round(source, 3), 0.0)   # and it is not on the beat
+
+    def test_a_spinner_and_a_hold_move_at_both_ends(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, _report = self._built([self._map(
+                Path(tmp) / "a", mode=3,
+                objects=["256,192,15000,12,0,17000,0:0:0:0:",
+                         "64,192,15500,128,0,16500:0:0:0:0:"])])
+        rows = self._section(text, "HitObjects")
+        # Both ends are the sixth field, and the field means something
+        # different in each: a bare time for the spinner, ``end:sample`` for
+        # the hold. The shift here is -11000.
+        self.assertEqual(rows[0].split(",")[2:6], ["4000", "12", "0", "6000"])
+        self.assertEqual(rows[1].split(",")[2:6],
+                         ["4500", "128", "0", "5500:0:0:0:0:"])
+
+    def test_a_sliders_curve_comes_out_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, _report = self._built([self._map(Path(tmp) / "a")])
+        slider = next(row for row in self._section(text, "HitObjects") if ",2," in row)
+        fields = slider.split(",")
+        self.assertEqual(fields[5:], "L|300:200,1,100,0|0,0:0|0:0,0:0:0:0:".split(","))
+
+    def test_a_segment_starts_in_the_state_its_own_map_was_in(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # The green at 2000 is outside the range (which starts at 13000),
+            # so without a pin the segment would play in the state the file
+            # before it left behind: normal samples, full volume, no kiai, 1.0x.
+            _plan, text, _report = self._built([self._map(Path(tmp) / "a")])
+        rows = self._section(text, "TimingPoints")
+        red = rows[0].split(",")
+        self.assertEqual(red[1], "400")                    # the governing beat length
+        self.assertEqual(red[3:], ["3", "5", "60", "1", "1"])   # soft set 5, 60 %, kiai
+        self.assertEqual(rows[1].split(",")[1], "-125")    # 0.8x restored after the red
+        self.assertEqual(rows[1].split(",")[6], "0")       # as a green
+
+    def test_a_red_at_the_range_start_is_not_restated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a", red="13000,400,4,1,2,90,1,0",
+                                       greens=()),
+                      "start_ms": 13000.0, "end_ms": 19000.0}
+            _plan, text, _report = self._built([source])
+        rows = self._section(text, "TimingPoints")
+        # Its own fields, shifted and nothing else: a red says everything about
+        # the state at its own time, so there is nothing to pin in front of it.
+        self.assertEqual(rows, ["2000,400,4,1,2,90,1,0"])
+
+    def test_breaks_bookmarks_and_the_preview_move_with_their_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, text, report = self._built([self._map(Path(tmp) / "a"),
+                                              self._map(Path(tmp) / "b")])
+        shifts = [segment["shift_ms"] for segment in plan["segments"]]
+        self.assertEqual([row for row in self._section(text, "Events")
+                          if row.startswith("2,")],
+                         [f"2,{17500 + shifts[0]:.0f},{18500 + shifts[0]:.0f}",
+                          f"2,{17500 + shifts[1]:.0f},{18500 + shifts[1]:.0f}"])
+        self.assertIn(f"Bookmarks: {15000 + shifts[0]:.0f},{19000 + shifts[0]:.0f},"
+                      f"{15000 + shifts[1]:.0f},{19000 + shifts[1]:.0f}", text)
+        self.assertEqual(report["preview_ms"], 15500 + shifts[0])
+
+    def test_what_falls_outside_the_range_is_left_out(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a"),
+                      "start_ms": 15600.0, "end_ms": 17500.0}
+            _plan, text, report = self._built([source])
+        # Only the spinner at 16000 starts inside the range. The break at
+        # 17500 begins where the range ends, the bookmarks sit either side of
+        # it, and the preview point at 15500 is before it.
+        self.assertEqual(len(self._times(text, "HitObjects")), 1)
+        self.assertEqual((report["breaks"], report["bookmarks"]), (0, 0))
+        self.assertIsNone(report["preview_ms"])
+
+    def test_the_result_reads_back_and_round_trips_byte_identical(self) -> None:
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, _report = self._built([self._map(Path(tmp) / "a"),
+                                                self._map(Path(tmp) / "b")])
+            out = Path(tmp) / "out.osu"
+            out.write_bytes(text.encode("utf-8"))
+            beatmap = ta.read_osu_beatmap(out)
+            self.assertEqual(ta.beatmap_text(beatmap), text)
+        self.assertEqual(beatmap["format"], 14)
+        self.assertEqual(len(beatmap["hitobjects"]), 6)
+        self.assertEqual(beatmap["general"]["AudioFilename"], "audio.mp3")
+        self.assertEqual([time for time, _bpm in beatmap["timing"]["reds"]],
+                         sorted(time for time, _bpm in beatmap["timing"]["reds"]))
+
+    def test_a_plan_that_refused_is_not_assembled(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = overtone_combine.plan_compilation(
+                [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b", mode=3)])
+            with self.assertRaises(ValueError) as caught:
+                overtone_combine.combine_beatmap(plan)
+        self.assertIn("different game modes", str(caught.exception))
+
+    def test_an_object_line_with_no_time_is_left_out_and_counted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, report = self._built([self._map(
+                Path(tmp) / "a", objects=[*self.OBJECTS, "not,an,object"])])
+        self.assertEqual(len(self._times(text, "HitObjects")), 3)
+        self.assertEqual([note["code"] for note in report["notes"]
+                          if note["code"] == "objects_dropped"], ["objects_dropped"])
+
+    def test_the_report_names_what_the_later_rows_still_owe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, _text, report = self._built([
+                self._map(Path(tmp) / "a",
+                          objects=[*self.OBJECTS, "64,64,18000,1,0,0:0:0:0:kick.wav"]),
+                self._map(Path(tmp) / "b", multiplier="2.0")])
+        pending = {entry["code"]: entry for entry in report["pending"]}
+        # Both segments carry a custom sample index -- their green line asks
+        # for index 5 -- and only the first names a file.
+        self.assertEqual(pending["samples_not_remapped"]["segments"], [0, 1])
+        self.assertEqual(pending["multiplier_not_reconciled"]["segments"], [1])
+        self.assertEqual({entry["row"] for entry in report["pending"]},
+                         {"25.8", "25.9", "25.10", "25.13"})
+
+    def test_a_gap_shorter_than_a_beat_refuses_instead_of_moving_the_grid(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a")
+            second = {"osu": self._map(Path(tmp) / "b",
+                                       objects=["100,100,15100,1,0,0:0:0:0:"]),
+                      "gap_before_ms": 1.0, "lead_ms": 0.0}
+            plan = overtone_combine.plan_compilation([first, second])
+            with self.assertRaises(ValueError) as caught:
+                overtone_combine.combine_beatmap(plan)
+        self.assertIn("Widen the gap", str(caught.exception))
+
 if __name__ == "__main__":
     unittest.main()

@@ -692,7 +692,28 @@ const I18N = {
     bad_folder: "Choose a real folder first.",
     nav_compile: "Compile",
     cp_sub: "Several maps and their songs as one map. Every object keeps the beat it had, each song's hitsounds and slider speed come with it, and nothing is ever written into a source folder. What a compilation cannot keep — one set of difficulty numbers — is listed instead of hidden.",
-    cp_sources: "Songs", cp_add: "Add maps…", cp_add_song: "Add the open song's maps", cp_clear: "Clear",
+    cp_sources: "Songs", cp_match: "Match volumes", cp_matching: "Measuring…",
+    cp_suggest: "Suggest an order", cp_order_use: "Use it",
+    cp_phrases: "Phrases…", cp_phrases_hide: "Hide phrases",
+    cp_phrases_none: "The engine found no phrase in this song.",
+    cp_phrase_level: "{db} dB",
+    cp_part_intro: "intro", cp_part_verse: "verse", cp_part_chorus: "chorus",
+    cp_part_bridge: "bridge", cp_part_outro: "outro", cp_part_break: "break",
+    no_audio: "That song has no audio to read.",
+    cp_rule_tempo: "tempo", cp_rule_loudness: "loudness",
+    cp_order_tempo: "By tempo: {names}. The jumps add up to {after} BPM instead of {before}.",
+    cp_order_loudness: "By loudness, quietest first: {names}.",
+    cp_order_already: "The order they are in is already the one {rule} would ask for.",
+    cp_order_not_measured: "Match the volumes first and this will propose an order from them.",
+    too_few: "Three songs or more to have an order worth proposing.",
+    cp_lufs: "{lufs} LUFS", cp_matched: "Volumes matched to {target} LUFS.",
+    cp_match_nothing: "Nothing in these songs has a level to match.",
+    cp_capped_peak: "Not brought up to the others: it is already near full scale.",
+    cp_capped_limit: "Held at the 12 dB this will move a song at most.",
+    cp_level_silent: "No sound in this range to measure.",
+    cp_level_no_audio: "No song to measure.",
+    cp_step_loudness: "Measuring how loud each song is, {done} of {total}…",
+    cp_add: "Add maps…", cp_add_song: "Add the open song's maps", cp_clear: "Clear",
     cp_empty: "Nothing to compile yet. Add the difficulties you want, in the order they should play: each one brings its own song, its own timing and its own hitsounds.",
     cp_count: "{n} songs", cp_refused: "{n} cannot be used",
     cp_lasts: "lasts {time}", cp_objects: "{n} objects",
@@ -701,6 +722,11 @@ const I18N = {
     cp_join: "Joining", cp_totals: "{songs} songs · {time} · {objects} objects",
     cp_lead_in: "Silence before the first song (ms)", cp_gap: "Silence between songs (ms)",
     cp_lead: "Kept before a song's first object (ms)", cp_tail: "Kept after its last sound (ms)",
+    cp_gap_bars: "Or that silence in bars of the song ending (0 = use ms)",
+    cp_fade_in: "Fade in (ms)", cp_fade_out: "Fade out (ms)",
+    cp_downbeat: "Each song comes in on its own downbeat",
+    cp_in_bars: "{n} junction(s) counted in bars",
+    cp_on_downbeat: "Pulled back to this song's own bar line.",
     cp_difficulty: "Difficulty numbers", cp_diff_first: "The first song's", cp_diff_median: "The median",
     cp_diff_hint: "AR, OD, HP and the slider multiplier are one set for the whole map. Each song's own slider speed is kept anyway, through a green line.",
     cp_breaks: "A break over every junction, so the silence between two songs is silence",
@@ -1421,7 +1447,28 @@ const I18N = {
     bad_folder: "Elegí primero una carpeta real.",
     nav_compile: "Compilar",
     cp_sub: "Varios mapas y sus canciones como un solo mapa. Cada objeto mantiene el golpe que tenía, los hitsounds y la velocidad de sliders de cada canción vienen con ella, y nunca se escribe en la carpeta de un mapa original. Lo que una compilación no puede mantener — un solo juego de números de dificultad — queda listado en vez de escondido.",
-    cp_sources: "Canciones", cp_add: "Agregar mapas…", cp_add_song: "Agregar los mapas de la canción abierta", cp_clear: "Vaciar",
+    cp_sources: "Canciones", cp_match: "Igualar volumen", cp_matching: "Midiendo…",
+    cp_suggest: "Sugerir un orden", cp_order_use: "Usarlo",
+    cp_phrases: "Partes…", cp_phrases_hide: "Ocultar partes",
+    cp_phrases_none: "El motor no encontró ninguna parte en esta canción.",
+    cp_phrase_level: "{db} dB",
+    cp_part_intro: "intro", cp_part_verse: "verso", cp_part_chorus: "estribillo",
+    cp_part_bridge: "puente", cp_part_outro: "cierre", cp_part_break: "break",
+    no_audio: "Esa canción no tiene audio que leer.",
+    cp_rule_tempo: "el tempo", cp_rule_loudness: "el volumen",
+    cp_order_tempo: "Por tempo: {names}. Los saltos suman {after} BPM en vez de {before}.",
+    cp_order_loudness: "Por volumen, del más bajo al más alto: {names}.",
+    cp_order_already: "El orden en que están ya es el que pediría {rule}.",
+    cp_order_not_measured: "Igualá los volúmenes primero y esto va a proponer un orden con ellos.",
+    too_few: "Tres canciones o más para que valga la pena proponer un orden.",
+    cp_lufs: "{lufs} LUFS", cp_matched: "Volúmenes igualados a {target} LUFS.",
+    cp_match_nothing: "Ninguna de estas canciones tiene un nivel que igualar.",
+    cp_capped_peak: "No se subió al nivel de las otras: ya está cerca del máximo.",
+    cp_capped_limit: "Limitado a los 12 dB que esto mueve como máximo.",
+    cp_level_silent: "No hay sonido en este tramo para medir.",
+    cp_level_no_audio: "No hay canción que medir.",
+    cp_step_loudness: "Midiendo cuán fuerte suena cada canción, {done} de {total}…",
+    cp_add: "Agregar mapas…", cp_add_song: "Agregar los mapas de la canción abierta", cp_clear: "Vaciar",
     cp_empty: "Todavía no hay nada que compilar. Agregá las dificultades que quieras, en el orden en que deben sonar: cada una trae su canción, su timing y sus hitsounds.",
     cp_count: "{n} canciones", cp_refused: "{n} no se pueden usar",
     cp_lasts: "dura {time}", cp_objects: "{n} objetos",
@@ -1430,6 +1477,11 @@ const I18N = {
     cp_join: "Uniones", cp_totals: "{songs} canciones · {time} · {objects} objetos",
     cp_lead_in: "Silencio antes de la primera canción (ms)", cp_gap: "Silencio entre canciones (ms)",
     cp_lead: "Que se guarde antes del primer objeto (ms)", cp_tail: "Y después de su último sonido (ms)",
+    cp_gap_bars: "O ese silencio en compases de la canción que termina (0 = usar ms)",
+    cp_fade_in: "Fundido de entrada (ms)", cp_fade_out: "Fundido de salida (ms)",
+    cp_downbeat: "Cada canción entra en su propio tiempo fuerte",
+    cp_in_bars: "{n} unión/es contada/s en compases",
+    cp_on_downbeat: "Corrido hasta la línea de compás de esta canción.",
     cp_difficulty: "Números de dificultad", cp_diff_first: "Los de la primera", cp_diff_median: "La mediana",
     cp_diff_hint: "AR, OD, HP y el multiplicador de sliders son uno solo para todo el mapa. La velocidad de sliders de cada canción se mantiene igual, con una línea verde.",
     cp_breaks: "Un break en cada unión, para que el silencio entre dos canciones sea silencio",
@@ -1960,6 +2012,18 @@ window.overtone = {
   },
   onLibraryProgress(progress) { SONGS.progress = progress; renderSongs(); },
   onCompileProgress(info) { CP.progress = info; renderCompile(); },
+  onCompileLoudness(reply) {
+    CP.matching = false;
+    CP.progress = null;
+    if (reply.ok) {
+      const said = reply.loudness.target === null ? t("cp_match_nothing")
+        : t("cp_matched", { target: reply.loudness.target });
+      toast(said);
+    } else {
+      toast(t(reply.key === "error" ? "error" : reply.key, { detail: reply.detail || "" }), true);
+    }
+    cpLoad();
+  },
   onCompileDone(reply) {
     CP.building = false;
     CP.progress = null;
@@ -7358,7 +7422,8 @@ let focusByKey = false;
 // list, the numbers under it and the file list cannot drift apart. The build
 // runs on its own worker with its own lock, like the library health check:
 // the analysis's progress bar and Stop belong to the analysis.
-const CP = { progress: null, report: null, building: false, confirm: false };
+const CP = { progress: null, report: null, building: false, confirm: false,
+             matching: false, proposal: null, sections: {} };
 
 function cpClock(ms) {
   const total = Math.max(0, Math.round((ms || 0) / 1000));
@@ -7394,6 +7459,52 @@ async function cpField(n, key, value) {
   if (api()) cpApply(await api().compile_update(n, { [key]: value }));
 }
 async function cpSetting(changes) { if (api()) cpApply(await api().compile_settings(changes)); }
+async function cpPhrases(n) {
+  if (!api()) return;
+  if (CP.sections[n]) { delete CP.sections[n]; renderCompile(); return; }
+  const reply = await api().compile_sections(n);
+  if (!reply.ok) { editFailure(reply); return; }
+  CP.sections[n] = reply.sections;
+  renderCompile();
+}
+
+async function cpPickPhrase(n, start, end) {
+  if (!api()) return;
+  delete CP.sections[n];
+  cpApply(await api().compile_update(n, { start_ms: start, end_ms: end }));
+}
+
+async function cpSuggest() {
+  if (!api()) return;
+  // Tempo first, and loudness only once the levels have been measured: a
+  // proposal from numbers nobody has measured is a guess with a button.
+  const rule = (S.compile.loudness || {}).target !== undefined
+    && (S.compile.loudness || {}).target !== null ? "loudness" : "tempo";
+  const reply = await api().compile_order(rule);
+  if (!reply.sources) { editFailure(reply); return; }
+  CP.proposal = reply.proposal;
+  cpApply(reply);
+}
+
+async function cpUseOrder() {
+  if (!api() || !CP.proposal) return;
+  const order = CP.proposal.order;
+  CP.proposal = null;
+  cpApply(await api().compile_reorder(order));
+}
+
+async function cpMatch() {
+  if (!api() || CP.matching || CP.building) return;
+  CP.matching = true;
+  CP.progress = { step: "loudness", done: 0, total: (S.compile.sources || []).length };
+  renderCompile();
+  const reply = await api().compile_match_loudness();
+  if (reply.ok) return;                 // the measurement arrives as an event
+  CP.matching = false;
+  CP.progress = null;
+  editFailure(reply);
+  renderCompile();
+}
 async function cpName(changes) { if (api()) cpApply(await api().compile_metadata(changes)); }
 async function cpShape(changes) { if (api()) cpApply(await api().compile_format(changes)); }
 
@@ -7427,12 +7538,19 @@ async function cpBuild() {
 function cpRow(seg, n, last, spec) {
   const meta = seg.metadata || {};
   const song = [meta.Artist, meta.Title].filter(Boolean).join(" - ") || seg.name;
+  const level = ((S.compile.loudness || {}).segments || [])[n];
   const why = [
     ...(seg.refusals || []).map((r) => `<span class="bad">${esc(r.why)}</span>`),
     ...(seg.repairs || []).map((r) => `<span>${esc(r.what)}</span>`),
+    ...(level && level.capped ? [`<span>${t("cp_capped_" + level.capped)}</span>`] : []),
+    ...(level && level.why ? [`<span>${t("cp_level_" + level.why)}</span>`] : []),
+    ...(seg.range.snapped_to_bar ? [`<span>${t("cp_on_downbeat")}</span>`] : []),
   ].join("");
   const facts = [cpClock(seg.at_ms), t("cp_lasts", { time: cpClock(seg.range.duration_ms) }),
-                 t("cp_objects", { n: seg.objects.in_range })].join(" · ");
+                 t("cp_objects", { n: seg.objects.in_range }),
+                 level && level.lufs !== null && level.lufs !== undefined
+                   ? t("cp_lufs", { lufs: level.lufs.toFixed(1) }) : ""]
+    .filter(Boolean).join(" · ");
   const field = (key, placeholder) => `<label>${t("cp_" + key)}
     <input class="input num" type="number" step="100" data-cp-field="${key}" data-cp-index="${n}"
       value="${spec[key] === undefined ? "" : spec[key]}" placeholder="${placeholder}"></label>`;
@@ -7448,7 +7566,10 @@ function cpRow(seg, n, last, spec) {
         <button class="btn ghost" data-cp-remove="${n}" title="${t("cp_remove")}">&times;</button>
       </div>
     </div>
+    ${cpPhraseChips(n)}
     <div class="cp-fields">
+      <button class="btn ghost small" data-cp-phrases="${n}">${
+        t(CP.sections[n] ? "cp_phrases_hide" : "cp_phrases")}</button>
       ${field("start_ms", Math.round(seg.range.start_ms))}
       ${field("end_ms", Math.round(seg.range.end_ms))}
       ${field("gain_db", "0")}
@@ -7467,6 +7588,41 @@ function cpSize(bytes) {
   if (bytes === null || bytes === undefined) return "";
   return bytes >= 1e6 ? t("cp_mb", { mb: (bytes / 1e6).toFixed(2) })
     : t("cp_kb", { kb: Math.max(1, Math.round(bytes / 1000)) });
+}
+
+function cpPartName(kind) {
+  // The engine may grow a label this table has not; show the engine's word
+  // rather than the key it would print.
+  const said = t("cp_part_" + kind);
+  return said === "cp_part_" + kind ? kind : said;
+}
+
+function cpPhraseChips(n) {
+  const rows = CP.sections[n];
+  if (!rows) return "";
+  if (!rows.length) return `<div class="cp-why"><span>${t("cp_phrases_none")}</span></div>`;
+  return `<div class="chips mt-s">${rows.map((row) => `<span class="chip"
+    data-cp-phrase="${n}" data-cp-start="${row.start_ms}" data-cp-end="${row.end_ms}"
+    title="${t("cp_phrase_level", { db: row.level_db })}">${
+      esc(cpPartName(row.kind))} ${cpClock(row.start_ms)}-${cpClock(row.end_ms)}</span>`)
+    .join("")}</div>`;
+}
+
+function cpProposal(segments) {
+  const p = CP.proposal;
+  if (!p) return "";
+  if (p.why === "not_measured") {
+    return `<div class="cp-why mt-m"><span>${t("cp_order_not_measured")}</span></div>`;
+  }
+  if (!p.changes) {
+    return `<div class="cp-why mt-m"><span>${t("cp_order_already", { rule: t("cp_rule_" + p.rule) })}</span></div>`;
+  }
+  const names = p.order.map((n) => `${n + 1}`).join(" \u2192 ");
+  const said = p.unit === "bpm"
+    ? t("cp_order_tempo", { names, before: p.before.total, after: p.after.total })
+    : t("cp_order_loudness", { names });
+  return `<div class="cp-order mt-m"><span>${said}</span>
+    <button class="btn small" id="cpUseOrder"><span>${t("cp_order_use")}</span></button></div>`;
 }
 
 function cpFiles(check) {
@@ -7500,6 +7656,9 @@ function renderCompile() {
   const plan = (cp && cp.plan) || null;
   $("cpAddSong").hidden = !S.file;
   $("cpClear").hidden = !sources.length;
+  $("cpMatch").hidden = sources.length < 2;
+  $("cpMatch").disabled = CP.matching || CP.building;
+  $("cpMatch").querySelector("span").textContent = t(CP.matching ? "cp_matching" : "cp_match");
   $("cpCount").hidden = $("cpRefused").hidden = true;
   $("cpJoinCard").hidden = $("cpNamesCard").hidden = $("cpBuildCard").hidden = !sources.length;
   if (!sources.length) {
@@ -7514,7 +7673,10 @@ function renderCompile() {
     $("cpRefused").textContent = t("cp_refused", { n: refused });
   }
   const segments = plan ? plan.segments : [];
+  $("cpSuggest").hidden = sources.length < 3;
+  $("cpSuggest").disabled = CP.matching || CP.building;
   body.innerHTML = segments.map((seg, n) => cpRow(seg, n, segments.length - 1, sources[n] || {})).join("")
+    + cpProposal(segments)
     + (plan && !plan.usable
       ? `<div class="cp-why mt-m">${(plan.refusals || []).map((r) =>
           `<span class="bad">${r.segment === null ? "" : `${r.segment + 1}. `}${esc(r.why)}</span>`).join("")}</div>`
@@ -7526,15 +7688,21 @@ function renderCompile() {
   cpSet("cpGap", Math.round(set.gap_ms));
   cpSet("cpLead", Math.round(set.lead_ms));
   cpSet("cpTail", Math.round(set.tail_ms));
+  cpSet("cpGapBars", set.gap_bars || 0);
+  cpSet("cpFadeIn", Math.round(set.fade_in_ms || 0));
+  cpSet("cpFadeOut", Math.round(set.fade_out_ms || 0));
+  $("cpDownbeat").checked = !!set.start_on_downbeat;
   $("cpBreaks").checked = !!set.junction_breaks;
   $("cpBookmarks").checked = !!set.junction_bookmarks;
   $("cpStrict").checked = !!set.strict;
   document.querySelectorAll("#cpDifficulty button").forEach((b) =>
     b.classList.toggle("on", b.dataset.from === (cp.format || {}).difficulty_from));
   const totals = plan ? plan.totals : null;
+  const bars = plan ? (plan.junctions || []).filter((j) => j.bars) : [];
   $("cpJoinSub").textContent = totals
-    ? t("cp_totals", { songs: totals.segments, time: cpClock(totals.duration_ms),
-                       objects: totals.objects })
+    ? [t("cp_totals", { songs: totals.segments, time: cpClock(totals.duration_ms),
+                        objects: totals.objects }),
+       bars.length ? t("cp_in_bars", { n: bars.length }) : ""].filter(Boolean).join(" · ")
     : "";
 
   // Names and credits
@@ -7583,6 +7751,10 @@ function renderCompile() {
   if (CP.progress) {
     parts.push(`<div class="card-sub mt-m">${t("cp_step_" + CP.progress.step,
       { done: CP.progress.done + 1, total: CP.progress.total })}</div>`);
+  }
+  const matched = cp.loudness;
+  if (matched && matched.target !== null && matched.target !== undefined) {
+    parts.push(`<div class="card-sub">${t("cp_matched", { target: matched.target })}</div>`);
   }
   if (CP.report) {
     parts.push(`<div class="mt-m"><span class="pill ${CP.report.checks && CP.report.checks.ok
@@ -7855,24 +8027,37 @@ function wire() {
   $("cpAdd").onclick = cpAdd;
   $("cpAddSong").onclick = cpAddSong;
   $("cpClear").onclick = cpClear;
+  $("cpMatch").onclick = cpMatch;
+  $("cpSuggest").onclick = cpSuggest;
+  $("cpBody").addEventListener("click", (e) => {
+    if (e.target.closest("#cpUseOrder")) cpUseOrder();
+  });
   $("cpFolder").onclick = cpPickFolder;
   $("cpGo").onclick = cpBuild;
   $("cpBody").onclick = (e) => {
     const move = e.target.closest("[data-cp-move]");
     if (move) { cpMove(+move.dataset.cpMove, +move.dataset.cpDelta); return; }
     const gone = e.target.closest("[data-cp-remove]");
-    if (gone) cpRemove(+gone.dataset.cpRemove);
+    if (gone) { cpRemove(+gone.dataset.cpRemove); return; }
+    const phrases = e.target.closest("[data-cp-phrases]");
+    if (phrases) { cpPhrases(+phrases.dataset.cpPhrases); return; }
+    const phrase = e.target.closest("[data-cp-phrase]");
+    if (phrase) {
+      cpPickPhrase(+phrase.dataset.cpPhrase, +phrase.dataset.cpStart,
+                   +phrase.dataset.cpEnd);
+    }
   };
   $("cpBody").onchange = (e) => {
     const field = e.target.closest("[data-cp-field]");
     if (field) cpField(+field.dataset.cpIndex, field.dataset.cpField, field.value);
   };
   [["cpLeadIn", "lead_in_ms"], ["cpGap", "gap_ms"], ["cpLead", "lead_ms"],
-   ["cpTail", "tail_ms"]].forEach(([id, key]) => {
+   ["cpTail", "tail_ms"], ["cpGapBars", "gap_bars"], ["cpFadeIn", "fade_in_ms"],
+   ["cpFadeOut", "fade_out_ms"]].forEach(([id, key]) => {
     $(id).onchange = () => cpSetting({ [key]: $(id).value });
   });
   [["cpBreaks", "junction_breaks"], ["cpBookmarks", "junction_bookmarks"],
-   ["cpStrict", "strict"]].forEach(([id, key]) => {
+   ["cpStrict", "strict"], ["cpDownbeat", "start_on_downbeat"]].forEach(([id, key]) => {
     $(id).onchange = () => cpSetting({ [key]: $(id).checked });
   });
   [["cpArtist", "artist"], ["cpTitle", "title"], ["cpCreator", "creator"],

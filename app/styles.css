@@ -1089,3 +1089,4 @@ body.reduce-motion .splash-line span { width: 100%; }
 .cp-file .kind { color: var(--dim); font-size: var(--fs-1); min-width: 72px; }
 .cp-file .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .check.inline { padding: 0; }
+.cp-order { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: var(--fs-2); }

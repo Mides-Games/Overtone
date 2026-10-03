@@ -376,6 +376,14 @@ class Api:
         self._compile_format: dict = {"audio_format": tc.DEFAULT_AUDIO_FORMAT,
                                       "difficulty_from": "first", "osz": False}
         self._compile_out = ""
+        #: The last loudness measurement, which is a decode per segment and so
+        #: is asked for rather than taken: the view shows each song's level
+        #: beside the gain it was given.
+        self._compile_loudness: dict | None = None
+        #: One segment's song read into phrases, by (path, size, mtime): the
+        #: sidecar reads the audio once per file and a range picked from a
+        #: phrase is the whole point of asking.
+        self._compile_sections: dict = {}
         #: A build's own lock, beside the analysis's: the analysis's belongs to
         #: one analysis, and ``stop_analysis`` reads it to decide whether
         #: anything is running. The two refuse each other instead of sharing,
@@ -1784,6 +1792,7 @@ class Api:
                        "metadata": dict(self._compile_metadata),
                        "format": dict(self._compile_format),
                        "out": self._compile_out,
+                       "loudness": self._compile_loudness,
                        "plan": None, "check": None,
                        "busy": self._busy.locked() or self._compile_lock.locked()}
         if not sources:
@@ -1837,6 +1846,7 @@ class Api:
             return {"ok": False, "key": "bad_file", "detail": Path(missing[0]).name}
         for path in chosen:
             self._compile.append({"osu": path})
+        self._compile_loudness = None
         return self.compile_state()
 
     def compile_add_open_song(self) -> dict:
@@ -1856,10 +1866,12 @@ class Api:
         if not 0 <= int(index) < len(self._compile):
             return {"ok": False, "key": "bad_index"}
         self._compile.pop(int(index))
+        self._compile_loudness = None
         return self.compile_state()
 
     def compile_clear(self) -> dict:
         self._compile = []
+        self._compile_loudness = None
         return self.compile_state()
 
     def compile_move(self, index: int, delta: int) -> dict:
@@ -1889,6 +1901,9 @@ class Api:
             except (TypeError, ValueError):
                 return {"ok": False, "key": "bad_values", "detail": str(key)}
         self._compile[int(index)] = spec
+        # A level was measured over a range; a new range is a new question.
+        if {"start_ms", "end_ms"} & set(changes or {}):
+            self._compile_loudness = None
         return self.compile_state()
 
     def compile_settings(self, changes: dict) -> dict:
@@ -1897,7 +1912,8 @@ class Api:
         for key, value in dict(changes or {}).items():
             if key not in tc.DEFAULT_SETTINGS:
                 return {"ok": False, "key": "bad_values", "detail": str(key)}
-            if key in ("strict", "junction_breaks", "junction_bookmarks"):
+            if key in ("strict", "junction_breaks", "junction_bookmarks",
+                       "start_on_downbeat"):
                 settings[key] = bool(value)
             elif key == "preview_from":
                 settings[key] = "first" if value in ("first", None, "") else int(value)
@@ -1940,6 +1956,125 @@ class Api:
             else:
                 return {"ok": False, "key": "bad_values", "detail": str(key)}
         self._compile_format = chosen
+        return self.compile_state()
+
+    def compile_sections(self, index: int) -> dict:
+        """The phrases of one segment's song, to pick a range from.
+
+        ``overtone-cli structure`` reads that song once; the answer is kept
+        by path, size and modification time, so picking from the same song
+        again costs nothing. No analysis is needed and nothing is written:
+        this is the structure view's own engine, asked about a file instead
+        of about the open song.
+
+        A phrase becomes a range through ``compile_update`` like any other —
+        the edges are the phrase's own, and ``start_on_downbeat`` is what
+        puts them on a bar line.
+        """
+        if not 0 <= int(index) < len(self._compile):
+            return {"ok": False, "key": "bad_index"}
+        if self._busy.locked() or self._compile_lock.locked():
+            return {"ok": False, "key": "busy"}
+        segment = tc.read_segment(self._compile[int(index)]["osu"],
+                                  audio=self._compile[int(index)].get("audio"))
+        path = segment["audio"]["path"]
+        if not path:
+            return {"ok": False, "key": "no_audio"}
+        source = Path(path)
+        try:
+            stat = source.stat()
+        except OSError:
+            return {"ok": False, "key": "bad_file"}
+        key = (str(source), stat.st_size, stat.st_mtime_ns)
+        if key not in self._compile_sections:
+            try:
+                report = overtone_rust.structure(source)
+            except overtone_rust.SidecarUnavailable:
+                return {"ok": False, "key": "no_rust"}
+            except (RuntimeError, OSError) as exc:
+                return {"ok": False, "key": "error", "detail": str(exc)}
+            self._compile_sections[key] = [
+                {"kind": str(row.get("kind") or ""),
+                 "start_ms": round(float(row["start_s"]) * 1000.0, 3),
+                 "end_ms": round(float(row["end_s"]) * 1000.0, 3),
+                 "level_db": round(float(row.get("level_db") or 0.0), 2),
+                 "repeats": int(row.get("repeats") or 0)}
+                for row in report.get("sections", ())
+                if float(row.get("end_s", 0.0)) > float(row.get("start_s", 0.0))]
+        return {"ok": True, "segment": int(index), "file": source.name,
+                "sections": self._compile_sections[key]}
+
+    def compile_match_loudness(self, target: str = "median") -> dict:
+        """Measure every song and set the gains so none of them jumps.
+
+        A decode per segment, so it runs on the same lock the build does and
+        answers with events: ``onCompileProgress`` per song, then
+        ``onCompileLoudness``. The gains land on the segments as if they had
+        been typed, so they can be changed afterwards.
+        """
+        if not self._compile:
+            return {"ok": False, "key": "no_sources"}
+        try:
+            plan = tc.plan_compilation(self._compile, self._compile_settings)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        if self._busy.locked():
+            return {"ok": False, "key": "busy"}
+        if not self._compile_lock.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        threading.Thread(target=self._loudness_worker, args=(plan, target),
+                         daemon=True).start()
+        return {"ok": True}
+
+    def _loudness_worker(self, plan: dict, target) -> None:
+        try:
+            report = tc.loudness_plan(
+                plan, target,
+                progress=lambda step, done, total: self._emit(
+                    "onCompileProgress", {"step": step, "done": done, "total": total}))
+            for row in report["segments"]:
+                if 0 <= row["segment"] < len(self._compile) and row["lufs"] is not None:
+                    self._compile[row["segment"]]["gain_db"] = row["gain_db"]
+            self._compile_loudness = report
+            self._emit("onCompileLoudness", {"ok": True, "loudness": report})
+        except (ValueError, OSError) as exc:
+            self._emit("onCompileLoudness", {"ok": False, "key": "error",
+                                             "detail": str(exc)})
+        except Exception as exc:  # noqa: BLE001 -- the view shows the message
+            self._emit("onCompileLoudness", {"ok": False, "key": "error",
+                                             "detail": f"{type(exc).__name__}: {exc}"})
+        finally:
+            self._compile_lock.release()
+
+    def compile_order(self, rule: str = "tempo") -> dict:
+        """An order to put the songs in, proposed and not applied.
+
+        Cheap: it reads the plan the view already has. The reply carries the
+        proposal beside the whole state, and ``compile_reorder`` is what puts
+        it into effect once somebody says so.
+        """
+        if len(self._compile) < 3:
+            return {"ok": False, "key": "too_few"}
+        try:
+            plan = tc.plan_compilation(self._compile, self._compile_settings)
+            proposal = tc.order_plan(plan, str(rule), self._compile_loudness)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {**self.compile_state(), "proposal": proposal}
+
+    def compile_reorder(self, order: list) -> dict:
+        """Put the songs in the order given, which is the proposal's or any
+        other: the view asks, this obeys."""
+        try:
+            wanted = [int(n) for n in (order or [])]
+        except (TypeError, ValueError):
+            return {"ok": False, "key": "bad_values"}
+        if sorted(wanted) != list(range(len(self._compile))):
+            return {"ok": False, "key": "bad_values"}
+        self._compile = [self._compile[n] for n in wanted]
+        if self._compile_loudness:
+            # The levels were measured per segment, and the segments moved.
+            self._compile_loudness = None
         return self.compile_state()
 
     def compile_pick_folder(self) -> dict:

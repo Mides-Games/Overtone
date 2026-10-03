@@ -18,6 +18,152 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-10-03 · A song's phrases, as the range to borrow
+
+### Changed
+
+- **`compile_sections`** (row 25.18) runs `overtone-cli structure` on one
+  segment's song and returns its phrases — kind, start, end, level, repeats —
+  kept by path, size and modification time, so the same song is read once
+  however often it is asked about. The structure view's own engine, asked
+  about a file instead of about the open song, and no analysis needed.
+- In the app: **Phrases…** on each song's row, the phrases as chips, and
+  clicking one makes it that segment's range through the same
+  `compile_update` a typed range uses. So `start_on_downbeat` is what puts
+  its edges on a bar line, and the repair list says if it leaves objects
+  outside — which is usually the point: a chorus-only compilation is objects
+  left outside on purpose.
+- Without the Rust engine built it says `no_rust` rather than reporting that
+  the song has no phrases.
+
+### Fixed
+
+- A third test that read its temp folder after the folder was gone. The
+  zeroed shape a refused read now answers with made it fail quietly instead
+  of raising, which is the behaviour the plan wanted and a poor error
+  message for a test. Worth writing down: assertions belong inside the
+  `with`.
+
+### Measured
+
+- In the harness, on a 20 s fixture: the phrase list came back as one verse
+  0:00-0:20, the chip set the range to exactly that (`from: "given"`), the
+  chips folded away, and both languages read clean. 929 tests, all green;
+  the `combine` gate green.
+
+## v4.0.0-dev — 2026-10-03 · The last check: every borrowed red line, on the built audio
+
+### Changed
+
+- **`verify_build(..., grade=True)`** closes row 25.15's fourth question:
+  the attacks of the audio the build just wrote, graded against the red lines
+  it wrote beside them (`_detect_attacks` and `grade_reference_timing`, the
+  reference card's own tools). A borrowed red line is only right if the sound
+  it was timed to is still under it after the cut, the resample and the
+  encode, and nothing else in the phase could say that.
+- Off by default and asked for, because it is the one heavy job here: a
+  decode of the built audio and the attack pass over it.
+- `build_compilation(grade=True)` passes it through, and the `combine` gate
+  asks for it on its three-song MP3.
+
+### Fixed
+
+- **A test fixture whose clicks ignored its own grid.** Its audio put a burst
+  every beat from 400 ms while its red line sat at 1000 with a 400 ms beat,
+  so the grade read it as 200 ms off — correctly. The fixture now clicks from
+  the line it writes. Nothing in the builder changed; the check found a bad
+  fixture, which is what a check is for.
+
+### Measured
+
+- The gate's three-song compilation, written as MP3 and read back: **6 of 6
+  red lines graded ok, none flagged, worst offset error 0.47 ms, common shift
+  -0.05 ms**. The gate takes 8.5 s with the grade in it, up from about 5.
+- 928 tests, all green.
+
+## v4.0.0-dev — 2026-10-03 · An order to put the songs in, proposed
+
+### Changed
+
+- **`order_plan`** (row 25.19) proposes an order and never applies one. By
+  **tempo**: every segment is tried as the opener, each one then takes the
+  nearest tempo left, and the cheapest of those walks wins — exact enough for
+  the handful of songs a marathon holds, and explainable in a sentence, which
+  matters more for something that is shown rather than done. By **loudness**:
+  quietest first, which needs row 25.6's measurement and says so when it is
+  missing.
+- It reports the jumps before and after, says when the order is already the
+  one it would ask for, and leaves a song with no tempo of its own at the end
+  instead of dropping it from the proposal.
+- In the app: **Suggest an order** in the Songs card, with the proposal and a
+  **Use it** beside it. The rule follows what is known — loudness once the
+  volumes have been measured, tempo otherwise — because a proposal from
+  numbers nobody has measured is a guess with a button on it.
+- `compile_reorder` refuses an order that is not a permutation of the list,
+  and drops the loudness measurement when the segments move, since a level
+  was measured per segment.
+
+### Measured
+
+- Four songs at 180, 120, 175 and 125 BPM: the proposal is 180, 175, 125,
+  120 and the jumps fall from **165 BPM to 60**. In the harness, three
+  fixtures at 150, 128 and 174: "By tempo: 1 → 3 → 2. The jumps add up to 46
+  BPM instead of 68", the same line in Spanish, and Use it applied it.
+- 928 tests (652 engine + 276 web shell), 6 of them new.
+
+## v4.0.0-dev — 2026-10-03 · Compilations: matched volumes and shaped junctions
+
+### Changed
+
+- **`segment_loudness`** measures a range the way ITU-R BS.1770 says to:
+  K-weighted, 400 ms blocks every 100 ms, the absolute (-70 LUFS) and
+  relative (-10 LU) gates both applied, every channel weighted 1.0. The two
+  filters are **derived from the standard's analog parameters** rather than
+  copied from the digital coefficients it prints for 48 kHz, so a 44.1 kHz
+  song is measured without being resampled first. Read in chunks with the
+  filter state carried across, so the answer is the same as one pass and the
+  memory is one chunk.
+- **`loudness_plan`** matches every song to the **median** of them (or the
+  first, the quietest, or a number in LUFS) and caps what it asks for: never
+  more than 12 dB, and never past the sample-peak headroom. A capped gain
+  says which cap bit, and a range with nothing above the absolute gate in it
+  gets no level at all rather than an invented one.
+- **The gap can be counted in bars of the outgoing song** — it is that
+  song's groove the gap is finishing — measured off the grid in force where
+  its range ends, per plan or per junction.
+- **`start_on_downbeat`** pulls each segment's range back to its own bar
+  line, never forward: forward would eat the padding and could reach an
+  object.
+- **Fades in and out**, per plan or per segment, over the same ramp the 5 ms
+  declick guard uses — the longer of the two wins, so asking for a fade can
+  never remove the guard.
+- In the app: **Match volumes** in the Songs card (on the build's own lock,
+  with its own progress), each song's measured level beside its gain, and the
+  four new joining controls.
+
+### Measured
+
+- The derivation reproduces the standard's published 48 kHz coefficients to
+  **12 decimal places**, and a 1 kHz sine at -20 dBFS RMS reads **-20.0
+  LUFS** in one channel — the standard's own calibration sentence. Halving
+  the amplitude takes 6.02 LU off. Chunking the file changes nothing.
+- In the harness, two fixture songs 10 dB apart: measured -23.05 and -33.05
+  LUFS, matched to the median -28.05, gains -5.0 and +5.0 dB, both uncapped.
+  A gap of 2 bars at 150 BPM in 4/4 came out 3200 ms.
+- 922 tests (647 engine + 275 web shell), 16 of them new.
+
+### Rejected / tried and dropped
+
+- **The crossfade** row 25.7 asked for. The junction is silence by design: a
+  break covers it, the health bar stops draining, and each song keeps its own
+  grid. An overlap puts two tempos over each other for a second, which is a
+  mix decision about music this tool does not otherwise make, and it would
+  cost the streaming writer its one-block memory. Fades in and out do the
+  audible part of the job.
+- **True peak** for the clipping cap. It needs oversampling, and what the
+  number is for is headroom — how far this segment may be raised — not a
+  compliance claim. Said so in the docstring rather than implying more.
+
 ## v4.0.0-dev — 2026-10-03 · The Compile section: a compilation from the app
 
 ### Changed

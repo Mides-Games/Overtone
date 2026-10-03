@@ -937,6 +937,8 @@
             <span class="pill" id="cpCount" hidden></span>
             <span class="pill amber" id="cpRefused" hidden></span>
             <div class="spacer"></div>
+            <button class="btn small" id="cpSuggest" hidden><span data-i18n="cp_suggest">Suggest an order</span></button>
+            <button class="btn small" id="cpMatch" hidden><span data-i18n="cp_match">Match volumes</span></button>
             <button class="btn small" id="cpAddSong"><span data-i18n="cp_add_song">Add the open song's maps</span></button>
             <button class="btn small" id="cpClear" hidden><span data-i18n="cp_clear">Clear</span></button>
             <button class="btn small" id="cpAdd"><span data-i18n="cp_add">Add maps…</span></button>
@@ -956,6 +958,9 @@
               <label class="field"><span class="setting-name" data-i18n="cp_gap">Silence between songs (ms)</span><input class="input num" id="cpGap" type="number" min="0" step="100"></label>
               <label class="field"><span class="setting-name" data-i18n="cp_lead">Kept before a song's first object (ms)</span><input class="input num" id="cpLead" type="number" min="0" step="100"></label>
               <label class="field"><span class="setting-name" data-i18n="cp_tail">Kept after its last sound (ms)</span><input class="input num" id="cpTail" type="number" min="0" step="100"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_gap_bars">Or that silence in bars of the song ending (0 = use ms)</span><input class="input num" id="cpGapBars" type="number" min="0" step="1"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_fade_in">Fade in (ms)</span><input class="input num" id="cpFadeIn" type="number" min="0" step="100"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_fade_out">Fade out (ms)</span><input class="input num" id="cpFadeOut" type="number" min="0" step="100"></label>
             </div>
             <div class="field">
               <span class="setting-name" data-i18n="cp_difficulty">Difficulty numbers</span>
@@ -965,6 +970,7 @@
               </div>
               <span class="hint" data-i18n="cp_diff_hint">AR, OD, HP and the slider multiplier are one set for the whole map. Each song's own slider speed is kept anyway, through a green line.</span>
             </div>
+            <label class="check"><input type="checkbox" id="cpDownbeat"><span data-i18n="cp_downbeat">Each song comes in on its own downbeat</span></label>
             <label class="check"><input type="checkbox" id="cpBreaks" checked><span data-i18n="cp_breaks">A break over every junction, so the silence between two songs is silence</span></label>
             <label class="check"><input type="checkbox" id="cpBookmarks" checked><span data-i18n="cp_bookmarks">A bookmark where each song starts</span></label>
             <label class="check"><input type="checkbox" id="cpStrict"><span data-i18n="cp_strict">Strict: refuse the build if any source needed a repair</span></label>

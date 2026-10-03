@@ -2307,7 +2307,8 @@ def build_compilation(plan: dict, folder: str | os.PathLike[str], *,
                       decimals: int = WRITE_DECIMALS,
                       osz=False, dry_run: bool = False,
                       allow_existing: bool = False,
-                      verify: bool = True, progress=None) -> dict:
+                      verify: bool = True, grade: bool = False,
+                      progress=None) -> dict:
     """The whole compilation as a mapset folder, an ``.osz``, or neither.
 
     Everything is settled before anything is written: the sample remap, the
@@ -2420,21 +2421,30 @@ def build_compilation(plan: dict, folder: str | os.PathLike[str], *,
         report["osz"] = _zip_folder(out, target)
     if verify:
         say("check")
-        report["checks"] = verify_build(plan, out / osu_file, out / audio_file, text)
+        report["checks"] = verify_build(plan, out / osu_file, out / audio_file, text,
+                                        grade=grade)
     say("done", 1, 1)
     return report
 
 
 def verify_build(plan: dict, osu_path: str | os.PathLike[str],
                  audio_path: str | os.PathLike[str],
-                 text: str | None = None) -> dict:
+                 text: str | None = None, grade: bool = False) -> dict:
     """What a built compilation looks like read back (Phase 25, row 25.15).
 
-    Three questions, each answered from the files rather than the report that
-    made them: did every segment's audio land where the map says (the audio
-    swap's own aligner), is anything off the grid or before it (the snap
-    audit, which is what a mapper would ask), and does the beatmap come back
-    through the reader and writer byte for byte.
+    Four questions, each answered from the files rather than from the report
+    that made them: did every segment's audio land where the map says (the
+    audio swap's own aligner), is anything off the grid or before it (the
+    snap audit, which is what a mapper would ask), does the beatmap come back
+    through the reader and writer byte for byte, and — with ``grade`` — does
+    every red line it wrote still sit on the attacks of the audio that was
+    built.
+
+    That fourth one is the end of the phase's own argument: a borrowed red
+    line is only right if the sound it was timed to is still under it after
+    the cut, the resample and the encode. It needs the attacks of the built
+    audio, which is the one heavy job here (a decode and the attack pass), so
+    it is off by default and asked for.
     """
     built = ta.read_osu_beatmap(osu_path)
     audio = verify_audio(plan, audio_path)
@@ -2446,14 +2456,39 @@ def verify_build(plan: dict, osu_path: str | os.PathLike[str],
     snap = ta.snap_audit(built, duration_s=duration)
     round_trip = ta.beatmap_text(built) == (text if text is not None
                                             else ta._load_osu_text(osu_path)[0])
-    return {"audio": audio, "round_trip": bool(round_trip),
+    graded = None
+    if grade:
+        try:
+            y, rate = ta._load_audio(audio_path, lambda _message: None)
+            times, weights, _env = ta._detect_attacks(y, rate, ta.FIT_HOP)
+            report = ta.grade_reference_timing(built, times, weights,
+                                               len(y) / float(rate))
+            graded = {"ok": bool(report.get("ok")),
+                      "reason": report.get("reason"),
+                      "counts": report.get("counts"),
+                      "common_offset_ms": report.get("common_offset_ms"),
+                      "worst_ms": max((abs(line["offset_error_ms"])
+                                       for line in report.get("lines", ())
+                                       if line.get("offset_error_ms") is not None),
+                                      default=None),
+                      "lines": [{"offset_ms": line["offset_ms"],
+                                 "verdict": line["verdict"],
+                                 "attacks": line.get("attacks"),
+                                 "offset_error_ms": line.get("offset_error_ms"),
+                                 "issues": line.get("issues", [])}
+                                for line in report.get("lines", ())]}
+        except (ValueError, OSError) as exc:
+            graded = {"ok": False, "reason": str(exc), "counts": None,
+                      "common_offset_ms": None, "worst_ms": None, "lines": []}
+    return {"audio": audio, "round_trip": bool(round_trip), "grade": graded,
             "snap": {"objects": snap.get("objects"), "red_lines": snap.get("red_lines"),
                      "unsnapped": len(snap.get("unsnapped", [])),
                      "before_first_red": len(snap.get("before_first_red", [])),
                      "past_audio": len(snap.get("past_audio") or [])},
             "ok": bool(round_trip) and bool(audio["ok"])
                   and not snap.get("unsnapped") and not snap.get("before_first_red")
-                  and not (snap.get("past_audio") or [])}
+                  and not (snap.get("past_audio") or [])
+                  and (graded is None or bool(graded["ok"]))}
 
 
 # ---------------------------------------------------------------------------

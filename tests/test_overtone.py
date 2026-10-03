@@ -10507,7 +10507,10 @@ class CombineOutputTests(unittest.TestCase):
             # downsamples to, so the check would have nothing to say.
             burst = (np.hanning(256) * np.sin(2 * np.pi * 900.0
                                               * np.arange(256) / rate)).astype("float32")
-            at = 0.4
+            # From the red line this map writes, on its beat: the grade check
+            # reads the built audio's attacks against those lines, and a
+            # fixture whose clicks ignore its own grid grades as 200 ms off.
+            at = 1.0
             while at < seconds - 0.1:
                 start = int(at * rate)
                 song[start:start + 256] += burst * 0.8
@@ -10680,13 +10683,19 @@ class CombineOutputTests(unittest.TestCase):
             plan = self._plan([self._map(Path(tmp) / "a", rate=44100, clicks=True),
                                self._map(Path(tmp) / "b", rate=44100, clicks=True,
                                          bpm=174.0, index=5)])
-            report = self._build(plan, Path(tmp) / "out", audio_format="wav")
+            report = self._build(plan, Path(tmp) / "out", audio_format="wav",
+                                 grade=True)
         checks = report["checks"]
         self.assertEqual(checks["snap"], {"objects": 8, "red_lines": 2, "unsnapped": 0,
                                           "before_first_red": 0, "past_audio": 0})
         self.assertTrue(checks["round_trip"])
         self.assertEqual(checks["audio"]["worst_shift_ms"], 0.0)
         self.assertEqual([row["peak"] for row in checks["audio"]["segments"]], [1.0, 1.0])
+        # The fourth check: the red lines against the attacks of the audio
+        # that was built, which is the end of this phase's own argument.
+        self.assertTrue(checks["grade"]["ok"], checks["grade"])
+        self.assertEqual(checks["grade"]["counts"]["check"], 0)
+        self.assertLess(checks["grade"]["worst_ms"], 5.0)
         self.assertTrue(checks["ok"])
 
     def test_the_write_lands_in_the_history(self) -> None:

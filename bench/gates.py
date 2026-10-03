@@ -1470,7 +1470,9 @@ def combine(audio_dir: Path) -> int:
         shown = tc.build_compilation(plan, Path(tmp) / "set", dry_run=True)
         check("a dry run writes nothing", not (Path(tmp) / "set").exists(),
               f"{len(shown['files'])} file(s) it would write")
-        whole = tc.build_compilation(plan, Path(tmp) / "set", osz=True)
+        # The fourth check too (row 25.15): the attacks of the audio that was
+        # built, against the red lines the compilation wrote.
+        whole = tc.build_compilation(plan, Path(tmp) / "set", osz=True, grade=True)
         there = sorted(path.name for path in (Path(tmp) / "set").iterdir()
                        if path.suffix.lower() != ".osz")
         print(f"mapset: {whole['osu']}")
@@ -1490,6 +1492,13 @@ def combine(audio_dir: Path) -> int:
         check("the build checks itself and passes", bool(checks["ok"]),
               f"snap {checks['snap']}, audio {checks['audio']['worst_shift_ms']} ms, "
               f"round trip {checks['round_trip']}")
+        graded = checks["grade"]
+        check("every red line still sits on the built audio's attacks",
+              bool(graded) and bool(graded["ok"])
+              and not (graded["counts"] or {}).get("check"),
+              f"{graded['counts'] if graded else None}, worst "
+              f"{graded['worst_ms'] if graded else None} ms, shift "
+              f"{graded['common_offset_ms'] if graded else None} ms")
 
         print()
         rng = random.Random(7)

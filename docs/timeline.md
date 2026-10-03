@@ -18,6 +18,36 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-10-03 · The last check: every borrowed red line, on the built audio
+
+### Changed
+
+- **`verify_build(..., grade=True)`** closes row 25.15's fourth question:
+  the attacks of the audio the build just wrote, graded against the red lines
+  it wrote beside them (`_detect_attacks` and `grade_reference_timing`, the
+  reference card's own tools). A borrowed red line is only right if the sound
+  it was timed to is still under it after the cut, the resample and the
+  encode, and nothing else in the phase could say that.
+- Off by default and asked for, because it is the one heavy job here: a
+  decode of the built audio and the attack pass over it.
+- `build_compilation(grade=True)` passes it through, and the `combine` gate
+  asks for it on its three-song MP3.
+
+### Fixed
+
+- **A test fixture whose clicks ignored its own grid.** Its audio put a burst
+  every beat from 400 ms while its red line sat at 1000 with a 400 ms beat,
+  so the grade read it as 200 ms off — correctly. The fixture now clicks from
+  the line it writes. Nothing in the builder changed; the check found a bad
+  fixture, which is what a check is for.
+
+### Measured
+
+- The gate's three-song compilation, written as MP3 and read back: **6 of 6
+  red lines graded ok, none flagged, worst offset error 0.47 ms, common shift
+  -0.05 ms**. The gate takes 8.5 s with the grade in it, up from about 5.
+- 928 tests, all green.
+
 ## v4.0.0-dev — 2026-10-03 · An order to put the songs in, proposed
 
 ### Changed

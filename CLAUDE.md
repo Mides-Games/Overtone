@@ -54,7 +54,7 @@ commit messages are English; only the app's own UI strings stay bilingual
 .venv/Scripts/python.exe bench/gates.py robustness             # edge cases end cleanly
 .venv/Scripts/python.exe bench/gates.py reference              # maps graded as timed
 .venv/Scripts/python.exe bench/gates.py assisted               # marked downbeats fit
-.venv/Scripts/python.exe bench/gates.py combine                # a compilation keeps every borrowed grid
+.venv/Scripts/python.exe bench/gates.py combine                # a compilation keeps every borrowed grid, hitsound and level
 .venv/Scripts/python.exe bench/gates.py real-audio             # 6 local songs analyse as pinned
 .venv/Scripts/python.exe bench/gates.py perf                   # every stage inside its time budget
 .venv/Scripts/python.exe bench/fixtures.py                     # the fixture manifest matches the code

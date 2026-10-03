@@ -10,6 +10,6 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
-overtone-core = { version = "4.0.0-dev", path = "../overtone-core" }
+overtone-core = { version = "0.1.0-alpha", path = "../overtone-core" }
 rayon = "1.12.0"
 realfft = "3.5.0"

@@ -116,7 +116,7 @@ dependencies = [
 
 [[package]]
 name = "overtone-audio"
-version = "4.0.0-dev"
+version = "0.1.0-alpha"
 dependencies = [
  "overtone-core",
  "symphonia",
@@ -124,7 +124,7 @@ dependencies = [
 
 [[package]]
 name = "overtone-bench"
-version = "4.0.0-dev"
+version = "0.1.0-alpha"
 dependencies = [
  "anyhow",
  "overtone-audio",
@@ -137,7 +137,7 @@ dependencies = [
 
 [[package]]
 name = "overtone-cli"
-version = "4.0.0-dev"
+version = "0.1.0-alpha"
 dependencies = [
  "overtone-audio",
  "overtone-core",
@@ -149,7 +149,7 @@ dependencies = [
 
 [[package]]
 name = "overtone-core"
-version = "4.0.0-dev"
+version = "0.1.0-alpha"
 dependencies = [
  "serde",
  "thiserror",
@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "overtone-dsp"
-version = "4.0.0-dev"
+version = "0.1.0-alpha"
 dependencies = [
  "overtone-core",
  "rayon",
@@ -166,7 +166,7 @@ dependencies = [
 
 [[package]]
 name = "overtone-hitsound"
-version = "4.0.0-dev"
+version = "0.1.0-alpha"
 dependencies = [
  "overtone-core",
  "overtone-dsp",
@@ -177,7 +177,7 @@ dependencies = [
 
 [[package]]
 name = "overtone-tempo"
-version = "4.0.0-dev"
+version = "0.1.0-alpha"
 dependencies = [
  "overtone-core",
  "overtone-dsp",

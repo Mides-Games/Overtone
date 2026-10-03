@@ -22,7 +22,10 @@ from unittest import mock
 
 # repo/.claude/skills/overtone-ui-check/scripts/harness.py
 REPO = Path(__file__).resolve().parents[4]
+# The engine and the bridge live in python/ since the 2026-10-03 layout move;
+# the repo root stays on the path for anything beside them.
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(REPO / "python"))
 
 parser = argparse.ArgumentParser()
 parser.add_argument("audio", nargs="?", default="")

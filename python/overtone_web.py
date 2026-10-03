@@ -30,6 +30,7 @@ from pathlib import Path
 import numpy as np
 
 import overtone as ta
+import overtone_combine as tc
 import overtone_library
 import overtone_rust
 
@@ -364,6 +365,23 @@ class Api:
         self._launch_options: dict = {}
         self._launch_subdivision: float | None = None
         self._analysis: ta.Analysis | None = None
+        #: The Compile view's own state (roadmap 25.14): the ordered sources
+        #: with their per-segment settings, the settings for all of them, the
+        #: names, the output shape, and where the last build went. In memory
+        #: only: a compilation is a few clicks to rebuild and nothing in the
+        #: user's config is improved by a half-made one surviving a restart.
+        self._compile: list[dict] = []
+        self._compile_settings: dict = dict(tc.DEFAULT_SETTINGS)
+        self._compile_metadata: dict = {}
+        self._compile_format: dict = {"audio_format": tc.DEFAULT_AUDIO_FORMAT,
+                                      "difficulty_from": "first", "osz": False}
+        self._compile_out = ""
+        #: A build's own lock, beside the analysis's: the analysis's belongs to
+        #: one analysis, and ``stop_analysis`` reads it to decide whether
+        #: anything is running. The two refuse each other instead of sharing,
+        #: because encoding a marathon and analysing a song are both heavy and
+        #: this machine runs one heavy job at a time.
+        self._compile_lock = threading.Lock()
         self._busy = threading.Lock()
         #: Set by stop_analysis. The engine asks it at its checkpoints inside
         #: every stage (on the worker's thread only), the worker at every
@@ -637,6 +655,8 @@ class Api:
         return reply
 
     def _launch(self, path: str, params: dict, options: dict) -> dict:
+        if self._compile_lock.locked():
+            return {"ok": False, "key": "busy"}     # a compilation is being written
         if not self._busy.acquire(blocking=False):
             return {"ok": False, "key": "busy"}
         self._remember(path, options)
@@ -1744,6 +1764,257 @@ class Api:
         # A proposal made since the write was decided on the bytes just replaced.
         self._decisions.pop(path.name, None)
         return {"ok": True, "file": path.name, "backup": str(backup)}
+
+    # --- Compile: several maps and their songs as one (Phase 25, row 25.14) ---
+
+    def compile_state(self) -> dict:
+        """The segment list, the settings, and what they would build.
+
+        Everything the Compile view draws comes from here, and it is
+        recomputed on every change rather than patched: planning reads a few
+        `.osu` files and each song's header, which costs milliseconds, and a
+        list that cannot drift from its plan is worth more than that.
+
+        ``plan`` is the compilation document; ``check`` is the dry run, which
+        is None while any segment refuses, since there is nothing to build.
+        """
+        sources = [dict(spec) for spec in self._compile]
+        reply: dict = {"ok": True, "sources": sources,
+                       "settings": dict(self._compile_settings),
+                       "metadata": dict(self._compile_metadata),
+                       "format": dict(self._compile_format),
+                       "out": self._compile_out,
+                       "plan": None, "check": None,
+                       "busy": self._busy.locked() or self._compile_lock.locked()}
+        if not sources:
+            return reply
+        try:
+            plan = tc.plan_compilation(sources, self._compile_settings)
+        except (ValueError, OSError) as exc:
+            reply["ok"] = False
+            reply["key"] = "error"
+            reply["detail"] = str(exc)
+            return reply
+        reply["plan"] = plan
+        if plan["usable"]:
+            try:
+                reply["check"] = tc.build_compilation(
+                    plan, self._compile_out or "compilation", dry_run=True,
+                    allow_existing=True, metadata=self._compile_metadata,
+                    difficulty=self._compile_format["difficulty_from"],
+                    audio_format=self._compile_format["audio_format"])
+                reply["occupied"] = self._compile_occupied()
+            except (ValueError, OSError) as exc:
+                reply["key"] = "cannot_build"
+                reply["detail"] = str(exc)
+        return reply
+
+    def _compile_occupied(self) -> str:
+        """The beatmap already in the chosen output folder, if any. A build
+        into it is adding to a mapset, which is a thing to say out loud."""
+        folder = Path(self._compile_out) if self._compile_out else None
+        if folder is None or not folder.is_dir():
+            return ""
+        found = sorted(path.name for path in folder.iterdir()
+                       if path.suffix.lower() == ".osu")
+        return found[0] if found else ""
+
+    def compile_add(self, paths: list | None = None) -> dict:
+        """Add difficulties to the compilation, in the order they arrive.
+
+        With no paths the window asks for files; several at once, since a
+        marathon is several maps. A map already in the list is added again
+        rather than refused: the same difficulty twice, at two ranges, is a
+        reasonable thing to want.
+        """
+        chosen = [str(path) for path in (paths or []) if str(path).strip()]
+        if not chosen:
+            chosen = self._pick_osu_files()
+        if not chosen:
+            return {"ok": False, "key": "nothing_picked"}
+        missing = [path for path in chosen if not Path(path).is_file()]
+        if missing:
+            return {"ok": False, "key": "bad_file", "detail": Path(missing[0]).name}
+        for path in chosen:
+            self._compile.append({"osu": path})
+        return self.compile_state()
+
+    def compile_add_open_song(self) -> dict:
+        """Add every difficulty beside the song that is open, if any."""
+        file = self._cfg.get("file") or ""
+        folder = Path(str(file)).parent if file else None
+        if folder is None or not folder.is_dir():
+            return {"ok": False, "key": "no_song"}
+        found = sorted(path for path in folder.glob("*.osu"))
+        if not found:
+            return {"ok": False, "key": "no_maps"}
+        for path in found:
+            self._compile.append({"osu": str(path)})
+        return self.compile_state()
+
+    def compile_remove(self, index: int) -> dict:
+        if not 0 <= int(index) < len(self._compile):
+            return {"ok": False, "key": "bad_index"}
+        self._compile.pop(int(index))
+        return self.compile_state()
+
+    def compile_clear(self) -> dict:
+        self._compile = []
+        return self.compile_state()
+
+    def compile_move(self, index: int, delta: int) -> dict:
+        """Move one segment up or down. The order given is the order built."""
+        index, delta = int(index), int(delta)
+        target = index + delta
+        if not (0 <= index < len(self._compile) and 0 <= target < len(self._compile)):
+            return {"ok": False, "key": "bad_index"}
+        self._compile[index], self._compile[target] = \
+            self._compile[target], self._compile[index]
+        return self.compile_state()
+
+    def compile_update(self, index: int, changes: dict) -> dict:
+        """A segment's own range, gain or gap. An empty value clears it, so a
+        typed range can be given back to the objects."""
+        if not 0 <= int(index) < len(self._compile):
+            return {"ok": False, "key": "bad_index"}
+        spec = dict(self._compile[int(index)])
+        for key, value in dict(changes or {}).items():
+            if key not in tc.SOURCE_KEYS or key == "osu":
+                return {"ok": False, "key": "bad_values", "detail": str(key)}
+            if value in (None, ""):
+                spec.pop(key, None)
+                continue
+            try:
+                spec[key] = float(value)
+            except (TypeError, ValueError):
+                return {"ok": False, "key": "bad_values", "detail": str(key)}
+        self._compile[int(index)] = spec
+        return self.compile_state()
+
+    def compile_settings(self, changes: dict) -> dict:
+        """The settings that shape the whole compilation."""
+        settings = dict(self._compile_settings)
+        for key, value in dict(changes or {}).items():
+            if key not in tc.DEFAULT_SETTINGS:
+                return {"ok": False, "key": "bad_values", "detail": str(key)}
+            if key in ("strict", "junction_breaks", "junction_bookmarks"):
+                settings[key] = bool(value)
+            elif key == "preview_from":
+                settings[key] = "first" if value in ("first", None, "") else int(value)
+            else:
+                try:
+                    settings[key] = max(0.0, float(value))
+                except (TypeError, ValueError):
+                    return {"ok": False, "key": "bad_values", "detail": str(key)}
+        self._compile_settings = settings
+        return self.compile_state()
+
+    def compile_metadata(self, changes: dict) -> dict:
+        """What the compilation says it is. An empty field goes back to chosen."""
+        metadata = dict(self._compile_metadata)
+        for key, value in dict(changes or {}).items():
+            if key not in tc.METADATA_FIELDS:
+                return {"ok": False, "key": "bad_values", "detail": str(key)}
+            text = " ".join(str(value).split())
+            if text:
+                metadata[key] = text
+            else:
+                metadata.pop(key, None)
+        self._compile_metadata = metadata
+        return self.compile_state()
+
+    def compile_format(self, changes: dict) -> dict:
+        """The audio format, the difficulty choice and whether to zip."""
+        chosen = dict(self._compile_format)
+        for key, value in dict(changes or {}).items():
+            if key == "audio_format":
+                if value not in tc.AUDIO_FORMATS:
+                    return {"ok": False, "key": "bad_values", "detail": str(value)}
+                chosen[key] = str(value)
+            elif key == "difficulty_from":
+                if value not in tc.DIFFICULTY_CHOICES:
+                    return {"ok": False, "key": "bad_values", "detail": str(value)}
+                chosen[key] = str(value)
+            elif key == "osz":
+                chosen[key] = bool(value)
+            else:
+                return {"ok": False, "key": "bad_values", "detail": str(key)}
+        self._compile_format = chosen
+        return self.compile_state()
+
+    def compile_pick_folder(self) -> dict:
+        """Where to build. Remembered until the window closes, so Build can
+        ask once and then be a button."""
+        folder = self.pick_folder()
+        if not folder:
+            return {"ok": False, "key": "nothing_picked"}
+        self._compile_out = str(folder)
+        return self.compile_state()
+
+    def compile_build(self, folder: str = "", allow_existing: bool = False) -> dict:
+        """Build it. Starts a worker; the report arrives as a JS event.
+
+        Encoding a marathon takes seconds and the window must stay alive, so
+        this follows the analysis's shape: the same lock, so one heavy job
+        runs at a time, and events for progress and the result. There is no
+        stop: a half-written mapset is worse than waiting for a short one.
+        """
+        out = str(folder or self._compile_out or "")
+        if not out:
+            return {"ok": False, "key": "no_folder"}
+        if not self._compile:
+            return {"ok": False, "key": "no_sources"}
+        self._compile_out = out
+        occupied = self._compile_occupied()
+        if occupied and not allow_existing:
+            return {"ok": False, "key": "folder_occupied", "detail": occupied}
+        try:
+            plan = tc.plan_compilation(self._compile, self._compile_settings)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        if not plan["usable"]:
+            return {"ok": False, "key": "plan_refused",
+                    "detail": "; ".join(row.get("why", "") for row in plan["refusals"])}
+        if self._busy.locked():
+            return {"ok": False, "key": "busy"}     # an analysis is running
+        if not self._compile_lock.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        threading.Thread(target=self._compile_worker, args=(plan, out),
+                         daemon=True).start()
+        return {"ok": True}
+
+    def _compile_worker(self, plan: dict, folder: str) -> None:
+        try:
+            report = tc.build_compilation(
+                plan, folder, allow_existing=True, metadata=self._compile_metadata,
+                difficulty=self._compile_format["difficulty_from"],
+                audio_format=self._compile_format["audio_format"],
+                osz=bool(self._compile_format["osz"]),
+                progress=lambda step, done, total: self._emit(
+                    "onCompileProgress", {"step": step, "done": done, "total": total}))
+            self._emit("onCompileDone", {"ok": True, "report": report})
+        except (ValueError, OSError) as exc:
+            self._emit("onCompileDone", {"ok": False, "key": "error",
+                                         "detail": str(exc)})
+        except Exception as exc:  # noqa: BLE001 -- the view shows the message
+            self._emit("onCompileDone", {"ok": False, "key": "error",
+                                         "detail": f"{type(exc).__name__}: {exc}"})
+        finally:
+            self._compile_lock.release()
+
+    def _pick_osu_files(self) -> list:
+        """Several .osu files from one dialog, or nothing."""
+        import webview
+
+        if self._window is None:
+            return []
+        chosen = self._window.create_file_dialog(
+            webview.OPEN_DIALOG, allow_multiple=True, file_types=OSU_TYPES)
+        if not chosen:
+            return []
+        if isinstance(chosen, (list, tuple)):
+            return [str(path) for path in chosen]
+        return [str(chosen)]
 
     def inject_preview(self, osu_path: str) -> dict:
         """Dry run first, like the Tk GUI's confirmation dialog data."""

@@ -18,6 +18,68 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-10-03 · The Compile section: a compilation from the app
+
+### Changed
+
+- **A twelfth sidebar section, Compile** (row 25.14), with four cards: the
+  songs in the order they will play, the joining settings, the names with the
+  `credits.txt` it would write, and what it would build. The whole view is
+  drawn from one bridge reply: **every change re-plans in Python**, so the
+  list, the numbers under it and the file list cannot drift apart. Planning
+  reads a few `.osu` files and each song's header, which costs milliseconds;
+  a list that cannot disagree with its plan is worth more than that.
+- **The app's first reorderable list.** Nothing in the shell let the user
+  order rows before this — points sort by time, reports sort by severity —
+  and here the order *is* the content, so each song carries Earlier, Later
+  and Take out, and its own range, gain and gap.
+- **Eleven bridge calls**, each returning the whole state: `compile_state`,
+  `compile_add`, `compile_add_open_song`, `compile_remove`, `compile_clear`,
+  `compile_move`, `compile_update`, `compile_settings`, `compile_metadata`,
+  `compile_format`, `compile_pick_folder`, `compile_build`.
+- **The build runs on its own lock**, beside the analysis's rather than
+  sharing it: the analysis's lock belongs to one analysis and
+  `stop_analysis` reads it to decide whether anything is running. The two
+  **refuse each other** — this machine runs one heavy job at a time — and the
+  build pushes `onCompileProgress` / `onCompileDone`, as the library health
+  check does, instead of borrowing the analysis's progress bar and Stop.
+- A folder that already holds a beatmap takes **two clicks**: the first says
+  what is in the way, the second builds into it. Adding to a mapset is
+  reasonable and a bad thing to do by accident.
+
+### Fixed
+
+- **`plan_compilation` crashed on a source it could not read.** The reader
+  promised a refused segment would come back so a plan could show the whole
+  picture, and then returned a short dict the plan asked `["mode"]` of. A
+  refused read now answers every field a good one does. Found by a bridge
+  test that outlived its temp folder.
+- **The UI harness had been broken since the layout move**: it put the repo
+  root on `sys.path` and the engine now lives in `python/`, so
+  `/overtone-ui-check` could not start at all.
+
+### Measured
+
+- Checked in the browser harness at 1280x800, in English and Spanish, on two
+  synthetic mapsets with real 44.1 kHz audio: added, reordered, a typed range
+  (reported as cutting objects), a wider gap (the second song moved to
+  22.952 s), names typed by hand, then built to MP3 — 6 files, **every
+  segment's audio 0.0 ms out, 0 of 24 objects off the grid, the map
+  byte-identical through the reader and writer**. No console error, no
+  horizontal overflow, no clipped name, the credits box scrolling at 220 px.
+  Not checked: the pywebview window itself, which cannot be driven.
+- 905 tests (631 engine + 274 web shell), 11 of them new.
+
+### Rejected / tried and dropped
+
+- **Sharing the analysis's lock and progress panel** for the build. It is
+  fewer moving parts and it would have made an encode look like an analysis:
+  `setBusy` disables Analyze, every result-needing view says "Analyzing…",
+  and the Stop button would have reached `stop_analysis`, which has nothing
+  to stop.
+- **A Stop for the build.** A half-written mapset is worse than waiting for a
+  short job, and the longest build measured here is seconds.
+
 ## v4.0.0-dev — 2026-10-03 · Phase 25: a compilation builds end to end
 
 ### Changed

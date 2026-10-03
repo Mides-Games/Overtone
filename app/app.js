@@ -690,6 +690,44 @@ const I18N = {
     difficulties: "difficulties",
     no_audio: "That folder has no audio Overtone can read — its maps are still listed for compare.",
     bad_folder: "Choose a real folder first.",
+    nav_compile: "Compile",
+    cp_sub: "Several maps and their songs as one map. Every object keeps the beat it had, each song's hitsounds and slider speed come with it, and nothing is ever written into a source folder. What a compilation cannot keep — one set of difficulty numbers — is listed instead of hidden.",
+    cp_sources: "Songs", cp_add: "Add maps…", cp_add_song: "Add the open song's maps", cp_clear: "Clear",
+    cp_empty: "Nothing to compile yet. Add the difficulties you want, in the order they should play: each one brings its own song, its own timing and its own hitsounds.",
+    cp_count: "{n} songs", cp_refused: "{n} cannot be used",
+    cp_lasts: "lasts {time}", cp_objects: "{n} objects",
+    cp_up: "Earlier", cp_down: "Later", cp_remove: "Take out",
+    cp_start_ms: "from (ms)", cp_end_ms: "to (ms)", cp_gain_db: "gain (dB)", cp_gap_before_ms: "gap (ms)",
+    cp_join: "Joining", cp_totals: "{songs} songs · {time} · {objects} objects",
+    cp_lead_in: "Silence before the first song (ms)", cp_gap: "Silence between songs (ms)",
+    cp_lead: "Kept before a song's first object (ms)", cp_tail: "Kept after its last sound (ms)",
+    cp_difficulty: "Difficulty numbers", cp_diff_first: "The first song's", cp_diff_median: "The median",
+    cp_diff_hint: "AR, OD, HP and the slider multiplier are one set for the whole map. Each song's own slider speed is kept anyway, through a green line.",
+    cp_breaks: "A break over every junction, so the silence between two songs is silence",
+    cp_bookmarks: "A bookmark where each song starts",
+    cp_strict: "Strict: refuse the build if any source needed a repair",
+    cp_names: "Names and credits", cp_artist: "Artist", cp_title: "Title", cp_creator: "Creator",
+    cp_version: "Difficulty name", cp_tags: "Tags", cp_credits: "credits.txt",
+    cp_build: "What it would build", cp_ready: "ready", cp_not_ready: "not ready",
+    cp_folder: "Choose folder…", cp_folder_named: "Folder: {name}", cp_osz: ".osz as well",
+    cp_go: "Build", cp_go_anyway: "Build into it anyway", cp_building: "Building…",
+    cp_cannot: "Nothing can be built from this yet.",
+    cp_occupied: "{name} is already in that folder. Build again to add this compilation to it.",
+    cp_kind_audio: "audio", cp_kind_sample: "hitsound", cp_kind_beatmap: "map",
+    cp_kind_credits: "credits", cp_kind_background: "background", cp_mb: "{mb} MB", cp_kb: "{kb} kB",
+    cp_step_plan: "Working out the plan…", cp_step_audio: "Writing the audio, song {done} of {total}…",
+    cp_step_samples: "Copying the hitsounds…", cp_step_beatmap: "Writing the map…",
+    cp_step_check: "Reading it back to check it…", cp_step_done: "Finishing…",
+    cp_built: "Built {name}", cp_osz_made: "{name} is beside the folder.",
+    cp_done: "Built into {name}",
+    cp_check_audio: "Every song where the map says", cp_check_snap: "On the grid",
+    cp_check_round: "The map read back",
+    cp_check_shift: "{ms} ms out", cp_check_not_measured: "not measured at this sample rate",
+    cp_check_unsnapped: "{n} of {total} objects off it", cp_check_identical: "byte for byte",
+    cp_check_differs: "came back different",
+    no_maps: "No .osu file in that folder.", bad_index: "That song is not in the list any more.",
+    no_folder: "Choose a folder to build into first.", no_sources: "Add some maps first.",
+    plan_refused: "This cannot be built: {detail}",
     done: "Done: {n} timing points · {bpm} BPM", rescaled: "Pulse ×{f}: {n} timing points · {bpm} BPM",
     error: "Error: {detail}",
   },
@@ -1381,12 +1419,50 @@ const I18N = {
     difficulties: "dificultades",
     no_audio: "Esa carpeta no tiene audio legible — sus mapas igual sirven para comparar.",
     bad_folder: "Elegí primero una carpeta real.",
+    nav_compile: "Compilar",
+    cp_sub: "Varios mapas y sus canciones como un solo mapa. Cada objeto mantiene el golpe que tenía, los hitsounds y la velocidad de sliders de cada canción vienen con ella, y nunca se escribe en la carpeta de un mapa original. Lo que una compilación no puede mantener — un solo juego de números de dificultad — queda listado en vez de escondido.",
+    cp_sources: "Canciones", cp_add: "Agregar mapas…", cp_add_song: "Agregar los mapas de la canción abierta", cp_clear: "Vaciar",
+    cp_empty: "Todavía no hay nada que compilar. Agregá las dificultades que quieras, en el orden en que deben sonar: cada una trae su canción, su timing y sus hitsounds.",
+    cp_count: "{n} canciones", cp_refused: "{n} no se pueden usar",
+    cp_lasts: "dura {time}", cp_objects: "{n} objetos",
+    cp_up: "Antes", cp_down: "Después", cp_remove: "Quitar",
+    cp_start_ms: "desde (ms)", cp_end_ms: "hasta (ms)", cp_gain_db: "ganancia (dB)", cp_gap_before_ms: "silencio (ms)",
+    cp_join: "Uniones", cp_totals: "{songs} canciones · {time} · {objects} objetos",
+    cp_lead_in: "Silencio antes de la primera canción (ms)", cp_gap: "Silencio entre canciones (ms)",
+    cp_lead: "Que se guarde antes del primer objeto (ms)", cp_tail: "Y después de su último sonido (ms)",
+    cp_difficulty: "Números de dificultad", cp_diff_first: "Los de la primera", cp_diff_median: "La mediana",
+    cp_diff_hint: "AR, OD, HP y el multiplicador de sliders son uno solo para todo el mapa. La velocidad de sliders de cada canción se mantiene igual, con una línea verde.",
+    cp_breaks: "Un break en cada unión, para que el silencio entre dos canciones sea silencio",
+    cp_bookmarks: "Un bookmark donde empieza cada canción",
+    cp_strict: "Estricto: rechazar el build si alguna fuente necesitó una reparación",
+    cp_names: "Nombres y créditos", cp_artist: "Artista", cp_title: "Título", cp_creator: "Creator",
+    cp_version: "Nombre de la dificultad", cp_tags: "Tags", cp_credits: "credits.txt",
+    cp_build: "Qué construiría", cp_ready: "listo", cp_not_ready: "no está listo",
+    cp_folder: "Elegir carpeta…", cp_folder_named: "Carpeta: {name}", cp_osz: "También un .osz",
+    cp_go: "Construir", cp_go_anyway: "Construir ahí igual", cp_building: "Construyendo…",
+    cp_cannot: "Todavía no se puede construir nada con esto.",
+    cp_occupied: "{name} ya está en esa carpeta. Apretá Construir otra vez para agregar esta compilación ahí.",
+    cp_kind_audio: "audio", cp_kind_sample: "hitsound", cp_kind_beatmap: "mapa",
+    cp_kind_credits: "créditos", cp_kind_background: "fondo", cp_mb: "{mb} MB", cp_kb: "{kb} kB",
+    cp_step_plan: "Armando el plan…", cp_step_audio: "Escribiendo el audio, canción {done} de {total}…",
+    cp_step_samples: "Copiando los hitsounds…", cp_step_beatmap: "Escribiendo el mapa…",
+    cp_step_check: "Leyéndolo de vuelta para revisarlo…", cp_step_done: "Terminando…",
+    cp_built: "Construido {name}", cp_osz_made: "{name} quedó al lado de la carpeta.",
+    cp_done: "Construido en {name}",
+    cp_check_audio: "Cada canción donde dice el mapa", cp_check_snap: "En la grilla",
+    cp_check_round: "El mapa releído",
+    cp_check_shift: "{ms} ms de diferencia", cp_check_not_measured: "no medido a esta frecuencia",
+    cp_check_unsnapped: "{n} de {total} objetos fuera", cp_check_identical: "byte a byte",
+    cp_check_differs: "volvió distinto",
+    no_maps: "No hay ningún .osu en esa carpeta.", bad_index: "Esa canción ya no está en la lista.",
+    no_folder: "Primero elegí una carpeta donde construir.", no_sources: "Primero agregá mapas.",
+    plan_refused: "Esto no se puede construir: {detail}",
     done: "Listo: {n} timing points · {bpm} BPM", rescaled: "Pulso ×{f}: {n} timing points · {bpm} BPM",
     error: "Error: {detail}",
   },
 };
 
-const S = { lang: "en", view: "library", mapset: null, file: null, options: null, presets: {}, result: null, timings: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, snap: null, ref: null, refFind: null, assist: null, report: null, recent: [] };
+const S = { lang: "en", view: "library", mapset: null, compile: null, file: null, options: null, presets: {}, result: null, timings: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, snap: null, ref: null, refFind: null, assist: null, report: null, recent: [] };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
@@ -1419,6 +1495,7 @@ function translate() {
   sbRender();
   renderNeedSong();
   renderMapset();
+  renderCompile();
   if (typeof renderCopier === "function") renderCopier();
   if (typeof renderSwapResult === "function" && S.mapset) renderSwap();
   if (S.result) renderResult(S.result);
@@ -1429,8 +1506,8 @@ function translate() {
 // One analysed song is shared by every view: switching only changes what is
 // visible, never the session. Views that read the analysis show the
 // "analyze first" panel until there is one, instead of blank space.
-const VIEWS = ["library", "timing", "structure", "hitsounds", "mapcheck", "mapset", "audio", "report", "export", "history", "settings"];
-const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", structure: "nav_structure", hitsounds: "nav_hitsounds", mapcheck: "nav_mapcheck", mapset: "nav_mapset", audio: "nav_audio", report: "nav_report", export: "nav_export", history: "nav_history", settings: "nav_settings" };
+const VIEWS = ["library", "timing", "structure", "hitsounds", "mapcheck", "mapset", "audio", "compile", "report", "export", "history", "settings"];
+const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", structure: "nav_structure", hitsounds: "nav_hitsounds", mapcheck: "nav_mapcheck", mapset: "nav_mapset", audio: "nav_audio", compile: "nav_compile", report: "nav_report", export: "nav_export", history: "nav_history", settings: "nav_settings" };
 
 function needsResult(view) {
   const section = document.querySelector(`.content > [data-view="${view}"]`);
@@ -1460,6 +1537,7 @@ function setView(view) {
   if (view === "export" && S.result) hsdfMaps();
   if (view === "audio" && S.result) audioLoad();
   if (view === "history") histLoad();
+  if (view === "compile") cpLoad();
 }
 
 function renderNeedSong() {
@@ -1881,6 +1959,22 @@ window.overtone = {
     toast(t(S.result ? "analysis_stopped_kept" : "analysis_stopped", { s }));
   },
   onLibraryProgress(progress) { SONGS.progress = progress; renderSongs(); },
+  onCompileProgress(info) { CP.progress = info; renderCompile(); },
+  onCompileDone(reply) {
+    CP.building = false;
+    CP.progress = null;
+    if (reply.ok) {
+      CP.report = reply.report;
+      CP.confirm = false;
+      toast(t("cp_done", { name: String(reply.report.folder || "").split(/[\\/]/).pop() }));
+    } else {
+      toast(t(reply.key === "error" ? "error" : reply.key, { detail: reply.detail || "" }), true);
+    }
+    // Draw the report first: cpLoad() is a round trip, and the card must not
+    // sit on "Building…" while it travels.
+    renderCompile();
+    cpLoad();
+  },
   onHealthProgress(progress) { HEALTH.progress = progress; renderHealth(); },
   onHealthDone(reply) {
     HEALTH.running = false; HEALTH.progress = null;
@@ -7258,6 +7352,249 @@ function toggleCheck(id) {
 // ------------------------------------------------------------------ wiring
 let focusByKey = false;
 
+// ------------------------------------------------------------------ compile
+// Several maps and their songs as one map (Phase 25). The view is drawn from
+// one bridge reply and nothing else: every change re-plans in Python, so the
+// list, the numbers under it and the file list cannot drift apart. The build
+// runs on its own worker with its own lock, like the library health check:
+// the analysis's progress bar and Stop belong to the analysis.
+const CP = { progress: null, report: null, building: false, confirm: false };
+
+function cpClock(ms) {
+  const total = Math.max(0, Math.round((ms || 0) / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function cpSet(id, value) {
+  // Never type over the field somebody is typing in.
+  const el = $(id);
+  if (el && document.activeElement !== el) el.value = value;
+}
+
+function cpApply(reply) {
+  if (!reply) return;
+  if (reply.sources) { S.compile = reply; renderCompile(); }
+  // "cannot_build" and an occupied folder belong in the build card, where the
+  // numbers they are about are; everything else is a failed action.
+  if (reply.key === "nothing_picked") return;                 // a cancelled dialog is not news
+  if (reply.key && reply.key !== "cannot_build" && !reply.sources) editFailure(reply);
+}
+
+async function cpLoad() {
+  if (!api()) return;
+  cpApply(await api().compile_state());
+}
+
+async function cpAdd() { if (api()) cpApply(await api().compile_add()); }
+async function cpAddSong() { if (api()) cpApply(await api().compile_add_open_song()); }
+async function cpClear() { if (api()) { CP.report = null; cpApply(await api().compile_clear()); } }
+async function cpMove(n, delta) { if (api()) cpApply(await api().compile_move(n, delta)); }
+async function cpRemove(n) { if (api()) cpApply(await api().compile_remove(n)); }
+async function cpField(n, key, value) {
+  if (api()) cpApply(await api().compile_update(n, { [key]: value }));
+}
+async function cpSetting(changes) { if (api()) cpApply(await api().compile_settings(changes)); }
+async function cpName(changes) { if (api()) cpApply(await api().compile_metadata(changes)); }
+async function cpShape(changes) { if (api()) cpApply(await api().compile_format(changes)); }
+
+async function cpPickFolder() {
+  if (!api()) return;
+  CP.confirm = false;
+  cpApply(await api().compile_pick_folder());
+}
+
+async function cpBuild() {
+  if (!api() || CP.building) return;
+  CP.building = true;
+  CP.report = null;
+  CP.progress = { step: "plan", done: 0, total: 1 };
+  renderCompile();
+  const reply = await api().compile_build("", CP.confirm);
+  if (reply.ok) return;                 // the report arrives as an event
+  CP.building = false;
+  CP.progress = null;
+  if (reply.key === "folder_occupied") {
+    // Adding to a mapset is a reasonable thing to do and a bad thing to do
+    // by accident: the second click says yes.
+    CP.confirm = true;
+    toast(t("cp_occupied", { name: reply.detail || "" }), true);
+  } else {
+    editFailure(reply);
+  }
+  renderCompile();
+}
+
+function cpRow(seg, n, last, spec) {
+  const meta = seg.metadata || {};
+  const song = [meta.Artist, meta.Title].filter(Boolean).join(" - ") || seg.name;
+  const why = [
+    ...(seg.refusals || []).map((r) => `<span class="bad">${esc(r.why)}</span>`),
+    ...(seg.repairs || []).map((r) => `<span>${esc(r.what)}</span>`),
+  ].join("");
+  const facts = [cpClock(seg.at_ms), t("cp_lasts", { time: cpClock(seg.range.duration_ms) }),
+                 t("cp_objects", { n: seg.objects.in_range })].join(" · ");
+  const field = (key, placeholder) => `<label>${t("cp_" + key)}
+    <input class="input num" type="number" step="100" data-cp-field="${key}" data-cp-index="${n}"
+      value="${spec[key] === undefined ? "" : spec[key]}" placeholder="${placeholder}"></label>`;
+  return `<div class="cp-row${seg.usable ? "" : " bad"}">
+    <div class="cp-head">
+      <span class="pill">${n + 1}</span>
+      <span class="cp-name" title="${esc(seg.osu)}">${esc(song)} <span class="muted">[${esc(seg.name)}]</span></span>
+      <span class="cp-at">${esc(facts)}</span>
+      <div class="spacer"></div>
+      <div class="cp-move">
+        <button class="btn ghost" data-cp-move="${n}" data-cp-delta="-1" ${n === 0 ? "disabled" : ""} title="${t("cp_up")}">&uarr;</button>
+        <button class="btn ghost" data-cp-move="${n}" data-cp-delta="1" ${n === last ? "disabled" : ""} title="${t("cp_down")}">&darr;</button>
+        <button class="btn ghost" data-cp-remove="${n}" title="${t("cp_remove")}">&times;</button>
+      </div>
+    </div>
+    <div class="cp-fields">
+      ${field("start_ms", Math.round(seg.range.start_ms))}
+      ${field("end_ms", Math.round(seg.range.end_ms))}
+      ${field("gain_db", "0")}
+      ${n ? field("gap_before_ms", Math.round((S.compile.settings || {}).gap_ms || 0)) : ""}
+    </div>
+    ${why ? `<div class="cp-why">${why}</div>` : ""}
+  </div>`;
+}
+
+// Build notes a person can act on. The others — where each grid was pinned,
+// for one — are bookkeeping the report keeps and a card would only clutter.
+const CP_NOTES = ["objects_dropped", "breaks_dropped", "background_missing"];
+
+function cpSize(bytes) {
+  // A five-byte hitsound reads as "0.00 MB", which is worse than no number.
+  if (bytes === null || bytes === undefined) return "";
+  return bytes >= 1e6 ? t("cp_mb", { mb: (bytes / 1e6).toFixed(2) })
+    : t("cp_kb", { kb: Math.max(1, Math.round(bytes / 1000)) });
+}
+
+function cpFiles(check) {
+  return `<div class="cp-files">${check.files.map((f) => `<div class="cp-file">
+    <span class="kind">${t("cp_kind_" + f.kind)}</span>
+    <span class="name" title="${esc(f.name)}">${esc(f.name)}</span>
+    <span class="num muted">${cpSize(f.bytes)}</span>
+  </div>`).join("")}</div>`;
+}
+
+function cpChecks(report) {
+  const c = report.checks;
+  if (!c) return "";
+  const snap = c.snap || {};
+  const rows = [
+    [t("cp_check_audio"), c.audio.checked
+      ? t("cp_check_shift", { ms: c.audio.worst_shift_ms }) : t("cp_check_not_measured"),
+      c.audio.ok],
+    [t("cp_check_snap"), t("cp_check_unsnapped", { n: snap.unsnapped, total: snap.objects }),
+     !snap.unsnapped && !snap.before_first_red && !snap.past_audio],
+    [t("cp_check_round"), c.round_trip ? t("cp_check_identical") : t("cp_check_differs"),
+     c.round_trip],
+  ];
+  return `<div class="cp-why">${rows.map(([name, said, ok]) =>
+    `<span class="${ok ? "" : "bad"}">${name}: ${esc(said)}</span>`).join("")}</div>`;
+}
+
+function renderCompile() {
+  const cp = S.compile, body = $("cpBody");
+  const sources = (cp && cp.sources) || [];
+  const plan = (cp && cp.plan) || null;
+  $("cpAddSong").hidden = !S.file;
+  $("cpClear").hidden = !sources.length;
+  $("cpCount").hidden = $("cpRefused").hidden = true;
+  $("cpJoinCard").hidden = $("cpNamesCard").hidden = $("cpBuildCard").hidden = !sources.length;
+  if (!sources.length) {
+    body.innerHTML = `<div class="card-sub">${t("cp_empty")}</div>`;
+    return;
+  }
+  $("cpCount").hidden = false;
+  $("cpCount").textContent = t("cp_count", { n: sources.length });
+  const refused = plan ? (plan.refusals || []).length : 0;
+  if (refused) {
+    $("cpRefused").hidden = false;
+    $("cpRefused").textContent = t("cp_refused", { n: refused });
+  }
+  const segments = plan ? plan.segments : [];
+  body.innerHTML = segments.map((seg, n) => cpRow(seg, n, segments.length - 1, sources[n] || {})).join("")
+    + (plan && !plan.usable
+      ? `<div class="cp-why mt-m">${(plan.refusals || []).map((r) =>
+          `<span class="bad">${r.segment === null ? "" : `${r.segment + 1}. `}${esc(r.why)}</span>`).join("")}</div>`
+      : "");
+
+  // Joining
+  const set = cp.settings || {};
+  cpSet("cpLeadIn", Math.round(set.lead_in_ms));
+  cpSet("cpGap", Math.round(set.gap_ms));
+  cpSet("cpLead", Math.round(set.lead_ms));
+  cpSet("cpTail", Math.round(set.tail_ms));
+  $("cpBreaks").checked = !!set.junction_breaks;
+  $("cpBookmarks").checked = !!set.junction_bookmarks;
+  $("cpStrict").checked = !!set.strict;
+  document.querySelectorAll("#cpDifficulty button").forEach((b) =>
+    b.classList.toggle("on", b.dataset.from === (cp.format || {}).difficulty_from));
+  const totals = plan ? plan.totals : null;
+  $("cpJoinSub").textContent = totals
+    ? t("cp_totals", { songs: totals.segments, time: cpClock(totals.duration_ms),
+                       objects: totals.objects })
+    : "";
+
+  // Names and credits
+  const check = cp.check || null;
+  const values = check ? check.metadata.values : {};
+  const given = cp.metadata || {};
+  [["cpArtist", "artist"], ["cpTitle", "title"], ["cpCreator", "creator"],
+   ["cpVersion", "version"]].forEach(([id, key]) => {
+    cpSet(id, given[key] || "");
+    if ($(id)) $(id).placeholder = values[key] || "";
+  });
+  $("cpTags").innerHTML = (values.tags || "").split(" ").filter(Boolean)
+    .map((tag) => `<span class="chip">${esc(tag)}</span>`).join("");
+  $("cpCredits").textContent = check ? check.credits : "";
+  $("cpOsuName").textContent = check ? check.osu : "";
+  $("cpOsuName").title = check ? check.osu : "";
+
+  // What it would build
+  document.querySelectorAll("#cpFormat button").forEach((b) =>
+    b.classList.toggle("on", b.dataset.format === (cp.format || {}).audio_format));
+  $("cpOsz").checked = !!(cp.format || {}).osz;
+  const verdict = $("cpVerdict");
+  verdict.hidden = false;
+  verdict.className = `pill ${plan && plan.usable ? "accent" : "amber"}`;
+  verdict.textContent = plan && plan.usable ? t("cp_ready") : t("cp_not_ready");
+  $("cpGo").disabled = !check || CP.building;
+  $("cpGo").querySelector("span").textContent = t(CP.building ? "cp_building"
+    : CP.confirm ? "cp_go_anyway" : "cp_go");
+  const where = cp.out || "";
+  $("cpFolder").querySelector("span").textContent = where
+    ? t("cp_folder_named", { name: where.split(/[\\/]/).pop() }) : t("cp_folder");
+  $("cpFolder").title = where;
+
+  const parts = [];
+  if (!check) {
+    parts.push(`<div class="card-sub">${esc(cp.detail || t("cp_cannot"))}</div>`);
+  } else {
+    parts.push(cpFiles(check));
+    const pending = (check.beatmap.pending || []).concat(
+      (check.beatmap.notes || []).filter((n) => CP_NOTES.includes(n.code)));
+    if (cp.occupied) parts.push(`<div class="cp-why"><span class="bad">${
+      t("cp_occupied", { name: cp.occupied })}</span></div>`);
+    if (pending.length) parts.push(`<div class="cp-why">${pending.map((p) =>
+      `<span>${esc(p.what)}</span>`).join("")}</div>`);
+  }
+  if (CP.progress) {
+    parts.push(`<div class="card-sub mt-m">${t("cp_step_" + CP.progress.step,
+      { done: CP.progress.done + 1, total: CP.progress.total })}</div>`);
+  }
+  if (CP.report) {
+    parts.push(`<div class="mt-m"><span class="pill ${CP.report.checks && CP.report.checks.ok
+      ? "accent" : "amber"}">${t("cp_built", { name: CP.report.osu })}</span></div>`);
+    if (CP.report.osz) {
+      parts.push(`<div class="card-sub">${t("cp_osz_made", { name: CP.report.osz.name })}</div>`);
+    }
+    parts.push(cpChecks(CP.report));
+  }
+  $("cpBuildBody").innerHTML = parts.join("");
+}
+
 function wire() {
   document.querySelectorAll("#nav [data-view]").forEach((b) => { b.onclick = () => setView(b.dataset.view); });
   stWire();
@@ -7515,6 +7852,40 @@ function wire() {
   $("swPreview").onclick = swPreview;
   $("swApply").onclick = swApply;
   $("swNew").onchange = () => { SW.preview = null; renderSwapResult(); };
+  $("cpAdd").onclick = cpAdd;
+  $("cpAddSong").onclick = cpAddSong;
+  $("cpClear").onclick = cpClear;
+  $("cpFolder").onclick = cpPickFolder;
+  $("cpGo").onclick = cpBuild;
+  $("cpBody").onclick = (e) => {
+    const move = e.target.closest("[data-cp-move]");
+    if (move) { cpMove(+move.dataset.cpMove, +move.dataset.cpDelta); return; }
+    const gone = e.target.closest("[data-cp-remove]");
+    if (gone) cpRemove(+gone.dataset.cpRemove);
+  };
+  $("cpBody").onchange = (e) => {
+    const field = e.target.closest("[data-cp-field]");
+    if (field) cpField(+field.dataset.cpIndex, field.dataset.cpField, field.value);
+  };
+  [["cpLeadIn", "lead_in_ms"], ["cpGap", "gap_ms"], ["cpLead", "lead_ms"],
+   ["cpTail", "tail_ms"]].forEach(([id, key]) => {
+    $(id).onchange = () => cpSetting({ [key]: $(id).value });
+  });
+  [["cpBreaks", "junction_breaks"], ["cpBookmarks", "junction_bookmarks"],
+   ["cpStrict", "strict"]].forEach(([id, key]) => {
+    $(id).onchange = () => cpSetting({ [key]: $(id).checked });
+  });
+  [["cpArtist", "artist"], ["cpTitle", "title"], ["cpCreator", "creator"],
+   ["cpVersion", "version"]].forEach(([id, key]) => {
+    $(id).onchange = () => cpName({ [key]: $(id).value });
+  });
+  document.querySelectorAll("#cpDifficulty button").forEach((b) => {
+    b.onclick = () => cpShape({ difficulty_from: b.dataset.from });
+  });
+  document.querySelectorAll("#cpFormat button").forEach((b) => {
+    b.onclick = () => cpShape({ audio_format: b.dataset.format });
+  });
+  $("cpOsz").onchange = () => cpShape({ osz: $("cpOsz").checked });
   $("undoBtn").onclick = undo;
   $("redoBtn").onclick = redo;
   $("injectBtn").onclick = injectOsu;

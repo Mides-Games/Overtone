@@ -4735,6 +4735,40 @@ class CompileBridgeTests(_IsolatedConfig):
             finally:
                 api._compile_lock.release()
 
+    def test_a_songs_phrases_can_be_read_and_picked_as_a_range(self) -> None:
+        import overtone_rust
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._song(Path(tmp) / "a", 150.0, "A", "Song", "m1",
+                                rate=44100, rms_dbfs=-20.0, seconds=20.0)
+            api = web.Api()
+            api.compile_add([str(source)])
+            self.assertEqual(api.compile_sections(5)["key"], "bad_index")
+            reply = api.compile_sections(0)
+            json.dumps(reply)
+            picked = None
+            if reply.get("ok") and reply["sections"]:
+                phrase = reply["sections"][0]
+                picked = (phrase, api.compile_update(0, {
+                    "start_ms": phrase["start_ms"], "end_ms": phrase["end_ms"]}))
+        if overtone_rust.find_cli() is None:
+            # The structure engine is the Rust sidecar; without it the view
+            # says so rather than pretending there are no phrases.
+            self.assertEqual(reply["key"], "no_rust")
+            return
+        self.assertTrue(reply["ok"], reply)
+        self.assertEqual(reply["segment"], 0)
+        for row in reply["sections"]:
+            self.assertLess(row["start_ms"], row["end_ms"])
+            self.assertIn("kind", row)
+        if picked is None:
+            return
+        # A phrase becomes the range through the same call a typed one uses.
+        phrase, state = picked
+        self.assertEqual((state["plan"]["segments"][0]["range"]["start_ms"],
+                          state["plan"]["segments"][0]["range"]["end_ms"]),
+                         (phrase["start_ms"], phrase["end_ms"]))
+        self.assertEqual(state["plan"]["segments"][0]["range"]["from"], "given")
+
     def test_an_order_is_proposed_and_applied_only_when_asked(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             fast = self._song(Path(tmp) / "a", 180.0, "A", "Fast", "m1")

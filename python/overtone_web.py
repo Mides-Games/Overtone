@@ -380,6 +380,10 @@ class Api:
         #: is asked for rather than taken: the view shows each song's level
         #: beside the gain it was given.
         self._compile_loudness: dict | None = None
+        #: One segment's song read into phrases, by (path, size, mtime): the
+        #: sidecar reads the audio once per file and a range picked from a
+        #: phrase is the whole point of asking.
+        self._compile_sections: dict = {}
         #: A build's own lock, beside the analysis's: the analysis's belongs to
         #: one analysis, and ``stop_analysis`` reads it to decide whether
         #: anything is running. The two refuse each other instead of sharing,
@@ -1953,6 +1957,52 @@ class Api:
                 return {"ok": False, "key": "bad_values", "detail": str(key)}
         self._compile_format = chosen
         return self.compile_state()
+
+    def compile_sections(self, index: int) -> dict:
+        """The phrases of one segment's song, to pick a range from.
+
+        ``overtone-cli structure`` reads that song once; the answer is kept
+        by path, size and modification time, so picking from the same song
+        again costs nothing. No analysis is needed and nothing is written:
+        this is the structure view's own engine, asked about a file instead
+        of about the open song.
+
+        A phrase becomes a range through ``compile_update`` like any other —
+        the edges are the phrase's own, and ``start_on_downbeat`` is what
+        puts them on a bar line.
+        """
+        if not 0 <= int(index) < len(self._compile):
+            return {"ok": False, "key": "bad_index"}
+        if self._busy.locked() or self._compile_lock.locked():
+            return {"ok": False, "key": "busy"}
+        segment = tc.read_segment(self._compile[int(index)]["osu"],
+                                  audio=self._compile[int(index)].get("audio"))
+        path = segment["audio"]["path"]
+        if not path:
+            return {"ok": False, "key": "no_audio"}
+        source = Path(path)
+        try:
+            stat = source.stat()
+        except OSError:
+            return {"ok": False, "key": "bad_file"}
+        key = (str(source), stat.st_size, stat.st_mtime_ns)
+        if key not in self._compile_sections:
+            try:
+                report = overtone_rust.structure(source)
+            except overtone_rust.SidecarUnavailable:
+                return {"ok": False, "key": "no_rust"}
+            except (RuntimeError, OSError) as exc:
+                return {"ok": False, "key": "error", "detail": str(exc)}
+            self._compile_sections[key] = [
+                {"kind": str(row.get("kind") or ""),
+                 "start_ms": round(float(row["start_s"]) * 1000.0, 3),
+                 "end_ms": round(float(row["end_s"]) * 1000.0, 3),
+                 "level_db": round(float(row.get("level_db") or 0.0), 2),
+                 "repeats": int(row.get("repeats") or 0)}
+                for row in report.get("sections", ())
+                if float(row.get("end_s", 0.0)) > float(row.get("start_s", 0.0))]
+        return {"ok": True, "segment": int(index), "file": source.name,
+                "sections": self._compile_sections[key]}
 
     def compile_match_loudness(self, target: str = "median") -> dict:
         """Measure every song and set the gains so none of them jumps.

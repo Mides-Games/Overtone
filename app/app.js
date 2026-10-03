@@ -694,6 +694,12 @@ const I18N = {
     cp_sub: "Several maps and their songs as one map. Every object keeps the beat it had, each song's hitsounds and slider speed come with it, and nothing is ever written into a source folder. What a compilation cannot keep — one set of difficulty numbers — is listed instead of hidden.",
     cp_sources: "Songs", cp_match: "Match volumes", cp_matching: "Measuring…",
     cp_suggest: "Suggest an order", cp_order_use: "Use it",
+    cp_phrases: "Phrases…", cp_phrases_hide: "Hide phrases",
+    cp_phrases_none: "The engine found no phrase in this song.",
+    cp_phrase_level: "{db} dB",
+    cp_part_intro: "intro", cp_part_verse: "verse", cp_part_chorus: "chorus",
+    cp_part_bridge: "bridge", cp_part_outro: "outro", cp_part_break: "break",
+    no_audio: "That song has no audio to read.",
     cp_rule_tempo: "tempo", cp_rule_loudness: "loudness",
     cp_order_tempo: "By tempo: {names}. The jumps add up to {after} BPM instead of {before}.",
     cp_order_loudness: "By loudness, quietest first: {names}.",
@@ -1443,6 +1449,12 @@ const I18N = {
     cp_sub: "Varios mapas y sus canciones como un solo mapa. Cada objeto mantiene el golpe que tenía, los hitsounds y la velocidad de sliders de cada canción vienen con ella, y nunca se escribe en la carpeta de un mapa original. Lo que una compilación no puede mantener — un solo juego de números de dificultad — queda listado en vez de escondido.",
     cp_sources: "Canciones", cp_match: "Igualar volumen", cp_matching: "Midiendo…",
     cp_suggest: "Sugerir un orden", cp_order_use: "Usarlo",
+    cp_phrases: "Partes…", cp_phrases_hide: "Ocultar partes",
+    cp_phrases_none: "El motor no encontró ninguna parte en esta canción.",
+    cp_phrase_level: "{db} dB",
+    cp_part_intro: "intro", cp_part_verse: "verso", cp_part_chorus: "estribillo",
+    cp_part_bridge: "puente", cp_part_outro: "cierre", cp_part_break: "break",
+    no_audio: "Esa canción no tiene audio que leer.",
     cp_rule_tempo: "el tempo", cp_rule_loudness: "el volumen",
     cp_order_tempo: "Por tempo: {names}. Los saltos suman {after} BPM en vez de {before}.",
     cp_order_loudness: "Por volumen, del más bajo al más alto: {names}.",
@@ -7411,7 +7423,7 @@ let focusByKey = false;
 // runs on its own worker with its own lock, like the library health check:
 // the analysis's progress bar and Stop belong to the analysis.
 const CP = { progress: null, report: null, building: false, confirm: false,
-             matching: false, proposal: null };
+             matching: false, proposal: null, sections: {} };
 
 function cpClock(ms) {
   const total = Math.max(0, Math.round((ms || 0) / 1000));
@@ -7447,6 +7459,21 @@ async function cpField(n, key, value) {
   if (api()) cpApply(await api().compile_update(n, { [key]: value }));
 }
 async function cpSetting(changes) { if (api()) cpApply(await api().compile_settings(changes)); }
+async function cpPhrases(n) {
+  if (!api()) return;
+  if (CP.sections[n]) { delete CP.sections[n]; renderCompile(); return; }
+  const reply = await api().compile_sections(n);
+  if (!reply.ok) { editFailure(reply); return; }
+  CP.sections[n] = reply.sections;
+  renderCompile();
+}
+
+async function cpPickPhrase(n, start, end) {
+  if (!api()) return;
+  delete CP.sections[n];
+  cpApply(await api().compile_update(n, { start_ms: start, end_ms: end }));
+}
+
 async function cpSuggest() {
   if (!api()) return;
   // Tempo first, and loudness only once the levels have been measured: a
@@ -7539,7 +7566,10 @@ function cpRow(seg, n, last, spec) {
         <button class="btn ghost" data-cp-remove="${n}" title="${t("cp_remove")}">&times;</button>
       </div>
     </div>
+    ${cpPhraseChips(n)}
     <div class="cp-fields">
+      <button class="btn ghost small" data-cp-phrases="${n}">${
+        t(CP.sections[n] ? "cp_phrases_hide" : "cp_phrases")}</button>
       ${field("start_ms", Math.round(seg.range.start_ms))}
       ${field("end_ms", Math.round(seg.range.end_ms))}
       ${field("gain_db", "0")}
@@ -7558,6 +7588,24 @@ function cpSize(bytes) {
   if (bytes === null || bytes === undefined) return "";
   return bytes >= 1e6 ? t("cp_mb", { mb: (bytes / 1e6).toFixed(2) })
     : t("cp_kb", { kb: Math.max(1, Math.round(bytes / 1000)) });
+}
+
+function cpPartName(kind) {
+  // The engine may grow a label this table has not; show the engine's word
+  // rather than the key it would print.
+  const said = t("cp_part_" + kind);
+  return said === "cp_part_" + kind ? kind : said;
+}
+
+function cpPhraseChips(n) {
+  const rows = CP.sections[n];
+  if (!rows) return "";
+  if (!rows.length) return `<div class="cp-why"><span>${t("cp_phrases_none")}</span></div>`;
+  return `<div class="chips mt-s">${rows.map((row) => `<span class="chip"
+    data-cp-phrase="${n}" data-cp-start="${row.start_ms}" data-cp-end="${row.end_ms}"
+    title="${t("cp_phrase_level", { db: row.level_db })}">${
+      esc(cpPartName(row.kind))} ${cpClock(row.start_ms)}-${cpClock(row.end_ms)}</span>`)
+    .join("")}</div>`;
 }
 
 function cpProposal(segments) {
@@ -7990,7 +8038,14 @@ function wire() {
     const move = e.target.closest("[data-cp-move]");
     if (move) { cpMove(+move.dataset.cpMove, +move.dataset.cpDelta); return; }
     const gone = e.target.closest("[data-cp-remove]");
-    if (gone) cpRemove(+gone.dataset.cpRemove);
+    if (gone) { cpRemove(+gone.dataset.cpRemove); return; }
+    const phrases = e.target.closest("[data-cp-phrases]");
+    if (phrases) { cpPhrases(+phrases.dataset.cpPhrases); return; }
+    const phrase = e.target.closest("[data-cp-phrase]");
+    if (phrase) {
+      cpPickPhrase(+phrase.dataset.cpPhrase, +phrase.dataset.cpStart,
+                   +phrase.dataset.cpEnd);
+    }
   };
   $("cpBody").onchange = (e) => {
     const field = e.target.closest("[data-cp-field]");

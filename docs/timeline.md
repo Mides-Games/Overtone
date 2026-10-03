@@ -18,6 +18,39 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-10-03 · A song's phrases, as the range to borrow
+
+### Changed
+
+- **`compile_sections`** (row 25.18) runs `overtone-cli structure` on one
+  segment's song and returns its phrases — kind, start, end, level, repeats —
+  kept by path, size and modification time, so the same song is read once
+  however often it is asked about. The structure view's own engine, asked
+  about a file instead of about the open song, and no analysis needed.
+- In the app: **Phrases…** on each song's row, the phrases as chips, and
+  clicking one makes it that segment's range through the same
+  `compile_update` a typed range uses. So `start_on_downbeat` is what puts
+  its edges on a bar line, and the repair list says if it leaves objects
+  outside — which is usually the point: a chorus-only compilation is objects
+  left outside on purpose.
+- Without the Rust engine built it says `no_rust` rather than reporting that
+  the song has no phrases.
+
+### Fixed
+
+- A third test that read its temp folder after the folder was gone. The
+  zeroed shape a refused read now answers with made it fail quietly instead
+  of raising, which is the behaviour the plan wanted and a poor error
+  message for a test. Worth writing down: assertions belong inside the
+  `with`.
+
+### Measured
+
+- In the harness, on a 20 s fixture: the phrase list came back as one verse
+  0:00-0:20, the chip set the range to exactly that (`from: "given"`), the
+  chips folded away, and both languages read clean. 929 tests, all green;
+  the `combine` gate green.
+
 ## v4.0.0-dev — 2026-10-03 · The last check: every borrowed red line, on the built audio
 
 ### Changed

@@ -44,7 +44,7 @@ commit messages are English; only the app's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (928 on 2026-10-03)
+.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (929 on 2026-10-03)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage

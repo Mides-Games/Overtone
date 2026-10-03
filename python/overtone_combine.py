@@ -666,7 +666,26 @@ DEFAULT_SETTINGS: dict = {
     #: Refuse instead of repairing: one odd thing in one source and the plan
     #: says no. For a build somebody else will play.
     "strict": False,
+    #: A break in every junction gap that is long enough for one, so the
+    #: silence between two songs is silence and not health draining away.
+    "junction_breaks": True,
+    #: A bookmark where each segment starts, so the result can be navigated
+    #: song by song in the editor.
+    "junction_bookmarks": True,
+    #: Which segment's preview point becomes the compilation's: ``"first"``
+    #: means the first segment that has one inside its range, and a number
+    #: names a segment.
+    "preview_from": "first",
 }
+
+
+#: A junction gap shorter than this gets no break: a break nobody can see is
+#: clutter in the editor, and the number is this tool's own bar rather than a
+#: claim about what osu! draws.
+JUNCTION_BREAK_MIN_MS = 1000.0
+
+#: Air between a break and the objects either side of it.
+BREAK_MARGIN_MS = 200.0
 
 #: Per-segment keys a source may carry beside its path. ``gap_before_ms``
 #: overrides the plan's gap for the junction in front of this segment, and
@@ -1123,6 +1142,43 @@ def _header_sections(plan: dict, audio_name: str, preview_ms: float | None,
     return lines
 
 
+def _merged(periods: list[tuple]) -> list[tuple]:
+    """Break periods in order, any that touch or overlap made one.
+
+    Two breaks over one moment is not something a map can mean, and a
+    junction break can meet a source's own break that ran to the end of its
+    range.
+    """
+    out: list[tuple] = []
+    for start, end in sorted(periods):
+        if out and start <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], end))
+        else:
+            out.append((start, end))
+    return out
+
+
+def _between_objects(periods: list[tuple], times: list[float]) -> tuple[list, int]:
+    """Only the breaks that sit between two objects, and how many were dropped.
+
+    osu! draws a break between objects; one hanging off either end of the map
+    is a line the editor will not show and the game will not use. A range
+    that cut its objects can leave a source's break doing exactly that.
+    """
+    import bisect
+
+    kept: list[tuple] = []
+    dropped = 0
+    for start, end in periods:
+        before = bisect.bisect_left(times, start) > 0
+        after = bisect.bisect_right(times, end) < len(times)
+        if before and after:
+            kept.append((start, end))
+        else:
+            dropped += 1
+    return kept, dropped
+
+
 def combine_beatmap(plan: dict, audio_name: str = "audio.mp3",
                     decimals: int = WRITE_DECIMALS,
                     samples: dict | None = None,
@@ -1206,17 +1262,53 @@ Hitsounds travel with their segment: every sample index is remapped so no
                 continue
             breaks.append((max(period["start_ms"], start) + shift,
                            min(period["end_ms"], end) + shift))
-        if preview is None and segment["preview_ms"] is not None \
+        wanted = plan["settings"].get("preview_from", "first")
+        mine = wanted == "first" or (isinstance(wanted, (int, float))
+                                     and int(wanted) == n)
+        if mine and (preview is None or wanted != "first") \
+                and segment["preview_ms"] is not None \
                 and start - 1e-6 <= segment["preview_ms"] <= end + 1e-6:
             preview = segment["preview_ms"] + shift
+        # The last *sound*, not the last object start: a spinner or a hold
+        # is still playing after it begins, and a break that opens inside one
+        # is a break over gameplay.
+        sounds = [max(float(obj["time"]), float(obj.get("end_time") or obj["time"]))
+                  for obj in beatmap.get("hitobjects", ())
+                  if obj.get("kind") != "unparsed"
+                  and start - 1e-6 <= float(obj["time"]) <= end + 1e-6]
         per_segment.append({"segment": n, "name": segment["name"],
                             "at_ms": segment["at_ms"], "shift_ms": shift,
-                            "objects": len(hits), "timing_lines": len(rows)})
+                            "objects": len(hits), "timing_lines": len(rows),
+                            "first_object_ms": round(min((t for t, _r, _x in hits),
+                                                         default=0.0), 3),
+                            "last_object_ms": round(max((t for t, _r, _x in hits),
+                                                        default=0.0), 3),
+                            "last_sound_ms": round(max(sounds, default=0.0) + shift, 3)})
         floor_ms = float(segment["ends_at_ms"])
 
     if refusals:
         raise ValueError("The assembly refused: " + "; ".join(
             f"segment {r['segment']}: {r['why']}" for r in refusals))
+
+    settings = plan["settings"]
+    if settings.get("junction_bookmarks", True):
+        bookmarks.extend(row["at_ms"] for row in per_segment)
+    added = 0
+    if settings.get("junction_breaks", True):
+        for junction in plan["junctions"]:
+            after, before = per_segment[junction["after"]], per_segment[junction["before"]]
+            start = after["last_sound_ms"] + BREAK_MARGIN_MS
+            end = before["first_object_ms"] - BREAK_MARGIN_MS
+            if end - start >= JUNCTION_BREAK_MIN_MS:
+                breaks.append((start, end))
+                added += 1
+    object_times = sorted(time for time, _r, _x in objects)
+    breaks, dropped = _between_objects(_merged(breaks), object_times)
+    if dropped:
+        notes.append({"segment": None, "code": "breaks_dropped",
+                      "what": f"{dropped} break period(s) did not sit between two objects "
+                              f"and were left out: osu! draws a break between objects, "
+                              f"not off either end of a map."})
 
     first = plan["segments"][0]
     pending: list[dict] = []
@@ -1239,6 +1331,7 @@ Hitsounds travel with their segment: every sample index is remapped so no
               "segments": per_segment, "samples": chosen, "difficulty": settled,
               "objects": len(objects), "timing_lines": len(timing),
               "bookmarks": len(bookmarks), "breaks": len(breaks),
+              "junction_breaks": added,
               "preview_ms": None if preview is None else round(preview, 3),
               "duration_ms": plan["totals"]["duration_ms"],
               "notes": notes, "pending": pending}

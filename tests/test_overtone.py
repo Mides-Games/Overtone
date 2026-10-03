@@ -9577,13 +9577,24 @@ class CombineAssemblyTests(unittest.TestCase):
             plan, text, report = self._built([self._map(Path(tmp) / "a"),
                                               self._map(Path(tmp) / "b")])
         shifts = [segment["shift_ms"] for segment in plan["segments"]]
-        self.assertEqual([row for row in self._section(text, "Events")
-                          if row.startswith("2,")],
-                         [f"2,{17500 + shifts[0]:.0f},{18500 + shifts[0]:.0f}",
-                          f"2,{17500 + shifts[1]:.0f},{18500 + shifts[1]:.0f}"])
-        self.assertIn(f"Bookmarks: {15000 + shifts[0]:.0f},{19000 + shifts[0]:.0f},"
+        # Each segment's own bookmarks move with it, and one is added where
+        # each segment starts, so the result can be navigated song by song.
+        self.assertIn(f"Bookmarks: {2000 + 0:.0f},{15000 + shifts[0]:.0f},"
+                      f"{19000 + shifts[0]:.0f},{plan['segments'][1]['at_ms']:.0f},"
                       f"{15000 + shifts[1]:.0f},{19000 + shifts[1]:.0f}", text)
         self.assertEqual(report["preview_ms"], 15500 + shifts[0])
+        # One break over the junction, from the first segment's last sound to
+        # the second's first object: it swallowed both segments' own breaks,
+        # which sat in the silence it covers, and the one hanging off the end
+        # of the second segment was dropped for having no object after it.
+        after, before = report["segments"]
+        self.assertEqual([row for row in self._section(text, "Events")
+                          if row.startswith("2,")],
+                         [f"2,{after['last_sound_ms'] + 200:.0f},"
+                          f"{before['first_object_ms'] - 200:.0f}"])
+        self.assertEqual((report["breaks"], report["junction_breaks"]), (1, 1))
+        self.assertEqual([note["code"] for note in report["notes"]
+                          if note["code"] == "breaks_dropped"], ["breaks_dropped"])
 
     def test_what_falls_outside_the_range_is_left_out(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -9594,7 +9605,9 @@ class CombineAssemblyTests(unittest.TestCase):
         # 17500 begins where the range ends, the bookmarks sit either side of
         # it, and the preview point at 15500 is before it.
         self.assertEqual(len(self._times(text, "HitObjects")), 1)
-        self.assertEqual((report["breaks"], report["bookmarks"]), (0, 0))
+        # No break survives (the source's sat past the range) and the only
+        # bookmark is the one marking where the segment starts.
+        self.assertEqual((report["breaks"], report["bookmarks"]), (0, 1))
         self.assertIsNone(report["preview_ms"])
 
     def test_the_result_reads_back_and_round_trips_byte_identical(self) -> None:
@@ -10181,6 +10194,132 @@ class CombineDifficultyTests(unittest.TestCase):
                          [1.0, 1.0])
         self.assertEqual(len(rows), 2)      # one red each, and no green invented
         self.assertTrue(all(not row.split(",")[1].startswith("-") for row in rows))
+
+class CombineJunctionTests(unittest.TestCase):
+    """What happens where one song stops and the next one starts."""
+
+    def _map(self, folder: Path, *, greens=(), breaks=(), bookmarks: str = "",
+             preview: str = "-1", objects=None, seconds: float = 8.0) -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        rows = objects or ["100,100,2000,1,0,0:0:0:0:",
+                           "256,192,2400,12,0,3400,0:0:0:0:"]
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", f"PreviewTime: {preview}",
+                 "Mode: 0", "",
+                 *(["[Editor]", f"Bookmarks: {bookmarks}", ""] if bookmarks else []),
+                 "[Metadata]", "Title:Song", "Artist:A", "Creator:M",
+                 f"Version:{folder.name}", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[Events]", *breaks, "",
+                 "[TimingPoints]", "1000,400,4,2,0,80,1,0", *greens, "",
+                 "[HitObjects]", *rows, ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        ta.sf.write(str(folder / "song.wav"),
+                    np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        return folder / "map.osu"
+
+    def _built(self, sources, settings=None, **kwargs):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        text, report = overtone_combine.combine_beatmap(plan, **kwargs)
+        json.dumps(report)
+        return plan, text, report
+
+    @staticmethod
+    def _rows(text: str, name: str) -> list[str]:
+        body = text.split(f"[{name}]")[1].split("[")[0]
+        return [row for row in body.splitlines()
+                if row.strip() and not row.strip().startswith("//")]
+
+    def test_a_break_fills_a_junction_gap_long_enough_for_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, report = self._built([self._map(Path(tmp) / "a"),
+                                               self._map(Path(tmp) / "b")])
+        after, before = report["segments"]
+        # The silence between two songs is silence, not health draining away.
+        self.assertEqual([row for row in self._rows(text, "Events")
+                          if row.startswith("2,")],
+                         [f"2,{after['last_sound_ms'] + 200:.0f},"
+                          f"{before['first_object_ms'] - 200:.0f}"])
+        self.assertEqual(report["junction_breaks"], 1)
+        # It opens after the spinner stops, not when it starts.
+        self.assertEqual(after["last_sound_ms"] - after["last_object_ms"], 1000.0)
+
+    def test_a_gap_too_short_for_a_break_gets_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # 600 ms of silence: wide enough to pin the next segment's grid
+            # (one beat is 400), too narrow for a break once the 200 ms of
+            # air either side of one is taken off.
+            _plan, text, report = self._built(
+                [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b")],
+                {"gap_ms": 600.0, "lead_ms": 0.0, "tail_ms": 0.0})
+        self.assertEqual(report["junction_breaks"], 0)
+        self.assertEqual([row for row in self._rows(text, "Events")
+                          if row.startswith("2,")], [])
+
+    def test_the_junction_breaks_and_bookmarks_can_be_turned_off(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, report = self._built(
+                [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b")],
+                {"junction_breaks": False, "junction_bookmarks": False})
+        self.assertEqual((report["junction_breaks"], report["bookmarks"]), (0, 0))
+        self.assertNotIn("Bookmarks:", text)
+
+    def test_a_bookmark_marks_where_each_segment_starts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, text, report = self._built(
+                [self._map(Path(tmp) / "a", bookmarks="2000"),
+                 self._map(Path(tmp) / "b")])
+        starts = [segment["at_ms"] for segment in plan["segments"]]
+        marks = [float(mark) for mark in
+                 next(row for row in self._rows(text, "Editor")
+                      if row.startswith("Bookmarks:")).split(":")[1].split(",")]
+        self.assertEqual(report["bookmarks"], 3)      # one each, plus the source's
+        self.assertEqual(sorted(marks), sorted(starts + [2000.0 + plan["segments"][0]
+                                                         ["shift_ms"]]))
+
+    def test_the_preview_point_can_be_taken_from_a_chosen_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sources = [self._map(Path(tmp) / "a", preview="2200"),
+                       self._map(Path(tmp) / "b", preview="2600")]
+            _plan, _text, first = self._built(sources)
+            plan, text, second = self._built(sources, {"preview_from": 1})
+        self.assertEqual(first["preview_ms"], 2200.0 + plan["segments"][0]["shift_ms"])
+        self.assertEqual(second["preview_ms"], 2600.0 + plan["segments"][1]["shift_ms"])
+        self.assertIn(f"PreviewTime: {second['preview_ms']:.0f}", text)
+
+    def test_a_kiai_span_arrives_with_its_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kiai = self._map(Path(tmp) / "a", greens=("1500,-100,4,2,0,80,0,1",))
+            # A typed range that starts inside the kiai: the pinned red line
+            # has to carry it, or the segment plays unlit.
+            _plan, text, _report = self._built(
+                [{"osu": kiai, "start_ms": 1800.0, "end_ms": 5000.0},
+                 self._map(Path(tmp) / "b")])
+        rows = self._rows(text, "TimingPoints")
+        self.assertEqual(rows[0].split(",")[7], "1")   # the pin, kiai on
+        self.assertEqual(rows[0].split(",")[6], "1")   # and it is a red line
+        # The second segment's own red says nothing about kiai, so it is off
+        # again from there: a span cannot leak into the next song.
+        self.assertEqual(rows[-1].split(",")[7], "0")
+
+    def test_two_breaks_that_meet_become_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # The first map's own break runs from just after its last sound
+            # into the silence the junction break covers.
+            _plan, text, report = self._built(
+                [self._map(Path(tmp) / "a", breaks=("2,3600,4200",)),
+                 self._map(Path(tmp) / "b")])
+        periods = [row for row in self._rows(text, "Events") if row.startswith("2,")]
+        self.assertEqual(len(periods), 1)
+        self.assertEqual(report["breaks"], 1)
+        start, end = (float(value) for value in periods[0].split(",")[1:])
+        after, before = report["segments"]
+        self.assertEqual((start, end), (after["last_sound_ms"] + 200.0,
+                                        before["first_object_ms"] - 200.0))
 
 if __name__ == "__main__":
     unittest.main()

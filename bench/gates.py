@@ -1386,6 +1386,14 @@ def combine(audio_dir: Path) -> int:
                      for field in row["deviations"]}
         check("what a segment gave up is named", "slider_multiplier" in differing,
               ", ".join(sorted(differing)) or "nothing differs")
+        check("a break covers every junction",
+              report["junction_breaks"] == len(plan["junctions"]),
+              f"{report['junction_breaks']} of {len(plan['junctions'])} junction(s), "
+              f"{report['breaks']} break(s) in the file")
+        check("a bookmark marks every segment",
+              report["bookmarks"] >= len(plan["segments"]),
+              f"{report['bookmarks']} bookmark(s) for "
+              f"{len(plan['segments'])} segment(s)")
 
         # The hitsounds: two sources asked for one filename with two
         # different sounds in it, and both have to survive.

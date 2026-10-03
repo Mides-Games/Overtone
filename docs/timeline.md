@@ -18,6 +18,38 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-10-03 · Phase 25 step 3c: the junctions
+
+### Changed
+
+- **A break covers every junction** wide enough for one. It opens after the
+  previous segment's last **sound** — a spinner or a hold is still playing
+  after it starts, so a break that opened on the last object's time would
+  open over gameplay — and closes before the next segment's first object,
+  with 200 ms of air either side. Without it, the silence between two songs
+  drains health.
+- Breaks that meet or overlap are **merged into one**, since a junction
+  break often swallows a source's own break sitting in the same silence, and
+  two breaks over one moment is not something a map can mean.
+- A break with no object on **both** sides of it is dropped with a count:
+  osu! draws a break between objects, not off either end of a map, and a
+  range that cut its objects can leave a source's break doing exactly that.
+- **Kiai travels with its segment**, in the timing lines it brings and in the
+  line pinned at its start, so a range that begins mid-kiai plays lit — and
+  because the next segment brings its own red line, a span cannot leak into
+  the next song.
+- **A bookmark marks where each segment starts**, beside every source
+  bookmark, so a compilation can be navigated song by song in the editor.
+- **`preview_from`** takes `"first"` (the first segment with a preview point
+  inside its range) or a segment number. Junction breaks and junction
+  bookmarks can each be turned off.
+
+### Measured
+
+- The gate's compilation: **2 breaks for 2 junctions**, 4 in the file with
+  the sources' own, 7 bookmarks for 3 segments. 882 tests (618 engine + 264
+  web shell), 7 of them new.
+
 ## v4.0.0-dev — 2026-10-03 · Phase 25 step 3b: one set of numbers, and the slider speed it owes
 
 ### Changed

@@ -18,6 +18,36 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-10-03 · An order to put the songs in, proposed
+
+### Changed
+
+- **`order_plan`** (row 25.19) proposes an order and never applies one. By
+  **tempo**: every segment is tried as the opener, each one then takes the
+  nearest tempo left, and the cheapest of those walks wins — exact enough for
+  the handful of songs a marathon holds, and explainable in a sentence, which
+  matters more for something that is shown rather than done. By **loudness**:
+  quietest first, which needs row 25.6's measurement and says so when it is
+  missing.
+- It reports the jumps before and after, says when the order is already the
+  one it would ask for, and leaves a song with no tempo of its own at the end
+  instead of dropping it from the proposal.
+- In the app: **Suggest an order** in the Songs card, with the proposal and a
+  **Use it** beside it. The rule follows what is known — loudness once the
+  volumes have been measured, tempo otherwise — because a proposal from
+  numbers nobody has measured is a guess with a button on it.
+- `compile_reorder` refuses an order that is not a permutation of the list,
+  and drops the loudness measurement when the segments move, since a level
+  was measured per segment.
+
+### Measured
+
+- Four songs at 180, 120, 175 and 125 BPM: the proposal is 180, 175, 125,
+  120 and the jumps fall from **165 BPM to 60**. In the harness, three
+  fixtures at 150, 128 and 174: "By tempo: 1 → 3 → 2. The jumps add up to 46
+  BPM instead of 68", the same line in Spanish, and Use it applied it.
+- 928 tests (652 engine + 276 web shell), 6 of them new.
+
 ## v4.0.0-dev — 2026-10-03 · Compilations: matched volumes and shaped junctions
 
 ### Changed

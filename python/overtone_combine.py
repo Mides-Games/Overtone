@@ -2668,3 +2668,89 @@ def loudness_plan(plan: dict, target="median", progress=None) -> dict:
         row["capped"] = capped
     return {"target": round(level, 2), "from": str(target), "segments": rows,
             "why": None}
+
+
+# ---------------------------------------------------------------------------
+# An order, proposed with its reason (Phase 25, row 25.19)
+# ---------------------------------------------------------------------------
+
+#: What an order can be proposed on. ``tempo`` keeps the jump at each
+#: junction small; ``loudness`` builds from the quietest song to the loudest,
+#: which is what a set usually wants and needs the levels measured first.
+ORDER_RULES = ("tempo", "loudness")
+
+
+def _tempo_order(bpms: list) -> list:
+    """The order whose tempo jumps add up to the least, greedily.
+
+    Every segment is tried as the opener and each one then takes the nearest
+    tempo left; the cheapest of those walks wins. Exact for the handful of
+    songs a marathon holds, and explainable in a sentence — which matters
+    more here than optimality, because the proposal is shown and not applied.
+    """
+    known = [n for n, bpm in enumerate(bpms) if bpm is not None]
+    if len(known) < 3:
+        return list(range(len(bpms)))
+    best: tuple[float, list] | None = None
+    for first in known:
+        walk, left = [first], [n for n in known if n != first]
+        cost = 0.0
+        while left:
+            at = walk[-1]
+            nearest = min(left, key=lambda n: abs(bpms[n] - bpms[at]))
+            cost += abs(bpms[nearest] - bpms[at])
+            walk.append(nearest)
+            left.remove(nearest)
+        if best is None or cost < best[0] - 1e-9:
+            best = (cost, walk)
+    order = list(best[1]) if best else []
+    # A segment with no tempo of its own cannot be placed by one; it keeps
+    # its place at the end rather than being dropped from the proposal.
+    return order + [n for n in range(len(bpms)) if n not in order]
+
+
+def _jumps(values: list, order: list) -> dict:
+    """How much the number moves at each junction of an order."""
+    steps = [abs(values[b] - values[a]) for a, b in zip(order, order[1:])
+             if values[a] is not None and values[b] is not None]
+    return {"steps": [round(step, 3) for step in steps],
+            "total": round(sum(steps), 3),
+            "worst": round(max(steps), 3) if steps else 0.0}
+
+
+def order_plan(plan: dict, rule: str = "tempo", loudness: dict | None = None) -> dict:
+    """An order to put the songs in, with the reason and what it would change.
+
+    **Never applied here.** The caller shows it and the person decides: an
+    order is the one thing in a compilation that is entirely taste, and a
+    tool that reorders somebody's set on its own has misunderstood its job.
+
+    ``tempo`` reads each segment's own first BPM and keeps the jumps small.
+    ``loudness`` needs a measurement (:func:`loudness_plan`) and builds from
+    the quietest to the loudest. Both report the numbers before and after, so
+    a proposal that changes nothing worth changing says so.
+    """
+    if rule not in ORDER_RULES:
+        raise ValueError(f"Unknown order rule {rule!r}. Known: {', '.join(ORDER_RULES)}.")
+    given = list(range(len(plan["segments"])))
+    if rule == "tempo":
+        values = [segment["timing"]["first_bpm"] for segment in plan["segments"]]
+        unit = "bpm"
+        order = _tempo_order(values)
+    else:
+        rows = (loudness or {}).get("segments") or []
+        if not rows or all(row.get("lufs") is None for row in rows):
+            return {"rule": rule, "order": given, "unit": "lufs", "why": "not_measured",
+                    "before": None, "after": None, "changes": False}
+        values = [None] * len(given)
+        for row in rows:
+            if 0 <= row["segment"] < len(values):
+                values[row["segment"]] = row.get("lufs")
+        unit = "lufs"
+        order = sorted((n for n in given if values[n] is not None),
+                       key=lambda n: values[n])
+        order += [n for n in given if values[n] is None]
+    return {"rule": rule, "order": order, "unit": unit, "why": None,
+            "values": [None if v is None else round(float(v), 3) for v in values],
+            "before": _jumps(values, given), "after": _jumps(values, order),
+            "changes": order != given}

@@ -1996,6 +1996,37 @@ class Api:
         finally:
             self._compile_lock.release()
 
+    def compile_order(self, rule: str = "tempo") -> dict:
+        """An order to put the songs in, proposed and not applied.
+
+        Cheap: it reads the plan the view already has. The reply carries the
+        proposal beside the whole state, and ``compile_reorder`` is what puts
+        it into effect once somebody says so.
+        """
+        if len(self._compile) < 3:
+            return {"ok": False, "key": "too_few"}
+        try:
+            plan = tc.plan_compilation(self._compile, self._compile_settings)
+            proposal = tc.order_plan(plan, str(rule), self._compile_loudness)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {**self.compile_state(), "proposal": proposal}
+
+    def compile_reorder(self, order: list) -> dict:
+        """Put the songs in the order given, which is the proposal's or any
+        other: the view asks, this obeys."""
+        try:
+            wanted = [int(n) for n in (order or [])]
+        except (TypeError, ValueError):
+            return {"ok": False, "key": "bad_values"}
+        if sorted(wanted) != list(range(len(self._compile))):
+            return {"ok": False, "key": "bad_values"}
+        self._compile = [self._compile[n] for n in wanted]
+        if self._compile_loudness:
+            # The levels were measured per segment, and the segments moved.
+            self._compile_loudness = None
+        return self.compile_state()
+
     def compile_pick_folder(self) -> dict:
         """Where to build. Remembered until the window closes, so Build can
         ask once and then be a button."""

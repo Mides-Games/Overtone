@@ -9439,6 +9439,73 @@ class CombinePlanTests(unittest.TestCase):
         self.assertIn("objects_end_past_range", [r["code"] for r in plan["repairs"]])
         self.assertTrue(plan["usable"])
 
+    def _at(self, folder: Path, bpm: float) -> Path:
+        beat = 60000.0 / bpm
+        return self._map(folder, reds=(f"1000,{beat:.12f},4,2,0,80,1,0",))
+
+    def test_an_order_proposed_by_tempo_keeps_the_jumps_small(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._at(Path(tmp) / "a", 180.0),
+                               self._at(Path(tmp) / "b", 120.0),
+                               self._at(Path(tmp) / "c", 175.0),
+                               self._at(Path(tmp) / "d", 125.0)])
+            proposal = overtone_combine.order_plan(plan)
+            json.dumps(proposal)
+        self.assertEqual(proposal["order"], [0, 2, 3, 1])
+        self.assertEqual((proposal["before"]["total"], proposal["after"]["total"]),
+                         (165.0, 60.0))
+        self.assertTrue(proposal["changes"])
+        # Proposed, never applied: the plan is untouched.
+        self.assertEqual([round(s["timing"]["first_bpm"]) for s in plan["segments"]],
+                         [180, 120, 175, 125])
+
+    def test_an_order_already_as_good_as_it_gets_says_so(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._at(Path(tmp) / "a", 120.0),
+                               self._at(Path(tmp) / "b", 125.0),
+                               self._at(Path(tmp) / "c", 175.0)])
+            proposal = overtone_combine.order_plan(plan)
+        self.assertEqual(proposal["order"], [0, 1, 2])
+        self.assertFalse(proposal["changes"])
+
+    def test_the_loudness_order_needs_the_levels_measured_first(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._at(Path(tmp) / "a", 120.0),
+                               self._at(Path(tmp) / "b", 125.0),
+                               self._at(Path(tmp) / "c", 175.0)])
+            without = overtone_combine.order_plan(plan, "loudness")
+            measured = {"segments": [{"segment": 0, "lufs": -12.0},
+                                     {"segment": 1, "lufs": -20.0},
+                                     {"segment": 2, "lufs": -16.0}]}
+            with_levels = overtone_combine.order_plan(plan, "loudness", measured)
+        self.assertEqual((without["why"], without["changes"]), ("not_measured", False))
+        # Quietest first: a set that grows rather than one that gives up.
+        self.assertEqual(with_levels["order"], [1, 2, 0])
+        self.assertEqual(with_levels["after"]["total"], 8.0)
+
+    def test_a_song_with_no_tempo_of_its_own_keeps_its_place(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            nameless = self._map(Path(tmp) / "x", reds=("1000,-100,4,2,0,80,0,0",))
+            plan = self._plan([self._at(Path(tmp) / "a", 180.0),
+                               self._at(Path(tmp) / "b", 120.0),
+                               self._at(Path(tmp) / "c", 175.0), nameless])
+            proposal = overtone_combine.order_plan(plan)
+        # It cannot be placed by a tempo it does not have, so it stays last
+        # rather than being dropped from the proposal.
+        self.assertEqual(proposal["order"][-1], 3)
+        self.assertEqual(sorted(proposal["order"]), [0, 1, 2, 3])
+
+    def test_an_unknown_order_rule_is_an_error(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._at(Path(tmp) / "a", 120.0)])
+            with self.assertRaises(ValueError):
+                overtone_combine.order_plan(plan, "energy")
+
     def test_a_plan_holding_an_unreadable_source_still_adds_up(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             good = self._map(Path(tmp) / "a")

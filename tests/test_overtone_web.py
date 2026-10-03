@@ -4735,6 +4735,26 @@ class CompileBridgeTests(_IsolatedConfig):
             finally:
                 api._compile_lock.release()
 
+    def test_an_order_is_proposed_and_applied_only_when_asked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fast = self._song(Path(tmp) / "a", 180.0, "A", "Fast", "m1")
+            slow = self._song(Path(tmp) / "b", 120.0, "B", "Slow", "m2")
+            middle = self._song(Path(tmp) / "c", 175.0, "C", "Middle", "m3")
+            api = web.Api()
+            self.assertEqual(api.compile_order()["key"], "too_few")
+            api.compile_add([str(fast), str(slow), str(middle)])
+            asked = api.compile_order()
+            json.dumps(asked)
+            # Proposed, and the list is still as it was.
+            self.assertEqual(asked["proposal"]["order"], [0, 2, 1])
+            self.assertEqual([Path(s["osu"]).parent.name for s in asked["sources"]],
+                             ["a", "b", "c"])
+            self.assertEqual(api.compile_reorder([0, 2, 1])["sources"][1]["osu"],
+                             str(middle))
+            # And an order that is not a permutation of the list is refused.
+            self.assertEqual(api.compile_reorder([0, 1])["key"], "bad_values")
+            self.assertEqual(api.compile_reorder([0, 1, 1])["key"], "bad_values")
+
     def test_matching_volumes_measures_every_song_and_sets_the_gains(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             quiet = self._song(Path(tmp) / "a", 150.0, "A", "Quiet", "m1",

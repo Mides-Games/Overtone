@@ -693,6 +693,13 @@ const I18N = {
     nav_compile: "Compile",
     cp_sub: "Several maps and their songs as one map. Every object keeps the beat it had, each song's hitsounds and slider speed come with it, and nothing is ever written into a source folder. What a compilation cannot keep — one set of difficulty numbers — is listed instead of hidden.",
     cp_sources: "Songs", cp_match: "Match volumes", cp_matching: "Measuring…",
+    cp_suggest: "Suggest an order", cp_order_use: "Use it",
+    cp_rule_tempo: "tempo", cp_rule_loudness: "loudness",
+    cp_order_tempo: "By tempo: {names}. The jumps add up to {after} BPM instead of {before}.",
+    cp_order_loudness: "By loudness, quietest first: {names}.",
+    cp_order_already: "The order they are in is already the one {rule} would ask for.",
+    cp_order_not_measured: "Match the volumes first and this will propose an order from them.",
+    too_few: "Three songs or more to have an order worth proposing.",
     cp_lufs: "{lufs} LUFS", cp_matched: "Volumes matched to {target} LUFS.",
     cp_match_nothing: "Nothing in these songs has a level to match.",
     cp_capped_peak: "Not brought up to the others: it is already near full scale.",
@@ -1435,6 +1442,13 @@ const I18N = {
     nav_compile: "Compilar",
     cp_sub: "Varios mapas y sus canciones como un solo mapa. Cada objeto mantiene el golpe que tenía, los hitsounds y la velocidad de sliders de cada canción vienen con ella, y nunca se escribe en la carpeta de un mapa original. Lo que una compilación no puede mantener — un solo juego de números de dificultad — queda listado en vez de escondido.",
     cp_sources: "Canciones", cp_match: "Igualar volumen", cp_matching: "Midiendo…",
+    cp_suggest: "Sugerir un orden", cp_order_use: "Usarlo",
+    cp_rule_tempo: "el tempo", cp_rule_loudness: "el volumen",
+    cp_order_tempo: "Por tempo: {names}. Los saltos suman {after} BPM en vez de {before}.",
+    cp_order_loudness: "Por volumen, del más bajo al más alto: {names}.",
+    cp_order_already: "El orden en que están ya es el que pediría {rule}.",
+    cp_order_not_measured: "Igualá los volúmenes primero y esto va a proponer un orden con ellos.",
+    too_few: "Tres canciones o más para que valga la pena proponer un orden.",
     cp_lufs: "{lufs} LUFS", cp_matched: "Volúmenes igualados a {target} LUFS.",
     cp_match_nothing: "Ninguna de estas canciones tiene un nivel que igualar.",
     cp_capped_peak: "No se subió al nivel de las otras: ya está cerca del máximo.",
@@ -7396,7 +7410,8 @@ let focusByKey = false;
 // list, the numbers under it and the file list cannot drift apart. The build
 // runs on its own worker with its own lock, like the library health check:
 // the analysis's progress bar and Stop belong to the analysis.
-const CP = { progress: null, report: null, building: false, confirm: false, matching: false };
+const CP = { progress: null, report: null, building: false, confirm: false,
+             matching: false, proposal: null };
 
 function cpClock(ms) {
   const total = Math.max(0, Math.round((ms || 0) / 1000));
@@ -7432,6 +7447,25 @@ async function cpField(n, key, value) {
   if (api()) cpApply(await api().compile_update(n, { [key]: value }));
 }
 async function cpSetting(changes) { if (api()) cpApply(await api().compile_settings(changes)); }
+async function cpSuggest() {
+  if (!api()) return;
+  // Tempo first, and loudness only once the levels have been measured: a
+  // proposal from numbers nobody has measured is a guess with a button.
+  const rule = (S.compile.loudness || {}).target !== undefined
+    && (S.compile.loudness || {}).target !== null ? "loudness" : "tempo";
+  const reply = await api().compile_order(rule);
+  if (!reply.sources) { editFailure(reply); return; }
+  CP.proposal = reply.proposal;
+  cpApply(reply);
+}
+
+async function cpUseOrder() {
+  if (!api() || !CP.proposal) return;
+  const order = CP.proposal.order;
+  CP.proposal = null;
+  cpApply(await api().compile_reorder(order));
+}
+
 async function cpMatch() {
   if (!api() || CP.matching || CP.building) return;
   CP.matching = true;
@@ -7526,6 +7560,23 @@ function cpSize(bytes) {
     : t("cp_kb", { kb: Math.max(1, Math.round(bytes / 1000)) });
 }
 
+function cpProposal(segments) {
+  const p = CP.proposal;
+  if (!p) return "";
+  if (p.why === "not_measured") {
+    return `<div class="cp-why mt-m"><span>${t("cp_order_not_measured")}</span></div>`;
+  }
+  if (!p.changes) {
+    return `<div class="cp-why mt-m"><span>${t("cp_order_already", { rule: t("cp_rule_" + p.rule) })}</span></div>`;
+  }
+  const names = p.order.map((n) => `${n + 1}`).join(" \u2192 ");
+  const said = p.unit === "bpm"
+    ? t("cp_order_tempo", { names, before: p.before.total, after: p.after.total })
+    : t("cp_order_loudness", { names });
+  return `<div class="cp-order mt-m"><span>${said}</span>
+    <button class="btn small" id="cpUseOrder"><span>${t("cp_order_use")}</span></button></div>`;
+}
+
 function cpFiles(check) {
   return `<div class="cp-files">${check.files.map((f) => `<div class="cp-file">
     <span class="kind">${t("cp_kind_" + f.kind)}</span>
@@ -7574,7 +7625,10 @@ function renderCompile() {
     $("cpRefused").textContent = t("cp_refused", { n: refused });
   }
   const segments = plan ? plan.segments : [];
+  $("cpSuggest").hidden = sources.length < 3;
+  $("cpSuggest").disabled = CP.matching || CP.building;
   body.innerHTML = segments.map((seg, n) => cpRow(seg, n, segments.length - 1, sources[n] || {})).join("")
+    + cpProposal(segments)
     + (plan && !plan.usable
       ? `<div class="cp-why mt-m">${(plan.refusals || []).map((r) =>
           `<span class="bad">${r.segment === null ? "" : `${r.segment + 1}. `}${esc(r.why)}</span>`).join("")}</div>`
@@ -7926,6 +7980,10 @@ function wire() {
   $("cpAddSong").onclick = cpAddSong;
   $("cpClear").onclick = cpClear;
   $("cpMatch").onclick = cpMatch;
+  $("cpSuggest").onclick = cpSuggest;
+  $("cpBody").addEventListener("click", (e) => {
+    if (e.target.closest("#cpUseOrder")) cpUseOrder();
+  });
   $("cpFolder").onclick = cpPickFolder;
   $("cpGo").onclick = cpBuild;
   $("cpBody").onclick = (e) => {

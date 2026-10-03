@@ -1,5 +1,9 @@
 {
  "classes": {
+  "CombineSegmentTests": {
+   "where": "python-only",
+   "why": "overtone_combine.py: what a compilation reads out of one source map, which no Rust crate holds"
+  },
   "CorpusBScoringTests": {
    "where": "bench",
    "why": "bench/corpus_b.py scoring a map against its own red lines"

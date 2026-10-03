@@ -9063,5 +9063,240 @@ class InstallerSbomTests(unittest.TestCase):
         self.assertEqual(sbom.drift(committed, fresh), [])
 
 
+class CombineSegmentTests(unittest.TestCase):
+    """What a compilation reads out of one source map, and what it repairs."""
+
+    LINES = [
+        "osu file format v14", "",
+        "[General]", "AudioFilename: song.wav", "AudioLeadIn: 0", "PreviewTime: 8000",
+        "SampleSet: Soft", "StackLeniency: 0.7", "Mode: 0", "",
+        "[Editor]", "Bookmarks: 4000,8000", "BeatDivisor: 4", "",
+        "[Metadata]", "Title:Song", "TitleUnicode:Song", "Artist:Artist",
+        "ArtistUnicode:Artist", "Creator:Mapper", "Version:Hard", "Source:", "Tags:tag", "",
+        "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+        "ApproachRate:8.5", "SliderMultiplier:1.6", "SliderTickRate:1", "",
+        "[Events]", '0,0,"bg.jpg",0,0', "2,3000,4000", "",
+        "[TimingPoints]", "1000,400,4,2,0,80,1,0", "2000,-100,4,2,1,70,0,1",
+        "20000,500,4,2,0,80,1,0", "",
+        "[HitObjects]",
+        "100,100,1200,1,0,0:0:0:0:",
+        "200,200,2000,2,0,L|300:200,1,100,0|0,0:0|0:0,0:0:0:0:",
+        "256,192,5000,12,0,7000,0:0:0:0:",
+        "64,64,9000,1,0,0:0:0:0:",
+        "",
+    ]
+
+    def _with(self, section: str, rows, replace: bool = False) -> list[str]:
+        """``self.LINES`` with ``rows`` added to (or standing in for) a section."""
+        lines = list(self.LINES)
+        at = lines.index(f"[{section}]")
+        end = lines.index("", at)
+        body = [] if replace else lines[at + 1:end]
+        return lines[:at + 1] + body + list(rows) + lines[end:]
+
+    def _replaced(self, old: str, new: str) -> list[str]:
+        return [new if line == old else line for line in self.LINES]
+
+    def _folder(self, tmp: str, lines=None, audio: str | None = "song.wav",
+                seconds: float = 15.0, extra=()) -> Path:
+        import overtone as ta
+        folder = Path(tmp)
+        text = "\r\n".join(self.LINES if lines is None else lines)
+        (folder / "map.osu").write_bytes(text.encode("utf-8"))
+        if audio:
+            ta.sf.write(str(folder / audio),
+                        np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        for name in extra:
+            (folder / name).write_bytes(b"")
+        return folder / "map.osu"
+
+    def _segment(self, path: Path, **kwargs) -> dict:
+        import overtone_combine
+        segment = overtone_combine.read_segment(path, **kwargs)
+        json.dumps(segment)                 # the document is JSON or it is not a document
+        return segment
+
+    @staticmethod
+    def _codes(segment: dict) -> set:
+        return {repair["code"] for repair in segment["repairs"]}
+
+    def test_a_map_and_its_song_read_as_one_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp))
+        self.assertEqual((segment["name"], segment["format"], segment["mode_name"]),
+                         ("Hard", 14, "osu"))
+        self.assertIsNone(segment["keys"])  # only mania has a key count
+        self.assertEqual((segment["objects"]["circle"], segment["objects"]["slider"],
+                          segment["objects"]["spinner"], segment["objects"]["played"]),
+                         (2, 1, 1, 4))
+        self.assertEqual((segment["objects"]["first_ms"], segment["objects"]["last_ms"]),
+                         (1200.0, 9000.0))
+        self.assertEqual((segment["timing"]["reds"], segment["timing"]["greens"],
+                          segment["timing"]["first_bpm"]), (2, 1, 150.0))
+        # The range is the objects plus the padding, and the song is long enough
+        # to hold it: 1200 - 2000 clamps to 0, 9000 + 2000 stands.
+        self.assertEqual((segment["range"]["start_ms"], segment["range"]["end_ms"],
+                          segment["range"]["from"]), (0.0, 11000.0, "objects"))
+        self.assertTrue(segment["range"]["holds_every_object"])
+        self.assertEqual((segment["audio"]["how"], segment["audio"]["duration_ms"]),
+                         ("named", 15000.0))
+        self.assertEqual(segment["breaks"], [{"start_ms": 3000.0, "end_ms": 4000.0}])
+        self.assertEqual((segment["bookmarks"], segment["preview_ms"],
+                          segment["background"]), ([4000.0, 8000.0], 8000.0, "bg.jpg"))
+        self.assertEqual((segment["difficulty"]["ar"], segment["difficulty"]["od"],
+                          segment["difficulty"]["slider_multiplier"],
+                          segment["difficulty"]["stack_leniency"]), (8.5, 7.0, 1.6, 0.7))
+        self.assertEqual((segment["repairs"], segment["refusals"], segment["usable"]),
+                         ([], [], True))
+
+    def test_a_given_range_is_kept_and_cut_to_the_song(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp), start_ms=3000.0, end_ms=20000.0)
+        self.assertEqual((segment["range"]["start_ms"], segment["range"]["end_ms"],
+                          segment["range"]["from"]), (3000.0, 15000.0, "given"))
+        self.assertFalse(segment["range"]["holds_every_object"])
+        self.assertEqual(self._codes(segment), {"range_past_audio", "range_cuts_objects"})
+        self.assertTrue(all(repair["fixed"] for repair in segment["repairs"]))
+
+    def test_the_padding_runs_past_a_short_song_without_a_word(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, seconds=9.5))
+        # The padding is this reader's own invention: cutting it to the song is
+        # not news. An object past the end would be, and there is none here.
+        self.assertEqual(segment["range"]["end_ms"], 9500.0)
+        self.assertEqual(segment["repairs"], [])
+
+    def test_audio_named_in_the_wrong_case_is_found_and_said(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, audio="Song.WAV"))
+        self.assertEqual(segment["audio"]["how"], "case")
+        self.assertEqual(self._codes(segment), {"audio_case"})
+        self.assertTrue(segment["repairs"][0]["fixed"])
+        self.assertEqual(segment["audio"]["duration_ms"], 15000.0)
+
+    def test_the_folders_only_audio_is_taken_as_a_labelled_guess(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, audio="other.wav"))
+        self.assertEqual(segment["audio"]["how"], "guessed")
+        self.assertEqual(self._codes(segment), {"audio_guessed"})
+        self.assertIn("other.wav", segment["audio"]["path"])
+
+    def test_an_audio_filename_carrying_a_path_is_read_as_its_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            lines = self._replaced("AudioFilename: song.wav",
+                                   "AudioFilename: ..\\sounds\\song.wav")
+            segment = self._segment(self._folder(tmp, lines=lines))
+        self.assertEqual(segment["audio"]["how"], "named")
+        self.assertEqual(self._codes(segment), {"audio_path"})
+
+    def test_a_song_that_is_not_there_is_reported_and_the_map_still_reads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, audio=None))
+        self.assertEqual((segment["audio"]["how"], segment["audio"]["duration_ms"]),
+                         ("missing", None))
+        self.assertEqual(self._codes(segment), {"audio_missing"})
+        # Not a refusal: the map is readable and the plan is what decides
+        # whether a segment with no song can be built (it cannot).
+        self.assertTrue(segment["usable"])
+        self.assertEqual(segment["range"]["end_ms"], 11000.0)
+
+    def test_a_map_with_no_red_line_is_refused_and_still_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=self._with("TimingPoints", [],
+                                                                       replace=True)))
+        self.assertEqual([r["code"] for r in segment["refusals"]], ["no_timing"])
+        self.assertFalse(segment["usable"])
+        self.assertEqual(segment["objects"]["played"], 4)  # the rest is still reported
+
+    def test_a_map_with_nothing_to_play_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=self._with("HitObjects", [],
+                                                                       replace=True)))
+        self.assertEqual([r["code"] for r in segment["refusals"]], ["no_objects"])
+        self.assertFalse(segment["usable"])
+
+    def test_a_file_that_is_not_there_is_refused_not_raised(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self._folder(tmp)
+            segment = self._segment(Path(tmp) / "gone.osu")
+        self.assertEqual([r["code"] for r in segment["refusals"]], ["unreadable"])
+        self.assertEqual((segment["usable"], segment["repairs"]), (False, []))
+
+    def test_objects_out_of_order_and_with_decimal_times_are_reported(self) -> None:
+        rows = ["100,100,1200,1,0,0:0:0:0:", "64,64,9000,1,0,0:0:0:0:",
+                "128,128,2000.5,1,0,0:0:0:0:"]
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(
+                tmp, lines=self._with("HitObjects", rows, replace=True)))
+        self.assertEqual(self._codes(segment), {"objects_unordered", "objects_decimal_times"})
+        self.assertEqual((segment["objects"]["out_of_order"],
+                          segment["objects"]["decimal_times"]), (1, 1))
+        self.assertEqual(segment["objects"]["first_ms"], 1200.0)
+
+    def test_a_broken_object_line_is_counted_and_hides_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(
+                tmp, lines=self._with("HitObjects", ["not,an,object"])))
+        self.assertEqual(self._codes(segment), {"objects_unparsed"})
+        self.assertEqual((segment["objects"]["unparsed"], segment["objects"]["played"]),
+                         (1, 4))
+
+    def test_a_held_note_ends_the_segment_after_it_starts(self) -> None:
+        lines = self._replaced("Mode: 0", "Mode: 3")
+        at = lines.index("[HitObjects]")
+        lines = lines[:at + 1] + ["64,192,9000,128,0,12000:0:0:0:0:"] + lines[at + 1:]
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=lines))
+        self.assertEqual((segment["mode_name"], segment["keys"]), ("mania", 4))
+        self.assertEqual((segment["objects"]["hold"], segment["objects"]["last_ms"]),
+                         (1, 12000.0))
+        self.assertEqual(segment["range"]["end_ms"], 14000.0)
+
+    def test_custom_sample_indices_and_named_files_are_collected(self) -> None:
+        rows = ["64,64,9500,1,0,0:0:0:0:kept.wav", "64,64,9800,1,0,0:0:0:0:gone.wav"]
+        lines = self._replaced("2000,-100,4,2,1,70,0,1", "2000,-100,4,2,3,70,0,1")
+        at = lines.index("[HitObjects]")
+        lines = lines[:at + 1] + rows + lines[at + 1:]
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=lines, extra=("kept.wav",)))
+        self.assertEqual(segment["samples"]["indices"], [3])
+        self.assertEqual(segment["samples"]["files"], ["gone.wav", "kept.wav"])
+        self.assertEqual(segment["samples"]["missing"], ["gone.wav"])
+        self.assertIn("samples_missing", self._codes(segment))
+
+    def test_video_and_storyboard_lines_are_counted_as_not_carried(self) -> None:
+        rows = ['1,0,"clip.mp4"', 'Sprite,Background,Centre,"sb.png",320,240']
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=self._with("Events", rows)))
+        self.assertEqual(segment["events"], {"video": 1, "storyboard": 1})
+        self.assertEqual(self._codes(segment), {"events_video", "events_storyboard"})
+        self.assertEqual(segment["background"], "bg.jpg")  # the background still reads
+
+    def test_a_map_with_no_approach_rate_reads_the_overall_difficulty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(
+                tmp, lines=[line for line in self.LINES
+                            if not line.startswith("ApproachRate")]))
+        self.assertEqual((segment["difficulty"]["ar"], segment["difficulty"]["od"]),
+                         (7.0, 7.0))
+        self.assertEqual(self._codes(segment), {"difficulty_ar_from_od"})
+
+    def test_duplicate_reds_and_a_green_with_no_beat_are_reported(self) -> None:
+        rows = ["500,-100,4,2,0,80,0,0", "1000,500,4,2,0,80,1,0"]
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=self._with("TimingPoints", rows)))
+        self.assertEqual(segment["timing"]["duplicate_reds"], [1000.0])
+        self.assertEqual(segment["timing"]["greens_before_red"], 1)
+        self.assertEqual(self._codes(segment),
+                         {"timing_duplicate_reds", "timing_green_before_red"})
+
+    def test_an_object_before_the_first_red_line_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(
+                tmp, lines=self._replaced("100,100,1200,1,0,0:0:0:0:",
+                                          "100,100,500,1,0,0:0:0:0:")))
+        self.assertEqual(self._codes(segment), {"objects_before_first_red"})
+        self.assertEqual(segment["repairs"][0]["at"], 500.0)
+
 if __name__ == "__main__":
     unittest.main()

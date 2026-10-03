@@ -9552,7 +9552,10 @@ class CombineAssemblyTests(unittest.TestCase):
         rows = self._section(text, "TimingPoints")
         red = rows[0].split(",")
         self.assertEqual(red[1], "400")                    # the governing beat length
-        self.assertEqual(red[3:], ["3", "5", "60", "1", "1"])   # soft set 5, 60 %, kiai
+        # Drum set, 60 %, kiai on, and the slider velocity restored by a green
+        # after it. The sample index the source asked for was 5 and reads 1
+        # here: the compilation gives every segment its own indices (25.8).
+        self.assertEqual(red[3:], ["3", "1", "60", "1", "1"])
         self.assertEqual(rows[1].split(",")[1], "-125")    # 0.8x restored after the red
         self.assertEqual(rows[1].split(",")[6], "0")       # as a green
 
@@ -9563,9 +9566,11 @@ class CombineAssemblyTests(unittest.TestCase):
                       "start_ms": 13000.0, "end_ms": 19000.0}
             _plan, text, _report = self._built([source])
         rows = self._section(text, "TimingPoints")
-        # Its own fields, shifted and nothing else: a red says everything about
-        # the state at its own time, so there is nothing to pin in front of it.
-        self.assertEqual(rows, ["2000,400,4,1,2,90,1,0"])
+        # Its own fields, shifted, with one thing moved: a red says everything
+        # about the state at its own time, so there is nothing to pin in front
+        # of it, and the sample index it asked for (2) is the compilation's
+        # own (1), because the file that index names is this map's.
+        self.assertEqual(rows, ["2000,400,4,1,1,90,1,0"])
 
     def test_breaks_bookmarks_and_the_preview_move_with_their_segment(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -9631,12 +9636,13 @@ class CombineAssemblyTests(unittest.TestCase):
                           objects=[*self.OBJECTS, "64,64,18000,1,0,0:0:0:0:kick.wav"]),
                 self._map(Path(tmp) / "b", multiplier="2.0")])
         pending = {entry["code"]: entry for entry in report["pending"]}
-        # Both segments carry a custom sample index -- their green line asks
-        # for index 5 -- and only the first names a file.
-        self.assertEqual(pending["samples_not_remapped"]["segments"], [0, 1])
         self.assertEqual(pending["multiplier_not_reconciled"]["segments"], [1])
         self.assertEqual({entry["row"] for entry in report["pending"]},
-                         {"25.8", "25.9", "25.10", "25.13"})
+                         {"25.9", "25.10", "25.13"})
+        # Both segments ask for a custom sample index -- their green line
+        # wants 5 -- so each gets one of its own, and 25.8 owes nothing.
+        self.assertEqual([row["index_map"] for row in report["samples"]["segments"]],
+                         [{"5": 1}, {"5": 2}])
 
     def test_a_gap_shorter_than_a_beat_refuses_instead_of_moving_the_grid(self) -> None:
         import overtone_combine
@@ -9844,6 +9850,194 @@ class CombineAudioTests(unittest.TestCase):
         self.assertFalse(check["checked"])
         self.assertIn("11025", check["why"])
         self.assertTrue(check["ok"])
+
+class CombineSampleTests(unittest.TestCase):
+    """Whose hitsound plays: every segment's indices and files made its own."""
+
+    def _map(self, folder: Path, *, timing=("1000,400,4,2,3,80,1,0",),
+             objects=("100,100,1200,1,0,0:0:0:0:",), samples=(), seconds: float = 6.0,
+             multiplier: str = "1.4") -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "Mode: 0", "",
+                 "[Metadata]", "Title:Song", "Artist:A", "Creator:M",
+                 f"Version:{folder.name}", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", f"SliderMultiplier:{multiplier}",
+                 "SliderTickRate:1", "",
+                 "[Events]", "",
+                 "[TimingPoints]", *timing, "",
+                 "[HitObjects]", *objects, ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        ta.sf.write(str(folder / "song.wav"),
+                    np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        for name, payload in samples:
+            (folder / name).write_bytes(payload)
+        return folder / "map.osu"
+
+    def _plan(self, sources, settings=None):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        return plan
+
+    def _samples(self, sources, settings=None):
+        import overtone_combine
+        plan = self._plan(sources, settings)
+        samples = overtone_combine.sample_plan(plan)
+        json.dumps(samples)
+        return plan, samples
+
+    @staticmethod
+    def _lines(text: str, name: str) -> list[str]:
+        body = text.split(f"[{name}]")[1].split("[")[0]
+        return [row for row in body.splitlines()
+                if row.strip() and not row.strip().startswith("//")]
+
+    def test_two_segments_asking_for_one_index_get_one_each(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", samples=[("soft-hitclap3.wav", b"first")])
+            second = self._map(Path(tmp) / "b", samples=[("soft-hitclap3.wav", b"second")])
+            _plan, samples = self._samples([first, second])
+        self.assertEqual([row["index_map"] for row in samples["segments"]],
+                         [{"3": 1}, {"3": 2}])
+        # Index 1 writes the bare name, 2 and up carry the number: the two
+        # files that were both soft-hitclap3.wav cannot collide any more.
+        self.assertEqual([(entry["name"], Path(entry["from"]).parent.name)
+                          for entry in samples["files"]],
+                         [("soft-hitclap.wav", "a"), ("soft-hitclap2.wav", "b")])
+        self.assertEqual(samples["indices_used"], 2)
+
+    def test_the_rewritten_lines_ask_for_the_new_index(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", samples=[("soft-hitclap3.wav", b"first")])
+            second = self._map(
+                Path(tmp) / "b", timing=("1000,400,4,2,3,80,1,0",),
+                objects=("100,100,1200,1,0,0:0:3:60:",),
+                samples=[("soft-hitclap3.wav", b"second")])
+            plan = self._plan([first, second])
+            text, report = overtone_combine.combine_beatmap(plan)
+        self.assertEqual([row.split(",")[4] for row in self._lines(text, "TimingPoints")],
+                         ["1", "2"])
+        # The object of the second segment asked for index 3 by hand.
+        hit = [row for row in self._lines(text, "HitObjects") if row.endswith(":60:")]
+        self.assertEqual(hit[0].split(",")[5], "0:0:2:60:")
+        self.assertEqual(report["samples"]["indices_used"], 2)
+
+    def test_index_zero_is_never_remapped(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                               objects=("100,100,1200,1,0,0:0:0:0:",))
+            plan = self._plan([source])
+            text, _report = overtone_combine.combine_beatmap(plan)
+            _plan, samples = self._samples([source])
+        # On a timing point 0 means "the skin's", on an object "whatever the
+        # timing point says". Both are instructions, not files.
+        self.assertEqual(samples["segments"][0]["index_map"], {})
+        self.assertEqual(self._lines(text, "TimingPoints")[0].split(",")[4], "0")
+        self.assertEqual(self._lines(text, "HitObjects")[0].split(",")[5], "0:0:0:0:")
+
+    def test_a_file_an_object_names_keeps_its_name_where_it_can(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                               objects=("100,100,1200,1,0,0:0:0:0:kick.wav",),
+                               samples=[("kick.wav", b"kick")])
+            _plan, samples = self._samples([source])
+        self.assertEqual(samples["segments"][0]["renames"], {})
+        self.assertEqual([entry["name"] for entry in samples["files"]], ["kick.wav"])
+
+    def test_two_segments_naming_one_file_differently_rename_the_second(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                              objects=("100,100,1200,1,0,0:0:0:0:kick.wav",),
+                              samples=[("kick.wav", b"one")])
+            second = self._map(Path(tmp) / "b", timing=("1000,400,4,2,0,80,1,0",),
+                               objects=("100,100,1200,1,0,0:0:0:0:kick.wav",),
+                               samples=[("kick.wav", b"another")])
+            plan = self._plan([first, second])
+            samples = overtone_combine.sample_plan(plan)
+            text, _report = overtone_combine.combine_beatmap(plan, samples=samples)
+        self.assertEqual(samples["segments"][1]["renames"], {"kick.wav": "kick-2.wav"})
+        self.assertEqual(sorted(entry["name"] for entry in samples["files"]),
+                         ["kick-2.wav", "kick.wav"])
+        self.assertEqual(samples["collisions_avoided"], 1)
+        # And the object that named it asks for the new name.
+        named = [row.split(",")[5] for row in self._lines(text, "HitObjects")]
+        self.assertEqual(named, ["0:0:0:0:kick.wav", "0:0:0:0:kick-2.wav"])
+
+    def test_two_segments_naming_the_same_bytes_share_one_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            same = b"the same sound"
+            first = self._map(Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                              objects=("100,100,1200,1,0,0:0:0:0:kick.wav",),
+                              samples=[("kick.wav", same)])
+            second = self._map(Path(tmp) / "b", timing=("1000,400,4,2,0,80,1,0",),
+                               objects=("100,100,1200,1,0,0:0:0:0:kick.wav",),
+                               samples=[("kick.wav", same)])
+            _plan, samples = self._samples([first, second])
+        self.assertEqual([entry["name"] for entry in samples["files"]], ["kick.wav"])
+        self.assertEqual(samples["shared_by_content"], 1)
+        self.assertEqual(samples["segments"][1]["renames"], {})
+
+    def test_an_index_with_no_file_is_said_to_fall_back(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", timing=("1000,400,4,2,7,80,1,0",))
+            _plan, samples = self._samples([source])
+        # Not a fault: osu! plays the skin's sound for an index the folder
+        # does not have, and the remapped index is just as absent.
+        self.assertEqual(samples["segments"][0]["falls_back"], [7])
+        self.assertEqual(samples["files"], [])
+        self.assertEqual(samples["segments"][0]["index_map"], {"7": 1})
+
+    def test_the_samples_are_copied_into_the_folder_and_not_moved(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", samples=[("soft-hitclap3.wav", b"first"),
+                                                         ("drum-hitfinish3.ogg", b"x")])
+            plan = self._plan([source])
+            out = Path(tmp) / "out"
+            first = overtone_combine.build_samples(plan, out)
+            again = overtone_combine.build_samples(plan, out)
+            self.assertEqual((first["copied"], first["already_there"], first["failed"]),
+                             (2, 0, []))
+            self.assertEqual((again["copied"], again["already_there"]), (0, 2))
+            self.assertEqual(sorted(p.name for p in out.iterdir()),
+                             ["drum-hitfinish.ogg", "soft-hitclap.wav"])
+            self.assertTrue((Path(tmp) / "a" / "soft-hitclap3.wav").is_file())
+            self.assertEqual((out / "soft-hitclap.wav").read_bytes(), b"first")
+
+    def test_a_mania_holds_sample_is_rewritten_after_its_end_time(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(
+                Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                objects=("64,192,1200,128,0,2200:0:0:3:60:kick.wav",),
+                samples=[("kick.wav", b"k"), ("soft-hitclap3.wav", b"c")])
+            plan = self._plan([source])
+            text, _report = overtone_combine.combine_beatmap(plan)
+        row = self._lines(text, "HitObjects")[0].split(",")
+        # The end time and the sample share the sixth field: the time moves by
+        # the segment's +2000 ms shift, the sample's index becomes the
+        # compilation's, and the volume and the filename stay put.
+        self.assertEqual(row[5], "4200:0:0:1:60:kick.wav")
+
+    def test_a_sliders_sample_is_the_eleventh_field(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            slider = ("100,100,1200,2,0,L|300:200,1,100,0|0,0:0|0:0,0:0:3:60:kick.wav")
+            source = self._map(Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                               objects=(slider,),
+                               samples=[("kick.wav", b"k"),
+                                        ("soft-hitclap3.wav", b"c")])
+            plan = self._plan([source])
+            text, _report = overtone_combine.combine_beatmap(plan)
+        row = self._lines(text, "HitObjects")[0].split(",")
+        self.assertEqual(row[5:10], ["L|300:200", "1", "100", "0|0", "0:0|0:0"])
+        self.assertEqual(row[10], "0:0:1:60:kick.wav")
 
 if __name__ == "__main__":
     unittest.main()

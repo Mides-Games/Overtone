@@ -18,6 +18,48 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-10-03 · Phase 25 step 3a: whose hitsound plays
+
+### Changed
+
+- **`sample_plan`** gives every segment its own sample indices, and
+  **`build_samples`** copies the files under their new names into a folder
+  the caller gives it — copies, never moves, and never writes into a source
+  folder. Two segments both asking for index 3 ask for the same
+  `soft-hitclap3.wav`, and only one of those can sit in a mapset folder:
+  whichever was copied second silently replaced the other's hitsounds. That
+  is the reference tool's one real trick and the easiest thing in this phase
+  to get subtly wrong.
+- **Index 0 is never remapped.** On a timing point it means "the skin's" and
+  on an object "whatever the timing point says": instructions, not files.
+  **Index 1 is remapped** like any other, because the bare
+  `soft-hitclap.wav` it asks this folder for is a name two segments can both
+  want.
+- Every line that asks for an index or a file is rewritten with it: the
+  timing lines, the lines the builder pins at a segment's start, and the
+  objects — where a slider's hit sample is the eleventh field, a spinner's
+  the seventh, and a mania hold's shares the sixth with its end time. The
+  reference tool reads that field as a slider end time, which is the one
+  thing it never is.
+- A file an object names outright keeps its name where it can. Two segments
+  naming one file with different bytes rename the second and its objects
+  follow; two naming the same bytes share one copy (SHA-1). Numbered bank
+  files are copied per index even when identical, because there the index
+  *is* the name.
+- An index whose file the folder does not have stays missing after the
+  remap, so osu! falls back to the skin exactly as it did in the source.
+  That is reported as `falls_back`, not as a fault: it is what most maps do.
+- The segment reader now lists every index **1 and up** as used, with the
+  numbered ones as `custom` beside it. The `pending` entry for row 25.8 is
+  gone from the build report, replaced by the plan it owes.
+
+### Measured
+
+- The gate's two sources that both ask for index 3 with different sounds in
+  it: index maps `{3: 1}`, `{3: 2}`, `{3: 3}`, both files copied, **neither
+  replaced**, and no source folder written to. 867 tests (603 engine + 264
+  web shell), 10 of them new.
+
 ## v4.0.0-dev — 2026-10-03 · Phase 25 step 2: the audio cut, and nothing to compensate
 
 ### Changed

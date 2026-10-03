@@ -29,6 +29,7 @@ Two words carry the weight of the reporting:
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path, PurePath
 
 import numpy as np
@@ -341,18 +342,24 @@ def _events_facts(lines: list[str]) -> tuple[dict, list[dict]]:
 
 
 def _sample_facts(beatmap: dict, timing_lines: list[str], folder: Path) -> tuple[dict, list[dict]]:
-    """Which custom sample indices and files this segment depends on.
+    """Which sample indices and named files this segment depends on.
 
-    The indices are what row 25.8 has to remap so two segments cannot claim
-    the same number; the named files are the ones an object asks for by name,
-    and those can be checked here and now. Whether ``soft-hitclap7.wav``
-    exists for index 7 is the remapper's question, since the answer depends
-    on the set in force at each object.
+    ``indices`` is every index **1 and up**, because every one of them asks
+    this folder for a file: index 1 asks for ``soft-hitclap.wav`` and index 7
+    for ``soft-hitclap7.wav``. Index 0 is not in the list and never will be —
+    on a timing point it means "the skin's", on an object "whatever the timing
+    point says", and both are instructions rather than files. ``custom`` is
+    the numbered subset, which is what a reader looking for oddities wants.
+
+    The named files are the ones an object asks for by name, and those can be
+    checked here and now. Whether ``soft-hitclap7.wav`` exists for index 7 is
+    row 25.8's question, since the answer depends on the set in force at each
+    object.
     """
     indices: set[int] = set()
     for raw in timing_lines:
         fields = _timing_point_fields(str(raw).strip())
-        if fields is not None and fields["sample_index"] > 1:
+        if fields is not None and fields["sample_index"] >= 1:
             indices.add(int(fields["sample_index"]))
     named: set[str] = set()
     for obj in beatmap.get("hitobjects", []):
@@ -361,14 +368,15 @@ def _sample_facts(beatmap: dict, timing_lines: list[str], folder: Path) -> tuple
             index = int(sample.get("index") or 0)
         except (TypeError, ValueError):
             index = 0
-        if index > 1:
+        if index >= 1:
             indices.add(index)
         file = str(sample.get("file") or "").strip()
         if file:
             named.add(file)
     files = _folder_index(folder)
     missing = sorted(name for name in named if name.lower() not in files)
-    facts = {"indices": sorted(indices), "files": sorted(named), "missing": missing}
+    facts = {"indices": sorted(indices), "custom": sorted(i for i in indices if i > 1),
+             "files": sorted(named), "missing": missing}
     repairs: list[dict] = []
     if missing:
         repairs.append(_repair(
@@ -879,7 +887,8 @@ def _points_of(beatmap: dict) -> list[dict]:
     return sorted(points, key=lambda p: (p["time"], 0 if p["red"] else 1))
 
 
-def _state_red(governing: dict, time_ms: float, state, decimals: int) -> str:
+def _state_red(governing: dict, time_ms: float, state, decimals: int,
+               index_map: dict | None = None) -> str:
     """The segment's own grid and sound, pinned at its start.
 
     Built from the governing red line's **raw** fields, so the beat length
@@ -893,14 +902,16 @@ def _state_red(governing: dict, time_ms: float, state, decimals: int) -> str:
         fields.append(ta._GREEN_FIELD_DEFAULTS[len(fields)])
     fields[0] = _ms_text(time_ms, decimals)
     fields[3] = str(int(state.sample_set))
-    fields[4] = str(int(state.sample_index))
+    index = int(state.sample_index)
+    fields[4] = str((index_map or {}).get(index, index))
     fields[5] = str(int(state.volume))
     fields[6] = "1"
     fields[7] = str((int(fields[7] or 0) & ~1) | (1 if state.kiai else 0))
     return ",".join(fields[:8])
 
 
-def _state_green(time_ms: float, state, decimals: int) -> str | None:
+def _state_green(time_ms: float, state, decimals: int,
+                 index_map: dict | None = None) -> str | None:
     """The slider velocity in force at the segment's start, if it is not 1.
 
     A red line resets velocity to 1.0, so the green that was carrying 0.8x in
@@ -912,13 +923,16 @@ def _state_green(time_ms: float, state, decimals: int) -> str | None:
     if abs(state.sv - 1.0) <= 1e-9:
         return None
     beat = -100.0 / state.sv
+    index = int(state.sample_index)
     return (f"{_ms_text(time_ms, decimals)},{_ms_text(beat, 6)},4,"
-            f"{int(state.sample_set)},{int(state.sample_index)},"
+            f"{int(state.sample_set)},{(index_map or {}).get(index, index)},"
             f"{int(state.volume)},0,{1 if state.kiai else 0}")
 
 
-def _segment_lines(segment: dict, beatmap: dict, floor_ms: float,
-                   decimals: int) -> tuple[list[tuple], list[tuple], list[dict], list[dict]]:
+def _segment_lines(segment: dict, beatmap: dict, floor_ms: float, decimals: int,
+                   index_map: dict | None = None,
+                   renames: dict | None = None
+                   ) -> tuple[list[tuple], list[tuple], list[dict], list[dict]]:
     """One segment's timing lines and object lines, placed.
 
     Returns ``(timing, objects, notes, refusals)``, each timing and object
@@ -928,6 +942,8 @@ def _segment_lines(segment: dict, beatmap: dict, floor_ms: float,
     shift = float(segment["shift_ms"])
     start, end = segment["range"]["start_ms"], segment["range"]["end_ms"]
     at = float(segment["at_ms"])
+    index_map = index_map or {}
+    renames = renames or {}
     notes: list[dict] = []
     refusals: list[dict] = []
     points = _points_of(beatmap)
@@ -975,8 +991,9 @@ def _segment_lines(segment: dict, beatmap: dict, floor_ms: float,
                        f"beats ({beat:.0f} ms), so its grid cannot be pinned before its "
                        f"first object. Widen the gap to at least {beat:.0f} ms."})
             return [], [], notes, refusals
-        timing.append((red_at, 0, _state_red(governing, red_at, state, decimals)))
-        green = _state_green(max(at, red_at), state, decimals)
+        timing.append((red_at, 0,
+                       _state_red(governing, red_at, state, decimals, index_map)))
+        green = _state_green(max(at, red_at), state, decimals, index_map)
         if green is not None:
             timing.append((max(at, red_at), 1, green))
 
@@ -984,7 +1001,8 @@ def _segment_lines(segment: dict, beatmap: dict, floor_ms: float,
         if point["time"] < start - 1e-6 or point["time"] > end + 1e-6:
             continue
         timing.append((point["time"] + shift, 0 if point["red"] else 1,
-                       _shift_timing_line(point["raw"], shift, decimals)))
+                       _rewrite_timing_index(
+                           _shift_timing_line(point["raw"], shift, decimals), index_map)))
 
     objects: list[tuple] = []
     dropped = 0
@@ -995,8 +1013,9 @@ def _segment_lines(segment: dict, beatmap: dict, floor_ms: float,
         time = float(obj["time"])
         if time < start - 1e-6 or time > end + 1e-6:
             continue
-        objects.append((time + shift, 0,
-                        _shift_object_line(str(obj["raw"]).strip(), shift, decimals)))
+        objects.append((time + shift, 0, _rewrite_object_samples(
+            _shift_object_line(str(obj["raw"]).strip(), shift, decimals),
+            str(obj.get("kind") or ""), index_map, renames)))
     if dropped:
         notes.append({"code": "objects_dropped",
                       "what": f"{dropped} object line(s) that do not read as objects were "
@@ -1081,7 +1100,8 @@ def _header_sections(plan: dict, audio_name: str, preview_ms: float | None,
 
 
 def combine_beatmap(plan: dict, audio_name: str = "audio.mp3",
-                    decimals: int = WRITE_DECIMALS) -> tuple[str, dict]:
+                    decimals: int = WRITE_DECIMALS,
+                    samples: dict | None = None) -> tuple[str, dict]:
     """The compilation as one ``.osu``: every borrowed timestamp where it belongs.
 
     What moves, and the rule for each, is the specification this row exists
@@ -1097,12 +1117,18 @@ def combine_beatmap(plan: dict, audio_name: str = "audio.mp3",
     force at that moment. Without that pinning a segment inherits the state the
     previous song happened to end in.
 
+Hitsounds travel with their segment: every sample index is remapped so no
+    two segments can ask for one filename (:func:`sample_plan`), and the
+    timing lines, the pinned lines and the objects that name an index or a
+    file are rewritten to the new one. ``samples`` takes a plan made earlier —
+    the same one ``build_samples`` copies the files with — and one is made
+    here when it is not given.
+
     Returns the text and a report. The report's ``pending`` list is the honest
-    part: the hitsound indices are not remapped yet (row 25.8), the slider
-    multipliers are not reconciled (25.9), the difficulty numbers come from the
-    first segment (25.10), and the metadata is its metadata (25.13). Each entry
-    names the row that will answer it, so what this builds today is not
-    mistaken for what it will build.
+    part: the slider multipliers are not reconciled yet (row 25.9), the
+    difficulty numbers come from the first segment (25.10), and the metadata
+    is its metadata (25.13). Each entry names the row that will answer it, so
+    what this builds today is not mistaken for what it will build.
 
     Writing the file is row 25.16; this returns text, which is also what makes
     it testable against a reader.
@@ -1114,6 +1140,7 @@ def combine_beatmap(plan: dict, audio_name: str = "audio.mp3",
     if int(plan.get("format") or 0) != PLAN_FORMAT:
         raise ValueError(f"Plan format {plan.get('format')!r} is not {PLAN_FORMAT}.")
 
+    chosen = samples if samples is not None else sample_plan(plan)
     timing: list[tuple] = []
     objects: list[tuple] = []
     bookmarks: list[float] = []
@@ -1128,8 +1155,9 @@ def combine_beatmap(plan: dict, audio_name: str = "audio.mp3",
         beatmap = ta.read_osu_beatmap(segment["osu"])
         shift = float(segment["shift_ms"])
         start, end = segment["range"]["start_ms"], segment["range"]["end_ms"]
+        index_map, renames = _segment_samples(chosen, n)
         rows, hits, segment_notes, segment_refusals = _segment_lines(
-            segment, beatmap, floor_ms, decimals)
+            segment, beatmap, floor_ms, decimals, index_map, renames)
         timing.extend(rows)
         objects.extend(hits)
         notes.extend({"segment": n, **note} for note in segment_notes)
@@ -1158,13 +1186,6 @@ def combine_beatmap(plan: dict, audio_name: str = "audio.mp3",
     written_multiplier = first["difficulty"]["slider_multiplier"]
     pending: list[dict] = []
     if len(plan["segments"]) > 1:
-        sampled = [n for n, s in enumerate(plan["segments"])
-                   if s["samples"]["indices"] or s["samples"]["files"]]
-        if sampled:
-            pending.append({"row": "25.8", "code": "samples_not_remapped",
-                            "what": "Custom hitsound indices and files are carried as "
-                                    "written, so two segments can claim the same number.",
-                            "segments": sampled})
         differing = [n for n, s in enumerate(plan["segments"])
                      if s["difficulty"]["slider_multiplier"] != written_multiplier]
         if differing:
@@ -1192,7 +1213,7 @@ def combine_beatmap(plan: dict, audio_name: str = "audio.mp3",
     text = "\r\n".join(body)
 
     report = {"audio_name": audio_name, "format": WRITE_FORMAT, "decimals": decimals,
-              "segments": per_segment,
+              "segments": per_segment, "samples": chosen,
               "objects": len(objects), "timing_lines": len(timing),
               "bookmarks": len(bookmarks), "breaks": len(breaks),
               "preview_ms": None if preview is None else round(preview, 3),
@@ -1456,3 +1477,240 @@ def verify_audio(plan: dict, audio_path: str | os.PathLike[str],
             "worst_shift_ms": round(worst, 3) if measured else None,
             "tolerance_ms": tolerance_ms,
             "ok": bool(measured) and worst <= tolerance_ms}
+
+
+# ---------------------------------------------------------------------------
+# The hitsounds (Phase 25, row 25.8)
+# ---------------------------------------------------------------------------
+
+#: A beatmap-folder sample, named as osu! names one: a set, a sound, an
+#: optional index and an extension it reads. Deliberately looser about the
+#: sound than ``overtone.BANK_SOUNDS``, which lists the six a bank shows: a
+#: file copied that turns out unused costs a few kilobytes, and one left
+#: behind is a hitsound that silently changes.
+_SAMPLE_NAME = re.compile(r"^(normal|soft|drum)-([a-z]+?)(\d*)(\.wav|\.ogg|\.mp3)$",
+                          re.IGNORECASE)
+
+#: Where a hit object keeps its hit sample, by object kind. A mania hold
+#: shares the field with its end time (``end:sample``) and is handled apart.
+_SAMPLE_FIELD = {"circle": 5, "spinner": 6, "slider": 10}
+
+#: The compilation's sample plan format, beside the compilation document's.
+SAMPLE_PLAN_FORMAT = 1
+
+
+def _sample_index_of(text: str) -> int:
+    """The index a hit sample asks for, or 0 when it asks the timing point."""
+    parts = str(text).split(":")
+    if len(parts) < 3 or not parts[2].strip():
+        return 0
+    try:
+        return int(float(parts[2]))
+    except ValueError:
+        return 0
+
+
+def _rewrite_hit_sample(text: str, index_map: dict, renames: dict) -> str:
+    """One ``normal:addition:index:volume:filename`` with its index and file
+    moved to the compilation's own, and everything else left alone."""
+    parts = str(text).split(":")
+    if len(parts) < 3:
+        return text
+    old = _sample_index_of(text)
+    if old >= 1 and old in index_map:
+        parts[2] = str(index_map[old])
+    if len(parts) >= 5 and parts[4].strip():
+        parts[4] = renames.get(parts[4].strip(), parts[4])
+    return ":".join(parts)
+
+
+def _rewrite_object_samples(raw: str, kind: str, index_map: dict, renames: dict) -> str:
+    """One object line with its hit sample remapped, nothing else touched."""
+    if not index_map and not renames:
+        return raw
+    fields = raw.split(",")
+    if kind == "hold":
+        if len(fields) > 5:
+            end, colon, sample = fields[5].partition(":")
+            if colon:
+                fields[5] = end + colon + _rewrite_hit_sample(sample, index_map, renames)
+        return ",".join(fields)
+    at = _SAMPLE_FIELD.get(kind)
+    if at is None or len(fields) <= at:
+        return raw
+    fields[at] = _rewrite_hit_sample(fields[at], index_map, renames)
+    return ",".join(fields)
+
+
+def _rewrite_timing_index(raw: str, index_map: dict) -> str:
+    """One timing line with its sample index moved, nothing else touched."""
+    if not index_map:
+        return raw
+    fields = raw.split(",")
+    if len(fields) < 5:
+        return raw
+    try:
+        old = int(float(fields[4]))
+    except ValueError:
+        return raw
+    if old >= 1 and old in index_map:
+        fields[4] = str(index_map[old])
+    return ",".join(fields)
+
+
+def _sha1(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha1()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _bank_files(listing: dict, index: int) -> list[tuple[Path, str, str, str]]:
+    """Every file in the folder that index asks for, with its parts."""
+    out = []
+    for name, path in sorted(listing.items()):
+        match = _SAMPLE_NAME.match(name)
+        if match is None:
+            continue
+        sample_set, sound, digits, ext = match.groups()
+        if int(digits or 1) != index:
+            continue
+        out.append((path, sample_set.lower(), sound.lower(), ext.lower()))
+    return out
+
+
+def sample_plan(plan: dict) -> dict:
+    """Which file every segment's hitsounds become, so no two can collide.
+
+    Two segments both asking for index 3 ask for the same filename, and only
+    one ``soft-hitclap3.wav`` can sit in a folder: whichever is copied second
+    silently replaces the other's hitsounds. That is the reference tool's one
+    real trick and the easiest thing here to get subtly wrong, so this gives
+    every segment its own indices and rewrites the lines that ask for them.
+
+    Index 0 is never remapped. On a timing point it means "the skin's" and on
+    an object "whatever the timing point says": instructions, not files. Index
+    1 is remapped like any other — it asks this folder for the bare
+    ``soft-hitclap.wav``, and a segment that keeps asking for a name another
+    segment also uses is the whole problem. A file the folder does not have
+    stays missing after the remap, so osu! falls back to the skin exactly as
+    it did in the source.
+
+    A file an object names outright (``kick.wav``) keeps its name where it
+    can. Where two segments name the same file with different contents, the
+    later one is renamed and its objects are rewritten to match; where the
+    contents are identical, both point at one copy (SHA-1). Numbered bank
+    files are copied per index even when identical, because the index *is*
+    the name: sharing one would mean sharing an index, and then a segment's
+    whole set would have to match, not one file of it.
+
+    Read only, plain JSON: ``build_samples`` does the copying.
+    """
+    segments: list[dict] = []
+    files: list[dict] = []
+    by_name: dict[str, dict] = {}
+    by_hash: dict[str, str] = {}
+    next_index = 1
+    collisions = 0
+    shared = 0
+    for n, segment in enumerate(plan["segments"]):
+        folder = Path(segment["folder"])
+        listing = ta._sample_listing(folder)
+        index_map: dict[int, int] = {}
+        renames: dict[str, str] = {}
+        missing: list[str] = []
+        bare: list[int] = []
+        for old in segment["samples"]["indices"]:
+            index_map[int(old)] = next_index
+            found = _bank_files(listing, int(old))
+            if not found:
+                # Normal, not broken: a map asks for an index its own folder
+                # does not have and osu! plays the skin's sound. The remap
+                # keeps that, because the new name is missing too.
+                bare.append(int(old))
+            for path, sample_set, sound, ext in found:
+                suffix = "" if next_index == 1 else str(next_index)
+                name = f"{sample_set}-{sound}{suffix}{ext}"
+                files.append({"name": name, "from": str(path), "segment": n,
+                              "index": next_index, "was": int(old),
+                              "bytes": path.stat().st_size})
+                by_name[name] = files[-1]
+            next_index += 1
+        for named in segment["samples"]["files"]:
+            path = listing.get(named.lower())
+            if path is None:
+                missing.append(named)
+                continue
+            digest = _sha1(path)
+            if digest in by_hash:
+                if by_hash[digest] != named:
+                    renames[named] = by_hash[digest]
+                shared += 1
+                continue
+            name = named
+            if name in by_name:
+                stem, dot, ext = name.rpartition(".")
+                if not dot:
+                    stem = name
+                counter = 2
+                while name in by_name:
+                    name = f"{stem}-{counter}{dot}{ext}"
+                    counter += 1
+                renames[named] = name
+                collisions += 1
+            files.append({"name": name, "from": str(path), "segment": n,
+                          "named": named, "bytes": path.stat().st_size,
+                          "sha1": digest})
+            by_name[name] = files[-1]
+            by_hash[digest] = name
+        segments.append({"segment": n,
+                         "index_map": {str(k): v for k, v in sorted(index_map.items())},
+                         "renames": dict(sorted(renames.items())),
+                         "missing": missing, "falls_back": sorted(bare)})
+    return {"format": SAMPLE_PLAN_FORMAT, "segments": segments, "files": files,
+            "indices_used": next_index - 1, "collisions_avoided": collisions,
+            "shared_by_content": shared,
+            "bytes": sum(entry["bytes"] for entry in files)}
+
+
+def _segment_samples(samples: dict, n: int) -> tuple[dict, dict]:
+    """One segment's index map and renames, as the rewriters want them."""
+    for row in samples.get("segments", ()):
+        if row["segment"] == n:
+            return ({int(k): int(v) for k, v in row["index_map"].items()},
+                    dict(row["renames"]))
+    return {}, {}
+
+
+def build_samples(plan: dict, folder: str | os.PathLike[str],
+                  samples: dict | None = None) -> dict:
+    """Copy every sample the compilation asks for into one folder.
+
+    Copies, never moves and never writes into a source folder. A file already
+    in place with the same size and content is left alone, so building twice
+    into one folder does not churn it.
+    """
+    import shutil
+
+    chosen = samples if samples is not None else sample_plan(plan)
+    out = Path(folder)
+    out.mkdir(parents=True, exist_ok=True)
+    copied, kept, failed = 0, 0, []
+    for entry in chosen["files"]:
+        target = out / entry["name"]
+        source = Path(entry["from"])
+        try:
+            if target.is_file() and target.stat().st_size == entry["bytes"] \
+                    and _sha1(target) == _sha1(source):
+                kept += 1
+                continue
+            shutil.copyfile(source, target)
+            copied += 1
+        except OSError as exc:
+            failed.append({"name": entry["name"], "why": str(exc)})
+    return {"folder": str(out), "copied": copied, "already_there": kept,
+            "failed": failed, "bytes": chosen["bytes"],
+            "indices_used": chosen["indices_used"]}

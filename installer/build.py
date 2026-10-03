@@ -7,19 +7,22 @@ Each step is timed, and its output goes to ``build\\logs``:
 1. the Rust engine: ``cargo build --release -p overtone-cli``;
 2. PyInstaller (``installer/overtone.spec``): ``dist\\Overtone``, the tree the
    MSI installs and the ZIP holds;
-3. the smoke test on that tree (``installer/smoke.py``);
-4. the MSI, with WiX 5.0.2 (``installer/Overtone.wxs``), per user;
-5. the portable ZIP: the same tree in one ``Overtone`` folder;
-6. both unpacked into temporary folders, the MSI by an administrative install
+3. the bundled licences, gathered into the tree (``installer/notices.py``);
+4. the smoke test on that tree (``installer/smoke.py``);
+5. the MSI, with WiX 5.0.2 (``installer/Overtone.wxs``), per user;
+6. the portable ZIP: the same tree in one ``Overtone`` folder;
+7. both unpacked into temporary folders, the MSI by an administrative install
    (``msiexec /a``, which installs and registers nothing), each compared with
    the tree file for file and smoke-tested;
-7. sizes, SHA-256 and timings, printed and written beside the MSI.
+8. sizes, SHA-256 and timings, printed and written beside the MSI.
 
 Nothing here reaches the network. The toolchain is set up once, per user and
 without an administrator (docs/11-msi-distribution.md, "Building it"), and a
 missing piece stops the build before it starts, named. So does a venv whose
 wheels differ from ``requirements.lock`` or ``requirements-build.lock``: the
-bundle carries what the venv holds, and the lock is what was measured.
+bundle carries what the venv holds, and the lock is what was measured. So does
+a licence notice that is missing from ``installer/notices.json``, because an
+artefact with a notice missing must not exist in the first place.
 
 ``--no-msi`` builds the tree and the ZIP only (no .NET or WiX needed);
 ``--no-verify`` skips step 6; ``--clean`` rebuilds PyInstaller's cache.
@@ -44,6 +47,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import notices  # noqa: E402
 import release  # noqa: E402
 
 LOGS = release.BUILD / "logs"
@@ -304,6 +308,13 @@ def main() -> int:
     missing = [f"wheels: {problem}" for problem in wheel_problems()]
     if shutil.which("cargo") is None:
         missing.append("cargo (the Rust toolchain) is not on PATH")
+    else:
+        # The licences travel with the binary, so a gap in them is not a
+        # late failure: it is a reason not to build (roadmap 10.13.3).
+        rows, broken = notices.components()
+        offers = notices.listed().get("offers", [])
+        missing += [f"notices: {problem}" for problem in
+                    broken + notices.stale_versions(rows) + notices.problems(rows, offers)]
     dotnet = None
     if not args.no_msi:
         dotnet = find_dotnet()
@@ -333,6 +344,13 @@ def main() -> int:
                               "--distpath", str(release.DIST), "--workpath",
                               str(release.BUILD / "pyinstaller"), "--noconfirm"]
               + (["--clean"] if args.clean else []), release.ROOT)
+
+    started = time.perf_counter()
+    written = notices.write(release.TREE, version, rows, offers)
+    steps.done(f"licence notices ({sum(len(row['texts']) for row in rows)} notices from "
+               f"{len(rows)} components)", started)
+    print("\n".join(f"    {file.name}: {file.stat().st_size / 1e3:.1f} kB"
+                     for file in written), flush=True)
 
     import smoke  # imports the benchmark's renderer, and with it the engine
     started = time.perf_counter()

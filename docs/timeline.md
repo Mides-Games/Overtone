@@ -18,6 +18,49 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-10-03 · Phase 25 step 3b: one set of numbers, and the slider speed it owes
+
+### Changed
+
+- **`difficulty_plan`** settles the numbers a beatmap holds one of — HP, CS,
+  OD, AR, slider multiplier, tick rate, stack leniency — as the first
+  segment's (the map the compilation opens with), the median, or a dict of
+  values, with any field left out falling back to the first's and then to
+  osu!'s own default. Every deviation is reported per segment in its field's
+  own units: this is the one promise a compilation cannot keep, since AR 9
+  and AR 7 cannot both be true, and the honest thing is to say which maps are
+  being played at numbers their mapper did not choose.
+- **Slider velocity is kept** where the difficulty cannot be. A slider's
+  speed is the map's `SliderMultiplier` times the velocity in force, so a
+  segment made at 2.0 under a compilation written at 1.4 keeps its own speed
+  at 1.4286x. That ratio goes into **every** green line the segment brings
+  and into a new one after **every** red line it brings — a red resets
+  velocity to 1.0, and 1.0 under another multiplier is the wrong speed, so
+  compensating only the first line would have left every later section of
+  that segment running fast.
+- **A velocity a green line cannot carry refuses the build**, naming the
+  segment and the range of multipliers that would hold it. The bar is the
+  0.1x-10x osu!'s own editor offers, which is the range a mapper can check.
+- `SliderTickRate` has no such escape — nothing in a green line touches it —
+  so a segment whose tick rate differs is reported and its sliders tick at
+  the compilation's rate. Said out loud rather than left to be noticed.
+
+### Fixed
+
+- **A beat length written as `-70.000021`.** The velocity ratio was rounded
+  to six places in the report and then used to compute the line, so the one
+  number that had to be exact was the one that had been rounded for display.
+  The ratio is kept exact and beat lengths are written with up to six places
+  and no trailing zeros, so `-70` and `-87.5` come out as themselves.
+
+### Measured
+
+- The gate's third source is made at `SliderMultiplier` 2.0 against the 1.4
+  written: **4 of its 4 red lines carry the 1.429x**, the two segments at the
+  written multiplier gain nothing, and `slider_multiplier` is named as what
+  that segment gave up. 875 tests (611 engine + 264 web shell), 8 of them
+  new.
+
 ## v4.0.0-dev — 2026-10-03 · Phase 25 step 3a: whose hitsound plays
 
 ### Changed

@@ -1350,8 +1350,42 @@ def combine(audio_dir: Path) -> int:
               f"{len(text)} characters")
         check("the result says what later rows still owe",
               {entry["row"] for entry in report["pending"]}
-              == {"25.9", "25.10", "25.13"},
+              == {"25.13"},
               ", ".join(sorted(entry["row"] for entry in report["pending"])))
+
+        # The difficulty: one set of numbers, and the slider speed the
+        # segments that did not choose them keep anyway.
+        print()
+        settled = report["difficulty"]
+        print("difficulty: " + ", ".join(f"{field} {value:g}"
+                                         for field, value in settled["values"].items()))
+        lines = [row for row in next(s["lines"] for s in built["sections"]
+                                     if s["name"] == "TimingPoints") if row.strip()]
+        reds = [row for row in lines if ta._is_red_line(row)]
+        greens = {round(float(row.split(",")[0]), 3): -100.0 / float(row.split(",")[1])
+                  for row in lines if not ta._is_red_line(row)}
+        floor = 0.0
+        for n, segment in enumerate(plan["segments"]):
+            ratio = settled["segments"][n]["sv_ratio"]
+            mine = [float(row.split(",")[0]) for row in reds
+                    if floor - 1e-6 <= float(row.split(",")[0]) <= segment["ends_at_ms"]]
+            floor = segment["ends_at_ms"]
+            if abs(ratio - 1.0) <= 1e-9:
+                # These sources put their own green eight beats in, never on
+                # a red line, so a green on one would be this builder's.
+                check(f"segment {n}: its own multiplier, nothing added",
+                      all(round(at, 3) not in greens for at in mine),
+                      f"{len(mine)} red line(s), no green invented")
+                continue
+            held = [at for at in mine
+                    if abs(greens.get(round(at, 3), 0.0) - ratio) <= 1e-6]
+            check(f"segment {n}: every red is followed by its {ratio:.4g}x",
+                  len(held) == len(mine) and bool(mine),
+                  f"{len(held)} of {len(mine)} red line(s) carry it")
+        differing = {field for row in settled["segments"]
+                     for field in row["deviations"]}
+        check("what a segment gave up is named", "slider_multiplier" in differing,
+              ", ".join(sorted(differing)) or "nothing differs")
 
         # The hitsounds: two sources asked for one filename with two
         # different sounds in it, and both have to survive.

@@ -9635,10 +9635,12 @@ class CombineAssemblyTests(unittest.TestCase):
                 self._map(Path(tmp) / "a",
                           objects=[*self.OBJECTS, "64,64,18000,1,0,0:0:0:0:kick.wav"]),
                 self._map(Path(tmp) / "b", multiplier="2.0")])
-        pending = {entry["code"]: entry for entry in report["pending"]}
-        self.assertEqual(pending["multiplier_not_reconciled"]["segments"], [1])
-        self.assertEqual({entry["row"] for entry in report["pending"]},
-                         {"25.9", "25.10", "25.13"})
+        self.assertEqual([entry["row"] for entry in report["pending"]], ["25.13"])
+        # The second segment was made at SliderMultiplier 2.0 against the 1.4
+        # written, so its sliders keep their speed through a green line.
+        self.assertEqual([row["sv_ratio"] for row in report["difficulty"]["segments"]],
+                         [1.0, 2.0 / 1.4])
+        self.assertEqual(report["difficulty"]["values"]["slider_multiplier"], 1.4)
         # Both segments ask for a custom sample index -- their green line
         # wants 5 -- so each gets one of its own, and 25.8 owes nothing.
         self.assertEqual([row["index_map"] for row in report["samples"]["segments"]],
@@ -10038,6 +10040,147 @@ class CombineSampleTests(unittest.TestCase):
         row = self._lines(text, "HitObjects")[0].split(",")
         self.assertEqual(row[5:10], ["L|300:200", "1", "100", "0|0", "0:0|0:0"])
         self.assertEqual(row[10], "0:0:1:60:kick.wav")
+
+class CombineDifficultyTests(unittest.TestCase):
+    """The one set of numbers a compilation can hold, and the slider speed it owes."""
+
+    def _map(self, folder: Path, *, multiplier: str = "1.4", tick: str = "1",
+             ar: str = "9", od: str = "7", hp: str = "5", cs: str = "4",
+             stack: str = "0.7", greens=(), seconds: float = 6.0) -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "Mode: 0",
+                 f"StackLeniency: {stack}", "",
+                 "[Metadata]", "Title:Song", "Artist:A", "Creator:M",
+                 f"Version:{folder.name}", "",
+                 "[Difficulty]", f"HPDrainRate:{hp}", f"CircleSize:{cs}",
+                 f"OverallDifficulty:{od}", f"ApproachRate:{ar}",
+                 f"SliderMultiplier:{multiplier}", f"SliderTickRate:{tick}", "",
+                 "[Events]", "",
+                 "[TimingPoints]", "1000,400,4,2,0,80,1,0", *greens, "",
+                 "[HitObjects]", "100,100,2000,1,0,0:0:0:0:",
+                 "200,200,2400,1,0,0:0:0:0:", ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        ta.sf.write(str(folder / "song.wav"),
+                    np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        return folder / "map.osu"
+
+    def _settled(self, sources, choice="first"):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        settled = overtone_combine.difficulty_plan(plan, choice)
+        json.dumps(settled)
+        return plan, settled
+
+    @staticmethod
+    def _timing(text: str) -> list[str]:
+        body = text.split("[TimingPoints]")[1].split("[")[0]
+        return [row for row in body.splitlines()
+                if row.strip() and not row.strip().startswith("//")]
+
+    def test_the_first_segments_numbers_are_written_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, settled = self._settled([self._map(Path(tmp) / "a", ar="9", od="7"),
+                                            self._map(Path(tmp) / "b", ar="7", od="4")])
+        self.assertEqual(settled["from"], "first")
+        self.assertEqual((settled["values"]["ar"], settled["values"]["od"]), (9.0, 7.0))
+        self.assertEqual(settled["segments"][0]["deviations"], {})
+        # The second map is played at numbers its mapper did not choose, and
+        # the report says so in each field's own units.
+        self.assertEqual(settled["segments"][1]["deviations"]["ar"],
+                         {"theirs": 7.0, "written": 9.0, "off": -2.0})
+
+    def test_the_median_can_be_asked_for_instead(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, settled = self._settled([self._map(Path(tmp) / "a", ar="7"),
+                                            self._map(Path(tmp) / "b", ar="9"),
+                                            self._map(Path(tmp) / "c", ar="8")],
+                                           "median")
+        self.assertEqual((settled["from"], settled["values"]["ar"]), ("median", 8.0))
+
+    def test_numbers_can_be_given_by_hand(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", ar="9", od="7")
+            _plan, settled = self._settled([source], {"ar": 9.5})
+            plan = overtone_combine.plan_compilation([source])
+            with self.assertRaises(ValueError):
+                overtone_combine.difficulty_plan(plan, {"approach": 9.5})
+            with self.assertRaises(ValueError):
+                overtone_combine.difficulty_plan(plan, "lowest")
+        self.assertEqual((settled["from"], settled["values"]["ar"]), ("given", 9.5))
+        self.assertEqual(settled["values"]["od"], 7.0)   # the rest is the first's
+
+    def test_a_segment_made_at_another_multiplier_keeps_its_slider_speed(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", multiplier="1.4")
+            second = self._map(Path(tmp) / "b", multiplier="2.0")
+            plan = overtone_combine.plan_compilation([first, second])
+            text, report = overtone_combine.combine_beatmap(plan)
+        rows = self._timing(text)
+        self.assertEqual([row["sv_ratio"] for row in report["difficulty"]["segments"]],
+                         [1.0, 2.0 / 1.4])
+        # 2.0 under a map written at 1.4 is 1.4286x, and -100/1.4286 is -70.
+        greens = [row for row in rows if row.split(",")[1].startswith("-")]
+        self.assertEqual(len(greens), 1)
+        self.assertEqual(greens[0].split(",")[1], "-70")
+        # And it sits on the red line it follows, which resets velocity to 1.
+        self.assertEqual(greens[0].split(",")[0],
+                         [row for row in rows if not row.split(",")[1].startswith("-")]
+                         [1].split(",")[0])
+
+    def test_a_green_the_source_had_is_scaled_not_replaced(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", multiplier="1.4")
+            second = self._map(Path(tmp) / "b", multiplier="2.0",
+                               greens=("1500,-125,4,3,2,60,0,1",))
+            plan = overtone_combine.plan_compilation([first, second])
+            text, _report = overtone_combine.combine_beatmap(plan)
+        green = next(row for row in self._timing(text) if row.split(",")[5] == "60")
+        # 0.8x of its own map is 1.1429x of this one, and -100/1.1429 is -87.5.
+        # The sample set, index, volume and kiai are the mapper's own.
+        self.assertEqual(green.split(",")[1], "-87.5")
+        self.assertEqual(green.split(",")[2:], ["4", "3", "1", "60", "0", "1"])
+
+    def test_a_velocity_a_green_line_cannot_carry_refuses_by_name(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", multiplier="3.0")
+            second = self._map(Path(tmp) / "slow", multiplier="0.1")
+            plan = overtone_combine.plan_compilation([first, second])
+            settled = overtone_combine.difficulty_plan(plan)
+            with self.assertRaises(ValueError) as caught:
+                overtone_combine.combine_beatmap(plan)
+        self.assertEqual([r["code"] for r in settled["refusals"]],
+                         ["velocity_out_of_range"])
+        self.assertIn("slow", settled["refusals"][0]["why"])
+        self.assertIn("0.1x-10x", str(caught.exception))
+
+    def test_a_tick_rate_that_differs_is_reported_not_fixed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, settled = self._settled([self._map(Path(tmp) / "a", tick="1"),
+                                            self._map(Path(tmp) / "b", tick="2")])
+        # Nothing in a green line touches the tick rate, so this one is a
+        # deviation the build reports and does not pretend to fix.
+        self.assertEqual(settled["tick_rate_differs"], [1])
+        self.assertEqual(settled["segments"][1]["deviations"]["slider_tick_rate"]["off"],
+                         1.0)
+
+    def test_nothing_is_added_when_the_multipliers_agree(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = overtone_combine.plan_compilation(
+                [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b")])
+            text, report = overtone_combine.combine_beatmap(plan)
+        rows = self._timing(text)
+        self.assertEqual([row["sv_ratio"] for row in report["difficulty"]["segments"]],
+                         [1.0, 1.0])
+        self.assertEqual(len(rows), 2)      # one red each, and no green invented
+        self.assertTrue(all(not row.split(",")[1].startswith("-") for row in rows))
 
 if __name__ == "__main__":
     unittest.main()

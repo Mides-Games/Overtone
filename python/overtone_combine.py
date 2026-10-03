@@ -843,6 +843,15 @@ def _ms_text(value: float, decimals: int = WRITE_DECIMALS) -> str:
     return f"{value:.{decimals}f}"
 
 
+def _beat_text(value: float) -> str:
+    """A beat length as the writer puts it: up to six places, no trailing
+    zeros. A velocity worked out from two multipliers lands on
+    -69.99999999999999 as readily as on -70, and "-70.000000" in a file
+    nobody can diff is worse than either.
+    """
+    return f"{value:.6f}".rstrip("0").rstrip(".") or "0"
+
+
 def _shift_object_line(raw: str, shift: float, decimals: int) -> str:
     """One object line moved, every other character of it untouched.
 
@@ -911,27 +920,28 @@ def _state_red(governing: dict, time_ms: float, state, decimals: int,
 
 
 def _state_green(time_ms: float, state, decimals: int,
-                 index_map: dict | None = None) -> str | None:
-    """The slider velocity in force at the segment's start, if it is not 1.
+                 index_map: dict | None = None, ratio: float = 1.0) -> str | None:
+    """The slider velocity in force at the segment's start, where it is not 1.
 
     A red line resets velocity to 1.0, so the green that was carrying 0.8x in
     the source has to be restated or the segment's first sliders are faster
-    than the mapper made them. The cross-map part — this segment's
-    ``SliderMultiplier`` against the one the compilation writes — is row 25.9,
-    and until it lands this green carries the source's own number only.
+    than the mapper made them. ``ratio`` is the cross-map part (row 25.9):
+    this segment's ``SliderMultiplier`` over the one the compilation writes,
+    so a segment made at 2.0 under a compilation at 1.4 carries 1.4286x of
+    whatever its own green said.
     """
-    if abs(state.sv - 1.0) <= 1e-9:
+    sv = state.sv * float(ratio)
+    if abs(sv - 1.0) <= 1e-9:
         return None
-    beat = -100.0 / state.sv
     index = int(state.sample_index)
-    return (f"{_ms_text(time_ms, decimals)},{_ms_text(beat, 6)},4,"
+    return (f"{_ms_text(time_ms, decimals)},{_beat_text(-100.0 / sv)},4,"
             f"{int(state.sample_set)},{(index_map or {}).get(index, index)},"
             f"{int(state.volume)},0,{1 if state.kiai else 0}")
 
 
 def _segment_lines(segment: dict, beatmap: dict, floor_ms: float, decimals: int,
-                   index_map: dict | None = None,
-                   renames: dict | None = None
+                   index_map: dict | None = None, renames: dict | None = None,
+                   ratio: float = 1.0
                    ) -> tuple[list[tuple], list[tuple], list[dict], list[dict]]:
     """One segment's timing lines and object lines, placed.
 
@@ -944,6 +954,7 @@ def _segment_lines(segment: dict, beatmap: dict, floor_ms: float, decimals: int,
     at = float(segment["at_ms"])
     index_map = index_map or {}
     renames = renames or {}
+    ratio = float(ratio)
     notes: list[dict] = []
     refusals: list[dict] = []
     points = _points_of(beatmap)
@@ -993,16 +1004,28 @@ def _segment_lines(segment: dict, beatmap: dict, floor_ms: float, decimals: int,
             return [], [], notes, refusals
         timing.append((red_at, 0,
                        _state_red(governing, red_at, state, decimals, index_map)))
-        green = _state_green(max(at, red_at), state, decimals, index_map)
+        green = _state_green(max(at, red_at), state, decimals, index_map, ratio)
         if green is not None:
             timing.append((max(at, red_at), 1, green))
 
-    for point in points:
-        if point["time"] < start - 1e-6 or point["time"] > end + 1e-6:
-            continue
+    inside = [point for point in points
+              if start - 1e-6 <= point["time"] <= end + 1e-6]
+    greens_at = {round(point["time"], 6) for point in inside if not point["red"]}
+    for point in inside:
+        line = _shift_timing_line(point["raw"], shift, decimals)
+        if not point["red"]:
+            line = _scaled_green(line, ratio, decimals)
         timing.append((point["time"] + shift, 0 if point["red"] else 1,
-                       _rewrite_timing_index(
-                           _shift_timing_line(point["raw"], shift, decimals), index_map)))
+                       _rewrite_timing_index(line, index_map)))
+        # Every red line resets the velocity to 1.0, which under another
+        # SliderMultiplier is the wrong speed. Where the source has no green
+        # of its own at that moment to carry the ratio, one goes in.
+        if point["red"] and abs(ratio - 1.0) > 1e-9 \
+                and round(point["time"], 6) not in greens_at:
+            timing.append((point["time"] + shift, 1,
+                           _rewrite_timing_index(
+                               _sv_text(point["time"] + shift, ratio,
+                                        point["raw"].split(","), decimals), index_map)))
 
     objects: list[tuple] = []
     dropped = 0
@@ -1025,16 +1048,17 @@ def _segment_lines(segment: dict, beatmap: dict, floor_ms: float, decimals: int,
 
 def _header_sections(plan: dict, audio_name: str, preview_ms: float | None,
                      bookmarks: list[float], background: str | None,
-                     breaks: list[tuple], decimals: int) -> list[str]:
+                     breaks: list[tuple], decimals: int,
+                     values: dict | None = None) -> list[str]:
     """Everything above [TimingPoints], from the first segment plus the plan.
 
-    Deliberately thin. Metadata, credits and the difficulty reconciliation are
-    rows 25.13 and 25.10; until they land these come from the first segment and
-    the report says so, which is better than a second set of defaults nobody
-    chose.
+    Deliberately thin. The difficulty numbers are whichever set
+    :func:`difficulty_plan` settled on; metadata and credits are row 25.13,
+    and until that lands they come from the first segment and the report says
+    so, which is better than a second set of defaults nobody chose.
     """
     first = plan["segments"][0]
-    difficulty = first["difficulty"]
+    difficulty = values if values is not None else first["difficulty"]
     mode = plan["mode"] if plan["mode"] is not None else 0
 
     def number(value, fallback: str) -> str:
@@ -1101,7 +1125,8 @@ def _header_sections(plan: dict, audio_name: str, preview_ms: float | None,
 
 def combine_beatmap(plan: dict, audio_name: str = "audio.mp3",
                     decimals: int = WRITE_DECIMALS,
-                    samples: dict | None = None) -> tuple[str, dict]:
+                    samples: dict | None = None,
+                    difficulty="first") -> tuple[str, dict]:
     """The compilation as one ``.osu``: every borrowed timestamp where it belongs.
 
     What moves, and the rule for each, is the specification this row exists
@@ -1124,11 +1149,17 @@ Hitsounds travel with their segment: every sample index is remapped so no
     the same one ``build_samples`` copies the files with — and one is made
     here when it is not given.
 
+``difficulty`` picks the one set of difficulty numbers the map can hold —
+    ``"first"``, ``"median"`` or a dict of values (:func:`difficulty_plan`) —
+    and the slider velocity that follows from it is applied to every green
+    line borrowed, and added after every red, so a segment made at another
+    ``SliderMultiplier`` still moves at its own speed. A segment that cannot
+    be compensated inside a green line's range refuses the build by name.
+
     Returns the text and a report. The report's ``pending`` list is the honest
-    part: the slider multipliers are not reconciled yet (row 25.9), the
-    difficulty numbers come from the first segment (25.10), and the metadata
-    is its metadata (25.13). Each entry names the row that will answer it, so
-    what this builds today is not mistaken for what it will build.
+    part: the metadata is still the first segment's (row 25.13), and nothing
+    credits the other mappers yet. Each entry names the row that will answer
+    it, so what this builds today is not mistaken for what it will build.
 
     Writing the file is row 25.16; this returns text, which is also what makes
     it testable against a reader.
@@ -1141,6 +1172,10 @@ Hitsounds travel with their segment: every sample index is remapped so no
         raise ValueError(f"Plan format {plan.get('format')!r} is not {PLAN_FORMAT}.")
 
     chosen = samples if samples is not None else sample_plan(plan)
+    settled = difficulty_plan(plan, difficulty)
+    if settled["refusals"]:
+        raise ValueError("The difficulty refused: " + "; ".join(
+            r["why"] for r in settled["refusals"]))
     timing: list[tuple] = []
     objects: list[tuple] = []
     bookmarks: list[float] = []
@@ -1156,8 +1191,9 @@ Hitsounds travel with their segment: every sample index is remapped so no
         shift = float(segment["shift_ms"])
         start, end = segment["range"]["start_ms"], segment["range"]["end_ms"]
         index_map, renames = _segment_samples(chosen, n)
+        ratio = float(settled["segments"][n]["sv_ratio"])
         rows, hits, segment_notes, segment_refusals = _segment_lines(
-            segment, beatmap, floor_ms, decimals, index_map, renames)
+            segment, beatmap, floor_ms, decimals, index_map, renames, ratio)
         timing.extend(rows)
         objects.extend(hits)
         notes.extend({"segment": n, **note} for note in segment_notes)
@@ -1183,27 +1219,14 @@ Hitsounds travel with their segment: every sample index is remapped so no
             f"segment {r['segment']}: {r['why']}" for r in refusals))
 
     first = plan["segments"][0]
-    written_multiplier = first["difficulty"]["slider_multiplier"]
     pending: list[dict] = []
-    if len(plan["segments"]) > 1:
-        differing = [n for n, s in enumerate(plan["segments"])
-                     if s["difficulty"]["slider_multiplier"] != written_multiplier]
-        if differing:
-            pending.append({"row": "25.9", "code": "multiplier_not_reconciled",
-                            "what": f"These segments were made at a different "
-                                    f"SliderMultiplier than the "
-                                    f"{written_multiplier} written, so their sliders "
-                                    f"move at the wrong speed.",
-                            "segments": differing})
-        pending.append({"row": "25.10", "code": "difficulty_from_first_segment",
-                        "what": "HP, CS, OD, AR and stack leniency are the first "
-                                "segment's: one map holds one set of them."})
     pending.append({"row": "25.13", "code": "metadata_from_first_segment",
                     "what": "Title, artist, creator and tags are the first segment's; "
                             "nothing credits the other mappers yet."})
 
     body = _header_sections(plan, audio_name, preview, sorted(bookmarks),
-                            first["background"], sorted(breaks), decimals)
+                            first["background"], sorted(breaks), decimals,
+                            settled["values"])
     body.append("[TimingPoints]")
     body.extend(text for _t, _r, text in
                 sorted(timing, key=lambda row: (row[0], row[1])))
@@ -1213,7 +1236,7 @@ Hitsounds travel with their segment: every sample index is remapped so no
     text = "\r\n".join(body)
 
     report = {"audio_name": audio_name, "format": WRITE_FORMAT, "decimals": decimals,
-              "segments": per_segment, "samples": chosen,
+              "segments": per_segment, "samples": chosen, "difficulty": settled,
               "objects": len(objects), "timing_lines": len(timing),
               "bookmarks": len(bookmarks), "breaks": len(breaks),
               "preview_ms": None if preview is None else round(preview, 3),
@@ -1714,3 +1737,155 @@ def build_samples(plan: dict, folder: str | os.PathLike[str],
     return {"folder": str(out), "copied": copied, "already_there": kept,
             "failed": failed, "bytes": chosen["bytes"],
             "indices_used": chosen["indices_used"]}
+
+
+# ---------------------------------------------------------------------------
+# One set of difficulty numbers, and the slider velocity that follows from it
+# (Phase 25, rows 25.10 and 25.9)
+# ---------------------------------------------------------------------------
+
+#: The numbers a beatmap holds one of, whatever its segments wanted. Stack
+#: leniency lives in ``[General]`` and the rest in ``[Difficulty]``, but they
+#: are one decision: a map cannot vary any of them inside itself.
+DIFFICULTY_FIELDS = ("hp", "cs", "od", "ar", "slider_multiplier",
+                     "slider_tick_rate", "stack_leniency")
+
+#: What osu! reads for a field no map states.
+DIFFICULTY_DEFAULTS = {"hp": 5.0, "cs": 4.0, "od": 5.0, "ar": 5.0,
+                       "slider_multiplier": 1.4, "slider_tick_rate": 1.0,
+                       "stack_leniency": 0.7}
+
+#: How the one set is chosen when the caller does not say: the first
+#: segment's, which is the only choice that needs no justification — it is
+#: the map the compilation opens with.
+DIFFICULTY_CHOICES = ("first", "median")
+
+#: The slider velocity a green line may carry, as the range osu!'s own editor
+#: offers: a mapper can check 0.1x and 10x there, and cannot check 0.03x. A
+#: segment needing one outside it is refused by name rather than written and
+#: hoped for.
+SV_MIN, SV_MAX = 0.1, 10.0
+
+
+def _median(values: list) -> float:
+    import statistics
+
+    return float(statistics.median(values))
+
+
+def difficulty_plan(plan: dict, choice="first") -> dict:
+    """The one set of difficulty numbers, and what each segment gives up to it.
+
+    ``choice`` is ``"first"`` (the segment the compilation opens with),
+    ``"median"``, or a dict of values to use as given — any field it leaves
+    out falls back to the first segment's, and any no segment states falls
+    back to osu!'s own default.
+
+    The deviations are reported per segment in each field's own units,
+    because this is the one place a compilation cannot keep a promise: AR 9
+    and AR 7 cannot both be true, and the honest thing is to say which maps
+    are being played at numbers their mapper did not choose.
+
+    ``sv_ratio`` is the part that *can* be kept: a slider's speed is the
+    map's ``SliderMultiplier`` times the velocity in force, so a segment made
+    at 2.0 under a compilation written at 1.4 keeps its own speed through a
+    green line carrying 1.4286x. Row 25.9 applies it; this works out whether
+    it is possible, since a green line only reaches so far
+    (:data:`SV_MIN`-:data:`SV_MAX`).
+
+    ``slider_tick_rate`` has no such escape — it is per map and nothing in a
+    green line touches it — so a segment whose tick rate differs is reported
+    and its sliders tick at the compilation's rate. Said out loud rather than
+    left to be noticed.
+    """
+    segments = plan["segments"]
+    first = segments[0]["difficulty"]
+    given = dict(choice) if isinstance(choice, dict) else {}
+    unknown = sorted(set(given) - set(DIFFICULTY_FIELDS))
+    if unknown:
+        raise ValueError(f"Unknown difficulty field(s): {', '.join(unknown)}. "
+                         f"Known: {', '.join(DIFFICULTY_FIELDS)}.")
+    if not given and choice not in DIFFICULTY_CHOICES:
+        raise ValueError(f"Unknown difficulty choice {choice!r}. "
+                         f"Known: {', '.join(DIFFICULTY_CHOICES)}, or a dict of values.")
+    values: dict = {}
+    for field in DIFFICULTY_FIELDS:
+        if field in given and given[field] is not None:
+            values[field] = float(given[field])
+            continue
+        if choice == "median":
+            found = [segment["difficulty"][field] for segment in segments
+                     if segment["difficulty"][field] is not None]
+            if found:
+                values[field] = _median(found)
+                continue
+        if first[field] is not None:
+            values[field] = float(first[field])
+        else:
+            values[field] = DIFFICULTY_DEFAULTS[field]
+    source = "given" if given else str(choice)
+
+    written = values["slider_multiplier"]
+    rows: list[dict] = []
+    refusals: list[dict] = []
+    for n, segment in enumerate(segments):
+        theirs = segment["difficulty"]
+        deviations = {}
+        for field in DIFFICULTY_FIELDS:
+            mine = theirs[field]
+            if mine is None:
+                continue
+            if abs(float(mine) - values[field]) > 1e-9:
+                deviations[field] = {"theirs": round(float(mine), 4),
+                                     "written": round(values[field], 4),
+                                     "off": round(float(mine) - values[field], 4)}
+        multiplier = theirs["slider_multiplier"]
+        ratio = 1.0 if multiplier is None or written <= 0 else float(multiplier) / written
+        # Not rounded: this number is applied, not only shown, and six
+        # places of it wrote a -70.000021 where -70 was the answer.
+        row = {"segment": n, "name": segment["name"], "sv_ratio": ratio,
+               "deviations": deviations}
+        if abs(ratio - 1.0) > 1e-9 and not (SV_MIN <= ratio <= SV_MAX):
+            refusals.append({
+                "segment": n, "code": "velocity_out_of_range",
+                "why": f"{segment['name']} was made at SliderMultiplier "
+                       f"{multiplier:g} against the {written:g} written, so its sliders "
+                       f"need {ratio:.4g}x, outside the {SV_MIN:g}x-{SV_MAX:g}x a green "
+                       f"line can carry. Write SliderMultiplier "
+                       f"{float(multiplier) / SV_MAX:.4g}-{float(multiplier) / SV_MIN:.4g} "
+                       f"instead, or leave this segment out."})
+        rows.append(row)
+    return {"from": source, "values": {k: round(v, 4) for k, v in values.items()},
+            "segments": rows, "refusals": refusals,
+            "tick_rate_differs": [row["segment"] for row in rows
+                                  if "slider_tick_rate" in row["deviations"]]}
+
+
+def _sv_text(time_ms: float, sv: float, red_fields: list, decimals: int) -> str:
+    """A green line carrying ``sv``, with the sample state of the red it follows."""
+    fields = list(red_fields)
+    while len(fields) < 8:
+        fields.append(ta._GREEN_FIELD_DEFAULTS[len(fields)])
+    return ",".join([_ms_text(time_ms, decimals), _beat_text(-100.0 / sv),
+                     fields[2], fields[3], fields[4], fields[5], "0", fields[7]])
+
+
+def _scaled_green(raw: str, ratio: float, decimals: int) -> str:
+    """One green line's velocity multiplied, every other field untouched.
+
+    A green sets velocity against its own map's ``SliderMultiplier``, so a
+    compilation written at another one has to scale every green it borrows,
+    not only the first.
+    """
+    if abs(ratio - 1.0) <= 1e-9:
+        return raw
+    fields = raw.split(",")
+    try:
+        beat = float(fields[1])
+    except (ValueError, IndexError):
+        return raw
+    if beat >= 0:
+        return raw
+    sv = (-100.0 / beat) * ratio
+    fields[1] = _beat_text(-100.0 / sv)
+    return ",".join(fields)

@@ -9049,6 +9049,35 @@ class InstallerSbomTests(unittest.TestCase):
                             for line in found))
         self.assertEqual(sbom.drift(fresh, fresh), [])
 
+    def test_the_release_sbom_is_cyclonedx_and_keeps_every_component(self) -> None:
+        sbom = self._sbom()
+        rows = [{"kind": "wheel", "name": "numpy", "version": "2.5.3",
+                 "licence": "BSD-3-Clause", "what": "a wheel", "source": "https://pypi"},
+                {"kind": "crate", "name": "symphonia-core", "version": "0.6.1",
+                 "licence": "MPL-2.0", "what": "a crate", "source": "https://crates.io"},
+                {"kind": "native", "name": "Microsoft Visual C++ runtime",
+                 "version": "14.x", "licence": "Microsoft Visual Studio redistributable "
+                 "terms", "what": "VCRUNTIME140.dll", "source": "https://learn"}]
+        bom = sbom.cyclonedx("0.1.0-alpha", rows)
+        self.assertEqual((bom["bomFormat"], bom["specVersion"]), ("CycloneDX", "1.6"))
+        self.assertEqual(bom["metadata"]["component"]["version"], "0.1.0-alpha")
+        self.assertEqual(bom["metadata"]["component"]["licenses"],
+                         [{"license": {"id": "MIT"}}])
+        self.assertEqual(len(bom["components"]), 3)
+        wheel, crate, native = bom["components"]
+        self.assertEqual(wheel["purl"], "pkg:pypi/numpy@2.5.3")
+        self.assertEqual(crate["purl"], "pkg:cargo/symphonia-core@0.6.1")
+        # No package manager serves the MSVC runtime, so it gets no purl --
+        # and it is still in the list, which is the point of listing it.
+        self.assertNotIn("purl", native)
+        # A wheel's "BSD License" is not SPDX, so every licence goes in as a
+        # name and none as an expression: the texts are the notices file's.
+        for component in bom["components"]:
+            self.assertEqual(list(component["licenses"][0]["license"]), ["name"])
+        # Nothing that changes between two builds of one commit.
+        self.assertNotIn("serialNumber", bom)
+        self.assertNotIn("timestamp", bom["metadata"])
+
     def test_the_committed_inventory_covers_both_locks(self) -> None:
         import json
         sbom = self._sbom()

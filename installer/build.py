@@ -10,7 +10,8 @@ Each step is timed, and its output goes to ``build\\logs``:
 3. the bundled licences, gathered into the tree (``installer/notices.py``);
 4. the smoke test on that tree (``installer/smoke.py``);
 5. the MSI, with WiX 5.0.2 (``installer/Overtone.wxs``), per user;
-6. the portable ZIP: the same tree in one ``Overtone`` folder;
+6. the portable ZIP: the same tree in one ``Overtone`` folder, and beside it
+   the SBOM and the SHA-256 of everything a release publishes;
 7. both unpacked into temporary folders, the MSI by an administrative install
    (``msiexec /a``, which installs and registers nothing), each compared with
    the tree file for file and smoke-tested;
@@ -49,6 +50,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import notices  # noqa: E402
 import release  # noqa: E402
+import sbom  # noqa: E402
 
 LOGS = release.BUILD / "logs"
 WIX_EXTENSION = "WixToolset.UI.wixext"
@@ -417,6 +419,23 @@ def main() -> int:
     write_zip(release.TREE, portable)
     steps.done("portable ZIP", started)
 
+    # What a release publishes beside the two artefacts: the inventory an
+    # audit reads, and the hashes anyone can check a download against
+    # without trusting this machine.
+    started = time.perf_counter()
+    bom = release.DIST / f"Overtone-{version}-sbom.json"
+    if sbom.write_cyclonedx(bom):
+        return 1
+    sums = release.DIST / f"Overtone-{version}-checksums.txt"
+    published = ([msi] if not args.no_msi else []) + [portable, bom]
+    sums.write_text(
+        f"# Overtone {version}, SHA-256 of everything this release publishes.\n"
+        f"# Check one file:   certutil -hashfile {published[0].name} SHA256\n"
+        f"# Check them all:   sha256sum -c {sums.name}\n"
+        + "".join(f"{sha256(path)}  {path.name}\n" for path in published),
+        encoding="utf-8")
+    steps.done(f"SBOM and checksums ({len(published)} files)", started)
+
     expected = listing(release.TREE)
     checks = []
     if not args.no_verify:
@@ -437,9 +456,10 @@ def main() -> int:
     lines = [f"Overtone {version}, built {datetime.now():%Y-%m-%d %H:%M} from commit {git_head()}",
              f"toolchain: {tool_line(dotnet)}",
              f"tree: {len(expected)} files, {sum(s for s, _ in expected.values()) / 1e6:.1f} MB"]
-    for artefact in ([msi] if not args.no_msi else []) + [portable]:
+    for artefact in published:
         lines.append(f"{artefact.name}: {artefact.stat().st_size / 1e6:.1f} MB, "
                      f"sha256 {sha256(artefact)}")
+    lines.append(f"{sums.name}: the sha256 lines above, to hand to a downloader")
     if ice:
         findings = [f"{level} {name} x{n}" for level in ("error", "warning")
                     for name, n in sorted(ice[level].items())]

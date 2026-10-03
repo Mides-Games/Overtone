@@ -190,10 +190,18 @@ pub fn load(path: &Path) -> Result<(Vec<f32>, u32)> {
     finish(decoded.samples, decoded.sample_rate)
 }
 
-/// The rest of the contract on decoded mono audio, in v3 `_load_audio`'s
-/// order: resample, scrub NaN/Inf, at least two seconds, at most an hour,
-/// peak 0.99.
-fn finish(mut mono: Vec<f32>, rate: u32) -> Result<(Vec<f32>, u32)> {
+/// A sample-length file for classification: decoded, mono, 44.1 kHz,
+/// peak-normalised like [`load`], but with no two-second floor — a
+/// hitsound is shorter than a song by design. Refusals for unreadable,
+/// empty and over-long files stay exactly what [`decode`] says.
+pub fn load_sample(path: &Path) -> Result<(Vec<f32>, u32)> {
+    let decoded = decode(path)?;
+    Ok(prepare(decoded.samples, decoded.sample_rate))
+}
+
+/// Resample, scrub NaN/Inf and peak-normalise: [`finish`]'s contract
+/// without its duration floors.
+fn prepare(mut mono: Vec<f32>, rate: u32) -> (Vec<f32>, u32) {
     if rate != TARGET_SR {
         mono = resample::resample(&mono, rate, TARGET_SR);
     }
@@ -202,12 +210,6 @@ fn finish(mut mono: Vec<f32>, rate: u32) -> Result<(Vec<f32>, u32)> {
             *sample = 0.0;
         }
     }
-    if mono.len() < TARGET_SR as usize * 2 {
-        return Err(Error::TooShort);
-    }
-    if mono.len() as f64 / TARGET_SR as f64 > MAX_AUDIO_SECONDS {
-        return Err(Error::TooLong);
-    }
     let peak = mono.iter().fold(0.0f32, |m, &v| m.max(v.abs()));
     if peak > 1e-9 {
         let gain = 0.99 / peak;
@@ -215,7 +217,21 @@ fn finish(mut mono: Vec<f32>, rate: u32) -> Result<(Vec<f32>, u32)> {
             *sample *= gain;
         }
     }
-    Ok((mono, TARGET_SR))
+    (mono, TARGET_SR)
+}
+
+/// The rest of the contract on decoded mono audio, in v3 `_load_audio`'s
+/// order: resample, scrub NaN/Inf, at least two seconds, at most an hour,
+/// peak 0.99.
+fn finish(mono: Vec<f32>, rate: u32) -> Result<(Vec<f32>, u32)> {
+    let (mono, rate) = prepare(mono, rate);
+    if mono.len() < TARGET_SR as usize * 2 {
+        return Err(Error::TooShort);
+    }
+    if mono.len() as f64 / TARGET_SR as f64 > MAX_AUDIO_SECONDS {
+        return Err(Error::TooLong);
+    }
+    Ok((mono, rate))
 }
 
 /// Mean across channels, which is what `np.mean(y, axis=1)` gives v3.
@@ -495,6 +511,32 @@ mod tests {
             "{}",
             out.len()
         );
+    }
+
+    #[test]
+    fn a_sample_length_file_loads_for_classification_but_not_as_a_song() {
+        // A hitsound is shorter than a song by design: load_sample reads it
+        // through the same decode, resample, scrub and normalise; load
+        // refuses it at the two-second floor.
+        let frames: Vec<[i16; 2]> = (0..22_050)
+            .map(|i| {
+                let t = i as f64 / 44_100.0;
+                let s =
+                    (0.5 * (std::f64::consts::TAU * 150.0 * t).sin() * 32767.0) as i16;
+                [s, s]
+            })
+            .collect();
+        let dir = scratch_dir("sample");
+        let path = dir.join("hit.wav");
+        std::fs::write(&path, wav_bytes(&frames)).unwrap();
+        let (y, sr) = load_sample(&path).unwrap();
+        let short = load(&path).unwrap_err();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(sr, TARGET_SR);
+        assert_eq!(y.len(), 22_050);
+        let peak = y.iter().fold(0.0f32, |m, &v| m.max(v.abs()));
+        assert!((peak - 0.99).abs() < 1e-6, "peak {peak}");
+        assert!(matches!(short, Error::TooShort), "got {short:?}");
     }
 
     #[test]

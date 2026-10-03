@@ -338,6 +338,10 @@ Samples/
 - Analyse the samples themselves with the same feature extractor, then **recommend** a
   mapping: a sample whose spectral profile is kick-like is offered for the kick role. This
   makes profiles portable across sample sets instead of hard-coding "drum-hitnormal".
+  Measured 2026-10-03 (timeline): `overtone-cli hitsound-classify` runs the baked
+  templates over isolated samples, but they do not transfer — a textbook 60 Hz kick
+  reads snare 0.97, a clap reads kick 0.64 — so no mapping is offered yet. The
+  command stays as the instrument to measure the transfer work with.
 - Missing samples are counted, never silently assigned. A sound asking the beatmap folder
   for a sample it does not contain plays the skin's default sample, not silence (osu!
   falls back, and the playback counts it). On 800 local maps (2026-09-26) 78 % ask for

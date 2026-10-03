@@ -84,7 +84,7 @@ named, and the analyses are cached per audio and engine hash, so a re-score take
 And the Rust side:
 
 ```bash
-cargo test --workspace                                 # all pass (287 on 2026-09-30)
+cargo test --workspace                                 # all pass (290 on 2026-10-03)
 cargo run --release -q -p overtone-bench -- golden     # 27/27 attack for attack
 cargo run --release -q -p overtone-bench -- nogrid     # noise, pads, silence refused
 cargo run --release -q -p overtone-bench -- density    # 4/4 changes, 0 false positives

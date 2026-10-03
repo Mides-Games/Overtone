@@ -15,7 +15,49 @@ attempted and abandoned — the reasoning is the expensive part, and re-deriving
 later costs more than writing it down now.
 
 ---
+
 ---
+
+## v4.0.0-dev — 2026-10-03 · hitsound-classify; isolated one-shots don't transfer
+
+### Changed
+
+- **`overtone-cli hitsound-classify <sample.wav> [...]`** (H6 groundwork).
+  Each isolated sample's instrument class from the baked templates over the
+  same extractor the song path runs, best first with probabilities, as JSON.
+  The first detected attack is read; a sample that starts at full amplitude
+  has no peak for the song detector (edges are never peaks), so one with no
+  attack is read at its first sample above 0.02, else at its middle. Exit 1
+  when a file cannot be read (the rest are still classified), 2 on a bad
+  command.
+- **`overtone-audio::load_sample`**: decode, resample, scrub and
+  peak-normalise like `load` but with no two-second floor — a hitsound is
+  shorter than a song by design. `load` keeps refusing short files; the
+  shared tail now lives in one `prepare()`.
+
+### Measured
+
+- **Baked templates do not transfer to isolated one-shots**, so H6's
+  sample→role recommendation is not shippable on them. Over Overtone's own
+  18 samples (`assets/samples/`, recipes known): finishes read cymbal 3/3
+  (0.77–0.86); soft-hitclap reads clap 0.52; drum-hitclap reads snare 0.45;
+  drum-hitnormal (150→52 Hz sweep, a kick by recipe) reads snare 0.86,
+  normal-hitclap (a clap) reads kick 0.64, normal-hitwhistle (a 1760 Hz
+  tone) reads snare 0.72. A textbook 60 Hz decaying kick reads snare 0.97.
+  Padding with 0.5 s of leading silence changes nothing (same tops), so it
+  is not framing — the baked fit is song-context narrow. Ranking per role
+  fails the same way (kick role would take normal-hitclap at 0.64).
+- The command itself is exact: silence reads `other` 1.0 with null
+  `attack_s`; a rendered corpus kick's attack lands at 0.5 s; two runs are
+  byte-identical JSON; 13 classes sum to 1.0 best first.
+
+### Rejected / tried and dropped
+
+- **Top-1 sample→role recommendation off the classifier.** It would offer
+  a clap for the kick role and a snare for the whistle. Dropped after the
+  table above; `recommend` waits with instrument lanes and the clap-mismatch
+  rule until the templates hold on real audio. The `hitsound-classify`
+  command stays: it is the instrument to measure that work with.
 
 ## v4.0.0-dev — 2026-09-30 · Corpus B refusals, explained; the tie-break stands
 

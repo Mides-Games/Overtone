@@ -50,6 +50,12 @@
 //! grid: the instrument half never needed one, and the role degrades to
 //! nulls where there is no grid to sit on.
 //!
+//! `hitsound-classify` names the instrument of each isolated sample file:
+//! the baked templates over the same extractor the song path runs, best
+//! class first with its probability. The first detected attack is read;
+//! a sample with none is read at its first sample above 0.02, else at
+//! its middle, which is silence and reads `other`.
+//!
 //! `hitsound` proposes the sound of every object of a map: bank plus
 //! additions per decidable point (circles, slider heads, repeats and tails,
 //! spinner ends, holds), with the runner-up alternatives, their marginal
@@ -79,7 +85,8 @@
 //!
 //! Exit codes: 0 a grid was found (for `structure`, the audio was read; for
 //! `hitsound-evidence`, the evidence was printed; for `hitsound`, every map
-//! was proposed; for `ramps`, the lines were fitted); 3
+//! was proposed; for `hitsound-classify`, every sample was classified; for
+//! `ramps`, the lines were fitted); 3
 //! the engine refused (no grid in this audio, reason on stderr and in
 //! `diagnostics`); 1 a file could not be loaded (for `hitsound` with several
 //! maps, a map that cannot be read still leaves the others proposed); 2 the
@@ -96,6 +103,7 @@ const USAGE: &str = "usage: overtone-cli analyze <audio> [--json | --full] [--de
 [--min-delta BPM] [--persistence BEATS] [--min-confidence C] [--no-map-bpm]\n       \
 overtone-cli structure <audio>\n       \
 overtone-cli hitsound-evidence <audio>\n       \
+overtone-cli hitsound-classify <sample.wav> [<sample.wav> ...]\n       \
 overtone-cli hitsound <audio> <map.osu> [<map.osu> ...] [--profile <path>]\n       \
 overtone-cli ramps <audio> [--drift <ms>] [--max-lines <n>] [--decimals <n>]";
 
@@ -976,6 +984,9 @@ fn main() -> ExitCode {
     if args.first().map(String::as_str) == Some("hitsound-evidence") {
         return hitsound_evidence(&args[1..]);
     }
+    if args.first().map(String::as_str) == Some("hitsound-classify") {
+        return hitsound_classify(&args[1..]);
+    }
     if args.first().map(String::as_str) == Some("hitsound") {
         return hitsound(&args[1..]);
     }
@@ -1241,5 +1252,71 @@ fn hitsound_evidence(args: &[String]) -> ExitCode {
         "overtone-cli: {} attacks with evidence; attacks {attacks_s:.2} s + tempo {tempo_s:.2} s + structure {structure_s:.2} s + evidence {evidence_s:.2} s",
         rows.len()
     );
+    ExitCode::SUCCESS
+}
+
+/// `hitsound-classify <sample.wav> [<sample.wav> ...]`: each isolated
+/// sample's instrument class, best first, as JSON. The first detected
+/// attack is read; a sample that starts at full amplitude has no peak for
+/// the song detector to find (edges are never peaks), so one with none is
+/// read at its first sample above 0.02, else at its middle. Exit 1 when
+/// a file cannot be read (the rest are still classified), 2 on a bad
+/// command.
+fn hitsound_classify(args: &[String]) -> ExitCode {
+    use overtone_hitsound::{baked, corpus::HitClass, template};
+    if args.is_empty() || args.iter().any(|a| a.starts_with("--")) {
+        eprintln!("overtone-cli: hitsound-classify takes one or more sample files\n{USAGE}");
+        return ExitCode::from(2);
+    }
+    let templates = baked::templates();
+    let mut failed = 0usize;
+    let mut files = Vec::with_capacity(args.len());
+    for path in args {
+        let audio = PathBuf::from(path);
+        let (y, sr) = match overtone_audio::load_sample(&audio) {
+            Ok(loaded) => loaded,
+            Err(e) => {
+                eprintln!("overtone-cli: cannot load {}: {e}", audio.display());
+                files.push(json!({"file": source(&audio), "error": e.to_string()}));
+                failed += 1;
+                continue;
+            }
+        };
+        let duration = y.len() as f64 / sr as f64;
+        let (attacks, _) = overtone_dsp::detect_attacks_default(&y, sr);
+        let attack_s = attacks
+            .first()
+            .map(|a| a.time.get())
+            .or_else(|| {
+                y.iter()
+                    .position(|v| v.abs() > 0.02)
+                    .map(|i| i as f64 / sr as f64)
+            });
+        let features = template::extract(&y, sr, attack_s.unwrap_or(duration / 2.0));
+        let mut classes = template::classify(&templates, &features);
+        classes.sort_by(|a, b| b.1.total_cmp(&a.1));
+        let (top, probability) = classes
+            .first()
+            .copied()
+            .unwrap_or((HitClass::Other, 0.0));
+        files.push(json!({
+            "file": source(&audio),
+            "attack_s": attack_s,
+            "top": top.as_str(),
+            "probability": probability,
+            "classes": classes.iter().map(|(class, p)| json!({
+                "class": class.as_str(), "probability": p,
+            })).collect::<Vec<_>>(),
+        }));
+    }
+    println!(
+        "{}",
+        json!({"files": files, "templates": "baked", "version": overtone_tempo::VERSION})
+    );
+    if failed > 0 {
+        eprintln!("overtone-cli: {failed} file(s) could not be read");
+        return ExitCode::from(1);
+    }
+    eprintln!("overtone-cli: {} sample(s) classified", args.len());
     ExitCode::SUCCESS
 }

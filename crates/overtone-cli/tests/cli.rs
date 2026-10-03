@@ -601,3 +601,105 @@ fn hitsound_evidence_scores_every_attack_and_names_its_role() {
         assert_eq!(bad.status.code(), Some(2), "{args:?}");
     }
 }
+
+#[test]
+fn hitsound_classify_names_isolated_samples_best_first() {
+    use overtone_hitsound::corpus::{self, HitClass};
+    let dir = scratch("classify");
+    let kick = corpus::render(44_100, 2.0, 10.0, &[HitClass::Kick], 5);
+    assert_eq!(kick.hits.len(), 1);
+    let kick_path = dir.join("kick.wav");
+    write_wav(&kick_path, &kick.samples);
+    let silence_path = dir.join("silence.wav");
+    write_wav(&silence_path, &vec![0.0f32; 44_100]);
+    let out = run(&[
+        "hitsound-classify",
+        kick_path.to_str().unwrap(),
+        silence_path.to_str().unwrap(),
+    ]);
+    let again = run(&[
+        "hitsound-classify",
+        kick_path.to_str().unwrap(),
+        silence_path.to_str().unwrap(),
+    ]);
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // Deterministic: the same files read the same twice.
+    assert_eq!(out.stdout, again.stdout);
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["templates"], "baked");
+    let files = report["files"].as_array().unwrap();
+    assert_eq!(files.len(), 2);
+    for file in files {
+        let classes = file["classes"].as_array().unwrap();
+        // All 13 classes, best first, probabilities that sum to one, and
+        // the top row repeating the winner.
+        assert_eq!(classes.len(), 13, "{file}");
+        let total: f64 = classes
+            .iter()
+            .map(|c| c["probability"].as_f64().unwrap())
+            .sum();
+        assert!((total - 1.0).abs() < 1e-9, "{total}");
+        let mut probs: Vec<f64> = classes
+            .iter()
+            .map(|c| c["probability"].as_f64().unwrap())
+            .collect();
+        let mut sorted = probs.clone();
+        sorted.sort_by(|a, b| b.total_cmp(a));
+        assert_eq!(probs, sorted, "{file}");
+        assert_eq!(file["top"], classes[0]["class"]);
+        assert_eq!(
+            file["probability"],
+            classes[0]["probability"],
+            "{file}"
+        );
+    }
+    // The rendered kick starts at 0.5 s with a real onset, so the detector
+    // — not the energy fallback — names its time.
+    assert!(
+        (files[0]["attack_s"].as_f64().unwrap() - 0.5).abs() < 0.05,
+        "{}",
+        files[0]
+    );
+    // Silence has no attack to find and nothing to be: null time, Other.
+    assert!(files[1]["attack_s"].is_null());
+    assert_eq!(files[1]["top"], "other");
+    assert_eq!(files[1]["probability"], 1.0);
+}
+
+#[test]
+fn hitsound_classify_reads_short_files_and_reports_the_unreadable() {
+    // A hitsound is shorter than a song by design: half a second of tone
+    // classifies instead of refusing at the two-second floor.
+    let dir = scratch("classify-short");
+    let short = dir.join("blip.wav");
+    let tone: Vec<f32> = (0..22_050)
+        .map(|i| {
+            (0.5 * (std::f64::consts::TAU * 440.0 * i as f64 / 44_100.0).sin()) as f32
+        })
+        .collect();
+    write_wav(&short, &tone);
+    let out = run(&[
+        "hitsound-classify",
+        short.to_str().unwrap(),
+        "no-such-file.wav",
+    ]);
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert_eq!(out.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let files = report["files"].as_array().unwrap();
+    assert_eq!(files.len(), 2);
+    assert!(files[0]["top"].is_string());
+    assert!(files[1]["error"].is_string());
+    for args in [&["hitsound-classify"][..], &["hitsound-classify", "--json"][..]] {
+        let bad = run(args);
+        assert_eq!(bad.status.code(), Some(2), "{args:?}");
+    }
+}

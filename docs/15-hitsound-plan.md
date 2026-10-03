@@ -192,8 +192,12 @@ closes the gap P-3's row names ("beatmap folder custom index, then skin, then de
 the skin had never been read). The Samples card (same day) shows the song's folder, the
 playback skin or any folder picked, plays each sample alone or over the song in place of
 the sound selected in the Sounds table, and chooses the skin playback asks, a setting.
-Recommending samples for roles needs the feature extractor on the samples, and is not
-started.
+Recommending samples for roles has the feature extractor on the samples since
+2026-10-03 (`overtone-cli hitsound-classify`, baked templates, first attack else
+energy gate): measured the same day, the baked fit does not transfer to isolated
+one-shots (textbook kick reads snare, a clap reads kick), so no mapping is offered
+and recommend waits with the lanes and the clap-mismatch rule until the templates
+hold on real audio (timeline).
 
 ### H7 · Audio-only proposal (proposed 2026-09-26, todo)
 

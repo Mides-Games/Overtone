@@ -29,7 +29,7 @@ sections within 0.05 BPM and 5 ms     24 / 24
 | **Hitsounds** | ✅ In the app: copy one difficulty's hitsounds onto the others, see where each addition falls, hear them with the song, a consistency check in the mod report, the Rust decision engine's proposals to tick, and volume and sample index to set by hand, all heard over the song before a preview, a write and an undo; the proposals' profile chosen on the Propose card (Balanced or Drum-focused); and a Samples card: a skin's or a beatmap folder's samples, each heard alone or over the song in place of a selected sound, and the skin playback asks |
 | **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, a section loop or one drawn on the map at 100/75/50 %, taps, the percussive part alone, a difficulty's hitsounds as written or as they would be written |
 | **Accuracy on real, live-played songs** | 📋 Planned, and measured first — today 1.7 % of 20 ranked maps' red lines land within 5 ms (Corpus B, `bench/corpus_b.py`) |
-| **Installer** (MSI) | 🟡 Built, not published: `installer\build.py` makes a per-user MSI (no administrator) and a portable ZIP in one line, and smoke-tests both unpacked. Unsigned, and the licence notices are not packaged yet |
+| **Installer** (MSI) | ✅ Published: [**v0.1.0-alpha**](https://github.com/githaltwastaken/Overtone/releases/tag/v0.1.0-alpha) — a per-user MSI (no administrator) and a portable ZIP, with the SBOM, the checksums and every bundled licence in the tree. **Unsigned**, so SmartScreen warns; check the download against `checksums.txt` |
 
 Nothing here claims a number that was not measured. Targets are marked as targets.
 
@@ -217,7 +217,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Feature | Status | Notes |
 |---|:--:|---|
 | Double-click launcher | ✅ | `Overtone.bat` |
-| Self-contained MSI + portable ZIP | 🟡 | P10.13 — `installer\build.py`: per-user MSI into `%LOCALAPPDATA%\Programs`, Start menu shortcut, the same tree as a ZIP; not signed, no licence notices or file associations yet ([what is built](docs/11-msi-distribution.md)) |
+| Self-contained MSI + portable ZIP | ✅ | P10.13 — `installer\build.py` in one line: per-user MSI into `%LOCALAPPDATA%\Programs`, Start menu shortcut, the licence page, the same tree as a ZIP, the SBOM and the checksums. Published as [v0.1.0-alpha](https://github.com/githaltwastaken/Overtone/releases/tag/v0.1.0-alpha); not signed, no file associations yet ([what is built](docs/11-msi-distribution.md)) |
 
 ### Deliberately not built
 

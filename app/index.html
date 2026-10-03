@@ -69,6 +69,10 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h2.5M8 12h2.5M13 12h2.5M18 12h3"/><path d="M5.5 8v8M10.5 5v14M15.5 9v6M20.5 10v4"/></svg>
         <span class="nav-label" data-i18n="nav_audio">Audio</span>
       </button>
+      <button type="button" class="nav-item" data-view="compile" data-i18n-title="nav_compile" title="Compile">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h7"/><path d="M4 12h12"/><path d="M4 17h7"/><path d="M18 5v6"/><path d="M15 8h6"/></svg>
+        <span class="nav-label" data-i18n="nav_compile">Compile</span>
+      </button>
       <button type="button" class="nav-item" data-view="report" data-i18n-title="nav_report" title="Report">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><path d="M16 5h1a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h1"/><path d="M9 11h6M9 15h4"/></svg>
         <span class="nav-label" data-i18n="nav_report">Report</span>
@@ -917,6 +921,88 @@
           <div class="band-wrap" id="bandWrap">
             <canvas id="bandCanvas"></canvas>
           </div>
+        </div>
+      </section>
+
+      <!-- several maps and their songs as one map (Phase 25) -->
+      <section class="view" id="viewCompile" data-view="compile" hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_compile">Compile</h2>
+          <div class="view-sub" data-i18n="cp_sub">Several maps and their songs as one map. Every object keeps the beat it had, each song's hitsounds and slider speed come with it, and nothing is ever written into a source folder. What a compilation cannot keep — one set of difficulty numbers — is listed instead of hidden.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="cp_sources">Songs</div>
+            <span class="pill" id="cpCount" hidden></span>
+            <span class="pill amber" id="cpRefused" hidden></span>
+            <div class="spacer"></div>
+            <button class="btn small" id="cpAddSong"><span data-i18n="cp_add_song">Add the open song's maps</span></button>
+            <button class="btn small" id="cpClear" hidden><span data-i18n="cp_clear">Clear</span></button>
+            <button class="btn small" id="cpAdd"><span data-i18n="cp_add">Add maps…</span></button>
+          </div>
+          <div class="card-body" id="cpBody"></div>
+        </div>
+
+        <div class="card" id="cpJoinCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="cp_join">Joining</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="cpJoinSub"></span>
+          </div>
+          <div class="card-body stack">
+            <div class="grid-2">
+              <label class="field"><span class="setting-name" data-i18n="cp_lead_in">Silence before the first song (ms)</span><input class="input num" id="cpLeadIn" type="number" min="0" step="100"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_gap">Silence between songs (ms)</span><input class="input num" id="cpGap" type="number" min="0" step="100"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_lead">Kept before a song's first object (ms)</span><input class="input num" id="cpLead" type="number" min="0" step="100"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_tail">Kept after its last sound (ms)</span><input class="input num" id="cpTail" type="number" min="0" step="100"></label>
+            </div>
+            <div class="field">
+              <span class="setting-name" data-i18n="cp_difficulty">Difficulty numbers</span>
+              <div class="segmented stretch" id="cpDifficulty">
+                <button type="button" data-from="first" class="on" data-i18n="cp_diff_first">The first song's</button>
+                <button type="button" data-from="median" data-i18n="cp_diff_median">The median</button>
+              </div>
+              <span class="hint" data-i18n="cp_diff_hint">AR, OD, HP and the slider multiplier are one set for the whole map. Each song's own slider speed is kept anyway, through a green line.</span>
+            </div>
+            <label class="check"><input type="checkbox" id="cpBreaks" checked><span data-i18n="cp_breaks">A break over every junction, so the silence between two songs is silence</span></label>
+            <label class="check"><input type="checkbox" id="cpBookmarks" checked><span data-i18n="cp_bookmarks">A bookmark where each song starts</span></label>
+            <label class="check"><input type="checkbox" id="cpStrict"><span data-i18n="cp_strict">Strict: refuse the build if any source needed a repair</span></label>
+          </div>
+        </div>
+
+        <div class="card" id="cpNamesCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="cp_names">Names and credits</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="cpOsuName"></span>
+          </div>
+          <div class="card-body stack">
+            <div class="grid-2">
+              <label class="field"><span class="setting-name" data-i18n="cp_artist">Artist</span><input class="input" id="cpArtist" type="text"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_title">Title</span><input class="input" id="cpTitle" type="text"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_creator">Creator</span><input class="input" id="cpCreator" type="text"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_version">Difficulty name</span><input class="input" id="cpVersion" type="text"></label>
+            </div>
+            <div class="field"><span class="setting-name" data-i18n="cp_tags">Tags</span><div class="chips" id="cpTags"></div></div>
+            <div class="field"><span class="setting-name" data-i18n="cp_credits">credits.txt</span><pre class="cp-credits" id="cpCredits"></pre></div>
+          </div>
+        </div>
+
+        <div class="card" id="cpBuildCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="cp_build">What it would build</div>
+            <span class="pill" id="cpVerdict" hidden></span>
+            <div class="spacer"></div>
+            <div class="segmented" id="cpFormat">
+              <button type="button" data-format="mp3" class="on">MP3</button>
+              <button type="button" data-format="wav">WAV</button>
+            </div>
+            <label class="check inline"><input type="checkbox" id="cpOsz"><span data-i18n="cp_osz">.osz as well</span></label>
+            <button class="btn small" id="cpFolder"><span data-i18n="cp_folder">Choose folder…</span></button>
+            <button class="btn small primary" id="cpGo" disabled><span data-i18n="cp_go">Build</span></button>
+          </div>
+          <div class="card-body" id="cpBuildBody"></div>
         </div>
       </section>
 

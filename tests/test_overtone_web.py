@@ -4525,5 +4525,216 @@ class VerdictStripTests(unittest.TestCase):
         return [note["key"] for note in web.analysis_payload(analysis)["warnings"]]
 
 
+class CompileBridgeTests(_IsolatedConfig):
+    """The Compile view's bridge: the list, the plan under it, and the build."""
+
+    def _song(self, folder: Path, bpm: float, artist: str, title: str,
+              mapper: str, seconds: float = 8.0, rate: int = 8000) -> Path:
+        folder.mkdir(parents=True, exist_ok=True)
+        ta.sf.write(str(folder / "song.wav"),
+                    np.zeros(int(rate * seconds), dtype="float32"), rate)
+        beat = 60000.0 / bpm
+        objects = [f"100,100,{round(1000 + k * 4 * beat)},1,0,0:0:0:0:" for k in range(4)]
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "PreviewTime: 1200", "Mode: 0", "",
+                 "[Metadata]", f"Title:{title}", f"Artist:{artist}", f"Creator:{mapper}",
+                 "Version:Hard", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[Events]", "",
+                 "[TimingPoints]", f"1000,{beat:.12f},4,2,0,80,1,0", "",
+                 "[HitObjects]", *objects, ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        return folder / "map.osu"
+
+    def _two(self, tmp: str) -> tuple:
+        return (self._song(Path(tmp) / "a", 150.0, "Artist One", "First", "mapper_one"),
+                self._song(Path(tmp) / "b", 174.0, "Artist Two", "Second", "mapper_two"))
+
+    @staticmethod
+    def _built(api: web.Api) -> list:
+        events: list = []
+        api._emit = lambda handler, payload: events.append((handler, payload))
+        return events
+
+    @staticmethod
+    def _wait(api: web.Api) -> None:
+        for _ in range(500):
+            if not api._compile_lock.locked():
+                return
+            threading.Event().wait(0.02)
+
+    def test_adding_maps_plans_them_in_the_order_they_arrive(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = self._two(tmp)
+            api = web.Api()
+            reply = api.compile_add([str(first), str(second)])
+            json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        self.assertEqual([Path(s["osu"]).parent.name for s in reply["sources"]], ["a", "b"])
+        plan = reply["plan"]
+        self.assertTrue(plan["usable"])
+        self.assertEqual(plan["totals"]["segments"], 2)
+        self.assertEqual([seg["at_ms"] for seg in plan["segments"]],
+                         [2000.0, plan["junctions"][0]["starts_ms"]])
+        # The dry run comes with it, so the view can list what it would write
+        # without a second call and without writing anything.
+        self.assertEqual([f["kind"] for f in reply["check"]["files"]],
+                         ["audio", "beatmap", "credits"])
+        for mapper in ("mapper_one", "mapper_two"):
+            self.assertIn(mapper, reply["check"]["credits"])
+        self.assertEqual(reply["check"]["metadata"]["mappers"],
+                         ["mapper_one", "mapper_two"])
+
+    def test_a_segment_can_be_moved_taken_out_and_cleared(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = self._two(tmp)
+            api = web.Api()
+            api.compile_add([str(first), str(second)])
+            moved = api.compile_move(0, 1)
+            self.assertEqual([Path(s["osu"]).parent.name for s in moved["sources"]],
+                             ["b", "a"])
+            left = api.compile_remove(0)
+            self.assertEqual([Path(s["osu"]).parent.name for s in left["sources"]], ["a"])
+            self.assertEqual(api.compile_clear()["sources"], [])
+            self.assertIsNone(api.compile_state()["plan"])
+
+    def test_a_range_a_gain_and_a_gap_are_kept_per_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = self._two(tmp)
+            api = web.Api()
+            api.compile_add([str(first), str(second)])
+            ranged = api.compile_update(0, {"start_ms": 1500, "end_ms": 4000})
+            gapped = api.compile_update(1, {"gap_before_ms": 500, "gain_db": -6})
+            # An empty value hands the range back to the objects.
+            back = api.compile_update(0, {"start_ms": "", "end_ms": ""})
+        self.assertEqual((ranged["plan"]["segments"][0]["range"]["start_ms"],
+                          ranged["plan"]["segments"][0]["range"]["from"]),
+                         (1500.0, "given"))
+        self.assertEqual(gapped["plan"]["junctions"][0]["gap_ms"], 500.0)
+        self.assertEqual(gapped["plan"]["segments"][1]["gain_db"], -6.0)
+        self.assertEqual(back["plan"]["segments"][0]["range"]["from"], "objects")
+
+    def test_the_settings_and_the_names_change_what_it_would_build(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = self._two(tmp)
+            api = web.Api()
+            api.compile_add([str(first), str(second)])
+            wider = api.compile_settings({"gap_ms": 4000, "junction_breaks": False})
+            named = api.compile_metadata({"title": "My Marathon", "creator": "me"})
+            shaped = api.compile_format({"audio_format": "wav", "osz": True})
+        self.assertEqual(wider["plan"]["junctions"][0]["gap_ms"], 4000.0)
+        self.assertEqual(wider["check"]["beatmap"]["junction_breaks"], 0)
+        # Two artists, so the compilation is Various Artists; the title and
+        # the creator are the ones typed in.
+        self.assertEqual(named["check"]["osu"],
+                         "Various Artists - My Marathon (me) [Compilation].osu")
+        self.assertEqual(shaped["check"]["audio_name"], "audio.wav")
+        self.assertTrue(shaped["format"]["osz"])
+
+    def test_an_unknown_setting_a_bad_index_and_an_empty_list_are_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first, _second = self._two(tmp)
+            api = web.Api()
+            self.assertEqual(api.compile_settings({"gap": 10})["key"], "bad_values")
+            self.assertEqual(api.compile_metadata({"name": "x"})["key"], "bad_values")
+            self.assertEqual(api.compile_format({"audio_format": "ogg"})["key"],
+                             "bad_values")
+            self.assertEqual(api.compile_remove(0)["key"], "bad_index")
+            self.assertEqual(api.compile_move(0, 1)["key"], "bad_index")
+            self.assertEqual(api.compile_build("")["key"], "no_folder")
+            self.assertEqual(api.compile_build(str(Path(tmp) / "out"))["key"], "no_sources")
+            self.assertEqual(api.compile_add([str(Path(tmp) / "gone.osu")])["key"],
+                             "bad_file")
+            api.compile_add([str(first)])
+            self.assertEqual(api.compile_add([])["key"], "nothing_picked")
+
+    def test_planning_remembers_nothing_and_writes_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = self._two(tmp)
+            before = {path: path.read_bytes() for path in Path(tmp).rglob("*")
+                      if path.is_file()}
+            api = web.Api()
+            api.compile_add([str(first), str(second)])
+            api.compile_settings({"gap_ms": 1000})
+            api.compile_metadata({"title": "Nope"})
+            after = {path: path.read_bytes() for path in Path(tmp).rglob("*")
+                     if path.is_file()}
+        self.assertEqual(before, after)
+        self.assertEqual(self.saved, [])
+
+    def test_the_build_writes_the_folder_and_reports_its_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = self._two(tmp)
+            out = Path(tmp) / "out"
+            api = web.Api()
+            events = self._built(api)
+            api.compile_add([str(first), str(second)])
+            api.compile_format({"audio_format": "wav"})
+            self.assertTrue(api.compile_build(str(out))["ok"])
+            self._wait(api)
+            there = sorted(path.name for path in out.iterdir())
+        steps = [payload["step"] for name, payload in events
+                 if name == "onCompileProgress"]
+        self.assertEqual(steps[0], "plan")
+        self.assertEqual(steps.count("audio"), 2)       # one per song
+        done = [payload for name, payload in events if name == "onCompileDone"]
+        self.assertEqual(len(done), 1)
+        self.assertTrue(done[0]["ok"], done[0])
+        report = done[0]["report"]
+        json.dumps(report)
+        self.assertEqual(there, sorted(entry["name"] for entry in report["files"]))
+        self.assertTrue(report["checks"]["ok"])
+        self.assertEqual(report["checks"]["snap"]["unsnapped"], 0)
+        self.assertTrue(report["checks"]["round_trip"])
+
+    def test_a_folder_that_already_holds_a_map_asks_once(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = self._two(tmp)
+            out = Path(tmp) / "out"
+            api = web.Api()
+            self._built(api)
+            api.compile_add([str(first), str(second)])
+            api.compile_format({"audio_format": "wav"})
+            api.compile_build(str(out))
+            self._wait(api)
+            again = api.compile_build(str(out))
+            self.assertEqual(again["key"], "folder_occupied")
+            self.assertTrue(again["detail"].endswith(".osu"))
+            self.assertTrue(api.compile_build(str(out), True)["ok"])
+            self._wait(api)
+            # And the state says what is in the way, for the card to show.
+            self.assertTrue(api.compile_state()["occupied"].endswith(".osu"))
+
+    def test_an_analysis_and_a_build_refuse_each_other(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first, _second = self._two(tmp)
+            api = web.Api()
+            api.compile_add([str(first)])
+            api._busy.acquire()
+            try:
+                self.assertEqual(api.compile_build(str(Path(tmp) / "out"))["key"], "busy")
+            finally:
+                api._busy.release()
+            api._compile_lock.acquire()
+            try:
+                # One heavy job at a time: the analysis refuses while a
+                # compilation is being written, as the build refuses while one
+                # is being analysed.
+                self.assertEqual(api.analyze(str(Path(tmp) / "a" / "song.wav"),
+                                             api.state()["options"])["key"], "busy")
+                self.assertTrue(api.compile_state()["busy"])
+            finally:
+                api._compile_lock.release()
+
+    def test_the_open_songs_maps_can_be_added_in_one_click(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first, _second = self._two(tmp)
+            api = web.Api()
+            self.assertEqual(api.compile_add_open_song()["key"], "no_song")
+            api._cfg["file"] = str(first.parent / "song.wav")
+            reply = api.compile_add_open_song()
+        self.assertEqual([Path(s["osu"]).name for s in reply["sources"]], ["map.osu"])
+
 if __name__ == "__main__":
     unittest.main()

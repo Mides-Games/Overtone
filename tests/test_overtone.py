@@ -9437,6 +9437,22 @@ class CombinePlanTests(unittest.TestCase):
         self.assertIn("objects_end_past_range", [r["code"] for r in plan["repairs"]])
         self.assertTrue(plan["usable"])
 
+    def test_a_plan_holding_an_unreadable_source_still_adds_up(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            good = self._map(Path(tmp) / "a")
+            broken = Path(tmp) / "b" / "map.osu"
+            broken.parent.mkdir(parents=True)
+            broken.write_bytes(b"\xff\xfe\x00")
+            plan = self._plan([good, broken])
+        # A segment that would not read comes back the same shape as one that
+        # did, so the plan can name its refusal, add up what is left and show
+        # all of it. Reading it as a special case crashed the plan instead.
+        self.assertEqual(sorted(plan["segments"][0]), sorted(plan["segments"][1]))
+        self.assertEqual([(r["segment"], r["code"]) for r in plan["refusals"]],
+                         [(1, "unreadable")])
+        self.assertEqual((plan["totals"]["segments"], plan["totals"]["objects"]), (2, 2))
+        self.assertEqual((plan["mode"], plan["usable"]), (0, False))
+
     def test_a_plan_past_the_length_ceiling_refuses(self) -> None:
         import overtone_combine
         with tempfile.TemporaryDirectory() as tmp:

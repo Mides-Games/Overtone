@@ -523,8 +523,29 @@ def read_segment(osu_path: str | os.PathLike[str], *,
     """
     path = Path(osu_path)
     folder = path.parent
-    segment: dict = {"osu": str(path), "folder": str(folder), "name": path.stem,
-                     "repairs": [], "refusals": [], "usable": False}
+    # Every field a read answers, so a refused segment is the same shape as a
+    # good one. A plan holding one has to be able to add up its totals and
+    # name its modes without asking which keys this particular segment has.
+    segment: dict = {
+        "osu": str(path), "folder": str(folder), "name": path.stem, "format": 0,
+        "mode": None, "mode_name": "", "keys": None,
+        "metadata": {}, "difficulty": {key: None for key in
+                                       ("hp", "cs", "od", "ar", "slider_multiplier",
+                                        "slider_tick_rate", "stack_leniency")},
+        "audio": {"path": None, "named": None, "how": "missing", "sample_rate": None,
+                  "channels": None, "duration_ms": None, "bytes": None, "format": None},
+        "range": {"start_ms": 0.0, "end_ms": 0.0, "duration_ms": 0.0, "from": "none",
+                  "lead_ms": 0.0, "tail_ms": 0.0, "holds_every_object": None},
+        "objects": {"circle": 0, "slider": 0, "spinner": 0, "hold": 0, "unparsed": 0,
+                    "total": 0, "played": 0, "first_ms": None, "last_ms": None,
+                    "out_of_order": 0, "decimal_times": 0, "in_range": 0,
+                    "ends_past_range": 0},
+        "timing": {"reds": 0, "greens": 0, "unusable": 0, "first_red_ms": None,
+                   "first_bpm": None, "duplicate_reds": [], "greens_before_red": 0},
+        "samples": {"indices": [], "custom": [], "files": [], "missing": []},
+        "breaks": [], "background": None, "events": {"video": 0, "storyboard": 0},
+        "bookmarks": [], "preview_ms": None, "lead_in_ms": 0.0,
+        "repairs": [], "refusals": [], "usable": False}
     try:
         beatmap = ta.read_osu_beatmap(path)
     except (OSError, ValueError) as exc:
@@ -773,7 +794,8 @@ def plan_compilation(sources, settings: dict | None = None) -> dict:
                              "why": f"{Path(segment['osu']).name} has no song to cut; "
                                     f"a segment has to bring its own audio."})
 
-    modes = sorted({segment["mode"] for segment in segments})
+    modes = sorted({segment["mode"] for segment in segments
+                    if segment["mode"] is not None})
     if len(modes) > 1:
         refusals.append({"segment": None, "code": "mode_mismatch",
                          "why": "The sources are in different game modes ("
@@ -1459,7 +1481,7 @@ def _output_shape(plan: dict) -> tuple[int, int, list]:
 
 def build_audio(plan: dict, path: str | os.PathLike[str], *,
                 audio_format: str = DEFAULT_AUDIO_FORMAT,
-                block_s: float = BLOCK_S) -> dict:
+                block_s: float = BLOCK_S, progress=None) -> dict:
     """One audio file holding every segment's range, where the plan put it.
 
     The plan's ``at_ms`` is the authority, not the arithmetic of adding
@@ -1478,6 +1500,10 @@ def build_audio(plan: dict, path: str | os.PathLike[str], *,
     Nothing is normalised and nothing is faded except ``DECLICK_MS`` at the
     edges of a range that brought its own padding. A gain somebody set on a
     segment is applied; choosing one is row 25.6.
+
+    ``progress(step, done, total)`` is called as each segment is written, so
+    a window has something to show: encoding a marathon takes seconds, and
+    silence for seconds reads as a hang.
     """
     if not plan.get("usable"):
         why = "; ".join(r.get("why") or r.get("code", "?")
@@ -1492,7 +1518,9 @@ def build_audio(plan: dict, path: str | os.PathLike[str], *,
     written = 0
     with ta.sf.SoundFile(str(out), mode="w", samplerate=rate, channels=channels,
                          **AUDIO_FORMATS[audio_format]) as sink:
-        for segment, source in zip(plan["segments"], sources):
+        for n, (segment, source) in enumerate(zip(plan["segments"], sources)):
+            if progress is not None:
+                progress("audio", n, len(sources))
             span = segment["range"]
             source_rate = source["rate"]
             at_frame = int(round(float(segment["at_ms"]) * rate / 1000.0))
@@ -2205,7 +2233,7 @@ def build_compilation(plan: dict, folder: str | os.PathLike[str], *,
                       decimals: int = WRITE_DECIMALS,
                       osz=False, dry_run: bool = False,
                       allow_existing: bool = False,
-                      verify: bool = True) -> dict:
+                      verify: bool = True, progress=None) -> dict:
     """The whole compilation as a mapset folder, an ``.osz``, or neither.
 
     Everything is settled before anything is written: the sample remap, the
@@ -2227,7 +2255,15 @@ def build_compilation(plan: dict, folder: str | os.PathLike[str], *,
     the beatmap text through the reader and writer again. A second decode, so
     it can be turned off, and on by default because a build nobody checked is
     a build nobody can trust.
+
+    ``progress(step, done, total)`` is called at each step — ``plan``,
+    ``audio`` (once per segment), ``samples``, ``beatmap``, ``check`` — for a
+    window that would otherwise sit still through the encode.
     """
+    def say(step: str, done: int = 0, total: int = 1) -> None:
+        if progress is not None:
+            progress(step, done, total)
+
     out = Path(folder)
     if out.exists() and not out.is_dir():
         raise ValueError(f"{out} is not a folder.")
@@ -2239,6 +2275,7 @@ def build_compilation(plan: dict, folder: str | os.PathLike[str], *,
             raise ValueError(f"{out.name} already holds {existing[0]!r}. Say "
                              f"allow_existing to add this compilation to it.")
 
+    say("plan")
     chosen = samples if samples is not None else sample_plan(plan)
     named = metadata if metadata and "values" in (metadata or {}) \
         else metadata_plan(plan, metadata)
@@ -2256,7 +2293,10 @@ def build_compilation(plan: dict, folder: str | os.PathLike[str], *,
              {"name": CREDITS_NAME, "kind": "credits",
               "bytes": len(credits.encode("utf-8"))}]
     if background:
-        files.append({"name": background, "kind": "background", "bytes": None})
+        found = next((Path(segment["folder"]) / background for segment in plan["segments"]
+                      if (Path(segment["folder"]) / background).is_file()), None)
+        files.append({"name": background, "kind": "background",
+                      "bytes": found.stat().st_size if found else None})
     report = {"folder": str(out), "osu": osu_file, "audio_name": audio_file,
               "written": False, "dry_run": bool(dry_run), "files": files,
               "beatmap": beatmap, "samples": chosen, "metadata": named,
@@ -2266,8 +2306,11 @@ def build_compilation(plan: dict, folder: str | os.PathLike[str], *,
         return report
 
     out.mkdir(parents=True, exist_ok=True)
-    audio = build_audio(plan, out / audio_file, audio_format=audio_format)
+    audio = build_audio(plan, out / audio_file, audio_format=audio_format,
+                        progress=progress)
+    say("samples")
     copied = build_samples(plan, out, chosen)
+    say("beatmap")
     payload = text.encode("utf-8")
     ta._atomic_write_bytes(out / osu_file, payload)
     ta.log_write(out / osu_file, WRITE_OP, None,
@@ -2302,7 +2345,9 @@ def build_compilation(plan: dict, folder: str | os.PathLike[str], *,
             target = Path(osz)
         report["osz"] = _zip_folder(out, target)
     if verify:
+        say("check")
         report["checks"] = verify_build(plan, out / osu_file, out / audio_file, text)
+    say("done", 1, 1)
     return report
 
 

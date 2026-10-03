@@ -1067,3 +1067,25 @@ body.reduce-motion .splash-line span { width: 100%; }
   .stat .value { font-size: var(--fs-6); }
   .legend { display: none; }
 }
+
+/* Compile: the songs in the order they play, and what they would build */
+.cp-row { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 14px; }
+.cp-row + .cp-row { margin-top: 8px; }
+.cp-row.bad { border-color: color-mix(in srgb, var(--red) 45%, var(--border)); }
+.cp-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cp-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp-at { color: var(--dim); font-size: var(--fs-1); white-space: nowrap; }
+.cp-move { display: flex; gap: 4px; }
+.cp-move .btn { width: 28px; height: 28px; padding: 0; }
+.cp-fields { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.cp-fields label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--fs-1); }
+.cp-fields input { width: 84px; height: 28px; padding: 0 8px; font-size: var(--fs-2); }
+.cp-why { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.cp-why span { color: var(--muted); font-size: var(--fs-1); }
+.cp-why span.bad { color: var(--red); }
+.cp-credits { margin: 0; max-height: 220px; overflow: auto; background: var(--surface-2); border-radius: var(--r-md); padding: 12px 14px; color: var(--muted); font: var(--fs-1)/1.6 var(--mono); white-space: pre-wrap; }
+.cp-files { display: flex; flex-direction: column; gap: 6px; }
+.cp-file { display: flex; align-items: baseline; gap: 10px; font-size: var(--fs-2); }
+.cp-file .kind { color: var(--dim); font-size: var(--fs-1); min-width: 72px; }
+.cp-file .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.check.inline { padding: 0; }

@@ -10321,5 +10321,227 @@ class CombineJunctionTests(unittest.TestCase):
         self.assertEqual((start, end), (after["last_sound_ms"] + 200.0,
                                         before["first_object_ms"] - 200.0))
 
+class CombineOutputTests(unittest.TestCase):
+    """What a built compilation says it is, and what lands in the folder."""
+
+    def _map(self, folder: Path, *, artist: str = "Artist One", title: str = "First Song",
+             creator: str = "mapper_one", index: int = 3, bpm: float = 150.0,
+             seconds: float = 8.0, background: str = "bg.jpg",
+             with_background: bool = True, rate: int = 8000,
+             clicks: bool = False) -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        frames = int(rate * seconds)
+        song = np.zeros(frames, dtype="float32")
+        if clicks:
+            # Something for the aligner to find: silence correlates to
+            # nothing, and 8000 Hz is not a multiple of the 11025 it
+            # downsamples to, so the check would have nothing to say.
+            burst = (np.hanning(256) * np.sin(2 * np.pi * 900.0
+                                              * np.arange(256) / rate)).astype("float32")
+            at = 0.4
+            while at < seconds - 0.1:
+                start = int(at * rate)
+                song[start:start + 256] += burst * 0.8
+                at += 60.0 / bpm
+        ta.sf.write(str(folder / "song.wav"), song, rate)
+        if with_background:
+            (folder / background).write_bytes(b"not really an image")
+        (folder / f"soft-hitclap{index}.wav").write_bytes(b"clap" + bytes([index]))
+        beat = 60000.0 / bpm
+        objects = [f"100,100,{round(1000 + k * 4 * beat)},1,0,0:0:0:0:"
+                   for k in range(4)]
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "PreviewTime: 1200",
+                 "Mode: 0", "",
+                 "[Editor]", "Bookmarks: 1200", "",
+                 "[Metadata]", f"Title:{title}", f"TitleUnicode:{title}",
+                 f"Artist:{artist}", f"ArtistUnicode:{artist}", f"Creator:{creator}",
+                 "Version:Hard", "Tags:source tags", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[Events]", f'0,0,"{background}",0,0', "",
+                 "[TimingPoints]", f"1000,{beat:.12f},4,2,{index},80,1,0", "",
+                 "[HitObjects]", *objects, ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        return folder / "map.osu"
+
+    def _plan(self, sources, settings=None):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        return plan
+
+    def _build(self, plan, folder: Path, **kwargs) -> dict:
+        import overtone_combine
+        report = overtone_combine.build_compilation(plan, folder, **kwargs)
+        json.dumps({key: value for key, value in report.items() if key != "credits"})
+        return report
+
+    def test_a_dry_run_writes_nothing_and_says_what_it_would(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a")])
+            out = Path(tmp) / "out"
+            report = self._build(plan, out, dry_run=True)
+            self.assertFalse(out.exists())
+        self.assertEqual((report["written"], report["dry_run"]), (False, True))
+        self.assertEqual([entry["kind"] for entry in report["files"]],
+                         ["audio", "sample", "beatmap", "credits", "background"])
+        self.assertIsNone(report["checks"])
+
+    def test_the_folder_holds_the_map_the_audio_the_samples_and_the_credits(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a"),
+                               self._map(Path(tmp) / "b", index=5, bpm=174.0)])
+            out = Path(tmp) / "out"
+            report = self._build(plan, out, audio_format="wav")
+            there = sorted(path.name for path in out.iterdir())
+        self.assertEqual(there, sorted(["audio.wav", "bg.jpg", "credits.txt",
+                                        "soft-hitclap.wav", "soft-hitclap2.wav",
+                                        report["osu"]]))
+        # Both maps are the same song here, so the compilation is named
+        # after it rather than labelled.
+        self.assertEqual(report["osu"],
+                         "Artist One - First Song (Overtone) [Compilation].osu")
+        self.assertTrue(all(entry["bytes"] for entry in report["files"]))
+        self.assertEqual(report["written"], True)
+
+    def test_names_are_kept_when_the_songs_agree_and_labelled_when_they_do_not(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            same = self._plan([self._map(Path(tmp) / "a"),
+                               self._map(Path(tmp) / "b", bpm=174.0)])
+            mixed = self._plan([self._map(Path(tmp) / "c"),
+                                self._map(Path(tmp) / "d", artist="Artist Two",
+                                          title="Second Song", bpm=174.0)])
+            agreed = overtone_combine.metadata_plan(same)
+            apart = overtone_combine.metadata_plan(mixed)
+        self.assertEqual((agreed["values"]["artist"], agreed["values"]["title"]),
+                         ("Artist One", "First Song"))
+        self.assertEqual((apart["values"]["artist"], apart["values"]["title"]),
+                         ("Various Artists", "Compilation (2 songs)"))
+        # The Unicode twin follows the romanised field only while that field
+        # is still the songs' own.
+        self.assertEqual(agreed["values"]["title_unicode"], "First Song")
+        self.assertEqual(apart["values"]["title_unicode"], "Compilation (2 songs)")
+
+    def test_every_mapper_is_in_the_tags_and_the_credits(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a", creator="mapper_one"),
+                               self._map(Path(tmp) / "b", creator="mapper_two",
+                                         bpm=174.0)])
+            named = overtone_combine.metadata_plan(plan)
+        self.assertEqual(named["mappers"], ["mapper_one", "mapper_two"])
+        for mapper in named["mappers"]:
+            self.assertIn(mapper, named["values"]["tags"].split())
+        self.assertEqual([row["mapper"] for row in named["credits"]],
+                         ["mapper_one", "mapper_two"])
+        # Tags are tokens, so one token is kept once however many songs use it.
+        self.assertEqual(len(named["values"]["tags"].split()),
+                         len(set(named["values"]["tags"].split())))
+
+    def test_metadata_given_by_hand_wins(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a")])
+            report = self._build(plan, Path(tmp) / "out", dry_run=True,
+                                 metadata={"title": "My Marathon", "creator": "me",
+                                           "version": "Insane"})
+            with self.assertRaises(ValueError):
+                overtone_combine.metadata_plan(plan, {"name": "nope"})
+        values = report["metadata"]["values"]
+        self.assertEqual((values["title"], values["creator"], values["version"]),
+                         ("My Marathon", "me", "Insane"))
+        self.assertEqual(report["metadata"]["creator_from"], "given")
+        self.assertEqual(report["osu"], "Artist One - My Marathon (me) [Insane].osu")
+        # The placeholder warning is gone with the placeholder.
+        self.assertEqual(report["beatmap"]["pending"], [])
+
+    def test_the_credits_name_each_song_in_the_order_it_plays(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a"),
+                               self._map(Path(tmp) / "b", artist="Artist Two",
+                                         title="Second Song", creator="mapper_two",
+                                         bpm=174.0)])
+            report = self._build(plan, Path(tmp) / "out")
+            text = (Path(tmp) / "out" / "credits.txt").read_text(encoding="utf-8")
+        self.assertLess(text.index("First Song"), text.index("Second Song"))
+        self.assertIn("mapped by mapper_two", text)
+        # The one thing the tool cannot decide is in the file.
+        self.assertIn("is its mapper's call", text)
+        self.assertEqual(report["files"][-2]["name"], "credits.txt")
+
+    def test_a_folder_that_already_holds_a_map_refuses_unless_asked(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a")])
+            out = Path(tmp) / "out"
+            self._build(plan, out)
+            with self.assertRaises(ValueError) as caught:
+                overtone_combine.build_compilation(plan, out)
+            again = self._build(plan, out, allow_existing=True)
+        self.assertIn("allow_existing", str(caught.exception))
+        self.assertTrue(again["written"])
+
+    def test_a_sources_own_folder_is_refused_always(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a")
+            plan = self._plan([source])
+            with self.assertRaises(ValueError) as caught:
+                overtone_combine.build_compilation(plan, source.parent,
+                                                   allow_existing=True)
+            with self.assertRaises(ValueError):
+                overtone_combine.build_compilation(plan, source.parent, dry_run=True)
+        self.assertIn("never writes where it read", str(caught.exception))
+
+    def test_an_osz_holds_every_file_flat(self) -> None:
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a")])
+            report = self._build(plan, Path(tmp) / "out", osz=True)
+            with zipfile.ZipFile(report["osz"]["path"]) as archive:
+                names = sorted(archive.namelist())
+        self.assertEqual(names, sorted(entry["name"] for entry in report["files"]))
+        self.assertTrue(all("/" not in name for name in names))
+        self.assertEqual(report["osz"]["name"], "Artist One - First Song.osz")
+
+    def test_the_build_checks_itself_and_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a", rate=44100, clicks=True),
+                               self._map(Path(tmp) / "b", rate=44100, clicks=True,
+                                         bpm=174.0, index=5)])
+            report = self._build(plan, Path(tmp) / "out", audio_format="wav")
+        checks = report["checks"]
+        self.assertEqual(checks["snap"], {"objects": 8, "red_lines": 2, "unsnapped": 0,
+                                          "before_first_red": 0, "past_audio": 0})
+        self.assertTrue(checks["round_trip"])
+        self.assertEqual(checks["audio"]["worst_shift_ms"], 0.0)
+        self.assertEqual([row["peak"] for row in checks["audio"]["segments"]], [1.0, 1.0])
+        self.assertTrue(checks["ok"])
+
+    def test_the_write_lands_in_the_history(self) -> None:
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a")])
+            report = self._build(plan, Path(tmp) / "out")
+            written = [entry for entry in ta.read_history()
+                       if entry.get("op") == "compile"]
+        self.assertTrue(written)
+        self.assertTrue(written[-1]["path"].endswith(report["osu"]))
+        self.assertEqual(written[-1]["summary"]["segments"], 1)
+
+    def test_a_background_no_source_folder_holds_is_said(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a", with_background=False)])
+            out = Path(tmp) / "out"
+            report = self._build(plan, out)
+            there = sorted(path.name for path in out.iterdir())
+        self.assertNotIn("bg.jpg", there)
+        self.assertIn("background_missing",
+                      [note["code"] for note in report["beatmap"]["notes"]])
+        self.assertNotIn("background", [entry["kind"] for entry in report["files"]])
+
 if __name__ == "__main__":
     unittest.main()

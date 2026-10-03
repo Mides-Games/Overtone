@@ -18,6 +18,55 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-10-03 · Phase 25: a compilation builds end to end
+
+### Changed
+
+- **`metadata_plan` and `credits_text`** (row 25.13) settle what a
+  compilation says it is. The artist and title are the ones the songs agree
+  on, else "Various Artists" and "Compilation (N songs)"; a Unicode twin is
+  carried only while the romanised field is still the songs' own, since under
+  a label this builder invented it would be a different name for a different
+  thing. `Creator` is a **placeholder** the report flags, because osu! wants
+  the uploader's own name there and no source mapper made this.
+- Credit is part of the feature. `Tags` carry every source mapper and artist
+  as deduplicated tokens, and `credits.txt` travels with the mapset: every
+  song in playing order with its difficulty, its mapper and the file it came
+  from, and the one thing the tool cannot decide — whether those mappers are
+  willing to have their work in somebody else's compilation.
+- **`build_compilation`** (row 25.16) settles every plan and builds the
+  beatmap text **before it writes a byte**, so a build that cannot be made
+  refuses with nothing on disk. `dry_run` stops there and returns the list of
+  files it would write. Then the audio, the samples, the `.osu` through the
+  engine's atomic writer and the write history (so History names this build
+  like any other write), `credits.txt`, and the background.
+- It refuses a folder that already holds a beatmap unless told to add to it,
+  and refuses **a source's own folder always**: a compilation reads other
+  people's folders and has no business writing in one. `osz=True` zips the
+  folder flat, built in a temp file and renamed into place.
+- **`verify_build`** (row 25.15, three of its four checks) runs after every
+  build unless turned off: each segment's audio correlated against its own
+  song, the snap audit on the written map, and the text back through the
+  reader and writer. The reference grade is the one left, since it needs
+  attack detection over the built audio — the one heavy job in the phase.
+
+### Measured
+
+- The gate's three-song compilation now builds a whole mapset: **5 files**,
+  `audio.mp3` 1.33 MB, the two custom samples, the `.osu` and `credits.txt`,
+  plus a 1.19 MB `.osz`; **0 of 116 objects off the grid or before it, every
+  segment's audio at 0.0 ms, and the beatmap text byte-identical through the
+  reader and writer**. A dry run writes nothing. 894 tests (630 engine + 264
+  web shell), 12 of them new.
+
+### Rejected / tried and dropped
+
+- **Writing a source mapper's name into `Creator`.** It is the only field
+  with an obvious value and the wrong one: osu! reads `Creator` as the person
+  uploading, so copying a mapper's name there would credit them with a
+  compilation they did not make and did not agree to. A flagged placeholder
+  says more than a plausible wrong answer.
+
 ## v4.0.0-dev — 2026-10-03 · Phase 25 step 3c: the junctions
 
 ### Changed

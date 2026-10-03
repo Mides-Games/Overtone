@@ -1465,6 +1465,33 @@ def combine(audio_dir: Path) -> int:
                       "bit for bit past the declick ramp")
             print()
 
+        # And the whole thing: a folder somebody could drop into osu!, with
+        # the build checking itself afterwards.
+        shown = tc.build_compilation(plan, Path(tmp) / "set", dry_run=True)
+        check("a dry run writes nothing", not (Path(tmp) / "set").exists(),
+              f"{len(shown['files'])} file(s) it would write")
+        whole = tc.build_compilation(plan, Path(tmp) / "set", osz=True)
+        there = sorted(path.name for path in (Path(tmp) / "set").iterdir()
+                       if path.suffix.lower() != ".osz")
+        print(f"mapset: {whole['osu']}")
+        print("        " + ", ".join(f"{entry['name']} ({entry['bytes']} B)"
+                                     for entry in whole["files"]))
+        check("the folder holds what the report says",
+              there == sorted(entry["name"] for entry in whole["files"]),
+              f"{len(there)} file(s)")
+        check("the .osz holds them flat",
+              bool(whole["osz"]) and whole["osz"]["bytes"] > 0,
+              f"{whole['osz']['name']} ({whole['osz']['bytes']} B)")
+        credits = (Path(tmp) / "set" / tc.CREDITS_NAME).read_text(encoding="utf-8")
+        check("every mapper is credited",
+              all(mapper in credits for mapper in whole["metadata"]["mappers"]),
+              ", ".join(whole["metadata"]["mappers"]) or "no mapper named in any source")
+        checks = whole["checks"]
+        check("the build checks itself and passes", bool(checks["ok"]),
+              f"snap {checks['snap']}, audio {checks['audio']['worst_shift_ms']} ms, "
+              f"round trip {checks['round_trip']}")
+
+        print()
         rng = random.Random(7)
         seed_text = Path(sources[0]["osu"]).read_bytes().decode("utf-8")
         read, refused, crashed = 0, 0, 0

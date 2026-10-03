@@ -16,6 +16,10 @@
    "where": "python-only",
    "why": "overtone_combine.py: what happens where one song stops and the next starts, which no Rust crate holds"
   },
+  "CombineOutputTests": {
+   "where": "python-only",
+   "why": "overtone_combine.py: what a built compilation says it is and what lands in the folder, which no Rust crate holds"
+  },
   "CombinePlanTests": {
    "where": "python-only",
    "why": "overtone_combine.py: where each borrowed range lands in a compilation, which no Rust crate holds"

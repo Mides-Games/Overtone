@@ -28,6 +28,7 @@ Two words carry the weight of the reporting:
 
 from __future__ import annotations
 
+import math
 import os
 import re
 from pathlib import Path, PurePath
@@ -248,6 +249,24 @@ def _object_facts(objects: list[dict]) -> tuple[dict, list[dict]]:
     return facts, repairs
 
 
+def _grid_at(points: list[dict], at_ms: float) -> dict:
+    """The beat, the meter and the bar of the red line in force at a time.
+
+    What a gap measured in bars is measured in, and what a downbeat is a
+    multiple of. The grid extends backwards from the first red line, as osu!
+    plays it, so a range that starts before any timing point still has one.
+    """
+    reds = sorted((p for p in points if p["red"] and p["beat_length"] > 0),
+                  key=lambda p: p["time"])
+    if not reds:
+        return {"beat_ms": None, "meter": None, "bar_ms": None, "at_ms": None}
+    use = next((p for p in reversed(reds) if p["time"] <= at_ms + 1e-6), reds[0])
+    meter = int(use["meter"]) if int(use["meter"]) > 0 else 4
+    return {"beat_ms": round(float(use["beat_length"]), 6), "meter": meter,
+            "bar_ms": round(float(use["beat_length"]) * meter, 6),
+            "at_ms": round(float(use["time"]), 3)}
+
+
 def _timing_facts(lines: list[str]) -> tuple[dict, list[dict]]:
     """The timing section counted and checked, reds and greens apart."""
     points = []
@@ -270,7 +289,8 @@ def _timing_facts(lines: list[str]) -> tuple[dict, list[dict]]:
     duplicates = sorted(time for time, n in seen.items() if n > 1)
     early_greens = [p["time"] for p in greens
                     if first_red is not None and p["time"] < first_red]
-    facts = {"reds": len(reds), "greens": len(greens), "unusable": unusable,
+    facts = {"points": points,
+             "reds": len(reds), "greens": len(greens), "unusable": unusable,
              "first_red_ms": None if first_red is None else round(first_red, 3),
              "first_bpm": round(60000.0 / reds[0]["beat_length"], 4)
                           if reds and reds[0]["beat_length"] > 0 else None,
@@ -503,7 +523,8 @@ def read_segment(osu_path: str | os.PathLike[str], *,
                  audio: str | os.PathLike[str] | None = None,
                  start_ms: float | None = None, end_ms: float | None = None,
                  lead_ms: float = DEFAULT_LEAD_MS,
-                 tail_ms: float = DEFAULT_TAIL_MS) -> dict:
+                 tail_ms: float = DEFAULT_TAIL_MS,
+                 downbeat: bool = False) -> dict:
     """One source map as a compilation segment: its facts, its repairs, its range.
 
     Everything a plan needs about a difficulty and nothing it does not: the
@@ -540,8 +561,10 @@ def read_segment(osu_path: str | os.PathLike[str], *,
                     "total": 0, "played": 0, "first_ms": None, "last_ms": None,
                     "out_of_order": 0, "decimal_times": 0, "in_range": 0,
                     "ends_past_range": 0},
-        "timing": {"reds": 0, "greens": 0, "unusable": 0, "first_red_ms": None,
-                   "first_bpm": None, "duplicate_reds": [], "greens_before_red": 0},
+        "timing": {"points": [], "reds": 0, "greens": 0, "unusable": 0,
+                   "first_red_ms": None, "first_bpm": None, "duplicate_reds": [],
+                   "greens_before_red": 0},
+        "grid": {"beat_ms": None, "meter": None, "bar_ms": None, "at_ms": None},
         "samples": {"indices": [], "custom": [], "files": [], "missing": []},
         "breaks": [], "background": None, "events": {"video": 0, "storyboard": 0},
         "bookmarks": [], "preview_ms": None, "lead_in_ms": 0.0,
@@ -619,6 +642,17 @@ def read_segment(osu_path: str | os.PathLike[str], *,
         objects, audio_facts, start_ms, end_ms, lead_ms, tail_ms)
     repairs.extend(range_repairs)
     refusals.extend(range_refusals)
+    grid = _grid_at(timing.pop("points"), span["start_ms"])
+    span["snapped_to_bar"] = False
+    if downbeat and grid["bar_ms"]:
+        # Back to the song's own bar line, never forward: forward would eat
+        # into the padding the range was given, and could reach an object.
+        bars = math.floor((span["start_ms"] - grid["at_ms"]) / grid["bar_ms"])
+        moved = max(0.0, grid["at_ms"] + bars * grid["bar_ms"])
+        if abs(moved - span["start_ms"]) > 1e-6:
+            span.update({"start_ms": round(moved, 3),
+                         "duration_ms": round(span["end_ms"] - moved, 3),
+                         "snapped_to_bar": True})
     kept, overrun = _in_range(beatmap.get("hitobjects", []), span)
     objects.update({"in_range": kept, "ends_past_range": overrun})
     if overrun:
@@ -656,7 +690,7 @@ def read_segment(osu_path: str | os.PathLike[str], *,
                        "stack_leniency": _number(general, "StackLeniency")},
         "audio": {"path": None if audio_path is None else str(audio_path),
                   "named": named, "how": how, **audio_facts},
-        "range": span,
+        "range": span, "grid": grid,
         "objects": objects, "timing": timing, "samples": samples,
         "breaks": events["breaks"], "background": events["background"],
         "events": {"video": events["video"], "storyboard": events["storyboard"]},
@@ -697,6 +731,17 @@ DEFAULT_SETTINGS: dict = {
     #: means the first segment that has one inside its range, and a number
     #: names a segment.
     "preview_from": "first",
+    #: A gap counted in bars of the **outgoing** song's grid instead of
+    #: milliseconds, so its groove finishes before the next one starts. 0
+    #: leaves ``gap_ms`` in charge.
+    "gap_bars": 0.0,
+    #: Each segment's range pulled back to its own bar line, so a song comes
+    #: in on a downbeat rather than halfway through a bar.
+    "start_on_downbeat": False,
+    #: Fades at a segment's edges. 0 keeps the 5 ms declick ramp, which is
+    #: not a fade but a guard against a click.
+    "fade_in_ms": 0.0,
+    "fade_out_ms": 0.0,
 }
 
 
@@ -712,7 +757,8 @@ BREAK_MARGIN_MS = 200.0
 #: overrides the plan's gap for the junction in front of this segment, and
 #: ``gain_db`` is carried for row 25.6, which is the only thing that reads it.
 SOURCE_KEYS = ("osu", "audio", "start_ms", "end_ms", "lead_ms", "tail_ms",
-               "gap_before_ms", "gain_db")
+               "gap_before_ms", "gap_before_bars", "gain_db",
+               "fade_in_ms", "fade_out_ms")
 
 #: Ceilings, so a wrong plan fails before it writes. Past these the result is
 #: not a marathon map, it is a mistake with a long render time.
@@ -776,10 +822,15 @@ def plan_compilation(sources, settings: dict | None = None) -> dict:
             spec["osu"], audio=spec.get("audio"),
             start_ms=spec.get("start_ms"), end_ms=spec.get("end_ms"),
             lead_ms=float(spec.get("lead_ms", chosen["lead_ms"])),
-            tail_ms=float(spec.get("tail_ms", chosen["tail_ms"])))
+            tail_ms=float(spec.get("tail_ms", chosen["tail_ms"])),
+            downbeat=bool(chosen["start_on_downbeat"]))
         segment["gain_db"] = float(spec.get("gain_db") or 0.0)
         segment["gap_before_ms"] = (None if spec.get("gap_before_ms") is None
                                     else float(spec["gap_before_ms"]))
+        segment["gap_before_bars"] = (None if spec.get("gap_before_bars") is None
+                                      else float(spec["gap_before_bars"]))
+        for side in ("fade_in_ms", "fade_out_ms"):
+            segment[side] = float(spec.get(side, chosen[side]) or 0.0)
         segments.append(segment)
 
     refusals: list[dict] = []
@@ -814,12 +865,22 @@ def plan_compilation(sources, settings: dict | None = None) -> dict:
     cursor = float(chosen["lead_in_ms"])
     junctions: list[dict] = []
     for n, segment in enumerate(segments):
-        gap = float(chosen["gap_ms"] if segment["gap_before_ms"] is None
-                    else segment["gap_before_ms"])
+        bars = (segment["gap_before_bars"] if segment["gap_before_bars"] is not None
+                else float(chosen["gap_bars"]))
+        bar_ms = segments[n - 1]["grid"]["bar_ms"] if n else None
+        if bars and bar_ms:
+            # Bars of the song that is ending: it is the one whose groove the
+            # gap is finishing.
+            gap, counted = bars * bar_ms, bars
+        else:
+            gap = float(chosen["gap_ms"] if segment["gap_before_ms"] is None
+                        else segment["gap_before_ms"])
+            counted = None
         if n:
             junctions.append({"after": n - 1, "before": n,
                               "ends_ms": round(cursor, 3),
-                              "gap_ms": round(gap, 3),
+                              "gap_ms": round(gap, 3), "bars": counted,
+                              "bar_ms": None if bar_ms is None else round(bar_ms, 3),
                               "starts_ms": round(cursor + gap, 3)})
             cursor += gap
         start = segment["range"]["start_ms"]
@@ -1429,17 +1490,25 @@ def _as_channels(block, channels: int):
     return block[:, :channels]
 
 
-def _declick(block, offset: int, total: int, fade: int):
-    """A linear ramp over the first and last ``fade`` frames of the segment,
-    applied to whichever part of it this block holds."""
-    if fade <= 0 or total <= 0:
+def _declick(block, offset: int, total: int, fade_in: int, fade_out: int):
+    """Linear ramps over the segment's first and last frames, applied to
+    whichever part of them this block holds.
+
+    One function for two jobs that are the same arithmetic: the 5 ms guard
+    against a click at a derived range's edge, and a fade somebody asked for.
+    The longer of the two wins, so asking for a fade never removes the guard.
+    """
+    if total <= 0 or (fade_in <= 0 and fade_out <= 0):
         return block
     index = np.arange(offset, offset + len(block), dtype="float64")
     gain = np.ones(len(block), dtype="float64")
-    rising = index < fade
-    gain[rising] = (index[rising] + 0.5) / fade
-    falling = index >= total - fade
-    gain[falling] = np.minimum(gain[falling], (total - index[falling] - 0.5) / fade)
+    if fade_in > 0:
+        rising = index < fade_in
+        gain[rising] = (index[rising] + 0.5) / fade_in
+    if fade_out > 0:
+        falling = index >= total - fade_out
+        gain[falling] = np.minimum(gain[falling],
+                                   (total - index[falling] - 0.5) / fade_out)
     return (block * np.clip(gain, 0.0, 1.0)[:, None]).astype("float32")
 
 
@@ -1531,8 +1600,11 @@ def build_audio(plan: dict, path: str | os.PathLike[str], *,
             start = int(round(span["start_ms"] * source_rate / 1000.0))
             stop = int(round(span["end_ms"] * source_rate / 1000.0))
             gain = 10.0 ** (float(segment.get("gain_db") or 0.0) / 20.0)
-            fade = (int(round(DECLICK_MS * rate / 1000.0))
-                    if span["from"] == "objects" else 0)
+            declick = (DECLICK_MS if span["from"] == "objects" else 0.0)
+            fade_in = int(round(max(float(segment.get("fade_in_ms") or 0.0), declick)
+                                * rate / 1000.0))
+            fade_out = int(round(max(float(segment.get("fade_out_ms") or 0.0), declick)
+                                 * rate / 1000.0))
             frames = max(0, stop - start)
             total = int(round(frames * rate / source_rate))
             before = written
@@ -1540,7 +1612,7 @@ def build_audio(plan: dict, path: str | os.PathLike[str], *,
                 block = ta.sf.read(source["path"], start=start, stop=stop,
                                    dtype="float32", always_2d=True)[0]
                 block = _resampled(_as_channels(block, channels), source_rate, rate)
-                block = _declick(block, 0, len(block), fade)
+                block = _declick(block, 0, len(block), fade_in, fade_out)
                 sink.write(block * gain if gain != 1.0 else block)
                 written += len(block)
             else:
@@ -1552,7 +1624,7 @@ def build_audio(plan: dict, path: str | os.PathLike[str], *,
                     if not len(block):
                         break
                     block = _declick(_as_channels(block, channels),
-                                     written - before, total, fade)
+                                     written - before, total, fade_in, fade_out)
                     sink.write(block * gain if gain != 1.0 else block)
                     written += len(block)
             rows.append({"segment": len(rows), "at_ms": segment["at_ms"],
@@ -1560,7 +1632,9 @@ def build_audio(plan: dict, path: str | os.PathLike[str], *,
                          "duration_ms": round((written - before) / rate * 1000.0, 3),
                          "source_rate": source_rate, "resampled": source_rate != rate,
                          "gain_db": round(float(segment.get("gain_db") or 0.0), 2),
-                         "declick_ms": round(fade / rate * 1000.0, 3)})
+                         "fade_in_ms": round(fade_in / rate * 1000.0, 3),
+                         "fade_out_ms": round(fade_out / rate * 1000.0, 3),
+                         "declick_ms": round(declick, 3)})
     return {"path": str(out), "name": out.name, "format": audio_format,
             "sample_rate": rate, "channels": channels, "frames": written,
             "duration_ms": round(written / rate * 1000.0, 3),
@@ -2380,3 +2454,217 @@ def verify_build(plan: dict, osu_path: str | os.PathLike[str],
             "ok": bool(round_trip) and bool(audio["ok"])
                   and not snap.get("unsnapped") and not snap.get("before_first_red")
                   and not (snap.get("past_audio") or [])}
+
+
+# ---------------------------------------------------------------------------
+# Loudness: so one song does not arrive twice as loud (Phase 25, row 25.6)
+# ---------------------------------------------------------------------------
+
+#: ITU-R BS.1770's K-weighting, as the two analog filters the standard
+#: specifies rather than the digital coefficients it prints for 48 kHz: a
+#: high shelf and a high-pass, each turned into a biquad for whatever rate
+#: the song is at. Deriving them is what lets a 44.1 kHz song be measured
+#: without resampling it first, and a test checks the derivation against the
+#: published 48 kHz numbers.
+SHELF_F0, SHELF_G_DB, SHELF_Q = 1681.9744509555319, 3.999843853973347, 0.7071752369554196
+HIGHPASS_F0, HIGHPASS_Q = 38.13547087602444, 0.5003270373238773
+
+#: The standard's gating: 400 ms blocks every 100 ms, blocks under -70 LUFS
+#: dropped outright, then blocks more than 10 LU under the mean of what is
+#: left dropped as well. Silence and applause must not set a song's level.
+BLOCK_S, STEP_S = 0.400, 0.100
+ABSOLUTE_GATE_LUFS, RELATIVE_GATE_LU = -70.0, -10.0
+
+#: The offset in the standard's loudness formula.
+LOUDNESS_OFFSET = -0.691
+
+#: Frames read at a time while measuring: the filters carry their state from
+#: one chunk to the next, so the answer is the same as one pass over the
+#: whole range, and the peak working set is one chunk.
+LOUDNESS_CHUNK_STEPS = 300
+
+#: How loud a compilation is matched to, when nobody says: the median of its
+#: songs. Not the loudest (every other song would be pushed up into the
+#: ceiling) and not a streaming target (a mapset is not a playlist) — the
+#: point is that no song jumps.
+LOUDNESS_TARGETS = ("median", "first", "quietest")
+
+#: Nothing is amplified past this: a gain that needs more than 12 dB is
+#: answering a mastering problem, not a mismatch.
+MAX_GAIN_DB = 12.0
+
+#: And nothing is amplified into the ceiling. Sample peak, not true peak:
+#: measuring between samples needs oversampling, and this is a headroom rule
+#: rather than a compliance claim.
+PEAK_CEILING_DBFS = -1.0
+
+
+def _k_weighting(rate: int) -> tuple:
+    """The two biquads of BS.1770's K-weighting at this sample rate."""
+    import math
+
+    k = math.tan(math.pi * SHELF_F0 / float(rate))
+    vh = 10.0 ** (SHELF_G_DB / 20.0)
+    vb = vh ** 0.4996667741545416
+    denom = 1.0 + k / SHELF_Q + k * k
+    shelf = (np.array([(vh + vb * k / SHELF_Q + k * k) / denom,
+                       2.0 * (k * k - vh) / denom,
+                       (vh - vb * k / SHELF_Q + k * k) / denom]),
+             np.array([1.0, 2.0 * (k * k - 1.0) / denom,
+                       (1.0 - k / SHELF_Q + k * k) / denom]))
+    k = math.tan(math.pi * HIGHPASS_F0 / float(rate))
+    denom = 1.0 + k / HIGHPASS_Q + k * k
+    highpass = (np.array([1.0, -2.0, 1.0]),
+                np.array([1.0, 2.0 * (k * k - 1.0) / denom,
+                          (1.0 - k / HIGHPASS_Q + k * k) / denom]))
+    return shelf, highpass
+
+
+def _gated_loudness(steps: np.ndarray, per_step: int) -> float | None:
+    """The standard's two gates over the per-step energies of every channel.
+
+    ``steps`` holds the summed squares of the weighted channels for each
+    100 ms step, so a 400 ms block is four of them: that is exactly the
+    standard's overlap, and it costs one pass instead of four.
+    """
+    if steps.size < 4:
+        return None
+    blocks = np.convolve(steps, np.ones(4), mode="valid") / (4.0 * per_step)
+    with np.errstate(divide="ignore"):
+        levels = LOUDNESS_OFFSET + 10.0 * np.log10(blocks)
+    loud = blocks[levels > ABSOLUTE_GATE_LUFS]
+    if not loud.size:
+        return None
+    gate = LOUDNESS_OFFSET + 10.0 * np.log10(float(loud.mean())) + RELATIVE_GATE_LU
+    kept = loud[LOUDNESS_OFFSET + 10.0 * np.log10(loud) > gate]
+    if not kept.size:
+        return None
+    return float(LOUDNESS_OFFSET + 10.0 * np.log10(float(kept.mean())))
+
+
+def segment_loudness(path: str | os.PathLike[str], start_ms: float,
+                     end_ms: float) -> dict:
+    """How loud one range of one song is, and how close to the ceiling.
+
+    Integrated loudness to ITU-R BS.1770: K-weighted, 400 ms blocks every
+    100 ms, the absolute and relative gates both applied, every channel
+    weighted 1.0 (which is the standard's weighting for left and right; a
+    centre or surround channel would want its own, and a beatmap's audio has
+    neither).
+
+    The peak is the **sample** peak. True peak needs oversampling, and what
+    this number is for is headroom — how much a gain may raise this segment
+    before it clips — not a compliance claim.
+
+    Read in chunks with the filters' state carried across, so the answer is
+    the same as one pass and the memory is one chunk. Returns None for the
+    loudness of a range with nothing above the absolute gate in it: silence
+    has no level, and inventing one would set a whole compilation by it.
+    """
+    from scipy import signal
+
+    info = ta.sf.info(str(path))
+    rate = int(info.samplerate)
+    shelf, highpass = _k_weighting(rate)
+    per_step = max(1, int(round(STEP_S * rate)))
+    start = max(0, int(round(float(start_ms) * rate / 1000.0)))
+    stop = min(int(info.frames), int(round(float(end_ms) * rate / 1000.0)))
+    chunk = per_step * LOUDNESS_CHUNK_STEPS
+    energies: list[np.ndarray] = []
+    peak = 0.0
+    zi_shelf = None
+    zi_high = None
+    carry = np.zeros((0, 0), dtype="float64")
+    at = start
+    while at < stop:
+        block = ta.sf.read(str(path), start=at, stop=min(at + chunk, stop),
+                           dtype="float32", always_2d=True)[0]
+        at += len(block)
+        if not len(block):
+            break
+        data = np.asarray(block, dtype="float64")
+        peak = max(peak, float(np.abs(data).max(initial=0.0)))
+        if zi_shelf is None:
+            zi_shelf = np.zeros((2, data.shape[1]))
+            zi_high = np.zeros((2, data.shape[1]))
+            carry = np.zeros((0, data.shape[1]), dtype="float64")
+        weighted, zi_shelf = signal.lfilter(shelf[0], shelf[1], data, axis=0, zi=zi_shelf)
+        weighted, zi_high = signal.lfilter(highpass[0], highpass[1], weighted,
+                                           axis=0, zi=zi_high)
+        weighted = np.vstack([carry, weighted]) if carry.size else weighted
+        whole = (len(weighted) // per_step) * per_step
+        carry = weighted[whole:]
+        if whole:
+            energies.append((weighted[:whole] ** 2)
+                            .reshape(-1, per_step, weighted.shape[1]).sum(axis=(1, 2)))
+    steps = np.concatenate(energies) if energies else np.zeros(0)
+    return {"lufs": _gated_loudness(steps, per_step),
+            "peak_dbfs": round(20.0 * np.log10(peak), 2) if peak > 0 else None,
+            "steps": int(steps.size), "sample_rate": rate}
+
+
+def loudness_plan(plan: dict, target="median", progress=None) -> dict:
+    """What each segment's gain should be so no song in the compilation jumps.
+
+    Measures every segment, picks the level to match (the median by default,
+    the first segment's, the quietest, or a number in LUFS), and works out
+    the gain each one needs to reach it — then caps it: never more than
+    :data:`MAX_GAIN_DB`, and never so much that the segment's own peak passes
+    :data:`PEAK_CEILING_DBFS`. A capped gain is reported as capped rather
+    than silently obeyed.
+
+    A decode per segment, so this is an action somebody asks for, not
+    something a plan does on its own; ``progress(step, done, total)`` is
+    called as each one is measured.
+    """
+    if isinstance(target, str) and target not in LOUDNESS_TARGETS:
+        raise ValueError(f"Unknown loudness target {target!r}. "
+                         f"Known: {', '.join(LOUDNESS_TARGETS)}, or a number in LUFS.")
+    rows: list[dict] = []
+    for n, segment in enumerate(plan["segments"]):
+        if progress is not None:
+            progress("loudness", n, len(plan["segments"]))
+        path = segment["audio"]["path"]
+        if not path:
+            rows.append({"segment": n, "name": segment["name"], "lufs": None,
+                         "peak_dbfs": None, "gain_db": 0.0, "capped": None,
+                         "why": "no_audio"})
+            continue
+        try:
+            found = segment_loudness(path, segment["range"]["start_ms"],
+                                     segment["range"]["end_ms"])
+        except (ValueError, OSError) as exc:
+            rows.append({"segment": n, "name": segment["name"], "lufs": None,
+                         "peak_dbfs": None, "gain_db": 0.0, "capped": None,
+                         "why": str(exc)})
+            continue
+        rows.append({"segment": n, "name": segment["name"],
+                     "lufs": None if found["lufs"] is None else round(found["lufs"], 2),
+                     "peak_dbfs": found["peak_dbfs"], "gain_db": 0.0, "capped": None,
+                     "why": None if found["lufs"] is not None else "silent"})
+    measured = [row["lufs"] for row in rows if row["lufs"] is not None]
+    if not measured:
+        return {"target": None, "from": str(target), "segments": rows,
+                "why": "nothing_measurable"}
+    if isinstance(target, str):
+        level = (_median(measured) if target == "median"
+                 else measured[0] if target == "first" else min(measured))
+    else:
+        level = float(target)
+    for row in rows:
+        if row["lufs"] is None:
+            continue
+        want = level - row["lufs"]
+        gain = max(-MAX_GAIN_DB, min(MAX_GAIN_DB, want))
+        capped = "limit" if abs(gain - want) > 1e-9 else None
+        if gain > 0 and row["peak_dbfs"] is not None:
+            # Only ever down to no gain at all: turning a segment *down*
+            # because its peak is already high would answer a question
+            # nobody asked.
+            room = max(0.0, PEAK_CEILING_DBFS - row["peak_dbfs"])
+            if gain > room:
+                gain, capped = room, "peak"
+        row["gain_db"] = round(gain, 2)
+        row["capped"] = capped
+    return {"target": round(level, 2), "from": str(target), "segments": rows,
+            "why": None}

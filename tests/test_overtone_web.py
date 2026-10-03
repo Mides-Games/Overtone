@@ -4529,10 +4529,18 @@ class CompileBridgeTests(_IsolatedConfig):
     """The Compile view's bridge: the list, the plan under it, and the build."""
 
     def _song(self, folder: Path, bpm: float, artist: str, title: str,
-              mapper: str, seconds: float = 8.0, rate: int = 8000) -> Path:
+              mapper: str, seconds: float = 8.0, rate: int = 8000,
+              rms_dbfs: float | None = None) -> Path:
         folder.mkdir(parents=True, exist_ok=True)
-        ta.sf.write(str(folder / "song.wav"),
-                    np.zeros(int(rate * seconds), dtype="float32"), rate)
+        if rms_dbfs is None:
+            audio = np.zeros(int(rate * seconds), dtype="float32")
+        else:
+            # A 1 kHz tone at a known level, for the loudness match to find.
+            amplitude = 10.0 ** (rms_dbfs / 20.0) * np.sqrt(2.0)
+            frames = int(rate * seconds)
+            audio = (amplitude * np.sin(2 * np.pi * 1000.0
+                                        * np.arange(frames) / rate)).astype("float32")
+        ta.sf.write(str(folder / "song.wav"), audio, rate)
         beat = 60000.0 / bpm
         objects = [f"100,100,{round(1000 + k * 4 * beat)},1,0,0:0:0:0:" for k in range(4)]
         lines = ["osu file format v14", "",
@@ -4726,6 +4734,38 @@ class CompileBridgeTests(_IsolatedConfig):
                 self.assertTrue(api.compile_state()["busy"])
             finally:
                 api._compile_lock.release()
+
+    def test_matching_volumes_measures_every_song_and_sets_the_gains(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            quiet = self._song(Path(tmp) / "a", 150.0, "A", "Quiet", "m1",
+                               rate=44100, rms_dbfs=-30.0)
+            loud = self._song(Path(tmp) / "b", 174.0, "B", "Loud", "m2",
+                              rate=44100, rms_dbfs=-18.0)
+            api = web.Api()
+            events = self._built(api)
+            api.compile_add([str(quiet), str(loud)])
+            self.assertTrue(api.compile_match_loudness()["ok"])
+            self._wait(api)
+            state = api.compile_state()
+        measured = [payload for name, payload in events if name == "onCompileLoudness"]
+        self.assertEqual(len(measured), 1)
+        self.assertTrue(measured[0]["ok"], measured[0])
+        report = measured[0]["loudness"]
+        json.dumps(report)
+        steps = [payload for name, payload in events if name == "onCompileProgress"]
+        self.assertEqual([s["step"] for s in steps], ["loudness", "loudness"])
+        # Twelve decibels apart, matched to the median of the two: each one
+        # moves half the distance, and the gains land on the segments.
+        self.assertAlmostEqual(report["segments"][0]["lufs"]
+                               - report["segments"][1]["lufs"], -12.0, delta=0.1)
+        self.assertAlmostEqual(report["segments"][0]["gain_db"], 6.0, delta=0.2)
+        self.assertAlmostEqual(report["segments"][1]["gain_db"], -6.0, delta=0.2)
+        self.assertEqual([s.get("gain_db") for s in state["sources"]],
+                         [report["segments"][0]["gain_db"],
+                          report["segments"][1]["gain_db"]])
+        self.assertEqual(state["loudness"]["target"], report["target"])
+        # A new range is a new question: the measurement goes with it.
+        self.assertIsNone(api.compile_update(0, {"start_ms": 1000})["loudness"])
 
     def test_the_open_songs_maps_can_be_added_in_one_click(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

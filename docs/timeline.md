@@ -18,6 +18,59 @@ later costs more than writing it down now.
 
 ---
 
+## v4.0.0-dev — 2026-10-03 · Compilations: matched volumes and shaped junctions
+
+### Changed
+
+- **`segment_loudness`** measures a range the way ITU-R BS.1770 says to:
+  K-weighted, 400 ms blocks every 100 ms, the absolute (-70 LUFS) and
+  relative (-10 LU) gates both applied, every channel weighted 1.0. The two
+  filters are **derived from the standard's analog parameters** rather than
+  copied from the digital coefficients it prints for 48 kHz, so a 44.1 kHz
+  song is measured without being resampled first. Read in chunks with the
+  filter state carried across, so the answer is the same as one pass and the
+  memory is one chunk.
+- **`loudness_plan`** matches every song to the **median** of them (or the
+  first, the quietest, or a number in LUFS) and caps what it asks for: never
+  more than 12 dB, and never past the sample-peak headroom. A capped gain
+  says which cap bit, and a range with nothing above the absolute gate in it
+  gets no level at all rather than an invented one.
+- **The gap can be counted in bars of the outgoing song** — it is that
+  song's groove the gap is finishing — measured off the grid in force where
+  its range ends, per plan or per junction.
+- **`start_on_downbeat`** pulls each segment's range back to its own bar
+  line, never forward: forward would eat the padding and could reach an
+  object.
+- **Fades in and out**, per plan or per segment, over the same ramp the 5 ms
+  declick guard uses — the longer of the two wins, so asking for a fade can
+  never remove the guard.
+- In the app: **Match volumes** in the Songs card (on the build's own lock,
+  with its own progress), each song's measured level beside its gain, and the
+  four new joining controls.
+
+### Measured
+
+- The derivation reproduces the standard's published 48 kHz coefficients to
+  **12 decimal places**, and a 1 kHz sine at -20 dBFS RMS reads **-20.0
+  LUFS** in one channel — the standard's own calibration sentence. Halving
+  the amplitude takes 6.02 LU off. Chunking the file changes nothing.
+- In the harness, two fixture songs 10 dB apart: measured -23.05 and -33.05
+  LUFS, matched to the median -28.05, gains -5.0 and +5.0 dB, both uncapped.
+  A gap of 2 bars at 150 BPM in 4/4 came out 3200 ms.
+- 922 tests (647 engine + 275 web shell), 16 of them new.
+
+### Rejected / tried and dropped
+
+- **The crossfade** row 25.7 asked for. The junction is silence by design: a
+  break covers it, the health bar stops draining, and each song keeps its own
+  grid. An overlap puts two tempos over each other for a second, which is a
+  mix decision about music this tool does not otherwise make, and it would
+  cost the streaming writer its one-block memory. Fades in and out do the
+  audible part of the job.
+- **True peak** for the clipping cap. It needs oversampling, and what the
+  number is for is headroom — how far this segment may be raised — not a
+  compliance claim. Said so in the docstring rather than implying more.
+
 ## v4.0.0-dev — 2026-10-03 · The Compile section: a compilation from the app
 
 ### Changed

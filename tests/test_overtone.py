@@ -9338,8 +9338,10 @@ class CombinePlanTests(unittest.TestCase):
         self.assertEqual([(s["at_ms"], s["shift_ms"], s["ends_at_ms"])
                           for s in plan["segments"]],
                          [(2000.0, 2000.0, 13000.0), (15000.0, 15000.0, 27000.0)])
-        self.assertEqual(plan["junctions"], [{"after": 0, "before": 1, "ends_ms": 13000.0,
-                                              "gap_ms": 2000.0, "starts_ms": 15000.0}])
+        self.assertEqual(plan["junctions"],
+                         [{"after": 0, "before": 1, "ends_ms": 13000.0,
+                           "gap_ms": 2000.0, "bars": None, "bar_ms": 1600.0,
+                           "starts_ms": 15000.0}])
         self.assertEqual((plan["totals"]["duration_ms"], plan["totals"]["objects"],
                           plan["totals"]["segments"], plan["totals"]["songs"]),
                          (27000.0, 4, 2, 2))
@@ -9839,6 +9841,36 @@ class CombineAudioTests(unittest.TestCase):
         peaks = (float(np.abs(mine).max()), float(np.abs(theirs).max()))
         self.assertAlmostEqual(peaks[0] / peaks[1], 10.0 ** (-6.0 / 20.0), places=3)
 
+    def test_a_fade_is_written_over_the_segments_edges(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a"), "fade_in_ms": 500.0,
+                      "fade_out_ms": 250.0}
+            plan, out, report = self._build(tmp, [source])
+            at = int(round(plan["segments"][0]["at_ms"] * 44100 / 1000.0))
+            length = report["segments"][0]["frames"]
+            head = self._read(out, at, at + int(44100 * 0.5))
+            tail = self._read(out, at + length - int(44100 * 0.25), at + length)
+            middle = self._read(out, at + int(44100 * 0.6), at + int(44100 * 0.9))
+        self.assertEqual((report["segments"][0]["fade_in_ms"],
+                          report["segments"][0]["fade_out_ms"]), (500.0, 250.0))
+        # A linear ramp: the first tenth of the fade is quieter than the last.
+        rising = np.abs(head).max(axis=1)
+        self.assertLess(rising[:len(rising) // 10].max(),
+                        rising[-len(rising) // 10:].max())
+        falling = np.abs(tail).max(axis=1)
+        self.assertGreater(falling[:len(falling) // 10].max(),
+                           falling[-len(falling) // 10:].max())
+        self.assertGreater(float(np.abs(middle).max()), 0.5)   # and the rest is whole
+
+    def test_asking_for_no_fade_keeps_the_guard_against_a_click(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, _out, report = self._build(tmp, [self._map(Path(tmp) / "a")])
+        # The 5 ms ramp is not a fade, it is what stops a cut from clicking,
+        # and asking for no fade must not take it away.
+        row = report["segments"][0]
+        self.assertEqual((row["fade_in_ms"], row["fade_out_ms"], row["declick_ms"]),
+                         (4.989, 4.989, 5.0))
+
     def test_a_range_somebody_typed_is_not_faded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             typed = {"osu": self._map(Path(tmp) / "a"), "start_ms": 1000.0,
@@ -10322,6 +10354,59 @@ class CombineJunctionTests(unittest.TestCase):
         # again from there: a span cannot leak into the next song.
         self.assertEqual(rows[-1].split(",")[7], "0")
 
+    def test_a_gap_counted_in_bars_uses_the_outgoing_songs_grid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, _text, report = self._built(
+                [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b")],
+                {"gap_bars": 2.0})
+        # 150 BPM in 4/4: a beat is 400 ms, a bar 1600, two bars 3200. The
+        # bars are the *outgoing* song's, since it is its groove being
+        # finished.
+        junction = plan["junctions"][0]
+        self.assertEqual((junction["bars"], junction["bar_ms"], junction["gap_ms"]),
+                         (2.0, 1600.0, 3200.0))
+        self.assertEqual(plan["segments"][1]["at_ms"],
+                         plan["segments"][0]["ends_at_ms"] + 3200.0)
+        self.assertEqual(report["junction_breaks"], 1)
+
+    def test_a_gap_in_bars_set_on_one_junction_overrides_the_plans(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            second = {"osu": self._map(Path(tmp) / "b"), "gap_before_bars": 1.0}
+            plan, _text, _report = self._built([self._map(Path(tmp) / "a"), second],
+                                               {"gap_bars": 4.0})
+        self.assertEqual(plan["junctions"][0]["gap_ms"], 1600.0)
+
+    def test_a_segment_can_come_in_on_its_own_downbeat(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # The red line is at 1000 ms and a bar is 1600, so the bars sit at
+            # 1000, 2600, 4200… and at -600 before that. The range would start
+            # at 0 (2000 before the first object at 2000, clamped), which is
+            # not a bar line; pulled back it is -600 clamped to 0 — so this
+            # one needs a later first object to show the snap.
+            source = self._map(Path(tmp) / "a",
+                               objects=["100,100,5000,1,0,0:0:0:0:",
+                                        "256,192,5400,12,0,6400,0:0:0:0:"])
+            loose, _text, _report = self._built([source])
+            snapped, _text2, _report2 = self._built([source], {"start_on_downbeat": True})
+        self.assertEqual(loose["segments"][0]["range"]["start_ms"], 3000.0)
+        self.assertFalse(loose["segments"][0]["range"]["snapped_to_bar"])
+        # 3000 is 1.25 bars past the red line; the bar before it is at 2600.
+        self.assertEqual(snapped["segments"][0]["range"]["start_ms"], 2600.0)
+        self.assertTrue(snapped["segments"][0]["range"]["snapped_to_bar"])
+        self.assertEqual(snapped["segments"][0]["grid"],
+                         {"beat_ms": 400.0, "meter": 4, "bar_ms": 1600.0,
+                          "at_ms": 1000.0})
+
+    def test_the_downbeat_snap_never_loses_an_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a",
+                               objects=["100,100,5000,1,0,0:0:0:0:"])
+            snapped, _text, _report = self._built([source], {"start_on_downbeat": True})
+        # Only ever backwards, so the padding grows and nothing is cut.
+        segment = snapped["segments"][0]
+        self.assertLessEqual(segment["range"]["start_ms"], 3000.0)
+        self.assertEqual(segment["objects"]["in_range"], segment["objects"]["played"])
+
     def test_two_breaks_that_meet_become_one(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             # The first map's own break runs from just after its last sound
@@ -10558,6 +10643,176 @@ class CombineOutputTests(unittest.TestCase):
         self.assertIn("background_missing",
                       [note["code"] for note in report["beatmap"]["notes"]])
         self.assertNotIn("background", [entry["kind"] for entry in report["files"]])
+
+class CombineLoudnessTests(unittest.TestCase):
+    """How loud each song is, and the gain that stops one of them jumping."""
+
+    #: ITU-R BS.1770's own coefficients for 48 kHz, printed in the standard.
+    #: The module derives them from the two analog filters instead, so that a
+    #: 44.1 kHz song can be measured without resampling; these are what the
+    #: derivation has to come back to.
+    PUBLISHED = {
+        "shelf_b": [1.53512485958697, -2.69169618940638, 1.19839281085285],
+        "shelf_a": [1.0, -1.69065929318241, 0.73248077421585],
+        "highpass_b": [1.0, -2.0, 1.0],
+        "highpass_a": [1.0, -1.99004745483398, 0.99007225036621],
+    }
+
+    def _sine(self, folder: Path, name: str, rms_dbfs: float, rate: int = 48000,
+              channels: int = 1, seconds: float = 6.0) -> Path:
+        import overtone as ta
+        amplitude = 10.0 ** (rms_dbfs / 20.0) * np.sqrt(2.0)
+        frames = int(rate * seconds)
+        tone = (amplitude * np.sin(2 * np.pi * 1000.0 * np.arange(frames) / rate)
+                ).astype("float32")
+        data = tone if channels == 1 else np.stack([tone] * channels, axis=1)
+        path = folder / name
+        ta.sf.write(str(path), data, rate)
+        return path
+
+    def _measure(self, path: Path, seconds: float = 6.0) -> dict:
+        import overtone_combine
+        return overtone_combine.segment_loudness(path, 0.0, seconds * 1000.0)
+
+    def test_the_k_weighting_is_the_standards_own_at_48_khz(self) -> None:
+        import overtone_combine
+        shelf, highpass = overtone_combine._k_weighting(48000)
+        for got, want in ((shelf[0], self.PUBLISHED["shelf_b"]),
+                          (shelf[1], self.PUBLISHED["shelf_a"]),
+                          (highpass[0], self.PUBLISHED["highpass_b"]),
+                          (highpass[1], self.PUBLISHED["highpass_a"])):
+            for mine, theirs in zip(got, want):
+                self.assertAlmostEqual(float(mine), theirs, places=12)
+
+    def test_a_sine_at_minus_twenty_dbfs_rms_reads_minus_twenty_lufs(self) -> None:
+        # The standard's own calibration: a 1 kHz sine whose RMS is -20 dBFS,
+        # in one channel, reads -20 LUFS. Two channels at -23 dBFS RMS sum to
+        # the same thing and must read the same.
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            mono = self._measure(self._sine(folder, "mono.wav", -20.0))
+            stereo = self._measure(self._sine(folder, "stereo.wav", -23.01,
+                                              channels=2))
+            at_441 = self._measure(self._sine(folder, "cd.wav", -20.0, rate=44100))
+        self.assertAlmostEqual(mono["lufs"], -20.0, delta=0.02)
+        self.assertAlmostEqual(stereo["lufs"], -20.0, delta=0.05)
+        # And the derived filters give the same answer at the other rate.
+        self.assertAlmostEqual(at_441["lufs"], mono["lufs"], delta=0.01)
+
+    def test_halving_the_amplitude_takes_six_lu_off(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            loud = self._measure(self._sine(folder, "loud.wav", -20.0))
+            quiet = self._measure(self._sine(folder, "quiet.wav", -26.02))
+        self.assertAlmostEqual(loud["lufs"] - quiet["lufs"], 6.02, delta=0.02)
+        self.assertAlmostEqual(loud["peak_dbfs"] - quiet["peak_dbfs"], 6.02, delta=0.02)
+
+    def test_silence_has_no_level_and_says_so(self) -> None:
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "silent.wav"
+            ta.sf.write(str(path), np.zeros((48000 * 3, 2), dtype="float32"), 48000)
+            found = self._measure(path, 3.0)
+        # Inventing a level for silence would set a whole compilation by it.
+        self.assertIsNone(found["lufs"])
+        self.assertIsNone(found["peak_dbfs"])
+
+    def test_the_answer_is_the_same_however_the_file_is_chunked(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._sine(Path(tmp), "tone.wav", -20.0, channels=2)
+            whole = self._measure(path)
+            was = overtone_combine.LOUDNESS_CHUNK_STEPS
+            overtone_combine.LOUDNESS_CHUNK_STEPS = 3      # 300 ms a read
+            self.addCleanup(setattr, overtone_combine, "LOUDNESS_CHUNK_STEPS", was)
+            in_pieces = self._measure(path)
+        # The filters carry their state across reads, so the chunk size is
+        # bookkeeping and not part of the answer.
+        self.assertEqual(whole["lufs"], in_pieces["lufs"])
+        self.assertEqual(whole["steps"], in_pieces["steps"])
+
+    def _plan(self, folder: Path, levels, seconds: float = 6.0) -> dict:
+        import overtone as ta
+        import overtone_combine
+        sources = []
+        for n, rms in enumerate(levels):
+            song = folder / f"s{n}"
+            song.mkdir(parents=True, exist_ok=True)
+            self._sine(song, "song.wav", rms, rate=44100, channels=2, seconds=seconds)
+            lines = ["osu file format v14", "",
+                     "[General]", "AudioFilename: song.wav", "Mode: 0", "",
+                     "[Metadata]", "Title:T", "Artist:A", "Creator:M", f"Version:s{n}", "",
+                     "[Difficulty]", "HPDrainRate:5", "CircleSize:4",
+                     "OverallDifficulty:7", "ApproachRate:9", "SliderMultiplier:1.4",
+                     "SliderTickRate:1", "",
+                     "[Events]", "",
+                     "[TimingPoints]", "1000,400,4,2,0,80,1,0", "",
+                     "[HitObjects]", "100,100,1200,1,0,0:0:0:0:",
+                     "200,200,2000,1,0,0:0:0:0:", ""]
+            (song / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+            sources.append(str(song / "map.osu"))
+        return overtone_combine.plan_compilation(sources)
+
+    def test_the_median_is_matched_and_the_loud_one_is_turned_down(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(Path(tmp), [-30.0, -24.0, -18.0])
+            matched = overtone_combine.loudness_plan(plan)
+            json.dumps(matched)
+        self.assertAlmostEqual(matched["target"], -21.0, delta=0.1)   # the middle song
+        gains = [row["gain_db"] for row in matched["segments"]]
+        self.assertAlmostEqual(gains[1], 0.0, delta=0.1)
+        self.assertGreater(gains[0], 5.0)       # the quiet one comes up
+        self.assertLess(gains[2], -5.0)         # the loud one goes down
+        self.assertEqual([row["capped"] for row in matched["segments"]],
+                         [None, None, None])
+
+    def test_a_gain_that_would_clip_is_capped_at_the_headroom(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            # A song already peaking half a decibel under full scale, asked to
+            # come up to 0 LUFS: there is no room, so it stays where it is and
+            # the row says why. (Two channels of a 1 kHz sine at -3.52 dBFS
+            # RMS read about -0.5 LUFS: the channels sum.)
+            plan = self._plan(Path(tmp), [-3.52])
+            matched = overtone_combine.loudness_plan(plan, 0.0)
+        self.assertAlmostEqual(matched["segments"][0]["lufs"], -0.5, delta=0.1)
+        self.assertAlmostEqual(matched["segments"][0]["peak_dbfs"], -0.51, delta=0.05)
+        self.assertEqual(matched["segments"][0]["capped"], "peak")
+        self.assertAlmostEqual(matched["segments"][0]["gain_db"], 0.0, delta=0.01)
+
+    def test_a_gain_past_the_limit_is_capped_and_said(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(Path(tmp), [-60.0, -20.0])
+            matched = overtone_combine.loudness_plan(plan, "quietest")
+        # Matching the quietest asks the loud one for -40 dB; 12 is the most
+        # this will move anything, and it says so instead of obeying.
+        self.assertEqual(matched["from"], "quietest")
+        self.assertEqual(matched["segments"][1]["gain_db"], -overtone_combine.MAX_GAIN_DB)
+        self.assertEqual(matched["segments"][1]["capped"], "limit")
+
+    def test_a_segment_with_no_sound_in_it_is_left_alone(self) -> None:
+        import overtone as ta
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(Path(tmp), [-20.0, -20.0])
+            silent = Path(plan["segments"][1]["audio"]["path"])
+            ta.sf.write(str(silent), np.zeros((44100 * 6, 2), dtype="float32"), 44100)
+            matched = overtone_combine.loudness_plan(plan)
+        self.assertEqual(matched["segments"][1]["why"], "silent")
+        self.assertEqual(matched["segments"][1]["gain_db"], 0.0)
+        self.assertAlmostEqual(matched["segments"][0]["gain_db"], 0.0, delta=0.01)
+
+    def test_an_unknown_target_is_an_error(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(Path(tmp), [-20.0])
+            with self.assertRaises(ValueError):
+                overtone_combine.loudness_plan(plan, "loudest")
+            # A number is a target in LUFS.
+            self.assertAlmostEqual(
+                overtone_combine.loudness_plan(plan, -23.0)["target"], -23.0, delta=0.01)
 
 if __name__ == "__main__":
     unittest.main()

@@ -376,6 +376,10 @@ class Api:
         self._compile_format: dict = {"audio_format": tc.DEFAULT_AUDIO_FORMAT,
                                       "difficulty_from": "first", "osz": False}
         self._compile_out = ""
+        #: The last loudness measurement, which is a decode per segment and so
+        #: is asked for rather than taken: the view shows each song's level
+        #: beside the gain it was given.
+        self._compile_loudness: dict | None = None
         #: A build's own lock, beside the analysis's: the analysis's belongs to
         #: one analysis, and ``stop_analysis`` reads it to decide whether
         #: anything is running. The two refuse each other instead of sharing,
@@ -1784,6 +1788,7 @@ class Api:
                        "metadata": dict(self._compile_metadata),
                        "format": dict(self._compile_format),
                        "out": self._compile_out,
+                       "loudness": self._compile_loudness,
                        "plan": None, "check": None,
                        "busy": self._busy.locked() or self._compile_lock.locked()}
         if not sources:
@@ -1837,6 +1842,7 @@ class Api:
             return {"ok": False, "key": "bad_file", "detail": Path(missing[0]).name}
         for path in chosen:
             self._compile.append({"osu": path})
+        self._compile_loudness = None
         return self.compile_state()
 
     def compile_add_open_song(self) -> dict:
@@ -1856,10 +1862,12 @@ class Api:
         if not 0 <= int(index) < len(self._compile):
             return {"ok": False, "key": "bad_index"}
         self._compile.pop(int(index))
+        self._compile_loudness = None
         return self.compile_state()
 
     def compile_clear(self) -> dict:
         self._compile = []
+        self._compile_loudness = None
         return self.compile_state()
 
     def compile_move(self, index: int, delta: int) -> dict:
@@ -1889,6 +1897,9 @@ class Api:
             except (TypeError, ValueError):
                 return {"ok": False, "key": "bad_values", "detail": str(key)}
         self._compile[int(index)] = spec
+        # A level was measured over a range; a new range is a new question.
+        if {"start_ms", "end_ms"} & set(changes or {}):
+            self._compile_loudness = None
         return self.compile_state()
 
     def compile_settings(self, changes: dict) -> dict:
@@ -1897,7 +1908,8 @@ class Api:
         for key, value in dict(changes or {}).items():
             if key not in tc.DEFAULT_SETTINGS:
                 return {"ok": False, "key": "bad_values", "detail": str(key)}
-            if key in ("strict", "junction_breaks", "junction_bookmarks"):
+            if key in ("strict", "junction_breaks", "junction_bookmarks",
+                       "start_on_downbeat"):
                 settings[key] = bool(value)
             elif key == "preview_from":
                 settings[key] = "first" if value in ("first", None, "") else int(value)
@@ -1941,6 +1953,48 @@ class Api:
                 return {"ok": False, "key": "bad_values", "detail": str(key)}
         self._compile_format = chosen
         return self.compile_state()
+
+    def compile_match_loudness(self, target: str = "median") -> dict:
+        """Measure every song and set the gains so none of them jumps.
+
+        A decode per segment, so it runs on the same lock the build does and
+        answers with events: ``onCompileProgress`` per song, then
+        ``onCompileLoudness``. The gains land on the segments as if they had
+        been typed, so they can be changed afterwards.
+        """
+        if not self._compile:
+            return {"ok": False, "key": "no_sources"}
+        try:
+            plan = tc.plan_compilation(self._compile, self._compile_settings)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        if self._busy.locked():
+            return {"ok": False, "key": "busy"}
+        if not self._compile_lock.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        threading.Thread(target=self._loudness_worker, args=(plan, target),
+                         daemon=True).start()
+        return {"ok": True}
+
+    def _loudness_worker(self, plan: dict, target) -> None:
+        try:
+            report = tc.loudness_plan(
+                plan, target,
+                progress=lambda step, done, total: self._emit(
+                    "onCompileProgress", {"step": step, "done": done, "total": total}))
+            for row in report["segments"]:
+                if 0 <= row["segment"] < len(self._compile) and row["lufs"] is not None:
+                    self._compile[row["segment"]]["gain_db"] = row["gain_db"]
+            self._compile_loudness = report
+            self._emit("onCompileLoudness", {"ok": True, "loudness": report})
+        except (ValueError, OSError) as exc:
+            self._emit("onCompileLoudness", {"ok": False, "key": "error",
+                                             "detail": str(exc)})
+        except Exception as exc:  # noqa: BLE001 -- the view shows the message
+            self._emit("onCompileLoudness", {"ok": False, "key": "error",
+                                             "detail": f"{type(exc).__name__}: {exc}"})
+        finally:
+            self._compile_lock.release()
 
     def compile_pick_folder(self) -> dict:
         """Where to build. Remembered until the window closes, so Build can

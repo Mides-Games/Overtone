@@ -44,7 +44,7 @@ commit messages are English; only the app's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (929 on 2026-10-03)
+.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (939 on 2026-10-03)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -58,10 +58,12 @@ commit messages are English; only the app's own UI strings stay bilingual
 .venv/Scripts/python.exe bench/gates.py real-audio             # 6 local songs analyse as pinned
 .venv/Scripts/python.exe bench/gates.py perf                   # every stage inside its time budget
 .venv/Scripts/python.exe bench/fixtures.py                     # the fixture manifest matches the code
-.venv/Scripts/python.exe bench/parity.py                       # 386 of 652 v3 engine tests held in Rust
+.venv/Scripts/python.exe bench/parity.py                       # 386 of 662 v3 engine tests held in Rust
 .venv/Scripts/python.exe bench/fit_kits.py --verify             # every genre kit renders what it says
 .venv/Scripts/python.exe bench/facts.py                        # stated counts and schema match the source
 .venv/Scripts/python.exe bench/fuzz_reader.py                  # 3000 mutant .osu files read, written back, consumed
+.venv/Scripts/python.exe installer/sbom.py --check             # every pinned wheel inventoried, at its pin
+.venv/Scripts/python.exe installer/notices.py --check          # every bundled licence gathered, every copyleft offer recorded
 ```
 
 Every gate after the benchmark checks something the benchmark cannot see. `bpm-snapshot` pins the
@@ -167,6 +169,11 @@ app/                      web shell frontend (HTML/CSS/JS, no network)
 Overtone.bat              double-click launcher
 installer/                the MSI and portable ZIP: PyInstaller spec, WiX source, the
                           one-line build (installer/build.py) and its smoke test
+  notices.py                every bundled licence gathered into the release tree, out of
+  notices.json              the build's own wheels and crates; the file holds only what no
+                            package carries -- the natives and the copyleft source offers
+  sbom.py                   the pinned wheels' licences, inventoried with a drift gate, and
+  sbom.json                 the CycloneDX SBOM that ships beside the artefacts
 profiles/                 hitsound profiles as JSON
 assets/                   generated logo (assets/logo.py), window icon and Overtone's own
                           hitsound samples (assets/samples.py)

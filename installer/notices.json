@@ -1,0 +1,90 @@
+{
+ "format": 1,
+ "_comment": [
+  "What installer/notices.py cannot read off a package: the runtime and native",
+  "parts that arrive with no wheel of their own, the few components that ship no",
+  "notice text, and the written offer each copyleft licence asks for. Everything",
+  "else -- every wheel of python/requirements.lock and every crate of Cargo.lock --",
+  "is gathered from the build's own files, so it is not repeated here.",
+  "",
+  "A 'from_path' is relative to sys.base_prefix, the Python this venv was made",
+  "from; a 'from_wheel' names a wheel whose notice files belong to a component",
+  "that is not itself shipped as a library. 'terms' answers the gate for a",
+  "component that carries no text, by name. An 'offer' covers a family through",
+  "its 'for' patterns."
+ ],
+ "components": [
+  {
+   "name": "Python",
+   "version": "3.14.4",
+   "licence": "PSF-2.0",
+   "what": "the interpreter and its standard library, frozen into both executables (python314.dll, base_library.zip and the modules beside them). Its LICENSE.txt also carries the notices of the software Python itself incorporates",
+   "source": "https://www.python.org/downloads/release/python-3144/",
+   "from_path": ["LICENSE.txt"]
+  },
+  {
+   "name": "Tcl/Tk",
+   "version": "8.6",
+   "licence": "TCL (BSD-style)",
+   "what": "the classic window's toolkit: tcl86t.dll, tk86t.dll, _tkinter.pyd and the script folders beside them (_tcl_data, _tk_data, tcl8), which overtone-py.exe opens the Tk window with. The web shell window does not use it",
+   "source": "https://www.tcl-lang.org/software/tcltk/",
+   "from_path": ["tcl/tk8.6/license.terms"]
+  },
+  {
+   "name": "PyInstaller bootloader",
+   "version": "6.22.3",
+   "licence": "GPL-2.0-only WITH PyInstaller-bootloader-exception",
+   "what": "the loader at the head of Overtone.exe and overtone-py.exe: the only part of PyInstaller that ships. Its own exception permits a frozen application under any licence, and the hooks and the build tool stay on the build machine",
+   "source": "https://pypi.org/project/pyinstaller/6.22.3/",
+   "from_wheel": ["pyinstaller"]
+  },
+  {
+   "name": "Microsoft Visual C++ runtime",
+   "version": "14.x",
+   "licence": "Microsoft Visual Studio redistributable terms",
+   "what": "VCRUNTIME140.dll and VCRUNTIME140_1.dll, which PyInstaller copies beside Python; overtone-cli.exe links the same runtime, which is why it sits in _internal rather than beside Overtone.exe",
+   "source": "https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files",
+   "terms": "redistributable with an application under the Visual Studio licence terms that ship with the toolchain that built it; Microsoft supplies no notice file to copy, and the terms are at the address above"
+  },
+  {
+   "name": "Microsoft Edge WebView2",
+   "version": "1.0.x (SDK assemblies)",
+   "licence": "Microsoft Software License Terms (Edge WebView2 SDK)",
+   "what": "Microsoft.Web.WebView2.Core.dll, Microsoft.Web.WebView2.WinForms.dll and WebView2Loader.dll, which arrive inside the pywebview wheel and are what the app's window is. The WebView2 runtime itself is part of Windows and is not bundled: a machine without it gets an error, never a download",
+   "source": "https://developer.microsoft.com/microsoft-edge/webview2/",
+   "terms": "redistributable with an application under the Microsoft Software License Terms for the Edge WebView2 SDK, at the address above; the SDK ships no notice file to copy"
+  }
+ ],
+ "terms": {
+  "clr-loader": "MIT, as the LICENSE text below says in full; the wheel's own metadata declares no licence, which is why it is named here",
+  "proxy-tools": "MIT, by the wheel's own classifier (Jonathan Tushman, http://github.com/jtushman/proxy_tools); the wheel ships no licence file, so there is no text to copy",
+  "realfft": "MIT, as Cargo.toml declares; the published crate carries no licence file, so there is no text to copy (https://github.com/HEnquist/realfft)"
+ },
+ "offers": [
+  {
+   "title": "libsndfile, through the soundfile wheel -- LGPL-2.1-or-later",
+   "for": ["soundfile"],
+   "text": "What ships: _internal\\_soundfile_data\\libsndfile_x64.dll, the build that\ncomes inside soundfile 0.14.0 as installed from PyPI. Neither it nor soundfile\nis modified here; its COPYING is reproduced in full further down.\n\nThe LGPL asks that you be able to use a libsndfile of your own instead. You\ncan: the DLL is a separate file in the program folder and soundfile opens it\nby name at run time, so a build of your own put in its place is the one that\nruns. No relinking of Overtone is needed.\n\nThe source: https://github.com/libsndfile/libsndfile, and the soundfile\nrelease the DLL came in, source archive included, at\nhttps://pypi.org/project/soundfile/0.14.0/#files\n\nIf both of those are gone and the exact source used here is wanted, ask at\nhttps://github.com/githaltwastaken/Overtone/issues and it will be provided."
+  },
+  {
+   "title": "libsoxr, through the soxr wheel -- LGPL-2.1-or-later",
+   "for": ["soxr"],
+   "text": "What ships: _internal\\soxr\\soxr_ext.pyd, the extension module of soxr 1.1.0 as\ninstalled from PyPI, which has libsoxr linked into it statically. Neither is\nmodified here; COPYING.LGPL and LICENSE-libsoxr.txt are reproduced in full\nfurther down.\n\nStatically linked means replacing libsoxr means rebuilding that one module,\nnot Overtone: the sources are\nhttps://github.com/dofuuz/python-soxr (the wheel, version 1.1.0) and\nhttps://sourceforge.net/projects/soxr/ (libsoxr), and the wheel's own source\narchive is at https://pypi.org/project/soxr/1.1.0/#files\n\nOvertone loads soxr through librosa, as a resampler. If the exact source used\nhere is wanted and those addresses are gone, ask at\nhttps://github.com/githaltwastaken/Overtone/issues and it will be provided."
+  },
+  {
+   "title": "certifi -- MPL-2.0",
+   "for": ["certifi"],
+   "text": "certifi is a CA certificate bundle that arrives through requests, which\narrives through pooch, which arrives through librosa. Overtone makes no\nnetwork call of any kind, so nothing in the app ever reads it; it ships\nbecause it is in the dependency tree, and it is listed because it is there.\n\nUnmodified, as installed from PyPI. The MPL asks that the source of its\ncovered files be available: https://github.com/certifi/python-certifi and\nhttps://pypi.org/project/certifi/2026.7.22/#files"
+  },
+  {
+   "title": "Symphonia (fifteen crates) -- MPL-2.0",
+   "for": ["symphonia*"],
+   "text": "Symphonia is the Rust engine's decoder: it reads the MP3, FLAC, Ogg, WAV, MP4\nand Matroska files Overtone analyses, linked into overtone-cli.exe. Every\ncrate of it is version 0.6.1 as published on crates.io, unmodified, and each\none's licence text is reproduced further down.\n\nThe MPL asks that the source of its covered files be available:\nhttps://github.com/pdeljanov/Symphonia, and crates.io keeps the exact\npublished archive of every version, e.g.\nhttps://crates.io/crates/symphonia-core/0.6.1"
+  },
+  {
+   "title": "PyInstaller's bootloader -- GPL-2.0 with the bootloader exception",
+   "for": ["PyInstaller bootloader"],
+   "text": "PyInstaller is GPLv2, with an exception for exactly this case: the bootloader\nit puts at the head of a frozen executable may be distributed inside an\napplication under any licence, and does not make that application GPL. The\nexception's own wording is in PyInstaller's COPYING.txt, reproduced further\ndown.\n\nOnly the bootloader ships. PyInstaller itself, its hooks and its build\nmachinery stay on the build machine (installer/requirements-build.lock).\n\nThe source: https://github.com/pyinstaller/pyinstaller and\nhttps://pypi.org/project/pyinstaller/6.22.3/#files"
+  }
+ ]
+}

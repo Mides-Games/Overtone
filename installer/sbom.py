@@ -13,10 +13,14 @@ licence its installed metadata declares, into ``installer/sbom.json``
 ``--check`` is the gate: a lock changed without re-running fails it, and so
 does a venv whose wheels differ from the lock (build.py refuses those too,
 so generation happens where the pins hold). Licence STRINGS come from the
-venv's metadata at generation time. Native bits no wheel carries
-(libsndfile LGPL, Tcl/Tk, WebView2, the MSVC runtime, Python itself) are not
-wheels and are not inventoried here -- gathering their notices into the tree
-is the step after this one.
+venv's metadata at generation time.
+
+``--cyclonedx PATH`` writes the release's SBOM: the machine-readable half of
+what ``installer/notices.py`` writes for a reader. Every wheel, every Rust
+crate and every native component with its version, its licence and where it
+came from, in the format an audit tool reads. Both are built from the one
+list ``notices.components()`` returns, so they cannot disagree; the natives
+that no wheel carries are in there because that list has them.
 """
 from __future__ import annotations
 
@@ -112,11 +116,77 @@ def drift(committed: dict, fresh: dict) -> list[str]:
     return found
 
 
+#: The purl of a component, by the kind of thing it is. A native has none:
+#: no package manager serves the MSVC runtime.
+PURL = {"wheel": "pkg:pypi/{name}@{version}", "crate": "pkg:cargo/{name}@{version}"}
+
+
+def cyclonedx(version: str, rows: list[dict]) -> dict:
+    """Every bundled component as CycloneDX 1.6.
+
+    A licence goes in as a ``name``, not an ``expression``: half of these
+    strings ("BSD License", "Apache Software License") are what a wheel's own
+    metadata says and not SPDX at all, and an expression field would claim a
+    precision the metadata has not got. The full texts travel in the tree's
+    THIRD-PARTY-NOTICES.txt.
+
+    No serial number and no timestamp, deliberately: two builds of one commit
+    should write the same bytes here. The parts of the artefacts that are not
+    yet reproducible are 10.13.7's, and the MSI's package code is one.
+    """
+    components = []
+    for row in rows:
+        entry = {"type": "library", "name": row["name"], "version": row["version"],
+                 "description": row["what"],
+                 "licenses": [{"license": {"name": row["licence"]}}],
+                 "externalReferences": [{"type": "website", "url": row["source"]}]}
+        if row["kind"] in PURL:
+            entry["purl"] = PURL[row["kind"]].format(**row)
+        components.append(entry)
+    return {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.6",
+        "version": 1,
+        "metadata": {
+            "component": {
+                "type": "application", "name": "Overtone", "version": version,
+                "description": "Timing and hitsounds for osu! beatmaps, offline",
+                "licenses": [{"license": {"id": "MIT"}}],
+            },
+            "tools": {"components": [
+                {"type": "application", "name": "installer/sbom.py",
+                 "description": "reads this build's own wheels, crates and runtime"},
+            ]},
+        },
+        "components": components,
+    }
+
+
+def write_cyclonedx(target: Path) -> int:
+    """The SBOM beside the artefacts, from this build's own files."""
+    sys.path.insert(0, str(HERE))
+    import notices
+    import release
+    rows, broken = notices.components()
+    for line in broken:
+        print("sbom:", line)
+    if broken:
+        return 1
+    target.write_text(json.dumps(cyclonedx(release.version(), rows), indent=1) + "\n",
+                      encoding="utf-8")
+    print(f"wrote {target} ({len(rows)} components)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true",
                         help="fail when sbom.json drifts from the locks")
+    parser.add_argument("--cyclonedx", metavar="PATH",
+                        help="write the release SBOM there instead of the wheel inventory")
     args = parser.parse_args(argv)
+    if args.cyclonedx:
+        return write_cyclonedx(Path(args.cyclonedx))
     if args.check:
         try:
             committed = json.loads(SBOM.read_text(encoding="utf-8"))

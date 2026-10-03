@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **929** Python (652 engine + 277 web shell) · **291** Rust.
+Tests: **939** Python (662 engine + 277 web shell) · **291** Rust.
 
 ### What is pending, in order
 
@@ -62,10 +62,12 @@ point, section volumes, SV normaliser, re-snap, snap divisors, audio file check)
    user, since 2026-09-26 (10.0.401, for the MSI build).
 5. **Real-audio accuracy** (Phase 10) — Corpus B is built and measured (10.0); one
    sub-phase at a time from here, each measured on it.
-6. **Installer, the rest** (Phase 10.13) — licence notices and an SBOM before anything is
-   published, code signing, the portable `data\` folder, file associations, and one real
-   install and uninstall. Built so far: the one-line build, the per-user MSI and the ZIP
-   ([`11`](11-msi-distribution.md)).
+6. **Installer, the rest** (Phase 10.13) — **v0.1.0-alpha is published** (2026-10-03): the
+   per-user MSI, the portable ZIP, the SBOM and the checksums, with every bundled licence
+   gathered into the tree and the whole thing installed and uninstalled on a real profile.
+   Left: code signing (10.13.6, which is a certificate to buy, not code to write), file
+   associations and the custom setup screen (the rest of 10.13.2), and the portable `data\`
+   folder ([`11`](11-msi-distribution.md)).
 7. **Compilation builder** (Phase 25, asked 2026-10-03) — several maps and their songs into
    one map and one audio file, each object keeping the beat it had. Step 1 of its build
    order is in (2026-10-03): the document, the segment reader with its repairs, the shift
@@ -481,7 +483,7 @@ estimate with a number or is dropped.
 | 10.10 | Chord & cadence anchors | cadences as downbeat voters | +1 pt | todo |
 | 10.11 | Instrument specialists | trained kick/snare/hat detectors | +1 pt | todo |
 | 10.12 | UX for slow but precise | stage progress, cancel, cached intermediates | usability | partial — result cache, stage progress with timings, a stop that lands inside the running stage; no cached intermediates |
-| 10.13 | **MSI distribution** | one self-contained installer + portable ZIP — [`11-msi-distribution.md`](11-msi-distribution.md) | packaging | partial — 10.13.1 and 10.13.5 built, 10.13.2 in part (2026-09-26): `installer\build.py`, a per-user MSI and the ZIP, smoke-tested unpacked; the pinned wheels' licences inventoried in `installer/sbom.json` with a drift gate (2026-09-30; LGPL/MPL flagged, 2 UNKNOWNs, natives still open); no signing or file associations |
+| 10.13 | **MSI distribution** | one self-contained installer + portable ZIP — [`11-msi-distribution.md`](11-msi-distribution.md) | packaging | partial — 10.13.1, 10.13.3, 10.13.5 and 10.13.7 built, 10.13.2 in part: `installer\build.py` makes the per-user MSI, the ZIP, the SBOM and the checksums in one line and smoke-tests both artefacts unpacked (2026-09-26); the bundled licences are gathered into the tree by `installer\notices.py` with a gate that refuses a missing notice or an unrecorded copyleft offer, and the MSI shows Overtone's own on its second page (2026-10-03). **v0.1.0-alpha published 2026-10-03**, installed and uninstalled on a real profile. Left: code signing (10.13.6), file associations, the portable `data\` folder |
 
 **Licences, checked at the source on 2026-09-23** (full table in `10-precision-plan.md`):
 Beat This! is MIT down to its weights; BeatNet is CC-BY-4.0; madmom's models are

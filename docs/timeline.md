@@ -18,6 +18,152 @@ later costs more than writing it down now.
 
 ---
 
+## v0.1.0-alpha — 2026-10-03 · The first release anyone else can install
+
+The first artefact of this repository that leaves it. Everything here is
+about being allowed to publish one and being honest about what it is.
+
+### Changed
+
+- **A `LICENSE` file.** `Cargo.toml` had declared MIT since the workspace
+  existed and the README said so, but the text was never added, so nobody
+  could legally redistribute a build. MIT, in the repository owner's name.
+- **`installer/notices.py` gathers the bundled licences into the tree.**
+  `docs/11-msi-distribution.md` had said since the first MSI that neither
+  artefact should be published before this existed. The tree carries Python,
+  31 wheels, 51 Rust crates and five native components, and most of their
+  licences ask that their notice travel with the binary; four ask for the
+  source as well. So the notices are read out of this build's own files — a
+  wheel's from its `.dist-info` or from the package itself (soundfile keeps
+  libsndfile's `COPYING` beside the DLL), a crate's from the cargo source
+  cache the engine compiled from, Python's and Tcl/Tk's from the interpreter
+  the venv was made from — and written as `LICENSE.txt` and
+  `THIRD-PARTY-NOTICES.txt` in the tree's root. `installer/notices.json`
+  holds only what no package carries: the five natives, the three components
+  whose package ships no text, and one written source offer per copyleft
+  family.
+- **The MSI shows a licence page**, which it had skipped because there was
+  nothing to put on it. `build.py` renders `LICENSE` to RTF at build time, so
+  there is no second copy of the licence to drift from the first.
+- **The release's SBOM and checksums.** `sbom.py --cyclonedx` builds
+  CycloneDX 1.6 from the same component list the notices come from, so the
+  inventory a tool reads and the one a person reads cannot disagree; the
+  checksums file carries one SHA-256 line per published file and the two
+  commands to check them.
+- **The product version is 0.1.0-alpha**, not 4.0.0-dev. The old number was
+  the engine generation — v3 is the Python engine, v4 the Rust one — and not a
+  version of a program anyone had been given. Everything that names a version
+  reads this one, so one line moves the artefacts' names, the MSI's numeric
+  version and both executables' version resources.
+- **A release checklist** in `docs/11-msi-distribution.md` (10.13.7), in
+  order, with nothing automated: a release is the one thing here that cannot
+  be taken back.
+
+### Fixed
+
+- **Two entries of `notices.json` named files the tree does not have**: the
+  MSVC runtime's claimed the `api-ms-win-crt-*` stubs, and PyInstaller copies
+  only `VCRUNTIME140.dll` and `VCRUNTIME140_1.dll`. They were written from
+  what the documentation said the tree held instead of from the tree. A
+  notice that over-claims is still wrong, and this one is read by whoever has
+  to check what they installed.
+- **This document's claim that the tree has no `_tcl_data` folder.** It does:
+  this machine's Python 3.14.4 carries Tcl/Tk 8.6, whose script library is a
+  folder, where the Python of the 2026-09-26 build carried Tk 9 with its
+  scripts inside the DLL. That is most of why the tree went from 734 files to
+  1670.
+
+### Hardening
+
+- **`notices.py --check` runs in `build.py`'s preflight**, not at the end: a
+  missing notice is a reason not to build the artefact, not a failure after
+  twenty minutes. It refuses a component with neither a notice text nor
+  stated terms, a licence the package never declared, a **copyleft licence
+  with no source offer recorded against it**, an offer that covers nothing
+  the tree ships, and a hand-written native version that no longer matches
+  the machine. The last one is the only way the five natives' versions can be
+  kept honest, since no lock file holds them.
+- The copyleft components are named and answered rather than hidden:
+  libsndfile and libsoxr (LGPL-2.1), certifi and Symphonia's fifteen crates
+  (MPL-2.0), and PyInstaller's bootloader (GPLv2 with the exception that
+  makes a frozen application distributable at all). libsndfile's offer says
+  the honest thing — the DLL is a separate file soundfile opens by name, so a
+  build of your own replaces it — and libsoxr's says the other honest thing,
+  that it is linked statically and replacing it means rebuilding that one
+  module.
+
+### Measured
+
+`build.py --clean` at commit `c505211`, **325.7 s** in all: PyInstaller
+109.5 s, the MSI 106.6 s, ICE 11.9 s, the ZIP 12.7 s.
+
+| | |
+|---|---|
+| Tree | 1670 files, 316.8 MB, of which the notices are 1.08 MB (156 notice files from 87 components) |
+| MSI | 112.2 MB, sha256 `6b2b147b…254b` |
+| ZIP | 138.1 MB, sha256 `1b28a764…ec79` |
+| SBOM | 87 components, sha256 `b7deca7f…7fb5` |
+| ICE | no error; ICE91 ×1670 and ICE61 ×1, both as intended |
+
+- **Three smoke tests, all ok**: the tree, the MSI's files by administrative
+  install, and the ZIP unpacked. Each read edm-174 as **174.0000 BPM** through
+  both frozen engines and passed **8 of 8** self-checks, each was byte for
+  byte identical to the tree, and each came out of its run unchanged.
+- **Installed and uninstalled on a real profile**, which the build cannot
+  do for itself: installed with `msiexec /i /qn` from a **non-elevated** shell (exit 0),
+  1670 files and 302.1 MB under `%LOCALAPPDATA%\Programs\Overtone`, both
+  licence files there, and the installed copy's own `--self-check` green.
+  The uninstall (exit 0) took the program folder, the Start menu shortcut,
+  the `HKCU\Software\Overtone` bookkeeping key and the Apps-list entry with
+  it, and left the app's own settings and cache alone. Worth writing down:
+  the Apps-list entry lands in **HKLM**'s uninstall key, not HKCU's, even
+  though the install needs no administrator and puts every file under the
+  user's profile — a first check that looked only in HKCU concluded there was
+  no entry at all
+- The MSI's own tables, read back out of the package: `ProductVersion` 0.1.0,
+  the `UpgradeCode` unchanged, and the chain
+  WelcomeDlg → **LicenseAgreementDlg** → InstallDirDlg → VerifyReadyDlg with
+  `LicenseAccepted = "1"` on the Next. The licence text sits in the `Control`
+  table as the page's `ScrollableText` and not in the `Binary` table, which is
+  worth writing down: looking in the wrong one of the two is a convincing way
+  to conclude the page is blank.
+- Every gate green on the published commit except one, Python and Rust
+  both: 939 Python tests, 291 Rust tests, 24/24 on the benchmark, 27/27
+  golden vectors, the octave snapshot, the measure, signature, robustness,
+  reference, assisted, combine and real-audio gates, 3000 fuzzed `.osu`
+  files, the five `overtone-bench` modes.
+- **`gates.py perf` is red, and was red on `master` before this branch**
+  (`ba6de58`, measured): `long-6min/octave` costs 1.062 CPU s against a
+  baseline of 0.453, reproducibly, while every other stage of every case
+  lands on its baseline. Nothing here touches the engine, and the baseline
+  was pinned on 2026-09-27 (`6b10b5b`); the engine has changed seven times
+  since, and `a3db993` "Sweep the pulse across the whole song, not just its
+  seed" is the suspect, because it is the one that would cost more on a long
+  track and only the long case moved. **Not re-baselined**: the rule is that
+  a cost which grew on purpose is re-pinned in the commit that grew it, with
+  the reason, and guessing which commit that was is not the same as knowing.
+  It is a CPU budget on one stage and no accuracy gate moved, so it does not
+  hold the alpha; it is the next thing to settle.
+
+### Rejected / tried and dropped
+
+- **Code signing for this release** (10.13.6). It is a certificate to buy,
+  not code to write, and an unsigned artefact that says so is better than a
+  delayed one. SmartScreen will warn; the notes say it will, and give the
+  `certutil -hashfile` line to check the download against the checksums
+  instead.
+- **WiX 6 or 7.** Both still ship the Open Source Maintenance Fee EULA and
+  ask for its acceptance, which is the maintainer's decision and not the
+  build's, so `dotnet-tools.json` stays on 5.0.2 (MS-RL alone). `dotnet tool
+  restore` offers the upgrade on every run; the answer is still no.
+- **Licences as CycloneDX `expression` fields.** Half of these strings
+  ("BSD License", "Apache Software License") are what a wheel's own metadata
+  says and are not SPDX at all. A `name` field states what is known; an
+  expression would have claimed more.
+- **True peak for the loudness cap**, from the previous entry, stands
+  rejected for the same reason: it needs oversampling and the number is for
+  headroom, not compliance.
+
 ## v4.0.0-dev — 2026-10-03 · A song's phrases, as the range to borrow
 
 ### Changed

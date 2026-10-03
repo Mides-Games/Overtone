@@ -9049,6 +9049,35 @@ class InstallerSbomTests(unittest.TestCase):
                             for line in found))
         self.assertEqual(sbom.drift(fresh, fresh), [])
 
+    def test_the_release_sbom_is_cyclonedx_and_keeps_every_component(self) -> None:
+        sbom = self._sbom()
+        rows = [{"kind": "wheel", "name": "numpy", "version": "2.5.3",
+                 "licence": "BSD-3-Clause", "what": "a wheel", "source": "https://pypi"},
+                {"kind": "crate", "name": "symphonia-core", "version": "0.6.1",
+                 "licence": "MPL-2.0", "what": "a crate", "source": "https://crates.io"},
+                {"kind": "native", "name": "Microsoft Visual C++ runtime",
+                 "version": "14.x", "licence": "Microsoft Visual Studio redistributable "
+                 "terms", "what": "VCRUNTIME140.dll", "source": "https://learn"}]
+        bom = sbom.cyclonedx("0.1.0-alpha", rows)
+        self.assertEqual((bom["bomFormat"], bom["specVersion"]), ("CycloneDX", "1.6"))
+        self.assertEqual(bom["metadata"]["component"]["version"], "0.1.0-alpha")
+        self.assertEqual(bom["metadata"]["component"]["licenses"],
+                         [{"license": {"id": "MIT"}}])
+        self.assertEqual(len(bom["components"]), 3)
+        wheel, crate, native = bom["components"]
+        self.assertEqual(wheel["purl"], "pkg:pypi/numpy@2.5.3")
+        self.assertEqual(crate["purl"], "pkg:cargo/symphonia-core@0.6.1")
+        # No package manager serves the MSVC runtime, so it gets no purl --
+        # and it is still in the list, which is the point of listing it.
+        self.assertNotIn("purl", native)
+        # A wheel's "BSD License" is not SPDX, so every licence goes in as a
+        # name and none as an expression: the texts are the notices file's.
+        for component in bom["components"]:
+            self.assertEqual(list(component["licenses"][0]["license"]), ["name"])
+        # Nothing that changes between two builds of one commit.
+        self.assertNotIn("serialNumber", bom)
+        self.assertNotIn("timestamp", bom["metadata"])
+
     def test_the_committed_inventory_covers_both_locks(self) -> None:
         import json
         sbom = self._sbom()
@@ -9061,6 +9090,162 @@ class InstallerSbomTests(unittest.TestCase):
                 fresh["packages"][name] = {"version": version,
                                            "shipped": shipped}
         self.assertEqual(sbom.drift(committed, fresh), [])
+
+
+class InstallerNoticesTests(unittest.TestCase):
+    """Phase 10.13.3: the bundled licences, gathered and gated.
+
+    ``installer/notices.py`` reads the notices out of the build's own wheels,
+    crates and Python installation, so what is worth pinning is the rules:
+    which files count as a notice, that one offer may cover a family, and
+    every way the gate refuses to let a release go out -- plus the shape of
+    the one file that is written by hand, ``installer/notices.json``.
+    """
+
+    @staticmethod
+    def _notices():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "notices", Path(__file__).resolve().parent.parent / "installer" / "notices.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _row(name, licence="MIT", texts=(), **extra):
+        return {"kind": "wheel", "name": name, "version": "1.0", "licence": licence,
+                "what": "a wheel", "source": "https://example.invalid",
+                "texts": list(texts), **extra}
+
+    def test_a_notice_is_a_text_file_wherever_the_wheel_keeps_it(self) -> None:
+        notices = self._notices()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name, body in (("thing-1.0.dist-info/licenses/LICENSE", "the licence"),
+                               ("_thing_data/COPYING", "LGPL, beside the DLL"),
+                               ("thing/licenses/__init__.py", "code"),
+                               ("thing/libthing.dll", "binary"),
+                               ("thing/engine.py", "code"),
+                               ("thing-1.0.dist-info/licenses/EMPTY-LICENSE", "   ")):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(body, encoding="utf-8")
+            files = ["thing-1.0.dist-info/licenses/LICENSE", "_thing_data/COPYING",
+                     "thing/licenses/__init__.py", "thing/libthing.dll",
+                     "thing/engine.py", "thing-1.0.dist-info/licenses/EMPTY-LICENSE"]
+            dist = type("Dist", (), {"files": files,
+                                     "locate_file": lambda self, name: root / str(name)})()
+            found = notices.wheel_texts(dist)
+        # The notice beside the DLL counts: that is where soundfile keeps
+        # libsndfile's. Code named like a licence, binaries and an empty file
+        # do not.
+        self.assertEqual([name for name, _ in found],
+                         ["_thing_data/COPYING", "thing-1.0.dist-info/licenses/LICENSE"])
+        self.assertEqual(found[0][1], "LGPL, beside the DLL")
+
+    def test_one_offer_covers_a_family(self) -> None:
+        notices = self._notices()
+        offers = [{"title": "Symphonia", "for": ["symphonia*"], "text": "the source is here"},
+                  {"title": "certifi", "for": ["certifi"], "text": "and here"}]
+        self.assertEqual(notices.offer_for("symphonia-codec-vorbis", offers)["title"],
+                         "Symphonia")
+        self.assertEqual(notices.offer_for("certifi", offers)["title"], "certifi")
+        self.assertIsNone(notices.offer_for("numpy", offers))
+
+    def test_the_gate_refuses_a_component_with_nothing_to_show(self) -> None:
+        notices = self._notices()
+        found = notices.problems([self._row("quiet")], [])
+        self.assertEqual(len(found), 1)
+        self.assertIn("ships no notice text", found[0])
+        # A text is enough, and so is a sentence saying where the terms are.
+        self.assertEqual(notices.problems([self._row("quiet", texts=[("LICENSE", "MIT")])], []),
+                         [])
+        self.assertEqual(notices.problems([self._row("quiet", terms="MIT, by classifier")], []),
+                         [])
+
+    def test_the_gate_refuses_an_undeclared_licence(self) -> None:
+        notices = self._notices()
+        row = self._row("mystery", licence="UNKNOWN", texts=[("LICENSE", "some text")])
+        found = notices.problems([row], [])
+        self.assertEqual(len(found), 1)
+        self.assertIn("declares no licence", found[0])
+
+    def test_the_gate_asks_for_source_when_a_copyleft_licence_ships(self) -> None:
+        notices = self._notices()
+        for licence in ("LGPL-2.1-or-later", "Mozilla Public License 2.0 (MPL 2.0)",
+                        "GPL-2.0-only WITH an-exception"):
+            row = self._row("copyleft", licence=licence, texts=[("COPYING", "the text")])
+            found = notices.problems([row], [])
+            self.assertEqual(len(found), 1, (licence, found))
+            self.assertIn("asks for source", found[0])
+        # Attribution-only licences ask for no offer.
+        self.assertEqual(notices.problems(
+            [self._row("quiet", licence="BSD-3-Clause", texts=[("LICENSE", "x")])], []), [])
+
+    def test_the_gate_refuses_an_offer_that_covers_nothing(self) -> None:
+        notices = self._notices()
+        rows = [self._row("numpy", texts=[("LICENSE", "x")])]
+        offers = [{"title": "Gone", "for": ["gone*"], "text": "where it was"}]
+        found = notices.problems(rows, offers)
+        self.assertEqual(len(found), 1)
+        self.assertIn("covers nothing", found[0])
+
+    def test_the_document_carries_every_table_offer_and_text(self) -> None:
+        notices = self._notices()
+        rows = [{**self._row("libthing", licence="LGPL-2.1-or-later",
+                             texts=[("libthing/COPYING", "the whole LGPL")]),
+                 "kind": "native"},
+                self._row("quiet", terms="MIT, by classifier"),
+                {**self._row("acrate", texts=[("acrate-1.0/LICENSE-MIT", "MIT text")]),
+                 "kind": "crate"}]
+        offers = [{"title": "libthing -- LGPL", "for": ["libthing"],
+                   "text": "the source is at https://example.invalid"}]
+        text = notices.render(rows, "0.1.0-alpha", offers)
+        self.assertIn("Overtone 0.1.0-alpha -- third-party notices", text)
+        self.assertIn("1 runtime and native components, 1 Python wheels and 1 Rust crates",
+                      text)
+        self.assertIn("the source is at https://example.invalid", text)
+        self.assertIn("the whole LGPL", text)
+        self.assertIn("MIT text", text)
+        # A component with no text of its own is named with its terms, not
+        # left out.
+        self.assertIn("quiet 1.0: MIT, by classifier", text)
+
+    def test_the_gate_notices_a_stale_native_version(self) -> None:
+        notices = self._notices()
+        now = notices.versions_now()
+        self.assertIn("Python", now)
+        rows = [{**self._row(name), "kind": "native", "version": version}
+                for name, version in sorted(now.items())]
+        self.assertEqual(notices.stale_versions(rows), [])
+        rows[0]["version"] = "0.0"
+        found = notices.stale_versions(rows)
+        self.assertEqual(len(found), 1)
+        self.assertIn("this venv has", found[0])
+        self.assertEqual(notices.stale_versions([]),
+                         [f"{name} is not listed in notices.json" for name in sorted(now)])
+
+    def test_the_hand_written_file_says_what_it_must(self) -> None:
+        import json
+        notices = self._notices()
+        listed = json.loads((Path(__file__).resolve().parent.parent / "installer"
+                             / "notices.json").read_text(encoding="utf-8"))
+        self.assertEqual(listed["format"], 1)
+        for row in listed["components"]:
+            for key in ("name", "version", "licence", "what", "source"):
+                self.assertTrue(str(row.get(key) or "").strip(), (row.get("name"), key))
+            self.assertTrue(row.get("from_path") or row.get("from_wheel") or row.get("terms"),
+                            row["name"])
+        for name, terms in listed["terms"].items():
+            self.assertTrue(terms.strip(), name)
+        for offer in listed["offers"]:
+            self.assertTrue(offer["title"].strip())
+            self.assertTrue(offer["for"])
+            self.assertIn("http", offer["text"])
+        # The gate's own version check only works if the names match what it
+        # asks the machine about.
+        named = {row["name"] for row in listed["components"]}
+        self.assertLessEqual(set(notices.versions_now()), named)
 
 
 class CombineSegmentTests(unittest.TestCase):

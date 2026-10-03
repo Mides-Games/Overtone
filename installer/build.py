@@ -7,19 +7,23 @@ Each step is timed, and its output goes to ``build\\logs``:
 1. the Rust engine: ``cargo build --release -p overtone-cli``;
 2. PyInstaller (``installer/overtone.spec``): ``dist\\Overtone``, the tree the
    MSI installs and the ZIP holds;
-3. the smoke test on that tree (``installer/smoke.py``);
-4. the MSI, with WiX 5.0.2 (``installer/Overtone.wxs``), per user;
-5. the portable ZIP: the same tree in one ``Overtone`` folder;
-6. both unpacked into temporary folders, the MSI by an administrative install
+3. the bundled licences, gathered into the tree (``installer/notices.py``);
+4. the smoke test on that tree (``installer/smoke.py``);
+5. the MSI, with WiX 5.0.2 (``installer/Overtone.wxs``), per user;
+6. the portable ZIP: the same tree in one ``Overtone`` folder, and beside it
+   the SBOM and the SHA-256 of everything a release publishes;
+7. both unpacked into temporary folders, the MSI by an administrative install
    (``msiexec /a``, which installs and registers nothing), each compared with
    the tree file for file and smoke-tested;
-7. sizes, SHA-256 and timings, printed and written beside the MSI.
+8. sizes, SHA-256 and timings, printed and written beside the MSI.
 
 Nothing here reaches the network. The toolchain is set up once, per user and
 without an administrator (docs/11-msi-distribution.md, "Building it"), and a
 missing piece stops the build before it starts, named. So does a venv whose
 wheels differ from ``requirements.lock`` or ``requirements-build.lock``: the
-bundle carries what the venv holds, and the lock is what was measured.
+bundle carries what the venv holds, and the lock is what was measured. So does
+a licence notice that is missing from ``installer/notices.json``, because an
+artefact with a notice missing must not exist in the first place.
 
 ``--no-msi`` builds the tree and the ZIP only (no .NET or WiX needed);
 ``--no-verify`` skips step 6; ``--clean`` rebuilds PyInstaller's cache.
@@ -44,7 +48,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import notices  # noqa: E402
 import release  # noqa: E402
+import sbom  # noqa: E402
 
 LOGS = release.BUILD / "logs"
 WIX_EXTENSION = "WixToolset.UI.wixext"
@@ -154,6 +160,27 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def write_licence_rtf(target: Path) -> Path:
+    """Overtone's licence, as the only format the licence page can read.
+
+    WixUI's licence control takes RTF, so the page is generated from
+    ``LICENSE`` at build time rather than kept beside it as a second copy
+    that could drift. A blank line starts a paragraph; inside one, the
+    control does the wrapping.
+    """
+    text = (release.ROOT / "LICENSE").read_text(encoding="utf-8")
+    if not text.isascii():
+        raise SystemExit("LICENSE is not ASCII: the licence page would need an RTF codepage")
+    paragraphs = [" ".join(block.split()) for block in re.split(r"\n\s*\n", text.strip())]
+    body = "\\par\\par\n".join(
+        block.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+        for block in paragraphs)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Segoe UI;}}\\fs18\n"
+                      + body + "\n}\n", encoding="ascii")
+    return target
 
 
 def write_wix_files(tree: Path, target: Path) -> tuple[int, int]:
@@ -304,6 +331,13 @@ def main() -> int:
     missing = [f"wheels: {problem}" for problem in wheel_problems()]
     if shutil.which("cargo") is None:
         missing.append("cargo (the Rust toolchain) is not on PATH")
+    else:
+        # The licences travel with the binary, so a gap in them is not a
+        # late failure: it is a reason not to build (roadmap 10.13.3).
+        rows, broken = notices.components()
+        offers = notices.listed().get("offers", [])
+        missing += [f"notices: {problem}" for problem in
+                    broken + notices.stale_versions(rows) + notices.problems(rows, offers)]
     dotnet = None
     if not args.no_msi:
         dotnet = find_dotnet()
@@ -334,6 +368,13 @@ def main() -> int:
                               str(release.BUILD / "pyinstaller"), "--noconfirm"]
               + (["--clean"] if args.clean else []), release.ROOT)
 
+    started = time.perf_counter()
+    written = notices.write(release.TREE, version, rows, offers)
+    steps.done(f"licence notices ({sum(len(row['texts']) for row in rows)} notices from "
+               f"{len(rows)} components)", started)
+    print("\n".join(f"    {file.name}: {file.stat().st_size / 1e3:.1f} kB"
+                     for file in written), flush=True)
+
     import smoke  # imports the benchmark's renderer, and with it the engine
     started = time.perf_counter()
     tree_smoke = smoke.smoke(release.TREE)
@@ -348,11 +389,13 @@ def main() -> int:
         wix = release.BUILD / "wix"
         shutil.rmtree(wix, ignore_errors=True)
         folders, count = write_wix_files(release.TREE, wix / "files.wxs")
+        rtf = write_licence_rtf(wix / "license.rtf")
         wix_run = [str(dotnet), "tool", "run", "wix", "--"]
         steps.run(f"MSI (WiX, {count} files in {folders} folders)",
                   wix_run + ["build", "Overtone.wxs", str(wix / "files.wxs"), "-arch", "x64",
                              "-ext", WIX_EXTENSION, "-d", f"SourceDir={release.TREE}",
-                             "-d", f"Version={numbers}", "-intermediatefolder", str(wix / "obj"),
+                             "-d", f"Version={numbers}", "-d", f"LicenseRtf={rtf}",
+                             "-intermediatefolder", str(wix / "obj"),
                              "-pdb", str(wix / "Overtone.wixpdb"), "-o", str(msi)],
                   HERE, env=dotnet_env(dotnet))
         # Windows Installer's own consistency evaluators; warnings are listed,
@@ -376,6 +419,23 @@ def main() -> int:
     write_zip(release.TREE, portable)
     steps.done("portable ZIP", started)
 
+    # What a release publishes beside the two artefacts: the inventory an
+    # audit reads, and the hashes anyone can check a download against
+    # without trusting this machine.
+    started = time.perf_counter()
+    bom = release.DIST / f"Overtone-{version}-sbom.json"
+    if sbom.write_cyclonedx(bom):
+        return 1
+    sums = release.DIST / f"Overtone-{version}-checksums.txt"
+    published = ([msi] if not args.no_msi else []) + [portable, bom]
+    sums.write_text(
+        f"# Overtone {version}, SHA-256 of everything this release publishes.\n"
+        f"# Check one file:   certutil -hashfile {published[0].name} SHA256\n"
+        f"# Check them all:   sha256sum -c {sums.name}\n"
+        + "".join(f"{sha256(path)}  {path.name}\n" for path in published),
+        encoding="utf-8")
+    steps.done(f"SBOM and checksums ({len(published)} files)", started)
+
     expected = listing(release.TREE)
     checks = []
     if not args.no_verify:
@@ -396,9 +456,10 @@ def main() -> int:
     lines = [f"Overtone {version}, built {datetime.now():%Y-%m-%d %H:%M} from commit {git_head()}",
              f"toolchain: {tool_line(dotnet)}",
              f"tree: {len(expected)} files, {sum(s for s, _ in expected.values()) / 1e6:.1f} MB"]
-    for artefact in ([msi] if not args.no_msi else []) + [portable]:
+    for artefact in published:
         lines.append(f"{artefact.name}: {artefact.stat().st_size / 1e6:.1f} MB, "
                      f"sha256 {sha256(artefact)}")
+    lines.append(f"{sums.name}: the sha256 lines above, to hand to a downloader")
     if ice:
         findings = [f"{level} {name} x{n}" for level in ("error", "warning")
                     for name, n in sorted(ice[level].items())]

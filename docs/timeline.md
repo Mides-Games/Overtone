@@ -14,14 +14,96 @@ A `Rejected / tried and dropped` section is worth adding whenever an approach wa
 attempted and abandoned — the reasoning is the expensive part, and re-deriving it
 later costs more than writing it down now.
 
+Work that has landed but is not in a published version is headed
+**Unreleased**, in the same order as everything else. The newest published
+version is `v0.1.0-alpha`.
+
 ---
 
 ---
+
+## Unreleased — 2026-10-03 · The octave stage's cost: a block eight times too wide
+
+The one red gate the alpha shipped with, settled. It was not a regression: no
+commit grew this cost, and the previous entry's suspect is wrong.
+
+### Fixed
+
+- **`long-6min/octave` cost 1.1 CPU s because `_tempo_hints` asked for
+  tempogram blocks eight times wider than the constant that exists to keep
+  them narrow.** The stage is two calls. `_beat_from_atoms` reads only the
+  anchored window, so its cost does not grow with the track and measures
+  0.000 s; all of the stage is `_tempo_hints`, and all of `_tempo_hints` is
+  one `librosa.feature.tempogram` (decimate 0.000, join 0.016, mean 0.000,
+  peak-picking 0.000). It passed `columns=8 * TEMPOGRAM_BLOCK`, on the stated
+  grounds that the window is short enough that a wide block "cost little more
+  than the call (0.05-0.08 s of CPU on a six to eight minute song)". That
+  number was never true of this fixture: six minutes is 31,008 columns, and at
+  192 lags of float64 an 8,192-column block is 12.6 MB whose FFT axis is
+  strided 64 KB apart, with a 47.6 MB array to join after it. `TEMPOGRAM_BLOCK`
+  already carries the reason in its own comment -- small "for the tempogram,
+  whose column FFTs then stay in cache" -- so the override contradicted the
+  constant it was built from. It is gone; the default stands.
+- **Nothing the engine reports moves.** `_tempogram`'s blocks join bit for bit,
+  which is its documented contract, so the aggregate the hints are picked from
+  is unchanged -- `array_equal`, not a tolerance, at every width from 64 to
+  8,192 on both perf cases. The accuracy gates agree: golden 27/27 stage for
+  stage, which compares the octave decision itself, and bpm-snapshot 24/24.
+
+### Measured
+
+- `long-6min/octave`: **1.109 -> 0.328 CPU s**, 1.101 -> 0.367 wall, against
+  the 0.453/0.449 pinned on 2026-09-27. `gates.py perf` green on all three
+  cases, and `bench/perf_snapshot.json` is **untouched** -- the stage came back
+  under the baseline it already had.
+- The tempogram aggregate alone on long-6min, fastest of three, single-threaded:
+  1.094 s at 8,192 columns, 0.953 at 4,096, 0.516 at 2,048, **0.359 at 1,024**,
+  0.312 at 512, 0.188 at 256, 0.250 at 128, 0.266 at 64 -- bit-identical at
+  every one. edm-174 is 5,168 columns and 7.9 MB and is flat across the whole
+  sweep (0.031-0.078 s): it never leaves cache. That is why only the long case
+  moved, and it is the cliff rather than the length that did it.
+- Everything else green: 939 Python tests, benchmark 24/24 at median 0.0000 BPM
+  and 0.16 ms, bpm-snapshot 24/24 unchanged, golden 27/27, coverage, measures
+  3/3, signatures 6/6, robustness, reference 24/24, assisted, combine,
+  real-audio 4/6 (two Songs folders are not on this machine; the gate skips and
+  names them), fixtures 38, parity, facts, fit_kits 42 sounds, 3000 fuzzed
+  `.osu` files, `sbom --check`, `notices --check`.
+- **Not run: the Rust gates.** The whole diff is one expression in
+  `python/overtone.py`; no Rust source and no golden vector moved, so running
+  them would measure the build and not the change.
+
+### Rejected / tried and dropped
+
+- **`a3db993` "Sweep the pulse across the whole song, not just its seed" as the
+  cause**, which the previous entry named on the reasoning that only the long
+  case moved and that commit's cost is the one that scales with length. Wrong
+  twice over. `coherence_map` and `map_ridge` are reached by nothing but their
+  own tests -- the commit is additive and the analysis path never calls them --
+  and, decisively, **the engine as it stood at the pinning commit itself costs
+  1.078 CPU s in that stage today** against the 0.453 it recorded. Measured by
+  loading `6b10b5b`'s `overtone.py` and `master`'s side by side in one process
+  and running the perf gate's own stage timing on both, same fixture, same
+  single-threaded environment: load 0.109/0.094, attacks 3.094/2.609,
+  coherence 0.016/0.016, **octave 1.078/1.109**, sections 0.188/0.141. Their
+  envelopes are identical too (same shape, same dtype, same 19,404 non-zeros),
+  so it was not the data either. No commit grew this cost, and bisecting the
+  seven would have found nothing.
+- **Re-pinning the baseline**, which is where the suspicion led and which would
+  have been the wrong answer: the cost was not bought for accuracy, so there
+  was no trade to quote, and re-pinning would have been exactly the
+  make-the-gate-green move the rule forbids. Why the pin reads ~0.44 s twice
+  (`3ce8dbf` 0.438, `6b10b5b` 0.453, six days apart, both single-threaded) for
+  work that measures 1.08 s on the same fixture, the same code and the
+  versions `requirements.lock` names is **unexplained**. It stopped mattering:
+  removing the waste put the stage back under the old pin, so the baseline
+  stands as pinned and nothing was re-baselined.
+- **256-column blocks**, the sweep's optimum at 0.188 s against 0.359.
+  `TEMPOGRAM_BLOCK` already carries the cache reason and the fallback tracker's
+  own tempogram is blocked by it, so a second width tuned to this machine's L2
+  would be a number to re-measure whenever the machine changes, for 0.17 s on
+  one stage of one fixture. 0.359 s is inside the pin with room.
 
 ## Unreleased — 2026-10-03 · A rate trainer, specified
-
-Entries above the released version are marked **Unreleased** until the next
-version is cut; `v0.1.0-alpha` is the first published release and sits below.
 
 ### Changed
 
@@ -80,6 +162,7 @@ decoder delay, Phase 4's 23-24 ms of attack movement under a phase vocoder,
 25.15's grade of a written red line against written audio — which is the
 reason the phase can claim the reference tool's problems are already solved
 here rather than hoping they are.
+
 
 ## v0.1.0-alpha — 2026-10-03 · The first release anyone else can install
 
@@ -206,7 +289,9 @@ about being allowed to publish one and being honest about what it is.
   a cost which grew on purpose is re-pinned in the commit that grew it, with
   the reason, and guessing which commit that was is not the same as knowing.
   It is a CPU budget on one stage and no accuracy gate moved, so it does not
-  hold the alpha; it is the next thing to settle.
+  hold the alpha; it is the next thing to settle. (Settled in the entry above,
+  and the suspect was wrong: no commit grew it. `_tempo_hints` had been asking
+  for tempogram blocks eight times too wide since before either pin.)
 
 ### Rejected / tried and dropped
 

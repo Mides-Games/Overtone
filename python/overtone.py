@@ -1571,11 +1571,19 @@ def _tempo_hints(env: np.ndarray, sr: int, hop: int,
         coarse = env[:usable].reshape(-1, decimate).max(axis=1) if usable else env
         step = hop * decimate
         # librosa's tempogram, joined from blocks before the mean is taken, so
-        # a stop is asked between them: one call took up to a second. Its
-        # windows are short, so blocks this long cost little more than the
-        # call (0.05-0.08 s of CPU on a six to eight minute song).
-        gram = np.concatenate(list(_tempogram(coarse.astype(np.float32), sr, step, 192,
-                                              columns=8 * TEMPOGRAM_BLOCK)), axis=-1)
+        # a stop is asked between them: one call took up to a second. The
+        # blocks are TEMPOGRAM_BLOCK columns wide for the reason that constant
+        # gives -- the column FFTs stay in cache. This asked for eight times
+        # that, on the grounds that short windows make a wide block nearly
+        # free; they do not. A six-minute song is 31,008 columns, and at 192
+        # lags of float64 the eight-wide block is 12.6 MB whose FFT axis is
+        # strided 64 KB apart, with a 47.6 MB join after it: 1.094 s of CPU
+        # against 0.359 s at TEMPOGRAM_BLOCK (and 0.188 s at 256, left alone
+        # because this constant already carries the reason). Blocks join bit
+        # for bit, so the aggregate is unchanged -- checked array_equal at
+        # every width from 64 to 8192 on edm-174 and long-6min.
+        gram = np.concatenate(list(_tempogram(coarse.astype(np.float32), sr, step, 192)),
+                              axis=-1)
         agg = np.mean(gram, axis=1)
         freqs = librosa.tempo_frequencies(len(agg), hop_length=step, sr=sr)
         mask = np.isfinite(freqs) & (freqs >= 40) & (freqs <= 420)

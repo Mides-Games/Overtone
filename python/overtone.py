@@ -65,12 +65,16 @@ import soundfile as sf
 from scipy import signal
 from scipy.ndimage import median_filter
 
+from overtone_paths import data_root, settings_home
+
 APP_VERSION = "3.0"
 DEFAULT_LANGUAGE = "English"  # English is the default UI language.
-CONFIG_PATH = Path.home() / ".overtone.json"
+#: Where the preferences live: the profile of an installed copy, the portable
+#: ``data`` folder of a portable one (overtone_paths.py).
+CONFIG_PATH = settings_home() / ".overtone.json"
 #: The name before the project was renamed to Overtone. Read as a
 #: fallback so an existing install keeps its preferences.
-LEGACY_CONFIG_PATH = Path.home() / ".timing_analyzer.json"
+LEGACY_CONFIG_PATH = settings_home() / ".timing_analyzer.json"
 TARGET_SR = 44100
 HOP = 256  # ~5.8 ms at 44.1 kHz: timing-grid resolution suited to mapping.
 #: Pulse octaves the UI and CLI may force (1 = whatever the engine detected).
@@ -4428,8 +4432,7 @@ def history_path(history_dir: str | os.PathLike[str] | None = None) -> Path:
     if history_dir is not None:
         return Path(history_dir) / "writes.jsonl"
     override = os.environ.get("OVERTONE_HISTORY_DIR")
-    base = Path(override) if override else (
-        Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Overtone")
+    base = Path(override) if override else data_root()
     return base / "writes.jsonl"
 
 

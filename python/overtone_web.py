@@ -33,6 +33,7 @@ import overtone as ta
 import overtone_combine as tc
 import overtone_library
 import overtone_rust
+from overtone_paths import data_root
 
 HERE = Path(__file__).resolve().parent
 #: Source checkout: the engine lives in ``python/``, data at the repo root.
@@ -54,7 +55,7 @@ OSZ_TYPES = ("osu! beatmap package (*.osz)", "All files (*.*)")
 #: Dropped files are staged here so "analyze the last song", the song header
 #: and .osz export keep working after the drag: a temp file that vanishes
 #: after the analysis would leave all three pointing at nothing.
-DROP_DIR = Path(os.environ.get("LOCALAPPDATA", str(ROOT))) / "Overtone" / "drops"
+DROP_DIR = data_root() / "drops"
 PULSE_FACTORS = {"auto": 0.0, "/4": 0.25, "/2": 0.5, "x1": 1.0, "x2": 2.0, "x4": 4.0}
 #: Songs whose detection settings are remembered (per-song presets), the one
 #: analysed longest ago forgotten first: 182 bytes each in the config as it is
@@ -3929,7 +3930,7 @@ class Api:
 
     @staticmethod
     def _cache_dir() -> Path:
-        directory = Path(os.environ.get("LOCALAPPDATA", str(ROOT))) / "Overtone" / "cache"
+        directory = data_root() / "cache"
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
@@ -4375,7 +4376,7 @@ def main(argv: list[str] | None = None) -> None:
         threading.Thread(target=warm_up, name="warm-up", daemon=True).start()
     webview.start(gui="edgechromium", icon=str(ICON_ICO) if ICON_ICO.is_file() else None,
                   private_mode=False,
-                  storage_path=str(Path(os.environ.get("LOCALAPPDATA", ROOT)) / "Overtone" / "webview"))
+                  storage_path=str(data_root() / "webview"))
 
 
 if __name__ == "__main__":

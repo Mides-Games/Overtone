@@ -65,9 +65,11 @@ import soundfile as sf
 from scipy import signal
 from scipy.ndimage import median_filter
 
-from overtone_paths import data_root, settings_home
+from overtone_paths import app_version, data_root, settings_home
 
-APP_VERSION = "3.0"
+#: The release's version (overtone_paths.app_version): what the window, the about
+#: box and every written .osu header state. The engine generation is not the product.
+APP_VERSION = app_version()
 DEFAULT_LANGUAGE = "English"  # English is the default UI language.
 #: Where the preferences live: the profile of an installed copy, the portable
 #: ``data`` folder of a portable one (overtone_paths.py).

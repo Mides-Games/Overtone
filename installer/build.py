@@ -384,6 +384,13 @@ def main() -> int:
     print("\n".join(f"    {file.name}: {file.stat().st_size / 1e3:.1f} kB"
                      for file in written), flush=True)
 
+    # What this copy says it is, read by the window, the about box and the
+    # diagnostics: stamped into the frozen code, so the build names itself.
+    (release.TREE / release.CONTENTS / release.BUILD_INFO).write_text(
+        json.dumps({"version": version, "commit": git_head(),
+                    "built": datetime.now().strftime("%Y-%m-%d %H:%M")}, indent=1) + "\n",
+        encoding="utf-8")
+
     import smoke  # imports the benchmark's renderer, and with it the engine
     started = time.perf_counter()
     tree_smoke = smoke.smoke(release.TREE)

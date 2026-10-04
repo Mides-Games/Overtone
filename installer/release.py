@@ -33,6 +33,9 @@ RUST_CLI = "overtone-cli.exe"
 #: (``assets/*.py``) are build tools and stay out.
 DATA = ("app", "assets/logo.ico", "assets/logo.png", "assets/samples", "profiles",
         "python/library.sql")
+#: Written by build.py into the frozen code's folder: the release's version, the
+#: commit it was built from and when. python/overtone_paths.py reads the same name.
+BUILD_INFO = "build_info.json"
 #: The portable ZIP alone carries this file beside the executables. Its presence
 #: makes the build keep its settings, cache, history and index in ``data`` beside
 #: it (python/overtone_paths.py), so a copy on a stick never shares a profile with

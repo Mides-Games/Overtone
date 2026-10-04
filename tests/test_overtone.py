@@ -9154,6 +9154,52 @@ class PortableDataTests(unittest.TestCase):
                 finally:
                     mock.patch.stopall()
 
+class ProductVersionTests(unittest.TestCase):
+    """Phase 10.13 (R5): the window, the about box and every written .osu name
+    the release, not the engine generation. The diagnostics copy-out states it
+    too, so a bug report that names the wrong version is worse than none.
+    """
+
+    @staticmethod
+    def _paths():
+        import overtone_paths
+        return overtone_paths
+
+    def test_a_checkout_reports_the_workspace_version(self) -> None:
+        paths = self._paths()
+        cargo = (Path(__file__).resolve().parent.parent / "Cargo.toml").read_text(encoding="utf-8")
+        self.assertIn(f'version = "{paths.app_version()}"', cargo)
+        self.assertNotEqual(paths.app_version(), "3.0")
+        self.assertEqual(paths.build_info(), {})
+
+    def test_a_frozen_build_reads_the_stamp_its_build_wrote(self) -> None:
+        import json as _json
+        paths = self._paths()
+        with tempfile.TemporaryDirectory() as tmp:
+            internal = Path(tmp) / "_internal"
+            internal.mkdir()
+            (internal / paths.BUILD_INFO).write_text(_json.dumps({
+                "version": "9.9.9-test", "commit": "abc1234", "built": "2026-01-01 00:00"}),
+                encoding="utf-8")
+            with mock.patch.object(sys, "frozen", True, create=True), \
+                    mock.patch.object(sys, "_MEIPASS", str(internal), create=True):
+                self.assertEqual(paths.app_version(), "9.9.9-test")
+                self.assertEqual(paths.build_info()["commit"], "abc1234")
+            # A frozen copy with no stamp falls back to the workspace, not a lie.
+            with mock.patch.object(sys, "frozen", True, create=True), \
+                    mock.patch.object(sys, "_MEIPASS", tmp, create=True):
+                self.assertEqual(paths.build_info(), {})
+
+    def test_the_build_and_the_engine_name_the_stamp_the_same_way(self) -> None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "release", Path(__file__).resolve().parent.parent / "installer" / "release.py")
+        release = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(release)
+        self.assertEqual(release.BUILD_INFO, self._paths().BUILD_INFO)
+        self.assertEqual(release.CONTENTS, "_internal")
+
+
 class InstallerPortableSmokeTests(unittest.TestCase):
     """Phase 10.13.5 (R4): what the smoke test counts as Overtone's own state.
 

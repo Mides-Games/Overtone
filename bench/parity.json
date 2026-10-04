@@ -84,6 +84,10 @@
    "where": "python-only",
    "why": "python/overtone_paths.py: where a portable build keeps its state, which no Rust crate holds"
   },
+  "ProductVersionTests": {
+   "where": "python-only",
+   "why": "python/overtone_paths.py: the product version a copy reports (the release, from its build or the workspace), which no Rust crate holds"
+  },
   "TaskbarIdentityTests": {
    "where": "shell",
    "why": "the Windows app identity the taskbar groups by"

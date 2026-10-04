@@ -47,3 +47,50 @@ def settings_home() -> Path:
     one, so the profile of the machine it runs on is never read or written.
     """
     return portable_root() or Path.home()
+
+
+#: What installer/build.py writes beside the frozen code: the release's version,
+#: the commit it was built from and when. A checkout has no such file.
+BUILD_INFO = "build_info.json"
+
+
+def _frozen_code_folder() -> Path | None:
+    """PyInstaller's ``_internal`` folder, where the frozen code and its data sit."""
+    if not getattr(sys, "frozen", False):
+        return None
+    return Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent / "_internal"))
+
+
+def build_info() -> dict:
+    """What this copy says it is: the version, commit and build time from the
+    build that made it, or ``{}`` for a checkout (see :func:`app_version`)."""
+    folder = _frozen_code_folder()
+    if folder is None:
+        return {}
+    try:
+        import json
+        return json.loads((folder / BUILD_INFO).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def app_version() -> str:
+    """The product's version, as the window, the about box and every written
+    ``.osu`` header state it: the release's, not the engine generation's.
+
+    A frozen copy reads it from its build; a checkout reads the Rust workspace's
+    ``[workspace.package] version``, the same line installer/release.py reads, so
+    the two cannot name different releases.
+    """
+    stamped = build_info().get("version")
+    if stamped:
+        return str(stamped)
+    import re
+    cargo = Path(__file__).resolve().parent.parent / "Cargo.toml"
+    try:
+        text = cargo.read_text(encoding="utf-8")
+    except OSError:
+        return "unknown"
+    block = re.search(r"^\[workspace\.package\]\s*$(.*?)(?=^\[|\Z)", text, re.M | re.S)
+    found = re.search(r'^version\s*=\s*"([^"]+)"', block.group(1) if block else "", re.M)
+    return found.group(1) if found else "unknown"

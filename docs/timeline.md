@@ -22,6 +22,51 @@ version is `v0.1.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-03 · What 0.2.0-alpha has to hold
+
+### Changed
+
+- **A release scope in the roadmap**, which this repository has never had:
+  seven **required** rows without which the version is not 0.2.0-alpha, seven
+  that should be in it and will be if the required ones land early, and six
+  that are deliberately out with the reason for each. 0.1.0-alpha was about
+  being allowed to publish and added nothing a user could see; this one is the
+  first with a reason to download it, and saying so in a table is cheaper than
+  arguing about it later.
+- The required rows are the rate trainer through its section and its gate
+  (Phase 26, steps 1-4 of its own build order), Phase 25's last row settled
+  either way, the portable ZIP's own `data\` folder, a diagnostics copy-out,
+  the library health check's precision sample, and the release checklist run
+  end to end. Two of those are debts rather than features: the ZIP currently
+  shares a profile with the installed copy although the documentation promises
+  otherwise, which is a bug in a published artefact, and the health check has
+  been labelling maps actionable or weak since 2026-09-30 with no hand-checked
+  number behind the words.
+- **A diagnostics copy-out** is a new Phase 20 row, and required, because
+  0.1.0-alpha is the first build strangers can install and there is no way for
+  one of them to say what broke. Everything in it exists already -- the
+  self-check writes it, the build summary names the toolchain -- and what is
+  missing is a button that puts it on the clipboard. Nothing leaves the
+  machine unless they paste it.
+- Code signing stays out, named as the owner's purchase rather than left
+  looking like unfinished work. Real-audio accuracy stays out too, with the
+  sentence that matters written down: 0.2.0-alpha must not claim a number it
+  did not move.
+
+### Fixed
+
+- **Two statements that had gone stale.** The pending list's third item and
+  Phase 19's own introduction both said the Audio section was still to come.
+  It has been in since 2026-09-27, holding all five of its panels, and the
+  "Where we are" table had been counting it among the twelve sections for a
+  week. Nobody had to make the two agree until a release had to be scoped out
+  of them, which is an argument for scoping one.
+
+### Measured
+
+Nothing: this is a plan. `bench/facts.py` ok, so the counts these documents
+state still match the source.
+
 ## Unreleased — 2026-10-03 · The octave stage's cost: a block eight times too wide
 
 The one red gate the alpha shipped with, settled. It was not a regression: no

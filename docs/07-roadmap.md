@@ -56,7 +56,10 @@ point, section volumes, SV normaliser, re-snap, snap divisors, audio file check)
    2026-09-26; the page's states wait for the browser harness. The library health
    check's page is in since 2026-09-30 (counts, a resumable run, flags with evidence
    marked actionable or weak); a hand-checked precision sample is still open.
-3. **The Audio section** (Phase 19), and section labels from repetition.
+3. **Section labels from repetition** (Phase 19). The Audio section itself has been in
+   since 2026-09-27 — spectrogram, seven band lanes, percussive/harmonic balance,
+   energy with sections and the tempo heatmap — and this entry went on saying it was
+   pending until the 0.2.0-alpha scope was written and the two had to agree.
 4. **Other languages** (Phase 24) — TypeScript (needs Node.js) and a C# lazer gate (needs
    the .NET SDK). Node is not installed; ask before installing it. The .NET SDK is, per
    user, since 2026-09-26 (10.0.401, for the MSI build).
@@ -153,6 +156,75 @@ the verse's chords (#71–#75); the resampler's speed and AIFF (#76, #77).
 
 The forty low findings were closed on 2026-09-24; nothing is open in
 [`13-audit-backlog.md`](13-audit-backlog.md).
+
+---
+
+## Release 0.2.0-alpha — what it takes
+
+`v0.1.0-alpha` (2026-10-03) was about being *allowed* to publish: a licence, the bundled
+notices, an SBOM, checksums, an installer that installs and uninstalls. It added nothing a
+user could see. **0.2.0-alpha is the first release with a reason to download it**, and the
+process for cutting it is the checklist in
+[`11-msi-distribution.md`](11-msi-distribution.md#publishing-a-release-10137).
+
+Scoped on 2026-10-03, against no user reports at all — nobody has filed one, so nothing
+here is driven by a complaint. It is driven by what the published build cannot do and by
+what this repository already half-holds.
+
+### Required — the version is not 0.2.0-alpha without these
+
+| # | What | Why it has to be in | Where | State |
+|---|---|---|---|---|
+| R1 | **The rate trainer, through its Train section**: rows 26.1-26.5, 26.7, 26.8, 26.11, 26.13, 26.14, 26.17, 26.21 | The one thing a user of 0.1.0 would download a new version for. Steps 1-4 of Phase 26's build order; the rows left out of this list are the ones that make it nicer, not the ones that make it work | [P26](#phase-26--rate-and-difficulty-trainer-practice-copies) | todo — specified, nothing built |
+| R2 | **`bench/gates.py train`** (26.22) | No feature of this size has ever landed here without a gate, and this one's whole claim is that the copy is still snapped and still in time. 1.0x byte-identical, 1.37x on the beat, the AR/OD round trips, the written lines graded against the written audio, 60 fuzzed sources | [26.22](#phase-26--rate-and-difficulty-trainer-practice-copies) | todo |
+| R3 | **Phase 25's last row settled**: build 25.12 (per-segment backgrounds through an `.osb`) or move it to [Rejected ideas](#rejected-ideas) with the reason | A phase that sits at nineteen of twenty rows forever is a phase nobody can read the state of. It is cosmetic and nothing here can verify an `.osb` in osu! itself, which is an argument for the second option, not for silence | [25.12](#phase-25--compilation-builder-marathon-maps) | todo — decision owed |
+| R4 | **The portable ZIP's own `data\` folder** (the half of 10.13.5 that was never built) | Today the ZIP keeps its settings and cache where the installed copy keeps them, so running both means they share a profile and silently overwrite each other's recents. `11-msi-distribution.md` already promises otherwise. It is a bug in a published artefact | [10.13](#phase-10--human-level-timing-accuracy) | todo |
+| R5 | **A diagnostics copy-out**: one button that puts the version, the commit, the toolchain, the last self-check and the last error on the clipboard, as text | 0.1.0 is the first build strangers can install, and the only way anyone can tell us what broke is by hand. Everything in it already exists — `--self-check` writes it, the build summary names the toolchain — and none of it leaves the machine unless the user pastes it | P20 options, new row | todo |
+| R6 | **The library health check's precision sample** (pending item 2) | The health check has shipped since 2026-09-30 and flags maps as actionable or weak with no hand-checked number behind the words. Either the sample supports them or the labels change | [P19](#phase-19--app-sections) | todo |
+| R7 | **The release checklist run end to end, with the install test** | It exists because of 0.1.0 and has been run once. A checklist nobody reruns is a document, not a process | [`11`](11-msi-distribution.md#publishing-a-release-10137) | the process |
+
+### Should be in it, and will be if the required rows land early
+
+| # | What | Where |
+|---|---|---|
+| S1 | Rate ladders (26.16) — practising is a ladder, and this is the row that makes the trainer better than the tool it is answering | [P26](#phase-26--rate-and-difficulty-trainer-practice-copies) |
+| S2 | What the copy will feel like (26.9) and mod emulation (26.10) | P26 |
+| S3 | Picking the map without reading osu!'s memory (26.18), including the measurement of which live signals exist | P26 |
+| S4 | Undo and clean up for practice copies (26.15), straight from the write log | P26 |
+| S5 | File associations and the custom setup screen — the rest of 10.13.2 | [`11`](11-msi-distribution.md) |
+| S6 | Section labels from repetition (pending item 3) | [P19](#phase-19--app-sections) |
+| S7 | One hotkey through `RegisterHotKey` (26.19) and presets (26.20) | P26 |
+
+### Deliberately not in 0.2.0-alpha
+
+| What | Why not |
+|---|---|
+| **Code signing** (10.13.6) | A certificate is a purchase and the decision is the owner's, not the code's. Until it is bought, every release says it is unsigned and gives the hash to check. It is the single biggest thing standing between this and a build a stranger will trust, and no amount of work here moves it |
+| **Real-audio accuracy** (Phase 10) | 1.7 % of 20 ranked maps' red lines land within 5 ms. That is a research phase measured one sub-phase at a time on Corpus B, not a release item, and **0.2.0-alpha must not claim a number it did not move** |
+| **Dropping objects** (26.12) | Blocked on the `04-ui-ux.md` §9 decision, which is the owner's. If it is settled before the release it joins S-level, and if it is not, the trainer ships without it and says so |
+| **The pitch-kept stretch** (26.6) | The only row in Phase 26 that can fail its own check — Phase 4 measured a phase vocoder moving attacks a median 23-24 ms. It ships when it passes the grade, in whichever version that is |
+| **Other languages** (Phase 24) | TypeScript needs Node.js, which is not installed and which nobody has asked to install |
+| **The compilation on a timeline** | Wanted, unscoped, and not what a second alpha is for |
+
+### How we will know it is ready
+
+1. Every **required** row done, each with the gate named in its own roadmap row green.
+2. The version bumped in `Cargo.toml` in a commit of its own, as 0.1.0-alpha's was: one
+   line moves the artefacts' names, the MSI's numeric version and both executables'
+   version resources, and the sixteen inter-crate pins move with it.
+3. `timeline.md`'s **Unreleased** entries re-headed `v0.2.0-alpha`, which is what that
+   heading is for.
+4. The eight steps of the release checklist, including an install and uninstall on a real
+   profile — the one check a build cannot do for itself.
+5. The notes saying, again and in the same words, that it is unsigned, how to check the
+   download, and what it does not do.
+
+### What it will say about itself
+
+A second alpha is still an alpha. The notes carry the same three honest lines 0.1.0
+carried — unsigned, 1.7 % on real ranked maps, no auto-update — plus the one new one: a
+practice copy is a copy, and the tool that makes it proves the sounds are still under the
+red lines, which is the whole reason to prefer it to a faster tool that does not.
 
 ---
 
@@ -494,7 +566,7 @@ estimate with a number or is dropped.
 | 10.10 | Chord & cadence anchors | cadences as downbeat voters | +1 pt | todo |
 | 10.11 | Instrument specialists | trained kick/snare/hat detectors | +1 pt | todo |
 | 10.12 | UX for slow but precise | stage progress, cancel, cached intermediates | usability | partial — result cache, stage progress with timings, a stop that lands inside the running stage; no cached intermediates |
-| 10.13 | **MSI distribution** | one self-contained installer + portable ZIP — [`11-msi-distribution.md`](11-msi-distribution.md) | packaging | partial — 10.13.1, 10.13.3, 10.13.5 and 10.13.7 built, 10.13.2 in part: `installer\build.py` makes the per-user MSI, the ZIP, the SBOM and the checksums in one line and smoke-tests both artefacts unpacked (2026-09-26); the bundled licences are gathered into the tree by `installer\notices.py` with a gate that refuses a missing notice or an unrecorded copyleft offer, and the MSI shows Overtone's own on its second page (2026-10-03). **v0.1.0-alpha published 2026-10-03**, installed and uninstalled on a real profile. Left: code signing (10.13.6), file associations, the portable `data\` folder |
+| 10.13 | **MSI distribution** | one self-contained installer + portable ZIP — [`11-msi-distribution.md`](11-msi-distribution.md) | packaging | partial — 10.13.1, 10.13.3, 10.13.5 and 10.13.7 built, 10.13.2 in part: `installer\build.py` makes the per-user MSI, the ZIP, the SBOM and the checksums in one line and smoke-tests both artefacts unpacked (2026-09-26); the bundled licences are gathered into the tree by `installer\notices.py` with a gate that refuses a missing notice or an unrecorded copyleft offer, and the MSI shows Overtone's own on its second page (2026-10-03). **v0.1.0-alpha published 2026-10-03**, installed and uninstalled on a real profile. Left: code signing (10.13.6, the owner's purchase), file associations, and the portable `data\` folder, which is [required for 0.2.0-alpha](#release-020-alpha--what-it-takes) (R4) because the ZIP and the installed copy currently share one profile |
 
 **Licences, checked at the source on 2026-09-23** (full table in `10-precision-plan.md`):
 Beat This! is MIT down to its weights; BeatNet is CC-BY-4.0; madmom's models are
@@ -531,8 +603,11 @@ presentation and I/O layers, not the engine, so they run in parallel with the re
 ## Phase 19 — App sections
 
 One sidebar entry per job, each shippable on its own, all sharing the one
-loaded song. Ten are in (Library, Timing, Structure, Hitsounds, Map check, Mapset,
-Report, Export, History, Settings); Audio is the one left.
+loaded song. **Twelve are in**: Library, Timing, Structure, Hitsounds, Map check, Mapset,
+Audio (2026-09-27), Compile (2026-10-03), Report, Export, History, Settings. Train is the
+thirteenth and is [Phase 26](#phase-26--rate-and-difficulty-trainer-practice-copies);
+inside the sections that exist, the one proposed row still open is section labels from
+repetition.
 
 | Section | What it holds | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
@@ -639,6 +714,7 @@ above — metadata confirmation before anything downloads — is the starting po
 | The song's pulse, kept | a ×2 or ÷2 applied after an analysis kept with the song's settings, so analysing it again lands on the octave the mapper chose | low | med | per-song presets | no | no | P2 | **done** — a ×2/÷2 becomes the song's pulse setting, undo and redo move it back, the drawer follows; analysing again reproduces the ×2/÷2 on 16 of 18 (the fallback tracker's 2 wait on its rebuild fix) |
 | Language | English and Spanish; more through translation files | low | med | i18n | no | no | P2 | partial |
 | Settings file | export/import settings to another PC | low | low | settings | no | no | P3 | todo |
+| Diagnostics copy-out | one button that puts the version, the commit, the toolchain, the last `--self-check` and the last error on the clipboard as plain text, so someone who hit a bug can paste it. Nothing leaves the machine unless they paste it, and nothing is collected in the background | low | **high** | self-check, settings | no | no | **P1** | todo — [required for 0.2.0-alpha](#release-020-alpha--what-it-takes) (R5) |
 
 ---
 
@@ -1033,6 +1109,11 @@ map past the format's integer-millisecond range.
 | 26.20 Presets | the reference's four profiles, saved as practice documents with names, so a preset is the same object as a build and can be diffed, shared as a file and re-read | low | low | 26.1 | no | no | P3 | todo |
 | 26.21 The Train section | the app's own section: the map, the rate, the stats with their milliseconds, what it will feel like, the ladder, the dry run and the build report. Bilingual, checked in the browser harness in both languages as every section is | med | med | 26.1-26.17, P19 | no | no | P2 | todo |
 | 26.22 The gate | `bench/gates.py train`: a fixture at 1.0x comes back byte-identical bar the version line; at 1.37x every object is on the beat it was on, to a pinned bound; the AR/OD round trips hold; the written audio's attacks grade against the written lines; a variable-BPM map refuses a target BPM; and 60 fuzzed sources either read or refuse without a traceback | med | **high** | 26.3, 26.17 | no | no | **P1** | todo |
+
+**0.2.0-alpha requires** rows 26.1-26.5, 26.7, 26.8, 26.11, 26.13, 26.14, 26.17, 26.21
+and 26.22 — steps 1 to 4 of the build order below, and the gate. Everything else in this
+table makes the trainer nicer, not working:
+[Release 0.2.0-alpha](#release-020-alpha--what-it-takes).
 
 ### Build order
 

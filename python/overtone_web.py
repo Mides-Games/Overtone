@@ -3489,6 +3489,31 @@ class Api:
             "theme": cfg.get("theme") if cfg.get("theme") in THEMES else "dark",
         }
 
+    def diagnostics(self) -> dict:
+        """What a bug report needs, as plain text the user copies and pastes where
+        they choose. Nothing here leaves the machine: the window only copies it
+        when asked, and shows it so the user can see exactly what was copied.
+        """
+        import platform
+        import overtone_paths
+        info = overtone_paths.build_info()
+        cli = overtone_rust.find_cli()
+        index = overtone_library.default_path()
+        frozen = bool(getattr(sys, "frozen", False))
+        lines = [
+            f"Overtone {ta.APP_VERSION}",
+            (f"build: commit {info.get('commit') or 'unknown'}, built {info.get('built') or 'unknown'}"
+             if info else "build: a checkout, not a release build"),
+            f"platform: {platform.platform()}",
+            f"python: {platform.python_version()}" + ("  (frozen)" if frozen else ""),
+            f"portable: {'yes' if overtone_paths.portable_root() else 'no'}",
+            f"data folder: {overtone_paths.data_root()}",
+            f"settings: {ta.CONFIG_PATH}",
+            f"Rust engine: {cli if cli else 'not found'}",
+            f"library index: {index} ({'present' if index.is_file() else 'not created yet'})",
+        ]
+        return {"ok": True, "text": "\n".join(lines) + "\n"}
+
     def settings(self) -> dict:
         return {"ok": True, "settings": self._settings(),
                 "output_default": str(_default_output()), "cache": self._cache_info()}

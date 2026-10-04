@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **944** Python (667 engine + 277 web shell) · **291** Rust.
+Tests: **949** Python (670 engine + 279 web shell) · **291** Rust.
 
 ### What is pending, in order
 
@@ -714,7 +714,7 @@ above — metadata confirmation before anything downloads — is the starting po
 | The song's pulse, kept | a ×2 or ÷2 applied after an analysis kept with the song's settings, so analysing it again lands on the octave the mapper chose | low | med | per-song presets | no | no | P2 | **done** — a ×2/÷2 becomes the song's pulse setting, undo and redo move it back, the drawer follows; analysing again reproduces the ×2/÷2 on 16 of 18 (the fallback tracker's 2 wait on its rebuild fix) |
 | Language | English and Spanish; more through translation files | low | med | i18n | no | no | P2 | partial |
 | Settings file | export/import settings to another PC | low | low | settings | no | no | P3 | todo |
-| Diagnostics copy-out | one button that puts the version, the commit, the toolchain, the last `--self-check` and the last error on the clipboard as plain text, so someone who hit a bug can paste it. Nothing leaves the machine unless they paste it, and nothing is collected in the background | low | **high** | self-check, settings | no | no | **P1** | todo — [required for 0.2.0-alpha](#release-020-alpha--what-it-takes) (R5) |
+| Diagnostics copy-out | one button, in Settings, that copies the product version, the build's commit and time, the platform, the Python, whether the copy is portable and where its data is, the Rust engine found and the library index, as plain text. The window shows the text it copied, so the user sees exactly what leaves; nothing is sent. Not included: the last error, because nothing keeps errors yet (a row of its own if wanted) | low | **high** | self-check, settings | no | no | **P1** | **done** 2026-10-04 in `fix/portable-data-folder`: `Api.diagnostics`, Settings card, 2 tests [required for 0.2.0-alpha](#release-020-alpha--what-it-takes) (R5) |
 
 ---
 

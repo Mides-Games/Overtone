@@ -256,14 +256,23 @@ def ice_findings(log: Path) -> dict[str, dict[str, int]]:
 
 
 def write_zip(tree: Path, target: Path) -> None:
-    """The tree under one top folder, so it unpacks into ``Overtone\\``."""
+    """The tree under one top folder, so it unpacks into ``Overtone\\``, and the
+    portable marker beside the executables: the ZIP alone is portable."""
     target.unlink(missing_ok=True)
     partial = target.with_name(target.name + ".part")
     with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in sorted(tree.rglob("*")):
             if path.is_file():
                 archive.write(path, f"{tree.name}/{path.relative_to(tree).as_posix()}")
+        archive.writestr(f"{tree.name}/{release.PORTABLE_MARKER}",
+                         release.PORTABLE_NOTE.encode("ascii"))
     os.replace(partial, target)
+
+
+def portable_listing(expected: dict[str, tuple[int, str]]) -> dict[str, tuple[int, str]]:
+    """What the ZIP holds once unpacked: the tree and the marker beside it."""
+    note = release.PORTABLE_NOTE.encode("ascii")
+    return {**expected, release.PORTABLE_MARKER: (len(note), hashlib.sha256(note).hexdigest())}
 
 
 def admin_image(msi: Path, target: Path, log: Path) -> Path:
@@ -375,6 +384,13 @@ def main() -> int:
     print("\n".join(f"    {file.name}: {file.stat().st_size / 1e3:.1f} kB"
                      for file in written), flush=True)
 
+    # What this copy says it is, read by the window, the about box and the
+    # diagnostics: stamped into the frozen code, so the build names itself.
+    (release.TREE / release.CONTENTS / release.BUILD_INFO).write_text(
+        json.dumps({"version": version, "commit": git_head(),
+                    "built": datetime.now().strftime("%Y-%m-%d %H:%M")}, indent=1) + "\n",
+        encoding="utf-8")
+
     import smoke  # imports the benchmark's renderer, and with it the engine
     started = time.perf_counter()
     tree_smoke = smoke.smoke(release.TREE)
@@ -451,7 +467,7 @@ def main() -> int:
                 archive.extractall(scratch / "zip")
             steps.done("ZIP unpacked", started)
             checks.append(verify("ZIP, unpacked", scratch / "zip" / release.TREE.name,
-                                 expected, smoke))
+                                 portable_listing(expected), smoke))
 
     lines = [f"Overtone {version}, built {datetime.now():%Y-%m-%d %H:%M} from commit {git_head()}",
              f"toolchain: {tool_line(dotnet)}",

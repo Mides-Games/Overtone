@@ -36,6 +36,7 @@ from pathlib import Path
 
 import overtone as ta
 import overtone_rust
+from overtone_paths import data_root
 
 #: Source checkout: the engine lives in ``python/``, data at the repo root.
 #: Frozen build: modules sit beside the data inside the contents folder.
@@ -140,7 +141,7 @@ def schema_file_version(text: str | None = None) -> int:
 
 def default_path() -> Path:
     """Where the index lives: beside the result cache, never beside the app."""
-    return Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Overtone" / "library.sqlite3"
+    return data_root() / "library.sqlite3"
 
 
 def _now() -> str:

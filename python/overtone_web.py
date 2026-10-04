@@ -33,6 +33,7 @@ import overtone as ta
 import overtone_combine as tc
 import overtone_library
 import overtone_rust
+from overtone_paths import data_root
 
 HERE = Path(__file__).resolve().parent
 #: Source checkout: the engine lives in ``python/``, data at the repo root.
@@ -54,7 +55,7 @@ OSZ_TYPES = ("osu! beatmap package (*.osz)", "All files (*.*)")
 #: Dropped files are staged here so "analyze the last song", the song header
 #: and .osz export keep working after the drag: a temp file that vanishes
 #: after the analysis would leave all three pointing at nothing.
-DROP_DIR = Path(os.environ.get("LOCALAPPDATA", str(ROOT))) / "Overtone" / "drops"
+DROP_DIR = data_root() / "drops"
 PULSE_FACTORS = {"auto": 0.0, "/4": 0.25, "/2": 0.5, "x1": 1.0, "x2": 2.0, "x4": 4.0}
 #: Songs whose detection settings are remembered (per-song presets), the one
 #: analysed longest ago forgotten first: 182 bytes each in the config as it is
@@ -3488,6 +3489,31 @@ class Api:
             "theme": cfg.get("theme") if cfg.get("theme") in THEMES else "dark",
         }
 
+    def diagnostics(self) -> dict:
+        """What a bug report needs, as plain text the user copies and pastes where
+        they choose. Nothing here leaves the machine: the window only copies it
+        when asked, and shows it so the user can see exactly what was copied.
+        """
+        import platform
+        import overtone_paths
+        info = overtone_paths.build_info()
+        cli = overtone_rust.find_cli()
+        index = overtone_library.default_path()
+        frozen = bool(getattr(sys, "frozen", False))
+        lines = [
+            f"Overtone {ta.APP_VERSION}",
+            (f"build: commit {info.get('commit') or 'unknown'}, built {info.get('built') or 'unknown'}"
+             if info else "build: a checkout, not a release build"),
+            f"platform: {platform.platform()}",
+            f"python: {platform.python_version()}" + ("  (frozen)" if frozen else ""),
+            f"portable: {'yes' if overtone_paths.portable_root() else 'no'}",
+            f"data folder: {overtone_paths.data_root()}",
+            f"settings: {ta.CONFIG_PATH}",
+            f"Rust engine: {cli if cli else 'not found'}",
+            f"library index: {index} ({'present' if index.is_file() else 'not created yet'})",
+        ]
+        return {"ok": True, "text": "\n".join(lines) + "\n"}
+
     def settings(self) -> dict:
         return {"ok": True, "settings": self._settings(),
                 "output_default": str(_default_output()), "cache": self._cache_info()}
@@ -3929,7 +3955,7 @@ class Api:
 
     @staticmethod
     def _cache_dir() -> Path:
-        directory = Path(os.environ.get("LOCALAPPDATA", str(ROOT))) / "Overtone" / "cache"
+        directory = data_root() / "cache"
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
@@ -4375,7 +4401,7 @@ def main(argv: list[str] | None = None) -> None:
         threading.Thread(target=warm_up, name="warm-up", daemon=True).start()
     webview.start(gui="edgechromium", icon=str(ICON_ICO) if ICON_ICO.is_file() else None,
                   private_mode=False,
-                  storage_path=str(Path(os.environ.get("LOCALAPPDATA", ROOT)) / "Overtone" / "webview"))
+                  storage_path=str(data_root() / "webview"))
 
 
 if __name__ == "__main__":

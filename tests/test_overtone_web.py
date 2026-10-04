@@ -4525,6 +4525,33 @@ class VerdictStripTests(unittest.TestCase):
         return [note["key"] for note in web.analysis_payload(analysis)["warnings"]]
 
 
+class DiagnosticsTests(unittest.TestCase):
+    """Phase 10.13 (R5): the copy-out names the facts a bug report needs and
+    nothing is sent anywhere: the bridge returns text, the window copies it on
+    request, and this asks for the plain text and nothing else.
+    """
+
+    def test_the_text_names_the_version_the_build_and_the_folders(self) -> None:
+        api = web.Api()
+        reply = api.diagnostics()
+        json.dumps(reply)
+        self.assertTrue(reply["ok"])
+        text = reply["text"]
+        self.assertTrue(text.startswith(f"Overtone {ta.APP_VERSION}\n"), text[:60])
+        self.assertIn("build: a checkout, not a release build", text)
+        self.assertIn("portable: no", text)
+        for label in ("platform:", "python:", "data folder:", "settings:",
+                      "Rust engine:", "library index:"):
+            self.assertIn(label, text)
+
+    def test_it_is_plain_text_with_one_fact_per_line(self) -> None:
+        text = web.Api().diagnostics()["text"]
+        self.assertTrue(text.endswith("\n"))
+        for line in text.splitlines():
+            self.assertTrue(line.strip(), "blank line in the copy-out")
+            self.assertNotIn("\t", line)
+
+
 class CompileBridgeTests(_IsolatedConfig):
     """The Compile view's bridge: the list, the plan under it, and the build."""
 

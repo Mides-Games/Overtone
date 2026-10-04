@@ -1120,6 +1120,17 @@
             <div class="card-sub" data-i18n="st_backups">Backups: before any .osu is written, the bytes it replaces are kept beside it. The first is map.osu.bak and is never touched again; later ones are .bak2, .bak3…, so every earlier state survives.</div>
           </div>
         </div>
+              <div class="card cmp-card">
+          <div class="card-head"><div class="card-title" data-i18n="st_diag">Diagnostics</div></div>
+          <div class="card-body stack settings-body">
+            <div class="card-sub" data-i18n="st_diag_hint">The version, the build, the engines and your folders as plain text, for a bug report. It is copied to the clipboard only when you press the button; nothing is sent anywhere.</div>
+            <div class="setting">
+              <div class="spacer"></div>
+              <button class="btn small" id="stDiagCopy"><span data-i18n="st_diag_copy">Copy diagnostics</span></button>
+            </div>
+            <pre class="diag-text num" id="stDiag" hidden></pre>
+          </div>
+        </div>
       </section>
 
       <!-- export: every output of the analysed song in one place -->

@@ -22,6 +22,31 @@ version is `v0.1.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-04 · Portable data, a real version, and a copy-out for bug reports
+
+### Fixed
+
+- **The portable ZIP shared a profile with the installed copy.** It was the installed tree in a ZIP, so both wrote settings, the result cache, the write history, the library index, dropped files and browser storage to `%LOCALAPPDATA%\Overtone` and `~\.overtone.json`. Running both on one machine made them overwrite each other's recents. `python/overtone_paths.py` now decides the folder: a build with `portable.txt` beside its executable keeps all of that in `data\` beside it. Only the ZIP carries the marker. An installed copy and a checkout resolve to exactly the paths they had before, so no existing install loses its preferences.
+- **The window, the about box and every written `.osu` said "v3.0".** That was the Python engine's generation number, shown as the product's version. `app_version()` now reads the release: a frozen copy from the `build_info.json` its build stamps into `_internal`, a checkout from the workspace `Cargo.toml`, the same line `release.py` reads.
+
+### Changed
+
+- **A diagnostics card in Settings** copies the product version, the build's commit and time, the platform, the Python, whether the copy is portable and where its data is, the Rust engine found and the library index, as plain text. The window shows the text it copied, so the person sees exactly what leaves. Nothing is sent. The card has no error log: the app does not keep one yet.
+- **The smoke test learns portability.** For a portable tree a run may change files only inside `data\`, and the scratch profile must hold none of Overtone's own state. The platform's own writes (numba's cache, the self-check's temporary audio) stay expected. The ZIP's verification runs this on its unpacked copy, so a portable build that writes to a profile fails the build.
+
+### Measured
+
+- A full `build.py --clean` at `f81efe5`: `build: ok`. The portable ZIP's unpacked copy: 1672 files identical to the tree, smoke ok, and the smoke test's own line reads `portable: writes stayed in data\, none in the profile`. The MSI's administrative install: 1671 files identical, smoke ok, and no `portable.txt`.
+- The stamp in the built copy reads `0.1.0-alpha`, commit `f81efe5`. The window's `app_version()` in the checkout reads the same.
+- Installed with `msiexec /qn` from a non-elevated shell: exit 0, no `portable.txt`, `build_info.json` present, the installed self-check `ok` with version `0.1.0-alpha`, and the self-check run against a scratch profile so the real cache was not touched. Uninstalled, exit 0, program folder gone, the user's `.overtone.json` untouched.
+- In the browser harness, at 1280x800 and at 375x812: the card renders, the copy button is inside its card, no horizontal scroll, the text it copies reads correctly, and the Spanish strings read through. The copy itself is blocked in the harness's pane (`execCommand` refused by the browser), which the card's own fallback message reports; the same text stays visible beneath the button for copying by hand. Not checked: the two themes side by side.
+- 949 tests, all green. `parity.py`, `facts.py` ok.
+
+### Rejected / tried and dropped
+
+- **Reading a last error for the copy-out.** The window shows errors inline and nothing keeps them, so the copy-out cannot carry one without a new error log. That is a row of its own if it is wanted; putting a half-kept log in a bug report would be worse than none.
+- **Keeping `APP_VERSION = "3.0"` for the .osu headers.** It is the engine's generation, and a header that says v3.0 in a 0.1.0 release is a file that names a version nobody downloaded.
+
 ## Unreleased — 2026-10-03 · What 0.2.0-alpha has to hold
 
 ### Changed

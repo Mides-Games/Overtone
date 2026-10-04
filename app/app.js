@@ -607,6 +607,8 @@ const I18N = {
     as_no_attacks: "No attacks were found in this song.",
     no_fit: "Fit a grid first.",
     settings_sub: "Saved on this PC as you change them.",
+    st_diag: "Diagnostics", st_diag_copy: "Copy diagnostics", st_diag_copied: "Diagnostics copied",
+    st_diag_hint: "The version, the build, the engines and your folders as plain text, for a bug report. It is copied to the clipboard only when you press the button; nothing is sent anywhere.",
     st_output: "Exports", st_folder: "Output folder", st_folder_default: "Use the default", st_folder_pick: "Choose folder…",
     st_folder_is_default: "{path} (the default)",
     st_ask: "Ask where to save each export (the dialog opens in the song's folder)",
@@ -1362,6 +1364,8 @@ const I18N = {
     as_no_attacks: "No se encontraron ataques en esta canción.",
     no_fit: "Primero ajustá un grid.",
     settings_sub: "Se guardan en esta PC a medida que los cambiás.",
+    st_diag: "Diagnóstico", st_diag_copy: "Copiar diagnóstico", st_diag_copied: "Diagnóstico copiado",
+    st_diag_hint: "La versión, el build, los motores y tus carpetas como texto plano, para un reporte. Se copia al portapapeles solo cuando apretás el botón; no se envía nada a ningún lado.",
     st_output: "Exportaciones", st_folder: "Carpeta de salida", st_folder_default: "Usar la predeterminada", st_folder_pick: "Elegir carpeta…",
     st_folder_is_default: "{path} (la predeterminada)",
     st_ask: "Preguntar dónde guardar cada exportación (el diálogo abre en la carpeta de la canción)",
@@ -6408,6 +6412,14 @@ function stWire() {
     else if (reply.key !== "cancelled") toast(t(reply.key), true);
   };
   $("stFolderDefault").onclick = () => stSet({ output_folder: "" });
+  $("stDiagCopy").onclick = async () => {
+    if (!api()) return;
+    const reply = await api().diagnostics();
+    if (!reply.ok) return;
+    $("stDiag").textContent = reply.text;
+    $("stDiag").hidden = false;
+    copyText(reply.text, "st_diag_copied");
+  };
   $("stAsk").onchange = () => stSet({ export_ask: $("stAsk").checked });
   document.querySelectorAll("#stDecimals button").forEach((b) => b.onclick = () => stSet({ offset_decimals: +b.dataset.v }));
   document.querySelectorAll("#stSub button").forEach((b) => b.onclick = () => stSet({ click_subdivision: +b.dataset.v }));

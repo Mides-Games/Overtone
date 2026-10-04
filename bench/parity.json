@@ -56,6 +56,10 @@
    "where": "bench",
    "why": "installer/notices.py, the bundled licences gathered for publishing: packaging, not an engine stage"
   },
+  "InstallerPortableSmokeTests": {
+   "where": "bench",
+   "why": "installer/smoke.py: which of a portable run's writes count as Overtone's own state, packaging not an engine stage"
+  },
   "InstallerSbomTests": {
    "where": "bench",
    "why": "installer/sbom.py, the licence inventory for publishing: packaging, not an engine stage"
@@ -75,6 +79,10 @@
   "PerfGateTests": {
    "where": "bench",
    "why": "bench/gates.py perf, which times the stages it is given"
+  },
+  "PortableDataTests": {
+   "where": "python-only",
+   "why": "python/overtone_paths.py: where a portable build keeps its state, which no Rust crate holds"
   },
   "TaskbarIdentityTests": {
    "where": "shell",

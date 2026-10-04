@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -9091,6 +9092,115 @@ class InstallerSbomTests(unittest.TestCase):
                                            "shipped": shipped}
         self.assertEqual(sbom.drift(committed, fresh), [])
 
+
+class PortableDataTests(unittest.TestCase):
+    """Phase 10.13.5 (R4): a portable build keeps its state beside its executable.
+
+    The portable ZIP carries ``portable.txt`` beside Overtone.exe, and then
+    settings, cache, history, index and window storage go to ``data`` beside it,
+    so a copy on a stick never shares a profile with the installed one. These
+    pin the rule on synthetic folders: a frozen build without the marker, a
+    checkout, and the marker with its ``data`` folder.
+    """
+
+    @staticmethod
+    def _paths():
+        import overtone_paths
+        return overtone_paths
+
+    def _frozen(self, folder: Path, marker: bool):
+        paths = self._paths()
+        if marker:
+            (folder / paths.PORTABLE_MARKER).write_text("portable", encoding="utf-8")
+        exe = folder / "Overtone.exe"
+        return [mock.patch.object(sys, "frozen", True, create=True),
+                mock.patch.object(sys, "executable", str(exe))]
+
+    def test_a_checkout_and_an_installed_copy_keep_their_state_in_the_profile(self) -> None:
+        paths = self._paths()
+        with tempfile.TemporaryDirectory() as tmp:
+            local = Path(tmp) / "local"
+            with mock.patch.dict(os.environ, {"LOCALAPPDATA": str(local)}):
+                self.assertIsNone(paths.portable_root())
+                self.assertEqual(paths.data_root(), local / "Overtone")
+                self.assertEqual(paths.settings_home(), Path.home())
+                # Frozen but without the marker: the installed copy, as it was.
+                folder = Path(tmp) / "Programs" / "Overtone"
+                folder.mkdir(parents=True)
+                for patch in self._frozen(folder, marker=False):
+                    patch.start()
+                try:
+                    self.assertIsNone(paths.portable_root())
+                    self.assertEqual(paths.data_root(), local / "Overtone")
+                    self.assertEqual(paths.settings_home(), Path.home())
+                finally:
+                    mock.patch.stopall()
+
+    def test_a_portable_build_keeps_everything_in_its_own_data_folder(self) -> None:
+        paths = self._paths()
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "Overtone"
+            folder.mkdir()
+            with mock.patch.dict(os.environ, {"LOCALAPPDATA": str(Path(tmp) / "local")}):
+                for patch in self._frozen(folder, marker=True):
+                    patch.start()
+                try:
+                    data = (folder / paths.PORTABLE_DATA).resolve()
+                    self.assertEqual(paths.portable_root().resolve(), data)
+                    self.assertEqual(paths.data_root().resolve(), data)
+                    self.assertEqual(paths.settings_home().resolve(), data)
+                    # Nothing about the profile is consulted for a portable build.
+                    self.assertNotIn(str(Path(tmp) / "local"), str(paths.data_root()))
+                finally:
+                    mock.patch.stopall()
+
+class InstallerPortableSmokeTests(unittest.TestCase):
+    """Phase 10.13.5 (R4): what the smoke test counts as Overtone's own state.
+
+    A portable run may leave files in the scratch profile that the platform's
+    libraries write (numba's cache, the self-check's temporary audio) but never
+    Overtone's own folder or its settings file, so the rule is pinned on names.
+    """
+
+    @staticmethod
+    def _smoke():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "smoke", Path(__file__).resolve().parent.parent / "installer" / "smoke.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_overtones_own_folder_and_settings_are_its_state(self) -> None:
+        smoke = self._smoke()
+        own = smoke._own_profile_write
+        self.assertTrue(own(str(Path("AppData", "Local", "Overtone", "cache", "a.json"))))
+        self.assertTrue(own(str(Path("AppData", "Local", "Overtone", "writes.jsonl"))))
+        self.assertTrue(own(".overtone.json"))
+        self.assertTrue(own(".timing_analyzer.json"))
+
+    def test_the_platforms_own_caches_and_temporary_files_are_not(self) -> None:
+        smoke = self._smoke()
+        own = smoke._own_profile_write
+        self.assertFalse(own(str(Path("AppData", "Local", "numba", "Cache", "x.nbi"))))
+        self.assertFalse(own(str(Path("AppData", "Local", "Temp", "overtone-check-1", "c.wav"))))
+        # A folder that only starts with the same letters is somebody else's.
+        self.assertFalse(own(str(Path("AppData", "Local", "OvertoneBackup", "f"))))
+
+    def test_the_portable_marker_is_only_in_the_zip_and_its_note_is_ascii(self) -> None:
+        import sys as _sys
+        sys_path = str(Path(__file__).resolve().parent.parent / "installer")
+        added = sys_path not in _sys.path
+        if added:
+            _sys.path.insert(0, sys_path)
+        try:
+            import release
+        finally:
+            if added:
+                _sys.path.remove(sys_path)
+        self.assertEqual(release.PORTABLE_MARKER, "portable.txt")
+        self.assertTrue(release.PORTABLE_NOTE.isascii())
+        self.assertEqual(release.PORTABLE_DATA, "data")
 
 class InstallerNoticesTests(unittest.TestCase):
     """Phase 10.13.3: the bundled licences, gathered and gated.

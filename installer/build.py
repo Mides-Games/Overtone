@@ -256,14 +256,23 @@ def ice_findings(log: Path) -> dict[str, dict[str, int]]:
 
 
 def write_zip(tree: Path, target: Path) -> None:
-    """The tree under one top folder, so it unpacks into ``Overtone\\``."""
+    """The tree under one top folder, so it unpacks into ``Overtone\\``, and the
+    portable marker beside the executables: the ZIP alone is portable."""
     target.unlink(missing_ok=True)
     partial = target.with_name(target.name + ".part")
     with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in sorted(tree.rglob("*")):
             if path.is_file():
                 archive.write(path, f"{tree.name}/{path.relative_to(tree).as_posix()}")
+        archive.writestr(f"{tree.name}/{release.PORTABLE_MARKER}",
+                         release.PORTABLE_NOTE.encode("ascii"))
     os.replace(partial, target)
+
+
+def portable_listing(expected: dict[str, tuple[int, str]]) -> dict[str, tuple[int, str]]:
+    """What the ZIP holds once unpacked: the tree and the marker beside it."""
+    note = release.PORTABLE_NOTE.encode("ascii")
+    return {**expected, release.PORTABLE_MARKER: (len(note), hashlib.sha256(note).hexdigest())}
 
 
 def admin_image(msi: Path, target: Path, log: Path) -> Path:
@@ -451,7 +460,7 @@ def main() -> int:
                 archive.extractall(scratch / "zip")
             steps.done("ZIP unpacked", started)
             checks.append(verify("ZIP, unpacked", scratch / "zip" / release.TREE.name,
-                                 expected, smoke))
+                                 portable_listing(expected), smoke))
 
     lines = [f"Overtone {version}, built {datetime.now():%Y-%m-%d %H:%M} from commit {git_head()}",
              f"toolchain: {tool_line(dotnet)}",

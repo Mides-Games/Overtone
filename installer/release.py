@@ -33,6 +33,20 @@ RUST_CLI = "overtone-cli.exe"
 #: (``assets/*.py``) are build tools and stay out.
 DATA = ("app", "assets/logo.ico", "assets/logo.png", "assets/samples", "profiles",
         "python/library.sql")
+#: The portable ZIP alone carries this file beside the executables. Its presence
+#: makes the build keep its settings, cache, history and index in ``data`` beside
+#: it (python/overtone_paths.py), so a copy on a stick never shares a profile with
+#: the installed copy. The MSI does not carry it.
+PORTABLE_MARKER = "portable.txt"
+PORTABLE_DATA = "data"
+PORTABLE_NOTE = (
+    "Overtone, portable build.\r\n"
+    "\r\n"
+    "This folder keeps its own settings, result cache, write history and library index,\r\n"
+    "in the data folder beside Overtone.exe, and not in your Windows profile.\r\n"
+    "Delete the folder and nothing of Overtone remains on this machine except what you\r\n"
+    "exported (exports go to Documents\\Overtone unless you choose otherwise).\r\n"
+)
 #: Never bundled from inside a data folder: a frontend toolchain's leftovers.
 SKIP_DIRS = {"node_modules", "dist", "__pycache__"}
 

@@ -110,9 +110,23 @@ def _self_check(tree: Path, env: dict[str, str], cwd: Path, report: Path) -> dic
     return result
 
 
+def _own_profile_write(name: str) -> bool:
+    """Whether a file the run left in the scratch profile is Overtone's own state.
+
+    The frozen engine's numba cache and the self-check's temporary audio are
+    the platform's and the libraries' business and are expected there. What a
+    portable build must never leave in a profile is Overtone's own folder or
+    its settings file: those are the state a stick is meant to carry itself.
+    """
+    parts = Path(name).parts
+    return (parts[:3] == ("AppData", "Local", "Overtone")
+            or parts[:1] in ((".overtone.json",), (".timing_analyzer.json",)))
+
+
 def smoke(tree: Path) -> dict:
     tree = tree.resolve()
     audio = fixture()
+    portable = (tree / release.PORTABLE_MARKER).is_file()
     before = snapshot(tree)
     with tempfile.TemporaryDirectory(prefix="overtone-smoke-") as tmp:
         scratch = Path(tmp)
@@ -132,11 +146,19 @@ def smoke(tree: Path) -> dict:
     after = snapshot(tree)
     changed = sorted(name for name in before.keys() | after.keys()
                      if before.get(name) != after.get(name))
+    # A portable build writes into its own data folder and nowhere else: the
+    # tree may change only there, and the profile must hold none of its state.
+    own = [name for name, _size in written if _own_profile_write(name)]
+    if portable:
+        changed = [name for name in changed
+                   if not name.startswith(release.PORTABLE_DATA + "/")]
     return {"tree": str(tree), "files": len(before),
             "bytes": sum(size for size, _mtime in before.values()),
             "audio": str(audio), "expected_bpm": EXPECTED_BPM, "runs": runs,
-            "tree_changed": changed, "profile_writes": written,
-            "ok": all(run["ok"] for run in runs) and not changed}
+            "portable": portable, "tree_changed": changed, "profile_writes": written,
+            "profile_own_writes": own,
+            "ok": (all(run["ok"] for run in runs) and not changed
+                   and not (portable and own))}
 
 
 def report_lines(result: dict) -> list[str]:
@@ -155,6 +177,11 @@ def report_lines(result: dict) -> list[str]:
             lines.append(f"      {run['error']}")
     lines.append("  tree unchanged" if not result["tree_changed"] else
                  f"  tree CHANGED: {', '.join(result['tree_changed'][:10])}")
+    if result.get("portable"):
+        lines.append("  portable: writes stayed in data\\, none in the profile" if not
+                     result.get("profile_own_writes") else
+                     "  portable: wrote Overtone's own state to the profile: "
+                     + ", ".join(result["profile_own_writes"][:5]))
     folders: dict[str, list[int]] = {}
     for name, size in result["profile_writes"]:
         folder = str(Path(*Path(name).parts[:4]))

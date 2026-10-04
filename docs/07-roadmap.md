@@ -68,7 +68,18 @@ point, section volumes, SV normaliser, re-snap, snap divisors, audio file check)
    Left: code signing (10.13.6, which is a certificate to buy, not code to write), file
    associations and the custom setup screen (the rest of 10.13.2), and the portable `data\`
    folder ([`11`](11-msi-distribution.md)).
-7. **Compilation builder** (Phase 25, asked 2026-10-03) — several maps and their songs into
+7. **Rate and difficulty trainer** (Phase 26, asked 2026-10-03) — a practice copy of a
+   map at another speed, with the stats where you want them, after
+   [`funorange/osu-trainer`](https://github.com/funorange/osu-trainer). Specified, nothing
+   built. The point of the phase is the part that tool leaves out: the rate goes on the
+   **grid**, so every object keeps the beat it had and the snap audit proves it; the audio
+   is resampled in process rather than through two child executables, with the encoder
+   delay Phase 25 already measured to 0.0 ms; and the red lines it writes are graded
+   against the audio it wrote. Nothing reads osu!'s memory and nothing hooks the keyboard,
+   which is where most of the reference tool's open issues live. One decision is the
+   owner's before 26.12: whether dropping objects the user asks to drop (spinners that
+   become unspinnable at speed) is allowed at all under `04-ui-ux.md` §9.
+8. **Compilation builder** (Phase 25, asked 2026-10-03) — several maps and their songs into
    one map and one audio file, each object keeping the beat it had. Step 1 of its build
    order is in (2026-10-03): the document, the segment reader with its repairs, the shift
    over every field, and the `combine` gate that measures all three. So is step 2's audio —
@@ -563,11 +574,12 @@ number and confidence. Every write goes through the atomic writer and keeps a ba
 | Offset lab | MP3 encoder delay read from the file header, the first attack through each decoder side by side, and a blind listening test that reports the preferred click shift with an interval | med | med | both decoders, P4 transport | no | no | P2 | **done** — header numbers, decoder side-by-side, and an 18-trial blind 2AFC with Wilson intervals in Timing |
 | Rhythm guide | a separate guide difficulty with circles on strong attacks snapped to the detected grid (per band; optional taiko don/kat hint), ambiguous snaps left out and listed | med | high | attacks, sections, `.osz` writer | no | no | P2 | needs a decision: `04-ui-ux.md` §9 rules out beatmap editing beyond hitsounds and timing |
 | Compile | many maps and their songs into one map and one audio file: ordered segments, every object keeping the beat it had, hitsounds remapped, slider velocity restored per segment, the junctions proven against the source audio afterwards | **high** | high | P5 reader/writer, P6 bank, P4 transport, structure, library | no | no | **P1** | **done** 2026-10-03 — [Phase 25](#phase-25--compilation-builder-marathon-maps) rows 25.1-25.11, 25.13-25.17 |
+| Train | a practice copy of one difficulty at another speed: the rate applied to the grid so every object keeps the beat it had, HP/CS/AR/OD kept, locked or scaled with the milliseconds shown, the audio resampled as the game's own DT does it, and the written red lines graded against the written audio | **high** | high | P5 reader/writer, 25.4 audio, 25.15 grade, library | no | no | P2 | todo — [Phase 26](#phase-26--rate-and-difficulty-trainer-practice-copies) |
 
 Target sidebar, grouped by job: **Library** · **Timing** (Evidence and Ramps as tabs) ·
 **Structure** · **Map check** (Snap audit and Reference inside) · **Mapset** ·
-**Hitsounds** · **Audio** (Offset lab inside) · **Compile** · **Export** · **Report** ·
-**History** · **Settings**.
+**Hitsounds** · **Audio** (Offset lab inside) · **Compile** · **Train** · **Export** ·
+**Report** · **History** · **Settings**.
 
 Build order:
 
@@ -892,6 +904,166 @@ decodes, and they run one after the other with the progress panel naming which.
 
 ---
 
+## Phase 26 — Rate and difficulty trainer (practice copies)
+
+One map into another at a different speed: pick a difficulty, choose a rate or a target
+BPM, move HP, CS, AR and OD where you want them, and get a playable copy whose every
+object sits on the same beat of the same sound it sat on in the original. Asked for on
+2026-10-03 with [`funorange/osu-trainer`](https://github.com/funorange/osu-trainer) named
+as the reference: 447 stars, 72 forks, C# WinForms, no licence file, last pushed
+2024-07-29, 42 open issues. Its source, its thirteen releases and those issues were read
+on 2026-10-03; it was not run here.
+
+It is a well-liked tool and the features are the right features. What it leaves out is
+everything that keeps the copy *correct*, and its own issue tracker says so better than
+any review could:
+
+| The reference | What breaks | This phase |
+|---|---|---|
+| Every timestamp divided by the rate and rounded on its own | A map's snapping decays: an object on a 1/4 beat lands a millisecond off the new grid, and the editor shows it unsnapped. Nothing warns | The rate is applied to the **grid**: red lines' `beatLength` scaled exactly, then every object's time recomputed from the beat position it already had and rounded once. The snap audit (P7) proves it, and the worst error is reported in beats |
+| The rate taken from one BPM | On a multi-BPM map, "set 200 BPM" sets it for one section and misses the rest — their issues [#19](https://github.com/funorange/osu-trainer/issues/19) ("results in only 2/3 of the intended bpm") and [#24](https://github.com/funorange/osu-trainer/issues/24) ("not using accurate rate for some maps") | A rate is a rate and scales every timing point. A *target BPM* is only offered when the map has one BPM; otherwise it names the BPMs it has, shows the rate each would take, and offers the dominant one with that number on screen |
+| `soundstretch.exe` + LAME as child processes, temp files deleted after | A second toolchain to ship, and an audio pipeline nobody can measure. Their issue [#4](https://github.com/funorange/osu-trainer/issues/4): "MP3 offset wrong after re-encode", 8-10 ms | soxr (already pinned, librosa brings it) for the resample and libsndfile for the write, in process. The MP3 encoder delay is the problem Phase 25 already measured to **0.0 ms** with `mp3_gapless_info` |
+| Pitch-preserved stretch by default, with a "change pitch" toggle | Pitch-preserving a song **moves its attacks**, which is exactly what the red lines claim not to have moved. Overtone measured this in Phase 4 and dropped a feature over it: the phase vocoder shifted attacks a median 23-24 ms | Resampling is the default, because it is what the game's own DT does and it cannot move an attack relative to the grid. The pitch-kept stretch is a separate row and is **gated on the attack grade**: if the stretch moved the sounds out from under the lines, it says so instead of shipping it |
+| Star rating from `oppai.exe` | oppai-ng implements the pre-2021 difficulty calculation; osu! has not used it for years. Their issue [#47](https://github.com/funorange/osu-trainer/issues/47) is exactly this | No invented star rating. The numbers shown are the ones that can be computed exactly and that the player actually feels: BPM, the AR window in milliseconds, the OD hit windows in milliseconds, object density, and the longest stream — each labelled with what it is |
+| osu!'s process memory, scanned for signatures (`ProcessMemoryDataFinder`, GPL-3.0) | **Five of thirteen releases are "fix song detection after the newest osu! update"**, and three issues ([#11](https://github.com/funorange/osu-trainer/issues/11), [#37](https://github.com/funorange/osu-trainer/issues/37), [#41](https://github.com/funorange/osu-trainer/issues/41)) are "no maps show up". The licence would also force GPL-3 on anything linking it | Nothing reads another process's memory. The map comes from Overtone's own library index, which is built and searched already; any live signal is read from what osu! writes **outside** itself, measured before it is relied on, and every one of them degrades to the library search |
+| A `WH_KEYBOARD_LL` hook for global hotkeys | A low-level hook puts the hooking app in the path of every keystroke. Their issues [#46](https://github.com/funorange/osu-trainer/issues/46) (tablet cursor lag), [#52](https://github.com/funorange/osu-trainer/issues/52) and [#56](https://github.com/funorange/osu-trainer/issues/56) (the PC lags while it runs) | `RegisterHotKey` for the one hotkey that is worth having: the OS delivers a message for that combination and nothing else passes through Overtone. No per-keystroke callback, no polling of another process |
+| `.osz` written and handed to the shell to import | Their issues [#44](https://github.com/funorange/osu-trainer/issues/44) (imports only into lazer) and the 1.6.3 note "show message when .osz file association is missing" | The folder is written straight into `Songs`, which needs no file association and no import step. The `.osz` stays available for anyone who wants to move it |
+| "Generating Map failed" | Three issues are that sentence ([#6](https://github.com/funorange/osu-trainer/issues/6), [#45](https://github.com/funorange/osu-trainer/issues/45), [#49](https://github.com/funorange/osu-trainer/issues/49)) with no way to tell why | The repair pass of 25.2, reused: every fix named with the line it touched, every refusal with its reason, and a dry run that prints the whole plan before a byte is written |
+| A `ZeroDivisionError` on a rate of 0.0 ([#53](https://github.com/funorange/osu-trainer/issues/53)) | — | The rate is validated where it is read, with the bound stated |
+| An updater that calls home | Overtone is offline by product rule | No update check, ever |
+
+Little of this is new engine work. The field knowledge is in `overtone_combine.py` (every
+timestamp a copy has to touch, one rule per object kind, `unparsed` carried through), the
+reader and byte-identical writer with its atomic write, backup and write log are Phase 5,
+the snap audit and reference timing are Phase 7, the decoder-delay and build-report
+machinery is Phase 25, the library index is Phase 19, and the one thing Phase 25 proved —
+**that a borrowed red line can be graded against the audio that was actually written** —
+is what makes a rate change checkable instead of hopeful. A compilation shifts; a practice
+copy scales. The same bookkeeping, a different multiplier.
+
+### The decision this needs
+
+Phase 25 settled [`04-ui-ux.md`](04-ui-ux.md) §9 as: **Overtone never draws, moves or
+reshapes an object on its own**; copying whole maps' objects unchanged and moving them in
+time with their audio is bookkeeping. A rate change is exactly that, so the rate side needs
+no new decision.
+
+**Removing spinners does.** The reference has a "no spinners" checkbox, and the reason is
+real: at 1.5x a short spinner can become unspinnable. Deleting an object invents nothing,
+but it is not bookkeeping either, and §9 does not cover subtraction. The proposal, for the
+owner to accept or refuse before 26.12 is built: *dropping* objects the user explicitly
+asks to drop is allowed on a copy, provided the count and the kind are named in the report
+and in the difficulty name, and provided nothing is dropped by default. Overtone would
+also say the thing the checkbox cannot: how many spinners there are and how long each
+becomes at this rate, so the choice is informed. **Until that is decided, 26.12 is not
+built**, and the rows that depend on it say so.
+
+### What a practice copy is
+
+A document before it is a file, as in Phase 25: the source map, the rate (or the target
+BPM and which BPM it was computed from), each of HP/CS/AR/OD as *keep*, *lock to a value*
+or *scale with the rate*, the audio method, the naming template and the output folder —
+JSON beside the cache, so a build is reproducible, a report can be re-read without the
+source, and a ladder (26.16) is one document with several rungs.
+
+### Every number a rate moves, and every one it must not
+
+The reference's own formulas are right and are kept; what it does not do is say which way
+each number moves and why. Written out so the implementation cannot drift:
+
+| Quantity | Under a rate `r` | Why |
+|---|---|---|
+| Every time in milliseconds: object times, slider end times, spinner ends, mania hold ends, break start/end, bookmarks, preview point, `AudioLeadIn`, event and storyboard times | divided by `r`, once, from the beat position the object already had | The grid is the thing being scaled; the milliseconds are a rendering of it |
+| A red line's `beatLength` | divided by `r` exactly, as a float | BPM is `60000/beatLength`, so this *is* the rate change |
+| A green line's `-100/beatLength` SV | **unchanged** | SV is a multiplier on a beat-relative speed. Both the beat and the speed scale, so scroll speed rises with the rate on its own — which is what DT feels like |
+| `SliderMultiplier`, `SliderTickRate` | **unchanged** | Both are beat-relative. A compilation has to reconcile them (25.9) because it mixes maps; a rate change has one map |
+| AR, as preempt milliseconds | `ms / r`, then back to an AR | `1800 - 120·AR` for AR ≤ 5, `1200 - 150·(AR-5)` above: AR 0 = 1800 ms, AR 5 = 1200 ms, AR 10 = 450 ms |
+| OD, as the 300 window | `ms / r`, then back to an OD | `79.5 - 6·OD` milliseconds for the 300 window in standard |
+| HP, CS | **unchanged by the rate** | Neither is a time. They move only when the user moves them |
+| The AR and OD actually *felt* | shown in milliseconds beside the number | An "AR 10.3" means nothing until it says 400 ms. This is the number a player is choosing, and the reference hides it behind a slider |
+
+Above AR 10 and OD 10 the stat cannot be written into a `.osu`, which is why the reference
+has an "emulate DT" trick: write a slower map and let the mod bring it back. That is kept
+(26.10), with the compensation arithmetic shown rather than implied, and with a refusal when
+no combination reaches what was asked for.
+
+### When the input is half-wrong
+
+The same five-song principle as Phase 25: a source that will not read comes back *refused*,
+not raised, so the plan can still be shown. Specifically — a map with zero hit objects, an
+audio filename whose case does not match the folder (fixed once already in Phase 25), an
+`.osu` with no timing point at all, a map whose first object precedes its first red line, a
+`AudioFilename` pointing outside the folder, a mania map whose key count the stats do not
+apply to, a format version older than the reader's floor, and a rate that would push the
+map past the format's integer-millisecond range.
+
+### What it will refuse
+
+- A rate outside a pinned window, naming the window. Never a division by zero.
+- A target BPM on a map with more than one BPM, until the user picks which BPM it means.
+- A stat that cannot be represented and cannot be reached by compensation, naming both.
+- Writing into a folder that already holds a map, unless told to add to it.
+- Overwriting a source file, or an existing `.bak`. Ever.
+- A pitch-kept stretch whose own grade says it moved the attacks out from under the lines
+  by more than a pinned bound (26.6), unless the user accepts the number.
+- Submitting, uploading or renaming anything online. The copy carries no `BeatmapID` and
+  no `BeatmapSetID`, so it can never be mistaken for the ranked map it came from.
+
+| Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
+|---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
+| 26.1 Practice document | the plan as JSON: source, rate or target BPM, each stat's keep/lock/scale, audio method, naming, output; reproducible, diffable, and the unit a ladder repeats | low | **high** | P5 reader, 25.1 | no | no | **P1** | todo |
+| 26.2 Source read and repair | the source through `read_osu_beatmap` and then 25.2's repair pass: every fix named with the line it touched, every refusal with a reason, nothing guessed. Replaces "Generating Map failed" | low | **high** | 25.2 | no | no | **P1** | todo |
+| 26.3 The rate on the grid | scale each red line's `beatLength` exactly, recompute every object's time from the beat position it already held, round once at the end; report the worst snap error in beats and in milliseconds | med | **high** | 26.1, 26.2 | no | no | **P1** | todo |
+| 26.4 Every field the rate touches | one rule per object kind and per section, from `overtone_combine.py`'s field map: slider ends, spinner ends, mania `end:sample`, breaks, bookmarks, preview point, `AudioLeadIn`, events and storyboard times — and the three that must **not** move (green SV, `SliderMultiplier`, `SliderTickRate`), with a test for each | med | **high** | 26.3 | no | no | **P1** | todo |
+| 26.5 Audio by resample | the default, because it is what the game's DT does and it cannot move an attack relative to the grid: soxr at the rate ratio, libsndfile to write, in process, no child executable | low | **high** | 25.4 audio writer | no | no | **P1** | todo |
+| 26.6 Audio with the pitch kept | WSOLA in `overtone-dsp` for players who want the song to stay in key, **gated on the attack grade**: Phase 4 measured a phase vocoder moving attacks a median 23-24 ms, so this one must prove it did not, or report by how much and let the user decide | high | med | 26.5, 26.17 | no | no | P2 | todo |
+| 26.7 No offset drift from the re-encode | the encoder delay handled as 25.5 already does it (`mp3_gapless_info`, measured to 0.0 ms), and the written audio's own first attack compared with the source's | low | **high** | 25.5 | no | no | **P1** | todo |
+| 26.8 HP, CS, AR, OD | each stat keep / lock to a value / scale with the rate, with the exact formulas of the table above and **the milliseconds printed beside every AR and OD** — the number the player is actually choosing | low | **high** | 26.1 | no | no | **P1** | todo |
+| 26.9 What the copy will feel like | beside the stats: BPM (and the BPM range if there is more than one), the AR preempt and the OD windows in milliseconds, object density, the longest stream and its speed in notes per second. Computed exactly, each labelled. No star rating | med | med | 26.8, P7 density | no | no | P2 | todo |
+| 26.10 Mod emulation | HR, DT, NC, HT and EZ as presets that compose with the sliders, including the reference's trick of writing a compensated map so a mod lands on the value asked for — with the arithmetic shown, and a refusal when no combination reaches it | med | med | 26.8 | no | no | P2 | todo |
+| 26.11 Target BPM, honestly | a target BPM only when the map has one; otherwise name every BPM it has, show the rate each would take, and offer the dominant one with that rate on screen. The reference's two oldest open bugs are this | low | **high** | 26.3 | no | no | **P1** | todo |
+| 26.12 Dropping objects the user asks to drop | spinners (and, for the same reason, very short notes), **only on an explicit ask**, with the count and kind in the report and in the difficulty name, and with how long each spinner becomes at this rate shown before the choice. **Blocked on the §9 decision above** | low | low | the §9 decision | no | no | P3 | blocked |
+| 26.13 Naming, credit and identity | a naming template (`1.37x · 238 BPM · AR10.3`, the fields chosen by the user), the original mapper and difficulty credited in `Tags` and in the report, `Creator` left as the original's with the rate stated, and `BeatmapID`/`BeatmapSetID` blanked so a copy can never pass as the ranked map | low | **high** | 26.1 | no | no | **P1** | todo |
+| 26.14 Output | the folder written straight into `Songs` — no `.osz` association, no import step, which is the reference's [#44](https://github.com/funorange/osu-trainer/issues/44) — atomically, never overwriting a map or a `.bak`, recorded in the write log, with `.osz` still available on request | low | **high** | P5 writer, 25.16 | no | no | **P1** | todo |
+| 26.15 Undo and clean up | every practice copy is in the write log already, so "remove the ones I made" is a list with dates, sizes and the original each came from — not a scan for stray mp3s. Shows what it will free before it frees it | low | med | 26.14, P5 write log | no | no | P2 | todo |
+| 26.16 Rate ladders | one run, one mapset, several rates as separate difficulties (`1.0x`, `1.1x`, `1.2x`…) with one audio file per distinct rate and one progress bar over the lot. The reference makes one at a time; practising is a ladder | med | med | 26.3, 26.5, 26.14 | no | no | P2 | todo |
+| 26.17 The self-check after the build | 25.15's fourth check, reused: detect the attacks of the audio just written and grade the red lines written beside them. A rate change is only right if the sounds are still under the lines after the resample and the encode | low | **high** | 25.15 | no | no | **P1** | todo |
+| 26.18 Picking the map | from the library index first, which needs nothing from osu! and already works. Then **measure** which live signals exist outside osu!'s own memory — the window title, `osu!.db`, the newest file in `Songs`, the newest replay — write down which actually track the selected map, and use the best one that passed, degrading to the search. No memory scanning, no signature hunting, nothing that a game update can break | med | med | P19 library | no | no | P2 | todo |
+| 26.19 One hotkey, no keyboard hook | `RegisterHotKey` for "build the copy I have set up": the OS delivers that one combination and no other keystroke passes through Overtone. The reference's input-lag issues are a `WH_KEYBOARD_LL` hook, and profiles behind four more hotkeys | med | low | 26.1 | no | no | P3 | todo |
+| 26.20 Presets | the reference's four profiles, saved as practice documents with names, so a preset is the same object as a build and can be diffed, shared as a file and re-read | low | low | 26.1 | no | no | P3 | todo |
+| 26.21 The Train section | the app's own section: the map, the rate, the stats with their milliseconds, what it will feel like, the ladder, the dry run and the build report. Bilingual, checked in the browser harness in both languages as every section is | med | med | 26.1-26.17, P19 | no | no | P2 | todo |
+| 26.22 The gate | `bench/gates.py train`: a fixture at 1.0x comes back byte-identical bar the version line; at 1.37x every object is on the beat it was on, to a pinned bound; the AR/OD round trips hold; the written audio's attacks grade against the written lines; a variable-BPM map refuses a target BPM; and 60 fuzzed sources either read or refuse without a traceback | med | **high** | 26.3, 26.17 | no | no | **P1** | todo |
+
+### Build order
+
+1. 26.1, 26.2, 26.3, 26.4 and the parts of 26.22 that cover them: the document, the read,
+   the grid and the field rules, measured on committed fixtures, before any audio is
+   resampled. The 1.0x round trip is the first test worth having — a rate of one must
+   change nothing at all.
+2. 26.5, 26.7, 26.17: one audio file out, the encoder delay handled, and the lines graded
+   against the file that was written. Nothing else is built until that grade is green.
+3. 26.8, 26.11, 26.13, 26.14: the copy becomes something a player can open.
+4. 26.21, the section, once the pieces behind it refuse correctly.
+5. 26.9, 26.10, 26.15, 26.16, then 26.18, 26.19, 26.20. 26.6 last, because it is the only
+   row that can fail its own check, and 26.12 only if the §9 decision allows it.
+
+One heavy job at a time throughout: a ladder of eight rungs is eight resamples and eight
+encodes, run one after another with the progress panel naming which rung.
+
+### Open questions
+
+1. **Which live signal actually tracks the selected map** (26.18), if any. The answer is a
+   measurement, and the honest default until then is the library search.
+2. **Whether dropping objects is allowed at all** (the §9 decision), which is the owner's.
+3. **Whether a pitch-kept stretch can pass its own grade** (26.6). Phase 4's measurement
+   says a phase vocoder cannot; WSOLA on percussive material may. If it cannot, the row
+   becomes a documented refusal, which is still an answer.
+4. **Whether to compute a real star rating** at all. The current algorithm lives in
+   lazer's C#; reimplementing it is a phase of its own and goes stale with every balance
+   patch. 26.9's position is that exact, labelled numbers beat an approximate famous one.
+5. **Whether a copy should be deleted when its original changes.** The write log knows the
+   original's hash, so the copy can at least be marked stale.
+
 ## Rejected ideas
 
 | Idea | Verdict |
@@ -908,6 +1080,10 @@ decodes, and they run one after the other with the progress panel naming which.
 | **Resizing sliders to hold scroll constant** | **Won't build** (decided 2026-09-26). A slider lasts by the SV it starts under, so constant scroll under one means a new length, and so a new shape on screen: that is the mapper's call, made in the editor. Constant scroll refuses such a map and says how many sliders and where (221 of 249 local standard maps with a BPM change) |
 | **A pitch-kept slow loop** | **Rejected on measurement** (Phase 4): it exists to judge attacks, and the phase vocoder moved them a median 23-24 ms; the loop is resampled instead, pitch and all |
 | **Cloud anything** | **Never.** Offline is a product property |
+| **A star rating in the rate trainer** (Phase 26, row 26.9) | **Won't build** (decided 2026-10-03). osu! has not used the pre-2021 algorithm `oppai-ng` implements for years, which is the reference tool's own open issue [#47](https://github.com/funorange/osu-trainer/issues/47); the current one lives in lazer's C# and moves with every balance patch. A famous approximate number would be the one thing on the screen that is not exact. BPM, the AR preempt and OD windows in milliseconds, density and the longest stream are computed exactly and are what the player is choosing |
+| **Reading osu!'s process memory** (Phase 26, row 26.18) | **Never** (decided 2026-10-03). It is how the reference tool detects the map, and five of its thirteen releases are "fix song detection after the newest osu! update" with three open issues still saying no maps appear. It also means a GPL-3.0 dependency in an MIT project. The library index needs nothing from osu! and cannot be broken by a game update |
+| **A global low-level keyboard hook** (Phase 26, row 26.19) | **Won't build** (decided 2026-10-03). A `WH_KEYBOARD_LL` hook puts the app in the path of every keystroke on the machine; the reference tool has three open issues about exactly that, including a laggy tablet cursor. `RegisterHotKey` gets one combination delivered as a message and lets everything else alone |
+| **A pitch-preserving stretch as the default rate audio** (Phase 26, rows 26.5-26.6) | **Won't build as the default** (decided 2026-10-03). Resampling is what the game's own DT does and it cannot move an attack relative to the grid; Phase 4 already measured a phase vocoder moving attacks a median 23-24 ms, which is the one thing a practice copy must not do. The pitch-kept version stays as an opt-in that has to pass the attack grade |
 | **A crossfade between two songs of a compilation** (Phase 25, row 25.7) | **Won't build** (decided 2026-10-03). The junction is silence by design: a break covers it, the health bar stops draining, and each song keeps its own grid. An overlap puts two tempos over each other for a second, which is a mix decision about music this tool does not otherwise make, and it would cost the streaming writer its one-block memory. Fades in and out do the audible part of the job |
 
 ---
@@ -920,7 +1096,8 @@ P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─�
                            ├─► P4 playback ✓ / editor ✓
                            └─► P5 osu! ✓ ─────────────► P8 automation (half) ─► P9 (suggestions ✓)
                                                          P21 map tools (the P1 rows ✓)
-                                                         P25 compilation builder (todo)
+                                                         P25 compilation builder ✓
+                                                         P26 rate trainer (specified)
 
 Next: harness passes ─► hitsounds, the rest ─► Library focus ─► Phase 10 ─► installer
 ```

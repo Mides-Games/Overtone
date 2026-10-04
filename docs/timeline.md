@@ -18,6 +18,69 @@ later costs more than writing it down now.
 
 ---
 
+## Unreleased — 2026-10-03 · A rate trainer, specified
+
+Entries above the released version are marked **Unreleased** until the next
+version is cut; `v0.1.0-alpha` is the first published release and sits below.
+
+### Changed
+
+- **[Phase 26](07-roadmap.md#phase-26--rate-and-difficulty-trainer-practice-copies)**,
+  twenty-two rows: a practice copy of one difficulty at another speed, with
+  HP/CS/AR/OD where the user wants them. Asked for with
+  [`funorange/osu-trainer`](https://github.com/funorange/osu-trainer) as the
+  reference — 447 stars, C# WinForms, no licence file, last pushed
+  2024-07-29. Its source, its thirteen releases and its 42 open issues were
+  read on 2026-10-03; it was not run here.
+- The features it has are the right features, so the phase is about what it
+  leaves out, and its own issue tracker made the case better than a review
+  could:
+  - It divides every timestamp by the rate and rounds each on its own, so a
+    map's snapping decays silently. **Phase 26 applies the rate to the
+    grid**: scale each red line's `beatLength` exactly, recompute every
+    object's time from the beat position it already held, round once, and let
+    the snap audit prove it.
+  - It takes the rate from one BPM, which is its two oldest open bugs (#19,
+    #24). A rate scales every timing point; a *target* BPM is only offered
+    when the map has one, and otherwise names the BPMs it has with the rate
+    each would take.
+  - It shells out to `soundstretch.exe` and LAME, and its issue #4 is the
+    8-10 ms the re-encode moves the audio by. soxr is already pinned and
+    libsndfile already writes MP3, in process, and the encoder delay is the
+    problem **25.5 measured to 0.0 ms**.
+  - It defaults to a pitch-preserving stretch, which moves the very attacks
+    the red lines claim not to have moved. **Phase 4 already measured that**
+    — a phase vocoder shifted attacks a median 23-24 ms, and a feature was
+    dropped over it. So resampling is the default here, because it is what
+    the game's own DT does, and the pitch-kept version is gated on the attack
+    grade.
+  - Five of its thirteen releases are "fix song detection after the newest
+    osu! update", with three issues still open saying no maps appear, because
+    it signature-scans osu!'s process memory through a GPL-3.0 library.
+    **Nothing here reads another process's memory**: the map comes from the
+    library index, and any live signal has to be something osu! writes
+    outside itself and has to be measured before it is relied on.
+  - Three of its issues are a laggy PC or a laggy tablet while it runs, which
+    is what a `WH_KEYBOARD_LL` hook does to a machine. `RegisterHotKey`
+    delivers one combination and lets every other keystroke alone.
+- Four decisions recorded in **Rejected ideas** rather than left implicit: no
+  invented star rating, no process-memory reading, no low-level keyboard
+  hook, and no pitch-preserving stretch as the default.
+- `04-ui-ux.md` §9 gains the one question this phase cannot answer for
+  itself: the rule forbids drawing, moving and reshaping an object and says
+  nothing about **subtraction**, which row 26.12 needs — a three-second
+  spinner becomes two at 1.5x and unspinnable. The proposal is written down
+  and the row is marked blocked until the owner settles it.
+
+### Measured
+
+Nothing. No code was written: this is a specification, and it says so. The
+numbers it leans on are ones this repository already measured — 25.5's 0.0 ms
+decoder delay, Phase 4's 23-24 ms of attack movement under a phase vocoder,
+25.15's grade of a written red line against written audio — which is the
+reason the phase can claim the reference tool's problems are already solved
+here rather than hoping they are.
+
 ## v0.1.0-alpha — 2026-10-03 · The first release anyone else can install
 
 The first artefact of this repository that leaves it. Everything here is

@@ -4857,5 +4857,109 @@ class CompileBridgeTests(_IsolatedConfig):
             reply = api.compile_add_open_song()
         self.assertEqual([Path(s["osu"]).name for s in reply["sources"]], ["map.osu"])
 
+class TrainBridgeTests(_IsolatedConfig):
+    """The Train view's bridge: one map, a rate, and the built copy."""
+
+    def _clicks(self, folder: Path, seconds: float = 8.0, bpm: float = 150.0) -> Path:
+        folder.mkdir(parents=True, exist_ok=True)
+        rate = 44100
+        y = np.zeros(int(rate * seconds), dtype="float32")
+        n = int(0.04 * rate)
+        t = np.arange(n) / rate
+        kick = (np.sin(2 * np.pi * 160 * t) * np.exp(-t / 0.006)).astype("float32")
+        beat = 60.0 / bpm
+        at = 1.0
+        while at < seconds - 1.0:
+            y[int(at * rate):int(at * rate) + n] += kick
+            at += beat
+        ta.sf.write(str(folder / "song.wav"), y, rate)
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "PreviewTime: 1000", "Mode: 0", "",
+                 "[Metadata]", "Title:Clicks", "Artist:Overtone", "Creator:gates",
+                 "Version:150", "Tags:gate", "BeatmapID:0", "BeatmapSetID:-1", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[Events]", "",
+                 "[TimingPoints]", "1000,400,4,2,0,80,1,0", "",
+                 "[HitObjects]", "100,100,1400,1,0,0:0:0:0:",
+                 "100,100,3000,1,0,0:0:0:0:", "100,100,5000,1,0,0:0:0:0:", ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        return folder / "map.osu"
+
+    @staticmethod
+    def _wait(api) -> None:
+        for _ in range(500):
+            if not api._train_lock.locked():
+                return
+            threading.Event().wait(0.02)
+
+    def test_empty_state_plans_nothing(self) -> None:
+        api = web.Api()
+        state = api.train_state()
+        json.dumps(state)
+        self.assertIsNone(state["source"])
+        self.assertIsNone(state["plan"])
+        self.assertIsNone(state["check"])
+        self.assertEqual(api.train_build()["key"], "no_folder")
+
+    def test_picking_a_map_plans_it_with_a_dry_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._clicks(Path(tmp) / "src")
+            api = web.Api()
+            self.assertEqual(api.train_pick([str(Path(tmp) / "missing.osu")])["key"],
+                             "bad_file")
+            state = api.train_pick([str(path)])
+            json.dumps(state)
+        self.assertTrue(state["plan"]["usable"], state["plan"]["refusals"])
+        self.assertAlmostEqual(state["plan"]["rate"], 1.0)
+        self.assertEqual(state["plan"]["naming"]["version"], "150 (1x)")
+        self.assertEqual([f["kind"] for f in state["check"]["files"]],
+                         ["audio", "beatmap"])
+        self.assertEqual(api.train_clear()["source"], None)
+
+    def test_rate_stats_and_names_resettle_the_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._clicks(Path(tmp) / "src")
+            api = web.Api()
+            api.train_pick([str(path)])
+            state = api.train_set({"rate": 1.5})
+            self.assertAlmostEqual(state["plan"]["rate"], 1.5)
+            self.assertEqual(state["plan"]["naming"]["version"], "150 (1.5x)")
+            locked = api.train_set({"stats": {"ar": 10.0, "od": "scale"}})
+            self.assertAlmostEqual(locked["plan"]["stats"]["values"]["ar"], 10.0)
+            self.assertEqual(api.train_set({" Audio ": 1})["key"], "error")
+            named = api.train_set({"naming": {"version": "slower"}})
+            self.assertEqual(named["check"]["osu"].endswith("[slower].osu"), True)
+
+    def test_a_target_bpm_resolves_on_one_tempo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._clicks(Path(tmp) / "src")
+            api = web.Api()
+            api.train_pick([str(path)])
+            state = api.train_set({"target_bpm": 200})
+        self.assertAlmostEqual(state["plan"]["rate"], 200.0 / 150.0)
+        self.assertEqual(state["plan"]["target"]["from_bpm"], 150.0)
+
+    def test_building_writes_the_folder_and_grades_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._clicks(Path(tmp) / "src")
+            api = web.Api()
+            api.train_pick([str(path)])
+            api.train_set({"rate": 1.5, "audio_format": "wav", "out": str(Path(tmp) / "set")})
+            events: list = []
+            api._emit = lambda handler, payload: events.append((handler, payload))
+            self.assertTrue(api.train_build()["ok"])
+            self._wait(api)
+            done = [payload for handler, payload in events if handler == "onTrainDone"]
+            self.assertEqual(len(done), 1)
+            report = done[0]["report"]
+            self.assertTrue(done[0]["ok"], done[0])
+            self.assertTrue(report["checks"]["ok"], report["checks"])
+            self.assertTrue(report["checks"]["grade"]["ok"], report["checks"]["grade"])
+            self.assertEqual(api.train_build()["key"], "folder_occupied")
+            self.assertTrue(api.train_build(allow_existing=True)["ok"])
+            self._wait(api)
+
+
 if __name__ == "__main__":
     unittest.main()

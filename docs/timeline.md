@@ -22,6 +22,134 @@ version is `v0.1.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-06 · Phase 25 closed: per-song backgrounds stay out
+
+### Changed
+
+- **Row 25.12 decided, not deferred**: per-segment backgrounds through an `.osb` move to
+  Rejected ideas with the reason. Each song showing its own art mid-marathon is cosmetic,
+  and nothing here can verify an `.osb` in osu! itself — a storyboard whose fades
+  mistime is worse than one background that is right. The build carries the first
+  segment's background through `[Events]` and counts every dropped event, video and
+  storyboard line by name instead of silently. If a user asks for per-song art, the row
+  comes back with a game to check it in. Phase 25 reads whole.
+
+### Measured
+
+- Nothing: this is a decision. `bench/facts.py` ok, so the counts these documents
+  state still match the source.
+
+## Unreleased — 2026-10-06 · Phase 26 step 3: the Train section
+
+### Changed
+
+- **A thirteenth sidebar section, Train** (row 26.21), with four cards: the source map,
+  the rate and stats, the names, and what it would build. The whole view is drawn from
+  one bridge reply: **every change re-plans in Python**, so the rate field, the feel
+  line and the file list cannot drift apart. Eleven bridge calls, each returning the
+  whole state; the build runs on **its own lock** with `onTrainProgress` / `onTrainDone`,
+  refusing the analysis and the compilation while it runs.
+- The stats carry their milliseconds beside every AR and OD (600 ms beside AR 9, not
+  just the number), the feel line reads BPM, AR/OD windows, object count and the time
+  at the rate, and a target BPM on several tempi offers each tempo with its rate until
+  one is picked — the reference's two oldest bugs, answered in the UI where they bite.
+- Bilingual EN/ES like every section; the i18n key-and-placeholder check holds both
+  tables together.
+
+### Measured
+
+- 971 Python tests (5 new bridge tests), all green; `facts.py`, `parity.py` green.
+- Static pass over the new view: every id it reads exists in the page, every string it
+  names exists in both languages, every bridge call it makes exists on `Api`, every
+  event the worker emits has a handler.
+- Not checked: the browser harness in either language, which needs the pane. The row
+  says so until somebody runs it.
+
+## Unreleased — 2026-10-06 · Phase 26 step 2: the song at the rate, and the folder
+
+### Changed
+
+- **`build_audio`** (row 26.5): the whole song resampled in process with soxr at the rate
+  ratio, nothing normalised or faded. **`verify_audio`** (26.7): the written length to
+  two frames, the start correlated at 0.0 ms peak 1.0, and the encoder's own gapless tag
+  read. **`grade_copy`** (26.17): the attacks of the built audio graded against the red
+  lines written beside them — the end of the phase's own argument. **`build_practice`**
+  (26.14): the folder straight for `Songs` (dry run, the song, the samples and
+  background, the beatmap through the atomic writer and the write log, `.osz` flat),
+  refusing existing folders and the source's own.
+- Sample files and the background travel under their own names — the copy keeps its
+  indices, unlike a compilation's remap. **Videos stay behind with the reason**: at
+  another speed they would be a desync the copy owns.
+- **`gates.py train` is whole** (26.22): the 1.37x MP3 folder with `.osz` builds and its
+  one red line grades ok against the resampled clicks.
+
+### Measured
+
+- Gate's 1.37x MP3 on clicks: length exact, shift 0.0 ms, LAME tag present (13.061 ms
+  written, stripped on read), grade 1 of 1 ok, worst 0.34 ms, common shift 0.34 ms. WAV
+  grades the same, so the encoder adds nothing.
+- soxr's suspected delay settled by measurement: a one-shot resample was read 1.9 ms
+  late on abrupt bursts by peak-picking, but soxr, polyphase and Fourier agree **to the
+  frame** on smooth onsets — filter ringing on the peak, not a shift of the edge — so no
+  trim is applied and the grade keeps it honest per build.
+- 966 Python tests (5 new audio/output tests since the 961), all green; `train` and
+  `combine` gates green; `facts.py`, `parity.py` green.
+
+### Rejected / tried and dropped
+
+- **Trimming a resampler delay.** The probe was built (impulse through the same ratio)
+  and then the measurement showed there is nothing to trim: the edge agrees across three
+  resamplers. A per-build trim of a delay that does not exist would be arithmetic nobody
+  asked for — the same rule the grid rows follow.
+- **Carrying videos into the copy.** A 20 s video at 1.37x plays 14.6 s of pictures over
+  14.6 s of song only if something re-times it, and nothing here does. The note names the
+  files left behind.
+
+## Unreleased — 2026-10-06 · Phase 26 step 1: the rate goes on the grid
+
+### Changed
+
+- **`python/overtone_train.py`**, the trainer's first three build-order steps minus the
+  audio: the practice document (`plan_practice`, rows 26.1-26.2) through row 25.2's repair
+  pass, the rate on the grid (26.3-26.4), the HP/CS/AR/OD settlement with the milliseconds
+  beside every AR and OD (26.8), the honest target BPM (26.11) and the naming that keeps a
+  copy from passing as the ranked map (26.13). Nothing here writes: the source is opened
+  read-only and a practice copy is text plus a report.
+- **The assembly preserves the file it was given.** Sections are patched in the file's own
+  order — only the lines the rate or the naming reaches are repointed, with each line's
+  own separator kept — and sections the phase knows nothing about (colours, variables)
+  travel verbatim. A 1.0x copy is the source byte for byte bar the version line, which is
+  what the gate checks.
+- **Keep is the default for all four stats**, because scaling a typical AR 9 at 1.37x asks
+  for AR 10.08 and a default must never refuse a typical map. An explicit scale past 10
+  refuses with both numbers and names row 26.10's compensated map as the escape. HP and CS
+  cannot scale (neither is a time) and mania's CircleSize cannot move at all.
+- **Storyboard and video lines are carried as written and counted**, not scaled into a
+  guess — the one deliberate gap in row 26.4's field list, said out loud in the docstring.
+- **`bench/gates.py train`** (26.22's first half): the 1.0x round trip, every beat phase at
+  1.37x against a pinned rounding bound, the AR/OD round trips, a target BPM refused on
+  two tempi until one is picked, and 60 fuzzed sources. The written-audio grade waits for
+  rows 26.5 and 26.17.
+
+### Measured
+
+- At 1.37x on the gate fixture: worst 6.75e-07 beats and 0.0002 ms from the beat each
+  object sat on; the gate pins 0.01 beats and 1.0 ms, which is the rounding bound rather
+  than a number tuned to a fixture. Snap audit on the copy: 0 of 4 unsnapped.
+- 961 Python tests (12 new), all green; `gates.py train` green in 0.1 s; `facts.py`,
+  `parity.py` green (the two new classes placed as python-only, like the combine rows).
+
+### Rejected / tried and dropped
+
+- **Scale as the AR/OD default.** It is the musically righter default for DT practice and
+  it was the first version: AR 9 at 1.37x refuses (10.08 > 10), which would make the
+  trainer refuse the maps it is for until row 26.10 exists. Keep never refuses; scale
+  stays one explicit ask away with the refusal explaining itself.
+- **Rebuilding the header sections from parsed dicts.** The first version wrote
+  `[General]`/`[Editor]`/`[Metadata]`/`[Difficulty]` from dicts and added an `AudioLeadIn`
+  the source never stated, so 1.0x differed by two lines instead of one. Patching the raw
+  lines keeps the file's own separators and never invents a key.
+
 ## Unreleased — 2026-10-04 · Portable data, a real version, and a copy-out for bug reports
 
 ### Fixed

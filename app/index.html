@@ -73,6 +73,10 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h7"/><path d="M4 12h12"/><path d="M4 17h7"/><path d="M18 5v6"/><path d="M15 8h6"/></svg>
         <span class="nav-label" data-i18n="nav_compile">Compile</span>
       </button>
+      <button type="button" class="nav-item" data-view="train" data-i18n-title="nav_train" title="Train">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z"/></svg>
+        <span class="nav-label" data-i18n="nav_train">Train</span>
+      </button>
       <button type="button" class="nav-item" data-view="report" data-i18n-title="nav_report" title="Report">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><path d="M16 5h1a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h1"/><path d="M9 11h6M9 15h4"/></svg>
         <span class="nav-label" data-i18n="nav_report">Report</span>
@@ -1009,6 +1013,74 @@
             <button class="btn small primary" id="cpGo" disabled><span data-i18n="cp_go">Build</span></button>
           </div>
           <div class="card-body" id="cpBuildBody"></div>
+        </div>
+      </section>
+
+      <section class="view" id="viewTrain" data-view="train" hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_train">Train</h2>
+          <div class="view-sub" data-i18n="tr_sub">One difficulty as a practice copy at another speed. The rate goes on the grid, so every object keeps the beat it had; the song is resampled as the game's own DT does it, and the red lines are graded against the audio that was written.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="tr_source">Source map</div>
+            <div class="spacer"></div>
+            <button class="btn small" id="trUseOpen"><span data-i18n="tr_use_open">Use the open song's map</span></button>
+            <button class="btn small" id="trClear" hidden><span data-i18n="tr_clear">Clear</span></button>
+            <button class="btn small" id="trPick"><span data-i18n="tr_pick">Pick a map…</span></button>
+          </div>
+          <div class="card-body" id="trBody"></div>
+        </div>
+
+        <div class="card" id="trRateCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="tr_rate">Rate and stats</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="trFeel"></span>
+          </div>
+          <div class="card-body stack">
+            <div class="grid-2">
+              <label class="field"><span class="setting-name" data-i18n="tr_rate_x">Rate (0.25–4×)</span><input class="input num" id="trRate" type="number" min="0.25" max="4" step="0.01"></label>
+              <label class="field"><span class="setting-name" data-i18n="tr_target">Or aim at this BPM</span><input class="input num" id="trTarget" type="number" min="1" step="1"></label>
+            </div>
+            <div class="field" id="trFromField" hidden><span class="setting-name" data-i18n="tr_from">Which of its tempi the target means</span><div class="segmented stretch" id="trFrom"></div></div>
+            <div class="card-sub" id="trTargetNote"></div>
+            <div id="trStats"></div>
+          </div>
+        </div>
+
+        <div class="card" id="trNamesCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="tr_names">Name and credit</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="trCreator"></span>
+          </div>
+          <div class="card-body stack">
+            <label class="field"><span class="setting-name" data-i18n="tr_version">Difficulty name</span><input class="input" id="trVersion" type="text"></label>
+            <div class="field"><span class="setting-name" data-i18n="tr_tags">Tags</span><div class="chips" id="trTags"></div></div>
+          </div>
+        </div>
+
+        <div class="card" id="trBuildCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="tr_build">What it would build</div>
+            <div class="spacer"></div>
+            <span class="pill" id="trVerdict" hidden></span>
+          </div>
+          <div class="card-body stack">
+            <div class="field">
+              <span class="setting-name" data-i18n="tr_format">Song format</span>
+              <div class="segmented" id="trFormat">
+                <button type="button" data-format="mp3" class="on">MP3</button>
+                <button type="button" data-format="wav">WAV</button>
+              </div>
+            </div>
+            <label class="check inline"><input type="checkbox" id="trOsz"><span data-i18n="tr_osz">.osz as well</span></label>
+            <button class="btn small" id="trFolder"><span data-i18n="tr_folder">Choose folder…</span></button>
+            <button class="btn small primary" id="trGo" disabled><span data-i18n="tr_go">Build</span></button>
+          </div>
+          <div class="card-body" id="trBuildBody"></div>
         </div>
       </section>
 

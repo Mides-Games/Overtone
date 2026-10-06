@@ -20,7 +20,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 |---|---|
 | Timing engine (Python v3) | **works** — 24/24 corpus, median 0.0000 BPM / 0.16 ms, all gates green (every Python and Rust gate re-run 2026-09-26) |
 | Timing engine (Rust v4) | **at parity, in the app** — matches v3 attack for attack and red line for red line on 27/27, ~4x faster end to end (on Corpus B's real songs it writes v3's red lines on 13 of the 15 that v3 fits a grid to); Settings → Rust engine runs it through `overtone-cli`, and v3 takes over (with a note) where it has no answer. The same sidecar runs Structure (`structure`), Ramps (`ramps`) and the hitsound proposals (`hitsound`); `hitsound-evidence` prints each attack's classes and role from the command line |
-| App (web shell) | **usable** — twelve sidebar sections: Library, Timing, Structure, Hitsounds, Map check, Mapset, Audio, Compile, Report, Export, History, Settings. Analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject (one map or the whole mapset, with the diff), compare with a map, alignment, density, snap audit, re-snap, suggestions (each addable on its own), mapset check, reference timing, assisted timing, evidence, ramps, offset lab, constant scroll, snap divisors, kiai / breaks / bookmarks / preview point / section volumes from the structure, audio swap, audio file check, **compile several maps and their songs into one map**, write history with restore, mod report, folder import, recents, osu! Songs browser, EN/ES, dark and light |
+| App (web shell) | **usable** — thirteen sidebar sections: Library, Timing, Structure, Hitsounds, Map check, Mapset, Audio, Compile, Train, Report, Export, History, Settings. Analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject (one map or the whole mapset, with the diff), compare with a map, alignment, density, snap audit, re-snap, suggestions (each addable on its own), mapset check, reference timing, assisted timing, evidence, ramps, offset lab, constant scroll, snap divisors, kiai / breaks / bookmarks / preview point / section volumes from the structure, audio swap, audio file check, **compile several maps and their songs into one map**, write history with restore, mod report, folder import, recents, osu! Songs browser, EN/ES, dark and light |
 | osu! files | **works** — full reader, byte-identical writer, atomic write + backup, every write logged and restorable; hitsound fields edited in place, nothing else moves (P-2) |
 | Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks; in the mod report, claps that break the map's own pattern and finishes or claps over silence (H3) |
 | Hitsound engine | **in the app** — the copier (H1), the Hitsounds section (H2), the consistency check (H3), and the decision engine in Rust (H4) behind the Propose card: tick by row or by bars, swap a proposal for one of its alternatives, set volume and sample index by hand, hear it all over the song as the write would make it, preview, write the file or a copy, undo (H5); a row's inspector says why each sound was proposed; the profile is chosen on the Propose card (Balanced, or Drum-focused, measured on its own style's maps). The Samples card shows a skin's or a beatmap folder's samples as playback reads them, plays each alone or over the song in place of a selected sound, and chooses the skin playback asks; instrument lanes are still to build |
@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **966** Python (687 engine + 279 web shell) · **291** Rust.
+Tests: **971** Python (687 engine + 284 web shell) · **291** Rust.
 
 ### What is pending, in order
 
@@ -73,12 +73,12 @@ point, section volumes, SV normaliser, re-snap, snap divisors, audio file check)
    folder ([`11`](11-msi-distribution.md)).
 7. **Rate and difficulty trainer** (Phase 26, asked 2026-10-03) — a practice copy of a
    map at another speed, with the stats where you want them, after
-   [`funorange/osu-trainer`](https://github.com/funorange/osu-trainer). Steps 1-3 of its
+   [`funorange/osu-trainer`](https://github.com/funorange/osu-trainer). Steps 1-4 of its
    build order are in (2026-10-06): the document, the read, the grid and the field
    rules (26.1-26.4) with the stats, the honest target BPM and the naming
    (26.8, 26.11, 26.13), the resampled song with its encoder delay measured (26.5,
-   26.7), the output folder (26.14), the self-check grade (26.17) and the full `train`
-   gate (26.22). What is left is the section itself (26.21). The point of the phase is the part that tool leaves out: the rate goes on the
+   26.7), the output folder (26.14), the self-check grade (26.17), the full `train`
+   gate (26.22) and the Train section (26.21). The point of the phase is the part that tool leaves out: the rate goes on the
    **grid**, so every object keeps the beat it had and the snap audit proves it; the audio
    is resampled in process rather than through two child executables, with the encoder
    delay Phase 25 already measured to 0.0 ms; and the red lines it writes are graded
@@ -179,7 +179,7 @@ what this repository already half-holds.
 
 | # | What | Why it has to be in | Where | State |
 |---|---|---|---|---|
-| R1 | **The rate trainer, through its Train section**: rows 26.1-26.5, 26.7, 26.8, 26.11, 26.13, 26.14, 26.17, 26.21 | The one thing a user of 0.1.0 would download a new version for. Steps 1-4 of Phase 26's build order; the rows left out of this list are the ones that make it nicer, not the ones that make it work | [P26](#phase-26--rate-and-difficulty-trainer-practice-copies) | **nearly** — everything but the section (26.21) done 2026-10-06 |
+| R1 | **The rate trainer, through its Train section**: rows 26.1-26.5, 26.7, 26.8, 26.11, 26.13, 26.14, 26.17, 26.21 | The one thing a user of 0.1.0 would download a new version for. Steps 1-4 of Phase 26's build order; the rows left out of this list are the ones that make it nicer, not the ones that make it work | [P26](#phase-26--rate-and-difficulty-trainer-practice-copies) | **done** 2026-10-06 — every row landed; the browser-harness pass over the section is still owed |
 | R2 | **`bench/gates.py train`** (26.22) | No feature of this size has ever landed here without a gate, and this one's whole claim is that the copy is still snapped and still in time. 1.0x byte-identical, 1.37x on the beat, the AR/OD round trips, the written lines graded against the written audio, 60 fuzzed sources | [26.22](#phase-26--rate-and-difficulty-trainer-practice-copies) | **done** 2026-10-06 — every row green |
 | R3 | **Phase 25's last row settled**: build 25.12 (per-segment backgrounds through an `.osb`) or move it to [Rejected ideas](#rejected-ideas) with the reason | A phase that sits at nineteen of twenty rows forever is a phase nobody can read the state of. It is cosmetic and nothing here can verify an `.osb` in osu! itself, which is an argument for the second option, not for silence | [25.12](#phase-25--compilation-builder-marathon-maps) | todo — decision owed |
 | R4 | **The portable ZIP's own `data\` folder** (the half of 10.13.5 that was never built) | Today the ZIP keeps its settings and cache where the installed copy keeps them, so running both means they share a profile and silently overwrite each other's recents. `11-msi-distribution.md` already promises otherwise. It is a bug in a published artefact | [10.13](#phase-10--human-level-timing-accuracy) | **done** 2026-10-04 in `fix/portable-data-folder`: `python/overtone_paths.py` decides the folder; the ZIP alone carries `portable.txt`; the smoke test fails a portable run that writes Overtone's own state to the profile. Measured on the unpacked ZIP: writes stayed in `data\`, none in the profile |
@@ -607,11 +607,10 @@ presentation and I/O layers, not the engine, so they run in parallel with the re
 ## Phase 19 — App sections
 
 One sidebar entry per job, each shippable on its own, all sharing the one
-loaded song. **Twelve are in**: Library, Timing, Structure, Hitsounds, Map check, Mapset,
-Audio (2026-09-27), Compile (2026-10-03), Report, Export, History, Settings. Train is the
-thirteenth and is [Phase 26](#phase-26--rate-and-difficulty-trainer-practice-copies);
-inside the sections that exist, the one proposed row still open is section labels from
-repetition.
+loaded song. **Thirteen are in**: Library, Timing, Structure, Hitsounds, Map check, Mapset,
+Audio (2026-09-27), Compile (2026-10-03), Train (2026-10-06), Report, Export, History,
+Settings. Inside the sections that exist, the one proposed row still open is
+section labels from repetition.
 
 | Section | What it holds | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
@@ -653,7 +652,7 @@ number and confidence. Every write goes through the atomic writer and keeps a ba
 | Offset lab | MP3 encoder delay read from the file header, the first attack through each decoder side by side, and a blind listening test that reports the preferred click shift with an interval | med | med | both decoders, P4 transport | no | no | P2 | **done** — header numbers, decoder side-by-side, and an 18-trial blind 2AFC with Wilson intervals in Timing |
 | Rhythm guide | a separate guide difficulty with circles on strong attacks snapped to the detected grid (per band; optional taiko don/kat hint), ambiguous snaps left out and listed | med | high | attacks, sections, `.osz` writer | no | no | P2 | needs a decision: `04-ui-ux.md` §9 rules out beatmap editing beyond hitsounds and timing |
 | Compile | many maps and their songs into one map and one audio file: ordered segments, every object keeping the beat it had, hitsounds remapped, slider velocity restored per segment, the junctions proven against the source audio afterwards | **high** | high | P5 reader/writer, P6 bank, P4 transport, structure, library | no | no | **P1** | **done** 2026-10-03 — [Phase 25](#phase-25--compilation-builder-marathon-maps) rows 25.1-25.11, 25.13-25.17 |
-| Train | a practice copy of one difficulty at another speed: the rate applied to the grid so every object keeps the beat it had, HP/CS/AR/OD kept, locked or scaled with the milliseconds shown, the audio resampled as the game's own DT does it, and the written red lines graded against the written audio | **high** | high | P5 reader/writer, 25.4 audio, 25.15 grade, library | no | no | P2 | todo — [Phase 26](#phase-26--rate-and-difficulty-trainer-practice-copies) |
+| Train | a practice copy of one difficulty at another speed: the rate applied to the grid so every object keeps the beat it had, HP/CS/AR/OD kept, locked or scaled with the milliseconds shown, the audio resampled as the game's own DT does it, and the written red lines graded against the written audio | **high** | high | P5 reader/writer, 25.4 audio, 25.15 grade, library | no | no | P2 | **done** 2026-10-06 — [Phase 26](#phase-26--rate-and-difficulty-trainer-practice-copies) rows 26.1-26.5, 26.7, 26.8, 26.11, 26.13, 26.14, 26.17, 26.21 |
 
 Target sidebar, grouped by job: **Library** · **Timing** (Evidence and Ramps as tabs) ·
 **Structure** · **Map check** (Snap audit and Reference inside) · **Mapset** ·
@@ -1111,7 +1110,7 @@ map past the format's integer-millisecond range.
 | 26.18 Picking the map | from the library index first, which needs nothing from osu! and already works. Then **measure** which live signals exist outside osu!'s own memory — the window title, `osu!.db`, the newest file in `Songs`, the newest replay — write down which actually track the selected map, and use the best one that passed, degrading to the search. No memory scanning, no signature hunting, nothing that a game update can break | med | med | P19 library | no | no | P2 | todo |
 | 26.19 One hotkey, no keyboard hook | `RegisterHotKey` for "build the copy I have set up": the OS delivers that one combination and no other keystroke passes through Overtone. The reference's input-lag issues are a `WH_KEYBOARD_LL` hook, and profiles behind four more hotkeys | med | low | 26.1 | no | no | P3 | todo |
 | 26.20 Presets | the reference's four profiles, saved as practice documents with names, so a preset is the same object as a build and can be diffed, shared as a file and re-read | low | low | 26.1 | no | no | P3 | todo |
-| 26.21 The Train section | the app's own section: the map, the rate, the stats with their milliseconds, what it will feel like, the ladder, the dry run and the build report. Bilingual, checked in the browser harness in both languages as every section is | med | med | 26.1-26.17, P19 | no | no | P2 | todo |
+| 26.21 The Train section | the app's own section: the map, the rate, the stats with their milliseconds, what it will feel like, the ladder, the dry run and the build report. Bilingual, checked in the browser harness in both languages as every section is | med | med | 26.1-26.17, P19 | no | no | P2 | **done** 2026-10-06 — eleven bridge calls returning the whole state, four cards (source, rate and stats, names, build) on their own lock with `onTrainProgress`/`onTrainDone`, the feel line beside the stats; no ladder (26.16 stays S-level). Not checked: the browser harness, which needs the pane; ids, keys, bridge calls and events verified statically, both languages |
 | 26.22 The gate | `bench/gates.py train`: a fixture at 1.0x comes back byte-identical bar the version line; at 1.37x every object is on the beat it was on, to a pinned bound; the AR/OD round trips hold; the written audio's attacks grade against the written lines; a variable-BPM map refuses a target BPM; and 60 fuzzed sources either read or refuse without a traceback | med | **high** | 26.3, 26.17 | no | no | **P1** | **done** 2026-10-06 — all rows green, including the 1.37x MP3 folder with `.osz` and the grade |
 
 **0.2.0-alpha requires** rows 26.1-26.5, 26.7, 26.8, 26.11, 26.13, 26.14, 26.17, 26.21
@@ -1182,7 +1181,7 @@ P0 gates ✓ ─► P1 parity ✓ ─┬─► P2 analysis ✓(Rust) ─┬─�
                            └─► P5 osu! ✓ ─────────────► P8 automation (half) ─► P9 (suggestions ✓)
                                                          P21 map tools (the P1 rows ✓)
                                                          P25 compilation builder ✓
-                                                          P26 rate trainer (step 1 in: document, grid, stats, naming, gate rows)
+                                                          P26 rate trainer ✓ (engine, gate, section; harness pass owed)
 
 Next: harness passes ─► hitsounds, the rest ─► Library focus ─► Phase 10 ─► installer
 ```

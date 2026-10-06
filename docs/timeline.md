@@ -22,6 +22,32 @@ version is `v0.1.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-06 · Phase 26 step 3: the Train section
+
+### Changed
+
+- **A thirteenth sidebar section, Train** (row 26.21), with four cards: the source map,
+  the rate and stats, the names, and what it would build. The whole view is drawn from
+  one bridge reply: **every change re-plans in Python**, so the rate field, the feel
+  line and the file list cannot drift apart. Eleven bridge calls, each returning the
+  whole state; the build runs on **its own lock** with `onTrainProgress` / `onTrainDone`,
+  refusing the analysis and the compilation while it runs.
+- The stats carry their milliseconds beside every AR and OD (600 ms beside AR 9, not
+  just the number), the feel line reads BPM, AR/OD windows, object count and the time
+  at the rate, and a target BPM on several tempi offers each tempo with its rate until
+  one is picked — the reference's two oldest bugs, answered in the UI where they bite.
+- Bilingual EN/ES like every section; the i18n key-and-placeholder check holds both
+  tables together.
+
+### Measured
+
+- 971 Python tests (5 new bridge tests), all green; `facts.py`, `parity.py` green.
+- Static pass over the new view: every id it reads exists in the page, every string it
+  names exists in both languages, every bridge call it makes exists on `Api`, every
+  event the worker emits has a handler.
+- Not checked: the browser harness in either language, which needs the pane. The row
+  says so until somebody runs it.
+
 ## Unreleased — 2026-10-06 · Phase 26 step 2: the song at the rate, and the folder
 
 ### Changed

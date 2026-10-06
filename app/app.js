@@ -753,6 +753,42 @@ const I18N = {
     cp_check_shift: "{ms} ms out", cp_check_not_measured: "not measured at this sample rate",
     cp_check_unsnapped: "{n} of {total} objects off it", cp_check_identical: "byte for byte",
     cp_check_differs: "came back different",
+    nav_train: "Train",
+    tr_sub: "One difficulty as a practice copy at another speed. The rate goes on the grid, so every object keeps the beat it had; the song is resampled as the game's own DT does it, and the red lines are graded against the audio that was written.",
+    tr_source: "Source map", tr_pick: "Pick a map…", tr_use_open: "Use the open song's map",
+    tr_clear: "Clear",
+    tr_empty: "Nothing to copy yet. Pick the difficulty to practise: its objects, timing and hitsounds come with it, and nothing is ever written into its folder.",
+    tr_song: "{artist} - {title} [{version}]", tr_facts: "{mode} · {n} objects · {bpms}",
+    tr_rate: "Rate and stats", tr_rate_x: "Rate (0.25–4×)", tr_target: "Or aim at this BPM",
+    tr_from: "Which of its tempi the target means",
+    tr_target_note_one: "{bpm} BPM, so aiming at {target} takes {rate}×.",
+    tr_target_note_many: "The map holds {bpms}; the dominant ({dominant}) is offered with that rate on screen.",
+    tr_target_none: "The map holds no tempo to aim at.",
+    tr_feel: "{bpms} · AR {ar} ({arms} ms) · OD {od} ({odms} ms) · {n} objects in {time}",
+    tr_feel_noar: "{bpms} · {n} objects in {time}",
+    tr_stat_hp: "HP", tr_stat_cs: "CS", tr_stat_ar: "AR", tr_stat_od: "OD",
+    tr_keep: "Keep", tr_scale: "Scale", tr_lock: "Lock to",
+    tr_names: "Name and credit", tr_version: "Difficulty name", tr_tags: "Tags",
+    tr_creator: "By {mapper}: the copy credits them and can never pass as their ranked map.",
+    tr_build: "What it would build", tr_ready: "ready", tr_not_ready: "not ready",
+    tr_format: "Song format", tr_osz: ".osz as well",
+    tr_folder: "Choose folder…", tr_folder_named: "Folder: {name}",
+    tr_go: "Build", tr_go_anyway: "Build into it anyway", tr_building: "Building…",
+    tr_cannot: "Nothing can be built from this yet.",
+    tr_occupied: "{name} is already in that folder. Build again to add this copy to it.",
+    tr_kind_audio: "audio", tr_kind_sample: "hitsound", tr_kind_background: "background",
+    tr_kind_beatmap: "map", tr_mb: "{mb} MB", tr_kb: "{kb} kB",
+    tr_step_plan: "Working out the plan…", tr_step_audio: "Resampling the song…",
+    tr_step_samples: "Copying what travels with it…", tr_step_beatmap: "Writing the map…",
+    tr_step_check: "Reading it back to check it…", tr_step_done: "Finishing…",
+    tr_built: "Built {name}", tr_osz_made: "{name} is beside the folder.",
+    tr_done: "Built into {name}",
+    tr_check_audio: "The song where the map says", tr_check_snap: "On the grid",
+    tr_check_round: "The map read back", tr_check_grade: "Red lines on the written audio",
+    tr_check_shift: "{ms} ms out", tr_check_not_measured: "not measured at this sample rate",
+    tr_check_unsnapped: "{n} of {total} objects off it", tr_check_identical: "byte for byte",
+    tr_check_differs: "came back different",
+    tr_grade_worst: "worst {ms} ms, drift {shift} ms",
     no_maps: "No .osu file in that folder.", bad_index: "That song is not in the list any more.",
     no_folder: "Choose a folder to build into first.", no_sources: "Add some maps first.",
     plan_refused: "This cannot be built: {detail}",
@@ -1510,6 +1546,42 @@ const I18N = {
     cp_check_shift: "{ms} ms de diferencia", cp_check_not_measured: "no medido a esta frecuencia",
     cp_check_unsnapped: "{n} de {total} objetos fuera", cp_check_identical: "byte a byte",
     cp_check_differs: "volvió distinto",
+    nav_train: "Entrenar",
+    tr_sub: "Una dificultad como copia de práctica a otra velocidad. El rate va en la grilla, así cada objeto conserva el beat que tenía; la canción se remuestrea como el DT del juego, y las líneas rojas se califican contra el audio que se escribió.",
+    tr_source: "Mapa de origen", tr_pick: "Elegir un mapa…", tr_use_open: "Usar el mapa de la canción abierta",
+    tr_clear: "Limpiar",
+    tr_empty: "Nada que copiar todavía. Elegí la dificultad a practicar: sus objetos, timing e hitsounds vienen con ella, y nada se escribe jamás en su carpeta.",
+    tr_song: "{artist} - {title} [{version}]", tr_facts: "{mode} · {n} objetos · {bpms}",
+    tr_rate: "Rate y stats", tr_rate_x: "Rate (0,25–4×)", tr_target: "O apuntar a este BPM",
+    tr_from: "A cuál de sus tempos apunta el objetivo",
+    tr_target_note_one: "{bpm} BPM, así apuntar a {target} lleva {rate}×.",
+    tr_target_note_many: "El mapa tiene {bpms}; el dominante ({dominant}) se ofrece con ese rate en pantalla.",
+    tr_target_none: "El mapa no tiene tempo al cual apuntar.",
+    tr_feel: "{bpms} · AR {ar} ({arms} ms) · OD {od} ({odms} ms) · {n} objetos en {time}",
+    tr_feel_noar: "{bpms} · {n} objetos en {time}",
+    tr_stat_hp: "HP", tr_stat_cs: "CS", tr_stat_ar: "AR", tr_stat_od: "OD",
+    tr_keep: "Mantener", tr_scale: "Escalar", tr_lock: "Fijar en",
+    tr_names: "Nombre y crédito", tr_version: "Nombre de la dificultad", tr_tags: "Tags",
+    tr_creator: "Por {mapper}: la copia le da crédito y jamás puede pasar por su mapa rankeado.",
+    tr_build: "Lo que construiría", tr_ready: "listo", tr_not_ready: "no listo",
+    tr_format: "Formato de la canción", tr_osz: ".osz también",
+    tr_folder: "Elegir carpeta…", tr_folder_named: "Carpeta: {name}",
+    tr_go: "Construir", tr_go_anyway: "Construir ahí de todos modos", tr_building: "Construyendo…",
+    tr_cannot: "Todavía no se puede construir nada con esto.",
+    tr_occupied: "{name} ya está en esa carpeta. Construí de nuevo para agregar esta copia.",
+    tr_kind_audio: "audio", tr_kind_sample: "hitsound", tr_kind_background: "fondo",
+    tr_kind_beatmap: "mapa", tr_mb: "{mb} MB", tr_kb: "{kb} kB",
+    tr_step_plan: "Calculando el plan…", tr_step_audio: "Remuestreando la canción…",
+    tr_step_samples: "Copiando lo que viaja con ella…", tr_step_beatmap: "Escribiendo el mapa…",
+    tr_step_check: "Leyéndolo de vuelta para verificar…", tr_step_done: "Terminando…",
+    tr_built: "Construido {name}", tr_osz_made: "{name} está junto a la carpeta.",
+    tr_done: "Construido en {name}",
+    tr_check_audio: "La canción donde el mapa dice", tr_check_snap: "En la grilla",
+    tr_check_round: "El mapa leído de vuelta", tr_check_grade: "Líneas rojas sobre el audio escrito",
+    tr_check_shift: "{ms} ms afuera", tr_check_not_measured: "no medido a este sample rate",
+    tr_check_unsnapped: "{n} de {total} objetos fuera", tr_check_identical: "byte a byte",
+    tr_check_differs: "volvió distinto",
+    tr_grade_worst: "peor {ms} ms, deriva {shift} ms",
     no_maps: "No hay ningún .osu en esa carpeta.", bad_index: "Esa canción ya no está en la lista.",
     no_folder: "Primero elegí una carpeta donde construir.", no_sources: "Primero agregá mapas.",
     plan_refused: "Esto no se puede construir: {detail}",
@@ -1518,7 +1590,7 @@ const I18N = {
   },
 };
 
-const S = { lang: "en", view: "library", mapset: null, compile: null, file: null, options: null, presets: {}, result: null, timings: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, snap: null, ref: null, refFind: null, assist: null, report: null, recent: [] };
+const S = { lang: "en", view: "library", mapset: null, compile: null, train: null, file: null, options: null, presets: {}, result: null, timings: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, snap: null, ref: null, refFind: null, assist: null, report: null, recent: [] };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
@@ -1562,8 +1634,8 @@ function translate() {
 // One analysed song is shared by every view: switching only changes what is
 // visible, never the session. Views that read the analysis show the
 // "analyze first" panel until there is one, instead of blank space.
-const VIEWS = ["library", "timing", "structure", "hitsounds", "mapcheck", "mapset", "audio", "compile", "report", "export", "history", "settings"];
-const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", structure: "nav_structure", hitsounds: "nav_hitsounds", mapcheck: "nav_mapcheck", mapset: "nav_mapset", audio: "nav_audio", compile: "nav_compile", report: "nav_report", export: "nav_export", history: "nav_history", settings: "nav_settings" };
+const VIEWS = ["library", "timing", "structure", "hitsounds", "mapcheck", "mapset", "audio", "compile", "train", "report", "export", "history", "settings"];
+const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", structure: "nav_structure", hitsounds: "nav_hitsounds", mapcheck: "nav_mapcheck", mapset: "nav_mapset", audio: "nav_audio", compile: "nav_compile", train: "nav_train", report: "nav_report", export: "nav_export", history: "nav_history", settings: "nav_settings" };
 
 function needsResult(view) {
   const section = document.querySelector(`.content > [data-view="${view}"]`);
@@ -1594,6 +1666,7 @@ function setView(view) {
   if (view === "audio" && S.result) audioLoad();
   if (view === "history") histLoad();
   if (view === "compile") cpLoad();
+  if (view === "train") trLoad();
 }
 
 function renderNeedSong() {
@@ -2042,6 +2115,22 @@ window.overtone = {
     // sit on "Building…" while it travels.
     renderCompile();
     cpLoad();
+  },
+  onTrainProgress(progress) { TR.progress = progress; renderTrain(); },
+  onTrainDone(reply) {
+    TR.building = false;
+    TR.progress = null;
+    if (reply.ok) {
+      TR.report = reply.report;
+      TR.confirm = false;
+      toast(t("tr_done", { name: String(reply.report.folder || "").split(/[\\/]/).pop() }));
+    } else {
+      toast(t(reply.key === "error" ? "error" : reply.key, { detail: reply.detail || "" }), true);
+    }
+    // Draw the report first: trLoad() is a round trip, and the card must not
+    // sit on "Building…" while it travels.
+    renderTrain();
+    trLoad();
   },
   onHealthProgress(progress) { HEALTH.progress = progress; renderHealth(); },
   onHealthDone(reply) {
@@ -7779,6 +7868,281 @@ function renderCompile() {
   $("cpBuildBody").innerHTML = parts.join("");
 }
 
+// ------------------------------------------------------------------ train
+// One map as a practice copy at another speed (Phase 26). The same shape as
+// the Compile view: one bridge reply draws everything, every change re-plans
+// in Python, and the build runs on its own worker with its own lock, so an
+// analysis and a resample never run at once.
+const TR = { progress: null, report: null, building: false, confirm: false };
+
+function trSet(id, value) {
+  // Never type over the field somebody is typing in.
+  const el = $(id);
+  if (el && document.activeElement !== el) el.value = value;
+}
+
+function trApply(reply) {
+  if (!reply) return;
+  if (reply.source !== undefined) { S.train = reply; renderTrain(); }
+  // "cannot_build" belongs in the build card, where the numbers it is about
+  // are; everything else is a failed action.
+  if (reply.key === "nothing_picked") return;                 // a cancelled dialog is not news
+  if (reply.key && reply.key !== "cannot_build" && reply.source === undefined) editFailure(reply);
+}
+
+async function trLoad() {
+  if (!api()) return;
+  trApply(await api().train_state());
+}
+
+async function trPick() { if (api()) trApply(await api().train_pick()); }
+async function trUseOpen() { if (api()) trApply(await api().train_use_open()); }
+async function trClear() { if (api()) { TR.report = null; trApply(await api().train_clear()); } }
+async function trSetRate() {
+  if (!api()) return;
+  const raw = $("trRate").value;
+  trApply(await api().train_set({ rate: raw === "" ? null : +raw }));
+}
+async function trSetTarget() {
+  if (!api()) return;
+  const raw = $("trTarget").value;
+  trApply(await api().train_set({ target_bpm: raw === "" ? null : +raw }));
+}
+async function trSetFrom(bpm) {
+  if (!api()) return;
+  trApply(await api().train_set({ from_bpm: bpm }));
+}
+async function trSetStat(field, mode, lock) {
+  if (!api()) return;
+  const stats = Object.assign({}, (S.train.settings || {}).stats);
+  if (mode === "lock" && (lock === "" || lock === null || lock === undefined)) {
+    delete stats[field];
+  } else if (mode === "lock") {
+    stats[field] = +lock;
+  } else {
+    stats[field] = mode;
+  }
+  trApply(await api().train_set({ stats }));
+}
+async function trSetVersion() {
+  if (!api()) return;
+  const raw = $("trVersion").value;
+  trApply(await api().train_set({ naming: raw ? { version: raw } : {} }));
+}
+async function trSetFormat(format) {
+  if (api()) trApply(await api().train_set({ audio_format: format }));
+}
+async function trPickFolder() {
+  if (!api()) return;
+  TR.confirm = false;
+  trApply(await api().train_pick_folder());
+}
+
+async function trBuild() {
+  if (!api() || TR.building) return;
+  TR.building = true;
+  TR.report = null;
+  TR.progress = { step: "plan", done: 0, total: 1 };
+  renderTrain();
+  const reply = await api().train_build(TR.confirm);
+  if (reply.ok) return;                 // the report arrives as an event
+  TR.building = false;
+  TR.progress = null;
+  if (reply.key === "folder_occupied") {
+    // Adding to a mapset is a reasonable thing to do and a bad thing to do
+    // by accident: the second click says yes.
+    TR.confirm = true;
+    toast(t("tr_occupied", { name: reply.detail || "" }), true);
+  } else {
+    editFailure(reply);
+  }
+  renderTrain();
+}
+
+function trStatAsk(field) {
+  const stats = (S.train.settings || {}).stats || {};
+  const ask = stats[field];
+  if (typeof ask === "number") return { mode: "lock", lock: ask };
+  if (ask === "scale" || ask === "keep") return { mode: ask, lock: "" };
+  return { mode: "keep", lock: "" };
+}
+
+function trFeel(plan) {
+  const bpms = ((plan.target || {}).bpms || []);
+  const said = bpms.length ? `${[...new Set(bpms)].map((b) => +b).join(" / ")} BPM` : "";
+  const values = (plan.stats || {}).values || {};
+  const ms = (plan.stats || {}).ms || {};
+  const last = (plan.source.objects || {}).last_ms || 0;
+  const time = cpClock(last / plan.rate);
+  const n = (plan.source.objects || {}).played || 0;
+  if (values.ar === null || values.ar === undefined || values.od === null || values.od === undefined) {
+    return t("tr_feel_noar", { bpms: said, n, time });
+  }
+  return t("tr_feel", { bpms: said, ar: +values.ar.toFixed(2), arms: ms.ar, od: +values.od.toFixed(2), odms: ms.od, n, time });
+}
+
+function trStatRow(plan, field) {
+  const ask = trStatAsk(field);
+  const values = (plan.stats || {}).values || {};
+  const ms = (plan.stats || {}).ms || {};
+  const shown = values[field];
+  const withMs = (field === "ar" || field === "od") && shown !== null && shown !== undefined
+    ? ` · ${ms[field]} ms` : "";
+  const scalers = field === "ar" || field === "od"
+    ? `<button type="button" class="btn small${ask.mode === "scale" ? " on" : ""}" data-tr-stat="${field}" data-tr-mode="scale"><span>${t("tr_scale")}</span></button>` : "";
+  return `<div class="cp-row"><div class="cp-head">
+    <span class="cp-name">${t("tr_stat_" + field)}${shown !== null && shown !== undefined ? ` <span class="muted">${+shown.toFixed(2)}${withMs}</span>` : ""}</span>
+    <div class="spacer"></div>
+    <button type="button" class="btn small${ask.mode === "keep" ? " on" : ""}" data-tr-stat="${field}" data-tr-mode="keep"><span>${t("tr_keep")}</span></button>
+    ${scalers}
+    <label>${t("tr_lock")} <input class="input num" type="number" min="0" max="10" step="0.5"
+      data-tr-lock="${field}" value="${ask.mode === "lock" ? ask.lock : ""}" placeholder="0–10"></label>
+  </div></div>`;
+}
+
+function trSize(bytes) {
+  if (bytes === null || bytes === undefined) return "";
+  return bytes >= 1e6 ? t("tr_mb", { mb: (bytes / 1e6).toFixed(2) })
+    : t("tr_kb", { kb: Math.max(1, Math.round(bytes / 1000)) });
+}
+
+function trKind(kind) {
+  const said = t("tr_kind_" + kind);
+  return said === "tr_kind_" + kind ? kind : said;
+}
+
+function trFiles(check) {
+  return `<div class="cp-files">${check.files.map((f) => `<div class="cp-file">
+    <span class="kind">${trKind(f.kind)}</span>
+    <span class="name" title="${esc(f.name)}">${esc(f.name)}</span>
+    <span class="num muted">${trSize(f.bytes)}</span>
+  </div>`).join("")}</div>`;
+}
+
+function trChecks(report) {
+  const c = report.checks;
+  if (!c) return "";
+  const snap = c.snap || {};
+  const grade = c.grade || null;
+  const rows = [
+    [t("tr_check_audio"), c.audio.checked
+      ? t("tr_check_shift", { ms: c.audio.shift_ms }) : t("tr_check_not_measured"),
+      c.audio.ok],
+    [t("tr_check_snap"), t("tr_check_unsnapped", { n: snap.unsnapped, total: snap.objects }),
+      !snap.unsnapped && !snap.before_first_red && !snap.past_audio],
+    [t("tr_check_round"), c.round_trip ? t("tr_check_identical") : t("tr_check_differs"),
+      c.round_trip],
+  ];
+  if (grade) {
+    rows.push([t("tr_check_grade"),
+      grade.ok ? t("tr_grade_worst", { ms: grade.worst_ms, shift: grade.common_offset_ms })
+        : t("error", { detail: grade.reason || "" }),
+      grade.ok]);
+  }
+  return `<div class="cp-why">${rows.map(([name, said, ok]) =>
+    `<span class="${ok ? "" : "bad"}">${name}: ${esc(said)}</span>`).join("")}</div>`;
+}
+
+function renderTrain() {
+  const st = S.train, body = $("trBody");
+  const source = st ? st.source : null;
+  const plan = (st && st.plan) || null;
+  $("trClear").hidden = !source;
+  $("trUseOpen").hidden = !S.file;
+  $("trRateCard").hidden = $("trNamesCard").hidden = $("trBuildCard").hidden = !source;
+  if (!source) {
+    body.innerHTML = `<div class="card-sub">${t("tr_empty")}</div>`;
+    return;
+  }
+  const seg = plan && plan.source ? plan.source : {};
+  const meta = seg.metadata || {};
+  const song = t("tr_song", { artist: meta.Artist || "?", title: meta.Title || "?",
+    version: meta.Version || seg.name || "?" });
+  const bpms = [...new Set(((plan.target || {}).bpms || []))].map((b) => `${+b}`).join(" / ") || "–";
+  const facts = t("tr_facts", { mode: seg.mode_name || seg.mode || "?",
+    n: (seg.objects || {}).played || 0, bpms });
+  const notes = [
+    ...((plan.refusals || []).map((r) => `<span class="bad">${esc(r.why)}</span>`)),
+    ...((plan.repairs || []).map((r) => `<span>${esc(r.what)}</span>`)),
+  ].join("");
+  body.innerHTML = `<div class="cp-row"><div class="cp-head">
+      <span class="cp-name" title="${esc(source)}">${esc(song)}</span>
+      <span class="cp-at">${esc(facts)}</span>
+    </div>${notes ? `<div class="cp-why">${notes}</div>` : ""}</div>`;
+  if (!plan) return;
+
+  // Rate and stats
+  const settings = st.settings || {};
+  trSet("trRate", settings.rate === null || settings.rate === undefined ? "" : settings.rate);
+  trSet("trTarget", settings.target_bpm === null || settings.target_bpm === undefined ? "" : settings.target_bpm);
+  const bpmsAll = (plan.target || {}).bpms || [];
+  const multi = new Set(bpmsAll).size > 1;
+  $("trFromField").hidden = !multi;
+  if (multi) {
+    const picked = settings.from_bpm;
+    $("trFrom").innerHTML = [...new Set(bpmsAll)].map((b) =>
+      `<button type="button" class="${+b === +picked ? "on" : ""}" data-tr-from="${b}">${+b} BPM</button>`).join("");
+    $("trTargetNote").textContent = t("tr_target_note_many",
+      { bpms: [...new Set(bpmsAll)].map((b) => `${+b} BPM`).join(", "),
+        dominant: plan.target.dominant_bpm });
+  } else {
+    $("trTargetNote").textContent = bpmsAll.length
+      ? t("tr_target_note_one", { bpm: +bpmsAll[0], target: settings.target_bpm || plan.rate * +bpmsAll[0],
+          rate: settings.target_bpm ? +((settings.target_bpm / +bpmsAll[0]).toFixed(4)) : plan.rate })
+      : t("tr_target_none");
+  }
+  $("trFeel").textContent = plan.usable ? trFeel(plan) : "";
+  $("trStats").innerHTML = ["hp", "cs", "ar", "od"].map((f) => trStatRow(plan, f)).join("");
+
+  // Name and credit
+  const naming = plan.naming || {};
+  const given = settings.naming || {};
+  trSet("trVersion", given.version || "");
+  if ($("trVersion")) $("trVersion").placeholder = naming.version || "";
+  $("trTags").innerHTML = String(naming.tags || "").split(" ").filter(Boolean)
+    .map((tag) => `<span class="chip">${esc(tag)}</span>`).join("");
+  $("trCreator").textContent = naming.creator ? t("tr_creator", { mapper: naming.creator }) : "";
+
+  // What it would build
+  const check = st.check || null;
+  document.querySelectorAll("#trFormat button").forEach((b) =>
+    b.classList.toggle("on", b.dataset.format === (settings.audio_format || "mp3")));
+  $("trOsz").checked = !!settings.osz;
+  const verdict = $("trVerdict");
+  verdict.hidden = false;
+  verdict.className = `pill ${plan.usable ? "accent" : "amber"}`;
+  verdict.textContent = plan.usable ? t("tr_ready") : t("tr_not_ready");
+  $("trGo").disabled = !check || TR.building;
+  $("trGo").querySelector("span").textContent = t(TR.building ? "tr_building"
+    : TR.confirm ? "tr_go_anyway" : "tr_go");
+  const where = settings.out || "";
+  $("trFolder").querySelector("span").textContent = where
+    ? t("tr_folder_named", { name: where.split(/[\\/]/).pop() }) : t("tr_folder");
+  $("trFolder").title = where;
+
+  const parts = [];
+  if (!check) {
+    parts.push(`<div class="card-sub">${esc(st.detail || t("tr_cannot"))}</div>`);
+  } else {
+    parts.push(trFiles(check));
+    if (st.occupied) parts.push(`<div class="cp-why"><span class="bad">${
+      t("tr_occupied", { name: st.occupied })}</span></div>`);
+  }
+  if (TR.progress) {
+    parts.push(`<div class="card-sub mt-m">${t("tr_step_" + TR.progress.step,
+      { done: TR.progress.done + 1, total: TR.progress.total })}</div>`);
+  }
+  if (TR.report) {
+    parts.push(`<div class="mt-m"><span class="pill ${TR.report.checks && TR.report.checks.ok
+      ? "accent" : "amber"}">${t("tr_built", { name: TR.report.osu })}</span></div>`);
+    if (TR.report.osz) {
+      parts.push(`<div class="card-sub">${t("tr_osz_made", { name: TR.report.osz.name })}</div>`);
+    }
+    parts.push(trChecks(TR.report));
+  }
+  $("trBuildBody").innerHTML = parts.join("");
+}
+
 function wire() {
   document.querySelectorAll("#nav [data-view]").forEach((b) => { b.onclick = () => setView(b.dataset.view); });
   stWire();
@@ -8083,6 +8447,34 @@ function wire() {
     b.onclick = () => cpShape({ audio_format: b.dataset.format });
   });
   $("cpOsz").onchange = () => cpShape({ osz: $("cpOsz").checked });
+  $("trPick").onclick = trPick;
+  $("trUseOpen").onclick = trUseOpen;
+  $("trClear").onclick = trClear;
+  $("trRate").onchange = trSetRate;
+  $("trTarget").onchange = trSetTarget;
+  $("trFrom").onclick = (e) => {
+    const pick = e.target.closest("[data-tr-from]");
+    if (pick) trSetFrom(+pick.dataset.trFrom);
+  };
+  $("trStats").onclick = (e) => {
+    const mode = e.target.closest("[data-tr-stat]");
+    if (!mode) return;
+    const field = mode.dataset.trStat;
+    const lock = document.querySelector(`[data-tr-lock="${field}"]`);
+    trSetStat(field, mode.dataset.trMode, lock ? lock.value : "");
+  };
+  $("trStats").onchange = (e) => {
+    const lock = e.target.closest("[data-tr-lock]");
+    if (!lock) return;
+    trSetStat(lock.dataset.trLock, "lock", lock.value);
+  };
+  $("trVersion").onchange = trSetVersion;
+  document.querySelectorAll("#trFormat button").forEach((b) => {
+    b.onclick = () => trSetFormat(b.dataset.format);
+  });
+  $("trOsz").onchange = async () => { if (api()) trApply(await api().train_set({ osz: $("trOsz").checked })); };
+  $("trFolder").onclick = trPickFolder;
+  $("trGo").onclick = trBuild;
   $("undoBtn").onclick = undo;
   $("redoBtn").onclick = redo;
   $("injectBtn").onclick = injectOsu;

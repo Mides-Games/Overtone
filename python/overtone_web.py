@@ -33,6 +33,7 @@ import overtone as ta
 import overtone_combine as tc
 import overtone_library
 import overtone_rust
+import overtone_train as tr
 from overtone_paths import data_root
 
 HERE = Path(__file__).resolve().parent
@@ -391,6 +392,16 @@ class Api:
         #: because encoding a marathon and analysing a song are both heavy and
         #: this machine runs one heavy job at a time.
         self._compile_lock = threading.Lock()
+        #: The Train view's own state (roadmap 26.21): one source map, the
+        #: rate or target BPM, each stat's keep/lock/scale, the naming, the
+        #: output shape, and where the last build went. In memory only, like
+        #: the compilation: a copy is a few clicks to rebuild.
+        self._train: dict = {"osu": None, "rate": 1.0, "target_bpm": None,
+                             "from_bpm": None, "stats": {}, "naming": {},
+                             "audio_format": "mp3", "osz": False, "out": ""}
+        #: A build's own lock, beside the analysis's and the compilation's:
+        #: resampling a song and encoding it is the same heavy job either way.
+        self._train_lock = threading.Lock()
         self._busy = threading.Lock()
         #: Set by stop_analysis. The engine asks it at its checkpoints inside
         #: every stage (on the worker's thread only), the worker at every
@@ -2137,6 +2148,222 @@ class Api:
                                          "detail": f"{type(exc).__name__}: {exc}"})
         finally:
             self._compile_lock.release()
+
+    # ------------------------------------------------------------------
+    # Train — a practice copy of one map at another speed (Phase 26, 26.21)
+    # ------------------------------------------------------------------
+
+    def _train_plan(self) -> dict | None:
+        """The plan for the picked map, or None while none is picked."""
+        if not self._train.get("osu"):
+            return None
+        settings = self._train
+        try:
+            return tr.plan_practice(
+                settings["osu"], rate=settings.get("rate"),
+                target_bpm=settings.get("target_bpm"),
+                from_bpm=settings.get("from_bpm"),
+                stats=dict(settings.get("stats") or {}),
+                naming=dict(settings.get("naming") or {}))
+        except (ValueError, OSError):
+            return None
+
+    def train_state(self) -> dict:
+        """The source map, the rate and stats, and what they would build.
+
+        Everything the Train view draws comes from here, and it is
+        recomputed on every change rather than patched: planning reads one
+        `.osu` file and its header, which costs milliseconds, and a view
+        that cannot drift from its plan is worth more than that.
+
+        ``plan`` is the practice document; ``check`` is the dry run, which
+        is None while the source refuses, since there is nothing to build.
+        """
+        reply: dict = {"ok": True, "source": self._train.get("osu"),
+                       "settings": {key: self._train.get(key)
+                                    for key in ("rate", "target_bpm", "from_bpm",
+                                                "stats", "naming", "audio_format",
+                                                "osz", "out")},
+                       "plan": None, "check": None,
+                       "busy": self._busy.locked() or self._train_lock.locked()}
+        if not self._train.get("osu"):
+            return reply
+        try:
+            plan = self._train_plan()
+        except (ValueError, OSError) as exc:
+            reply["ok"] = False
+            reply["key"] = "error"
+            reply["detail"] = str(exc)
+            return reply
+        if plan is None:
+            reply["ok"] = False
+            reply["key"] = "error"
+            return reply
+        reply["plan"] = plan
+        if plan["usable"]:
+            try:
+                reply["check"] = tr.build_practice(
+                    plan, self._train.get("out") or "practice", dry_run=True,
+                    allow_existing=True,
+                    audio_format=self._train.get("audio_format") or "mp3")
+                reply["occupied"] = self._train_occupied()
+            except (ValueError, OSError) as exc:
+                reply["key"] = "cannot_build"
+                reply["detail"] = str(exc)
+        return reply
+
+    def train_pick(self, paths: list | None = None) -> dict:
+        """The map to copy. With no paths the window asks for one file."""
+        chosen = [str(path) for path in (paths or []) if str(path).strip()]
+        if not chosen:
+            chosen = self._pick_osu_files()[:1]
+        if not chosen:
+            return {"ok": False, "key": "nothing_picked"}
+        if not Path(chosen[0]).is_file():
+            return {"ok": False, "key": "bad_file", "detail": Path(chosen[0]).name}
+        self._train["osu"] = chosen[0]
+        return self.train_state()
+
+    def train_use_open(self) -> dict:
+        """The open song's own map, if the song beside it has one to copy."""
+        file = self._cfg.get("file") or ""
+        folder = Path(str(file)).parent if file else None
+        if folder is None or not folder.is_dir():
+            return {"ok": False, "key": "no_song"}
+        if str(file).lower().endswith(".osu") and Path(str(file)).is_file():
+            self._train["osu"] = str(file)
+            return self.train_state()
+        found = sorted(path for path in folder.glob("*.osu"))
+        if not found:
+            return {"ok": False, "key": "no_maps"}
+        self._train["osu"] = str(found[0])
+        return self.train_state()
+
+    def train_clear(self) -> dict:
+        """No map, back to a rate of one."""
+        self._train["osu"] = None
+        self._train["target_bpm"] = None
+        self._train["from_bpm"] = None
+        return self.train_state()
+
+    def train_set(self, changes: dict) -> dict:
+        """The rate, the target, the stats, the naming and the output shape."""
+        changes = dict(changes or {})
+        unknown = sorted(set(changes) - {"rate", "target_bpm", "from_bpm", "stats",
+                                         "naming", "audio_format", "osz", "out"})
+        if unknown:
+            return {"ok": False, "key": "error",
+                    "detail": f"Unknown setting(s): {', '.join(unknown)}."}
+        if "rate" in changes:
+            value = changes["rate"]
+            if value is not None:
+                try:
+                    value = float(value)
+                except (TypeError, ValueError):
+                    return {"ok": False, "key": "error",
+                            "detail": f"The rate ({changes['rate']!r}) is not a number."}
+            self._train["rate"] = value
+            self._train["target_bpm"] = None
+            self._train["from_bpm"] = None
+        for key in ("target_bpm", "from_bpm"):
+            if key in changes:
+                value = changes[key]
+                if value is not None:
+                    try:
+                        value = float(value)
+                    except (TypeError, ValueError):
+                        return {"ok": False, "key": "error",
+                                "detail": f"{key} ({changes[key]!r}) is not a number."}
+                self._train[key] = value
+                if key == "target_bpm":
+                    self._train["rate"] = None
+        if "stats" in changes:
+            if not isinstance(changes["stats"], dict):
+                return {"ok": False, "key": "error",
+                        "detail": "Stats arrive as {hp|cs|ar|od: keep|scale|number}."}
+            self._train["stats"] = dict(changes["stats"])
+        if "naming" in changes:
+            if not isinstance(changes["naming"], dict):
+                return {"ok": False, "key": "error",
+                        "detail": "Naming arrives as {version: text}."}
+            self._train["naming"] = dict(changes["naming"])
+        if "audio_format" in changes:
+            if changes["audio_format"] not in ("mp3", "wav"):
+                return {"ok": False, "key": "error",
+                        "detail": f"Format {changes['audio_format']!r} is not mp3 or wav."}
+            self._train["audio_format"] = changes["audio_format"]
+        if "osz" in changes:
+            self._train["osz"] = bool(changes["osz"])
+        if "out" in changes:
+            self._train["out"] = str(changes["out"] or "")
+        return self.train_state()
+
+    def _train_occupied(self) -> str:
+        """The beatmap already in the chosen output folder, if any."""
+        folder = Path(self._train.get("out")) if self._train.get("out") else None
+        if folder is None or not folder.is_dir():
+            return ""
+        found = sorted(path.name for path in folder.iterdir()
+                       if path.suffix.lower() == ".osu")
+        return found[0] if found else ""
+
+    def train_pick_folder(self) -> dict:
+        """Where to build. Remembered until the window closes."""
+        folder = self.pick_folder()
+        if not folder:
+            return {"ok": False, "key": "nothing_picked"}
+        self._train["out"] = str(folder)
+        return self.train_state()
+
+    def train_build(self, allow_existing: bool = False) -> dict:
+        """Build it. Starts a worker; the report arrives as a JS event.
+
+        A resample and an encode take seconds and the window must stay
+        alive, so this follows the compilation's shape: its own lock, so one
+        heavy job runs at a time, and events for progress and the result.
+        There is no stop: a half-written mapset is worse than waiting.
+        """
+        out = str(self._train.get("out") or "")
+        if not out:
+            return {"ok": False, "key": "no_folder"}
+        if not self._train.get("osu"):
+            return {"ok": False, "key": "no_sources"}
+        occupied = self._train_occupied()
+        if occupied and not allow_existing:
+            return {"ok": False, "key": "folder_occupied", "detail": occupied}
+        try:
+            plan = self._train_plan()
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        if plan is None or not plan["usable"]:
+            return {"ok": False, "key": "plan_refused",
+                    "detail": "; ".join(row.get("why", "")
+                                        for row in (plan or {}).get("refusals", ()))}
+        if self._busy.locked():
+            return {"ok": False, "key": "busy"}     # an analysis is running
+        if not self._train_lock.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        threading.Thread(target=self._train_worker, args=(plan, out),
+                         daemon=True).start()
+        return {"ok": True}
+
+    def _train_worker(self, plan: dict, folder: str) -> None:
+        try:
+            report = tr.build_practice(
+                plan, folder, allow_existing=True,
+                audio_format=self._train.get("audio_format") or "mp3",
+                osz=bool(self._train.get("osz")), grade=True,
+                progress=lambda step, done, total: self._emit(
+                    "onTrainProgress", {"step": step, "done": done, "total": total}))
+            self._emit("onTrainDone", {"ok": True, "report": report})
+        except (ValueError, OSError) as exc:
+            self._emit("onTrainDone", {"ok": False, "key": "error",
+                                       "detail": str(exc)})
+        except Exception as exc:  # noqa: BLE001 -- the view shows the message
+            self._emit("onTrainDone", {"ok": False, "key": "error",
+                                       "detail": f"{type(exc).__name__}: {exc}"})
+        finally:
+            self._train_lock.release()
 
     def _pick_osu_files(self) -> list:
         """Several .osu files from one dialog, or nothing."""

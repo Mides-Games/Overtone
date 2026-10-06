@@ -26,7 +26,8 @@ So this file holds two gates:
     python bench/gates.py assisted            # two marked downbeats seed the grid
     python bench/gates.py real-audio          # local songs keep analysing, readings pinned
     python bench/gates.py real-audio --update
-    python bench/gates.py combine             # a compilation keeps every borrowed grid
+     python bench/gates.py combine             # a compilation keeps every borrowed grid
+     python bench/gates.py train               # a practice copy keeps every borrowed beat
 
 Both exit non-zero on failure. Neither renders new audio for the main corpus —
 they reuse ``bench/audio/`` — but ``coverage`` has two fixtures of its own,
@@ -57,6 +58,7 @@ import benchmark as bm  # noqa: E402
 import fuzz_reader as fuzz  # noqa: E402  -- its mutants, for half-wrong sources
 import overtone as ta  # noqa: E402
 import overtone_combine as tc  # noqa: E402
+import overtone_train as tr  # noqa: E402  -- the practice copy and its grid
 import overtone_web as wb  # noqa: E402  -- the stage names the page shows
 
 HERE = Path(__file__).resolve().parent
@@ -1523,12 +1525,189 @@ def combine(audio_dir: Path) -> int:
     return verdict()
 
 
+#: The rate the gate copies at. 1.37x is off every simple fraction, so a copy
+#: that merely divides and rounds each timestamp on its own lands a
+#: millisecond off the new grid — which is the decay this phase exists to
+#: avoid, and what the beat-phase rows below would catch.
+TRAIN_RATE = 1.37
+
+#: The worst a copy may sit from the beat it was on. Whole-millisecond times
+#: round by up to half a millisecond each side of their red line's own
+#: rounding, so 1.0 ms is the rounding bound, not a number tuned to a
+#: fixture; in beats it is that bound over the shortest scaled beat here.
+TRAIN_WORST_MS = 1.0
+TRAIN_WORST_BEATS = 0.01
+
+#: Mutants of a source map the gate throws at the plan. It must come back
+#: with repairs or a refusal — never with anything but a ValueError.
+TRAIN_MUTANTS = 60
+
+
+def _train_source(folder: Path) -> Path:
+    """One map on its own audio: two tempi (so a target BPM must choose), a
+    green asking for a custom sample, a spinner, a slider, a break and
+    bookmarks. ``BeatmapID``/``BeatmapSetID`` are already blank and ``Tags``
+    already carry the copy's own words, so at 1.0x the only line that may
+    move is the version."""
+    folder.mkdir(parents=True, exist_ok=True)
+    lines = ["osu file format v14", "",
+             "[General]", "AudioFilename: train.wav", "PreviewTime: 8000",
+             "Mode: 0", "StackLeniency: 0.7", "",
+             "[Editor]", "Bookmarks: 4000,8000", "",
+             "[Metadata]", "Title:train", "Artist:Overtone", "Creator:gates",
+             "Version:train", "Tags:gate gates 1x practice", "BeatmapID:0",
+             "BeatmapSetID:-1", "",
+             "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+             "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+             "[Events]", "2,3000,4000", "",
+             "[TimingPoints]", "1000,400,4,2,0,80,1,0", "2000,-100,4,2,1,70,0,1",
+             "20000,500,4,2,0,80,1,0", "",
+             "[HitObjects]", "100,100,1400,1,0,0:0:0:0:",
+             "200,200,2000,2,0,L|300:200,1,100,0|0,0:0|0:0,0:0:0:0:",
+             "256,192,5000,12,0,7000,0:0:0:0:", "64,64,21000,1,0,0:0:0:0:", ""]
+    path = folder / "train.osu"
+    path.write_bytes("\r\n".join(lines).encode("utf-8"))
+    return path
+
+
+def train(audio_dir: Path) -> int:
+    """One map at 1.0x and at 1.37x, measured against the map it came from.
+
+    The claim the whole phase rests on is that an object keeps the beat it
+    had: the rate goes on the **grid**, so the gate recomputes each object's
+    beat phase from the source instead of believing the report. A 1.0x copy
+    changes nothing bar the version line; at 1.37x every object sits on the
+    beat it sat on to a pinned bound; the AR/OD round trips hold; a target
+    BPM on two tempi refuses until the tempo it means is picked; and 60
+    mutants of the source either read or refuse without a traceback.
+
+    The audio rows wait for rows 26.5 and 26.17: the resampled song, and the
+    written red lines graded against the written audio.
+    """
+    import tempfile
+
+    print("A practice copy of one map, measured against the map it came from.")
+    print("The 1.0x round trip, every beat phase at 1.37x, the AR/OD round")
+    print("trips, a target BPM refused on two tempi, and the fuzzed sources.\n")
+    failures: list[str] = []
+
+    def check(label: str, ok: bool, detail: str) -> None:
+        if not ok:
+            failures.append(f"{label}: {detail}")
+        print(f"  {label:<46} {'ok' if ok else 'FAIL'}  {detail}")
+
+    def verdict() -> int:
+        if failures:
+            print("\ntrain FAILED:")
+            for line in failures:
+                print(f"  {line}")
+            return 1
+        print("\nGate passed: the copy kept every beat it borrowed.")
+        return 0
+
+    with tempfile.TemporaryDirectory() as tmp:
+        source = _train_source(Path(tmp) / "source")
+        before = source.read_bytes()
+
+        plan = tr.plan_practice(source, rate=1.0)
+        check("the 1.0x plan is usable", plan["usable"],
+              "; ".join(r["code"] for r in plan["refusals"]) or "no refusals")
+        if not plan["usable"]:
+            return verdict()
+        text, report = tr.practice_beatmap(plan)
+        after = text.encode("utf-8")
+        changed = [line for line in
+                   __import__("difflib").unified_diff(
+                       before.decode("utf-8").split("\r\n"),
+                       text.split("\r\n"), lineterm="")
+                   if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))]
+        check("1.0x changes nothing bar the version line",
+              all(line.startswith("+Version:") or line == "-Version:train"
+                  for line in changed) and len(changed) == 2,
+              f"{len(changed)} line(s) differ")
+        check("1.0x keeps every beat exactly",
+              report["worst_beat_error"] == 0.0 and report["worst_ms_error"] == 0.0,
+              f"{report['worst_beat_error']:.2e} beats, {report['worst_ms_error']:.2e} ms")
+
+        plan = tr.plan_practice(source, rate=TRAIN_RATE)
+        check(f"the {TRAIN_RATE:g}x plan is usable", plan["usable"],
+              "; ".join(r["code"] for r in plan["refusals"]) or "no refusals")
+        if not plan["usable"]:
+            return verdict()
+        text, report = tr.practice_beatmap(plan)
+        check(f"every object kept its beat at {TRAIN_RATE:g}x",
+              report["worst_beat_error"] <= TRAIN_WORST_BEATS
+              and report["worst_ms_error"] <= TRAIN_WORST_MS,
+              f"worst {report['worst_beat_error']:.2e} beats, "
+              f"{report['worst_ms_error']:.2e} ms")
+        out = Path(tmp) / "copy.osu"
+        out.write_bytes(text.encode("utf-8"))
+        built = ta.read_osu_beatmap(out)
+        audit = ta.snap_audit(built, duration_s=21000.0 / TRAIN_RATE / 1000.0 + 2.0)
+        check("nothing came off the grid", bool(audit["ok"]) and not audit["unsnapped"],
+              f"{len(audit.get('unsnapped', []))} unsnapped of {audit['objects']}")
+        check("the writer gives the text back", ta.beatmap_text(built) == text,
+              f"{len(text)} characters")
+        reds = sorted(float(line.split(",")[1]) for line in
+                      next(s["lines"] for s in built["sections"]
+                           if s["name"] == "TimingPoints")
+                      if line.strip() and ta._is_red_line(line.strip()))
+        check("both beat lengths scaled exactly",
+              len(reds) == 2 and all(abs(got - want) < 5e-7
+                                     for got, want in zip(
+                                         reds, sorted([400.0 / TRAIN_RATE, 500.0 / TRAIN_RATE]))),
+              f"{reds}")
+
+        print()
+        round_tripped = True
+        for ar in [float(a) / 2 for a in range(0, 21)]:
+            if abs(tr.ms_to_ar(tr.ar_to_ms(ar)) - ar) > 1e-9:
+                round_tripped = False
+        for od in [float(o) / 2 for o in range(0, 21)]:
+            if abs(tr.ms_to_od(tr.od_to_ms(od)) - od) > 1e-9:
+                round_tripped = False
+        check("the AR/OD round trips hold", round_tripped, "AR/OD 0-10 in halves")
+
+        refused = tr.plan_practice(source, target_bpm=200)
+        codes = {r["code"] for r in refused["refusals"]}
+        check("a target BPM on two tempi refuses until one is picked",
+              not refused["usable"] and "ambiguous_target" in codes,
+              "; ".join(sorted(codes)) or "usable")
+        picked = tr.plan_practice(source, target_bpm=200, from_bpm=120)
+        check("picking the tempo resolves the rate", picked["usable"]
+              and abs(picked["rate"] - 200.0 / 120.0) < 1e-9,
+              f"rate {picked['rate']}" if picked["usable"] else
+              "; ".join(r["code"] for r in picked["refusals"]))
+
+        print()
+        rng = random.Random(7)
+        seed_text = source.read_bytes().decode("utf-8")
+        read, refused_count, crashed = 0, 0, 0
+        for n in range(TRAIN_MUTANTS):
+            mutant = Path(tmp) / f"mutant{n}.osu"
+            mutant.write_bytes(fuzz.mutate(seed_text, rng))
+            try:
+                practice = tr.plan_practice(mutant, rate=TRAIN_RATE)
+            except ValueError:
+                refused_count += 1
+            except Exception as exc:  # noqa: BLE001 -- the gate reports crashes
+                crashed += 1
+                print(f"  mutant {n}: {type(exc).__name__}: {exc}"[:110])
+            else:
+                read += 1
+                refused_count += 0 if practice["usable"] else 1
+        check(f"{TRAIN_MUTANTS} mutant maps read or refused", crashed == 0,
+              f"{read} read ({refused_count} of them refused), {crashed} crashed")
+
+    return verdict()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("gate",
                         choices=("bpm-snapshot", "coverage", "measures", "signatures",
                                  "robustness", "reference", "assisted", "real-audio",
-                                 "perf", "combine"))
+                                 "perf", "combine", "train"))
     parser.add_argument("--only", nargs="*", metavar="CASE",
                         help="bpm-snapshot / real-audio / perf: run just these cases")
     parser.add_argument("--update", action="store_true",
@@ -1568,6 +1747,8 @@ def main() -> None:
         raise SystemExit(perf(names, audio_dir, args.runs, args.update))
     if args.gate == "combine":
         raise SystemExit(combine(audio_dir))
+    if args.gate == "train":
+        raise SystemExit(train(audio_dir))
     if args.gate == "bpm-snapshot":
         names = args.only or list(bm.CASES)
         unknown = [n for n in names if n not in bm.CASES]

@@ -22,6 +22,51 @@ version is `v0.1.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-06 · Phase 26 step 1: the rate goes on the grid
+
+### Changed
+
+- **`python/overtone_train.py`**, the trainer's first three build-order steps minus the
+  audio: the practice document (`plan_practice`, rows 26.1-26.2) through row 25.2's repair
+  pass, the rate on the grid (26.3-26.4), the HP/CS/AR/OD settlement with the milliseconds
+  beside every AR and OD (26.8), the honest target BPM (26.11) and the naming that keeps a
+  copy from passing as the ranked map (26.13). Nothing here writes: the source is opened
+  read-only and a practice copy is text plus a report.
+- **The assembly preserves the file it was given.** Sections are patched in the file's own
+  order — only the lines the rate or the naming reaches are repointed, with each line's
+  own separator kept — and sections the phase knows nothing about (colours, variables)
+  travel verbatim. A 1.0x copy is the source byte for byte bar the version line, which is
+  what the gate checks.
+- **Keep is the default for all four stats**, because scaling a typical AR 9 at 1.37x asks
+  for AR 10.08 and a default must never refuse a typical map. An explicit scale past 10
+  refuses with both numbers and names row 26.10's compensated map as the escape. HP and CS
+  cannot scale (neither is a time) and mania's CircleSize cannot move at all.
+- **Storyboard and video lines are carried as written and counted**, not scaled into a
+  guess — the one deliberate gap in row 26.4's field list, said out loud in the docstring.
+- **`bench/gates.py train`** (26.22's first half): the 1.0x round trip, every beat phase at
+  1.37x against a pinned rounding bound, the AR/OD round trips, a target BPM refused on
+  two tempi until one is picked, and 60 fuzzed sources. The written-audio grade waits for
+  rows 26.5 and 26.17.
+
+### Measured
+
+- At 1.37x on the gate fixture: worst 6.75e-07 beats and 0.0002 ms from the beat each
+  object sat on; the gate pins 0.01 beats and 1.0 ms, which is the rounding bound rather
+  than a number tuned to a fixture. Snap audit on the copy: 0 of 4 unsnapped.
+- 961 Python tests (12 new), all green; `gates.py train` green in 0.1 s; `facts.py`,
+  `parity.py` green (the two new classes placed as python-only, like the combine rows).
+
+### Rejected / tried and dropped
+
+- **Scale as the AR/OD default.** It is the musically righter default for DT practice and
+  it was the first version: AR 9 at 1.37x refuses (10.08 > 10), which would make the
+  trainer refuse the maps it is for until row 26.10 exists. Keep never refuses; scale
+  stays one explicit ask away with the refusal explaining itself.
+- **Rebuilding the header sections from parsed dicts.** The first version wrote
+  `[General]`/`[Editor]`/`[Metadata]`/`[Difficulty]` from dicts and added an `AudioLeadIn`
+  the source never stated, so 1.0x differed by two lines instead of one. Patching the raw
+  lines keeps the file's own separators and never invents a key.
+
 ## Unreleased — 2026-10-04 · Portable data, a real version, and a copy-out for bug reports
 
 ### Fixed

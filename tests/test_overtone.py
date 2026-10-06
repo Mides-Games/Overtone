@@ -11231,5 +11231,214 @@ class CombineLoudnessTests(unittest.TestCase):
             self.assertAlmostEqual(
                 overtone_combine.loudness_plan(plan, -23.0)["target"], -23.0, delta=0.01)
 
+class TrainPlanTests(unittest.TestCase):
+    """The practice document: one map, a rate, settled stats and a name."""
+
+    LINES = [
+        "osu file format v14", "",
+        "[General]", "AudioFilename: song.wav", "AudioLeadIn: 0", "PreviewTime: 8000",
+        "Mode: 0", "StackLeniency: 0.7", "",
+        "[Editor]", "Bookmarks: 4000,8000", "",
+        "[Metadata]", "Title:Song", "Artist:Artist", "Creator:Mapper", "Version:Hard",
+        "Tags:tag", "BeatmapID:0", "BeatmapSetID:-1", "",
+        "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+        "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+        "[Events]", "2,3000,4000", "",
+        "[TimingPoints]", "1000,400,4,2,0,80,1,0", "2000,-100,4,2,1,70,0,1",
+        "20000,500,4,2,0,80,1,0", "",
+        "[HitObjects]",
+        "100,100,1400,1,0,0:0:0:0:",
+        "200,200,2000,2,0,L|300:200,1,100,0|0,0:0|0:0,0:0:0:0:",
+        "256,192,5000,12,0,7000,0:0:0:0:",
+        "64,64,21000,1,0,0:0:0:0:",
+        "",
+    ]
+
+    def _map(self, tmp: str, lines=None) -> Path:
+        folder = Path(tmp)
+        text = "\r\n".join(self.LINES if lines is None else lines)
+        (folder / "map.osu").write_bytes(text.encode("utf-8"))
+        return folder / "map.osu"
+
+    def _plan(self, path: Path, **kwargs) -> dict:
+        import overtone_train
+        plan = overtone_train.plan_practice(path, **kwargs)
+        json.dumps(plan)                 # the document is JSON or it is not a document
+        return plan
+
+    def test_a_rate_plans_with_kept_stats_and_a_named_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(self._map(tmp), rate=1.37)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        self.assertAlmostEqual(plan["rate"], 1.37)
+        self.assertEqual(plan["stats"]["modes"],
+                         {"hp": "keep", "cs": "keep", "ar": "keep", "od": "keep"})
+        self.assertEqual(plan["stats"]["values"]["ar"], 9.0)
+        self.assertAlmostEqual(plan["stats"]["ms"]["ar"], 600.0)
+        self.assertAlmostEqual(plan["stats"]["ms"]["od"], 37.5)
+        self.assertEqual(plan["naming"]["version"], "Hard (1.37x)")
+        self.assertIn("Mapper", plan["naming"]["tags"])
+        self.assertIn("practice", plan["naming"]["tags"])
+        self.assertEqual(plan["target"]["bpms"], [150.0, 120.0])
+        self.assertEqual(plan["target"]["dominant_bpm"], 150.0)
+
+    def test_a_rate_of_zero_is_never_a_division(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for bad in (0, 0.0, -1.0, "fast"):
+                plan = self._plan(self._map(tmp), rate=bad)
+                self.assertFalse(plan["usable"])
+                self.assertEqual(plan["refusals"][0]["code"], "rate_not_a_number")
+            plan = self._plan(self._map(tmp), rate=5.0)
+            self.assertFalse(plan["usable"])
+            self.assertEqual(plan["refusals"][0]["code"], "rate_out_of_range")
+            self.assertIn("0.25-4x", plan["refusals"][0]["why"])
+
+    def test_a_target_bpm_on_one_tempo_is_a_rate(self) -> None:
+        single = [line for line in self.LINES
+                  if line not in ("20000,500,4,2,0,80,1,0", "64,64,21000,1,0,0:0:0:0:")]
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(self._map(tmp, single), target_bpm=200)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        self.assertAlmostEqual(plan["rate"], 200.0 / 150.0)
+        self.assertEqual(plan["target"]["from_bpm"], 150.0)
+
+    def test_a_target_bpm_on_two_tempi_names_them_both(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(self._map(tmp), target_bpm=200)
+        self.assertFalse(plan["usable"])
+        refusal = next(r for r in plan["refusals"] if r["code"] == "ambiguous_target")
+        self.assertEqual(refusal["bpms"], [150.0, 120.0])
+        self.assertIn("150", refusal["why"])
+        with tempfile.TemporaryDirectory() as tmp:
+            picked = self._plan(self._map(tmp), target_bpm=200, from_bpm=120)
+        self.assertTrue(picked["usable"], picked["refusals"])
+        self.assertAlmostEqual(picked["rate"], 200.0 / 120.0)
+
+    def test_scaling_ar_past_ten_refuses_with_both_numbers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(self._map(tmp), rate=1.37, stats={"ar": "scale"})
+        self.assertFalse(plan["usable"])
+        refusal = next(r for r in plan["refusals"] if r["code"] == "stat_unreachable")
+        self.assertIn("10.08", refusal["why"])
+        self.assertIn("26.10", refusal["why"])
+        with tempfile.TemporaryDirectory() as tmp:
+            locked = self._plan(self._map(tmp), rate=1.37, stats={"ar": 10.0})
+        self.assertTrue(locked["usable"], locked["refusals"])
+        self.assertAlmostEqual(locked["stats"]["values"]["ar"], 10.0)
+
+    def test_hp_and_cs_do_not_scale_and_mania_keeps_its_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(self._map(tmp), rate=1.5, stats={"hp": "scale"})
+        self.assertFalse(plan["usable"])
+        self.assertEqual(plan["refusals"][-1]["code"], "stat_cannot_scale")
+        mania = [("Mode: 3" if line == "Mode: 0" else line) for line in self.LINES]
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(self._map(tmp, mania), rate=1.5, stats={"cs": 5})
+        self.assertFalse(plan["usable"])
+        self.assertEqual(plan["refusals"][-1]["code"], "mania_cs_locked")
+
+    def test_ar_and_od_round_trip_through_milliseconds(self) -> None:
+        import overtone_train
+        for ar in [float(a) / 2 for a in range(0, 21)]:
+            self.assertAlmostEqual(overtone_train.ms_to_ar(
+                overtone_train.ar_to_ms(ar)), ar, places=9)
+        for od in [float(o) / 2 for o in range(0, 21)]:
+            self.assertAlmostEqual(overtone_train.ms_to_od(
+                overtone_train.od_to_ms(od)), od, places=9)
+        self.assertAlmostEqual(overtone_train.ar_to_ms(9), 600.0)
+        self.assertAlmostEqual(overtone_train.od_to_ms(7), 37.5)
+
+
+class TrainGridTests(unittest.TestCase):
+    """The rate on the grid: every object keeps the beat it had."""
+
+    def _plan(self, path: Path, **kwargs) -> dict:
+        import overtone_train
+        return overtone_train.plan_practice(path, **kwargs)
+
+    def test_one_point_oh_changes_nothing_but_the_name(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainPlanTests()._map(tmp)
+            before = Path(path).read_bytes().decode("utf-8").split("\r\n")
+            plan = self._plan(path, rate=1.0)
+            text, report = overtone_train.practice_beatmap(plan)
+            after = text.split("\r\n")
+        self.assertEqual(report["worst_beat_error"], 0.0)
+        self.assertEqual(report["worst_ms_error"], 0.0)
+        diff = [(a, b) for a, b in zip(before, after) if a != b]
+        self.assertEqual(len(before), len(after))
+        kinds = sorted(line.split(":")[0] for line, _ in diff)
+        self.assertEqual(kinds, ["Tags", "Version"])
+        self.assertTrue(any(line.startswith("Version:Hard (1x)") for _, line in diff))
+
+    def test_every_object_keeps_its_beat_at_one_point_three_seven(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(TrainPlanTests()._map(tmp), rate=1.37)
+            text, report = overtone_train.practice_beatmap(plan)
+        self.assertLessEqual(report["worst_ms_error"], 1.0)
+        self.assertLessEqual(report["worst_beat_error"], 0.01)
+        self.assertEqual(report["objects"], 4)
+
+    def test_red_beat_lengths_scale_exactly_and_greens_do_not_move(self) -> None:
+        import overtone as ta
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(TrainPlanTests()._map(tmp), rate=1.5)
+            text, _ = overtone_train.practice_beatmap(plan)
+            out = Path(tmp) / "copy.osu"
+            out.write_bytes(text.encode("utf-8"))
+            built = ta.read_osu_beatmap(out)
+        lines = next(s["lines"] for s in built["sections"]
+                     if s["name"] == "TimingPoints")
+        reds = sorted(float(line.split(",")[1]) for line in lines
+                      if line.strip() and ta._is_red_line(line.strip()))
+        greens = [line for line in lines
+                  if line.strip() and not ta._is_red_line(line.strip())]
+        self.assertAlmostEqual(reds[0], 400.0 / 1.5, places=6)
+        self.assertAlmostEqual(reds[1], 500.0 / 1.5, places=6)
+        self.assertTrue(any(line.split(",")[1] == "-100" for line in greens),
+                        greens)
+        # The spinner still ends where it did, at the rate; the slider's
+        # curve is geometry and never moves.
+        at = overtone_train._rate_number("5000", 1.5)
+        end = overtone_train._rate_number("7000", 1.5)
+        objects = {str(o["raw"]).split(",")[2]: str(o["raw"]) for o in built["hitobjects"]}
+        self.assertIn(end, objects[at].split(",")[5])
+        slider = objects[overtone_train._rate_number("2000", 1.5)]
+        self.assertIn("L|300:200", slider)
+
+    def test_breaks_bookmarks_preview_and_lead_in_follow_the_rate(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(TrainPlanTests()._map(tmp), rate=2.0)
+            text, report = overtone_train.practice_beatmap(plan)
+            self.assertEqual(report["breaks"], 1)
+        self.assertIn("2,1500,2000", text)
+        self.assertIn("Bookmarks: 2000,4000", text)
+        self.assertIn("PreviewTime: 4000", text)
+
+    def test_sixty_mutant_maps_read_or_refuse_without_a_traceback(self) -> None:
+        import random
+        import overtone_train
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "bench"))
+        import fuzz_reader
+        rng = random.Random(7)
+        seed = "\r\n".join(TrainPlanTests.LINES)
+        crashed = 0
+        with tempfile.TemporaryDirectory() as tmp:
+            for n in range(60):
+                mutant = Path(tmp) / f"mutant{n}.osu"
+                mutant.write_bytes(fuzz_reader.mutate(seed, rng))
+                try:
+                    overtone_train.plan_practice(mutant, rate=1.5)
+                except ValueError:
+                    pass
+                except Exception:  # noqa: BLE001 -- the test reports crashes
+                    crashed += 1
+        self.assertEqual(crashed, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

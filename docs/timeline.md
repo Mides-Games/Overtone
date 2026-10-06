@@ -22,6 +22,23 @@ version is `v0.1.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-06 · Phase 25 closed: per-song backgrounds stay out
+
+### Changed
+
+- **Row 25.12 decided, not deferred**: per-segment backgrounds through an `.osb` move to
+  Rejected ideas with the reason. Each song showing its own art mid-marathon is cosmetic,
+  and nothing here can verify an `.osb` in osu! itself — a storyboard whose fades
+  mistime is worse than one background that is right. The build carries the first
+  segment's background through `[Events]` and counts every dropped event, video and
+  storyboard line by name instead of silently. If a user asks for per-song art, the row
+  comes back with a game to check it in. Phase 25 reads whole.
+
+### Measured
+
+- Nothing: this is a decision. `bench/facts.py` ok, so the counts these documents
+  state still match the source.
+
 ## Unreleased — 2026-10-06 · Phase 26 step 3: the Train section
 
 ### Changed

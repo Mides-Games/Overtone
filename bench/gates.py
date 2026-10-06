@@ -1579,10 +1579,9 @@ def train(audio_dir: Path) -> int:
     changes nothing bar the version line; at 1.37x every object sits on the
     beat it sat on to a pinned bound; the AR/OD round trips hold; a target
     BPM on two tempi refuses until the tempo it means is picked; and 60
-    mutants of the source either read or refuse without a traceback.
-
-    The audio rows wait for rows 26.5 and 26.17: the resampled song, and the
-    written red lines graded against the written audio.
+    mutants of the source either read or refuse without a traceback. Then the
+    song: resampled in process at 1.37x, the folder built to MP3 with an
+    `.osz`, and the written red line graded against the written audio.
     """
     import tempfile
 
@@ -1698,6 +1697,66 @@ def train(audio_dir: Path) -> int:
                 refused_count += 0 if practice["usable"] else 1
         check(f"{TRAIN_MUTANTS} mutant maps read or refused", crashed == 0,
               f"{read} read ({refused_count} of them refused), {crashed} crashed")
+
+        # And the song: resampled in process, the copy graded against it.
+        print()
+        song = Path(tmp) / "song"
+        song.mkdir()
+        rate_hz = 44100
+        y = np.zeros(rate_hz * 20, dtype="float32")
+        n = int(0.04 * rate_hz)
+        t = np.arange(n) / rate_hz
+        kick = (np.sin(2 * np.pi * 160 * t) * np.exp(-t / 0.006)).astype("float32")
+        at = 1.0
+        while at < 19.0:
+            y[int(at * rate_hz):int(at * rate_hz) + n] += kick
+            at += 0.4
+        sf.write(str(song / "song.wav"), y, rate_hz)
+        step = int(round(0.4 * 4 * 1000))
+        (song / "clicks.osu").write_bytes("\r\n".join(
+            ["osu file format v14", "",
+             "[General]", "AudioFilename: song.wav", "AudioLeadIn: 0",
+             "PreviewTime: 1000", "Mode: 0", "",
+             "[Editor]", "Bookmarks: 1000", "",
+             "[Metadata]", "Title:Clicks", "Artist:Overtone", "Creator:gates",
+             "Version:150", "Tags:gate", "BeatmapID:0", "BeatmapSetID:-1", "",
+             "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+             "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+             "[Events]", "",
+             "[TimingPoints]", "1000,400,4,2,0,80,1,0", "",
+             "[HitObjects]",
+             *[f"100,100,{t},1,0,0:0:0:0:" for t in range(1400, 19000, step)],
+             ""]).encode("utf-8"))
+        audio_plan = tr.plan_practice(song / "clicks.osu", rate=TRAIN_RATE)
+        check(f"the click map plans at {TRAIN_RATE:g}x", audio_plan["usable"],
+              "; ".join(r["code"] for r in audio_plan["refusals"]) or "no refusals")
+        if not audio_plan["usable"]:
+            return verdict()
+        whole = tr.build_practice(audio_plan, Path(tmp) / "set", audio_format="mp3",
+                                  osz=True, grade=True)
+        there = sorted(path.name for path in (Path(tmp) / "set").iterdir()
+                       if path.suffix.lower() != ".osz")
+        check("the folder holds what the report says",
+              there == sorted(entry["name"] for entry in whole["files"]),
+              f"{len(there)} file(s)")
+        check("the .osz holds them flat",
+              bool(whole["osz"]) and whole["osz"]["bytes"] > 0,
+              f"{whole['osz']['name']} ({whole['osz']['bytes']} B)")
+        checks = whole["checks"]
+        check("the build checks itself and passes", bool(checks["ok"]),
+              f"audio shift {checks['audio']['shift_ms']} ms, "
+              f"round trip {checks['round_trip']}")
+        check("the encoder delay is nothing to compensate",
+              bool(checks["audio"]["gapless"].get("present")),
+              f"LAME delay {checks['audio']['gapless'].get('delay_ms')} ms, "
+              f"shift {checks['audio']['shift_ms']} ms")
+        graded = checks["grade"]
+        check("every red line still sits on the resampled attacks",
+              bool(graded) and bool(graded["ok"])
+              and not (graded["counts"] or {}).get("check"),
+              f"{graded['counts'] if graded else None}, worst "
+              f"{graded['worst_ms'] if graded else None} ms, shift "
+              f"{graded['common_offset_ms'] if graded else None} ms")
 
     return verdict()
 

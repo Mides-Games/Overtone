@@ -11440,5 +11440,118 @@ class TrainGridTests(unittest.TestCase):
         self.assertEqual(crashed, 0)
 
 
+class TrainAudioTests(unittest.TestCase):
+    """The song at the rate: resampled in process, proven against the map."""
+
+    RATE = 1.37
+
+    def _clicks(self, tmp: str, seconds: float = 20.0, bpm: float = 150.0) -> Path:
+        import overtone as ta
+        folder = Path(tmp) / "src"
+        folder.mkdir(parents=True, exist_ok=True)
+        rate = 44100
+        y = np.zeros(int(rate * seconds), dtype="float32")
+        n = int(0.04 * rate)
+        t = np.arange(n) / rate
+        kick = (np.sin(2 * np.pi * 160 * t) * np.exp(-t / 0.006)).astype("float32")
+        beat = 60.0 / bpm
+        at = 1.0
+        while at < seconds - 1.0:
+            y[int(at * rate):int(at * rate) + n] += kick
+            at += beat
+        ta.sf.write(str(folder / "song.wav"), y, rate)
+        step = int(round(beat * 4 * 1000))
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "AudioLeadIn: 0",
+                 "PreviewTime: 1000", "Mode: 0", "",
+                 "[Editor]", "Bookmarks: 1000", "",
+                 "[Metadata]", "Title:Clicks", "Artist:Overtone", "Creator:gates",
+                 "Version:150", "Tags:gate", "BeatmapID:0", "BeatmapSetID:-1", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[Events]", "",
+                 "[TimingPoints]", "1000,400,4,2,0,80,1,0", "",
+                 "[HitObjects]",
+                 *[f"100,100,{t},1,0,0:0:0:0:" for t in range(1400, 19000, step)],
+                 ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        return folder / "map.osu"
+
+    def test_the_resampled_song_runs_as_long_as_the_rate_says(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = overtone_train.plan_practice(self._clicks(tmp), rate=self.RATE)
+            self.assertTrue(plan["usable"], plan["refusals"])
+            audio = overtone_train.build_audio(plan, Path(tmp) / "out.wav",
+                                               audio_format="wav")
+        self.assertAlmostEqual(audio["duration_ms"], audio["source_ms"] / self.RATE,
+                               delta=0.1)
+        self.assertEqual(audio["method"], "resample")
+
+    def test_the_written_lines_grade_against_the_written_audio(self) -> None:
+        import overtone as ta
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._clicks(tmp)
+            plan = overtone_train.plan_practice(source, rate=self.RATE)
+            audio = overtone_train.build_audio(plan, Path(tmp) / "out.wav",
+                                               audio_format="wav")
+            text, _ = overtone_train.practice_beatmap(plan)
+            out = Path(tmp) / "copy.osu"
+            out.write_bytes(text.encode("utf-8"))
+            graded = overtone_train.grade_copy(out, audio["path"])
+            check = overtone_train.verify_audio(plan, audio["path"])
+        self.assertTrue(check["ok"], check)
+        self.assertLessEqual(abs(check["shift_ms"]), 1.0)
+        self.assertTrue(graded["ok"], graded["counts"])
+        self.assertLess(graded["worst_ms"], 2.0)
+
+    def test_mp3_is_gapless_here_and_grades_like_wav(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._clicks(tmp)
+            plan = overtone_train.plan_practice(source, rate=self.RATE)
+            audio = overtone_train.build_audio(plan, Path(tmp) / "out.mp3",
+                                               audio_format="mp3")
+            text, _ = overtone_train.practice_beatmap(plan)
+            out = Path(tmp) / "copy.osu"
+            out.write_bytes(text.encode("utf-8"))
+            graded = overtone_train.grade_copy(out, audio["path"])
+            check = overtone_train.verify_audio(plan, audio["path"])
+        self.assertTrue(check["gapless"]["present"], check["gapless"])
+        self.assertTrue(check["ok"], check)
+        self.assertTrue(graded["ok"], graded["counts"])
+        self.assertLess(graded["worst_ms"], 2.0)
+
+    def test_a_dry_run_writes_nothing_and_a_second_build_refuses(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._clicks(tmp)
+            plan = overtone_train.plan_practice(source, rate=self.RATE)
+            shown = overtone_train.build_practice(plan, Path(tmp) / "set", dry_run=True)
+            self.assertFalse((Path(tmp) / "set").exists())
+            self.assertTrue(any(f["kind"] == "audio" for f in shown["files"]))
+            whole = overtone_train.build_practice(plan, Path(tmp) / "set",
+                                                  audio_format="wav")
+            there = sorted(p.name for p in (Path(tmp) / "set").iterdir())
+            self.assertEqual(there, sorted(f["name"] for f in whole["files"]))
+            self.assertTrue(whole["checks"]["ok"], whole["checks"])
+            with self.assertRaises(ValueError):
+                overtone_train.build_practice(plan, Path(tmp) / "set",
+                                              audio_format="wav")
+            with self.assertRaises(ValueError):
+                overtone_train.build_practice(plan, source.parent,
+                                              audio_format="wav")
+
+    def test_no_song_means_grid_without_audio(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainPlanTests()._map(tmp)
+            plan = overtone_train.plan_practice(path, rate=1.5)
+            self.assertTrue(plan["usable"], plan["refusals"])
+            with self.assertRaises(ValueError):
+                overtone_train.build_audio(plan, Path(tmp) / "out.wav")
+
+
 if __name__ == "__main__":
     unittest.main()

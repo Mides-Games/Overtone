@@ -22,6 +22,46 @@ version is `v0.1.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-06 · Phase 26 step 2: the song at the rate, and the folder
+
+### Changed
+
+- **`build_audio`** (row 26.5): the whole song resampled in process with soxr at the rate
+  ratio, nothing normalised or faded. **`verify_audio`** (26.7): the written length to
+  two frames, the start correlated at 0.0 ms peak 1.0, and the encoder's own gapless tag
+  read. **`grade_copy`** (26.17): the attacks of the built audio graded against the red
+  lines written beside them — the end of the phase's own argument. **`build_practice`**
+  (26.14): the folder straight for `Songs` (dry run, the song, the samples and
+  background, the beatmap through the atomic writer and the write log, `.osz` flat),
+  refusing existing folders and the source's own.
+- Sample files and the background travel under their own names — the copy keeps its
+  indices, unlike a compilation's remap. **Videos stay behind with the reason**: at
+  another speed they would be a desync the copy owns.
+- **`gates.py train` is whole** (26.22): the 1.37x MP3 folder with `.osz` builds and its
+  one red line grades ok against the resampled clicks.
+
+### Measured
+
+- Gate's 1.37x MP3 on clicks: length exact, shift 0.0 ms, LAME tag present (13.061 ms
+  written, stripped on read), grade 1 of 1 ok, worst 0.34 ms, common shift 0.34 ms. WAV
+  grades the same, so the encoder adds nothing.
+- soxr's suspected delay settled by measurement: a one-shot resample was read 1.9 ms
+  late on abrupt bursts by peak-picking, but soxr, polyphase and Fourier agree **to the
+  frame** on smooth onsets — filter ringing on the peak, not a shift of the edge — so no
+  trim is applied and the grade keeps it honest per build.
+- 966 Python tests (5 new audio/output tests since the 961), all green; `train` and
+  `combine` gates green; `facts.py`, `parity.py` green.
+
+### Rejected / tried and dropped
+
+- **Trimming a resampler delay.** The probe was built (impulse through the same ratio)
+  and then the measurement showed there is nothing to trim: the edge agrees across three
+  resamplers. A per-build trim of a delay that does not exist would be arithmetic nobody
+  asked for — the same rule the grid rows follow.
+- **Carrying videos into the copy.** A 20 s video at 1.37x plays 14.6 s of pictures over
+  14.6 s of song only if something re-times it, and nothing here does. The note names the
+  files left behind.
+
 ## Unreleased — 2026-10-06 · Phase 26 step 1: the rate goes on the grid
 
 ### Changed

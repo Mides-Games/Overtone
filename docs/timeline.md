@@ -22,6 +22,20 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-07 · Templates on real audio, re-measured: still blocked
+
+### Measured
+
+- Rust classifier at mappers' claps, 12 songs: median `P(snare)+P(clap)` **0.189**
+  (Python measured 0.138 on 11). Crash-vs-snare 0.408 — worse than chance, as before.
+  Lanes, the mismatch rule and sample→role stay waiting.
+- The refit alongside (0.752/0.846) is not a ship candidate, now explicitly: two
+  labels over thirteen classes, nothing checking the other eleven. A rebake from it
+  would move every class on evidence about two.
+- One direction noted, not taken: sample→role by similarity to the map's own bank
+  instead of by absolute templates would dodge the transfer problem entirely — but
+  that redesigns H6 rather than executing it, so it waits for a decision, not a turn.
+
 ## Unreleased — 2026-10-07 · Audio-only evidence for the Propose card
 
 ### Changed

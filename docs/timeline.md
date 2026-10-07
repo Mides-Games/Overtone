@@ -22,6 +22,33 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-07 · Labels measured against kiai: a miss, recorded
+
+### Changed
+
+- **`bench/labels.py`**: chorus seconds under mapper kiai vs chance, on a 100/100
+  tune/held-out split with the bar (+15 lift both halves) set before measuring.
+  Ground truth stated plainly: mapper kiai, not ranked (no `osu!.db` reader yet).
+
+### Measured
+
+- At 2.0: tune 24 lit, 33.1/25.6 (+7.5); held-out 6 lit, 37.0/25.1 (+11.9). MISS both.
+- The failure is recall: ~75 % of kiai-bearing songs propose no chorus at all —
+  full mixes collapse to one chroma family with 0-2.5 dB spreads, and the 3 dB
+  split never fires. A sweep put the best tune lift at +14.1 (ratio 1.3); the one
+  allowed adjustment (1.5, midway between measured unevenness and compressed lifts)
+  scored +9.7/+14.2 on the real binary — MISS both halves — and was reverted, since
+  a bar that misses twice is not a bar. `bench/labels.json` keeps the 1.5 numbers
+  stamped as the experiment they are.
+- 292 Rust tests green (classify included); the vectors never moved.
+
+### Rejected / tried and dropped
+
+- **Lowering the split to ship the recall.** At 1.5 more songs light (30→49) at
+  equal-or-better precision, which tempts — but the bar missed twice, and more
+  proposals at 38 % precision on a card that *writes* kiai is not the same as
+  better proposals. The conservative refusal stands until a better signal exists.
+
 ## Unreleased — 2026-10-07 · Setup choices without bespoke XML
 
 ### Changed

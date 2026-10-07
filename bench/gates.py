@@ -1758,6 +1758,28 @@ def train(audio_dir: Path) -> int:
               f"{graded['worst_ms'] if graded else None} ms, shift "
               f"{graded['common_offset_ms'] if graded else None} ms")
 
+        # And the ladder: one run, one mapset, a rung per rate.
+        print()
+        ladder = tr.plan_ladder(song / "clicks.osu", [1.0, TRAIN_RATE])
+        check("two rungs plan as one ladder", ladder["usable"],
+              "; ".join(r["code"] for r in ladder["refusals"]) or "no refusals")
+        if ladder["usable"]:
+            whole = tr.build_ladder(ladder, Path(tmp) / "ladder", audio_format="wav",
+                                    grade=True)
+            there = sorted(path.name for path in (Path(tmp) / "ladder").iterdir())
+            check("the ladder folder holds every rung with its own song",
+                  there == sorted(entry["name"] for entry in whole["files"]),
+                  f"{len(there)} file(s)")
+            check("every rung checks itself and passes", bool(whole.get("ok")),
+                  ", ".join(f"{row['rate']}x worst "
+                            f"{(row['checks']['grade'] or {}).get('worst_ms')} ms"
+                            for row in whole["rungs"]))
+            for row in whole["rungs"]:
+                built = ta.read_osu_beatmap(Path(tmp) / "ladder" / row["osu"])
+                if built["general"]["AudioFilename"] != row["audio_name"]:
+                    check(f"rung {row['rate']}x names its own song", False,
+                          built["general"]["AudioFilename"])
+
     return verdict()
 
 

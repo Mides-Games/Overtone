@@ -11553,5 +11553,74 @@ class TrainAudioTests(unittest.TestCase):
                 overtone_train.build_audio(plan, Path(tmp) / "out.wav")
 
 
+class TrainLadderTests(unittest.TestCase):
+    """One run, one mapset, several rates: practising is a ladder."""
+
+    def _ladder(self, path: Path, rates, **kwargs) -> dict:
+        import overtone_train
+        ladder = overtone_train.plan_ladder(path, rates, **kwargs)
+        json.dumps(ladder)              # the document is JSON or it is not a document
+        return ladder
+
+    def test_three_rungs_plan_with_an_audio_file_each(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            ladder = self._ladder(TrainAudioTests()._clicks(tmp), [1.0, 1.2, 1.5])
+        self.assertTrue(ladder["usable"], ladder["refusals"])
+        self.assertEqual([plan["rate"] for plan in ladder["plans"]], [1.0, 1.2, 1.5])
+        names = [overtone_train._ladder_audio_name("song", rate, "mp3")
+                 for rate in ladder["rates"]]
+        self.assertEqual(names, ["song-1x.mp3", "song-1.2x.mp3", "song-1.5x.mp3"])
+        versions = [plan["naming"]["version"] for plan in ladder["plans"]]
+        self.assertEqual(len(set(versions)), 3)
+
+    def test_a_ladder_of_one_is_a_copy_and_twice_is_not_climbing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainAudioTests()._clicks(tmp)
+            self.assertEqual(self._ladder(path, [1.5])["refusals"][0]["code"],
+                             "not_a_ladder")
+            self.assertEqual(self._ladder(path, [1.2, 1.2])["refusals"][0]["code"],
+                             "repeated_rung")
+            self.assertEqual(self._ladder(path, [1.0] * 13)["refusals"][0]["code"],
+                             "too_many_rungs")
+            bad = self._ladder(path, [1.0, 5.0])
+            self.assertFalse(bad["usable"])
+            self.assertEqual(bad["refusals"][0]["code"], "rate_out_of_range")
+
+    def test_a_rung_refused_is_a_ladder_refused_with_the_rung_named(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainAudioTests()._clicks(tmp)
+            ladder = self._ladder(path, [1.2, 1.5], stats={"ar": "scale"})
+        self.assertFalse(ladder["usable"])
+        # AR 9 scaled past 10 on the faster rungs, kept whole on 1.2x: the
+        # refusal names which rung cannot be written.
+        self.assertTrue(all(refusal["rung"] == "1.5x" for refusal in ladder["refusals"]))
+
+    def test_the_folder_holds_every_rung_with_its_own_song(self) -> None:
+        import overtone as ta
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            ladder = self._ladder(TrainAudioTests()._clicks(tmp), [1.0, 1.2, 1.5])
+            shown = overtone_train.build_ladder(ladder, Path(tmp) / "set", dry_run=True,
+                                                audio_format="wav")
+            self.assertFalse((Path(tmp) / "set").exists())
+            self.assertEqual([f["kind"] for f in shown["files"]],
+                             ["audio"] * 3 + ["beatmap"] * 3)
+            whole = overtone_train.build_ladder(ladder, Path(tmp) / "set",
+                                                audio_format="wav", grade=True)
+            there = sorted(p.name for p in (Path(tmp) / "set").iterdir())
+            self.assertEqual(there, sorted(f["name"] for f in whole["files"]))
+            self.assertTrue(whole["ok"], whole["rungs"])
+            for row in whole["rungs"]:
+                self.assertTrue(row["checks"]["ok"], row["checks"])
+                self.assertTrue(row["checks"]["grade"]["ok"], row["checks"]["grade"])
+                built = ta.read_osu_beatmap(Path(tmp) / "set" / row["osu"])
+                self.assertEqual(built["general"]["AudioFilename"], row["audio_name"])
+            with self.assertRaises(ValueError):
+                overtone_train.build_ladder(ladder, Path(tmp) / "set", audio_format="wav")
+            with self.assertRaises(ValueError):
+                overtone_train.build_ladder(ladder, Path(tmp) / "src", audio_format="wav")
+
+
 if __name__ == "__main__":
     unittest.main()

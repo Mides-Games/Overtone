@@ -22,8 +22,9 @@ rule per timestamp the format has, the HP/CS/AR/OD settlement, the honest
 target BPM, the naming that keeps a copy from passing as the ranked map it
 came from, the song resampled in process (26.5) with the encoder delay
 measured rather than assumed (26.7), the self-check that grades the written
-red lines against the written audio (26.17), and the output folder straight
-into `Songs` (26.14). The Train section itself (26.21) is the app's.
+red lines against the written audio (26.17), the output folder straight
+into `Songs` (26.14), and rate ladders as one mapset with one audio file per
+distinct rate (26.16). The Train section itself (26.21) is the app's.
 
 **Nothing here touches the source.** It is opened read-only even to fix it:
 a repair is recorded against the plan, never against someone else's map.
@@ -1279,3 +1280,205 @@ def describe_target(plan: dict) -> str:
     rows = ", ".join(f"{b:g} BPM" for b in bpms)
     return (f"The map holds {len(bpms)} tempi ({rows}); the dominant "
             f"({target.get('dominant_bpm')}) is offered with that rate on screen.")
+
+
+# ---------------------------------------------------------------------------
+# Rate ladders: one run, one mapset, several rates (Phase 26, row 26.16)
+# ---------------------------------------------------------------------------
+
+#: The ladder document's own format, beside the practice document's.
+LADDER_FORMAT = 1
+
+#: How many rungs a ladder holds. Each rung is a resample, an encode and a
+#: grade; past a dozen the run stops being a practice session's setup and
+#: starts being an evening. A longer ladder is two ladders.
+MAX_RUNGS = 12
+
+
+def _ladder_rates(rates) -> tuple[list[float] | None, list[dict]]:
+    """The rung rates as numbers, each inside the window, each its own rung."""
+    refusals: list[dict] = []
+    if rates is None or isinstance(rates, bool):
+        return None, [{"code": "rates_not_a_list",
+                       "why": "A ladder is a list of rates, not "
+                              f"{rates!r}."}]
+    try:
+        values = [float(rate) for rate in rates]
+    except (TypeError, ValueError):
+        return None, [{"code": "rates_not_a_list",
+                       "why": "A ladder is a list of numbers; one of them is not a number."}]
+    if len(values) < 2:
+        return None, [{"code": "not_a_ladder",
+                       "why": "One rate is a practice copy, not a ladder; "
+                              "a ladder climbs at least two rungs."}]
+    if len(values) > MAX_RUNGS:
+        return None, [{"code": "too_many_rungs",
+                       "why": f"{len(values)} rungs past the {MAX_RUNGS} a ladder holds; "
+                              f"a longer ladder is two ladders."}]
+    for value in values:
+        if not value > 0.0:
+            return None, [{"code": "rate_not_a_number",
+                           "why": f"The rate ({value:g}) is not positive; never a division by zero."}]
+        if not RATE_MIN - 1e-12 <= value <= RATE_MAX + 1e-12:
+            return None, [{"code": "rate_out_of_range",
+                           "why": f"The rate ({value:g}) sits outside "
+                                  f"{RATE_MIN:g}-{RATE_MAX:g}x, which is the window "
+                                  f"a copy may ask for."}]
+    seen: set[float] = set()
+    for value in values:
+        if value in seen:
+            return None, [{"code": "repeated_rung",
+                           "why": f"{value:g}x twice is the same rung twice, under one name; "
+                                  f"a ladder climbs."}]
+        seen.add(value)
+    return values, refusals
+
+
+def _ladder_audio_name(stem: str, rate: float, audio_format: str) -> str:
+    """One audio file per distinct rate, named for the rung that needs it."""
+    stem = stem or "audio"
+    return f"{stem}-{float(rate):g}x.{audio_format}"
+
+
+def plan_ladder(osu, rates, audio=None, stats: dict | None = None,
+                naming: dict | None = None,
+                audio_method: str = "resample") -> dict:
+    """One source map as a ladder document: a practice plan per rung.
+
+    The reference makes one copy at a time; practising is a ladder, so one
+    run plans every rung and the build below writes them as one mapset with
+    one audio file per distinct rate. Each rung is the same plan a single
+    copy would get — the same stats, the same naming with its own rate in the
+    fields — so a rung refused is a ladder refused, with the rung named.
+    Plain JSON throughout, like the practice document.
+    """
+    values, refusals = _ladder_rates(rates)
+    plans: list[dict] = []
+    if values is not None:
+        for rate in values:
+            plan = plan_practice(osu, audio=audio, rate=rate, stats=stats,
+                                 naming=naming, audio_method=audio_method)
+            plans.append(plan)
+            for refusal in plan["refusals"]:
+                refusals.append({"rung": f"{rate:g}x", **refusal})
+    usable = values is not None and all(plan["usable"] for plan in plans)
+    return {"format": LADDER_FORMAT, "source": str(osu), "rates": values,
+            "plans": plans, "refusals": refusals, "usable": usable}
+
+
+def build_ladder(plan: dict, folder: str | os.PathLike[str], *,
+                 audio_format: str = DEFAULT_AUDIO_FORMAT,
+                 osz=False, dry_run: bool = False,
+                 allow_existing: bool = False,
+                 verify: bool = True, grade: bool = False,
+                 progress=None) -> dict:
+    """The ladder as one mapset folder, an ``.osz``, or neither.
+
+    Every rung is settled before anything is written — the texts, the audio
+    names, the file list — so a ladder that cannot be built refuses with
+    nothing on disk. ``dry_run`` stops there. Then, rung by rung on one
+    progress bar over the lot: one audio file per distinct rate (a rung whose
+    rate is already on disk reuses it), each rung's own ``.osu`` through the
+    atomic writer and the write log, the shared samples and background once,
+    and the checks per rung when asked.
+
+    The same refusals as a single copy: a folder holding a beatmap unless
+    ``allow_existing``, the source's own folder always, never overwriting a
+    map or a ``.bak``.
+    """
+    def say(done: int, total: int) -> None:
+        if progress is not None:
+            progress("ladder", done, total)
+
+    if not plan.get("usable"):
+        why = "; ".join((f"rung {r.get('rung')}: " if r.get("rung") else "")
+                        + (r.get("why") or r.get("code", "?"))
+                        for r in plan.get("refusals", ())) or "no reason given"
+        raise ValueError(f"This ladder refused: {why}")
+    if int(plan.get("format") or 0) != LADDER_FORMAT:
+        raise ValueError(f"Ladder format {plan.get('format')!r} is not {LADDER_FORMAT}.")
+    if audio_format not in AUDIO_FORMATS:
+        raise ValueError(f"Unknown audio format {audio_format!r}. "
+                         f"Known: {', '.join(AUDIO_FORMATS)}.")
+    out = Path(folder)
+    if out.exists() and not out.is_dir():
+        raise ValueError(f"{out} is not a folder.")
+    first = plan["plans"][0]
+    _refuse_source_folder(first, out)
+    if out.is_dir() and not allow_existing:
+        existing = sorted(path.name for path in out.iterdir()
+                          if path.suffix.lower() == ".osu")
+        if existing:
+            raise ValueError(f"{out.name} already holds {existing[0]!r}. Say "
+                             f"allow_existing to add this ladder to it.")
+
+    named_audio = (first["source"]["audio"] or {}).get("named") or "audio"
+    stem = Path(named_audio).stem or "audio"
+    texts: list[tuple[str, str, dict]] = []
+    for rung in plan["plans"]:
+        rate = float(rung["rate"])
+        audio_file = _ladder_audio_name(stem, rate, audio_format)
+        text, beatmap = practice_beatmap(rung)
+        if audio_file != named_audio:
+            text = "\r\n".join(_patch_key_lines(text.split("\r\n"),
+                                                {"AudioFilename": audio_file}))
+        osu_file = f"{ta._safe_component(rung['source']['metadata'].get('Artist') or 'Artist', 'Artist')} - " \
+                   f"{ta._safe_component(rung['source']['metadata'].get('Title') or 'Title', 'Title')} " \
+                   f"[{ta._safe_component(rung['naming']['version'], 'practice')}].osu"
+        texts.append((audio_file, osu_file, {"text": text, "beatmap": beatmap,
+                                             "rate": rate, "plan": rung}))
+    files = [{"name": audio, "kind": "audio", "bytes": None}
+             for audio in dict.fromkeys(audio for audio, _osu, _rep in texts)]
+    files += [{"name": osu, "kind": "beatmap", "bytes": len(rep["text"].encode("utf-8"))}
+              for _audio, osu, rep in texts]
+    report = {"folder": str(out), "rates": plan["rates"], "written": False,
+              "dry_run": bool(dry_run), "files": files,
+              "rungs": [{"rate": rep["rate"], "osu": osu, "audio_name": audio,
+                         "checks": None} for audio, osu, rep in texts],
+              "osz": None}
+    if dry_run:
+        return report
+
+    out.mkdir(parents=True, exist_ok=True)
+    by_audio: dict[str, dict] = {}
+    say(0, len(texts))
+    for n, (audio_file, osu_file, rep) in enumerate(texts):
+        if audio_file not in by_audio:
+            by_audio[audio_file] = build_audio(rep["plan"], out / audio_file,
+                                               audio_format=audio_format)
+        payload = rep["text"].encode("utf-8")
+        ta._atomic_write_bytes(out / osu_file, payload)
+        ta.log_write(out / osu_file, WRITE_OP, None,
+                     {"bytes": len(payload), "rate": rep["rate"],
+                      "objects": rep["beatmap"]["objects"], "audio": audio_file,
+                      "ladder": [f"{r:g}x" for r in plan["rates"]]})
+        say(n + 1, len(texts))
+    copied, support_notes, background = _copy_support(first, out)
+    for entry in copied:
+        files.append({"name": entry["name"],
+                      "kind": "background" if entry["name"] == background else "sample",
+                      "bytes": entry["bytes"]})
+    for entry in report["files"]:
+        path = out / entry["name"]
+        entry["bytes"] = path.stat().st_size if path.is_file() else None
+    report.update({"written": True, "audio": by_audio, "copied": copied,
+                   "support_notes": support_notes})
+    if osz:
+        if isinstance(osz, bool):
+            artist = ta._safe_component(first["source"]["metadata"].get("Artist") or "Artist",
+                                        "Artist")
+            title = ta._safe_component(first["source"]["metadata"].get("Title") or "Title",
+                                       "Title")
+            target = out.parent / f"{artist} - {title}.osz"
+        else:
+            target = Path(osz)
+        report["osz"] = _zip_folder(out, target)
+    if verify:
+        for row, (audio_file, osu_file, rep) in zip(report["rungs"], texts):
+            row["checks"] = verify_build(rep["plan"], out / osu_file,
+                                         out / audio_file, rep["text"], grade=grade)
+        report["ok"] = all(row["checks"]["ok"] for row in report["rungs"])
+    else:
+        report["ok"] = None
+    say(len(texts), len(texts))
+    return report

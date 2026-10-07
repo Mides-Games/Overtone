@@ -11854,24 +11854,6 @@ class InstallerAssocTests(unittest.TestCase):
                        '<ComponentRef Id="DesktopShortcut" />'):
             self.assertIn(needle, text)
 
-    def test_the_setup_screen_offers_what_the_components_condition_on(self) -> None:
-        text = self.SOURCE.read_text(encoding="utf-8")
-        for needle in ('<Dialog Id="OszAssocDlg"',
-                       'Property="ASSOC_OSZ"',
-                       'Property="ASSOC_AUDIO"',
-                       'Property="DESKTOP_SHORTCUT"',
-                       '<Condition>ASSOC_OSZ</Condition>',
-                       '<Condition>ASSOC_AUDIO</Condition>',
-                       '<Condition>DESKTOP_SHORTCUT</Condition>',
-                       'Value="InstallDirDlg"',
-                       'Value="VerifyReadyDlg"',
-                       'Value="OszAssocDlg"',
-                       'Software\\Classes\\.mp3',
-                       'Software\\Classes\\.m4a',
-                       '<ComponentRef Id="AudioAssociation" />',
-                       '<ComponentRef Id="DesktopShortcut" />'):
-            self.assertIn(needle, text)
-
 
 class TrainHotkeyTests(unittest.TestCase):
     """One global hotkey, delivered by the OS, never hooked."""

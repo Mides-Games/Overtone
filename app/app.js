@@ -213,6 +213,9 @@ const I18N = {
     hsv_all_some: "{n} of {of} difficulties decided; {bad} could not be read.",
     hsv_all_some_one: "{n} of {of} difficulties decided; 1 could not be read.",
     hsv_profile: "Profile", hsv_prof_balanced: "Balanced",
+    hsv_evidence: "Evidence", hsv_ev_map: "Map + audio", hsv_ev_audio: "Audio only",
+    hsv_ev_note_audio: "Hears drums but no combos, bars or mapper prior — best on bare maps.",
+    hsv_ev_matched: "{n} sounds placed, {m} attacks with no object.",
     hsv_prof_balanced_note: "Balanced, the default: every instrument heard can take its sound, placed by the beat.",
     hsv_prof_drum_focused: "Drum-focused",
     hsv_prof_drum_focused_note: "Drum-focused: kick, snare, hats and cymbals choose the sounds; vocals and melody only keep the plain sound; a finish leans to where a combo starts.",
@@ -1031,6 +1034,9 @@ const I18N = {
     hsv_all_some: "{n} de {of} dificultades decididas; {bad} no se pudieron leer.",
     hsv_all_some_one: "{n} de {of} dificultades decididas; 1 no se pudo leer.",
     hsv_profile: "Perfil", hsv_prof_balanced: "Equilibrado",
+    hsv_evidence: "Evidencia", hsv_ev_map: "Mapa + audio", hsv_ev_audio: "Solo audio",
+    hsv_ev_note_audio: "Escucha batería pero no combos, compases ni prior del mapper — mejor en mapas pelados.",
+    hsv_ev_matched: "{n} sonidos ubicados, {m} ataques sin objeto.",
     hsv_prof_balanced_note: "Equilibrado, el de siempre: cada instrumento que se oye puede llevar su sonido, ubicado según el pulso.",
     hsv_prof_drum_focused: "Centrado en la batería",
     hsv_prof_drum_focused_note: "Centrado en la batería: bombo, caja, hi-hats y platillos eligen los sonidos; la voz y la melodía solo mantienen el sonido liso; un finish tiende a caer donde empieza un combo.",
@@ -3995,7 +4001,7 @@ async function hsvPick(file) {
   if (HSD.file !== file) {
     const cached = await api().hitsound_decide_cached(file);
     if (HSV.file !== file) return;
-    if (cached.ok) hsdAdopt(file, cached.units, cached.profile);
+    if (cached.ok) hsdAdopt(file, cached.units, cached.profile, cached.evidence);
   }
   renderHitsoundsView();
   // The same difficulty in the transport: its samples load for the ▶ buttons.
@@ -4116,9 +4122,9 @@ function hsvPlay(i) {
 // no proposal: one per object, keyed by the sound they were set on, so the
 // bridge can refuse them if that sound moved.
 const HSD = { file: "", units: [], byKey: new Map(), accepted: new Set(), choice: new Map(),
-              edits: new Map(), undo: false, proposing: false,
+              edits: new Map(), undo: false, proposing: false, evidence: "map",
               profiles: ["balanced"], profile: "balanced", proposedWith: "",
-              suggested: "", picked: false };
+              suggested: "", picked: false, matched: null, unmatched: null };
 
 // Hitsound profiles by name, as the bridge lists them (balanced first): a
 // profile the page has words for shows them, any other its file's name.
@@ -4260,6 +4266,13 @@ function hsdRender() {
   $("hsvProposeAll").disabled = HSD.proposing || !$("hsvMap").options.length;
   $("hsvProfile").disabled = HSD.proposing;
   $("hsvProfileNote").textContent = hsdProfileNote();
+  document.querySelectorAll("#hsvEvidence button").forEach((b) =>
+    b.classList.toggle("on", b.dataset.evidence === HSD.evidence));
+  $("hsvEvidenceNote").textContent = HSD.evidence === "audio"
+    ? [t("hsv_ev_note_audio"),
+       HSD.matched !== null && HSD.matched !== undefined
+         ? t("hsv_ev_matched", { n: HSD.matched, m: HSD.unmatched || 0 }) : ""]
+      .filter(Boolean).join(" ") : "";
   $("hsvDecideAll").disabled = $("hsvDecideNone").disabled = !units;
   for (const id of ["hsvDecidePreview", "hsvDecideHear", "hsvDecideApply", "hsvDecideCopy"]) {
     $(id).disabled = !has;
@@ -4343,9 +4356,10 @@ function hsdEditClear() {
 
 // One proposal's units become the decision state: every sound ticked, no
 // runner-up chosen, no hand edit, nothing to undo.
-function hsdAdopt(file, units, profile) {
+function hsdAdopt(file, units, profile, evidence) {
   HSD.file = file;
   HSD.proposedWith = profile || HSD.profile;
+  HSD.evidence = evidence || "map";
   HSD.units = units;
   HSD.byKey = new Map(units.map((u) => [hsdKey(u.object, u.part, u.edge), u]));
   HSD.choice = new Map();
@@ -4357,14 +4371,16 @@ async function hsvPropose() {
   if (!api() || !HSV.file || HSD.proposing) return;
   HSD.proposing = true; hsdRender();
   try {
-    const reply = await api().hitsound_decide_propose(HSV.file, HSD.profile);
+    const reply = await api().hitsound_decide_propose(HSV.file, HSD.profile, HSD.evidence);
     if (HSV.file !== (reply.file || HSV.file)) { hsdRender(); return; }
     if (!reply.ok) {
       if (reply.key === "no_rust") toast(t("hsv_no_rust"), true);
       else editFailure(reply);
       return;
     }
-    hsdAdopt(HSV.file, reply.units, reply.profile);
+    HSD.matched = reply.matched;
+    HSD.unmatched = reply.unmatched;
+    hsdAdopt(HSV.file, reply.units, reply.profile, reply.evidence);
   } finally {
     HSD.proposing = false;
   }
@@ -4399,7 +4415,7 @@ async function hsvProposeAll() {
   const mine = HSV.file && reply.maps.find((m) => m.file === HSV.file);
   if (mine && mine.error === undefined) {
     const cached = await api().hitsound_decide_cached(HSV.file);
-    if (cached.ok && HSV.file === cached.file) hsdAdopt(HSV.file, cached.units, cached.profile);
+    if (cached.ok && HSV.file === cached.file) hsdAdopt(HSV.file, cached.units, cached.profile, cached.evidence);
   }
   renderHitsoundsView();
   hsdTicked();
@@ -8460,6 +8476,9 @@ function wire() {
   $("hsvMore").onclick = () => { HSV.shown += HSV_PAGE; renderHitsoundsView(); };
   $("hsvPropose").onclick = () => hsvPropose();
   $("hsvProposeAll").onclick = () => hsvProposeAll();
+  document.querySelectorAll("#hsvEvidence button").forEach((b) => {
+    b.onclick = () => { HSD.evidence = b.dataset.evidence; hsdRender(); };
+  });
   $("hsvProfile").onchange = () => {
     HSD.profile = $("hsvProfile").value; HSD.picked = true; hsdRender();
   };

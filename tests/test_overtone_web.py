@@ -26,7 +26,8 @@ import numpy as np
 import overtone_web as web
 import overtone as ta
 
-from test_overtone import _drum_track, _wav_bytes, TrainDetectTests, TrainPlanTests
+from test_overtone import _drum_track, _wav_bytes
+import test_overtone
 
 def _analysis(points, beats=None, engine="precision", residual=0.4, onset_frames=5000):
     beats = np.arange(0.5, 60.0, 0.4) if beats is None else np.asarray(beats, dtype=float)
@@ -1006,6 +1007,17 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
              {"object": 1, "part": "circle", "edge": None, "time_ms": 1500.0,
               "proposal": {"bank": "drum", "additions": ["clap"], "bits": 8}}]
 
+    AUDIO_UNITS = [
+        {"object": None, "part": "attack", "edge": None, "time_ms": 1005.0,
+         "proposal": {"bank": "drum", "additions": ["clap"], "bits": 8},
+         "heard": {"time_ms": 1005.0}, "alternatives": [], "terms": []},
+        {"object": None, "part": "attack", "edge": None, "time_ms": 1490.0,
+         "proposal": {"bank": "soft", "additions": ["finish"], "bits": 4},
+         "heard": {"time_ms": 1490.0}, "alternatives": [], "terms": []},
+        {"object": None, "part": "attack", "edge": None, "time_ms": 5000.0,
+         "proposal": {"bank": "drum", "additions": ["clap"], "bits": 8},
+         "heard": {"time_ms": 5000.0}, "alternatives": [], "terms": []}]
+
     def _song(self, tmp: str) -> web.Api:
         folder = Path(tmp)
         (folder / "audio.mp3").write_bytes(b"ID3" + bytes(64))
@@ -1032,6 +1044,30 @@ class HitsoundDecideBridgeTests(_IsolatedConfig):
                              (2, 2, 1, 1))
             self.assertEqual(untouched, before)
             self.assertEqual(api.hitsound_decide_preview("hard.osu")["accepted"], 2)
+
+    def test_audio_only_evidence_maps_onto_objects_and_counts_the_rest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            with mock.patch.object(web.overtone_rust, "hitsound",
+                                   return_value={"units": self.AUDIO_UNITS,
+                                                 "mode": "audio-only"}):
+                reply = api.hitsound_decide_propose("hard.osu", None, "audio")
+            json.dumps(reply)
+            self.assertTrue(reply["ok"], reply)
+            self.assertEqual(reply["evidence"], "audio")
+            self.assertEqual((reply["matched"], reply["unmatched"]), (2, 1))
+            placed = [(unit["object"], unit["time_ms"]) for unit in reply["units"]]
+            self.assertEqual(placed, [(0, 1000.0), (1, 1500.0)])
+            preview = api.hitsound_decide_preview("hard.osu")
+            self.assertTrue(preview["ok"], preview)
+            self.assertEqual(preview["accepted"], 2)
+
+    def test_audio_only_refuses_an_unknown_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            api = self._song(tmp)
+            reply = api.hitsound_decide_propose("hard.osu", None, "whistle")
+            self.assertFalse(reply["ok"])
+            self.assertIn("map", reply["detail"])
 
     def test_apply_writes_with_a_backup_and_one_undo_restores(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -5060,7 +5096,7 @@ class TrainBridgeTests(_IsolatedConfig):
             first = songs / "1 Artist - Song"
             first.mkdir(parents=True)
             (first / "map.osu").write_bytes(
-                "\r\n".join(TrainDetectTests.LINES).format(
+                "\r\n".join(test_overtone.TrainDetectTests.LINES).format(
                     artist="Artist", title="Song", version="Hard").encode("utf-8"))
             replays = songs.parent / "Replays"
             replays.mkdir()
@@ -5087,7 +5123,7 @@ class TrainBridgeTests(_IsolatedConfig):
 
     def test_dropping_spinners_is_an_explicit_ask(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            path = TrainPlanTests()._map(tmp)
+            path = test_overtone.TrainPlanTests()._map(tmp)
             api = web.Api()
             api.train_pick([str(path)])
             state = api.train_set({"rate": 1.5, "drop_spinners": True})

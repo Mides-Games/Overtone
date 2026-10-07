@@ -18,6 +18,7 @@ frontends remember the same file and detection settings.
 from __future__ import annotations
 
 import base64
+import bisect
 import json
 import os
 import re
@@ -339,6 +340,50 @@ AnalysisStopped = ta.AnalysisStopped
 # ---------------------------------------------------------------------------
 # Bridge exposed to JavaScript as window.pywebview.api
 # ---------------------------------------------------------------------------
+
+def _audio_units_to_events(beatmap: dict, units: list,
+                           tolerance_ms: float = 50.0) -> tuple[list, int]:
+    """Audio-only decisions onto a map's sound events, for the H5 write path.
+
+    Each unit was decided at an attack time with no object; here it takes the
+    nearest sound event inside the tolerance, keeps its proposal, terms and
+    alternatives, and moves its time onto the event it will play at (the
+    attack it was heard at stays in ``heard``). One event takes its nearest
+    attack. Attacks with no object are counted, not placed: there is nothing
+    to write a hitsound onto, and inventing an object for them is out.
+    """
+    events = sorted((float(e["time"]), e) for e in ta.sound_events(beatmap)
+                    if "time" in e)
+    times = [t for t, _ in events]
+    best: dict = {}
+    dropped = 0
+    for unit in units or []:
+        try:
+            moment = float(unit.get("time_ms", 0.0))
+        except (TypeError, ValueError):
+            dropped += 1
+            continue
+        at = bisect.bisect_left(times, moment)
+        near = [events[k][1] for k in (at - 1, at) if 0 <= k < len(events)]
+        pick = min(near, key=lambda e: abs(float(e["time"]) - moment), default=None)
+        if pick is None or abs(float(pick["time"]) - moment) > tolerance_ms:
+            dropped += 1
+            continue
+        key = (pick["object"], pick["part"], pick["edge"])
+        gap = abs(float(pick["time"]) - moment)
+        if key not in best or gap < best[key][0]:
+            best[key] = (gap, unit, pick)
+    mapped = []
+    for _gap, unit, event in best.values():
+        row = dict(unit)
+        row["object"] = event["object"]
+        row["part"] = event["part"]
+        row["edge"] = event["edge"]
+        row["time_ms"] = float(event["time"])
+        mapped.append(row)
+    mapped.sort(key=lambda row: float(row["time_ms"]))
+    return mapped, dropped
+
 
 class Api:
     """Every public method is callable from JS and returns JSON types.
@@ -1554,23 +1599,35 @@ class Api:
         return {"ok": True, "profiles": names, "default": DEFAULT_PROFILE,
                 "suggested": suggested}
 
-    def hitsound_decide_propose(self, file: str, profile: str | None = None) -> dict:
+    def hitsound_decide_propose(self, file: str, profile: str | None = None,
+                                  evidence: str = "map") -> dict:
         """Propose every decidable point's sound through the Rust sidecar,
         decided with ``profile``: a name :meth:`hitsound_profiles` lists,
         ``balanced`` when none is given. Anything else is refused before the
         sidecar runs. One heavy job at a time; the units stay cached for
-        accept/reject."""
+        accept/reject.
+
+        ``evidence="audio"`` is the H7 surface: the sidecar decides the song's
+        strong attacks with no map, and each decision is matched to the picked
+        map's nearest sound event inside 50 ms. Attacks with no object are
+        reported, not invented into one; objects keep the inspector, the
+        audition and the write path, fed by ears instead of context. Best on
+        bare maps, where the map context it replaces is empty anyway.
+        """
         path = self._decide_file(file)
         if isinstance(path, dict):
             return path
         name = DEFAULT_PROFILE if profile is None else profile
         if not isinstance(name, str) or name not in hitsound_profile_names():
             return {"ok": False, "key": "bad_profile"}
+        if evidence not in ("map", "audio"):
+            return {"ok": False, "key": "error",
+                    "detail": "Evidence is 'map' or 'audio'."}
         if not self._busy.acquire(blocking=False):
             return {"ok": False, "key": "busy"}
         try:
             report = overtone_rust.hitsound(
-                str(self._analysis.source), str(path),
+                str(self._analysis.source), None if evidence == "audio" else str(path),
                 profile=None if name == DEFAULT_PROFILE else PROFILE_DIR / f"{name}.json")
         except overtone_rust.SidecarUnavailable:
             return {"ok": False, "key": "no_rust"}
@@ -1579,8 +1636,19 @@ class Api:
         finally:
             self._busy.release()
         units = report.get("units", [])
-        self._decisions[str(path.name)] = {"units": units, "profile": name}
-        return {"ok": True, "file": str(path.name), "units": units, "profile": name}
+        matched, unmatched = len(units), 0
+        if evidence == "audio":
+            try:
+                beatmap = ta.read_osu_beatmap(path)
+            except (ValueError, OSError) as exc:
+                return {"ok": False, "key": "error", "detail": str(exc)}
+            units, unmatched = _audio_units_to_events(beatmap, units)
+            matched = len(units)
+        self._decisions[str(path.name)] = {"units": units, "profile": name,
+                                           "evidence": evidence}
+        return {"ok": True, "file": str(path.name), "units": units,
+                "profile": name, "evidence": evidence,
+                "matched": matched, "unmatched": unmatched}
 
     def hitsound_decide_propose_all(self, profile: str | None = None) -> dict:
         """Propose for every difficulty beside the song at once, the maps
@@ -1637,7 +1705,8 @@ class Api:
         if cached is None:
             return {"ok": False, "key": "no_proposal"}
         return {"ok": True, "file": str(path.name), "units": cached["units"],
-                "profile": cached.get("profile", DEFAULT_PROFILE)}
+                "profile": cached.get("profile", DEFAULT_PROFILE),
+                "evidence": cached.get("evidence", "map")}
 
     def hitsound_decide_proposed(self) -> dict:
         """Which difficulties beside the song have a proposal cached, in
@@ -1650,6 +1719,7 @@ class Api:
             if cached is not None:
                 rows.append({"file": m["file"], "difficulty": m["difficulty"],
                              "profile": cached.get("profile", DEFAULT_PROFILE),
+                             "evidence": cached.get("evidence", "map"),
                              "units": len(cached["units"])})
         return {"ok": True, "maps": rows}
 

@@ -5072,5 +5072,88 @@ class TrainBridgeTests(_IsolatedConfig):
         self.assertTrue(reply["signals"])
 
 
+class OszImportTests(_IsolatedConfig):
+    """Double-clicking an .osz: into Songs, copied never moved."""
+
+    LINES = ["osu file format v14", "",
+             "[General]", "AudioFilename: song.mp3", "Mode: 0", "",
+             "[Metadata]", "Title:Song", "Artist:Artist", "Creator:M", "Version:Hard",
+             "BeatmapID:0", "BeatmapSetID:-1", "",
+             "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+             "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+             "[TimingPoints]", "1000,400,4,2,0,80,1,0", "",
+             "[HitObjects]", "100,100,1400,1,0,0:0:0:0:", ""]
+
+    def _osz(self, folder: Path, name: str = "set.osz", audio: bytes = b"mp3") -> Path:
+        import zipfile
+        path = folder / name
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("map.osu", "\r\n".join(self.LINES))
+            archive.writestr("song.mp3", audio)
+        return path
+
+    def test_an_archive_lands_in_songs_and_opens_its_song(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = Path(tmp) / "Songs"
+            songs.mkdir()
+            api = web.Api()
+            reply = api.import_osz(str(self._osz(Path(tmp))), str(songs))
+            json.dumps(reply)
+            self.assertTrue(reply["ok"], reply)
+            self.assertTrue(reply["wrote"])
+            self.assertTrue((songs / "set" / "map.osu").is_file())
+            self.assertTrue((songs / "set" / "song.mp3").is_file())
+            self.assertTrue(reply["file"]["path"].endswith("song.mp3"))
+
+    def test_importing_twice_opens_instead_of_copying(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = Path(tmp) / "Songs"
+            songs.mkdir()
+            api = web.Api()
+            first = api.import_osz(str(self._osz(Path(tmp))), str(songs))
+            marker = (songs / "set" / "marker.txt")
+            marker.write_bytes(b"mine")
+            second = api.import_osz(str(self._osz(Path(tmp))), str(songs))
+            self.assertTrue(second["ok"])
+            self.assertFalse(second["wrote"])
+            self.assertEqual(first["folder"], second["folder"])
+            self.assertTrue(marker.is_file())
+
+    def test_a_bad_archive_refuses_with_the_reason(self) -> None:
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = Path(tmp) / "Songs"
+            songs.mkdir()
+            api = web.Api()
+            empty = Path(tmp) / "empty.osz"
+            with zipfile.ZipFile(empty, "w") as archive:
+                archive.writestr("readme.txt", "no maps here")
+            self.assertEqual(api.import_osz(str(empty), str(songs))["key"], "bad_archive")
+            evil = Path(tmp) / "evil.osz"
+            with zipfile.ZipFile(evil, "w") as archive:
+                archive.writestr("map.osu", "x")
+                archive.writestr("../out.osu", "x")
+            self.assertEqual(api.import_osz(str(evil), str(songs))["key"], "bad_archive")
+            self.assertEqual(api.import_osz(str(Path(tmp) / "gone.osz"), str(songs))["key"],
+                             "bad_file")
+
+    def test_launch_target_opens_the_song_inside(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = Path(tmp) / "Songs"
+            songs.mkdir()
+            api = web.Api()
+            api._cfg["songs_folder"] = str(songs)
+            osz = self._osz(Path(tmp))
+            target, run = web.launch_target(api, str(osz))
+            self.assertTrue(target.endswith("song.mp3"))
+            self.assertTrue(run)
+            target, run = web.launch_target(api, str(Path(tmp) / "gone.osz"))
+            self.assertTrue(target.endswith("gone.osz"))
+            # A missing file opens as handed over, like any bad argument.
+            self.assertTrue(run)
+            target, run = web.launch_target(api, "")
+            self.assertEqual((target, run), ("", False))
+
+
 if __name__ == "__main__":
     unittest.main()

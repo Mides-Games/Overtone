@@ -11824,5 +11824,23 @@ class TrainDetectTests(unittest.TestCase):
         self.assertIsNone(overtone_train.replay_candidate("map.osu"))
 
 
+class InstallerAssocTests(unittest.TestCase):
+    """The .osz association the MSI registers: what double-clicking does."""
+
+    SOURCE = Path(__file__).resolve().parent.parent / "installer" / "Overtone.wxs"
+
+    def test_the_association_names_its_keys_and_command(self) -> None:
+        text = self.SOURCE.read_text(encoding="utf-8")
+        for needle in (r'Software\Classes\.osz',
+                       r'Software\Classes\Overtone.osz',
+                       r'Overtone.osz\shell\open\command',
+                       r'Overtone.osz\DefaultIcon',
+                       'Value="Overtone.osz"',
+                       '[INSTALLFOLDER]Overtone.exe',
+                       '%1',
+                       '<ComponentRef Id="OszAssociation" />'):
+            self.assertIn(needle, text)
+
+
 if __name__ == "__main__":
     unittest.main()

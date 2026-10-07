@@ -67,9 +67,29 @@
       </Component>
     </StandardDirectory>
 
+    <!-- .osz archives open with Overtone, which imports the set into Songs
+         (overtone_web's import_osz: copied, never moved, never over a folder
+         that already holds beatmaps). Per-user keys under HKCU\Software\Classes,
+         which an uninstall takes with the component — nothing else is touched. -->
+    <Component Id="OszAssociation" Directory="INSTALLFOLDER">
+      <RegistryKey Root="HKCU" Key="Software\Classes\.osz">
+        <RegistryValue Type="string" Value="Overtone.osz" KeyPath="yes" />
+      </RegistryKey>
+      <RegistryKey Root="HKCU" Key="Software\Classes\Overtone.osz">
+        <RegistryValue Type="string" Value="osu! beatmap archive (Overtone)" />
+      </RegistryKey>
+      <RegistryKey Root="HKCU" Key="Software\Classes\Overtone.osz\DefaultIcon">
+        <RegistryValue Type="string" Value="[INSTALLFOLDER]Overtone.exe,0" />
+      </RegistryKey>
+      <RegistryKey Root="HKCU" Key="Software\Classes\Overtone.osz\shell\open\command">
+        <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]Overtone.exe&quot; &quot;%1&quot;" />
+      </RegistryKey>
+    </Component>
+
     <Feature Id="Main" Title="Overtone">
       <ComponentGroupRef Id="AppFiles" />
       <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="OszAssociation" />
     </Feature>
 
     <!-- Welcome, licence, destination folder, install, finish: WixUI_InstallDir's

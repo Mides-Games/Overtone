@@ -398,7 +398,7 @@ class Api:
         #: the compilation: a copy is a few clicks to rebuild.
         self._train: dict = {"osu": None, "rate": 1.0, "target_bpm": None,
                              "from_bpm": None, "stats": {}, "naming": {},
-                             "audio_format": "mp3", "osz": False, "out": ""}
+                             "mods": [], "audio_format": "mp3", "osz": False, "out": ""}
         #: A build's own lock, beside the analysis's and the compilation's:
         #: resampling a song and encoding it is the same heavy job either way.
         self._train_lock = threading.Lock()
@@ -2164,7 +2164,8 @@ class Api:
                 target_bpm=settings.get("target_bpm"),
                 from_bpm=settings.get("from_bpm"),
                 stats=dict(settings.get("stats") or {}),
-                naming=dict(settings.get("naming") or {}))
+                naming=dict(settings.get("naming") or {}),
+                mods=list(settings.get("mods") or []))
         except (ValueError, OSError):
             return None
 
@@ -2182,9 +2183,9 @@ class Api:
         reply: dict = {"ok": True, "source": self._train.get("osu"),
                        "settings": {key: self._train.get(key)
                                     for key in ("rate", "target_bpm", "from_bpm",
-                                                "stats", "naming", "audio_format",
-                                                "osz", "out")},
-                       "plan": None, "check": None,
+                                                "stats", "naming", "mods",
+                                                "audio_format", "osz", "out")},
+                       "plan": None, "check": None, "feel": None,
                        "busy": self._busy.locked() or self._train_lock.locked()}
         if not self._train.get("osu"):
             return reply
@@ -2207,6 +2208,9 @@ class Api:
                     allow_existing=True,
                     audio_format=self._train.get("audio_format") or "mp3")
                 reply["occupied"] = self._train_occupied()
+                reply["feel"] = tr.feel_of(
+                    plan["source"]["osu"], plan["rate"], plan["stats"]["values"],
+                    plan["mods"])
             except (ValueError, OSError) as exc:
                 reply["key"] = "cannot_build"
                 reply["detail"] = str(exc)
@@ -2250,7 +2254,7 @@ class Api:
         """The rate, the target, the stats, the naming and the output shape."""
         changes = dict(changes or {})
         unknown = sorted(set(changes) - {"rate", "target_bpm", "from_bpm", "stats",
-                                         "naming", "audio_format", "osz", "out"})
+                                         "naming", "mods", "audio_format", "osz", "out"})
         if unknown:
             return {"ok": False, "key": "error",
                     "detail": f"Unknown setting(s): {', '.join(unknown)}."}
@@ -2287,6 +2291,14 @@ class Api:
                 return {"ok": False, "key": "error",
                         "detail": "Naming arrives as {version: text}."}
             self._train["naming"] = dict(changes["naming"])
+        if "mods" in changes:
+            mods = changes["mods"] or []
+            if isinstance(mods, str):
+                mods = [mods]
+            if not isinstance(mods, list) or any(not isinstance(m, str) for m in mods):
+                return {"ok": False, "key": "error",
+                        "detail": "Mods arrive as a list like [HR, DT]."}
+            self._train["mods"] = [str(m).upper() for m in mods]
         if "audio_format" in changes:
             if changes["audio_format"] not in ("mp3", "wav"):
                 return {"ok": False, "key": "error",
@@ -2296,6 +2308,63 @@ class Api:
             self._train["osz"] = bool(changes["osz"])
         if "out" in changes:
             self._train["out"] = str(changes["out"] or "")
+        return self.train_state()
+
+    def train_copies(self) -> dict:
+        """Every practice copy the write log knows, with what each would free."""
+        try:
+            return {"ok": True, **tr.list_copies()}
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+
+    def train_remove(self, folders: list | None = None, dry_run: bool = False) -> dict:
+        """Remove practice copies, showing first what goes. A dry run frees
+        nothing; without one, only what the log names leaves."""
+        try:
+            return {"ok": True,
+                    **tr.remove_copies([str(f) for f in (folders or [])],
+                                       dry_run=bool(dry_run))}
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+
+    def train_presets(self) -> dict:
+        """Every saved setup, by name."""
+        try:
+            return {"ok": True, **tr.list_presets()}
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+
+    def train_preset_save(self, name: str = "", settings: dict | None = None) -> dict:
+        """Keep this setup under a name. No source map travels with it."""
+        try:
+            saved = tr.save_preset(name, settings or {})
+            return {"ok": True, "saved": saved, **tr.list_presets()}
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+
+    def train_preset_delete(self, name: str = "") -> dict:
+        """Forget a setup."""
+        try:
+            tr.delete_preset(name)
+            return {"ok": True, **tr.list_presets()}
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+
+    def train_preset_apply(self, name: str = "") -> dict:
+        """A saved setup onto the current view: rate, target, stats, naming,
+        mods and output shape, everything a preset carries."""
+        try:
+            presets = tr.list_presets()["presets"]
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        if str(name) not in presets:
+            return {"ok": False, "key": "error",
+                    "detail": f"No preset named {name!r}."}
+        settings = dict(presets[str(name)].get("settings", {}))
+        for key in ("rate", "target_bpm", "from_bpm", "stats", "naming",
+                    "mods", "audio_format", "osz"):
+            if key in settings:
+                self._train[key] = settings[key]
         return self.train_state()
 
     def _train_occupied(self) -> str:

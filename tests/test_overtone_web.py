@@ -4983,6 +4983,62 @@ class TrainBridgeTests(_IsolatedConfig):
                 self.assertTrue(row["checks"]["ok"], row["checks"])
                 self.assertTrue(row["checks"]["grade"]["ok"], row["checks"]["grade"])
 
+    def test_mods_compensate_the_file_and_show_the_feel(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._clicks(Path(tmp) / "src")
+            api = web.Api()
+            api.train_pick([str(path)])
+            state = api.train_set({"mods": ["DT"], "stats": {"ar": 9}})
+            json.dumps(state)
+            self.assertTrue(state["plan"]["usable"], state["plan"]["refusals"])
+            self.assertAlmostEqual(state["plan"]["stats"]["values"]["ar"], 7.0)
+            self.assertAlmostEqual(state["plan"]["stats"]["feel"]["ar"]["feel"], 9.0)
+            self.assertIn("feel", state)
+            self.assertEqual(state["feel"]["bpm_text"], "150")
+            bad = api.train_set({"mods": ["XX"]})
+            self.assertFalse(bad["plan"]["usable"])
+            self.assertEqual(bad["plan"]["refusals"][-1]["code"], "unknown_mod")
+
+    def test_copies_list_and_free_what_the_log_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._clicks(Path(tmp) / "src")
+            api = web.Api()
+            api.train_pick([str(path)])
+            api.train_set({"rate": 1.2, "audio_format": "wav",
+                           "out": str(Path(tmp) / "set")})
+            events: list = []
+            api._emit = lambda handler, payload: events.append((handler, payload))
+            self.assertTrue(api.train_build()["ok"])
+            self._wait(api)
+            listed = api.train_copies()
+            self.assertTrue(listed["ok"])
+            self.assertEqual(len(listed["folders"]), 1)
+            row = listed["folders"][0]
+            self.assertEqual(row["rates"], ["1.2"])
+            self.assertTrue(row["complete"] and row["bytes"] > 0)
+            dry = api.train_remove([row["folder"]], True)
+            self.assertTrue(dry["ok"] and dry["dry_run"])
+            self.assertEqual(dry["bytes"], row["bytes"])
+            self.assertTrue((Path(tmp) / "set").is_dir())
+            gone = api.train_remove([row["folder"]], False)
+            self.assertEqual(gone["bytes"], row["bytes"])
+            self.assertFalse((Path(tmp) / "set").exists())
+
+    def test_presets_save_apply_and_delete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._clicks(Path(tmp) / "src")
+            api = web.Api()
+            api.train_pick([str(path)])
+            saved = api.train_preset_save("dt", {"rate": 1.0, "mods": ["DT"]})
+            self.assertTrue(saved["ok"], saved)
+            self.assertIn("dt", saved["presets"])
+            applied = api.train_preset_apply("dt")
+            self.assertAlmostEqual(applied["settings"]["rate"], 1.0)
+            self.assertEqual(applied["settings"]["mods"], ["DT"])
+            self.assertEqual(api.train_preset_apply("missing")["key"], "error")
+            self.assertTrue(api.train_preset_delete("dt")["ok"])
+            self.assertEqual(api.train_presets()["presets"], {})
+
 
 if __name__ == "__main__":
     unittest.main()

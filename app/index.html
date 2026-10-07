@@ -1046,7 +1046,19 @@
             </div>
             <div class="field" id="trFromField" hidden><span class="setting-name" data-i18n="tr_from">Which of its tempi the target means</span><div class="segmented stretch" id="trFrom"></div></div>
             <div class="card-sub" id="trTargetNote"></div>
+            <div class="field"><span class="setting-name" data-i18n="tr_mods">Mods</span><div class="segmented stretch" id="trMods">
+              <button type="button" data-mod="HR">HR</button><button type="button" data-mod="EZ">EZ</button><button type="button" data-mod="DT">DT</button><button type="button" data-mod="NC">NC</button><button type="button" data-mod="HT">HT</button>
+            </div></div>
+            <div class="card-sub" id="trModNote"></div>
+            <div class="field"><span class="setting-name" data-i18n="tr_presets">Presets</span>
+              <div class="row"><select class="input" id="trPreset"></select>
+              <button class="btn small" id="trPresetApply"><span data-i18n="tr_preset_apply">Use</span></button>
+              <button class="btn small" id="trPresetDelete"><span data-i18n="tr_preset_delete">Delete</span></button></div>
+              <div class="row mt-s"><input class="input" id="trPresetName" placeholder="Name this setup…">
+              <button class="btn small" id="trPresetSave"><span data-i18n="tr_preset_save">Save</span></button></div>
+            </div>
             <div id="trStats"></div>
+            <div class="card-sub" id="trFeel2"></div>
           </div>
         </div>
 
@@ -1094,6 +1106,15 @@
             <button class="btn small primary" id="trLadderGo" disabled><span data-i18n="tr_ladder_go">Build ladder</span></button>
           </div>
           <div class="card-body" id="trLadderBody"></div>
+        </div>
+
+        <div class="card" id="trCopiesCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="tr_copies">Practice copies</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="trCopiesTotal"></span>
+          </div>
+          <div class="card-body" id="trCopiesBody"></div>
         </div>
       </section>
 

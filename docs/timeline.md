@@ -22,6 +22,31 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-07 · Setup choices without bespoke XML
+
+### Changed
+
+- **The installer offers a feature tree** (T5's second half): `.osz` on Typical,
+  the five audio kinds and a desktop icon at level 1000 for Custom or `ADDLOCAL`.
+  The first version was bespoke — a custom dialog with three checkboxes and
+  conditions under the components — and the compiler refused all of it: WiX v4
+  takes no `Condition` under `Component` or `Feature` and no inner text in
+  `Publish`. The stock `WixUI_FeatureTree` does the same job with zero custom
+  XML, translated and tested by WiX.
+- Bare `.osu` stays unassociated on purpose (no song, nothing to analyse);
+  context menu and URI scheme stay documented-open.
+
+### Measured
+
+- Feature table 1/1/1000/1000; stock chain License→Customize→VerifyReady read back
+  out of the package. Default install: `.osz` ours, audio and desktop untouched;
+  `ADDLOCAL=ALL`: `.mp3` reads `Overtone.audio`, desktop icon on the (OneDrive)
+  desktop; uninstall takes all three plus the program, user data untouched.
+- Full `build.py --clean` green (414.6 s) with the new WiX; same ICE warnings.
+- Worth writing down: a `--clean` build that dies at WiX leaves `dist/` without
+  an MSI — the "cannot open package" on reinstall was that, not corruption. The
+  machine was restored from the published release (hash matches `22339437…`).
+
 ## Unreleased — 2026-10-07 · Dropping spinners, allowed and named
 
 ### Changed

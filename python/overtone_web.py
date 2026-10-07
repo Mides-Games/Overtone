@@ -2243,6 +2243,30 @@ class Api:
         self._train["osu"] = str(found[0])
         return self.train_state()
 
+    def train_detect(self) -> dict:
+        """The map from what osu! writes outside itself — measured, in order.
+
+        The window title, the newest replay, the newest `.osu`: the first that
+        resolves wins and becomes the source; where every signal misses, the
+        reply names everything tried and the library search (which needs
+        nothing from osu!) is the answer.
+        """
+        songs = self._songs_root()
+        try:
+            found = tr.detect_map(songs)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        if found["osu"]:
+            self._train["osu"] = found["osu"]
+            state = self.train_state()
+            state["detection"] = found
+            return state
+        return {"ok": False, "key": "no_signal",
+                "detail": "; ".join(f"{row['signal']}: "
+                                    f"{row.get('file') or row.get('title') or row.get('why', '')}"
+                                    for row in found["signals"]) or "no Songs folder",
+                "signals": found["signals"]}
+
     def train_clear(self) -> dict:
         """No map, back to a rate of one."""
         self._train["osu"] = None

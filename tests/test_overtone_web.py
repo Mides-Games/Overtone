@@ -26,7 +26,7 @@ import numpy as np
 import overtone_web as web
 import overtone as ta
 
-from test_overtone import _drum_track, _wav_bytes
+from test_overtone import _drum_track, _wav_bytes, TrainDetectTests
 
 def _analysis(points, beats=None, engine="precision", residual=0.4, onset_frames=5000):
     beats = np.arange(0.5, 60.0, 0.4) if beats is None else np.asarray(beats, dtype=float)
@@ -5038,6 +5038,38 @@ class TrainBridgeTests(_IsolatedConfig):
             self.assertEqual(api.train_preset_apply("missing")["key"], "error")
             self.assertTrue(api.train_preset_delete("dt")["ok"])
             self.assertEqual(api.train_presets()["presets"], {})
+
+    def test_detect_picks_what_was_just_played(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = Path(tmp) / "Songs"
+            first = songs / "1 Artist - Song"
+            first.mkdir(parents=True)
+            (first / "map.osu").write_bytes(
+                "\r\n".join(TrainDetectTests.LINES).format(
+                    artist="Artist", title="Song", version="Hard").encode("utf-8"))
+            replays = songs.parent / "Replays"
+            replays.mkdir()
+            (replays / "player - Artist - Song [Hard] (2026-10-07) Osu.osr").write_bytes(b"")
+            api = web.Api()
+            api._cfg["songs_folder"] = str(songs)
+            with mock.patch.object(overtone_train, "osu_window_titles", return_value=[]):
+                reply = api.train_detect()
+            json.dumps(reply)
+        self.assertTrue(reply["source"].endswith("map.osu"))
+        self.assertEqual(reply["detection"]["signal"], "replay")
+
+    def test_detect_with_nothing_says_what_it_tried(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = Path(tmp) / "Songs"
+            songs.mkdir()
+            api = web.Api()
+            api._cfg["songs_folder"] = str(songs)
+            with mock.patch.object(overtone_train, "osu_window_titles", return_value=["osu!"]):
+                reply = api.train_detect()
+        self.assertEqual(reply["key"], "no_signal")
+        self.assertTrue(reply["signals"])
 
 
 if __name__ == "__main__":

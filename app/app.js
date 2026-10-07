@@ -755,7 +755,11 @@ const I18N = {
     cp_check_differs: "came back different",
     nav_train: "Train",
     tr_sub: "One difficulty as a practice copy at another speed. The rate goes on the grid, so every object keeps the beat it had; the song is resampled as the game's own DT does it, and the red lines are graded against the audio that was written.",
-    tr_source: "Source map", tr_pick: "Pick a map…", tr_use_open: "Use the open song's map",
+    tr_source: "Source map", tr_pick: "Pick a map…", tr_detect: "Detect playing map",
+    tr_via: "via {signal}",
+    tr_no_signal: "Nothing playing, played or just arrived that resolves.",
+    tr_signals_tried: "Tried {signals}; nothing resolved.",
+    tr_use_open: "Use the open song's map",
     tr_clear: "Clear",
     tr_empty: "Nothing to copy yet. Pick the difficulty to practise: its objects, timing and hitsounds come with it, and nothing is ever written into its folder.",
     tr_song: "{artist} - {title} [{version}]", tr_facts: "{mode} · {n} objects · {bpms}",
@@ -1566,7 +1570,11 @@ const I18N = {
     cp_check_differs: "volvió distinto",
     nav_train: "Entrenar",
     tr_sub: "Una dificultad como copia de práctica a otra velocidad. El rate va en la grilla, así cada objeto conserva el beat que tenía; la canción se remuestrea como el DT del juego, y las líneas rojas se califican contra el audio que se escribió.",
-    tr_source: "Mapa de origen", tr_pick: "Elegir un mapa…", tr_use_open: "Usar el mapa de la canción abierta",
+    tr_source: "Mapa de origen", tr_pick: "Elegir un mapa…", tr_detect: "Detectar mapa en juego",
+    tr_via: "por {signal}",
+    tr_no_signal: "Nada sonando, jugado o recién llegado que resuelva.",
+    tr_signals_tried: "Probé {signals}; nada resolvió.",
+    tr_use_open: "Usar el mapa de la canción abierta",
     tr_clear: "Limpiar",
     tr_empty: "Nada que copiar todavía. Elegí la dificultad a practicar: sus objetos, timing e hitsounds vienen con ella, y nada se escribe jamás en su carpeta.",
     tr_song: "{artist} - {title} [{version}]", tr_facts: "{mode} · {n} objetos · {bpms}",
@@ -7912,7 +7920,7 @@ function renderCompile() {
 // analysis and a resample never run at once.
 const TR = { progress: null, report: null, ladder: null, building: false,
              confirm: false, what: null, copies: null, presets: {},
-             removeAsk: null };
+             removeAsk: null, removePreview: null, detectNote: "" };
 
 function trSet(id, value) {
   // Never type over the field somebody is typing in.
@@ -8016,7 +8024,20 @@ async function trPresetDelete() {
 
 async function trPick() { if (api()) trApply(await api().train_pick()); }
 async function trUseOpen() { if (api()) trApply(await api().train_use_open()); }
-async function trClear() { if (api()) { TR.report = null; trApply(await api().train_clear()); } }
+async function trDetect() {
+  if (!api()) return;
+  const reply = await api().train_detect();
+  if (reply.source !== undefined) {
+    TR.detectNote = reply.detection && reply.detection.signal
+      ? t("tr_via", { signal: reply.detection.signal }) : "";
+    trApply(reply);
+    return;
+  }
+  TR.detectNote = reply.detail
+    ? t("tr_signals_tried", { signals: reply.detail }) : t("tr_no_signal");
+  renderTrain();
+}
+async function trClear() { if (api()) { TR.detectNote = ""; TR.report = null; trApply(await api().train_clear()); } }
 async function trSetRate() {
   if (!api()) return;
   const raw = $("trRate").value;
@@ -8246,6 +8267,8 @@ function renderTrain() {
   $("trUseOpen").hidden = !S.file;
   $("trRateCard").hidden = $("trNamesCard").hidden = $("trBuildCard").hidden = !source;
   $("trLadderCard").hidden = !source;
+  $("trCopiesCard").hidden = false;
+  $("trDetectNote").textContent = TR.detectNote || "";
   if (!source) {
     body.innerHTML = `<div class="card-sub">${t("tr_empty")}</div>`;
     return;
@@ -8692,6 +8715,7 @@ function wire() {
   });
   $("cpOsz").onchange = () => cpShape({ osz: $("cpOsz").checked });
   $("trPick").onclick = trPick;
+  $("trDetect").onclick = trDetect;
   $("trUseOpen").onclick = trUseOpen;
   $("trClear").onclick = trClear;
   $("trRate").onchange = trSetRate;

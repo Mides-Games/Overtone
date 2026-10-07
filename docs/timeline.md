@@ -94,6 +94,10 @@ version is `v0.2.0-alpha`.
 - Worth writing down: a `--clean` build that dies at WiX leaves `dist/` without
   an MSI — the "cannot open package" on reinstall was that, not corruption. The
   machine was restored from the published release (hash matches `22339437…`).
+- Right-click "Analyze with Overtone" rides the AudioAssoc feature
+  (`SystemFileAssociations\audio`, past any player's ProgId): present with
+  `ADDLOCAL=ALL`, absent by default, gone after uninstall. URI stays out: no
+  linker exists, and a scheme nobody links to is dead surface.
 
 ## Unreleased — 2026-10-07 · Dropping spinners, allowed and named
 

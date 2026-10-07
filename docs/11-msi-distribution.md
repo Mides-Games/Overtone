@@ -134,8 +134,9 @@ the published build.
 - **Code signing** (10.13.6), out of scope here: the MSI and the executables are unsigned,
   so SmartScreen can be expected to warn on a downloaded copy (not tried).
 - **Windows integration beyond the Start menu, the licence page and the feature
-  tree** (the rest of 10.13.2): no Explorer menu or `overtone://` scheme, and no bare-`.osu`
-  association. The tree offers `.osz`, the five audio kinds and a desktop icon.
+  tree** (the rest of 10.13.2): no `overtone://` scheme, and no bare-`.osu`
+  association. The tree offers `.osz`, the five audio kinds with a right-click
+  "Analyze with Overtone" past any player's ProgId, and a desktop icon.
 - **The portable `data\` folder**: the ZIP's copy keeps its settings and cache where the
   installed one does (see "User data locations"), not beside the executable.
 - **An install and uninstall on a real profile**: not exercised here, by instruction; the
@@ -313,7 +314,8 @@ Missing or corrupt files trigger a clear error, never a silent download.
 ## Windows integration
 
 Built: 1 (the shortcut carries the app's taskbar identity, `Overtone.TimingWorkbench`, so
-the running window groups under it) and 6. The rest is not built yet.
+the running window groups under it), 2, 3, 4 and 6. Not built: the URI scheme, which
+no linker exists for yet.
 
 1. **Start Menu entry**: `Overtone`, launches the GUI.
 2. **Desktop shortcut**: in the Typical/Complete/Custom tree, off unless picked.
@@ -323,8 +325,11 @@ the running window groups under it) and 6. The rest is not built yet.
     - `.mp3`, `.ogg`, `.flac`, `.wav`, `.m4a` — "Analyze with Overtone"
     - A bare `.osu` is deliberately not associated: with no song beside it there
       is nothing to analyse, and the Train view picks maps that have one.
-4. **Right-click context menu** in Explorer: "Analyze with Overtone". Not built.
-5. **URI scheme**: `overtone://` for deep links (e.g. from a browser plugin). Not built.
+4. **Right-click context menu** in Explorer: "Analyze with Overtone" on the five
+   audio kinds (`SystemFileAssociations\audio`, past whatever player owns them),
+   in the AudioAssoc feature.
+5. **URI scheme**: `overtone://` for deep links (e.g. from a browser plugin). Not built:
+   no linker exists yet, and a scheme nobody links to is dead surface.
 6. **Uninstall via Windows Settings** or the classic Control Panel entry.
 
 ## Update path

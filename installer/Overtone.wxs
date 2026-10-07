@@ -98,8 +98,21 @@
     <Feature Id="OszAssoc" Title=".osz beatmap archives" Level="1">
       <ComponentRef Id="OszAssociation" />
     </Feature>
+    <!-- Right-click "Analyze with Overtone" on any audio file, whatever player
+         owns it: SystemFileAssociations reaches past ProgIds, so this works
+         where the per-extension verbs cannot. Same executable, same argument. -->
+    <Component Id="ContextMenu" Directory="INSTALLFOLDER">
+      <RegistryKey Root="HKCU" Key="Software\Classes\SystemFileAssociations\audio\shell\Analyze with Overtone">
+        <RegistryValue Type="string" Value="Analyze with Overtone" KeyPath="yes" />
+      </RegistryKey>
+      <RegistryKey Root="HKCU" Key="Software\Classes\SystemFileAssociations\audio\shell\Analyze with Overtone\command">
+        <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]Overtone.exe&quot; &quot;%1&quot;" />
+      </RegistryKey>
+    </Component>
+
     <Feature Id="AudioAssoc" Title="Audio analysis" Level="1000">
       <ComponentRef Id="AudioAssociation" />
+      <ComponentRef Id="ContextMenu" />
     </Feature>
     <Feature Id="DesktopIcon" Title="Desktop shortcut" Level="1000">
       <ComponentRef Id="DesktopShortcut" />

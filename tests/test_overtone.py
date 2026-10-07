@@ -11850,7 +11850,10 @@ class InstallerAssocTests(unittest.TestCase):
                        'Level="1000"',
                        'Software\\Classes\\.mp3',
                        'Software\\Classes\\.m4a',
+                       'SystemFileAssociations\\audio',
+                       'Analyze with Overtone',
                        '<ComponentRef Id="AudioAssociation" />',
+                       '<ComponentRef Id="ContextMenu" />',
                        '<ComponentRef Id="DesktopShortcut" />'):
             self.assertIn(needle, text)
 

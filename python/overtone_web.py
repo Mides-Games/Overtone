@@ -31,6 +31,7 @@ import numpy as np
 
 import overtone as ta
 import overtone_combine as tc
+import overtone_hotkey
 import overtone_library
 import overtone_rust
 import overtone_train as tr
@@ -402,6 +403,9 @@ class Api:
         #: A build's own lock, beside the analysis's and the compilation's:
         #: resampling a song and encoding it is the same heavy job either way.
         self._train_lock = threading.Lock()
+        #: The global hotkey's waiter, or None while it is off: one combination
+        #: delivered by the OS as a message, never a hook in any keystroke's path.
+        self._train_hotkey: overtone_hotkey.HotkeyWait | None = None
         self._busy = threading.Lock()
         #: Set by stop_analysis. The engine asks it at its checkpoints inside
         #: every stage (on the worker's thread only), the worker at every
@@ -2240,7 +2244,8 @@ class Api:
                                                 "stats", "naming", "mods",
                                                 "audio_format", "osz", "out")},
                        "plan": None, "check": None, "feel": None,
-                       "busy": self._busy.locked() or self._train_lock.locked()}
+                       "busy": self._busy.locked() or self._train_lock.locked(),
+                       "hotkey": self._train_hotkey_ensure()}
         if not self._train.get("osu"):
             return reply
         try:
@@ -2444,6 +2449,59 @@ class Api:
             if key in settings:
                 self._train[key] = settings[key]
         return self.train_state()
+
+    def _train_hotkey_fire(self) -> None:
+        """What the hotkey builds: the copy that is set up, like the button."""
+        try:
+            self.train_build()
+        except Exception:  # noqa: BLE001 -- the waiter swallows it anyway
+            pass
+
+    def _train_hotkey_ensure(self) -> dict:
+        """The waiter matching the remembered switch, started or stopped."""
+        want = bool(self._cfg.get("train_hotkey"))
+        if not want:
+            if self._train_hotkey is not None:
+                self._train_hotkey.stop()
+                self._train_hotkey = None
+            return {"available": overtone_hotkey.available(), "on": False}
+        if not overtone_hotkey.available():
+            return {"available": False, "on": False}
+        waiter = self._train_hotkey
+        if waiter is None or not waiter.is_alive():
+            waiter = overtone_hotkey.HotkeyWait(callback=self._train_hotkey_fire)
+            waiter.start()
+            waiter.ready.wait(timeout=5)
+            if waiter.error:
+                return {"available": True, "on": False, "error": waiter.error}
+            self._train_hotkey = waiter
+        return {"available": True, "on": True}
+
+    def train_hotkey(self, on: bool = True) -> dict:
+        """Build the copy that is set up, from anywhere: Ctrl+Alt+B.
+
+        One combination delivered by the OS as a message; no keystroke but
+        that one passes through Overtone. Remembered in the config, so the
+        next window waits again. Off Windows, or with the combination taken,
+        it says so instead of pretending.
+        """
+        self._cfg["train_hotkey"] = bool(on)
+        self._persist()
+        if not on and self._train_hotkey is not None:
+            self._train_hotkey.stop()
+            self._train_hotkey = None
+            return {"ok": True, "hotkey": {"available": overtone_hotkey.available(),
+                                           "on": False}}
+        if on:
+            if not overtone_hotkey.available():
+                return {"ok": False, "key": "error",
+                        "detail": "A global hotkey needs Windows."}
+            state = self._train_hotkey_ensure()
+            if not state["on"]:
+                return {"ok": False, "key": "error",
+                        "detail": f"Ctrl+Alt+B is already taken: {state.get('error', '')}"}
+            return {"ok": True, "hotkey": state}
+        return {"ok": True, "hotkey": self._train_hotkey_ensure()}
 
     def _train_occupied(self) -> str:
         """The beatmap already in the chosen output folder, if any."""

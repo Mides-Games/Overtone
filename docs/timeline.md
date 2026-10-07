@@ -22,6 +22,26 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-07 · One hotkey, no hook
+
+### Changed
+
+- **Ctrl+Alt+B builds the copy that is set up, from anywhere** (row 26.19): one
+  `RegisterHotKey` on its own thread with a message-only window, firing the same
+  build as the button. No keystroke but that one passes through Overtone, which is
+  the whole point next to the reference's `WH_KEYBOARD_LL` lag issues. Remembered in
+  the config; taken combinations and non-Windows refuse saying so.
+
+### Measured
+
+- Register/unregister/reuse, a posted `WM_HOTKEY` firing the callback, a failing
+  callback not ending the wait — all against real Win32, all green. Worth writing
+  down: `ctypes.wintypes` carries no `WNDCLASSW`/`MSG`/`LRESULT` (defined locally)
+  and `DefWindowProcW` needs explicit argtypes or LPARAM overflows.
+- 1001 Python tests, all green; `facts.py`, `parity.py` green.
+- Not checked: the browser harness, and a physical keypress (a posted message covers
+  everything this code owns; the OS delivers the rest).
+
 ## Unreleased — 2026-10-07 · Picking the map, opening .osz, refusing pitch-keeping
 
 ### Changed

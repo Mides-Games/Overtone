@@ -11842,5 +11842,61 @@ class InstallerAssocTests(unittest.TestCase):
             self.assertIn(needle, text)
 
 
+class TrainHotkeyTests(unittest.TestCase):
+    """One global hotkey, delivered by the OS, never hooked."""
+
+    def test_registered_unregistered_and_reusable(self) -> None:
+        import overtone_hotkey
+        if not overtone_hotkey.available():
+            self.skipTest("no Win32 on this machine")
+        first = overtone_hotkey.HotkeyWait(hotkey_id=41)
+        first.start()
+        self.assertTrue(first.ready.wait(timeout=5))
+        self.assertIsNone(first.error)
+        second = overtone_hotkey.HotkeyWait(hotkey_id=41)
+        second.start()
+        self.assertTrue(second.ready.wait(timeout=5))
+        self.assertIsNotNone(second.error)
+        first.stop()
+        self.assertFalse(first.is_alive())
+        third = overtone_hotkey.HotkeyWait(hotkey_id=41)
+        third.start()
+        self.assertTrue(third.ready.wait(timeout=5))
+        self.assertIsNone(third.error)
+        third.stop()
+        self.assertFalse(third.is_alive())
+
+    def test_a_posted_hotkey_fires_the_callback(self) -> None:
+        import ctypes
+        import overtone_hotkey
+        if not overtone_hotkey.available():
+            self.skipTest("no Win32 on this machine")
+        fired = []
+        wait = overtone_hotkey.HotkeyWait(hotkey_id=42, callback=lambda: fired.append(1))
+        wait.start()
+        self.assertTrue(wait.ready.wait(timeout=5))
+        ctypes.windll.user32.PostMessageW(wait._handle, overtone_hotkey.WM_HOTKEY, 42, 0)
+        self.assertTrue(wait.fired.wait(timeout=5))
+        wait.stop()
+        self.assertEqual(fired, [1])
+
+    def test_a_failing_callback_does_not_end_the_wait(self) -> None:
+        import ctypes
+        import overtone_hotkey
+        if not overtone_hotkey.available():
+            self.skipTest("no Win32 on this machine")
+
+        def bad():
+            raise RuntimeError("callback blew up")
+
+        wait = overtone_hotkey.HotkeyWait(hotkey_id=43, callback=bad)
+        wait.start()
+        self.assertTrue(wait.ready.wait(timeout=5))
+        ctypes.windll.user32.PostMessageW(wait._handle, overtone_hotkey.WM_HOTKEY, 43, 0)
+        self.assertTrue(wait.fired.wait(timeout=5))
+        self.assertTrue(wait.is_alive())
+        wait.stop()
+
+
 if __name__ == "__main__":
     unittest.main()

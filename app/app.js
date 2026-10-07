@@ -784,6 +784,7 @@ const I18N = {
     tr_remove: "Remove",
     tr_remove_preview: "Frees {size} — again to remove.",
     tr_missing: "{n} missing",
+    tr_hotkey: "Build with Ctrl+Alt+B, from anywhere",
     tr_stat_hp: "HP", tr_stat_cs: "CS", tr_stat_ar: "AR", tr_stat_od: "OD",
     tr_keep: "Keep", tr_scale: "Scale", tr_lock: "Lock to",
     tr_names: "Name and credit", tr_version: "Difficulty name", tr_tags: "Tags",
@@ -1599,6 +1600,7 @@ const I18N = {
     tr_remove: "Borrar",
     tr_remove_preview: "Libera {size}; de nuevo para borrar.",
     tr_missing: "{n} faltantes",
+    tr_hotkey: "Construir con Ctrl+Alt+B, desde donde sea",
     tr_stat_hp: "HP", tr_stat_cs: "CS", tr_stat_ar: "AR", tr_stat_od: "OD",
     tr_keep: "Mantener", tr_scale: "Escalar", tr_lock: "Fijar en",
     tr_names: "Nombre y crédito", tr_version: "Nombre de la dificultad", tr_tags: "Tags",
@@ -8344,6 +8346,9 @@ function renderTrain() {
   document.querySelectorAll("#trFormat button").forEach((b) =>
     b.classList.toggle("on", b.dataset.format === (settings.audio_format || "mp3")));
   $("trOsz").checked = !!settings.osz;
+  const hotkey = st.hotkey || {};
+  $("trHotkey").checked = !!hotkey.on;
+  $("trHotkey").disabled = !hotkey.available;
   const verdict = $("trVerdict");
   verdict.hidden = false;
   verdict.className = `pill ${plan.usable ? "accent" : "amber"}`;
@@ -8741,6 +8746,11 @@ function wire() {
     b.onclick = () => trSetFormat(b.dataset.format);
   });
   $("trOsz").onchange = async () => { if (api()) trApply(await api().train_set({ osz: $("trOsz").checked })); };
+  $("trHotkey").onchange = async () => {
+    if (!api()) return;
+    const reply = await api().train_hotkey($("trHotkey").checked);
+    if (!reply.ok) { editFailure(reply); trLoad(); }
+  };
   $("trFolder").onclick = trPickFolder;
   $("trGo").onclick = trBuild;
   $("trLadderGo").onclick = trBuildLadder;

@@ -88,10 +88,10 @@
    "where": "python-only",
    "why": "python/overtone_paths.py: where a portable build keeps its state, which no Rust crate holds"
   },
-  "ProductVersionTests": {
-   "where": "python-only",
-   "why": "python/overtone_paths.py: the product version a copy reports (the release, from its build or the workspace), which no Rust crate holds"
-  },
+   "ProductVersionTests": {
+    "where": "python-only",
+    "why": "python/overtone_paths.py: the product version a copy reports (the release, from its build or the workspace), which no Rust crate holds"
+   },
    "TaskbarIdentityTests": {
     "where": "shell",
     "why": "the Windows app identity the taskbar groups by"
@@ -99,6 +99,10 @@
    "TrainAudioTests": {
     "where": "python-only",
     "why": "overtone_train.py: the resampled song, its proof and the output folder, which no Rust crate holds"
+   },
+   "TrainHotkeyTests": {
+    "where": "python-only",
+    "why": "overtone_hotkey.py: the one global hotkey delivered by the OS, which no Rust crate holds"
    },
    "TrainLadderTests": {
     "where": "python-only",

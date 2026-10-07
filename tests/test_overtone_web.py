@@ -5039,6 +5039,20 @@ class TrainBridgeTests(_IsolatedConfig):
             self.assertTrue(api.train_preset_delete("dt")["ok"])
             self.assertEqual(api.train_presets()["presets"], {})
 
+    def test_the_hotkey_registers_and_lets_go(self) -> None:
+        import overtone_hotkey
+        if not overtone_hotkey.available():
+            self.skipTest("no Win32 on this machine")
+        api = web.Api()
+        on = api.train_hotkey(True)
+        self.assertTrue(on["ok"], on)
+        self.assertTrue(on["hotkey"]["on"])
+        state = api.train_state()
+        self.assertTrue(state["hotkey"]["on"])
+        off = api.train_hotkey(False)
+        self.assertTrue(off["ok"])
+        self.assertFalse(api.train_state()["hotkey"]["on"])
+
     def test_detect_picks_what_was_just_played(self) -> None:
         import overtone_train
         with tempfile.TemporaryDirectory() as tmp:

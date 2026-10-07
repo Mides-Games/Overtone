@@ -764,8 +764,22 @@ const I18N = {
     tr_target_note_one: "{bpm} BPM, so aiming at {target} takes {rate}×.",
     tr_target_note_many: "The map holds {bpms}; the dominant ({dominant}) is offered with that rate on screen.",
     tr_target_none: "The map holds no tempo to aim at.",
-    tr_feel: "{bpms} · AR {ar} ({arms} ms) · OD {od} ({odms} ms) · {n} objects in {time}",
+    tr_feel: "{bpms} · AR {ar} · OD {od} · {n} objects in {time}",
     tr_feel_noar: "{bpms} · {n} objects in {time}",
+    tr_density: "{d} objects/s",
+    tr_stream: "longest stream {notes} at {nps} notes/s",
+    tr_no_stream: "no stream over one beat",
+    tr_odw: "OD {w300}/{w100}/{w50} ms",
+    tr_mods: "Mods",
+    tr_presets: "Presets", tr_preset_apply: "Use", tr_preset_delete: "Delete",
+    tr_preset_save: "Save", tr_preset_name: "Name this setup…",
+    tr_preset_none: "No presets saved yet.",
+    tr_copies: "Practice copies",
+    tr_copies_total: "{n} copies · {size} on disk",
+    tr_copies_empty: "No practice copies in the write log yet.",
+    tr_remove: "Remove",
+    tr_remove_preview: "Frees {size} — again to remove.",
+    tr_missing: "{n} missing",
     tr_stat_hp: "HP", tr_stat_cs: "CS", tr_stat_ar: "AR", tr_stat_od: "OD",
     tr_keep: "Keep", tr_scale: "Scale", tr_lock: "Lock to",
     tr_names: "Name and credit", tr_version: "Difficulty name", tr_tags: "Tags",
@@ -1561,8 +1575,22 @@ const I18N = {
     tr_target_note_one: "{bpm} BPM, así apuntar a {target} lleva {rate}×.",
     tr_target_note_many: "El mapa tiene {bpms}; el dominante ({dominant}) se ofrece con ese rate en pantalla.",
     tr_target_none: "El mapa no tiene tempo al cual apuntar.",
-    tr_feel: "{bpms} · AR {ar} ({arms} ms) · OD {od} ({odms} ms) · {n} objetos en {time}",
+    tr_feel: "{bpms} · AR {ar} · OD {od} · {n} objetos en {time}",
     tr_feel_noar: "{bpms} · {n} objetos en {time}",
+    tr_density: "{d} objetos/s",
+    tr_stream: "racha más larga {notes} a {nps} notas/s",
+    tr_no_stream: "sin racha de más de un beat",
+    tr_odw: "OD {w300}/{w100}/{w50} ms",
+    tr_mods: "Mods",
+    tr_presets: "Presets", tr_preset_apply: "Usar", tr_preset_delete: "Borrar",
+    tr_preset_save: "Guardar", tr_preset_name: "Nombrá este setup…",
+    tr_preset_none: "Todavía no hay presets guardados.",
+    tr_copies: "Copias de práctica",
+    tr_copies_total: "{n} copias · {size} en disco",
+    tr_copies_empty: "Todavía no hay copias en el registro.",
+    tr_remove: "Borrar",
+    tr_remove_preview: "Libera {size}; de nuevo para borrar.",
+    tr_missing: "{n} faltantes",
     tr_stat_hp: "HP", tr_stat_cs: "CS", tr_stat_ar: "AR", tr_stat_od: "OD",
     tr_keep: "Mantener", tr_scale: "Escalar", tr_lock: "Fijar en",
     tr_names: "Nombre y crédito", tr_version: "Nombre de la dificultad", tr_tags: "Tags",
@@ -7883,7 +7911,8 @@ function renderCompile() {
 // in Python, and the build runs on its own worker with its own lock, so an
 // analysis and a resample never run at once.
 const TR = { progress: null, report: null, ladder: null, building: false,
-             confirm: false, what: null };
+             confirm: false, what: null, copies: null, presets: {},
+             removeAsk: null };
 
 function trSet(id, value) {
   // Never type over the field somebody is typing in.
@@ -7903,6 +7932,86 @@ function trApply(reply) {
 async function trLoad() {
   if (!api()) return;
   trApply(await api().train_state());
+  trCopiesApply(await api().train_copies());
+  trPresetsApply(await api().train_presets());
+}
+
+async function trSetMods() {
+  if (!api()) return;
+  const mods = [...document.querySelectorAll("#trMods button.on")]
+    .map((b) => b.dataset.mod);
+  trApply(await api().train_set({ mods }));
+}
+
+async function trCopiesLoad() {
+  if (!api()) return;
+  trCopiesApply(await api().train_copies());
+}
+
+function trCopiesApply(reply) {
+  if (!reply || !reply.ok) return;
+  TR.copies = reply;
+  TR.removeAsk = null;
+  renderTrain();
+}
+
+async function trRemove(folder) {
+  if (!api()) return;
+  if (TR.removeAsk !== folder) {
+    // First click shows what goes; the second removes it.
+    TR.removeAsk = folder;
+    const preview = await api().train_remove([folder], true);
+    TR.removePreview = preview.ok ? preview : null;
+    renderTrain();
+    return;
+  }
+  TR.removeAsk = null;
+  TR.removePreview = null;
+  const reply = await api().train_remove([folder], false);
+  if (!reply.ok) { editFailure(reply); return; }
+  trCopiesApply(await api().train_copies());
+}
+
+async function trPresetsLoad() {
+  if (!api()) return;
+  trPresetsApply(await api().train_presets());
+}
+
+function trPresetsApply(reply) {
+  if (!reply || !reply.ok) return;
+  TR.presets = reply.presets || {};
+  renderTrain();
+}
+
+async function trPresetSave() {
+  if (!api()) return;
+  const name = $("trPresetName").value.trim();
+  if (!name) return;
+  const st = (S.train.settings || {});
+  const reply = await api().train_preset_save(name, {
+    rate: st.rate, target_bpm: st.target_bpm, from_bpm: st.from_bpm,
+    stats: st.stats, naming: st.naming, mods: st.mods,
+    audio_format: st.audio_format, osz: st.osz,
+  });
+  if (!reply.ok) { editFailure(reply); return; }
+  $("trPresetName").value = "";
+  trPresetsApply(reply);
+}
+
+async function trPresetApply() {
+  if (!api()) return;
+  const name = $("trPreset").value;
+  if (!name) return;
+  trApply(await api().train_preset_apply(name));
+}
+
+async function trPresetDelete() {
+  if (!api()) return;
+  const name = $("trPreset").value;
+  if (!name) return;
+  const reply = await api().train_preset_delete(name);
+  if (!reply.ok) { editFailure(reply); return; }
+  trPresetsApply(reply);
 }
 
 async function trPick() { if (api()) trApply(await api().train_pick()); }
@@ -8026,26 +8135,58 @@ function trFeel(plan) {
   const said = bpms.length ? `${[...new Set(bpms)].map((b) => +b).join(" / ")} BPM` : "";
   const values = (plan.stats || {}).values || {};
   const ms = (plan.stats || {}).ms || {};
+  const feel = (plan.stats || {}).feel || {};
   const last = (plan.source.objects || {}).last_ms || 0;
   const time = cpClock(last / plan.rate);
   const n = (plan.source.objects || {}).played || 0;
+  const mods = (plan.mods || []).join("+");
+  const tail = mods ? ` · ${mods}` : "";
+  const arF = feel.ar || {}, odF = feel.od || {};
+  const arSaid = values.ar === null || values.ar === undefined ? "–"
+    : arF.feel !== null && arF.feel !== undefined && arF.feel !== values.ar
+      ? `${+values.ar.toFixed(2)} → ${+arF.feel.toFixed(2)} (${arF.feel_ms} ms)` : `${+values.ar.toFixed(2)} (${ms.ar} ms)`;
+  const odSaid = values.od === null || values.od === undefined ? "–"
+    : odF.feel !== null && odF.feel !== undefined && odF.feel !== values.od
+      ? `${+values.od.toFixed(2)} → ${+odF.feel.toFixed(2)} (${odF.feel_ms} ms)` : `${+values.od.toFixed(2)} (${ms.od} ms)`;
   if (values.ar === null || values.ar === undefined || values.od === null || values.od === undefined) {
-    return t("tr_feel_noar", { bpms: said, n, time });
+    return t("tr_feel_noar", { bpms: said, n, time }) + tail;
   }
-  return t("tr_feel", { bpms: said, ar: +values.ar.toFixed(2), arms: ms.ar, od: +values.od.toFixed(2), odms: ms.od, n, time });
+  return t("tr_feel", { bpms: said, ar: arSaid, od: odSaid, n, time }) + tail;
+}
+
+function trFeelMore(f) {
+  if (!f) return "";
+  const parts = [];
+  if (f.density_per_s !== null && f.density_per_s !== undefined) {
+    parts.push(t("tr_density", { d: f.density_per_s }));
+  }
+  const stream = f.longest_stream || { notes: 0 };
+  parts.push(stream.notes > 1 && stream.notes_per_s
+    ? t("tr_stream", { notes: stream.notes, nps: stream.notes_per_s })
+    : t("tr_no_stream"));
+  if (f.od_windows) {
+    parts.push(t("tr_odw", { w300: f.od_windows["300"], w100: f.od_windows["100"],
+                             w50: f.od_windows["50"] }));
+  }
+  if (f.mode_note) parts.push(f.mode_note);
+  return parts.join(" · ");
 }
 
 function trStatRow(plan, field) {
   const ask = trStatAsk(field);
   const values = (plan.stats || {}).values || {};
   const ms = (plan.stats || {}).ms || {};
+  const feel = ((plan.stats || {}).feel || {})[field] || {};
   const shown = values[field];
-  const withMs = (field === "ar" || field === "od") && shown !== null && shown !== undefined
-    ? ` · ${ms[field]} ms` : "";
-  const scalers = field === "ar" || field === "od"
+  const felt = feel.feel;
+  const head = shown === null || shown === undefined ? ""
+    : (felt !== null && felt !== undefined && +felt.toFixed(2) !== +shown.toFixed(2)
+      ? ` <span class="muted">${+shown.toFixed(2)} → ${+felt.toFixed(2)}${feel.feel_ms !== null && feel.feel_ms !== undefined ? ` · ${feel.feel_ms} ms` : ""}${(feel.arithmetic || []).length ? ` · ${esc(feel.arithmetic.join("; "))}` : ""}</span>`
+      : ` <span class="muted">${+shown.toFixed(2)}${(field === "ar" || field === "od") && ms[field] !== null && ms[field] !== undefined ? ` · ${ms[field]} ms` : ""}</span>`);
+  const scalers = (field === "ar" || field === "od")
     ? `<button type="button" class="btn small${ask.mode === "scale" ? " on" : ""}" data-tr-stat="${field}" data-tr-mode="scale"><span>${t("tr_scale")}</span></button>` : "";
   return `<div class="cp-row"><div class="cp-head">
-    <span class="cp-name">${t("tr_stat_" + field)}${shown !== null && shown !== undefined ? ` <span class="muted">${+shown.toFixed(2)}${withMs}</span>` : ""}</span>
+    <span class="cp-name">${t("tr_stat_" + field)}${head}</span>
     <div class="spacer"></div>
     <button type="button" class="btn small${ask.mode === "keep" ? " on" : ""}" data-tr-stat="${field}" data-tr-mode="keep"><span>${t("tr_keep")}</span></button>
     ${scalers}
@@ -8148,6 +8289,23 @@ function renderTrain() {
   }
   $("trFeel").textContent = plan.usable ? trFeel(plan) : "";
   $("trStats").innerHTML = ["hp", "cs", "ar", "od"].map((f) => trStatRow(plan, f)).join("");
+  $("trFeel2").textContent = plan.usable && st.feel ? trFeelMore(st.feel) : "";
+
+  // Mods: the arithmetic the file performs, in the engine's own words.
+  document.querySelectorAll("#trMods button").forEach((b) =>
+    b.classList.toggle("on", (settings.mods || []).includes(b.dataset.mod)));
+  const arith = [...new Set(["ar", "od", "hp", "cs"].flatMap((f) =>
+    ((((plan.stats || {}).feel || {})[f] || {}).arithmetic || [])))];
+  $("trModNote").textContent = arith.join(" · ");
+
+  // Presets: named setups, applied onto this view.
+  if ($("trPresetName")) $("trPresetName").placeholder = t("tr_preset_name");
+  const names = Object.keys(TR.presets || {}).sort();
+  const keep = $("trPreset").value;
+  $("trPreset").innerHTML = names.length ? names.map((n) =>
+    `<option value="${esc(n)}">${esc(n)}</option>`).join("")
+    : `<option value="">${esc(t("tr_preset_none"))}</option>`;
+  if (names.includes(keep)) $("trPreset").value = keep;
 
   // Name and credit
   const naming = plan.naming || {};
@@ -8209,6 +8367,24 @@ function renderTrain() {
   }
   ladder.push(trLadderReport());
   $("trLadderBody").innerHTML = ladder.join("");
+
+  // Practice copies: what the log knows, with what each would free beside it.
+  $("trCopiesCard").hidden = false;
+  const copies = (TR.copies && TR.copies.folders) || [];
+  $("trCopiesTotal").textContent = copies.length
+    ? t("tr_copies_total", { n: copies.length, size: trSize(TR.copies.total_bytes) }) : "";
+  $("trCopiesBody").innerHTML = copies.length ? copies.map((row) => {
+    const name = String(row.folder).split(/[\\/]/).pop();
+    const preview = TR.removeAsk === row.folder && TR.removePreview
+      && TR.removePreview.removed.find((r) => r.folder === row.folder);
+    return `<div class="cp-row"><div class="cp-head">
+      <span class="cp-name" title="${esc(row.folder)}">${esc(name)}</span>
+      <span class="cp-at">${esc((row.rates || []).join(", "))} · ${trSize(row.bytes)}${
+        row.missing.length ? ` · ${t("tr_missing", { n: row.missing.length })}` : ""}</span>
+      <div class="spacer"></div>
+      <button class="btn ghost small" data-tr-remove="${esc(row.folder)}" title="${t("tr_remove")}">×</button>
+    </div>${preview ? `<div class="cp-why"><span>${t("tr_remove_preview", { size: trSize(preview.bytes) })}</span></div>` : ""}</div>`;
+  }).join("") : `<div class="card-sub">${t("tr_copies_empty")}</div>`;
 }
 
 function wire() {
@@ -8544,6 +8720,16 @@ function wire() {
   $("trFolder").onclick = trPickFolder;
   $("trGo").onclick = trBuild;
   $("trLadderGo").onclick = trBuildLadder;
+  document.querySelectorAll("#trMods button").forEach((b) => {
+    b.onclick = () => { b.classList.toggle("on"); trSetMods(); };
+  });
+  $("trPreset").onchange = trPresetApply;
+  $("trPresetSave").onclick = trPresetSave;
+  $("trPresetDelete").onclick = trPresetDelete;
+  $("trCopiesBody").onclick = (e) => {
+    const gone = e.target.closest("[data-tr-remove]");
+    if (gone) trRemove(gone.dataset.trRemove);
+  };
   $("undoBtn").onclick = undo;
   $("redoBtn").onclick = redo;
   $("injectBtn").onclick = injectOsu;

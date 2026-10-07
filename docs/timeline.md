@@ -16,11 +16,33 @@ later costs more than writing it down now.
 
 Work that has landed but is not in a published version is headed
 **Unreleased**, in the same order as everything else. The newest published
-version is `v0.1.0-alpha`.
+version is `v0.2.0-alpha`.
 
 ---
 
 ---
+
+## Unreleased — 2026-10-07 · Phase 26: feel, mods, copies, presets
+
+### Changed
+
+- **What the copy will feel like** (row 26.9): `feel_of` beside the stats — BPM range,
+  density, the longest stream with its speed, exact AR/OD windows on standard. Other
+  modes name whose tables they read instead of borrowing standard's.
+- **Mod emulation** (26.10): HR/EZ/DT/NC/HT composing with keep/lock/scale. A lock names
+  the feel and the file carries the compensation with the arithmetic shown (AR 9 under
+  DT writes 7); contradictory pairs and game-capped combinations refuse saying so.
+- **Undo and clean up** (26.15): the copies card lists the write log with dates, sizes
+  and origins; the first click shows what goes, the second removes only what the log
+  names — a stranger's map in the folder stays.
+- **Presets** (26.20): named setups beside the cache, the same object as a build,
+  applied onto the Train view with one click.
+
+### Measured
+
+- 985 Python tests (11 new), all green; `facts.py`, `parity.py` green; static UI pass
+  clean in both languages.
+- Not checked: the browser harness, like the section's.
 
 ## Unreleased — 2026-10-07 · Phase 26: rate ladders, one run one mapset
 

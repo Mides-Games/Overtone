@@ -100,6 +100,14 @@
     "where": "python-only",
     "why": "overtone_train.py: rate ladders as one mapset, which no Rust crate holds"
    },
+   "TrainCopiesTests": {
+    "where": "python-only",
+    "why": "overtone_train.py: the write log's practice copies, listed and freed, which no Rust crate holds"
+   },
+   "TrainFeelModsTests": {
+    "where": "python-only",
+    "why": "overtone_train.py: what a copy feels like and the mod arithmetic, which no Rust crate holds"
+   },
    "TrainGridTests": {
     "where": "python-only",
     "why": "overtone_train.py: the rate on the grid, which no Rust crate holds"

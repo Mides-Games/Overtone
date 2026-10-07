@@ -43,13 +43,18 @@ point, section volumes, SV normaliser, re-snap, snap divisors, audio file check)
 1. **Hitsounds, the rest** (Phase 6, [`15-hitsound-plan.md`](15-hitsound-plan.md)) — H6
    (sample recommendation; the bank is in) and H7 (a proposal from the audio alone). Profiles are
    in the app: Drum-focused beat Balanced on its own style's maps and is chosen beside
-   Propose; Minimal did not on bare claps and does not ship (timeline, 2026-09-26). The
+   Propose; Minimal did not on bare claps and    does not ship (timeline, 2026-09-26). The
    role term reads the map's red lines instead of the audio's bar since 2026-09-30
    (`06` §11; bare clap 0.331 → 0.429, finish 0.093 → 0.403); the whistle hand rule
    does not follow it there (measured both ways, both lose). Three things wait until the instrument templates hold on real audio: the
    clap-mismatch rule, instrument lanes on the timeline, and sample→role recommendation
    (the extractor runs on samples since 2026-10-03 via `hitsound-classify`, but a textbook
-   kick reads snare — timeline). At the mappers' claps of 11
+   kick reads snare — timeline). Re-measured on the Rust classifier 2026-10-07
+   (`bench/templates_on_real_audio.py`): median `P(snare)+P(clap)` 0.189 at mappers'
+   claps over 12 songs (was 0.138 on Python's 11), crash-vs-snare 0.408 — still a coin
+   toss, so lanes drawn from them would still show a precision they do not have. The
+   same run's refit (0.752 snare-vs-rest, 0.846 crash-vs-snare) is not shippable: two
+   labels cannot re-place eleven classes with nothing checking the other eleven. At the mappers' claps of 11
    real songs the templates read snare or clap at a median 0.138 (timeline, H3 audio
    half), so lanes drawn from them would show a precision they do not have.
 2. **Library focus** (Phase 19) — scan, rescan and search measured and fixed on

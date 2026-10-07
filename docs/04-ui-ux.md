@@ -381,11 +381,12 @@ waited for the stage to end, up to 36 s. The result on screen stays.
   by the owner 2026-10-03; the rate trainer, Phase 26, the same move with a different
   multiplier — is bookkeeping, and allowed; inventing objects from the audio, as the Rhythm
   guide proposal would, is still out.
-- **Open, and the owner's to settle:** whether *dropping* an object the user explicitly
-  asks to drop is allowed on such a copy. The rule above covers drawing, moving and
-  reshaping, and says nothing about subtraction. It comes up in roadmap row 26.12, where a
-  spinner that was three seconds long becomes two at 1.5x and unspinnable. The proposal
-  there is yes — on an explicit ask, never by default, with the count and the kind named in
-  the report and in the difficulty name — and until it is decided that row is not built.
+- **Settled by the owner 2026-10-07:** *dropping* a spinner the user explicitly asks
+  to drop is allowed on such a copy — a spinner that was three seconds long becomes
+  two at 1.5x and unspinnable, which is a physical minimum, not a mapping choice.
+  Never by default; the count and the kind go in the report and in the difficulty
+  name; the copy shows each spinner's length before the choice. Sliders and holds
+  stay: a short one is still playable. Inventing objects from the audio, as the
+  Rhythm guide proposal would, is still out.
 - No account, no sync, no telemetry, no update check. Offline is a feature.
 - No onboarding tour. The dashboard is one drop target and a list.

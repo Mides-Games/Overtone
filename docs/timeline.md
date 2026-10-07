@@ -22,6 +22,22 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-07 · Dropping spinners, allowed and named
+
+### Changed
+
+- **Row 26.12 built on the owner's yes**: an explicit "drop spinners" ask removes
+  spinner objects from the copy — spinners only, because a short slider or hold stays
+  playable while spinning has a physical minimum. Never by default; the plan shows each
+  spinner's length at the rate before the choice, and the count and kind land in the
+  report, the version (`Hard (1.5x), no spinners`) and the tags. `04-ui-ux.md` §9 now
+  records the carve-out instead of the open question.
+
+### Measured
+
+- 1005 Python tests (4 new), all green; `facts.py`, `parity.py` green.
+- Not checked: the browser harness.
+
 ## Unreleased — 2026-10-07 · One hotkey, no hook
 
 ### Changed

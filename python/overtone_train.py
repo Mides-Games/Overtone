@@ -504,13 +504,15 @@ def _feel_ms(field: str, feel: float) -> float:
 
 def _practice_name(source: dict, rate: float, naming: dict | None,
                    settled_values: dict | None = None,
-                   reds: list[dict] | None = None) -> tuple[dict, list[dict]]:
+                   reds: list[dict] | None = None,
+                   dropped: int = 0) -> tuple[dict, list[dict]]:
     """What the copy says it is, so it can never pass as the ranked map.
 
     The version names the rate (the template may choose the fields), the
     original mapper and difficulty stay credited in ``Tags`` and in the
     report, ``Creator`` stays the original's, and ``BeatmapID``/``BeatmapSetID``
-    are blanked: a copy carries no ranked identity.
+    are blanked: a copy carries no ranked identity. Dropped spinners join the
+    version, because a map missing objects must say so in its own name.
     """
     naming = dict(naming or {})
     unknown = sorted(set(naming) - {"version", "template"})
@@ -524,10 +526,12 @@ def _practice_name(source: dict, rate: float, naming: dict | None,
     bpm_text = f"{bpms[0]['bpm']:g}" if len(bpms) == 1 else (
         f"{len({b['bpm'] for b in bpms})} tempi" if bpms else "no tempo")
     settled_stats = dict(settled_values) if settled_values else source.get("difficulty", {}) or {}
+    dropped = int(dropped or 0)
     fields = {"version": str(version), "rate": float(rate),
               "bpm": bpm_text, "mapper": str(mapper),
               "ar": settled_stats.get("ar"), "od": settled_stats.get("od"),
-              "hp": settled_stats.get("hp"), "cs": settled_stats.get("cs")}
+              "hp": settled_stats.get("hp"), "cs": settled_stats.get("cs"),
+              "dropped": f"{dropped} spinner(s)" if dropped else ""}
     if naming.get("version") is not None:
         version_text = str(naming["version"])
     elif naming.get("template") is not None:
@@ -539,9 +543,14 @@ def _practice_name(source: dict, rate: float, naming: dict | None,
                                          "why": f"The naming template cannot be filled: {exc}."}]
     else:
         version_text = f"{version} ({float(rate):g}x)"
+        if dropped:
+            version_text += ", no spinners"
     tags = str(metadata.get("Tags") or "")
     tokens = [tok for tok in tags.split() if tok]
-    for extra in (mapper, f"{float(rate):g}x", "practice"):
+    extras = [mapper, f"{float(rate):g}x", "practice"]
+    if dropped:
+        extras.append("no-spinners")
+    for extra in extras:
         for word in str(extra).split():
             if word and word not in tokens:
                 tokens.append(word)
@@ -552,7 +561,8 @@ def _practice_name(source: dict, rate: float, naming: dict | None,
 
 def plan_practice(osu, audio=None, rate=None, target_bpm=None, from_bpm=None,
                   stats: dict | None = None, audio_method: str = "resample",
-                  naming: dict | None = None, mods=None) -> dict:
+                  naming: dict | None = None, mods=None,
+                  drop_spinners: bool = False) -> dict:
     """One source map as a practice-copy document: the rate, the stats, the names.
 
     The plan is data before it is a file, as in Phase 25: the source, the rate
@@ -608,11 +618,19 @@ def plan_practice(osu, audio=None, rate=None, target_bpm=None, from_bpm=None,
     # The grid the rate is applied to: read_segment counts the timing but
     # does not keep the points, so the reds are read here, which costs
     # milliseconds and means a saved plan builds the same way tomorrow.
+    # The spinners come from the same read, for the same reason.
     try:
-        reds = [p for p in tc._points_of(ta.read_osu_beatmap(source["osu"]))
+        parsed = ta.read_osu_beatmap(source["osu"])
+        reds = [p for p in tc._points_of(parsed)
                 if p["red"] and p["beat_length"] > 0]
+        spinners = [{"time": round(float(obj["time"]), 3),
+                     "duration_ms": round(float(obj.get("end_time", obj["time"]))
+                                          - float(obj["time"]), 3)}
+                    for obj in parsed.get("hitobjects", [])
+                    if obj.get("kind") == "spinner" and "time" in obj]
     except (OSError, ValueError):
         reds = []
+        spinners = []
     last_ms = source["objects"].get("last_ms")
 
     value, target, rate_refusals = _resolve_rate(reds, last_ms, rate, target_bpm, from_bpm)
@@ -629,9 +647,19 @@ def plan_practice(osu, audio=None, rate=None, target_bpm=None, from_bpm=None,
     refusals.extend(stat_refusals)
     names, name_refusals = _practice_name(source, value if value is not None else 1.0,
                                           naming, settled.get("values"),
-                                          reds) if not rate_refusals else (
+                                          reds, len(spinners) if drop_spinners else 0) \
+        if not rate_refusals else (
         {"version": None, "tags": None, "creator": None, "fields": {}}, [])
     refusals.extend(name_refusals)
+    drops = []
+    if drop_spinners and value is not None:
+        drops = [{"time": row["time"], "duration_ms": row["duration_ms"],
+                  "at_rate_ms": round(row["duration_ms"] / float(value), 1)}
+                 for row in spinners]
+        if not drops:
+            repairs.append(_repair(
+                "no_spinners_to_drop",
+                "Asked to drop spinners, but the map holds none; nothing is dropped."))
 
     if value is not None and not refusals:
         # A rate below 1.0 pushes every time of the map up; past the
@@ -671,6 +699,7 @@ def plan_practice(osu, audio=None, rate=None, target_bpm=None, from_bpm=None,
                        "samples": source["samples"]},
             "rate": value, "target": target, "stats": settled, "naming": names,
             "mods": checked_mods if checked_mods is not None else [],
+            "drop_spinners": bool(drop_spinners), "drops": drops,
             "audio_method": audio_method,
             "repairs": repairs, "refusals": refusals, "usable": not refusals}
     return plan
@@ -839,9 +868,16 @@ def practice_beatmap(plan: dict, decimals: int = WRITE_DECIMALS) -> tuple[str, d
 
     object_lines: list[tuple] = []
     unparsed = 0
+    dropped = 0
+    drop = bool(plan.get("drop_spinners"))
     for obj in beatmap.get("hitobjects", []):
         if obj.get("kind") == "unparsed":
             unparsed += 1
+            continue
+        if drop and obj.get("kind") == "spinner":
+            # Asked, counted in the plan, named in the version: the only
+            # subtraction the §9 rule allows.
+            dropped += 1
             continue
         time = float(obj["time"])
         governing = _governing(reds, time)
@@ -961,15 +997,21 @@ def practice_beatmap(plan: dict, decimals: int = WRITE_DECIMALS) -> tuple[str, d
         out.append("")
     text = "\r\n".join(out)
 
+    notes = ([{"code": "objects_dropped",
+                 "what": f"{unparsed} object line(s) that do not read as objects "
+                         f"were left out: a line with no time cannot be placed."}]
+               if unparsed else [])
+    if dropped:
+        notes.append({"code": "spinners_dropped",
+                      "what": f"{dropped} spinner(s) dropped on an explicit ask, "
+                              f"named in the version: unspinnable at {rate:g}x."})
     report = {"rate": rate, "objects": len(object_lines), "unparsed": unparsed,
+              "dropped": dropped, "drops": plan.get("drops", []),
               "reds": len(reds), "greens": len(points) - len(reds),
               "worst_beat_error": beat_worst, "worst_ms_error": ms_worst,
               "stats": plan["stats"], "naming": plan["naming"],
               "breaks": breaks, "events_kept": kept_other,
-              "notes": ([{"code": "objects_dropped",
-                          "what": f"{unparsed} object line(s) that do not read as objects "
-                                  f"were left out: a line with no time cannot be placed."}]
-                        if unparsed else [])}
+              "notes": notes}
     return text, report
 
 
@@ -1808,7 +1850,8 @@ def save_preset(name: str, settings: dict) -> dict:
         raise ValueError("A preset needs a name.")
     settings = dict(settings or {})
     unknown = sorted(set(settings) - {"rate", "target_bpm", "from_bpm", "stats",
-                                      "naming", "mods", "audio_format", "osz"})
+                                      "naming", "mods", "drop_spinners",
+                                      "audio_format", "osz"})
     if unknown:
         raise ValueError(f"Unknown setting(s): {', '.join(unknown)}.")
     mods = settings.get("mods")
@@ -1981,6 +2024,7 @@ def _ladder_audio_name(stem: str, rate: float, audio_format: str) -> str:
 
 def plan_ladder(osu, rates, audio=None, stats: dict | None = None,
                 naming: dict | None = None, mods=None,
+                drop_spinners: bool = False,
                 audio_method: str = "resample") -> dict:
     """One source map as a ladder document: a practice plan per rung.
 
@@ -1996,7 +2040,9 @@ def plan_ladder(osu, rates, audio=None, stats: dict | None = None,
     if values is not None:
         for rate in values:
             plan = plan_practice(osu, audio=audio, rate=rate, stats=stats,
-                                 naming=naming, mods=mods, audio_method=audio_method)
+                                 naming=naming, mods=mods,
+                                 drop_spinners=drop_spinners,
+                                 audio_method=audio_method)
             plans.append(plan)
             for refusal in plan["refusals"]:
                 refusals.append({"rung": f"{rate:g}x", **refusal})

@@ -22,6 +22,27 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-07 · Audio-only evidence for the Propose card
+
+### Changed
+
+- **H7's app surface**: an evidence toggle beside Propose — map+audio, or audio only.
+  The song's strong attacks decide with no map, each takes the picked map's nearest
+  sound event inside 50 ms and moves its time onto it (what it was heard at stays in
+  the inspector), and one event takes its nearest attack. Attacks with no object are
+  counted, not placed: there is nothing to write a hitsound onto. Inspector, audition
+  and write path unchanged, fed by ears instead of context — best on bare maps, where
+  the map context it replaces is empty anyway.
+
+### Measured
+
+- 1008 Python tests (2 new), all green — and a real find on the way: importing a
+  `TestCase` across test modules runs it twice under discover (12 phantom runs
+  here), so the web tests reach engine fixtures through the module, not the class.
+- `facts.py` green; static UI pass clean EN/ES.
+- Not checked: the browser harness, and the sidecar on real songs through this path
+  (the engine's own 0.29 clap F1 stands as the number).
+
 ## Unreleased — 2026-10-07 · Labels measured against kiai: a miss, recorded
 
 ### Changed

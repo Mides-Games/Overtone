@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
 
-Tests: **1005** Python (709 engine + 296 web shell) · **291** Rust.
+Tests: **1008** Python (710 engine + 298 web shell) · **291** Rust.
 
 ### What is pending, in order
 
@@ -550,7 +550,7 @@ the copier, the section, the check, the decision engine, the editor.
 | Sample recommendation | map samples to roles by their spectrum | med | med | bank | no | no | P2 | todo |
 | Hitsound export | only hitsound fields change | med | **high** | P5 writer | no | no | **P1** | **done** — the Decide card writes the file or a copy; the Export section writes a hitsound difficulty for the whole mapset, which copied back with H1 leaves its source as it was |
 | Consistency check | flag objects whose sound disagrees with their role | low | high | decision | no | no | P2 | partial — map half and silence half in the mod report (missing/extra clap; finish/clap with no attack under them); clap-mismatch refused on measurement until the templates prove themselves on real audio |
-| Audio-only proposal | hitsounds from the song alone, no map: attacks → classes + role, proposed on the song's own analysis | med | high | H4, P-4 | no | no | P2 | **engine done 2026-10-03** — `hitsound <audio>` decides strong attacks (weight ≥ 0.5, residual ≤ 5 ms) with the same core, no combos/prior/bars, reported `"mode": "audio-only"`; mapper clap F1 0.29 on 6 maps, bare-H4 agreement 0.50 — app surface (Propose without a map, write path) still open |
+| Audio-only proposal | hitsounds from the song alone, no map: attacks → classes + role, proposed on the song's own analysis | med | high | H4, P-4 | no | no | P2 | **done** 2026-10-07 — evidence toggle on the Propose card (map+audio/audio-only): the song's strong attacks matched to the picked map's nearest sound event inside 50 ms, attacks with no object counted not placed, the same inspector/audition/write path fed by ears instead of context |
 
 The F1 numbers are measured on synthetic arrangements the fit never saw, from the same
 corpus generator; they say the classes separate, not how they do on real songs.

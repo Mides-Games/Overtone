@@ -39,6 +39,12 @@ pub const REPEAT_COSINE: f64 = 0.90;
 /// loudest quiet member at which one repetition group splits in two. 2.0
 /// is 3 dB; pop choruses sit roughly 3-6 dB over their verses, and a verse
 /// played a little unevenly stays well under it.
+///
+/// Tried at 1.5 and reverted: on 100+100 Songs the lift over chance moved
+/// +7.5/+11.9 to +9.7/+14.2, under the pre-registered +15 bar on both
+/// halves. The failure is recall, not the threshold — full mixes collapse
+/// to one chroma family with 0-2.5 dB spreads, and no bar in that band is
+/// more than a coin flip informed by nothing. See bench/labels.py.
 pub const SPLIT_POWER_RATIO: f64 = 2.0;
 /// A unique opening longer than this is a section, not an introduction.
 pub const INTRO_MAX_S: f64 = 12.0;

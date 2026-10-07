@@ -22,6 +22,19 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-07 · Timbre grouping: the best lead yet, still a miss
+
+### Measured
+
+- Regrouping sections by chroma AND MFCC-timbre cosine (`proto/timbre_group.py`):
+  tune lift **+19.8** at 0.95 (28 lit, clears +15), held-out **+13.8** on 13 songs
+  (miss by 1.2). Nothing ported: the bar missed twice in a row across two different
+  adjustments, and a miss is a miss at any distance.
+- What it says about the problem: timbre splits the mega-family where level cannot
+  (recall 30→41 lit), and precision holds (~39-49 % vs ~35 %). The next attempt
+  inherits the halves, the bar — and the warning that n≈13 held-out songs make ±7
+  point noise, so it should bring a bigger sample or a significance-aware bar.
+
 ## Unreleased — 2026-10-07 · Templates on real audio, re-measured: still blocked
 
 ### Measured

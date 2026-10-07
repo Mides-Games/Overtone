@@ -11320,7 +11320,7 @@ class TrainPlanTests(unittest.TestCase):
         self.assertFalse(plan["usable"])
         refusal = next(r for r in plan["refusals"] if r["code"] == "stat_unreachable")
         self.assertIn("10.08", refusal["why"])
-        self.assertIn("26.10", refusal["why"])
+        self.assertIn("speed mod", refusal["why"])
         with tempfile.TemporaryDirectory() as tmp:
             locked = self._plan(self._map(tmp), rate=1.37, stats={"ar": 10.0})
         self.assertTrue(locked["usable"], locked["refusals"])
@@ -11620,6 +11620,132 @@ class TrainLadderTests(unittest.TestCase):
                 overtone_train.build_ladder(ladder, Path(tmp) / "set", audio_format="wav")
             with self.assertRaises(ValueError):
                 overtone_train.build_ladder(ladder, Path(tmp) / "src", audio_format="wav")
+
+
+class TrainFeelModsTests(unittest.TestCase):
+    """What the copy will feel like, and the mods it will be played with."""
+
+    def _stream(self, tmp: str, gap_ms: int = 100, notes: int = 16) -> Path:
+        folder = Path(tmp)
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "Mode: 0", "",
+                 "[Metadata]", "Title:S", "Artist:A", "Creator:M", "Version:Hard",
+                 "BeatmapID:0", "BeatmapSetID:-1", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:8",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[TimingPoints]", "0,400,4,2,0,80,1,0", "",
+                 "[HitObjects]",
+                 *[f"100,100,{1000 + k * gap_ms},1,0,0:0:0:0:" for k in range(notes)],
+                 ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        return folder / "map.osu"
+
+    def test_feel_counts_density_stream_and_windows(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainAudioTests()._clicks(tmp)
+            feel = overtone_train.feel_of(path, 1.37,
+                                          {"hp": 5.0, "cs": 4.0, "ar": 9.0, "od": 7.0}, [])
+        self.assertEqual((feel["objects"], feel["bpm_text"], feel["mode"]), (11, "150", 0))
+        self.assertAlmostEqual(feel["density_per_s"], 0.69, delta=0.01)
+        self.assertEqual(feel["longest_stream"]["notes"], 1)
+        self.assertIsNone(feel["longest_stream"]["notes_per_s"])
+        self.assertAlmostEqual(feel["ar_ms"], 600.0)
+        self.assertEqual(feel["od_windows"], {"300": 37.5, "100": 83.5, "50": 129.5})
+        with tempfile.TemporaryDirectory() as tmp:
+            stream = overtone_train.feel_of(self._stream(tmp), 2.0,
+                                            {"hp": 5.0, "cs": 4.0, "ar": 9.0, "od": 8.0}, [])
+        self.assertEqual(stream["longest_stream"]["notes"], 16)
+        self.assertAlmostEqual(stream["longest_stream"]["notes_per_s"], 16 / 1.5, delta=0.01)
+        self.assertAlmostEqual(stream["duration_ms"], 750.0, delta=0.1)
+
+    def test_a_locked_feel_writes_the_compensation(self) -> None:
+        import overtone as ta
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainAudioTests()._clicks(tmp)
+            plan = overtone_train.plan_practice(path, rate=1.0, stats={"ar": 9},
+                                                mods=["DT"])
+            self.assertTrue(plan["usable"], plan["refusals"])
+            # AR 9 felt under DT is AR 7 written: 600 ms × 1.5 back to 900.
+            self.assertAlmostEqual(plan["stats"]["values"]["ar"], 7.0)
+            felt = plan["stats"]["feel"]["ar"]
+            self.assertAlmostEqual(felt["feel"], 9.0)
+            self.assertAlmostEqual(felt["feel_ms"], 600.0)
+            self.assertEqual(felt["arithmetic"], [overtone_train.MODS["DT"]["says"]])
+            text, _ = overtone_train.practice_beatmap(plan)
+            out = Path(tmp) / "copy.osu"
+            out.write_bytes(text.encode("utf-8"))
+            built = ta.read_osu_beatmap(out)
+        self.assertEqual(built["difficulty"]["ApproachRate"], "7")
+
+    def test_what_no_combination_reaches_refuses_saying_so(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainAudioTests()._clicks(tmp)
+            ez = overtone_train.plan_practice(path, rate=1.0, stats={"ar": 10}, mods=["EZ"])
+            self.assertFalse(ez["usable"])
+            self.assertEqual(ez["refusals"][-1]["code"], "mod_unreachable")
+            clash = overtone_train.plan_practice(path, rate=1.0, mods=["DT", "HT"])
+            self.assertEqual(clash["refusals"][-1]["code"], "contradictory_mods")
+            unknown = overtone_train.plan_practice(path, rate=1.0, mods=["HD"])
+            self.assertEqual(unknown["refusals"][-1]["code"], "unknown_mod")
+
+    def test_hr_caps_where_the_game_caps(self) -> None:
+        import overtone_train
+        felt = overtone_train.mod_feel("hp", 8.0, ["HR"])
+        self.assertAlmostEqual(felt["feel"], 10.0)
+        self.assertTrue(felt["capped"])
+        plain = overtone_train.mod_feel("ar", 9.0, ["DT"])
+        self.assertAlmostEqual(plain["feel_ms"], 400.0)
+        self.assertIsNone(plain["feel"])   # past AR 10: milliseconds only
+        written, bad = overtone_train.mod_compensate("ar", 10.5, ["DT"])
+        self.assertFalse(bad)
+        self.assertAlmostEqual(written, 9.25)
+
+
+class TrainCopiesTests(unittest.TestCase):
+    """The write log already knows every copy: list them, free them."""
+
+    def test_copies_list_with_origins_and_free_themselves(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            first = overtone_train.build_practice(
+                overtone_train.plan_practice(TrainAudioTests()._clicks(tmp), rate=1.2),
+                Path(tmp) / "set1", audio_format="wav")
+            self.assertTrue(first["checks"]["ok"])
+            listed = overtone_train.list_copies()
+            rows = [row for row in listed["folders"] if row["folder"].endswith("set1")]
+            self.assertEqual(len(rows), 1)
+            row = rows[0]
+            self.assertEqual(row["rates"], ["1.2"])
+            self.assertTrue(row["sources"] and row["sources"][0].endswith("map.osu"))
+            self.assertTrue(row["complete"] and row["bytes"] > 0)
+            dry = overtone_train.remove_copies([row["folder"]], dry_run=True)
+            self.assertTrue(dry["dry_run"] and dry["bytes"] == row["bytes"])
+            self.assertTrue((Path(tmp) / "set1").is_dir())
+            gone = overtone_train.remove_copies([row["folder"]])
+            self.assertEqual(gone["bytes"], row["bytes"])
+            self.assertFalse((Path(tmp) / "set1").exists())
+            unknown = overtone_train.remove_copies(["nowhere"])
+            self.assertEqual(unknown["removed"][0]["refusal"],
+                             "Not a practice copy this log knows.")
+
+    def test_presets_are_practice_documents_with_names(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(os.environ, {"OVERTONE_TRAIN_PRESETS": str(Path(tmp) / "p.json")}):
+                saved = overtone_train.save_preset("dt", {"rate": 1.0, "mods": ["DT"],
+                                                           "stats": {"ar": 9}})
+                self.assertEqual(saved["settings"]["mods"], ["DT"])
+                self.assertIn("dt", overtone_train.list_presets()["presets"])
+                with self.assertRaises(ValueError):
+                    overtone_train.save_preset("bad", {"mods": ["HD"]})
+                with self.assertRaises(ValueError):
+                    overtone_train.save_preset("bad", {"audio_format": "ogg"})
+                self.assertTrue(overtone_train.delete_preset("dt")["deleted"])
+                with self.assertRaises(ValueError):
+                    overtone_train.delete_preset("dt")
 
 
 if __name__ == "__main__":

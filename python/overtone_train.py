@@ -33,9 +33,11 @@ Overwriting a source file, or an existing `.bak`, is refused outright.
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -137,9 +139,141 @@ def ms_to_od(ms: float) -> float:
     return (79.5 - float(ms)) / 6.0
 
 
+def od_windows(od: float) -> dict:
+    """The 300/100/50 hit windows in milliseconds for a standard OD.
+
+    Standard only: taiko, catch and mania read their own windows, and a
+    number from another mode's table would be the one thing on the screen
+    that is not exact.
+    """
+    od = float(od)
+    return {"300": round(79.5 - 6.0 * od, 2),
+            "100": round(139.5 - 8.0 * od, 2),
+            "50": round(199.5 - 10.0 * od, 2)}
+
+
+#: What each mod does, in the order the game applies it: the number first
+#: (HR/EZ), then the speed (DT/NC/HT). A rate change is only right if the
+#: arithmetic is shown, so every row carries the sentence the UI prints.
+MODS: dict = {
+    "HR": {"kind": "number", "factor": 1.4,
+           "says": "HR ×1.4 on HP, CS, AR and OD (the game caps at 10)"},
+    "EZ": {"kind": "number", "factor": 0.5,
+           "says": "EZ ×0.5 on HP, CS, AR and OD"},
+    "DT": {"kind": "speed", "factor": 1.5,
+           "says": "DT plays at 1.5x speed: approach and hit windows ÷1.5"},
+    "NC": {"kind": "speed", "factor": 1.5,
+           "says": "NC plays at 1.5x speed, like DT"},
+    "HT": {"kind": "speed", "factor": 0.75,
+           "says": "HT plays at 0.75x speed: approach and hit windows ÷0.75"},
+}
+
+
+def _check_mods(mods) -> tuple[list[str] | None, list[dict]]:
+    """Mod names as a list, or the refusal for an unknown or contradictory one.
+
+    DT and NC are the same speed, so naming both is naming it twice; HT
+    against either is two speeds at once, which no game plays.
+    """
+    names = [str(mod).upper() for mod in (mods or [])]
+    unknown = sorted(set(names) - set(MODS))
+    if unknown:
+        return None, [{"code": "unknown_mod",
+                       "why": f"Mod(s) {', '.join(unknown)} are not HR, EZ, DT, NC or HT."}]
+    if "HT" in names and ("DT" in names or "NC" in names):
+        return None, [{"code": "contradictory_mods",
+                       "why": "Half Time against Double Time is two speeds at once; "
+                              "pick the speed the copy is for."}]
+    seen: list[str] = []
+    for name in names:
+        if name == "NC" and "DT" in seen:
+            continue
+        if name == "DT" and "NC" in seen:
+            continue
+        if name not in seen:
+            seen.append(name)
+    return seen, []
+
+
 def _scaled_stat(value: float, rate: float, to_ms, from_ms) -> float:
     """A time-like stat through the rate: to milliseconds, divided, back."""
     return from_ms(to_ms(value) / float(rate))
+
+
+def _mod_factors(mods: list[str]) -> tuple[float, float]:
+    """The number and speed factors the active mods compose to."""
+    number, speed = 1.0, 1.0
+    for name in mods or []:
+        spec = MODS[name]
+        if spec["kind"] == "number":
+            number *= spec["factor"]
+        else:
+            speed *= spec["factor"]
+    return number, speed
+
+
+def mod_feel(field: str, written: float | None, mods: list[str]) -> dict:
+    """What a written stat feels like with the mods on: the number the player
+    gets, the milliseconds beside it, and the arithmetic in words.
+
+    A lock names the feel and the file carries the compensation (row 26.10's
+    reference trick); keep and scale name the file and the feel follows. Past
+    10 a feel has no number — only the game does that, and only milliseconds
+    are exact there — and an HR feel past 10 is capped where the game caps it.
+    """
+    number_f, speed_f = _mod_factors(mods or [])
+    to_ms, from_ms = (ar_to_ms, ms_to_ar) if field == "ar" else \
+                     (od_to_ms, ms_to_od) if field == "od" else (None, None)
+    if written is None:
+        return {"written": None, "feel": None, "feel_ms": None,
+                "capped": False, "arithmetic": []}
+    arithmetic = [MODS[name]["says"] for name in mods or []]
+    if to_ms is None:
+        feel = float(written) * number_f
+        capped = feel > 10.0
+        return {"written": round(float(written), 4),
+                "feel": round(min(feel, 10.0), 4), "feel_ms": None,
+                "capped": bool(capped), "arithmetic": arithmetic}
+    feel_ms = to_ms(min(float(written) * number_f, 10.0)) / speed_f
+    feel = from_ms(feel_ms) if feel_ms >= to_ms(10.0) - 1e-9 else None
+    if feel is not None and feel > 10.0:
+        feel = None                      # past 10: milliseconds only
+    return {"written": round(float(written), 4),
+            "feel": None if feel is None else round(feel, 4),
+            "feel_ms": round(feel_ms, 2),
+            "capped": number_f != 1.0 and float(written) * number_f > 10.0,
+            "arithmetic": arithmetic}
+
+
+def mod_compensate(field: str, feel: float, mods: list[str]) -> tuple[float | None, dict]:
+    """The number to write so the feel lands where it was asked, or why not.
+
+    The reference's trick with the arithmetic shown: invert the number, then
+    the speed. A combination no `.osu` can hold refuses naming the feel, the
+    mods and the number it would take.
+    """
+    number_f, speed_f = _mod_factors(mods or [])
+    to_ms, from_ms = (ar_to_ms, ms_to_ar) if field == "ar" else \
+                     (od_to_ms, ms_to_od) if field == "od" else (None, None)
+    if to_ms is None:
+        written = float(feel) / number_f
+    else:
+        written = from_ms(to_ms(float(feel)) * speed_f) / number_f
+    if not 0.0 - 1e-9 <= written <= 10.0 + 1e-9:
+        return None, {"code": "mod_unreachable",
+                      "why": f"{field.upper()} {feel:g} under "
+                             f"{'+'.join(mods) or 'no mods'} asks for {field.upper()} "
+                             f"{written:.2f} in the file, past what a .osu can hold (0-10); "
+                             f"no combination reaches it."}
+    if number_f != 1.0 and written * number_f > 10.0 + 1e-9:
+        # The game caps the multiplied number at 10 first, so the feel would
+        # never arrive: writing it anyway would be the clamped hope the phase
+        # refuses to ship.
+        return None, {"code": "mod_unreachable",
+                      "why": f"{field.upper()} {feel:g} under {'+'.join(mods)} caps at 10 "
+                             f"in the game before the speed applies, so the feel would "
+                             f"never arrive; no combination reaches it."}
+    return written, {}
 
 
 # ---------------------------------------------------------------------------
@@ -261,57 +395,67 @@ def _resolve_rate(reds: list[dict], last_ms: float | None,
     return value, target, []
 
 
-def _settle_stats(source: dict, rate: float, stats: dict | None) -> tuple[dict, list[dict], list[dict]]:
+def _settle_stats(source: dict, rate: float, stats: dict | None,
+                  mods: list[str] | None = None) -> tuple[dict, list[dict], list[dict]]:
     """HP, CS, AR and OD as keep / lock / scale, with the milliseconds shown.
 
     AR travels as its preempt window and OD as its 300 window: those are the
     numbers a player is choosing, and the reference hides them behind a
-    slider. Above AR 10 and OD 10 a stat cannot be written into a ``.osu``,
-    which is why the reference has its compensated-map trick (26.10): without
-    that row, an unreachable stat refuses with both numbers named rather than
-    writing a clamped one and hoping.
+    slider. A lock names the **feel** and the file carries the compensation
+    (row 26.10's reference trick, with the arithmetic beside it); keep and
+    scale name the file and the feel follows the mods. What cannot be written
+    refuses with both numbers named rather than writing a clamped one.
     """
     stats = dict(stats or {})
+    mods = list(mods or [])
     unknown = sorted(set(stats) - {"hp", "cs", "ar", "od"})
     if unknown:
         raise ValueError(f"Unknown stat(s): {', '.join(unknown)}. "
                          f"Known: hp, cs, ar, od.")
     original = dict(source.get("difficulty", {}))
     mode = source.get("mode")
+    _number_f, speed_f = _mod_factors(mods)
     settled: dict = {}
     repairs: list[dict] = []
     refusals: list[dict] = []
     for field in ("hp", "cs", "ar", "od"):
         # Keep is the default for all four: scaling a typical AR 9 past 10 is
-        # unrepresentable without row 26.10's compensated map, and a default
+        # unrepresentable without a mod that brings it back, and a default
         # must never refuse a typical map. Scale is an explicit ask, and the
         # refusal it can produce names both numbers and the escape.
         asked = stats.get(field, "keep")
         current = original.get(field)
+        felt = mod_feel(field, current, mods) if current is not None \
+            else mod_feel(field, None, mods)
         if isinstance(asked, (int, float)) and not isinstance(asked, bool):
-            value = float(asked)
+            feel_ask = float(asked)
             if field == "cs" and mode == 3:
                 refusals.append({"code": "mania_cs_locked",
                                  "why": "CircleSize is the key count on a mania map; "
                                         "locking it would change what the map is."})
                 continue
-            if not 0.0 <= value <= 10.0:
+            time_like = field in ("ar", "od")
+            if not 0.0 <= feel_ask and (feel_ask <= 10.0 or speed_f != 1.0) \
+                    and (not time_like or _feel_ms(field, feel_ask) > 0.0):
                 refusals.append({"code": "stat_out_of_range",
-                                 "why": f"{field.upper()} locked to {value:g} sits outside "
-                                        f"0-10, which is what a .osu can hold."})
+                                 "why": f"{field.upper()} {feel_ask:g} as a feel sits outside "
+                                        f"what these mods can mean (0-10"
+                                        f"{', past 10 only with a speed mod' if speed_f == 1.0 else ''}); "
+                                        f"a .osu holds 0-10."})
                 continue
-            settled[field] = {"mode": "lock", "value": value, "ms": None}
-            if field == "ar":
-                settled[field]["ms"] = round(ar_to_ms(value), 2)
-            elif field == "od":
-                settled[field]["ms"] = round(od_to_ms(value), 2)
+            written, bad = mod_compensate(field, feel_ask, mods)
+            if bad:
+                refusals.append(bad)
+                continue
+            felt = mod_feel(field, written, mods)
+            settled[field] = {"mode": "lock", "value": written,
+                              "ms": felt["feel_ms"], "feel": felt}
             continue
         if asked == "keep":
-            settled[field] = {"mode": "keep", "value": current, "ms": None}
-            if field == "ar" and current is not None:
-                settled[field]["ms"] = round(ar_to_ms(current), 2)
-            elif field == "od" and current is not None:
-                settled[field]["ms"] = round(od_to_ms(current), 2)
+            settled[field] = {"mode": "keep", "value": current,
+                              "ms": felt["feel_ms"]
+                              if field in ("ar", "od") else None,
+                              "feel": felt}
             continue
         if asked == "scale":
             if field in ("hp", "cs"):
@@ -320,7 +464,8 @@ def _settle_stats(source: dict, rate: float, stats: dict | None) -> tuple[dict, 
                                         f"with the rate; keep it or lock it to a value."})
                 continue
             if current is None:
-                settled[field] = {"mode": "scale", "value": None, "ms": None}
+                settled[field] = {"mode": "scale", "value": None, "ms": None,
+                                  "feel": mod_feel(field, None, mods)}
                 repairs.append(_repair(
                     f"difficulty_{field}_unknown",
                     f"The map states no {field.upper()}, so scaling has nothing to "
@@ -333,10 +478,12 @@ def _settle_stats(source: dict, rate: float, stats: dict | None) -> tuple[dict, 
                 refusals.append({"code": "stat_unreachable",
                                  "why": f"{field.upper()} {current:g} at {rate:g}x asks for "
                                         f"{field.upper()} {value:.2f} ({ms:.0f} ms), past what a "
-                                        f".osu can hold (0-10); row 26.10's compensated map "
-                                        f"is the escape, and it is not built yet."})
+                                        f".osu can hold (0-10); lock that feel with a speed mod "
+                                        f"(DT) that brings it back into range, or keep it."})
                 continue
-            settled[field] = {"mode": "scale", "value": value, "ms": round(ms, 2)}
+            felt = mod_feel(field, value, mods)
+            settled[field] = {"mode": "scale", "value": value,
+                              "ms": felt["feel_ms"], "feel": felt}
             continue
         refusals.append({"code": "stat_unknown_mode",
                          "why": f"{field.upper()} asks for {asked!r}; give 'keep', 'scale' "
@@ -345,7 +492,14 @@ def _settle_stats(source: dict, rate: float, stats: dict | None) -> tuple[dict, 
               for field, row in settled.items()}
     return {"modes": {f: r["mode"] for f, r in settled.items()},
             "values": values,
-            "ms": {f: r["ms"] for f, r in settled.items()}}, repairs, refusals
+            "ms": {f: r["ms"] for f, r in settled.items()},
+            "feel": {f: r["feel"] for f, r in settled.items()}}, repairs, refusals
+
+
+def _feel_ms(field: str, feel: float) -> float:
+    """The window a feel asks for, to check it stays positive."""
+    to_ms = ar_to_ms if field == "ar" else od_to_ms
+    return to_ms(float(feel))
 
 
 def _practice_name(source: dict, rate: float, naming: dict | None,
@@ -398,12 +552,14 @@ def _practice_name(source: dict, rate: float, naming: dict | None,
 
 def plan_practice(osu, audio=None, rate=None, target_bpm=None, from_bpm=None,
                   stats: dict | None = None, audio_method: str = "resample",
-                  naming: dict | None = None) -> dict:
+                  naming: dict | None = None, mods=None) -> dict:
     """One source map as a practice-copy document: the rate, the stats, the names.
 
     The plan is data before it is a file, as in Phase 25: the source, the rate
     (or the target BPM and which BPM it was computed from), each of HP/CS/AR/OD
-    as *keep*, *lock to a value* or *scale with the rate*, the audio method,
+    as *keep*, *lock to a value* or *scale with the rate*, the mods a player
+    enables (HR/EZ/DT/NC/HT, with the arithmetic shown and a compensated file
+    where a locked feel needs one), the audio method,
     and the naming — JSON beside the cache, so a build is reproducible, a
     report can be re-read without the source, and a ladder (26.16) is one
     document with several rungs.
@@ -435,7 +591,7 @@ def plan_practice(osu, audio=None, rate=None, target_bpm=None, from_bpm=None,
         return {"format": TRAIN_FORMAT, "source": None, "rate": None,
                 "target": {"bpms": [], "dominant_bpm": None, "from_bpm": None,
                            "target_bpm": None},
-                "stats": {"modes": {}, "values": {}, "ms": {}},
+                "stats": {"modes": {}, "values": {}, "ms": {}, "feel": {}},
                 "naming": {"version": None, "tags": None, "creator": None, "fields": {}},
                 "audio_method": audio_method,
                 "repairs": repairs, "refusals": [
@@ -461,10 +617,14 @@ def plan_practice(osu, audio=None, rate=None, target_bpm=None, from_bpm=None,
 
     value, target, rate_refusals = _resolve_rate(reds, last_ms, rate, target_bpm, from_bpm)
     refusals.extend(rate_refusals)
+    if isinstance(mods, str):
+        mods = [mods]
+    checked_mods, mod_refusals = _check_mods(mods) if not rate_refusals else (None, [])
+    refusals.extend(mod_refusals)
     settled, stat_repairs, stat_refusals = _settle_stats(
-        source, value if value is not None else 1.0, stats) \
-        if not rate_refusals else ({"modes": {}, "values": {}, "ms": {}},
-                                   [], [])
+        source, value if value is not None else 1.0, stats, checked_mods) \
+        if not rate_refusals and not mod_refusals else (
+            {"modes": {}, "values": {}, "ms": {}, "feel": {}}, [], [])
     repairs.extend(stat_repairs)
     refusals.extend(stat_refusals)
     names, name_refusals = _practice_name(source, value if value is not None else 1.0,
@@ -510,6 +670,7 @@ def plan_practice(osu, audio=None, rate=None, target_bpm=None, from_bpm=None,
                        "lead_in_ms": source["lead_in_ms"],
                        "samples": source["samples"]},
             "rate": value, "target": target, "stats": settled, "naming": names,
+            "mods": checked_mods if checked_mods is not None else [],
             "audio_method": audio_method,
             "repairs": repairs, "refusals": refusals, "usable": not refusals}
     return plan
@@ -1210,7 +1371,9 @@ def build_practice(plan: dict, folder: str | os.PathLike[str], *,
     ta._atomic_write_bytes(out / osu_file, payload)
     ta.log_write(out / osu_file, WRITE_OP, None,
                  {"bytes": len(payload), "rate": plan["rate"],
-                  "objects": beatmap["objects"], "audio": audio_file})
+                  "objects": beatmap["objects"], "audio": audio_file,
+                  "source": plan["source"]["osu"],
+                  "copied": sorted(entry["name"] for entry in copied)})
     for entry in report["files"]:
         path = out / entry["name"]
         entry["bytes"] = path.stat().st_size if path.is_file() else None
@@ -1283,6 +1446,267 @@ def describe_target(plan: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Undo and clean up: every copy is in the write log already (row 26.15)
+# ---------------------------------------------------------------------------
+
+def _logged_copies(history_dir=None) -> dict[str, list[dict]]:
+    """Write-log entries from practice builds, by the folder they went to."""
+    folders: dict[str, list[dict]] = {}
+    for entry in ta.read_history(history_dir):
+        if entry.get("op") != WRITE_OP or not entry.get("path"):
+            continue
+        folders.setdefault(str(Path(entry["path"]).parent), []).append(entry)
+    return folders
+
+
+def list_copies(history_dir=None) -> dict:
+    """Every practice copy the write log knows, with dates, sizes and origins.
+
+    Not a scan for stray mp3s: a copy is listed because this tool wrote it,
+    with the source map each rung came from. Sizes are measured now, so the
+    list says what removing would free; files the log names that are gone
+    are listed as missing rather than silently dropped.
+    """
+    folders = []
+    for folder, entries in sorted(_logged_copies(history_dir).items()):
+        if not Path(folder).is_dir():
+            # Removed already: the log remembers, the list is for cleaning.
+            continue
+        osu = sorted({Path(e["path"]).name for e in entries})
+        present = {name: (Path(folder) / name) for name in osu}
+        audio = sorted({str((e.get("summary") or {}).get("audio"))
+                        for e in entries if (e.get("summary") or {}).get("audio")})
+        copied = sorted({name for e in entries
+                         for name in (e.get("summary") or {}).get("copied", [])})
+        rates = sorted({str((e.get("summary") or {}).get("rate"))
+                        for e in entries if (e.get("summary") or {}).get("rate") is not None})
+        sources = sorted({str((e.get("summary") or {}).get("source"))
+                          for e in entries if (e.get("summary") or {}).get("source")})
+        missing = sorted(name for name, path in present.items() if not path.is_file())
+        missing += sorted(name for name in audio + copied
+                          if name not in osu and not (Path(folder) / name).is_file())
+        held = [path for path in
+                [present[name] for name in osu if name not in missing]
+                + [Path(folder) / name for name in audio + copied if (Path(folder) / name).is_file()]]
+        folders.append({"folder": folder, "osu": osu, "audio": audio, "copied": copied,
+                        "rates": rates, "sources": sources,
+                        "ts": max((e.get("ts") or "" for e in entries), default=""),
+                        "bytes": sum(path.stat().st_size for path in held
+                                     if path.is_file()),
+                        "missing": sorted(set(missing)),
+                        "complete": not missing})
+    return {"folders": folders,
+            "total_bytes": sum(row["bytes"] for row in folders)}
+
+
+def remove_copies(folders: list[str], history_dir=None,
+                  dry_run: bool = False) -> dict:
+    """Remove practice copies, showing what goes before anything goes.
+
+    Only what the log names: each logged `.osu`, its audio and the files the
+    build copied beside them. A folder holding a beatmap this log did not
+    write is left alone — the logged files leave, the stranger stays — and an
+    unknown folder refuses instead of guessing. The folder itself goes when
+    nothing is left in it.
+    """
+    known = {row["folder"]: row for row in list_copies(history_dir)["folders"]}
+    removed: list[dict] = []
+    for folder in folders:
+        row = known.get(str(folder))
+        if row is None:
+            removed.append({"folder": str(folder), "removed": [], "bytes": 0,
+                            "refusal": "Not a practice copy this log knows."})
+            continue
+        names = [name for name in row["osu"] + row["audio"] + row["copied"]
+                 if name not in row["missing"]]
+        others = sorted(path.name for path in Path(row["folder"]).iterdir()
+                        if path.is_file() and path.suffix.lower() == ".osu"
+                        and path.name not in row["osu"]) \
+            if Path(row["folder"]).is_dir() else []
+        freed, gone = 0, []
+        if not dry_run:
+            for name in names:
+                path = Path(row["folder"]) / name
+                try:
+                    freed += path.stat().st_size
+                    path.unlink()
+                    gone.append(name)
+                except OSError as exc:
+                    removed.append({"folder": row["folder"], "removed": gone,
+                                    "bytes": freed,
+                                    "refusal": f"{name} would not delete: {exc}"})
+                    break
+            else:
+                try:
+                    if Path(row["folder"]).is_dir() and not any(Path(row["folder"]).iterdir()):
+                        Path(row["folder"]).rmdir()
+                except OSError:
+                    pass
+        else:
+            freed = row["bytes"]
+            gone = list(names)
+        if not any(r.get("folder") == row["folder"] and "refusal" in r for r in removed):
+            removed.append({"folder": row["folder"], "removed": gone, "bytes": freed,
+                            "kept": others,
+                            **({"note": f"{len(others)} map(s) this log did not write stay."}
+                               if others else {})})
+    return {"removed": removed,
+            "bytes": sum(row["bytes"] for row in removed),
+            "dry_run": bool(dry_run)}
+
+
+# ---------------------------------------------------------------------------
+# Presets: a setup saved as a practice document with a name (row 26.20)
+# ---------------------------------------------------------------------------
+
+def _presets_path() -> Path:
+    """Where named setups live: beside the result cache, never the app.
+
+    ``OVERTONE_TRAIN_PRESETS`` points it at a scratch file, so tests never
+    touch the real setups."""
+    override = os.environ.get("OVERTONE_TRAIN_PRESETS")
+    if override:
+        return Path(override)
+    from overtone_paths import data_root
+    return data_root() / "train_presets.json"
+
+
+def _read_presets() -> dict:
+    try:
+        data = json.loads(_presets_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def list_presets() -> dict:
+    """Every saved setup, by name, with what each one asks for."""
+    return {"presets": _read_presets()}
+
+
+def save_preset(name: str, settings: dict) -> dict:
+    """Keep this setup under a name, so a preset is the same object as a
+    build: diffable, shareable as a file, re-readable. A preset carries no
+    source map — it is applied to whichever map is picked."""
+    name = str(name or "").strip()
+    if not name:
+        raise ValueError("A preset needs a name.")
+    settings = dict(settings or {})
+    unknown = sorted(set(settings) - {"rate", "target_bpm", "from_bpm", "stats",
+                                      "naming", "mods", "audio_format", "osz"})
+    if unknown:
+        raise ValueError(f"Unknown setting(s): {', '.join(unknown)}.")
+    mods = settings.get("mods")
+    if mods is not None:
+        if isinstance(mods, str):
+            mods = [mods]
+        _, refusals = _check_mods(mods)
+        if refusals:
+            raise ValueError(refusals[0]["why"])
+        settings["mods"] = mods
+    if settings.get("audio_format") not in (None, "mp3", "wav"):
+        raise ValueError(f"Format {settings.get('audio_format')!r} is not mp3 or wav.")
+    path = _presets_path()
+    presets = _read_presets()
+    presets[name] = {"settings": settings,
+                     "saved": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ta._atomic_write_bytes(path, json.dumps(presets, indent=1).encode("utf-8"))
+    return {"name": name, "settings": settings}
+
+
+def delete_preset(name: str) -> dict:
+    """Forget a setup. A name never saved refuses instead of pretending."""
+    presets = _read_presets()
+    if str(name) not in presets:
+        raise ValueError(f"No preset named {name!r}.")
+    del presets[str(name)]
+    ta._atomic_write_bytes(_presets_path(),
+                           json.dumps(presets, indent=1).encode("utf-8"))
+    return {"name": str(name), "deleted": True}
+
+
+def feel_of(osu, rate: float, values: dict, mods: list[str] | None = None) -> dict:
+    """What the copy will feel like, computed exactly and each labelled.
+
+    Beside the stats: the BPM (and how many tempi when there is more than
+    one), the AR preempt and the OD windows in milliseconds, the object
+    density, and the longest stream with its speed in notes per second. No
+    star rating: osu! has not used the pre-2021 algorithm for years, and a
+    famous approximate number would be the one thing on the screen that is
+    not exact. A stream is a maximal run of objects each at most one beat
+    after the previous, read off the map's own red lines.
+    """
+    mods = list(mods or [])
+    beatmap = ta.read_osu_beatmap(osu)
+    mode = int(beatmap.get("general", {}).get("Mode", 0) or 0)
+    times = sorted(float(obj["time"]) for obj in beatmap.get("hitobjects", [])
+                   if obj.get("kind") != "unparsed" and "time" in obj)
+    reds = sorted((float(p["time"]), float(p["beat_length"]))
+                  for p in tc._points_of(beatmap) if p["red"] and p["beat_length"] > 0)
+    bpms = sorted({round(60000.0 / beat, 4) for _at, beat in reds})
+    if not times:
+        return {"rate": float(rate), "mode": mode, "objects": 0, "bpms": bpms,
+                "bpm_text": f"{bpms[0]:g}" if len(bpms) == 1 else "no tempo",
+                "duration_ms": 0.0, "density_per_s": None,
+                "longest_stream": {"notes": 0, "notes_per_s": None,
+                                   "from_ms": 0.0, "to_ms": 0.0},
+                "mods": mods, "ar_ms": None, "od_windows": None, "feel": {},
+                "mode_note": None}
+
+    def beat_at(time_ms: float) -> float | None:
+        use = next((beat for at, beat in reversed(reds) if at <= time_ms + 1e-6),
+                   reds[0][1] if reds else None)
+        return use
+
+    run, best = 1, {"notes": 1, "from_ms": times[0] if times else 0.0,
+                     "to_ms": times[0] if times else 0.0}
+    start = times[0] if times else 0.0
+    for before, after in zip(times, times[1:]):
+        beat = beat_at(after)
+        if beat is not None and after - before <= beat + 1e-6:
+            run += 1
+        else:
+            if run > best["notes"]:
+                best = {"notes": run, "from_ms": start, "to_ms": before}
+            run, start = 1, after
+    if run > best["notes"]:
+        best = {"notes": run, "from_ms": start, "to_ms": times[-1]}
+    span_ms = best["to_ms"] - best["from_ms"]
+    best["notes_per_s"] = round(best["notes"] / (span_ms / 1000.0), 2) if span_ms > 0 else None
+    best["from_ms"] = round(best["from_ms"] / float(rate), 1)
+    best["to_ms"] = round(best["to_ms"] / float(rate), 1)
+
+    whole = (times[-1] - times[0]) if len(times) > 1 else 0.0
+    feel: dict = {
+        "rate": float(rate), "mode": mode, "objects": len(times),
+        "bpms": bpms, "bpm_text": f"{bpms[0]:g}" if len(bpms) == 1 else (
+            f"{len(bpms)} tempi" if bpms else "no tempo"),
+        "duration_ms": round(whole / float(rate), 1),
+        "density_per_s": round(len(times) / (whole / 1000.0), 2) if whole > 0 else None,
+        "longest_stream": best, "mods": mods,
+        "ar_ms": None, "od_windows": None, "feel": {},
+        "mode_note": None,
+    }
+    ar, od = values.get("ar"), values.get("od")
+    for field, value in (("ar", ar), ("od", od)):
+        felt = mod_feel(field, value, mods)
+        feel["feel"][field] = felt
+    if mode == 0:
+        number_f, speed_f = _mod_factors(mods)
+        if ar is not None:
+            feel["ar_ms"] = round(ar_to_ms(ar), 2)
+        if od is not None:
+            capped = min(float(od) * number_f, 10.0)
+            feel["od_windows"] = {key: round(window / speed_f, 2)
+                                  for key, window in od_windows(capped).items()}
+    else:
+        feel["mode_note"] = (f"Mode {mode} reads its own approach and hit windows; "
+                             f"only the counts, the stream and the tempi are exact here.")
+    return feel
+
+
+# ---------------------------------------------------------------------------
 # Rate ladders: one run, one mapset, several rates (Phase 26, row 26.16)
 # ---------------------------------------------------------------------------
 
@@ -1341,7 +1765,7 @@ def _ladder_audio_name(stem: str, rate: float, audio_format: str) -> str:
 
 
 def plan_ladder(osu, rates, audio=None, stats: dict | None = None,
-                naming: dict | None = None,
+                naming: dict | None = None, mods=None,
                 audio_method: str = "resample") -> dict:
     """One source map as a ladder document: a practice plan per rung.
 
@@ -1357,7 +1781,7 @@ def plan_ladder(osu, rates, audio=None, stats: dict | None = None,
     if values is not None:
         for rate in values:
             plan = plan_practice(osu, audio=audio, rate=rate, stats=stats,
-                                 naming=naming, audio_method=audio_method)
+                                 naming=naming, mods=mods, audio_method=audio_method)
             plans.append(plan)
             for refusal in plan["refusals"]:
                 refusals.append({"rung": f"{rate:g}x", **refusal})
@@ -1441,6 +1865,11 @@ def build_ladder(plan: dict, folder: str | os.PathLike[str], *,
 
     out.mkdir(parents=True, exist_ok=True)
     by_audio: dict[str, dict] = {}
+    copied, support_notes, background = _copy_support(first, out)
+    for entry in copied:
+        files.append({"name": entry["name"],
+                      "kind": "background" if entry["name"] == background else "sample",
+                      "bytes": entry["bytes"]})
     say(0, len(texts))
     for n, (audio_file, osu_file, rep) in enumerate(texts):
         if audio_file not in by_audio:
@@ -1451,13 +1880,10 @@ def build_ladder(plan: dict, folder: str | os.PathLike[str], *,
         ta.log_write(out / osu_file, WRITE_OP, None,
                      {"bytes": len(payload), "rate": rep["rate"],
                       "objects": rep["beatmap"]["objects"], "audio": audio_file,
+                      "source": rep["plan"]["source"]["osu"],
+                      "copied": sorted(entry["name"] for entry in copied),
                       "ladder": [f"{r:g}x" for r in plan["rates"]]})
         say(n + 1, len(texts))
-    copied, support_notes, background = _copy_support(first, out)
-    for entry in copied:
-        files.append({"name": entry["name"],
-                      "kind": "background" if entry["name"] == background else "sample",
-                      "bytes": entry["bytes"]})
     for entry in report["files"]:
         path = out / entry["name"]
         entry["bytes"] = path.stat().st_size if path.is_file() else None

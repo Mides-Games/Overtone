@@ -22,6 +22,28 @@ version is `v0.1.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-07 · The way out of alpha: 0.3.0 scoped, 1.0.0 pathed
+
+### Changed
+
+- **Release 0.3.0 scoped in the roadmap**: the first version without apologies — R6's
+  verdicts, the Train harness pass, bought-and-integrated signing, the trainer's nicer
+  rows (ladders, feel with mods, undo), every open question settled, file associations,
+  section labels, H6/H7 or measured rejections. Real-audio accuracy stays out: that
+  program is 1.0.0's.
+- **Release 1.0.0 pathed as exit criteria, not a date**: Corpus B ≥ 40 % within 5 ms
+  with median |error| ≤ 5 ms and every refusal explained, the 10.0a convention decided,
+  no shipped word without a number, the auto-update question answered. For scale, today
+  reads 2.1 % — the bar is ambitious on purpose, and the version waits for the
+  measurement rather than the reverse.
+- **R6 moves to 0.3.0 required**, with the override recorded: the verdicts were never
+  given and the prerelease was ordered anyway. The sample, the sheet and the bar stand;
+  nothing was silently dropped.
+
+### Measured
+
+- Nothing: this is scope. `bench/facts.py` ok.
+
 ## Unreleased — 2026-10-06 · The 0.2.0-alpha checklist, run end to end
 
 ### Changed

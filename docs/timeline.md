@@ -22,6 +22,34 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-07 · Picking the map, opening .osz, refusing pitch-keeping
+
+### Changed
+
+- **Picking the map from live signals** (row 26.18): `detect_map` tries the osu!
+  window title, the newest replay and the newest `.osu` in order, resolving each
+  against Songs and reporting everything tried; `osu!.db` reads its header and never
+  picks. A Detect button on the source card; a miss names what was looked at and the
+  library search stays the answer.
+- **`.osz` opens with Overtone** (S5's first half): a per-user ProgId launching the
+  app with the archive, which `import_osz` copies into Songs — never moved, never over
+  a folder that already holds beatmaps — and opens its song. Twice opens instead of
+  copying; whatever refuses still opens the window. The custom setup screen stays open.
+- **Pitch-keeping refused with numbers** (row 26.6): a WSOLA probe grades ok on clean
+  clicks (worst 1.75 ms) but displaces real attacks a median 8-9 ms, p90 23-26 ms, max
+  ~45 ms on three Songs — the grade it would have to pass is the one it fails, so
+  resample stays the only method and the refusal is the row's answer.
+
+### Measured
+
+- Live signals on this machine: replay filenames parse and resolve to their map end to
+  end; `osu!.db` v20260924 with 4325 folders reads; no osu! window to title against.
+  Newest-`.osu` walk: 22,886 maps in 6.9 s.
+- Real MSI install writes `HKCU\Software\Classes\.osz → Overtone.osz → "…Overtone.exe" "%1"`;
+  full rebuild green with the same ICE warnings.
+- 997 Python tests (12 new), all green; `facts.py`, `parity.py` green.
+- Not checked: the browser harness.
+
 ## Unreleased — 2026-10-07 · Phase 26: feel, mods, copies, presets
 
 ### Changed

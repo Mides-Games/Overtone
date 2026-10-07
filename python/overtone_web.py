@@ -1101,6 +1101,60 @@ class Api:
                 "file": self._file_info(scan["audio"]),
                 "beatmaps": scan["beatmaps"]}
 
+    def import_osz(self, osz_path: str, songs_dir: str = "") -> dict:
+        """An `.osz` file into Songs, then adopted like an imported folder.
+
+        What double-clicking an `.osz` does now that the installer associates
+        it: the archive is read and its files copied under
+        `Songs/<archive name>` — never moved, never overwritten into a folder
+        that already holds beatmaps (opening that set is the honest answer to
+        importing it twice). A zip with no `.osu` inside is not a beatmap
+        archive; a member escaping the folder refuses the whole import.
+        Returns what `import_folder` would, plus whether anything was written.
+        """
+        import zipfile
+
+        source = Path(str(osz_path))
+        if not source.is_file():
+            return {"ok": False, "key": "bad_file", "detail": source.name}
+        root = Path(str(songs_dir) or self._songs_root())
+        try:
+            with zipfile.ZipFile(source) as archive:
+                members = archive.infolist()
+                for member in members:
+                    target = Path(member.filename)
+                    if member.is_dir() or not member.filename.strip():
+                        continue
+                    if target.is_absolute() or ".." in target.parts:
+                        return {"ok": False, "key": "bad_archive",
+                                "detail": f"{member.filename} escapes the folder."}
+                sheets = [m for m in members
+                          if not m.is_dir() and m.filename.lower().endswith(".osu")]
+                if not sheets:
+                    return {"ok": False, "key": "bad_archive",
+                            "detail": f"{source.name} holds no .osu file."}
+                folder = root / source.stem
+                folder.mkdir(parents=True, exist_ok=True)
+                wrote = False
+                if not any(folder.glob("*.osu")):
+                    for member in members:
+                        if member.is_dir() or not member.filename.strip():
+                            continue
+                        target = folder / Path(member.filename)
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        if not target.is_file():
+                            with archive.open(member) as origin, \
+                                    open(target, "wb") as copy:
+                                copy.write(origin.read())
+                            wrote = True
+        except zipfile.BadZipFile:
+            return {"ok": False, "key": "bad_file", "detail": source.name}
+        except OSError as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        reply = self.import_folder(folder)
+        reply["wrote"] = wrote
+        return reply
+
     def mapset_check(self, folder: str) -> dict:
         """Every difficulty of a beatmap folder side by side, for the Mapset view.
 
@@ -2242,6 +2296,30 @@ class Api:
             return {"ok": False, "key": "no_maps"}
         self._train["osu"] = str(found[0])
         return self.train_state()
+
+    def train_detect(self) -> dict:
+        """The map from what osu! writes outside itself — measured, in order.
+
+        The window title, the newest replay, the newest `.osu`: the first that
+        resolves wins and becomes the source; where every signal misses, the
+        reply names everything tried and the library search (which needs
+        nothing from osu!) is the answer.
+        """
+        songs = self._songs_root()
+        try:
+            found = tr.detect_map(songs)
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        if found["osu"]:
+            self._train["osu"] = found["osu"]
+            state = self.train_state()
+            state["detection"] = found
+            return state
+        return {"ok": False, "key": "no_signal",
+                "detail": "; ".join(f"{row['signal']}: "
+                                    f"{row.get('file') or row.get('title') or row.get('why', '')}"
+                                    for row in found["signals"]) or "no Songs folder",
+                "signals": found["signals"]}
 
     def train_clear(self) -> dict:
         """No map, back to a rate of one."""
@@ -4731,13 +4809,36 @@ def _dark_caption(window) -> None:
         pass
 
 
+def launch_target(api: Api, first: str) -> tuple[str, bool]:
+    """The file to open for a command-line path, and whether to analyse it.
+
+    A `.osz` archive is imported into Songs first (copied, never moved), and
+    the song itself opens so Analyze just works; whatever refuses still opens
+    the window — a failed import must never eat the launch. Anything else
+    opens as it was handed over.
+    """
+    if first.lower().endswith(".osz") and Path(first).is_file():
+        try:
+            imported = api.import_osz(first)
+            path = (imported.get("file") or {}).get("path", "") \
+                if imported.get("ok") else first
+            return path, bool(imported.get("ok") and imported.get("file"))
+        except (ValueError, OSError):
+            return first, False
+    return first, bool(first)
+
+
 def main(argv: list[str] | None = None) -> None:
     args = list(sys.argv[1:] if argv is None else argv)
     if args[:1] == ["--self-check"]:
         _run_self_check(args[1] if len(args) > 1 else None)
     import webview
     files = [a for a in args if not a.startswith("--")]
-    api = Api(files[0] if files else "", autorun=bool(files), save_projects=True)
+    api = Api("", autorun=False, save_projects=True)
+    first = files[0] if files else ""
+    target, run = launch_target(api, first)
+    api._cfg["file"] = target
+    api._autorun = run
     # Before the window exists: the taskbar reads the id when the window opens.
     ta.claim_taskbar_identity()
     window = webview.create_window(

@@ -11748,5 +11748,99 @@ class TrainCopiesTests(unittest.TestCase):
                     overtone_train.delete_preset("dt")
 
 
+class TrainDetectTests(unittest.TestCase):
+    """Picking the map from what osu! writes outside itself — measured."""
+
+    LINES = ["osu file format v14", "",
+             "[General]", "AudioFilename: song.wav", "Mode: 0", "",
+             "[Metadata]", "Title:{title}", "Artist:{artist}", "Creator:M", "Version:{version}",
+             "BeatmapID:0", "BeatmapSetID:-1", "",
+             "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+             "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+             "[TimingPoints]", "1000,400,4,2,0,80,1,0", "",
+             "[HitObjects]", "100,100,1400,1,0,0:0:0:0:", ""]
+
+    def _songs(self, tmp: str) -> Path:
+        songs = Path(tmp) / "Songs"
+        first = songs / "1 Artist - Song"
+        first.mkdir(parents=True)
+        (first / "a.osu").write_bytes("\r\n".join(self.LINES).format(
+            artist="Artist", title="Song", version="Hard").encode("utf-8"))
+        second = songs / "2 Other - Track"
+        second.mkdir(parents=True)
+        (second / "b.osu").write_bytes("\r\n".join(self.LINES).format(
+            artist="Other", title="Track", version="Easy").encode("utf-8"))
+        return songs
+
+    def test_the_window_wins_when_it_names_a_map(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = self._songs(tmp)
+            found = overtone_train.detect_map(
+                songs, titles=["osu! - Artist - Song [Hard]", "osu!"])
+        self.assertEqual(found["signal"], "window")
+        self.assertTrue(found["osu"].endswith("a.osu"))
+
+    def test_a_replay_names_what_was_just_played(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = self._songs(tmp)
+            replays = Path(tmp) / "Replays"
+            replays.mkdir()
+            (replays / "player - Other - Track [Easy] (2026-10-07) Osu.osr").write_bytes(b"")
+            found = overtone_train.detect_map(songs, replays, titles=[])
+        self.assertEqual(found["signal"], "replay")
+        self.assertTrue(found["osu"].endswith("b.osu"))
+
+    def test_an_unreadable_past_degrades_to_what_just_arrived(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = self._songs(tmp)
+            replays = Path(tmp) / "Replays"
+            replays.mkdir()
+            (replays / "junk.osr").write_bytes(b"")
+            (songs / "2 Other - Track" / "b.osu").touch()
+            found = overtone_train.detect_map(songs, replays, titles=[])
+        self.assertEqual(found["signal"], "songs_newest")
+        self.assertTrue(found["osu"].endswith("b.osu"))
+
+    def test_nothing_anywhere_says_so_and_names_everything_tried(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = Path(tmp) / "Songs"
+            songs.mkdir()
+            found = overtone_train.detect_map(songs, Path(tmp) / "gone",
+                                              Path(tmp) / "gone.db", titles=["osu!"])
+        self.assertIsNone(found["osu"])
+        self.assertIsNone(found["signal"])
+        kinds = [row["signal"] for row in found["signals"]]
+        self.assertIn("osu_db", kinds)
+
+    def test_the_database_reads_but_never_picks(self) -> None:
+        import overtone_train
+        missing = overtone_train.osu_db_header(Path("nowhere") / "osu!.db")
+        self.assertFalse(missing["present"])
+        self.assertIsNone(overtone_train.parse_osu_title("osu!"))
+        self.assertIsNone(overtone_train.replay_candidate("map.osu"))
+
+
+class InstallerAssocTests(unittest.TestCase):
+    """The .osz association the MSI registers: what double-clicking does."""
+
+    SOURCE = Path(__file__).resolve().parent.parent / "installer" / "Overtone.wxs"
+
+    def test_the_association_names_its_keys_and_command(self) -> None:
+        text = self.SOURCE.read_text(encoding="utf-8")
+        for needle in (r'Software\Classes\.osz',
+                       r'Software\Classes\Overtone.osz',
+                       r'Overtone.osz\shell\open\command',
+                       r'Overtone.osz\DefaultIcon',
+                       'Value="Overtone.osz"',
+                       '[INSTALLFOLDER]Overtone.exe',
+                       '%1',
+                       '<ComponentRef Id="OszAssociation" />'):
+            self.assertIn(needle, text)
+
+
 if __name__ == "__main__":
     unittest.main()

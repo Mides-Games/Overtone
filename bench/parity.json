@@ -52,7 +52,11 @@
    "where": "bench",
    "why": "the hitsound eval harness, scored against baselines, not a stage"
   },
-  "InstallerNoticesTests": {
+   "InstallerAssocTests": {
+    "where": "python-only",
+    "why": "installer/Overtone.wxs: the .osz association the MSI registers, which no Rust crate holds"
+   },
+   "InstallerNoticesTests": {
    "where": "bench",
    "why": "installer/notices.py, the bundled licences gathered for publishing: packaging, not an engine stage"
   },
@@ -107,6 +111,10 @@
    "TrainFeelModsTests": {
     "where": "python-only",
     "why": "overtone_train.py: what a copy feels like and the mod arithmetic, which no Rust crate holds"
+   },
+   "TrainDetectTests": {
+    "where": "python-only",
+    "why": "overtone_train.py: picking the map from live signals, which no Rust crate holds"
    },
    "TrainGridTests": {
     "where": "python-only",

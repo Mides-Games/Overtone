@@ -34,6 +34,21 @@ version is `v0.2.0-alpha`.
 
 - Nothing: this is scope. `bench/facts.py` ok.
 
+---
+
+---
+
+## Unreleased — 2026-10-07 · Train harness passes by owner hand
+
+### Changed
+
+- **T1 closed**: the owner ran the Train section in the browser harness and it works.
+  The static pass stays recorded as what it was — necessary, not sufficient.
+
+### Measured
+
+- Nothing: this is a witnessed check. `bench/facts.py` ok.
+
 ## Unreleased — 2026-10-07 · Timbre grouping: the best lead yet, still a miss
 
 ### Measured

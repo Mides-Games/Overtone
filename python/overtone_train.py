@@ -1446,6 +1446,221 @@ def describe_target(plan: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Picking the map: the library first, live signals measured (row 26.18)
+# ---------------------------------------------------------------------------
+
+def osu_window_titles() -> list[str]:
+    """Every top-level window title on this machine, or none off Windows.
+
+    Nothing reads another process's memory: a title is what the OS shows any
+    passer-by, and it degrades to nothing when osu! is not running.
+    """
+    try:
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        titles: list[str] = []
+
+        @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+        def each(handle, _extra):
+            length = user32.GetWindowTextLengthW(handle)
+            if length > 0:
+                buffer = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(handle, buffer, length + 1)
+                if buffer.value.strip():
+                    titles.append(buffer.value.strip())
+            return True
+
+        user32.EnumWindows(each, 0)
+        return titles
+    except (OSError, AttributeError, ValueError):
+        return []
+
+
+def parse_osu_title(title: str) -> dict | None:
+    """An osu! window title as a map candidate, or None when it names none.
+
+    While a map is open osu! titles the window ``osu! - Artist - Title
+    [Difficulty]``; the menu bare ``osu!`` names nothing and degrades.
+    Measured where it can be: titles are only ever read, and an unparsed one
+    is reported, never guessed.
+    """
+    text = str(title or "").strip()
+    head, dash, rest = text.partition("-")
+    if not dash or head.strip().lower() not in ("osu!", "osu"):
+        return None
+    rest = rest.strip()
+    if not rest:
+        return None
+    version = ""
+    if rest.endswith("]") and "[" in rest:
+        rest, _, version = rest.rpartition("[")
+        version, _, _ = version.partition("]")
+        rest = rest.strip()
+    artist, dash, title = rest.partition(" - ")
+    if not dash:
+        return None
+    return {"artist": artist.strip(), "title": title.strip(),
+            "version": version.strip()}
+
+
+def replay_candidate(name: str) -> dict | None:
+    """A replay filename as a map candidate: ``player - Artist - Title
+    [Diff] (date) mode.osr``. The file itself is never opened — the name is
+    the signal — and a name that does not parse is not a candidate."""
+    stem = Path(str(name or "")).name
+    if not stem.lower().endswith(".osr"):
+        return None
+    stem = stem[:-4]
+    _player, dash, rest = stem.partition(" - ")
+    if not dash or not rest.strip():
+        return None
+    version = ""
+    if "[" in rest and "]" in rest:
+        before, _, after = rest.partition("[")
+        version, _, _ = after.partition("]")
+        rest = before.strip()
+    artist, dash, title = rest.partition(" - ")
+    if not dash:
+        return None
+    return {"artist": artist.strip(), "title": title.strip(),
+            "version": version.strip()}
+
+
+def newest_file(folder, pattern: str) -> Path | None:
+    """The most recently written file matching the pattern, or None."""
+    try:
+        entries = [entry for entry in Path(folder).iterdir()
+                   if entry.is_file() and entry.match(pattern)]
+    except OSError:
+        return None
+    return max(entries, key=lambda entry: entry.stat().st_mtime_ns, default=None)
+
+
+def osu_db_header(db_path) -> dict:
+    """osu!.db's own header: format version and folder count, read only.
+
+    The database is a library snapshot, not a live signal: nothing in it says
+    which map is selected, so it never picks. What it proves here is that the
+    file reads — the ranked-status reader of 10.0b builds on this, not on a
+    second implementation.
+    """
+    import struct
+
+    try:
+        with open(db_path, "rb") as handle:
+            head = handle.read(16)
+    except OSError as exc:
+        return {"present": False, "why": str(exc)}
+    if len(head) < 8:
+        return {"present": True, "readable": False,
+                "why": "shorter than its own header"}
+    version, folders = struct.unpack("<II", head[:8])
+    return {"present": True, "readable": True, "version": version,
+            "folders": folders}
+
+
+def resolve_candidate(songs_dir, artist: str, title: str,
+                      version: str = "") -> dict:
+    """A candidate as a map file: folders named for the song first, then the
+    metadata inside. Exact on artist, title and version where all three are
+    known; nothing found is reported, never guessed."""
+    root = Path(songs_dir)
+    want = [str(artist or "").lower(), str(title or "").lower()]
+    try:
+        folders = [entry for entry in root.iterdir() if entry.is_dir()]
+    except OSError as exc:
+        return {"osu": None, "why": f"Songs folder unreadable: {exc}"}
+    ranked = sorted(folders,
+                    key=lambda entry: sum(token and token in entry.name.lower()
+                                          for token in want), reverse=True)
+    for folder in ranked:
+        if want[0] and want[0] not in folder.name.lower() \
+                and want[1] and want[1] not in folder.name.lower():
+            continue
+        try:
+            maps = sorted(folder.glob("*.osu"))
+        except OSError:
+            continue
+        for path in maps:
+            try:
+                metadata = ta.read_osu_beatmap(path).get("metadata", {})
+            except (OSError, ValueError):
+                continue
+            got = {key: str(metadata.get(key) or "").strip().lower()
+                   for key in ("Artist", "Title", "Version")}
+            if got["Artist"] == want[0] and got["Title"] == want[1] \
+                    and (not str(version or "").strip()
+                         or got["Version"] == str(version).strip().lower()):
+                return {"osu": str(path), "why": ""}
+    return {"osu": None, "why": f"{artist} - {title} is not in Songs."}
+
+
+def detect_map(songs_dir, replays_dir=None, db_path=None,
+               titles: list[str] | None = None) -> dict:
+    """Which map, from what osu! writes outside itself — measured, in order.
+
+    The window title (what is open now), the newest replay (what was just
+    played), the newest `.osu` in Songs (what just arrived): the first that
+    resolves to a file wins, and everything tried is reported, so a miss says
+    what was looked at rather than shrugging. osu!.db is read for its header
+    and never picks — a snapshot says nothing about selection. No memory
+    scanning, no signature hunting, nothing a game update can break; where
+    every signal misses, the library search (which needs nothing from osu!)
+    is the answer and says so.
+    """
+    songs = Path(songs_dir)
+    replays = Path(replays_dir) if replays_dir else songs.parent / "Replays"
+    database = db_path if db_path else songs.parent / "osu!.db"
+    tried: list[dict] = []
+
+    if titles is None:
+        try:
+            titles = osu_window_titles()
+        except Exception:  # noqa: BLE001 -- a title read never breaks a pick
+            titles = []
+    for title in titles or []:
+        candidate = parse_osu_title(title)
+        if candidate is None:
+            continue
+        found = resolve_candidate(songs, **candidate)
+        tried.append({"signal": "window", "title": title, **candidate,
+                      "osu": found["osu"]})
+        if found["osu"]:
+            return {"osu": found["osu"], "signal": "window", "signals": tried}
+
+    replay = newest_file(replays, "*.osr")
+    if replay is not None:
+        candidate = replay_candidate(replay.name)
+        if candidate is not None:
+            found = resolve_candidate(songs, candidate["artist"],
+                                      candidate["title"], candidate["version"])
+            tried.append({"signal": "replay", "file": replay.name, **candidate,
+                          "osu": found["osu"]})
+            if found["osu"]:
+                return {"osu": found["osu"], "signal": "replay", "signals": tried}
+        else:
+            tried.append({"signal": "replay", "file": replay.name,
+                          "osu": None, "why": "the filename does not parse"})
+
+    arrival = None
+    try:
+        maps = [path for path in songs.rglob("*.osu") if path.is_file()]
+        arrival = max(maps, key=lambda path: path.stat().st_mtime_ns, default=None)
+    except OSError:
+        arrival = None
+    if arrival is not None:
+        tried.append({"signal": "songs_newest", "file": arrival.name,
+                      "osu": str(arrival)})
+        return {"osu": str(arrival), "signal": "songs_newest", "signals": tried}
+
+    header = osu_db_header(database)
+    tried.append({"signal": "osu_db", **header,
+                  "why": "a snapshot says nothing about selection"})
+    return {"osu": None, "signal": None, "signals": tried}
+
+
+# ---------------------------------------------------------------------------
 # Undo and clean up: every copy is in the write log already (row 26.15)
 # ---------------------------------------------------------------------------
 

@@ -185,7 +185,7 @@ what this repository already half-holds.
 | R3 | **Phase 25's last row settled**: build 25.12 (per-segment backgrounds through an `.osb`) or move it to [Rejected ideas](#rejected-ideas) with the reason | A phase that sits at nineteen of twenty rows forever is a phase nobody can read the state of. It is cosmetic and nothing here can verify an `.osb` in osu! itself, which is an argument for the second option, not for silence | [25.12](#phase-25--compilation-builder-marathon-maps) | **done** 2026-10-06 — rejected with the reason; Phase 25 reads whole now |
 | R4 | **The portable ZIP's own `data\` folder** (the half of 10.13.5 that was never built) | Today the ZIP keeps its settings and cache where the installed copy keeps them, so running both means they share a profile and silently overwrite each other's recents. `11-msi-distribution.md` already promises otherwise. It is a bug in a published artefact | [10.13](#phase-10--human-level-timing-accuracy) | **done** 2026-10-04 in `fix/portable-data-folder`: `python/overtone_paths.py` decides the folder; the ZIP alone carries `portable.txt`; the smoke test fails a portable run that writes Overtone's own state to the profile. Measured on the unpacked ZIP: writes stayed in `data\`, none in the profile |
 | R5 | **A diagnostics copy-out**: one button, in Settings, that copies the product version, the build's commit and time, the platform, the portable state and where the data is, the Rust engine found and the library index, as plain text. The window shows the text it copied; nothing is sent | 0.1.0 is the first build strangers can install, and the only way anyone can tell us what broke is by hand. Not included: the last error, because nothing keeps errors yet (a row of its own if wanted) | P20 options, new row | **done** 2026-10-04 in `fix/portable-data-folder`: `Api.diagnostics`, a Settings card, two tests. The version it reports is the release's: the window said v3.0 until this |
-| R6 | **The library health check's precision sample** (pending item 2) | The health check has shipped since 2026-09-30 and flags maps as actionable or weak with no hand-checked number behind the words. Either the sample supports them or the labels change | [P19](#phase-19--app-sections) | **half** — `bench/health_sample.py`: 80 folders (seed 6) through the sidecar, 441 actionable flags, 25 drawn (seed 26) into `bench/health_sample.md` with editor links; the bar (15/25 keeps the words) set before any listening. The verdicts need ears and are the owner's |
+| R6 | **The library health check's precision sample** (pending item 2) | The health check has shipped since 2026-09-30 and flags maps as actionable or weak with no hand-checked number behind the words. Either the sample supports them or the labels change | [P19](#phase-19--app-sections) | **moved to 0.3.0 required** — sample and sheet drawn 2026-10-06, verdicts never given, prerelease ordered anyway (see above); the bar stands |
 | R7 | **The release checklist run end to end, with the install test** | It exists because of 0.1.0 and has been run once. A checklist nobody reruns is a document, not a process | [`11`](11-msi-distribution.md#publishing-a-release-10137) | **done** 2026-10-06 — every gate green on the bumped commit, `build.py --clean` ok (MSI 112.2 MB, ZIP 138.2 MB), installed over 0.1.0 / uninstalled / reinstalled with user data untouched. Not published: no tag until R6 resolves |
 
 ### Should be in it, and will be if the required rows land early
@@ -230,6 +230,79 @@ A second alpha is still an alpha. The notes carry the same three honest lines 0.
 carried — unsigned, 1.7 % on real ranked maps, no auto-update — plus the one new one: a
 practice copy is a copy, and the tool that makes it proves the sounds are still under the
 red lines, which is the whole reason to prefer it to a faster tool that does not.
+
+R6 override, recorded: the 25 verdicts were never given and the owner ordered the
+prerelease anyway. The sample and the sheet persist in `bench/health_sample.*`, the bar
+stands, R6 moves to 0.3.0 required instead of silently dropping, and the release notes
+name the gap in their first lines.
+
+---
+
+## Release 0.3.0 — the first one without apologies
+
+0.2.0-alpha proved the trainer works; 0.3.0 is the version a stranger can trust: signed,
+complete, and with every shipped word backed by a number. No suffix — but still `0.`,
+which says honestly that the engine keeps evolving underneath.
+
+### Required — the version is not 0.3.0 without these
+
+| # | What | Why it has to be in | Where | State |
+|---|---|---|---|---|
+| R6 | **The library health check's precision sample, verdicts in** — carried from 0.2.0-alpha, where it shipped open by owner decision | The words *actionable* and *weak* are already installed; 0.3.0 either backs them with the 15/25 bar or renames them | [P19](#phase-19--app-sections) | todo — sample and sheet drawn 2026-10-06, verdicts owed |
+| T1 | **The Train section's browser-harness pass, EN and ES** — carried from 0.2.0-alpha | Every other section earned it; the static pass (ids, keys, calls, events) is not a layout check | [P26](#phase-26--rate-and-difficulty-trainer-practice-copies) | todo |
+| T2 | **Signed artefacts** (10.13.6): the certificate bought, the MSI signed in `build.py`, SmartScreen path documented | The single biggest thing between this and a build a stranger trusts; no amount of work here moves it until the purchase does | [`11`](11-msi-distribution.md) | todo — owner's purchase |
+| T3 | **The trainer's nicer rows**: ladders (26.16), feel in full with mod emulation (26.9, 26.10), undo and clean up (26.15) | This is what makes the trainer better than the tool it answers, not just more correct | P26 | todo (26.16 in progress) |
+| T4 | **The trainer's open questions settled**: pitch-kept ships or refuses documented (26.6), dropping objects allowed or forbidden executed (26.12), the map picked without memory reading with the live-signal measurement (26.18), one hotkey and presets (26.19, 26.20) | Open questions older than one release become fog; each has its decision procedure written already | P26 | todo — 26.12 waits on the owner's §9 call |
+| T5 | **File associations and the custom setup screen** (the rest of 10.13.2) | A downloaded release should open what it writes; the MSI currently does not associate | [`11`](11-msi-distribution.md) | todo |
+| T6 | **Section labels from repetition** (pending item 3) | The last proposed row inside shipped sections | [P19](#phase-19--app-sections) | todo |
+| T7 | **Hitsounds H6 and H7, or rejected with measurements** | Sample recommendation and audio-only proposals are the rest of Phase 6; the templates-on-real-audio numbers decide whether lanes and the mismatch rule can stand | [P6](#phase-6--hitsound-engine) | todo |
+
+### Deliberately not in 0.3.0
+
+| What | Why not |
+|---|---|
+| **Real-audio accuracy** (Phase 10) | That program is 1.0.0's, measured one sub-phase at a time on Corpus B. 0.3.0 must not claim a number it did not move — same rule as 0.2.0 |
+| **Other languages** (Phase 24) | TypeScript needs Node.js, which nobody has asked to install |
+| **The compilation on a timeline** | Wanted, unscoped, and not what a third release is for |
+
+### How we will know it is ready
+
+1. Every row above done, each with its gate or measurement green.
+2. The version bumped to `0.3.0` in a commit of its own, same shape as the alpha bumps.
+3. The checklist in [`11`](11-msi-distribution.md#publishing-a-release-10137) run end to end again, install test included.
+4. `gh release create v0.3.0` **without** `--prerelease`, with notes that no longer apologise except for accuracy — which names its Corpus B number plainly.
+
+---
+
+## Release 1.0.0 — when the timing agrees with the mappers
+
+The core promise, kept: Overtone's red lines sit where ranked mappers put theirs, and the
+number is on Corpus B for anyone to re-run. This is a research destination, not an
+engineering schedule — sub-phases land one at a time or are dropped, and the version
+waits for the measurement rather than the reverse.
+
+### Exit criteria — the version is not 1.0.0 without these
+
+1. **Corpus B headline ≥ 40 % within 5 ms**, median |error| ≤ 5 ms over all scored lines,
+   every refusal explained the way 10.0c explains today's (by design or by genuine
+   hardness, never by silence). For scale: 0.2.0-alpha reads 2.1 %; the −21 ms
+   convention alone accounts for roughly a tenth.
+2. **The 10.0a convention decided and shipped**: whether exported red lines follow
+   ranked maps' −21 ms convention or the sound itself — the numbers above only mean
+   what the mappers mean once this is settled.
+3. **0.3.0's rows all shipped**; no P0/P1 `todo` left in Phases 6, 10 (measurement
+   harness, not the program), 19, 21, 24 (whoever it needs), 25 or 26.
+4. **No shipped word without a number**: the R6 pattern generalised — every
+   actionable/weak-style label in the app backed by a hand-checked sample or reworded.
+5. **The auto-update question answered**: built, or documented why never (the offline
+   rule) with the manual path a stranger can follow.
+6. The 0.3.0 checklist process repeated: bump, full gates, build, install test, signed
+   release notes.
+
+### Deliberately not promised
+
+A date. Phase 10 sub-phases are hypotheses with measurements; the honest schedule is
+"one sub-phase at a time", and any quarter attached to 1.0.0 would be fiction.
 
 ---
 

@@ -4960,6 +4960,29 @@ class TrainBridgeTests(_IsolatedConfig):
             self.assertTrue(api.train_build(allow_existing=True)["ok"])
             self._wait(api)
 
+    def test_a_ladder_builds_every_rung_on_one_progress_bar(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._clicks(Path(tmp) / "src")
+            api = web.Api()
+            api.train_pick([str(path)])
+            api.train_set({"audio_format": "wav", "out": str(Path(tmp) / "ladder")})
+            self.assertEqual(api.train_build_ladder([1.5])["key"], "plan_refused")
+            events: list = []
+            api._emit = lambda handler, payload: events.append((handler, payload))
+            self.assertTrue(api.train_build_ladder([1.0, 1.2])["ok"])
+            self._wait(api)
+            done = [payload for handler, payload in events if handler == "onTrainDone"]
+            self.assertEqual(len(done), 1)
+            report = done[0]["report"]
+            self.assertTrue(done[0]["ok"], done[0])
+            self.assertEqual(report["kind"], "ladder")
+            self.assertEqual([row["rate"] for row in report["rungs"]], [1.0, 1.2])
+            kinds = sorted(f["kind"] for f in report["files"])
+            self.assertEqual(kinds, ["audio", "audio", "beatmap", "beatmap"])
+            for row in report["rungs"]:
+                self.assertTrue(row["checks"]["ok"], row["checks"])
+                self.assertTrue(row["checks"]["grade"]["ok"], row["checks"]["grade"])
+
 
 if __name__ == "__main__":
     unittest.main()

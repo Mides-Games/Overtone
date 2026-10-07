@@ -2355,6 +2355,61 @@ class Api:
                 osz=bool(self._train.get("osz")), grade=True,
                 progress=lambda step, done, total: self._emit(
                     "onTrainProgress", {"step": step, "done": done, "total": total}))
+            report["kind"] = "copy"
+            self._emit("onTrainDone", {"ok": True, "report": report})
+        except (ValueError, OSError) as exc:
+            self._emit("onTrainDone", {"ok": False, "key": "error",
+                                       "detail": str(exc)})
+        except Exception as exc:  # noqa: BLE001 -- the view shows the message
+            self._emit("onTrainDone", {"ok": False, "key": "error",
+                                       "detail": f"{type(exc).__name__}: {exc}"})
+        finally:
+            self._train_lock.release()
+
+    def train_build_ladder(self, rates: list | None = None,
+                           allow_existing: bool = False) -> dict:
+        """Build every rung. Starts a worker; the report arrives as a JS event.
+
+        One run, one mapset, one progress bar over the lot: the worker climbs
+        the rungs in order on the Train lock, so an analysis and a ladder
+        never run at once. A rung refused is a ladder refused, with the rung
+        named, before anything is written.
+        """
+        out = str(self._train.get("out") or "")
+        if not out:
+            return {"ok": False, "key": "no_folder"}
+        if not self._train.get("osu"):
+            return {"ok": False, "key": "no_sources"}
+        occupied = self._train_occupied()
+        if occupied and not allow_existing:
+            return {"ok": False, "key": "folder_occupied", "detail": occupied}
+        try:
+            plan = tr.plan_ladder(
+                self._train["osu"], rates,
+                stats=dict(self._train.get("stats") or {}),
+                naming=dict(self._train.get("naming") or {}))
+        except (ValueError, OSError) as exc:
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        if not plan["usable"]:
+            return {"ok": False, "key": "plan_refused",
+                    "detail": "; ".join(row.get("why", "") for row in plan["refusals"])}
+        if self._busy.locked():
+            return {"ok": False, "key": "busy"}     # an analysis is running
+        if not self._train_lock.acquire(blocking=False):
+            return {"ok": False, "key": "busy"}
+        threading.Thread(target=self._train_ladder_worker, args=(plan, out),
+                         daemon=True).start()
+        return {"ok": True}
+
+    def _train_ladder_worker(self, plan: dict, folder: str) -> None:
+        try:
+            report = tr.build_ladder(
+                plan, folder, allow_existing=True,
+                audio_format=self._train.get("audio_format") or "mp3",
+                osz=bool(self._train.get("osz")), grade=True,
+                progress=lambda step, done, total: self._emit(
+                    "onTrainProgress", {"step": step, "done": done, "total": total}))
+            report["kind"] = "ladder"
             self._emit("onTrainDone", {"ok": True, "report": report})
         except (ValueError, OSError) as exc:
             self._emit("onTrainDone", {"ok": False, "key": "error",

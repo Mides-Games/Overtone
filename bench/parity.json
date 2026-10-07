@@ -96,6 +96,10 @@
     "where": "python-only",
     "why": "overtone_train.py: the resampled song, its proof and the output folder, which no Rust crate holds"
    },
+   "TrainLadderTests": {
+    "where": "python-only",
+    "why": "overtone_train.py: rate ladders as one mapset, which no Rust crate holds"
+   },
    "TrainGridTests": {
     "where": "python-only",
     "why": "overtone_train.py: the rate on the grid, which no Rust crate holds"

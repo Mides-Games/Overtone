@@ -789,6 +789,10 @@ const I18N = {
     tr_check_unsnapped: "{n} of {total} objects off it", tr_check_identical: "byte for byte",
     tr_check_differs: "came back different",
     tr_grade_worst: "worst {ms} ms, drift {shift} ms",
+    tr_ladder: "Rate ladder", tr_ladder_hint: "One run, one mapset, a rung per rate.",
+    tr_ladder_rates: "Rates, comma separated",
+    tr_ladder_go: "Build ladder", tr_ladder_building: "Climbing…",
+    tr_step_ladder: "Rung {done} of {total}…",
     no_maps: "No .osu file in that folder.", bad_index: "That song is not in the list any more.",
     no_folder: "Choose a folder to build into first.", no_sources: "Add some maps first.",
     plan_refused: "This cannot be built: {detail}",
@@ -1582,6 +1586,10 @@ const I18N = {
     tr_check_unsnapped: "{n} de {total} objetos fuera", tr_check_identical: "byte a byte",
     tr_check_differs: "volvió distinto",
     tr_grade_worst: "peor {ms} ms, deriva {shift} ms",
+    tr_ladder: "Escalera de rates", tr_ladder_hint: "Una corrida, un mapset, un peldaño por rate.",
+    tr_ladder_rates: "Rates, separados por coma",
+    tr_ladder_go: "Construir escalera", tr_ladder_building: "Subiendo…",
+    tr_step_ladder: "Peldaño {done} de {total}…",
     no_maps: "No hay ningún .osu en esa carpeta.", bad_index: "Esa canción ya no está en la lista.",
     no_folder: "Primero elegí una carpeta donde construir.", no_sources: "Primero agregá mapas.",
     plan_refused: "Esto no se puede construir: {detail}",
@@ -2121,7 +2129,8 @@ window.overtone = {
     TR.building = false;
     TR.progress = null;
     if (reply.ok) {
-      TR.report = reply.report;
+      if ((reply.report || {}).kind === "ladder") TR.ladder = reply.report;
+      else TR.report = reply.report;
       TR.confirm = false;
       toast(t("tr_done", { name: String(reply.report.folder || "").split(/[\\/]/).pop() }));
     } else {
@@ -7873,7 +7882,8 @@ function renderCompile() {
 // the Compile view: one bridge reply draws everything, every change re-plans
 // in Python, and the build runs on its own worker with its own lock, so an
 // analysis and a resample never run at once.
-const TR = { progress: null, report: null, building: false, confirm: false };
+const TR = { progress: null, report: null, ladder: null, building: false,
+             confirm: false, what: null };
 
 function trSet(id, value) {
   // Never type over the field somebody is typing in.
@@ -7941,6 +7951,7 @@ async function trPickFolder() {
 async function trBuild() {
   if (!api() || TR.building) return;
   TR.building = true;
+  TR.what = "copy";
   TR.report = null;
   TR.progress = { step: "plan", done: 0, total: 1 };
   renderTrain();
@@ -7957,6 +7968,49 @@ async function trBuild() {
     editFailure(reply);
   }
   renderTrain();
+}
+
+async function trBuildLadder() {
+  if (!api() || TR.building) return;
+  const rates = $("trLadder").value.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!rates.length) return;
+  TR.building = true;
+  TR.what = "ladder";
+  TR.ladder = null;
+  TR.progress = { step: "ladder", done: 0, total: rates.length };
+  renderTrain();
+  const reply = await api().train_build_ladder(rates, TR.confirm);
+  if (reply.ok) return;                 // the report arrives as an event
+  TR.building = false;
+  TR.what = null;
+  TR.progress = null;
+  if (reply.key === "folder_occupied") {
+    TR.confirm = true;
+    toast(t("tr_occupied", { name: reply.detail || "" }), true);
+  } else {
+    editFailure(reply);
+  }
+  renderTrain();
+}
+
+function trLadderReport() {
+  const rep = TR.ladder;
+  if (!rep) return "";
+  const parts = [];
+  parts.push(trFiles({ files: rep.files }));
+  parts.push(...rep.rungs.map((row) => {
+    const c = row.checks || {};
+    const grade = c.grade || null;
+    const said = grade && grade.ok
+      ? t("tr_grade_worst", { ms: grade.worst_ms, shift: grade.common_offset_ms })
+      : t(row.checks ? "tr_check_differs" : "tr_cannot");
+    const ok = !!(c.ok && (!grade || grade.ok));
+    return `<div class="cp-why"><span class="${ok ? "" : "bad"}">${row.rate}x ${esc(row.osu)}: ${esc(said)}</span></div>`;
+  }));
+  if (rep.osz) {
+    parts.push(`<div class="card-sub">${t("tr_osz_made", { name: rep.osz.name })}</div>`);
+  }
+  return parts.join("");
 }
 
 function trStatAsk(field) {
@@ -8050,6 +8104,7 @@ function renderTrain() {
   $("trClear").hidden = !source;
   $("trUseOpen").hidden = !S.file;
   $("trRateCard").hidden = $("trNamesCard").hidden = $("trBuildCard").hidden = !source;
+  $("trLadderCard").hidden = !source;
   if (!source) {
     body.innerHTML = `<div class="card-sub">${t("tr_empty")}</div>`;
     return;
@@ -8128,7 +8183,7 @@ function renderTrain() {
     if (st.occupied) parts.push(`<div class="cp-why"><span class="bad">${
       t("tr_occupied", { name: st.occupied })}</span></div>`);
   }
-  if (TR.progress) {
+  if (TR.progress && TR.what !== "ladder") {
     parts.push(`<div class="card-sub mt-m">${t("tr_step_" + TR.progress.step,
       { done: TR.progress.done + 1, total: TR.progress.total })}</div>`);
   }
@@ -8141,6 +8196,19 @@ function renderTrain() {
     parts.push(trChecks(TR.report));
   }
   $("trBuildBody").innerHTML = parts.join("");
+
+  // The ladder climbs beside the single copy: its own card, its own report,
+  // one progress bar over the lot.
+  $("trLadderGo").disabled = !source || TR.building;
+  $("trLadderGo").querySelector("span").textContent = t(TR.building && TR.what === "ladder"
+    ? "tr_ladder_building" : "tr_ladder_go");
+  const ladder = [];
+  if (TR.progress && TR.what === "ladder") {
+    ladder.push(`<div class="card-sub mt-m">${t("tr_step_" + TR.progress.step,
+      { done: Math.min(TR.progress.done + 1, TR.progress.total), total: TR.progress.total })}</div>`);
+  }
+  ladder.push(trLadderReport());
+  $("trLadderBody").innerHTML = ladder.join("");
 }
 
 function wire() {
@@ -8475,6 +8543,7 @@ function wire() {
   $("trOsz").onchange = async () => { if (api()) trApply(await api().train_set({ osz: $("trOsz").checked })); };
   $("trFolder").onclick = trPickFolder;
   $("trGo").onclick = trBuild;
+  $("trLadderGo").onclick = trBuildLadder;
   $("undoBtn").onclick = undo;
   $("redoBtn").onclick = redo;
   $("injectBtn").onclick = injectOsu;

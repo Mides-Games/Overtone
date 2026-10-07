@@ -1082,6 +1082,19 @@
           </div>
           <div class="card-body" id="trBuildBody"></div>
         </div>
+
+        <div class="card" id="trLadderCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="tr_ladder">Rate ladder</div>
+            <div class="spacer"></div>
+            <span class="card-sub" data-i18n="tr_ladder_hint">One run, one mapset, a rung per rate.</span>
+          </div>
+          <div class="card-body stack">
+            <label class="field"><span class="setting-name" data-i18n="tr_ladder_rates">Rates, comma separated</span><input class="input" id="trLadder" type="text" placeholder="1.0, 1.1, 1.2"></label>
+            <button class="btn small primary" id="trLadderGo" disabled><span data-i18n="tr_ladder_go">Build ladder</span></button>
+          </div>
+          <div class="card-body" id="trLadderBody"></div>
+        </div>
       </section>
 
       <section class="view" id="viewReport" data-view="report" data-needs-result hidden>

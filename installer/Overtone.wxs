@@ -86,20 +86,76 @@
       </RegistryKey>
     </Component>
 
-    <Feature Id="Main" Title="Overtone">
+    <Feature Id="Main" Title="Overtone" Level="1">
       <ComponentGroupRef Id="AppFiles" />
       <ComponentRef Id="StartMenuShortcut" />
-      <ComponentRef Id="OszAssociation" />
     </Feature>
 
-    <!-- Welcome, licence, destination folder, install, finish: WixUI_InstallDir's
-         own order, no dialog skipped. The licence page shows Overtone's MIT,
+    <!-- Chosen on the setup screen's feature tree, or left out. Levels are
+         the stock mechanism: 1 installs, 1000 sits above INSTALLLEVEL's 100
+         until picked in the tree or named in ADDLOCAL. No bespoke conditions,
+         no custom XML — WiX's own tree, translated and tested by WiX. -->
+    <Feature Id="OszAssoc" Title=".osz beatmap archives" Level="1">
+      <ComponentRef Id="OszAssociation" />
+    </Feature>
+    <Feature Id="AudioAssoc" Title="Audio analysis" Level="1000">
+      <ComponentRef Id="AudioAssociation" />
+    </Feature>
+    <Feature Id="DesktopIcon" Title="Desktop shortcut" Level="1000">
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+
+    <!-- The associations the tree offers. Audio files stay untouched unless
+         asked: grabbing someone's music player default is not a default. -->
+    <Component Id="AudioAssociation" Directory="INSTALLFOLDER">
+      <RegistryKey Root="HKCU" Key="Software\Classes\Overtone.audio">
+        <RegistryValue Type="string" Value="Audio analysed with Overtone" KeyPath="yes" />
+      </RegistryKey>
+      <RegistryKey Root="HKCU" Key="Software\Classes\Overtone.audio\shell\analyze\command">
+        <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]Overtone.exe&quot; &quot;%1&quot;" />
+      </RegistryKey>
+      <RegistryKey Root="HKCU" Key="Software\Classes\.mp3">
+        <RegistryValue Type="string" Value="Overtone.audio" />
+      </RegistryKey>
+      <RegistryKey Root="HKCU" Key="Software\Classes\.ogg">
+        <RegistryValue Type="string" Value="Overtone.audio" />
+      </RegistryKey>
+      <RegistryKey Root="HKCU" Key="Software\Classes\.flac">
+        <RegistryValue Type="string" Value="Overtone.audio" />
+      </RegistryKey>
+      <RegistryKey Root="HKCU" Key="Software\Classes\.wav">
+        <RegistryValue Type="string" Value="Overtone.audio" />
+      </RegistryKey>
+      <RegistryKey Root="HKCU" Key="Software\Classes\.m4a">
+        <RegistryValue Type="string" Value="Overtone.audio" />
+      </RegistryKey>
+    </Component>
+
+    <!-- A desktop icon, only when asked. -->
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="DesktopShortcut" Directory="DesktopFolder">
+        <Shortcut Id="OvertoneDesktop" Name="Overtone"
+                  Description="Timing and hitsounds for osu! beatmaps, offline"
+                  Target="[INSTALLFOLDER]Overtone.exe" WorkingDirectory="INSTALLFOLDER"
+                  Icon="OvertoneIcon">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="Overtone.TimingWorkbench" />
+        </Shortcut>
+        <RegistryKey Root="HKCU" Key="Software\Overtone\Installer">
+          <RegistryValue Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+        </RegistryKey>
+      </Component>
+    </StandardDirectory>
+
+    <!-- Welcome, licence, setup type, tree, destination folder, install,
+         finish: WixUI_FeatureTree's own order. Typical installs Main and the
+         .osz association; Complete takes all four; Custom picks in the tree.
+         The licence page shows Overtone's MIT,
          which build.py renders to RTF from the repository's LICENSE, so the two
          cannot drift. The bundled libraries' notices are far too long for a
          dialog and ship as files instead: LICENSE.txt and
          THIRD-PARTY-NOTICES.txt in the program folder, written by
          installer\notices.py. -->
     <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
-    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <ui:WixUI Id="WixUI_FeatureTree" InstallDirectory="INSTALLFOLDER" />
   </Package>
 </Wix>

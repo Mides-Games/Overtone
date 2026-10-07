@@ -26,7 +26,7 @@ import numpy as np
 import overtone_web as web
 import overtone as ta
 
-from test_overtone import _drum_track, _wav_bytes, TrainDetectTests
+from test_overtone import _drum_track, _wav_bytes, TrainDetectTests, TrainPlanTests
 
 def _analysis(points, beats=None, engine="precision", residual=0.4, onset_frames=5000):
     beats = np.arange(0.5, 60.0, 0.4) if beats is None else np.asarray(beats, dtype=float)
@@ -5084,6 +5084,17 @@ class TrainBridgeTests(_IsolatedConfig):
                 reply = api.train_detect()
         self.assertEqual(reply["key"], "no_signal")
         self.assertTrue(reply["signals"])
+
+    def test_dropping_spinners_is_an_explicit_ask(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainPlanTests()._map(tmp)
+            api = web.Api()
+            api.train_pick([str(path)])
+            state = api.train_set({"rate": 1.5, "drop_spinners": True})
+            json.dumps(state)
+            self.assertTrue(state["plan"]["usable"], state["plan"]["refusals"])
+            self.assertEqual(len(state["plan"]["drops"]), 1)
+            self.assertIn("no spinners", state["plan"]["naming"]["version"])
 
 
 class OszImportTests(_IsolatedConfig):

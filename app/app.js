@@ -785,6 +785,8 @@ const I18N = {
     tr_remove_preview: "Frees {size} — again to remove.",
     tr_missing: "{n} missing",
     tr_hotkey: "Build with Ctrl+Alt+B, from anywhere",
+    tr_drop: "Drop spinners that become unspinnable",
+    tr_drops: "{n} spinner(s): {spans}",
     tr_stat_hp: "HP", tr_stat_cs: "CS", tr_stat_ar: "AR", tr_stat_od: "OD",
     tr_keep: "Keep", tr_scale: "Scale", tr_lock: "Lock to",
     tr_names: "Name and credit", tr_version: "Difficulty name", tr_tags: "Tags",
@@ -1601,6 +1603,8 @@ const I18N = {
     tr_remove_preview: "Libera {size}; de nuevo para borrar.",
     tr_missing: "{n} faltantes",
     tr_hotkey: "Construir con Ctrl+Alt+B, desde donde sea",
+    tr_drop: "Sacar spinners que se vuelven ingirables",
+    tr_drops: "{n} spinner(s): {spans}",
     tr_stat_hp: "HP", tr_stat_cs: "CS", tr_stat_ar: "AR", tr_stat_od: "OD",
     tr_keep: "Mantener", tr_scale: "Escalar", tr_lock: "Fijar en",
     tr_names: "Nombre y crédito", tr_version: "Nombre de la dificultad", tr_tags: "Tags",
@@ -8315,6 +8319,13 @@ function renderTrain() {
   $("trFeel").textContent = plan.usable ? trFeel(plan) : "";
   $("trStats").innerHTML = ["hp", "cs", "ar", "od"].map((f) => trStatRow(plan, f)).join("");
   $("trFeel2").textContent = plan.usable && st.feel ? trFeelMore(st.feel) : "";
+  const drops = plan.drops || [];
+  $("trDropField").hidden = !drops.length;
+  $("trDrop").checked = !!settings.drop_spinners;
+  $("trDrops").textContent = drops.length ? t("tr_drops", {
+    n: drops.length,
+    spans: drops.map((d) => `${Math.round(d.duration_ms) / 1000}s→${Math.round(d.at_rate_ms) / 1000}s`).join(", "),
+  }) : "";
 
   // Mods: the arithmetic the file performs, in the engine's own words.
   document.querySelectorAll("#trMods button").forEach((b) =>
@@ -8746,6 +8757,7 @@ function wire() {
     b.onclick = () => trSetFormat(b.dataset.format);
   });
   $("trOsz").onchange = async () => { if (api()) trApply(await api().train_set({ osz: $("trOsz").checked })); };
+  $("trDrop").onchange = async () => { if (api()) trApply(await api().train_set({ drop_spinners: $("trDrop").checked })); };
   $("trHotkey").onchange = async () => {
     if (!api()) return;
     const reply = await api().train_hotkey($("trHotkey").checked);

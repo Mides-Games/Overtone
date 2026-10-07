@@ -11841,6 +11841,37 @@ class InstallerAssocTests(unittest.TestCase):
                        '<ComponentRef Id="OszAssociation" />'):
             self.assertIn(needle, text)
 
+    def test_the_setup_screen_offers_what_the_features_level(self) -> None:
+        text = self.SOURCE.read_text(encoding="utf-8")
+        for needle in ('WixUI_FeatureTree',
+                       'Id="OszAssoc"',
+                       'Id="AudioAssoc"',
+                       'Id="DesktopIcon"',
+                       'Level="1000"',
+                       'Software\\Classes\\.mp3',
+                       'Software\\Classes\\.m4a',
+                       '<ComponentRef Id="AudioAssociation" />',
+                       '<ComponentRef Id="DesktopShortcut" />'):
+            self.assertIn(needle, text)
+
+    def test_the_setup_screen_offers_what_the_components_condition_on(self) -> None:
+        text = self.SOURCE.read_text(encoding="utf-8")
+        for needle in ('<Dialog Id="OszAssocDlg"',
+                       'Property="ASSOC_OSZ"',
+                       'Property="ASSOC_AUDIO"',
+                       'Property="DESKTOP_SHORTCUT"',
+                       '<Condition>ASSOC_OSZ</Condition>',
+                       '<Condition>ASSOC_AUDIO</Condition>',
+                       '<Condition>DESKTOP_SHORTCUT</Condition>',
+                       'Value="InstallDirDlg"',
+                       'Value="VerifyReadyDlg"',
+                       'Value="OszAssocDlg"',
+                       'Software\\Classes\\.mp3',
+                       'Software\\Classes\\.m4a',
+                       '<ComponentRef Id="AudioAssociation" />',
+                       '<ComponentRef Id="DesktopShortcut" />'):
+            self.assertIn(needle, text)
+
 
 class TrainHotkeyTests(unittest.TestCase):
     """One global hotkey, delivered by the OS, never hooked."""
@@ -11896,6 +11927,49 @@ class TrainHotkeyTests(unittest.TestCase):
         self.assertTrue(wait.fired.wait(timeout=5))
         self.assertTrue(wait.is_alive())
         wait.stop()
+
+
+class TrainDropTests(unittest.TestCase):
+    """Spinners dropped on an explicit ask, never by default."""
+
+    def test_asked_spinners_leave_named_in_version_and_report(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainPlanTests()._map(tmp)
+            plan = overtone_train.plan_practice(path, rate=1.5, drop_spinners=True)
+            self.assertTrue(plan["usable"], plan["refusals"])
+            self.assertEqual(len(plan["drops"]), 1)
+            self.assertAlmostEqual(plan["drops"][0]["at_rate_ms"], 2000.0 / 1.5, delta=0.1)
+            self.assertEqual(plan["naming"]["version"], "Hard (1.5x), no spinners")
+            self.assertIn("no-spinners", plan["naming"]["tags"])
+            self.assertEqual(plan["naming"]["fields"]["dropped"], "1 spinner(s)")
+            text, report = overtone_train.practice_beatmap(plan)
+            self.assertEqual(report["dropped"], 1)
+            self.assertEqual(report["objects"], 3)
+            body = text.split("[HitObjects]")[1]
+            self.assertNotIn("5000,12", body)
+            self.assertIn("L|300:200", body)
+
+    def test_unasked_everything_stays(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainPlanTests()._map(tmp)
+            plan = overtone_train.plan_practice(path, rate=1.5)
+            self.assertFalse(plan["drop_spinners"])
+            self.assertEqual(plan["drops"], [])
+            self.assertEqual(plan["naming"]["version"], "Hard (1.5x)")
+            _text, report = overtone_train.practice_beatmap(plan)
+            self.assertEqual(report["dropped"], 0)
+            self.assertEqual(report["objects"], 4)
+
+    def test_a_map_without_spinners_says_so(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainAudioTests()._clicks(tmp)
+            plan = overtone_train.plan_practice(path, rate=1.5, drop_spinners=True)
+            self.assertTrue(plan["usable"], plan["refusals"])
+            codes = {repair["code"] for repair in plan["repairs"]}
+            self.assertIn("no_spinners_to_drop", codes)
 
 
 if __name__ == "__main__":

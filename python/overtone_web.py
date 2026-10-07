@@ -399,7 +399,8 @@ class Api:
         #: the compilation: a copy is a few clicks to rebuild.
         self._train: dict = {"osu": None, "rate": 1.0, "target_bpm": None,
                              "from_bpm": None, "stats": {}, "naming": {},
-                             "mods": [], "audio_format": "mp3", "osz": False, "out": ""}
+                             "mods": [], "drop_spinners": False,
+                             "audio_format": "mp3", "osz": False, "out": ""}
         #: A build's own lock, beside the analysis's and the compilation's:
         #: resampling a song and encoding it is the same heavy job either way.
         self._train_lock = threading.Lock()
@@ -2223,7 +2224,8 @@ class Api:
                 from_bpm=settings.get("from_bpm"),
                 stats=dict(settings.get("stats") or {}),
                 naming=dict(settings.get("naming") or {}),
-                mods=list(settings.get("mods") or []))
+                mods=list(settings.get("mods") or []),
+                drop_spinners=bool(settings.get("drop_spinners")))
         except (ValueError, OSError):
             return None
 
@@ -2242,6 +2244,7 @@ class Api:
                        "settings": {key: self._train.get(key)
                                     for key in ("rate", "target_bpm", "from_bpm",
                                                 "stats", "naming", "mods",
+                                                "drop_spinners",
                                                 "audio_format", "osz", "out")},
                        "plan": None, "check": None, "feel": None,
                        "busy": self._busy.locked() or self._train_lock.locked(),
@@ -2337,7 +2340,8 @@ class Api:
         """The rate, the target, the stats, the naming and the output shape."""
         changes = dict(changes or {})
         unknown = sorted(set(changes) - {"rate", "target_bpm", "from_bpm", "stats",
-                                         "naming", "mods", "audio_format", "osz", "out"})
+                                         "naming", "mods", "drop_spinners",
+                                         "audio_format", "osz", "out"})
         if unknown:
             return {"ok": False, "key": "error",
                     "detail": f"Unknown setting(s): {', '.join(unknown)}."}
@@ -2382,6 +2386,8 @@ class Api:
                 return {"ok": False, "key": "error",
                         "detail": "Mods arrive as a list like [HR, DT]."}
             self._train["mods"] = [str(m).upper() for m in mods]
+        if "drop_spinners" in changes:
+            self._train["drop_spinners"] = bool(changes["drop_spinners"])
         if "audio_format" in changes:
             if changes["audio_format"] not in ("mp3", "wav"):
                 return {"ok": False, "key": "error",
@@ -2445,7 +2451,7 @@ class Api:
                     "detail": f"No preset named {name!r}."}
         settings = dict(presets[str(name)].get("settings", {}))
         for key in ("rate", "target_bpm", "from_bpm", "stats", "naming",
-                    "mods", "audio_format", "osz"):
+                    "mods", "drop_spinners", "audio_format", "osz"):
             if key in settings:
                 self._train[key] = settings[key]
         return self.train_state()
@@ -2592,7 +2598,9 @@ class Api:
             plan = tr.plan_ladder(
                 self._train["osu"], rates,
                 stats=dict(self._train.get("stats") or {}),
-                naming=dict(self._train.get("naming") or {}))
+                naming=dict(self._train.get("naming") or {}),
+                mods=list(self._train.get("mods") or []),
+                drop_spinners=bool(self._train.get("drop_spinners")))
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
         if not plan["usable"]:

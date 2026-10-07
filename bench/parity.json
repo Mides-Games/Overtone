@@ -120,6 +120,10 @@
     "where": "python-only",
     "why": "overtone_train.py: picking the map from live signals, which no Rust crate holds"
    },
+   "TrainDropTests": {
+    "where": "python-only",
+    "why": "overtone_train.py: spinners dropped on an explicit ask, which no Rust crate holds"
+   },
    "TrainGridTests": {
     "where": "python-only",
     "why": "overtone_train.py: the rate on the grid, which no Rust crate holds"

@@ -14,8 +14,10 @@ This is the concrete plan to build that, and, first, what of it is built.
 
 Sub-phases 10.13.1 (the build harness), 10.13.3 (the licences and the SBOM), 10.13.5 (the
 portable ZIP) and 10.13.7 (the release checklist), with 10.13.2 (the WiX authoring) in
-part: the install flow, per user, with the licence page and the Start menu shortcut, but
-no file associations or custom setup screen. **v0.1.0-alpha was published from this on
+part: the install flow, per user, with the licence page, the Start menu shortcut, the
+feature tree (`.osz` by default; audio associations and a desktop icon when picked),
+but no Explorer menu, no `overtone://` scheme and no bare-`.osu` association — a map
+without its song has nothing to analyse. **v0.1.0-alpha was published from this on
 2026-10-03** — the first build anyone other than the author can install.
 
 All of it is for the app as it is today: the Python engine and the web window, with the
@@ -131,9 +133,9 @@ the published build.
 
 - **Code signing** (10.13.6), out of scope here: the MSI and the executables are unsigned,
   so SmartScreen can be expected to warn on a downloaded copy (not tried).
-- **Windows integration beyond the Start menu and the licence page** (the rest of 10.13.2):
-  no desktop shortcut, file associations, Explorer menu or `overtone://` scheme, and no
-  custom setup screen.
+- **Windows integration beyond the Start menu, the licence page and the feature
+  tree** (the rest of 10.13.2): no Explorer menu or `overtone://` scheme, and no bare-`.osu`
+  association. The tree offers `.osz`, the five audio kinds and a desktop icon.
 - **The portable `data\` folder**: the ZIP's copy keeps its settings and cache where the
   installed one does (see "User data locations"), not beside the executable.
 - **An install and uninstall on a real profile**: not exercised here, by instruction; the
@@ -314,13 +316,15 @@ Built: 1 (the shortcut carries the app's taskbar identity, `Overtone.TimingWorkb
 the running window groups under it) and 6. The rest is not built yet.
 
 1. **Start Menu entry**: `Overtone`, launches the GUI.
-2. **Desktop shortcut**: optional, checkbox in installer.
-3. **File associations** (opt-in, checkbox in installer):
-   - `.mp3`, `.ogg`, `.flac`, `.wav`, `.m4a` — "Analyze with Overtone"
-   - `.osu` — "Open with Overtone" for map validation
-   - `.osz` — "Import into Overtone"
-4. **Right-click context menu** in Explorer: "Analyze with Overtone".
-5. **URI scheme**: `overtone://` for deep links (e.g. from a browser plugin).
+2. **Desktop shortcut**: in the Typical/Complete/Custom tree, off unless picked.
+3. **File associations**, each its own feature in the tree (Typical takes `.osz`;
+   Complete takes all; `ADDLOCAL` names them on a quiet install):
+    - `.osz` — "Import into Overtone" (the archive is copied into Songs, never moved)
+    - `.mp3`, `.ogg`, `.flac`, `.wav`, `.m4a` — "Analyze with Overtone"
+    - A bare `.osu` is deliberately not associated: with no song beside it there
+      is nothing to analyse, and the Train view picks maps that have one.
+4. **Right-click context menu** in Explorer: "Analyze with Overtone". Not built.
+5. **URI scheme**: `overtone://` for deep links (e.g. from a browser plugin). Not built.
 6. **Uninstall via Windows Settings** or the classic Control Panel entry.
 
 ## Update path

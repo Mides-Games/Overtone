@@ -22,6 +22,18 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-07 · No certificate: 0.3.0 keeps one apology
+
+### Changed
+
+- **T2 dropped by owner decision**: no certificate purchase, so every release keeps
+  shipping unsigned with the hash to check. 0.3.0's heading changed accordingly —
+  "almost no apologies" instead of "without apologies". The row returns if that changes.
+
+### Measured
+
+- Nothing: this is scope. `bench/facts.py` ok.
+
 ## Unreleased — 2026-10-07 · Timbre grouping: the best lead yet, still a miss
 
 ### Measured

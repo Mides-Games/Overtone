@@ -243,11 +243,13 @@ name the gap in their first lines.
 
 ---
 
-## Release 0.3.0 — the first one without apologies
+## Release 0.3.0 — the first one with almost no apologies
 
-0.2.0-alpha proved the trainer works; 0.3.0 is the version a stranger can trust: signed,
-complete, and with every shipped word backed by a number. No suffix — but still `0.`,
-which says honestly that the engine keeps evolving underneath.
+0.2.0-alpha proved the trainer works; 0.3.0 is the version a stranger can use:
+complete, and with every shipped word backed by a number. One apology survives
+by owner decision — unsigned builds, hash to check — and the notes say so. No
+suffix, but still `0.`, which says honestly that the engine keeps evolving
+underneath.
 
 ### Required — the version is not 0.3.0 without these
 
@@ -255,7 +257,7 @@ which says honestly that the engine keeps evolving underneath.
 |---|---|---|---|---|
 | R6 | **The library health check's precision sample, verdicts in** — carried from 0.2.0-alpha, where it shipped open by owner decision | The words *actionable* and *weak* are already installed; 0.3.0 either backs them with the 15/25 bar or renames them | [P19](#phase-19--app-sections) | todo — sample and sheet drawn 2026-10-06, verdicts owed |
 | T1 | **The Train section's browser-harness pass, EN and ES** — carried from 0.2.0-alpha | Every other section earned it; the static pass (ids, keys, calls, events) is not a layout check | [P26](#phase-26--rate-and-difficulty-trainer-practice-copies) | todo |
-| T2 | **Signed artefacts** (10.13.6): the certificate bought, the MSI signed in `build.py`, SmartScreen path documented | The single biggest thing between this and a build a stranger trusts; no amount of work here moves it until the purchase does | [`11`](11-msi-distribution.md) | todo — owner's purchase |
+| T2 | **Signed artefacts** (10.13.6): the certificate bought, the MSI signed in `build.py`, SmartScreen path documented | The single biggest thing between this and a build a stranger trusts; no amount of work here moves it until the purchase does | [`11`](11-msi-distribution.md) | **dropped 2026-10-07** — the owner will not purchase a certificate. Every release ships unsigned with the hash to check, as the alphas do; the row returns if that changes |
 | T3 | **The trainer's nicer rows**: ladders (26.16), feel in full with mod emulation (26.9, 26.10), undo and clean up (26.15) | This is what makes the trainer better than the tool it answers, not just more correct | P26 | todo (26.16 in progress) |
 | T4 | **The trainer's open questions settled**: pitch-kept ships or refuses documented (26.6), dropping objects allowed and executed (26.12, decided yes 2026-10-07), the map picked without memory reading with the live-signal measurement (26.18), one hotkey and presets (26.19, 26.20) | Open questions older than one release become fog; each has its decision procedure written already | P26 | **done** 2026-10-07 |
 | T5 | **File associations and the custom setup screen** (the rest of 10.13.2) | A downloaded release should open what it writes; the MSI currently does not associate | [`11`](11-msi-distribution.md) | **done** 2026-10-07 — stock feature tree (Typical `.osz`; audio five, desktop icon and right-click menu at level 1000). Bare `.osu` and URI stay documented-open: no song, no linker |

@@ -22,6 +22,50 @@ version is `v0.1.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-06 · The 0.2.0-alpha checklist, run end to end
+
+### Changed
+
+- **The product version is 0.2.0-alpha**, in a commit of its own: one line in
+  `Cargo.toml`, the sixteen inter-crate pins with it, `Cargo.lock` following —
+  the same shape as 0.1.0's bump.
+- **`bench/corpus_b.py` fingerprinted the engine where it lives.** It hashed
+  `ROOT/overtone.py`, which has not existed since the engine moved to `python/`
+  in Phase 0, so every invocation crashed before scoring anything. It hashes
+  `python/overtone.py` (and `python/overtone_rust.py` for the Rust engine) now.
+- **The .NET SDK is per-user again** (10.0.401, the pinned one): the 0.1.0 session's
+  install was gone — runtime only on PATH, sentinels in `~\.dotnet` — and the build
+  refuses without it. Installed with Microsoft's `dotnet-install.ps1` to
+  `%LOCALAPPDATA%\Microsoft\dotnet`, where `find_dotnet` looks second.
+
+### Measured
+
+- Every gate green on the bumped commit: 971 Python tests, 291 Rust tests, benchmark
+  24/24 (median 0.0000 BPM / 0.16 ms), bpm-snapshot 24/24, golden 27/27, coverage,
+  measures 3/3, signatures 6/6, robustness, reference 24/24, assisted 70/70,
+  real-audio 4/6 (camisa-negra and shinkou absent here, named), perf inside every
+  budget, combine, train (1.37x MP3 grades 1/1, worst 0.34 ms), fixtures 38,
+  parity 386/687, facts, 3000 fuzz mutants (2838 read, 162 refused, none crashed),
+  fit_kits 42/42, sbom 37 wheels, notices 87 components / 156 files / 5 offers.
+  Rust: golden 27/27, nogrid refused, density 4/4 with 0 FP, elastic, map.
+- Corpus B, 13 of 20 tracks (7 folders absent here, named): v3 2.1 % within 5 ms
+  (82 s), Rust 0.4 % with 4 refusals by design (18 s); onsets median +23.0 ms after
+  the maps' lines, -6.4 ms after Overtone's. A measurement, not a gate; the 1.7 %
+  in the roadmap was the full 20 on 2026-09-26, so the two numbers cover different
+  tracks and are not a drift.
+- `build.py --clean`: `build: ok`, 468.5 s. Tree 1671 files / 316.9 MB. MSI 112.2 MB
+  (`22339437…9b3638`), ZIP 138.2 MB (`82d2c5e1…ed2eda`), SBOM 87 components
+  (`0930bbd6…62323a15`). ICE no error (ICE91 ×1671, ICE61 ×1, both as intended).
+  Three smokes ok, each edm-174 at 174.0000 BPM through both engines and 8/8
+  self-checks; the ZIP's writes stayed in `data\`, none in the profile.
+- Installed over the machine's 0.1.0 with `msiexec /i /qn` from a non-elevated shell:
+  the installed copy's own `--self-check` green at version 0.2.0-alpha, no
+  `portable.txt`. Uninstalled: program folder gone, Start menu entry gone, the user's
+  `.overtone.json` and `%LOCALAPPDATA%\Overtone` untouched. Reinstalled 0.2.0 after,
+  self-check green — the machine keeps a working app, one alpha newer than it had.
+- Not published: no tag, no GitHub release. R6's verdicts are still owed, and a
+  release is the one thing that cannot be taken back.
+
 ## Unreleased — 2026-10-06 · Phase 25 closed: per-song backgrounds stay out
 
 ### Changed

@@ -22,6 +22,33 @@ version is `v0.1.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-07 · Phase 26: rate ladders, one run one mapset
+
+### Changed
+
+- **`plan_ladder` / `build_ladder`** (row 26.16): a practice plan per rung, settled
+  together so a refused rung refuses the ladder naming it; one audio file per
+  distinct rate, each rung's own `.osu` through the atomic writer and the write log,
+  samples and background once, checks per rung. At most a dozen rungs — past that a
+  ladder is two ladders. One rate is a copy and twice the same rate climbs nowhere:
+  both refuse with the reason.
+- **A ladder card on the Train section**: comma-separated rates, one worker on the
+  Train lock, one progress bar over the lot (`train_build_ladder`,
+  `onTrainProgress` rung by rung), and a per-rung report with each rung's grade.
+  Reports carry their kind so the copy and the ladder share the view.
+
+### Measured
+
+- Gate ladder on clicks: 1.0x worst 0.45 ms, 1.37x worst 0.34 ms, every rung's
+  `.osu` naming its own song. 976 Python tests, all green; `train` gate green.
+- Not checked: the browser harness, like the section's.
+
+### Rejected / tried and dropped
+
+- **Reusing one audio file across rungs.** Different speeds need different samples;
+  sharing would mean resampling on load, which no player does. One file per distinct
+  rate is the only shape an osu! folder can hold honestly.
+
 ## Unreleased — 2026-10-07 · The way out of alpha: 0.3.0 scoped, 1.0.0 pathed
 
 ### Changed

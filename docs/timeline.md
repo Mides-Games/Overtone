@@ -22,6 +22,35 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-14 · Single-BPM bulk truth: harness built, pilot measured
+
+### Changed
+
+- **`bench/single_bpm.py`**: the engine against every one-red-line map in the
+  user's Songs folder — 17,128 of 25,171 maps over 3,062 songs (TV Size 2,338
+  over 381), found through the library index and re-checked on disk, one
+  analysis per song with every difficulty scored on it. Mapper agreement
+  (offsets within 10 ms, tempi within 0.05 BPM) splits the repeatable-truth
+  subset out. Cached per audio size+mtime and engine code, so the full run is
+  resumable; `--tv`, `--sample 7`-seeded, `--max-songs`, `--jobs` and
+  `--engine rust` shape it. A measurement, not a gate — roadmap row 10.0d.
+
+### Measured
+
+- 12-song pilot (python, 58 maps): BPM≤0.05 **57/58**, median |error| 0.008;
+  signed offset +24.7 ms — the 10.0a convention, and 60.3 % would sit within
+  5 ms less exactly that constant (diagnostic, not a result).
+- TV-100 (python, 100 songs, 619 maps, 1 undecodable audio named, 1 refusal):
+  BPM≤0.05 **485/608**, median 0.013; same octave 513/608 (x0.5 28, x2 67);
+  signed +30.4 ms, ≤50 ms 91.9 %. Worst misses are honest: e.g. 210 BPM read
+  at 140 (a 3:2 feel, not an octave). All 100 TV songs' difficulties agree
+  with each other, so the subset equals the slice here.
+- `bench/facts.py` ok. Full 3,062-song run owed; nothing claimed off the pilot.
+
+---
+
+---
+
 ## Unreleased — 2026-10-14 · T3 closed: the trainer's nicer rows were already in
 
 ### Changed

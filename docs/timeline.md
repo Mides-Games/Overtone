@@ -22,6 +22,26 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-14 · T3 closed: the trainer's nicer rows were already in
+
+### Changed
+
+- **T3 closed without new code**: 26.9, 26.10, 26.15 landed in #97 and 26.16
+  in #96, but the 0.3.0 table still read `todo (26.16 in progress)`. The
+  owner's T1 harness pass (#107) already covers the ladder, copies, presets,
+  mods, detect and hotkey rows — 26.21 says so — so the row now reads done.
+  R6's 25 verdicts stay the only owner item; T6 and T7 are still open research.
+
+### Measured
+
+- `bench/facts.py` ok; `bench/gates.py train` green (1.0x byte-identical bar
+  the version line, 1.37x worst 6.75e-07 beats / 0.19 ms, ladder rungs grade
+  1.0x worst 0.45 ms and 1.37x worst 0.34 ms).
+
+---
+
+---
+
 ## Unreleased — 2026-10-07 · No certificate: 0.3.0 keeps one apology
 
 ### Changed

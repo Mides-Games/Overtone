@@ -22,6 +22,35 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-14 · Single-BPM bulk truth: full slice measured
+
+### Changed
+
+- **The full run**: all 3,425 one-red-line songs through `bench/single_bpm.py`
+  (python engine, 3 at a time, 3.1 h wall / 9.1 h CPU, 108 from the cache).
+
+### Measured
+
+- 17,099 maps scored, 29 skipped (missing files, named), 24 errors (audio no
+  decoder here opens — formats wanting FFmpeg, each named), 23 refused.
+  Precision path 2,921 songs, fallback 457.
+- BPM≤0.05 octave-normalised **11,914/16,906 (70.5 %)**, median |error|
+  0.013; same octave 12,138 (71.8 %), half 2,017, double 2,334, deeper 416.
+- Offsets raw: ≤5 ms 1.9 %, ≤50 ms 83.7 %, signed **+24.6 ms** — the 10.0a
+  convention again, reported raw; less that constant, 37.1 % would sit within
+  5 ms (diagnostic, not a result).
+- The agreeing subset (2,612 songs whose difficulties match within 10 ms /
+  0.05 BPM, 16,029 maps) reads **71.1 %** — no better than the slice. Mapper
+  disagreement is not the gap; octave errors are, both directions at once.
+- Worst miss is gimmick truth, not an engine failure: a minigame map with a
+  1,280 BPM red line, read sanely.
+- `bench/facts.py` ok. Rust engine through the same slice still owed; no bar
+  set, so nothing passes or fails yet.
+
+---
+
+---
+
 ## Unreleased — 2026-10-14 · Single-BPM bulk truth: harness built, pilot measured
 
 ### Changed

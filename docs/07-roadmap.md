@@ -69,8 +69,10 @@ point, section volumes, SV normaliser, re-snap, snap divisors, audio file check)
 4. **Other languages** (Phase 24) — TypeScript (needs Node.js) and a C# lazer gate (needs
    the .NET SDK). Node is not installed; ask before installing it. The .NET SDK is, per
    user, since 2026-09-26 (10.0.401, for the MSI build).
-5. **Real-audio accuracy** (Phase 10) — Corpus B is built and measured (10.0); one
-   sub-phase at a time from here, each measured on it.
+5. **Real-audio accuracy** (Phase 10) — Corpus B and the single-red-line bulk scan are
+   measured (10.0); the single-BPM target is joint pass on BPM, octave and ≤5 ms
+   offset, not a good BPM score that leaves the line late. Work runs through 10.0b,
+   10.0e–h and stays open until the 95 % gate passes on held-out songs.
 6. **Installer, the rest** (Phase 10.13) — **v0.1.0-alpha is published** (2026-10-03): the
    per-user MSI, the portable ZIP, the SBOM and the checksums, with every bundled licence
    gathered into the tree and the whole thing installed and uninstalled on a real profile.
@@ -630,6 +632,17 @@ green. The truth has a spread of its own: two ranked maps of the same audio agre
 of their red lines within 5 ms, and on 74 % where they differ at all (319 pairs, measured
 2026-09-26), so 90 % of one mapper's lines asks more than a second mapper gives.
 
+**Single-BPM acceptance target:** “almost perfectly timed” means at least **95 % of all
+one-red-line maps in the locked, held-out slice** pass all three together: exact BPM octave,
+absolute BPM error ≤0.05, and red-line offset error ≤5 ms. The primary score counts refusals
+and errors as misses; answered-only accuracy and coverage are also reported, never used to
+hide them. Maps sharing audio are scored individually but clustered by song for confidence
+intervals. A reference may leave the primary set only after the 10.0b audit demonstrates it
+is invalid; every exclusion stays listed and counts against coverage. This is a target, not a
+current result. The current full-slice baseline is 1.9 % within 5 ms, 70.3 % within 0.05 BPM,
+and 72.6 % exact octave on answers. No engine change or release claim is accepted as progress
+toward this target unless it keeps Corpus A green and improves the joint held-out score.
+
 The gain column below is an **estimate, not a measurement**; each sub-phase replaces its
 estimate with a number or is dropped.
 
@@ -637,9 +650,13 @@ estimate with a number or is dropped.
 |---|---|---|---:|:--:|
 | 10.0 | Corpus B | 20 ranked tracks + the scoring script | — | **done** — `bench/corpus_b.json` + `bench/corpus_b.py`: v3 1.6 % of 1,152 red lines within 5 ms (0.9 % per track, 46.9 % within 50 ms), Rust 1.4 % (5 of 20 refused); signed error a median +24.0 ms per track |
 | 10.0a | The late reading | explain the +24 ms Overtone reads after the mappers' lines on every category of Corpus B, steady songs included (so not drift); correct it only once the cause is found and shown, with Corpus A green | diagnostic: a constant subtracted takes v3 from 1.6 % to 14.4 % | **explained, not corrected** (2026-09-26, `corpus_b.py --onsets`) — ranked maps put their lines a median 21.4 ms before the sound's first edge (100 held-out maps, IQR 18.1-23.9, all 100 before it; LAME MP3, other MP3 and OGG alike; the decode is exact), and Overtone's grids sit a median 7.9 ms after it (Corpus B); about half of that is the re-timing following the full band's rise, which can come well after the first edge, and the rest is not traced yet. The convention is not in the audio; re-timing on the first difference moved attacks onto the edge (Corpus A 0.16 → 0.08 ms) but made the tempo worse on 6 of 20 songs (better on 4), so dropped. Next: decide whether the export writes osu!'s convention (about -21 ms, at export, never in the engine); then a phase fitted on edge-timed attacks (estimated -3.5 ms) |
-| 10.0b | Human agreement as a mode | the mapper-against-mapper check (82 % of red lines within 5 ms on 319 pairs of ranked maps sharing one audio) as a repeatable bench mode, with a read-only `osu!.db` reader for ranked status; the 90-95 % target restated against it, which is a decision | — | todo (proposed 2026-09-26) |
+| 10.0b | Human agreement and reference audit | mapper-against-mapper mode (82 % of red lines within 5 ms on 319 pairs) plus a read-only `osu!.db` reader; audit a stratified sample to establish the reference convention and identify invalid rows; lock all remaining one-red-line maps as the primary denominator and publish every exclusion | — | todo — prerequisite for the single-BPM acceptance gate |
 | 10.0c | Refusals on Corpus B | v3 refuses The Raven (pulse gap 0.024, under the 0.07 floor); Rust refuses 5 of 20 and reads FREEDOM DiVE as one 333.33 BPM line in 12/4 where v3 reads 222.22: each explained, and fixed only where the engine is wrong | — | explained 2026-09-30: the 4 Rust-only refusals are by design (no fallback; v3-precision refuses them too), The Raven is refused by both (genuinely hard), and the FREEDOM DiVE divergence is localized to the points stage (razor-margin best-1 among weak meter segments); an earliest-survivor fix measured net-negative and was reverted |
 | 10.0d | Single-BPM bulk truth | the engine against every one-red-line map in the user's Songs folder (17,128 of 25,171, TV Size 2,338): one analysis per song, every difficulty scored, mapper agreement as the repeatable-truth subset | the minimum the engine must do | **measured full-slice** 2026-10-14 — `bench/single_bpm.py` (index-found, disk-checked, cached per audio+engine, TV/sample/cap/jobs flags): 12-song pilot 57/58 BPM≤0.05, signed +24.7 ms (the 10.0a convention, not drift); TV-100 485/608 BPM≤0.05, same-octave 513/608, signed +30.4 ms, ≤50 ms 91.9 %; full slice 3,425 songs / 17,099 maps: BPM≤0.05 11,914/16,906 (70.5 %), same octave 71.8 %, offsets +24.6 ms raw, agreeing subset no better (71.1 %) — the gap is octaves, not mapper noise. **Rust measured 2026-10-15 on the current revalidated slice**, then Python re-scored from cache on the same 3,229 songs / 16,069 maps: Rust 1.3 % within 5 ms, 76.8 % within 50 ms, BPM≤0.05 11,083/14,083 (78.7 % of answers; 69.0 % of all maps), exact octave 10,023/14,083 (71.2 %); Python 1.9 %, 83.5 %, 11,290/15,878 (71.1 % of answers; 70.3 % of all maps), exact octave 11,530/15,878 (72.6 %). Rust: 452 refusals, 23 errors; Python: 21 refusals, 24 errors. The scan skipped 1,059 maps on this run versus 29 in the 2026-10-14 run, leaving 1,030 fewer scored maps in this comparison. Rust does not improve the ≤5 ms result; this remains a measurement, not a gate or a release claim. |
+| 10.0e | Offset convention and error decomposition | on the fixed reference set, separate mapper red-line convention from audible attack onset and engine retiming; report signed bias, per-song spread, codec/genre strata, and the joint score. A global correction is diagnostic only until held-out songs validate it | unknown | todo — current +25 ms bias; subtracting it only reaches 37.1 % within 5 ms, so a constant alone is not the solution |
+| 10.0f | Sub-beat phase estimation | estimate grid phase from multiple independent attack/onset views (first edge, broadband rise, low-band/percussive onset); choose a robust song-level phase and measure each candidate on held-out audio. Keep BPM/octave fixed during this experiment so offset gains cannot mask tempo regressions | unknown | todo — no phase method has yet passed both Corpus A and the held-out real-audio gate |
+| 10.0g | Single-BPM tempo and octave resolution | rank tempo candidates with independent periodicity, low-band/downbeat and subdivision evidence; quantify half/double and non-octave errors by style. Add refusal only for genuinely ambiguous cases, and count those refusals in target coverage | unknown | todo — current answered-map exact-octave rate 72.6 %; no model or prior ships without song-held-out gains |
+| 10.0h | Near-perfect single-BPM release gate | run the locked, song-held-out benchmark and require a song-clustered lower 95 % confidence bound ≥95 % joint pass (exact octave + ≤0.05 BPM + ≤5 ms) across all audited-valid one-red-line maps; refusals/errors remain misses, every invalid-reference exclusion is listed, Corpus A stays unchanged, and per-stratum results are published; keep work open until it passes | measured gate | todo — target, not a claim |
 | 10.1 | Fingerprint & reuse | match the audio against the user's own `osu!/Songs`; exact when the song is already mapped. Scored on Corpus B only with each track's own mapset held out, or it finds its own answer | large when matched | todo |
 | 10.2 | Source separation | percussive stem first — HPSS (built, no weights); Demucs weights are research-only | +8 pts | partial (HPSS in Rust) |
 | 10.3 | Neural beat tracking | Beat This! (MIT code and weights) as one more voter | +17 pts | todo |

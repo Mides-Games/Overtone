@@ -22,6 +22,44 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-15 · Single-BPM accuracy target and work plan
+
+### Changed
+
+- Made the user's single-BPM quality requirement explicit: a song-clustered lower
+  95 % confidence bound of at least 95 % joint success for exact octave, BPM
+  error ≤0.05, and offset error ≤5 ms across all valid one-red-line maps in a
+  held-out slice.
+- Added separate roadmap steps for reference truth, offset convention, phase
+  estimation, octave/tempo resolution, and the final joint gate.
+
+### Fixed
+
+- Replaced a broad “real-audio accuracy” placeholder with acceptance criteria
+  that prevent BPM-only gains or answer-only scoring from being called success.
+
+### Hardening
+
+- Refusals and errors count as misses in the primary score. Difficulty rows
+  sharing one audio are grouped by song for confidence intervals; every
+  invalid-reference exclusion must be audited, listed, and counted against
+  coverage.
+- Candidate offsets must earn gains on held-out songs; the known average bias
+  cannot be subtracted as an unvalidated production constant.
+
+### Measured
+
+- Planning only; no engine code or accuracy claim changed. Baseline remains
+  Python: 1.9 % within 5 ms, 70.3 % within 0.05 BPM across all maps, and 72.6 %
+  exact octave on answered maps. The previously measured +24.6 ms bias correction
+  reaches only 37.1 % within 5 ms, a diagnostic rather than a result.
+
+### Rejected / tried and dropped
+
+- A single constant offset correction is not the accuracy plan: the measured
+  diagnostic still misses the 5 ms target on most maps and does not address
+  wrong tempo octaves.
+
 ## Unreleased — 2026-10-15 · Hitsounds roadmap reconciled
 
 ### Changed

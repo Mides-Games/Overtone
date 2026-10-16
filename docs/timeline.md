@@ -22,6 +22,32 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-15 · Hitsounds roadmap reconciled
+
+### Changed
+
+- Recorded H7 as complete in the design plan: its audio-only Propose toggle and
+  shared inspector, audition and write path shipped on 2026-10-07.
+- Clarified T7's actual remaining scope: H6 sample→role recommendations,
+  instrument lanes and the clap-mismatch rule still depend on classifier
+  evidence that transfers to real audio.
+
+### Fixed
+
+- Removed the stale claim that H7's app surface was still open, which conflicted
+  with the roadmap and the 2026-10-07 implementation entry.
+
+### Hardening
+
+- Kept the unverified browser harness and sidecar-on-real-songs check explicit;
+  shipped UI status does not imply those checks were completed.
+
+### Measured
+
+- No new classifier measurement. The existing 2026-10-07 Rust results remain
+  the basis for deferring H6: median `P(snare)+P(clap)` 0.189 and crash-vs-snare
+  0.408 over 12 songs.
+
 ## Unreleased — 2026-10-15 · Single-BPM bulk truth: Rust scored on the revalidated slice
 
 ### Changed

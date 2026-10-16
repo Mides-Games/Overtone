@@ -215,8 +215,10 @@ localises the gap: H4 on the same objects with sounds stripped agrees with
 full H4 only 0.19, and bare-H4 with audio-only 0.50 — half the gap is the
 mapper prior, which audio-only has by design, and the rest is different unit
 sets plus no combos or symmetry. The open question from 2026-09-26 is
-answered this way; what is still open is the app surface (a Propose that
-needs no map, and somewhere to write it).
+answered this way. The app surface shipped on 2026-10-07 as an evidence toggle
+beside Propose: map+audio or audio-only, using the same inspector, audition and
+write path. The browser harness and sidecar-on-real-songs path were not checked
+in that entry; the engine measurement above remains the accuracy limit.
 
 The original ask, kept for the record: drop an audio file with no map, have
 the song's own analysis (attacks → instrument classes + musical role) propose

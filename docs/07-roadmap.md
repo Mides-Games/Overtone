@@ -41,7 +41,8 @@ and the Phase 21 map tools (inject everywhere with a diff, kiai, breaks, bookmar
 point, section volumes, SV normaliser, re-snap, snap divisors, audio file check).
 
 1. **Hitsounds, the rest** (Phase 6, [`15-hitsound-plan.md`](15-hitsound-plan.md)) — H6
-   (sample recommendation; the bank is in) and H7 (a proposal from the audio alone). Profiles are
+   (sample recommendation; the bank is in). H7's audio-only proposal shipped in the app on
+   2026-10-07. Profiles are
    in the app: Drum-focused beat Balanced on its own style's maps and is chosen beside
    Propose; Minimal did not on bare claps and    does not ship (timeline, 2026-09-26). The
    role term reads the map's red lines instead of the audio's bar since 2026-09-30
@@ -262,7 +263,7 @@ underneath.
 | T4 | **The trainer's open questions settled**: pitch-kept ships or refuses documented (26.6), dropping objects allowed and executed (26.12, decided yes 2026-10-07), the map picked without memory reading with the live-signal measurement (26.18), one hotkey and presets (26.19, 26.20) | Open questions older than one release become fog; each has its decision procedure written already | P26 | **done** 2026-10-07 |
 | T5 | **File associations and the custom setup screen** (the rest of 10.13.2) | A downloaded release should open what it writes; the MSI currently does not associate | [`11`](11-msi-distribution.md) | **done** 2026-10-07 — stock feature tree (Typical `.osz`; audio five, desktop icon and right-click menu at level 1000). Bare `.osu` and URI stay documented-open: no song, no linker |
 | T6 | **Section labels from repetition** (pending item 3) | The last proposed row inside shipped sections | [P19](#phase-19--app-sections) | **open, measured three times** — `bench/labels.py` (100/100 split, +15 bar): 2.0 lifts +7.5/+11.9, one 1.5 move +9.7/+14.2 (reverted); MFCC-timbre regroup in `proto/timbre_group.py`: tune +19.8, held-out +13.8 on 13 songs (miss). Best lead yet, same verdict: the Kiai card keeps refusing over guessing |
-| T7 | **Hitsounds H6 and H7, or rejected with measurements** | Sample recommendation and audio-only proposals are the rest of Phase 6; the templates-on-real-audio numbers decide whether lanes and the mismatch rule can stand | [P6](#phase-6--hitsound-engine) | todo |
+| T7 | **Hitsounds H6 and H7, or rejected with measurements** | Sample recommendation and audio-only proposals are the rest of Phase 6; the templates-on-real-audio numbers decide whether lanes and the mismatch rule can stand | [P6](#phase-6--hitsound-engine) | in progress — H7 shipped in the app 2026-10-07; H6's sample→role, instrument lanes and clap-mismatch rule remain blocked by the measured real-audio classifier results above |
 
 ### Deliberately not in 0.3.0
 

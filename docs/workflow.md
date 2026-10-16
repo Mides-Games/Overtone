@@ -52,6 +52,19 @@ Si el paso 1 no trae su test (unitario o gate), volver al paso 1.
   0.16 ms), prototipo de `proto/` (density 4/4 + 0 FP; elastic 0.14–0.16 BPM),
   o gate de `docs/05-dsp-pipeline.md` parte B.
 - Anotar los números; "not measured" también es un resultado válido.
+- Para repetir T6 con una muestra independiente, usar `bench/labels.py` con
+  `--seed`, `--exclude-from`, `--cache` y `--output`. El JSON de salida se
+  escribe tras cada carpeta y la ejecución se reanuda solo si la muestra coincide;
+  cada fila medida se reutiliza únicamente si los SHA-1 del mapa y del audio
+  siguen iguales. Mantener caché y resultado bajo `bench/.cache/`, nunca añadir
+  datos de `Songs` al repositorio. Ejemplo:
+
+  ```powershell
+  .venv/Scripts/python.exe bench/labels.py --songs "C:\osu!\Songs" --seed 61 --exclude-from bench/labels.json --cache bench/.cache/t6/structures.json --output bench/.cache/t6/result.json
+  ```
+
+  No reducir `--tune` / `--heldout` para declarar el roadmap cerrado: el bar es
+  +15 puntos tanto en ajuste como en la muestra independiente.
 
 ## 4. Commitear
 
@@ -90,6 +103,39 @@ Si no cambió nada, se omite sin culpa.
 Actualizar la tabla de `docs/07-roadmap.md` si una fase cambió de estado, y
 volver al paso 0.
 
+## 8. Mantener el mapa del proyecto
+
+Actualizar `docs/project-map.md` en cada cambio del proyecto: módulos, crates,
+flujos de datos, pasos de build, relaciones de verificación, y cifras del bloque
+de datos actuales cuando cambien conteos o mediciones documentadas. Ejecutar
+`bench/facts.py` antes de anotar conteos o esquema.
+
+Usar Graphify en modo local para actualizar el grafo del código y su reporte:
+
+```powershell
+graphify extract . --code-only --cargo
+graphify cluster-only . --no-label
+graphify god-nodes --top 15
+graphify query "<system or symbol>"
+```
+
+Cuando cambien tareas, features, prioridades o estados, actualizar el índice
+curado `docs/project-status.json` y regenerar el mapa interactivo de estado:
+
+```powershell
+.venv/Scripts/python.exe scripts/graphify_project_status.py
+& "$env:TEMP\overtone-graphify-env\Scripts\graphify.exe" cluster-only graphify-out\project-status --no-label
+```
+
+Revisar el HTML y el reporte generados contra las fuentes. El índice enlaza cada
+nodo al documento y línea que justifican su estado; no editar el HTML a mano.
+El Mermaid y la tabla de `docs/project-map.md` siguen siendo el índice humano de
+arquitectura y relaciones documentales. Graphify permanece fuera de las
+dependencias del producto. No usar extracción semántica, APIs, endpoints,
+claves, hooks ni watchers para este repositorio. Los artefactos portables se
+mantienen bajo `graphify-out/`; cachés, manifiestos y marcadores de ruta son
+locales y deben quedar ignorados por Git.
+
 ## Definición de hecho
 
 Una tarea está hecha cuando cumple todo esto, sin excepciones:
@@ -102,6 +148,12 @@ Una tarea está hecha cuando cumple todo esto, sin excepciones:
    enfoque (el razonamiento es lo caro; se escribe una vez y se hereda siempre).
 4. `docs/07-roadmap.md` refleja el estado real de las fases tocadas.
 5. El diff pasó la auditoría del paso 5 sin pendientes.
+6. `docs/project-map.md` refleja el árbol y los flujos actuales; todo cambio
+   del proyecto actualizó y revisó el mapa.
+7. Si cambió código o dependencias, Graphify se regeneró en modo local y se
+   revisaron `graph.json`, `GRAPH_REPORT.md` y `graph.html`.
+8. Si cambió el roadmap, se actualizó `docs/project-status.json` y se regeneró
+   `graphify-out/project-status/graphify-out/graph.html`.
 
 ## Pull requests
 

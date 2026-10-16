@@ -24,6 +24,13 @@ median error** — more than two ranked maps of the same audio give each other:
 82 % of their red lines within 5 ms, 74 % where the two maps' lines differ at
 all (319 pairs from the same Songs folder, measured 2026-09-26).
 
+For the user's stricter single-BPM requirement, see the binding acceptance
+target in [the roadmap's Phase 10](07-roadmap.md#phase-10--human-level-timing-accuracy):
+at least 95 % joint success (exact octave, BPM error <=0.05, and red-line offset
+<=5 ms) across all audited-valid one-red-line maps in a locked held-out slice,
+with refusals and errors counted as misses. The older 90-95 % estimate above
+describes the broader Phase 10 ambition and does not replace that gate.
+
 Most of today's miss is not the engine's (10.0a, 2026-09-26). Overtone's lines
 read a median 24 ms after the maps', and ranked maps put their lines a median
 21.4 ms before the sound starts (100 held-out maps, IQR 18.1-23.9 ms). On

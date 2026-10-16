@@ -7,6 +7,7 @@ fallback path used for rubato and non-percussive audio.
 """
 import json
 import os
+import struct
 import sys
 import tempfile
 import unittest
@@ -15,6 +16,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import numpy as np
 
@@ -83,6 +85,7 @@ from overtone import (
     mapset_report,
     main,
 )
+from bench.mapper_agreement import OsuDbFormatError, parse_osu_db
 
 
 def _click_track(path: Path, bpm: float, duration: float = 12.0,
@@ -11230,6 +11233,60 @@ class CombineLoudnessTests(unittest.TestCase):
             # A number is a target in LUFS.
             self.assertAlmostEqual(
                 overtone_combine.loudness_plan(plan, -23.0)["target"], -23.0, delta=0.01)
+
+class OsuDbAuditTests(unittest.TestCase):
+    @staticmethod
+    def _string(value: str | None) -> bytes:
+        if value is None:
+            return b"\0"
+        raw = value.encode("utf-8")
+        length = len(raw)
+        prefix = bytearray()
+        while length >= 0x80:
+            prefix.append((length & 0x7F) | 0x80)
+            length >>= 7
+        prefix.append(length)
+        return b"\x0b" + bytes(prefix) + raw
+
+    @classmethod
+    def _record(cls, status: int, mode: int = 0) -> bytes:
+        strings = ("Artist", "Artist", "Title", "Title", "Mapper", "Hard",
+                   "song.mp3", "hash", "Artist - Title (Mapper) [Hard].osu")
+        row = b"".join(cls._string(value) for value in strings)
+        row += struct.pack("<Bhhhqffffd", status, 100, 50, 2, 0,
+                           9.0, 4.0, 5.0, 6.0, 1.6)
+        row += b"\0" * 16  # four empty star-rating lists
+        row += struct.pack("<iiii", 1, 1000, 800, 0)  # times and no timing points
+        row += struct.pack("<iii", 321, 123, 0)  # beatmap, set, thread ids
+        row += struct.pack("<BBBBh f B", 0, 0, 0, 0, 0, 0.7, mode)
+        row += cls._string("") + cls._string("")
+        row += struct.pack("<h", 0) + cls._string("")
+        row += struct.pack("<BqB", 0, 0, 0) + cls._string("123 Artist - Title")
+        row += struct.pack("<qBBBBB h B", 0, 0, 0, 0, 0, 0, 0, 0)
+        return row + b"\0\0"  # opaque v20260924 entry extension
+
+    @classmethod
+    def _database(cls, entries: list[tuple[int, int]]) -> bytes:
+        header = struct.pack("<iiBq", 20260924, 1, 0, 0) + cls._string("tester")
+        return header + struct.pack("<i", len(entries)) + b"".join(
+            cls._record(status, mode) for status, mode in entries) + b"\x05\0\0\0"
+
+    def test_reads_only_ranked_statuses_and_preserves_mode(self) -> None:
+        header, maps = parse_osu_db(self._database([(4, 0), (2, 0), (7, 3)]))
+        self.assertEqual(header["beatmaps"], 3)
+        self.assertEqual([(row.status, row.mode) for row in maps],
+                         [("ranked", 0), ("loved", 3)])
+
+    def test_unknown_database_version_refuses(self) -> None:
+        data = bytearray(self._database([(4, 0)]))
+        struct.pack_into("<i", data, 0, 20260925)
+        with self.assertRaises(OsuDbFormatError):
+            parse_osu_db(bytes(data))
+
+    def test_truncated_database_refuses(self) -> None:
+        with self.assertRaises(OsuDbFormatError):
+            parse_osu_db(self._database([(4, 0)])[:-7])
+
 
 class TrainPlanTests(unittest.TestCase):
     """The practice document: one map, a rate, settled stats and a name."""

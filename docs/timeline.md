@@ -22,6 +22,57 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-15 · Mapper-agreement harness for single-BPM maps
+
+### Changed
+
+- Added `bench/mapper_agreement.py`, a repeatable read-only audit of ranked,
+  approved and loved standard maps with one red line. It cross-checks `osu!.db`
+  identities against Overtone's local library index, validates the current map
+  files, groups byte-identical audio, and compares each pair in both directions.
+- Added a seeded, round-robin stratified human-review sheet at
+  `bench/.cache/mapper_agreement.md`; local paths and audio hashes stay out of Git.
+
+### Fixed
+
+- No engine behavior changed. The measurement now separates mapper independence
+  from exact timing copies, which made the aggregate agreement look stronger.
+
+### Hardening
+
+- The reader accepts only the locally audited Stable `osu!.db` version
+  (20260924), rejects truncation or unexpected layout, and opens the library
+  SQLite index in read-only mode. Map paths must resolve under Songs, and
+  beatmap/set IDs, mode and red-line count are rechecked from disk.
+- Stale index rows, missing audio, and permission-denied audio reads are named
+  and skipped; they are not classified as invalid references. The audit sheet
+  is generated under the ignored local cache.
+
+### Measured
+
+- Local database: 24,709 maps, 19,493 ranked/approved/loved entries. The current
+  index yielded 174 validated one-red-line maps in 73 byte-identical audio
+  groups, or 117 pairs. 80 pairs had identical timing; including these gave
+  84.6 % directional agreement within 5 ms. Among the 37 non-identical pairs
+  (74 directions), only 38/74 (51.4 %) were within 5 ms; the BPM≤0.05 and exact
+  octave checks passed all directional comparisons, so 38/74 also passed
+  jointly. Signed offset median was 0 ms, with quartiles −5 and +5 ms.
+- The seeded sheet contains 25 of the 37 non-identical pairs, sampled across
+  tempo, audio format and TV Size strata. Human verdicts are still outstanding;
+  10.0b remains open until those are reviewed and the primary denominator and
+  exclusion ledger are locked. The index also reported 25 stale maps, 7 missing
+  audio files and 20 audio hash reads blocked by Windows permissions.
+- These local counts are not a locked benchmark and do not establish a general
+  mapper-error distribution. No accuracy or engine improvement is claimed.
+
+### Rejected / tried and dropped
+
+- Treating exact timing matches as independent mapper agreement was dropped:
+  they can be copied between mapsets and raised the apparent 5 ms agreement
+  from 51.4 % on differing pairs to 84.6 % overall.
+
+---
+
 ## Unreleased — 2026-10-15 · Single-BPM accuracy target and work plan
 
 ### Changed

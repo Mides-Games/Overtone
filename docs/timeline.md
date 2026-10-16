@@ -22,6 +22,156 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-16 · T6 resumable independent-sample audit
+
+### Changed
+
+- No product behavior changed. `bench/labels.py` now persists one row at a time,
+  resumes only an identical seed/exclusion/sample, verifies map and audio SHA-1
+  before reusing a completed row, and caches successful structure results by
+  audio and CLI hashes. Documented the reproducible command in `docs/workflow.md`.
+- Replaced the stale roadmap priority snapshot with current 0.3.0 blockers and
+  longer-term work; corrected the installer and compile-phase summaries in the
+  roadmap and status graph.
+- Closed T6 for 0.3.0 by measured disposition: no section labels ship, and the
+  existing Kiai card remains conservative. Reopen only for a new signal tested
+  on an untouched confirmation split.
+- Ran a fresh 100/100 T6 split with seed 61, excluding every folder in the prior
+  seed-60 sample; its JSON and structure cache stayed in ignored `bench/.cache/`.
+
+### Fixed
+
+- Nothing fixed; this was a research audit.
+
+### Hardening
+
+- Kept the 100-folder halves intact. Rows without a proposed chorus remain in
+  the sample and are reported as unscored; no feature or accuracy claim follows
+  from only the maps with chorus spans.
+
+### Measured
+
+- Zero folder overlap with the seed-60 sample. Tune: 16/100 maps had nonempty
+  chorus spans; mean chorus-under-kiai 33.8%, chance 22.3%, lift +11.5 points
+  (paired per-map t interval 2.7–20.4). Held-out: 10/100 scored; 45.1% vs
+  30.8%, lift +14.3 points (interval 6.4–22.1). Both miss the pre-set +15-point
+  bar; the intervals are wide and cross that bar, so this is not a general
+  accuracy claim. Remaining maps had no kiai or no proposed chorus.
+- Re-running the same command resumed the exact split and completed in about
+  five seconds from saved rows and cached structure results.
+- `bench/facts.py` passed and `bench/labels.py` compiled with `py_compile`;
+  the test suite was not run.
+
+### Rejected / tried and dropped
+
+- Do not tune an adjustment against this held-out half after seeing its score.
+  A new approach needs a fresh split and must keep its confirmation half unseen.
+
+---
+
+## Unreleased — 2026-10-16 · H6/H7 measured disposition for T7
+
+### Changed
+
+- Closed 0.3.0 row T7 by measured disposition. H7's audio-only Propose surface
+  shipped on 2026-10-07; keep it as an evidence-backed proposal without an
+  accuracy claim. H6 sample→role recommendation remains withheld.
+- Corrected `docs/15-hitsound-plan.md`: its H7 section said the app surface was
+  still open even though the 2026-10-07 implementation had landed.
+
+### Fixed
+
+- `bench/templates_on_real_audio.py` now rejects sidecar JSON errors and responses
+  without an `attacks` list as unreadable rows, prints the skip reason, and
+  continues. Previously an access-denied audio file returned valid JSON with an
+  `error` key and crashed the measurement at `heard()`.
+
+### Hardening
+
+- Kept instrument lanes, the clap-mismatch rule and sample→role recommendation
+  gated; a weak confidence score is not a class verdict. The H7 surface stays a
+  proposal and does not assert accuracy.
+
+### Measured
+
+- `.venv/Scripts/python.exe bench/templates_on_real_audio.py`: 9 readable songs,
+  2,859 matched mapper claps; median `P(snare)+P(clap)` 0.194 (deciles
+  0.019/0.051/0.194/0.472/0.698). 43% scored ≥0.25 and 23% ≥0.50. Three of the
+  12 selected audios were skipped because Windows denied access. This remains a
+  measurement, not a gate; the remeasured evidence supports withholding the
+  confidence-dependent features.
+- The existing H7 comparison remains its 6-song measurement: median coverage
+  0.31, same-sound agreement 0.12, mapper clap F1 0.29 vs the 0.59 P-6 rule.
+  No engine code or accuracy baseline changed. No test suite was run.
+
+---
+
+## Unreleased — 2026-10-16 · Graphify project status map
+
+### Changed
+
+- Added a compact interactive Graphify graph for shipped capabilities, release
+  rows, longer-term tasks, open decisions and offline constraints. The graph
+  cites its roadmap source on every node and keeps status separate from the
+  code-symbol graph.
+- Added `docs/project-status.json` and `scripts/graphify_project_status.py` as
+  the curated status index and deterministic local graph builder; linked the
+  map from `docs/project-map.md` and extended the workflow for future roadmap
+  updates.
+
+### Fixed
+
+- The code-only graph alone did not show task state. The project map now has an
+  explicit current status view, including R6, T6 and T7 as open release rows.
+
+### Hardening
+
+- Graph edges retain their cited document and line. The status view is built
+  locally with Graphify and does not use semantic or network extraction.
+- The map distinguishes shipped, partial, open, deferred, dropped and policy-
+  constrained work; it does not treat older README accuracy figures as fresh.
+
+### Measured
+
+- Graphify status graph: 24 nodes and 26 documented relationships; clustered
+  locally into 5 communities and rendered to interactive HTML. No tests or
+  analysis benchmarks were run; this change updates project documentation.
+
+---
+## Unreleased — 2026-10-15 · Repository map and Graphify workflow
+
+### Changed
+
+- Added `docs/project-map.md` with the current repository architecture, ownership
+  areas, main data flows and source facts. Added its link to the README and made
+  map refresh part of every project change in `docs/workflow.md`.
+- Installed Graphify 0.9.91 into a temporary isolated environment and added a
+  code-only, local generation workflow; its graph, report and interactive HTML
+  are checked in under `graphify-out/`.
+
+### Fixed
+
+- No defects fixed; this is documentation and workflow guidance.
+
+### Hardening
+
+- The workflow now requires reviewing the map against source changes and forbids
+  semantic/cloud extraction or a network-backed graph-generation step.
+- Graphify's disposable cache, incremental manifest and machine-specific root
+  marker are ignored; the portable graph, report and HTML stay in the repository.
+
+### Measured
+
+- `.venv/Scripts/python.exe bench/facts.py`: `facts: ok`; 1,008 Python tests,
+  291 Rust tests, 7 crates, 27 golden vectors, 38 fixtures and library schema v2.
+- Graphify 0.9.91 local code-only graph: 5,439 nodes, 12,695 edges, 233
+  communities; `graphify query` and `graphify god-nodes` returned results.
+- `git diff --check`: clean. No analysis or accuracy benchmark was run.
+
+---
+
+---
+
 ## Unreleased — 2026-10-14 · T3 closed: the trainer's nicer rows were already in
 
 ### Changed

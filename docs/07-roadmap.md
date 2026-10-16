@@ -11,9 +11,9 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 
 ---
 
-## Where we are — 2026-09-26
+## Where we are — 2026-10-16
 
-**Stage: the app is usable end to end in ten sections, hitsounds included, and can analyse
+**Stage: the app is usable end to end in thirteen sections, hitsounds included, and can analyse
 with the Rust engine (opt-in; v3 stays the default and the fallback).**
 
 | Area | State |
@@ -23,96 +23,48 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | App (web shell) | **usable** — thirteen sidebar sections: Library, Timing, Structure, Hitsounds, Map check, Mapset, Audio, Compile, Train, Report, Export, History, Settings. Analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject (one map or the whole mapset, with the diff), compare with a map, alignment, density, snap audit, re-snap, suggestions (each addable on its own), mapset check, reference timing, assisted timing, evidence, ramps, offset lab, constant scroll, snap divisors, kiai / breaks / bookmarks / preview point / section volumes from the structure, audio swap, audio file check, **compile several maps and their songs into one map**, write history with restore, mod report, folder import, recents, osu! Songs browser, EN/ES, dark and light |
 | osu! files | **works** — full reader, byte-identical writer, atomic write + backup, every write logged and restorable; hitsound fields edited in place, nothing else moves (P-2) |
 | Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks; in the mod report, claps that break the map's own pattern and finishes or claps over silence (H3) |
-| Hitsound engine | **in the app** — the copier (H1), the Hitsounds section (H2), the consistency check (H3), and the decision engine in Rust (H4) behind the Propose card: tick by row or by bars, swap a proposal for one of its alternatives, set volume and sample index by hand, hear it all over the song as the write would make it, preview, write the file or a copy, undo (H5); a row's inspector says why each sound was proposed; the profile is chosen on the Propose card (Balanced, or Drum-focused, measured on its own style's maps). The Samples card shows a skin's or a beatmap folder's samples as playback reads them, plays each alone or over the song in place of a selected sound, and chooses the skin playback asks; instrument lanes are still to build |
+| Hitsound engine | **in the app** — the copier (H1), the Hitsounds section (H2), the consistency check (H3), and the Rust decision engine (H4) behind the Propose card: tick by row or by bars, swap a proposal for one of its alternatives, set volume and sample index by hand, hear it over the song, preview, write the file or a copy, undo (H5); each row explains its proposal; choose Balanced or Drum-focused (measured on its own style's maps). The Samples card previews skin or beatmap samples alone or over the song; instrument lanes remain gated pending new evidence |
 | Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency, the percussive part alone, and a difficulty's hitsounds with its own samples, as written or as they would be written, slider slides looped head to tail, and a chosen skin's samples where the map has none |
 | UI verification | **done** 2026-09-26 — the 19 surfaces of 2026-09-25/26 exercised in the browser pane on two real mapsets, both themes and languages; it found app.js not loading and fifteen bugs in writes, counts and messages, all fixed; the two tools that needed a decision were decided the same day (timeline) |
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
-| Installer (MSI) | **first build, not published** — `installer\build.py` makes a per-user MSI (WiX 5.0.2, no administrator, Start menu shortcut) and a portable ZIP from one PyInstaller tree, in one line, and smoke-tests both unpacked with the window's `--self-check`; unsigned, no licence notices, no file associations yet ([`11`](11-msi-distribution.md)) |
+| Installer (MSI) | **v0.1.0-alpha published** — per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
 
 Tests: **1008** Python (710 engine + 298 web shell) · **291** Rust.
 
-### What is pending, in order
+### Current priorities — 2026-10-16
 
-The audit backlog is closed: every finding fixed, recorded as already fixed, or decided
-([`13-audit-backlog.md`](13-audit-backlog.md)). Landed since 2026-09-24: the hitsound plan's
-P-1 to P-7 and H1 to H4, with H5's engine half and first surface; the sidebar modes
-Evidence, Write history, Audio swap, Offset lab and Ramps; the percussion-only audition;
-and the Phase 21 map tools (inject everywhere with a diff, kiai, breaks, bookmarks, preview
-point, section volumes, SV normaliser, re-snap, snap divisors, audio file check).
+The audit backlog is closed: every finding was fixed, recorded as already fixed, or decided
+([`13-audit-backlog.md`](13-audit-backlog.md)). The remaining 0.3.0 required row is:
 
-1. **Hitsounds, the rest** (Phase 6, [`15-hitsound-plan.md`](15-hitsound-plan.md)) — H6
-   (sample recommendation; the bank is in) and H7 (a proposal from the audio alone). Profiles are
-   in the app: Drum-focused beat Balanced on its own style's maps and is chosen beside
-   Propose; Minimal did not on bare claps and    does not ship (timeline, 2026-09-26). The
-   role term reads the map's red lines instead of the audio's bar since 2026-09-30
-   (`06` §11; bare clap 0.331 → 0.429, finish 0.093 → 0.403); the whistle hand rule
-   does not follow it there (measured both ways, both lose). Three things wait until the instrument templates hold on real audio: the
-   clap-mismatch rule, instrument lanes on the timeline, and sample→role recommendation
-   (the extractor runs on samples since 2026-10-03 via `hitsound-classify`, but a textbook
-   kick reads snare — timeline). Re-measured on the Rust classifier 2026-10-07
-   (`bench/templates_on_real_audio.py`): median `P(snare)+P(clap)` 0.189 at mappers'
-   claps over 12 songs (was 0.138 on Python's 11), crash-vs-snare 0.408 — still a coin
-   toss, so lanes drawn from them would still show a precision they do not have. The
-   same run's refit (0.752 snare-vs-rest, 0.846 crash-vs-snare) is not shippable: two
-   labels cannot re-place eleven classes with nothing checking the other eleven. At the mappers' claps of 11
-   real songs the templates read snare or clap at a median 0.138 (timeline, H3 audio
-   half), so lanes drawn from them would show a precision they do not have.
-2. **Library focus** (Phase 19) — scan, rescan and search measured and fixed on
-   2026-09-26; the page's states wait for the browser harness. The library health
-   check's page is in since 2026-09-30 (counts, a resumable run, flags with evidence
-   marked actionable or weak); a hand-checked precision sample is still open.
-3. **Section labels from repetition** (Phase 19). The Audio section itself has been in
-   since 2026-09-27 — spectrogram, seven band lanes, percussive/harmonic balance,
-   energy with sections and the tempo heatmap — and this entry went on saying it was
-   pending until the 0.2.0-alpha scope was written and the two had to agree.
-4. **Other languages** (Phase 24) — TypeScript (needs Node.js) and a C# lazer gate (needs
-   the .NET SDK). Node is not installed; ask before installing it. The .NET SDK is, per
-   user, since 2026-09-26 (10.0.401, for the MSI build).
-5. **Real-audio accuracy** (Phase 10) — Corpus B is built and measured (10.0); one
-   sub-phase at a time from here, each measured on it.
-6. **Installer, the rest** (Phase 10.13) — **v0.1.0-alpha is published** (2026-10-03): the
-   per-user MSI, the portable ZIP, the SBOM and the checksums, with every bundled licence
-   gathered into the tree and the whole thing installed and uninstalled on a real profile.
-   Left: code signing (10.13.6, which is a certificate to buy, not code to write), file
-   associations and the custom setup screen (the rest of 10.13.2), and the portable `data\`
-   folder ([`11`](11-msi-distribution.md)).
-7. **Rate and difficulty trainer** (Phase 26, asked 2026-10-03) — a practice copy of a
-   map at another speed, with the stats where you want them, after
-   [`funorange/osu-trainer`](https://github.com/funorange/osu-trainer). Steps 1-4 of its
-   build order are in (2026-10-06): the document, the read, the grid and the field
-   rules (26.1-26.4) with the stats, the honest target BPM and the naming
-   (26.8, 26.11, 26.13), the resampled song with its encoder delay measured (26.5,
-   26.7), the output folder (26.14), the self-check grade (26.17), the full `train`
-   gate (26.22) and the Train section (26.21). The point of the phase is the part that tool leaves out: the rate goes on the
-   **grid**, so every object keeps the beat it had and the snap audit proves it; the audio
-   is resampled in process rather than through two child executables, with the encoder
-   delay Phase 25 already measured to 0.0 ms; and the red lines it writes are graded
-   against the audio it wrote. Nothing reads osu!'s memory and nothing hooks the keyboard,
-   which is where most of the reference tool's open issues live. One decision is the
-   owner's before 26.12: whether dropping objects the user asks to drop (spinners that
-   become unspinnable at speed) is allowed at all under `04-ui-ux.md` §9.
-8. **Compilation builder** (Phase 25, asked 2026-10-03) — several maps and their songs into
-   one map and one audio file, each object keeping the beat it had. Step 1 of its build
-   order is in (2026-10-03): the document, the segment reader with its repairs, the shift
-   over every field, and the `combine` gate that measures all three. So is step 2's audio —
-   the cut and join (25.4) and the decoder delay (25.5), measured to 0.0 ms through both
-   formats it writes — and all of step 3: the hitsound remap (25.8), the slider velocity
-   (25.9), the difficulty reconciliation (25.10) and the junctions (25.11), with metadata
-   and credits (25.13), the output folder (25.16) and three quarters of the build report
-   (25.15). Since the **Compile section** (25.14) landed the same day, a compilation can be
-   built from the app: pick the maps, order them, press Build. What is left: the loudness
-   match (25.6), the junctions (25.7), the order suggestion (25.19), picking a segment
-   from its song's phrases (25.18) and the reference grade that closed 25.15. **Phase 25
-   reads whole since 2026-10-06**: per-segment backgrounds through an `.osb` (25.12)
-   were decided against ([Rejected ideas](#rejected-ideas)) — cosmetic, and nothing here
-   can verify an `.osb` in osu! itself. The crossfade and the
-   tempo-matched junction were decided against the same way.
+1. **R6 — owner precision verdicts.** The 25-item listening sheet is ready at
+   [`bench/health_sample.md`](../bench/health_sample.md). The pre-set rule keeps
+   “actionable” and “weak” only with at least 15 true flags; listen at each linked red
+   line and mark true, false or skip.
+T1, T3, T4 and T5 are done; T2 signing was dropped by owner decision. T6 is closed
+for 0.3.0 by measured disposition: no section labels ship, and the Kiai card keeps
+refusing to guess. T7's H6/H7 review is also closed by measurement: keep instrument
+lanes, the mismatch rule and sample recommendations gated, with H7 remaining a proposal
+without an accuracy claim.
 
-Two proposals wait on a decision, not on work: the Rhythm guide (`04-ui-ux.md` §9 still rules
-out inventing objects from the audio, after the 2026-10-03 carve-out that lets a compilation
-copy whole maps), song import from a streaming link
-(blocked by the offline rule, see Phase 19), and whether exported red lines follow ranked
-maps' convention, a median 21 ms before the sound, or the sound itself (10.0a).
+### Longer-term, outside 0.3.0
+
+- **Real-audio accuracy (Phase 10):** Corpus B is built; proceed one measured sub-phase
+  at a time toward 1.0.0. No accuracy claim moves without the committed corpus and gates.
+- **Other languages (Phase 24):** TypeScript needs Node.js, which is not installed;
+  .NET SDK 10.0.401 is present. Leave the TypeScript gate deferred until requested.
+- **Compilation builder (Phase 25):** 25.1–25.19 are complete. The tempo-matched
+  junction (25.20) remains unlikely because the measured phase-vocoder attack shift is
+  23–24 ms; the crossfade and `.osb` background are rejected in the phase record.
+- **Section labels (Phase 19):** closed for 0.3.0 without shipping. A future attempt
+  must test a new signal on an untouched confirmation split.
+- **Installer (Phase 10.13):** published artefacts remain unsigned because certificate
+  purchase was declined. Supported associations, setup choices and the portable data
+  folder are complete; bare `.osu` and URI associations remain documented unsupported.
+
+The remaining proposals are not implementation tasks until decided: the Rhythm guide
+(`04-ui-ux.md` §9 still rules out inventing objects from audio), streaming-link import
+(blocked by the offline rule), and whether exported red lines follow ranked maps' median
+21 ms lead or the sound itself (10.0a).
 
 ### Bugs fixed on 2026-09-23
 
@@ -261,8 +213,8 @@ underneath.
 | T3 | **The trainer's nicer rows**: ladders (26.16), feel in full with mod emulation (26.9, 26.10), undo and clean up (26.15) | This is what makes the trainer better than the tool it answers, not just more correct | P26 | **done** 2026-10-14 — 26.9, 26.10, 26.15 landed in #97 and 26.16 in #96; the owner's T1 harness pass (#107) covers the ladder, copies, presets, mods, detect and hotkey rows per 26.21; `bench/gates.py train` green including the ladder |
 | T4 | **The trainer's open questions settled**: pitch-kept ships or refuses documented (26.6), dropping objects allowed and executed (26.12, decided yes 2026-10-07), the map picked without memory reading with the live-signal measurement (26.18), one hotkey and presets (26.19, 26.20) | Open questions older than one release become fog; each has its decision procedure written already | P26 | **done** 2026-10-07 |
 | T5 | **File associations and the custom setup screen** (the rest of 10.13.2) | A downloaded release should open what it writes; the MSI currently does not associate | [`11`](11-msi-distribution.md) | **done** 2026-10-07 — stock feature tree (Typical `.osz`; audio five, desktop icon and right-click menu at level 1000). Bare `.osu` and URI stay documented-open: no song, no linker |
-| T6 | **Section labels from repetition** (pending item 3) | The last proposed row inside shipped sections | [P19](#phase-19--app-sections) | **open, measured three times** — `bench/labels.py` (100/100 split, +15 bar): 2.0 lifts +7.5/+11.9, one 1.5 move +9.7/+14.2 (reverted); MFCC-timbre regroup in `proto/timbre_group.py`: tune +19.8, held-out +13.8 on 13 songs (miss). Best lead yet, same verdict: the Kiai card keeps refusing over guessing |
-| T7 | **Hitsounds H6 and H7, or rejected with measurements** | Sample recommendation and audio-only proposals are the rest of Phase 6; the templates-on-real-audio numbers decide whether lanes and the mismatch rule can stand | [P6](#phase-6--hitsound-engine) | todo |
+| T6 | **Section labels from repetition** (pending item 3) | The last proposed row inside shipped sections | [P19](#phase-19--app-sections) | **closed for 0.3.0 by measured disposition 2026-10-16** — no labels ship; keep the Kiai card refusing. Four approaches/splits failed the +15-point requirement: baseline 2.0 +7.5/+11.9, 1.5 +9.7/+14.2, MFCC regroup +19.8 tune/+13.8 held-out, fresh disjoint seed-61 baseline +11.5/+14.3 (16/10 maps scored). The latest exploratory intervals cross the bar; this is a scope decision, not a general accuracy claim. Reopen only with a new signal and untouched confirmation split |
+| T7 | **Hitsounds H6 and H7, or rejected with measurements** | Sample recommendation and audio-only proposals are the rest of Phase 6; the templates-on-real-audio numbers decide whether lanes and the mismatch rule can stand | [P6](#phase-6--hitsound-engine) | **closed by measured disposition 2026-10-16** — H7 surface shipped 2026-10-07, but clap F1 0.29 vs the 0.59 rule on six songs; H6 recommendation remains withheld after one-shot misclassification. Fresh Rust classifier read median `P(snare)+P(clap)` 0.194 over 2,859 matched claps in 9 readable songs (3 access-denied skips). No accuracy claim; lanes, mismatch rule and sample→role stay gated |
 
 ### Deliberately not in 0.3.0
 
@@ -274,7 +226,7 @@ underneath.
 
 ### How we will know it is ready
 
-1. Every row above done, each with its gate or measurement green.
+1. Every required row resolved; shipped claims have a green gate or measurement, while dropped or withheld work has its owner or measured disposition recorded.
 2. The version bumped to `0.3.0` in a commit of its own, same shape as the alpha bumps.
 3. The checklist in [`11`](11-msi-distribution.md#publishing-a-release-10137) run end to end again, install test included.
 4. `gh release create v0.3.0` **without** `--prerelease`, with notes that no longer apologise except for accuracy — which names its Corpus B number plainly.
@@ -551,10 +503,10 @@ the copier, the section, the check, the decision engine, the editor.
 | **Viterbi decision** | sequence labelling with consistency costs | high | **high** | all above | no | no | **P1** | **done** — `overtone-cli hitsound`: 19/19 synthetic exact, real clap/finish F1 above the rules on two samples |
 | Explanations | itemised terms + alternatives | med | **high** | decision | no | no | **P1** | **done** — a row's inspector in the Hitsounds section: the proposal and its two runner-ups with their chances, what was heard under it (three likeliest instruments, place in the bar) and every term signed; the features behind each instrument stay in `overtone-cli hitsound-evidence` |
 | Profiles | built-in + custom, as data | low | high | decision | no | no | **P1** | partial — Balanced baked in; Drum-focused ships as `profiles/drum_focused.json`; and eight **genre profiles** (metal, metalcore, punk, rock, jrock, pop, funk, electronic) whose metrical criterion is measured from 748 mapsets of the user's library by `bench/genre_corpus.py`, not written by hand: the share of each addition's placements per sixteenth of the bar. Held out on a third of the maps the table never saw, it beats the old rule in 25 of 27 genre-and-addition cells, median +0.29 bits a placement. Jazz lost and ships no table. Minimal measured. The card preselects the profile the map's own tags claim (`hitsound_genre`, the classifier the tables were measured with), marked as a suggestion and never a choice |
-| Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | partial — the object lane (P-7), drawn with each sound's additions. The instrument lanes wait on the classifier, and the number is current: median `P(snare)+P(clap)` 0.168 at mappers' claps over 12 ranked songs. Reading the percussive half instead was tried and measured **worse** (0.138); the 0.458 a probe showed came from its resampling to 22 kHz, not from separating. What the measurement points at is the calibration's domain: the corpus renders claps as band-passed noise and the snare template asks for flatness 0.25 and up, where real claps in a mix measure 0.036 — so that feature scores nothing for practically every real drum (`bench/templates_on_real_audio.py`) |
+| Hitsound timeline | instrument lanes over object lanes | med | **high** | P3 timeline | no | no | **P1** | partial — object lane (P-7) shipped; instrument lanes remain gated because current real-audio class evidence is weak (Phase 6 summary) |
 | Hitsound editor | change/remove/volume/sample | med | **high** | decision | no | no | **P1** | **done** — the Decide card ticks proposals by row or by bars, swaps one for an alternative, sets volume and sample index by hand, and plays it all over the song as the write would make it (equal to the written copy on 799 of 800 local maps, the last refused alike by both), then previews, writes the file or a copy and undoes once |
 | Sample bank | import skin/folder, audition samples | med | high | P4 playback | no | no | P1 | **done** — `sample_bank` reads a skin or beatmap folder as playback reads it: the 12 hits and 6 slides per set, custom indices, empty and never-played files, what a missing one falls back to (60 local skins and 200 beatmap folders; a beatmap folder read for the first time in a median 2.0 ms). The Samples card in the Hitsounds section shows the song's folder, the playback skin or any folder, plays each sample alone or over the song in place of the sound selected in the table, and chooses the skin playback asks between the map's samples and Overtone's (a setting) |
-| Sample recommendation | map samples to roles by their spectrum | med | med | bank | no | no | P2 | todo |
+| Sample recommendation | map samples to roles by their spectrum | med | med | bank | no | no | P2 | **withheld** — the baked templates misclassify isolated one-shots; current real-song classifier remains weak (2026-10-16 measurement, Phase 6 summary); revisit when class evidence supports it |
 | Hitsound export | only hitsound fields change | med | **high** | P5 writer | no | no | **P1** | **done** — the Decide card writes the file or a copy; the Export section writes a hitsound difficulty for the whole mapset, which copied back with H1 leaves its source as it was |
 | Consistency check | flag objects whose sound disagrees with their role | low | high | decision | no | no | P2 | partial — map half and silence half in the mod report (missing/extra clap; finish/clap with no attack under them); clap-mismatch refused on measurement until the templates prove themselves on real audio |
 | Audio-only proposal | hitsounds from the song alone, no map: attacks → classes + role, proposed on the song's own analysis | med | high | H4, P-4 | no | no | P2 | **done** 2026-10-07 — evidence toggle on the Propose card (map+audio/audio-only): the song's strong attacks matched to the picked map's nearest sound event inside 50 ms, attacks with no object counted not placed, the same inspector/audition/write path fed by ears instead of context |
@@ -651,7 +603,7 @@ estimate with a number or is dropped.
 | 10.10 | Chord & cadence anchors | cadences as downbeat voters | +1 pt | todo |
 | 10.11 | Instrument specialists | trained kick/snare/hat detectors | +1 pt | todo |
 | 10.12 | UX for slow but precise | stage progress, cancel, cached intermediates | usability | partial — result cache, stage progress with timings, a stop that lands inside the running stage; no cached intermediates |
-| 10.13 | **MSI distribution** | one self-contained installer + portable ZIP — [`11-msi-distribution.md`](11-msi-distribution.md) | packaging | partial — 10.13.1, 10.13.3, 10.13.5 and 10.13.7 built, 10.13.2 in part: `installer\build.py` makes the per-user MSI, the ZIP, the SBOM and the checksums in one line and smoke-tests both artefacts unpacked (2026-09-26); the bundled licences are gathered into the tree by `installer\notices.py` with a gate that refuses a missing notice or an unrecorded copyleft offer, and the MSI shows Overtone's own on its second page (2026-10-03). **v0.1.0-alpha published 2026-10-03**, installed and uninstalled on a real profile.    Left: code signing (10.13.6, the owner's purchase), file associations, and the portable `data\`
+| 10.13 | **MSI distribution** | one self-contained installer + portable ZIP — [`11-msi-distribution.md`](11-msi-distribution.md) | packaging | **published and complete to current scope** — v0.1.0-alpha shipped 2026-10-03 with SBOM, notices and checksums, then installed/uninstalled on a real profile; supported associations and setup options landed 2026-10-07, portable `data\` isolation 2026-10-04. Code signing was declined by the owner; bare `.osu` and URI associations remain documented unsupported |
    folder, which [required for 0.2.0-alpha](#release-020-alpha--what-it-takes) (R4) and shipped
    2026-10-04. 0.2.0-alpha built and install-tested 2026-10-06 (timeline; MSI 112.2 MB, ZIP
    138.2 MB) but not published — R6's verdicts are still owed |
@@ -727,7 +679,7 @@ number and confidence. Every write goes through the atomic writer and keeps a ba
 | Phrase starts on the phrase's bar | snap to the bar the phrase starts on, not the nearest; measured against ranked maps' kiai starts as truth | med | med | Structure view | no | no | P2 | **done** 2026-09-26 — the Phrase level rule, below (timeline). Where a kiai start has an edge within 2 bars, the nearest bar was the kiai's own 35-46 % of the time (20 % by chance), and the level rule 56 % and 49 % on the two samples it was not chosen on. Most kiai starts had no edge within 2 bars then: Structure edge recall |
 | Phrase level rule, confirmed | freeze the rule that just missed (the nearest bar or a neighbour where the level changes most, one bar either side, 0.5 dB) and confirm it on the 673 eligible songs neither sample used; it ships only if it clears +10 points and p < 0.01 there | low | med | Structure view | no | no | P2 | **done** 2026-09-26 — shipped in `structure_view`. On the 673 unused songs, read once: the kiai's own bar 35.5 % -> 48.8 % (+46 fixed, -19 broken, sign test p 0.0011), kiai ends 49.7 -> 51.8 %, clearing the bar set before |
 | Structure edge recall | 88 % of ranked kiai starts have no structure edge within 2 bars: find the edges the novelty curve misses (per-song thresholds, repetition in the self-similarity matrix, energy steps), measured against kiai starts on the same samples, with the edges it adds checked for false ones | high | high | Structure view | no | no | P1 | **done** 2026-09-26 — `structure::phrases` for `overtone-cli structure` (timeline): edges where the song starts or stops repeating (structure features); the novelty curve sat no closer to kiai starts than chance, whatever its threshold. On the held-out sample, read once against a bar set before: kiai starts with an edge within 2 bars 11.6 -> 58.0 %, edges near a kiai start or end 14.6 -> 39.8 % (16.5-17.2 % by chance), 6 edges a song against 3. The hitsound engine keeps the novelty edges. The Kiai card lights fewer songs (99 -> 87 of 500): Section labels from repetition |
-| Section labels from repetition | a chorus needs two repeated families, and the classifier groups sections by mean chroma, which a full mix makes alike: one family holds every section of the median song. The recurrence matrix behind the edges already says which parts return; label from it, measured on the Kiai card against ranked maps' kiai (chorus time under kiai, songs lit) | med | high | Structure edge recall | no | no | P2 | todo (proposed 2026-09-26) |
+| Section labels from repetition | a chorus needs two repeated families, and the classifier groups sections by mean chroma, which a full mix makes alike: one family holds every section of the median song. The recurrence matrix behind the edges already says which parts return; label from it, measured on the Kiai card against ranked maps' kiai (chorus time under kiai, songs lit) | med | high | Structure edge recall | no | no | P2 | **closed for 0.3.0 by measured disposition** — the classifier stays out of the app; a future signal needs a fresh untouched confirmation split |
 | Mod report | every finding as osu! editor timestamps (`mm:ss:mmm (combo) - ...`) with its number and confidence, copyable as text; each opens the local osu! editor | low | high | P7 findings | no | no | P2 | **done** — `mod_report`, the Report section: reference, suggestions, snap audit and alignment in time order, combo numbers, `osu://edit/` links from validated timestamps; 0.31 s per map |
 | Write history and restore | a log of every `.osu` write and its backup; see the timing diff against the backup and restore atomically, keeping the current file as a new backup | low | med | writer | no | no | P2 | **done** — JSONL log beside the cache, History section with per-write red diff and confirmed restore |
 | Evidence view | the engine's alternatives for the open song: coherence candidates, octave margin, per-section residual and coverage, half-time hints, why the fallback ran; each one click from ×2 / ÷2 | med | med | payload fields or P22 | no | no | P2 | **done** — `analysis_evidence` + Timing card: candidates with coherence, seeded/half/double marks, octave margin, residual/coverage; Use writes the BPM into the governing red line through edit_apply |

@@ -196,8 +196,10 @@ Recommending samples for roles has the feature extractor on the samples since
 2026-10-03 (`overtone-cli hitsound-classify`, baked templates, first attack else
 energy gate): measured the same day, the baked fit does not transfer to isolated
 one-shots (textbook kick reads snare, a clap reads kick), so no mapping is offered
-and recommend waits with the lanes and the clap-mismatch rule until the templates
-hold on real audio (timeline).
+and recommend remains withheld with the lanes and clap-mismatch rule until the templates
+hold on real audio. The 2026-10-16 Rust re-measurement still reads a median
+`P(snare)+P(clap)` of 0.194 at mapper claps across nine readable songs; see Phase 6
+in the roadmap. This is not enough evidence to recommend a role from a sample.
 
 ### H7 · Audio-only proposal (proposed 2026-09-26, engine done 2026-10-03)
 
@@ -214,9 +216,10 @@ a gate): median H4 coverage 0.31, same-sound agreement 0.12; mapper clap F1
 localises the gap: H4 on the same objects with sounds stripped agrees with
 full H4 only 0.19, and bare-H4 with audio-only 0.50 — half the gap is the
 mapper prior, which audio-only has by design, and the rest is different unit
-sets plus no combos or symmetry. The open question from 2026-09-26 is
-answered this way; what is still open is the app surface (a Propose that
-needs no map, and somewhere to write it).
+sets plus no combos or symmetry. The app surface shipped 2026-10-07: the Propose
+card can choose map+audio or audio-only evidence, then uses the same inspector,
+audition and write path. The weak measurement remains the limit; this proposal
+makes no accuracy claim.
 
 The original ask, kept for the record: drop an audio file with no map, have
 the song's own analysis (attacks → instrument classes + musical role) propose

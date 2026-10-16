@@ -60,7 +60,12 @@ def evidence(audio: Path) -> dict | None:
     try:
         out = subprocess.run([str(CLI), "hitsound-evidence", str(audio)],
                              capture_output=True, text=True, timeout=900)
-        return json.loads(out.stdout)
+        result = json.loads(out.stdout)
+        if not isinstance(result, dict) or not isinstance(result.get("attacks"), list):
+            detail = result.get("error", "no attacks in response") if isinstance(result, dict) else "invalid response"
+            print(f"    SKIPPED {audio.parent.name}: {detail}", flush=True)
+            return None
+        return result
     except Exception:  # noqa: BLE001 -- one unreadable song is not a failure
         return None
 

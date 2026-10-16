@@ -24,6 +24,7 @@ first alphabetically holding kiai spans — deterministic, no cherry-picking.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import random
 import subprocess
@@ -99,7 +100,7 @@ def _overlap(a: tuple[float, float], b: tuple[float, float]) -> float:
     return max(0.0, min(a[1], b[1]) - max(a[0], b[0]))
 
 
-def structure_chorus(audio: Path) -> tuple[list[tuple[float, float]], float]:
+def structure_chorus(audio: Path) -> tuple[list[tuple[float, float]], float, float | None]:
     """Proposed chorus spans in ms, plus the audio length in ms, from the
     sidecar both the app and the Kiai card read."""
     proc = subprocess.run([str(CLI), "structure", str(audio)],
@@ -117,8 +118,25 @@ def structure_chorus(audio: Path) -> tuple[list[tuple[float, float]], float]:
             rules.get("split_power_ratio"))
 
 
-def measure(folder: Path) -> dict:
-    """One folder as one row: chorus seconds, kiai seconds, and their overlap."""
+def _sha1(path: Path) -> str:
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha1").hexdigest()
+
+
+def _write_json_atomic(path: Path, body: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".part")
+    temporary.write_text(json.dumps(body, indent=1), encoding="utf-8")
+    temporary.replace(path)
+
+
+def measure(folder: Path, structures: dict, cli_sha1: str,
+            save_cache=None, previous: dict | None = None) -> tuple[dict, bool]:
+    """One folder as one row; reuse only successful structure results.
+
+    Cache keys include the audio content and sidecar binary hashes. The cache
+    stores only derived section spans and duration, never audio or map text.
+    """
     row: dict = {"folder": folder.name, "usable": False}
     maps = sorted(folder.glob("*.osu"))
     picked, spans = None, []
@@ -129,39 +147,58 @@ def measure(folder: Path) -> dict:
             break
     if picked is None:
         row["why"] = "no kiai in any difficulty"
-        return row
+        return row, False
     try:
         beatmap = ta.read_osu_beatmap(picked)
     except (OSError, ValueError) as exc:
         row["why"] = f"unreadable: {exc}"
-        return row
+        return row, False
     audio = _audio_of(folder, beatmap)
     if audio is None:
         row["why"] = "no audio for the picked map"
-        return row
-    try:
-        chorus, duration, ratio = structure_chorus(audio)
-    except (RuntimeError, ValueError, OSError) as exc:
-        row["why"] = str(exc)
-        return row
-    row["split_power_ratio"] = ratio
+        return row, False
+
+    map_sha1, audio_sha1 = _sha1(picked), _sha1(audio)
+    if (previous and previous.get("usable")
+            and previous.get("file") == picked.name
+            and previous.get("map_sha1") == map_sha1
+            and previous.get("audio_sha1") == audio_sha1):
+        return previous, True
+
+    key = f"{audio_sha1}:{cli_sha1}"
+    cached = structures.get(key)
+    was_cached = cached is not None
+    if cached is None:
+        try:
+            chorus, duration, ratio = structure_chorus(audio)
+        except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
+            row["why"] = str(exc)
+            return row, False
+        cached = {"chorus_ms": chorus, "duration_ms": duration,
+                  "split_power_ratio": ratio}
+        structures[key] = cached
+        if save_cache is not None:
+            save_cache()
+    chorus = [(float(a), float(b)) for a, b in cached["chorus_ms"]]
+    duration = float(cached["duration_ms"])
+    row["split_power_ratio"] = cached.get("split_power_ratio")
     if duration <= 0:
         row["why"] = "zero-length audio"
-        return row
-    finite = [(s, e if e != float("inf") else duration) for s, e in spans]
-    under = sum(_overlap((s * 1.0, e * 1.0), (c, d))
-                for s, e in finite for c, d in chorus)
+        return row, was_cached
+    finite = [(a, b if b != float("inf") else duration) for a, b in spans]
+    under = sum(_overlap((a, b), (c, d))
+                for a, b in finite for c, d in chorus)
     chorus_s = sum(d - c for c, d in chorus)
-    kiai_s = sum(e - s for s, e in finite)
+    kiai_s = sum(b - a for a, b in finite)
     row.update({"usable": True, "file": picked.name,
+                "map_sha1": map_sha1, "audio_sha1": audio_sha1,
                 "chorus_s": round(chorus_s / 1000.0, 1),
                 "kiai_s": round(kiai_s / 1000.0, 1),
                 "under_s": round(under / 1000.0, 1),
                 "duration_s": round(duration / 1000.0, 1),
                 "precision": round(under / max(chorus_s, 1e-9), 4) if chorus_s > 0 else None,
                 "chance": round(kiai_s / duration, 4)})
-    return row
-
+    return row, was_cached
 
 def summarize(rows: list[dict]) -> dict:
     scored = [r for r in rows if r.get("usable") and (r["chorus_s"] or 0) > 0]
@@ -181,6 +218,11 @@ def main() -> int:
     parser.add_argument("--songs", required=True)
     parser.add_argument("--tune", type=int, default=TUNE)
     parser.add_argument("--heldout", type=int, default=HELDOUT)
+    parser.add_argument("--seed", type=int, default=FOLDER_SEED)
+    parser.add_argument("--exclude-from", help="prior labels.json; exclude its sampled folders")
+    parser.add_argument("--cache", help="local JSON cache for successful structure results")
+    parser.add_argument("--output", default=str(HERE / "labels.json"),
+                        help="result JSON path (default: bench/labels.json)")
     args = parser.parse_args()
     if not CLI.is_file():
         print("No overtone-cli built: cargo build --release -p overtone-cli")
@@ -189,19 +231,66 @@ def main() -> int:
     songs = Path(args.songs)
     names = sorted(path.name for path in songs.iterdir()
                    if path.is_dir() and any(path.glob("*.osu")))
-    rng = random.Random(FOLDER_SEED)
-    picked = rng.sample(names, min(args.tune + args.heldout, len(names)))
+    if args.exclude_from:
+        prior = json.loads(Path(args.exclude_from).read_text(encoding="utf-8-sig"))
+        excluded = {row["folder"] for half in prior.get("halves", {}).values()
+                    for row in half.get("rows", []) if row.get("folder")}
+        names = [name for name in names if name not in excluded]
+    count = args.tune + args.heldout
+    if count <= 0 or len(names) < count:
+        print(f"Need {count} folders after exclusions; found {len(names)}")
+        return 2
+    rng = random.Random(args.seed)
+    picked = rng.sample(names, count)
     halves = {"tune": picked[:args.tune], "heldout": picked[args.tune:]}
-    print(f"{len(names)} folders, seed {FOLDER_SEED}: "
+    print(f"{len(names)} eligible folders, seed {args.seed}: "
           f"{len(halves['tune'])} tune, {len(halves['heldout'])} held out; "
-          f"bar: +{BAR_POINTS:g} points both halves")
+          f"bar: +{BAR_POINTS:g} points both halves", flush=True)
+
+    output = Path(args.output)
+    cache_path = Path(args.cache) if args.cache else None
+    cli_sha1 = _sha1(CLI)
+    cache_body = {"format": 1, "cli_sha1": cli_sha1, "structures": {}}
+    if cache_path and cache_path.is_file():
+        try:
+            saved = json.loads(cache_path.read_text(encoding="utf-8"))
+            if saved.get("format") == 1 and saved.get("cli_sha1") == cli_sha1:
+                cache_body = saved
+            else:
+                print("Ignoring stale structure cache (format or CLI hash changed).", flush=True)
+        except (OSError, ValueError):
+            print("Ignoring unreadable structure cache.", flush=True)
+    structures = cache_body["structures"]
+
+    def save_cache():
+        if cache_path:
+            _write_json_atomic(cache_path, cache_body)
+
     started = time.perf_counter()
-    out = {"folder_seed": FOLDER_SEED, "bar_points": BAR_POINTS,
+    sample = {"tune": halves["tune"], "heldout": halves["heldout"]}
+    out = {"folder_seed": args.seed, "excluded_from": args.exclude_from,
+           "sample": sample, "bar_points": BAR_POINTS,
            "split_power_ratio": None, "halves": {}}
+    if output.is_file():
+        try:
+            saved = json.loads(output.read_text(encoding="utf-8"))
+            if (saved.get("folder_seed") == args.seed
+                    and saved.get("excluded_from") == args.exclude_from
+                    and saved.get("sample") == sample):
+                out = saved
+                print("Resuming matching sample from saved result.", flush=True)
+            else:
+                print("Starting a new sample; saved result has different inputs.", flush=True)
+        except (OSError, ValueError):
+            print("Starting a new sample; saved result is unreadable.", flush=True)
     for half, folders in halves.items():
+        saved_half = out.get("halves", {}).get(half, {})
+        previous_rows = {row.get("folder"): row for row in saved_half.get("rows", [])}
         rows = []
+        out["halves"][half] = {"rows": rows, "summary": {"n": 0}, "complete": False}
         for n, name in enumerate(folders):
-            row = measure(songs / name)
+            row, cached = measure(songs / name, structures, cli_sha1, save_cache,
+                                  previous_rows.get(name))
             rows.append(row)
             if not row.get("usable"):
                 flag = row.get("why", "?")
@@ -209,22 +298,24 @@ def main() -> int:
                 flag = "no chorus proposed"
             else:
                 flag = f"{row['precision'] * 100:.0f}% under"
-            print(f"  [{half} {n + 1}/{len(folders)}] {name[:60]:60s} {flag} "
-                  f"({time.perf_counter() - started:.0f} s)")
+            tag = " [cached]" if cached else ""
+            print(f"  [{half} {n + 1}/{len(folders)}] {name[:60]:60s} {flag}{tag} "
+                  f"({time.perf_counter() - started:.0f} s)", flush=True)
+            _write_json_atomic(output, out)
         summary = summarize(rows)
         summary["pass"] = summary.get("lift", -1) >= BAR_POINTS
+        out["halves"][half] = {"rows": rows, "summary": summary, "complete": True}
         print(f"  {half}: {summary.get('n', 0)} scored, "
               f"precision {summary.get('precision')}%, "
               f"chance {summary.get('chance')}%, "
               f"lift {summary.get('lift')} "
-              f"({'PASS' if summary.get('pass') else 'MISS'})")
-        out["halves"][half] = {"rows": rows, "summary": summary}
+              f"({'PASS' if summary.get('pass') else 'MISS'})", flush=True)
         ratios = {row["split_power_ratio"] for row in rows
                   if row.get("split_power_ratio") is not None}
         if len(ratios) == 1:
             out["split_power_ratio"] = next(iter(ratios))
-    (HERE / "labels.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
-    print(f"({time.perf_counter() - started:.0f} s)")
+        _write_json_atomic(output, out)
+    print(f"({time.perf_counter() - started:.0f} s)", flush=True)
     return 0
 
 

@@ -22,6 +22,47 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-15 · Single-BPM bulk truth: Rust scored on the revalidated slice
+
+### Changed
+
+- **Completed the Rust side of 10.0d** and re-scored the current map slice with
+  Python from cache, so both engines are compared on the same audios and maps.
+  The available files now yield fewer maps than the 2026-10-14 Python run.
+
+### Fixed
+
+- Nothing: this was a measurement, not an engine change.
+
+### Hardening
+
+- No source files or baselines changed. The scan re-checked every one-red-line map
+  against the local Songs folder; missing maps stayed named in the skipped count.
+
+### Measured
+
+- Current revalidated slice: 3,229 songs, 16,069 maps, 1,059 maps skipped during
+  slice reconstruction (the 2026-10-14 run skipped 29, leaving this comparison
+  with 1,030 fewer scored maps).
+  Rust: 1.3 % within 5 ms, 76.8 % within 50 ms, signed offset +25.1 ms
+  [19.0..32.3], BPM≤0.05 on 11,083/14,083 answered maps (78.7 %, 69.0 % of
+  all maps), exact octave on 10,023/14,083 (71.2 %); 452 refusals and 23 errors.
+  Its agreeing-map subset (15,096 maps) is 1.3 % within 5 ms, 77.5 % within
+  50 ms, with BPM≤0.05 on 10,527/13,277.
+- Python on the same slice: 1.9 % within 5 ms, 83.5 % within 50 ms, signed
+  offset +25.0 ms [17.0..32.2], BPM≤0.05 on 11,290/15,878 answered maps
+  (71.1 %, 70.3 % of all maps), exact octave on 11,530/15,878 (72.6 %);
+  21 refusals and 24 errors. Its agreeing-map subset is 1.8 % within 5 ms,
+  83.9 % within 50 ms, with BPM≤0.05 on 10,708/14,921.
+- Refusals and errors are separate outcomes. Rust's summed analysis time was
+  4,845 s (2,925 uncached; run time 4,645 s), while Python used 3,205 cached
+  analyses and 24 recomputations (run time 433 s); these are not a speed
+  comparison. Rust falls below Python within 5 ms, so the result supports no
+  accuracy improvement claim. `bench/facts.py` checked after the documentation
+  update.
+
+---
+
 ## Unreleased — 2026-10-14 · Single-BPM bulk truth: full slice measured
 
 ### Changed

@@ -20,8 +20,6 @@ version is `v0.2.0-alpha`.
 
 ---
 
----
-
 ## Unreleased — 2026-10-16 · T6 resumable independent-sample audit
 
 ### Changed
@@ -167,6 +165,220 @@ version is `v0.2.0-alpha`.
 - Graphify 0.9.91 local code-only graph: 5,439 nodes, 12,695 edges, 233
   communities; `graphify query` and `graphify god-nodes` returned results.
 - `git diff --check`: clean. No analysis or accuracy benchmark was run.
+
+---
+
+---
+
+## Unreleased — 2026-10-15 · Mapper-agreement harness for single-BPM maps
+
+### Changed
+
+- Added `bench/mapper_agreement.py`, a repeatable read-only audit of ranked,
+  approved and loved standard maps with one red line. It cross-checks `osu!.db`
+  identities against Overtone's local library index, validates the current map
+  files, groups byte-identical audio, and compares each pair in both directions.
+- Added a seeded, round-robin stratified human-review sheet at
+  `bench/.cache/mapper_agreement.md`; local paths and audio hashes stay out of Git.
+
+### Fixed
+
+- No engine behavior changed. The measurement now separates mapper independence
+  from exact timing copies, which made the aggregate agreement look stronger.
+
+### Hardening
+
+- The reader accepts only the locally audited Stable `osu!.db` version
+  (20260924), rejects truncation or unexpected layout, and opens the library
+  SQLite index in read-only mode. Map paths must resolve under Songs, and
+  beatmap/set IDs, mode and red-line count are rechecked from disk.
+- Stale index rows, missing audio, and permission-denied audio reads are named
+  and skipped; they are not classified as invalid references. The audit sheet
+  is generated under the ignored local cache.
+
+### Measured
+
+- Local database: 24,709 maps, 19,493 ranked/approved/loved entries. The current
+  index yielded 174 validated one-red-line maps in 73 byte-identical audio
+  groups, or 117 pairs. 80 pairs had identical timing; including these gave
+  84.6 % directional agreement within 5 ms. Among the 37 non-identical pairs
+  (74 directions), only 38/74 (51.4 %) were within 5 ms; the BPM≤0.05 and exact
+  octave checks passed all directional comparisons, so 38/74 also passed
+  jointly. Signed offset median was 0 ms, with quartiles −5 and +5 ms.
+- The seeded sheet contains 25 of the 37 non-identical pairs, sampled across
+  tempo, audio format and TV Size strata. Human verdicts are still outstanding;
+  10.0b remains open until those are reviewed and the primary denominator and
+  exclusion ledger are locked. The index also reported 25 stale maps, 7 missing
+  audio files and 20 audio hash reads blocked by Windows permissions.
+- These local counts are not a locked benchmark and do not establish a general
+  mapper-error distribution. No accuracy or engine improvement is claimed.
+
+### Rejected / tried and dropped
+
+- Treating exact timing matches as independent mapper agreement was dropped:
+  they can be copied between mapsets and raised the apparent 5 ms agreement
+  from 51.4 % on differing pairs to 84.6 % overall.
+
+---
+
+## Unreleased — 2026-10-15 · Single-BPM accuracy target and work plan
+
+### Changed
+
+- Made the user's single-BPM quality requirement explicit: a song-clustered lower
+  95 % confidence bound of at least 95 % joint success for exact octave, BPM
+  error ≤0.05, and offset error ≤5 ms across all valid one-red-line maps in a
+  held-out slice.
+- Added separate roadmap steps for reference truth, offset convention, phase
+  estimation, octave/tempo resolution, and the final joint gate.
+
+### Fixed
+
+- Replaced a broad “real-audio accuracy” placeholder with acceptance criteria
+  that prevent BPM-only gains or answer-only scoring from being called success.
+
+### Hardening
+
+- Refusals and errors count as misses in the primary score. Difficulty rows
+  sharing one audio are grouped by song for confidence intervals; every
+  invalid-reference exclusion must be audited, listed, and counted against
+  coverage.
+- Candidate offsets must earn gains on held-out songs; the known average bias
+  cannot be subtracted as an unvalidated production constant.
+
+### Measured
+
+- Planning only; no engine code or accuracy claim changed. Baseline remains
+  Python: 1.9 % within 5 ms, 70.3 % within 0.05 BPM across all maps, and 72.6 %
+  exact octave on answered maps. The previously measured +24.6 ms bias correction
+  reaches only 37.1 % within 5 ms, a diagnostic rather than a result.
+
+### Rejected / tried and dropped
+
+- A single constant offset correction is not the accuracy plan: the measured
+  diagnostic still misses the 5 ms target on most maps and does not address
+  wrong tempo octaves.
+
+## Unreleased — 2026-10-15 · Hitsounds roadmap reconciled
+
+### Changed
+
+- Recorded H7 as complete in the design plan: its audio-only Propose toggle and
+  shared inspector, audition and write path shipped on 2026-10-07.
+- Clarified T7's actual remaining scope: H6 sample→role recommendations,
+  instrument lanes and the clap-mismatch rule still depend on classifier
+  evidence that transfers to real audio.
+
+### Fixed
+
+- Removed the stale claim that H7's app surface was still open, which conflicted
+  with the roadmap and the 2026-10-07 implementation entry.
+
+### Hardening
+
+- Kept the unverified browser harness and sidecar-on-real-songs check explicit;
+  shipped UI status does not imply those checks were completed.
+
+### Measured
+
+- No new classifier measurement. The existing 2026-10-07 Rust results remain
+  the basis for deferring H6: median `P(snare)+P(clap)` 0.189 and crash-vs-snare
+  0.408 over 12 songs.
+
+## Unreleased — 2026-10-15 · Single-BPM bulk truth: Rust scored on the revalidated slice
+
+### Changed
+
+- **Completed the Rust side of 10.0d** and re-scored the current map slice with
+  Python from cache, so both engines are compared on the same audios and maps.
+  The available files now yield fewer maps than the 2026-10-14 Python run.
+
+### Fixed
+
+- Nothing: this was a measurement, not an engine change.
+
+### Hardening
+
+- No source files or baselines changed. The scan re-checked every one-red-line map
+  against the local Songs folder; missing maps stayed named in the skipped count.
+
+### Measured
+
+- Current revalidated slice: 3,229 songs, 16,069 maps, 1,059 maps skipped during
+  slice reconstruction (the 2026-10-14 run skipped 29, leaving this comparison
+  with 1,030 fewer scored maps).
+  Rust: 1.3 % within 5 ms, 76.8 % within 50 ms, signed offset +25.1 ms
+  [19.0..32.3], BPM≤0.05 on 11,083/14,083 answered maps (78.7 %, 69.0 % of
+  all maps), exact octave on 10,023/14,083 (71.2 %); 452 refusals and 23 errors.
+  Its agreeing-map subset (15,096 maps) is 1.3 % within 5 ms, 77.5 % within
+  50 ms, with BPM≤0.05 on 10,527/13,277.
+- Python on the same slice: 1.9 % within 5 ms, 83.5 % within 50 ms, signed
+  offset +25.0 ms [17.0..32.2], BPM≤0.05 on 11,290/15,878 answered maps
+  (71.1 %, 70.3 % of all maps), exact octave on 11,530/15,878 (72.6 %);
+  21 refusals and 24 errors. Its agreeing-map subset is 1.8 % within 5 ms,
+  83.9 % within 50 ms, with BPM≤0.05 on 10,708/14,921.
+- Refusals and errors are separate outcomes. Rust's summed analysis time was
+  4,845 s (2,925 uncached; run time 4,645 s), while Python used 3,205 cached
+  analyses and 24 recomputations (run time 433 s); these are not a speed
+  comparison. Rust falls below Python within 5 ms, so the result supports no
+  accuracy improvement claim. `bench/facts.py` checked after the documentation
+  update.
+
+---
+
+## Unreleased — 2026-10-14 · Single-BPM bulk truth: full slice measured
+
+### Changed
+
+- **The full run**: all 3,425 one-red-line songs through `bench/single_bpm.py`
+  (python engine, 3 at a time, 3.1 h wall / 9.1 h CPU, 108 from the cache).
+
+### Measured
+
+- 17,099 maps scored, 29 skipped (missing files, named), 24 errors (audio no
+  decoder here opens — formats wanting FFmpeg, each named), 23 refused.
+  Precision path 2,921 songs, fallback 457.
+- BPM≤0.05 octave-normalised **11,914/16,906 (70.5 %)**, median |error|
+  0.013; same octave 12,138 (71.8 %), half 2,017, double 2,334, deeper 416.
+- Offsets raw: ≤5 ms 1.9 %, ≤50 ms 83.7 %, signed **+24.6 ms** — the 10.0a
+  convention again, reported raw; less that constant, 37.1 % would sit within
+  5 ms (diagnostic, not a result).
+- The agreeing subset (2,612 songs whose difficulties match within 10 ms /
+  0.05 BPM, 16,029 maps) reads **71.1 %** — no better than the slice. Mapper
+  disagreement is not the gap; octave errors are, both directions at once.
+- Worst miss is gimmick truth, not an engine failure: a minigame map with a
+  1,280 BPM red line, read sanely.
+- `bench/facts.py` ok. Rust engine through the same slice still owed; no bar
+  set, so nothing passes or fails yet.
+
+---
+
+---
+
+## Unreleased — 2026-10-14 · Single-BPM bulk truth: harness built, pilot measured
+
+### Changed
+
+- **`bench/single_bpm.py`**: the engine against every one-red-line map in the
+  user's Songs folder — 17,128 of 25,171 maps over 3,062 songs (TV Size 2,338
+  over 381), found through the library index and re-checked on disk, one
+  analysis per song with every difficulty scored on it. Mapper agreement
+  (offsets within 10 ms, tempi within 0.05 BPM) splits the repeatable-truth
+  subset out. Cached per audio size+mtime and engine code, so the full run is
+  resumable; `--tv`, `--sample 7`-seeded, `--max-songs`, `--jobs` and
+  `--engine rust` shape it. A measurement, not a gate — roadmap row 10.0d.
+
+### Measured
+
+- 12-song pilot (python, 58 maps): BPM≤0.05 **57/58**, median |error| 0.008;
+  signed offset +24.7 ms — the 10.0a convention, and 60.3 % would sit within
+  5 ms less exactly that constant (diagnostic, not a result).
+- TV-100 (python, 100 songs, 619 maps, 1 undecodable audio named, 1 refusal):
+  BPM≤0.05 **485/608**, median 0.013; same octave 513/608 (x0.5 28, x2 67);
+  signed +30.4 ms, ≤50 ms 91.9 %. Worst misses are honest: e.g. 210 BPM read
+  at 140 (a 3:2 feel, not an octave). All 100 TV songs' difficulties agree
+  with each other, so the subset equals the slice here.
+- `bench/facts.py` ok. Full 3,062-song run owed; nothing claimed off the pilot.
 
 ---
 

@@ -20,6 +20,40 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-22 · Phase 10 stage plan and the anime baseline
+
+### Changed
+
+- No engine behaviour changed. Phase 10 is now worked one slice of the Songs
+  folder at a time (roadmap, "Stage plan"): S1 anime one tempo, S2 anime tempo
+  changes, S3 live bands that drift and change tempo, S4 the rest. Owner
+  decision: the folder's mapper timings are the truth, so 10.0b's listening
+  audit is replaced, not owed.
+- Added `bench/stages.py` and `bench/stages.json`: each stage is an SQL
+  condition over the library index; songs split by folder hash into dev (70 %)
+  and held out (30 %); every red line of every map scored; analyses share
+  `single_bpm.py`'s cache.
+
+### Fixed
+
+- Nothing fixed; this is a measurement.
+
+### Hardening
+
+- The red-line convention shown beside the raw score is fitted on dev only and
+  applied to held out, so the held-out figure is not flattered by its own fit.
+
+### Measured
+
+- S1 `anime-single`, Python engine, 832 songs / 4,611 maps (40 s, almost all
+  from the cache; 4 songs errored on decode). Dev 3,149 maps: tempo ok 60.1 %,
+  octave x1 76.6 %, joint 5 ms 0.2 %, after the +27.7 ms dev convention
+  32.3 % within 5 ms and 50.2 % within 10 ms, signed error +26.0 ms
+  [+19.7..+32.5]. Held out 1,462 maps: tempo ok 58.9 %, octave x1 75.2 %,
+  conv. 5 ms 24.1 %, conv. 10 ms 47.0 %. Wrong octaves: x2 550, x0.5 434,
+  x0.25 61, x4 21 of 4,611 -- the octave (10.0g) is S1's first target,
+  then the phase (10.0e/f).
+
 ## Unreleased — 2026-10-16 · T6 resumable independent-sample audit
 
 ### Changed

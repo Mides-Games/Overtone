@@ -1665,10 +1665,23 @@ class SparseNoiseRefusalTests(unittest.TestCase):
                     i = int(t * sr)
                     y[i:i + 300] += (rng.standard_normal(300) * np.exp(-np.arange(300) / 60)).astype(np.float32) * 0.4
                 sf.write(str(path), y, sr)
-                analysis = analyze_audio(path)
+                # The pulse as found, before the fold to osu!'s octave.
+                analysis = analyze_audio(path, prefer_map_bpm=False)
                 with self.subTest(bpm=bpm):
                     self.assertEqual(analysis.engine, "precision")
                     self.assertAlmostEqual(analysis.global_bpm, bpm, places=2)
+
+    def test_the_pulse_is_read_at_the_mapped_octave(self):
+        # MAP_OCTAVE_RANGE: a slow pulse is read doubled, a fast one halved,
+        # one in range is left alone, and forcing a factor skips the fold.
+        with tempfile.TemporaryDirectory() as tmp:
+            for bpm, expected in ((60.0, 120.0), (90.0, 180.0), (174.0, 174.0), (300.0, 150.0)):
+                path = Path(tmp) / f"click{bpm:.0f}.wav"
+                _click_track(path, bpm, duration=30.0)
+                with self.subTest(bpm=bpm):
+                    self.assertAlmostEqual(analyze_audio(path).global_bpm, expected, places=1)
+            forced = analyze_audio(Path(tmp) / "click90.wav", force_subdivision=1.0)
+            self.assertAlmostEqual(forced.global_bpm, 90.0, places=1)
 
     def test_the_chance_of_the_inliers(self):
         rng = np.random.default_rng(0)

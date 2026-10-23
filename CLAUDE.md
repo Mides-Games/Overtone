@@ -44,7 +44,7 @@ commit messages are English; only the app's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (1011 on 2026-10-15)
+.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (1012 on 2026-10-22)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -87,7 +87,7 @@ named, and the analyses are cached per audio and engine hash, so a re-score take
 And the Rust side:
 
 ```bash
-cargo test --workspace                                 # all pass (291 on 2026-10-03)
+cargo test --workspace                                 # all pass (292 on 2026-10-22)
 cargo run --release -q -p overtone-bench -- golden     # 27/27 attack for attack
 cargo run --release -q -p overtone-bench -- nogrid     # noise, pads, silence refused
 cargo run --release -q -p overtone-bench -- density    # 4/4 changes, 0 false positives

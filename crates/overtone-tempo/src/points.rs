@@ -692,7 +692,8 @@ pub fn analyze_attacks(
     let first_class = (first_class as i64 - shift).rem_euclid(m.max(1) as i64) as usize;
     let w32: Vec<f32> = weights.to_vec();
     let beats = crate::sections::beat_sections(&atom, times, &w32, m.max(1), first_class);
-    let settled = crate::sections::settle_boundaries(times, &w32, beats.clone(), SETTLE_ROUNDS);
+    let one = crate::sections::one_octave(beats.clone(), times, &w32);
+    let settled = crate::sections::settle_boundaries(times, &w32, one, SETTLE_ROUNDS);
     let (meter_text, downbeat, meter_beats) = match settled.first() {
         Some(first) => {
             let (text, down, bar) = crate::octave::meter_from_grid(

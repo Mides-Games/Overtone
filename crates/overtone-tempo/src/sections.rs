@@ -513,6 +513,49 @@ pub fn phase_class(times: &[f64], weights: &[f32], period: f64, phase: f64, m: u
     best
 }
 
+/// Read every section at the octave of the longest one — v3 `_one_octave`.
+///
+/// Sections seed their own grids, and a near-tie can seed one at twice or half
+/// the beat of its neighbours (145, 290, 145 ... BPM on anime songs measured
+/// 2026-10-22). A faster section keeps whichever of its beats carries the
+/// accents; a slower one has its beat split.
+pub fn one_octave(sections: Vec<GridSection>, times: &[f64], weights: &[f32]) -> Vec<GridSection> {
+    if sections.len() < 2 {
+        return sections;
+    }
+    // The first longest, as Python's max() picks it.
+    let mut reference = &sections[0];
+    for section in &sections[1..] {
+        if section.end.get() - section.start.get() > reference.end.get() - reference.start.get() {
+            reference = section;
+        }
+    }
+    let ref_period = reference.period;
+    let mut out = Vec::with_capacity(sections.len());
+    for section in &sections {
+        // Python's round() takes halves to even.
+        let k = (ref_period / section.period).log2().round_ties_even() as i32;
+        if k == 0 {
+            out.push(*section);
+            continue;
+        }
+        let (mut period, mut phase) = (section.period, section.phase);
+        if k > 0 {
+            let m = 1usize << k;
+            let (w_times, w_weights) = masked(times, weights, |t| {
+                t >= section.start.get() - period && t <= section.end.get() + period
+            });
+            let r = phase_class(&w_times, &w_weights, period, phase, m);
+            phase += r as f64 * period;
+            period *= m as f64;
+        } else {
+            period /= 2f64.powi(-k);
+        }
+        out.push(GridSection { period, phase, ..*section });
+    }
+    out
+}
+
 /// Convert atomic sections to beat-level ones — v3 `_beat_sections`.
 pub fn beat_sections(
     atom_sections: &[GridSection],
@@ -740,5 +783,18 @@ mod tests {
         assert_eq!(beats.len(), 1);
         assert!((beats[0].period - 2.0 * atom).abs() < 1e-9);
         assert!((beats[0].start.get() - sections[0].start.get()).abs() < 1e-9);
+    }
+
+    #[test]
+    fn one_octave_reads_every_section_at_the_longest_ones_octave() {
+        let beat = 60.0 / 145.0;
+        let (times, weights) = drum(beat, 0.4, 0.4, 60.0);
+        let grown = grow_sections(&times, &weights, beat, 0.4, 1.5, 12);
+        let base = beat_sections(&grown, &times, &weights, 1, 0)[0];
+        let long = GridSection { end: Seconds(40.0), ..base };
+        let fast = GridSection { start: Seconds(40.0), period: beat / 2.0, ..base };
+        let out = one_octave(vec![long, fast], &times, &weights);
+        assert!((out[0].period - base.period).abs() < 1e-12);
+        assert!((out[1].period - beat).abs() < 1e-12);
     }
 }

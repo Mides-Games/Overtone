@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
 | Installer (MSI) | **v0.1.0-alpha published** — per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
 
-Tests: **1011** Python (713 engine + 298 web shell) · **291** Rust.
+Tests: **1012** Python (714 engine + 298 web shell) · **292** Rust.
 
 ### Current priorities — 2026-10-16
 
@@ -613,7 +613,7 @@ and applied to held out (a diagnostic of the export convention, never an engine 
 
 | Stage | Slice | Size (2026-10-22) | What it should force | State |
 |---|---|---|---|---|
-| **S1 — Anime, one tempo** | `anime-single`: one red line, anime/opening/ending/TV Size in tags or title | 832 songs, 4,611 maps (582 dev / 250 held out) | octave choice (10.0g) and the grid's phase (10.0e/f) on produced, quantised music — the cleanest place to get both right | **baseline 2026-10-22** (Python): held out tempo ok 58.9 %, octave x1 75.2 %, joint 5 ms 0.0 %, conv. 10 ms 47.0 %; dev 60.1 / 76.6 / 0.2 / 50.2 %. Wrong octaves (x2 550, x0.5 434 of 4,611 maps) are the first target |
+| **S1 — Anime, one tempo** | `anime-single`: one red line, anime/opening/ending/TV Size in tags or title | 832 songs, 4,611 maps (582 dev / 250 held out) | octave choice (10.0g) and the grid's phase (10.0e/f) on produced, quantised music — the cleanest place to get both right | **baseline 2026-10-22** (Python): held out tempo ok 58.9 %, octave x1 75.2 %, joint 5 ms 0.0 %, conv. 10 ms 47.0 %; dev 60.1 / 76.6 / 0.2 / 50.2 %. Wrong octaves (x2 550, x0.5 434 of 4,611 maps) were the first target. **Octave fold** 2026-10-22: held-out octave 75.2 → 86.3 %, tempo ok 58.9 → 60.9 %. Next: maps on the right octave but 0.05–0.5 BPM off (547 of 4,000, nearly all whole-number BPMs) |
 | **S2 — Anime, tempo changes** | `anime-variable`: the same filter, more than one red line | 491 songs, 2,599 maps | section boundaries and which tempo governs each (points, sections) on music that changes on purpose | todo after S1 |
 | **S3 — Live bands, drift and changes** | `bands-variable`: My Chemical Romance, The Fall of Troy, Pierce The Veil, PUP, DragonForce, Linkin Park, BMTH, Sum 41, Rise Against … (list in the manifest) | 339 songs, 1,540 maps | a tempo that drifts under a human drummer: many close red lines, elastic grid (10.7), rippling (10.5) | todo after S2 |
 | S4 — the rest | everything not in S1–S3, by category as the stages before it show where the gaps are | — | confirmation that nothing tuned on S1–S3 overfits | later |

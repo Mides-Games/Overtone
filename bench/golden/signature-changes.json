@@ -1184,54 +1184,54 @@
  "result": {
   "duration_s": 122.168,
   "engine": "precision",
-  "fit_residual_ms": 0.1228,
-  "global_bpm": 149.999987,
+  "fit_residual_ms": 0.1194,
+  "global_bpm": 150.0,
   "meter_text": "3/4",
   "points": [
    {
-    "bpm": 299.999973,
+    "bpm": 299.999999,
     "confidence": 1.0,
     "meter": 6,
     "meter_known": true,
-    "offset_ms": 168.1261
+    "offset_ms": 168.129
    },
    {
-    "bpm": 149.999987,
+    "bpm": 150.0,
     "confidence": 0.94155,
     "meter": 3,
     "meter_known": true,
-    "offset_ms": 20568.1279
+    "offset_ms": 20568.1291
    },
    {
-    "bpm": 299.999973,
+    "bpm": 299.999999,
     "confidence": 0.97917,
     "meter": 6,
     "meter_known": true,
-    "offset_ms": 39768.1296
+    "offset_ms": 39768.1292
    },
    {
-    "bpm": 149.999987,
+    "bpm": 150.0,
     "confidence": 0.90218,
     "meter": 3,
     "meter_known": true,
-    "offset_ms": 58968.1313
+    "offset_ms": 58968.1292
    },
    {
-    "bpm": 299.999973,
+    "bpm": 299.999999,
     "confidence": 0.9881,
     "meter": 6,
     "meter_known": true,
-    "offset_ms": 68568.1322
+    "offset_ms": 68568.1293
    },
    {
-    "bpm": 199.999982,
+    "bpm": 199.999999,
     "confidence": 0.98621,
     "meter": 4,
     "meter_known": true,
-    "offset_ms": 100968.1351
+    "offset_ms": 100968.1294
    }
   ],
-  "stability": 0.99975
+  "stability": 0.99969
  },
  "seeds": [
   {
@@ -1255,24 +1255,24 @@
  ],
  "settled_sections": [
   {
-   "bpm": 149.999987,
-   "coverage": 0.9846,
-   "end_s": 103.368155,
-   "inliers": 255,
-   "period_s": 0.400000036,
-   "phase_s": 0.1681261,
-   "residual_ms": 0.1207,
+   "bpm": 150.0,
+   "coverage": 1.0,
+   "end_s": 96.168112,
+   "inliers": 241,
+   "period_s": 0.400000001,
+   "phase_s": 0.168129,
+   "residual_ms": 0.1202,
    "start_s": 0.168274
   },
   {
-   "bpm": 100.000157,
-   "coverage": 1.0,
+   "bpm": 200.000442,
+   "coverage": 0.9,
    "end_s": 119.868024,
-   "inliers": 28,
-   "period_s": 0.599999058,
-   "phase_s": 0.1683167,
-   "residual_ms": 0.136,
-   "start_s": 103.368155
+   "inliers": 72,
+   "period_s": 0.299999337,
+   "phase_s": 0.1683391,
+   "residual_ms": 0.1159,
+   "start_s": 96.168112
   }
  ],
  "tempo_hints": [

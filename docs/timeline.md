@@ -20,6 +20,60 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-22 · S1: the beat octave osu! maps use
+
+### Changed
+
+- Every section is read at the octave of the song's longest section
+  (`_one_octave`, Python and Rust). Sections seed their own grids, and a near
+  tie could seed one at twice the beat of its neighbours: Raise Your Flag came
+  out as 145, 290, 145, 290 ... BPM and the red line written was the 290.
+- After the analysis, a song whose BPM sits outside [120, 240] is read at the
+  octave inside it (`MAP_OCTAVE_RANGE`, `_fold_to_map_octave`), through the
+  same path as the ×2 / ÷2 quick fix, so the user can undo it there. Skipped
+  when a factor is forced or `prefer_map_bpm` is off.
+
+### Fixed
+
+- Octave flips between sections of one song (above).
+
+### Hardening
+
+- A swung song is never doubled: its off-beat sits at two thirds, so the
+  doubled grid lands every other beat on nothing (`shuffle-96`, caught by the
+  swing-lane test, now reads 96 as before).
+- The fold leaves a hair of slack: 59.9999 BPM doubled is 120, not a reason
+  to double again.
+
+### Measured
+
+- S1 `anime-single`, Python engine, against the 2026-10-22 baseline. Held
+  out (1,462 maps, 243 songs): exact octave 75.2 → 86.3 %, tempo ok 58.9 →
+  60.9 %, conv. 10 ms 47.0 → 46.1 %. Dev (3,149 maps): octave 76.6 → 86.9 %,
+  tempo ok 60.1 → 63.5 %. The range was chosen on dev alone (simulated 95 %;
+  the real engine gives less because songs it reads as half or double in
+  every section are not all moved by the global fold).
+- Of the 4,000 maps now on the right octave, 547 sit 0.05–0.5 BPM off and
+  563 more than 0.5; 97 % of the misses are maps with a whole-number BPM.
+  That is S1's next target.
+- Corpus A unchanged: benchmark 24/24 (median 0.0000 BPM / 0.16 ms),
+  `bpm-snapshot` 24/24, golden 27/27 in Python and Rust (signature-changes
+  re-dumped: its second section's intermediate grid is read at the long
+  section's octave; the final red lines and the `signatures` gate, 6/6, are
+  unchanged). `real-audio`: Noble 164.12 → 163.97 against its map's 164,
+  re-pinned. Take You Down: a section the old engine read at 43.26 BPM (a
+  quarter of 174) now reads 173.32, and its red line moves one beat, from the
+  map's bar line (beat 16 after the map's line) to beat 15 -- the grid stays
+  on the beat, the bar is a beat early. A known cost, left for 10.4a's
+  downbeat work, not hidden. 1012 Python and 292 Rust tests pass; every gate passes except
+  `installer/notices.py --check`, which fails the same way on master (Tcl/Tk
+  8.6 ships no notice text).
+
+### Rejected / tried and dropped
+
+- The global fold alone: held-out octave only 75.2 → 76.3 %, because the
+  section flips were below it.
+
 ## Unreleased — 2026-10-22 · Phase 10 stage plan and the anime baseline
 
 ### Changed

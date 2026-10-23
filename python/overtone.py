@@ -81,6 +81,13 @@ TARGET_SR = 44100
 HOP = 256  # ~5.8 ms at 44.1 kHz: timing-grid resolution suited to mapping.
 #: Pulse octaves the UI and CLI may force (1 = whatever the engine detected).
 ALLOWED_FACTORS = (0.25, 0.5, 1.0, 2.0, 4.0)
+#: The octave osu! songs are mapped at. Below it the engine has usually read
+#: half the mapper's beat, above it double: on the anime single-tempo stage
+#: (bench/stages.py, 2026-10-22) detections under 120 BPM were half the map in
+#: 227 of 249 dev maps and every one over 300 was double. Folding the global
+#: BPM into [120, 240] took the exact-octave share from 77.1 % to 95.2 % on dev,
+#: 75.8 % to 95.2 % held out, and 72.6 % to 86.8 % on every one-red-line map.
+MAP_OCTAVE_RANGE = (120.0, 240.0)
 
 
 # ---------------------------------------------------------------------------
@@ -2058,6 +2065,39 @@ def _beat_sections(atom_sections: list[GridSection], times: np.ndarray,
     return out
 
 
+def _one_octave(sections: list[GridSection], times: np.ndarray,
+                weights: np.ndarray) -> list[GridSection]:
+    """Read every section at the octave of the longest one.
+
+    Sections seed their own grids, and a near-tie can seed one at twice or
+    half the beat of its neighbours: on the anime single-tempo stage
+    (2026-10-22) songs came out as 145, 290, 145, 290 ... BPM, and the red
+    line written was the 290. Music changes tempo by a few BPM, not by an
+    octave, so a section a whole octave away is re-read at the longest
+    section's octave: a faster one keeps whichever of its beats carries the
+    accents, a slower one has its beat split.
+    """
+    if len(sections) < 2:
+        return sections
+    ref = max(sections, key=lambda s: s.end_s - s.start_s).period
+    out: list[GridSection] = []
+    for section in sections:
+        k = int(round(np.log2(ref / section.period)))
+        if k == 0:
+            out.append(section)
+            continue
+        period, phase = section.period, section.phase
+        if k > 0:                         # read too fast: keep the accented beat
+            m = 2 ** k
+            window = (times >= section.start_s - period) & (times <= section.end_s + period)
+            r = _phase_class(times[window], weights[window], period, phase, m)
+            period, phase = period * m, phase + r * period
+        else:                             # read too slow: split the beat
+            period = period / 2 ** (-k)
+        out.append(replace(section, period=period, phase=phase))
+    return out
+
+
 def _section_confidence(section: GridSection, persistence: int) -> float:
     beat_ms = section.period * 1000.0
     if beat_ms <= 0:
@@ -2509,6 +2549,7 @@ def _precision_engine(y: np.ndarray, sr: int, min_delta: float, persistence: int
     shift = int(np.floor((atom_sections[0].phase - atom_phase) / atom_period + 0.5))
     first_class = (first_class - shift) % max(m, 1)
     sections = _beat_sections(atom_sections, times, weights, m, first_class)
+    sections = _one_octave(sections, times, weights)
     sections = _settle_boundaries(times, weights, sections)
     meter_text, downbeat, bar_beats = _meter_from_grid(
         times, weights, sections[0].period, sections[0].phase)
@@ -3117,14 +3158,56 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
             # bug behind merely-worse numbers, so say what went wrong.
             fit, failure = None, f" ({type(exc).__name__}: {exc})"
         if fit is not None:
-            return _assemble_analysis(path, y, sr, fit, min_delta, persistence,
-                                      min_confidence, factor)
+            analysis = _assemble_analysis(path, y, sr, fit, min_delta, persistence,
+                                          min_confidence, factor)
+            return analysis if force_subdivision or not prefer_map_bpm else                 _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
         if engine == "precision":
             raise ValueError(
                 "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
         say("No fittable grid — falling back to the beat tracker…" + failure)
-    return _legacy_analysis(path, y, sr, min_delta, persistence, prefer_map_bpm,
-                            min_confidence, say, float(force_subdivision), refine_beats)
+    analysis = _legacy_analysis(path, y, sr, min_delta, persistence, prefer_map_bpm,
+                                min_confidence, say, float(force_subdivision), refine_beats)
+    return analysis if force_subdivision or not prefer_map_bpm else         _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
+
+
+def _fold_to_map_octave(analysis: Analysis, min_delta: float, persistence: int,
+                        min_confidence: float) -> Analysis:
+    """Read the analysis at the octave osu! maps use (MAP_OCTAVE_RANGE).
+
+    The grids are kept; only the pulse they are read at changes, exactly as
+    the ×2 / ÷2 quick fix does, so the user can still undo it there. A BPM
+    already in range, or one whose fold would leave ALLOWED_FACTORS, is
+    returned as it is.
+    """
+    bpm = float(analysis.global_bpm)
+    if not np.isfinite(bpm) or bpm <= 0:
+        return analysis
+    lo, hi = MAP_OCTAVE_RANGE
+    step = 1.0
+    # A hair of slack: 59.9999 BPM doubled is 120, not a reason to double again.
+    while bpm * step < lo - 0.01:
+        step *= 2.0
+    while bpm * step > hi + 0.01:
+        step /= 2.0
+    target = float(analysis.subdivision) * step
+    if step == 1.0 or target not in ALLOWED_FACTORS:
+        return analysis
+    if step > 1.0 and _swings(analysis):
+        # A swung beat's off-beat sits at two thirds, not halfway: doubled,
+        # every other "beat" would land on nothing (shuffle-96 read at 192).
+        return analysis
+    return rebuild_with_subdivision(analysis, target, min_delta, persistence, min_confidence)
+
+
+def _swings(analysis: Analysis) -> bool:
+    """Whether most of the song's swing-lane windows swing or play triplets."""
+    try:
+        windows = swing_lane(analysis.points, analysis.attack_times,
+                             analysis.attack_weights, analysis.duration)["windows"]
+    except (ValueError, TypeError):
+        return False
+    swung = sum(w["feel"] in ("swing", "triplets") for w in windows)
+    return bool(windows) and swung >= 0.5 * len(windows)
 
 
 def analyze_batch(folder: str | os.PathLike[str], min_delta: float = 1.5,

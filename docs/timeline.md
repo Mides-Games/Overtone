@@ -20,6 +20,47 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-23 · full-stage measurement after the day's changes
+
+### Changed
+
+- Nothing in the engine; numbers only.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- Nothing.
+
+### Measured
+
+- `bench/stages.py <stage> --compare`, every song analysed again on master
+  `746a009` (octave fold, whole BPM, drift following with its 10 % guard,
+  local-tempo tracker), against the baselines of 2026-10-22/23. Held out:
+  - S1 anime-single (1,462 maps, 243 songs): tempo ok 58.9 -> 71.1 %, octave
+    75.2 -> 90.4 %, conv. 5 ms 24.1 -> 37.5 %, conv. 10 ms 47.0 -> 57.1 %,
+    beats within 10 / 20 ms 72.4 / 87.2 %. Red lines matching the map's count
+    90.7 -> 71.9 %: drift following adds lines where the mapper kept one.
+  - S2 anime-variable (685 maps, 142 songs): beats within 10 ms 42.7 -> 66.1 %,
+    within 20 ms 56.4 -> 83.5 %; red lines with the right tempo 18.9 -> 21.2 %.
+  - S3 bands-variable (495 maps, 98 songs): beats within 10 ms 25.9 -> 43.8 %,
+    within 20 ms 35.6 -> 60.1 %; octave 62.0 -> 72.9 %; tempo ok 19.8 -> 25.1 %.
+  - Dev moved the same way (S1 tempo ok 60.1 -> 74.2 %; S2 beats within
+    10 ms 51.1 -> 69.1 %; S3 41.4 -> 61.9 %).
+
+### Pending (next session)
+
+- S1: the phase -- 57 % within 10 ms after the convention, 37.5 % within 5 ms.
+- S2/S3: red lines with the right tempo stay low (21 %, 3 %) although the
+  beats land: mappers' lines every 2-4 beats are judged one by one; S3 still
+  has 61 refused or errored maps held out and octave 72.9 %.
+- Rust: the conventions reach the Rust engine through overtone_rust.analyze;
+  the local-tempo tracker needs the Rust result to carry an onset envelope
+  for refused songs, which it does not (Rust refuses them).
+- `installer/notices.py --check` fails as on master (Tcl/Tk 8.6 notice).
+
 ## Unreleased — 2026-10-23 · local-tempo tracker for the songs v3 refuses
 
 ### Changed

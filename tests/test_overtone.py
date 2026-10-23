@@ -1719,8 +1719,10 @@ class SparseNoiseRefusalTests(unittest.TestCase):
             steady = Path(tmp) / "steady.wav"
             _click_track(steady, 150.0, duration=60.0)
             self.assertEqual(len(analyze_audio(steady, follow_drift=True).points), 1)
-            # Off by default (DRIFT_FOLLOW) until its guard spares steady songs.
-            self.assertEqual(len(analyze_audio(path).points), len(fixed.points))
+            # On by default (DRIFT_FOLLOW), and off when asked.
+            self.assertEqual(len(analyze_audio(path).points), len(followed.points))
+            self.assertEqual(len(analyze_audio(path, follow_drift=False).points),
+                             len(fixed.points))
 
     def test_the_chance_of_the_inliers(self):
         rng = np.random.default_rng(0)
@@ -1744,7 +1746,7 @@ class LegacyPulseFactorTests(unittest.TestCase):
         cls._tmp = tempfile.TemporaryDirectory()
         cls.path = Path(cls._tmp.name) / "kit100.wav"
         _drum_track(cls.path, [(0.5, 100.0)], duration=20.0)
-        cls.auto = analyze_audio(cls.path, engine="legacy")
+        cls.auto = analyze_audio(cls.path, engine="legacy", osu_conventions=False)
 
     @classmethod
     def tearDownClass(cls):
@@ -1752,13 +1754,13 @@ class LegacyPulseFactorTests(unittest.TestCase):
 
     def test_half_is_applied_from_the_first_beat(self):
         self.assertAlmostEqual(self.auto.global_bpm, 200.0, delta=2.0)   # read at double time
-        half = analyze_audio(self.path, engine="legacy", force_subdivision=0.5)
+        half = analyze_audio(self.path, engine="legacy", force_subdivision=0.5, osu_conventions=False)
         self.assertAlmostEqual(half.global_bpm, 100.0, delta=1.0)
         self.assertEqual(half.subdivision, 0.5)
         self.assertLess(abs(snap_timing_points(half.points)[0].offset_ms - 500.0), 20.0)
 
     def test_one_means_as_detected(self):
-        same = analyze_audio(self.path, engine="legacy", force_subdivision=1)
+        same = analyze_audio(self.path, engine="legacy", force_subdivision=1, osu_conventions=False)
         self.assertEqual(same.global_bpm, self.auto.global_bpm)
         self.assertEqual([(p.offset_ms, p.bpm) for p in same.points],
                          [(p.offset_ms, p.bpm) for p in self.auto.points])
@@ -1770,8 +1772,8 @@ class LegacyPulseFactorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "click120.wav"
             _click_track(path, 120.0, duration=20.0)
-            doubled = analyze_audio(path, engine="legacy", force_subdivision=2)
-            rebuilt = rebuild_with_subdivision(analyze_audio(path, engine="legacy"), 2.0)
+            doubled = analyze_audio(path, engine="legacy", force_subdivision=2, osu_conventions=False)
+            rebuilt = rebuild_with_subdivision(analyze_audio(path, engine="legacy", osu_conventions=False), 2.0)
         self.assertAlmostEqual(doubled.global_bpm, 240.0, delta=2.0)
         self.assertAlmostEqual(rebuilt.global_bpm, 240.0, delta=2.0)
 
@@ -1786,7 +1788,7 @@ class LegacyPulseFactorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "click150.wav"
             _click_track(path, 150.0, duration=20.0)
-            analysis = analyze_audio(path, engine="legacy")
+            analysis = analyze_audio(path, engine="legacy", osu_conventions=False)
         self.assertEqual(analysis.subdivision, 1.0)
         self.assertEqual(analysis.global_bpm, float(np.median(analysis.local_bpms)))
         again = rebuild_with_subdivision(analysis, analysis.subdivision)
@@ -1809,7 +1811,7 @@ class FallbackLagTests(unittest.TestCase):
         cls._tmp = tempfile.TemporaryDirectory()
         cls.path = Path(cls._tmp.name) / "ramp.wav"
         cls.clicks = _click_ramp(cls.path, 100.0, 140.0, 24.0)
-        cls.analysis = analyze_audio(cls.path)
+        cls.analysis = analyze_audio(cls.path, osu_conventions=False)
 
     @classmethod
     def tearDownClass(cls):
@@ -1832,7 +1834,7 @@ class FallbackLagTests(unittest.TestCase):
         from unittest import mock
         import overtone
         with mock.patch.object(overtone, "_tracker_lag", return_value=0.0):
-            unmoved = analyze_audio(self.path)
+            unmoved = analyze_audio(self.path, osu_conventions=False)
         moved, shift = self.analysis, self.analysis.beat_shift_s
         self.assertNotEqual(shift, 0.0)
         self.assertEqual(unmoved.beat_shift_s, 0.0)
@@ -1898,6 +1900,34 @@ class FallbackLagTests(unittest.TestCase):
         self.assertEqual(_tracker_lag(np.zeros(0, dtype=np.float32), sr, hits), 0.0)
 
 
+class LocalTempoTests(unittest.TestCase):
+    """The local-tempo tracker that replaces the v2 tracker's red lines."""
+
+    def test_a_song_that_doubles_gets_both_tempi(self):
+        # Beats at 130 BPM, then a double-time part at 260: two red lines.
+        from overtone import _beats_to_lines
+        beats = np.concatenate([0.5 + np.arange(40) * 60 / 130,
+                                0.5 + 40 * 60 / 130 + np.arange(80) * 60 / 260])
+        lines = _beats_to_lines(beats, 8.0)
+        self.assertEqual([round(b) for _, b in lines], [130, 260])
+
+    def test_the_path_takes_a_double_time_part(self):
+        # Window tempi: 130 strongest, then 260 strongest for a while.
+        from overtone import _tempo_path
+        slow = [(130.0, 0.9), (260.0, 0.5)]
+        fast = [(130.0, 0.5), (260.0, 0.9)]
+        path = _tempo_path([slow] * 5 + [fast] * 5 + [slow] * 5)
+        self.assertEqual([round(b) for b in path], [130] * 5 + [260] * 5 + [130] * 5)
+
+    def test_the_lines_follow_the_beats(self):
+        from overtone import _beats_to_lines
+        rng = np.random.default_rng(3)
+        beats = np.cumsum(np.full(200, 60 / 174)) + rng.normal(0, 0.0005, 200)
+        lines = _beats_to_lines(beats, 8.0)
+        self.assertEqual(len(lines), 1)
+        self.assertAlmostEqual(lines[0][1], 174.0, delta=0.05)
+
+
 class FallbackRebuildTests(unittest.TestCase):
     """A ×2 / ÷2 rebuild of a fallback result at its own pulse gives it back.
 
@@ -1919,7 +1949,7 @@ class FallbackRebuildTests(unittest.TestCase):
         y, sr = sf.read(str(cls.path), dtype="float32")
         y[6 * sr:9 * sr] = 0.0
         sf.write(str(cls.path), y, sr)
-        cls.analysis = analyze_audio(cls.path, engine="legacy")
+        cls.analysis = analyze_audio(cls.path, engine="legacy", osu_conventions=False)
 
     @classmethod
     def tearDownClass(cls):
@@ -1956,8 +1986,8 @@ class FallbackRebuildTests(unittest.TestCase):
         from unittest import mock
         import overtone
         with mock.patch.object(overtone, "_tracker_lag", return_value=0.0):
-            auto = analyze_audio(self.path, engine="legacy")
-            half = analyze_audio(self.path, engine="legacy", force_subdivision=0.5)
+            auto = analyze_audio(self.path, engine="legacy", osu_conventions=False)
+            half = analyze_audio(self.path, engine="legacy", force_subdivision=0.5, osu_conventions=False)
         self.assertEqual(half.subdivision, 1.0)
         self.assertSameResult(rebuild_with_subdivision(half, 2.0), auto)
 
@@ -1965,10 +1995,10 @@ class FallbackRebuildTests(unittest.TestCase):
         # Re-anchoring off leaves every beat where the tracker's split put it
         # (and reads no lag); a rebuild re-anchored them all regardless, so at
         # its own pulse every beat moved.
-        off = analyze_audio(self.path, engine="legacy", refine_beats=False)
+        off = analyze_audio(self.path, engine="legacy", refine_beats=False, osu_conventions=False)
         self.assertSameResult(rebuild_with_subdivision(off, off.subdivision), off)
         doubled = analyze_audio(self.path, engine="legacy", refine_beats=False,
-                                force_subdivision=2)
+                                force_subdivision=2, osu_conventions=False)
         self.assertSameResult(rebuild_with_subdivision(off, doubled.subdivision), doubled)
 
 

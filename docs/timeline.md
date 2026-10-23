@@ -20,6 +20,63 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-23 · local-tempo tracker for the songs v3 refuses
+
+### Changed
+
+- The songs the precision engine refuses no longer keep the v2 tracker's
+  red lines: `_local_tempo_track` reads tempo candidates from each 8 s window
+  of the onset envelope (autocorrelation peaks and their octaves), takes the
+  cheapest path through them (Viterbi: candidate strength, tempo jumps with an
+  exact octave cheap, distance outside 140-300 BPM, a slight preference for
+  the faster tempo), lets librosa's dynamic-programming beat tracker follow
+  that tempo curve (tightness 1000), moves the beats by the song's measured
+  envelope lag, and writes a red line wherever a beat leaves the current
+  line's refitted grid by more than 8 ms. x2 / /2 scale its lines
+  (`Analysis.local_tempo`). `osu_conventions=False` still returns the v2
+  tracker, which its tests and the golden vectors keep reading.
+
+### Fixed
+
+- Sledgehammer (The Fall of Troy, the owner's map, 244 red lines between 71
+  and 268 BPM) was read at ~128 BPM throughout: beats within 10 ms of the map
+  5.7 -> 57.7 %, within 20 ms 12.2 -> 65.8 %.
+
+### Hardening
+
+- The first version took each line's BPM from its first four beats: a tempo
+  change left a spurious line between the two tempi (130 -> 173 -> 260) and
+  noise split a steady stretch in two. Lines now grow beat by beat, refitted
+  on every beat they hold. Without the lag shift the beats sat 7.3 ms late on
+  the fallback ramp test (1.3 ms with it).
+
+### Measured
+
+- On the songs that take this path, beats within 10 ms of the map, v2
+  tracker -> local tempo (engine code), held out (60-song samples): S1 13.7
+  -> 63.1 %, S2 7.4 -> 60.9 %, S3 13.8 -> 45.7 %; dev (40): S1 3.4 -> 67.7 %,
+  S2 9.2 -> 53.4 %, S3 31.3 -> 70.3 %. These songs are 26 % of S2's maps and
+  30 % of S3's.
+- Against the precision engine on the songs it does time, the tracker is
+  worse (held out S1 82.0 vs 70.0 %, S2 65.2 vs 60.9 %), so it replaces only
+  the fallback.
+- real-audio: Calm Down Juliet 3 -> 102 red lines, beats within 10 ms of its
+  map 6.3 -> 81.2 %; re-pinned. Gates: 1016 Python tests, benchmark 24/24,
+  bpm-snapshot 24/24, golden 27/27 Python and Rust, perf within budget,
+  every other gate run passes; installer/notices.py not re-run (fails as on
+  master).
+
+### Rejected / tried and dropped
+
+- Phase from each window alone (the envelope maximised on a 48-step phase
+  sweep): the tempo was right more often but beats jumped at every window
+  seam -- S3 dev 31.3 -> ~21 %.
+- Section octave from half-beat density: map-doubled segments do show fuller
+  half beats (0.87 against 0.58), but map-halved ones do too (0.93), and on
+  Sledgehammer the midpoint-to-beat ratio did not separate its 130 and 260
+  parts at all.
+- Tightness 3000-30000 and a stronger fast bias (0.2-0.5): all worse on dev.
+
 ## Unreleased — 2026-10-23 · drift following on, with a 10 % guard
 
 ### Changed

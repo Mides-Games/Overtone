@@ -156,6 +156,9 @@ class Analysis:
     # base_frames stay where the tracker put them. 0 for the precision
     # engine, which re-times every attack on the waveform instead.
     beat_shift_s: float = 0.0
+    #: True when the red lines came from the local-tempo tracker
+    #: (_local_tempo_track): x2 / /2 then scale those lines, not the v2 grid.
+    local_tempo: bool = False
     # The subdivision of base_frames the fallback tracker chose by itself
     # (pulse Auto), before any factor the user asked for. Away from it a beat
     # with no peak under it is held where the split put it, in the analysis
@@ -3186,7 +3189,11 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
         say("No fittable grid — falling back to the beat tracker…" + failure)
     analysis = _legacy_analysis(path, y, sr, min_delta, persistence, prefer_map_bpm,
                                 min_confidence, say, float(force_subdivision), refine_beats)
-    return analysis if force_subdivision or not prefer_map_bpm or not osu_conventions else         _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
+    if force_subdivision or not prefer_map_bpm or not osu_conventions:
+        return analysis
+    tracked = _local_tempo_track(analysis)
+    return tracked if tracked is not None else \
+        _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
 
 
 def _fold_to_map_octave(analysis: Analysis, min_delta: float, persistence: int,
@@ -3381,6 +3388,183 @@ def _follow_drift(analysis: Analysis) -> Analysis:
     return replace(analysis, points=points, beats=_beats_of(merged, duration))
 
 
+#: The local-tempo tracker, for the songs the precision engine refuses (Phase
+#: 10, 2026-10-23). The v2 tracker held one tempo near its prior, so a song
+#: that moves between 130, 180 and 260 BPM (Sledgehammer) came out at ~128
+#: throughout. Each LOCAL_WINDOW_S window of the onset envelope offers its
+#: autocorrelation tempi and their octaves; a Viterbi path trades candidate
+#: strength against tempo jumps (an exact octave jump is cheap: mappers double
+#: a double-time section) and distance outside LOCAL_RANGE_BPM; librosa's
+#: dynamic-programming beat tracker then follows that tempo curve, and the
+#: beats become red lines wherever their spacing leaves the line's grid by more
+#: than LOCAL_LINE_TOL_MS. Chosen on 40-song dev samples; held out (60 songs a
+#: stage), beats within 10 ms on the songs that take this path: anime one tempo
+#: 13.7 -> 73.4 %, anime tempo changes 7.4 -> 66.1 %, bands 13.8 -> 43.1 %.
+#: On songs the precision engine times it is worse (82.0 -> 70.0 % on anime),
+#: so it replaces only the fallback.
+LOCAL_WINDOW_S = 8.0
+LOCAL_HOP_S = 4.0
+LOCAL_RANGE_BPM = (140.0, 300.0)
+#: bias: a little cheaper the faster the tempo, as mappers time a
+#: double-time part at the speed the drums play (S3 dev 56.4 -> 66.4 %).
+LOCAL_COSTS = {"jump": 0.5, "octave": 0.2, "prior": 0.6, "bias": 0.1}
+LOCAL_TIGHTNESS = 1000.0
+LOCAL_LINE_TOL_MS = 8.0
+
+
+def _window_tempi(env: np.ndarray, fps: float, k: int = 6) -> list[tuple[float, float]]:
+    """A window's autocorrelation tempi (bpm, strength) and their octaves."""
+    lo_bpm, hi_bpm = 55.0, 330.0
+    seg = env - env.mean()
+    if seg.size < 8 or not np.any(seg):
+        return []
+    n = seg.size
+    spec = np.fft.rfft(seg, 2 * n)
+    ac = np.fft.irfft(spec * np.conj(spec))[:n]
+    ac = ac / max(float(ac[0]), 1e-12)
+    out = []
+    for i in range(max(int(60 * fps / hi_bpm), 2), min(n - 2, int(np.ceil(60 * fps / lo_bpm)))):
+        if ac[i] > ac[i - 1] and ac[i] >= ac[i + 1] and ac[i] > 0:
+            d = 0.5 * (ac[i - 1] - ac[i + 1]) / (ac[i - 1] - 2 * ac[i] + ac[i + 1] + 1e-12)
+            out.append((60 * fps / (i + d), float(ac[i])))
+    out.sort(key=lambda c: -c[1])
+    out = out[:k]
+    extra = []
+    for bpm, strength in out:
+        for f in (0.5, 2.0):
+            if lo_bpm <= bpm * f <= hi_bpm and not any(abs(bpm * f / b - 1) < 0.03 for b, _ in out):
+                extra.append((bpm * f, 0.6 * strength))
+    return out + extra
+
+
+def _tempo_path(cands: list[list[tuple[float, float]]]) -> list[float]:
+    """The cheapest tempo per window (Viterbi), as LOCAL_COSTS weigh it."""
+    lo, hi = LOCAL_RANGE_BPM
+
+    def node(bpm: float, strength: float) -> float:
+        return (-strength + LOCAL_COSTS["prior"] * (max(0.0, np.log2(lo / bpm))
+                                                    + max(0.0, np.log2(bpm / hi)))
+                - LOCAL_COSTS["bias"] * np.log2(bpm / 120.0))
+
+    def trans(a: float, b: float) -> float:
+        r = abs(np.log2(b / a))
+        return LOCAL_COSTS["octave"] if abs(r - 1.0) < 0.04 else LOCAL_COSTS["jump"] * r
+
+    cost = [node(b, s) for b, s in cands[0]]
+    back = []
+    for w in range(1, len(cands)):
+        new, ptr = [], []
+        for b, s in cands[w]:
+            best = min(range(len(cands[w - 1])),
+                       key=lambda i: cost[i] + trans(cands[w - 1][i][0], b))
+            new.append(cost[best] + trans(cands[w - 1][best][0], b) + node(b, s))
+            ptr.append(best)
+        cost = new
+        back.append(ptr)
+    i = int(np.argmin(cost))
+    path = [i]
+    for ptr in reversed(back):
+        i = ptr[i]
+        path.append(i)
+    path.reverse()
+    return [cands[w][path[w]][0] for w in range(len(cands))]
+
+
+def _beats_to_lines(beats: np.ndarray, tol_ms: float) -> list[tuple[float, float]]:
+    """Red lines through beat times (s). A line grows beat by beat, refitted
+    on every beat it holds, while the next beat lands within ``tol_ms`` of
+    where the fit puts it; the beat that does not starts the next line."""
+    lines: list[tuple[float, float]] = []
+    n = beats.size
+    i = 0
+    while i < n - 1:
+        k = i + 1                         # the line holds beats[i..k]
+        while k + 1 < n:
+            idx = np.arange(k - i + 1)
+            if k - i >= 2:
+                slope, icpt = np.polyfit(idx, beats[i:k + 1], 1)
+            else:
+                slope, icpt = beats[k] - beats[i], beats[i]
+            if abs(icpt + slope * (k - i + 1) - beats[k + 1]) * 1000.0 > tol_ms:
+                break
+            k += 1
+        idx = np.arange(k - i + 1)
+        if k - i >= 2:
+            slope, icpt = np.polyfit(idx, beats[i:k + 1], 1)
+        else:
+            slope, icpt = beats[k] - beats[i], beats[i]
+        lines.append((float(icpt) * 1000.0, 60.0 / float(slope)))
+        i = k + 1 if k - i < 1 else k
+        if i == k and k + 1 >= n:
+            break
+    merged = lines[:1]
+    for offset, bpm in lines[1:]:
+        last_offset, last_bpm = merged[-1]
+        step = 60000.0 / last_bpm
+        if (abs(bpm / last_bpm - 1) < 0.002
+                and abs(last_offset + round((offset - last_offset) / step) * step - offset) < 2.0):
+            continue
+        merged.append((offset, bpm))
+    return merged
+
+
+def _local_tempo_track(analysis: Analysis) -> Analysis | None:
+    """Red lines for a fallback analysis from a tempo that may move."""
+    env = np.asarray(analysis.onset, dtype=float)
+    fps = analysis.sample_rate / analysis.hop_length
+    duration = float(analysis.duration)
+    if env.size < 4 or duration < LOCAL_WINDOW_S or not analysis.points:
+        return None
+    starts = np.arange(0.0, duration - LOCAL_WINDOW_S + 1e-9, LOCAL_HOP_S)
+    cands = [_window_tempi(env[int(lo * fps):int((lo + LOCAL_WINDOW_S) * fps)], fps)
+             for lo in starts]
+    good = [c for c in cands if c]
+    if not good:
+        return None
+    cands = [c if c else good[0] for c in cands]
+    curve = np.interp(np.arange(env.size) / fps, starts + LOCAL_WINDOW_S / 2, _tempo_path(cands))
+    _, beats = librosa.beat.beat_track(onset_envelope=env, sr=analysis.sample_rate,
+                                       hop_length=analysis.hop_length, bpm=curve,
+                                       tightness=LOCAL_TIGHTNESS, units="time")
+    # The envelope's peaks lag the attacks; the v2 tracker read that lag on
+    # the waveform for this song (beat_shift_s) and the same lag applies here.
+    beats = np.asarray(beats, dtype=float) + float(getattr(analysis, "beat_shift_s", 0.0))
+    if beats.size < 8:
+        return None
+    lines = _beats_to_lines(beats, LOCAL_LINE_TOL_MS)
+    if not lines:
+        return None
+    points = []
+    for offset, bpm in lines:
+        governing = analysis.points[0]
+        for point in analysis.points:
+            if point.offset_ms <= offset:
+                governing = point
+        points.append(replace(governing, offset_ms=float(offset), bpm=float(bpm)))
+    bpms = np.array([p.bpm for p in points])
+    spans = np.diff([p.offset_ms for p in points] + [duration * 1000.0])
+    return replace(analysis, points=points, beats=beats, local_tempo=True,
+                   global_bpm=_weighted_median(bpms, np.maximum(spans, 1e-6)))
+
+
+def _rescale_local(analysis: Analysis, factor: float) -> Analysis:
+    """A local-tempo analysis read at another pulse: every line's BPM scaled,
+    beats split or thinned; the same factor back gives the analysis back."""
+    ratio = factor / (float(analysis.subdivision) or 1.0)
+    if ratio == 1.0:
+        return analysis
+    beats = np.asarray(analysis.beats, dtype=float)
+    if ratio > 1.0 and beats.size > 1:
+        m = int(round(ratio))
+        steps = np.arange(m) / m
+        beats = (beats[:-1, None] + np.diff(beats)[:, None] * steps).ravel()
+    elif ratio < 1.0:
+        beats = beats[::int(round(1.0 / ratio))]
+    points = [replace(p, bpm=p.bpm * ratio) for p in analysis.points]
+    return replace(analysis, points=points, beats=beats, subdivision=factor,
+                   global_bpm=float(analysis.global_bpm) * ratio)
+
+
 def _swings(analysis: Analysis) -> bool:
     """Whether most of the song's swing-lane windows swing or play triplets."""
     try:
@@ -3444,6 +3628,8 @@ def rebuild_with_subdivision(analysis: Analysis, factor: float,
     if float(factor) not in ALLOWED_FACTORS:
         raise ValueError(f"Subdivision factor must be one of {sorted(ALLOWED_FACTORS)}.")
     factor = float(factor)
+    if getattr(analysis, "local_tempo", False):
+        return _rescale_local(analysis, factor)
     if analysis.sections:
         fit = {"times": analysis.attack_times, "weights": analysis.attack_weights,
                "env": analysis.onset, "sections": analysis.sections,

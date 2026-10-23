@@ -20,6 +20,45 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-23 · S1: the whole BPM mappers use
+
+### Changed
+
+- After the octave, each section is read at the whole BPM beside it (within
+  0.5) when its attacks agree: the whole-BPM grid, its phase refitted, must
+  keep 95 % of the inliers and fit within x1.2 + 0.5 ms of the section's own
+  RMS (`_snap_whole_bpm`). A fractional BPM the music has (decimal-128.37)
+  fits clearly better and is kept.
+- `analyze_audio(..., osu_conventions=False)` returns the engine's own
+  reading. The golden harness uses it, so the vectors pin the engine and the
+  Rust port is compared on what it computes; `overtone_rust.analyze` applies
+  the same octave and whole-BPM conventions to the Rust result.
+
+### Fixed
+
+- Nothing beyond the above.
+
+### Hardening
+
+- The Rust engine now gets the octave fold too (it had none since S1's
+  first step); the two tests that compare its BPM with v3's pass again.
+
+### Measured
+
+- S1 `anime-single`, against the 2026-10-22 baseline. Held out: tempo ok
+  58.9 -> 64.1 % (60.9 after the octave step), conv. 5 ms 24.1 -> 33.2 %,
+  conv. 10 ms 47.0 -> 50.4 %, raw joint 5 ms 0.0 -> 0.9 %, octave 75.2 ->
+  85.2 % (86.3 % in the octave step's run; the 1-point gap is not traced).
+  Dev: tempo ok 60.1 -> 68.3 %, conv. 10 ms 50.2 -> 56.7 %. Simulated on
+  cached analyses before the change: dev 63.9 -> 74.9 % if every BPM were
+  rounded; the evidence check gives up part of that to keep real fractions.
+- Corpus A: benchmark 24/24, median 0.0000 BPM, offset 0.16 -> 0.14 ms;
+  bpm-snapshot 24/24 unchanged; golden 27/27 Python and Rust (vectors
+  identical to before, now taken without conventions); real-audio re-pinned:
+  Take You Down 174.0156 -> 174.0, Shinkou 189.98 -> 190.0, Noble
+  163.97 -> 164.0, Palette 179.97 -> 180.0, each its map's BPM. 1012 Python
+  tests pass.
+
 ## Unreleased — 2026-10-22 · S1: the beat octave osu! maps use
 
 ### Changed

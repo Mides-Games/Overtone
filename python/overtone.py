@@ -3118,7 +3118,7 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
                   min_confidence: float = 0.75,
                   progress: Callable[[str], None] | None = None,
                   force_subdivision: float = 0, refine_beats: bool = True,
-                  engine: str = "auto") -> Analysis:
+                  engine: str = "auto", osu_conventions: bool = True) -> Analysis:
     """Analyse an audio file and return stable timing points.
 
     Most common formats work when libsndfile supports them. For MP3/M4A and
@@ -3132,6 +3132,10 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
     ``force_subdivision`` multiplies the detected beat rate (0 = auto; 0.5
     halves it, 2 doubles it). Use it when you *know* the song's octave — e.g.
     a 225 BPM stream reported as 112 BPM — or from the GUI pulse selector.
+    ``osu_conventions`` reads the result as osu! maps are timed: at the octave
+    in MAP_OCTAVE_RANGE and at the whole BPM where the attacks agree. Off, the
+    engine's own reading comes back -- what the golden vectors pin, since the
+    Rust engine gets the same conventions from overtone_rust.py.
     ``refine_beats`` re-times every attack on the raw waveform at sample
     resolution (and moves the fallback tracker's beats by the lag read that
     way); disable it only to diagnose whether that snapping drifts.
@@ -3160,14 +3164,17 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
         if fit is not None:
             analysis = _assemble_analysis(path, y, sr, fit, min_delta, persistence,
                                           min_confidence, factor)
-            return analysis if force_subdivision or not prefer_map_bpm else                 _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
+            if force_subdivision or not prefer_map_bpm or not osu_conventions:
+                return analysis
+            analysis = _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
+            return _snap_whole_bpm(analysis, min_delta, persistence, min_confidence)
         if engine == "precision":
             raise ValueError(
                 "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
         say("No fittable grid — falling back to the beat tracker…" + failure)
     analysis = _legacy_analysis(path, y, sr, min_delta, persistence, prefer_map_bpm,
                                 min_confidence, say, float(force_subdivision), refine_beats)
-    return analysis if force_subdivision or not prefer_map_bpm else         _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
+    return analysis if force_subdivision or not prefer_map_bpm or not osu_conventions else         _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
 
 
 def _fold_to_map_octave(analysis: Analysis, min_delta: float, persistence: int,
@@ -3197,6 +3204,64 @@ def _fold_to_map_octave(analysis: Analysis, min_delta: float, persistence: int,
         # every other "beat" would land on nothing (shuffle-96 read at 192).
         return analysis
     return rebuild_with_subdivision(analysis, target, min_delta, persistence, min_confidence)
+
+
+#: How far a section's BPM may sit from a whole number and still be tried on
+#: it, and how much worse the whole-number grid may fit its attacks. Mappers
+#: time anime songs at whole BPMs (97 % of the S1 misses, 2026-10-23), and a
+#: least-squares fit over a short section lands a few tenths away from them.
+WHOLE_BPM_REACH = 0.5
+WHOLE_BPM_SLACK = (1.2, 0.5)        # rms may grow x1.2 + 0.5 ms
+
+
+def _grid_rms(times: np.ndarray, weights: np.ndarray, period: float,
+              phase: float) -> tuple[float, float, int]:
+    """(rms ms, best phase, inliers) of a grid with its phase refitted."""
+    k = np.round((times - phase) / period)
+    res = times - (phase + k * period)
+    inlier = np.abs(res) <= 0.15 * period
+    if int(inlier.sum()) < 8:
+        return float("inf"), phase, 0
+    w = weights[inlier]
+    shift = float(np.average(res[inlier], weights=w))
+    res = res[inlier] - shift
+    return float(np.sqrt(np.average(res ** 2, weights=w)) * 1000.0), phase + shift, int(inlier.sum())
+
+
+def _snap_whole_bpm(analysis: Analysis, min_delta: float, persistence: int,
+                    min_confidence: float) -> Analysis:
+    """Read each section at the whole BPM next to it when its attacks agree.
+
+    A fractional BPM the music really has (decimal-128.37) fits its attacks
+    clearly better than the whole number beside it and is kept; a section a
+    few tenths off a whole BPM only because its fit was short is moved.
+    """
+    if not analysis.sections:
+        return analysis
+    factor = float(analysis.subdivision) or 1.0
+    times = np.asarray(analysis.attack_times, dtype=float)
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    grow, add = WHOLE_BPM_SLACK
+    changed, out = False, []
+    for section in analysis.sections:
+        shown = section.bpm * factor
+        whole = round(shown)
+        if whole <= 0 or abs(shown - whole) > WHOLE_BPM_REACH or abs(shown - whole) < 1e-6:
+            out.append(section)
+            continue
+        window = (times >= section.start_s) & (times <= section.end_s)
+        rms, _, n = _grid_rms(times[window], weights[window], section.period, section.phase)
+        period = 60.0 / (whole / factor)
+        rms2, phase2, n2 = _grid_rms(times[window], weights[window], period, section.phase)
+        if n and n2 >= 0.95 * n and rms2 <= rms * grow + add:
+            out.append(replace(section, period=period, phase=phase2))
+            changed = True
+        else:
+            out.append(section)
+    if not changed:
+        return analysis
+    return rebuild_with_subdivision(replace(analysis, sections=out), factor,
+                                    min_delta, persistence, min_confidence)
 
 
 def _swings(analysis: Analysis) -> bool:

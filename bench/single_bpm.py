@@ -76,7 +76,13 @@ def engine_fingerprint(engine: str, cli: Path | None) -> str:
         files += [ROOT / "python" / "overtone_rust.py", cli]
     digest = hashlib.sha1(f"single_bpm cache {CACHE_FORMAT}".encode())
     for path in files:
-        digest.update(cb.sha1_file(path).encode())
+        if path.suffix == ".py":
+            # By content, not bytes: git rewrites line endings on checkout, and
+            # a commit should not throw away hours of cached analyses.
+            text = path.read_bytes().replace(b"\r\n", b"\n")
+            digest.update(hashlib.sha1(text).hexdigest().encode())
+        else:
+            digest.update(cb.sha1_file(path).encode())
     return digest.hexdigest()[:16]
 
 

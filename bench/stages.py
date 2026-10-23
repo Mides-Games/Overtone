@@ -37,6 +37,8 @@ import hashlib
 import json
 import sqlite3
 import statistics
+
+import numpy as np
 import sys
 import time
 from datetime import datetime, timezone
@@ -105,10 +107,52 @@ def score_song(song: dict, analysis: dict) -> list[dict]:
         if not reds:
             continue
         rows = cb.score_track(reds, detected)
+        d_map, d_eng = beat_distances(reds, detected, analysis.get("duration_s") or 0.0)
         out.append({"file": entry["file"], "folder": song["folder"], "split": song["split"],
                     "path": analysis["path"], "map_lines": len(reds),
-                    "detected_lines": len(detected), "rows": rows})
+                    "detected_lines": len(detected), "rows": rows,
+                    "d_map": d_map, "d_eng": d_eng})
     return out
+
+
+def beat_distances(reds, detected, duration_s: float) -> tuple[np.ndarray, np.ndarray]:
+    """Beat by beat, from the map's first red line to the song's end: each
+    map beat's signed distance to the nearest engine beat (ms, positive when
+    the engine is late), and each engine beat's to the nearest map beat with
+    the same sign. The first says how many map beats the engine has (recall),
+    the second how many engine beats are real (precision: a grid read at
+    double time has every other beat on nothing)."""
+    empty = np.zeros(0)
+    if not detected or duration_s <= 0:
+        return empty, empty
+    start = reds[0][0] / 1000.0
+    mb = np.asarray([t for t in cb.grid_beats(reds, duration_s) if t >= start - 1e-6]) * 1000.0
+    eb = np.asarray([t for t in cb.grid_beats(detected, duration_s) if t >= start - 1e-6]) * 1000.0
+    if mb.size == 0 or eb.size == 0:
+        return empty, empty
+
+    def nearest(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
+        i = np.clip(np.searchsorted(dst, src), 1, dst.size - 1) if dst.size > 1 else np.zeros(src.size, int)
+        left, right = dst[np.maximum(i - 1, 0)], dst[i]
+        return np.where(np.abs(left - src) <= np.abs(right - src), left, right) - src
+
+    return nearest(mb, eb), -nearest(eb, mb)
+
+
+def beat_f(m: dict, tol_ms: float, shift_ms: float) -> float:
+    """F-measure of the engine's beats against the map's at ``tol_ms``."""
+    if m["d_map"].size == 0 or m["d_eng"].size == 0:
+        return 0.0
+    recall = float(np.mean(np.abs(m["d_map"] - shift_ms) <= tol_ms))
+    precision = float(np.mean(np.abs(m["d_eng"] - shift_ms) <= tol_ms))
+    return 0.0 if recall + precision == 0 else 2 * recall * precision / (recall + precision)
+
+
+def beat_convention(maps: list[dict]) -> float:
+    """The median signed beat distance within 50 ms, over the dev maps."""
+    d = np.concatenate([m["d_map"] for m in maps if m["d_map"].size] or [np.zeros(0)])
+    d = d[np.abs(d) <= 50]
+    return float(np.median(d)) if d.size else 0.0
 
 
 def tempo_ok(m: dict) -> bool:
@@ -128,7 +172,7 @@ def convention(maps: list[dict]) -> float:
     return statistics.median(errors) if errors else 0.0
 
 
-def summarise(maps: list[dict], shift_ms: float) -> dict:
+def summarise(maps: list[dict], shift_ms: float, beat_shift_ms: float = 0.0) -> dict:
     n = len(maps)
     songs = {m["folder"] for m in maps}
     octaves: dict[str, int] = {}
@@ -151,6 +195,11 @@ def summarise(maps: list[dict], shift_ms: float) -> dict:
         return statistics.mean(sum(map(pred, ms)) / len(ms) for ms in per_song.values())
 
     errors = [r["error_ms"] for m in maps for r in m["rows"] if r["error_ms"] is not None]
+    # Red line by red line: on a map with tempo changes, how many of its lines
+    # the engine has right, not only whether it has all of them.
+    lines = [r for m in maps for r in m["rows"]]
+    line_ok = [r for r in lines if r["octave"] == 1 and r["bpm_error"] is not None
+               and r["bpm_error"] <= BPM_BAR]
     return {
         "maps": n, "songs": len(songs),
         "answered": sum(m["path"] not in ("refused", "error") for m in maps),
@@ -162,6 +211,12 @@ def summarise(maps: list[dict], shift_ms: float) -> dict:
         "song_tempo_ok": song_share(tempo_ok),
         "song_conv_10": song_share(lambda m: joint(m, 10, shift_ms)),
         "line_count_match": share(lambda m: m["map_lines"] == m["detected_lines"]),
+        "beat_f10": (statistics.mean(beat_f(m, 10, beat_shift_ms) for m in maps) if maps else None),
+        "beat_f20": (statistics.mean(beat_f(m, 20, beat_shift_ms) for m in maps) if maps else None),
+        "lines": len(lines),
+        "line_tempo_ok": len(line_ok) / len(lines) if lines else None,
+        "line_conv_10": (sum(abs(r["error_ms"] - shift_ms) <= 10 for r in line_ok) / len(lines)
+                         if lines else None),
         "signed_error_ms": cb.quartiles(errors),
         "octaves": dict(sorted(octaves.items())),
     }
@@ -183,6 +238,10 @@ def print_summary(title: str, s: dict, base: dict | None = None) -> None:
           f" | octave x1 {cell('octave_x1')} % | joint 5 ms {cell('joint_5')} %"
           f" | conv 5 {cell('conv_5')} % | conv 10 {cell('conv_10')} %"
           f" | lines match {cell('line_count_match')} % | signed {signed} ms")
+    print(f"  {'':<9} beats (F, convention off): within 10 ms {cell('beat_f10')} %,"
+          f" within 20 ms {cell('beat_f20')} %")
+    print(f"  {'':<9} red lines {s['lines']}: tempo ok {cell('line_tempo_ok')} %,"
+          f" conv 10 {cell('line_conv_10')} %")
     print(f"  {'':<9} per song: tempo ok {pct(s['song_tempo_ok'])} %, conv 10 {pct(s['song_conv_10'])} %;"
           f" answered {s['answered']}/{s['maps']}; octaves "
           + ", ".join(f"{k} {v}" for k, v in s["octaves"].items()))
@@ -250,8 +309,10 @@ def main(argv: list[str] | None = None) -> int:
     dev = [m for m in maps if m["split"] == "dev"]
     held = [m for m in maps if m["split"] == "holdout"]
     shift = convention(dev)
-    summary = {"dev": summarise(dev, shift), "holdout": summarise(held, shift),
-               "convention_ms": shift}
+    beat_shift = beat_convention(dev)
+    summary = {"dev": summarise(dev, shift, beat_shift),
+               "holdout": summarise(held, shift, beat_shift),
+               "convention_ms": shift, "beat_convention_ms": beat_shift}
 
     out = OUT_DIR / f"{stage['id']}-{args.engine}.json"
     base_path = OUT_DIR / f"{stage['id']}-{args.engine}-baseline.json"
@@ -281,7 +342,8 @@ def main(argv: list[str] | None = None) -> int:
     payload = {"stage": stage, "engine": args.engine, "fingerprint": fingerprint,
                "run": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                "summary": summary, "skipped": skipped,
-               "maps": [{k: v for k, v in m.items() if k != "rows"} | {
+               "maps": [{k: v for k, v in m.items() if k not in ("rows", "d_map", "d_eng")} | {
+                   "beat_f10": beat_f(m, 10, beat_shift),
                    "tempo_ok": tempo_ok(m), "conv_10": joint(m, 10, shift),
                    "first": m["rows"][0]} for m in maps]}
     OUT_DIR.mkdir(parents=True, exist_ok=True)

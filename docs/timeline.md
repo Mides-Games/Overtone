@@ -20,6 +20,81 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-23 · S2/S3 baselines and drift following
+
+### Changed
+
+- `bench/stages.py` scores beats as well as red lines: the beat F-measure at
+  10 and 20 ms (map beats the engine has, engine beats that are real), after
+  a beat convention fitted on dev; and red line by red line. On a map with a
+  line every two beats, "every line within 0.05 BPM" says little about
+  whether it can be mapped; the beats do.
+- Drift following (`_follow_drift`, after the octave and whole-BPM
+  conventions, in both engines through `overtone_rust.analyze`): the grid is
+  re-fitted every 96 beats on that window's attacks, each window moving the
+  tempo by at most 3 %, and a red line written where it moved. Kept only when
+  the fixed and the followed grids part by more than 15 ms (90th percentile)
+  and the followed one fits the attacks better. Each new line inherits its
+  meter and confidence from the red line it replaces; the first starts at the
+  first attack, whole bars before the first red line.
+- `single_bpm.engine_fingerprint` hashes the engine's Python by content with
+  line endings normalised, so a commit no longer invalidates every cached
+  analysis.
+
+### Fixed
+
+- Nothing beyond the above.
+
+### Hardening
+
+- Drift following never runs without the two guards: with neither, anime
+  single-tempo songs lost 6 points of beats within 10 ms on dev.
+- The first followed line starts at the first attack: started at the first
+  red line (which can sit 93 s in, as on the new test's ramp), the music
+  before it kept the fixed grid.
+
+### Measured
+
+- Baselines, held out (beats within 10 / 20 ms, red lines with the right
+  tempo): S2 anime-variable 42.7 / 56.4 %, 18.9 %; S3 bands-variable
+  25.9 / 35.6 %, 2.5 %, octave 62.0 %. The maps of S2 have a median 10 red
+  lines and 8 changes; 1,060 of their 1,388 tempo segments are shorter than
+  4 beats, and the engine wrote a median of 1 line.
+- Drift following on seeded 60-song held-out samples (chosen on 40-song dev
+  samples), beats within 10 ms: S1 62.2 -> 76.8 %, S2 48.2 -> 53.9 %, S3
+  26.9 -> 30.3 % (within 20 ms: 71.4 -> 87.1, 63.0 -> 73.0, 40.8 -> 48.2 %).
+- Full-stage numbers with drift following: not measured (the run was
+  stopped at the owner's request). On the real-audio gate drift following
+  took Take You Down from 1 red line and 99.9 % of beats within 10 ms to 5
+  lines and 81.9 %, and Noble from 40.7 to 58.9 %: its guard lets a steady
+  song through, so it ships **off** (`DRIFT_FOLLOW = False`,
+  `analyze_audio(follow_drift=True)` to try it). With it on, the suite passed
+  1013/1013, benchmark 24/24, bpm-snapshot 24/24, golden 27/27 in Python and
+  Rust, signatures 6/6, reference 24/24. The final gate run after switching
+  it off was cut short at the owner's request: not run.
+
+### Pending (next session)
+
+- Re-run every gate in CLAUDE.md on master with drift following off.
+- Fix drift following's guard so steady songs are spared (Take You Down),
+  then measure S1, S2 and S3 in full with `bench/stages.py --compare` and
+  turn it on only if all three improve held out and real-audio holds.
+- S3 bands: held-out octave 62 % -- octave choice on songs with tempo
+  changes; tempo segments shorter than 4 beats (76 % of S2's).
+- S1: the phase (10.0e/f); the 1-point octave gap between two S1 runs.
+- Take You Down's bar line one beat early (10.4a).
+- `installer/notices.py --check` fails on master (Tcl/Tk 8.6 notice).
+
+### Rejected / tried and dropped
+
+- Smaller section thresholds (min delta 1.0 / 0.5 BPM, persistence 6 / 4
+  beats) on 40 S2 dev songs: beats within 10 ms 37.2 -> 38.4 / 36.6 %, and
+  the engine still wrote a median of one line. The changes are drift, not
+  steps the section growth misses.
+- Following windows of 4 and 8 beats: they follow noise (S2 dev 36.2 and
+  41.4 % against 48.6 % at 32 beats); 24 to 128 beats were all better, 96
+  chosen on dev.
+
 ## Unreleased — 2026-10-23 · S1: the whole BPM mappers use
 
 ### Changed

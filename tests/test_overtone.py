@@ -1683,6 +1683,45 @@ class SparseNoiseRefusalTests(unittest.TestCase):
             forced = analyze_audio(Path(tmp) / "click90.wav", force_subdivision=1.0)
             self.assertAlmostEqual(forced.global_bpm, 90.0, places=1)
 
+    def test_a_drifting_tempo_gets_red_lines_that_follow_it(self):
+        # DRIFT_*: a pulse that slows from 150 to 146 BPM over three minutes
+        # leaves a fixed grid by far more than 15 ms; followed, it stays
+        # several times closer to the clicks. A steady pulse keeps one line.
+        import soundfile as sf
+        sr = 44100
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "drift.wav"
+            duration = 180.0
+            y = np.zeros(int(sr * duration), dtype=np.float32)
+            t = np.arange(int(0.04 * sr)) / sr
+            kick = (np.sin(2 * np.pi * 160 * t) * np.exp(-t / 0.006)).astype(np.float32)
+            clicks, tt = [], 0.25
+            while tt < duration - 0.2:
+                y[int(tt * sr):int(tt * sr) + kick.size] += kick
+                clicks.append(tt)
+                tt += 60.0 / (150.0 - 4.0 * tt / duration)
+            sf.write(str(path), y, sr)
+            followed = analyze_audio(path, follow_drift=True)
+            fixed = analyze_audio(path, osu_conventions=False)
+            self.assertGreater(len(followed.points), len(fixed.points))
+            from overtone import _beats_of
+            clicks = np.asarray(clicks)
+
+            def apart(analysis):
+                beats = _beats_of([(p.offset_ms, p.bpm) for p in analysis.points], duration)
+                i = np.clip(np.searchsorted(beats, clicks), 1, beats.size - 1)
+                return np.minimum(np.abs(beats[i - 1] - clicks), np.abs(beats[i] - clicks)) * 1000
+
+            # A ramp keeps moving inside every window, so the followed grid is
+            # not exact; it must still be several times closer than the fixed one.
+            self.assertLess(np.median(apart(followed)), np.median(apart(fixed)) / 4)
+            self.assertLess(np.percentile(apart(followed), 90), np.percentile(apart(fixed), 90) / 2)
+            steady = Path(tmp) / "steady.wav"
+            _click_track(steady, 150.0, duration=60.0)
+            self.assertEqual(len(analyze_audio(steady, follow_drift=True).points), 1)
+            # Off by default (DRIFT_FOLLOW) until its guard spares steady songs.
+            self.assertEqual(len(analyze_audio(path).points), len(fixed.points))
+
     def test_the_chance_of_the_inliers(self):
         rng = np.random.default_rng(0)
         scattered = np.sort(rng.uniform(0.0, 30.0, 30))

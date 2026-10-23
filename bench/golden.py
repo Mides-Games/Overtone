@@ -182,7 +182,9 @@ def capture(name: str, audio_dir: Path, engine: str) -> dict:
         else:
             bm.build_track(path, seed=zlib.crc32(name.encode()), **bm.CASES[name])
     with _recording() as log:
-        analysis = ta.analyze_audio(str(path), engine=engine)
+        # The engine's own reading: the osu! conventions run after it, in both
+        # engines, and are pinned by bpm-snapshot and real-audio instead.
+        analysis = ta.analyze_audio(str(path), engine=engine, osu_conventions=False)
     log["result"] = {
         "engine": str(analysis.engine),
         "duration_s": round(float(analysis.duration), 4),

@@ -178,7 +178,15 @@ def analyze(path: str | os.PathLike[str], *, min_delta: float = 1.5, persistence
     if done.returncode != 0 or report is None:
         detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
         raise RuntimeError(f"The Rust engine failed (exit {done.returncode}): {detail}")
-    return analysis_from_report(report)
+    analysis = analysis_from_report(report)
+    if not prefer_map_bpm:
+        return analysis
+    # The same osu! conventions v3 applies after its own analysis: the mapped
+    # octave, the whole BPM where the attacks agree (and, when DRIFT_FOLLOW is on,
+    # red lines where it drifts).
+    analysis = ta._fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
+    analysis = ta._snap_whole_bpm(analysis, min_delta, persistence, min_confidence)
+    return ta._follow_drift(analysis) if ta.DRIFT_FOLLOW else analysis
 
 
 def attacks(path: str | os.PathLike[str], *, cli: Path | None = None,

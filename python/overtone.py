@@ -81,6 +81,18 @@ TARGET_SR = 44100
 HOP = 256  # ~5.8 ms at 44.1 kHz: timing-grid resolution suited to mapping.
 #: Pulse octaves the UI and CLI may force (1 = whatever the engine detected).
 ALLOWED_FACTORS = (0.25, 0.5, 1.0, 2.0, 4.0)
+#: The octave osu! songs are mapped at. Below it the engine has usually read
+#: half the mapper's beat, above it double: on the anime single-tempo stage
+#: (bench/stages.py, 2026-10-22) detections under 120 BPM were half the map in
+#: 227 of 249 dev maps and every one over 300 was double. Folding the global
+#: BPM into [120, 240] took the exact-octave share from 77.1 % to 95.2 % on dev,
+#: 75.8 % to 95.2 % held out, and 72.6 % to 86.8 % on every one-red-line map.
+MAP_OCTAVE_RANGE = (120.0, 240.0)
+#: Drift following (_follow_drift), off by default until its guard is fixed:
+#: on the real-audio gate it took Take You Down, a steady song whose single
+#: red line puts 99.9 % of beats within 10 ms, to 5 lines and 81.9 %, while
+#: Noble went 40.7 -> 58.9 %.
+DRIFT_FOLLOW = False
 
 
 # ---------------------------------------------------------------------------
@@ -2058,6 +2070,39 @@ def _beat_sections(atom_sections: list[GridSection], times: np.ndarray,
     return out
 
 
+def _one_octave(sections: list[GridSection], times: np.ndarray,
+                weights: np.ndarray) -> list[GridSection]:
+    """Read every section at the octave of the longest one.
+
+    Sections seed their own grids, and a near-tie can seed one at twice or
+    half the beat of its neighbours: on the anime single-tempo stage
+    (2026-10-22) songs came out as 145, 290, 145, 290 ... BPM, and the red
+    line written was the 290. Music changes tempo by a few BPM, not by an
+    octave, so a section a whole octave away is re-read at the longest
+    section's octave: a faster one keeps whichever of its beats carries the
+    accents, a slower one has its beat split.
+    """
+    if len(sections) < 2:
+        return sections
+    ref = max(sections, key=lambda s: s.end_s - s.start_s).period
+    out: list[GridSection] = []
+    for section in sections:
+        k = int(round(np.log2(ref / section.period)))
+        if k == 0:
+            out.append(section)
+            continue
+        period, phase = section.period, section.phase
+        if k > 0:                         # read too fast: keep the accented beat
+            m = 2 ** k
+            window = (times >= section.start_s - period) & (times <= section.end_s + period)
+            r = _phase_class(times[window], weights[window], period, phase, m)
+            period, phase = period * m, phase + r * period
+        else:                             # read too slow: split the beat
+            period = period / 2 ** (-k)
+        out.append(replace(section, period=period, phase=phase))
+    return out
+
+
 def _section_confidence(section: GridSection, persistence: int) -> float:
     beat_ms = section.period * 1000.0
     if beat_ms <= 0:
@@ -2509,6 +2554,7 @@ def _precision_engine(y: np.ndarray, sr: int, min_delta: float, persistence: int
     shift = int(np.floor((atom_sections[0].phase - atom_phase) / atom_period + 0.5))
     first_class = (first_class - shift) % max(m, 1)
     sections = _beat_sections(atom_sections, times, weights, m, first_class)
+    sections = _one_octave(sections, times, weights)
     sections = _settle_boundaries(times, weights, sections)
     meter_text, downbeat, bar_beats = _meter_from_grid(
         times, weights, sections[0].period, sections[0].phase)
@@ -3077,7 +3123,8 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
                   min_confidence: float = 0.75,
                   progress: Callable[[str], None] | None = None,
                   force_subdivision: float = 0, refine_beats: bool = True,
-                  engine: str = "auto") -> Analysis:
+                  engine: str = "auto", osu_conventions: bool = True,
+                  follow_drift: bool = DRIFT_FOLLOW) -> Analysis:
     """Analyse an audio file and return stable timing points.
 
     Most common formats work when libsndfile supports them. For MP3/M4A and
@@ -3091,6 +3138,12 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
     ``force_subdivision`` multiplies the detected beat rate (0 = auto; 0.5
     halves it, 2 doubles it). Use it when you *know* the song's octave — e.g.
     a 225 BPM stream reported as 112 BPM — or from the GUI pulse selector.
+    ``osu_conventions`` reads the result as osu! maps are timed: at the octave
+    in MAP_OCTAVE_RANGE and at the whole BPM where the attacks agree. Off, the
+    engine's own reading comes back -- what the golden vectors pin, since the
+    Rust engine gets the same conventions from overtone_rust.py.
+    ``follow_drift`` adds red lines where the tempo drifts (_follow_drift);
+    experimental, off by default (DRIFT_FOLLOW).
     ``refine_beats`` re-times every attack on the raw waveform at sample
     resolution (and moves the fallback tracker's beats by the lag read that
     way); disable it only to diagnose whether that snapping drifts.
@@ -3117,14 +3170,223 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
             # bug behind merely-worse numbers, so say what went wrong.
             fit, failure = None, f" ({type(exc).__name__}: {exc})"
         if fit is not None:
-            return _assemble_analysis(path, y, sr, fit, min_delta, persistence,
-                                      min_confidence, factor)
+            analysis = _assemble_analysis(path, y, sr, fit, min_delta, persistence,
+                                          min_confidence, factor)
+            if force_subdivision or not prefer_map_bpm or not osu_conventions:
+                return analysis
+            analysis = _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
+            analysis = _snap_whole_bpm(analysis, min_delta, persistence, min_confidence)
+            return _follow_drift(analysis) if follow_drift else analysis
         if engine == "precision":
             raise ValueError(
                 "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
         say("No fittable grid — falling back to the beat tracker…" + failure)
-    return _legacy_analysis(path, y, sr, min_delta, persistence, prefer_map_bpm,
-                            min_confidence, say, float(force_subdivision), refine_beats)
+    analysis = _legacy_analysis(path, y, sr, min_delta, persistence, prefer_map_bpm,
+                                min_confidence, say, float(force_subdivision), refine_beats)
+    return analysis if force_subdivision or not prefer_map_bpm or not osu_conventions else         _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
+
+
+def _fold_to_map_octave(analysis: Analysis, min_delta: float, persistence: int,
+                        min_confidence: float) -> Analysis:
+    """Read the analysis at the octave osu! maps use (MAP_OCTAVE_RANGE).
+
+    The grids are kept; only the pulse they are read at changes, exactly as
+    the ×2 / ÷2 quick fix does, so the user can still undo it there. A BPM
+    already in range, or one whose fold would leave ALLOWED_FACTORS, is
+    returned as it is.
+    """
+    bpm = float(analysis.global_bpm)
+    if not np.isfinite(bpm) or bpm <= 0:
+        return analysis
+    lo, hi = MAP_OCTAVE_RANGE
+    step = 1.0
+    # A hair of slack: 59.9999 BPM doubled is 120, not a reason to double again.
+    while bpm * step < lo - 0.01:
+        step *= 2.0
+    while bpm * step > hi + 0.01:
+        step /= 2.0
+    target = float(analysis.subdivision) * step
+    if step == 1.0 or target not in ALLOWED_FACTORS:
+        return analysis
+    if step > 1.0 and _swings(analysis):
+        # A swung beat's off-beat sits at two thirds, not halfway: doubled,
+        # every other "beat" would land on nothing (shuffle-96 read at 192).
+        return analysis
+    return rebuild_with_subdivision(analysis, target, min_delta, persistence, min_confidence)
+
+
+#: How far a section's BPM may sit from a whole number and still be tried on
+#: it, and how much worse the whole-number grid may fit its attacks. Mappers
+#: time anime songs at whole BPMs (97 % of the S1 misses, 2026-10-23), and a
+#: least-squares fit over a short section lands a few tenths away from them.
+WHOLE_BPM_REACH = 0.5
+WHOLE_BPM_SLACK = (1.2, 0.5)        # rms may grow x1.2 + 0.5 ms
+
+
+def _grid_rms(times: np.ndarray, weights: np.ndarray, period: float,
+              phase: float) -> tuple[float, float, int]:
+    """(rms ms, best phase, inliers) of a grid with its phase refitted."""
+    k = np.round((times - phase) / period)
+    res = times - (phase + k * period)
+    inlier = np.abs(res) <= 0.15 * period
+    if int(inlier.sum()) < 8:
+        return float("inf"), phase, 0
+    w = weights[inlier]
+    shift = float(np.average(res[inlier], weights=w))
+    res = res[inlier] - shift
+    return float(np.sqrt(np.average(res ** 2, weights=w)) * 1000.0), phase + shift, int(inlier.sum())
+
+
+def _snap_whole_bpm(analysis: Analysis, min_delta: float, persistence: int,
+                    min_confidence: float) -> Analysis:
+    """Read each section at the whole BPM next to it when its attacks agree.
+
+    A fractional BPM the music really has (decimal-128.37) fits its attacks
+    clearly better than the whole number beside it and is kept; a section a
+    few tenths off a whole BPM only because its fit was short is moved.
+    """
+    if not analysis.sections:
+        return analysis
+    factor = float(analysis.subdivision) or 1.0
+    times = np.asarray(analysis.attack_times, dtype=float)
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    grow, add = WHOLE_BPM_SLACK
+    changed, out = False, []
+    for section in analysis.sections:
+        shown = section.bpm * factor
+        whole = round(shown)
+        if whole <= 0 or abs(shown - whole) > WHOLE_BPM_REACH or abs(shown - whole) < 1e-6:
+            out.append(section)
+            continue
+        window = (times >= section.start_s) & (times <= section.end_s)
+        rms, _, n = _grid_rms(times[window], weights[window], section.period, section.phase)
+        period = 60.0 / (whole / factor)
+        rms2, phase2, n2 = _grid_rms(times[window], weights[window], period, section.phase)
+        if n and n2 >= 0.95 * n and rms2 <= rms * grow + add:
+            out.append(replace(section, period=period, phase=phase2))
+            changed = True
+        else:
+            out.append(section)
+    if not changed:
+        return analysis
+    return rebuild_with_subdivision(replace(analysis, sections=out), factor,
+                                    min_delta, persistence, min_confidence)
+
+
+#: Drift following (Phase 10, stage plan): a fixed grid slowly leaves a song
+#: whose tempo breathes, and mappers correct it with a red line every few
+#: bars. The grid is re-fitted every DRIFT_WINDOW_BEATS beats on that window's
+#: attacks and a red line written where it moved. Kept only when the fixed and
+#: the followed grids part by more than DRIFT_MIN_MS (90th percentile) AND the
+#: followed one fits the attacks better. Chosen on dev samples of the three
+#: stages (2026-10-23) and confirmed on held-out ones: beats within 10 ms of the
+#: map's, anime one tempo 62.2 -> 76.8 %, anime tempo changes 48.2 -> 53.9 %,
+#: live bands 26.9 -> 30.3 %. Windows of 4-8 beats followed noise, and with no
+#: guard single-tempo songs lost 6 points.
+DRIFT_WINDOW_BEATS = 96
+DRIFT_MIN_MS = 15.0
+DRIFT_MAX_STEP = 0.03       # a window may move the tempo by at most 3 %
+
+
+def _beats_of(lines: list[tuple[float, float]], duration_s: float) -> np.ndarray:
+    """Beat times (s) of red lines, the first run back to 0 s as osu! does."""
+    out: list[float] = []
+    for n, (offset, bpm) in enumerate(lines):
+        step = 60000.0 / bpm
+        end = lines[n + 1][0] if n + 1 < len(lines) else duration_s * 1000.0
+        k = -np.floor(offset / step) if n == 0 else 0.0
+        while offset + k * step < end:
+            out.append((offset + k * step) / 1000.0)
+            k += 1
+    return np.asarray(out, dtype=float)
+
+
+def _attack_rms_ms(beats: np.ndarray, times: np.ndarray, weights: np.ndarray) -> float:
+    """Weighted RMS of attacks to their nearest beat, within a quarter beat."""
+    if beats.size < 2 or times.size == 0:
+        return float("inf")
+    i = np.clip(np.searchsorted(beats, times), 1, beats.size - 1)
+    d = np.minimum(np.abs(beats[i - 1] - times), np.abs(beats[i] - times))
+    near = d <= 0.25 * float(np.median(np.diff(beats)))
+    if not near.any():
+        return float("inf")
+    return float(np.sqrt(np.average(d[near] ** 2, weights=weights[near])) * 1000.0)
+
+
+def _follow_drift(analysis: Analysis) -> Analysis:
+    """Write a red line wherever the song's tempo drifted off the fixed grid."""
+    if not analysis.sections or not analysis.points:
+        return analysis
+    times = np.asarray(analysis.attack_times, dtype=float)
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    factor = float(analysis.subdivision) or 1.0
+    duration = float(analysis.duration)
+    lines: list[tuple[float, float]] = []
+    for n, section in enumerate(analysis.sections):
+        period = section.period / factor
+        end = analysis.sections[n + 1].start_s if n + 1 < len(analysis.sections) else duration
+        if n == 0:
+            # Start at the first attack, a whole number of bars before the
+            # first red line, so the lines stay on the bar it proved.
+            first = analysis.points[0].offset_ms / 1000.0
+            t = section.phase + round((first - section.phase) / period) * period
+            if times.size:
+                bar = max(1, int(analysis.points[0].meter)) * period
+                t -= max(0.0, np.floor((t - times[0]) / bar)) * bar
+        else:
+            t = section.phase + np.ceil((section.start_s - section.phase) / period - 1e-9) * period
+        while t < end - period:
+            hi = min(end, t + DRIFT_WINDOW_BEATS * period)
+            window = (times >= t - 0.5 * period) & (times < hi + 0.5 * period)
+            if int(window.sum()) >= 6:
+                fitted, phase, _ = _refine_grid(times[window], weights[window], period, t)
+                if abs(fitted - period) / period < DRIFT_MAX_STEP:
+                    moved = phase + round((t - phase) / fitted) * fitted
+                    if abs(moved - t) < 0.25 * period:
+                        period, t = fitted, moved
+            lines.append((t * 1000.0, 60.0 / period))
+            t = t + max(1, round((hi - t) / period)) * period
+    if len(lines) < 2:
+        return analysis
+    merged = [lines[0]]
+    for offset, bpm in lines[1:]:
+        last_offset, last_bpm = merged[-1]
+        step = 60000.0 / last_bpm
+        if (abs(bpm - last_bpm) < 0.05
+                and abs(last_offset + round((offset - last_offset) / step) * step - offset) < 2.0):
+            continue
+        merged.append((offset, bpm))
+    fixed = _beats_of([(p.offset_ms, p.bpm) for p in analysis.points], duration)
+    followed = _beats_of(merged, duration)
+    followed = followed[followed >= merged[0][0] / 1000.0 - 1e-9]
+    if followed.size == 0 or fixed.size < 2:
+        return analysis
+    i = np.clip(np.searchsorted(fixed, followed), 1, fixed.size - 1)
+    apart = np.minimum(np.abs(fixed[i - 1] - followed), np.abs(fixed[i] - followed)) * 1000.0
+    if float(np.percentile(apart, 90)) <= DRIFT_MIN_MS:
+        return analysis
+    if _attack_rms_ms(_beats_of(merged, duration), times, weights) >=             _attack_rms_ms(_beats_of([(p.offset_ms, p.bpm) for p in analysis.points], duration),
+                           times, weights):
+        return analysis
+    points = []
+    for offset, bpm in merged:
+        governing = analysis.points[0]
+        for point in analysis.points:
+            if point.offset_ms <= offset + 30000.0 / bpm:
+                governing = point
+        points.append(replace(governing, offset_ms=float(offset), bpm=float(bpm)))
+    return replace(analysis, points=points, beats=_beats_of(merged, duration))
+
+
+def _swings(analysis: Analysis) -> bool:
+    """Whether most of the song's swing-lane windows swing or play triplets."""
+    try:
+        windows = swing_lane(analysis.points, analysis.attack_times,
+                             analysis.attack_weights, analysis.duration)["windows"]
+    except (ValueError, TypeError):
+        return False
+    swung = sum(w["feel"] in ("swing", "triplets") for w in windows)
+    return bool(windows) and swung >= 0.5 * len(windows)
 
 
 def analyze_batch(folder: str | os.PathLike[str], min_delta: float = 1.5,

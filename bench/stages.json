@@ -1,0 +1,24 @@
+{
+ "about": "Phase 10 timing stages: slices of the user's Songs folder, chosen from the library index, timed one at a time. Each stage is a SQL condition over the index's beatmaps table (read only). Mapper red lines are the truth; songs split by folder hash into a dev part (tune here) and a held-out part (confirm here). Read by bench/stages.py.",
+ "holdout_share": 0.3,
+ "stages": [
+  {
+   "id": "anime-single",
+   "order": 1,
+   "title": "Anime, one tempo",
+   "where": "red_lines = 1 AND (' ' || lower(tags) || ' ' LIKE '% anime %' OR lower(tags) LIKE '%opening%' OR lower(tags) LIKE '%ending%' OR lower(title) LIKE '%tv size%' OR lower(version) LIKE '%tv size%')"
+  },
+  {
+   "id": "anime-variable",
+   "order": 2,
+   "title": "Anime, tempo changes",
+   "where": "red_lines > 1 AND (' ' || lower(tags) || ' ' LIKE '% anime %' OR lower(tags) LIKE '%opening%' OR lower(tags) LIKE '%ending%' OR lower(title) LIKE '%tv size%' OR lower(version) LIKE '%tv size%')"
+  },
+  {
+   "id": "bands-variable",
+   "order": 3,
+   "title": "Live-drummed bands, drifting and changing tempo",
+   "where": "lower(artist) IN ('my chemical romance', 'the fall of troy', 'pierce the veil', 'pup', 'dragonforce', 'linkin park', 'bring me the horizon', 'sum 41', 'rise against', 'jeff rosenstock', 'sleeping with sirens', 'system of a down', 'green day', 'paramore', 'avenged sevenfold', 'one ok rock', 'my first story', 'three days grace', 'queen')"
+  }
+ ]
+}

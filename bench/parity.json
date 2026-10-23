@@ -1,5 +1,9 @@
 {
  "classes": {
+  "OsuDbAuditTests": {
+   "where": "bench",
+   "why": "bench/mapper_agreement.py parses only the local osu!.db identity and status fields for a read-only reference audit"
+  },
   "CombineAssemblyTests": {
    "where": "python-only",
    "why": "overtone_combine.py: the compilation .osu, every borrowed timestamp shifted, which no Rust crate holds"
@@ -260,6 +264,10 @@
     "overtone-tempo/src/lib.rs::seeding_finds_the_atom_on_a_clean_grid"
    ],
    "where": "rust"
+  },
+  "_beats_of": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
   },
   "_choose_subdivision": {
    "where": "legacy",

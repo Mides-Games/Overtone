@@ -1719,8 +1719,10 @@ class SparseNoiseRefusalTests(unittest.TestCase):
             steady = Path(tmp) / "steady.wav"
             _click_track(steady, 150.0, duration=60.0)
             self.assertEqual(len(analyze_audio(steady, follow_drift=True).points), 1)
-            # Off by default (DRIFT_FOLLOW) until its guard spares steady songs.
-            self.assertEqual(len(analyze_audio(path).points), len(fixed.points))
+            # On by default (DRIFT_FOLLOW), and off when asked.
+            self.assertEqual(len(analyze_audio(path).points), len(followed.points))
+            self.assertEqual(len(analyze_audio(path, follow_drift=False).points),
+                             len(fixed.points))
 
     def test_the_chance_of_the_inliers(self):
         rng = np.random.default_rng(0)

@@ -20,6 +20,40 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-23 · drift following on, with a 10 % guard
+
+### Changed
+
+- Drift following is on by default (`DRIFT_FOLLOW = True`): the followed
+  grid must now fit the attacks 10 % better than the fixed one
+  (`DRIFT_MIN_GAIN = 0.9`), where "at all better" let a steady song through.
+
+### Fixed
+
+- Take You Down no longer gets 5 red lines from drift following.
+
+### Hardening
+
+- Nothing beyond the guard.
+
+### Measured
+
+- Guard chosen on 40-song dev samples among 18 variants (overall RMS gain
+  1.0 / 0.9 / 0.8, per-window gain 1.0 / 0.9 / 0.8, minimum parting 15 /
+  25 ms), with five real-audio songs beside them. Held out (60 songs per
+  stage), beats within 10 ms, engine -> gain 1.0 -> gain 0.9: S1 62.2 ->
+  76.7 -> 75.2 %, S2 48.2 -> 54.2 -> 52.8 %, S3 26.9 -> 30.3 -> 30.5 %;
+  Take You Down 99.9 -> 81.9 -> 99.9 %, Noble 40.7 -> 58.9 -> 58.9 %.
+- Gates on master before this change: every one in CLAUDE.md passes except
+  `installer/notices.py --check` (Tcl/Tk 8.6, unrelated). With it: 1013
+  Python tests, benchmark 24/24 (median 0.0000 BPM / 0.14 ms), bpm-snapshot
+  24/24, golden 27/27; real-audio re-pinned for Noble (1 -> 17 red lines).
+
+### Rejected / tried and dropped
+
+- A per-window gain (a window's refit kept only when it fits that window
+  10-20 % better): it costs S1 and S2 0.7-1.4 points on dev for little on S3.
+
 ## Unreleased — 2026-10-23 · S2/S3 baselines and drift following
 
 ### Changed

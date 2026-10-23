@@ -88,11 +88,14 @@ ALLOWED_FACTORS = (0.25, 0.5, 1.0, 2.0, 4.0)
 #: BPM into [120, 240] took the exact-octave share from 77.1 % to 95.2 % on dev,
 #: 75.8 % to 95.2 % held out, and 72.6 % to 86.8 % on every one-red-line map.
 MAP_OCTAVE_RANGE = (120.0, 240.0)
-#: Drift following (_follow_drift), off by default until its guard is fixed:
-#: on the real-audio gate it took Take You Down, a steady song whose single
-#: red line puts 99.9 % of beats within 10 ms, to 5 lines and 81.9 %, while
-#: Noble went 40.7 -> 58.9 %.
-DRIFT_FOLLOW = False
+#: Drift following (_follow_drift). Off until 2026-10-23: with a guard of
+#: "fits at all better" it took Take You Down, a steady song whose single red
+#: line puts 99.9 % of beats within 10 ms, to 5 lines and 81.9 %. With
+#: DRIFT_MIN_GAIN (10 % better) Take You Down keeps 99.9 % and Noble still
+#: rises 40.7 -> 58.9 %; held out, beats within 10 ms: anime one tempo
+#: 62.2 -> 75.2 %, anime tempo changes 48.2 -> 52.8 %, bands 26.9 -> 30.5 %.
+DRIFT_FOLLOW = True
+DRIFT_MIN_GAIN = 0.9
 
 
 # ---------------------------------------------------------------------------
@@ -3143,7 +3146,7 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
     engine's own reading comes back -- what the golden vectors pin, since the
     Rust engine gets the same conventions from overtone_rust.py.
     ``follow_drift`` adds red lines where the tempo drifts (_follow_drift);
-    experimental, off by default (DRIFT_FOLLOW).
+    on by default (DRIFT_FOLLOW).
     ``refine_beats`` re-times every attack on the raw waveform at sample
     resolution (and moves the fallback tracker's beats by the lag read that
     way); disable it only to diagnose whether that snapping drifts.
@@ -3365,7 +3368,7 @@ def _follow_drift(analysis: Analysis) -> Analysis:
     apart = np.minimum(np.abs(fixed[i - 1] - followed), np.abs(fixed[i] - followed)) * 1000.0
     if float(np.percentile(apart, 90)) <= DRIFT_MIN_MS:
         return analysis
-    if _attack_rms_ms(_beats_of(merged, duration), times, weights) >=             _attack_rms_ms(_beats_of([(p.offset_ms, p.bpm) for p in analysis.points], duration),
+    if _attack_rms_ms(_beats_of(merged, duration), times, weights) >= DRIFT_MIN_GAIN *             _attack_rms_ms(_beats_of([(p.offset_ms, p.bpm) for p in analysis.points], duration),
                            times, weights):
         return analysis
     points = []

@@ -18,19 +18,19 @@
  "components": [
   {
    "name": "Python",
-   "version": "3.14.4",
+   "version": "3.14.7",
    "licence": "PSF-2.0",
    "what": "the interpreter and its standard library, frozen into both executables (python314.dll, base_library.zip and the modules beside them). Its LICENSE.txt also carries the notices of the software Python itself incorporates",
-   "source": "https://www.python.org/downloads/release/python-3144/",
+   "source": "https://www.python.org/downloads/release/python-3147/",
    "from_path": ["LICENSE.txt"]
   },
   {
    "name": "Tcl/Tk",
-   "version": "8.6",
+   "version": "9.0",
    "licence": "TCL (BSD-style)",
-   "what": "the classic window's toolkit: tcl86t.dll, tk86t.dll, _tkinter.pyd and the script folders beside them (_tcl_data, _tk_data, tcl8), which overtone-py.exe opens the Tk window with. The web shell window does not use it",
+   "what": "the classic window's toolkit: tcl90.dll, tcl9tk90.dll, _tkinter.pyd and the script folders beside them (_tcl_data, _tk_data, tcl8), which overtone-py.exe opens the Tk window with. The web shell window does not use it",
    "source": "https://www.tcl-lang.org/software/tcltk/",
-   "from_path": ["tcl/tk8.6/license.terms"]
+   "from_path": ["tcl/tk9.0/demos/license.terms"]
   },
   {
    "name": "PyInstaller bootloader",

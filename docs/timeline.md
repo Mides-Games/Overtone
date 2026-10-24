@@ -54,6 +54,39 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-24 · the installer with Beat This! inside
+
+### Changed
+
+- `installer/notices.json` states the Python (3.14.7) and Tcl/Tk (9.0:
+  tcl90.dll, tcl9tk90.dll, its licence read from `tcl/tk9.0/demos/
+  license.terms`) this venv was rebuilt on; `notices.py --check` had failed
+  on both since that rebuild, before this session's changes.
+
+### Fixed
+
+- `installer/notices.py --check` passes again: 91 components, 160 notice
+  files, 5 source offers, nothing missing.
+
+### Hardening
+
+- Nothing.
+
+### Measured
+
+- `installer/build.py --clean` on master `3f1b2fc`: build ok in 544.8 s.
+  Tree 753 files, 439.4 MB; Overtone-0.2.0-alpha-x64.msi 200.0 MB (112.2 MB
+  on 2026-10-06, before onnxruntime and the 83 MB model), portable ZIP
+  228.7 MB (138.2 MB). ICE: warning ICE61 x1, ICE91 x753 (per-user install,
+  as before). The smoke test passes on dist\Overtone, the MSI's
+  administrative install and the unpacked ZIP: 174.0000 BPM from both
+  engines, self-check 8/8, the portable build writing only to data\.
+- The model and onnxruntime's DLLs are in the tree
+  (`_internal/assets/models`, `_internal/onnxruntime/capi`), and the frozen
+  `overtone-py.exe` votes: on Pierce The Veil - A Match Into Water, where
+  the vote turns 1 red line into 332, it writes the same 332 red lines as
+  the development engine, byte for byte.
+
 ## Unreleased — 2026-10-24 · Beat This! votes (owner decision)
 
 ### Changed

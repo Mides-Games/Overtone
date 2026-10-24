@@ -20,6 +20,49 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-23 · the Rust path and the song-level octave
+
+### Changed
+
+- Nothing in the engine.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- Nothing.
+
+### Measured
+
+- The Rust engine needs no local-tempo port to benefit: when it refuses a
+  song (or fails), `overtone_web` hands the analysis to v3
+  (`analyze_audio`, the `# v3 takes over` branch), which now times refused
+  songs with the local-tempo tracker; the octave, whole-BPM and drift
+  conventions reach Rust results through `overtone_rust.analyze`.
+- Song-level octave, on the pickled precision-path samples of all three
+  stages: the engine's longest red line is on the octave of the map's
+  longest-held tempo for 91.9 % of 397 dev maps and 94.6 % of held-out maps
+  (S3 93.5 %). S3's stage-level 72.9 % scores each map's first red line,
+  which often sits in an intro at another tempo -- not a song-wide octave
+  error.
+
+### Rejected / tried and dropped
+
+- A song-level octave rule from the attack pattern (double when the half
+  beats carry as much weight as the beats, halve when every other beat is
+  weak; 240 threshold sets swept on dev): best dev 91.9 -> 93.5 %, held out
+  94.6 -> 94.9 %, within noise; not shipped.
+
+### Pending (owner decision)
+
+- The export convention (10.0a): ranked maps put red lines a median 21 ms
+  before the sound. Writing that lead at export, never in the engine, would
+  turn the "conv." figures into raw ones -- S1 held out within 5 ms
+  0.9 -> ~37.5 %, within 10 ms -> ~57 %. It changes every exported map, so
+  it waits for the owner.
+
 ## Unreleased — 2026-10-23 · where S1 still misses, and the first-edge phase
 
 ### Changed

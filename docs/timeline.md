@@ -54,6 +54,47 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-24 · drums alone, the 3:4 readings and the refusals
+
+### Changed
+
+- Nothing in the engine.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- Nothing.
+
+### Measured
+
+- S1's 42 songs more than 5 BPM off on the right octave (master `2865bb2`):
+  14 precision-path songs with one red line read at 2:3 or 3:4 of the map
+  (188 -> ~141, 200 -> ~133, 210 -> 140: the triplet taken as the beat), 28
+  local-tempo songs whose map's first red line sits in an intro at another
+  tempo. 1.7 % of S1's songs; left as they are.
+- The 6 refused songs (5 measured): pulse gaps 0.054-0.069 against the 0.07
+  floor, inside the range random clicks reach (up to 0.078). The floor
+  stays: noise gets no BPM.
+
+### Rejected / tried and dropped
+
+- The engine on the percussive part alone (librosa HPSS), 40-song dev
+  samples, beats within 10 ms, whole mix -> margin 1 / margin 3: S3 58.2 ->
+  62.2 / 64.0 %, but S2 70.5 -> 68.8 / 69.4 % and S1 86.4 -> 89.0 / 84.4 %.
+  Gated on the mix analysis' own evidence (fallback path, fit residual 4-14
+  ms): every gate that raises S3 lowers S2 or S1 (best S3 68.2 % costs S2
+  8 points). Not shipped; held out not run, as no dev variant was a win.
+
+### Pending (next session)
+
+- The remaining gaps (bands with rubato, per-line BPM on dense maps) need a
+  beat signal the engine does not have. The roadmap's candidate is Beat This!
+  (10.3, MIT code and weights, offline at run time), which needs its weights
+  downloaded once -- an owner decision.
+
 ## Unreleased — 2026-10-23 · choosing between the two grids per song
 
 ### Changed

@@ -54,6 +54,50 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-24 · Beat This! through ONNX, without PyTorch
+
+### Changed
+
+- Nothing in the engine or the app; a measurement of what shipping Beat
+  This! would cost without PyTorch.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- Nothing.
+
+### Measured
+
+- The network exported to ONNX (opset 17, time axis dynamic): 83.2 MB.
+  ONNX Runtime against PyTorch on the same spectrogram: max difference
+  2e-5 at 1500 and 900 frames.
+- The rest without PyTorch: the log-mel spectrogram in numpy (22.05 kHz,
+  1024-point FFT, hop 441, 128 Slaney bands 30 Hz-11 kHz, divided by
+  sqrt(n_fft) as torchaudio's normalized="frame_length" does) matches
+  torchaudio within 2e-4; the minimal peak picking in numpy. On 20 dev
+  songs (53 min of audio), fp32: every beat identical to Beat This!'s own
+  (within 0.5 ms, 100.00 %), the network 5.4 s per minute of song on this
+  CPU, the spectrogram ~0.14 s a song.
+- int8 dynamic quantisation: 23.0 MB, no faster (5.5 s per minute), 96.44 %
+  of beats identical -- not worth it.
+- onnxruntime 1.31.0 ships a cp314 win_amd64 wheel (15.3 MB), so the app's
+  Python 3.14 can run it: about 100 MB on disk with the fp32 model, against
+  ~730 MB for PyTorch.
+
+### Rejected / tried and dropped
+
+- int8 weights (above). A first numpy spectrogram divided by the window's
+  energy instead of sqrt(n_fft) and moved 14 % of the beats.
+
+### Pending (owner decision)
+
+- Integrating the voter: onnxruntime as a dependency (SBOM, notices), the
+  83 MB model in the installer, ~5 s more per minute of song; for the held-
+  out gains measured in the previous entry (+1 to +3 points within 10 ms).
+
 ## Unreleased — 2026-10-24 · Beat This! as an extra voter (10.3)
 
 ### Changed

@@ -20,6 +20,43 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-23 · where S1 still misses, and the first-edge phase
+
+### Changed
+
+- Nothing in the engine; a measurement and a rejected experiment.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- Nothing.
+
+### Measured
+
+- Refusals after the day's changes: 6 songs in all three stages (4 in S3, 2
+  in S1), every one by the noise guard ("No rhythmic pulse found"). Small,
+  and the rule that noise gets no BPM stands, so left as they are.
+- S1 misses on master `b917199`, all 4,611 maps: 4,166 on the map's octave;
+  of those 3,377 within 0.05 BPM, 388 within 0.05-1 BPM (347 of them maps
+  with a whole BPM; most of their songs carry several drift-following lines,
+  each a fractional BPM), 141 more than 5 BPM off (ratios 0.75 and
+  0.92-0.97: three-against-four and plain tempo errors). Rounding a drift
+  line's BPM would move its beats ~19 ms over a 96-beat window, so the
+  0.05-1 band is a trade between matching the mapper's single line and
+  landing the beats, not a bug.
+
+### Rejected / tried and dropped
+
+- Phase on the sound's first edge (10.0f): each song's grid moved to where
+  its >4 kHz energy starts (`corpus_b.sound_start_ms`), one convention fitted
+  on dev. Dev 40 songs within 5 ms 55.5 -> 58.7 %, held out 60 songs 64.5 ->
+  57.0 % (within 10 ms 78.9 -> 71.9 %); gating on the onset's contrast was
+  worse still. On maps whose tempo is right the grid already sits within
+  10 ms of the map after the convention for 79 % (held out) of red lines.
+
 ## Unreleased — 2026-10-23 · full-stage measurement after the day's changes
 
 ### Changed

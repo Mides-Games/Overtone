@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-1018%20Python%20%C2%B7%20292%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-1019%20Python%20%C2%B7%20292%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -28,7 +28,7 @@ sections within 0.05 BPM and 5 ms     24 / 24
 | **osu! files** | ✅ Full reader; writer keeps every byte you did not ask to change |
 | **Hitsounds** | ✅ In the app: copy one difficulty's hitsounds onto the others, see where each addition falls, hear them with the song, a consistency check in the mod report, the Rust decision engine's proposals to tick, and volume and sample index to set by hand, all heard over the song before a preview, a write and an undo; the proposals' profile chosen on the Propose card (Balanced or Drum-focused); and a Samples card: a skin's or a beatmap folder's samples, each heard alone or over the song in place of a selected sound, and the skin playback asks |
 | **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, a section loop or one drawn on the map at 100/75/50 %, taps, the percussive part alone, a difficulty's hitsounds as written or as they would be written |
-| **Accuracy on real, live-played songs** | 📋 Planned, and measured first — today 1.7 % of 20 ranked maps' red lines land within 5 ms (Corpus B, `bench/corpus_b.py`) |
+| **Accuracy on real, live-played songs** | 📋 Research underway — current default osu! export lands within 5 ms on 16.8 % of Python and 5.2 % of Rust Corpus B red lines; raw engine scores are 2.0 % and 1.1 % (`bench/corpus_b.py`, 2026-10-24) |
 | **Installer** (MSI) | ✅ Published: [**v0.1.0-alpha**](https://github.com/githaltwastaken/Overtone/releases/tag/v0.1.0-alpha) — a per-user MSI (no administrator) and a portable ZIP, with the SBOM, the checksums and every bundled licence in the tree. **Unsigned**, so SmartScreen warns; check the download against `checksums.txt` |
 
 Nothing here claims a number that was not measured. Targets are marked as targets.
@@ -317,7 +317,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # 1018 tests
+.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # 1019 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage
@@ -343,13 +343,13 @@ scores precision, not the octave — that is what `bpm-snapshot` is for — and 
 offsets modulo one beat, which is why an off-beat red line could hide in it until the
 2026-09-23 audit round found one.
 
-**Synthetic drums are cleaner than records.** Read the corpus numbers as an upper bound.
-On Corpus B, 20 hand-timed ranked maps from a local osu! Songs folder (`bench/corpus_b.py`),
-1.7 % of their 1,152 red lines have an Overtone beat within 5 ms, and 48 % within 50 ms
-(measured 2026-09-26): the red lines read a median 24 ms after the mappers', and the grid does
-not follow a band that drifts. Most of the 24 ms is the maps' own: ranked maps put their lines
-a median 21 ms before the sound starts (`bench/corpus_b.py --onsets`). Closing that gap is
-[Phase 10](docs/10-precision-plan.md).
+**Synthetic drums are cleaner than records.** Read Corpus A as an upper bound. On the 20
+hand-timed ranked maps in local Corpus B (`bench/corpus_b.py`), the raw engine grid lands
+within 5 ms of 2.0 % of Python's and 1.1 % of Rust's 1,152 red lines. The app's default
+28 ms osu! export lead raises those measured shares to 16.8 % and 5.2 % respectively
+(2026-10-24); it does not fix tempo/octave errors or drift. The Python export lands within
+50 ms of 55.7 % of the lines. Ranked maps put their lines a median 21 ms before the sound
+starts (`bench/corpus_b.py --onsets`). Improving the grid itself remains [Phase 10](docs/10-precision-plan.md).
 
 Rust speed, like for like: the whole pipeline over the corpus (decode, attacks, tempo)
 takes ~4.2 s against ~18.5 s for Python's `analyze_audio` — about 4×. An earlier "2.5 s"

@@ -13,8 +13,8 @@ budgeted.
 
 The baseline this phase is measured against is **Corpus B** (below): 20 ranked
 maps from the local osu! Songs folder, 1,152 hand-placed red lines. On
-2026-09-26 the v3 engine put **1.7 % of them within 5 ms** (2.6 % averaged over
-the tracks, 47.9 % within 50 ms; `bench/corpus_b.py`), after the fallback tracker's beats
+2026-09-26 the raw v3 engine grid put **1.7 % of them within 5 ms** (2.6 % averaged over
+the tracks, 47.9 % within 50 ms; `bench/corpus_b.py --map-lead-ms 0`), after the fallback tracker's beats
 moved onto their attacks; 1.6 %, 0.9 % and 46.9 % before, the same day. The first baseline
 quoted here, 4.7 % on one of those maps
 (`2437969 My Chemical Romance - Vampires Will Never Hurt You`, 236 red lines,
@@ -23,6 +23,13 @@ quoted here, 4.7 % on one of those maps
 median error** — more than two ranked maps of the same audio give each other:
 82 % of their red lines within 5 ms, 74 % where the two maps' lines differ at
 all (319 pairs from the same Songs folder, measured 2026-09-26).
+
+Since 2026-10-23, Overtone applies a 28 ms osu! map lead when it writes red
+lines. Corpus B now scores that default output unless `--map-lead-ms 0` is
+passed: on 2026-10-24 the Python output landed within 5 ms on 16.8 % of lines
+and Rust on 5.2 %, versus 2.0 % and 1.1 % for the raw grids. The historical
+figures and phase experiments below remain raw-grid measurements unless they
+say otherwise.
 
 For the user's stricter single-BPM requirement, see the binding acceptance
 target in [the roadmap's Phase 10](07-roadmap.md#phase-10--human-level-timing-accuracy):

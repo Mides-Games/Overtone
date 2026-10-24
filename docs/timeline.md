@@ -20,6 +20,40 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-24 · score Corpus B as osu! exports it
+
+### Changed
+
+- `bench/corpus_b.py` applies the default 28 ms osu! map lead when scoring
+  red lines, matching the app's default export. `--map-lead-ms 0` reproduces
+  the raw engine-grid score; cached analyses remain unchanged.
+
+### Fixed
+
+- The Corpus B headline no longer omits the output adjustment users get by
+  default, so it measures the exported `.osu` timing rather than the internal
+  grid.
+
+### Hardening
+
+- A scoring test checks the zero-lead baseline, the default shift, unchanged
+  BPMs and rejection of non-finite lead values.
+
+### Measured
+
+- On the same 20 local Corpus B maps (1,152 red lines), Python rises from
+  2.0 % to 16.8 % within 5 ms; Rust rises from 1.1 % to 5.2 %. Python's
+  within-50 ms share is 55.4 % raw and 55.7 % with the lead. All maps were
+  present and matched their manifest hashes; no songs were added to Git.
+- `--map-lead-ms 0` reproduces the raw scores. Python and Rust analyses came
+  from the cache, so the before/after comparison uses the same engine results.
+
+### Rejected / tried and dropped
+
+- None.
+
+---
+
 ## Unreleased — 2026-10-23 · choosing between the two grids per song
 
 ### Changed

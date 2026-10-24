@@ -20,6 +20,47 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-23 · choosing between the two grids per song
+
+### Changed
+
+- Nothing in the engine.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- Nothing.
+
+### Measured
+
+- Browser check of the map-lead setting (overtone-ui-check harness,
+  Sledgehammer): on by default, the copied timing's first red line 400 ms
+  with it and 428 ms without (28 ms apart), the timing table keeping the
+  engine's 428.47 ms; the setting saves both ways; EN and ES strings present;
+  no app.js console errors. Not driven there: the .osz and inject writes
+  (same helper, covered by the bridge tests).
+
+### Rejected / tried and dropped
+
+- Per song, the local-tempo tracker's lines instead of the precision
+  engine's when they explain the song's own attacks better (attack-to-beat
+  F-measure at 15 ms, by a margin of 0 / 0.03 / 0.06 / 0.1), on the pickled
+  precision-path samples. Best on dev (margin 0.1): S2 81.1 -> 82.0 %, S3
+  54.5 -> 58.5 %, but S1 89.9 -> 86.6 % beats within 10 ms; held out S1
+  82.0 -> 83.8 %, S2 65.2 -> 66.4 %, S3 36.2 -> 35.9 %. No margin helps every
+  stage on both splits; the attacks alone do not say which grid the mapper
+  would keep.
+
+### Pending (next session)
+
+- What is left needs new signal, not new thresholds: per-line BPM on maps
+  with a line every few beats (S2/S3), bands with rubato and changes under 4
+  beats (S3 beats within 10 ms 43.8 %), the 3:4 readings (141 of S1's 4,611
+  maps), and the 6 songs the noise guard refuses.
+
 ## Unreleased — 2026-10-23 · osu!'s red-line lead at export (owner decision)
 
 ### Changed

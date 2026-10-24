@@ -1900,6 +1900,27 @@ class FallbackLagTests(unittest.TestCase):
         self.assertEqual(_tracker_lag(np.zeros(0, dtype=np.float32), sr, hits), 0.0)
 
 
+class MapLeadTests(unittest.TestCase):
+    """with_map_lead: osu!'s red-line convention, applied only at export."""
+
+    def test_detected_lines_move_and_hand_placed_ones_stay(self):
+        from dataclasses import replace as dc_replace
+        from overtone import MAP_LEAD_MS, TimingPoint, with_map_lead, osu_timing_text
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "click.wav"
+            _click_track(path, 120.0, duration=12.0)
+            analysis = analyze_audio(path)
+        base = dc_replace(analysis, points=[TimingPoint(1000.0, 120.0, 0.9, 0),
+                                            TimingPoint(9000.0, 150.0, 0.9, 1, manual=True)])
+        moved = with_map_lead(base)
+        self.assertEqual([p.offset_ms for p in moved.points], [1000.0 - MAP_LEAD_MS, 9000.0])
+        self.assertEqual([p.bpm for p in moved.points], [120.0, 150.0])
+        self.assertEqual([p.offset_ms for p in base.points], [1000.0, 9000.0])   # untouched
+        self.assertIs(with_map_lead(base, 0.0), base)
+        rows = osu_timing_text(moved).splitlines()
+        self.assertTrue(rows[1].startswith(f"{int(round(1000 - MAP_LEAD_MS))},"))
+
+
 class LocalTempoTests(unittest.TestCase):
     """The local-tempo tracker that replaces the v2 tracker's red lines."""
 

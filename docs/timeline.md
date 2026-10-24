@@ -54,6 +54,48 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-24 · Beat This! as an extra voter (10.3)
+
+### Changed
+
+- Nothing in the engine or the app; a measurement. Beat This! (CPJKU, MIT
+  code and weights, checkpoint `final0`, CPU) ran in its own environment
+  outside the repository (Python 3.12, torch 2.14.1+cpu, 732 MB with the
+  model); the app's dependencies, lock and SBOM are untouched.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- Nothing.
+
+### Measured
+
+- The seeded stage samples (40 dev / 60 held-out songs a stage, 298 files;
+  7 failed to decode in Beat This!, ~4-12 s a song on CPU), beats within
+  10 / 20 ms of the map:
+  - Beat This! alone is worse at 10 ms (held out S1 53.4 %, S2 49.2 %, S3
+    42.8 % against the engine's 80.5 / 64.3 / 40.7 %): its beats come on a
+    50 fps grid, so they sit up to ~10 ms off; at 20 ms it beats the engine
+    on S3 (67.1 against 64.3 %).
+  - As a voter -- its beats, made red lines with `_beats_to_lines`, replace
+    the engine's where they explain the song's own attacks better by 0.05
+    (F-measure at 15 ms), chosen on dev -- held out: S1 80.5 -> 81.6 %
+    (F20 92.0 -> 93.7), S2 64.3 -> 65.1 % (85.1 -> 86.4), S3 40.7 -> 43.5 %
+    (64.3 -> 69.5). The first variant this session that gains on every
+    stage on both splits.
+  - Only on the songs the precision engine refuses: worse everywhere (held
+    out S3 40.7 -> 36.5 %); the local-tempo tracker stays there.
+
+### Pending (owner decision)
+
+- Shipping it means PyTorch and the model in the installer (~730 MB on
+  disk against today's 112 MB MSI) and roughly 5-10 s more per analysis on
+  CPU, for +1 to +3 points at 10 ms and up to +5 at 20 ms on held-out songs.
+  An ONNX export of the model would cut the runtime; not tried.
+
 ## Unreleased — 2026-10-24 · drums alone, the 3:4 readings and the refusals
 
 ### Changed

@@ -1,6 +1,6 @@
 # Project map
 
-Code graph refreshed: 2026-10-16; architecture facts reviewed 2026-10-15. Project delivery status refreshed: 2026-10-16. The map follows the current source
+Code graph last refreshed: 2026-10-16 (the local Graphify venv could not start on 2026-10-24); architecture facts reviewed 2026-10-24. Project delivery status refreshed: 2026-10-16. The map follows the current source
 tree and the responsibilities visible in code, manifests and documentation.
 The Mermaid diagram is the human-reviewed architectural index. Graphify's
 code-level relationships, report and interactive view are generated under
@@ -49,29 +49,30 @@ Timing analysis, map checking/structure/export, the Songs library, trainer,
 installer and the Compile section are represented as shipped capabilities in
 the interactive status graph. Hitsounds H1–H5 and the Compile section are
 marked partial because roadmap extensions remain. The longer-range graph records
-Corpus B accuracy research for 1.0.0, the undecided map-timing-vs-sound export
-convention, deferred TypeScript gates (Node.js not installed/requested), and the
+Corpus B accuracy research for 1.0.0, the 28 ms osu! map lead enabled by
+default at export, deferred TypeScript gates (Node.js not installed/requested), and the
 unlikely tempo-matched junction; Phase 25 rows 25.1–25.19 are complete. These are
 outside the 0.3.0 required rows.
-Accuracy numbers are intentionally not presented as a fresh measurement here;
-README, roadmap and precision-plan figures were recorded on different dates.
 
 ## Current source facts
 
 `bench/facts.py` was run for this snapshot and reported `facts: ok`:
 
-- Python: 1,008 tests (710 engine + 298 web shell).
-- Rust: 291 tests across 7 crates.
-- Golden vectors: 27; Rust parity manifest: 386 of 710 v3 engine tests held,
-  with 157 stages placed.
+- Python: 1,019 tests (720 engine + 299 web shell).
+- Rust: 292 tests across 7 crates.
+- Golden vectors: 27; Rust parity manifest: 389 of 720 v3 engine tests held,
+  with 162 stages placed.
 - Library schema: v2 in both `python/library.sql` and `python/overtone_library.py`.
 - Benchmark fixtures: 38 in code and 38 in `bench/fixtures.json`.
 
-Accuracy and corpus figures are measured at different dates and are not freshly
-measured by this map. The currently documented synthetic baseline is 24/24
-sections within 0.05 BPM and 5 ms, median 0.0000 BPM and 0.16 ms. README also
-reports 1.7% of red lines within 5 ms on Corpus B; see `bench/corpus_b.py` and
-`docs/10-precision-plan.md` before making claims about real-song accuracy.
+Corpus B was rescored 2026-10-24 after `bench/corpus_b.py` learned to apply the
+default osu! export lead: Python 16.8% and Rust 5.2% of 1,152 red lines within
+5 ms (raw engine grids: 2.0% and 1.1%). The synthetic baseline remains 24/24
+sections within 0.05 BPM and 5 ms, median 0.0000 BPM and 0.14 ms on this run.
+Corpus B keeps cached analyses raw and scores the output shift separately;
+`--map-lead-ms 0` reproduces the engine-only result.
+See `bench/corpus_b.py` and `docs/10-precision-plan.md` before making claims
+about real-song accuracy.
 
 ## Repository architecture
 

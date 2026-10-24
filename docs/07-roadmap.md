@@ -26,10 +26,10 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Hitsound engine | **in the app** — the copier (H1), the Hitsounds section (H2), the consistency check (H3), and the Rust decision engine (H4) behind the Propose card: tick by row or by bars, swap a proposal for one of its alternatives, set volume and sample index by hand, hear it over the song, preview, write the file or a copy, undo (H5); each row explains its proposal; choose Balanced or Drum-focused (measured on its own style's maps). The Samples card previews skin or beatmap samples alone or over the song; instrument lanes remain gated pending new evidence |
 | Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency, the percussive part alone, and a difficulty's hitsounds with its own samples, as written or as they would be written, slider slides looped head to tail, and a chosen skin's samples where the map has none |
 | UI verification | **done** 2026-09-26 — the 19 surfaces of 2026-09-25/26 exercised in the browser pane on two real mapsets, both themes and languages; it found app.js not loading and fifteen bugs in writes, counts and messages, all fixed; the two tools that needed a decision were decided the same day (timeline) |
-| Precision plan (Phase 10) | **measured, nothing shipped** — Corpus B built (10.0): v3 puts 1.7 % of 1,152 ranked red lines within 5 ms (1.6 % before the fallback tracker's beats moved onto their attacks), the Rust engine 1.4 %; the +24 ms late reading explained (10.0a), mostly ranked maps' own lines sitting 21 ms before the sound |
+| Precision plan (Phase 10) | **research underway** — the default 28 ms osu! export lead measures 16.8 % of Python and 5.2 % of Rust Corpus B red lines within 5 ms; raw engine grids score 2.0 % and 1.1 % respectively (20 maps, 1,152 lines, 2026-10-24). Tempo, octave and drifting sections remain the main misses |
 | Installer (MSI) | **v0.1.0-alpha published** — per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
 
-Tests: **1018** Python (719 engine + 299 web shell) · **292** Rust.
+Tests: **1019** Python (720 engine + 299 web shell) · **292** Rust.
 
 ### Current priorities — 2026-10-16
 
@@ -162,7 +162,7 @@ what this repository already half-holds.
 | What | Why not |
 |---|---|
 | **Code signing** (10.13.6) | A certificate is a purchase and the decision is the owner's, not the code's. Until it is bought, every release says it is unsigned and gives the hash to check. It is the single biggest thing standing between this and a build a stranger will trust, and no amount of work here moves it |
-| **Real-audio accuracy** (Phase 10) | 1.7 % of 20 ranked maps' red lines land within 5 ms. That is a research phase measured one sub-phase at a time on Corpus B, not a release item, and **0.2.0-alpha must not claim a number it did not move** |
+| **Real-audio accuracy** (Phase 10) | The default osu! export lands within 5 ms on 16.8 % of Python and 5.2 % of Rust Corpus B lines (2026-10-24). This remains research measured one sub-phase at a time, not a release claim |
 | **Dropping objects** (26.12) | Blocked on the `04-ui-ux.md` §9 decision, which is the owner's. If it is settled before the release it joins S-level, and if it is not, the trainer ships without it and says so |
 | **The pitch-kept stretch** (26.6) | The only row in Phase 26 that can fail its own check — Phase 4 measured a phase vocoder moving attacks a median 23-24 ms. It ships when it passes the grade, in whichever version that is |
 | **Other languages** (Phase 24) | TypeScript needs Node.js, which is not installed and which nobody has asked to install |
@@ -184,7 +184,8 @@ what this repository already half-holds.
 ### What it will say about itself
 
 A second alpha is still an alpha. The notes carry the same three honest lines 0.1.0
-carried — unsigned, 1.7 % on real ranked maps, no auto-update — plus the one new one: a
+carried — unsigned, 16.8 % on real ranked maps with Python's default osu! export, no
+auto-update — plus the one new one: a
 practice copy is a copy, and the tool that makes it proves the sounds are still under the
 red lines, which is the whole reason to prefer it to a faster tool that does not.
 
@@ -563,17 +564,12 @@ Nothing here is promised. Each item is a hypothesis with a way to test it.
 
 ## Phase 10 — Human-level timing accuracy
 
-Documented in full in [`10-precision-plan.md`](10-precision-plan.md). **Measured, nothing
-shipped.** The goal: push accuracy on real songs from today's **1.7 %** of ranked red lines
-with an Overtone beat within 5 ms towards 90 %+, offline. That is v3 on Corpus B, 1,152 red
-lines of 20 ranked maps, measured 2026-09-26 with `bench/corpus_b.py`; averaged over the
-tracks it is 2.6 %, and within 50 ms 47.9 % (1.6 %, 0.9 % and 46.9 % before the fallback
-tracker's beats moved onto their attacks, the same day). The "~5 %" quoted here before came from one
-track, *Vampires Will Never Hurt You* (4.7 % on 2026-09-22, method not recorded); Corpus B's
-scorer reads 5.9 % there. Two things set the gap: the red lines read a median 24-27 ms after
-the maps', and one grid, or none, against a band that drifts. The 24 ms are explained (10.0a):
-ranked maps put their lines a median 21 ms before the sound starts, and Overtone's grids sit a
-few milliseconds after it.
+Documented in full in [`10-precision-plan.md`](10-precision-plan.md). **The osu! map lead has
+shipped; engine research continues.** On Corpus B's 1,152 red lines, the default exported
+timing lands within 5 ms on 16.8 % for Python and 5.2 % for Rust; raw engine grids score
+2.0 % and 1.1 % respectively (2026-10-24). The goal is to improve the grid beyond this
+output convention, offline. The larger misses remain tempo/octave errors and drift across
+the live-band maps. The historical raw-grid baseline was 1.7 % for v3 on 2026-09-26.
 
 **Measurement first.** Nothing ships without a measured gain on Corpus B — 20 hand-timed
 ranked tracks across every category — while Corpus A (the 24 synthetic fixtures) stays

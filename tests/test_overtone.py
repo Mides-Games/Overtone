@@ -8793,6 +8793,17 @@ class CorpusBScoringTests(unittest.TestCase):
         self.assertEqual(cb.tally(rows)["within"]["5"], 0)
         self.assertEqual(cb.tally(rows, shift_ms=26.0)["within"]["5"], 2)
 
+    def test_the_osu_map_lead_moves_exported_lines_without_changing_bpm(self):
+        cb = self._cb()
+        raw = [(1028.0, 150.0), (5028.0, 120.0)]
+        self.assertEqual(cb.apply_map_lead(raw, 0.0), raw)
+        exported = cb.apply_map_lead(raw, 28.0)
+        self.assertEqual(exported, [(1000.0, 150.0), (5000.0, 120.0)])
+        rows = cb.score_track([(1000.0, 150.0), (5000.0, 120.0)], exported)
+        self.assertEqual([row["error_ms"] for row in rows], [0.0, 0.0])
+        with self.assertRaises(ValueError):
+            cb.apply_map_lead(raw, float("inf"))
+
     def test_grid_beats_run_the_first_line_back_and_stop_at_the_next(self):
         cb = self._cb()
         beats = cb.grid_beats([(1250.0, 120.0), (3000.0, 60.0)], 6.0)

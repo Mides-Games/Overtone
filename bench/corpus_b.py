@@ -13,10 +13,13 @@ longer hash the same is skipped and named, never guessed at.
     python bench/corpus_b.py --only vampires     # some tracks
     python bench/corpus_b.py --refresh --jobs 3  # analyse again, three at once
     python bench/corpus_b.py --onsets            # and where each track's sound starts
+    python bench/corpus_b.py --map-lead-ms 0     # raw engine grid, before osu!'s export lead
 
 The question, per red line of the map: does the timing Overtone would export
-(whole-millisecond offsets, as the app writes them) put a beat within 5 ms
-of it? The detected red line in force there (the last one at or before it,
+(whole-millisecond offsets, with the app's default osu! map lead applied)
+put a beat within 5 ms of it? Set ``--map-lead-ms 0`` to reproduce the raw
+engine measurement recorded before that export setting shipped. The detected
+red line in force there (the last one at or before it,
 with half a map beat of slack, as ``benchmark.py`` scores) is run forwards
 or backwards to the map's line, and the signed gap to its nearest beat is
 the error: positive when Overtone's beat comes later. A grid read an octave
@@ -386,6 +389,20 @@ def exported_lines(analysis) -> list[list[float]]:
     return lines
 
 
+def apply_map_lead(detected: list[tuple[float, float]], lead_ms: float
+                   ) -> list[tuple[float, float]]:
+    """Apply the app's osu! output convention without moving the engine grid.
+
+    Corpus B caches raw analyses so both the engine-only baseline and the
+    user-facing export can be rescored without re-running audio analysis.
+    """
+    if not math.isfinite(lead_ms):
+        raise ValueError("map lead must be finite")
+    if lead_ms == 0.0:
+        return detected
+    return [(offset - lead_ms, bpm) for offset, bpm in detected]
+
+
 def octave_margin(analysis) -> float | None:
     """The weakest section's octave margin, or None when there is none to read.
 
@@ -484,7 +501,7 @@ def _pct(value: float | None, digits: int = 1) -> str:
 
 
 def print_report(engine: str, tracks: list[dict], skipped: list[dict],
-                 categories: dict, summary: dict) -> None:
+                 categories: dict, summary: dict, map_lead_ms: float) -> None:
     head = (f"{'track':<18} {'category':<12} {'path':<9} {'lines':>5} {'det':>4} "
             f"{'<=2':>4} {'<=5':>4} {'<=10':>4} {'<=50':>4} {'median':>7} {'IQR':>15} "
             f"{'BPM<=.05':>8} {'dBPM':>6} {'octave':>13} {'s':>6}")
@@ -525,6 +542,8 @@ def print_report(engine: str, tracks: list[dict], skipped: list[dict],
     sections = s["lines"] - s["undetected"]
     print(f"\nCorpus B, {engine} engine: {s['tracks']} tracks scored, {len(skipped)} skipped; "
           f"{s['lines']} red lines, {s['undetected']} with nothing detected")
+    print(f"  osu! export lead: {map_lead_ms:g} ms before the engine grid "
+          "(0 reproduces the raw engine score)")
     for tol in TOLERANCES_MS:
         key = f"{tol:g}"
         mark = "  <- headline" if tol == HEADLINE_MS else ""
@@ -568,6 +587,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest", default=str(MANIFEST))
     parser.add_argument("--only", nargs="*", metavar="ID", help="score just these tracks")
     parser.add_argument("--refresh", action="store_true", help="analyse again, ignoring the cache")
+    parser.add_argument("--map-lead-ms", type=float, default=ta.MAP_LEAD_MS,
+                        help="move exported red lines earlier by this many ms "
+                             f"(default: {ta.MAP_LEAD_MS:g}; use 0 for the raw engine)")
     parser.add_argument("--jobs", type=int, default=1, help="analyses at once (each can take ~2 GB)")
     parser.add_argument("--onsets", action="store_true",
                         help="also read where each track's sound starts against the map's beats "
@@ -627,7 +649,8 @@ def main(argv: list[str] | None = None) -> int:
     for track, folder in found:
         analysis = analyses[track["id"]]
         map_reds = ta.read_osu_red_lines(folder / track["osu"])
-        detected = [(line[0], line[1]) for line in analysis["lines"]]
+        detected = apply_map_lead([(line[0], line[1]) for line in analysis["lines"]],
+                                  args.map_lead_ms)
         rows = score_track(map_reds, detected)
         scored.append({"id": track["id"], "category": track["category"],
                        "format": Path(track["audio"]).suffix.lower(),
@@ -670,7 +693,7 @@ def main(argv: list[str] | None = None) -> int:
     summary["run_seconds"] = time.perf_counter() - run_started
 
     print()
-    print_report(args.engine, scored, skipped, categories, summary)
+    print_report(args.engine, scored, skipped, categories, summary, args.map_lead_ms)
     errors = [t for t in scored if t["path"] == "error"]
     for t in errors:
         print(f"ERROR {t['id']}: {t['message']}")
@@ -683,6 +706,7 @@ def main(argv: list[str] | None = None) -> int:
         "engine": args.engine, "fingerprint": fingerprint,
         "run": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "manifest": {"version": manifest.get("version"), "tracks": len(manifest["tracks"])},
+        "map_lead_ms": args.map_lead_ms,
         "tolerances_ms": list(TOLERANCES_MS), "headline_ms": HEADLINE_MS,
         "summary": summary, "categories": categories, "skipped": skipped,
         "tracks": scored,

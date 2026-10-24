@@ -83,9 +83,9 @@ version is `v0.2.0-alpha`.
   CPU, the spectrogram ~0.14 s a song.
 - int8 dynamic quantisation: 23.0 MB, no faster (5.5 s per minute), 96.44 %
   of beats identical -- not worth it.
-- onnxruntime 1.31.0 ships a cp314 win_amd64 wheel (15.3 MB), so the app's
-  Python 3.14 can run it: about 100 MB on disk with the fp32 model, against
-  ~730 MB for PyTorch.
+- onnxruntime 1.31.0 ships a cp314 win_amd64 wheel (15.3 MB, 48 MB once
+  installed), so the app's Python 3.14 can run it: about 130 MB on disk with
+  the fp32 model, against ~730 MB for PyTorch.
 
 ### Rejected / tried and dropped
 

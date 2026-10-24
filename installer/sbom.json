@@ -31,6 +31,12 @@
    "licence": "BSD-2-Clause",
    "shipped": true
   },
+  "flatbuffers": {
+   "version": "25.12.19",
+   "installed": "25.12.19",
+   "licence": "Apache Software License",
+   "shipped": true
+  },
   "idna": {
    "version": "3.20",
    "installed": "3.20",
@@ -85,6 +91,12 @@
    "licence": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
    "shipped": true
   },
+  "onnxruntime": {
+   "version": "1.31.0",
+   "installed": "1.31.0",
+   "licence": "MIT License",
+   "shipped": true
+  },
   "packaging": {
    "version": "26.3",
    "installed": "26.3",
@@ -101,6 +113,12 @@
    "version": "1.9.0",
    "installed": "1.9.0",
    "licence": "BSD-3-Clause",
+   "shipped": true
+  },
+  "protobuf": {
+   "version": "7.36.2",
+   "installed": "7.36.2",
+   "licence": "UNKNOWN",
    "shipped": true
   },
   "pycparser": {

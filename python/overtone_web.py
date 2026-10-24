@@ -1038,7 +1038,7 @@ class Api:
         if self._analysis is None:
             return {"ok": False, "key": "first"}
         return {"ok": True, "text": ta.osu_timing_text(
-            self._analysis, decimals=self._settings()["offset_decimals"])}
+            self._for_osu(), decimals=self._settings()["offset_decimals"])}
 
     #: The other games this writes timing for, by the id the page asks with.
     OTHER_GAMES = ("quaver", "stepmania")
@@ -1101,7 +1101,7 @@ class Api:
         if not target:
             return {"ok": False, "key": "cancelled"}
         try:
-            info = ta.export_osz(self._analysis, target, audio_path=audio,
+            info = ta.export_osz(self._for_osu(), target, audio_path=audio,
                                  decimals=self._settings()["offset_decimals"])
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
@@ -2725,9 +2725,9 @@ class Api:
             return {"ok": False, "key": "bad_file"}
         try:
             summary = ta.inject_osu_timing_points(
-                osu_path, self._analysis, dry_run=True,
+                osu_path, self._for_osu(), dry_run=True,
                 decimals=self._settings()["offset_decimals"])
-            diff = ta.inject_diff(osu_path, self._analysis,
+            diff = ta.inject_diff(osu_path, self._for_osu(),
                                   decimals=self._settings()["offset_decimals"])
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
@@ -2741,7 +2741,7 @@ class Api:
             return {"ok": False, "key": "bad_file"}
         try:
             summary = ta.inject_osu_timing_points(
-                osu_path, self._analysis, backup=True,
+                osu_path, self._for_osu(), backup=True,
                 decimals=self._settings()["offset_decimals"])
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
@@ -2753,7 +2753,7 @@ class Api:
             return {"ok": False, "key": "first"}
         try:
             report = ta.inject_mapset(Path(str(self._analysis.source)).parent,
-                                      self._analysis, dry_run=True,
+                                      self._for_osu(), dry_run=True,
                                       decimals=self._settings()["offset_decimals"])
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
@@ -2766,7 +2766,7 @@ class Api:
             return {"ok": False, "key": "first"}
         try:
             report = ta.inject_mapset(Path(str(self._analysis.source)).parent,
-                                      self._analysis, backup=True,
+                                      self._for_osu(), backup=True,
                                       decimals=self._settings()["offset_decimals"])
         except (ValueError, OSError) as exc:
             return {"ok": False, "key": "error", "detail": str(exc)}
@@ -2920,7 +2920,7 @@ class Api:
         resnapped = self._resnapped.get(key) == digest
         try:
             beatmap = ta.read_osu_beatmap(osu_path)
-            diff = ta.inject_diff(osu_path, self._analysis,
+            diff = ta.inject_diff(osu_path, self._for_osu(),
                                   decimals=self._settings()["offset_decimals"])
             import copy
             work = copy.deepcopy(beatmap)
@@ -2948,7 +2948,7 @@ class Api:
             return {**preview, "written": False, "backup": None}
         try:
             beatmap = ta.read_osu_beatmap(osu_path)
-            diff = ta.inject_diff(osu_path, self._analysis,
+            diff = ta.inject_diff(osu_path, self._for_osu(),
                                   decimals=self._settings()["offset_decimals"])
             ta.resnap_objects(beatmap, diff["pairs"])
             written = ta.write_osu_beatmap(osu_path, beatmap, op="resnap")
@@ -4030,6 +4030,13 @@ class Api:
                 "hitsound_volume": min(1.0, max(0.0, _number(cfg.get("hitsound_volume"), 0.7, float))),
                 "tap_latency_ms": latency if abs(latency) <= TAP_LATENCY_LIMIT_MS else 0.0}
 
+    def _for_osu(self):
+        """The analysis as it is written for osu!: with the map lead when
+        the setting is on (overtone.with_map_lead). The click track, the CSV
+        and other games' formats keep the grid where the sound is."""
+        lead = ta.MAP_LEAD_MS if self._settings()["map_lead"] else 0.0
+        return ta.with_map_lead(self._analysis, lead)
+
     # -- settings (Phase 20): every option in one place -------------------
     def _settings(self) -> dict:
         """The saved settings, each checked: a hand-edited config falls back
@@ -4046,6 +4053,9 @@ class Api:
             # as chosen even if it moves, and asked only while it is there.
             "skin_folder": skin if isinstance(skin, str) and skin.strip() else "",
             "export_ask": cfg.get("export_ask", True) is not False,
+            # osu!'s convention: red lines MAP_LEAD_MS before the sound (on
+            # by default; off writes the grid where the sound is).
+            "map_lead": cfg.get("map_lead", True) is not False,
             "offset_decimals": decimals if 0 <= decimals <= MAX_OFFSET_DECIMALS else 0,
             "click_subdivision": subdivision if subdivision in ta.CLICK_SUBDIVISIONS else 1,
             "click_accent": cfg.get("click_accent", True) is not False,
@@ -4100,7 +4110,7 @@ class Api:
                     value = value.strip()
                     if value and not (Path(value).is_absolute() and Path(value).is_dir()):
                         return {"ok": False, "key": "bad_folder"}
-                elif key in ("export_ask", "click_accent", "reduced_motion"):
+                elif key in ("export_ask", "click_accent", "reduced_motion", "map_lead"):
                     if not isinstance(value, bool):
                         return {"ok": False, "key": "bad_values"}
                 elif key == "offset_decimals":

@@ -615,6 +615,8 @@ const I18N = {
     st_output: "Exports", st_folder: "Output folder", st_folder_default: "Use the default", st_folder_pick: "Choose folder…",
     st_folder_is_default: "{path} (the default)",
     st_ask: "Ask where to save each export (the dialog opens in the song's folder)",
+    st_lead: "Write red lines as osu! maps are timed (28 ms before the sound)",
+    st_lead_hint: "Ranked maps put their red lines a little before the sound, and osu! plays them in time. Used by copy, .osz and inject; the click track and CSV stay on the sound. Lines you placed by hand never move.",
     st_decimals: "Offset precision",
     st_decimals_hint: "osu!stable reads whole milliseconds; osu!lazer keeps decimals. Used by copy, .osz and inject.",
     st_click: "Click", st_sub: "Clicks per beat",
@@ -1436,6 +1438,8 @@ const I18N = {
     st_output: "Exportaciones", st_folder: "Carpeta de salida", st_folder_default: "Usar la predeterminada", st_folder_pick: "Elegir carpeta…",
     st_folder_is_default: "{path} (la predeterminada)",
     st_ask: "Preguntar dónde guardar cada exportación (el diálogo abre en la carpeta de la canción)",
+    st_lead: "Escribir las líneas rojas como se timean los mapas de osu! (28 ms antes del sonido)",
+    st_lead_hint: "Los mapas rankeados ponen sus líneas rojas un poco antes del sonido, y osu! las reproduce a tiempo. Se usa al copiar, en el .osz y al inyectar; el click y el CSV quedan sobre el sonido. Las líneas que pusiste a mano nunca se mueven.",
     st_decimals: "Precisión del offset",
     st_decimals_hint: "osu!stable lee milisegundos enteros; osu!lazer guarda decimales. Se usa al copiar, en el .osz y al inyectar.",
     st_click: "Click", st_sub: "Clicks por beat",
@@ -6524,6 +6528,7 @@ function stRender() {
   $("stFolder").textContent = s.output_folder || t("st_folder_is_default", { path: ST.outputDefault });
   $("stFolderDefault").hidden = !s.output_folder;
   $("stAsk").checked = s.export_ask;
+  $("stLead").checked = s.map_lead;
   document.querySelectorAll("#stDecimals button").forEach((b) => b.classList.toggle("on", +b.dataset.v === s.offset_decimals));
   document.querySelectorAll("#stSub button").forEach((b) => b.classList.toggle("on", +b.dataset.v === s.click_subdivision));
   $("stAccent").checked = s.click_accent;
@@ -6577,6 +6582,7 @@ function stWire() {
     copyText(reply.text, "st_diag_copied");
   };
   $("stAsk").onchange = () => stSet({ export_ask: $("stAsk").checked });
+  $("stLead").onchange = () => stSet({ map_lead: $("stLead").checked });
   document.querySelectorAll("#stDecimals button").forEach((b) => b.onclick = () => stSet({ offset_decimals: +b.dataset.v }));
   document.querySelectorAll("#stSub button").forEach((b) => b.onclick = () => stSet({ click_subdivision: +b.dataset.v }));
   $("stAccent").onchange = () => stSet({ click_accent: $("stAccent").checked });

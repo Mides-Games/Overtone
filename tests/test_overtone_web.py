@@ -393,7 +393,11 @@ class ExportTests(_IsolatedConfig):
         api = _api_with_points()
         reply = api.osu_text()
         self.assertTrue(reply["ok"])
-        self.assertEqual(reply["text"], ta.osu_timing_text(api._analysis))
+        # With the map lead on (the default) the detected lines come out
+        # MAP_LEAD_MS earlier; off, the engine's text verbatim.
+        self.assertEqual(reply["text"], ta.osu_timing_text(ta.with_map_lead(api._analysis)))
+        api.set_settings({"map_lead": False})
+        self.assertEqual(api.osu_text()["text"], ta.osu_timing_text(api._analysis))
         self.assertEqual(web.Api().osu_text()["key"], "first")
 
     def test_save_csv_writes_the_same_rows_as_the_engine(self) -> None:
@@ -631,6 +635,7 @@ class SnapBridgeTests(_IsolatedConfig):
                  "", "[HitObjects]", "64,192,1500,1,0,0:0:0:0:", "64,192,1300,1,0,0:0:0:0:",
                  ""]), encoding="utf-8")
             api = _api_with_points()
+            api.set_settings({"map_lead": False})       # the arithmetic below is on the sound
             api._analysis.points = [ta.TimingPoint(1010.0, 120.0, 0.9, 0)]
             prev = api.resnap_preview(str(target))
             json.dumps(prev)
@@ -1886,7 +1891,8 @@ class SettingsBridgeTests(_IsolatedConfig):
         reply = api.settings()
         json.dumps(reply)
         self.assertEqual(reply["settings"], {
-            "output_folder": "", "skin_folder": "", "export_ask": True, "offset_decimals": 0,
+            "output_folder": "", "skin_folder": "", "export_ask": True, "map_lead": True,
+            "offset_decimals": 0,
             "click_subdivision": 1, "click_accent": True, "ui_scale": 1.0,
             "reduced_motion": False, "theme": "dark"})
         self.assertTrue(reply["output_default"].endswith(str(Path("Documents") / "Overtone")))
@@ -1936,7 +1942,8 @@ class SettingsBridgeTests(_IsolatedConfig):
         with tempfile.TemporaryDirectory() as tmp:
             api = _api_with_points()
             api._analysis.source = str(Path(tmp) / "2438 Band - Song" / "audio.mp3")
-            api.set_settings({"output_folder": tmp, "export_ask": False, "offset_decimals": 1})
+            api.set_settings({"output_folder": tmp, "export_ask": False, "offset_decimals": 1,
+                              "map_lead": False})
             first, second = api.save_csv(), api.save_csv()
             folder = Path(tmp) / "Band - Song"
             self.assertEqual(Path(first["path"]), folder / "overtone-timing.csv")
@@ -2540,6 +2547,13 @@ class OtherGameBridgeTests(_IsolatedConfig):
             self.assertEqual(reply["check"]["lines"], 2)
         # 8 s of 120 BPM is 16 beats
         self.assertIn("16.000000=150.000000", api.other_game_text("stepmania")["text"])
+
+    def test_other_games_keep_the_grid_on_the_sound(self) -> None:
+        # The map lead is osu!'s convention: Quaver and StepMania keep theirs.
+        api = _api_with_points()
+        api._analysis.points[0] = ta.TimingPoint(1234.0, 120.0, 0.9, 0)
+        self.assertTrue(api.settings()["settings"]["map_lead"])
+        self.assertIn("StartTime: 1234\n", api.other_game_text("quaver")["text"])
 
     def test_quaver_follows_the_offset_decimals_setting(self) -> None:
         api = _api_with_points()

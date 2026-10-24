@@ -189,6 +189,10 @@
    "where": "python-only",
    "why": "the Audio view RMS curve; the nearest Rust has is structure::energy_map"
   },
+  "MAP_LEAD_MS": {
+   "where": "shell",
+   "why": "osu!'s red-line convention applied when the timing is written for osu!, never in either engine"
+  },
   "MAP_MIN_ATTACKS": {
    "rust": [
     "overtone-tempo/src/map.rs::empty_input_maps_to_nothing"
@@ -891,6 +895,10 @@
   "write_object_hitsounds": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "with_map_lead": {
+   "where": "shell",
+   "why": "osu!'s red-line convention applied when the timing is written for osu!, never in either engine"
   },
   "write_osu_beatmap": {
    "where": "shell",

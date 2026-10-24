@@ -20,6 +20,45 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-23 · osu!'s red-line lead at export (owner decision)
+
+### Changed
+
+- Red lines written for osu! sit `MAP_LEAD_MS` = 28 ms before the sound, as
+  ranked maps put them (owner decision 2026-10-23, closing 10.0a's open
+  question). `overtone.with_map_lead` moves every detected line; lines the
+  user placed or edited (`manual`) stay. The web shell applies it to copy
+  timing, the .osz, inject (one map and the mapset) and the inject diff;
+  the click track, the CSV, Quaver and StepMania keep the grid on the sound,
+  and the engine, the bench and the golden vectors never see it.
+- Settings → Output: "Write red lines as osu! maps are timed (28 ms before
+  the sound)", on by default (`map_lead`), EN and ES.
+
+### Fixed
+
+- Nothing beyond the above.
+
+### Hardening
+
+- The lead is a property of what is written, not of the analysis: the
+  analysis object is never changed (`with_map_lead` returns a copy), so undo,
+  locks and the timing table keep the engine's positions.
+
+### Measured
+
+- The lead: the median signed distance from the map's red line to the
+  engine's grid on the dev songs of all three stages, 27.6 ms pooled (28.0 /
+  26.4 / 25.0 by stage), written as 28.
+- The map's first red line against the written one, without -> with the
+  lead, held out: S1 within 5 ms 1.6 -> 41.5 %, within 10 ms 3.5 -> 68.0 %,
+  tempo ok and within 5 ms 0.9 -> 37.5 %; S2 1.9 -> 35.3 %, 7.7 -> 47.3 %,
+  0.1 -> 9.5 %; S3 0.4 -> 30.5 %, 1.0 -> 45.3 %, 0.0 -> 9.5 %. Dev: S1 0.9
+  -> 47.8 %, S2 4.2 -> 41.8 %, S3 0.9 -> 32.9 % within 5 ms.
+- Gates: 1018 Python tests (299 web shell), benchmark 24/24, bpm-snapshot
+  24/24, golden 27/27, real-audio 6/6, robustness, combine, parity, facts.
+  Not run: the browser check of the new setting (the bridge tests cover its
+  default, validation and every export it reaches).
+
 ## Unreleased — 2026-10-23 · the Rust path and the song-level octave
 
 ### Changed
@@ -57,11 +96,7 @@ version is `v0.2.0-alpha`.
 
 ### Pending (owner decision)
 
-- The export convention (10.0a): ranked maps put red lines a median 21 ms
-  before the sound. Writing that lead at export, never in the engine, would
-  turn the "conv." figures into raw ones -- S1 held out within 5 ms
-  0.9 -> ~37.5 %, within 10 ms -> ~57 %. It changes every exported map, so
-  it waits for the owner.
+- The export convention (10.0a): decided the same day, see the entry above.
 
 ## Unreleased — 2026-10-23 · where S1 still misses, and the first-edge phase
 

@@ -4071,6 +4071,28 @@ def snap_timing_points(points: list[TimingPoint]) -> list[TimingPoint]:
     return snapped
 
 
+#: How far before the sound ranked maps put their red lines (10.0a): the
+#: median signed distance from a map's red line to Overtone's grid, fitted on
+#: the dev songs of the three Songs-folder stages (bench/stages.py,
+#: 2026-10-23: 27.6 ms pooled; 28.0 / 26.4 / 25.0 by stage), never in the
+#: engine -- only on what is written for osu! (with_map_lead). Held out, the
+#: map's first red line within 5 ms of the written one: anime one tempo
+#: 1.7 -> 41.9 %, anime tempo changes 1.9 -> 35.3 %, bands 0.5 -> 34.8 %.
+MAP_LEAD_MS = 28.0
+
+
+def with_map_lead(analysis: Analysis, lead_ms: float = MAP_LEAD_MS) -> Analysis:
+    """The analysis as osu! maps are timed: every detected red line moved
+    ``lead_ms`` earlier. Lines the user placed or edited (``manual``) stay
+    where they are; the grid, BPMs and meters are untouched, and nothing in
+    the analysis itself changes."""
+    if not lead_ms or not getattr(analysis, "points", None):
+        return analysis
+    points = [p if getattr(p, "manual", False) else replace(p, offset_ms=p.offset_ms - lead_ms)
+              for p in analysis.points]
+    return replace(analysis, points=points)
+
+
 def osu_timing_text(analysis: Analysis, decimals: int = 0) -> str:
     """Return uninherited (red) timing points ready for an .osu [TimingPoints].
 

@@ -3,5 +3,7 @@ scipy>=1.11
 librosa>=0.10.2
 soundfile>=0.12
 soxr>=0.3
+# Beat This! (assets/models/beat_this_final0.onnx), the extra beat voter.
+onnxruntime>=1.31
 # Web shell only (overtone_web.py): Edge WebView2 must already be on the PC.
 pywebview>=6.0

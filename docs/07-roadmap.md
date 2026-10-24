@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **research underway** — the default 28 ms osu! export lead measures 16.8 % of Python and 5.2 % of Rust Corpus B red lines within 5 ms; raw engine grids score 2.0 % and 1.1 % respectively (20 maps, 1,152 lines, 2026-10-24). Tempo, octave and drifting sections remain the main misses |
 | Installer (MSI) | **v0.1.0-alpha published** — per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
 
-Tests: **1019** Python (720 engine + 299 web shell) · **292** Rust.
+Tests: **1024** Python (725 engine + 299 web shell) · **292** Rust.
 
 ### Current priorities — 2026-10-16
 
@@ -634,7 +634,7 @@ estimate with a number or is dropped.
 | 10.0h | Near-perfect single-BPM release gate | run the locked, song-held-out benchmark and require a song-clustered lower 95 % confidence bound ≥95 % joint pass (exact octave + ≤0.05 BPM + ≤5 ms) across all audited-valid one-red-line maps; refusals/errors remain misses, every invalid-reference exclusion is listed, Corpus A stays unchanged, and per-stratum results are published; keep work open until it passes | measured gate | todo — target, not a claim |
 | 10.1 | Fingerprint & reuse | match the audio against the user's own `osu!/Songs`; exact when the song is already mapped. Scored on Corpus B only with each track's own mapset held out, or it finds its own answer | large when matched | todo |
 | 10.2 | Source separation | percussive stem first — HPSS (built, no weights); Demucs weights are research-only | +8 pts | partial (HPSS in Rust) |
-| 10.3 | Neural beat tracking | Beat This! (MIT code and weights) as one more voter | +17 pts | todo |
+| 10.3 | Neural beat tracking | Beat This! (MIT code and weights) as one more voter | +17 pts (estimate) | **shipped 2026-10-24** through onnxruntime: held out, beats within 10 ms S1 +1.1, S2 +0.9, S3 +3.0 points (20 ms: +1.7, +1.5, +5.5); ~5 s per minute of song |
 | 10.4 | Multi-signal evidence | multi-band onsets, HPSS, chroma novelty (partly built in Phase 2) | +5 pts | partial (Rust pieces exist) |
 | 10.4a | Downbeat from the low band | read the 1 from kick and bass onsets, not the broadband envelope: on 88 ranked maps its accents put a claimed bar on the map's 1 only 5 times in 21, mostly one beat early on the snare (9/21 after #40's half-bar rule) | not estimated | todo |
 | 10.5 | Rippling model | tempo from neighbouring downbeats, lineup fix on export — our own implementation of the idea | +12 pts | todo |

@@ -8,27 +8,31 @@
    "stages": {
     "load": {
      "cpu": 0.031,
-     "wall": 0.027
+     "wall": 0.024
     },
     "attacks": {
-     "cpu": 0.719,
-     "wall": 0.725
+     "cpu": 0.828,
+     "wall": 0.624
     },
     "coherence": {
      "cpu": 0.016,
-     "wall": 0.019
+     "wall": 0.017
     },
     "octave": {
-     "cpu": 0.078,
-     "wall": 0.073
+     "cpu": 0.062,
+     "wall": 0.064
     },
     "sections": {
      "cpu": 0.031,
      "wall": 0.032
     },
+    "beatthis": {
+     "cpu": 38.875,
+     "wall": 6.64
+    },
     "total": {
-     "cpu": 0.906,
-     "wall": 0.897
+     "cpu": 40.078,
+     "wall": 7.414
     }
    }
   },
@@ -36,28 +40,32 @@
    "engine": "precision",
    "stages": {
     "load": {
-     "cpu": 0.25,
-     "wall": 0.245
+     "cpu": 0.188,
+     "wall": 0.149
     },
     "attacks": {
-     "cpu": 4.422,
-     "wall": 4.49
+     "cpu": 3.531,
+     "wall": 3.539
     },
     "coherence": {
      "cpu": 0.016,
-     "wall": 0.017
+     "wall": 0.014
     },
     "octave": {
-     "cpu": 0.453,
-     "wall": 0.449
+     "cpu": 0.375,
+     "wall": 0.369
     },
     "sections": {
      "cpu": 0.188,
-     "wall": 0.188
+     "wall": 0.18
+    },
+    "beatthis": {
+     "cpu": 169.188,
+     "wall": 29.289
     },
     "total": {
-     "cpu": 5.328,
-     "wall": 5.389
+     "cpu": 173.516,
+     "wall": 33.569
     }
    }
   },
@@ -65,40 +73,40 @@
    "engine": "legacy",
    "stages": {
     "load": {
-     "cpu": 0.031,
-     "wall": 0.032
+     "cpu": 0.016,
+     "wall": 0.024
     },
     "attacks": {
-     "cpu": 0.656,
-     "wall": 0.65
+     "cpu": 0.562,
+     "wall": 0.565
     },
     "coherence": {
      "cpu": 0.031,
-     "wall": 0.039
+     "wall": 0.033
     },
     "fallback": {
      "cpu": 0.0,
      "wall": 0.0
     },
     "transients": {
-     "cpu": 3.344,
-     "wall": 3.475
+     "cpu": 2.188,
+     "wall": 2.188
     },
     "tracking": {
-     "cpu": 0.094,
-     "wall": 0.096
+     "cpu": 0.062,
+     "wall": 0.068
     },
     "pulse": {
      "cpu": 0.0,
-     "wall": 0.005
+     "wall": 0.004
     },
     "local": {
-     "cpu": 0.016,
-     "wall": 0.019
+     "cpu": 0.047,
+     "wall": 0.056
     },
     "total": {
-     "cpu": 4.188,
-     "wall": 4.329
+     "cpu": 2.953,
+     "wall": 2.94
     }
    }
   }

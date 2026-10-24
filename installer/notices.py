@@ -180,6 +180,10 @@ def natives(root: Path | None = None) -> list[dict]:
             text = _text_of(base / name)
             if text:
                 texts.append((f"{base.name}/{name}", text))
+        for name in row.get("from_repo", []):        # a file this repository ships
+            text = _text_of(HERE.parent / name)
+            if text:
+                texts.append((name, text))
         for name in row.get("from_wheel", []):
             try:
                 texts += wheel_texts(metadata.distribution(name))

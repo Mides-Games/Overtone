@@ -1721,7 +1721,8 @@ class SparseNoiseRefusalTests(unittest.TestCase):
             self.assertEqual(len(analyze_audio(steady, follow_drift=True).points), 1)
             # On by default (DRIFT_FOLLOW), and off when asked.
             self.assertEqual(len(analyze_audio(path).points), len(followed.points))
-            self.assertEqual(len(analyze_audio(path, follow_drift=False).points),
+            # Beat This! follows a ramp too, so its vote is off here as well.
+            self.assertEqual(len(analyze_audio(path, follow_drift=False, beat_vote=False).points),
                              len(fixed.points))
 
     def test_the_chance_of_the_inliers(self):
@@ -1919,6 +1920,66 @@ class MapLeadTests(unittest.TestCase):
         self.assertIs(with_map_lead(base, 0.0), base)
         rows = osu_timing_text(moved).splitlines()
         self.assertTrue(rows[1].startswith(f"{int(round(1000 - MAP_LEAD_MS))},"))
+
+
+class BeatThisTests(unittest.TestCase):
+    """Beat This! as an extra voter: the model, its beats and the vote."""
+
+    @classmethod
+    def setUpClass(cls):
+        import overtone
+        cls.ta = overtone
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.click = Path(cls.tmp.name) / "click120.wav"
+        _click_track(cls.click, 120.0, duration=30.0)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_the_model_is_the_one_recorded(self):
+        # A checkout without Git LFS holds a pointer, not the model.
+        import hashlib, json
+        folder = self.ta.ROOT / "assets" / "models"
+        record = json.loads((folder / "beat_this.json").read_text(encoding="utf-8"))
+        data = (folder / record["model"]).read_bytes()
+        self.assertEqual(len(data), record["bytes"])
+        self.assertEqual(hashlib.sha256(data).hexdigest(), record["sha256"])
+        self.assertTrue((folder / "LICENSE-beat-this.txt").read_text(encoding="utf-8")
+                        .startswith("MIT License"))
+
+    def test_it_hears_a_click_track_on_its_beats(self):
+        import soundfile as sf
+        y, sr = sf.read(str(self.click), dtype="float32")
+        beats = self.ta._beat_this_beats(y, sr)
+        self.assertIsNotNone(beats)
+        gaps = np.diff(beats)
+        # its beats come on a 50 fps grid: 0.5 s apart within a frame
+        self.assertGreater(np.mean(np.abs(gaps - 0.5) <= 0.021), 0.9)
+
+    def test_a_grid_the_engine_already_fits_keeps_its_lines(self):
+        voted = analyze_audio(self.click)
+        alone = analyze_audio(self.click, beat_vote=False)
+        self.assertEqual([(p.offset_ms, p.bpm) for p in voted.points],
+                         [(p.offset_ms, p.bpm) for p in alone.points])
+
+    def test_without_the_model_the_vote_is_skipped(self):
+        saved = list(self.ta._BEAT_THIS_SESSION)
+        self.ta._BEAT_THIS_SESSION[:] = [None]
+        try:
+            self.assertIsNone(self.ta._beat_this_beats(np.zeros(44100, np.float32), 44100))
+            alone = analyze_audio(self.click, beat_vote=False)
+            self.assertEqual(self.ta._beat_this_vote(alone, np.zeros(10), 44100), alone)
+        finally:
+            self.ta._BEAT_THIS_SESSION[:] = saved
+
+    def test_the_fit_score_prefers_the_grid_on_the_attacks(self):
+        times = np.arange(0.5, 30.0, 0.5)
+        weights = np.ones_like(times)
+        on = self.ta._grid_fit_score(times, times, weights, 15.0)
+        off = self.ta._grid_fit_score(times + 0.05, times, weights, 15.0)
+        self.assertAlmostEqual(on, 1.0)
+        self.assertLess(off, 0.1)
 
 
 class LocalTempoTests(unittest.TestCase):
@@ -9507,7 +9568,8 @@ class InstallerNoticesTests(unittest.TestCase):
         for row in listed["components"]:
             for key in ("name", "version", "licence", "what", "source"):
                 self.assertTrue(str(row.get(key) or "").strip(), (row.get("name"), key))
-            self.assertTrue(row.get("from_path") or row.get("from_wheel") or row.get("terms"),
+            self.assertTrue(row.get("from_path") or row.get("from_wheel") or row.get("from_repo")
+                            or row.get("terms"),
                             row["name"])
         for name, terms in listed["terms"].items():
             self.assertTrue(terms.strip(), name)

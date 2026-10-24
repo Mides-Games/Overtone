@@ -3,3 +3,4 @@
 # git rewrite their line endings, on any platform or autocrlf setting.
 *.osu -text
 *.osu.txt -text
+assets/models/*.onnx filter=lfs diff=lfs merge=lfs -text

@@ -54,6 +54,59 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-24 · Beat This! votes (owner decision)
+
+### Changed
+
+- Beat This! (CPJKU, MIT; checkpoint final0) runs inside the engine as an
+  extra beat voter, through onnxruntime and without PyTorch: the network is
+  `assets/models/beat_this_final0.onnx` (83.2 MB, Git LFS, provenance and
+  SHA-256 in `assets/models/beat_this.json`, export recipe in
+  `proto/beat_this_export.py`); its log-mel input and peak picking are
+  Overtone's own numpy (`_beat_this_spectrogram`, `_beat_this_beats`). After
+  the octave, whole-BPM and drift conventions, on the precision path only,
+  its beats as red lines replace the engine's where they explain the song's
+  attacks better by 0.05 (attack-to-beat F-measure at 15 ms,
+  `_beat_this_vote`). `analyze_audio(beat_vote=False)` turns it off; the
+  Rust result gets the same vote through `overtone_rust.analyze`.
+- A new analysis stage, "Checking the beats with Beat This!…" (`beatthis`),
+  shown in the app in EN and ES.
+- `onnxruntime==1.31.0` with `flatbuffers==25.12.19` and `protobuf==7.36.2`
+  in the lock (`onnxruntime>=1.31` in requirements.txt), the SBOM
+  regenerated (40 wheels), the model and its licence in the installer's data
+  and in notices.json (a new `from_repo` source for files the repository
+  ships); flatbuffers (Apache-2.0) and protobuf (BSD-3-Clause) named in its
+  terms, as their wheels carry no licence text.
+
+### Fixed
+
+- Nothing beyond the above.
+
+### Hardening
+
+- Without the model file or onnxruntime the vote is skipped, never an error.
+- A checkout without Git LFS holds a pointer instead of the model; a test
+  checks the model's size and SHA-256 against beat_this.json.
+
+### Measured
+
+- Inside the engine, Beat This!'s beats against its own (torch) beats on 6
+  dev songs: 96.4-99.6 % identical within 0.5 ms (the app decodes the audio
+  its own way).
+- The shipped engine, held out (60 songs a stage), beats within 10 / 20 ms
+  of the map, vote off -> on: S1 80.5 -> 81.6 % / 92.0 -> 93.7 %, S2 64.3 ->
+  65.2 % / 85.1 -> 86.6 %, S3 40.7 -> 43.7 % / 64.3 -> 69.8 %. It took over
+  on 2, 4 and 6 of the 60 songs.
+- Cost (perf gate, re-pinned for the new stage): `beatthis` 6.7 s wall
+  (39 s CPU, onnxruntime on every core) on edm-174 and 29.3 s wall (170 s
+  CPU) on long-6min; every other stage unchanged.
+- Gates: 1024 Python tests, benchmark 24/24, bpm-snapshot 24/24, golden
+  27/27 Python and Rust, real-audio 6/6, perf (re-pinned), every other gate
+  run passes, `sbom --check` ok. `installer/notices.py --check` still fails
+  only on what it failed on before this change: the venv's Python 3.14.7
+  and Tcl/Tk 9.0 against notices.json's 3.14.4 and 8.6. Not run: an MSI
+  build with the model inside.
+
 ## Unreleased — 2026-10-24 · Beat This! through ONNX, without PyTorch
 
 ### Changed

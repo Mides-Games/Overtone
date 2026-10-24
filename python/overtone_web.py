@@ -315,6 +315,7 @@ STAGES = {
     "Scanning pulse coherence…": "coherence",
     "Resolving the beat octave…": "octave",
     "Fitting tempo sections…": "sections",
+    "Checking the beats with Beat This!…": "beatthis",
     "No fittable grid — falling back to the beat tracker…": "fallback",
     "Extracting transients and tempo hypotheses…": "transients",
     "Tracking beats (hybrid DP + PLP + peaks)…": "tracking",

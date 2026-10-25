@@ -25,9 +25,78 @@
     get: (_target, method) => {
       if (typeof method !== "string" || method === "then") return undefined;
       return (...args) => post(`/api/v1/bridge/${encodeURIComponent(method)}`, { args })
-        .then((data) => data.result);
+        .then((data) => {
+          // An export (.osz, CSV, click track) was written on the server:
+          // offer it to this computer.
+          if (data.result && data.result.download) offerDownload(data.result.download);
+          return data.result;
+        });
     },
   });
+
+  // -- exports to this computer -------------------------------------------
+  // The file is written on the server; a click here saves it on this PC.
+  // Where the browser can ask for a place (Chrome, Edge), it does; elsewhere
+  // it is an ordinary download.
+  const TOAST_TEXT = {
+    en: { ready: "{name} is ready ({size}). Download it to this computer?", yes: "Download",
+          no: "Not now", busy: "Downloading {name}…", failed: "Could not download: {why}" },
+    es: { ready: "{name} listo ({size}). ¿Descargarlo a esta PC?", yes: "Descargar",
+          no: "Ahora no", busy: "Descargando {name}…", failed: "No se pudo descargar: {why}" },
+  };
+
+  function offerDownload(file) {
+    // The page's own language (app.js sets it on <html>), English otherwise.
+    const words = TOAST_TEXT[document.documentElement.lang] || TOAST_TEXT.en;
+    const say = (key, values) => words[key].replace(/\{(\w+)\}/g, (_m, k) => values[k] ?? "");
+    document.querySelectorAll(".ow-toast").forEach((old) => old.remove());
+    const toast = document.createElement("div");
+    toast.className = "ow-toast";
+    toast.setAttribute("role", "status");
+    toast.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99998;" +
+      "display:flex;gap:12px;align-items:center;max-width:calc(100vw - 32px);padding:12px 14px 12px 16px;" +
+      "border-radius:12px;background:#171a20;color:#e8eaee;border:1px solid #2a2f38;" +
+      "box-shadow:0 12px 40px rgba(0,0,0,.45);font:14px/1.4 system-ui,sans-serif";
+    const text = document.createElement("span");
+    const mb = file.size >= 1048576 ? `${(file.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(file.size / 1024))} KB`;
+    text.textContent = say("ready", { name: file.name, size: mb });
+    text.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0";
+    const yes = document.createElement("button");
+    yes.textContent = say("yes", {});
+    yes.style.cssText = "padding:7px 14px;border-radius:8px;border:0;background:#10b981;color:#fff;font:600 13px system-ui,sans-serif;cursor:pointer";
+    const no = document.createElement("button");
+    no.textContent = say("no", {});
+    no.style.cssText = "padding:7px 10px;border-radius:8px;border:1px solid #2a2f38;background:transparent;color:inherit;font:13px system-ui,sans-serif;cursor:pointer";
+    toast.append(text, yes, no);
+    document.body.appendChild(toast);
+    no.onclick = () => toast.remove();
+    yes.onclick = async () => {
+      const url = `/api/v1/download?${new URLSearchParams({ path: file.path })}`;
+      try {
+        if (window.showSaveFilePicker) {
+          // Asked before anything is fetched, while the click still counts.
+          const ext = (file.name.match(/\.[^.]+$/) || [""])[0];
+          const handle = await window.showSaveFilePicker({ suggestedName: file.name,
+            types: ext ? [{ description: ext.slice(1).toUpperCase(), accept: { "application/octet-stream": [ext] } }] : undefined });
+          text.textContent = say("busy", { name: file.name });
+          yes.disabled = no.disabled = true;
+          const reply = await fetch(url, { credentials: "same-origin" });
+          if (!reply.ok) throw new Error(`HTTP ${reply.status}`);
+          const writable = await handle.createWritable();
+          await reply.body.pipeTo(writable);
+        } else {
+          const link = document.createElement("a");
+          link.href = url; link.download = file.name;
+          document.body.appendChild(link); link.click(); link.remove();
+        }
+        toast.remove();
+      } catch (err) {
+        if (err && err.name === "AbortError") { toast.remove(); return; }   // the person said no
+        text.textContent = say("failed", { why: err.message || err });
+        yes.disabled = no.disabled = false;
+      }
+    };
+  }
   window.pywebview = { api: bridge, web: true };
 
   // -- Python -> page -------------------------------------------------------

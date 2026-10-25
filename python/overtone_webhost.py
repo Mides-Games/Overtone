@@ -39,6 +39,8 @@ DIALOG_TIMEOUT_S = 30 * 60
 EVENTS_KEPT = 500
 #: The largest single upload.
 MAX_UPLOAD = 1024 * 1024 * 1024
+#: Exports the page is offered to download to the computer it runs on.
+DOWNLOADABLE = (".osz", ".osu", ".csv", ".wav", ".zip")
 #: A file name as an upload keeps it: no folders, nothing a shell reads.
 _SAFE_NAME = re.compile(r"[^\w.\- ()\[\]&',!+]+", re.UNICODE)
 
@@ -71,6 +73,20 @@ def dialog_kind(value) -> str:
             return kind
     text = str(value).lower()
     return "folder" if "folder" in text else "save" if "save" in text else "open"
+
+
+def free_path(folder: Path, name: str) -> Path:
+    """``folder / name``, or ``name (2)``, ``(3)``... when that is taken:
+    an export never lands on an earlier one."""
+    clean = WebHost.clean_name(name, "export")
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / clean
+    stem, suffix = target.stem, target.suffix
+    number = 2
+    while target.exists():
+        target = folder / f"{stem} ({number}){suffix}"
+        number += 1
+    return target
 
 
 class EventHub:
@@ -116,17 +132,24 @@ class WebWindow:
     def create_file_dialog(self, dialog_type=None, directory: str = "", allow_multiple=False,
                            save_filename: str = "", file_types=()):
         """Ask the page, and wait for its answer: a tuple of server paths, or
-        None when it was cancelled, left unanswered or the page went away."""
-        with self._lock:
-            number = next(self._ids)
-            answered, answer = threading.Event(), []
-            self._waiting[number] = (answered, answer)
+        None when it was cancelled, left unanswered or the page went away.
+
+        A save is not asked: on a server, where the file lands is the
+        server's business, and what the person wants is the file on their own
+        computer. It goes under exports (the folder the Api named, when that
+        is shared, else exports itself) under a free name, and the page then
+        offers it for download (``WebHost.call``)."""
         kind = dialog_kind(dialog_type)
         directory = str(directory or "")
         if directory and not self._shared(directory):
             directory = ""   # a desktop path the page could not open
-        if kind == "save" and not directory and self._save_folder is not None:
-            directory = str(self._save_folder)
+        if kind == "save" and self._save_folder is not None:
+            return (str(free_path(Path(directory or self._save_folder),
+                                  save_filename or "export")),)
+        with self._lock:
+            number = next(self._ids)
+            answered, answer = threading.Event(), []
+            self._waiting[number] = (answered, answer)
         self._hub.publish({"kind": "dialog", "id": number, "type": kind,
                            "directory": directory, "multiple": bool(allow_multiple),
                            "save_filename": str(save_filename or ""),
@@ -180,6 +203,9 @@ class WebHost:
         songs, chosen = self.roots.get("songs"), str(api._cfg.get("songs_folder") or "")
         if songs is not None and not (chosen and Path(chosen).is_dir()):
             api._cfg["songs_folder"] = str(songs)
+        # Exports land where the page can download them from.
+        if not self.shares(str(api._cfg.get("output_folder") or "")):
+            api._cfg["output_folder"] = str(self.exports)
         self.api = api
         self.methods = frozenset(
             name for name, member in inspect.getmembers(type(api), inspect.isfunction)
@@ -187,12 +213,33 @@ class WebHost:
 
     # -- the bridge -----------------------------------------------------------
     def call(self, method: str, args) -> object:
-        """``api.method(*args)``, for public methods only, as pywebview would."""
+        """``api.method(*args)``, for public methods only, as pywebview would.
+
+        An answer that names a file the call just exported (a ``path`` under
+        exports, of a kind in DOWNLOADABLE) also carries ``download``, so the
+        page can offer it to the person's own computer."""
         if method not in self.methods:
             raise LookupError(f"No bridge method {method!r}.")
         if not isinstance(args, list):
             raise TypeError("args must be a list.")
-        return getattr(self.api, method)(*args)
+        result = getattr(self.api, method)(*args)
+        if isinstance(result, dict) and result.get("ok") and isinstance(result.get("path"), str):
+            offer = self.download_offer(result["path"])
+            if offer is not None:
+                result = {**result, "download": offer}
+        return result
+
+    def download_offer(self, path: str) -> dict | None:
+        """``{"path", "name", "size"}`` for an export the page may download."""
+        try:
+            real = Path(os.path.realpath(path))
+            exports = Path(os.path.realpath(self.exports))
+        except (OSError, ValueError):
+            return None
+        if (exports not in real.parents or not real.is_file()
+                or real.suffix.lower() not in DOWNLOADABLE):
+            return None
+        return {"path": str(real), "name": real.name, "size": real.stat().st_size}
 
     # -- files ------------------------------------------------------------------
     def shares(self, path: str) -> bool:

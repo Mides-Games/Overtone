@@ -153,8 +153,10 @@ Qué cambia respecto al escritorio:
 - **Abrir un archivo o una carpeta** muestra un selector propio. Puedes
   subir desde tu PC (un archivo, varios o una carpeta entera) o elegir algo
   que el servidor ya tenga: la carpeta Songs, `uploads` o `exports`.
-- **Guardar** escribe en el servidor (por defecto en `exports`). Desde el
-  mismo selector se navega hasta el archivo y se descarga.
+- **Guardar** (paquete `.osz`, CSV, pista de clic) no pregunta: escribe en
+  `exports` del servidor, sin pisar uno anterior, y la página ofrece
+  descargarlo a tu PC. En Chrome y Edge el navegador pregunta dónde
+  guardarlo; en los demás es una descarga normal.
 - **Los `.osu` que la app escribe** van a la copia de Songs del servidor,
   con su `.bak`, como en el escritorio. No tocan tu PC.
 - El navegador nunca ve rutas fuera de Songs, `uploads` y `exports`.

@@ -5311,20 +5311,39 @@ class WebHostTests(_IsolatedConfig):
                               stand_in.FOLDER_DIALOG, stand_in.SAVE_DIALOG)],
                              ["open", "folder", "save"])
 
-    def test_a_save_dialog_opens_in_exports_and_never_names_a_desktop_folder(self) -> None:
-        answers = []
-        worker = threading.Thread(target=lambda: answers.append(
-            self.host.window.create_file_dialog(30, directory=r"C:\Users\someone\Desktop",
-                                                save_filename="map.osu")))
+    def test_a_save_lands_in_exports_unasked_and_never_over_an_earlier_one(self) -> None:
         with mock.patch.object(self.wh, "dialog_kind", return_value="save"):
-            worker.start()
-            number = self._dialog()
-        asked = [e for _, e in self.host.hub.since(0, 0.05) if e["kind"] == "dialog"][-1]
-        self.assertEqual((asked["directory"], asked["save_filename"]),
-                         (str(self.host.exports), "map.osu"))
-        self.host.window.answer(number, [str(self.host.exports / "map.osu")])
-        worker.join(5)
-        self.assertEqual(answers, [(str(self.host.exports / "map.osu"),)])
+            first = self.host.window.create_file_dialog(
+                30, directory=r"C:\Users\someone\Desktop", save_filename="Song.osz")
+            Path(first[0]).write_bytes(b"PK")
+            again = self.host.window.create_file_dialog(30, save_filename="Song.osz")
+            in_song = self.host.window.create_file_dialog(
+                30, directory=str(self.host.exports / "1 Band - Song"), save_filename="a/../map.osu")
+        self.assertEqual(first, (str(self.host.exports / "Song.osz"),))   # the desktop folder is not the server's
+        self.assertEqual(again, (str(self.host.exports / "Song (2).osz"),))
+        self.assertEqual(in_song, (str(self.host.exports / "1 Band - Song" / "map.osu"),))
+        self.assertEqual([e for _, e in self.host.hub.since(0, 0.05) if e["kind"] == "dialog"], [])
+        # The app's exports default to the same folder.
+        self.assertEqual(self.host.api._cfg["output_folder"], str(self.host.exports))
+
+    def test_an_exported_file_is_offered_for_download_and_nothing_else_is(self) -> None:
+        osz = self.host.exports / "Song.osz"
+        osz.write_bytes(b"PK" + bytes(10))
+        with mock.patch.object(type(self.host.api), "save_osz",
+                               return_value={"ok": True, "path": str(osz), "points": 1}):
+            result = self.host.call("save_osz", [])
+        self.assertEqual(result["points"], 1)
+        self.assertEqual(result["download"], {"path": os.path.realpath(osz), "name": "Song.osz",
+                                              "size": 12})
+        song = self.songs / "1 Band - Song" / "audio.ogg"
+        for path in (str(song), str(self.outside), str(self.host.exports / "missing.osz")):
+            self.assertIsNone(self.host.download_offer(path), path)
+        notes = self.host.exports / "notes.txt"
+        notes.write_text("x", encoding="utf-8")
+        self.assertIsNone(self.host.download_offer(str(notes)))   # not an export kind
+        with mock.patch.object(type(self.host.api), "save_osz",
+                               return_value={"ok": False, "path": str(osz)}):
+            self.assertNotIn("download", self.host.call("save_osz", []))
 
     def test_only_shared_folders_can_be_read_or_written(self) -> None:
         song = self.songs / "1 Band - Song" / "audio.ogg"

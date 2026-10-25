@@ -20,6 +20,26 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-25 · exports from the web page land on the person's computer
+
+### Changed
+
+- In the browser, an export (.osz package, CSV, click track) no longer asks
+  where to save it on the server: it lands under exports, under a free name
+  (`Song (2).osz`), and the page offers it for download to the computer it
+  runs on -- through the browser's own save dialog where there is one
+  (Chrome, Edge), else as an ordinary download. The notice follows the
+  page's language.
+- The bridge marks such answers (`download`): only files under exports, of
+  an export kind, that exist. On a server the app's exports folder defaults
+  to exports.
+
+### Measured
+
+- Checked by hand on this machine (2026-10-25): an analysed song's "Save
+  .osz" wrote exports/audio.osz with no dialog, the page offered it, and
+  the download endpoint returned all 1,129,566 bytes, a valid zip.
+
 ## Unreleased — 2026-10-25 · stages scored on ranked and loved maps only
 
 ### Changed

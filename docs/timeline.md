@@ -54,6 +54,49 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-25 · the full stages with Beat This! voting
+
+### Changed
+
+- Nothing in the engine; numbers only.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- Nothing.
+
+### Measured
+
+- `bench/stages.py <stage> --compare` on master `4ff81cf` (the Beat This!
+  vote on), every song analysed again, against the stage baselines; held
+  out, with the 2026-10-23 full-stage figures (before the vote) in brackets:
+  - S1 anime-single (1,462 maps): beats within 10 / 20 ms 72.4 / 88.6 %
+    (72.4 / 87.2), octave 89.5 % (90.4), tempo ok 68.7 % (71.1), conv. 10 ms
+    56.4 % (57.1).
+  - S2 anime-variable (685 maps): beats within 10 / 20 ms 67.3 / 84.6 %
+    (66.1 / 83.5).
+  - S3 bands-variable (495 maps): beats within 10 / 20 ms 45.9 / 63.4 %
+    (43.8 / 60.1), octave 73.7 % (72.9).
+- The vote helps the stages with tempo changes and leaves S1's beats where
+  they were, but costs S1 2.4 points of tempo ok: where it takes over a song
+  the mapper timed with one whole-BPM red line, its lines carry fractional
+  BPMs. The 60-song samples had shown S1 +1.1 at 10 ms; the full stage does
+  not.
+- The run was interrupted by a shutdown after S2 and resumed from the
+  cached analyses (106 of S1's 832 songs).
+
+### Pending (next session)
+
+- Read Beat This!'s lines at the whole BPM where the attacks agree (as
+  `_snap_whole_bpm` does for the engine's), or keep the engine's single red
+  line when the vote's tempo matches it, and measure S1 again.
+- redline-v1 (Tiger14n, trained on ranked osu! maps) on the seeded samples:
+  running. Its repository carries no licence, so it can be measured here
+  but not shipped without the author's permission.
+
 ## Unreleased — 2026-10-24 · the installer with Beat This! inside
 
 ### Changed

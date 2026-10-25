@@ -7743,6 +7743,8 @@ function palWire() {
   };
   // A click on the backdrop lands on the dialog itself: it closes, like Esc.
   $("palette").onclick = (e) => { if (e.target === $("palette")) $("palette").close(); };
+}
+
 // Notes: free text pinned to a time of the song, kept beside its project.
 async function notesLoad() {
   if (!api() || !S.result) return;

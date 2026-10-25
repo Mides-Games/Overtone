@@ -1446,6 +1446,14 @@
   <dl class="keys-list" id="keysList"></dl>
 </dialog>
 
+<dialog class="keys palette" id="palette" data-i18n-aria="pal_title" aria-label="Commands">
+  <input type="search" class="palette-input" id="paletteInput" autocomplete="off" spellcheck="false"
+         placeholder="Type an action or a section…"
+         role="combobox" aria-controls="paletteList" aria-expanded="true">
+  <ul class="palette-list" id="paletteList" role="listbox"></ul>
+  <div class="card-sub" id="paletteEmpty" data-i18n="pal_empty" hidden>Nothing matches.</div>
+</dialog>
+
 <div class="toast" id="toast"></div>
 <div class="drop-overlay" id="dropOverlay" hidden>
   <div class="drop-msg">

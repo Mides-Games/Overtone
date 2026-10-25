@@ -919,6 +919,21 @@ tbody tr:last-child td { border-bottom: 0; }
   background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--r-sm);
 }
 
+/* The command palette (Ctrl+K): every section and every button in view. */
+.palette { padding: 12px; }
+.palette-input {
+  width: 100%; box-sizing: border-box; padding: 9px 12px; font: inherit; font-size: var(--fs-4);
+  color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--border-strong); border-radius: var(--r-lg);
+}
+.palette-list { list-style: none; margin: 10px 0 0; padding: 0; max-height: 52vh; overflow: auto; }
+.palette-list li {
+  display: flex; gap: 12px; justify-content: space-between; padding: 7px 10px;
+  border-radius: var(--r-md); cursor: pointer; font-size: var(--fs-3);
+}
+.palette-list li .where { color: var(--muted); white-space: nowrap; }
+.palette-list li[aria-selected="true"] { background: var(--surface-2); }
+
 .toast {
   position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px);
   padding: 12px 18px;

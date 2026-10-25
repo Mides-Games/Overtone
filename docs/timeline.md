@@ -20,6 +20,33 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-25 · Ctrl+K finds any action
+
+### Changed
+
+- **Ctrl+K** opens a command palette: every section, Open audio, Analyze,
+  Undo, Redo, the keyboard sheet, and every enabled button the open
+  section shows. Type words in any order (accents ignored), arrows pick,
+  Enter runs. Listed in the keyboard sheet; English and Spanish.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- The list is read from the page when the palette opens, not kept by
+  hand, so a button added later is in it without anything else to
+  update, and a disabled or hidden one is not.
+
+### Measured
+
+- Not measured: no engine path changes. Checked in the page through the
+  UI harness: 23 entries on the empty Library page, "sett" + Enter opens
+  Settings, "seccion biblio" finds Biblioteca in Spanish, no console errors.
+
+---
+
 ## Unreleased — 2026-10-25 · every finished red line at the whole BPM
 
 ### Changed

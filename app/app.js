@@ -674,6 +674,8 @@ const I18N = {
     key_tap: "Tap along with the click", key_views: "The menu's sections, in order",
     key_open: "Open audio", key_analyze: "Analyze", key_undo: "Undo", key_redo: "Redo",
     key_sheet: "This sheet", key_close: "Close a panel or this sheet",
+    key_palette: "Search every action", pal_title: "Commands", pal_placeholder: "Type an action or a section…",
+    pal_empty: "Nothing matches.", pal_section: "Section", pal_action: "Action",
     key_toggled: "{what}: {state}", key_state_on: "on", key_state_off: "off",
     pb_loading: "Loading the song… {n}/{of}",
     pb_perc_preparing: "Separating the drums…",
@@ -1497,6 +1499,8 @@ const I18N = {
     key_tap: "Marcar el pulso junto al click", key_views: "Las secciones del menú, en orden",
     key_open: "Abrir audio", key_analyze: "Analizar", key_undo: "Deshacer", key_redo: "Rehacer",
     key_sheet: "Esta hoja", key_close: "Cerrar un panel o esta hoja",
+    key_palette: "Buscar cualquier acción", pal_title: "Comandos", pal_placeholder: "Escribí una acción o una sección…",
+    pal_empty: "No hay coincidencias.", pal_section: "Sección", pal_action: "Acción",
     key_toggled: "{what}: {state}", key_state_on: "sí", key_state_off: "no",
     pb_loading: "Cargando la canción… {n}/{of}",
     pb_perc_preparing: "Separando la batería…",
@@ -7550,6 +7554,7 @@ const KEYS = [
   [[["kb_enter"], ["F5"]], "key_analyze"],
   [[["Ctrl", "Z"]], "key_undo"],
   [[["Ctrl", "Y"], ["Ctrl", "kb_shift", "Z"]], "key_redo"],
+  [[["Ctrl", "K"]], "key_palette"],
   [[["?"]], "key_sheet"],
   [[["Esc"]], "key_close"],
 ];
@@ -7565,6 +7570,88 @@ function openKeys() {
   if (sheet.open) { sheet.close(); return; }
   renderKeys();
   sheet.showModal();
+}
+
+// Ctrl+K: the palette. Built when opened, from what the window has right
+// then: every section, the global actions, and every enabled button the
+// current section shows -- so a new button is in it without a list to keep.
+const PAL = { items: [], shown: [], at: 0 };
+
+function palFold(text) {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function palItems() {
+  const items = [];
+  document.querySelectorAll("#nav [data-view]").forEach((b) => {
+    if (items.some((it) => it.view === b.dataset.view)) return;
+    items.push({ label: t(VIEW_LABEL[b.dataset.view] || b.dataset.view), where: t("pal_section"),
+                 view: b.dataset.view, run: () => setView(b.dataset.view) });
+  });
+  [["key_open", () => openAudio()], ["key_analyze", () => analyze()], ["key_undo", () => undo()],
+   ["key_redo", () => redo()], ["key_sheet", () => openKeys()]]
+    .forEach(([key, run]) => items.push({ label: t(key), where: t("pal_action"), run }));
+  const here = t(VIEW_LABEL[S.view] || S.view);
+  document.querySelectorAll(".content > [data-view]:not([hidden]) button").forEach((b) => {
+    const label = (b.textContent || "").replace(/\s+/g, " ").trim();
+    if (!label || b.disabled || b.offsetParent === null) return;
+    items.push({ label, where: here, run: () => b.click() });
+  });
+  return items;
+}
+
+function palRender() {
+  const words = palFold($("paletteInput").value).split(/\s+/).filter(Boolean);
+  PAL.shown = PAL.items.filter((it) => {
+    const text = palFold(`${it.label} ${it.where}`);
+    return words.every((w) => text.includes(w));
+  }).slice(0, 60);
+  PAL.at = Math.min(PAL.at, Math.max(0, PAL.shown.length - 1));
+  $("paletteList").innerHTML = PAL.shown.map((it, i) =>
+    `<li role="option" data-i="${i}" aria-selected="${i === PAL.at}"><span>${esc(it.label)}</span>`
+    + `<span class="where">${esc(it.where)}</span></li>`).join("");
+  $("paletteEmpty").hidden = PAL.shown.length > 0;
+  const on = $("paletteList").children[PAL.at];
+  if (on) on.scrollIntoView({ block: "nearest" });
+}
+
+function palRun(i) {
+  const it = PAL.shown[i];
+  $("palette").close();
+  if (it) it.run();
+}
+
+function openPalette() {
+  const sheet = $("palette");
+  if (sheet.open) { sheet.close(); return; }
+  PAL.items = palItems();
+  PAL.at = 0;
+  $("paletteInput").value = "";
+  $("paletteInput").placeholder = t("pal_placeholder");
+  palRender();
+  sheet.showModal();
+  $("paletteInput").focus();
+}
+
+function palWire() {
+  $("paletteInput").oninput = () => { PAL.at = 0; palRender(); };
+  $("paletteInput").onkeydown = (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const n = PAL.shown.length;
+      if (n) PAL.at = (PAL.at + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+      palRender();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      palRun(PAL.at);
+    }
+  };
+  $("paletteList").onclick = (e) => {
+    const li = e.target.closest("li[data-i]");
+    if (li) palRun(+li.dataset.i);
+  };
+  // A click on the backdrop lands on the dialog itself: it closes, like Esc.
+  $("palette").onclick = (e) => { if (e.target === $("palette")) $("palette").close(); };
 }
 
 // [ and ]: the red line before or after the playhead, selected, the playhead on it.
@@ -8866,7 +8953,17 @@ function wire() {
     .filter((v, i, all) => all.indexOf(v) === i)
     .forEach((view, i) => { if (i < 10) viewKeys[String((i + 1) % 10)] = view; });
   $("keysClose").onclick = () => $("keysSheet").close();
+  palWire();
   window.addEventListener("keydown", (e) => {
+    // Ctrl+K opens the palette from anywhere, a field included; open, it
+    // keeps every key but its own toggle.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      if ($("keysSheet").open) $("keysSheet").close();
+      openPalette();
+      return;
+    }
+    if ($("palette").open) return;
     // The sheet is modal: it takes no shortcut but its own (Esc closes it natively).
     if ($("keysSheet").open) {
       if (e.key === "?") { e.preventDefault(); $("keysSheet").close(); }

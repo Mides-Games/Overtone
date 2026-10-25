@@ -422,7 +422,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Keyboard map | every action reachable from the keyboard; `?` shows the sheet | low | med | shell | no | no | P2 | **done** — `?` shows every key; ←/→ seek 1 s (Shift: 10 ms), `[`/`]` the red lines, L loop, C click, 1–9 and 0 the rail, on top of Space, T, ↑/↓, Ctrl+O/Z/Y and Enter/F5; buttons reach by Tab. Not bound: mute, solo click, beat steps |
 | Cancellable analysis | stop button, stage names and timings | low | med | progress | no | no | P2 | **done** — the engine is asked at each stage it announces, inside the stages too (next row), and once more before a result replaces the one on screen, which stays |
 | Stop inside a stage | a stop that lands in seconds, not when the stage ends: attack detection ran 48 s on an eight-minute track, the fallback's transients 53 s on another (machine busy) | med | med | cancellable analysis | no | no | P2 | **done** — checkpoints in every stage's long loops, asked on the analysing thread only (the STFT, decode and octave tempogram split so each piece is the call it replaces, bit for bit), and the Rust engine's process ended. Pressed 25/50/75 % into each stage of four songs, a stop landed in a median 0.03 s, 0.5 s at most (before: 0.87 s, up to 36 s); no measurable cost on an analysis that is not stopped |
-| Command palette | Ctrl+K search over every action | low | low | shell | no | no | P3 | todo |
+| Command palette | Ctrl+K search over every action | low | low | shell | no | no | P3 | done — Ctrl+K lists every section, the global actions and every enabled button the open section shows, built when opened; words match in any order, accents ignored (2026-10-25) |
 
 ---
 

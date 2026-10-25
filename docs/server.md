@@ -203,6 +203,15 @@ Se lanzan de tres formas:
 - **Por la API:** `POST /api/v1/runs` (ver el inicio de
   `python/overtone_server.py`).
 
+**Solo mapas ranked y loved.** Si junto a la carpeta Songs está
+`osu!.db` (`/srv/osu/osu!.db`, o donde diga `--osu-db`), las corridas de
+etapas cuentan por defecto solo los mapas que esa base marca como ranked,
+approved o loved. Sus red lines están verificadas; las de un mapa
+graveyard pueden estar mal y harían pasar por error del motor lo que es del
+mapa. En la página Tests es la casilla "Ranked and loved maps only"; en
+`bench/remote.py`, `--all-maps` la desactiva. Cada modo guarda su propio
+informe y su propio baseline.
+
 **Memoria.** Las corridas cuentan dentro del `MemoryMax` del servicio. Sin
 el voto de Beat This!, un análisis con Rust usa unos 100 MB, así que
 `--jobs 2` cabe en 1 GB. **Con el voto**, cada análisis pasa de 1.4 GB:

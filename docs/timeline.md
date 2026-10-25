@@ -20,6 +20,33 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-25 · stages scored on ranked and loved maps only
+
+### Changed
+
+- `bench/stages.py --ranked-db <osu!.db>` keeps only the maps the local
+  osu!.db lists as ranked, approved or loved (read by
+  `mapper_agreement.parse_osu_db`, matched by song folder and file name,
+  case ignored), counts the rest in one skipped line, and keeps its own
+  report and baseline (`<stage>-<engine>-ranked.json`), since the two
+  answer different questions. Server runs use it by default whenever an
+  osu!.db sits beside the Songs folder (`--osu-db` to name another).
+
+### Fixed
+
+- The stages took every map that matched a stage's condition as truth,
+  graveyard timings included: a map whose own red lines are wrong counted
+  as an engine failure.
+
+### Measured
+
+- `bench/stages.py --list` over this machine's index (4,879 sets) and its
+  osu!.db (v20260924, 19,574 ranked, approved or loved maps), 2026-10-25:
+  anime-single 832 -> 749 songs (4,611 -> 4,119 maps), anime-variable
+  491 -> 433 (2,599 -> 2,278), bands-variable 339 -> 167 (1,540 -> 887).
+  Half the bands stage was unranked. How the engine scores on the ranked
+  part: not measured yet (the server's first full runs).
+
 ## Unreleased — 2026-10-25 · measurement runs on the server
 
 ### Changed

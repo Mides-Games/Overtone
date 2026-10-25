@@ -12,7 +12,10 @@ index, listed in bench/stages.json.
     .venv/Scripts/python.exe bench/stages.py anime-single --compare   # after an engine change
 
 The mapper's red lines are the truth: ranked and loved timings are mappable
-by construction, so no listening is needed. Every song is assigned by a hash
+by construction, so no listening is needed. ``--ranked-db`` holds a stage to
+exactly those: maps the local osu!.db lists as ranked, approved or loved
+(bench/mapper_agreement.py reads it). Without it every map of the stage
+counts, graveyard timings included, and its report says so. Every song is assigned by a hash
 of its folder name to **dev** (70 %, where changes are tuned) or **held out**
 (30 %, never looked at while tuning). A change counts only if it improves the
 held-out part as well, and Corpus A stays green.
@@ -70,17 +73,32 @@ def is_holdout(folder: str, share: float) -> bool:
     return int.from_bytes(digest[:4], "big") / 2 ** 32 < share
 
 
-def build_stage(stage: dict, db_path: Path, share: float) -> tuple[list[dict], list[str]]:
-    """The stage's maps grouped by song audio, each checked on disk."""
+def ranked_maps(osu_db: Path) -> tuple[set[tuple[str, str]], dict]:
+    """(song folder, .osu file) of every map osu!.db lists as ranked,
+    approved or loved, casefolded, and the database's header."""
+    import mapper_agreement as ma
+    header, maps = ma.parse_osu_db(osu_db.read_bytes())
+    return {(m.folder.casefold(), m.filename.casefold()) for m in maps}, header
+
+
+def build_stage(stage: dict, db_path: Path, share: float,
+                ranked: set[tuple[str, str]] | None = None) -> tuple[list[dict], list[str]]:
+    """The stage's maps grouped by song audio, each checked on disk; with
+    ``ranked``, only the maps in it."""
     db = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     rows = db.execute(
         "SELECT beatmaps.path, sets.folder FROM beatmaps JOIN sets ON beatmaps.set_id = sets.id"
         f" WHERE {stage['where']} ORDER BY sets.folder, beatmaps.path").fetchall()
     db.close()
     skipped: list[str] = []
+    unranked = 0
     by_audio: dict[str, dict] = {}
     for path, folder_name in rows:
         osu = Path(path)
+        if ranked is not None and (Path(folder_name).name.casefold(),
+                                   osu.name.casefold()) not in ranked:
+            unranked += 1
+            continue
         if not osu.is_file():
             skipped.append(f"{folder_name}/{osu.name}: map no longer there")
             continue
@@ -92,6 +110,8 @@ def build_stage(stage: dict, db_path: Path, share: float) -> tuple[list[dict], l
             "audio": str(audio), "folder": folder_name, "maps": [],
             "split": "holdout" if is_holdout(folder_name, share) else "dev"})
         song["maps"].append({"file": osu.name, "path": str(osu)})
+    if unranked:
+        skipped.append(f"{unranked} maps not ranked, approved or loved in osu!.db")
     return list(by_audio.values()), skipped
 
 
@@ -263,13 +283,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--save-baseline", action="store_true",
                         help="keep this run as the stage's baseline (bench/.cache/stages/)")
     parser.add_argument("--compare", action="store_true", help="print the change against the baseline")
+    parser.add_argument("--ranked-db", metavar="OSU_DB",
+                        help="osu!.db: score only maps it lists as ranked, approved or loved")
     args = parser.parse_args(argv)
     db_path = Path(args.db)
     share = manifest["holdout_share"]
+    ranked, ranked_info = None, None
+    if args.ranked_db:
+        ranked, header = ranked_maps(Path(args.ranked_db))
+        ranked_info = {"osu_db_version": header["version"], "ranked_maps": len(ranked)}
+        print(f"osu!.db v{header['version']}: {len(ranked)} ranked, approved or loved maps")
 
     if args.list or not args.stage:
         for stage in sorted(manifest["stages"], key=lambda s: s["order"]):
-            songs, skipped = build_stage(stage, db_path, share)
+            songs, skipped = build_stage(stage, db_path, share, ranked)
             held = sum(s["split"] == "holdout" for s in songs)
             print(f"{stage['order']}. {stage['id']:<16} {len(songs):>5} songs "
                   f"({len(songs) - held} dev / {held} held out), "
@@ -286,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
             print("No overtone-cli: build it with cargo build --release -p overtone-cli")
             return 2
     fingerprint = sb.engine_fingerprint(args.engine, cli)
-    songs, skipped = build_stage(stage, db_path, share)
+    songs, skipped = build_stage(stage, db_path, share, ranked)
     if args.split:
         songs = [s for s in songs if s["split"] == args.split]
     if args.max_songs:
@@ -318,8 +345,11 @@ def main(argv: list[str] | None = None) -> int:
                "holdout": summarise(held, shift, beat_shift),
                "convention_ms": shift, "beat_convention_ms": beat_shift}
 
-    out = OUT_DIR / f"{stage['id']}-{args.engine}.json"
-    base_path = OUT_DIR / f"{stage['id']}-{args.engine}-baseline.json"
+    # A ranked-only run and an every-map run answer different questions:
+    # each keeps its own report and its own baseline.
+    kind = f"{stage['id']}-{args.engine}" + ("-ranked" if ranked is not None else "")
+    out = OUT_DIR / f"{kind}.json"
+    base_path = OUT_DIR / f"{kind}-baseline.json"
     base = None
     if args.compare and base_path.is_file():
         base = json.loads(base_path.read_text(encoding="utf-8"))["summary"]
@@ -344,6 +374,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"    {folder[:70]:<70} {', '.join(sorted(set(whys)))}")
 
     payload = {"stage": stage, "engine": args.engine, "fingerprint": fingerprint,
+               "ranked": ranked_info,
                "run": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                "summary": summary, "skipped": skipped,
                "maps": [{k: v for k, v in m.items() if k not in ("rows", "d_map", "d_eng")} | {

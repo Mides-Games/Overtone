@@ -81,6 +81,7 @@ pre { margin: 0; max-height: 360px; overflow: auto; padding: 10px; border-radius
         <select id="baseline"><option value="">—</option><option value="save">Save this run as baseline</option><option value="compare">Compare with baseline</option></select>
       </label>
       <label class="check" data-for="single_bpm"><input type="checkbox" id="tv"> TV Size only</label>
+      <label class="check" data-for="stages"><input type="checkbox" id="ranked" checked> Ranked and loved maps only</label>
       <label class="check"><input type="checkbox" id="beat_vote"> Beat This! vote (~1.5 GB and ~50 s a song)</label>
       <button class="primary" type="submit" id="go">Queue run</button>
       <div class="note" id="note"></div>
@@ -146,6 +147,9 @@ pre { margin: 0; max-height: 360px; overflow: auto; padding: 10px; border-radius
       for (const s of overview.stages) $("stage").add(new Option(`${s.order}. ${s.title}`, s.id));
     }
     $("code").textContent = `Code on the server: ${(overview.commit || "unknown").slice(0, 12)}`;
+    // Ranked-only needs the server's osu!.db; without it every map counts.
+    if (!overview.osu_db) { $("ranked").checked = false; $("ranked").disabled = true;
+      $("ranked").parentElement.title = "No osu!.db beside the server's Songs folder"; }
     const body = $("runs"); body.replaceChildren();
     $("none").hidden = overview.runs.length > 0;
     for (const meta of overview.runs) {
@@ -204,7 +208,8 @@ pre { margin: 0; max-height: 360px; overflow: auto; padding: 10px; border-radius
     const tool = $("tool").value;
     const request = { tool, engine: $("engine").value, jobs: Number($("jobs").value), max_songs: Number($("max_songs").value),
                       beat_vote: $("beat_vote").checked };
-    if (tool === "stages") Object.assign(request, { stage: $("stage").value, split: $("split").value, baseline: $("baseline").value });
+    if (tool === "stages") Object.assign(request, { stage: $("stage").value, split: $("split").value, baseline: $("baseline").value,
+                                                    ranked: $("ranked").checked });
     else Object.assign(request, { sample: Number($("sample").value), tv: $("tv").checked });
     $("go").disabled = true; $("note").className = "note"; $("note").textContent = "";
     try {

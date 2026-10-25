@@ -6331,6 +6331,45 @@ class MeasurementRunTests(unittest.TestCase):
             with self.assertRaises(ValueError, msg=bad):
                 self.runs.build_args(bad, "/db")
 
+    def test_ranked_runs_need_an_osu_db_and_use_it_by_default(self):
+        osu_db = self.tmp / "osu!.db"
+        _, argv, settings = self.runs.build_args({"stage": "anime-single"}, "/db", "", osu_db)
+        self.assertNotIn("--ranked-db", argv)
+        self.assertFalse(settings["ranked"])
+        with self.assertRaises(ValueError):
+            self.runs.build_args({"stage": "anime-single", "ranked": True}, "/db", "", osu_db)
+        osu_db.write_bytes(OsuDbAuditTests._database([(4, 0)]))
+        _, argv, settings = self.runs.build_args({"stage": "anime-single"}, "/db", "", osu_db)
+        self.assertEqual(argv[-2:], ["--ranked-db", str(osu_db)])
+        self.assertTrue(settings["ranked"])
+        _, argv, _ = self.runs.build_args({"stage": "anime-single", "ranked": False}, "/db", "", osu_db)
+        self.assertNotIn("--ranked-db", argv)
+        with self.assertRaises(ValueError):
+            self.runs.build_args({"stage": "anime-single", "ranked": "yes"}, "/db", "", osu_db)
+
+    def test_a_ranked_stage_keeps_only_the_maps_osu_db_lists_as_ranked_or_loved(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import stages
+        self._anime_song("1 Band - Clicks")
+        self._anime_song("2 Band - Pending")
+        self.library.scan(self.songs)
+        osu_db = self.tmp / "osu!.db"
+        name = "Band - Clicks (Mapper) [Hard].osu"
+        # Ranked, and a pending map of the other song; folder case differs.
+        osu_db.write_bytes(OsuDbAuditTests._database([(4, 0, "1 BAND - Clicks", name),
+                                                      (2, 0, "2 Band - Pending", name)]))
+        ranked, header = stages.ranked_maps(osu_db)
+        self.assertEqual((len(ranked), header["version"]), (1, 20260924))
+        stage = next(s for s in stages.load_manifest()["stages"] if s["id"] == "anime-single")
+        every, _ = stages.build_stage(stage, self.index, 0.3)
+        self.assertEqual(sorted(Path(s["folder"]).name for s in every),
+                         ["1 Band - Clicks", "2 Band - Pending"])
+        kept, skipped = stages.build_stage(stage, self.index, 0.3, ranked)
+        self.assertEqual([Path(s["folder"]).name for s in kept], ["1 Band - Clicks"])
+        self.assertEqual(skipped, ["1 maps not ranked, approved or loved in osu!.db"])
+
     def test_the_commit_is_read_from_the_checkout(self):
         commit = self.runs.git_commit()
         self.assertRegex(commit or "", r"^[0-9a-f]{40}$")
@@ -11789,9 +11828,10 @@ class OsuDbAuditTests(unittest.TestCase):
         return b"\x0b" + bytes(prefix) + raw
 
     @classmethod
-    def _record(cls, status: int, mode: int = 0) -> bytes:
+    def _record(cls, status: int, mode: int = 0, folder: str = "123 Artist - Title",
+                filename: str = "Artist - Title (Mapper) [Hard].osu") -> bytes:
         strings = ("Artist", "Artist", "Title", "Title", "Mapper", "Hard",
-                   "song.mp3", "hash", "Artist - Title (Mapper) [Hard].osu")
+                   "song.mp3", "hash", filename)
         row = b"".join(cls._string(value) for value in strings)
         row += struct.pack("<Bhhhqffffd", status, 100, 50, 2, 0,
                            9.0, 4.0, 5.0, 6.0, 1.6)
@@ -11801,15 +11841,16 @@ class OsuDbAuditTests(unittest.TestCase):
         row += struct.pack("<BBBBh f B", 0, 0, 0, 0, 0, 0.7, mode)
         row += cls._string("") + cls._string("")
         row += struct.pack("<h", 0) + cls._string("")
-        row += struct.pack("<BqB", 0, 0, 0) + cls._string("123 Artist - Title")
+        row += struct.pack("<BqB", 0, 0, 0) + cls._string(folder)
         row += struct.pack("<qBBBBB h B", 0, 0, 0, 0, 0, 0, 0, 0)
         return row + b"\0\0"  # opaque v20260924 entry extension
 
     @classmethod
-    def _database(cls, entries: list[tuple[int, int]]) -> bytes:
+    def _database(cls, entries: list[tuple]) -> bytes:
+        """``(status, mode)`` or ``(status, mode, folder, filename)`` per map."""
         header = struct.pack("<iiBq", 20260924, 1, 0, 0) + cls._string("tester")
         return header + struct.pack("<i", len(entries)) + b"".join(
-            cls._record(status, mode) for status, mode in entries) + b"\x05\0\0\0"
+            cls._record(*entry) for entry in entries) + b"\x05\0\0\0"
 
     def test_reads_only_ranked_statuses_and_preserves_mode(self) -> None:
         header, maps = parse_osu_db(self._database([(4, 0), (2, 0), (7, 3)]))

@@ -10,6 +10,7 @@ http://127.0.0.1:8765: an SSH tunnel to it), with the token from
     python bench/remote.py status
     python bench/remote.py run anime-single --split dev --jobs 2
     python bench/remote.py run anime-single --baseline save
+    python bench/remote.py run bands-variable --all-maps   # graveyard maps too
     python bench/remote.py run --tool single_bpm --sample 200
     python bench/remote.py runs
     python bench/remote.py show <id>
@@ -115,6 +116,9 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--tv", action="store_true", help="single_bpm: TV Size only")
     run.add_argument("--beat-vote", action="store_true", help="with the Beat This! vote (~1.5 GB a job)")
     run.add_argument("--baseline", choices=("save", "compare"))
+    run.add_argument("--all-maps", action="store_true",
+                     help="every map of the stage, not only ranked and loved (default when "
+                          "the server has an osu!.db)")
     run.add_argument("--wait", action="store_true", help="and follow it to its end")
     for name in ("show", "wait", "stop"):
         commands.add_parser(name).add_argument("id")
@@ -131,7 +135,8 @@ def main(argv: list[str] | None = None) -> int:
               f"vote {'on' if status.get('beat_vote') else 'off'}")
         print(f"index   {index['sets']} sets, {index['beatmaps']} maps, scanned {index['scanned_at']}")
         overview = remote.call("GET", "/api/v1/runs")
-        print(f"code    {(overview.get('commit') or '?')[:12]}")
+        print(f"code    {(overview.get('commit') or '?')[:12]}, osu!.db "
+              f"{'present: runs score ranked and loved maps' if overview.get('osu_db') else 'missing: runs score every map'}")
         print(f"runs    {len(overview['runs'])}, running {overview['queue']['running'] or '-'}, "
               f"queued {len(overview['queue']['queued'])}")
         print("stages  " + ", ".join(s["id"] for s in overview["stages"]))
@@ -147,6 +152,8 @@ def main(argv: list[str] | None = None) -> int:
             if not args.stage:
                 raise SystemExit("Name a stage (python bench/remote.py status lists them).")
             request.update(stage=args.stage, split=args.split or "", baseline=args.baseline or "")
+            if args.all_maps:
+                request["ranked"] = False
         else:
             request.update(sample=args.sample, tv=args.tv)
         meta = remote.call("POST", "/api/v1/runs", request)

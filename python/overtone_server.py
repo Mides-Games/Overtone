@@ -132,8 +132,13 @@ class Service:
     """What the endpoints do, apart from HTTP so the tests can call it."""
 
     def __init__(self, songs: str | os.PathLike[str], index: str | os.PathLike[str] | None = None,
-                 engine: str | None = None, jobs: int | None = None) -> None:
+                 engine: str | None = None, jobs: int | None = None,
+                 osu_db: str | os.PathLike[str] | None = None) -> None:
         self.songs = os.path.abspath(songs)
+        #: osu!.db, for runs that score ranked and loved maps only: given, or
+        #: beside the Songs folder as osu! keeps it.
+        self.osu_db = os.path.abspath(osu_db) if osu_db else os.path.join(
+            os.path.dirname(self.songs), "osu!.db")
         self.library = overtone_library.Library(index)
         self.engine = engine
         self.jobs = jobs
@@ -159,14 +164,16 @@ class Service:
         with self._web_lock:
             if self._runs is None:
                 store = overtone_runs.RunStore(self.library.path.parent / "runs")
-                self._runs = overtone_runs.RunQueue(store, self.library.path, self.songs)
+                self._runs = overtone_runs.RunQueue(store, self.library.path, self.songs,
+                                                    osu_db=self.osu_db)
             return self._runs
 
     def runs_overview(self) -> dict:
         return {"runs": self.runs.store.runs(), "queue": self.runs.state(),
                 "stages": overtone_runs.stage_ids(), "tools": list(overtone_runs.TOOLS),
                 "engines": list(overtone_runs.ENGINES), "max_jobs": overtone_runs.MAX_JOBS,
-                "commit": overtone_runs.git_commit()}
+                "commit": overtone_runs.git_commit(),
+                "osu_db": os.path.isfile(self.osu_db)}
 
     def run_detail(self, run_id: str) -> dict:
         return {**self.runs.store.meta(run_id), "log": self.runs.store.log_tail(run_id)}
@@ -575,6 +582,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-beat-vote", action="store_true",
                         help="Skip the Beat This! vote: about 100 MB per song instead of 1.5 GB, "
                         "red lines as the engine fits them")
+    parser.add_argument("--osu-db", help="osu!.db, so runs can score ranked and loved maps "
+                        "only (default: beside the Songs folder)")
     parser.add_argument("--every", type=float, default=0.0,
                         help="Minutes between automatic scan-then-analyse runs (0: only on request)")
     args = parser.parse_args(argv)
@@ -582,7 +591,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"{args.songs} is not a folder.")
     if args.no_beat_vote:
         disable_beat_vote()
-    service = Service(args.songs, args.index, args.engine, args.jobs)
+    service = Service(args.songs, args.index, args.engine, args.jobs, args.osu_db)
     server = serve(service, args.host, args.port, load_token(args.token_file))
     if args.every > 0:
         threading.Thread(target=_every, args=(service, args.every * 60.0), daemon=True,

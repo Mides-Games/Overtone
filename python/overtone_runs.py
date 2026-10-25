@@ -88,12 +88,15 @@ def git_commit(root: Path = ROOT) -> str | None:
 
 
 def build_args(request: dict, db_path: str | os.PathLike[str],
-               songs: str | os.PathLike[str] = "") -> tuple[str, list[str], dict]:
+               songs: str | os.PathLike[str] = "",
+               osu_db: str | os.PathLike[str] = "") -> tuple[str, list[str], dict]:
     """A run request as the tool's own command line, or ValueError.
 
     stages: ``{"tool": "stages", "stage": "anime-single", "engine": "rust",
     "split": "dev" | "holdout" | "", "jobs": 2, "max_songs": 0,
-    "beat_vote": false, "baseline": "save" | "compare" | ""}``.
+    "beat_vote": false, "baseline": "save" | "compare" | "", "ranked": bool}``;
+    ``ranked`` (default: whether the server has an osu!.db) scores only the
+    maps it lists as ranked, approved or loved.
     single_bpm: ``{"tool": "single_bpm", "engine", "jobs", "beat_vote",
     "max_songs", "sample": n, "tv": bool}``. Anything else is refused, so a
     request never names a file, a path or a flag of its own.
@@ -130,6 +133,17 @@ def build_args(request: dict, db_path: str | os.PathLike[str],
         if baseline:
             argv.append("--save-baseline" if baseline == "save" else "--compare")
             settings["baseline"] = baseline
+        ranked = request.get("ranked")
+        if ranked is None:
+            ranked = bool(osu_db) and Path(osu_db).is_file()
+        elif not isinstance(ranked, bool):
+            raise ValueError("ranked must be true or false.")
+        if ranked:
+            if not (osu_db and Path(osu_db).is_file()):
+                raise ValueError("This server has no osu!.db to tell ranked maps apart; "
+                                 "upload it beside the Songs folder.")
+            argv += ["--ranked-db", os.fspath(osu_db)]
+        settings["ranked"] = ranked
     else:
         if songs:
             argv += ["--songs", os.fspath(songs)]
@@ -234,10 +248,11 @@ class RunQueue:
 
     def __init__(self, store: RunStore, db_path: str | os.PathLike[str],
                  songs: str | os.PathLike[str] = "", python: str = sys.executable,
-                 env: dict | None = None) -> None:
+                 env: dict | None = None, osu_db: str | os.PathLike[str] = "") -> None:
         self.store = store
         self.db_path = os.fspath(db_path)
         self.songs = os.fspath(songs)
+        self.osu_db = os.fspath(osu_db)
         self.python = python
         self.env = env
         self._lock = threading.Lock()
@@ -254,7 +269,7 @@ class RunQueue:
         threading.Thread(target=self._loop, name="overtone-runs", daemon=True).start()
 
     def submit(self, request: dict) -> dict:
-        tool, argv, settings = build_args(request, self.db_path, self.songs)
+        tool, argv, settings = build_args(request, self.db_path, self.songs, self.osu_db)
         meta = self.store.create(settings, [tool, *argv])
         with self._wake:
             self._queue.append(meta["id"])
@@ -394,7 +409,8 @@ def worker(argv: list[str] | None = None) -> int:
         code = stages.main(tool_args)
         stage = tool_args[0] if tool_args else ""
         engine = tool_args[tool_args.index("--engine") + 1] if "--engine" in tool_args else "python"
-        report = stages.OUT_DIR / f"{stage}-{engine}.json"
+        ranked = "-ranked" if "--ranked-db" in tool_args else ""
+        report = stages.OUT_DIR / f"{stage}-{engine}{ranked}.json"
     else:
         report = Path(args.result).with_name("single_bpm.json")
         code = single_bpm.main([*tool_args, "--json", str(report)])

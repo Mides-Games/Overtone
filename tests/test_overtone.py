@@ -6237,6 +6237,35 @@ class LibraryServerTests(unittest.TestCase):
             self.assertFalse(self._call("GET", "/api/status")[1]["beat_vote"])
             self.assertEqual(ta._BEAT_THIS_SESSION, [None])
 
+    def test_measurement_runs_are_queued_followed_and_refused_over_http(self):
+        import time
+        status, overview = self._call("GET", "/api/v1/runs")
+        self.assertEqual(status, 200)
+        self.assertIn("anime-single", [s["id"] for s in overview["stages"]])
+        self.assertEqual((overview["runs"], overview["queue"]["running"]), ([], None))
+        self.assertEqual(self._call("POST", "/api/v1/runs", {"tool": "rm"})[0], 400)
+        self.assertEqual(self._call("POST", "/api/v1/runs", {"stage": "anime-single",
+                                                              "jobs": 99})[0], 400)
+        # No index yet: the run is queued, fails, and says why in its log.
+        status, meta = self._call("POST", "/api/v1/runs", {"stage": "anime-single",
+                                                            "engine": "python", "max_songs": 1})
+        self.assertEqual((status, meta["state"]), (202, "queued"))
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            detail = self._call("GET", f"/api/v1/runs/{meta['id']}")[1]
+            if detail["state"] not in ("queued", "running"):
+                break
+            time.sleep(0.1)
+        self.assertEqual(detail["state"], "failed")
+        self.assertTrue(detail["log"])
+        self.assertEqual(self._call("GET", f"/api/v1/runs/{meta['id']}/result")[0], 404)
+        self.assertEqual(self._call("POST", f"/api/v1/runs/{meta['id']}/stop"),
+                         (200, {"stopping": False}))
+        for bad in ("nope", "..%2F..%2Fetc", "20261025-000000-abcdef"):
+            self.assertEqual(self._call("GET", f"/api/v1/runs/{bad}")[0], 404)
+        self.assertEqual([r["id"] for r in self._call("GET", "/api/v1/runs")[1]["runs"]],
+                         [meta["id"]])
+
     def test_the_token_is_generated_once_and_kept_private(self):
         from unittest import mock
         path = self.tmp / "token"
@@ -6248,6 +6277,114 @@ class LibraryServerTests(unittest.TestCase):
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
         with mock.patch.dict(os.environ, {self.server_module.TOKEN_ENV: "from-env"}):
             self.assertEqual(self.server_module.load_token(str(path)), "from-env")
+
+
+
+class MeasurementRunTests(unittest.TestCase):
+    """Server runs of the bench's timing stages: one at a time, each in its
+    own process, kept on disk with the code that produced it."""
+
+    def setUp(self) -> None:
+        import overtone_library
+        import overtone_runs
+        self.runs = overtone_runs
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.tmp = Path(scratch.name)
+        self.songs = self.tmp / "Songs"
+        self.index = self.tmp / "library.sqlite3"
+        self.library = overtone_library.Library(self.index)
+
+    def _anime_song(self, folder: str) -> None:
+        path = self.songs / folder
+        path.mkdir(parents=True)
+        _click_track(path / "audio.wav", 120.0, duration=24.0)
+        text = _mapset_osu("Hard", audio="audio.wav", reds=((250, 500.0, 4),),
+                           tags="anime opening", objects=(1000, 23500))
+        (path / "Band - Clicks (Mapper) [Hard].osu").write_text(text, encoding="utf-8", newline="")
+
+    def _wait(self, queue, run_id: str) -> dict:
+        import time
+        deadline = time.monotonic() + 300
+        while time.monotonic() < deadline:
+            meta = queue.store.meta(run_id)
+            if meta["state"] not in ("queued", "running"):
+                return meta
+            time.sleep(0.1)
+        self.fail(f"run {run_id} never ended")
+
+    def test_a_request_becomes_the_tools_own_arguments_or_is_refused(self):
+        tool, argv, settings = self.runs.build_args(
+            {"tool": "stages", "stage": "anime-single", "split": "dev", "jobs": 2,
+             "baseline": "compare"}, "/srv/index.sqlite3", "/srv/Songs")
+        self.assertEqual(tool, "stages")
+        self.assertEqual(argv, ["anime-single", "--engine", "rust", "--jobs", "2", "--db",
+                                "/srv/index.sqlite3", "--split", "dev", "--compare"])
+        self.assertFalse(settings["beat_vote"])
+        tool, argv, _ = self.runs.build_args({"tool": "single_bpm", "sample": 50, "tv": True},
+                                             "/db", "/srv/Songs")
+        self.assertEqual(argv[-5:], ["--songs", "/srv/Songs", "--sample", "50", "--tv"])
+        for bad in ({"tool": "rm"}, {"stage": "nope"}, {"stage": "anime-single", "jobs": 99},
+                    {"stage": "anime-single", "jobs": True}, {"stage": "anime-single", "split": "all"},
+                    {"stage": "anime-single", "beat_vote": "yes"}, {"stage": "anime-single",
+                    "max_songs": -1}, {"stage": "anime-single", "baseline": "--refresh"}, []):
+            with self.assertRaises(ValueError, msg=bad):
+                self.runs.build_args(bad, "/db")
+
+    def test_the_commit_is_read_from_the_checkout(self):
+        commit = self.runs.git_commit()
+        self.assertRegex(commit or "", r"^[0-9a-f]{40}$")
+        self.assertIsNone(self.runs.git_commit(self.tmp))
+
+    def test_a_run_measures_a_stage_and_keeps_its_report(self):
+        import overtone_rust as rs
+        if rs.find_cli() is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        self._anime_song("1 Band - Clicks")
+        self.library.scan(self.songs)
+        store = self.runs.RunStore(self.tmp / "runs")
+        queue = self.runs.RunQueue(store, self.index, self.songs)
+        meta = queue.submit({"tool": "stages", "stage": "anime-single", "engine": "rust"})
+        self.assertEqual(meta["state"], "queued")
+        self.assertEqual(meta["commit"], self.runs.git_commit())
+        done = self._wait(queue, meta["id"])
+        log = "\n".join(store.log_tail(meta["id"]))
+        self.assertEqual((done["state"], done["exit_code"]), ("done", 0), log)
+        self.assertIn("Beat This! vote off", log)
+        report = store.result(meta["id"])
+        self.assertEqual((report["stage"]["id"], report["engine"]), ("anime-single", "rust"))
+        self.assertEqual(len(report["maps"]), 1)
+        self.assertTrue(report["maps"][0]["tempo_ok"], report["maps"][0])
+        self.assertEqual(done["summary"], report["summary"])
+        # Caches live under the store, one tree per vote setting.
+        self.assertTrue(any((store.cache / "novote").rglob("*.json")))
+        self.assertFalse((store.cache / "vote").exists())
+        self.assertEqual([m["id"] for m in store.runs()], [meta["id"]])
+
+    def test_runs_go_one_at_a_time_and_can_be_cancelled_or_stopped(self):
+        store = self.runs.RunStore(self.tmp / "runs")
+        queue = self.runs.RunQueue(store, self.tmp / "missing.sqlite3", self.songs)
+        first = queue.submit({"tool": "stages", "stage": "anime-single", "engine": "python"})
+        second = queue.submit({"tool": "stages", "stage": "anime-variable", "engine": "python"})
+        self.assertTrue(queue.stop(second["id"]))
+        self.assertEqual(store.meta(second["id"])["state"], "cancelled")
+        ended = self._wait(queue, first["id"])
+        # An index that is not there fails the run, and says so in its log.
+        self.assertEqual(ended["state"], "failed")
+        self.assertTrue(store.log_tail(first["id"]))
+        self.assertFalse(queue.stop(first["id"]))
+        with self.assertRaises(LookupError):
+            store.meta("../../etc")
+        with self.assertRaises(LookupError):
+            store.result(first["id"])
+
+    def test_a_run_the_server_died_under_is_marked_interrupted(self):
+        store = self.runs.RunStore(self.tmp / "runs")
+        meta = store.create({"tool": "stages"}, ["stages"])
+        meta["state"] = "running"
+        store.write(meta)
+        self.runs.RunQueue(store, self.index, self.songs)
+        self.assertEqual(store.meta(meta["id"])["state"], "interrupted")
 
 
 

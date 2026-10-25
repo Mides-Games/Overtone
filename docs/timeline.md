@@ -20,6 +20,47 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-25 · measurement runs on the server
+
+### Changed
+
+- `overtone_runs.py`: the server runs `bench/stages.py` and
+  `bench/single_bpm.py` over the Songs folder it holds, one run at a time,
+  each in its own process, and keeps each in a folder (what was asked, the
+  commit that answered, the log, the tool's own JSON report). A run the
+  server died under is marked interrupted on the next start.
+- `/api/v1/runs` queues, lists, shows, stops and serves them; the web page
+  has a Tests page (`app/runs.html`); `bench/remote.py` drives them from a
+  PC through the tunnel.
+- Nothing in the engine or the bench changed: a run calls the tool's own
+  `main` after turning the Beat This! vote off when asked and pointing the
+  caches at one tree per vote setting (the tools' cache keys name the
+  engine's code, not the vote). Parallel analyses fork from that process
+  and keep both; on Windows, which cannot fork, a vote-free run analyses
+  one song at a time.
+
+### Fixed
+
+- A request answered before its body was read (a 401, a 404) could reach
+  the client as an aborted connection on Windows: the socket closed with
+  unread bytes and reset. Small unread bodies are now drained first.
+
+### Hardening
+
+- A run request is translated into the tool's arguments field by field
+  (tool, stage, engine, split, jobs 1-8, counts, two flags, baseline); it
+  can never name a path or a flag of its own. Run ids are matched against
+  their pattern before any file is opened.
+
+### Measured
+
+- On this machine, through `bench/remote.py` against the local server and
+  the real Songs folder (2026-10-25): anime-single, dev part, first 5
+  songs, Rust engine without the vote: 30 maps, 0.6-1.4 s a song, 33 s
+  for the run; tempo ok 100.0 %, joint 5 ms 0.0 %, conv. 10 ms 73.3 %,
+  signed error +35.8 ms. Five songs: a smoke test of the pipeline, not a
+  reading of the engine.
+
 ## Unreleased — 2026-10-25 · the app as a web page
 
 ### Changed

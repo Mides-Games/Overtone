@@ -44,7 +44,7 @@ commit messages are English; only the app's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (1046 on 2026-10-25)
+.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (1052 on 2026-10-25)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -82,6 +82,7 @@ named, and the analyses are cached per audio and engine hash, so a re-score take
 .venv/Scripts/python.exe bench/corpus_b.py                     # ranked red lines within 5 ms
 .venv/Scripts/python.exe bench/corpus_b.py --engine rust       # the same through overtone-cli
 .venv/Scripts/python.exe bench/corpus_b.py --onsets            # and where each track's sound starts
+.venv/Scripts/python.exe bench/remote.py run anime-single --split dev --wait  # a stage, on the user's server
 ```
 
 And the Rust side:
@@ -169,13 +170,16 @@ python/                   v3 engine, osu! I/O, classic Tk GUI + CLI (the app's d
                             also serves app/ as a web page (overtone_webhost.py)
   overtone_webhost.py       the page in a browser: Api calls, events and file
                             dialogs over HTTP instead of pywebview
+  overtone_runs.py          measurement runs on the server: bench/stages.py and
+                            single_bpm.py over its Songs folder, one at a time, kept
   requirements.txt          lower bounds; requirements.lock pins the measured baseline
 tests/                    Python suite (run from the root with unittest discover)
   test_overtone.py          engine, I/O and classic-window tests
   test_overtone_web.py      web bridge tests (never touch the real config)
   fixtures/                 hand-timed samples the tests read
 app/                      web shell frontend (HTML/CSS/JS); web.js carries its bridge
-                          over HTTP when the server serves it, and does nothing on disk
+                          over HTTP when the server serves it, and does nothing on disk;
+                          runs.html is the server's measurement runs page
 Overtone.bat              double-click launcher
 installer/                the MSI and portable ZIP: PyInstaller spec, WiX source, the
                           one-line build (installer/build.py) and its smoke test
@@ -209,6 +213,7 @@ bench/genre_corpus.py     where each genre puts its hitsounds, measured from the
 bench/genre_corpus.json   user's Songs folder; writes profiles/<genre>.json
 bench/corpus_b.py         Corpus B: the engine against 20 hand-timed ranked maps (Phase 10)
 bench/corpus_b.json       its manifest: Songs folders, files and SHA-1s, never the audio
+bench/remote.py           the server's measurement runs from the command line
 proto/                    Python prototypes of the riskiest v4 algorithms, and
                           band_lanes.py, which prints the band flux as
                           `overtone-bench bands` does so the two can be diffed,

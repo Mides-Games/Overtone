@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overtone Tests</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9; --card: #ffffff; --ink: #14161a; --muted: #5b6270; --line: #d9dde4;
+  --accent: #0f9f73; --accent-ink: #ffffff; --bad: #d23c3c; --warn: #b7791f; --chip: #eef1f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1115; --card: #171a20; --ink: #e8eaee; --muted: #9aa3b2; --line: #2a2f38;
+    --accent: #2ec4a0; --accent-ink: #06231b; --bad: #ff6b6b; --warn: #f6c35b; --chip: #1f242c;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1115; --card: #171a20; --ink: #e8eaee; --muted: #9aa3b2; --line: #2a2f38;
+  --accent: #2ec4a0; --accent-ink: #06231b; --bad: #ff6b6b; --warn: #f6c35b; --chip: #1f242c;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+a { color: var(--accent); }
+.sub { color: var(--muted); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 14px; align-items: end; }
+label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+select, input[type=number] { width: 100%; min-width: 0; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); }
+button { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+button:disabled { opacity: .5; cursor: default; }
+.note { font-size: 12px; color: var(--muted); grid-column: 1 / -1; min-height: 1em; }
+.note.err { color: var(--bad); }
+.table { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+tr.pick { cursor: pointer; }
+tr.pick:hover, tr.on { background: var(--chip); }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; background: var(--chip); }
+.pill.done { color: var(--accent); } .pill.failed, .pill.interrupted { color: var(--bad); }
+.pill.running, .pill.queued { color: var(--warn); }
+.mono { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+pre { margin: 0; max-height: 360px; overflow: auto; padding: 10px; border-radius: 8px; background: var(--chip); font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.empty { color: var(--muted); padding: 12px 0; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Tests</h1>
+    <span class="sub" id="code">Measuring the timing engine against mappers' red lines</span>
+    <a href="/" style="margin-left:auto">← Back to the app</a>
+  </header>
+
+  <section class="card">
+    <h2>New run</h2>
+    <form id="form">
+      <label>Tool
+        <select id="tool"><option value="stages">Stages (dev / held out)</option><option value="single_bpm">One-tempo maps</option></select>
+      </label>
+      <label data-for="stages">Stage <select id="stage"></select></label>
+      <label data-for="stages">Part
+        <select id="split"><option value="">Both</option><option value="dev">Dev (tune here)</option><option value="holdout">Held out (confirm here)</option></select>
+      </label>
+      <label>Engine <select id="engine"><option value="rust">Rust</option><option value="python">Python (v3)</option></select></label>
+      <label>Analyses at once <input type="number" id="jobs" min="1" max="8" value="2"></label>
+      <label>First N songs (0 = all) <input type="number" id="max_songs" min="0" value="0"></label>
+      <label data-for="single_bpm">Sample of N songs <input type="number" id="sample" min="0" value="0"></label>
+      <label data-for="stages">Baseline
+        <select id="baseline"><option value="">—</option><option value="save">Save this run as baseline</option><option value="compare">Compare with baseline</option></select>
+      </label>
+      <label class="check" data-for="single_bpm"><input type="checkbox" id="tv"> TV Size only</label>
+      <label class="check"><input type="checkbox" id="beat_vote"> Beat This! vote (~1.5 GB and ~50 s a song)</label>
+      <button class="primary" type="submit" id="go">Queue run</button>
+      <div class="note" id="note"></div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Runs</h2>
+    <div class="table"><table>
+      <thead><tr><th>Run</th><th>State</th><th>What</th><th>Settings</th><th>Code</th><th>Time</th></tr></thead>
+      <tbody id="runs"></tbody>
+    </table></div>
+    <div class="empty" id="none" hidden>No runs yet.</div>
+  </section>
+
+  <section class="card" id="detail" hidden>
+    <h2 id="dtitle">Run</h2>
+    <div class="actions">
+      <button id="stop">Stop</button>
+      <button id="download">Download report (JSON)</button>
+    </div>
+    <div class="grid2">
+      <div><h2>Result</h2><div class="table"><table id="summary"></table></div><div class="empty" id="nosummary">No report yet.</div></div>
+      <div><h2>Log</h2><pre id="log"></pre></div>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  let selected = null, overview = null;
+
+  async function call(method, path, body) {
+    const reply = await fetch(path, { method, credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-Overtone": "1" },
+      body: body === undefined ? undefined : JSON.stringify(body) });
+    if (reply.status === 401) { location.href = "/login"; throw new Error("Signed out"); }
+    const data = await reply.json().catch(() => ({}));
+    if (!reply.ok) throw new Error(data.error || `HTTP ${reply.status}`);
+    return data;
+  }
+
+  function cell(text, cls) { const td = document.createElement("td"); td.textContent = text; if (cls) td.className = cls; return td; }
+  function pct(v) { return v == null ? "—" : `${(100 * v).toFixed(1)}%`; }
+  // Counts are shown as they are; every other number in a summary is a share.
+  const COUNTS = new Set(["maps", "songs", "answered", "lines"]);
+  function when(meta) { return meta.seconds != null ? `${Math.round(meta.seconds)} s` : (meta.started_at || meta.created_at || "").replace("T", " ").replace("+00:00", " UTC"); }
+  function what(s) { return s.stage || (s.tool === "single_bpm" ? "one-tempo maps" : s.tool); }
+  function settings(s) {
+    return Object.entries(s).filter(([k, v]) => !["tool", "stage"].includes(k) && v !== "" && v !== false && v != null)
+      .map(([k, v]) => v === true ? k : `${k} ${v}`).join(" · ");
+  }
+
+  function syncForm() {
+    const tool = $("tool").value;
+    document.querySelectorAll("[data-for]").forEach((el) => { el.hidden = el.dataset.for !== tool; });
+  }
+
+  async function refresh() {
+    try { overview = await call("GET", "/api/v1/runs"); } catch (err) { $("note").textContent = err.message; return; }
+    if (!$("stage").options.length) {
+      for (const s of overview.stages) $("stage").add(new Option(`${s.order}. ${s.title}`, s.id));
+    }
+    $("code").textContent = `Code on the server: ${(overview.commit || "unknown").slice(0, 12)}`;
+    const body = $("runs"); body.replaceChildren();
+    $("none").hidden = overview.runs.length > 0;
+    for (const meta of overview.runs) {
+      const row = document.createElement("tr"); row.className = "pick" + (meta.id === selected ? " on" : "");
+      const state = document.createElement("td"); const pill = document.createElement("span");
+      pill.className = `pill ${meta.state}`; pill.textContent = meta.state; state.appendChild(pill);
+      row.append(cell(meta.id, "mono"), state, cell(what(meta.settings)), cell(settings(meta.settings)),
+                 cell((meta.commit || "").slice(0, 8), "mono"), cell(when(meta)));
+      row.onclick = () => { selected = meta.id; showDetail(); refresh(); };
+      body.appendChild(row);
+    }
+    if (selected) showDetail();
+  }
+
+  async function showDetail() {
+    let run;
+    try { run = await call("GET", `/api/v1/runs/${selected}`); } catch (err) { return; }
+    $("detail").hidden = false;
+    $("dtitle").textContent = `${what(run.settings)} — ${run.id} (${run.state})`;
+    $("stop").disabled = !["queued", "running"].includes(run.state);
+    $("download").disabled = run.state !== "done";
+    const log = $("log"), atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+    log.textContent = (run.log || []).join("\n");
+    if (atEnd) log.scrollTop = log.scrollHeight;
+    const table = $("summary"); table.replaceChildren();
+    const summary = run.summary;
+    $("nosummary").hidden = !!summary;
+    if (!summary) return;
+    const parts = ["dev", "holdout"].filter((p) => summary[p] && typeof summary[p] === "object");
+    if (!parts.length) { const r = document.createElement("tr"); r.append(cell(JSON.stringify(summary).slice(0, 400))); table.appendChild(r); return; }
+    const keys = Object.keys(summary[parts[0]]).filter((k) => typeof summary[parts[0]][k] !== "object");
+    const head = document.createElement("tr"); head.append(cell(""), ...parts.map((p) => cell(p === "dev" ? "Dev" : "Held out")));
+    head.querySelectorAll("td").forEach((td) => td.style.fontWeight = "600");
+    table.appendChild(head);
+    for (const key of keys) {
+      const row = document.createElement("tr");
+      row.append(cell(key.replaceAll("_", " ")), ...parts.map((p) => {
+        const v = summary[p][key];
+        if (typeof v !== "number") return cell(v == null ? "—" : String(v));
+        if (COUNTS.has(key)) return cell(String(v));
+        if (key.endsWith("_ms")) return cell(`${v.toFixed(1)} ms`);
+        return cell(pct(v));
+      }));
+      table.appendChild(row);
+    }
+    if (summary.convention_ms != null) {
+      const row = document.createElement("tr");
+      row.append(cell("convention (fitted on dev)"), cell(`${summary.convention_ms.toFixed(1)} ms`));
+      table.appendChild(row);
+    }
+  }
+
+  $("tool").onchange = syncForm;
+  $("form").onsubmit = async (event) => {
+    event.preventDefault();
+    const tool = $("tool").value;
+    const request = { tool, engine: $("engine").value, jobs: Number($("jobs").value), max_songs: Number($("max_songs").value),
+                      beat_vote: $("beat_vote").checked };
+    if (tool === "stages") Object.assign(request, { stage: $("stage").value, split: $("split").value, baseline: $("baseline").value });
+    else Object.assign(request, { sample: Number($("sample").value), tv: $("tv").checked });
+    $("go").disabled = true; $("note").className = "note"; $("note").textContent = "";
+    try {
+      const meta = await call("POST", "/api/v1/runs", request);
+      selected = meta.id; $("note").textContent = `Queued ${meta.id}.`;
+      await refresh();
+    } catch (err) { $("note").className = "note err"; $("note").textContent = err.message; }
+    $("go").disabled = false;
+  };
+  $("stop").onclick = async () => { if (selected) { await call("POST", `/api/v1/runs/${selected}/stop`).catch(() => {}); refresh(); } };
+  $("download").onclick = async () => {
+    const report = await call("GET", `/api/v1/runs/${selected}/result`);
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([JSON.stringify(report, null, 1)], { type: "application/json" }));
+    link.download = `overtone-run-${selected}.json`; link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  };
+  syncForm();
+  refresh();
+  setInterval(refresh, 5000);
+})();
+</script>
+</body>
+</html>

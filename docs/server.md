@@ -178,6 +178,47 @@ apt-get install -y caddy && systemctl reload caddy
 El servidor sigue escuchando solo en `127.0.0.1`. Caddy es lo único
 expuesto, y siempre con HTTPS.
 
+## Tests del algoritmo en el servidor
+
+El servidor corre las mediciones de `bench/stages.py` (la carpeta por
+etapas, cada canción en *dev* o en *held out*) y `bench/single_bpm.py` (los
+mapas de un solo tempo) sobre su propia carpeta Songs. Las corridas van de
+una en una, cada una en su propio proceso, y quedan guardadas en
+`/var/lib/overtone/Overtone/runs/<id>/`:
+
+- `meta.json`: qué se pidió, el commit del código que respondió, el
+  estado, la duración y el resumen;
+- `log.txt`: la salida del tool;
+- `result.json`: el informe completo, con una fila por mapa.
+
+Se lanzan de tres formas:
+
+- **Desde la web:** el botón **Tests**, abajo a la derecha (`/runs.html`).
+- **Desde tu PC**, con el túnel abierto:
+  ```bash
+  python bench/remote.py --token-file token.txt run anime-single --split dev --jobs 2 --wait
+  ```
+  `status`, `runs`, `show <id>`, `result <id>` y `stop <id>` completan el
+  resto.
+- **Por la API:** `POST /api/v1/runs` (ver el inicio de
+  `python/overtone_server.py`).
+
+**Memoria.** Las corridas cuentan dentro del `MemoryMax` del servicio. Sin
+el voto de Beat This!, un análisis con Rust usa unos 100 MB, así que
+`--jobs 2` cabe en 1 GB. **Con el voto**, cada análisis pasa de 1.4 GB:
+sube antes `MemoryMax` a `3G` en el servicio y usa `--jobs 1`.
+
+Las cachés de las corridas van separadas por modo (`runs/cache/vote` y
+`runs/cache/novote`), porque la clave de caché de los tools no incluye el
+voto. Una lectura con voto nunca se sirve a una corrida sin él.
+
+**Probar otra versión del algoritmo:** en la VPS,
+`cd /opt/overtone && git pull && systemctl restart overtone-api`, y lanza
+la corrida. Cada informe guarda el commit que lo produjo, así que dos
+corridas se comparan sabiendo qué código respondió cada una. Las mediciones
+no son gates: lo que decide si un cambio entra siguen siendo los gates
+locales de `CLAUDE.md`.
+
 ## Usarlo
 
 Desde tu PC, con un túnel:

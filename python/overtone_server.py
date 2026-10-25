@@ -36,6 +36,12 @@ Endpoints (a browser's cookie or ``Authorization: Bearer <token>``):
     GET  /api/v1/browse?path=          a shared folder's entries
     GET  /api/v1/download?path=        a shared file
     GET  /api/v1/whoami                200 while signed in
+
+    GET  /api/v1/runs                  measurement runs, the queue, the stages
+    POST /api/v1/runs                  {"tool": "stages", "stage": ...}: queue one
+    GET  /api/v1/runs/<id>             one run and the end of its log
+    GET  /api/v1/runs/<id>/result      the tool's own JSON report
+    POST /api/v1/runs/<id>/stop        cancel it, or end it while it runs
 """
 from __future__ import annotations
 
@@ -57,6 +63,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import overtone as ta
 import overtone_library
+import overtone_runs
 import overtone_rust
 import overtone_webhost
 from overtone_paths import data_root
@@ -135,6 +142,7 @@ class Service:
         self.sessions: overtone_webhost.Sessions | None = None
         self._web: overtone_webhost.WebHost | None = None
         self._web_lock = threading.Lock()
+        self._runs: overtone_runs.RunQueue | None = None
 
     @property
     def web(self) -> overtone_webhost.WebHost:
@@ -144,6 +152,24 @@ class Service:
                 self._web = overtone_webhost.WebHost(
                     {"songs": self.songs}, self.library.path.parent / "web")
             return self._web
+
+    @property
+    def runs(self) -> overtone_runs.RunQueue:
+        """Measurement runs, kept beside the index, made on first use."""
+        with self._web_lock:
+            if self._runs is None:
+                store = overtone_runs.RunStore(self.library.path.parent / "runs")
+                self._runs = overtone_runs.RunQueue(store, self.library.path, self.songs)
+            return self._runs
+
+    def runs_overview(self) -> dict:
+        return {"runs": self.runs.store.runs(), "queue": self.runs.state(),
+                "stages": overtone_runs.stage_ids(), "tools": list(overtone_runs.TOOLS),
+                "engines": list(overtone_runs.ENGINES), "max_jobs": overtone_runs.MAX_JOBS,
+                "commit": overtone_runs.git_commit()}
+
+    def run_detail(self, run_id: str) -> dict:
+        return {**self.runs.store.meta(run_id), "log": self.runs.store.log_tail(run_id)}
 
     def status(self) -> dict:
         cli = overtone_rust.find_cli()
@@ -473,6 +499,25 @@ def make_handler(service: Service, token: str, log: bool = True):
                 self._reply(HTTPStatus.OK, service.web.browse(query.get("path", "")))
             elif method == "GET" and path == "/api/v1/download":
                 self._download(query)
+            elif path == "/api/v1/runs" and method == "GET":
+                self._reply(HTTPStatus.OK, service.runs_overview())
+            elif path == "/api/v1/runs" and method == "POST":
+                body = self._body()
+                if body is None:
+                    return
+                self._reply(HTTPStatus.ACCEPTED, service.runs.submit(body))
+            elif path.startswith("/api/v1/runs/"):
+                parts = path[len("/api/v1/runs/"):].split("/")
+                if method == "GET" and len(parts) == 1:
+                    self._reply(HTTPStatus.OK, service.run_detail(parts[0]))
+                elif method == "GET" and parts[1:] == ["result"]:
+                    self._reply(HTTPStatus.OK, service.runs.store.result(parts[0]))
+                elif method == "POST" and parts[1:] == ["stop"]:
+                    stopped = service.runs.stop(parts[0])
+                    self._reply(HTTPStatus.ACCEPTED if stopped else HTTPStatus.OK,
+                                {"stopping": stopped})
+                else:
+                    self._reply(HTTPStatus.NOT_FOUND, {"error": f"No endpoint {method} {path}."})
             elif method == "GET" and path == "/api/v1/whoami":
                 self._reply(HTTPStatus.OK, {"signed_in": True})
             elif method == "POST" and path == "/logout":

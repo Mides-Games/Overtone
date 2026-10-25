@@ -215,7 +215,20 @@
     show(request.directory || "");
   }
 
+  // The server's measurement runs have a page of their own (runs.html).
+  function testsLink() {
+    const link = element("a", "", "Tests");
+    link.href = "/runs.html";
+    link.title = "Measurement runs on this server";
+    link.style.cssText = "position:fixed;right:16px;bottom:16px;z-index:9000;padding:7px 14px;" +
+      "border-radius:99px;background:#10b981;color:#fff;font:600 13px system-ui,sans-serif;" +
+      "text-decoration:none;box-shadow:0 6px 20px rgba(0,0,0,.25)";
+    document.body.appendChild(link);
+  }
+
   listen();
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", testsLink);
+  else testsLink();
   // app.js boots on pywebviewready; the bridge is ready as soon as this runs.
   const ready = () => window.dispatchEvent(new Event("pywebviewready"));
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready);

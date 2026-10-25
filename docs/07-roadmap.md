@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **research underway** — the default 28 ms osu! export lead measures 16.8 % of Python and 5.2 % of Rust Corpus B red lines within 5 ms; raw engine grids score 2.0 % and 1.1 % respectively (20 maps, 1,152 lines, 2026-10-24). Tempo, octave and drifting sections remain the main misses |
 | Installer (MSI) | **v0.1.0-alpha published** — per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
 
-Tests: **1027** Python (727 engine + 300 web shell) · **292** Rust.
+Tests: **1031** Python (729 engine + 302 web shell) · **292** Rust.
 
 ### Current priorities — 2026-10-16
 
@@ -539,7 +539,7 @@ corpus generator; they say the classes separate, not how they do on real songs.
 | Batch folder analysis | every audio file in a folder | low | high | CLI | no | no | P1 | **done** |
 | Batch hitsounding | many difficulties, one analysis reused | low | high | P6 | no | no | P1 | **done** (2026-09-27) — `overtone-cli hitsound` takes a mapset and reads the audio once, a map it cannot read costing the others nothing; "Every difficulty" in the Hitsounds view runs it and each difficulty then shows its cached proposal when picked. 8 difficulties in 19.1 s against 148.0 s one by one (7.8x), 7 in 40.1 against 296.4 (7.4x), the same sounds map for map; a switch afterwards 0.55-0.75 s |
 | Project format | reopen a song with its edits without recomputing | med | high | P2 cache | no | no | P1 | **done** for the timing work — each song's red lines and locks saved after every edit to `<output folder>/Projects/<song> [<sha>].oto` (JSON, atomic), offered back after its analysis, undo returning to the analysis; not kept: the undo history, the view, notes, earlier versions (14.1's full list) |
-| Watch mode | re-analyse on file change | low | low | CLI | no | no | P3 | todo |
+| Watch mode | re-analyse on file change | low | low | CLI | no | no | P3 | done — `--watch` re-runs the command line, every other option kept, once the saved file holds still (2026-10-25) |
 
 ---
 
@@ -794,7 +794,7 @@ above — metadata confirmation before anything downloads — is the starting po
 | Per-song presets | remember detection settings per song | low | med | project format | no | no | P2 | **done** — the settings a song's last finished analysis ran with (not the engine), kept in the config by the audio's SHA-256 for 200 songs; choosing the song puts them back with a note and the previous ones a click away. Not in the project file: a project exists only after an edit |
 | The song's pulse, kept | a ×2 or ÷2 applied after an analysis kept with the song's settings, so analysing it again lands on the octave the mapper chose | low | med | per-song presets | no | no | P2 | **done** — a ×2/÷2 becomes the song's pulse setting, undo and redo move it back, the drawer follows; analysing again reproduces the ×2/÷2 on 16 of 18 (the fallback tracker's 2 wait on its rebuild fix) |
 | Language | English and Spanish; more through translation files | low | med | i18n | no | no | P2 | partial |
-| Settings file | export/import settings to another PC | low | low | settings | no | no | P3 | todo |
+| Settings file | export/import settings to another PC | low | low | settings | no | no | P3 | done — Settings → Settings file saves the page's values atomically and opens them back, each checked; a folder missing on this PC is skipped and named (2026-10-25) |
 | Diagnostics copy-out | one button, in Settings, that copies the product version, the build's commit and time, the platform, the Python, whether the copy is portable and where its data is, the Rust engine found and the library index, as plain text. The window shows the text it copied, so the user sees exactly what leaves; nothing is sent. Not included: the last error, because nothing keeps errors yet (a row of its own if wanted) | low | **high** | self-check, settings | no | no | **P1** | **done** 2026-10-04 in `fix/portable-data-folder`: `Api.diagnostics`, Settings card, 2 tests [required for 0.2.0-alpha](#release-020-alpha--what-it-takes) (R5) |
 
 ---
@@ -840,9 +840,9 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Linear section growth | refine the growth grid on a trailing window | med | med | — | no | no | P2 | **done** (2026-09-27) — the grid carried through growth is refit on the last 128 beats, not on the whole span, which the final fit does anyway. Every synthetic reading identical (golden 27/27 stage for stage); the sections stage 2.72 s -> 0.19 s on long-6min and **unchanged on real music**, where that stage is seeding and boundary settling. Kept for the quadratic, not for a corpus speed-up. Corpus B: 18 of 19 identical, camisa-negra 3 lines -> 1, losing a section at 4x the map's tempo |
 | Faster phase re-centring | a recurrence instead of one `exp` per shift | low | low | — | no | no | P3 | todo |
 | Specific load errors | missing, empty and junk files each get their own message | low | med | decode | no | no | P2 | **done** — missing, empty and junk files named |
-| Config type checks | a wrong-typed or BOM config never crashes or silently resets | low | med | config | no | no | P2 | partial — web shell only |
+| Config type checks | a wrong-typed or BOM config never crashes or silently resets | low | med | config | no | no | P2 | done — both shells share `load_config`: a wrong-typed key is dropped to its default, and a BOM file (Notepad) is read, 2026-10-25 |
 | CLI Unicode output | no crash on Japanese names when output is redirected | low | med | CLI | no | no | P2 | **done** — redirected, the CLI writes UTF-8; a console is left as it is |
-| CSV save errors | a locked CSV (open in Excel) shows an error | low | low | GUI | no | no | P3 | todo |
+| CSV save errors | a locked CSV (open in Excel) shows an error | low | low | GUI | no | no | P3 | done — the classic window and the web shell both report the error, tested |
 | Injection backups | back up the current state on every injection, and report it truthfully | low | med | writer | no | no | P2 | **done** since audit #36 — every write keeps what it replaces (`.bak` first and for good, then `.bak2`, `.bak3`…, never overwritten, skipped only when the newest already holds those bytes) and returns the backup's real path; tested (`test_backup_keeps_the_pristine_original` and the tests after it) |
 
 ---

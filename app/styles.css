@@ -913,6 +913,9 @@ tbody tr:last-child td { border-bottom: 0; }
 .keys-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 9px 18px; margin: 0; font-size: var(--fs-3); }
 .keys-list dt { white-space: nowrap; }
 .keys-list dd { margin: 0; color: var(--muted); }
+.keys-list .keycap { padding: 0; font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+.keys-list .keycap:hover kbd, .keys-list .keycap:focus-visible kbd { border-color: var(--accent); }
+.keys-list .keycap.waiting { padding: 2px 8px; color: var(--accent); border: 1px dashed var(--accent); border-radius: var(--r-sm); }
 .keys-list kbd {
   display: inline-block; min-width: 1.6em; padding: 2px 6px; text-align: center;
   font: 500 var(--fs-2)/1.4 var(--mono); color: var(--text);

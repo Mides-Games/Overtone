@@ -1894,7 +1894,8 @@ class SettingsBridgeTests(_IsolatedConfig):
             "output_folder": "", "skin_folder": "", "export_ask": True, "map_lead": True,
             "offset_decimals": 0,
             "click_subdivision": 1, "click_accent": True, "ui_scale": 1.0,
-            "reduced_motion": False, "theme": "dark"})
+            "reduced_motion": False, "theme": "dark",
+            "shortcuts": web.SHORTCUT_DEFAULTS})
         self.assertTrue(reply["output_default"].endswith(str(Path("Documents") / "Overtone")))
         api._cfg.update({"offset_decimals": 9, "click_subdivision": 5, "ui_scale": "huge",
                          "export_ask": "no", "output_folder": 7, "skin_folder": ["C:/"]})
@@ -1929,6 +1930,25 @@ class SettingsBridgeTests(_IsolatedConfig):
         self.assertEqual((reply["settings"]["offset_decimals"], reply["settings"]["output_folder"],
                           reply["settings"]["reduced_motion"]), (2, tmp, True))
         self.assertEqual(self.saved[-1]["offset_decimals"], 2)
+
+    def test_a_key_moves_only_where_no_other_action_holds_it(self) -> None:
+        api = web.Api()
+        keys = dict(web.SHORTCUT_DEFAULTS)
+        for bad in ({**keys, "loop": "c"}, {**keys, "play": "1"}, {**keys, "tap": "Enter"},
+                    {**keys, "tap": "T"}, {**keys, "fly": "f"}, {**keys, "tap": 7}, ["t"]):
+            with self.subTest(bad=bad):
+                self.assertEqual(api.set_settings({"shortcuts": bad})["key"], "bad_shortcut")
+        self.assertEqual(self.saved, [])
+        reply = api.set_settings({"shortcuts": {**keys, "loop": "o", "play": "p"}})
+        self.assertEqual((reply["settings"]["shortcuts"]["loop"],
+                          reply["settings"]["shortcuts"]["play"]), ("o", "p"))
+        # Only what moved is kept, so a default changed later still reaches it.
+        self.assertEqual(self.saved[-1]["shortcuts"], {"loop": "o", "play": "p"})
+        # A hand-edited set that collides falls back whole, never half.
+        api._cfg["shortcuts"] = {"loop": "c"}
+        self.assertEqual(api.settings()["settings"]["shortcuts"], web.SHORTCUT_DEFAULTS)
+        self.assertEqual(api.set_settings({"shortcuts": {}})["settings"]["shortcuts"],
+                         web.SHORTCUT_DEFAULTS)
 
     def test_click_settings_rebuild_the_payloads_clicks(self) -> None:
         api = _api_with_points()

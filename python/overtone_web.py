@@ -55,6 +55,14 @@ OSU_TYPES = ("osu! beatmap (*.osu)", "Timing from another game (*.qua;*.sm;*.ssc
 CSV_TYPES = ("CSV (*.csv)", "All files (*.*)")
 WAV_TYPES = ("WAV (*.wav)", "All files (*.*)")
 OSZ_TYPES = ("osu! beatmap package (*.osz)", "All files (*.*)")
+#: The single keys the keyboard sheet lets the user move, with their
+#: defaults (``KeyboardEvent.key``, lowercased). Chords (Ctrl+Z, Ctrl+K),
+#: the arrows, Enter/F5, Esc and the digits that walk the menu stay fixed:
+#: they are conventions, and the digits are as many as the sections.
+SHORTCUT_DEFAULTS = {"play": " ", "tap": "t", "loop": "l", "click": "c",
+                     "line_prev": "[", "line_next": "]", "sheet": "?"}
+SHORTCUT_RESERVED = frozenset("0123456789") | {"enter", "f5", "escape", "tab",
+                                                "arrowleft", "arrowright", "arrowup", "arrowdown"}
 #: Dropped files are staged here so "analyze the last song", the song header
 #: and .osz export keep working after the drag: a temp file that vanishes
 #: after the analysis would leave all three pointing at nothing.
@@ -384,6 +392,25 @@ def _audio_units_to_events(beatmap: dict, units: list,
         mapped.append(row)
     mapped.sort(key=lambda row: float(row["time_ms"]))
     return mapped, dropped
+
+
+def _shortcuts(saved) -> dict:
+    """Every movable key: the saved one where it is usable, else the
+    default. A whole set that would put two actions on one key, or one on a
+    fixed key, falls back entirely -- a half-applied set is the one that
+    leaves an action unreachable."""
+    keys = dict(SHORTCUT_DEFAULTS)
+    if not isinstance(saved, dict):
+        return keys
+    for action, key in saved.items():
+        if action not in keys or not isinstance(key, str) or not 0 < len(key) <= 12:
+            return dict(SHORTCUT_DEFAULTS)
+        if key != " " and (key != key.strip().lower() or key in SHORTCUT_RESERVED):
+            return dict(SHORTCUT_DEFAULTS)
+        keys[action] = key
+    if len(set(keys.values())) != len(keys):
+        return dict(SHORTCUT_DEFAULTS)
+    return keys
 
 
 class Api:
@@ -4063,6 +4090,7 @@ class Api:
             "ui_scale": scale if UI_SCALE_RANGE[0] <= scale <= UI_SCALE_RANGE[1] else 1.0,
             "reduced_motion": cfg.get("reduced_motion") is True,
             "theme": cfg.get("theme") if cfg.get("theme") in THEMES else "dark",
+            "shortcuts": _shortcuts(cfg.get("shortcuts")),
         }
 
     def diagnostics(self) -> dict:
@@ -4125,6 +4153,12 @@ class Api:
                 elif key == "theme":
                     if value not in THEMES:
                         return {"ok": False, "key": "bad_values"}
+                elif key == "shortcuts":                # {} puts every key back
+                    if not isinstance(value, dict) or _shortcuts(value) != {
+                            **SHORTCUT_DEFAULTS, **value}:
+                        return {"ok": False, "key": "bad_shortcut"}
+                    value = {action: k for action, k in value.items()
+                             if k != SHORTCUT_DEFAULTS[action]}
                 elif key == "ui_scale":
                     value = float(value)
                     if not (np.isfinite(value) and UI_SCALE_RANGE[0] <= value <= UI_SCALE_RANGE[1]):

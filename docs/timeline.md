@@ -20,6 +20,37 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-25 · the single-key shortcuts move
+
+### Changed
+
+- In the keyboard sheet (?), each single-key action -- play, tap, loop,
+  click, previous/next red line and the sheet itself -- is a button: press
+  it, then the new key. *Default keys* puts them all back. The chords
+  (Ctrl+O/Z/Y/K), the arrows, Enter/F5, Esc and the digits that walk the
+  menu stay where they are: they are conventions, and moving them would
+  only make the app harder to learn.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- The bridge refuses a key another action already holds, a digit, Enter,
+  F5, Esc, Tab or an arrow, so no action can become unreachable. A
+  hand-edited set that breaks a rule falls back to the defaults as a
+  whole, never half. Only moved keys are saved.
+
+### Measured
+
+- Not measured: no engine path changes. Checked in the page through the
+  UI harness: L moved to O (Shift ignored until a real key), O refused for
+  Click with the toast, *Default keys* restores L, Spanish strings shown,
+  no console errors.
+
+---
+
 ## Unreleased — 2026-10-25 · Ctrl+K finds any action
 
 ### Changed

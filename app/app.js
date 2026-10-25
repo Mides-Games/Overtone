@@ -674,6 +674,8 @@ const I18N = {
     key_tap: "Tap along with the click", key_views: "The menu's sections, in order",
     key_open: "Open audio", key_analyze: "Analyze", key_undo: "Undo", key_redo: "Redo",
     key_sheet: "This sheet", key_close: "Close a panel or this sheet",
+    key_change: "Change this key", key_press: "Press a key… (Esc keeps it)", key_reset: "Default keys",
+    bad_shortcut: "That key is taken by another action or cannot be moved.",
     key_palette: "Search every action", pal_title: "Commands", pal_placeholder: "Type an action or a section…",
     pal_empty: "Nothing matches.", pal_section: "Section", pal_action: "Action",
     key_toggled: "{what}: {state}", key_state_on: "on", key_state_off: "off",
@@ -1499,6 +1501,8 @@ const I18N = {
     key_tap: "Marcar el pulso junto al click", key_views: "Las secciones del menú, en orden",
     key_open: "Abrir audio", key_analyze: "Analizar", key_undo: "Deshacer", key_redo: "Rehacer",
     key_sheet: "Esta hoja", key_close: "Cerrar un panel o esta hoja",
+    key_change: "Cambiar esta tecla", key_press: "Apretá una tecla… (Esc la deja)", key_reset: "Teclas predeterminadas",
+    bad_shortcut: "Esa tecla ya la usa otra acción o no se puede mover.",
     key_palette: "Buscar cualquier acción", pal_title: "Comandos", pal_placeholder: "Escribí una acción o una sección…",
     pal_empty: "No hay coincidencias.", pal_section: "Sección", pal_action: "Acción",
     key_toggled: "{what}: {state}", key_state_on: "sí", key_state_off: "no",
@@ -7540,29 +7544,70 @@ function openDrawer(open) {
 // ------------------------------------------------------------------ keyboard
 // Every shortcut, as the sheet (?) lists it: alternatives, each a chord of
 // keys. Named keys are translated; the rest read as printed on the key.
+// The keys the sheet lets the user move (overtone_web.SHORTCUT_DEFAULTS);
+// a row's third element names the action behind each of its keys.
+const KEY_DEFAULTS = { play: " ", tap: "t", loop: "l", click: "c", line_prev: "[", line_next: "]", sheet: "?" };
+const KEY_MODIFIERS = ["Shift", "Control", "Alt", "Meta", "AltGraph"];
+const KEYCAP = { action: null };
+
+function keyFor(action) {
+  const saved = ST.settings && ST.settings.shortcuts;
+  return (saved && saved[action]) || KEY_DEFAULTS[action];
+}
+
+function pressed(e, action) {
+  return e.key.toLowerCase() === keyFor(action);
+}
+
+function keyName(key) {
+  return key === " " ? t("kb_space") : key.length === 1 ? key.toUpperCase() : key;
+}
+
 const KEYS = [
-  [[["kb_space"]], "key_play"],
+  [[["kb_space"]], "key_play", ["play"]],
   [[["←"], ["→"]], "key_seek"],
   [[["kb_shift", "←"], ["kb_shift", "→"]], "key_seek_fine"],
-  [[["["], ["]"]], "key_lines"],
+  [[["["], ["]"]], "key_lines", ["line_prev", "line_next"]],
   [[["↑"], ["↓"]], "key_points"],
-  [[["L"]], "key_loop"],
-  [[["C"]], "key_click"],
-  [[["T"]], "key_tap"],
+  [[["L"]], "key_loop", ["loop"]],
+  [[["C"]], "key_click", ["click"]],
+  [[["T"]], "key_tap", ["tap"]],
   [[["1–9"], ["0"]], "key_views"],
   [[["Ctrl", "O"]], "key_open"],
   [[["kb_enter"], ["F5"]], "key_analyze"],
   [[["Ctrl", "Z"]], "key_undo"],
   [[["Ctrl", "Y"], ["Ctrl", "kb_shift", "Z"]], "key_redo"],
   [[["Ctrl", "K"]], "key_palette"],
-  [[["?"]], "key_sheet"],
+  [[["?"]], "key_sheet", ["sheet"]],
   [[["Esc"]], "key_close"],
 ];
 
+// A movable key is a button: pressed, it waits for the next key and keeps
+// it. The bridge refuses a key another action holds or a fixed one.
 function renderKeys() {
   const kbd = (k) => `<kbd>${esc(k.startsWith("kb_") ? t(k) : k)}</kbd>`;
-  $("keysList").innerHTML = KEYS.map(([alts, what]) =>
-    `<dt>${alts.map((chord) => chord.map(kbd).join(" + ")).join(" / ")}</dt><dd>${esc(t(what))}</dd>`).join("");
+  const movable = (action) => KEYCAP.action === action
+    ? `<button class="keycap waiting" data-action="${action}">${esc(t("key_press"))}</button>`
+    : `<button class="keycap" data-action="${action}" title="${esc(t("key_change"))}"><kbd>${esc(keyName(keyFor(action)))}</kbd></button>`;
+  $("keysList").innerHTML = KEYS.map(([alts, what, actions]) =>
+    `<dt>${actions ? actions.map(movable).join(" / ")
+                   : alts.map((chord) => chord.map(kbd).join(" + ")).join(" / ")}</dt><dd>${esc(t(what))}</dd>`).join("");
+  $("keysReset").hidden = !Object.keys(KEY_DEFAULTS).some((a) => keyFor(a) !== KEY_DEFAULTS[a]);
+}
+
+async function keyTake(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (KEY_MODIFIERS.includes(e.key)) return;   // a modifier alone is not a key yet
+  const action = KEYCAP.action;
+  KEYCAP.action = null;
+  if (e.key !== "Escape" && api()) {
+    const shortcuts = Object.fromEntries(Object.keys(KEY_DEFAULTS).map((a) => [a, keyFor(a)]));
+    shortcuts[action] = e.key.toLowerCase();
+    const reply = await api().set_settings({ shortcuts });
+    if (reply.ok) stTake(reply); else toast(t(reply.key), true);
+  }
+  renderKeys();
 }
 
 function openKeys() {
@@ -8953,6 +8998,17 @@ function wire() {
     .filter((v, i, all) => all.indexOf(v) === i)
     .forEach((view, i) => { if (i < 10) viewKeys[String((i + 1) % 10)] = view; });
   $("keysClose").onclick = () => $("keysSheet").close();
+  $("keysSheet").addEventListener("close", () => { KEYCAP.action = null; });
+  $("keysList").onclick = (e) => {
+    const cap = e.target.closest(".keycap");
+    if (!cap) return;
+    KEYCAP.action = KEYCAP.action === cap.dataset.action ? null : cap.dataset.action;
+    renderKeys();
+  };
+  $("keysReset").onclick = async () => {
+    const reply = await api().set_settings({ shortcuts: {} });
+    if (reply.ok) { stTake(reply); renderKeys(); }
+  };
   palWire();
   window.addEventListener("keydown", (e) => {
     // Ctrl+K opens the palette from anywhere, a field included; open, it
@@ -8964,20 +9020,22 @@ function wire() {
       return;
     }
     if ($("palette").open) return;
-    // The sheet is modal: it takes no shortcut but its own (Esc closes it natively).
+    // The sheet is modal: it takes no shortcut but its own (Esc closes it
+    // natively), and while a key waits to be changed, the next key is it.
     if ($("keysSheet").open) {
-      if (e.key === "?") { e.preventDefault(); $("keysSheet").close(); }
+      if (KEYCAP.action) { keyTake(e); return; }
+      if (pressed(e, "sheet")) { e.preventDefault(); $("keysSheet").close(); }
       return;
     }
     if (e.key === "Escape") { openDrawer(false); return; }
     // A field, a slider or a list keeps its own keys (an arrow moves a select).
     const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName);
-    if (e.key === " " && S.result && !typing) {
+    if (pressed(e, "play") && S.result && !typing) {
       e.preventDefault();
       pbToggle();
       return;
     }
-    if ((e.key === "t" || e.key === "T") && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat
+    if (pressed(e, "tap") && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat
         && S.result && !typing) {
       e.preventDefault();
       tapNow(e);
@@ -8990,7 +9048,7 @@ function wire() {
     // Ctrl+Alt: a key AltGr produced is a plain key, not a chord.
     const plain = (e.getModifierState && e.getModifierState("AltGraph"))
       || (!e.ctrlKey && !e.metaKey && !e.altKey);
-    if (e.key === "?" && plain) { e.preventDefault(); openKeys(); return; }
+    if (pressed(e, "sheet") && plain) { e.preventDefault(); openKeys(); return; }
     if (plain && !$("drawer").classList.contains("open")) {
       if (viewKeys[e.key] && !e.shiftKey) { e.preventDefault(); setView(viewKeys[e.key]); return; }
       if (S.result && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
@@ -8999,9 +9057,11 @@ function wire() {
         pbSeek(Math.min(Math.max(pbPosition() + step, 0), S.result.duration), true);
         return;
       }
-      if (S.result && (e.key === "[" || e.key === "]")) { e.preventDefault(); jumpLine(e.key === "]" ? 1 : -1); return; }
-      if (S.result && !e.repeat && (e.key === "l" || e.key === "L")) { e.preventDefault(); toggleCheck("pbLoop"); return; }
-      if (S.result && !e.repeat && (e.key === "c" || e.key === "C")) { e.preventDefault(); toggleCheck("pbClick"); return; }
+      if (S.result && (pressed(e, "line_prev") || pressed(e, "line_next"))) {
+        e.preventDefault(); jumpLine(pressed(e, "line_next") ? 1 : -1); return;
+      }
+      if (S.result && !e.repeat && pressed(e, "loop")) { e.preventDefault(); toggleCheck("pbLoop"); return; }
+      if (S.result && !e.repeat && pressed(e, "click")) { e.preventDefault(); toggleCheck("pbClick"); return; }
     }
     // Enter on a button reached with Tab (a nav item, an export) presses that
     // button; it must not be swallowed by the analyze shortcut below. A button

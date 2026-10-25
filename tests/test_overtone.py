@@ -12206,5 +12206,43 @@ class TrainDropTests(unittest.TestCase):
             self.assertIn("no_spinners_to_drop", codes)
 
 
+class WatchModeTests(unittest.TestCase):
+    """`--watch`: one run now, one per finished change, none per poll."""
+
+    def test_a_change_is_analysed_once_it_holds_still(self) -> None:
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "song.wav"
+            audio.write_bytes(b"a")
+            # Each poll is a step of a scripted edit: idle, a write that
+            # keeps growing for one poll, then still, then idle again.
+            script = iter([None, b"ab", b"abc", None, None, None])
+            runs: list[bytes] = []
+
+            def sleep(_seconds: float) -> None:
+                step = next(script, None)
+                if step is not None:
+                    audio.write_bytes(step)
+                    stamp = os.stat(audio).st_mtime_ns + len(step) * 1_000_000
+                    os.utime(audio, ns=(stamp, stamp))
+
+            polls = iter(range(6))
+            count = overtone.watch_file(audio, lambda: runs.append(audio.read_bytes()),
+                                        lambda _message: None, sleep=sleep,
+                                        stop=lambda: next(polls, None) is None)
+            self.assertEqual(runs, [b"a", b"abc"])
+            self.assertEqual(count, 2)
+
+    def test_a_missing_file_is_waited_for(self) -> None:
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "song.wav"
+            runs = []
+            polls = iter(range(3))
+            overtone.watch_file(audio, lambda: runs.append(1), lambda _message: None,
+                                sleep=lambda _s: None, stop=lambda: next(polls, None) is None)
+            self.assertEqual(runs, [])
+
+
 if __name__ == "__main__":
     unittest.main()

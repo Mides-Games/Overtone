@@ -246,6 +246,7 @@ def make_handler(service: Service, token: str, log: bool = True):
 
         # -- replies ----------------------------------------------------------
         def _send(self, status: int, data: bytes, content_type: str, headers=()) -> None:
+            self._drain()
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
@@ -286,7 +287,22 @@ def make_handler(service: Service, token: str, log: bool = True):
             return (self.headers.get("X-Forwarded-Proto") or "").lower() == "https"
 
         # -- bodies ---------------------------------------------------------------
+        def _drain(self) -> None:
+            """Read a small body nobody read. Answering first and closing with
+            unread bytes makes the socket reset (Windows does), and the client
+            sees an aborted connection instead of the answer."""
+            if getattr(self, "_body_taken", False):
+                return
+            self._body_taken = True
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                return
+            if 0 < length <= MAX_BODY:
+                self.rfile.read(length)
+
         def _length(self, limit: int) -> int | None:
+            self._body_taken = True
             try:
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:

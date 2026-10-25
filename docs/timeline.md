@@ -51,6 +51,116 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-25 · the single-key shortcuts move
+
+### Changed
+
+- In the keyboard sheet (?), each single-key action -- play, tap, loop,
+  click, previous/next red line and the sheet itself -- is a button: press
+  it, then the new key. *Default keys* puts them all back. The chords
+  (Ctrl+O/Z/Y/K), the arrows, Enter/F5, Esc and the digits that walk the
+  menu stay where they are: they are conventions, and moving them would
+  only make the app harder to learn.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- The bridge refuses a key another action already holds, a digit, Enter,
+  F5, Esc, Tab or an arrow, so no action can become unreachable. A
+  hand-edited set that breaks a rule falls back to the defaults as a
+  whole, never half. Only moved keys are saved.
+
+### Measured
+
+- Not measured: no engine path changes. Checked in the page through the
+  UI harness: L moved to O (Shift ignored until a real key), O refused for
+  Click with the toast, *Default keys* restores L, Spanish strings shown,
+  no console errors.
+
+---
+
+## Unreleased — 2026-10-25 · Ctrl+K finds any action
+
+### Changed
+
+- **Ctrl+K** opens a command palette: every section, Open audio, Analyze,
+  Undo, Redo, the keyboard sheet, and every enabled button the open
+  section shows. Type words in any order (accents ignored), arrows pick,
+  Enter runs. Listed in the keyboard sheet; English and Spanish.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- The list is read from the page when the palette opens, not kept by
+  hand, so a button added later is in it without anything else to
+  update, and a disabled or hidden one is not.
+
+### Measured
+
+- Not measured: no engine path changes. Checked in the page through the
+  UI harness: 23 entries on the empty Library page, "sett" + Enter opens
+  Settings, "seccion biblio" finds Biblioteca in Spanish, no console errors.
+
+---
+
+## Unreleased — 2026-10-25 · settings carried to another PC
+
+### Changed
+
+- Settings has a **Settings file** card: *Save settings…* writes the page's
+  values to a JSON file, *Open settings…* reads one back. Recent files,
+  window state and per-song options stay on this PC.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- The file is written atomically. On opening, each value goes through
+  the same checks as the page (`set_settings`), one by one: a value this
+  PC cannot use, such as a folder that does not exist here, is skipped
+  and named in the toast instead of sending every export nowhere. A file
+  without the `overtone_settings` marker, or with broken JSON, or over the
+  config size cap, changes nothing; a BOM is read.
+
+### Measured
+
+- Not measured: no engine path changes.
+
+---
+
+## Unreleased — 2026-10-25 · the command line watches a file
+
+### Changed
+
+- `--watch` analyses the audio once, then again each time it is saved,
+  with every other option given (`--csv`, `--inject`, `--json` ...).
+  Each run is a fresh process, so a run that fails or exits 3 leaves the
+  watch going.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- A save counts once the file holds still for one poll, so a render still
+  being written is not analysed half done; a file deleted and renamed back
+  by its editor is waited for. Tests drive both with a scripted clock.
+
+### Measured
+
+- Not measured: no engine path changes. The poll is 0.5 s.
+
+---
+
 ## Unreleased — 2026-10-25 · every finished red line at the whole BPM
 
 ### Changed
@@ -97,6 +207,30 @@ version is `v0.2.0-alpha`.
 ### Rejected / tried and dropped
 
 - The snap on Beat This!'s lines alone: no held-out S1 map changed.
+## Unreleased — 2026-10-25 · a config saved by Notepad is read, not reset
+
+### Changed
+
+- Nothing a user sees, unless they edited `config.json` by hand.
+
+### Fixed
+
+- `load_config` read the file as plain UTF-8, so a config saved by Notepad
+  (which writes a BOM) failed `json.loads` and both shells silently started
+  from defaults. It now decodes `utf-8-sig`. That closes the roadmap's
+  "Config type checks" row: wrong types were already dropped in both shells
+  (they share `load_config`), the BOM was the last silent reset.
+- The roadmap's "CSV save errors" row was stale: both the classic window and
+  the web shell already turn a locked CSV into an error message, with tests
+  (`test_overtone.py`, `test_overtone_web.py`). Marked done.
+
+### Hardening
+
+- The config test writes a BOM-prefixed file and expects it read.
+
+### Measured
+
+- Not measured: no engine path changes.
 
 ---
 

@@ -55,6 +55,18 @@ OSU_TYPES = ("osu! beatmap (*.osu)", "Timing from another game (*.qua;*.sm;*.ssc
 CSV_TYPES = ("CSV (*.csv)", "All files (*.*)")
 WAV_TYPES = ("WAV (*.wav)", "All files (*.*)")
 OSZ_TYPES = ("osu! beatmap package (*.osz)", "All files (*.*)")
+SETTINGS_TYPES = ("Overtone settings (*.json)", "All files (*.*)")
+#: A settings file names itself, so any other JSON is refused, not half read.
+SETTINGS_FILE_KEY = "overtone_settings"
+SETTINGS_FILE_VERSION = 1
+#: The single keys the keyboard sheet lets the user move, with their
+#: defaults (``KeyboardEvent.key``, lowercased). Chords (Ctrl+Z, Ctrl+K),
+#: the arrows, Enter/F5, Esc and the digits that walk the menu stay fixed:
+#: they are conventions, and the digits are as many as the sections.
+SHORTCUT_DEFAULTS = {"play": " ", "tap": "t", "loop": "l", "click": "c",
+                     "line_prev": "[", "line_next": "]", "sheet": "?"}
+SHORTCUT_RESERVED = frozenset("0123456789") | {"enter", "f5", "escape", "tab",
+                                                "arrowleft", "arrowright", "arrowup", "arrowdown"}
 #: Dropped files are staged here so "analyze the last song", the song header
 #: and .osz export keep working after the drag: a temp file that vanishes
 #: after the analysis would leave all three pointing at nothing.
@@ -388,6 +400,25 @@ def _audio_units_to_events(beatmap: dict, units: list,
         mapped.append(row)
     mapped.sort(key=lambda row: float(row["time_ms"]))
     return mapped, dropped
+
+
+def _shortcuts(saved) -> dict:
+    """Every movable key: the saved one where it is usable, else the
+    default. A whole set that would put two actions on one key, or one on a
+    fixed key, falls back entirely -- a half-applied set is the one that
+    leaves an action unreachable."""
+    keys = dict(SHORTCUT_DEFAULTS)
+    if not isinstance(saved, dict):
+        return keys
+    for action, key in saved.items():
+        if action not in keys or not isinstance(key, str) or not 0 < len(key) <= 12:
+            return dict(SHORTCUT_DEFAULTS)
+        if key != " " and (key != key.strip().lower() or key in SHORTCUT_RESERVED):
+            return dict(SHORTCUT_DEFAULTS)
+        keys[action] = key
+    if len(set(keys.values())) != len(keys):
+        return dict(SHORTCUT_DEFAULTS)
+    return keys
 
 
 class Api:
@@ -4070,6 +4101,7 @@ class Api:
             "ui_scale": scale if UI_SCALE_RANGE[0] <= scale <= UI_SCALE_RANGE[1] else 1.0,
             "reduced_motion": cfg.get("reduced_motion") is True,
             "theme": cfg.get("theme") if cfg.get("theme") in THEMES else "dark",
+            "shortcuts": _shortcuts(cfg.get("shortcuts")),
         }
 
     def diagnostics(self) -> dict:
@@ -4132,6 +4164,12 @@ class Api:
                 elif key == "theme":
                     if value not in THEMES:
                         return {"ok": False, "key": "bad_values"}
+                elif key == "shortcuts":                # {} puts every key back
+                    if not isinstance(value, dict) or _shortcuts(value) != {
+                            **SHORTCUT_DEFAULTS, **value}:
+                        return {"ok": False, "key": "bad_shortcut"}
+                    value = {action: k for action, k in value.items()
+                             if k != SHORTCUT_DEFAULTS[action]}
                 elif key == "ui_scale":
                     value = float(value)
                     if not (np.isfinite(value) and UI_SCALE_RANGE[0] <= value <= UI_SCALE_RANGE[1]):
@@ -4147,6 +4185,60 @@ class Api:
         # The click follows its settings at once, as it follows the edits.
         if self._analysis is not None and {"click_subdivision", "click_accent"} & clean.keys():
             reply["result"] = self._payload()
+        return reply
+
+    # -- settings file: the same preferences on another PC ----------------
+    def export_settings(self) -> dict:
+        """Write the settings to a file the user chooses, atomically. Only
+        the settings page's values go: no recent files, no window state."""
+        target = self._save_dialog("overtone-settings.json", SETTINGS_TYPES)
+        if not target:
+            return {"ok": False, "key": "cancelled"}
+        payload = json.dumps({SETTINGS_FILE_KEY: SETTINGS_FILE_VERSION,
+                              "settings": self._settings()}, indent=2).encode("utf-8")
+        temp = Path(target).with_name(Path(target).name + ".part")
+        try:
+            temp.write_bytes(payload)
+            os.replace(temp, target)
+        except OSError as exc:
+            temp.unlink(missing_ok=True)
+            return {"ok": False, "key": "error", "detail": str(exc)}
+        return {"ok": True, "path": target}
+
+    def import_settings(self, path: str = "") -> dict:
+        """Read a settings file and keep every value this PC can use. A folder
+        that does not exist here is skipped and named, never kept: a path from
+        another PC would send every export nowhere."""
+        if not path:
+            import webview
+            if self._window is None:
+                return {"ok": False, "key": "cancelled"}
+            chosen = self._window.create_file_dialog(webview.OPEN_DIALOG,
+                                                     file_types=SETTINGS_TYPES)
+            if not chosen:
+                return {"ok": False, "key": "cancelled"}
+            path = chosen[0] if isinstance(chosen, (list, tuple)) else str(chosen)
+        try:
+            source = Path(path)
+            if source.stat().st_size > ta.MAX_CONFIG_BYTES:
+                return {"ok": False, "key": "bad_settings_file"}
+            data = json.loads(source.read_bytes().decode("utf-8-sig"))
+        except (OSError, ValueError):
+            return {"ok": False, "key": "bad_settings_file"}
+        if not isinstance(data, dict) or data.get(SETTINGS_FILE_KEY) != SETTINGS_FILE_VERSION:
+            return {"ok": False, "key": "bad_settings_file"}
+        values = data.get("settings")
+        if not isinstance(values, dict):
+            return {"ok": False, "key": "bad_settings_file"}
+        known = self._settings().keys()
+        kept, skipped = [], []
+        for key, value in values.items():
+            if key in known and self.set_settings({key: value})["ok"]:
+                kept.append(key)
+            else:
+                skipped.append(str(key))
+        reply = self.settings()
+        reply.update({"imported": kept, "skipped": skipped})
         return reply
 
     def pick_output_folder(self) -> dict:

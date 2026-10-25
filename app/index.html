@@ -1249,6 +1249,17 @@
           </div>
         </div>
               <div class="card cmp-card">
+          <div class="card-head"><div class="card-title" data-i18n="st_file">Settings file</div></div>
+          <div class="card-body stack settings-body">
+            <div class="card-sub" data-i18n="st_file_hint">Save these settings to a file and open it on another PC. A folder that does not exist there is left at its default.</div>
+            <div class="setting">
+              <div class="spacer"></div>
+              <button class="btn small" id="stFileExport"><span data-i18n="st_file_export">Save settings…</span></button>
+              <button class="btn small" id="stFileImport"><span data-i18n="st_file_import">Open settings…</span></button>
+            </div>
+          </div>
+        </div>
+              <div class="card cmp-card">
           <div class="card-head"><div class="card-title" data-i18n="st_diag">Diagnostics</div></div>
           <div class="card-body stack settings-body">
             <div class="card-sub" data-i18n="st_diag_hint">The version, the build, the engines and your folders as plain text, for a bug report. It is copied to the clipboard only when you press the button; nothing is sent anywhere.</div>
@@ -1448,9 +1459,19 @@
 <dialog class="keys" id="keysSheet" aria-labelledby="keysTitle">
   <div class="keys-head">
     <h2 id="keysTitle" data-i18n="keys_title">Keyboard</h2>
+    <span class="spacer"></span>
+    <button class="btn small" id="keysReset" hidden><span data-i18n="key_reset">Default keys</span></button>
     <button class="btn small" id="keysClose"><span data-i18n="close">Close</span></button>
   </div>
   <dl class="keys-list" id="keysList"></dl>
+</dialog>
+
+<dialog class="keys palette" id="palette" data-i18n-aria="pal_title" aria-label="Commands">
+  <input type="search" class="palette-input" id="paletteInput" autocomplete="off" spellcheck="false"
+         placeholder="Type an action or a section…"
+         role="combobox" aria-controls="paletteList" aria-expanded="true">
+  <ul class="palette-list" id="paletteList" role="listbox"></ul>
+  <div class="card-sub" id="paletteEmpty" data-i18n="pal_empty" hidden>Nothing matches.</div>
 </dialog>
 
 <div class="toast" id="toast"></div>

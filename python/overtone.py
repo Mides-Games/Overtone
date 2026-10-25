@@ -10797,7 +10797,7 @@ CONFIG_TYPES: dict[str, tuple[type, ...]] = {
     "hitsound_volume": (int, float),
     "output_folder": (str,), "export_ask": (bool,), "offset_decimals": (int,),
     "click_subdivision": (int,), "click_accent": (bool,), "ui_scale": (int, float),
-    "reduced_motion": (bool,), "theme": (str,), "song_options": (dict,),
+    "reduced_motion": (bool,), "theme": (str,), "song_options": (dict,), "shortcuts": (dict,),
 }
 
 
@@ -10809,13 +10809,14 @@ def load_config() -> dict:
     So did a value of the wrong type -- ``"cfg_version": "2"`` or
     ``"prefer_map_bpm": "on"`` stopped the classic window on every launch. A
     known key whose value has the wrong type is dropped, so its reader's
-    default applies; unknown keys are kept as they are.
+    default applies; unknown keys are kept as they are. Notepad saves with a
+    BOM, which ``json.loads`` refuses, so the file is read as ``utf-8-sig``.
     """
     for path in (CONFIG_PATH, LEGACY_CONFIG_PATH):
         try:
             if not path.is_file() or path.stat().st_size > MAX_CONFIG_BYTES:
                 continue
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_bytes().decode("utf-8-sig"))
             break
         except (OSError, ValueError):
             continue
@@ -12168,6 +12169,44 @@ class TimingAnalyzerApp:
         self.root.mainloop()
 
 
+def _file_stamp(path: str | os.PathLike[str]) -> tuple[int, int] | None:
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
+def watch_file(path: str | os.PathLike[str], run, note, poll: float = 0.5,
+               sleep=time.sleep, stop=lambda: False) -> int:
+    """Call ``run`` now and again each time ``path`` changes; returns how many runs.
+
+    A change counts once the file holds still for one poll: a DAW rendering
+    the file writes it over several seconds, and analysing it half written
+    reads a different song. A file that disappears is waited for instead of
+    ending the watch -- some editors save by deleting and renaming.
+    """
+    runs = 0
+    seen = _file_stamp(path)
+    if seen is not None:
+        run()
+        runs += 1
+    note(f"Watching {path} for changes (Ctrl+C stops)")
+    while not stop():
+        sleep(poll)
+        current = _file_stamp(path)
+        if current is None or current == seen:
+            continue
+        sleep(poll)
+        if _file_stamp(path) != current:    # still being written
+            continue
+        seen = current
+        note(f"{path} changed; analysing again")
+        run()
+        runs += 1
+    return runs
+
+
 def main() -> None:
     # Redirected (`> timing.txt`, a pipe), Windows hands Python its ANSI code
     # page, and a Japanese file name in a batch row or an error ended the run
@@ -12203,7 +12242,24 @@ def main() -> None:
                         help="Check a map against this audio and print the modder's report instead of "
                              "red lines (red lines to check, changes the map lacks, snapping, objects "
                              "away from the music); exits 3 when it finds something, 0 when clean")
+    parser.add_argument("--watch", action="store_true",
+                        help="Re-run the analysis, with every other option given, each time the "
+                             "audio file changes; Ctrl+C stops")
     args = parser.parse_args()
+    if args.watch:
+        # Each run is its own process: main() ends in SystemExit on every
+        # path, and a fresh process starts from the file as it is now.
+        if not args.audio or Path(args.audio).is_dir():
+            parser.error("--watch needs a single audio file")
+        command = [sys.executable] + ([] if getattr(sys, "frozen", False) else [sys.argv[0]])
+        command += [arg for arg in sys.argv[1:] if arg != "--watch"]
+        import subprocess
+        try:
+            watch_file(args.audio, lambda: subprocess.run(command, check=False).returncode,
+                       lambda message: print(message, file=sys.stderr))
+        except KeyboardInterrupt:
+            pass
+        return
 
     def note(message: str) -> None:
         """Progress, status and errors go to stderr: stdout carries only the

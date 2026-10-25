@@ -91,6 +91,30 @@ version is `v0.2.0-alpha`.
 ### Rejected / tried and dropped
 
 - The snap on Beat This!'s lines alone: no held-out S1 map changed.
+## Unreleased — 2026-10-25 · a config saved by Notepad is read, not reset
+
+### Changed
+
+- Nothing a user sees, unless they edited `config.json` by hand.
+
+### Fixed
+
+- `load_config` read the file as plain UTF-8, so a config saved by Notepad
+  (which writes a BOM) failed `json.loads` and both shells silently started
+  from defaults. It now decodes `utf-8-sig`. That closes the roadmap's
+  "Config type checks" row: wrong types were already dropped in both shells
+  (they share `load_config`), the BOM was the last silent reset.
+- The roadmap's "CSV save errors" row was stale: both the classic window and
+  the web shell already turn a locked CSV into an error message, with tests
+  (`test_overtone.py`, `test_overtone_web.py`). Marked done.
+
+### Hardening
+
+- The config test writes a BOM-prefixed file and expects it read.
+
+### Measured
+
+- Not measured: no engine path changes.
 
 ---
 

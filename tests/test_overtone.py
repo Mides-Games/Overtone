@@ -2002,6 +2002,22 @@ class LocalTempoTests(unittest.TestCase):
         path = _tempo_path([slow] * 5 + [fast] * 5 + [slow] * 5)
         self.assertEqual([round(b) for b in path], [130] * 5 + [260] * 5 + [130] * 5)
 
+    def test_lines_a_few_tenths_off_a_whole_bpm_snap_and_merge(self):
+        # Attacks on a 174 BPM grid, read as two lines at 174.3 and 173.8.
+        from overtone import _snap_whole_lines
+        times = 0.5 + np.arange(200) * 60 / 174
+        weights = np.ones_like(times)
+        lines = [(500.0, 174.3), (500.0 + 100 * 60000 / 174, 173.8)]
+        self.assertEqual(_snap_whole_lines(lines, times, weights, 70.0),
+                         [(mock.ANY, 174.0)])
+
+    def test_a_fractional_bpm_the_attacks_keep_is_kept(self):
+        from overtone import _snap_whole_lines
+        times = 0.5 + np.arange(400) * 60 / 128.37
+        weights = np.ones_like(times)
+        lines = _snap_whole_lines([(500.0, 128.37)], times, weights, 190.0)
+        self.assertEqual(lines, [(500.0, 128.37)])
+
     def test_the_lines_follow_the_beats(self):
         from overtone import _beats_to_lines
         rng = np.random.default_rng(3)
@@ -12192,6 +12208,44 @@ class TrainDropTests(unittest.TestCase):
             self.assertTrue(plan["usable"], plan["refusals"])
             codes = {repair["code"] for repair in plan["repairs"]}
             self.assertIn("no_spinners_to_drop", codes)
+
+
+class WatchModeTests(unittest.TestCase):
+    """`--watch`: one run now, one per finished change, none per poll."""
+
+    def test_a_change_is_analysed_once_it_holds_still(self) -> None:
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "song.wav"
+            audio.write_bytes(b"a")
+            # Each poll is a step of a scripted edit: idle, a write that
+            # keeps growing for one poll, then still, then idle again.
+            script = iter([None, b"ab", b"abc", None, None, None])
+            runs: list[bytes] = []
+
+            def sleep(_seconds: float) -> None:
+                step = next(script, None)
+                if step is not None:
+                    audio.write_bytes(step)
+                    stamp = os.stat(audio).st_mtime_ns + len(step) * 1_000_000
+                    os.utime(audio, ns=(stamp, stamp))
+
+            polls = iter(range(6))
+            count = overtone.watch_file(audio, lambda: runs.append(audio.read_bytes()),
+                                        lambda _message: None, sleep=sleep,
+                                        stop=lambda: next(polls, None) is None)
+            self.assertEqual(runs, [b"a", b"abc"])
+            self.assertEqual(count, 2)
+
+    def test_a_missing_file_is_waited_for(self) -> None:
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "song.wav"
+            runs = []
+            polls = iter(range(3))
+            overtone.watch_file(audio, lambda: runs.append(1), lambda _message: None,
+                                sleep=lambda _s: None, stop=lambda: next(polls, None) is None)
+            self.assertEqual(runs, [])
 
 
 if __name__ == "__main__":

@@ -20,6 +20,77 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-25 · the command line watches a file
+
+### Changed
+
+- `--watch` analyses the audio once, then again each time it is saved,
+  with every other option given (`--csv`, `--inject`, `--json` ...).
+  Each run is a fresh process, so a run that fails or exits 3 leaves the
+  watch going.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- A save counts once the file holds still for one poll, so a render still
+  being written is not analysed half done; a file deleted and renamed back
+  by its editor is waited for. Tests drive both with a scripted clock.
+
+### Measured
+
+- Not measured: no engine path changes. The poll is 0.5 s.
+
+---
+
+## Unreleased — 2026-10-25 · every finished red line at the whole BPM
+
+### Changed
+
+- The precision path reads its finished red lines at the whole BPM beside
+  them where the song's attacks agree (`_snap_whole_points`, the test
+  `_snap_whole_bpm` already applies to sections: within 0.5 BPM, at least
+  95 % of the inliers kept, rms no worse than x1.2 + 0.5 ms), after drift
+  following and the Beat This! vote, in both engines; lines that then
+  continue each other merge into one.
+- `bench/stages.py --split dev|holdout` analyses one part only (the conv.
+  figures then have no dev convention and are not read).
+
+### Fixed
+
+- Mappers time anime at whole BPMs, but drift following and the vote wrote
+  lines a few hundredths off them (ASCA - Selfrontier: 142.08 / 141.94 /
+  141.75 for one 142 line), and `_snap_whole_bpm` runs on the sections
+  before either. That, not the vote alone, was S1's tempo-ok loss: the snap
+  on the vote's lines only changed no held-out song.
+
+### Hardening
+
+- Two tests: lines a few tenths off a whole BPM snap and merge; a fractional
+  BPM the attacks keep (128.37) is kept.
+
+### Measured
+
+- S1 anime-single, master `e20e56a` -> this change. Dev (571 songs): tempo
+  ok 73.5 -> 77.2 %, conv. 10 ms 62.7 -> 64.7 %, beats within 10 / 20 ms
+  76.2 / 91.3 -> 77.0 / 91.4 %, octave 90.5 % unchanged. Held out (243
+  songs): tempo ok 68.7 -> 75.9 %, conv. 10 ms 56.4 -> 61.1 %, beats within
+  10 / 20 ms 72.4 / 88.6 -> 72.5 / 88.7 %, octave 89.5 % unchanged.
+- S2 held out, beats within 10 / 20 ms 67.3 / 84.6 -> 67.2 / 84.6 %; S3 held
+  out 45.9 / 63.4 -> 47.0 / 63.4 %, octave 73.7 % unchanged.
+- real-audio: noble 163.9733 BPM / 17 red lines -> 164.0 / 14, on purpose
+  (its drift lines read at the whole BPM); re-pinned. Every other gate
+  passes: 1026 Python tests, benchmark 24/24 (median 0.0000 BPM, 0.14 ms),
+  bpm-snapshot 24/24, golden 27/27, coverage, measures, signatures,
+  robustness, reference 24/24, assisted, combine, perf, fixtures, parity,
+  fit_kits, facts, fuzz_reader, sbom, notices. Rust not rebuilt: no crate
+  changed.
+
+### Rejected / tried and dropped
+
+- The snap on Beat This!'s lines alone: no held-out S1 map changed.
 ## Unreleased — 2026-10-25 · a config saved by Notepad is read, not reset
 
 ### Changed

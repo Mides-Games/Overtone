@@ -277,6 +277,10 @@
    "where": "python-only",
    "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
   },
+  "_snap_whole_lines": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
+  },
   "_choose_subdivision": {
    "where": "legacy",
    "why": "the v2 fallback tracker, which the Rust engine does not implement"
@@ -542,6 +546,10 @@
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
   "export_csv": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
+  "watch_file": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },

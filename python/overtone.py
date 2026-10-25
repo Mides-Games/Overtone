@@ -3186,10 +3186,10 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
             analysis = _snap_whole_bpm(analysis, min_delta, persistence, min_confidence)
             if follow_drift:
                 analysis = _follow_drift(analysis)
-            if not beat_vote or _beat_this_session() is None:
-                return analysis
-            say("Checking the beats with Beat This!…")
-            return _beat_this_vote(analysis, y, sr)
+            if beat_vote and _beat_this_session() is not None:
+                say("Checking the beats with Beat This!…")
+                analysis = _beat_this_vote(analysis, y, sr)
+            return _snap_whole_points(analysis)
         if engine == "precision":
             raise ValueError(
                 "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
@@ -3504,6 +3504,11 @@ def _beats_to_lines(beats: np.ndarray, tol_ms: float) -> list[tuple[float, float
         i = k + 1 if k - i < 1 else k
         if i == k and k + 1 >= n:
             break
+    return _merge_lines(lines)
+
+
+def _merge_lines(lines: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Drop a red line that only continues the one before it."""
     merged = lines[:1]
     for offset, bpm in lines[1:]:
         last_offset, last_bpm = merged[-1]
@@ -3513,6 +3518,28 @@ def _beats_to_lines(beats: np.ndarray, tol_ms: float) -> list[tuple[float, float
             continue
         merged.append((offset, bpm))
     return merged
+
+
+def _snap_whole_lines(lines: list[tuple[float, float]], times: np.ndarray,
+                      weights: np.ndarray, duration_s: float) -> list[tuple[float, float]]:
+    """Red lines read at the whole BPM beside them where their attacks agree,
+    by _snap_whole_bpm's test; lines that then continue each other merge."""
+    grow, add = WHOLE_BPM_SLACK
+    out = []
+    for n, (offset, bpm) in enumerate(lines):
+        whole = round(bpm)
+        if whole <= 0 or abs(bpm - whole) > WHOLE_BPM_REACH or abs(bpm - whole) < 1e-6:
+            out.append((offset, bpm))
+            continue
+        end = lines[n + 1][0] / 1000.0 if n + 1 < len(lines) else duration_s
+        window = (times >= offset / 1000.0) & (times <= end)
+        rms, _, k = _grid_rms(times[window], weights[window], 60.0 / bpm, offset / 1000.0)
+        rms2, phase2, k2 = _grid_rms(times[window], weights[window], 60.0 / whole, offset / 1000.0)
+        if k and k2 >= 0.95 * k and rms2 <= rms * grow + add:
+            out.append((phase2 * 1000.0, float(whole)))
+        else:
+            out.append((offset, bpm))
+    return _merge_lines(out)
 
 
 def _local_tempo_track(analysis: Analysis) -> Analysis | None:
@@ -3731,10 +3758,10 @@ def _beat_this_vote(analysis: Analysis, y: np.ndarray, sr: int) -> Analysis:
     beats = _beat_this_beats(y, sr)
     if beats is None or beats.size < 8:
         return analysis
+    duration = float(analysis.duration)
     lines = _beats_to_lines(beats, LOCAL_LINE_TOL_MS)
     if not lines:
         return analysis
-    duration = float(analysis.duration)
     ours = _grid_fit_score(_beats_of([(p.offset_ms, p.bpm) for p in analysis.points], duration),
                            times, weights, BEAT_THIS_TOL_MS)
     theirs = _grid_fit_score(_beats_of(lines, duration), times, weights, BEAT_THIS_TOL_MS)
@@ -3751,6 +3778,41 @@ def _beat_this_vote(analysis: Analysis, y: np.ndarray, sr: int) -> Analysis:
     spans = np.diff([p.offset_ms for p in points] + [duration * 1000.0])
     return replace(analysis, points=points, beats=beats, local_tempo=True,
                    global_bpm=_weighted_median(bpms, np.maximum(spans, 1e-6)))
+
+
+def _with_lines(analysis: Analysis, lines: list[tuple[float, float]], **changes) -> Analysis:
+    """The analysis with these red lines, each keeping the meter and kiai of
+    the point that governed its offset."""
+    points = []
+    for offset, bpm in lines:
+        governing = analysis.points[0]
+        for point in analysis.points:
+            if point.offset_ms <= offset:
+                governing = point
+        points.append(replace(governing, offset_ms=float(offset), bpm=float(bpm)))
+    bpms = np.array([p.bpm for p in points])
+    spans = np.diff([p.offset_ms for p in points] + [float(analysis.duration) * 1000.0])
+    return replace(analysis, points=points, **changes,
+                   global_bpm=_weighted_median(bpms, np.maximum(spans, 1e-6)))
+
+
+def _snap_whole_points(analysis: Analysis) -> Analysis:
+    """The finished red lines read at whole BPMs where the attacks agree.
+
+    Drift following and the Beat This! vote write lines a few hundredths off
+    the whole BPM a mapper uses (142.08 / 141.94 / 141.75 for one 142 line),
+    which _snap_whole_bpm, running on the sections before them, never sees.
+    """
+    if analysis.engine != "precision" or not analysis.points:
+        return analysis
+    lines = [(p.offset_ms, p.bpm) for p in analysis.points]
+    snapped = _snap_whole_lines(lines, np.asarray(analysis.attack_times, dtype=float),
+                                np.asarray(analysis.attack_weights, dtype=float),
+                                float(analysis.duration))
+    if snapped == lines:
+        return analysis
+    return _with_lines(analysis, snapped,
+                       beats=_beats_of(snapped, float(analysis.duration)))
 
 
 def _swings(analysis: Analysis) -> bool:
@@ -12107,6 +12169,44 @@ class TimingAnalyzerApp:
         self.root.mainloop()
 
 
+def _file_stamp(path: str | os.PathLike[str]) -> tuple[int, int] | None:
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
+def watch_file(path: str | os.PathLike[str], run, note, poll: float = 0.5,
+               sleep=time.sleep, stop=lambda: False) -> int:
+    """Call ``run`` now and again each time ``path`` changes; returns how many runs.
+
+    A change counts once the file holds still for one poll: a DAW rendering
+    the file writes it over several seconds, and analysing it half written
+    reads a different song. A file that disappears is waited for instead of
+    ending the watch -- some editors save by deleting and renaming.
+    """
+    runs = 0
+    seen = _file_stamp(path)
+    if seen is not None:
+        run()
+        runs += 1
+    note(f"Watching {path} for changes (Ctrl+C stops)")
+    while not stop():
+        sleep(poll)
+        current = _file_stamp(path)
+        if current is None or current == seen:
+            continue
+        sleep(poll)
+        if _file_stamp(path) != current:    # still being written
+            continue
+        seen = current
+        note(f"{path} changed; analysing again")
+        run()
+        runs += 1
+    return runs
+
+
 def main() -> None:
     # Redirected (`> timing.txt`, a pipe), Windows hands Python its ANSI code
     # page, and a Japanese file name in a batch row or an error ended the run
@@ -12142,7 +12242,24 @@ def main() -> None:
                         help="Check a map against this audio and print the modder's report instead of "
                              "red lines (red lines to check, changes the map lacks, snapping, objects "
                              "away from the music); exits 3 when it finds something, 0 when clean")
+    parser.add_argument("--watch", action="store_true",
+                        help="Re-run the analysis, with every other option given, each time the "
+                             "audio file changes; Ctrl+C stops")
     args = parser.parse_args()
+    if args.watch:
+        # Each run is its own process: main() ends in SystemExit on every
+        # path, and a fresh process starts from the file as it is now.
+        if not args.audio or Path(args.audio).is_dir():
+            parser.error("--watch needs a single audio file")
+        command = [sys.executable] + ([] if getattr(sys, "frozen", False) else [sys.argv[0]])
+        command += [arg for arg in sys.argv[1:] if arg != "--watch"]
+        import subprocess
+        try:
+            watch_file(args.audio, lambda: subprocess.run(command, check=False).returncode,
+                       lambda message: print(message, file=sys.stderr))
+        except KeyboardInterrupt:
+            pass
+        return
 
     def note(message: str) -> None:
         """Progress, status and errors go to stderr: stdout carries only the

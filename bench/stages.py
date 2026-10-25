@@ -256,6 +256,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--engine", choices=sb.ENGINES, default="python")
     parser.add_argument("--db", default=str(lib.default_path()), help="the library index (read only)")
     parser.add_argument("--jobs", type=int, default=1, help="analyses at once (each can take ~2 GB)")
+    parser.add_argument("--split", choices=("dev", "holdout"),
+                        help="one part only (the convention then needs dev: conv. figures are not read)")
     parser.add_argument("--max-songs", type=int, default=0, metavar="N", help="the first N songs only")
     parser.add_argument("--cli", help="overtone-cli binary (Rust engine)")
     parser.add_argument("--save-baseline", action="store_true",
@@ -285,6 +287,8 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     fingerprint = sb.engine_fingerprint(args.engine, cli)
     songs, skipped = build_stage(stage, db_path, share)
+    if args.split:
+        songs = [s for s in songs if s["split"] == args.split]
     if args.max_songs:
         songs = songs[:args.max_songs]
     print(f"stage {stage['id']}: {len(songs)} songs, {sum(len(s['maps']) for s in songs)} maps, "

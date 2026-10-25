@@ -8,7 +8,7 @@ touching anything else. No uploads, no accounts, no network calls.
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
 ![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
-![tests](https://img.shields.io/badge/tests-1026%20Python%20%C2%B7%20292%20Rust-6ee7b7)
+![tests](https://img.shields.io/badge/tests-1028%20Python%20%C2%B7%20292%20Rust-6ee7b7)
 
 ```
 median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
@@ -272,6 +272,7 @@ Command-line flags:
 | `--osz out.osz` | a complete beatmap archive; `--artist` / `--title` / `--creator` |
 | `--inject map.osu` | red lines into an existing map (`--no-backup` skips the `.bak`) |
 | `--no-refine` | skip sample-resolution re-timing (diagnostic) |
+| `--watch` | analyse again, with the same options, each time the audio file is saved; Ctrl+C stops |
 | `--check map.osu` | the modder's report for that map instead of the red lines; exits 3 when it finds something, 0 when clean |
 
 A folder instead of a file analyses every audio file in it. Presets: **Variable**
@@ -317,7 +318,7 @@ instantly and exactly; the click track is the arbiter.
 ## Benchmarks and gates
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # 1026 tests
+.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # 1028 tests
 .venv/Scripts/python.exe bench/benchmark.py            # 24/24, median 0.0000 BPM / 0.16 ms
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot   # the octave, pinned per fixture
 .venv/Scripts/python.exe bench/golden.py check         # 27/27 stage by stage

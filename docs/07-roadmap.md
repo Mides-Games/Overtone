@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **research underway** — the default 28 ms osu! export lead measures 16.8 % of Python and 5.2 % of Rust Corpus B red lines within 5 ms; raw engine grids score 2.0 % and 1.1 % respectively (20 maps, 1,152 lines, 2026-10-24). Tempo, octave and drifting sections remain the main misses |
 | Installer (MSI) | **v0.1.0-alpha published** — per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
 
-Tests: **1026** Python (727 engine + 299 web shell) · **292** Rust.
+Tests: **1028** Python (729 engine + 299 web shell) · **292** Rust.
 
 ### Current priorities — 2026-10-16
 
@@ -539,7 +539,7 @@ corpus generator; they say the classes separate, not how they do on real songs.
 | Batch folder analysis | every audio file in a folder | low | high | CLI | no | no | P1 | **done** |
 | Batch hitsounding | many difficulties, one analysis reused | low | high | P6 | no | no | P1 | **done** (2026-09-27) — `overtone-cli hitsound` takes a mapset and reads the audio once, a map it cannot read costing the others nothing; "Every difficulty" in the Hitsounds view runs it and each difficulty then shows its cached proposal when picked. 8 difficulties in 19.1 s against 148.0 s one by one (7.8x), 7 in 40.1 against 296.4 (7.4x), the same sounds map for map; a switch afterwards 0.55-0.75 s |
 | Project format | reopen a song with its edits without recomputing | med | high | P2 cache | no | no | P1 | **done** for the timing work — each song's red lines and locks saved after every edit to `<output folder>/Projects/<song> [<sha>].oto` (JSON, atomic), offered back after its analysis, undo returning to the analysis; not kept: the undo history, the view, notes, earlier versions (14.1's full list) |
-| Watch mode | re-analyse on file change | low | low | CLI | no | no | P3 | todo |
+| Watch mode | re-analyse on file change | low | low | CLI | no | no | P3 | done — `--watch` re-runs the command line, every other option kept, once the saved file holds still (2026-10-25) |
 
 ---
 

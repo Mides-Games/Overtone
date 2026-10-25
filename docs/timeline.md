@@ -20,6 +20,31 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-25 · the command line watches a file
+
+### Changed
+
+- `--watch` analyses the audio once, then again each time it is saved,
+  with every other option given (`--csv`, `--inject`, `--json` ...).
+  Each run is a fresh process, so a run that fails or exits 3 leaves the
+  watch going.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- A save counts once the file holds still for one poll, so a render still
+  being written is not analysed half done; a file deleted and renamed back
+  by its editor is waited for. Tests drive both with a scripted clock.
+
+### Measured
+
+- Not measured: no engine path changes. The poll is 0.5 s.
+
+---
+
 ## Unreleased — 2026-10-25 · every finished red line at the whole BPM
 
 ### Changed

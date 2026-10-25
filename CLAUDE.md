@@ -44,7 +44,7 @@ commit messages are English; only the app's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (1036 on 2026-10-25)
+.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (1046 on 2026-10-25)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -165,13 +165,17 @@ python/                   v3 engine, osu! I/O, classic Tk GUI + CLI (the app's d
   overtone_library.py       the library index: a Songs folder in SQLite, searched (FTS5)
   library.sql               the index's schema, versioned; facts.py checks the version
   overtone_server.py        the library API: the index and its BPM cache over HTTP,
-                            behind a token, for a server that holds the Songs folder
+                            behind a token, for a server that holds the Songs folder;
+                            also serves app/ as a web page (overtone_webhost.py)
+  overtone_webhost.py       the page in a browser: Api calls, events and file
+                            dialogs over HTTP instead of pywebview
   requirements.txt          lower bounds; requirements.lock pins the measured baseline
 tests/                    Python suite (run from the root with unittest discover)
   test_overtone.py          engine, I/O and classic-window tests
   test_overtone_web.py      web bridge tests (never touch the real config)
   fixtures/                 hand-timed samples the tests read
-app/                      web shell frontend (HTML/CSS/JS, no network)
+app/                      web shell frontend (HTML/CSS/JS); web.js carries its bridge
+                          over HTTP when the server serves it, and does nothing on disk
 Overtone.bat              double-click launcher
 installer/                the MSI and portable ZIP: PyInstaller spec, WiX source, the
                           one-line build (installer/build.py) and its smoke test

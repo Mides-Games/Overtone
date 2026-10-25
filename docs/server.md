@@ -140,6 +140,44 @@ la máquina. `MemoryMax=1G` vale con el motor Rust y `--no-beat-vote`. Con el vo
 solo análisis pasa de 1.4 GB (tabla de arriba), así que ese límite
 lo mataría.
 
+## La app en el navegador
+
+El mismo servidor sirve la app en `/`: es la misma página que la ventana de
+escritorio (`app/`), con las mismas vistas, y todo el análisis corre en el
+servidor. Se entra en `/login` con el token. La sesión es una cookie firmada
+con el token: sobrevive a reinicios del servidor, y cambiar el token cierra
+todas las sesiones.
+
+Qué cambia respecto al escritorio:
+
+- **Abrir un archivo o una carpeta** muestra un selector propio. Puedes
+  subir desde tu PC (un archivo, varios o una carpeta entera) o elegir algo
+  que el servidor ya tenga: la carpeta Songs, `uploads` o `exports`.
+- **Guardar** escribe en el servidor (por defecto en `exports`). Desde el
+  mismo selector se navega hasta el archivo y se descarga.
+- **Los `.osu` que la app escribe** van a la copia de Songs del servidor,
+  con su `.bak`, como en el escritorio. No tocan tu PC.
+- El navegador nunca ve rutas fuera de Songs, `uploads` y `exports`.
+
+Para entrar desde fuera sin túnel, pon Caddy delante. Pide y renueva solo
+el certificado HTTPS, y deja pasar los eventos del servidor sin cortarlos.
+Hace falta un dominio que apunte a la VPS; uno gratuito tipo DuckDNS sirve.
+
+`/etc/caddy/Caddyfile`:
+
+```
+overtone.tu-dominio.com {
+    reverse_proxy 127.0.0.1:8765
+}
+```
+
+```bash
+apt-get install -y caddy && systemctl reload caddy
+```
+
+El servidor sigue escuchando solo en `127.0.0.1`. Caddy es lo único
+expuesto, y siempre con HTTPS.
+
 ## Usarlo
 
 Desde tu PC, con un túnel:

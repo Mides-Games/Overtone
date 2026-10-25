@@ -5230,5 +5230,208 @@ class OszImportTests(_IsolatedConfig):
             self.assertEqual((target, run), ("", False))
 
 
+class WebHostTests(_IsolatedConfig):
+    """The app's page in a browser: the same Api, its bridge, events and
+    dialogs carried over HTTP by overtone_webhost and overtone_server."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        import overtone_webhost
+        self.wh = overtone_webhost
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.tmp = Path(scratch.name)
+        self.songs = self.tmp / "Songs"
+        (self.songs / "1 Band - Song").mkdir(parents=True)
+        (self.songs / "1 Band - Song" / "audio.ogg").write_bytes(b"OggS" + bytes(64))
+        self.outside = self.tmp / "private.txt"
+        self.outside.write_text("not shared", encoding="utf-8")
+        self.host = overtone_webhost.WebHost({"songs": self.songs}, self.tmp / "web", api=web.Api())
+
+    def test_the_bridge_reaches_public_api_methods_only(self) -> None:
+        self.assertIn("analyze", self.host.methods)
+        self.assertNotIn("_emit", self.host.methods)
+        self.assertEqual(self.host.call("library_state", [])["songs"], str(self.songs))
+        with self.assertRaises(LookupError):
+            self.host.call("_emit", ["onResult", {}])
+        with self.assertRaises(LookupError):
+            self.host.call("no_such_method", [])
+        with self.assertRaises(TypeError):
+            self.host.call("library_state", {"not": "a list"})
+
+    def test_the_page_gets_the_servers_songs_folder_unless_one_here_was_chosen(self) -> None:
+        self.assertEqual(self.host.api._cfg["songs_folder"], str(self.songs))
+        api = web.Api()
+        api._cfg["songs_folder"] = str(self.tmp)
+        self.wh.WebHost({"songs": self.songs}, self.tmp / "web", api=api)
+        self.assertEqual(api._cfg["songs_folder"], str(self.tmp))
+
+    def test_what_python_pushes_reaches_the_page_in_order_and_on_reconnect(self) -> None:
+        self.host.api._emit("onProgress", {"message": "one"})
+        self.host.api._emit("onResult", {"bpm": 120})
+        events = self.host.hub.since(0, 0.1)
+        self.assertEqual([e["kind"] for _, e in events], ["js", "js"])
+        self.assertIn('window.overtone.onResult({"bpm": 120})', events[1][1]["code"])
+        # A page that saw the first event gets only the second.
+        self.assertEqual([n for n, _ in self.host.hub.since(events[0][0], 0.1)], [events[1][0]])
+        self.assertEqual(self.host.hub.since(events[1][0], 0.05), [])
+
+    def _dialog(self):
+        for _ in range(250):
+            if self.host.window.pending():
+                return self.host.window.pending()[0]
+            time.sleep(0.02)
+        self.fail("no dialog was asked for")
+
+    def test_a_file_dialog_waits_for_the_page_and_returns_its_answer(self) -> None:
+        answers = []
+        worker = threading.Thread(target=lambda: answers.append(self.host.api.pick_folder()))
+        worker.start()
+        number = self._dialog()
+        asked = [e for _, e in self.host.hub.since(0, 0.05) if e["kind"] == "dialog"]
+        self.assertEqual((asked[-1]["id"], asked[-1]["type"]), (number, "folder"))
+        self.assertTrue(self.host.window.answer(number, [str(self.songs)]))
+        worker.join(5)
+        self.assertEqual(answers, [str(self.songs)])
+        self.assertFalse(self.host.window.answer(number, []))   # nobody waits now
+        # Cancelled: None, as a desktop dialog closed without a choice.
+        worker = threading.Thread(target=lambda: answers.append(self.host.api.pick_folder()))
+        worker.start()
+        self.host.window.answer(self._dialog(), None)
+        worker.join(5)
+        self.assertIsNone(answers[-1])
+
+    def test_a_server_without_pywebview_still_names_its_dialogs(self) -> None:
+        # None in sys.modules makes ``import webview`` fail, as on a server.
+        with mock.patch.dict(sys.modules, {"webview": None}):
+            self.wh.ensure_webview_names()
+            import webview as stand_in
+            self.assertFalse(hasattr(stand_in, "create_window"))
+            self.assertEqual([self.wh.dialog_kind(v) for v in (stand_in.OPEN_DIALOG,
+                              stand_in.FOLDER_DIALOG, stand_in.SAVE_DIALOG)],
+                             ["open", "folder", "save"])
+
+    def test_a_save_dialog_opens_in_exports_and_never_names_a_desktop_folder(self) -> None:
+        answers = []
+        worker = threading.Thread(target=lambda: answers.append(
+            self.host.window.create_file_dialog(30, directory=r"C:\Users\someone\Desktop",
+                                                save_filename="map.osu")))
+        with mock.patch.object(self.wh, "dialog_kind", return_value="save"):
+            worker.start()
+            number = self._dialog()
+        asked = [e for _, e in self.host.hub.since(0, 0.05) if e["kind"] == "dialog"][-1]
+        self.assertEqual((asked["directory"], asked["save_filename"]),
+                         (str(self.host.exports), "map.osu"))
+        self.host.window.answer(number, [str(self.host.exports / "map.osu")])
+        worker.join(5)
+        self.assertEqual(answers, [(str(self.host.exports / "map.osu"),)])
+
+    def test_only_shared_folders_can_be_read_or_written(self) -> None:
+        song = self.songs / "1 Band - Song" / "audio.ogg"
+        self.assertEqual(self.host.resolve(str(song)), Path(os.path.realpath(song)))
+        for path in (str(self.outside), str(self.songs / ".." / "private.txt"), "", "relative.txt"):
+            with self.assertRaises(ValueError):
+                self.host.resolve(path)
+        roots = self.host.browse("")
+        self.assertEqual(sorted(e["name"] for e in roots["entries"]), ["exports", "songs", "uploads"])
+        listing = self.host.browse(str(self.songs))
+        self.assertEqual([e["name"] for e in listing["entries"]], ["1 Band - Song"])
+        self.assertEqual(listing["parent"], "")   # above a root: the roots
+
+    def test_an_upload_lands_whole_under_uploads_with_a_safe_name(self) -> None:
+        import io
+        path = self.host.receive("../../evil name?.mp3", io.BytesIO(b"x" * 10), 10)
+        self.assertEqual(path.parent, self.host.uploads)
+        self.assertEqual(path.name, "evil name_.mp3")
+        self.assertEqual(path.read_bytes(), b"x" * 10)
+        grouped = self.host.receive("a.osu", io.BytesIO(b"osu"), 3, folder="My Set")
+        self.assertEqual(grouped.parent, self.host.uploads / "My Set")
+        with self.assertRaises(ValueError):
+            self.host.receive("short.mp3", io.BytesIO(b"abc"), 10)
+        self.assertEqual(sorted(p.name for p in self.host.uploads.iterdir() if p.is_file()),
+                         ["evil name_.mp3"])   # the short one left nothing behind
+        with self.assertRaises(ValueError):
+            self.host.receive("huge.mp3", io.BytesIO(b""), self.wh.MAX_UPLOAD + 1)
+
+    def test_sessions_are_signed_by_the_token_and_expire(self) -> None:
+        sessions = self.wh.Sessions("secret")
+        cookie = sessions.new()
+        self.assertTrue(sessions.valid(cookie))
+        self.assertFalse(self.wh.Sessions("another").valid(cookie))
+        self.assertFalse(sessions.valid(cookie[:-1] + ("0" if cookie[-1] != "0" else "1")))
+        self.assertFalse(sessions.valid(None))
+        expired = self.wh.Sessions("secret", ttl=-1)
+        self.assertFalse(expired.valid(expired.new()))
+
+    def test_the_page_signs_in_and_talks_to_the_api_over_http(self) -> None:
+        import http.client
+        from urllib.parse import urlencode
+        import overtone_server
+        service = overtone_server.Service(self.songs, self.tmp / "library.sqlite3", engine="python")
+        service._web = self.host
+        server = overtone_server.serve(service, "127.0.0.1", 0, "secret", log=False)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        port = server.server_address[1]
+
+        def request(method, path, body=None, headers=None):
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+            connection.request(method, path, body=body, headers=headers or {})
+            reply = connection.getresponse()
+            data = reply.read()
+            connection.close()
+            return reply.status, dict(reply.getheaders()), data
+
+        form = {"Content-Type": "application/x-www-form-urlencoded"}
+        status, headers, _ = request("GET", "/")
+        self.assertEqual((status, headers["Location"]), (303, "/login"))
+        self.assertEqual(request("POST", "/login", "token=wrong", form)[0], 401)
+        status, headers, _ = request("POST", "/login", "token=secret", form)
+        self.assertEqual(status, 303)
+        self.assertIn("HttpOnly", headers["Set-Cookie"])
+        self.assertIn("SameSite=Strict", headers["Set-Cookie"])
+        cookie = headers["Set-Cookie"].split(";")[0]
+        status, _, page = request("GET", "/", headers={"Cookie": cookie})
+        self.assertEqual(status, 200)
+        self.assertIn(b'<script src="web.js"></script>', page)
+        self.assertEqual(request("GET", "/../python/overtone.py", headers={"Cookie": cookie})[0], 404)
+        call = json.dumps({"args": []})
+        # A cookie alone changes nothing: no cross-site form can add the header.
+        self.assertEqual(request("POST", "/api/v1/bridge/library_state", call,
+                                 {"Cookie": cookie})[0], 401)
+        status, _, data = request("POST", "/api/v1/bridge/library_state", call,
+                                  {"Cookie": cookie, "X-Overtone": "1"})
+        self.assertEqual((status, json.loads(data)["result"]["songs"]), (200, str(self.songs)))
+        self.assertEqual(request("POST", "/api/v1/bridge/_emit", call,
+                                 {"Cookie": cookie, "X-Overtone": "1"})[0], 404)
+        status, _, data = request("PUT", "/api/v1/upload?name=song.ogg", b"OggS",
+                                  {"Cookie": cookie, "X-Overtone": "1"})
+        uploaded = json.loads(data)["path"]
+        self.assertEqual((status, Path(uploaded).read_bytes()), (201, b"OggS"))
+        status, headers, data = request("GET", "/api/v1/download?" + urlencode({"path": uploaded}),
+                                        headers={"Cookie": cookie})
+        self.assertEqual((status, data), (200, b"OggS"))
+        self.assertIn("attachment", headers["Content-Disposition"])
+        self.assertEqual(request("GET", "/api/v1/download?" + urlencode({"path": str(self.outside)}),
+                                 headers={"Cookie": cookie})[0], 400)
+        # The bearer token still works for scripts.
+        self.assertEqual(request("GET", "/api/status",
+                                 headers={"Authorization": "Bearer secret"})[0], 200)
+        # Events: what the Api pushes arrives on the stream.
+        self.host.api._emit("onProgress", {"message": "hello"})
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        self.addCleanup(connection.close)
+        connection.request("GET", "/api/v1/events", headers={"Cookie": cookie})
+        reply = connection.getresponse()
+        self.assertEqual(reply.status, 200)
+        self.assertTrue(reply.getheader("Content-Type").startswith("text/event-stream"))
+        seen = b""
+        while b"hello" not in seen:
+            line = reply.fp.readline()
+            self.assertTrue(line, "the stream ended before the event")
+            seen += line
+
+
 if __name__ == "__main__":
     unittest.main()

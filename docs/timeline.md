@@ -20,6 +20,49 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-25 · the app as a web page
+
+### Changed
+
+- `overtone_server.py` serves `app/` at `/`: the same page as the desktop
+  window, signed in at `/login` with the server's token, its analyses
+  running on the server. `app/web.js` carries the pywebview bridge over HTTP
+  (`POST /api/v1/bridge/<method>`) when the page comes from http(s), and
+  does nothing when the desktop window loads it from disk.
+- `overtone_webhost.py`: the Api's one push into the page (`evaluate_js`)
+  becomes server-sent events, replayed by `Last-Event-ID` after a reconnect;
+  the six native file dialogs become a dialog the page draws -- upload from
+  the browser, or pick what the server holds -- while the Api thread waits
+  for its answer, so no Api method changed.
+- On a server, the page's Songs folder is the server's.
+- Rule 6 (CLAUDE.md, AGENTS.md) reads "offline by default": a server is
+  opt-in, the user's own, and gets only what the work needs.
+
+### Hardening
+
+- The browser reaches files only under Songs, `uploads` and `exports`
+  (real paths, so `..` and links cannot leave them); uploads are written
+  under a cleaned name, atomically, up to 1 GiB.
+- Sessions are HttpOnly, SameSite=Strict cookies signed with a key drawn
+  from the token (Secure behind an HTTPS proxy); a cookie alone changes
+  nothing without the page's `X-Overtone` header; a wrong token at
+  `/login` costs a second. The bridge reaches public Api methods only.
+
+### Measured
+
+- Through the page, on this machine (2026-10-25, the server on 127.0.0.1):
+  "Shiggy Jr - oyasumi" opened from the server's Songs through the web
+  dialog, analysed to 200.00 BPM on the precision grid with live progress;
+  a scan of the 4,882-folder Songs folder reported its progress live.
+  Request latency and throughput: not measured.
+
+### Rejected / tried and dropped
+
+- In-memory sessions: every server restart signed the page out.
+- Reading `webview.OPEN_DIALOG` and friends to name a dialog: pywebview 6
+  warns on every read; `FileDialog` is read when present, and a stand-in
+  module supplies the names on a server without pywebview.
+
 ## Unreleased — 2026-10-25 · the library API and its BPM cache
 
 ### Changed

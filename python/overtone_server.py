@@ -15,7 +15,12 @@ before exposing it (docs/server.md).
 
     python python/overtone_server.py --songs /srv/osu/Songs
 
-Endpoints:
+It also serves the app itself: ``/`` is the same page the desktop window
+shows (``app/``), signed in with the token at ``/login``, talking to an
+``overtone_web.Api`` on this machine through ``overtone_webhost``. Analyses
+run here; the browser only uploads and shows.
+
+Endpoints (a browser's cookie or ``Authorization: Bearer <token>``):
 
     GET  /api/status                   index, cache counts, jobs, engine
     POST /api/scan                     start a scan of the Songs folder
@@ -23,12 +28,21 @@ Endpoints:
     POST /api/stop                     ask the running analysis to stop
     GET  /api/songs?q=text&limit=n     search, each map with its analysis
     GET  /api/analysis?path=<audio>    one audio file's cached analysis
+
+    POST /api/v1/bridge/<method>       {"args": [...]}: the app's Api method
+    GET  /api/v1/events                server-sent events the Api pushes
+    POST /api/v1/dialog                {"id": n, "paths": [...]}: a dialog's answer
+    PUT  /api/v1/upload?name=&folder=  a file from the browser, raw body
+    GET  /api/v1/browse?path=          a shared folder's entries
+    GET  /api/v1/download?path=        a shared file
+    GET  /api/v1/whoami                200 while signed in
 """
 from __future__ import annotations
 
 import argparse
 import hmac
 import json
+import mimetypes
 import os
 import secrets
 import sys
@@ -36,13 +50,15 @@ import threading
 import time
 import traceback
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import overtone as ta
 import overtone_library
 import overtone_rust
+import overtone_webhost
 from overtone_paths import data_root
 
 #: Where a generated token is kept, so a restart keeps the clients working.
@@ -51,7 +67,14 @@ TOKEN_FILE = "api-token"
 TOKEN_ENV = "OVERTONE_API_TOKEN"
 #: The largest request body read; every request body is a small JSON object.
 MAX_BODY = 64 * 1024
-
+#: The largest bridge call: a song dropped on the page travels as base64.
+MAX_BRIDGE_BODY = 512 * 1024 * 1024
+#: The app's page, served at ``/``.
+APP_DIR = Path(__file__).resolve().parent.parent / "app"
+#: The cookie a signed-in browser carries.
+SESSION_COOKIE = "overtone_session"
+#: How often an idle event stream says it is still there.
+HEARTBEAT_S = 15.0
 
 
 class Job:
@@ -109,6 +132,18 @@ class Service:
         self.jobs = jobs
         self.scan_job = Job("scan")
         self.analyze_job = Job("analyze")
+        self.sessions: overtone_webhost.Sessions | None = None
+        self._web: overtone_webhost.WebHost | None = None
+        self._web_lock = threading.Lock()
+
+    @property
+    def web(self) -> overtone_webhost.WebHost:
+        """The app's Api for browsers, made on first use (it loads the engine)."""
+        with self._web_lock:
+            if self._web is None:
+                self._web = overtone_webhost.WebHost(
+                    {"songs": self.songs}, self.library.path.parent / "web")
+            return self._web
 
     def status(self) -> dict:
         cli = overtone_rust.find_cli()
@@ -197,6 +232,7 @@ def load_token(explicit_file: str | None = None) -> str:
 
 def make_handler(service: Service, token: str, log: bool = True):
     expected = f"Bearer {token}".encode()
+    service.sessions = overtone_webhost.Sessions(token)
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "Overtone"
@@ -208,29 +244,61 @@ def make_handler(service: Service, token: str, log: bool = True):
             sys.stderr.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {self.address_string()} "
                              f"{format % args}\n")
 
-        def _reply(self, status: int, body: dict) -> None:
-            data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        # -- replies ----------------------------------------------------------
+        def _send(self, status: int, data: bytes, content_type: str, headers=()) -> None:
             self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            for name, value in headers:
+                self.send_header(name, value)
             self.end_headers()
-            self.wfile.write(data)
+            if self.command != "HEAD":
+                self.wfile.write(data)
 
-        def _authorised(self) -> bool:
+        def _reply(self, status: int, body: dict, headers=()) -> None:
+            self._send(status, json.dumps(body, ensure_ascii=False, default=str).encode("utf-8"),
+                       "application/json; charset=utf-8", headers)
+
+        def _redirect(self, where: str, headers=()) -> None:
+            self._send(HTTPStatus.SEE_OTHER, b"", "text/plain", (("Location", where), *headers))
+
+        # -- who is asking ------------------------------------------------------
+        def _session(self) -> str | None:
+            cookie = SimpleCookie(self.headers.get("Cookie") or "")
+            morsel = cookie.get(SESSION_COOKIE)
+            return morsel.value if morsel else None
+
+        def _signed_in(self, method: str) -> bool:
+            """A bearer token, or a session cookie; a cookie alone may change
+            nothing without the page's own header (no cross-site form can
+            send one)."""
             given = (self.headers.get("Authorization") or "").encode()
-            if hmac.compare_digest(given, expected):
+            if given and hmac.compare_digest(given, expected):
                 return True
-            self._reply(HTTPStatus.UNAUTHORIZED, {"error": "A valid bearer token is required."})
+            if service.sessions.valid(self._session()):
+                return method in ("GET", "HEAD") or self.headers.get("X-Overtone") == "1"
             return False
 
-        def _body(self) -> dict | None:
+        def _secure(self) -> bool:
+            return (self.headers.get("X-Forwarded-Proto") or "").lower() == "https"
+
+        # -- bodies ---------------------------------------------------------------
+        def _length(self, limit: int) -> int | None:
             try:
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:
                 length = -1
-            if length < 0 or length > MAX_BODY:
+            if length < 0 or length > limit:
                 self._reply(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "Body too large."})
+                return None
+            return length
+
+        def _body(self, limit: int = MAX_BODY) -> dict | None:
+            length = self._length(limit)
+            if length is None:
                 return None
             raw = self.rfile.read(length) if length else b""
             try:
@@ -242,39 +310,173 @@ def make_handler(service: Service, token: str, log: bool = True):
                 return None
             return body
 
-        def _handle(self, method: str) -> None:
-            if not self._authorised():
+        # -- the page -------------------------------------------------------------
+        def _login(self, method: str) -> None:
+            if method == "GET":
+                page = overtone_webhost.LOGIN_PAGE.replace("{error}", "")
+                self._send(HTTPStatus.OK, page.encode("utf-8"), "text/html; charset=utf-8")
                 return
+            length = self._length(MAX_BODY)
+            if length is None:
+                return
+            form = parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
+            given = f"Bearer {(form.get('token') or [''])[-1].strip()}".encode()
+            if not hmac.compare_digest(given, expected):
+                time.sleep(1.0)  # a guess costs a second
+                page = overtone_webhost.LOGIN_PAGE.replace("{error}", "That token is not this server's.")
+                self._send(HTTPStatus.UNAUTHORIZED, page.encode("utf-8"), "text/html; charset=utf-8")
+                return
+            cookie = (f"{SESSION_COOKIE}={service.sessions.new()}; Path=/; HttpOnly; "
+                      f"SameSite=Strict; Max-Age={int(service.sessions.ttl)}"
+                      + ("; Secure" if self._secure() else ""))
+            self._redirect("/", (("Set-Cookie", cookie),))
+
+        def _static(self, path: str) -> None:
+            name = "index.html" if path in ("/", "") else unquote(path.lstrip("/"))
+            target = (APP_DIR / name).resolve()
+            if APP_DIR.resolve() not in target.parents or not target.is_file():
+                self._reply(HTTPStatus.NOT_FOUND, {"error": "Not found."})
+                return
+            kind = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+            if kind.startswith("text/") or kind in ("application/javascript", "text/javascript"):
+                kind += "; charset=utf-8"
+            self._send(HTTPStatus.OK, target.read_bytes(), kind)
+
+        def _events(self) -> None:
+            """Server-sent events until the page goes away."""
+            try:
+                last = int(self.headers.get("Last-Event-ID") or 0)
+            except ValueError:
+                last = 0
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Accel-Buffering", "no")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.close_connection = True
+            hub = service.web.hub
+            try:
+                self.wfile.write(b"retry: 2000\n\n")
+                self.wfile.flush()
+                while True:
+                    events = hub.since(last, HEARTBEAT_S)
+                    if not events:
+                        self.wfile.write(b": still here\n\n")
+                    for number, event in events:
+                        self.wfile.write(overtone_webhost.event_line(number, event))
+                        last = number
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                return
+
+        def _upload(self, query: dict) -> None:
+            length = self._length(overtone_webhost.MAX_UPLOAD)
+            if length is None:
+                return
+            path = service.web.receive(query.get("name", ""), self.rfile, length,
+                                       query.get("folder", ""))
+            self._reply(HTTPStatus.CREATED, {"path": str(path)})
+
+        def _download(self, query: dict) -> None:
+            target = service.web.resolve(query.get("path", ""))
+            if not target.is_file():
+                self._reply(HTTPStatus.NOT_FOUND, {"error": "No such file."})
+                return
+            kind = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+            self._send(HTTPStatus.OK, target.read_bytes(), kind, (
+                ("Content-Disposition", f"attachment; filename*=UTF-8''{quote(target.name)}"),))
+
+        # -- routing ----------------------------------------------------------------
+        def _handle(self, method: str) -> None:
             url = urlparse(self.path)
             query = {k: v[-1] for k, v in parse_qs(url.query).items()}
-            try:
-                if method == "GET" and url.path == "/api/status":
-                    self._reply(HTTPStatus.OK, service.status())
-                elif method == "GET" and url.path == "/api/songs":
-                    self._reply(*service.songs_search(
-                        query.get("q", ""), query.get("limit", overtone_library.SEARCH_LIMIT)))
-                elif method == "GET" and url.path == "/api/analysis":
-                    self._reply(*service.analysis(query.get("path", "")))
-                elif method == "POST" and url.path in ("/api/scan", "/api/analyze", "/api/stop"):
-                    body = self._body()
-                    if body is None:
-                        return
-                    if url.path == "/api/scan":
-                        self._reply(*service.scan())
-                    elif url.path == "/api/analyze":
-                        self._reply(*service.analyze(body.get("limit")))
-                    else:
-                        self._reply(*service.stop())
+            if url.path == "/login" and method in ("GET", "POST"):
+                self._login(method)
+                return
+            if not self._signed_in(method):
+                if method == "GET" and not url.path.startswith("/api/"):
+                    self._redirect("/login")
                 else:
-                    self._reply(HTTPStatus.NOT_FOUND, {"error": f"No endpoint {method} {url.path}."})
-            except (ValueError, overtone_library.DamagedIndex) as exc:
-                self._reply(HTTPStatus.CONFLICT, {"error": str(exc)})
+                    self._reply(HTTPStatus.UNAUTHORIZED,
+                                {"error": "A valid bearer token is required."})
+                return
+            try:
+                self._route(method, url.path, query)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                return
+            except LookupError as exc:
+                self._reply(HTTPStatus.NOT_FOUND, {"error": str(exc).strip("'\"")})
+            except (ValueError, TypeError, overtone_library.DamagedIndex) as exc:
+                self._reply(HTTPStatus.CONFLICT if isinstance(exc, overtone_library.DamagedIndex)
+                            else HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            except Exception as exc:  # the page shows it; the server keeps serving
+                traceback.print_exc()
+                self._reply(HTTPStatus.INTERNAL_SERVER_ERROR,
+                            {"error": f"{type(exc).__name__}: {exc}"})
+
+        def _route(self, method: str, path: str, query: dict) -> None:
+            if method == "GET" and path == "/api/status":
+                self._reply(HTTPStatus.OK, service.status())
+            elif method == "GET" and path == "/api/songs":
+                self._reply(*service.songs_search(
+                    query.get("q", ""), query.get("limit", overtone_library.SEARCH_LIMIT)))
+            elif method == "GET" and path == "/api/analysis":
+                self._reply(*service.analysis(query.get("path", "")))
+            elif method == "POST" and path in ("/api/scan", "/api/analyze", "/api/stop"):
+                body = self._body()
+                if body is None:
+                    return
+                if path == "/api/scan":
+                    self._reply(*service.scan())
+                elif path == "/api/analyze":
+                    self._reply(*service.analyze(body.get("limit")))
+                else:
+                    self._reply(*service.stop())
+            elif method == "POST" and path.startswith("/api/v1/bridge/"):
+                body = self._body(MAX_BRIDGE_BODY)
+                if body is None:
+                    return
+                name = unquote(path[len("/api/v1/bridge/"):])
+                self._reply(HTTPStatus.OK, {"result": service.web.call(name, body.get("args", []))})
+            elif method == "GET" and path == "/api/v1/events":
+                self._events()
+            elif method == "POST" and path == "/api/v1/dialog":
+                body = self._body()
+                if body is None:
+                    return
+                paths = body.get("paths")
+                if paths is not None:
+                    paths = [str(service.web.resolve(str(p))) for p in paths]
+                answered = service.web.window.answer(int(body.get("id", 0)), paths)
+                self._reply(HTTPStatus.OK if answered else HTTPStatus.GONE,
+                            {"answered": answered})
+            elif method == "PUT" and path == "/api/v1/upload":
+                self._upload(query)
+            elif method == "GET" and path == "/api/v1/browse":
+                self._reply(HTTPStatus.OK, service.web.browse(query.get("path", "")))
+            elif method == "GET" and path == "/api/v1/download":
+                self._download(query)
+            elif method == "GET" and path == "/api/v1/whoami":
+                self._reply(HTTPStatus.OK, {"signed_in": True})
+            elif method == "POST" and path == "/logout":
+                self._redirect("/login", (("Set-Cookie", f"{SESSION_COOKIE}=; Path=/; Max-Age=0"),))
+            elif method in ("GET", "HEAD") and not path.startswith("/api/"):
+                self._static(path)
+            else:
+                self._reply(HTTPStatus.NOT_FOUND, {"error": f"No endpoint {method} {path}."})
 
         def do_GET(self):  # noqa: N802 -- the base class's name
             self._handle("GET")
 
+        def do_HEAD(self):  # noqa: N802 -- the base class's name
+            self._handle("HEAD")
+
         def do_POST(self):  # noqa: N802 -- the base class's name
             self._handle("POST")
+
+        def do_PUT(self):  # noqa: N802 -- the base class's name
+            self._handle("PUT")
 
     return Handler
 

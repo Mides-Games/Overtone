@@ -20,6 +20,37 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-25 · notes pinned to the song
+
+### Changed
+
+- Timing has notes: type one and *Add note at the playhead*, and it shows
+  as a flag over the waveform and a row under the transport. The time
+  seeks there, the text edits in place, and × (or clearing the text)
+  deletes it.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- Notes live in `<song> [hash].notes.json` beside the song's project,
+  written atomically and keyed by the audio's SHA-256, so they follow the
+  bytes, not the name. They are kept apart from the project on purpose:
+  restoring saved timing, or undoing it, never takes a note away. With
+  projects off (tests, the UI harness) they stay in memory. A note is
+  1-500 characters at a time inside the song; 500 notes per song at most.
+
+### Measured
+
+- Not measured: no engine path changes. Checked in the page through the
+  UI harness on a 20 s synthetic 128 BPM drum track: two notes added in
+  time order, one edited, one deleted, the flag drawn at 5.25 s, Spanish
+  strings, no console errors.
+
+---
+
 ## Unreleased — 2026-10-25 · the single-key shortcuts move
 
 ### Changed

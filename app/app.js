@@ -683,6 +683,9 @@ const I18N = {
     bad_shortcut: "That key is taken by another action or cannot be moved.",
     key_palette: "Search every action", pal_title: "Commands", pal_placeholder: "Type an action or a section…",
     pal_empty: "Nothing matches.", pal_section: "Section", pal_action: "Action",
+    note_add: "Add note at the playhead", note_placeholder: "A note for this moment of the song…", note_text: "Note", note_seek: "Play from here", note_delete: "Delete this note",
+    bad_note: "Write the note first (up to 500 characters).", too_many_notes: "This song already has 500 notes.",
+    note_unsaved: "The note is kept until you close Overtone, but could not be saved: {detail}",
     key_toggled: "{what}: {state}", key_state_on: "on", key_state_off: "off",
     pb_loading: "Loading the song… {n}/{of}",
     pb_perc_preparing: "Separating the drums…",
@@ -1515,6 +1518,9 @@ const I18N = {
     bad_shortcut: "Esa tecla ya la usa otra acción o no se puede mover.",
     key_palette: "Buscar cualquier acción", pal_title: "Comandos", pal_placeholder: "Escribí una acción o una sección…",
     pal_empty: "No hay coincidencias.", pal_section: "Sección", pal_action: "Acción",
+    note_add: "Agregar nota en el cabezal", note_placeholder: "Una nota para este momento de la canción…", note_text: "Nota", note_seek: "Reproducir desde acá", note_delete: "Borrar esta nota",
+    bad_note: "Escribí primero la nota (hasta 500 caracteres).", too_many_notes: "Esta canción ya tiene 500 notas.",
+    note_unsaved: "La nota queda hasta que cierres Overtone, pero no se pudo guardar: {detail}",
     key_toggled: "{what}: {state}", key_state_on: "sí", key_state_off: "no",
     pb_loading: "Cargando la canción… {n}/{of}",
     pb_perc_preparing: "Separando la batería…",
@@ -1736,7 +1742,7 @@ function setView(view) {
   if (changed) $("content").scrollTop = 0;
   // The canvas measures its box: it can only be drawn while visible.
   if (view === "timing" && S.result) {
-    drawTrace(); waveLoad(); svMaps(); divsLoad(); swingLoad(); phLoad();
+    drawTrace(); waveLoad(); svMaps(); divsLoad(); swingLoad(); phLoad(); notesLoad();
   }
   if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); stxVolMaps(); }
   if (view === "hitsounds" && S.result) { hsvLoad(); sbView(); }
@@ -6984,6 +6990,7 @@ const DRIFT_MS = 30;              // the drift lane's half height
 const SWING_LATE_MAX = 0.84;      // the swing lane's top: the engine's own bound
 const VIEW = { a: 0, b: 0, for: null };
 const WAVE = { for: null, bin: 256, rate: 0, min: null, max: null };
+const NOTES = { list: [], for: null };
 let DRIFT = { for: null, dev: null };
 const TL = { drag: null, moved: false, suppressClick: false };
 
@@ -7178,6 +7185,17 @@ function drawTrace(hoverX) {
         const h = on[i] * wh;
         if (h >= 0.6) ctx.fillRect(x, wmid - h, Math.max(((x1 - x0) / on.length) * (dur / span), 1), 2 * h);
       }
+    }
+  }
+
+  // notes: a flag over the waveform where each one is pinned
+  if (NOTES.for === r.path && NOTES.list.length) {
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+    for (const n of NOTES.list) {
+      if (n.time_s < v.a || n.time_s > v.b) continue;
+      const x = Math.round(X(n.time_s)) + 0.5;
+      ctx.fillRect(x - 0.5, yW0, 1, yW1 - yW0);
+      ctx.beginPath(); ctx.moveTo(x, yW0); ctx.lineTo(x + 7, yW0 + 4); ctx.lineTo(x, yW0 + 8); ctx.fill();
     }
   }
 
@@ -7725,6 +7743,57 @@ function palWire() {
   };
   // A click on the backdrop lands on the dialog itself: it closes, like Esc.
   $("palette").onclick = (e) => { if (e.target === $("palette")) $("palette").close(); };
+}
+
+// Notes: free text pinned to a time of the song, kept beside its project.
+async function notesLoad() {
+  if (!api() || !S.result) return;
+  const path = S.result.path;
+  const reply = await api().notes();
+  if (!S.result || S.result.path !== path) return;
+  notesTake(reply, path);
+}
+
+function notesTake(reply, path) {
+  if (!reply.ok) { toast(t(reply.key), true); return; }
+  NOTES.list = reply.notes;
+  NOTES.for = path || (S.result && S.result.path);
+  if (reply.error) toast(t("note_unsaved", { detail: reply.error }), true);
+  notesRender();
+  drawTrace();
+}
+
+function notesRender() {
+  $("noteText").placeholder = t("note_placeholder");
+  const shown = S.result && NOTES.for === S.result.path ? NOTES.list : [];
+  $("notesList").innerHTML = shown.map((n) =>
+    `<li data-id="${n.id}"><button class="btn small num" data-seek="${n.time_s}" title="${esc(t("note_seek"))}">${esc(fmtTime(n.time_s))}</button>`
+    + `<input class="input" maxlength="500" value="${esc(n.text)}" aria-label="${esc(t("note_text"))}">`
+    + `<button class="btn small" data-del="${n.id}" title="${esc(t("note_delete"))}">×</button></li>`).join("");
+}
+
+async function noteAdd() {
+  const text = $("noteText").value.trim();
+  if (!text || !S.result) return;
+  const reply = await api().note_add(pbPosition(), text);
+  if (reply.ok) $("noteText").value = "";
+  notesTake(reply);
+}
+
+function notesWire() {
+  $("noteAdd").onclick = noteAdd;
+  $("noteText").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); noteAdd(); } });
+  $("notesList").onclick = async (e) => {
+    const seek = e.target.closest("[data-seek]"), del = e.target.closest("[data-del]");
+    if (seek) pbSeek(+seek.dataset.seek, true);
+    if (del) notesTake(await api().note_delete(+del.dataset.del));
+  };
+  $("notesList").onchange = async (e) => {
+    const li = e.target.closest("li[data-id]");
+    if (!li || e.target.tagName !== "INPUT") return;
+    const text = e.target.value.trim();
+    notesTake(await (text ? api().note_edit(+li.dataset.id, text) : api().note_delete(+li.dataset.id)));
+  };
 }
 
 // [ and ]: the red line before or after the playhead, selected, the playhead on it.
@@ -9038,6 +9107,7 @@ function wire() {
     if (reply.ok) { stTake(reply); renderKeys(); }
   };
   palWire();
+  notesWire();
   window.addEventListener("keydown", (e) => {
     // Ctrl+K opens the palette from anywhere, a field included; open, it
     // keeps every key but its own toggle.

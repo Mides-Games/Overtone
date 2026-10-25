@@ -610,6 +610,11 @@ const I18N = {
     as_no_attacks: "No attacks were found in this song.",
     no_fit: "Fit a grid first.",
     settings_sub: "Saved on this PC as you change them.",
+    st_file: "Settings file", st_file_export: "Save settings…", st_file_import: "Open settings…",
+    st_file_hint: "Save these settings to a file and open it on another PC. A folder that does not exist there is left at its default.",
+    st_file_saved: "Settings saved to {path}", st_file_read: "Settings opened: {n} kept",
+    st_file_skipped: "Settings opened: {n} kept; not used here: {names}",
+    bad_settings_file: "That is not an Overtone settings file.",
     st_diag: "Diagnostics", st_diag_copy: "Copy diagnostics", st_diag_copied: "Diagnostics copied",
     st_diag_hint: "The version, the build, the engines and your folders as plain text, for a bug report. It is copied to the clipboard only when you press the button; nothing is sent anywhere.",
     st_output: "Exports", st_folder: "Output folder", st_folder_default: "Use the default", st_folder_pick: "Choose folder…",
@@ -1433,6 +1438,11 @@ const I18N = {
     as_no_attacks: "No se encontraron ataques en esta canción.",
     no_fit: "Primero ajustá un grid.",
     settings_sub: "Se guardan en esta PC a medida que los cambiás.",
+    st_file: "Archivo de ajustes", st_file_export: "Guardar ajustes…", st_file_import: "Abrir ajustes…",
+    st_file_hint: "Guardá estos ajustes en un archivo y abrilo en otra PC. Una carpeta que allí no existe queda en su valor predeterminado.",
+    st_file_saved: "Ajustes guardados en {path}", st_file_read: "Ajustes abiertos: {n} aplicados",
+    st_file_skipped: "Ajustes abiertos: {n} aplicados; no se usan acá: {names}",
+    bad_settings_file: "Eso no es un archivo de ajustes de Overtone.",
     st_diag: "Diagnóstico", st_diag_copy: "Copiar diagnóstico", st_diag_copied: "Diagnóstico copiado",
     st_diag_hint: "La versión, el build, los motores y tus carpetas como texto plano, para un reporte. Se copia al portapapeles solo cuando apretás el botón; no se envía nada a ningún lado.",
     st_output: "Exportaciones", st_folder: "Carpeta de salida", st_folder_default: "Usar la predeterminada", st_folder_pick: "Elegir carpeta…",
@@ -6573,6 +6583,24 @@ function stWire() {
     else if (reply.key !== "cancelled") toast(t(reply.key), true);
   };
   $("stFolderDefault").onclick = () => stSet({ output_folder: "" });
+  $("stFileExport").onclick = async () => {
+    if (!api()) return;
+    const reply = await api().export_settings();
+    if (reply.ok) toast(t("st_file_saved", { path: reply.path }));
+    else if (reply.key !== "cancelled") toast(t(reply.key, { detail: reply.detail || "" }), true);
+  };
+  $("stFileImport").onclick = async () => {
+    if (!api()) return;
+    const reply = await api().import_settings();
+    if (!reply.ok) {
+      if (reply.key !== "cancelled") toast(t(reply.key, { detail: reply.detail || "" }), true);
+      return;
+    }
+    stTake(reply);
+    toast(reply.skipped.length
+      ? t("st_file_skipped", { n: reply.imported.length, names: reply.skipped.join(", ") })
+      : t("st_file_read", { n: reply.imported.length }));
+  };
   $("stDiagCopy").onclick = async () => {
     if (!api()) return;
     const reply = await api().diagnostics();

@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **research underway** — the default 28 ms osu! export lead measures 16.8 % of Python and 5.2 % of Rust Corpus B red lines within 5 ms; raw engine grids score 2.0 % and 1.1 % respectively (20 maps, 1,152 lines, 2026-10-24). Tempo, octave and drifting sections remain the main misses |
 | Installer (MSI) | **v0.1.0-alpha published** — per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
 
-Tests: **1026** Python (727 engine + 299 web shell) · **292** Rust.
+Tests: **1028** Python (727 engine + 301 web shell) · **292** Rust.
 
 ### Current priorities — 2026-10-16
 
@@ -794,7 +794,7 @@ above — metadata confirmation before anything downloads — is the starting po
 | Per-song presets | remember detection settings per song | low | med | project format | no | no | P2 | **done** — the settings a song's last finished analysis ran with (not the engine), kept in the config by the audio's SHA-256 for 200 songs; choosing the song puts them back with a note and the previous ones a click away. Not in the project file: a project exists only after an edit |
 | The song's pulse, kept | a ×2 or ÷2 applied after an analysis kept with the song's settings, so analysing it again lands on the octave the mapper chose | low | med | per-song presets | no | no | P2 | **done** — a ×2/÷2 becomes the song's pulse setting, undo and redo move it back, the drawer follows; analysing again reproduces the ×2/÷2 on 16 of 18 (the fallback tracker's 2 wait on its rebuild fix) |
 | Language | English and Spanish; more through translation files | low | med | i18n | no | no | P2 | partial |
-| Settings file | export/import settings to another PC | low | low | settings | no | no | P3 | todo |
+| Settings file | export/import settings to another PC | low | low | settings | no | no | P3 | done — Settings → Settings file saves the page's values atomically and opens them back, each checked; a folder missing on this PC is skipped and named (2026-10-25) |
 | Diagnostics copy-out | one button, in Settings, that copies the product version, the build's commit and time, the platform, the Python, whether the copy is portable and where its data is, the Rust engine found and the library index, as plain text. The window shows the text it copied, so the user sees exactly what leaves; nothing is sent. Not included: the last error, because nothing keeps errors yet (a row of its own if wanted) | low | **high** | self-check, settings | no | no | **P1** | **done** 2026-10-04 in `fix/portable-data-folder`: `Api.diagnostics`, Settings card, 2 tests [required for 0.2.0-alpha](#release-020-alpha--what-it-takes) (R5) |
 
 ---

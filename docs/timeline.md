@@ -20,6 +20,33 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-25 · settings carried to another PC
+
+### Changed
+
+- Settings has a **Settings file** card: *Save settings…* writes the page's
+  values to a JSON file, *Open settings…* reads one back. Recent files,
+  window state and per-song options stay on this PC.
+
+### Fixed
+
+- Nothing.
+
+### Hardening
+
+- The file is written atomically. On opening, each value goes through
+  the same checks as the page (`set_settings`), one by one: a value this
+  PC cannot use, such as a folder that does not exist here, is skipped
+  and named in the toast instead of sending every export nowhere. A file
+  without the `overtone_settings` marker, or with broken JSON, or over the
+  config size cap, changes nothing; a BOM is read.
+
+### Measured
+
+- Not measured: no engine path changes.
+
+---
+
 ## Unreleased — 2026-10-25 · every finished red line at the whole BPM
 
 ### Changed

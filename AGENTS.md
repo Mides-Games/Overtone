@@ -140,7 +140,11 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
    Phase 0): it would keep changing while v3 is the app's default engine.
 5. **`.osu` writes are atomic, backed up, and never overwrite an existing `.bak`.**
    A field the user did not ask to change comes out byte-identical, CRLF included.
-6. Offline only. No network calls, no telemetry, no update checks, no external APIs.
+6. Offline by default. The app works fully without a network: no telemetry, no update
+   checks, no external APIs. Talking to a server is opt-in and only to the one the user
+   configured (their own `overtone_server.py`); it sends only what the work needs (the
+   audio, the parameters, the files a page uploads), and the desktop app falls back to
+   the local engine when that server does not answer. The server makes no outbound calls.
 7. No `unsafe` in Rust without a benchmark in the same commit showing it was necessary.
 8. Precision-critical code is not edited without running the suite. If the suite cannot be
    run, the change does not land.

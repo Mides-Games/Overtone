@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **research underway** — the default 28 ms osu! export lead measures 16.8 % of Python and 5.2 % of Rust Corpus B red lines within 5 ms; raw engine grids score 2.0 % and 1.1 % respectively (20 maps, 1,152 lines, 2026-10-24). Tempo, octave and drifting sections remain the main misses |
 | Installer (MSI) | **v0.1.0-alpha published** — per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
 
-Tests: **1030** Python (729 engine + 301 web shell) · **292** Rust.
+Tests: **1031** Python (729 engine + 302 web shell) · **292** Rust.
 
 ### Current priorities — 2026-10-16
 
@@ -422,7 +422,7 @@ Rust engine replaces the backend. The Tk window stays as the classic fallback.
 | Keyboard map | every action reachable from the keyboard; `?` shows the sheet | low | med | shell | no | no | P2 | **done** — `?` shows every key; ←/→ seek 1 s (Shift: 10 ms), `[`/`]` the red lines, L loop, C click, 1–9 and 0 the rail, on top of Space, T, ↑/↓, Ctrl+O/Z/Y and Enter/F5; buttons reach by Tab. Not bound: mute, solo click, beat steps |
 | Cancellable analysis | stop button, stage names and timings | low | med | progress | no | no | P2 | **done** — the engine is asked at each stage it announces, inside the stages too (next row), and once more before a result replaces the one on screen, which stays |
 | Stop inside a stage | a stop that lands in seconds, not when the stage ends: attack detection ran 48 s on an eight-minute track, the fallback's transients 53 s on another (machine busy) | med | med | cancellable analysis | no | no | P2 | **done** — checkpoints in every stage's long loops, asked on the analysing thread only (the STFT, decode and octave tempogram split so each piece is the call it replaces, bit for bit), and the Rust engine's process ended. Pressed 25/50/75 % into each stage of four songs, a stop landed in a median 0.03 s, 0.5 s at most (before: 0.87 s, up to 36 s); no measurable cost on an analysis that is not stopped |
-| Command palette | Ctrl+K search over every action | low | low | shell | no | no | P3 | todo |
+| Command palette | Ctrl+K search over every action | low | low | shell | no | no | P3 | done — Ctrl+K lists every section, the global actions and every enabled button the open section shows, built when opened; words match in any order, accents ignored (2026-10-25) |
 
 ---
 
@@ -790,7 +790,7 @@ above — metadata confirmation before anything downloads — is the starting po
 | Cache | size limit, location, clear button | low | low | cache | no | no | P2 | **done** but a settable limit — entries, size, folder, clear |
 | Click track | sound, accent on downbeats, level, subdivision clicks | low | med | click | no | no | P2 | **done** — 1-4 clicks per beat, bar accent on/off, levels in the transport; one sound |
 | Theme and scale | light theme, UI scale 90–150 %, reduced motion | low | med | tokens | no | no | P2 | **done** — UI scale 80-150 %, reduced motion, light theme; since 2026-09-27 the theme also switches from the rail in one press, showing the theme it would move to, with Settings' three-way following it |
-| Shortcuts | rebind any action | low | low | keyboard map | no | no | P3 | todo |
+| Shortcuts | rebind any action | low | low | keyboard map | no | no | P3 | done — the keyboard sheet moves every single-key action (play, tap, loop, click, red lines, the sheet); a key another action holds, a digit, Enter, Esc or an arrow is refused; chords stay fixed (2026-10-25) |
 | Per-song presets | remember detection settings per song | low | med | project format | no | no | P2 | **done** — the settings a song's last finished analysis ran with (not the engine), kept in the config by the audio's SHA-256 for 200 songs; choosing the song puts them back with a note and the previous ones a click away. Not in the project file: a project exists only after an edit |
 | The song's pulse, kept | a ×2 or ÷2 applied after an analysis kept with the song's settings, so analysing it again lands on the octave the mapper chose | low | med | per-song presets | no | no | P2 | **done** — a ×2/÷2 becomes the song's pulse setting, undo and redo move it back, the drawer follows; analysing again reproduces the ×2/÷2 on 16 of 18 (the fallback tracker's 2 wait on its rebuild fix) |
 | Language | English and Spanish; more through translation files | low | med | i18n | no | no | P2 | partial |

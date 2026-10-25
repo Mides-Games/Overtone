@@ -1,0 +1,166 @@
+# Servidor de la biblioteca (API)
+
+`python/overtone_server.py` sirve el índice de una carpeta Songs y su caché de
+BPM por HTTP. Está pensado para una máquina que guarda la carpeta y la analiza
+sola, por ejemplo una VPS. La caché vive en el mismo índice SQLite que usa la
+app (`library.sqlite3`, esquema v3, tabla `analysis`). Cada audio se analiza
+una sola vez y se vuelve a analizar solo si cambia el archivo o el código del
+motor (`engine_hash`).
+
+Qué hace y qué no:
+
+- Solo escucha. No hace conexiones salientes ni manda telemetría.
+- Por defecto escucha en `127.0.0.1`: se usa con un túnel SSH o detrás de un
+  proxy con TLS. **Nunca** lo publiques sin TLS, porque el token viajaría en
+  claro.
+- Cada petición lleva `Authorization: Bearer <token>`.
+- Un audio sin pulso (ruido, pads, silencio) queda como `refused`, con el
+  motivo del motor y sin BPM. No se inventa nada.
+
+## Endpoints
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | `/api/status` | Índice, conteos de la caché, trabajos en curso, motor |
+| POST | `/api/scan` | Escanea la carpeta Songs en segundo plano |
+| POST | `/api/analyze` | Analiza lo que falta en la caché (`{"limit": n}` opcional) |
+| POST | `/api/stop` | Pide parar el análisis en curso (lo terminado se guarda) |
+| GET | `/api/songs?q=texto&limit=n` | Búsqueda; cada mapa trae su `analysis` |
+| GET | `/api/analysis?path=<audio>` | El análisis guardado de un audio |
+
+Solo puede correr un escaneo y un análisis a la vez. Si se pide otro mientras
+corre uno, la respuesta es `409`. El progreso se lee en `status.jobs`.
+
+## Instalación en una VPS (Ubuntu o Debian)
+
+Se necesitan unos 5 GB libres más lo que ocupe la carpeta Songs.
+
+1. Paquetes del sistema (sin escritorio ni ffmpeg: el motor Rust decodifica
+   solo):
+
+   ```bash
+   apt-get install -y --no-install-recommends build-essential curl git ca-certificates libsndfile1
+   ```
+
+2. El código. Sube el repositorio sin `.venv/` ni `target/`, o clónalo:
+
+   ```bash
+   git clone https://github.com/githaltwastaken/Overtone.git /opt/overtone
+   ```
+
+3. Python 3.14 con `uv` y las dependencias del motor. `pywebview` no hace falta
+   en un servidor:
+
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+   ```bash
+   cd /opt/overtone && UV_PYTHON_INSTALL_DIR=/opt/uv-python ~/.local/bin/uv venv --python 3.14 .venv && ~/.local/bin/uv pip install --python .venv/bin/python numpy scipy librosa soundfile soxr onnxruntime
+   ```
+
+   `UV_PYTHON_INSTALL_DIR` deja el intérprete fuera de `/root`, para que el
+   usuario del servicio (abajo) pueda usarlo.
+
+4. El motor Rust, que es el que hace rápido el análisis:
+
+   ```bash
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+   ```
+
+   ```bash
+   cd /opt/overtone && ~/.cargo/bin/cargo build --release -p overtone-cli
+   ```
+
+   Compilar en release puede pedir más de 1 GB de RAM. Si la VPS tiene poca,
+   añade swap antes o compila en otra máquina Linux y copia solo
+   `target/release/overtone-cli`. Después se puede borrar `target/` salvo ese
+   binario, apuntando `OVERTONE_CLI` a donde lo dejes.
+
+5. La carpeta Songs, en por ejemplo `/srv/osu/Songs`.
+
+6. Comprobar que el motor y la API funcionan ahí:
+
+   ```bash
+   cd /opt/overtone && .venv/bin/python -m unittest tests.test_overtone.LibraryServerTests tests.test_overtone.LibraryIndexTests
+   ```
+
+7. Arrancarlo a mano una vez. La primera vez escribe un token en
+   `~/Overtone/api-token`:
+
+   ```bash
+   cd /opt/overtone && .venv/bin/python python/overtone_server.py --songs /srv/osu/Songs --every 60
+   ```
+
+   `--every 60` escanea y analiza lo nuevo cada 60 minutos. `--jobs N` fija
+   cuántos audios analiza Rust a la vez (2 por defecto, solo sin el voto).
+
+   **Memoria: el voto de Beat This!.** La app, por defecto, deja que Beat
+   This! vote sobre las red lines. Ese voto carga la canción en Python y corre
+   un modelo ONNX. Medido en un fixture de 90 s (2026-10-25):
+
+   | Camino | RAM pico | Tiempo |
+   |---|---|---|
+   | Rust + voto (lo que hace la app) | 1.46 GB | 50 s |
+   | Rust sin voto (`--no-beat-vote`) | 101 MB | 2.3 s |
+   | v3 Python (`--engine python`) | 1.78 GB | 42 s |
+
+   En una VPS con 1 GB, usa `--no-beat-vote`. Las red lines quedan como las
+   ajusta el motor, y pueden diferir de la app donde el voto las habría
+   cambiado. La caché guarda con qué modo se hizo cada análisis, así que
+   cambiar de modo vuelve a analizar todo en vez de mezclar resultados.
+
+## Dejarlo como servicio (systemd)
+
+`/etc/systemd/system/overtone-api.service`:
+
+```ini
+[Unit]
+Description=Overtone library API
+After=network.target
+
+[Service]
+User=overtone
+WorkingDirectory=/opt/overtone
+ExecStart=/opt/overtone/.venv/bin/python python/overtone_server.py --songs /srv/osu/Songs --every 60 --no-beat-vote
+Restart=on-failure
+Nice=10
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+useradd --system --create-home overtone && chown -R overtone /opt/overtone && systemctl daemon-reload && systemctl enable --now overtone-api
+```
+
+`Nice=10` y `MemoryMax` hacen que no le quite recursos a lo demás que corra en
+la máquina. `MemoryMax=1G` vale con el motor Rust y `--no-beat-vote`. Con el voto o con `--engine python`, un
+solo análisis pasa de 1.4 GB (tabla de arriba), así que ese límite
+lo mataría.
+
+## Usarlo
+
+Desde tu PC, con un túnel:
+
+```bash
+ssh -N -L 8765:127.0.0.1:8765 usuario@IP_DE_LA_VPS
+```
+
+```bash
+curl -H "Authorization: Bearer $(cat token.txt)" "http://127.0.0.1:8765/api/songs?q=camellia"
+```
+
+Para exponerlo a internet, pon delante un proxy con TLS (Caddy o nginx) que
+reenvíe a `127.0.0.1:8765`. No cambies `--host` a `0.0.0.0` sin TLS.
+
+## Tests y gates en la VPS
+
+Son los mismos comandos de `CLAUDE.md`, con `.venv/bin/python` en lugar de
+`.venv/Scripts/python.exe`. Dos salvedades:
+
+- `real-audio` y Corpus B leen la carpeta Songs; solo valen allí si está.
+- `bpm-snapshot` y `golden.py` fijan valores medidos en Windows. La primera
+  vez en Linux, compara antes de dar por buena o mala una diferencia de
+  decimales. Nunca re-baselines para poner un gate en verde.

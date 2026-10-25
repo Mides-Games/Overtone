@@ -5902,7 +5902,7 @@ class LibraryIndexTests(unittest.TestCase):
         self.assertFalse(self.ol.is_damaged(newer.exception))
         self.assertTrue(self.library.path.exists())      # never rewritten
 
-    def test_a_version_1_index_gains_the_health_table_and_keeps_its_maps(self):
+    def test_a_version_1_index_gains_the_health_and_analysis_tables_and_keeps_its_maps(self):
         import sqlite3
         from contextlib import closing
         self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
@@ -5912,12 +5912,13 @@ class LibraryIndexTests(unittest.TestCase):
             with closing(sqlite3.connect(self.library.path)) as db:
                 return (db.execute("PRAGMA user_version").fetchone()[0],
                         sorted(" ".join(sql.split()) for (sql,) in db.execute(
-                            "SELECT sql FROM sqlite_master WHERE tbl_name = 'health' "
-                            "AND sql IS NOT NULL")))
+                            "SELECT sql FROM sqlite_master WHERE tbl_name IN ('health', "
+                            "'analysis') AND sql IS NOT NULL")))
 
         fresh = health_schema()
         with closing(sqlite3.connect(self.library.path)) as db:
             db.execute("DROP TABLE health")
+            db.execute("DROP TABLE analysis")
             db.execute("PRAGMA user_version = 1")
         self.assertEqual(self.library.stats()["beatmaps"], 2)     # opened: migrated
         self.assertEqual(health_schema(), fresh)
@@ -6038,6 +6039,216 @@ class LibraryIndexTests(unittest.TestCase):
                          [(m["version"], m["verdict"]) for m in python])
         self.assertEqual({m["engine"] for m in rust}, {"rust"})
         self.assertAlmostEqual(rust[0]["worst_ms"], python[0]["worst_ms"], delta=0.5)
+
+    # -- the BPM cache ----------------------------------------------------------
+    def test_analysis_reads_each_songs_audio_once_and_keeps_it(self):
+        from unittest import mock
+        clicks = self._clicks("1 Band - Clicks", duration=4.0)
+        self._timed(clicks, "Easy", ((250, 500.0, 4),))
+        self._timed(clicks, "Hard", ((250, 500.0, 4),))
+        gone = self.songs / "2 Band - Gone"
+        gone.mkdir()
+        self._timed(gone, "Lost", ((250, 500.0, 4),), audio="missing.mp3")
+        self.library.scan(self.songs)
+        found = {"verdict": "ok", "grid": "precision", "bpm": 120.0, "stability": 0.99,
+                 "meter": "4/4", "residual_ms": 0.4, "duration": 4.0,
+                 "lines": json.dumps([[250.0, 120.0, 4]]), "seconds": 0.01}
+        seen = []
+        with mock.patch.object(self.ol, "_analyse_audio", return_value=found) as engine:
+            run = self.library.analyze(engine="python",
+                                       progress=lambda done, total: seen.append((done, total)))
+            json.dumps(run)
+            # The two difficulties share one audio file, read once.
+            self.assertEqual(engine.call_count, 1)
+            self.assertEqual((run["analysed"], run["pending"]), (2, 0))
+            self.assertEqual(seen, [(0, 2), (1, 2), (2, 2)])
+            self.assertEqual(run["counts"], {"ok": 1, "refused": 0, "error": 0, "no_audio": 1,
+                                             "pending": 0})
+            # Nothing changed: nothing read. A touched file is read alone, a
+            # changed engine reads everything again.
+            self.assertEqual(self.library.analyze(engine="python")["analysed"], 0)
+            audio = clicks / "audio.wav"
+            stat = audio.stat()
+            os.utime(audio, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+            self.assertEqual(self.library.analyze(engine="python")["analysed"], 1)
+            with mock.patch.object(self.ol, "engine_fingerprint", return_value="another"):
+                self.assertEqual(self.library.analyze(engine="python")["analysed"], 2)
+            self.assertEqual(engine.call_count, 3)
+        cached = self.library.analyses([str(audio), str(gone / "missing.mp3"), "elsewhere.ogg"])
+        self.assertEqual(sorted(cached), sorted([str(audio), str(gone / "missing.mp3")]))
+        self.assertEqual(cached[str(audio)]["lines"], [{"offset_ms": 250.0, "bpm": 120.0, "meter": 4}])
+        self.assertEqual((cached[str(audio)]["bpm"], cached[str(audio)]["engine"]), (120.0, "python"))
+        self.assertEqual(cached[str(gone / "missing.mp3")]["verdict"], "no_audio")
+        self.assertIsNone(cached[str(gone / "missing.mp3")]["bpm"])
+        # A song gone from the folder takes its analysis with it.
+        import shutil
+        shutil.rmtree(gone)
+        self.library.scan(self.songs)
+        with mock.patch.object(self.ol, "_analyse_audio", return_value=found):
+            self.assertEqual(self.library.analyze(engine="python")["dropped"], 1)
+        with self.assertRaises(ValueError):
+            self.library.analyze(engine="cobol")
+
+    def test_analysis_keeps_a_refusal_without_inventing_a_bpm(self):
+        from unittest import mock
+        with mock.patch.object(self.ol.ta, "analyze_audio",
+                               side_effect=ValueError("No rhythmic pulse found")):
+            refused = self.ol._analyse_audio("noise.wav", "python")
+        self.assertEqual((refused["verdict"], refused["detail"]), ("refused", "No rhythmic pulse found"))
+        self.assertNotIn("bpm", refused)
+        with mock.patch.object(self.ol.ta, "analyze_audio", side_effect=RuntimeError("Cannot load")):
+            self.assertEqual(self.ol._analyse_audio("broken.mp3", "python")["verdict"], "error")
+
+    def test_the_beat_this_vote_is_part_of_what_an_analysis_came_from(self):
+        from unittest import mock
+        with mock.patch.object(self.ol.ta, "_beat_this_session", return_value=None):
+            without = self.ol.engine_fingerprint("python")
+            self.assertFalse(self.ol.beat_vote())
+        with mock.patch.object(self.ol.ta, "_beat_this_session", return_value=object()):
+            self.assertNotEqual(self.ol.engine_fingerprint("python"), without)
+            self.assertTrue(self.ol.beat_vote())
+
+    def test_analysis_through_the_rust_engine_reads_the_click_tempo(self):
+        import overtone_rust as rs
+        if rs.find_cli() is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        clicks = self._clicks("1 Band - Clicks")
+        self._timed(clicks, "Easy", ())
+        self.library.scan(self.songs)
+        run = self.library.analyze(engine="rust", jobs=2)
+        self.assertEqual((run["analysed"], run["counts"]["ok"]), (1, 1))
+        found = self.library.analyses([str(clicks / "audio.wav")])[str(clicks / "audio.wav")]
+        self.assertEqual((found["engine"], found["verdict"], found["grid"]), ("rust", "ok", "precision"))
+        self.assertAlmostEqual(found["bpm"], 120.0, delta=0.05)
+        self.assertAlmostEqual(found["lines"][0]["bpm"], 120.0, delta=0.05)
+
+
+class LibraryServerTests(unittest.TestCase):
+    """The library API: the index and the BPM cache over HTTP, behind a token."""
+
+    def setUp(self) -> None:
+        import threading
+        import overtone_library
+        import overtone_server
+        self.server_module = overtone_server
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.tmp = Path(scratch.name)
+        songs = self.tmp / "Songs" / "1 Band - Song"
+        songs.mkdir(parents=True)
+        (songs / "audio.ogg").write_bytes(b"OggS" + bytes(100))
+        (songs / "Band - Song (Mapper) [Hard].osu").write_text(
+            _mapset_osu("Hard", audio="audio.ogg", objects=(1000, 2000)), encoding="utf-8",
+            newline="")
+        self.audio = str(songs / "audio.ogg")
+        self.service = overtone_server.Service(self.tmp / "Songs", self.tmp / "library.sqlite3",
+                                               engine="python")
+        self.server = overtone_server.serve(self.service, "127.0.0.1", 0, "secret", log=False)
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.base = f"http://127.0.0.1:{self.server.server_address[1]}"
+        self.ol = overtone_library
+
+    def _call(self, method: str, path: str, body=None, token: str | None = "secret"):
+        import urllib.error
+        import urllib.request
+        data = body if isinstance(body, bytes) else (
+            json.dumps(body).encode() if body is not None else None)
+        request = urllib.request.Request(self.base + path, data=data, method=method)
+        if token is not None:
+            request.add_header("Authorization", f"Bearer {token}")
+        try:
+            with urllib.request.urlopen(request, timeout=10) as reply:
+                return reply.status, json.loads(reply.read())
+        except urllib.error.HTTPError as exc:
+            with exc:
+                raw = exc.read()
+            return exc.code, json.loads(raw) if raw.startswith(b"{") else raw
+
+    def _wait(self, job: str) -> dict:
+        import time
+        # An analysis loads the Beat This! model first: seconds, more on a busy machine.
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            state = self._call("GET", "/api/status")[1]["jobs"][job]
+            if not state["running"]:
+                return state
+            time.sleep(0.05)
+        self.fail(f"the {job} never ended")
+
+    def test_every_request_needs_the_token(self):
+        self.assertEqual(self._call("GET", "/api/status", token=None)[0], 401)
+        self.assertEqual(self._call("GET", "/api/status", token="wrong")[0], 401)
+        self.assertEqual(self._call("POST", "/api/scan", {}, token=None)[0], 401)
+        self.assertEqual(self._call("GET", "/api/status")[0], 200)
+
+    def test_a_scan_then_an_analysis_fill_the_songs_with_their_bpm(self):
+        from unittest import mock
+        self.assertEqual(self._call("POST", "/api/scan"), (202, {"started": "scan"}))
+        scan = self._wait("scan")
+        self.assertIsNone(scan["error"])
+        self.assertEqual(scan["result"]["added"], 1)
+        status, songs = self._call("GET", "/api/songs?q=band")
+        self.assertEqual(status, 200)
+        beatmap = songs["sets"][0]["beatmaps"][0]
+        self.assertEqual((beatmap["audio_path"], beatmap["analysis"]), (self.audio, None))
+        found = {"verdict": "ok", "grid": "precision", "bpm": 150.0, "lines": "[[1000.0, 150.0, 4]]"}
+        with mock.patch.object(self.ol, "_analyse_audio", return_value=found):
+            self.assertEqual(self._call("POST", "/api/analyze", {"limit": 5})[0], 202)
+            analysis = self._wait("analyze")
+        self.assertIsNone(analysis["error"])
+        self.assertEqual((analysis["done"], analysis["result"]["analysed"]), (1, 1))
+        beatmap = self._call("GET", "/api/songs?q=band")[1]["sets"][0]["beatmaps"][0]
+        self.assertEqual((beatmap["analysis"]["bpm"], beatmap["analysis"]["verdict"]), (150.0, "ok"))
+        from urllib.parse import quote
+        status, one = self._call("GET", f"/api/analysis?path={quote(self.audio)}")
+        self.assertEqual((status, one["lines"]), (200, [{"offset_ms": 1000.0, "bpm": 150.0, "meter": 4}]))
+        self.assertEqual(self._call("GET", "/api/analysis?path=elsewhere.ogg")[0], 404)
+        self.assertEqual(self._call("GET", "/api/status")[1]["analysis"]["ok"], 1)
+
+    def test_bad_requests_are_named_not_run(self):
+        self.assertEqual(self._call("POST", "/api/analyze", {"limit": "many"})[0], 400)
+        self.assertEqual(self._call("POST", "/api/analyze", b"[1, 2]")[0], 400)
+        self.assertEqual(self._call("POST", "/api/analyze", b"{not json")[0], 400)
+        self.assertEqual(self._call("GET", "/api/songs?limit=lots")[0], 400)
+        self.assertEqual(self._call("GET", "/api/analysis")[0], 400)
+        self.assertEqual(self._call("GET", "/api/nothing")[0], 404)
+        self.assertEqual(self._call("DELETE", "/api/status")[0], 501)
+        self.assertEqual(self._call("POST", "/api/stop"), (200, {"stopping": False}))
+
+    def test_one_run_of_each_job_at_a_time(self):
+        import threading
+        release = threading.Event()
+        self.assertTrue(self.service.analyze_job.start(lambda progress, stop: release.wait(5)))
+        self.addCleanup(release.set)
+        self.assertEqual(self._call("POST", "/api/analyze")[0], 409)
+        self.assertEqual(self._call("POST", "/api/stop"), (202, {"stopping": True}))
+        self.assertTrue(self.service.analyze_job.stop.is_set())
+        release.set()
+        self._wait("analyze")
+
+    def test_the_server_can_turn_the_beat_this_vote_off(self):
+        import overtone as ta
+        from unittest import mock
+        with mock.patch.object(ta, "_BEAT_THIS_SESSION", [object()]):
+            self.assertTrue(self._call("GET", "/api/status")[1]["beat_vote"])
+            self.server_module.disable_beat_vote()
+            self.assertFalse(self._call("GET", "/api/status")[1]["beat_vote"])
+            self.assertEqual(ta._BEAT_THIS_SESSION, [None])
+
+    def test_the_token_is_generated_once_and_kept_private(self):
+        from unittest import mock
+        path = self.tmp / "token"
+        with mock.patch.dict(os.environ, {self.server_module.TOKEN_ENV: ""}):
+            first = self.server_module.load_token(str(path))
+            self.assertGreaterEqual(len(first), 32)
+            self.assertEqual(self.server_module.load_token(str(path)), first)
+        if os.name != "nt":
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        with mock.patch.dict(os.environ, {self.server_module.TOKEN_ENV: "from-env"}):
+            self.assertEqual(self.server_module.load_token(str(path)), "from-env")
+
 
 
 def _structure_report(bounds, kinds, groups, levels, duration=64.0, energy=None):

@@ -20,6 +20,50 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-25 · the library API and its BPM cache
+
+### Changed
+
+- `python/overtone_server.py`: the library index over HTTP (standard
+  library only, JSON, a bearer token on every request, 127.0.0.1 by
+  default) for a machine that holds the Songs folder, such as a VPS.
+  Scans and analyses run as background jobs, one of each at a time;
+  `--every` repeats scan-then-analyse. Setup in `docs/server.md`.
+- The library index gains its BPM cache (schema v3, table `analysis`,
+  `Library.analyze`): one row per audio file a beatmap plays, kept while
+  the file's size and mtime and the engine's code are unchanged, so a rerun
+  reads only what is new. The fingerprint is `bench/corpus_b.py`'s (overtone.py,
+  plus the bridge and the binary for Rust) and also names whether the
+  Beat This! vote ran, since the vote moves red lines.
+- `--no-beat-vote` turns the vote off for the server's process.
+
+### Hardening
+
+- A refusal is a verdict (`refused`, the engine's reason, no BPM), not a
+  guess; an unreadable file is `error`, a missing one `no_audio`.
+- The token is compared in constant time, generated once into the data
+  folder with mode 0600 when none is given; request bodies are capped at
+  64 KiB and must be a JSON object.
+
+### Measured
+
+- One 90 s fixture (`breakdown-175.wav`), this machine, 2026-10-25, peak
+  working set: `overtone-cli` alone 56 MB, 0.43 s; the Rust path as the app
+  runs it (bridge, octave and whole-BPM conventions, Beat This! vote)
+  1.46 GB, 49.9 s; the same without the vote 101 MB, 2.3 s, same 175.000
+  BPM; v3 `analyze_audio` 1.78 GB, 42.0 s. Hence the Rust engine is the
+  server's default, two jobs at a time without the vote, one with it.
+- Whole-Songs-folder throughput: not measured (no VPS run yet).
+
+### Rejected / tried and dropped
+
+- A web framework (FastAPI/uvicorn): it would add wheels to inventory for
+  six JSON endpoints that the standard library serves.
+- Setting the server's status from the loaded ONNX session: the first load
+  took over 10 s on a busy machine and timed the endpoint out; status now
+  reads whether the runtime and the model are present, and only an
+  analysis loads it.
+
 ## Unreleased — 2026-10-25 · every finished red line at the whole BPM
 
 ### Changed

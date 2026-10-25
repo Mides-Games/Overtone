@@ -6,7 +6,8 @@ exact audio file (a size lookup plus at most a hash or two, and the hashes
 are remembered), and what the folder holds (sets, difficulties, first BPM).
 A fourth costs seconds per song and is kept once answered: whose red lines
 disagree with their own audio (the health check, graded by the reference
-timing card's own grading).
+timing card's own grading). A fifth costs the same and is kept the same way:
+what each song's audio reads as (the BPM cache, ``Library.analyze``).
 
 It is derived data. The Songs folder stays the truth: a scan reads each
 .osu's header, skips files whose size and modification time are unchanged,
@@ -21,6 +22,7 @@ from a newer schema is refused, never rewritten.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -44,7 +46,7 @@ _HERE = Path(__file__).resolve().parent
 ROOT = _HERE if getattr(sys, "frozen", False) else _HERE.parent
 SCHEMA_PATH = ROOT / "python" / "library.sql"
 #: The version of ``library.sql`` this code reads and writes.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 #: ``MIGRATIONS[n]`` takes a version ``n - 1`` database to version ``n``, as
 #: library.sql stood at version n: frozen here, since the file moves on. A
 #: test holds a migrated index to a new one.
@@ -68,7 +70,42 @@ CREATE TABLE IF NOT EXISTS health (
 );
 CREATE INDEX IF NOT EXISTS health_verdict ON health(verdict, worst_ms);
 """,
+    3: """
+CREATE TABLE IF NOT EXISTS analysis (
+    path         TEXT PRIMARY KEY,
+    size         INTEGER NOT NULL,
+    mtime_ns     INTEGER NOT NULL,
+    engine       TEXT NOT NULL,
+    engine_hash  TEXT NOT NULL,
+    verdict      TEXT NOT NULL,
+    grid         TEXT NOT NULL DEFAULT '',
+    bpm          REAL,
+    stability    REAL,
+    meter        TEXT NOT NULL DEFAULT '',
+    residual_ms  REAL,
+    duration     REAL,
+    lines        TEXT NOT NULL DEFAULT '[]',
+    detail       TEXT NOT NULL DEFAULT '',
+    seconds      REAL,
+    analyzed_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS analysis_bpm ON analysis(verdict, bpm);
+""",
 }
+#: An analysis verdict: a grid was found; the engine found no pulse (noise,
+#: pads, free time) and gives no BPM; the audio could not be read; the audio
+#: is not in the folder.
+ANALYSIS_VERDICTS = ("ok", "refused", "error", "no_audio")
+#: Raised whenever what an analysis row holds changes shape, so a rerun
+#: analyses again what an older one stored. A change to the engine's code
+#: needs no bump: ``engine_hash`` already stales those rows.
+ANALYSIS_FORMAT = 1
+#: Audio files the Rust engine analyses at once when the Beat This! vote is
+#: off. On one 90 s fixture (2026-10-25) overtone-cli peaked at 56 MB and the
+#: whole Rust path at 101 MB in 2.3 s, so a few fit beside a server. The vote
+#: reads the audio in Python and runs its model: 1.46 GB and 50 s on the same
+#: file, and v3 alone took 1.78 GB and 42 s, so either runs one at a time.
+ANALYSIS_JOBS = 2
 #: A health verdict, worst first, the order a report lists them in: a red
 #: line the attacks disagree with; the map or its audio could not be read;
 #: the audio is not in the folder; nothing in the audio vouches either way
@@ -363,6 +400,88 @@ _UPSERT_HEALTH = (
     + ", ".join(f"{c} = excluded.{c}" for c in (
         "size", "mtime_ns", "audio_size", "audio_mtime_ns", "grader", "engine", "verdict",
         "lines", "flagged", "worst_ms", "common_ms", "detail", "graded_at")))
+
+_ANALYSIS_COLUMNS = ("path", "size", "mtime_ns", "engine", "engine_hash", "verdict", "grid",
+                     "bpm", "stability", "meter", "residual_ms", "duration", "lines", "detail",
+                     "seconds", "analyzed_at")
+_UPSERT_ANALYSIS = (
+    f"INSERT INTO analysis ({', '.join(_ANALYSIS_COLUMNS)}) "
+    f"VALUES ({', '.join('?' for _ in _ANALYSIS_COLUMNS)}) ON CONFLICT(path) DO UPDATE SET "
+    + ", ".join(f"{c} = excluded.{c}" for c in _ANALYSIS_COLUMNS[1:]))
+
+
+def beat_vote(load: bool = True) -> bool:
+    """Whether Beat This! votes on the red lines in this process: it needs
+    onnxruntime and the model, and a server may turn it off
+    (``overtone_server --no-beat-vote``). ``load`` False answers without
+    loading the model, which takes seconds the first time: from the session
+    once loaded, else from whether the runtime and the model are there."""
+    if load or ta._BEAT_THIS_SESSION:
+        return ta._beat_this_session() is not None
+    import importlib.util
+    return (importlib.util.find_spec("onnxruntime") is not None
+            and (ta.ROOT / "assets" / "models" / ta.BEAT_THIS_MODEL).is_file())
+
+
+def engine_fingerprint(engine: str, cli: Path | None = None) -> str:
+    """The code an analysis came from, as ``bench/corpus_b.py`` keys its
+    cache: overtone.py writes the red lines for both engines, and the Rust
+    engine adds its bridge and its binary. Any edit to them stales a row, and
+    so does turning the Beat This! vote on or off: it moves red lines."""
+    files = [Path(ta.__file__)]
+    if engine == "rust":
+        files += [Path(overtone_rust.__file__), cli or overtone_rust.find_cli()]
+    digest = hashlib.sha1(
+        f"library analysis {ANALYSIS_FORMAT} {engine} vote={beat_vote()}".encode())
+    for path in files:
+        if path is None:
+            raise overtone_rust.SidecarUnavailable("The Rust engine (overtone-cli) is not built.")
+        with open(path, "rb") as handle:
+            digest.update(hashlib.sha1(handle.read()).digest())
+    return digest.hexdigest()[:16]
+
+
+def _analyse_audio(audio: str, engine: str) -> dict:
+    """One audio file read by ``engine``, as an analysis row keeps it. A
+    refusal is a verdict, not a failure: the engine says why and no BPM is
+    stored (the Rust engine's ``SidecarRefused`` is a ``ValueError``, as
+    v3's refusals are)."""
+    started = time.perf_counter()
+    try:
+        if engine == "rust":
+            analysis = overtone_rust.analyze(audio)
+        else:
+            analysis = ta.analyze_audio(audio)
+    except overtone_rust.SidecarUnavailable:
+        raise
+    except ValueError as exc:
+        return {"verdict": "refused", "detail": str(exc),
+                "seconds": round(time.perf_counter() - started, 3)}
+    except (RuntimeError, OSError) as exc:
+        return {"verdict": "error", "detail": str(exc),
+                "seconds": round(time.perf_counter() - started, 3)}
+    lines = []
+    for line in ta.osu_timing_text(analysis).splitlines():
+        fields = line.split(",")
+        if line.startswith("//") or len(fields) < 3:
+            continue
+        lines.append([float(fields[0]), round(60000.0 / float(fields[1]), 4), int(fields[2])])
+    return {"verdict": "ok", "grid": analysis.engine, "bpm": round(float(analysis.global_bpm), 4),
+            "stability": round(float(analysis.stability), 4), "meter": analysis.meter,
+            "residual_ms": round(float(analysis.fit_residual_ms), 4),
+            "duration": round(float(analysis.duration), 3), "lines": json.dumps(lines),
+            "seconds": round(time.perf_counter() - started, 3)}
+
+
+def _analysis_dict(row: tuple) -> dict:
+    """An analysis row as the API returns it."""
+    found = dict(zip(_ANALYSIS_COLUMNS, row))
+    found["lines"] = [{"offset_ms": offset, "bpm": bpm, "meter": meter}
+                      for offset, bpm, meter in json.loads(found["lines"] or "[]")]
+    for key in ("size", "mtime_ns", "engine_hash"):
+        del found[key]
+    return found
+
 
 #: A flagged line is worth a look only when its grid is solidly evidenced.
 #: The false-positive flags measured on 2026-09-26 came from spans of 11-19
@@ -866,3 +985,104 @@ class Library:
         return {"counts": {**{v: counts.get(v, 0) for v in HEALTH_VERDICTS},
                            "ungraded": total - graded},
                 "maps": maps, "limited": len(rows) == limit}
+
+    # -- the BPM cache: each song's audio analysed once ------------------------
+    def analyze(self, engine: str | None = None, progress=None, limit: int | None = None,
+                stop=None, jobs: int | None = None) -> dict:
+        """Analyse the audio of every indexed song not already in the cache.
+
+        One row per audio file a beatmap plays, so the difficulties of a set
+        share one analysis. A row holds while the file's size and
+        modification time and ``engine_fingerprint`` are what it was made
+        from; the rest are analysed by ``engine`` ("rust", the default when
+        ``overtone-cli`` is found, or v3's "python"), ``jobs`` at a time for
+        Rust and one at a time for v3, and each is committed as it finishes,
+        so a run cut short (``limit`` files, or ``stop`` set) loses nothing.
+        With the Beat This! vote on, Rust also runs one at a time: the vote
+        runs in this process (``ANALYSIS_JOBS``).
+        Rows of audio no beatmap plays any more are dropped. ``progress``,
+        when given, hears ``(done, total)``.
+        """
+        if engine is None:
+            engine = "rust" if overtone_rust.find_cli() is not None else "python"
+        if engine not in ("rust", "python"):
+            raise ValueError(f"No analysis engine called {engine!r}.")
+        vote = beat_vote()
+        jobs = 1 if engine == "python" or vote else max(1, int(jobs or ANALYSIS_JOBS))
+        fingerprint = engine_fingerprint(engine)
+        started = time.perf_counter()
+        with closing(self._connect()) as db, db:
+            audio = {os.path.join(folder, name) for folder, name in db.execute(
+                "SELECT DISTINCT s.folder, b.audio_file FROM beatmaps b "
+                "JOIN sets s ON s.id = b.set_id WHERE b.audio_file != ''")}
+            kept = {row[0]: row[1:] for row in db.execute(
+                "SELECT path, size, mtime_ns, engine, engine_hash FROM analysis")}
+            gone = [path for path in kept if path not in audio]
+            db.executemany("DELETE FROM analysis WHERE path = ?", ((p,) for p in gone))
+        work = []
+        for path in sorted(audio):
+            stat = _stat(path)
+            if kept.get(path) != (*stat, engine, fingerprint):
+                work.append((path, stat))
+        total = len(work) if limit is None else min(len(work), max(0, int(limit)))
+        if progress is not None:
+            progress(0, total)
+
+        def one(item):
+            path, stat = item
+            if stop is not None and stop.is_set():
+                return None
+            if stat[0] < 0:
+                found = {"verdict": "no_audio",
+                         "detail": f"{os.path.basename(path)} is not in the folder."}
+            else:
+                found = _analyse_audio(path, engine)
+            return tuple([path, *stat, engine, fingerprint] + [
+                found.get(c, d) for c, d in (("verdict", ""), ("grid", ""), ("bpm", None),
+                                             ("stability", None), ("meter", ""),
+                                             ("residual_ms", None), ("duration", None),
+                                             ("lines", "[]"), ("detail", ""),
+                                             ("seconds", None))] + [_now()])
+
+        done = 0
+        with closing(self._connect()) as db, ThreadPoolExecutor(max_workers=jobs) as pool:
+            # Rust runs in its own processes, so threads are enough to keep
+            # ``jobs`` of them busy; rows are written here, on one thread.
+            for row in pool.map(one, work[:total]):
+                if row is None:
+                    continue
+                with db:
+                    db.execute(_UPSERT_ANALYSIS, row)
+                done += 1
+                if progress is not None:
+                    progress(done, total)
+        return {"engine": engine, "engine_hash": fingerprint, "beat_vote": vote, "jobs": jobs,
+                "analysed": done,
+                "pending": len(work) - done, "dropped": len(gone),
+                "counts": self.analysis_counts(),
+                "seconds": round(time.perf_counter() - started, 3)}
+
+    def analysis_counts(self) -> dict:
+        """How many audio files have each verdict, and how many songs' audio
+        no run has analysed yet (``pending``)."""
+        with closing(self._connect()) as db:
+            counts = dict(db.execute("SELECT verdict, COUNT(*) FROM analysis GROUP BY verdict"))
+            audio = db.execute("SELECT COUNT(*) FROM (SELECT DISTINCT b.set_id, "
+                               "lower(b.audio_file) FROM beatmaps b "
+                               "WHERE b.audio_file != '')").fetchone()[0]
+        analysed = sum(counts.values())
+        return {**{v: counts.get(v, 0) for v in ANALYSIS_VERDICTS},
+                "pending": max(0, audio - analysed)}
+
+    def analyses(self, paths) -> dict:
+        """The cached analysis of each of these audio paths that has one."""
+        paths = list(dict.fromkeys(os.fspath(p) for p in paths))
+        found = {}
+        with closing(self._connect()) as db:
+            for start in range(0, len(paths), 500):
+                chunk = paths[start:start + 500]
+                for row in db.execute(
+                        f"SELECT {', '.join(_ANALYSIS_COLUMNS)} FROM analysis "
+                        f"WHERE path IN ({', '.join('?' for _ in chunk)})", chunk):
+                    found[row[0]] = _analysis_dict(row)
+        return found

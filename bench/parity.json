@@ -1,5 +1,9 @@
 {
  "classes": {
+  "LibraryServerTests": {
+   "where": "python-only",
+   "why": "overtone_server.py: the library index and its BPM cache served over HTTP behind a token, which no Rust crate holds"
+  },
   "OsuDbAuditTests": {
    "where": "bench",
    "why": "bench/mapper_agreement.py parses only the local osu!.db identity and status fields for a read-only reference audit"

@@ -5,7 +5,7 @@
 -- by a newer schema. bench/facts.py checks the two agree. A change to this
 -- file raises the version and adds its step to MIGRATIONS in the module.
 --
--- schema-version: 2
+-- schema-version: 3
 
 -- One row per song folder ("123456 Artist - Title").
 CREATE TABLE IF NOT EXISTS sets (
@@ -102,3 +102,31 @@ CREATE TABLE IF NOT EXISTS health (
     graded_at       TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS health_verdict ON health(verdict, worst_ms);
+
+-- The BPM cache (version 3): each song's audio analysed once, by the engine
+-- named beside it. A row holds while the audio file and the engine's code
+-- (engine_hash) are what it was made from; a rerun analyses only the rest.
+-- verdict: ok (a grid was found), refused (the engine found no pulse and says
+-- why in detail -- noise gets no BPM), error (the file could not be read) or
+-- no_audio. grid is the path that produced it (precision, or v3's legacy
+-- tracker); lines holds the red lines the app would write, as JSON
+-- [[offset_ms, bpm, meter], ...].
+CREATE TABLE IF NOT EXISTS analysis (
+    path         TEXT PRIMARY KEY,
+    size         INTEGER NOT NULL,
+    mtime_ns     INTEGER NOT NULL,
+    engine       TEXT NOT NULL,
+    engine_hash  TEXT NOT NULL,
+    verdict      TEXT NOT NULL,
+    grid         TEXT NOT NULL DEFAULT '',
+    bpm          REAL,
+    stability    REAL,
+    meter        TEXT NOT NULL DEFAULT '',
+    residual_ms  REAL,
+    duration     REAL,
+    lines        TEXT NOT NULL DEFAULT '[]',
+    detail       TEXT NOT NULL DEFAULT '',
+    seconds      REAL,
+    analyzed_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS analysis_bpm ON analysis(verdict, bpm);

@@ -44,7 +44,7 @@ commit messages are English; only the app's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (1026 on 2026-10-25)
+.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (1036 on 2026-10-25)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -160,6 +160,8 @@ python/                   v3 engine, osu! I/O, classic Tk GUI + CLI (the app's d
   overtone_combine.py       the compilation builder: whole maps and their songs as one map
   overtone_library.py       the library index: a Songs folder in SQLite, searched (FTS5)
   library.sql               the index's schema, versioned; facts.py checks the version
+  overtone_server.py        the library API: the index and its BPM cache over HTTP,
+                            behind a token, for a server that holds the Songs folder
   requirements.txt          lower bounds; requirements.lock pins the measured baseline
 tests/                    Python suite (run from the root with unittest discover)
   test_overtone.py          engine, I/O and classic-window tests
@@ -215,7 +217,7 @@ crates/                   the v4 Rust workspace
 docs/                     audit, stack evaluation, architecture, UI, DSP, hitsounds,
                           roadmap, ML evaluation, naming, precision plan, MSI
                           distribution, comfort features, audit backlog,
-                          other languages, hitsound plan, workflow, timeline
+                          other languages, hitsound plan, workflow, library server, timeline
   workflow.md               the per-task routine: program, test, measure, commit, audit
   timeline.md               engineering log
 ```

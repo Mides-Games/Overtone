@@ -4301,6 +4301,37 @@ class ProjectTests(_IsolatedConfig):
         self.assertEqual(undone["locks"], [])
         self.assertEqual(later.redo()["locks"], [1000.0])
 
+    def test_notes_are_kept_per_song_and_come_back(self) -> None:
+        api = web.Api(save_projects=True)
+        self.assertEqual(api.notes()["key"], "first")
+        api._analysis = self._fresh()
+        for bad in ((-1, "x"), (1e9, "x"), (float("nan"), "x"), ("soon", "x"),
+                    (2.0, "   "), (2.0, "x" * (web.NOTE_MAX_CHARS + 1))):
+            with self.subTest(bad=bad):
+                self.assertEqual(api.note_add(*bad)["key"], "bad_note")
+        api.note_add(4.0, "kiai starts")
+        reply = api.note_add(1.5, "  check the intro  ")
+        self.assertEqual([(n["time_s"], n["text"]) for n in reply["notes"]],
+                         [(1.5, "check the intro"), (4.0, "kiai starts")])
+        first = reply["notes"][1]["id"]
+        self.assertEqual(api.note_edit(first, "kiai")["notes"][1]["text"], "kiai")
+        self.assertEqual(api.note_edit(99, "x")["key"], "bad_note")
+        [notes] = sorted((self.root / "out" / "Projects").glob("*.notes.json"))
+        self.assertFalse(notes.with_name(notes.name + ".part").exists())
+        # The next session reads them back; a project restore never touches them.
+        later = web.Api(save_projects=True)
+        later._analysis = self._fresh()
+        self.assertEqual([n["text"] for n in later.notes()["notes"]], ["check the intro", "kiai"])
+        self.assertEqual(len(later.note_delete(first)["notes"]), 1)
+        self.assertEqual(later.note_delete(first)["key"], "bad_note")
+
+    def test_notes_stay_in_memory_when_projects_are_off(self) -> None:
+        api = web.Api()
+        api._analysis = self._fresh()
+        self.assertTrue(api.note_add(1.0, "here")["ok"])
+        self.assertEqual(len(api.notes()["notes"]), 1)
+        self.assertFalse((self.root / "out").exists())
+
     def test_off_unless_asked(self) -> None:
         api = web.Api()                                  # as every test and the harness build it
         api._analysis = self._fresh()

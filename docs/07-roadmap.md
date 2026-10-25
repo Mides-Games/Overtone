@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **research underway** — the default 28 ms osu! export lead measures 16.8 % of Python and 5.2 % of Rust Corpus B red lines within 5 ms; raw engine grids score 2.0 % and 1.1 % respectively (20 maps, 1,152 lines, 2026-10-24). Tempo, octave and drifting sections remain the main misses |
 | Installer (MSI) | **v0.1.0-alpha published** — per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
 
-Tests: **1026** Python (727 engine + 299 web shell) · **292** Rust.
+Tests: **1028** Python (727 engine + 301 web shell) · **292** Rust.
 
 ### Current priorities — 2026-10-16
 
@@ -556,7 +556,7 @@ Nothing here is promised. Each item is a hypothesis with a way to test it.
 | Timing suggestions | list red lines a map is missing | med | med | P7 | no | no | P2 | **done** — shown in the compare card |
 | Apply a suggestion | write one suggested red line into the `.osu`, with backup and consent | med | med | suggestions, writer | no | no | P2 | **done** — Add beside each suggestion in Map check: that red line alone, carrying the sounds in force, a green where slider velocity needs one; the confirmation names the objects and slider ends it moves and warns at ×2/×4 the map's tempo; backed up, logged |
 | Octave-marked suggestions | mark in the list itself a suggestion at ×2 or ×4 the map's own tempo there, not only in the consent: on Corpus B 5 of 23 were, and they alone moved slider ends past 25 ms | low | med | suggestions | no | no | P2 | **done** — a pill beside the suggestion's BPM (×2, ×4, ÷2, ÷4) with the map's tempo in its tooltip; one rule, the octave finding's band, for the list and the consent. Corpus B: 6 of 23 marked, all 5 slider shifts past 25 ms among them |
-| Waveform annotation | user notes pinned to timeline positions | low | low | P3 | no | no | P3 | todo |
+| Waveform annotation | user notes pinned to timeline positions | low | low | P3 | no | no | P3 | done — Timing keeps notes at the playhead, flagged over the waveform, listed to seek, edit or delete; saved per audio beside the project, apart from its timing (2026-10-25) |
 | Plugin API | third-party analysis stages | high | low | P0 rules | no | no | P3 | todo |
 | WASM engine | the core in a browser | med | low | P1 | no | no | P3 | todo |
 

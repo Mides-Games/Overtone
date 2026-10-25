@@ -919,6 +919,14 @@ tbody tr:last-child td { border-bottom: 0; }
   background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--r-sm);
 }
 
+/* Timeline notes: free text pinned to a time, flagged over the waveform. */
+.notes { display: grid; gap: 6px; margin-top: 8px; }
+.notes-add { display: flex; gap: 8px; }
+.notes-add .input { flex: 1; min-width: 0; }
+.notes-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.notes-list li { display: flex; gap: 8px; align-items: center; }
+.notes-list .input { flex: 1; min-width: 0; }
+
 .toast {
   position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px);
   padding: 12px 18px;

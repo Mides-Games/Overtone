@@ -96,6 +96,10 @@ LOOSE_RESIDUAL_MS = 30.0
 #: its points and locks, keyed by the audio's SHA-256 (roadmap 14.1).
 PROJECT_FORMAT = "overtone-project"
 PROJECT_VERSION = 1
+#: Timeline notes: free text pinned to a time, kept per audio beside the project.
+NOTES_FORMAT = "overtone-notes"
+NOTE_MAX_CHARS = 500
+NOTE_MAX_COUNT = 500
 #: Hitsound profiles the Propose card offers (docs/06 §11): the JSON files
 #: in ``profiles/`` beside the app, by name. The page chooses a name from
 #: that list; a path never comes from the page.
@@ -403,6 +407,9 @@ class Api:
         self._save_projects = bool(save_projects)
         self._project_dirty = False
         self._project_error = ""
+        #: The open song's timeline notes, and the audio hash they belong to.
+        self._notes: list[dict] = []
+        self._notes_for: str | None = None
         #: (source, SHA-256) of the analysed audio, the project's key.
         self._audio_sha: tuple[str, str] | None = None
         #: path -> ((size, mtime), key): each song's key for its remembered
@@ -4259,6 +4266,93 @@ class Api:
         if not points or not sound:
             return None
         return {"saved_at": str(body.get("saved_at", "")), "points": points, "locks": locks}
+
+    # -- notes pinned to the timeline (roadmap: waveform annotation) -------
+    def _notes_path(self, digest: str) -> Path:
+        """Beside the song's project, in a file of their own: a note is not
+        timing, so restoring a project never takes notes with it."""
+        return self._project_path(digest).with_suffix(".notes.json")
+
+    def _notes_list(self) -> list[dict] | None:
+        """This song's notes, read once per audio; None with no song open."""
+        if self._analysis is None:
+            return None
+        digest = self._audio_digest() or ""
+        if self._notes_for != digest:
+            self._notes_for, self._notes = digest, []
+            if digest and self._save_projects:
+                try:
+                    body = json.loads(self._notes_path(digest).read_bytes().decode("utf-8-sig"))
+                    if body.get("format") == NOTES_FORMAT and body.get("sha256") == digest:
+                        self._notes = [{"id": int(n["id"]), "time_s": float(n["time_s"]),
+                                        "text": str(n["text"])[:NOTE_MAX_CHARS]}
+                                       for n in body["notes"]
+                                       if np.isfinite(float(n["time_s"])) and str(n["text"]).strip()]
+                except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                    self._notes = []
+        return self._notes
+
+    def _notes_reply(self) -> dict:
+        notes = sorted(self._notes, key=lambda n: (n["time_s"], n["id"]))
+        if self._save_projects and self._notes_for:
+            body = {"format": NOTES_FORMAT, "sha256": self._notes_for, "notes": notes}
+            target = self._notes_path(self._notes_for)
+            partial = target.with_name(target.name + ".part")
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                partial.write_text(json.dumps(body, indent=1, ensure_ascii=False), encoding="utf-8")
+                os.replace(partial, target)
+            except OSError as exc:
+                return {"ok": True, "notes": notes, "error": str(exc)}
+        return {"ok": True, "notes": notes, "error": ""}
+
+    def notes(self) -> dict:
+        if self._notes_list() is None:
+            return {"ok": False, "key": "first"}
+        return {"ok": True, "notes": sorted(self._notes, key=lambda n: (n["time_s"], n["id"])),
+                "error": ""}
+
+    def _note_text(self, text) -> str | None:
+        text = str(text if text is not None else "").strip()
+        return text if 0 < len(text) <= NOTE_MAX_CHARS else None
+
+    def note_add(self, time_s, text) -> dict:
+        notes = self._notes_list()
+        if notes is None:
+            return {"ok": False, "key": "first"}
+        clean = self._note_text(text)
+        try:
+            at = float(time_s)
+        except (TypeError, ValueError):
+            at = float("nan")
+        if clean is None or not (np.isfinite(at) and 0 <= at <= float(self._analysis.duration)):
+            return {"ok": False, "key": "bad_note"}
+        if len(notes) >= NOTE_MAX_COUNT:
+            return {"ok": False, "key": "too_many_notes"}
+        notes.append({"id": max((n["id"] for n in notes), default=0) + 1,
+                      "time_s": round(at, 4), "text": clean})
+        return self._notes_reply()
+
+    def note_edit(self, note_id, text) -> dict:
+        notes = self._notes_list()
+        if notes is None:
+            return {"ok": False, "key": "first"}
+        clean = self._note_text(text)
+        target = next((n for n in notes if n["id"] == note_id), None)
+        if clean is None or target is None:
+            return {"ok": False, "key": "bad_note"}
+        target["text"] = clean
+        return self._notes_reply()
+
+    def note_delete(self, note_id) -> dict:
+        notes = self._notes_list()
+        if notes is None:
+            return {"ok": False, "key": "first"}
+        kept = [n for n in notes if n["id"] != note_id]
+        if len(kept) == len(notes):
+            return {"ok": False, "key": "bad_note"}
+        self._notes[:] = kept
+        return self._notes_reply()
 
     def project_state(self) -> dict:
         """Whether this song has saved timing work that is not what is on

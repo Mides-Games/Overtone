@@ -188,11 +188,11 @@ def analyze(path: str | os.PathLike[str], *, min_delta: float = 1.5, persistence
     analysis = ta._snap_whole_bpm(analysis, min_delta, persistence, min_confidence)
     if ta.DRIFT_FOLLOW:
         analysis = ta._follow_drift(analysis)
-    if ta._beat_this_session() is None:
-        return analysis
-    # Beat This! reads the audio itself; the Rust report carries none of it.
-    y, sr = ta._load_audio(os.fspath(path), lambda _message: None)
-    return ta._beat_this_vote(analysis, y, sr)
+    if ta._beat_this_session() is not None:
+        # Beat This! reads the audio itself; the Rust report carries none of it.
+        y, sr = ta._load_audio(os.fspath(path), lambda _message: None)
+        analysis = ta._beat_this_vote(analysis, y, sr)
+    return ta._snap_whole_points(analysis)
 
 
 def attacks(path: str | os.PathLike[str], *, cli: Path | None = None,

@@ -2001,6 +2001,22 @@ class LocalTempoTests(unittest.TestCase):
         path = _tempo_path([slow] * 5 + [fast] * 5 + [slow] * 5)
         self.assertEqual([round(b) for b in path], [130] * 5 + [260] * 5 + [130] * 5)
 
+    def test_lines_a_few_tenths_off_a_whole_bpm_snap_and_merge(self):
+        # Attacks on a 174 BPM grid, read as two lines at 174.3 and 173.8.
+        from overtone import _snap_whole_lines
+        times = 0.5 + np.arange(200) * 60 / 174
+        weights = np.ones_like(times)
+        lines = [(500.0, 174.3), (500.0 + 100 * 60000 / 174, 173.8)]
+        self.assertEqual(_snap_whole_lines(lines, times, weights, 70.0),
+                         [(mock.ANY, 174.0)])
+
+    def test_a_fractional_bpm_the_attacks_keep_is_kept(self):
+        from overtone import _snap_whole_lines
+        times = 0.5 + np.arange(400) * 60 / 128.37
+        weights = np.ones_like(times)
+        lines = _snap_whole_lines([(500.0, 128.37)], times, weights, 190.0)
+        self.assertEqual(lines, [(500.0, 128.37)])
+
     def test_the_lines_follow_the_beats(self):
         from overtone import _beats_to_lines
         rng = np.random.default_rng(3)

@@ -29,7 +29,7 @@ with the Rust engine (opt-in; v3 stays the default and the fallback).**
 | Precision plan (Phase 10) | **research underway** — the default 28 ms osu! export lead measures 16.8 % of Python and 5.2 % of Rust Corpus B red lines within 5 ms; raw engine grids score 2.0 % and 1.1 % respectively (20 maps, 1,152 lines, 2026-10-24). Tempo, octave and drifting sections remain the main misses |
 | Installer (MSI) | **v0.1.0-alpha published** — per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
 
-Tests: **1024** Python (725 engine + 299 web shell) · **292** Rust.
+Tests: **1026** Python (727 engine + 299 web shell) · **292** Rust.
 
 ### Current priorities — 2026-10-16
 
@@ -609,7 +609,7 @@ and applied to held out (a diagnostic of the export convention, never an engine 
 
 | Stage | Slice | Size (2026-10-22) | What it should force | State |
 |---|---|---|---|---|
-| **S1 — Anime, one tempo** | `anime-single`: one red line, anime/opening/ending/TV Size in tags or title | 832 songs, 4,611 maps (582 dev / 250 held out) | octave choice (10.0g) and the grid's phase (10.0e/f) on produced, quantised music — the cleanest place to get both right | **2026-10-25, with the Beat This! vote**, held out: beats within 10 ms 72.4 %, octave 89.5 %, tempo ok 68.7 % (71.1 before the vote: its fractional lines). Next: the vote at the whole BPM, then the phase |
+| **S1 — Anime, one tempo** | `anime-single`: one red line, anime/opening/ending/TV Size in tags or title | 832 songs, 4,611 maps (582 dev / 250 held out) | octave choice (10.0g) and the grid's phase (10.0e/f) on produced, quantised music — the cleanest place to get both right | **2026-10-25, finished lines at the whole BPM**, held out: beats within 10 ms 72.5 %, octave 89.5 %, tempo ok 75.9 % (68.7 before). Next: the octave (10.0g), then the phase |
 | **S2 — Anime, tempo changes** | `anime-variable`: the same filter, more than one red line | 491 songs, 2,599 maps | section boundaries and which tempo governs each (points, sections) on music that changes on purpose | **2026-10-25**, held out: beats within 10 ms 42.7 → 67.3 %, 20 ms 56.4 → 84.6 % |
 | **S3 — Live bands, drift and changes** | `bands-variable`: My Chemical Romance, The Fall of Troy, Pierce The Veil, PUP, DragonForce, Linkin Park, BMTH, Sum 41, Rise Against … (list in the manifest) | 339 songs, 1,540 maps | a tempo that drifts under a human drummer: many close red lines, elastic grid (10.7), rippling (10.5) | **2026-10-25**, held out: beats within 10 ms 25.9 → 45.9 %, 20 ms 35.6 → 63.4 %, octave 62.0 → 73.7 % |
 | S4 — the rest | everything not in S1–S3, by category as the stages before it show where the gaps are | — | confirmation that nothing tuned on S1–S3 overfits | later |

@@ -5,6 +5,7 @@ tracks with known ground truth, so no fixture files are needed. The v2
 segmentation and gap-filling helpers are still covered — they remain in the
 fallback path used for rubato and non-percussive audio.
 """
+import codecs
 import json
 import os
 import struct
@@ -3594,6 +3595,9 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
             self.assertEqual(overtone.load_config(), {
                 "recent": ["a.mp3"], "file": "song.mp3", "persistence": "12",
                 "future_key": {"kept": 1}})
+            # Notepad saves with a BOM; the file is read, not reset.
+            overtone.CONFIG_PATH.write_bytes(codecs.BOM_UTF8 + b'{"language": "English"}')
+            self.assertEqual(overtone.load_config(), {"language": "English"})
             # Without a config of its own, the pre-rename file is read.
             overtone.CONFIG_PATH.unlink()
             overtone.LEGACY_CONFIG_PATH.write_text('{"language": "Español"}', encoding="utf-8")

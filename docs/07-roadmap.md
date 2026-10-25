@@ -840,9 +840,9 @@ consent step, through the same backup-and-keep-what-plays writer as inject.
 | Linear section growth | refine the growth grid on a trailing window | med | med | — | no | no | P2 | **done** (2026-09-27) — the grid carried through growth is refit on the last 128 beats, not on the whole span, which the final fit does anyway. Every synthetic reading identical (golden 27/27 stage for stage); the sections stage 2.72 s -> 0.19 s on long-6min and **unchanged on real music**, where that stage is seeding and boundary settling. Kept for the quadratic, not for a corpus speed-up. Corpus B: 18 of 19 identical, camisa-negra 3 lines -> 1, losing a section at 4x the map's tempo |
 | Faster phase re-centring | a recurrence instead of one `exp` per shift | low | low | — | no | no | P3 | todo |
 | Specific load errors | missing, empty and junk files each get their own message | low | med | decode | no | no | P2 | **done** — missing, empty and junk files named |
-| Config type checks | a wrong-typed or BOM config never crashes or silently resets | low | med | config | no | no | P2 | partial — web shell only |
+| Config type checks | a wrong-typed or BOM config never crashes or silently resets | low | med | config | no | no | P2 | done — both shells share `load_config`: a wrong-typed key is dropped to its default, and a BOM file (Notepad) is read, 2026-10-25 |
 | CLI Unicode output | no crash on Japanese names when output is redirected | low | med | CLI | no | no | P2 | **done** — redirected, the CLI writes UTF-8; a console is left as it is |
-| CSV save errors | a locked CSV (open in Excel) shows an error | low | low | GUI | no | no | P3 | todo |
+| CSV save errors | a locked CSV (open in Excel) shows an error | low | low | GUI | no | no | P3 | done — the classic window and the web shell both report the error, tested |
 | Injection backups | back up the current state on every injection, and report it truthfully | low | med | writer | no | no | P2 | **done** since audit #36 — every write keeps what it replaces (`.bak` first and for good, then `.bak2`, `.bak3`…, never overwritten, skipped only when the newest already holds those bytes) and returns the backup's real path; tested (`test_backup_keeps_the_pristine_original` and the tests after it) |
 
 ---

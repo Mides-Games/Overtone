@@ -10747,13 +10747,14 @@ def load_config() -> dict:
     So did a value of the wrong type -- ``"cfg_version": "2"`` or
     ``"prefer_map_bpm": "on"`` stopped the classic window on every launch. A
     known key whose value has the wrong type is dropped, so its reader's
-    default applies; unknown keys are kept as they are.
+    default applies; unknown keys are kept as they are. Notepad saves with a
+    BOM, which ``json.loads`` refuses, so the file is read as ``utf-8-sig``.
     """
     for path in (CONFIG_PATH, LEGACY_CONFIG_PATH):
         try:
             if not path.is_file() or path.stat().st_size > MAX_CONFIG_BYTES:
                 continue
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_bytes().decode("utf-8-sig"))
             break
         except (OSError, ValueError):
             continue

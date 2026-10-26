@@ -151,7 +151,7 @@ repo es público, se deja vacío.
 |---|---|
 | `overtone-web` | `API_UPSTREAM=http://<bridge-ip>:4012` |
 | `overtone-web-exp` | `API_UPSTREAM=http://<bridge-ip>:4013` |
-| `overtone-api` | `DATABASE_URL=postgres://overtone_prod:<pw>@<bridge-ip>:4016/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `SESSION_SECRET`, `TOKEN_KEY`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`, `ANON_DAILY_LIMIT`, `MAX_AUDIO_SECONDS` |
+| `overtone-api` | `DATABASE_URL=postgres://overtone_prod:<pw>@<bridge-ip>:4016/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `TRUST_PROXY=2`, `SESSION_SECRET`, `TOKEN_KEY`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`, `ANON_DAILY_LIMIT`, `MAX_AUDIO_SECONDS` |
 | `overtone-api-exp` | Las mismas. `DATABASE_URL=…overtone_staging:<pw>@<bridge-ip>:4016/overtone_experimental`, `SITE_URL` de staging, y **secretos distintos** de los de prod. |
 | `overtone-worker` | `DATABASE_URL` (la de prod), `WORKER_CONCURRENCY=1`, `MAX_AUDIO_SECONDS`, `WORKER_THREADS=4` |
 | `overtone-worker-exp` | `DATABASE_URL` (la de staging), `WORKER_CONCURRENCY=1`, `MAX_AUDIO_SECONDS`, `WORKER_THREADS=2` |
@@ -336,9 +336,14 @@ según el proxy:
   en `127.0.0.1:4006`/`4007`, y entonces ni siquiera quedan expuestas.
 
 En los dos casos, el proxy tiene que mandar `X-Forwarded-Proto: https` y
-`X-Forwarded-For`. `serve.mjs` los pasa a la API tal como llegan, para que la API
-sepa que la cookie de sesión va por HTTPS. Quien llegue directo al puerto podría
-falsificarlos, y por eso el firewall importa.
+`X-Forwarded-For`. `serve.mjs` pasa `X-Forwarded-Proto` tal como llega, para que la
+API sepa que la cookie de sesión va por HTTPS. `X-Forwarded-For` no: se queda con
+las últimas `TRUSTED_PROXY_HOPS` entradas (las que agregó el proxy; 1 por defecto)
+más la dirección de la conexión, y descarta lo que el cliente haya escrito antes.
+La API confía en esos saltos con `TRUST_PROXY=2` (el proxy TLS y `serve.mjs`), y
+así el rate limit cuenta por visitante y no por `serve.mjs`. Si delante hay dos
+proxies (Cloudflare y además nginx), son `TRUSTED_PROXY_HOPS=2` y `TRUST_PROXY=3`.
+Quien llegue directo al puerto podría falsificarlos, y por eso el firewall importa.
 
 **Falta que el admin de Reviactyl diga dónde corre ese proxy.** Con eso, este
 apartado pasa a ser un paso más.

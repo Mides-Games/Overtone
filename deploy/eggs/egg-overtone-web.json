@@ -97,6 +97,16 @@
             "user_editable": false,
             "rules": "required|string|starts_with:http://",
             "field_type": "text"
+        },
+        {
+            "name": "Trusted proxy hops",
+            "description": "Proxies in front of this server: 1 for the TLS proxy. serve.mjs keeps that many X-Forwarded-For entries plus the connection's address and drops what a client wrote before them. The API's TRUST_PROXY is this + 1.",
+            "env_variable": "TRUSTED_PROXY_HOPS",
+            "default_value": "1",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|integer|between:0,10",
+            "field_type": "text"
         }
     ]
 }

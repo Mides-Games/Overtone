@@ -127,7 +127,12 @@ def web():
         [var("API upstream", "API_UPSTREAM",
              "Where /api goes: this environment's overtone-api, http://<allocation ip>:<port>, "
              "e.g. http://<bridge-ip>:4012. No trailing slash.",
-             rules="required|string|starts_with:http://")],
+             rules="required|string|starts_with:http://"),
+         var("Trusted proxy hops", "TRUSTED_PROXY_HOPS",
+             "Proxies in front of this server: 1 for the TLS proxy. serve.mjs keeps that many "
+             "X-Forwarded-For entries plus the connection's address and drops what a client wrote "
+             "before them. The API's TRUST_PROXY is this + 1.",
+             default="1", rules="required|integer|between:0,10")],
     )
 
 
@@ -145,6 +150,11 @@ def api():
             var("Mides web URL", "MIDES_WEB_URL", "Mides-Dev-Web, for profiles and the wall."),
             var("Mides app", "MIDES_APP", "This app's name in the Mides SSO."),
             var("Site URL", "SITE_URL", "The public origin of this environment, https, no trailing slash."),
+            var("Trust proxy", "TRUST_PROXY",
+                "Proxies in front of the API: 2 = the TLS proxy and overtone-web. Decides the client "
+                "address the rate limit counts; too low puts every visitor in one bucket. "
+                "overtone-web's TRUSTED_PROXY_HOPS + 1.",
+                default="2", rules="required|integer|between:0,10"),
             var("Anonymous daily limit", "ANON_DAILY_LIMIT", "Analyses per day without an account."),
             var("Max audio seconds", "MAX_AUDIO_SECONDS", "Longest audio accepted."),
         ],

@@ -1654,6 +1654,16 @@ const S = { lang: "en", view: "library", mapset: null, compile: null, train: nul
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
 
+// A BPM as the results show it: to the tenth, whole when the tenth is .0
+// (240.175 -> 240.2, 222.96 -> 223). For reading only: exports, edits and the
+// diagnostic tables keep the exact value, which a title shows on hover. Red
+// lines rounded to the tenth in the export lost Corpus B points (timeline,
+// 2026-10-25), so the rounding stays on the screen.
+function bpmShown(bpm) {
+  const v = Math.round(bpm * 10) / 10;
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
 function t(key, values) {
   const table = I18N[S.lang] || I18N.en;
   let text = table[key] ?? I18N.en[key] ?? key;
@@ -2129,7 +2139,7 @@ async function rescale(mult) {
   showResult(reply.result);
   syncHistory(reply);
   songPulseShown(reply.pulse);
-  toast(t("rescaled", { f: reply.result.subdivision, n: reply.result.points.length, bpm: reply.result.global_bpm.toFixed(2) }));
+  toast(t("rescaled", { f: reply.result.subdivision, n: reply.result.points.length, bpm: bpmShown(reply.result.global_bpm) }));
 }
 
 window.overtone = {
@@ -2223,7 +2233,7 @@ window.overtone = {
       if (S.selected < 0) renderDetail();
     });
     projectCheck();
-    toast(t("done", { n: result.points.length, bpm: result.global_bpm.toFixed(2) }));
+    toast(t("done", { n: result.points.length, bpm: bpmShown(result.global_bpm) }));
   },
   onError(detail) { S.pendingDrop = null; setBusy(false); toast(t("error", { detail }), true); },
 };
@@ -2385,7 +2395,8 @@ function renderVerdict(r) {
 
 function renderResult(r) {
   const precise = r.engine === "precision", stable = r.stability >= 0.75;
-  $("statGlobal").textContent = r.global_bpm.toFixed(2);
+  $("statGlobal").textContent = bpmShown(r.global_bpm);
+  $("statGlobal").title = `${r.global_bpm.toFixed(3)} BPM`;
   $("statPoints").innerHTML = `${r.points.length}<small>${r.meter}</small>`;
   $("statBeats").innerHTML = `${r.beat_count}<small>${mmss(r.duration)}</small>`;
   $("statStability").innerHTML = `${Math.round(r.stability * 100)}<small>% ${t(stable ? "constant" : "variable")}</small>`;
@@ -2403,7 +2414,7 @@ function renderResult(r) {
     return `<tr data-i="${i}" class="${i === S.selected ? "sel" : ""}${locked ? " locked" : ""}">
       <td><span class="idx">${i + 1}</span></td>
       <td class="num">${p.offset_ms.toFixed(1)}</td>
-      <td class="num">${p.bpm.toFixed(3)}</td>
+      <td class="num" title="${p.bpm.toFixed(3)} BPM">${bpmShown(p.bpm)}</td>
       <td class="num">${p.beat_ms.toFixed(2)}</td>
       <td><span class="pill ${p.meter_known ? "accent" : ""}" title="${t(p.meter_known ? "meter_known" : "meter_guess")}">${p.meter}/4</span></td>
       <td><span class="conf ${cls}"><span class="bar"><b style="width:${Math.round(c * 100)}%"></b></span><span class="num">${Math.round(c * 100)}%</span></span></td>
@@ -2443,7 +2454,7 @@ function renderDetail() {
     const firstBeat = r.trace.t.length ? fmtTime(r.trace.t[0]) : "—";
     el.innerHTML = `
       <div class="detail-head"><div class="card-title">${t("d_song")}</div></div>
-      <div class="detail-big">${r.global_bpm.toFixed(2)}<small>BPM</small></div>
+      <div class="detail-big" title="${r.global_bpm.toFixed(3)} BPM">${bpmShown(r.global_bpm)}<small>BPM</small></div>
       ${kv([[t("d_duration"), mmss(r.duration)], [t("d_first"), firstBeat],
             [t("d_engine"), `${t(r.engine === "precision" ? "engine_precision" : "engine_legacy")} · ${t(r.backend === "rust" ? "backend_rust" : "backend_python")}`],
             [t("d_residual"), r.engine === "precision" ? `${r.residual_ms.toFixed(2)} ms` : "—"],
@@ -2466,7 +2477,7 @@ function renderDetail() {
       ${locked ? `<span class="pill accent">${t("locked_pill")}</span>` : ""}
       <span class="pill ${p.meter_known ? "accent" : ""}">${p.meter}/4</span>
     </div>
-    <div class="detail-big">${p.bpm.toFixed(3)}<small>BPM</small></div>
+    <div class="detail-big" title="${p.bpm.toFixed(3)} BPM">${bpmShown(p.bpm)}<small>BPM</small></div>
     ${kv([[t("d_offset"), `${p.offset_ms.toFixed(1)} ms`], [t("d_beat"), `${p.beat_ms.toFixed(3)} ms`],
           [t("d_conf"), `${c}%`],
           [t("d_span"), `${fmtTime(start)} → ${next ? fmtTime(end) : t("d_end")}`],
@@ -7313,7 +7324,7 @@ function drawTrace(hoverX) {
     // A red line where the bar changes length says so: the signature's region starts here.
     const meterChange = p.meter !== (i ? r.points[i - 1].meter : 4);
     const label = dragging && dragging.i === i ? `${(s * 1000).toFixed(1)} ms`
-      : p.bpm.toFixed(p.bpm % 1 ? 2 : 0) + (meterChange ? ` · ${p.meter}/4` : "");
+      : bpmShown(p.bpm) + (meterChange ? ` · ${p.meter}/4` : "");
     const w = ctx.measureText(label).width + 16;
     const row = x > lastRight[0] + 4 ? 0 : (x > lastRight[1] + 4 ? 1 : 0);
     lastRight[row] = x + w;

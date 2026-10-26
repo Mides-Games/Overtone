@@ -20,6 +20,24 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-25 · BPMs shown to the tenth
+
+### Changed
+
+- The results show BPMs to the tenth, whole when the tenth is .0 (240.175
+  -> 240.2, 222.96 -> 223, 192.000 -> 192): the song's BPM, the timing
+  points table, both detail panels, the red-line labels on the tempo map
+  and the analysis toasts. Hovering shows the exact value. Exports, the
+  edit field and the diagnostic tables (reference card, evidence,
+  map comparisons) keep the exact BPM: rounding the exported red lines
+  lost Corpus B points (the entry below), so it stays on the screen.
+
+### Measured
+
+- Checked in the page on this machine (2026-10-25): "If You Can't Hang"
+  shows 192 with 192.000 BPM on hover; the toast reads the same in English
+  and Spanish; no app.js error in the console. test_overtone_web 310/310.
+
 ## Unreleased — 2026-10-25 · BPMs rounded to the tenth: tried and dropped
 
 ### Rejected / tried and dropped

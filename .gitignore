@@ -17,16 +17,11 @@ bench/.cache/
 
 # Rust (v4)
 /target/
-# Graphify's portable graph/report/HTML are checked in; local extraction cache
-# and absolute-root marker are regenerated on each machine.
-/graphify-out/cache/
-/graphify-out/.graphify_analysis.json
-/graphify-out/.graphify_root
-/graphify-out/manifest.json
-/graphify-out/project-status/graphify-out/cache/
-/graphify-out/project-status/graphify-out/.graphify_analysis.json
-/graphify-out/project-status/graphify-out/.graphify_root
-/graphify-out/project-status/graphify-out/manifest.json
+# Graphify (docs/project-map.md): everything it writes is local and regenerated,
+# and its skill and ignore file belong to the tool, not the repository.
+/graphify-out/
+/.graphifyignore
+/.agents/
 # Installer (installer/build.py): the frozen tree, the MSI and the ZIP, and
 # PyInstaller's and WiX's working files. Build outputs are never committed.
 /dist/

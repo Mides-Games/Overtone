@@ -1,0 +1,133 @@
+{
+  "common": {
+    "skipToContent": "Skip to content",
+    "loading": "Loading…",
+    "byMides": "A Mides Projects tool"
+  },
+  "nav": {
+    "home": "Home",
+    "analyze": "Analyze",
+    "profile": "Profile",
+    "mides": "Mides",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "account": "Account menu",
+    "changeTheme": "Change theme",
+    "changeLanguage": "Cambiar a español",
+    "otherLanguage": "ES",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu"
+  },
+  "ticker": [
+    "Overtone · automatic timing for osu! maps",
+    "Every timing shows its confidence: check it before you rank",
+    "Open source · the engine runs offline on your own machine too",
+    "Sign in with your Mides account · Discord or Google"
+  ],
+  "home": {
+    "eyebrow": "osu! timing, measured",
+    "title": "Time a song in minutes, not hours",
+    "subtitle": "Upload the audio and Overtone finds the BPM, the offset and every red line, and tells you how sure it is about each section.",
+    "cta": "Time a song",
+    "secondary": "Sign in to keep your history",
+    "honest": "Overtone does not promise perfect timing. Its benchmark is exact on synthetic tracks; on real ranked maps it is a strong first draft. Confidence is shown so you know where to look.",
+    "features": {
+      "upload": {
+        "title": "Upload, get red lines",
+        "body": "BPM, offset, bars and signature changes, ready to paste into [TimingPoints]."
+      },
+      "confidence": {
+        "title": "Confidence per section",
+        "body": "Every section says how much evidence backs it, instead of a number that looks precise."
+      },
+      "account": {
+        "title": "With a Mides account",
+        "body": "Keep your analyses, publish timings, and see who else timed the same song."
+      }
+    },
+    "checkByEar": "Check by ear"
+  },
+  "strip": {
+    "title": "Analysis",
+    "example": "Example",
+    "caption": "An example analysis: four bars of 4/4 at 174 BPM with red lines on bars 1 and 3.",
+    "bpm": "BPM",
+    "offset": "Offset",
+    "meter": "Meter",
+    "confidence": "Confidence",
+    "high": "High confidence",
+    "medium": "Medium",
+    "check": "Check by ear"
+  },
+  "analyze": {
+    "title": "Analyze a song",
+    "subtitle": "The audio is analysed and then deleted. Only its fingerprint and the result are kept.",
+    "audioHint": "MP3, OGG, WAV or FLAC.",
+    "osuLabel": ".osu file (optional)",
+    "osuHint": "Adds the timing to your own map. Fields you did not ask to change come out byte for byte.",
+    "submit": "Analyze",
+    "sending": "Uploading…",
+    "pickAudio": "Choose an audio file first.",
+    "tooLong": "This song is {{minutes}} minutes long; the limit is {{limit}}.",
+    "notReady": "Analysis is not open yet. The site is being built: the queue and the analysis worker come next. The server did not read or keep your file.",
+    "failed": "The upload failed: {{message}}",
+    "drop": "Drop the audio here or choose a file",
+    "notReadyTitle": "Not open yet",
+    "limitsTitle": "Without an account",
+    "perDay": "Analyses a day",
+    "maxLength": "Longest song",
+    "limitsNote": "A Mides account raises both limits and keeps your history.",
+    "outputsTitle": "What you will download",
+    "outputs": {
+      "timingPoints": "[TimingPoints] block",
+      "osu": ".osu with the timing added",
+      "csv": "CSV of red lines",
+      "click": "Click track"
+    },
+    "soon": "soon",
+    "chooseOsu": "Choose .osu",
+    "noOsu": "No map chosen"
+  },
+  "login": {
+    "title": "Sign in",
+    "subtitle": "Overtone uses your Mides account. No new password, nothing to remember.",
+    "discord": "Continue with Discord",
+    "google": "Continue with Google",
+    "devNote": "Development sign-in is on: these buttons sign you in as a test account without Mides.",
+    "notConfigured": "Sign-in is not configured on this server.",
+    "failed": "Could not start the sign-in: {{message}}",
+    "privacy": "Overtone only keeps your public Mides profile: name, avatar and banner. Never your email.",
+    "devTitle": "Development sign-in"
+  },
+  "callback": {
+    "working": "Signing you in…",
+    "stateMissing": "This sign-in did not start in this browser, or took too long. Start again.",
+    "failed": "The sign-in did not work: {{message}}",
+    "back": "Back to sign in"
+  },
+  "profile": {
+    "signInFirst": "Sign in to see your profile.",
+    "timingsSoon": "Your timings, ratings and uses will appear here once publishing opens.",
+    "onMides": "Open on midesprojects.com",
+    "since": "On Overtone since {{date}}",
+    "stats": {
+      "timings": "Timings",
+      "uses": "Uses",
+      "rating": "Rating"
+    },
+    "timings": "Published timings"
+  },
+  "footer": {
+    "tagline": "Automatic timing for osu!, measured and honest about its confidence.",
+    "site": "Overtone",
+    "ecosystem": "Mides Projects",
+    "project": "Project",
+    "source": "Source code",
+    "docs": "How it works",
+    "rights": "© {{year}} Mides Projects"
+  },
+  "notFound": {
+    "title": "Nothing here",
+    "back": "Back home"
+  }
+}

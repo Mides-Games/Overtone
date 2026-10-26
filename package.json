@@ -1,0 +1,14 @@
+{
+  "name": "overtone-site",
+  "private": true,
+  "description": "The Overtone website: site/api (Express 5 + PostgreSQL) and site/web (React 19 + Vite).",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter ./site/api --filter ./site/web run dev",
+    "build": "pnpm --dir site/web build",
+    "check": "pnpm --dir site/api check"
+  }
+}

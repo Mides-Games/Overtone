@@ -1,0 +1,259 @@
+@import 'tailwindcss';
+
+/*
+ * Overtone on the web: the desktop app's "Console" (app/styles.css), one step
+ * darker. The panel of a measuring instrument: violet graphite, one
+ * signal-cyan accent, flat panels with hairline borders instead of lifted
+ * cards, squarer controls, DIN headings and small-caps labels. The app's
+ * reserved meanings hold here too: red = timing points (osu!'s red lines),
+ * amber = something to check by ear, lavender = tempo.
+ *
+ * Layout: a slim instrument bar on top, content in one 72rem column, panels
+ * separated by hairlines rather than shadows.
+ *
+ * Every colour is a token below and every component reads the token, so the
+ * light theme is a second set of values, not a second stylesheet. Dark is the
+ * default (class on <html>, stored as `mides.theme` like the rest of Mides).
+ * Nothing is fetched: system faces only, like the app.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+  --bg: #f5f4f8;
+  --surface: #ffffff;
+  --surface-2: #faf9fc;
+  --surface-3: #ebe8f1;
+  --line: #e0dce8;
+  --line-strong: #cdc7da;
+  --line-hover: #b3acc3;
+  --text: #1a1724;
+  --muted: #58526a;
+  --dim: #686279;
+  --accent: #0a737f;
+  --accent-hover: #075c66;
+  --accent-ink: #ffffff;
+  --red: #c42e3b;
+  --amber: #8f5e08;
+  --lavender: #5b45d6;
+  --onset: #bdb6cc;
+  --grid: rgba(26, 23, 36, 0.09);
+  --scrim: rgba(245, 244, 248, 0.82);
+}
+
+.dark {
+  color-scheme: dark;
+  --bg: #0d0b12;
+  --surface: #14121a;
+  --surface-2: #19161f;
+  --surface-3: #221e2b;
+  --line: #26222f;
+  --line-strong: #353044;
+  --line-hover: #4d4760;
+  --text: #efecf5;
+  --muted: #aaa3b8;
+  --dim: #8f88a1;
+  --accent: #3fd0dc;
+  --accent-hover: #6fe0e9;
+  --accent-ink: #06262a;
+  --red: #ff5d6c;
+  --amber: #f5b44a;
+  --lavender: #a996ff;
+  --onset: #4a4360;
+  --grid: rgba(255, 255, 255, 0.06);
+  --scrim: rgba(13, 11, 18, 0.82);
+}
+
+@theme inline {
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  /* DIN: Bahnschrift ships with Windows, DIN Alternate with macOS. */
+  --font-display: Bahnschrift, 'DIN Alternate', 'D-DIN', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas, ui-monospace, monospace;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-line-hover: var(--line-hover);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-dim: var(--dim);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-ink);
+  --color-red: var(--red);
+  --color-amber: var(--amber);
+  --color-lavender: var(--lavender);
+  --color-onset: var(--onset);
+
+  /* The app's scale, a little larger for reading on a page. */
+  --text-caption: 11.5px;
+  --text-caption--letter-spacing: 0.08em;
+  --text-label: 12.5px;
+  --text-body: 15px;
+  --text-body--line-height: 1.6;
+  --text-title: 20px;
+  --text-display: clamp(2.1rem, 1.4rem + 3vw, 3.6rem);
+  --text-display--line-height: 1.02;
+
+  --radius-control: 6px;
+  --radius-panel: 10px;
+
+  --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.skip-link {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 100;
+  transform: translate(-50%, -120%);
+  padding: 8px 16px;
+  border-radius: 0 0 var(--radius-control) var(--radius-control);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: transform 0.18s var(--ease-standard);
+}
+.skip-link:focus {
+  transform: translate(-50%, 0);
+}
+
+/* Utilities, so the variants below can @apply them. */
+@utility btn {
+  @apply inline-flex h-10 items-center justify-center gap-2 rounded-control px-4 text-label font-semibold transition
+    disabled:cursor-not-allowed disabled:opacity-50;
+}
+@utility chip {
+  @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-display text-caption font-semibold uppercase;
+}
+
+@layer components {
+  /* A flat panel: hairline border, no shadow. Used by role, not everywhere. */
+  .panel {
+    @apply rounded-panel border border-line bg-surface;
+  }
+
+  /* Small-caps label, as in the app. */
+  .label {
+    @apply font-display text-caption font-semibold uppercase text-dim;
+  }
+
+  .readout {
+    @apply font-mono tabular-nums;
+  }
+
+  .btn-primary {
+    @apply btn bg-accent text-accent-ink hover:bg-accent-hover;
+  }
+  .btn-ghost {
+    @apply btn border border-line-strong text-text hover:border-line-hover hover:bg-surface-2;
+  }
+
+  .field {
+    @apply w-full rounded-control border border-line-strong bg-surface-2 px-3 py-2.5 text-body text-text outline-none
+      transition placeholder:text-dim focus:border-accent;
+  }
+
+  .chip-amber {
+    @apply chip border-amber/40 bg-amber/10 text-amber;
+  }
+  .chip-accent {
+    @apply chip border-accent/40 bg-accent/10 text-accent;
+  }
+}
+
+/* The signal strip: the ticker, quiet and monospaced. */
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-12.5%); }
+}
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: ticker-scroll 60s linear infinite;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+
+/* The loader: a bar of four beats, the downbeat in red. */
+@keyframes beat {
+  0%, 70%, 100% { transform: scaleY(0.35); opacity: 0.5; }
+  20% { transform: scaleY(1); opacity: 1; }
+}
+.beat-bar {
+  display: block;
+  width: 4px;
+  border-radius: 2px;
+  transform-origin: bottom;
+  animation: beat 1.2s var(--ease-standard) infinite;
+}
+
+/* The hero's playhead sweeps across the timing strip once a bar. */
+@keyframes sweep {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+.playhead {
+  animation: sweep 8s linear infinite;
+}
+
+/* Motion only, never opacity: the page is readable even if the animation
+   never runs (a background tab, a thumbnail, a stalled frame). */
+@keyframes rise {
+  from { transform: translateY(6px); }
+  to { transform: none; }
+}
+.rise {
+  animation: rise 0.45s var(--ease-standard) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .ticker-track,
+  .playhead,
+  .beat-bar {
+    animation: none !important;
+  }
+}

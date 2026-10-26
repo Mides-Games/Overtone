@@ -4,7 +4,7 @@ import { env } from './config/env.js';
 import { errorHandler, notFound } from './middlewares/error-handler.js';
 import { rateLimit } from './middlewares/rate-limit.js';
 import { securityHeaders } from './middlewares/security-headers.js';
-import { INTERNAL_PREFIX } from './middlewares/shared-secret.js';
+import { INTERNAL_PREFIX, proxyGuard } from './middlewares/shared-secret.js';
 import v1 from './routes/index.js';
 import internal from './routes/internal.routes.js';
 
@@ -21,6 +21,8 @@ app.disable('x-powered-by');
 app.set('trust proxy', env.trustProxy);
 
 app.use(securityHeaders);
+// Only what came through overtone-web, except the worker's own routes.
+app.use(proxyGuard(env.proxySecret));
 // The worker's routes first: their own bearer, their own body limit, and
 // outside the per-address rate limit, which counts visitors.
 app.use(INTERNAL_PREFIX, internal);

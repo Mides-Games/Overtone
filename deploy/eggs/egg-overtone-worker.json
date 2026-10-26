@@ -7,7 +7,7 @@
     "exported_at": "2026-10-26T00:00:00+00:00",
     "name": "Overtone worker",
     "author": "dev@midesprojects.com",
-    "description": "The Overtone analysis worker (v3 Python engine): takes jobs from the queue, analyses, deletes the audio, stores the result. Installs python/requirements.lock and the Beat This! model (Git LFS). Give it a CPU limit and pinning: one analysis wants about five cores.",
+    "description": "The Overtone analysis worker (v3 Python engine, worker/main.py): claims jobs from overtone-api over HTTP, analyses one at a time, posts the result; the API then deletes the audio. Installs python/requirements.lock and the Beat This! model (Git LFS). Give it a CPU limit and pinning: one analysis wants about five cores and 1.5 GB of RAM. More analyses at once = more worker servers.",
     "features": null,
     "docker_images": {
         "Python 3.14": "ghcr.io/parkervcp/yolks:python_3.14"
@@ -89,33 +89,33 @@
             "field_type": "text"
         },
         {
-            "name": "Database URL",
-            "description": "postgres://user:password@host:port/database",
-            "env_variable": "DATABASE_URL",
+            "name": "API",
+            "description": "This environment's overtone-api, http://<allocation ip>:<port>, reached directly (never through overtone-web, which does not forward /api/internal). No trailing slash.",
+            "env_variable": "OVERTONE_API",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|starts_with:http",
+            "field_type": "text"
+        },
+        {
+            "name": "Worker token",
+            "description": "The same value as this environment's overtone-api WORKER_TOKEN.",
+            "env_variable": "WORKER_TOKEN",
             "default_value": "",
             "user_viewable": false,
             "user_editable": false,
-            "rules": "nullable|string",
+            "rules": "required|string|min:32",
             "field_type": "text"
         },
         {
-            "name": "Worker concurrency",
-            "description": "Analyses at once. About 1.5 GB of RAM each with the Beat This! vote, about 100 MB without.",
-            "env_variable": "WORKER_CONCURRENCY",
-            "default_value": "",
+            "name": "Poll seconds",
+            "description": "Seconds between claims while the queue is empty.",
+            "env_variable": "WORKER_POLL_S",
+            "default_value": "2",
             "user_viewable": true,
             "user_editable": false,
-            "rules": "nullable|string",
-            "field_type": "text"
-        },
-        {
-            "name": "Max audio seconds",
-            "description": "Longest audio accepted.",
-            "env_variable": "MAX_AUDIO_SECONDS",
-            "default_value": "",
-            "user_viewable": true,
-            "user_editable": false,
-            "rules": "nullable|string",
+            "rules": "required|numeric|min:0.2",
             "field_type": "text"
         },
         {

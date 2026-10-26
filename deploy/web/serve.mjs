@@ -24,6 +24,12 @@
  *
  * HSTS (default 1) sends Strict-Transport-Security with every page. Set it to
  * 0 only when the site is served over plain http, as on a laptop.
+ *
+ * PROXY_SECRET is the same value as the API's: every request forwarded to the
+ * API carries it in X-Overtone-Proxy, and the API answers 404 to anything
+ * without it, because on the panel the API's own port is public too. A
+ * client's own X-Overtone-Proxy is dropped. /api/internal/* (the worker's
+ * routes) is never forwarded at all.
  */
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
@@ -36,6 +42,12 @@ const ROOT = path.resolve(process.env.WEB_ROOT || 'site/web/dist');
 const UPSTREAM = new URL(process.env.API_UPSTREAM || 'http://127.0.0.1:4012');
 const HOPS = hops(process.env.TRUSTED_PROXY_HOPS);
 const HSTS = !['0', 'false', 'no'].includes(String(process.env.HSTS ?? '1').trim().toLowerCase());
+const PROXY_HEADER = 'x-overtone-proxy';
+const PROXY_SECRET = (process.env.PROXY_SECRET || '').trim();
+if (PROXY_SECRET && PROXY_SECRET.length < 32) {
+  console.error('overtone-web: PROXY_SECRET must be at least 32 characters');
+  process.exit(1);
+}
 
 function hops(raw) {
   if (raw === undefined || String(raw).trim() === '') return 1;
@@ -91,10 +103,33 @@ function forwardedFor(req) {
   return [...kept, req.socket.remoteAddress || 'unknown'].join(', ');
 }
 
+// The worker's routes are reached on the API's own port with their own bearer
+// token; nothing from a browser goes there. Matched on the decoded,
+// slash-collapsed, lower-cased path, so no spelling of it slips through.
+function internal(url) {
+  let pathname;
+  try {
+    pathname = decodeURIComponent(new URL(url, 'http://x').pathname);
+  } catch {
+    return true; // undecodable: refuse rather than guess
+  }
+  const p = pathname.replace(/\/{2,}/g, '/').toLowerCase();
+  return p === '/api/internal' || p.startsWith('/api/internal/');
+}
+
 // Request and response bodies are piped, never buffered: an audio upload goes
 // through at the size the API accepts, and the API is the one that limits it.
 function proxy(req, res) {
+  if (internal(req.url)) {
+    res.writeHead(404, { 'content-type': 'application/json' });
+    return res.end('{"error":{"status":404,"message":"Not found.","code":"NOT_FOUND"}}');
+  }
   const headers = forwardable(req.headers);
+  // The API answers only requests that carry this (site/api's shared-secret.js):
+  // its port is public on the panel, and this is what tells it the request came
+  // through here, with an X-Forwarded-For this process wrote.
+  delete headers[PROXY_HEADER];
+  if (PROXY_SECRET) headers[PROXY_HEADER] = PROXY_SECRET;
   headers['x-forwarded-for'] = forwardedFor(req);
   headers['x-forwarded-proto'] ||= 'http';
   headers['x-forwarded-host'] ||= req.headers.host || '';
@@ -224,6 +259,6 @@ server.listen(PORT, '0.0.0.0', () => {
   // The egg's "done" line: the panel shows the server as running from here.
   console.log(
     `overtone-web: listening on ${PORT}, serving ${ROOT}, /api -> ${UPSTREAM.origin}, ` +
-      `${HOPS} trusted proxy hop(s), HSTS ${HSTS ? 'on' : 'off'}`,
+      `${HOPS} trusted proxy hop(s), HSTS ${HSTS ? 'on' : 'off'}, proxy secret ${PROXY_SECRET ? 'set' : 'NOT set'}`,
   );
 });

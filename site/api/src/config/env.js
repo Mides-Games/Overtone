@@ -111,7 +111,14 @@ export const env = {
   // A job running longer than this goes back to the queue (two attempts in
   // all), and a late answer from the abandoned attempt is refused.
   jobTimeoutS: integer('JOB_TIMEOUT_S', 900, { min: 30, max: 86_400 }),
+  // The header overtone-web adds to everything it forwards. Without it the
+  // API answers 404 (middlewares/shared-secret.js). Optional in development,
+  // where the browser reaches the API through Vite's proxy.
+  proxySecret: text('PROXY_SECRET'),
 };
+
+if (env.proxySecret && env.proxySecret.length < 32) problems.push('PROXY_SECRET must be at least 32 characters.');
+if (isProduction && !env.proxySecret) problems.push('PROXY_SECRET is required in production: every allocation port is public.');
 
 if (isProduction && !env.databaseUrl) problems.push('DATABASE_URL is required in production.');
 if (isProduction && !env.siteUrl.startsWith('https://')) problems.push('SITE_URL must be https in production.');

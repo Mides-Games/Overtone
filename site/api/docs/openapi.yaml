@@ -16,7 +16,10 @@ info:
     Not described here: `/api/internal/*`, the worker's side of the queue
     (claim, audio, progress, result, fail), which demands
     `Authorization: Bearer <WORKER_TOKEN>` and is documented in
-    `site/api/src/routes/internal.routes.js`.
+    `site/api/src/routes/internal.routes.js`. When `PROXY_SECRET` is set
+    (required in production) every other request must carry
+    `X-Overtone-Proxy: <PROXY_SECRET>`, which only overtone-web adds;
+    without it the answer is 404.
 servers:
   - url: /api/v1
 

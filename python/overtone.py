@@ -3611,9 +3611,9 @@ def _rescale_local(analysis: Analysis, factor: float) -> Analysis:
 #: back at that reading's octave: right for slow anime the tracker read at
 #: their pulse, wrong for fast bands it read at half. LOCAL_OCTAVE_JUDGE
 #: halves only where Beat This! hears the slower pulse. All off: v3 as it was.
-LOCAL_OCTAVE_FOLD = False
-LOCAL_OCTAVE_HALVE = False
-LOCAL_OCTAVE_JUDGE = False
+LOCAL_OCTAVE_FOLD = True
+LOCAL_OCTAVE_HALVE = True
+LOCAL_OCTAVE_JUDGE = True
 #: How close a local-tempo reading must sit to 2x or 4x the reading it
 #: replaced to be taken as that reading an octave or two up.
 LOCAL_OCTAVE_SLACK = 0.06

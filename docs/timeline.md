@@ -44,8 +44,14 @@ version is `v0.2.0-alpha`.
 
 ### Measured
 
-- Not measured: the three experiments against the base on the server,
-  anime-single and bands-variable, are this entry's next job.
+- Server stages, app engine, ranked maps, 2026-10-26 (octave x1, dev /
+  held out): anime-single base 91.7 / 92.4 %, local-fold 91.7 / 92.4,
+  local-fold-halve 92.8 / 94.3, local-fold-judge 92.8 / 94.3;
+  bands-variable base 81.1 / 79.4 %, local-fold 81.1 / 79.4,
+  local-fold-halve 80.0 / 80.1 (dev maps at x0.5 32 -> 54),
+  local-fold-judge 83.5 / 80.1 (x0.5 stays 32, x2 81 -> 68). Tempo ok
+  unchanged everywhere; beat F at 10 ms -0.1 to +0.2. The judge is on by
+  default from this entry; doubling alone changed nothing.
 
 ## Unreleased — 2026-10-26 · the suite and the gates as a server runs them
 

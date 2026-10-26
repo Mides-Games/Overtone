@@ -2009,12 +2009,13 @@ class LocalTempoTests(unittest.TestCase):
                         [TimingPoint(500.0, bpm, 0.9, 0)], 512, 44100, 1.0,
                         global_bpm=bpm, engine="legacy", local_tempo=True)
 
-    def test_the_local_octave_fold_is_off_unless_switched_on(self):
+    def test_the_local_octave_fold_does_nothing_switched_off(self):
         from overtone import _fold_local_to_map_octave
         local = self._local(67.5)
-        self.assertIs(_fold_local_to_map_octave(local), local)
-        fast = self._local(269.88)
-        self.assertIs(_fold_local_to_map_octave(fast, 134.855, None, lambda: 135.0), fast)
+        with mock.patch("overtone.LOCAL_OCTAVE_FOLD", False):
+            self.assertIs(_fold_local_to_map_octave(local), local)
+            fast = self._local(269.88)
+            self.assertIs(_fold_local_to_map_octave(fast, 134.855, None, lambda: 135.0), fast)
 
     def test_a_local_tempo_below_the_map_octave_is_doubled(self):
         from overtone import _fold_local_to_map_octave
@@ -2033,7 +2034,8 @@ class LocalTempoTests(unittest.TestCase):
         local = self._local(269.88)
         reference_beats = local.beats[1::2]          # the tracker's beats: the odd ones
         with mock.patch("overtone.LOCAL_OCTAVE_FOLD", True), \
-                mock.patch("overtone.LOCAL_OCTAVE_HALVE", True):
+                mock.patch("overtone.LOCAL_OCTAVE_HALVE", True), \
+                mock.patch("overtone.LOCAL_OCTAVE_JUDGE", False):
             folded = _fold_local_to_map_octave(local, 134.855, reference_beats)
             other_phase = _fold_local_to_map_octave(local, 134.855, local.beats[0::2])
             not_double = _fold_local_to_map_octave(self._local(250.0), 150.0)
@@ -6424,7 +6426,7 @@ class MeasurementRunTests(unittest.TestCase):
         import overtone
         for flags in self.runs.EXPERIMENTS.values():
             for name in flags:
-                self.assertFalse(getattr(overtone, name), name)   # off unless a run says
+                self.assertIsInstance(getattr(overtone, name), bool, name)
 
     def test_gates_and_the_suite_are_named_runs_and_nothing_else(self):
         tool, argv, settings = self.runs.build_args({"tool": "gates"}, "/db")

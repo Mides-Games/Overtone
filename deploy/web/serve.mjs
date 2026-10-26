@@ -21,9 +21,13 @@
  * proxies appended) plus the address of the connection itself. Whatever a
  * client wrote further left is dropped. The API then trusts this process and
  * those hops, TRUST_PROXY = TRUSTED_PROXY_HOPS + 1.
+ *
+ * HSTS (default 1) sends Strict-Transport-Security with every page. Set it to
+ * 0 only when the site is served over plain http, as on a laptop.
  */
+import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 
@@ -31,6 +35,7 @@ const PORT = Number(process.env.PORT || process.env.SERVER_PORT || 8080);
 const ROOT = path.resolve(process.env.WEB_ROOT || 'site/web/dist');
 const UPSTREAM = new URL(process.env.API_UPSTREAM || 'http://127.0.0.1:4012');
 const HOPS = hops(process.env.TRUSTED_PROXY_HOPS);
+const HSTS = !['0', 'false', 'no'].includes(String(process.env.HSTS ?? '1').trim().toLowerCase());
 
 function hops(raw) {
   if (raw === undefined || String(raw).trim() === '') return 1;
@@ -113,6 +118,48 @@ function proxy(req, res) {
   req.pipe(up);
 }
 
+// The built index.html carries one inline script (theme and language before the
+// first frame). It is allowed by its hash, read from the file being served, so
+// the policy follows the build and nothing else inline runs.
+let policy = { mtime: -1, value: '' };
+
+async function contentSecurityPolicy() {
+  const index = path.join(ROOT, 'index.html');
+  const s = await file(index);
+  const mtime = s ? s.mtimeMs : 0;
+  if (mtime === policy.mtime) return policy.value;
+  const html = s ? await readFile(index, 'utf8') : '';
+  const hashes = [...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
+    .filter((m) => m[1].length)
+    .map((m) => `'sha256-${createHash('sha256').update(m[1], 'utf8').digest('base64')}'`);
+  const value = [
+    "default-src 'self'",
+    `script-src 'self'${hashes.length ? ' ' + hashes.join(' ') : ''}`,
+    // Avatars and banners come from Mides, on whatever host it serves them.
+    "img-src 'self' data: https:",
+    "font-src 'self' data:",
+    "style-src 'self'",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; ');
+  policy = { mtime, value };
+  return value;
+}
+
+async function securityHeaders() {
+  const headers = {
+    'content-security-policy': await contentSecurityPolicy(),
+    'x-content-type-options': 'nosniff',
+    'x-frame-options': 'DENY',
+    'referrer-policy': 'strict-origin-when-cross-origin',
+  };
+  if (HSTS) headers['strict-transport-security'] = 'max-age=31536000';
+  return headers;
+}
+
 async function file(p) {
   try {
     const s = await stat(p);
@@ -146,7 +193,7 @@ async function serve(req, res) {
     s = await file(target);
   }
   if (!s) {
-    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', ...(await securityHeaders()) });
     return res.end('not found\n');
   }
   const immutable = rel.startsWith('/assets/');
@@ -154,7 +201,7 @@ async function serve(req, res) {
     'content-type': TYPES[path.extname(target).toLowerCase()] || 'application/octet-stream',
     'content-length': s.size,
     'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
-    'x-content-type-options': 'nosniff',
+    ...(await securityHeaders()),
   });
   if (req.method === 'HEAD') return res.end();
   createReadStream(target).pipe(res);
@@ -177,6 +224,6 @@ server.listen(PORT, '0.0.0.0', () => {
   // The egg's "done" line: the panel shows the server as running from here.
   console.log(
     `overtone-web: listening on ${PORT}, serving ${ROOT}, /api -> ${UPSTREAM.origin}, ` +
-      `${HOPS} trusted proxy hop(s)`,
+      `${HOPS} trusted proxy hop(s), HSTS ${HSTS ? 'on' : 'off'}`,
   );
 });

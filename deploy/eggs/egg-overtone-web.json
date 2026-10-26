@@ -107,6 +107,16 @@
             "user_editable": false,
             "rules": "required|integer|between:0,10",
             "field_type": "text"
+        },
+        {
+            "name": "HSTS",
+            "description": "1 = every page carries Strict-Transport-Security (one year). The site is served over https only; 0 is for a server reached over plain http.",
+            "env_variable": "HSTS",
+            "default_value": "1",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|boolean",
+            "field_type": "text"
         }
     ]
 }

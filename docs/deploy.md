@@ -345,6 +345,13 @@ así el rate limit cuenta por visitante y no por `serve.mjs`. Si delante hay dos
 proxies (Cloudflare y además nginx), son `TRUSTED_PROXY_HOPS=2` y `TRUST_PROXY=3`.
 Quien llegue directo al puerto podría falsificarlos, y por eso el firewall importa.
 
+`serve.mjs` manda en cada página `Content-Security-Policy` (solo el propio origen;
+imágenes también de `https:`, por los avatares y banners de Mides; el script
+inline de `index.html` se permite por su hash, calculado del build),
+`X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` y,
+con `HSTS=1` (el default del egg), `Strict-Transport-Security: max-age=31536000`.
+`HSTS=0` solo si el sitio se sirve por http.
+
 **Falta que el admin de Reviactyl diga dónde corre ese proxy.** Con eso, este
 apartado pasa a ser un paso más.
 

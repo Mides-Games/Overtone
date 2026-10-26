@@ -132,7 +132,11 @@ def web():
              "Proxies in front of this server: 1 for the TLS proxy. serve.mjs keeps that many "
              "X-Forwarded-For entries plus the connection's address and drops what a client wrote "
              "before them. The API's TRUST_PROXY is this + 1.",
-             default="1", rules="required|integer|between:0,10")],
+             default="1", rules="required|integer|between:0,10"),
+         var("HSTS", "HSTS",
+             "1 = every page carries Strict-Transport-Security (one year). The site is served over "
+             "https only; 0 is for a server reached over plain http.",
+             default="1", rules="required|boolean")],
     )
 
 

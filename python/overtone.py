@@ -3721,8 +3721,9 @@ def _beat_this_tempo(y: np.ndarray, sr: int) -> float | None:
 #: in a song at 155, the owner's Flower Petals - Sunday Cruise): each line
 #: near 2x or 1/2 of the song's own tempo -- the one that holds the most of
 #: its length -- is read at the song's octave where Beat This!, over that
-#: line's span, hears that octave. Off until measured on the server.
-SECTION_OCTAVE_JUDGE = False
+#: line's span, hears that octave. On since 2026-10-26 (bands held out
+#: tempo ok 57.7 -> 59.9 %, dev unchanged).
+SECTION_OCTAVE_JUDGE = True
 
 
 def _song_tempo(points: list, duration_ms: float) -> float | None:

@@ -19,6 +19,23 @@ Work that has landed but is not in a published version is headed
 version is `v0.2.0-alpha`.
 
 ---
+## Unreleased — 2026-10-26 · red lines read at their song's octave
+
+### Changed
+
+- `SECTION_OCTAVE_JUDGE` on: a red line near 2x or 1/2 of the tempo that holds
+  most of its song is read at the song's octave where Beat This!, over that
+  line's span, hears it there; a halved line keeps the phase nearest Beat
+  This!'s beats. Report: a song at ~155 BPM with sections at 290-310.
+
+### Measured
+
+- Server, app engine, ranked and loved maps, jobs 1 (`section-octave` vs the
+  base at 45b7cab): bands-variable held out tempo ok 57.7 -> 59.9 %, octave x1
+  80.1 -> 82.4 %; dev unchanged (46.7 %, 83.5 %, beat F10 69.8 -> 69.9 %).
+  anime-single held out unchanged (81.9 %, 94.3 %). anime-single dev not
+  measured: the run was killed twice mid-way, likely memory.
+
 
 ## Unreleased — 2026-10-26 · local-tempo octave experiments, off by default
 

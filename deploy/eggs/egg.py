@@ -206,8 +206,10 @@ def db():
                 "The server's allocation port. PostgreSQL listens where PGPORT says, and Wings maps the "
                 "allocation to the same port inside the container.",
                 rules="required|integer|between:1024,65535"),
-            var("Superuser", "POSTGRES_USER", "Created on the first start, with the password below.",
-                default="overtone", rules="required|string|alpha_dash"),
+            var("Superuser", "POSTGRES_USER",
+                "Created on the first start, with the password below. The apps never use it: each "
+                "environment gets its own role (docs/deploy.md).",
+                default="postgres", rules="required|string|alpha_dash"),
             secret("Superuser password", "POSTGRES_PASSWORD",
                    "At least 24 characters. Read on the first start only; change it later with ALTER ROLE.",
                    rules="required|string|min:24"),

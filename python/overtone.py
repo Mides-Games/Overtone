@@ -5266,7 +5266,14 @@ def _atomic_write_bytes(path: Path, payload: bytes) -> None:
     Injecting rewrites the user's beatmap in place. Truncating the real file
     and then failing mid-write would destroy work that may not exist anywhere
     else, so the new content is only ever swapped in once it is complete.
+
+    A file the user made read-only is refused, as Windows refuses it: on
+    Linux a rename replaces a read-only file whenever its folder is
+    writable, and a server would have rewritten such a map (robustness gate
+    on the owner's server, 2026-10-26).
     """
+    if path.exists() and not os.access(path, os.W_OK):
+        raise PermissionError(f"{path.name} is read-only; it was left as it was.")
     temp = path.with_name(path.name + ".part")
     try:
         _write_synced(temp, payload)

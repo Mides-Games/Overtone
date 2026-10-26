@@ -411,6 +411,9 @@ detalle y las puertas están en `timeline.md`.
 | W3.5 | `site/web`: tokens visuales de midesprojects.com (§8), layout con la cinta, el nav en píldora y el menú de usuario; páginas Inicio, Analizar, Resultado, Login |
 | W3.6 | Cuotas: anónimo vs. cuenta; rate limit por IP hasheada |
 | W3.7 | i18n EN/ES desde el día uno; la app ya es bilingüe |
+| W3.8 | **Cola visible en la página** (pedido del dueño, 2026-10-26). Una página `/queue` muestra, en vivo (SSE o polling), cada análisis pendiente y reciente: posición, quién lo subió (avatar y @ de Mides, o "anónimo"), canción (artista y título de los tags del audio; si no hay, el nombre del archivo limpio), estado (en cola, analizando con su progreso, listo, rechazado, falló) y cuánto tardó. Desde ahí se abre el resultado si es de uno o si se publicó. **Privacidad:** el nombre de archivo y el uploader se ven solo si quien subió no marcó "privado"; la ruta nunca, y el audio nunca se sirve |
+| W3.9 | **Subida múltiple.** Se pueden mandar varias canciones a la vez (arrastrar varios archivos o una carpeta). Cada una es un trabajo propio en la cola, con su propia tarjeta de progreso. Límites: cuántas a la vez por persona (anónimo menos que con cuenta), el cupo diario de siempre, y un tope total de la cola para que nadie la llene. El orden es justo entre usuarios (round-robin por persona, no FIFO puro), para que un lote de 30 no deje esperando al que subió una |
+| W3.10 | **Más de un worker.** La cola ya se reparte con `SKIP LOCKED`: escalar es levantar otro server de worker en el panel. Medir cuántos análisis simultáneos aguanta el nodo NA-01 sin lag en los servers de Minecraft, y fijar `WORKER_CONCURRENCY` con ese número |
 
 ### Fase W4 — Reviactyl
 

@@ -400,6 +400,18 @@ detalle y las puertas están en `timeline.md`.
 | W2.3 | Correrlo en Linux (WSL o el server de staging): las 24/24 lecturas de `bpm-snapshot` iguales a Windows |
 | W2.4 | Puerta `perf` del worker: costo por minuto de audio, que fija `WORKER_CONCURRENCY` |
 
+**W2.1, W2.2 y W3.4 hechos el 2026-10-26** en la rama `feat/site-analysis`, con estos
+cambios sobre lo planeado (el detalle está en `docs/site.md` y `timeline.md`):
+- El worker no toma la cola de Postgres: es cliente HTTP de rutas internas de la API
+  (`/api/internal`, con `WORKER_TOKEN`). Así no lleva driver de base ni dependencias
+  nuevas, y la API es dueña de todo el estado. El `SKIP LOCKED` vive en la API.
+- No se partió de `overtone_server.py`/`overtone_runs.py` (W2.0 sigue sin mergear): el
+  worker llama a `python/overtone.py` directo, con los parámetros por defecto escritos
+  en `worker/timing_result.py`, porque la shell de escritorio se va del repo.
+- Un worker analiza de a un trabajo; `WORKER_CONCURRENCY` no existe. Más análisis a la
+  vez son más servers worker.
+- `timing-result v1` lo emite v3; `overtone-cli` todavía no. W2.3 y W2.4 siguen abiertos.
+
 ### Fase W3 — El sitio, mínimo usable (MVP)
 
 | # | Tarea |

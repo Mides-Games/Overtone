@@ -76,8 +76,11 @@ import overtone as ta  # noqa: E402
 HERE = Path(__file__).resolve().parent
 MANIFEST = local_data.CORPUS_B
 CACHE_DIR = HERE / ".cache" / "corpus_b"
-SONGS = Path(r"C:\osu!\Songs")
-ENGINES = ("python", "rust")
+#: The osu! Songs folder; OVERTONE_SONGS names another (a server's).
+SONGS = Path(os.environ.get("OVERTONE_SONGS") or r"C:\osu!\Songs")
+#: "app" is what the app runs (overtone_web.run_analysis): the Rust engine,
+#: and v3 wherever Rust refuses or fails.
+ENGINES = ("python", "rust", "app")
 
 #: The plan's bars (5, 10 and 50 ms) and a tighter one.
 TOLERANCES_MS = (2.0, 5.0, 10.0, 50.0)
@@ -371,7 +374,7 @@ def engine_fingerprint(engine: str, cli: Path | None) -> str:
     """The code that produced an analysis: overtone.py writes the red lines
     for both engines; the Rust engine adds its bridge and its binary."""
     files = [ROOT / "python" / "overtone.py"]
-    if engine == "rust":
+    if engine in ("rust", "app"):
         files += [ROOT / "python" / "overtone_rust.py", cli]
     digest = hashlib.sha1(f"corpus_b cache {CACHE_FORMAT}".encode())
     for path in files:
@@ -428,10 +431,20 @@ def analyse(audio: str, engine: str, cli: str | None) -> dict:
     started = time.perf_counter()
     result: dict = {"lines": [], "path": None, "message": None}
     try:
-        if engine == "rust":
+        analysis = None
+        if engine in ("rust", "app"):
             import overtone_rust
-            analysis = overtone_rust.analyze(audio, cli=Path(cli))
-        else:
+            try:
+                analysis = overtone_rust.analyze(audio, cli=Path(cli))
+                result["backend"] = "rust"
+            except Exception as exc:  # noqa: BLE001 - the app's fallback, below
+                if engine != "app":
+                    raise
+                # As the app does (overtone_web.run_analysis): v3 takes over
+                # where the Rust engine refuses or fails, and says why.
+                result["backend"] = "python"
+                result["rust_said"] = f"{type(exc).__name__}: {exc}"[:200]
+        if analysis is None:
             analysis = ta.analyze_audio(audio)
         result.update(lines=exported_lines(analysis), path=str(analysis.engine),
                       global_bpm=float(analysis.global_bpm),
@@ -615,7 +628,7 @@ def main(argv: list[str] | None = None) -> int:
         tracks = [t for t in tracks if t["id"] in args.only]
 
     cli = None
-    if args.engine == "rust":
+    if args.engine in ("rust", "app"):
         import overtone_rust
         cli = Path(args.cli) if args.cli else overtone_rust.find_cli()
         if cli is None or not cli.is_file():

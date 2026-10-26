@@ -15,7 +15,9 @@ import sys
 import tempfile
 import threading
 import time
+import types
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -392,6 +394,7 @@ _OSU_TEXT = "\n".join([
 class ExportTests(_IsolatedConfig):
     def test_osu_text_matches_the_engine_verbatim(self) -> None:
         api = _api_with_points()
+        api.set_settings({"clean_bpm": False})      # the engine's own BPMs
         reply = api.osu_text()
         self.assertTrue(reply["ok"])
         # With the map lead on (the default) the detected lines come out
@@ -400,6 +403,19 @@ class ExportTests(_IsolatedConfig):
         api.set_settings({"map_lead": False})
         self.assertEqual(api.osu_text()["text"], ta.osu_timing_text(api._analysis))
         self.assertEqual(web.Api().osu_text()["key"], "first")
+
+    def test_osu_exports_carry_clean_bpms_and_the_csv_the_exact_ones(self) -> None:
+        api = _api_with_points()
+        api._analysis.points = [ta.TimingPoint(1000.0, 232.189, 0.9, 0, 4, True)]
+        api._analysis.duration = 181.0
+        text = api.osu_text()["text"]
+        bpms = {round(60000.0 / float(line.split(",")[1]), 4)
+                for line in text.splitlines() if line and not line.startswith("//")}
+        self.assertEqual(bpms, {232.2})
+        self.assertEqual(api._analysis.points[0].bpm, 232.189)     # the analysis is untouched
+        api.set_settings({"clean_bpm": False})
+        self.assertNotIn("232.2", str(api.osu_text()["text"]))
+        self.assertEqual(api.set_settings({"clean_bpm": "yes"})["key"], "bad_values")
 
     def test_save_csv_writes_the_same_rows_as_the_engine(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1893,7 +1909,7 @@ class SettingsBridgeTests(_IsolatedConfig):
         json.dumps(reply)
         self.assertEqual(reply["settings"], {
             "output_folder": "", "skin_folder": "", "export_ask": True, "map_lead": True,
-            "offset_decimals": 0,
+            "clean_bpm": True, "offset_decimals": 0,
             "click_subdivision": 1, "click_accent": True, "ui_scale": 1.0,
             "reduced_motion": False, "theme": "dark",
             "shortcuts": web.SHORTCUT_DEFAULTS})
@@ -5317,6 +5333,362 @@ class OszImportTests(_IsolatedConfig):
             self.assertTrue(run)
             target, run = web.launch_target(api, "")
             self.assertEqual((target, run), ("", False))
+
+
+class WebHostTests(_IsolatedConfig):
+    """The app's page in a browser: the same Api, its bridge, events and
+    dialogs carried over HTTP by overtone_webhost and overtone_server."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        import overtone_webhost
+        self.wh = overtone_webhost
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.tmp = Path(scratch.name)
+        self.songs = self.tmp / "Songs"
+        (self.songs / "1 Band - Song").mkdir(parents=True)
+        (self.songs / "1 Band - Song" / "audio.ogg").write_bytes(b"OggS" + bytes(64))
+        self.outside = self.tmp / "private.txt"
+        self.outside.write_text("not shared", encoding="utf-8")
+        self.host = overtone_webhost.WebHost({"songs": self.songs}, self.tmp / "web", api=web.Api())
+
+    def test_the_bridge_reaches_public_api_methods_only(self) -> None:
+        self.assertIn("analyze", self.host.methods)
+        self.assertNotIn("_emit", self.host.methods)
+        self.assertEqual(self.host.call("library_state", [])["songs"], str(self.songs))
+        with self.assertRaises(LookupError):
+            self.host.call("_emit", ["onResult", {}])
+        with self.assertRaises(LookupError):
+            self.host.call("no_such_method", [])
+        with self.assertRaises(TypeError):
+            self.host.call("library_state", {"not": "a list"})
+
+    def test_the_bridge_refuses_files_outside_the_shared_folders(self) -> None:
+        upload = self.host.uploads / "python.osz"
+        with zipfile.ZipFile(upload, "w") as osz:
+            osz.writestr("map.osu", "osu file format v14\n")
+            osz.writestr("argparse.py", "raise SystemExit('ran')\n")
+        code = self.tmp / "code"
+        code.mkdir()
+        # Unpacking into the server's own code is the attack the check is for.
+        with self.assertRaises(ValueError):
+            self.host.call("import_osz", [str(upload), str(code)])
+        self.assertEqual(list(code.iterdir()), [])
+        for args in (["import_osz", [str(upload), "python"]],          # relative: the server's cwd
+                     ["import_osz", [str(upload), str(self.songs / ".." / "code")]],
+                     ["mapset_check", [str(self.outside.parent)]],
+                     ["inject_preview", [str(self.outside)]],
+                     ["set_settings", [{"output_folder": str(code)}]],
+                     ["swap_preview", [str(self.songs / "1 Band - Song"), "../private.txt", "b.ogg"]]):
+            with self.subTest(method=args[0]), self.assertRaises(ValueError):
+                self.host.check_paths(*args)
+
+    def test_the_bridge_lets_paths_under_the_shared_folders_and_plain_values_through(self) -> None:
+        song = self.songs / "1 Band - Song"
+        for method, args in (("mapset_check", [str(song)]),
+                             ("import_osz", [str(self.host.uploads / "a.osz"), str(self.songs)]),
+                             ("swap_preview", [str(song), "audio.ogg", "other.ogg"]),
+                             ("analyze_bytes", ["dropped song.mp3", "", {}]),
+                             ("compile_match_loudness", ["median"]),
+                             ("set_settings", [{"output_folder": str(self.host.exports),
+                                                "skin_folder": ""}])):
+            with self.subTest(method=method):
+                self.host.check_paths(method, args)
+
+    def test_the_page_gets_the_servers_songs_folder_unless_one_here_was_chosen(self) -> None:
+        self.assertEqual(self.host.api._cfg["songs_folder"], str(self.songs))
+        api = web.Api()
+        api._cfg["songs_folder"] = str(self.tmp)
+        self.wh.WebHost({"songs": self.songs}, self.tmp / "web", api=api)
+        self.assertEqual(api._cfg["songs_folder"], str(self.tmp))
+
+    def test_what_python_pushes_reaches_the_page_in_order_and_on_reconnect(self) -> None:
+        self.host.api._emit("onProgress", {"message": "one"})
+        self.host.api._emit("onResult", {"bpm": 120})
+        events = self.host.hub.since(0, 0.1)
+        self.assertEqual([e["kind"] for _, e in events], ["js", "js"])
+        self.assertIn('window.overtone.onResult({"bpm": 120})', events[1][1]["code"])
+        # A page that saw the first event gets only the second.
+        self.assertEqual([n for n, _ in self.host.hub.since(events[0][0], 0.1)], [events[1][0]])
+        self.assertEqual(self.host.hub.since(events[1][0], 0.05), [])
+
+    def _dialog(self):
+        for _ in range(250):
+            if self.host.window.pending():
+                return self.host.window.pending()[0]
+            time.sleep(0.02)
+        self.fail("no dialog was asked for")
+
+    def test_a_file_dialog_waits_for_the_page_and_returns_its_answer(self) -> None:
+        answers = []
+        worker = threading.Thread(target=lambda: answers.append(self.host.api.pick_folder()))
+        worker.start()
+        number = self._dialog()
+        asked = [e for _, e in self.host.hub.since(0, 0.05) if e["kind"] == "dialog"]
+        self.assertEqual((asked[-1]["id"], asked[-1]["type"]), (number, "folder"))
+        self.assertTrue(self.host.window.answer(number, [str(self.songs)]))
+        worker.join(5)
+        self.assertEqual(answers, [str(self.songs)])
+        self.assertFalse(self.host.window.answer(number, []))   # nobody waits now
+        # Cancelled: None, as a desktop dialog closed without a choice.
+        worker = threading.Thread(target=lambda: answers.append(self.host.api.pick_folder()))
+        worker.start()
+        self.host.window.answer(self._dialog(), None)
+        worker.join(5)
+        self.assertIsNone(answers[-1])
+
+    def test_a_server_without_pywebview_still_names_its_dialogs(self) -> None:
+        # None in sys.modules makes ``import webview`` fail, as on a server.
+        with mock.patch.dict(sys.modules, {"webview": None}):
+            self.wh.ensure_webview_names()
+            import webview as stand_in
+            self.assertFalse(hasattr(stand_in, "create_window"))
+            # Python's own questions get a plain no: unittest and inspect
+            # ask every module for __file__, and the first server suite
+            # died on a stand-in that raised anything else.
+            self.assertFalse(hasattr(stand_in, "__file__"))
+            import inspect
+            inspect.getmodule(stand_in)
+            with self.assertRaisesRegex(AttributeError, "pywebview is not installed"):
+                stand_in.start
+            self.assertEqual([self.wh.dialog_kind(v) for v in (stand_in.OPEN_DIALOG,
+                              stand_in.FOLDER_DIALOG, stand_in.SAVE_DIALOG)],
+                             ["open", "folder", "save"])
+
+    def test_a_save_lands_in_exports_unasked_and_never_over_an_earlier_one(self) -> None:
+        with mock.patch.object(self.wh, "dialog_kind", return_value="save"):
+            first = self.host.window.create_file_dialog(
+                30, directory=r"C:\Users\someone\Desktop", save_filename="Song.osz")
+            Path(first[0]).write_bytes(b"PK")
+            again = self.host.window.create_file_dialog(30, save_filename="Song.osz")
+            in_song = self.host.window.create_file_dialog(
+                30, directory=str(self.host.exports / "1 Band - Song"), save_filename="a/../map.osu")
+        self.assertEqual(first, (str(self.host.exports / "Song.osz"),))   # the desktop folder is not the server's
+        self.assertEqual(again, (str(self.host.exports / "Song (2).osz"),))
+        self.assertEqual(in_song, (str(self.host.exports / "1 Band - Song" / "map.osu"),))
+        self.assertEqual([e for _, e in self.host.hub.since(0, 0.05) if e["kind"] == "dialog"], [])
+        # The app's exports default to the same folder.
+        self.assertEqual(self.host.api._cfg["output_folder"], str(self.host.exports))
+
+    def test_an_exported_file_is_offered_for_download_and_nothing_else_is(self) -> None:
+        osz = self.host.exports / "Song.osz"
+        osz.write_bytes(b"PK" + bytes(10))
+        with mock.patch.object(type(self.host.api), "save_osz",
+                               return_value={"ok": True, "path": str(osz), "points": 1}):
+            result = self.host.call("save_osz", [])
+        self.assertEqual(result["points"], 1)
+        self.assertEqual(result["download"], {"path": os.path.realpath(osz), "name": "Song.osz",
+                                              "size": 12})
+        song = self.songs / "1 Band - Song" / "audio.ogg"
+        for path in (str(song), str(self.outside), str(self.host.exports / "missing.osz")):
+            self.assertIsNone(self.host.download_offer(path), path)
+        notes = self.host.exports / "notes.txt"
+        notes.write_text("x", encoding="utf-8")
+        self.assertIsNone(self.host.download_offer(str(notes)))   # not an export kind
+        with mock.patch.object(type(self.host.api), "save_osz",
+                               return_value={"ok": False, "path": str(osz)}):
+            self.assertNotIn("download", self.host.call("save_osz", []))
+
+    def test_only_shared_folders_can_be_read_or_written(self) -> None:
+        song = self.songs / "1 Band - Song" / "audio.ogg"
+        self.assertEqual(self.host.resolve(str(song)), Path(os.path.realpath(song)))
+        for path in (str(self.outside), str(self.songs / ".." / "private.txt"), "", "relative.txt"):
+            with self.assertRaises(ValueError):
+                self.host.resolve(path)
+        roots = self.host.browse("")
+        self.assertEqual(sorted(e["name"] for e in roots["entries"]), ["exports", "songs", "uploads"])
+        listing = self.host.browse(str(self.songs))
+        self.assertEqual([e["name"] for e in listing["entries"]], ["1 Band - Song"])
+        self.assertEqual(listing["parent"], "")   # above a root: the roots
+
+    def test_an_upload_lands_whole_under_uploads_with_a_safe_name(self) -> None:
+        import io
+        path = self.host.receive("../../evil name?.mp3", io.BytesIO(b"x" * 10), 10)
+        self.assertEqual(path.parent, self.host.uploads)
+        self.assertEqual(path.name, "evil name_.mp3")
+        self.assertEqual(path.read_bytes(), b"x" * 10)
+        grouped = self.host.receive("a.osu", io.BytesIO(b"osu"), 3, folder="My Set")
+        self.assertEqual(grouped.parent, self.host.uploads / "My Set")
+        with self.assertRaises(ValueError):
+            self.host.receive("short.mp3", io.BytesIO(b"abc"), 10)
+        self.assertEqual(sorted(p.name for p in self.host.uploads.iterdir() if p.is_file()),
+                         ["evil name_.mp3"])   # the short one left nothing behind
+        with self.assertRaises(ValueError):
+            self.host.receive("huge.mp3", io.BytesIO(b""), self.wh.MAX_UPLOAD + 1)
+
+    def test_sessions_are_signed_by_the_token_and_expire(self) -> None:
+        sessions = self.wh.Sessions("secret")
+        cookie = sessions.new()
+        self.assertTrue(sessions.valid(cookie))
+        self.assertFalse(self.wh.Sessions("another").valid(cookie))
+        self.assertFalse(sessions.valid(cookie[:-1] + ("0" if cookie[-1] != "0" else "1")))
+        self.assertFalse(sessions.valid(None))
+        expired = self.wh.Sessions("secret", ttl=-1)
+        self.assertFalse(expired.valid(expired.new()))
+
+    def test_the_library_analysis_yields_to_measurement_runs(self) -> None:
+        import overtone_server
+
+        class Job:
+            def __init__(self, running=False):
+                self.running, self.stop = running, threading.Event()
+
+            def state(self):
+                return {"running": self.running}
+
+        class Fake:
+            def __init__(self, queue):
+                self.queue, self.analysed = queue, 0
+                self.scan_job, self.analyze_job = Job(), Job()
+                self.runs = types.SimpleNamespace(state=lambda: self.queue)
+
+            def scan(self):
+                return overtone_server.HTTPStatus.CONFLICT, {}
+
+            def analyze(self):
+                self.analysed += 1
+                self.analyze_job.running = True
+
+        busy = Fake({"running": None, "queued": ["r1"]})
+        overtone_server._every_once(busy, poll=0)
+        self.assertEqual(busy.analysed, 0)
+
+        idle = Fake({"running": None, "queued": []})
+        original = overtone_server.time.sleep
+
+        def sleep(_seconds):
+            if idle.analyze_job.stop.is_set():
+                idle.analyze_job.running = False
+            idle.queue = {"running": "r2", "queued": []}
+
+        overtone_server.time.sleep = sleep
+        self.addCleanup(setattr, overtone_server.time, "sleep", original)
+        overtone_server._every_once(idle, poll=0)
+        self.assertEqual(idle.analysed, 1)
+        self.assertTrue(idle.analyze_job.stop.is_set())
+
+    def test_the_page_signs_in_and_talks_to_the_api_over_http(self) -> None:
+        import http.client
+        from urllib.parse import urlencode
+        import overtone_server
+        service = overtone_server.Service(self.songs, self.tmp / "library.sqlite3", engine="python")
+        service._web = self.host
+        server = overtone_server.serve(service, "127.0.0.1", 0, "secret", log=False)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        port = server.server_address[1]
+
+        def request(method, path, body=None, headers=None):
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+            connection.request(method, path, body=body, headers=headers or {})
+            reply = connection.getresponse()
+            data = reply.read()
+            connection.close()
+            return reply.status, dict(reply.getheaders()), data
+
+        form = {"Content-Type": "application/x-www-form-urlencoded"}
+        status, headers, _ = request("GET", "/")
+        self.assertEqual((status, headers["Location"]), (303, "/login"))
+        self.assertEqual(request("POST", "/login", "token=wrong", form)[0], 401)
+        status, headers, _ = request("POST", "/login", "token=secret", form)
+        self.assertEqual(status, 303)
+        self.assertIn("HttpOnly", headers["Set-Cookie"])
+        self.assertIn("SameSite=Strict", headers["Set-Cookie"])
+        cookie = headers["Set-Cookie"].split(";")[0]
+        status, _, page = request("GET", "/", headers={"Cookie": cookie})
+        self.assertEqual(status, 200)
+        self.assertIn(b'<script src="web.js"></script>', page)
+        self.assertEqual(request("GET", "/../python/overtone.py", headers={"Cookie": cookie})[0], 404)
+        call = json.dumps({"args": []})
+        # A cookie alone changes nothing: no cross-site form can add the header.
+        self.assertEqual(request("POST", "/api/v1/bridge/library_state", call,
+                                 {"Cookie": cookie})[0], 401)
+        status, _, data = request("POST", "/api/v1/bridge/library_state", call,
+                                  {"Cookie": cookie, "X-Overtone": "1"})
+        self.assertEqual((status, json.loads(data)["result"]["songs"]), (200, str(self.songs)))
+        self.assertEqual(request("POST", "/api/v1/bridge/_emit", call,
+                                 {"Cookie": cookie, "X-Overtone": "1"})[0], 404)
+        status, _, data = request("PUT", "/api/v1/upload?name=song.ogg", b"OggS",
+                                  {"Cookie": cookie, "X-Overtone": "1"})
+        uploaded = json.loads(data)["path"]
+        self.assertEqual((status, Path(uploaded).read_bytes()), (201, b"OggS"))
+        status, headers, data = request("GET", "/api/v1/download?" + urlencode({"path": uploaded}),
+                                        headers={"Cookie": cookie})
+        self.assertEqual((status, data), (200, b"OggS"))
+        self.assertIn("attachment", headers["Content-Disposition"])
+        self.assertEqual(request("GET", "/api/v1/download?" + urlencode({"path": str(self.outside)}),
+                                 headers={"Cookie": cookie})[0], 400)
+        # The bearer token still works for scripts.
+        self.assertEqual(request("GET", "/api/status",
+                                 headers={"Authorization": "Bearer secret"})[0], 200)
+        # Events: what the Api pushes arrives on the stream.
+        self.host.api._emit("onProgress", {"message": "hello"})
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        self.addCleanup(connection.close)
+        connection.request("GET", "/api/v1/events", headers={"Cookie": cookie})
+        reply = connection.getresponse()
+        self.assertEqual(reply.status, 200)
+        self.assertTrue(reply.getheader("Content-Type").startswith("text/event-stream"))
+        seen = b""
+        while b"hello" not in seen:
+            line = reply.fp.readline()
+            self.assertTrue(line, "the stream ended before the event")
+            seen += line
+
+
+class CleanBpmTests(unittest.TestCase):
+    """Clean BPMs in what is written for osu!: whole, half or tenth, every
+    beat within CLEAN_BPM_TOLERANCE_MS of the exact grid."""
+
+    @staticmethod
+    def _worst_ms(points, bpm: float, offset: float, end_ms: float) -> float:
+        """The largest distance from an exact-grid beat to the cleaned grid."""
+        exact = offset + np.arange(0, int((end_ms - offset) * bpm / 60000) + 1) * 60000 / bpm
+        worst = 0.0
+        for t in exact:
+            line = max((p for p in points if p.offset_ms <= t + 3), key=lambda p: p.offset_ms,
+                       default=points[0])
+            step = 60000.0 / line.bpm
+            worst = max(worst, abs(line.offset_ms + round((t - line.offset_ms) / step) * step - t))
+        return worst
+
+    def _clean(self, bpm: float, seconds: float, meter: int = 4, **kw):
+        point = ta.TimingPoint(1000.0, bpm, 0.9, 0, meter, True, **kw)
+        end = 1000.0 + seconds * 1000.0
+        return web.clean_bpm_points([point], end), end
+
+    def test_the_cleanest_bpm_that_stays_within_the_tolerance_is_taken(self) -> None:
+        for bpm, seconds, want in ((240.175, 30, 240.2), (174.02, 20, 174.0),
+                                   (150.48, 10, 150.5)):
+            points, end = self._clean(bpm, seconds)
+            self.assertEqual([p.bpm for p in points], [want], bpm)
+            self.assertLessEqual(self._worst_ms(points, bpm, 1000.0, end),
+                                 web.CLEAN_BPM_TOLERANCE_MS + 1e-6)
+
+    def test_a_long_span_keeps_the_tenth_with_red_lines_on_bars_that_resync_it(self) -> None:
+        points, end = self._clean(232.189, 180)
+        self.assertGreater(len(points), 1)
+        self.assertEqual({p.bpm for p in points}, {232.2})
+        self.assertLessEqual(self._worst_ms(points, 232.189, 1000.0, end),
+                             web.CLEAN_BPM_TOLERANCE_MS + 1e-6)
+        exact_step = 60000.0 / 232.189
+        for p in points[1:]:
+            beats = (p.offset_ms - 1000.0) / exact_step
+            self.assertAlmostEqual(beats / 4, round(beats / 4), delta=0.02)   # on a bar
+            self.assertEqual((p.meter, p.meter_known), (4, True))
+
+    def test_hand_placed_clean_and_short_lines_are_left_alone(self) -> None:
+        manual, _ = self._clean(232.189, 180, manual=True)
+        self.assertEqual([p.bpm for p in manual], [232.189])
+        clean, _ = self._clean(175.0, 120)
+        self.assertEqual([(p.offset_ms, p.bpm) for p in clean], [(1000.0, 175.0)])
+        # Drifting a whole bar's worth past the tolerance: nothing can hold it.
+        far, _ = self._clean(232.14, 180, meter=4)
+        self.assertTrue(far[0].bpm in (232.14, 232.1))
+        self.assertEqual(web._clean_candidates(199.97), [200.0])
+        self.assertEqual(web._clean_candidates(150.48), [150.0, 150.5])
 
 
 if __name__ == "__main__":

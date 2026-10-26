@@ -20,6 +20,407 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-26 · red lines read at their song's octave
+
+### Changed
+
+- `SECTION_OCTAVE_JUDGE` on: a red line near 2x or 1/2 of the tempo that holds
+  most of its song is read at the song's octave where Beat This!, over that
+  line's span, hears it there; a halved line keeps the phase nearest Beat
+  This!'s beats. Report: a song at ~155 BPM with sections at 290-310.
+
+### Measured
+
+- Server, app engine, ranked and loved maps, jobs 1 (`section-octave` vs the
+  base at 45b7cab): bands-variable held out tempo ok 57.7 -> 59.9 %, octave x1
+  80.1 -> 82.4 %; dev unchanged (46.7 %, 83.5 %, beat F10 69.8 -> 69.9 %).
+  anime-single held out unchanged (81.9 %, 94.3 %). anime-single dev not
+  measured: the run was killed twice mid-way, likely memory.
+
+
+## Unreleased — 2026-10-26 · local-tempo octave experiments, off by default
+
+### Changed
+
+- The local-tempo octave work, ported to the stable branch behind three
+  flags, all off (v3 reads as it did): LOCAL_OCTAVE_FOLD doubles a local
+  tempo below MAP_OCTAVE_RANGE; LOCAL_OCTAVE_HALVE reads one at 2x or 4x of
+  the reading it replaced back at that octave, keeping the beats on that
+  reading's (_thin_local); LOCAL_OCTAVE_JUDGE halves only where Beat This!
+  hears the slower pulse (_beat_this_tempo, its own session, so the judge
+  works where the vote is off, and asked only when a halving is in doubt).
+- Server runs take `experiment` (local-fold, local-fold-halve,
+  local-fold-judge): the flags set in the run's own process, caches of its
+  own. An engine change is measured on the server before it is on.
+
+### Rejected / tried and dropped
+
+- In-between beat energy as the octave judge: on 24 songs whose local
+  tempo doubled the tracker's, the slow ones read twice and the really fast
+  ones overlapped at 0.6-1.0 (between/kept onset strength); the best cut
+  saved two and broke one.
+
+### Measured
+
+- Server stages, app engine, ranked maps, 2026-10-26 (octave x1, dev /
+  held out): anime-single base 91.7 / 92.4 %, local-fold 91.7 / 92.4,
+  local-fold-halve 92.8 / 94.3, local-fold-judge 92.8 / 94.3;
+  bands-variable base 81.1 / 79.4 %, local-fold 81.1 / 79.4,
+  local-fold-halve 80.0 / 80.1 (dev maps at x0.5 32 -> 54),
+  local-fold-judge 83.5 / 80.1 (x0.5 stays 32, x2 81 -> 68). Tempo ok
+  unchanged everywhere; beat F at 10 ms -0.1 to +0.2. The judge is on by
+  default from this entry; doubling alone changed nothing.
+
+## Unreleased — 2026-10-26 · the suite and the gates as a server runs them
+
+### Fixed
+
+- A read-only .osu was rewritten on Linux: `_atomic_write_bytes` renames a
+  finished temp file over the map, and a rename replaces a read-only file
+  wherever its folder is writable. It now refuses a file it may not write,
+  as Windows always did (robustness gate, first run on the owner's server).
+- On a machine without pywebview, every Api method that names a dialog
+  failed to import it (8 web tests on the server). overtone_web now takes
+  the dialog names from the web host's stand-in there; the desktop window
+  still needs the real package and says so.
+
+### Changed
+
+- Server gates leave out sbom and notices: they check the Windows build's
+  venv and read the crates through cargo, where the installer is built.
+- The updater pulls Git LFS files when git-lfs is installed: Beat This!'s
+  model is one, and a clone without it holds a pointer (two Beat This!
+  tests and perf's beatthis stage on the server).
+- `/api/v1/runs/<id>/log` and `bench/remote.py log` give a run's whole log.
+
+### Measured
+
+- First server suite (34f449f, 2026-10-26): 1062 run, 11 failed: 8 the
+  missing pywebview, 2 the LFS pointer, 1 to read. First server gates:
+  15 of 19 pass, every accuracy gate among them (benchmark, bpm-snapshot,
+  golden, reference, real-audio); robustness (the read-only map above),
+  perf (the missing model), sbom and notices (the release build's) failed.
+- After these fixes, on the server (6f4030d, 2026-10-26): suite engine
+  748/748 and web 314/314, each in its own process; gates 17/17,
+  robustness and perf among them. In one process the suite went past the
+  3 GB cap: the OOM killer took the whole service three times (systemd's
+  OOMPolicy=stop, then the largest process, the server). The server unit
+  now has OOMPolicy=continue, each run volunteers to be killed first
+  (oom_score_adj 800), and "all" runs the two modules one after the other.
+
+## Unreleased — 2026-10-26 · a push updates the server
+
+### Changed
+
+- `.github/workflows/deploy.yml`: a push to `feature/library-api` signs in
+  to the owner's server as `overtone-deploy` and starts
+  `overtone-update.service`; that user's key runs that one forced command
+  and nothing else (no shell, no forwarding, no terminal, key only), set up
+  once by `deploy/setup-deploy-user.sh`. root keeps its key and password.
+- `deploy/overtone-update.sh` does the update: fetch, fast-forward only,
+  rebuild overtone-cli when the Rust code changed, restart. A run going or
+  queued postpones it; a checkout left on another branch is left alone. Its
+  timer runs it every five minutes as the fallback.
+- CLAUDE.md / AGENTS.md, CI: GitHub Actions deploys and only deploys (the
+  owner's decision); no check runs there, and the deploy key is the only
+  secret.
+
+### Rejected / tried and dropped
+
+- Actions signing in as root: the server asks root for a key and a
+  password, and neither belongs in a workflow's secrets.
+- A webhook into Overtone: the server listens on 127.0.0.1 only, behind an
+  SSH tunnel, and stays that way.
+
+### Measured
+
+- Not measured: the first deploy on the server is pending its setup.
+
+## Unreleased — 2026-10-26 · gates and the suite on the server
+
+### Changed
+
+- Server runs take `gates` (every Python gate of CLAUDE.md, in its order,
+  or the ones named) and `suite` (all of it, the engine's or the web
+  shell's). Each runs as a person runs it from the repository root, its
+  own process, the vote as installed; the report says which passed and,
+  for the suite, which tests failed. From the Tests page and from
+  `bench/remote.py gates|suite`. Asked for: the PC lagged under them.
+- The bench reads the Songs folder from `OVERTONE_SONGS` when set (the
+  real-audio gate on a server); runs set it to the server's.
+
+### Fixed
+
+- `RunQueue` read every run's `beat_vote`, which gates and suite runs do
+  not have.
+
+### Measured
+
+- Not measured: the suite and the gates on the server are this entry's
+  first job.
+
+## Unreleased — 2026-10-26 · measuring what the app runs
+
+### Changed
+
+- `corpus_b.py`, `single_bpm.py`, `stages.py` and server runs take an
+  `app` engine: the Rust engine, and v3 wherever Rust refuses or fails,
+  as `overtone_web.run_analysis` does. Each answer records which engine
+  gave it and what Rust said (`backend`, `rust_said`).
+
+### Measured
+
+- Why: the first server run (anime-single, ranked, Rust alone, 2026-10-26)
+  counted 493 of 4,119 maps (88 songs) as refused, every one
+  `no_coherent_pulse` (best share 0.25-0.55). The app answers those with
+  v3: on 30 of the 88 songs, 12 at the map's tempo (within 0.05 BPM), 8 at
+  the right tempo an octave off (x2: 274 for 137, 240 for 120), 10 wrong
+  or refused. Rust alone measured a refusal the app does not make.
+- Checked: Corpus B with `--engine app`, calm-down-juliet (Rust refuses)
+  read by v3's tracker, 71 % of its red lines within 5 ms; martyr by Rust.
+
+## Unreleased — 2026-10-26 · clean BPMs in what is written for osu!
+
+### Changed
+
+- What the app writes for osu! (copy, .osz, inject) carries clean BPMs, on
+  by default (Settings, "Write clean BPMs"): each detected red line takes
+  the cleanest BPM -- whole, then half, then tenth -- whose grid stays
+  within 2 ms of the exact one over its whole span, its offset moved by
+  half the drift; where none does, the tenth is kept and the span is cut
+  into blocks of whole bars, each re-synced by a red line at that BPM.
+  Ranked maps read better at 232.2 than at 232.189 (asked for). The
+  analysis, the click track, the CSV and lines placed by hand keep their
+  exact BPM; the engine is untouched (`overtone_web.clean_bpm_points`).
+- The bound is the difference from the dropped attempt below: that one
+  moved red lines to the tenth with no limit on the drift.
+
+### Measured
+
+- Corpus B, Rust engine, the same cached analyses scored twice by
+  corpus_b's own scoring with the map lead (540 scored lines of the tracks
+  the engine answered), 2026-10-26: within 2 ms 4.6 -> 4.6 %, 5 ms 11.5 ->
+  12.2 %, 10 ms 24.8 -> 25.4 %, 50 ms 46.1 -> 46.1 %. Red lines written
+  40 -> 51 (re-syncs: freedom-dive 333.329 -> 333.3 with 2, yui-again
+  140.084 -> 140.1 with 7, torikago 113.95 -> 113.9 with 2); every written
+  BPM on a tenth or rounder (51/51).
+
+## Unreleased — 2026-10-25 · BPMs shown to the tenth
+
+### Changed
+
+- The results show BPMs to the tenth, whole when the tenth is .0 (240.175
+  -> 240.2, 222.96 -> 223, 192.000 -> 192): the song's BPM, the timing
+  points table, both detail panels, the red-line labels on the tempo map
+  and the analysis toasts. Hovering shows the exact value. Exports, the
+  edit field and the diagnostic tables (reference card, evidence,
+  map comparisons) keep the exact BPM: rounding the exported red lines
+  lost Corpus B points (the entry below), so it stays on the screen.
+
+### Measured
+
+- Checked in the page on this machine (2026-10-25): "If You Can't Hang"
+  shows 192 with 192.000 BPM on hover; the toast reads the same in English
+  and Spanish; no app.js error in the console. test_overtone_web 310/310.
+
+## Unreleased — 2026-10-25 · BPMs rounded to the tenth: tried and dropped
+
+### Rejected / tried and dropped
+
+- Asked for: exported red lines at the nearest tenth of a BPM (240.175 ->
+  240.2, 222.96 -> 223), as mappers type them. Tried as a second candidate
+  after the whole BPM in `_snap_whole_bpm` and `_snap_whole_lines`, behind
+  the same audio test (inliers kept >= 95 %, rms <= x1.2 + 0.5 ms), so a
+  song's own fractional tempo (decimal-128.37) stays put.
+- Every gate stayed green (benchmark 24/24, median 0.0000 BPM / 0.14 ms;
+  bpm-snapshot 24/24 unchanged; golden 27/27; real-audio 6/6; perf), but
+  Corpus B, Rust engine, the same build with and without it (2026-10-25):
+  within 5 ms 5.4 -> 4.3 % of 540 scored lines, within 10 ms 11.6 -> 9.5 %,
+  within 2 ms per track 5.1 -> 5.9 %, BPM within 0.05 unchanged (71/540).
+  The loss is yui-again (live drift, 262 lines): within 10 ms 39 -> 29 %.
+  torikago gained (within 2 ms 0 -> 17 %).
+- Tenths on the sections only, whole BPMs only on the finished lines (drift
+  following's included): the same 4.3 / 9.5 %, the same yui-again loss. The
+  section's tenth itself is off the song's tempo and the drift lines are
+  built on it.
+- Dropped: a change that moves Corpus B down is a regression. A rounded BPM
+  for reading (the app's display, the export untouched) remains open; it
+  needs no engine change.
+
+## Unreleased — 2026-10-25 · exports from the web page land on the person's computer
+
+### Changed
+
+- In the browser, an export (.osz package, CSV, click track) no longer asks
+  where to save it on the server: it lands under exports, under a free name
+  (`Song (2).osz`), and the page offers it for download to the computer it
+  runs on -- through the browser's own save dialog where there is one
+  (Chrome, Edge), else as an ordinary download. The notice follows the
+  page's language.
+- The bridge marks such answers (`download`): only files under exports, of
+  an export kind, that exist. On a server the app's exports folder defaults
+  to exports.
+
+### Measured
+
+- Checked by hand on this machine (2026-10-25): an analysed song's "Save
+  .osz" wrote exports/audio.osz with no dialog, the page offered it, and
+  the download endpoint returned all 1,129,566 bytes, a valid zip.
+
+## Unreleased — 2026-10-25 · stages scored on ranked and loved maps only
+
+### Changed
+
+- `bench/stages.py --ranked-db <osu!.db>` keeps only the maps the local
+  osu!.db lists as ranked, approved or loved (read by
+  `mapper_agreement.parse_osu_db`, matched by song folder and file name,
+  case ignored), counts the rest in one skipped line, and keeps its own
+  report and baseline (`<stage>-<engine>-ranked.json`), since the two
+  answer different questions. Server runs use it by default whenever an
+  osu!.db sits beside the Songs folder (`--osu-db` to name another).
+
+### Fixed
+
+- The stages took every map that matched a stage's condition as truth,
+  graveyard timings included: a map whose own red lines are wrong counted
+  as an engine failure.
+
+### Measured
+
+- `bench/stages.py --list` over this machine's index (4,879 sets) and its
+  osu!.db (v20260924, 19,574 ranked, approved or loved maps), 2026-10-25:
+  anime-single 832 -> 749 songs (4,611 -> 4,119 maps), anime-variable
+  491 -> 433 (2,599 -> 2,278), bands-variable 339 -> 167 (1,540 -> 887).
+  Half the bands stage was unranked. How the engine scores on the ranked
+  part: not measured yet (the server's first full runs).
+
+## Unreleased — 2026-10-25 · measurement runs on the server
+
+### Changed
+
+- `overtone_runs.py`: the server runs `bench/stages.py` and
+  `bench/single_bpm.py` over the Songs folder it holds, one run at a time,
+  each in its own process, and keeps each in a folder (what was asked, the
+  commit that answered, the log, the tool's own JSON report). A run the
+  server died under is marked interrupted on the next start.
+- `/api/v1/runs` queues, lists, shows, stops and serves them; the web page
+  has a Tests page (`app/runs.html`); `bench/remote.py` drives them from a
+  PC through the tunnel.
+- Nothing in the engine or the bench changed: a run calls the tool's own
+  `main` after turning the Beat This! vote off when asked and pointing the
+  caches at one tree per vote setting (the tools' cache keys name the
+  engine's code, not the vote). Parallel analyses fork from that process
+  and keep both; on Windows, which cannot fork, a vote-free run analyses
+  one song at a time.
+
+### Fixed
+
+- A request answered before its body was read (a 401, a 404) could reach
+  the client as an aborted connection on Windows: the socket closed with
+  unread bytes and reset. Small unread bodies are now drained first.
+
+### Hardening
+
+- A run request is translated into the tool's arguments field by field
+  (tool, stage, engine, split, jobs 1-8, counts, two flags, baseline); it
+  can never name a path or a flag of its own. Run ids are matched against
+  their pattern before any file is opened.
+
+### Measured
+
+- On this machine, through `bench/remote.py` against the local server and
+  the real Songs folder (2026-10-25): anime-single, dev part, first 5
+  songs, Rust engine without the vote: 30 maps, 0.6-1.4 s a song, 33 s
+  for the run; tempo ok 100.0 %, joint 5 ms 0.0 %, conv. 10 ms 73.3 %,
+  signed error +35.8 ms. Five songs: a smoke test of the pipeline, not a
+  reading of the engine.
+
+## Unreleased — 2026-10-25 · the app as a web page
+
+### Changed
+
+- `overtone_server.py` serves `app/` at `/`: the same page as the desktop
+  window, signed in at `/login` with the server's token, its analyses
+  running on the server. `app/web.js` carries the pywebview bridge over HTTP
+  (`POST /api/v1/bridge/<method>`) when the page comes from http(s), and
+  does nothing when the desktop window loads it from disk.
+- `overtone_webhost.py`: the Api's one push into the page (`evaluate_js`)
+  becomes server-sent events, replayed by `Last-Event-ID` after a reconnect;
+  the six native file dialogs become a dialog the page draws -- upload from
+  the browser, or pick what the server holds -- while the Api thread waits
+  for its answer, so no Api method changed.
+- On a server, the page's Songs folder is the server's.
+- Rule 6 (CLAUDE.md, AGENTS.md) reads "offline by default": a server is
+  opt-in, the user's own, and gets only what the work needs.
+
+### Hardening
+
+- The browser reaches files only under Songs, `uploads` and `exports`
+  (real paths, so `..` and links cannot leave them); uploads are written
+  under a cleaned name, atomically, up to 1 GiB.
+- Sessions are HttpOnly, SameSite=Strict cookies signed with a key drawn
+  from the token (Secure behind an HTTPS proxy); a cookie alone changes
+  nothing without the page's `X-Overtone` header; a wrong token at
+  `/login` costs a second. The bridge reaches public Api methods only.
+
+### Measured
+
+- Through the page, on this machine (2026-10-25, the server on 127.0.0.1):
+  "Shiggy Jr - oyasumi" opened from the server's Songs through the web
+  dialog, analysed to 200.00 BPM on the precision grid with live progress;
+  a scan of the 4,882-folder Songs folder reported its progress live.
+  Request latency and throughput: not measured.
+
+### Rejected / tried and dropped
+
+- In-memory sessions: every server restart signed the page out.
+- Reading `webview.OPEN_DIALOG` and friends to name a dialog: pywebview 6
+  warns on every read; `FileDialog` is read when present, and a stand-in
+  module supplies the names on a server without pywebview.
+
+## Unreleased — 2026-10-25 · the library API and its BPM cache
+
+### Changed
+
+- `python/overtone_server.py`: the library index over HTTP (standard
+  library only, JSON, a bearer token on every request, 127.0.0.1 by
+  default) for a machine that holds the Songs folder, such as a VPS.
+  Scans and analyses run as background jobs, one of each at a time;
+  `--every` repeats scan-then-analyse. Setup in `docs/server.md`.
+- The library index gains its BPM cache (schema v3, table `analysis`,
+  `Library.analyze`): one row per audio file a beatmap plays, kept while
+  the file's size and mtime and the engine's code are unchanged, so a rerun
+  reads only what is new. The fingerprint is `bench/corpus_b.py`'s (overtone.py,
+  plus the bridge and the binary for Rust) and also names whether the
+  Beat This! vote ran, since the vote moves red lines.
+- `--no-beat-vote` turns the vote off for the server's process.
+
+### Hardening
+
+- A refusal is a verdict (`refused`, the engine's reason, no BPM), not a
+  guess; an unreadable file is `error`, a missing one `no_audio`.
+- The token is compared in constant time, generated once into the data
+  folder with mode 0600 when none is given; request bodies are capped at
+  64 KiB and must be a JSON object.
+
+### Measured
+
+- One 90 s fixture (`breakdown-175.wav`), this machine, 2026-10-25, peak
+  working set: `overtone-cli` alone 56 MB, 0.43 s; the Rust path as the app
+  runs it (bridge, octave and whole-BPM conventions, Beat This! vote)
+  1.46 GB, 49.9 s; the same without the vote 101 MB, 2.3 s, same 175.000
+  BPM; v3 `analyze_audio` 1.78 GB, 42.0 s. Hence the Rust engine is the
+  server's default, two jobs at a time without the vote, one with it.
+- Whole-Songs-folder throughput: not measured (no VPS run yet).
+
+### Rejected / tried and dropped
+
+- A web framework (FastAPI/uvicorn): it would add wheels to inventory for
+  six JSON endpoints that the standard library serves.
+- Setting the server's status from the loaded ONNX session: the first load
+  took over 10 s on a busy machine and timed the endpoint out; status now
+  reads whether the runtime and the model are present, and only an
+  analysis loads it.
 ## Unreleased — 2026-10-25 · notes pinned to the song
 
 ### Changed

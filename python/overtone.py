@@ -3186,10 +3186,14 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
             analysis = _snap_whole_bpm(analysis, min_delta, persistence, min_confidence)
             if follow_drift:
                 analysis = _follow_drift(analysis)
+            before, before_beats = float(analysis.global_bpm), analysis.beats
             if beat_vote and _beat_this_session() is not None:
                 say("Checking the beats with Beat This!…")
                 analysis = _beat_this_vote(analysis, y, sr)
-            return _snap_whole_points(analysis)
+            analysis = _fold_local_to_map_octave(
+                analysis, before, before_beats, lambda: _beat_this_tempo(y, sr))
+            return _snap_whole_points(_fold_lines_to_song_octave(
+                analysis, lambda: _beat_this_judge_beats(y, sr)))
         if engine == "precision":
             raise ValueError(
                 "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
@@ -3199,8 +3203,11 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
     if force_subdivision or not prefer_map_bpm or not osu_conventions:
         return analysis
     tracked = _local_tempo_track(analysis)
-    return tracked if tracked is not None else \
-        _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
+    if tracked is None:
+        return _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
+    tracked = _fold_local_to_map_octave(tracked, float(analysis.global_bpm), analysis.beats,
+                                        lambda: _beat_this_tempo(y, sr))
+    return _fold_lines_to_song_octave(tracked, lambda: _beat_this_judge_beats(y, sr))
 
 
 def _fold_to_map_octave(analysis: Analysis, min_delta: float, persistence: int,
@@ -3599,6 +3606,201 @@ def _rescale_local(analysis: Analysis, factor: float) -> Analysis:
                    global_bpm=float(analysis.global_bpm) * ratio)
 
 
+#: A local-tempo reading's octave (the fallback tracker's _local_tempo_track,
+#: or Beat This!'s lines), three experiments measured on the owner's server
+#: before any is on by default (timeline, 2026-10-26). LOCAL_OCTAVE_FOLD
+#: doubles one below MAP_OCTAVE_RANGE (the fix/local-tempo-octave work).
+#: LOCAL_OCTAVE_HALVE also reads one at 2x or 4x of the reading it replaced
+#: back at that reading's octave: right for slow anime the tracker read at
+#: their pulse, wrong for fast bands it read at half. LOCAL_OCTAVE_JUDGE
+#: halves only where Beat This! hears the slower pulse. All off: v3 as it was.
+LOCAL_OCTAVE_FOLD = True
+LOCAL_OCTAVE_HALVE = True
+LOCAL_OCTAVE_JUDGE = True
+#: How close a local-tempo reading must sit to 2x or 4x the reading it
+#: replaced to be taken as that reading an octave or two up.
+LOCAL_OCTAVE_SLACK = 0.06
+
+
+def _fold_local_to_map_octave(analysis: Analysis, reference: float | None = None,
+                              reference_beats=None, judge=None) -> Analysis:
+    """A local-tempo analysis read at the octave osu! maps use, as
+    _fold_to_map_octave reads a grid (LOCAL_OCTAVE_FOLD; off, it is
+    returned as it is).
+
+    Below MAP_OCTAVE_RANGE it is doubled. With LOCAL_OCTAVE_HALVE, one at 2x
+    or 4x of ``reference`` (the reading it replaced, when that sat in the
+    range) is read back at that octave, keeping the beats nearest
+    ``reference_beats`` (_thin_local): Ado - unravel, read 134.9 by the
+    tracker and mapped at 135, came out at 269.9. With LOCAL_OCTAVE_JUDGE that
+    halving waits for ``judge()``, a tempo heard by Beat This!, to sit nearer
+    the slower reading; no judge or no answer, no halving."""
+    if not LOCAL_OCTAVE_FOLD or not analysis.local_tempo:
+        return analysis
+    bpm = float(analysis.global_bpm)
+    if not np.isfinite(bpm) or bpm <= 0:
+        return analysis
+    lo, hi = MAP_OCTAVE_RANGE
+    step = 1.0
+    # Doubling only on the local BPM itself: halved on that alone, the fast
+    # bands (DragonForce, ~200-280 BPM) lost their octave (S3 held out
+    # 73.7 -> 59.2 %, 2026-10-25).
+    while bpm * step < lo - 0.01:
+        step *= 2.0
+    if (step == 1.0 and LOCAL_OCTAVE_HALVE and reference is not None
+            and np.isfinite(reference) and lo - 0.01 <= reference <= hi + 0.01):
+        for up in (2.0, 4.0):
+            if abs(bpm / (reference * up) - 1.0) <= LOCAL_OCTAVE_SLACK:
+                if not LOCAL_OCTAVE_JUDGE:
+                    step = 1.0 / up
+                else:
+                    heard = judge() if judge is not None else None
+                    if (heard is not None and np.isfinite(heard) and heard > 0
+                            and abs(np.log2(heard / (bpm / up))) < abs(np.log2(heard / bpm))):
+                        step = 1.0 / up
+                break
+    if step == 1.0:
+        return analysis
+    if step < 1.0:
+        return _thin_local(analysis, step, reference_beats)
+    return _rescale_local(analysis, (float(analysis.subdivision) or 1.0) * step)
+
+
+def _thin_local(analysis: Analysis, step: float, reference_beats=None) -> Analysis:
+    """A local-tempo analysis read at 1/2 or 1/4 of its pulse, keeping the
+    beats that fall on the reference's.
+
+    Every other beat of a doubled tempo is an off-beat. Keeping the first
+    whatever it is put half the songs half a beat off the map (Astrosexy:
+    66 -> 12 % of beats within 10 ms, server stages 2026-10-26), so the kept
+    phase is the one nearest the reference reading's own beats, which were
+    at this octave, and each red line moves onto a kept beat."""
+    beats = np.asarray(analysis.beats, dtype=float)
+    every = int(round(1.0 / step))
+    phase = 0
+    reference = (np.asarray(reference_beats, dtype=float) if reference_beats is not None
+                 else np.zeros(0))
+    if beats.size >= 2 * every and reference.size >= 8:
+        reference = np.sort(reference)
+
+        def distance(kept: np.ndarray) -> float:
+            i = np.clip(np.searchsorted(reference, kept), 1, reference.size - 1)
+            return float(np.median(np.minimum(np.abs(reference[i - 1] - kept),
+                                              np.abs(reference[i] - kept))))
+
+        phase = min(range(every), key=lambda k: distance(beats[k::every]))
+    points = []
+    for point in analysis.points:
+        offset = point.offset_ms
+        if beats.size:
+            i = int(np.argmin(np.abs(beats - offset / 1000.0)))
+            j = i + (phase - i) % every
+            if abs(beats[i] * 1000.0 - offset) <= 0.25 * 60000.0 / point.bpm and j < beats.size:
+                offset = float(beats[j] * 1000.0)
+        points.append(replace(point, offset_ms=offset, bpm=point.bpm * step))
+    factor = (float(analysis.subdivision) or 1.0) * step
+    return replace(analysis, points=points, beats=beats[phase::every], subdivision=factor,
+                   global_bpm=float(analysis.global_bpm) * step)
+
+
+def _beat_this_tempo(y: np.ndarray, sr: int) -> float | None:
+    """The tempo Beat This! hears (BPM, from its beats' median spacing), for
+    LOCAL_OCTAVE_JUDGE: loaded on its own, so the judge works where the vote
+    is off; None without the model, the runtime or enough beats."""
+    if not _BEAT_THIS_JUDGE:
+        _BEAT_THIS_JUDGE.append(_load_beat_this())
+    if _BEAT_THIS_JUDGE[0] is None:
+        return None
+    beats = _beat_this_beats(y, sr, session=_BEAT_THIS_JUDGE[0])
+    if beats is None or beats.size < 16:
+        return None
+    return 60.0 / float(np.median(np.diff(beats)))
+
+
+#: Red lines read an octave off the rest of their song (one section at 310
+#: in a song at 155, the owner's Flower Petals - Sunday Cruise): each line
+#: near 2x or 1/2 of the song's own tempo -- the one that holds the most of
+#: its length -- is read at the song's octave where Beat This!, over that
+#: line's span, hears that octave. On since 2026-10-26 (bands held out
+#: tempo ok 57.7 -> 59.9 %, dev unchanged).
+SECTION_OCTAVE_JUDGE = True
+
+
+def _song_tempo(points: list, duration_ms: float) -> float | None:
+    """The BPM that holds the most of the song's length, by red line span."""
+    spans: dict[float, float] = {}
+    for n, point in enumerate(points):
+        end = points[n + 1].offset_ms if n + 1 < len(points) else duration_ms
+        if point.bpm > 0 and end > point.offset_ms:
+            key = round(float(point.bpm), 1)
+            spans[key] = spans.get(key, 0.0) + (end - point.offset_ms)
+    return max(spans, key=spans.get) if spans else None
+
+
+def _fold_lines_to_song_octave(analysis: Analysis, heard) -> Analysis:
+    """Lines an octave off their song read back at its octave, when Beat This!
+    agrees (SECTION_OCTAVE_JUDGE). ``heard()`` gives Beat This!'s beats (s),
+    asked once and only when a line is off; a halved line keeps the phase
+    nearest those beats, so it is not left half a beat off the map."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not SECTION_OCTAVE_JUDGE or len(points) < 2:
+        return analysis
+    duration_ms = float(analysis.duration) * 1000.0
+    song = _song_tempo(points, duration_ms)
+    if not song:
+        return analysis
+    beats = None
+    out, changed = [], False
+    for n, point in enumerate(points):
+        end = points[n + 1].offset_ms if n + 1 < len(points) else duration_ms
+        ratio = point.bpm / song
+        factor = (0.5 if abs(ratio / 2.0 - 1.0) <= LOCAL_OCTAVE_SLACK
+                  else 2.0 if abs(ratio / 0.5 - 1.0) <= LOCAL_OCTAVE_SLACK else None)
+        if factor is None or getattr(point, "manual", False) or end <= point.offset_ms:
+            out.append(point)
+            continue
+        if beats is None:
+            found = heard()
+            beats = np.asarray(found, dtype=float) * 1000.0 if found is not None else np.zeros(0)
+        inside = beats[(beats >= point.offset_ms) & (beats <= end)]
+        if inside.size < 8:
+            out.append(point)
+            continue
+        tempo = 60000.0 / float(np.median(np.diff(inside)))
+        target = point.bpm * factor
+        if abs(np.log2(tempo / target)) >= abs(np.log2(tempo / point.bpm)):
+            out.append(point)
+            continue
+        offset = point.offset_ms
+        if factor < 1.0:
+            # Of the two beats a halved line could start on, the one whose
+            # grid sits nearest Beat This!'s.
+            period = 60000.0 / target
+
+            def distance(start: float) -> float:
+                grid = start + np.arange(int((end - start) / period) + 1) * period
+                i = np.clip(np.searchsorted(inside, grid), 1, inside.size - 1)
+                return float(np.median(np.minimum(np.abs(inside[i - 1] - grid),
+                                                  np.abs(inside[i] - grid))))
+
+            offset = min((point.offset_ms, point.offset_ms + 60000.0 / point.bpm), key=distance)
+        out.append(replace(point, bpm=target, offset_ms=offset))
+        changed = True
+    if not changed:
+        return analysis
+    return replace(analysis, points=out)
+
+
+def _beat_this_judge_beats(y: np.ndarray, sr: int):
+    """Beat This!'s beats (s) by the judge's own session (the vote's switch
+    aside); None without the model or the runtime."""
+    if not _BEAT_THIS_JUDGE:
+        _BEAT_THIS_JUDGE.append(_load_beat_this())
+    if _BEAT_THIS_JUDGE[0] is None:
+        return None
+    return _beat_this_beats(y, sr, session=_BEAT_THIS_JUDGE[0])
+
+
 #: Beat This! as an extra voter (Phase 10, 10.3; owner decision 2026-10-24).
 #: The network (assets/models/beat_this_final0.onnx, MIT, see beat_this.json)
 #: reads a log-mel spectrogram and marks each 20 ms frame as a beat or not;
@@ -3622,23 +3824,29 @@ BEAT_THIS_BAND_HZ = (30.0, 11000.0)
 BEAT_THIS_CHUNK = 1500                 # frames per network call, as Beat This! runs it
 BEAT_THIS_BORDER = 6                   # frames discarded at each chunk edge
 _BEAT_THIS_SESSION: list = []          # [session] once loaded, [None] when unavailable
+_BEAT_THIS_JUDGE: list = []            # the octave judge's own, the vote's switch aside
+
+
+def _load_beat_this():
+    """A new ONNX Runtime session on the model; None without one or the other."""
+    path = ROOT / "assets" / "models" / BEAT_THIS_MODEL
+    try:
+        import onnxruntime
+        if not path.is_file():
+            return None
+        options = onnxruntime.SessionOptions()
+        options.log_severity_level = 3
+        return onnxruntime.InferenceSession(str(path), options,
+                                            providers=["CPUExecutionProvider"])
+    except Exception:  # noqa: BLE001 -- no runtime or no model: nothing to ask
+        return None
 
 
 def _beat_this_session():
-    """The ONNX Runtime session, loaded once; None without the model or the runtime."""
+    """The vote's ONNX Runtime session, loaded once; None without the model
+    or the runtime, or where the vote is turned off."""
     if not _BEAT_THIS_SESSION:
-        session = None
-        path = ROOT / "assets" / "models" / BEAT_THIS_MODEL
-        try:
-            import onnxruntime
-            if path.is_file():
-                options = onnxruntime.SessionOptions()
-                options.log_severity_level = 3
-                session = onnxruntime.InferenceSession(str(path), options,
-                                                       providers=["CPUExecutionProvider"])
-        except Exception:  # noqa: BLE001 -- no runtime or no model: the vote is skipped
-            session = None
-        _BEAT_THIS_SESSION.append(session)
+        _BEAT_THIS_SESSION.append(_load_beat_this())
     return _BEAT_THIS_SESSION[0]
 
 
@@ -3704,9 +3912,10 @@ def _beat_this_logits(session, spect: np.ndarray) -> np.ndarray:
     return logits
 
 
-def _beat_this_beats(y: np.ndarray, sr: int) -> np.ndarray | None:
-    """Beat times (s) by Beat This!, or None when the network is unavailable."""
-    session = _beat_this_session()
+def _beat_this_beats(y: np.ndarray, sr: int, session=None) -> np.ndarray | None:
+    """Beat times (s) by Beat This!, or None when the network is unavailable;
+    ``session`` instead of the vote's."""
+    session = session if session is not None else _beat_this_session()
     if session is None or y.size == 0:
         return None
     import soxr
@@ -5266,7 +5475,14 @@ def _atomic_write_bytes(path: Path, payload: bytes) -> None:
     Injecting rewrites the user's beatmap in place. Truncating the real file
     and then failing mid-write would destroy work that may not exist anywhere
     else, so the new content is only ever swapped in once it is complete.
+
+    A file the user made read-only is refused, as Windows refuses it: on
+    Linux a rename replaces a read-only file whenever its folder is
+    writable, and a server would have rewritten such a map (robustness gate
+    on the owner's server, 2026-10-26).
     """
+    if path.exists() and not os.access(path, os.W_OK):
+        raise PermissionError(f"{path.name} is read-only; it was left as it was.")
     temp = path.with_name(path.name + ".part")
     try:
         _write_synced(temp, payload)

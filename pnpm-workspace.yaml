@@ -1,0 +1,4 @@
+# The website's packages. The engine (python/, crates/) is not a Node package
+# and is not part of this workspace.
+packages:
+  - site/*

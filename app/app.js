@@ -622,6 +622,8 @@ const I18N = {
     st_ask: "Ask where to save each export (the dialog opens in the song's folder)",
     st_lead: "Write red lines as osu! maps are timed (28 ms before the sound)",
     st_lead_hint: "Ranked maps put their red lines a little before the sound, and osu! plays them in time. Used by copy, .osz and inject; the click track and CSV stay on the sound. Lines you placed by hand never move.",
+    st_clean: "Write clean BPMs (whole, .5 or .1)",
+    st_clean_hint: "232.189 is written as 232.2 when every beat stays within 2 ms of the exact grid; on a long section a red line at the same BPM re-syncs it every few bars. Used by copy, .osz and inject; the analysis, the click track and the CSV keep the exact BPM. Lines you placed by hand never change.",
     st_decimals: "Offset precision",
     st_decimals_hint: "osu!stable reads whole milliseconds; osu!lazer keeps decimals. Used by copy, .osz and inject.",
     st_click: "Click", st_sub: "Clicks per beat",
@@ -1457,6 +1459,8 @@ const I18N = {
     st_ask: "Preguntar dónde guardar cada exportación (el diálogo abre en la carpeta de la canción)",
     st_lead: "Escribir las líneas rojas como se timean los mapas de osu! (28 ms antes del sonido)",
     st_lead_hint: "Los mapas rankeados ponen sus líneas rojas un poco antes del sonido, y osu! las reproduce a tiempo. Se usa al copiar, en el .osz y al inyectar; el click y el CSV quedan sobre el sonido. Las líneas que pusiste a mano nunca se mueven.",
+    st_clean: "Escribir BPMs limpios (enteros, .5 o .1)",
+    st_clean_hint: "232.189 se escribe como 232.2 si cada beat queda a menos de 2 ms de la grilla exacta; en una sección larga, una línea roja con el mismo BPM la vuelve a sincronizar cada pocos compases. Se usa al copiar, en el .osz y al inyectar; el análisis, el click y el CSV guardan el BPM exacto. Las líneas que pusiste a mano no cambian.",
     st_decimals: "Precisión del offset",
     st_decimals_hint: "osu!stable lee milisegundos enteros; osu!lazer guarda decimales. Se usa al copiar, en el .osz y al inyectar.",
     st_click: "Click", st_sub: "Clicks por beat",
@@ -1677,6 +1681,16 @@ const I18N = {
 const S = { lang: "en", view: "library", mapset: null, compile: null, train: null, file: null, options: null, presets: {}, result: null, timings: null, busy: false, selected: -1, locks: [], compare: null, comparePath: null, align: null, density: null, snap: null, ref: null, refFind: null, assist: null, report: null, recent: [] };
 const $ = (id) => document.getElementById(id);
 const api = () => (window.pywebview && window.pywebview.api) || null;
+
+// A BPM as the results show it: to the tenth, whole when the tenth is .0
+// (240.175 -> 240.2, 222.96 -> 223). For reading only: exports, edits and the
+// diagnostic tables keep the exact value, which a title shows on hover. Red
+// lines rounded to the tenth in the export lost Corpus B points (timeline,
+// 2026-10-25), so the rounding stays on the screen.
+function bpmShown(bpm) {
+  const v = Math.round(bpm * 10) / 10;
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
 
 function t(key, values) {
   const table = I18N[S.lang] || I18N.en;
@@ -2153,7 +2167,7 @@ async function rescale(mult) {
   showResult(reply.result);
   syncHistory(reply);
   songPulseShown(reply.pulse);
-  toast(t("rescaled", { f: reply.result.subdivision, n: reply.result.points.length, bpm: reply.result.global_bpm.toFixed(2) }));
+  toast(t("rescaled", { f: reply.result.subdivision, n: reply.result.points.length, bpm: bpmShown(reply.result.global_bpm) }));
 }
 
 window.overtone = {
@@ -2247,7 +2261,7 @@ window.overtone = {
       if (S.selected < 0) renderDetail();
     });
     projectCheck();
-    toast(t("done", { n: result.points.length, bpm: result.global_bpm.toFixed(2) }));
+    toast(t("done", { n: result.points.length, bpm: bpmShown(result.global_bpm) }));
   },
   onError(detail) { S.pendingDrop = null; setBusy(false); toast(t("error", { detail }), true); },
 };
@@ -2409,7 +2423,8 @@ function renderVerdict(r) {
 
 function renderResult(r) {
   const precise = r.engine === "precision", stable = r.stability >= 0.75;
-  $("statGlobal").textContent = r.global_bpm.toFixed(2);
+  $("statGlobal").textContent = bpmShown(r.global_bpm);
+  $("statGlobal").title = `${r.global_bpm.toFixed(3)} BPM`;
   $("statPoints").innerHTML = `${r.points.length}<small>${r.meter}</small>`;
   $("statBeats").innerHTML = `${r.beat_count}<small>${mmss(r.duration)}</small>`;
   $("statStability").innerHTML = `${Math.round(r.stability * 100)}<small>% ${t(stable ? "constant" : "variable")}</small>`;
@@ -2427,7 +2442,7 @@ function renderResult(r) {
     return `<tr data-i="${i}" class="${i === S.selected ? "sel" : ""}${locked ? " locked" : ""}">
       <td><span class="idx">${i + 1}</span></td>
       <td class="num">${p.offset_ms.toFixed(1)}</td>
-      <td class="num">${p.bpm.toFixed(3)}</td>
+      <td class="num" title="${p.bpm.toFixed(3)} BPM">${bpmShown(p.bpm)}</td>
       <td class="num">${p.beat_ms.toFixed(2)}</td>
       <td><span class="pill ${p.meter_known ? "accent" : ""}" title="${t(p.meter_known ? "meter_known" : "meter_guess")}">${p.meter}/4</span></td>
       <td><span class="conf ${cls}"><span class="bar"><b style="width:${Math.round(c * 100)}%"></b></span><span class="num">${Math.round(c * 100)}%</span></span></td>
@@ -2467,7 +2482,7 @@ function renderDetail() {
     const firstBeat = r.trace.t.length ? fmtTime(r.trace.t[0]) : "—";
     el.innerHTML = `
       <div class="detail-head"><div class="card-title">${t("d_song")}</div></div>
-      <div class="detail-big">${r.global_bpm.toFixed(2)}<small>BPM</small></div>
+      <div class="detail-big" title="${r.global_bpm.toFixed(3)} BPM">${bpmShown(r.global_bpm)}<small>BPM</small></div>
       ${kv([[t("d_duration"), mmss(r.duration)], [t("d_first"), firstBeat],
             [t("d_engine"), `${t(r.engine === "precision" ? "engine_precision" : "engine_legacy")} · ${t(r.backend === "rust" ? "backend_rust" : "backend_python")}`],
             [t("d_residual"), r.engine === "precision" ? `${r.residual_ms.toFixed(2)} ms` : "—"],
@@ -2490,7 +2505,7 @@ function renderDetail() {
       ${locked ? `<span class="pill accent">${t("locked_pill")}</span>` : ""}
       <span class="pill ${p.meter_known ? "accent" : ""}">${p.meter}/4</span>
     </div>
-    <div class="detail-big">${p.bpm.toFixed(3)}<small>BPM</small></div>
+    <div class="detail-big" title="${p.bpm.toFixed(3)} BPM">${bpmShown(p.bpm)}<small>BPM</small></div>
     ${kv([[t("d_offset"), `${p.offset_ms.toFixed(1)} ms`], [t("d_beat"), `${p.beat_ms.toFixed(3)} ms`],
           [t("d_conf"), `${c}%`],
           [t("d_span"), `${fmtTime(start)} → ${next ? fmtTime(end) : t("d_end")}`],
@@ -6553,6 +6568,7 @@ function stRender() {
   $("stFolderDefault").hidden = !s.output_folder;
   $("stAsk").checked = s.export_ask;
   $("stLead").checked = s.map_lead;
+  $("stClean").checked = s.clean_bpm;
   document.querySelectorAll("#stDecimals button").forEach((b) => b.classList.toggle("on", +b.dataset.v === s.offset_decimals));
   document.querySelectorAll("#stSub button").forEach((b) => b.classList.toggle("on", +b.dataset.v === s.click_subdivision));
   $("stAccent").checked = s.click_accent;
@@ -6625,6 +6641,7 @@ function stWire() {
   };
   $("stAsk").onchange = () => stSet({ export_ask: $("stAsk").checked });
   $("stLead").onchange = () => stSet({ map_lead: $("stLead").checked });
+  $("stClean").onchange = () => stSet({ clean_bpm: $("stClean").checked });
   document.querySelectorAll("#stDecimals button").forEach((b) => b.onclick = () => stSet({ offset_decimals: +b.dataset.v }));
   document.querySelectorAll("#stSub button").forEach((b) => b.onclick = () => stSet({ click_subdivision: +b.dataset.v }));
   $("stAccent").onchange = () => stSet({ click_accent: $("stAccent").checked });
@@ -7367,7 +7384,7 @@ function drawTrace(hoverX) {
     // A red line where the bar changes length says so: the signature's region starts here.
     const meterChange = p.meter !== (i ? r.points[i - 1].meter : 4);
     const label = dragging && dragging.i === i ? `${(s * 1000).toFixed(1)} ms`
-      : p.bpm.toFixed(p.bpm % 1 ? 2 : 0) + (meterChange ? ` · ${p.meter}/4` : "");
+      : bpmShown(p.bpm) + (meterChange ? ` · ${p.meter}/4` : "");
     const w = ctx.measureText(label).width + 16;
     const row = x > lastRight[0] + 4 ? 0 : (x > lastRight[1] + 4 ? 1 : 0);
     lastRight[row] = x + w;

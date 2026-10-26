@@ -26,6 +26,7 @@ import sqlite3
 import sys
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -36,7 +37,14 @@ import overtone_hotkey
 import overtone_library
 import overtone_rust
 import overtone_train as tr
+import overtone_webhost
 from overtone_paths import data_root
+
+# The Api names its dialogs by pywebview's constants. Where pywebview is not
+# installed -- a server, which serves the page itself -- they come from a
+# stand-in, so every Api method still answers (the web page's dialogs, the
+# suite); the desktop window still needs the real package.
+overtone_webhost.ensure_webview_names()
 
 HERE = Path(__file__).resolve().parent
 #: Source checkout: the engine lives in ``python/``, data at the repo root.
@@ -4071,10 +4079,16 @@ class Api:
 
     def _for_osu(self):
         """The analysis as it is written for osu!: with the map lead when
-        the setting is on (overtone.with_map_lead). The click track, the CSV
-        and other games' formats keep the grid where the sound is."""
-        lead = ta.MAP_LEAD_MS if self._settings()["map_lead"] else 0.0
-        return ta.with_map_lead(self._analysis, lead)
+        the setting is on (overtone.with_map_lead), and with clean BPMs when
+        that one is (clean_bpm_points). The click track, the CSV and other
+        games' formats keep the grid where the sound is, at its exact BPM."""
+        settings = self._settings()
+        lead = ta.MAP_LEAD_MS if settings["map_lead"] else 0.0
+        analysis = ta.with_map_lead(self._analysis, lead)
+        if settings["clean_bpm"] and getattr(analysis, "points", None):
+            analysis = replace(analysis, points=clean_bpm_points(
+                list(analysis.points), float(analysis.duration) * 1000.0))
+        return analysis
 
     # -- settings (Phase 20): every option in one place -------------------
     def _settings(self) -> dict:
@@ -4095,6 +4109,9 @@ class Api:
             # osu!'s convention: red lines MAP_LEAD_MS before the sound (on
             # by default; off writes the grid where the sound is).
             "map_lead": cfg.get("map_lead", True) is not False,
+            # Red lines at a whole, half or tenth BPM in what is written for
+            # osu!, never more than CLEAN_BPM_TOLERANCE_MS off the exact grid.
+            "clean_bpm": cfg.get("clean_bpm", True) is not False,
             "offset_decimals": decimals if 0 <= decimals <= MAX_OFFSET_DECIMALS else 0,
             "click_subdivision": subdivision if subdivision in ta.CLICK_SUBDIVISIONS else 1,
             "click_accent": cfg.get("click_accent", True) is not False,
@@ -4150,7 +4167,8 @@ class Api:
                     value = value.strip()
                     if value and not (Path(value).is_absolute() and Path(value).is_dir()):
                         return {"ok": False, "key": "bad_folder"}
-                elif key in ("export_ask", "click_accent", "reduced_motion", "map_lead"):
+                elif key in ("export_ask", "click_accent", "reduced_motion", "map_lead",
+                             "clean_bpm"):
                     if not isinstance(value, bool):
                         return {"ok": False, "key": "bad_values"}
                 elif key == "offset_decimals":
@@ -4909,6 +4927,72 @@ class Api:
 
     def _persist(self) -> None:
         ta.save_config(self._cfg)
+
+
+#: How far a cleaned red line's beats may sit from the exact grid's, at
+#: worst, anywhere in its span. Asked for (2026-10-25): ranked maps read
+#: better at 232.2 than at 232.189, and 2 ms is far below what a player hears.
+#: Rounding the engine's own red lines to the tenth with no such bound lost
+#: Corpus B points (timeline, 2026-10-25), so the bound is the whole idea.
+CLEAN_BPM_TOLERANCE_MS = 2.0
+
+
+def _clean_candidates(bpm: float) -> list[float]:
+    """Cleaner BPMs to try for ``bpm``, cleanest first: whole, half, tenth."""
+    found: list[float] = []
+    for value in (float(round(bpm)), round(bpm * 2) / 2, round(bpm, 1)):
+        if value > 0 and abs(value - bpm) > 1e-6 and all(abs(value - f) > 1e-9 for f in found):
+            found.append(value)
+    return found
+
+
+def clean_bpm_points(points: list, end_ms: float,
+                     tolerance_ms: float = CLEAN_BPM_TOLERANCE_MS) -> list:
+    """Red lines at clean BPMs, every beat within ``tolerance_ms`` of the
+    exact grid's.
+
+    Each detected line takes the cleanest BPM (whole, then half, then tenth)
+    whose grid stays that close over its whole span, its offset moved by half
+    the drift so the error is shared both ways. Where none does, the tenth
+    is kept and the span is cut into blocks of whole bars, each re-synced by
+    a red line of its own at that BPM, so no block drifts further than the
+    tolerance either. Lines the user placed or edited (``manual``) and lines
+    already clean are left as they are; a span too short or too drifting to
+    cut keeps its exact BPM.
+    """
+    out = []
+    for n, point in enumerate(points):
+        end = points[n + 1].offset_ms if n + 1 < len(points) else end_ms
+        if (getattr(point, "manual", False) or not np.isfinite(point.bpm) or point.bpm <= 0
+                or not np.isfinite(point.offset_ms) or end <= point.offset_ms):
+            out.append(point)
+            continue
+        period = 60000.0 / point.bpm
+        beats = (end - point.offset_ms) / period
+        candidates = _clean_candidates(point.bpm)
+        cleaned = None
+        for bpm in candidates:
+            step = 60000.0 / bpm - period
+            if abs(step) * beats / 2.0 <= tolerance_ms:
+                cleaned = [replace(point, bpm=bpm, offset_ms=point.offset_ms - beats * step / 2.0)]
+                break
+        tenth = round(point.bpm, 1)
+        if cleaned is None and tenth in candidates:
+            step = 60000.0 / tenth - period
+            meter = max(1, int(getattr(point, "meter", 4) or 4))
+            reach = int((2.0 * tolerance_ms / abs(step)) // meter) * meter
+            if reach >= meter:
+                blocks = int(np.ceil(beats / reach))
+                length = int(np.ceil(beats / blocks / meter)) * meter
+                cleaned = []
+                start = 0
+                while start < beats:
+                    span = min(length, beats - start)
+                    cleaned.append(replace(point, bpm=tenth, offset_ms=(
+                        point.offset_ms + start * period - span * step / 2.0)))
+                    start += length
+        out.extend(cleaned or [point])
+    return out
 
 
 def run_analysis(path: str, params: dict, progress=None) -> ta.Analysis:

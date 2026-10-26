@@ -20,6 +20,30 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-25 · BPMs rounded to the tenth: tried and dropped
+
+### Rejected / tried and dropped
+
+- Asked for: exported red lines at the nearest tenth of a BPM (240.175 ->
+  240.2, 222.96 -> 223), as mappers type them. Tried as a second candidate
+  after the whole BPM in `_snap_whole_bpm` and `_snap_whole_lines`, behind
+  the same audio test (inliers kept >= 95 %, rms <= x1.2 + 0.5 ms), so a
+  song's own fractional tempo (decimal-128.37) stays put.
+- Every gate stayed green (benchmark 24/24, median 0.0000 BPM / 0.14 ms;
+  bpm-snapshot 24/24 unchanged; golden 27/27; real-audio 6/6; perf), but
+  Corpus B, Rust engine, the same build with and without it (2026-10-25):
+  within 5 ms 5.4 -> 4.3 % of 540 scored lines, within 10 ms 11.6 -> 9.5 %,
+  within 2 ms per track 5.1 -> 5.9 %, BPM within 0.05 unchanged (71/540).
+  The loss is yui-again (live drift, 262 lines): within 10 ms 39 -> 29 %.
+  torikago gained (within 2 ms 0 -> 17 %).
+- Tenths on the sections only, whole BPMs only on the finished lines (drift
+  following's included): the same 4.3 / 9.5 %, the same yui-again loss. The
+  section's tenth itself is off the song's tempo and the drift lines are
+  built on it.
+- Dropped: a change that moves Corpus B down is a regression. A rounded BPM
+  for reading (the app's display, the export untouched) remains open; it
+  needs no engine change.
+
 ## Unreleased — 2026-10-25 · exports from the web page land on the person's computer
 
 ### Changed

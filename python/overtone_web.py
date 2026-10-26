@@ -496,12 +496,6 @@ class Api:
         #: The percussive stem's WAV bytes with the analysis that made them:
         #: HPSS costs seconds once, then rides the cache like structure.
         self._percussion: tuple | None = None
-        #: Held while the library index scans, so two scans never interleave.
-        self._scanning = threading.Lock()
-        #: Held while the library health check grades, so two runs never
-        #: interleave; the event stops it at the next audio file.
-        self._health = threading.Lock()
-        self._health_stop = threading.Event()
         #: The Rust engine's structure report, keyed by (path, size, mtime):
         #: the audio is read once, the bars are re-applied on every call.
         self._structure: tuple[tuple, dict] | None = None
@@ -2265,134 +2259,9 @@ class Api:
             return None
         return report if any(m["beatmaps"] for m in report["matches"]) else None
 
-    # -- library index: the Songs folder, searchable ------------------------
+    # -- the osu! Songs folder: the one chosen here, else osu!'s default -----
     def _songs_root(self, folder: str = "") -> str:
         return str(folder or self._cfg.get("songs_folder") or _default_songs())
-
-    @staticmethod
-    def _library_error(exc: Exception) -> dict:
-        """A damaged index has its own key: the page can say that a scan
-        rebuilds it, which is the way out."""
-        if overtone_library.is_damaged(exc):
-            return {"ok": False, "key": "library_damaged", "detail": str(exc)}
-        return {"ok": False, "key": "error", "detail": str(exc)}
-
-    def library_state(self) -> dict:
-        """Where the Songs folder is and what the index holds of it. When the
-        index cannot be read, the folder facts still come back with why."""
-        root = self._songs_root()
-        library = overtone_library.Library()
-        try:
-            index = library.stats()
-            current = library.covers(root)
-        except (ValueError, OSError, sqlite3.Error) as exc:
-            return {**self._library_error(exc), "songs": root,
-                    "songs_found": Path(root).is_dir(), "scanning": self._scanning.locked()}
-        return {"ok": True, "songs": root, "songs_found": Path(root).is_dir(),
-                "index": index, "current": current, "scanning": self._scanning.locked()}
-
-    def library_scan(self, folder: str = "") -> dict:
-        """Bring the index in step with the Songs folder (the remembered one,
-        else osu!'s default). Unchanged maps are skipped, so a rescan costs a
-        folder listing; the first scan reads every header, and a damaged
-        index is rebuilt. The page hears ``onLibraryProgress`` with the
-        folders in the index, their total, and how many rows of maps that
-        are gone are being removed after the last folder."""
-        root = self._songs_root(folder)
-        if not Path(root).is_dir():
-            return {"ok": False, "key": "no_songs"}
-        if not self._scanning.acquire(blocking=False):
-            return {"ok": False, "key": "scan_running"}
-        try:
-            report = overtone_library.Library().scan(
-                root, lambda done, total, removing: self._emit(
-                    "onLibraryProgress", {"done": done, "total": total, "removing": removing}))
-        except (ValueError, OSError, sqlite3.Error) as exc:
-            return self._library_error(exc)
-        finally:
-            self._scanning.release()
-        if folder:
-            self._cfg["songs_folder"] = root
-            self._persist()
-        return {"ok": True, "report": report}
-
-    def library_search(self, text: str = "") -> dict:
-        """Maps matching every word typed, grouped by set, best first."""
-        try:
-            result = overtone_library.Library().search(str(text or ""))
-        except (ValueError, OSError, sqlite3.Error) as exc:
-            return self._library_error(exc)
-        return {"ok": True, "result": result}
-
-    def library_reset(self) -> dict:
-        """Forget the index; the next scan rebuilds it from the folder."""
-        if self._scanning.locked():
-            return {"ok": False, "key": "scan_running"}
-        try:
-            overtone_library.Library().reset()
-        except OSError as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        return self.library_state()
-
-    # -- library health check: each map's red lines against its own audio ---
-    def health_state(self) -> dict:
-        """Verdict counts over the index, the engine a run would use, and
-        whether one is going. Read only."""
-        try:
-            report = overtone_library.Library().health_report(())
-        except (ValueError, OSError, sqlite3.Error) as exc:
-            return self._library_error(exc)
-        return {"ok": True, "counts": report["counts"],
-                "engine": "rust" if overtone_rust.find_cli() else "python",
-                "running": self._health.locked()}
-
-    def health_start(self) -> dict:
-        """Start grading what is new or changed, on a worker thread: progress
-        and the end arrive as ``onHealthProgress`` / ``onHealthDone``. A run is
-        resumable, so a stopped one loses nothing it already wrote."""
-        if not self._health.acquire(blocking=False):
-            return {"ok": False, "key": "health_running"}
-        self._health_stop.clear()
-        threading.Thread(target=self._health_worker, daemon=True).start()
-        return {"ok": True}
-
-    def health_stop(self) -> dict:
-        """Stop the run at the next audio file; what it graded is kept."""
-        if not self._health.locked():
-            return {"ok": False, "key": "not_running"}
-        self._health_stop.set()
-        return {"ok": True}
-
-    def _health_worker(self) -> None:
-        try:
-            run = overtone_library.Library().health(
-                progress=lambda done, total: self._emit(
-                    "onHealthProgress", {"done": done, "total": total}),
-                stop=self._health_stop)
-            self._emit("onHealthDone", {"ok": True, "run": run})
-        except overtone_rust.SidecarUnavailable:
-            self._emit("onHealthDone", {"ok": False, "key": "no_rust"})
-        except (ValueError, OSError, sqlite3.Error) as exc:
-            self._emit("onHealthDone", self._library_error(exc))
-        finally:
-            self._health_stop.clear()
-            self._health.release()
-
-    def health_report(self, verdicts=("check",), limit: int = 100) -> dict:
-        """The graded maps with these verdicts, worst first, each with its
-        evidence and whether any of its lines is solid enough to be worth a
-        look (``actionable``); ``actionable`` also counts them for the card."""
-        if isinstance(verdicts, str):              # JS passes one verdict bare
-            verdicts = (verdicts,)
-        try:
-            report = overtone_library.Library().health_report(verdicts, limit)
-        except (ValueError, OSError, sqlite3.Error) as exc:
-            return self._library_error(exc)
-        for m in report["maps"]:
-            m["actionable"] = (m["verdict"] == "check"
-                               and overtone_library.health_actionable(m.get("checks")))
-        report["actionable"] = sum(1 for m in report["maps"] if m["actionable"])
-        return {"ok": True, **report}
 
     # -- structure: the Rust engine's phrases on this song's bars -----------
     def structure(self) -> dict:

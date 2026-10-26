@@ -1558,189 +1558,6 @@ class StructureBridgeTests(_IsolatedConfig):
         self.assertEqual(len(report["energy"]), 128)
 
 
-class LibraryBridgeTests(_IsolatedConfig):
-    """The Songs browser: scan, search, and same-audio from the index."""
-
-    def _songs(self, tmp: str) -> Path:
-        songs = Path(tmp) / "Songs"
-        folder = songs / "1 Band - Song"
-        folder.mkdir(parents=True)
-        (folder / "audio.mp3").write_bytes(b"ID3" + bytes(range(256)))
-        (folder / "map.osu").write_text("\n".join(ReferenceBridgeTests.MAP[:5] + [
-            "[Metadata]", "Title:Song", "Artist:Band", "Version:Hard", ""]
-            + ReferenceBridgeTests.MAP[5:]), encoding="utf-8")
-        return songs
-
-    def test_state_before_any_scan_says_nothing_is_indexed(self) -> None:
-        reply = web.Api().library_state()
-        json.dumps(reply)
-        self.assertTrue(reply["ok"])
-        self.assertEqual((reply["index"]["beatmaps"], reply["current"], reply["scanning"]),
-                         (0, False, False))
-        self.assertEqual(web.Api().library_scan()["key"], "no_songs")
-
-    def test_scan_then_search_and_the_folder_is_remembered(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            songs = self._songs(tmp)
-            api = web.Api()
-            reply = api.library_scan(str(songs))
-            found = api.library_search("band")
-            state = api.library_state()
-        json.dumps([reply, found, state])
-        self.assertTrue(reply["ok"])
-        self.assertEqual((reply["report"]["sets"], reply["report"]["beatmaps"]), (1, 1))
-        self.assertEqual(self.saved[-1]["songs_folder"], str(songs))
-        self.assertEqual([s["name"] for s in found["result"]["sets"]], ["1 Band - Song"])
-        self.assertTrue(state["current"])
-
-    def test_one_scan_at_a_time_and_no_reset_during_one(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            songs = self._songs(tmp)
-            api = web.Api()
-            api._scanning.acquire()
-            try:
-                self.assertEqual(api.library_scan(str(songs))["key"], "scan_running")
-                self.assertEqual(api.library_reset()["key"], "scan_running")
-            finally:
-                api._scanning.release()
-            api.library_scan(str(songs))
-            reset = api.library_reset()
-        self.assertEqual(reset["index"]["beatmaps"], 0)
-
-    def test_the_page_hears_folders_in_the_index_from_zero_to_all(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            songs = self._songs(tmp)
-            api = web.Api()
-            api._window = mock.Mock()
-            reply = api.library_scan(str(songs))
-        sent = [json.loads(call.args[0].split("onLibraryProgress(", 1)[1][:-1])
-                for call in api._window.evaluate_js.call_args_list
-                if "onLibraryProgress" in call.args[0]]
-        total = reply["report"]["folders"]
-        self.assertEqual(sent[0], {"done": 0, "total": total, "removing": 0})
-        self.assertEqual(sent[-1], {"done": total, "total": total, "removing": 0})
-
-    def test_a_damaged_index_says_so_and_a_scan_rebuilds_it(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            songs = self._songs(tmp)
-            api = web.Api()
-            api.library_scan(str(songs))
-            index = web.overtone_library.default_path()
-            for suffix in ("-wal", "-shm"):
-                Path(f"{index}{suffix}").unlink(missing_ok=True)
-            index.write_bytes(b"not a database, just bytes" * 40)
-            state, search = api.library_state(), api.library_search("band")
-            scan = api.library_scan()
-            after = api.library_state()
-        json.dumps([state, search, scan, after])
-        # Before, all three answered "error" and nothing on the page led out.
-        self.assertEqual((state["ok"], state["key"], state["songs_found"]),
-                         (False, "library_damaged", True))
-        self.assertEqual(search["key"], "library_damaged")
-        self.assertTrue(scan["ok"] and scan["report"]["rebuilt"])
-        self.assertEqual((after["index"]["beatmaps"], after["current"]), (1, True))
-
-    def test_same_audio_answers_from_the_index_and_walks_when_it_finds_nothing(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            songs = self._songs(tmp)
-            api = _api_with_points()
-            api._analysis.source = str(songs / "1 Band - Song" / "audio.mp3")
-            api.library_scan(str(songs))
-            indexed = api.reference_find(str(songs))
-            late = songs / "2 Late - Add"          # added after the scan
-            late.mkdir()
-            (late / "audio.mp3").write_bytes(b"ID3" + bytes(range(256)))
-            (late / "map.osu").write_text("\n".join(ReferenceBridgeTests.MAP), encoding="utf-8")
-            (songs / "1 Band - Song" / "map.osu").unlink()
-            walked = api.reference_find(str(songs))
-        self.assertTrue(indexed["report"]["indexed"])
-        self.assertEqual([Path(m["folder"]).name for m in indexed["report"]["matches"]],
-                         ["1 Band - Song"])
-        self.assertNotIn("indexed", walked["report"])
-        self.assertEqual([Path(m["folder"]).name for m in walked["report"]["matches"]
-                          if m["beatmaps"]], ["2 Late - Add"])
-
-
-class HealthBridgeTests(_IsolatedConfig):
-    """Library health check: grade the folder in the background, list the
-    flags with their evidence, and mark only solid fits worth a look."""
-
-    @staticmethod
-    def _set(tmp: str) -> Path:
-        from test_overtone import _click_track, _mapset_osu
-        folder = Path(tmp) / "Songs" / "1 Band - Clicks"
-        folder.mkdir(parents=True)
-        _click_track(folder / "audio.wav", 120.0, duration=24.0)
-        reds = ((250, 500.0, 4), (8250, 500.0, 4), (16250, 500.0, 4))
-        (folder / "Band - Clicks (Mapper) [True].osu").write_text(
-            _mapset_osu("True", audio="audio.wav", reds=reds, objects=(1000, 23000)),
-            encoding="utf-8", newline="")
-        moved = ((250, 500.0, 4), (8250, 500.0, 4), (16270, 500.0, 4))
-        (folder / "Band - Clicks (Mapper) [Moved].osu").write_text(
-            _mapset_osu("Moved", audio="audio.wav", reds=moved, objects=(1000, 23000)),
-            encoding="utf-8", newline="")
-        return folder.parent
-
-    @staticmethod
-    def _wait(api: web.Api, timeout: float = 240.0) -> None:
-        end = time.monotonic() + timeout
-        while api._health.locked():
-            if time.monotonic() > end:
-                raise AssertionError("the health worker did not finish")
-            time.sleep(0.05)
-
-    def test_state_before_any_grade_is_all_ungraded(self) -> None:
-        with mock.patch.object(web.overtone_rust, "find_cli", return_value=None):
-            reply = web.Api().health_state()
-        json.dumps(reply)
-        self.assertTrue(reply["ok"])
-        self.assertEqual((reply["running"], reply["engine"]), (False, "python"))
-        self.assertEqual(reply["counts"]["ungraded"], 0)
-
-    def test_one_run_at_a_time_and_stop_when_idle(self) -> None:
-        api = web.Api()
-        api._health.acquire()
-        try:
-            self.assertEqual(api.health_start()["key"], "health_running")
-        finally:
-            api._health.release()
-        self.assertEqual(api.health_stop()["key"], "not_running")
-
-    def test_actionable_needs_a_solid_fit(self) -> None:
-        hl = web.overtone_library
-        solid = [{"attacks": 14, "share": 1.0}]
-        few = [{"attacks": 10, "share": 0.95}]
-        weak = [{"attacks": 14, "share": 0.41}]
-        self.assertTrue(hl.health_actionable(solid))
-        self.assertFalse(hl.health_actionable(few))
-        self.assertFalse(hl.health_actionable(weak))
-        self.assertFalse(hl.health_actionable([]))
-        self.assertFalse(hl.health_actionable(None))
-
-    def test_grade_in_the_background_then_report_marks_the_moved_line(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            songs = self._set(tmp)
-            api = web.Api()
-            api.library_scan(str(songs))
-            with mock.patch.object(web.overtone_rust, "find_cli", return_value=None):
-                self.assertTrue(api.health_start()["ok"])
-                self._wait(api)
-                state = api.health_state()
-                report = api.health_report("check")
-                oks = api.health_report(("ok",))
-            json.dumps([state, report, oks])
-        self.assertFalse(state["running"])
-        self.assertEqual((state["counts"]["check"], state["counts"]["ok"]), (1, 1))
-        self.assertEqual([m["version"] for m in report["maps"]], ["Moved"])
-        moved = report["maps"][0]
-        self.assertTrue(moved["actionable"])
-        self.assertEqual(report["actionable"], 1)
-        self.assertEqual([(c["index"], c["issues"]) for c in moved["checks"]], [(2, ["offset"])])
-        self.assertAlmostEqual(moved["checks"][0]["relative_ms"], -20.0, delta=3.0)
-        self.assertAlmostEqual(moved["worst_ms"], 20.0, delta=3.0)
-        self.assertEqual([m["version"] for m in oks["maps"]], ["True"])
-
-
 class AssistedBridgeTests(_IsolatedConfig):
     """Assisted timing: fit from two marks, then add the line in one undo."""
 
@@ -4811,13 +4628,13 @@ class WebHostTests(_IsolatedConfig):
     def test_the_bridge_reaches_public_api_methods_only(self) -> None:
         self.assertIn("analyze", self.host.methods)
         self.assertNotIn("_emit", self.host.methods)
-        self.assertEqual(self.host.call("library_state", [])["songs"], str(self.songs))
+        self.assertTrue(self.host.call("settings", [])["ok"])
         with self.assertRaises(LookupError):
             self.host.call("_emit", ["onResult", {}])
         with self.assertRaises(LookupError):
             self.host.call("no_such_method", [])
         with self.assertRaises(TypeError):
-            self.host.call("library_state", {"not": "a list"})
+            self.host.call("settings", {"not": "a list"})
 
     def test_the_bridge_refuses_files_outside_the_shared_folders(self) -> None:
         upload = self.host.uploads / "python.osz"
@@ -5057,11 +4874,11 @@ class WebHostTests(_IsolatedConfig):
         self.assertEqual(request("GET", "/../python/overtone.py", headers={"Cookie": cookie})[0], 404)
         call = json.dumps({"args": []})
         # A cookie alone changes nothing: no cross-site form can add the header.
-        self.assertEqual(request("POST", "/api/v1/bridge/library_state", call,
+        self.assertEqual(request("POST", "/api/v1/bridge/settings", call,
                                  {"Cookie": cookie})[0], 401)
-        status, _, data = request("POST", "/api/v1/bridge/library_state", call,
+        status, _, data = request("POST", "/api/v1/bridge/settings", call,
                                   {"Cookie": cookie, "X-Overtone": "1"})
-        self.assertEqual((status, json.loads(data)["result"]["songs"]), (200, str(self.songs)))
+        self.assertEqual((status, json.loads(data)["result"]["ok"]), (200, True))
         self.assertEqual(request("POST", "/api/v1/bridge/_emit", call,
                                  {"Cookie": cookie, "X-Overtone": "1"})[0], 404)
         status, _, data = request("PUT", "/api/v1/upload?name=song.ogg", b"OggS",

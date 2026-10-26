@@ -402,47 +402,6 @@ const I18N = {
     stx_vol_done: "Volumes set in {n} sections of {file}.",
     stx_vol_nothing: "Nothing to write in {file}: the sections read their volumes already, or the map sets its own.",
     stx_note: "Letters are families of sections that repeat. Each edge moves to a proven bar line within {snap} s: the nearest, or the bar before or after it when the level changes more there, by {margin} dB or more, rising into a louder section or falling into a quieter one. A bar where the change lands, not proof the phrase starts on it. A change within {edge} s of either end cannot be placed. Click a section to open it in Timing.",
-    songs_title: "osu! Songs",
-    songs_scan: "Scan",
-    songs_rescan: "Rescan",
-    songs_scanning: "Scanning…",
-    songs_pick: "Folder…",
-    songs_search: "Search artist, title, mapper, difficulty, tags",
-    songs_listing: "Listing the folder…",
-    songs_progress: "{done} / {total} folders",
-    songs_removing: "Removing {n} maps that are no longer in the folder…",
-    songs_none: "Not indexed yet: Scan reads {root} once.",
-    songs_missing: "No Songs folder at {root}: choose one.",
-    songs_empty: "No beatmaps in {root} · scanned {when}",
-    songs_gone: "{root} is not there: the index ({n} maps) is from {when}.",
-    songs_info: "{n} maps in {s} sets · scanned {when}",
-    songs_other: "Index of {root} ({n} maps): Rescan for the current folder.",
-    songs_failed: "{n} could not be read",
-    songs_scanned: "Library: {n} maps in {s} sets ({changed} read, {removed} gone) in {sec} s.",
-    songs_scanned_failed: "Library: {n} maps in {s} sets ({changed} read, {removed} gone, {failed} could not be read) in {sec} s.",
-    songs_rebuilt: "The damaged index was rebuilt.",
-    library_damaged: "The library index is damaged: Rescan rebuilds it from the folder.",
-    songs_nothing: "No map matches “{q}”.",
-    songs_limited: "The first {n} maps: type more to narrow them.",
-    health_title: "Timing health",
-    health_run: "Check timing",
-    health_stop: "Stop",
-    health_starting: "Starting…",
-    health_progress: "Grading {done} of {total} audio files…",
-    health_counts: "{check} to check · {ok} ok · {unsure} unsure · {ungraded} ungraded",
-    health_none: "Grade every map's red lines against its own audio.",
-    health_done: "Timing check: {n} maps graded in {s} s.",
-    health_look: "Worth a look",
-    health_weak: "Weak lead",
-    health_limited: "The first {n}, worst first.",
-    health_off: "{ms} ms off the map's shift",
-    health_drift: "drifts {ms} ms",
-    health_fit: "{n} attacks · {share}% fit",
-    health_running: "A timing check is already running.",
-    health_no_rust: "The timing check runs on the Rust engine (overtone-cli), and it is not built here: cargo build --release -p overtone-cli.",
-    songs_diff: "diff",
-    songs_diffs: "diffs",
-    scan_running: "A scan is already running.",
     ref_indexed: "From the library index, scanned {when}.",
     cmp_title: "Map vs detected", cmp_pick: "Choose .osu…",
     cmp_empty: "Choose the .osu you mapped to compare it against this detection.",
@@ -1115,47 +1074,6 @@ const I18N = {
     stx_vol_done: "Volúmenes ajustados en {n} secciones de {file}.",
     stx_vol_nothing: "Nada para escribir en {file}: las secciones ya tienen su volumen, o el mapa pone el suyo.",
     stx_note: "Las letras son familias de secciones que se repiten. Cada borde se ajusta a una línea de compás probada a menos de {snap} s: la más cercana, o el compás anterior o el siguiente cuando el nivel cambia más ahí, por {margin} dB o más, subiendo hacia una sección más fuerte o bajando hacia una más suave. Un compás donde cae el cambio, no la prueba de que la frase empiece ahí. Un cambio a menos de {edge} s de cada punta no se puede ubicar. Hacé clic en una sección para abrirla en Timing.",
-    songs_title: "Songs de osu!",
-    songs_scan: "Escanear",
-    songs_rescan: "Reescanear",
-    songs_scanning: "Escaneando…",
-    songs_pick: "Carpeta…",
-    songs_search: "Buscá artista, título, mapper, dificultad, tags",
-    songs_listing: "Listando la carpeta…",
-    songs_progress: "{done} / {total} carpetas",
-    songs_removing: "Quitando {n} mapas que ya no están en la carpeta…",
-    songs_none: "Sin índice todavía: Escanear lee {root} una vez.",
-    songs_missing: "No hay carpeta Songs en {root}: elegí una.",
-    songs_empty: "No hay beatmaps en {root} · escaneado {when}",
-    songs_gone: "{root} no está: el índice ({n} mapas) es del {when}.",
-    songs_info: "{n} mapas en {s} sets · escaneado {when}",
-    songs_other: "Índice de {root} ({n} mapas): reescaneá para la carpeta actual.",
-    songs_failed: "{n} no se pudieron leer",
-    songs_scanned: "Biblioteca: {n} mapas en {s} sets ({changed} leídos, {removed} quitados) en {sec} s.",
-    songs_scanned_failed: "Biblioteca: {n} mapas en {s} sets ({changed} leídos, {removed} quitados, {failed} sin leer) en {sec} s.",
-    songs_rebuilt: "El índice dañado se reconstruyó.",
-    library_damaged: "El índice de la biblioteca está dañado: Reescanear lo reconstruye desde la carpeta.",
-    songs_nothing: "Ningún mapa coincide con “{q}”.",
-    songs_limited: "Los primeros {n} mapas: escribí más para acotar.",
-    health_title: "Salud del timing",
-    health_run: "Revisar timing",
-    health_stop: "Detener",
-    health_starting: "Iniciando…",
-    health_progress: "Graduando {done} de {total} audios…",
-    health_counts: "{check} por revisar · {ok} ok · {unsure} dudosos · {ungraded} sin graduar",
-    health_none: "Graduá las líneas rojas de cada mapa contra su propio audio.",
-    health_done: "Revisión de timing: {n} mapas graduados en {s} s.",
-    health_look: "Para revisar",
-    health_weak: "Pista débil",
-    health_limited: "Los primeros {n}, del peor al mejor.",
-    health_off: "{ms} ms fuera del corrimiento del mapa",
-    health_drift: "deriva {ms} ms",
-    health_fit: "{n} ataques · {share}% de ajuste",
-    health_running: "Ya hay una revisión de timing en curso.",
-    health_no_rust: "La revisión de timing usa el motor Rust (overtone-cli), y acá no está compilado: cargo build --release -p overtone-cli.",
-    songs_diff: "dific.",
-    songs_diffs: "dific.",
-    scan_running: "Ya hay un escaneo en curso.",
     ref_indexed: "Del índice de la biblioteca, escaneado {when}.",
     cmp_title: "Mapa vs detección", cmp_pick: "Elegir .osu…",
     cmp_empty: "Elegí el .osu que mapeaste para compararlo con esta detección.",
@@ -1467,7 +1385,6 @@ function translate() {
   renderSongOptions();
   renderSong();
   renderRecents();
-  renderSongs();
   renderStructure();
   if (HSV.report) renderHitsoundsView();
   sbRender();
@@ -1933,14 +1850,6 @@ window.overtone = {
     setBusy(false);
     const s = ((timings && timings.total_s) || 0).toFixed(1);
     toast(t(S.result ? "analysis_stopped_kept" : "analysis_stopped", { s }));
-  },
-  onLibraryProgress(progress) { SONGS.progress = progress; renderSongs(); },
-  onHealthProgress(progress) { HEALTH.progress = progress; renderHealth(); },
-  onHealthDone(reply) {
-    HEALTH.running = false; HEALTH.progress = null;
-    if (reply.ok) toast(t("health_done", { n: reply.run.graded, s: reply.run.seconds }));
-    else toast(t(reply.key === "no_rust" ? "health_no_rust" : reply.key, { detail: reply.detail || "" }), true);
-    healthLoad();
   },
   onResult(result) {
     setBusy(false);
@@ -2508,200 +2417,10 @@ async function refreshRecents() {
   renderRecents();
 }
 
-// ------------------------------------------------------------------ songs browser
-// The library index (overtone_library.py) answers as you type. A scan brings
-// it in step with the Songs folder; only the first one reads every header.
-const SONGS = { state: null, result: null, query: "", timer: 0, scanning: false, progress: null, asked: 0 };
-
+// ------------------------------------------------------------------ dates
 function when(iso) {
   const date = iso ? new Date(iso) : null;
   return date && !isNaN(date) ? date.toLocaleString(S.lang, { dateStyle: "medium", timeStyle: "short" }) : "—";
-}
-
-async function songsLoad() {
-  if (!api()) return;
-  // A failed reply is kept too: its key and the folder facts are what the
-  // info line says, where it used to go blank.
-  SONGS.state = await api().library_state();
-  if (SONGS.state.ok && SONGS.state.index.beatmaps) await songsSearch();
-  else renderSongs();
-}
-
-async function songsSearch() {
-  // Searches overlap once one takes longer than the typing pause, and
-  // replies can land out of order: only the latest one is drawn.
-  const asked = ++SONGS.asked;
-  const reply = await api().library_search(SONGS.query);
-  if (asked !== SONGS.asked) return;
-  if (!reply.ok && reply.key === "library_damaged") SONGS.state = { ...(SONGS.state || {}), ...reply };
-  else if (!reply.ok) toast(t("error", { detail: reply.detail || "" }), true);
-  SONGS.result = reply.ok ? reply.result : null;
-  renderSongs();
-}
-
-async function songsScan(folder = "") {
-  if (!api() || SONGS.scanning) return;
-  SONGS.scanning = true;
-  SONGS.progress = null;
-  renderSongs();
-  let reply;
-  try {
-    reply = await api().library_scan(folder);
-  } finally {
-    SONGS.scanning = false;
-  }
-  if (!reply.ok && reply.key === "no_songs") {
-    toast(t("no_songs"));
-    const picked = await api().pick_folder();
-    if (picked) { songsScan(picked); return; }
-  } else if (!reply.ok) {
-    toast(reply.key === "error" ? t("error", { detail: reply.detail || "" }) : t(reply.key), true);
-  } else {
-    const r = reply.report;
-    toast((r.rebuilt ? t("songs_rebuilt") + " " : "")
-          + t(r.failed ? "songs_scanned_failed" : "songs_scanned",
-              { n: r.beatmaps, s: r.sets, changed: r.added + r.updated, removed: r.removed,
-                failed: r.failed, sec: r.seconds.toFixed(1) }));
-  }
-  await songsLoad();
-}
-
-async function songsPick() {
-  if (!api() || SONGS.scanning) return;
-  const folder = await api().pick_folder();
-  if (folder) songsScan(folder);
-}
-
-function songBpm(set) {
-  const bpms = set.beatmaps.map((b) => b.first_bpm).filter((v) => v !== null);
-  if (!bpms.length) return "";
-  const lo = Math.round(Math.min(...bpms)), hi = Math.round(Math.max(...bpms));
-  return ` · ${lo === hi ? lo : `${lo}–${hi}`} BPM`;
-}
-
-function renderSongs() {
-  const st = SONGS.state, ok = !!(st && st.ok), idx = ok ? st.index : null;
-  const indexed = !!(idx && idx.beatmaps), damaged = !!(st && st.key === "library_damaged");
-  $("songsQuery").placeholder = t("songs_search");
-  $("songsQuery").hidden = !indexed;
-  $("songsScanText").textContent = t(SONGS.scanning ? "songs_scanning" : indexed || damaged ? "songs_rescan" : "songs_scan");
-  $("songsScan").disabled = SONGS.scanning;
-  $("songsPick").disabled = SONGS.scanning;
-  let info = "", tip = "";
-  const p = SONGS.progress;
-  if (SONGS.scanning) {
-    info = !p ? t("songs_listing") : p.removing ? t("songs_removing", { n: p.removing }) : t("songs_progress", p);
-  } else if (st && !ok) {
-    info = damaged ? t("library_damaged") : t("error", { detail: esc(st.detail || "") });
-  } else if (st && !indexed) {
-    // Scanned and empty is not "not indexed yet".
-    info = !st.songs_found ? t("songs_missing", { root: esc(st.songs) })
-      : idx.scanned_at && st.current ? t("songs_empty", { root: esc(st.songs), when: esc(when(idx.scanned_at)) })
-      : t("songs_none", { root: esc(st.songs) });
-  } else if (st) {
-    info = t(st.current && !st.songs_found ? "songs_gone" : st.current ? "songs_info" : "songs_other",
-             { n: idx.beatmaps, s: idx.sets, when: esc(when(idx.scanned_at)), root: esc(idx.root) });
-  }
-  if (!SONGS.scanning && idx && idx.failed) {
-    info += ` · ${t("songs_failed", { n: idx.failed })}`;
-    // A reason that already names its file ("x.osu is empty…") is not prefixed again.
-    tip = idx.failures.map((f) => {
-      const name = f.path.split(/[\\/]/).pop();
-      return f.detail.includes(name) ? f.detail : `${name}: ${f.detail}`;
-    }).join("\n")
-      + (idx.failed > idx.failures.length ? "\n…" : "");
-  }
-  $("songsInfo").innerHTML = info;
-  $("songsInfo").title = tip || $("songsInfo").textContent;
-  const res = SONGS.result;
-  if (!indexed || !res) { $("songsList").innerHTML = ""; return; }
-  if (!res.sets.length) {
-    $("songsList").innerHTML = `<div class="card-sub">${t("songs_nothing", { q: esc(res.query) })}</div>`;
-    return;
-  }
-  $("songsList").innerHTML = res.sets.map((set, i) => {
-    const unicode = [set.artist_unicode, set.title_unicode].filter(Boolean).join(" - ");
-    return `
-    <button class="recent-item" data-song="${i}" title="${esc(unicode || set.folder)}">
-      <span>
-        <span class="name">${esc(set.artist)} - ${esc(set.title)} <span class="muted">(${esc(set.creator)})</span></span>
-        <span class="diffs">${set.beatmaps.map((b) => esc(b.version)).join(" · ")}</span>
-      </span>
-      <span class="meta num">${set.beatmaps.length} ${t(set.beatmaps.length === 1 ? "songs_diff" : "songs_diffs")}${songBpm(set)}</span>
-    </button>`;
-  }).join("") + (res.limited ? `<div class="card-sub">${t("songs_limited", { n: res.beatmaps })}</div>` : "");
-}
-
-// ------------------------------------------------------------------ timing health
-// Every library map's red lines graded against its own audio
-// (overtone_library.health). A flag is a lead, never a verdict of wrong
-// timing: only a line resting on a solid fit is "worth a look"; the rest are
-// weak leads, marked as such instead of counted as maps to fix.
-const HEALTH = { state: null, report: null, running: false, progress: null };
-
-async function healthLoad() {
-  if (!api()) return;
-  const reply = await api().health_state();
-  HEALTH.state = reply;
-  HEALTH.running = !!(reply.ok && reply.running);
-  if (reply.ok) await healthReport();
-  renderHealth();
-}
-
-async function healthReport() {
-  const reply = await api().health_report("check");
-  if (reply.ok) HEALTH.report = reply;
-  else if (reply.key === "library_damaged") HEALTH.state = { ...(HEALTH.state || {}), ...reply };
-}
-
-async function healthStart() {
-  if (!api()) return;
-  const reply = await api().health_start();
-  if (!reply.ok) { toast(t(reply.key), true); return; }
-  HEALTH.running = true; HEALTH.progress = null;
-  renderHealth();
-}
-
-async function healthStop() { if (api()) await api().health_stop(); }
-
-function healthInfoText() {
-  const st = HEALTH.state;
-  if (HEALTH.running) {
-    const p = HEALTH.progress;
-    return !p ? t("health_starting") : t("health_progress", { done: p.done, total: p.total });
-  }
-  if (st && st.key === "library_damaged") return t("library_damaged");
-  if (st && st.ok) {
-    const c = st.counts;
-    return t("health_counts", { check: c.check, ok: c.ok, unsure: c.unsure, ungraded: c.ungraded });
-  }
-  return t("health_none");
-}
-
-function renderHealth() {
-  $("healthRun").hidden = HEALTH.running;
-  $("healthStop").hidden = !HEALTH.running;
-  $("healthInfo").textContent = healthInfoText();
-  const list = $("healthList");
-  const maps = (HEALTH.report && HEALTH.report.maps) || [];
-  if (!maps.length) { list.innerHTML = ""; return; }
-  list.innerHTML = maps.map((m) => `<div class="health-row">
-    <div class="health-head">
-      <span class="name">${esc(m.artist)} - ${esc(m.title)} <span class="muted">[${esc(m.version)}]</span></span>
-      <span class="pill ${m.actionable ? "amber" : ""}">${t(m.actionable ? "health_look" : "health_weak")}</span>
-      <span class="meta num">${m.worst_ms === null ? "—" : `${m.worst_ms.toFixed(1)} ms`}</span>
-    </div>
-    <div class="health-ev">${(m.checks || []).map(healthLine).join("")}</div>
-  </div>`).join("")
-    + (HEALTH.report.limited ? `<div class="card-sub">${t("health_limited", { n: maps.length })}</div>` : "");
-}
-
-function healthLine(c) {
-  const parts = [];
-  if (c.relative_ms !== null && c.relative_ms !== undefined) parts.push(t("health_off", { ms: c.relative_ms.toFixed(1) }));
-  if (c.drift_ms !== null && c.drift_ms !== undefined) parts.push(t("health_drift", { ms: c.drift_ms.toFixed(1) }));
-  parts.push(t("health_fit", { n: c.attacks, share: Math.round((c.share || 0) * 100) }));
-  return `<div>#${(c.index || 0) + 1} · ${parts.join(" · ")}</div>`;
 }
 
 // ------------------------------------------------------------------ structure
@@ -7672,19 +7391,6 @@ function wire() {
   $("stxVolPreview").onclick = stxVolPreview;
   $("stxVolApply").onclick = stxVolApply;
   $("stxVolMap").onchange = () => { STXV.preview = null; renderVolumes(); };
-  $("songsScan").onclick = () => songsScan();
-  $("songsPick").onclick = songsPick;
-  $("healthRun").onclick = healthStart;
-  $("healthStop").onclick = healthStop;
-  $("songsQuery").oninput = () => {
-    clearTimeout(SONGS.timer);
-    SONGS.timer = setTimeout(() => { SONGS.query = $("songsQuery").value; songsSearch(); }, 120);
-  };
-  $("songsList").onclick = (e) => {
-    const btn = e.target.closest("[data-song]");
-    const set = btn && SONGS.result && SONGS.result.sets[+btn.dataset.song];
-    if (set) importFolderPath(set.folder);
-  };
   $("recentList").onclick = (e) => {
     const btn = e.target.closest("[data-recent]");
     if (btn && S.recent[+btn.dataset.recent]) setFile(S.recent[+btn.dataset.recent]);
@@ -7989,8 +7695,6 @@ async function boot() {
   }
   renderTaps();
   stLoad();
-  songsLoad();
-  healthLoad();
   $("pbSongVol").value = String(Math.round(P.levels.song_volume * 100));
   $("pbClickVol").value = String(Math.round(P.levels.click_volume * 100));
   $("pbHsVol").value = String(Math.round(P.levels.hitsound_volume * 100));

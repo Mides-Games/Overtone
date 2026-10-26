@@ -156,8 +156,9 @@ Una tarea está hecha cuando cumple todo esto, sin excepciones:
 
 ## Pull requests
 
-Sin bots ni plantillas automáticas: los checks corren en local. Cada PR
-hecho con `gh` responde tres cosas y trae la checklist marcada:
+Sin bots: los checks corren en local. Cada PR hecho con `gh` responde tres
+cosas y trae la checklist marcada; `.github/pull_request_template.md` las trae
+escritas, y `.github/ISSUE_TEMPLATE/` hace lo mismo con los reportes:
 
 - Qué cambió y por qué (una o dos frases; el diff ya dice el cómo).
 - Gates corridos con su resultado (comando + números, pega la salida).

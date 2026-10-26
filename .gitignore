@@ -33,3 +33,6 @@ bench/.cache/
 # beatmap ids, mappers and SHA-1s. bench/<name>.example.json shows each shape.
 /bench/*.local.json
 /bench/*.local.md
+# ONNX Runtime's shape-inference temporaries (a model export's scratch files).
+/sym_shape_infer_temp.onnx
+/*.data

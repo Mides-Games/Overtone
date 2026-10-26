@@ -45,7 +45,7 @@ Se necesitan unos 5 GB libres más lo que ocupe la carpeta Songs.
 2. El código. Sube el repositorio sin `.venv/` ni `target/`, o clónalo:
 
    ```bash
-   git clone https://github.com/githaltwastaken/Overtone.git /opt/overtone
+   git clone https://github.com/Mides-Projects/Overtone.git /opt/overtone
    ```
 
 3. Python 3.14 con `uv` y las dependencias del motor. `pywebview` no hace falta

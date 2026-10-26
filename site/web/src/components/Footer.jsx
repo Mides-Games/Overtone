@@ -5,7 +5,7 @@ import { gutter } from '../lib/gutter.js'
 import Logo from './Logo.jsx'
 import Mark from './Mark.jsx'
 
-const REPO_URL = 'https://github.com/githaltwastaken/Overtone'
+const REPO_URL = 'https://github.com/Mides-Projects/Overtone'
 
 const link = 'text-label text-muted transition hover:text-text'
 

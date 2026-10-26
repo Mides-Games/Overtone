@@ -32,7 +32,7 @@
             "name": "Repository",
             "description": "The repository cloned at install and fast-forwarded at start, over https.",
             "env_variable": "GIT_ADDRESS",
-            "default_value": "https://github.com/githaltwastaken/Overtone.git",
+            "default_value": "https://github.com/Mides-Projects/Overtone.git",
             "user_viewable": true,
             "user_editable": false,
             "rules": "required|string|starts_with:https://",

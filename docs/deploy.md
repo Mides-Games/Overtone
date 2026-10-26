@@ -63,7 +63,7 @@ y `/var/run/postgresql` es escribible por todos.
    Si se prefiere un nest propio, primero **Create New** "Overtone" y se importan
    ahí.
 2. En cada egg importado, revisar la pestaña **Variables**. Los defaults ya
-   vienen: `GIT_ADDRESS` apunta a `https://github.com/githaltwastaken/Overtone.git`.
+   vienen: `GIT_ADDRESS` apunta a `https://github.com/Mides-Projects/Overtone.git`.
    Si el repo se transfiere a `Mides-Projects` (W0.8), se cambia ahí o en cada
    server.
 

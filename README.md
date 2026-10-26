@@ -32,7 +32,7 @@ done about it, are under [Benchmarks and gates](#benchmarks-and-gates) and in th
 
 ## Quick start
 
-Download the MSI or portable ZIP from the [releases](https://github.com/githaltwastaken/Overtone/releases)
+Download the MSI or portable ZIP from the [releases](https://github.com/Mides-Projects/Overtone/releases)
 (Windows, unsigned: check it against `checksums.txt`), or run from source on Windows
 with Python 3.14:
 
@@ -58,7 +58,7 @@ with the click track, then **Inject .osu…**. More under [Install & run](#insta
 | **Hitsounds** | ✅ In the app: copy one difficulty's hitsounds onto the others, see where each addition falls, hear them with the song, a consistency check in the mod report, the Rust decision engine's proposals to tick, and volume and sample index to set by hand, all heard over the song before a preview, a write and an undo; the proposals' profile chosen on the Propose card (Balanced or Drum-focused); and a Samples card: a skin's or a beatmap folder's samples, each heard alone or over the song in place of a selected sound, and the skin playback asks |
 | **Playback inside the app** | ✅ Song with a live click from the current red lines, playhead, a section loop or one drawn on the map at 100/75/50 %, taps, the percussive part alone, a difficulty's hitsounds as written or as they would be written |
 | **Accuracy on real, live-played songs** | 📋 Research underway — current default osu! export lands within 5 ms on 16.8 % of Python and 5.2 % of Rust Corpus B red lines; raw engine scores are 2.0 % and 1.1 % (`bench/corpus_b.py`, 2026-10-24) |
-| **Installer** (MSI) | ✅ Published: [**v0.1.0-alpha**](https://github.com/githaltwastaken/Overtone/releases/tag/v0.1.0-alpha) — a per-user MSI (no administrator) and a portable ZIP, with the SBOM, the checksums and every bundled licence in the tree. **Unsigned**, so SmartScreen warns; check the download against `checksums.txt` |
+| **Installer** (MSI) | ✅ Published: [**v0.1.0-alpha**](https://github.com/Mides-Projects/Overtone/releases/tag/v0.1.0-alpha) — a per-user MSI (no administrator) and a portable ZIP, with the SBOM, the checksums and every bundled licence in the tree. **Unsigned**, so SmartScreen warns; check the download against `checksums.txt` |
 
 Nothing here claims a number that was not measured. Targets are marked as targets.
 
@@ -246,7 +246,7 @@ Nothing here claims a number that was not measured. Targets are marked as target
 | Feature | Status | Notes |
 |---|:--:|---|
 | Double-click launcher | ✅ | `Overtone.bat` |
-| Self-contained MSI + portable ZIP | ✅ | P10.13 — `installer\build.py` in one line: per-user MSI into `%LOCALAPPDATA%\Programs`, Start menu shortcut, the licence page, the same tree as a ZIP, the SBOM and the checksums. Published as [v0.1.0-alpha](https://github.com/githaltwastaken/Overtone/releases/tag/v0.1.0-alpha); not signed, no file associations yet ([what is built](docs/11-msi-distribution.md)) |
+| Self-contained MSI + portable ZIP | ✅ | P10.13 — `installer\build.py` in one line: per-user MSI into `%LOCALAPPDATA%\Programs`, Start menu shortcut, the licence page, the same tree as a ZIP, the SBOM and the checksums. Published as [v0.1.0-alpha](https://github.com/Mides-Projects/Overtone/releases/tag/v0.1.0-alpha); not signed, no file associations yet ([what is built](docs/11-msi-distribution.md)) |
 
 ### Deliberately not built
 

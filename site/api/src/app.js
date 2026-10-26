@@ -4,7 +4,9 @@ import { env } from './config/env.js';
 import { errorHandler, notFound } from './middlewares/error-handler.js';
 import { rateLimit } from './middlewares/rate-limit.js';
 import { securityHeaders } from './middlewares/security-headers.js';
+import { INTERNAL_PREFIX } from './middlewares/shared-secret.js';
 import v1 from './routes/index.js';
+import internal from './routes/internal.routes.js';
 
 /**
  * The Express application, without listening: `index.js` listens.
@@ -19,7 +21,12 @@ app.disable('x-powered-by');
 app.set('trust proxy', env.trustProxy);
 
 app.use(securityHeaders);
-// Small on purpose: JSON bodies here are a code or a form, never audio.
+// The worker's routes first: their own bearer, their own body limit, and
+// outside the per-address rate limit, which counts visitors.
+app.use(INTERNAL_PREFIX, internal);
+
+// Small on purpose: JSON bodies here are a code or a form. Audio arrives as a
+// raw body that analyses.routes.js streams to disk itself.
 app.use(express.json({ limit: '16kb' }));
 
 app.use('/api', rateLimit);

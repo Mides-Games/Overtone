@@ -12,6 +12,11 @@ info:
     `X-Requested-With: overtone-web` or is refused with 403.
 
     Errors share one shape: `{ "error": { "status", "message", "code"? } }`.
+
+    Not described here: `/api/internal/*`, the worker's side of the queue
+    (claim, audio, progress, result, fail), which demands
+    `Authorization: Bearer <WORKER_TOKEN>` and is documented in
+    `site/api/src/routes/internal.routes.js`.
 servers:
   - url: /api/v1
 
@@ -27,7 +32,89 @@ components:
       in: header
       required: true
       schema: { type: string, const: overtone-web }
+    analysisId:
+      name: id
+      in: path
+      required: true
+      description: 128 random bits in hex.
+      schema: { type: string, pattern: '^[0-9a-f]{32}$' }
   schemas:
+    AnalysisCreated:
+      type: object
+      required: [id, status, cached]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        status: { type: string, enum: [queued, done, refused] }
+        cached: { type: boolean }
+    Analysis:
+      type: object
+      required: [id, status, createdAt, cached]
+      properties:
+        id: { type: string }
+        status: { type: string, enum: [queued, running, done, refused, failed] }
+        filename: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        cached: { type: boolean, description: Answered from an earlier analysis of the same audio and engine. }
+        position: { type: integer, minimum: 1, description: While queued; 1 is next. }
+        progress: { type: number, minimum: 0, maximum: 1, description: While running. }
+        stage:
+          type: [string, 'null']
+          description: While running.
+          enum: [load, attacks, coherence, fallback, tracker, octave, sections, vote, result, null]
+        result: { $ref: '#/components/schemas/TimingResult' }
+        error: { type: string, description: When failed. }
+    TimingResult:
+      type: object
+      description: |
+        `timing-result v1`, written by worker/timing_result.py. A refusal
+        (`refused: true`) has no BPM and no red lines, and says why.
+      required: [format, version, engine, engine_hash, refused, red_lines, sections, osu_timing]
+      properties:
+        format: { const: timing-result }
+        version: { const: 1 }
+        engine: { type: string, const: v3 }
+        engine_mode: { type: [string, 'null'], enum: [precision, legacy, null] }
+        engine_hash: { type: string }
+        app_version: { type: string }
+        beat_vote: { type: boolean }
+        params: { type: object }
+        duration_s: { type: [number, 'null'] }
+        refused: { type: boolean }
+        refusal:
+          type: [object, 'null']
+          properties:
+            code: { type: string, enum: [no_pulse, too_short, too_long, refused] }
+            message: { type: string }
+        global_bpm: { type: [number, 'null'] }
+        offset_ms: { type: [number, 'null'] }
+        meter: { type: [string, 'null'] }
+        stability: { type: [number, 'null'] }
+        residual_ms: { type: [number, 'null'] }
+        red_lines:
+          type: array
+          items:
+            type: object
+            properties:
+              time_ms: { type: number }
+              bpm: { type: number }
+              beat_length_ms: { type: number }
+              meter: { type: integer }
+              meter_known: { type: boolean }
+        sections:
+          type: array
+          items:
+            type: object
+            properties:
+              index: { type: integer }
+              start_ms: { type: number }
+              end_ms: { type: number }
+              bpm: { type: number }
+              confidence: { type: number }
+              level: { type: string, enum: [high, medium, check] }
+              residual_ms: { type: [number, 'null'] }
+              coverage: { type: [number, 'null'] }
+        findings: { type: array, items: { type: object } }
+        osu_timing: { type: string, description: The engine's own [TimingPoints] rows. }
     Error:
       type: object
       required: [error]
@@ -81,7 +168,9 @@ paths:
                     type: object
                     properties:
                       anonDailyLimit: { type: integer }
+                      userDailyLimit: { type: integer }
                       maxAudioSeconds: { type: integer }
+                      maxUploadMb: { type: integer }
         '503':
           description: The database does not answer (`status` is `degraded`).
 
@@ -196,17 +285,110 @@ paths:
 
   /analyses:
     post:
-      summary: Upload a song for analysis (not built yet)
+      summary: Upload a song for analysis
       description: |
-        Stub. Answers 501 `NOT_IMPLEMENTED` without reading the body. Phase
-        W3.4 turns it into: upload, queue a job, return its id.
+        The body is the audio itself, streamed to the spool and hashed (SHA-1)
+        on the way; it is deleted once the worker answers (ADR-W4). No account
+        is needed: an anonymous uploader gets the HttpOnly `overtone_anon`
+        cookie (path /api/v1/analyses), which with the id is what lets it read
+        the analysis back.
+
+        Checked before a byte is read: the content type, the extension
+        (mp3, ogg, wav, flac, m4a, opus), `Content-Length` against
+        `MAX_UPLOAD_MB`, and the daily quota (`ANON_DAILY_LIMIT` per hashed
+        address without an account, `USER_DAILY_LIMIT` with one; a cached
+        answer is not counted). The size is checked again while the body
+        streams. When the same audio was already analysed by the current
+        engine, the answer is that result at once (200, `cached: true`).
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+        - name: X-Filename
+          in: header
+          required: true
+          description: The file's name, percent-encoded. Shown back to the uploader; never used as a path.
+          schema: { type: string, maxLength: 1024 }
       requestBody:
+        required: true
         content:
-          multipart/form-data:
-            schema:
-              type: object
-              properties:
-                audio: { type: string, format: binary }
-                osu: { type: string, format: binary }
+          application/octet-stream:
+            schema: { type: string, format: binary }
       responses:
-        '501': { $ref: '#/components/responses/Error' }
+        '200':
+          description: Answered from an earlier analysis of the same audio and engine.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalysisCreated' }
+        '202':
+          description: Queued.
+          headers:
+            Set-Cookie: { schema: { type: string }, description: overtone_anon, without an account }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalysisCreated' }
+        '400':
+          description: '`UNSUPPORTED_FORMAT` or `EMPTY_UPLOAD`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '413':
+          description: '`TOO_LARGE`; `details.maxUploadMb` says the limit.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '429':
+          description: |
+            `QUOTA_EXCEEDED` (`details.limit`, `details.scope`: anonymous or
+            account; resets at 00:00 UTC) or `RATE_LIMITED` (with Retry-After).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /analyses/{id}:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: An analysis's state, and its result once there is one
+      description: |
+        Readable by the session account or the anonymous cookie that created
+        it; anyone else gets the same 404 as for an id that does not exist.
+        Poll it: `position` while queued (1 = next), `progress` and `stage`
+        while running.
+      responses:
+        '200':
+          description: The analysis.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Analysis' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /analyses/{id}/timing.txt:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: The `[TimingPoints]` block, CRLF, as an .osu file holds it
+      responses:
+        '200':
+          description: An attachment.
+          content:
+            text/plain: { schema: { type: string } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: '`NO_TIMING`: still running, refused or failed.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /analyses/{id}/timing.csv:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: 'The red lines as CSV: time_ms, bpm, beat_length_ms, meter, confidence, level'
+      responses:
+        '200':
+          description: An attachment.
+          content:
+            text/csv: { schema: { type: string } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }

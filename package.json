@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "pnpm --parallel --filter ./site/api --filter ./site/web run dev",
     "build": "pnpm --dir site/web build",
-    "check": "pnpm --dir site/api check"
+    "check": "pnpm --dir site/api check",
+    "test": "pnpm --dir site/api test"
   }
 }

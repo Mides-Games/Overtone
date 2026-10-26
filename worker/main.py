@@ -21,6 +21,9 @@ Configuration (environment):
     WORKER_TOKEN   the bearer the API's internal routes demand (required)
     WORKER_POLL_S  seconds between claims while the queue is empty, default 2
 
+The API, not the proxy in front of it, is what the worker talks to: the
+internal routes are never forwarded by overtone-web (deploy/web/serve.mjs).
+
 Standard library plus the engine: no new dependency.
 """
 from __future__ import annotations
@@ -69,8 +72,9 @@ class Api:
         """The next queued job, or None when the queue is empty (204)."""
         return self.call("POST", "/jobs/claim", {"engine_hash": engine_hash})
 
-    def download(self, job_id: str, target: Path) -> None:
-        with self._request("GET", f"/jobs/{job_id}/audio") as response, open(target, "wb") as out:
+    def download(self, job_id: str, attempt: int, target: Path) -> None:
+        with self._request("GET", f"/jobs/{job_id}/audio?attempt={int(attempt)}") as response, \
+                open(target, "wb") as out:
             shutil.copyfileobj(response, out, 1 << 20)
 
 
@@ -83,7 +87,7 @@ def run_job(api: Api, job: dict, *, vote: bool, hash_: str) -> str:
     folder = Path(tempfile.mkdtemp(prefix="overtone-job-"))
     try:
         audio = folder / f"input{suffix}"
-        api.download(job_id, audio)
+        api.download(job_id, attempt, audio)
 
         last = [0.0]
 
@@ -110,6 +114,22 @@ def run_job(api: Api, job: dict, *, vote: bool, hash_: str) -> str:
         shutil.rmtree(folder, ignore_errors=True)
 
 
+def exit_with_stdin() -> None:
+    """Leave when stdin closes. ``pnpm dev`` starts the worker with a pipe
+    for stdin and never writes to it, so the pipe closes exactly when the
+    API process that started it goes, however it goes."""
+    import threading
+
+    def watch() -> None:
+        try:
+            sys.stdin.buffer.read()
+        except (OSError, ValueError):
+            pass
+        os._exit(0)
+
+    threading.Thread(target=watch, daemon=True, name="stdin-watch").start()
+
+
 def main() -> int:
     base = os.environ.get("OVERTONE_API", "http://127.0.0.1:3001")
     token = os.environ.get("WORKER_TOKEN", "").strip()
@@ -122,12 +142,18 @@ def main() -> int:
     except ValueError:
         poll = 2.0
 
+    if os.environ.get("WORKER_EXIT_WITH_STDIN") == "1":
+        exit_with_stdin()
+
     api = Api(base, token)
     print("[worker] loading the engine…", flush=True)
     vote = tr.beat_vote_available()
     hash_ = tr.engine_hash(vote)
-    print(f"[worker] engine v3 {hash_}, Beat This! vote {'on' if vote else 'OFF (model or runtime missing)'}; "
-          f"polling {base} every {poll:g} s", flush=True)
+    # The egg's "done" line (deploy/eggs/egg.py): the panel shows the server
+    # as running from here.
+    print(f"overtone-worker: ready -- engine v3 {hash_}, Beat This! vote "
+          f"{'on' if vote else 'OFF (model or runtime missing)'}; polling {base} every {poll:g} s",
+          flush=True)
 
     unreachable = False
     while True:

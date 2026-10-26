@@ -56,8 +56,12 @@ Se necesitan unos 5 GB libres más lo que ocupe la carpeta Songs.
    ```
 
    ```bash
-   cd /opt/overtone && UV_PYTHON_INSTALL_DIR=/opt/uv-python ~/.local/bin/uv venv --python 3.14 .venv && ~/.local/bin/uv pip install --python .venv/bin/python numpy scipy librosa soundfile soxr onnxruntime
+   cd /opt/overtone && UV_PYTHON_INSTALL_DIR=/opt/uv-python ~/.local/bin/uv venv --python 3.14 .venv && grep -vE '^(bottle|clr-loader|proxy-tools|pythonnet|pywebview)==' python/requirements.lock > /tmp/overtone-server.lock && ~/.local/bin/uv pip install --python .venv/bin/python -r /tmp/overtone-server.lock
    ```
+
+   Las versiones salen de `python/requirements.lock`, las mismas que midió
+   el benchmark; solo se dejan afuera las del escritorio (pywebview y lo que
+   arrastra en Windows).
 
    `UV_PYTHON_INSTALL_DIR` deja el intérprete fuera de `/root`, para que el
    usuario del servicio (abajo) pueda usarlo.
@@ -134,6 +138,16 @@ WantedBy=multi-user.target
 ```bash
 useradd --system --create-home overtone && chown -R overtone /opt/overtone && systemctl daemon-reload && systemctl enable --now overtone-api
 ```
+
+El checkout es de `overtone` y la actualización automática
+(`deploy/overtone-update.service`) también corre como `overtone`, nunca
+como root: root ejecutando código de una carpeta que otro usuario puede
+escribir le daría root a quien la escriba. Su único paso con privilegios,
+reiniciar el servicio, pasa por una regla de sudo solo para ese comando, que
+instala `deploy/setup-deploy-user.sh`. Para que pueda recompilar
+`overtone-cli`, Rust tiene que estar al alcance de `overtone` (instalalo con
+rustup como ese usuario, o apuntá `OVERTONE_CARGO` a un `cargo` que pueda
+ejecutar); si no, el binario anterior sigue y el log lo dice.
 
 Si un proceso del servicio llega al tope de memoria, systemd para el
 servicio entero salvo que se le diga lo contrario. Para que una medición o

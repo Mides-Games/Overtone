@@ -35,9 +35,14 @@ printf 'restrict,command="sudo -n /usr/bin/systemctl start --no-block overtone-u
 chown "$USER_NAME:$USER_NAME" "/var/lib/$USER_NAME/.ssh/authorized_keys"
 chmod 600 "/var/lib/$USER_NAME/.ssh/authorized_keys"
 
-# What it may run as root: that one command.
-printf '%s ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block overtone-update.service\n' \
-    "$USER_NAME" > /etc/sudoers.d/overtone-deploy
+# What it may run as root: that one command. The update itself runs as
+# overtone (overtone-update.service), whose only root step is restarting the
+# service it just updated.
+{
+    printf '%s ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block overtone-update.service\n' \
+        "$USER_NAME"
+    printf 'overtone ALL=(root) NOPASSWD: /usr/bin/systemctl restart overtone-api\n'
+} > /etc/sudoers.d/overtone-deploy
 chmod 440 /etc/sudoers.d/overtone-deploy
 visudo -cf /etc/sudoers.d/overtone-deploy >/dev/null
 

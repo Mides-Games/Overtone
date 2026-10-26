@@ -1,8 +1,12 @@
 #!/bin/sh
 # Bring the server's Overtone up to the stable branch on GitHub.
 #
-# Run as root by overtone-update.service: on a push (GitHub Actions starts it)
-# and every few minutes (its timer). It deploys one branch only (BRANCH),
+# Run by overtone-update.service as the service's own user (overtone), never
+# as root: the checkout it builds is that user's, and root running code from a
+# tree another user can write is root for whoever can write it. Its one
+# privileged step, restarting the service, goes through a sudo rule for that
+# command alone (deploy/setup-deploy-user.sh). The timer starts it every few
+# minutes, and the deploy user's key can start it on demand. It deploys one branch only (BRANCH),
 # fast-forward only: a checkout that has moved on its own is left alone and
 # said so. It waits while the server runs a measurement, the gates or the
 # suite, so a push never cuts one short. Once the code on disk has moved, the
@@ -19,7 +23,7 @@ main() {
     SERVICE=${OVERTONE_SERVICE:-overtone-api}
     TOKEN_FILE=${OVERTONE_TOKEN_FILE:-/var/lib/overtone/Overtone/api-token}
     API=${OVERTONE_API:-http://127.0.0.1:8765}
-    CARGO=${OVERTONE_CARGO:-/root/.cargo/bin/cargo}
+    CARGO=${OVERTONE_CARGO:-$(command -v cargo || echo "$HOME/.cargo/bin/cargo")}
 
     cd "$REPO" || return 1
     # A mode change made by hand (chmod +x) is not a change worth keeping,
@@ -37,8 +41,9 @@ main() {
 
     # A run in progress or waiting: the next tick deploys.
     if [ -r "$TOKEN_FILE" ]; then
-        busy=$(curl -fsS --max-time 10 -H "Authorization: Bearer $(cat "$TOKEN_FILE")" \
-                   "$API/api/v1/runs" 2>/dev/null |
+        # The header goes in on stdin: an argument is readable by every user.
+        busy=$(printf 'Authorization: Bearer %s\n' "$(cat "$TOKEN_FILE")" |
+               curl -fsS --max-time 10 -H @- "$API/api/v1/runs" 2>/dev/null |
                python3 -c 'import json, sys; q = json.load(sys.stdin)["queue"]; print(1 if q["running"] or q["queued"] else 0)' \
                2>/dev/null || echo 0)
         if [ "$busy" = 1 ]; then
@@ -64,7 +69,11 @@ main() {
         "$CARGO" build --release --quiet -p overtone-cli ||
             { echo "overtone-update: overtone-cli did not build; the old binary stays"; failed=1; }
     fi
-    systemctl restart "$SERVICE" || { echo "overtone-update: $SERVICE did not restart"; return 1; }
+    if [ "$(id -u)" = 0 ]; then
+        systemctl restart "$SERVICE"
+    else
+        sudo -n /usr/bin/systemctl restart "$SERVICE"
+    fi || { echo "overtone-update: $SERVICE did not restart"; return 1; }
     echo "overtone-update: $(git rev-parse --short "$old") -> $(git rev-parse --short "$new")"
     return "$failed"
 }

@@ -73,6 +73,8 @@ from overtone_paths import data_root
 TOKEN_FILE = "api-token"
 #: The token is read from here before any file.
 TOKEN_ENV = "OVERTONE_API_TOKEN"
+#: The shortest token accepted from the environment or a file.
+MIN_TOKEN = 32
 #: The largest request body read; every request body is a small JSON object.
 MAX_BODY = 64 * 1024
 #: The largest bridge call: a song dropped on the page travels as base64.
@@ -245,16 +247,25 @@ class Service:
         return HTTPStatus.OK, found
 
 
+def _long_enough(token: str, source: str) -> str:
+    if len(token) < MIN_TOKEN:
+        raise SystemExit(f"overtone-server: the token in {source} is shorter than {MIN_TOKEN} "
+                         "characters; use a random one (delete the file and one is written).")
+    return token
+
+
 def load_token(explicit_file: str | None = None) -> str:
     """The bearer token: the environment's, else the file's, else a new one
-    written to Overtone's data folder (readable by its owner only)."""
+    written to Overtone's data folder (readable by its owner only). One
+    shorter than MIN_TOKEN is refused: the token is the whole lock, and the
+    wrong-token delay is per connection, so a short one is guessable."""
     if os.environ.get(TOKEN_ENV):
-        return os.environ[TOKEN_ENV].strip()
+        return _long_enough(os.environ[TOKEN_ENV].strip(), f"${TOKEN_ENV}")
     path = Path(explicit_file) if explicit_file else data_root() / TOKEN_FILE
     if path.is_file():
         token = path.read_text(encoding="utf-8").strip()
         if token:
-            return token
+            return _long_enough(token, str(path))
     path.parent.mkdir(parents=True, exist_ok=True)
     token = secrets.token_urlsafe(32)
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)

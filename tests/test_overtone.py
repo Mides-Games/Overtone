@@ -6338,8 +6338,17 @@ class LibraryServerTests(unittest.TestCase):
             self.assertEqual(self.server_module.load_token(str(path)), first)
         if os.name != "nt":
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        from_env = "e" * self.server_module.MIN_TOKEN
+        with mock.patch.dict(os.environ, {self.server_module.TOKEN_ENV: from_env}):
+            self.assertEqual(self.server_module.load_token(str(path)), from_env)
+        # A short token is guessable: the server refuses to start on one.
         with mock.patch.dict(os.environ, {self.server_module.TOKEN_ENV: "from-env"}):
-            self.assertEqual(self.server_module.load_token(str(path)), "from-env")
+            with self.assertRaises(SystemExit):
+                self.server_module.load_token(str(path))
+        path.write_text("short", encoding="utf-8")
+        with mock.patch.dict(os.environ, {self.server_module.TOKEN_ENV: ""}):
+            with self.assertRaises(SystemExit):
+                self.server_module.load_token(str(path))
 
 
 

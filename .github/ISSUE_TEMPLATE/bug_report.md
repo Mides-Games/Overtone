@@ -16,7 +16,7 @@ labels: bug
 **Engine and version**
 - Engine: <!-- Python v3 (default) / Rust v4 (Settings → Rust engine) / overtone-cli -->
 - Overtone version or commit: <!-- the release (e.g. v0.1.0-alpha), or `git rev-parse --short HEAD` -->
-- How you run it: <!-- MSI / portable ZIP / Overtone.bat / command line -->
+- How you run it: <!-- website / command line / server -->
 - Windows version:
 
 **The audio**

@@ -197,8 +197,7 @@ El orden importa la primera vez: **db → api → worker → web**.
    de `site/api` con pnpm, desde `pnpm-lock.yaml` (sin lockfile no arranca). Corre
    `node site/api/src/db/migrate.js` y después el server.
 3. **`overtone-worker`.** El primer arranque crea `.venv` e instala
-   `python/requirements.lock`, sin su última sección, que es la de pywebview para
-   Windows. Puede tardar varios minutos. El modelo de Beat This! ya lo bajó la
+   `python/requirements.lock`. Puede tardar varios minutos. El modelo de Beat This! ya lo bajó la
    instalación con `git lfs pull`.
 4. **`overtone-web`.** El primer arranque hace `pnpm install` y `pnpm --dir site/web build`,
    y después sirve `site/web/dist`.

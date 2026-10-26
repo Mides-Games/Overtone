@@ -78,7 +78,7 @@ MANIFEST = local_data.CORPUS_B
 CACHE_DIR = HERE / ".cache" / "corpus_b"
 #: The osu! Songs folder; OVERTONE_SONGS names another (a server's).
 SONGS = Path(os.environ.get("OVERTONE_SONGS") or r"C:\osu!\Songs")
-#: "app" is what the app runs (overtone_web.run_analysis): the Rust engine,
+#: "app" is what the desktop app ran (parked 2026-10-26): the Rust engine,
 #: and v3 wherever Rust refuses or fails.
 ENGINES = ("python", "rust", "app")
 
@@ -440,7 +440,7 @@ def analyse(audio: str, engine: str, cli: str | None) -> dict:
             except Exception as exc:  # noqa: BLE001 - the app's fallback, below
                 if engine != "app":
                     raise
-                # As the app does (overtone_web.run_analysis): v3 takes over
+                # As the desktop app did: v3 takes over
                 # where the Rust engine refuses or fails, and says why.
                 result["backend"] = "python"
                 result["rust_said"] = f"{type(exc).__name__}: {exc}"[:200]

@@ -28,7 +28,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
-# The web shell's tokens (app/styles.css, "Console"): --surface-2, --accent, --red.
+# The "Console" tokens (the parked desktop app's app/styles.css): --surface-2, --accent, --red.
 BG = (0x1E, 0x1B, 0x27, 0xFF)      # panel
 ACCENT = (0x3F, 0xD0, 0xDC)        # accent, the signal trace
 RED = (0xFF, 0x5D, 0x6C, 0xFF)     # timing points

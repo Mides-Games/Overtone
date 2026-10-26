@@ -28,10 +28,9 @@ def rust_tests() -> int:
                for p in (ROOT / "crates").rglob("*.rs"))
 
 
-def python_tests() -> tuple[int, int]:
-    count = [len(re.findall(r"^\s+def test_", (ROOT / "tests" / name).read_text(encoding="utf-8"), re.M))
-              for name in ("test_overtone.py", "test_overtone_web.py")]
-    return count[0], count[1]
+def python_tests() -> int:
+    return sum(len(re.findall(r"^\s+def test_", p.read_text(encoding="utf-8"), re.M))
+               for p in (ROOT / "tests").glob("test_*.py"))
 
 
 def crate_dirs() -> list[str]:
@@ -61,11 +60,10 @@ def library_schema() -> tuple[int | None, int | None]:
 def main() -> int:
     problems: list[str] = []
     rust = rust_tests()
-    engine, web = python_tests()
-    python = engine + web
+    python = python_tests()
     crates = crate_dirs()
     golden = golden_vectors()
-    print(f"source: {python} Python tests ({engine} engine + {web} web shell), "
+    print(f"source: {python} Python tests, "
           f"{rust} Rust tests, {len(crates)} crates, {golden} golden vectors")
 
     def expect(doc: str, what: str, found: list[str], want: int) -> None:
@@ -81,7 +79,7 @@ def main() -> int:
         problems.append("AGENTS.md differs from CLAUDE.md; they must be identical")
     for doc, text in (("CLAUDE.md", claude),):
         expect(doc, "Python tests",
-               re.findall(r"test_overtone_web\s+# all pass \((\d+) on", text), python)
+               re.findall(r"discover -s tests\s+# all pass \((\d+) on", text), python)
         expect(doc, "Rust tests",
                re.findall(r"cargo test --workspace\s+# all pass \((\d+) on", text), rust)
         expect(doc, "golden vectors", re.findall(r"(\d+) committed vector files", text), golden)
@@ -96,17 +94,14 @@ def main() -> int:
     expect("README.md badge", "Python tests", [b[0] for b in badge], python)
     expect("README.md badge", "Rust tests", [b[1] for b in badge], rust)
     expect("README.md", "Python tests",
-           re.findall(r"test_overtone_web\s+# (\d+) tests", readme), python)
+           re.findall(r"discover -s tests\s+# (\d+) tests", readme), python)
     expect("README.md", "Rust tests",
            re.findall(r"cargo test --workspace\s+# (\d+) tests", readme), rust)
 
     roadmap = (ROOT / "docs" / "07-roadmap.md").read_text(encoding="utf-8")
-    line = re.findall(r"Tests: \*\*(\d+)\*\* Python \((\d+) engine \+ (\d+) web shell\) "
-                      r"· \*\*(\d+)\*\* Rust", roadmap)
+    line = re.findall(r"Tests: \*\*(\d+)\*\* Python · \*\*(\d+)\*\* Rust", roadmap)
     expect("roadmap", "Python tests", [m[0] for m in line], python)
-    expect("roadmap", "engine tests", [m[1] for m in line], engine)
-    expect("roadmap", "web shell tests", [m[2] for m in line], web)
-    expect("roadmap", "Rust tests", [m[3] for m in line], rust)
+    expect("roadmap", "Rust tests", [m[1] for m in line], rust)
 
     sql_version, code_version = library_schema()
     print(f"library schema: library.sql v{sql_version}, overtone_library.py v{code_version}")

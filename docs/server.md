@@ -56,20 +56,18 @@ Se necesitan unos 5 GB libres más lo que ocupe la carpeta Songs.
    git clone https://github.com/Mides-Projects/Overtone.git /opt/overtone
    ```
 
-3. Python 3.14 con `uv` y las dependencias del motor. `pywebview` no hace falta
-   en un servidor:
+3. Python 3.14 con `uv` y las dependencias del motor:
 
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
    ```bash
-   cd /opt/overtone && UV_PYTHON_INSTALL_DIR=/opt/uv-python ~/.local/bin/uv venv --python 3.14 .venv && grep -vE '^(bottle|clr-loader|proxy-tools|pythonnet|pywebview)==' python/requirements.lock > /tmp/overtone-server.lock && ~/.local/bin/uv pip install --python .venv/bin/python -r /tmp/overtone-server.lock
+   cd /opt/overtone && UV_PYTHON_INSTALL_DIR=/opt/uv-python ~/.local/bin/uv venv --python 3.14 .venv && ~/.local/bin/uv pip install --python .venv/bin/python -r python/requirements.lock
    ```
 
    Las versiones salen de `python/requirements.lock`, las mismas que midió
-   el benchmark; solo se dejan afuera las del escritorio (pywebview y lo que
-   arrastra en Windows).
+   el benchmark.
 
    `UV_PYTHON_INSTALL_DIR` deja el intérprete fuera de `/root`, para que el
    usuario del servicio (abajo) pueda usarlo.

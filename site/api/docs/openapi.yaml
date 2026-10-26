@@ -1,0 +1,212 @@
+openapi: 3.1.0
+info:
+  title: Overtone API
+  version: 0.1.0
+  description: |
+    The Overtone website's API (site/api). Served under the web's own origin:
+    the browser never calls it cross-origin, so there is no CORS.
+
+    Sign-in is Mides SSO only. The browser holds one cookie,
+    `overtone_session` (HttpOnly, SameSite=Lax); Mides tokens never leave the
+    server. Every state-changing request carries
+    `X-Requested-With: overtone-web` or is refused with 403.
+
+    Errors share one shape: `{ "error": { "status", "message", "code"? } }`.
+servers:
+  - url: /api/v1
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: overtone_session
+  parameters:
+    sameOrigin:
+      name: X-Requested-With
+      in: header
+      required: true
+      schema: { type: string, const: overtone-web }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [status, message]
+          properties:
+            status: { type: integer }
+            message: { type: string }
+            code:
+              type: string
+              description: Stable name to branch on; the message may change wording.
+              examples: [SIGN_IN_REQUIRED, SSO_STATE_MISSING, NOT_IMPLEMENTED, RATE_LIMITED]
+    Account:
+      type: object
+      description: Public profile fields cached from Mides. Never email or phone.
+      required: [id, midesUserId, username, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        midesUserId: { type: string }
+        username: { type: string }
+        displayName: { type: [string, 'null'] }
+        avatarUrl: { type: [string, 'null'], format: uri }
+        bannerUrl: { type: [string, 'null'], format: uri }
+        role: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+  responses:
+    Error:
+      description: An error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+paths:
+  /health:
+    get:
+      summary: Liveness, database state and the upload limits
+      responses:
+        '200':
+          description: Up. `database` is `none` when running without one (development only).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok, degraded] }
+                  database: { type: string, enum: [ok, down, none] }
+                  devLogin: { type: boolean }
+                  limits:
+                    type: object
+                    properties:
+                      anonDailyLimit: { type: integer }
+                      maxAudioSeconds: { type: integer }
+        '503':
+          description: The database does not answer (`status` is `degraded`).
+
+  /auth/config:
+    get:
+      summary: What the login screen can offer
+      responses:
+        '200':
+          description: Providers are empty when the SSO is not configured.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  devLogin: { type: boolean }
+                  providers:
+                    type: array
+                    items: { type: string, enum: [discord, google] }
+
+  /auth/sso/start:
+    get:
+      summary: Where to send the browser to sign in
+      description: |
+        Builds `${MIDES_WEB_URL}/authorize?app=overtone&redirect_uri=${SITE_URL}/login/callback&provider=…`
+        server side and sets the short-lived signed `overtone_sso` cookie
+        (path /api/v1/auth) that the exchange demands. With MIDES_DEV_LOGIN the
+        URL is `${SITE_URL}/login/callback#code=dev.<provider>.<nonce>` instead.
+      parameters:
+        - name: provider
+          in: query
+          schema: { type: string, enum: [discord, google] }
+          description: Anything else is ignored and Mides shows its own choice.
+      responses:
+        '200':
+          description: The URL to navigate to.
+          headers:
+            Set-Cookie: { schema: { type: string }, description: overtone_sso }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url: { type: string, format: uri }
+        '503': { $ref: '#/components/responses/Error' }
+
+  /auth/sso/exchange:
+    post:
+      summary: Trade the code from /login/callback for a session
+      description: |
+        Posts the code to `${MIDES_AUTH_URL}/auth/sso/exchange`, caches the
+        public profile, seals the refresh token (AES-256-GCM) and sets
+        `overtone_session`. The `overtone_sso` cookie is spent whatever happens.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, maxLength: 4096 }
+      responses:
+        '200':
+          description: Signed in.
+          headers:
+            Set-Cookie: { schema: { type: string }, description: overtone_session }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, const: true }
+        '400':
+          description: '`SSO_CODE_MISSING`, `SSO_CODE_INVALID`, or `SSO_STATE_MISSING` (the sign-in did not start in this browser).'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '502': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+
+  /auth/logout:
+    post:
+      summary: Sign out everywhere
+      description: Bumps the account's session version (every cookie of it stops working) and forgets the Mides token.
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      responses:
+        '204':
+          description: Signed out; the cookie is cleared.
+        '403': { $ref: '#/components/responses/Error' }
+
+  /me:
+    get:
+      summary: Who is signed in
+      security:
+        - session: []
+      responses:
+        '200':
+          description: The account.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account: { $ref: '#/components/schemas/Account' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /analyses:
+    post:
+      summary: Upload a song for analysis (not built yet)
+      description: |
+        Stub. Answers 501 `NOT_IMPLEMENTED` without reading the body. Phase
+        W3.4 turns it into: upload, queue a job, return its id.
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                audio: { type: string, format: binary }
+                osu: { type: string, format: binary }
+      responses:
+        '501': { $ref: '#/components/responses/Error' }

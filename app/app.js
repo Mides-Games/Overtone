@@ -610,6 +610,11 @@ const I18N = {
     as_no_attacks: "No attacks were found in this song.",
     no_fit: "Fit a grid first.",
     settings_sub: "Saved on this PC as you change them.",
+    st_file: "Settings file", st_file_export: "Save settings…", st_file_import: "Open settings…",
+    st_file_hint: "Save these settings to a file and open it on another PC. A folder that does not exist there is left at its default.",
+    st_file_saved: "Settings saved to {path}", st_file_read: "Settings opened: {n} kept",
+    st_file_skipped: "Settings opened: {n} kept; not used here: {names}",
+    bad_settings_file: "That is not an Overtone settings file.",
     st_diag: "Diagnostics", st_diag_copy: "Copy diagnostics", st_diag_copied: "Diagnostics copied",
     st_diag_hint: "The version, the build, the engines and your folders as plain text, for a bug report. It is copied to the clipboard only when you press the button; nothing is sent anywhere.",
     st_output: "Exports", st_folder: "Output folder", st_folder_default: "Use the default", st_folder_pick: "Choose folder…",
@@ -676,6 +681,13 @@ const I18N = {
     key_tap: "Tap along with the click", key_views: "The menu's sections, in order",
     key_open: "Open audio", key_analyze: "Analyze", key_undo: "Undo", key_redo: "Redo",
     key_sheet: "This sheet", key_close: "Close a panel or this sheet",
+    key_change: "Change this key", key_press: "Press a key… (Esc keeps it)", key_reset: "Default keys",
+    bad_shortcut: "That key is taken by another action or cannot be moved.",
+    key_palette: "Search every action", pal_title: "Commands", pal_placeholder: "Type an action or a section…",
+    pal_empty: "Nothing matches.", pal_section: "Section", pal_action: "Action",
+    note_add: "Add note at the playhead", note_placeholder: "A note for this moment of the song…", note_text: "Note", note_seek: "Play from here", note_delete: "Delete this note",
+    bad_note: "Write the note first (up to 500 characters).", too_many_notes: "This song already has 500 notes.",
+    note_unsaved: "The note is kept until you close Overtone, but could not be saved: {detail}",
     key_toggled: "{what}: {state}", key_state_on: "on", key_state_off: "off",
     pb_loading: "Loading the song… {n}/{of}",
     pb_perc_preparing: "Separating the drums…",
@@ -1435,6 +1447,11 @@ const I18N = {
     as_no_attacks: "No se encontraron ataques en esta canción.",
     no_fit: "Primero ajustá un grid.",
     settings_sub: "Se guardan en esta PC a medida que los cambiás.",
+    st_file: "Archivo de ajustes", st_file_export: "Guardar ajustes…", st_file_import: "Abrir ajustes…",
+    st_file_hint: "Guardá estos ajustes en un archivo y abrilo en otra PC. Una carpeta que allí no existe queda en su valor predeterminado.",
+    st_file_saved: "Ajustes guardados en {path}", st_file_read: "Ajustes abiertos: {n} aplicados",
+    st_file_skipped: "Ajustes abiertos: {n} aplicados; no se usan acá: {names}",
+    bad_settings_file: "Eso no es un archivo de ajustes de Overtone.",
     st_diag: "Diagnóstico", st_diag_copy: "Copiar diagnóstico", st_diag_copied: "Diagnóstico copiado",
     st_diag_hint: "La versión, el build, los motores y tus carpetas como texto plano, para un reporte. Se copia al portapapeles solo cuando apretás el botón; no se envía nada a ningún lado.",
     st_output: "Exportaciones", st_folder: "Carpeta de salida", st_folder_default: "Usar la predeterminada", st_folder_pick: "Elegir carpeta…",
@@ -1501,6 +1518,13 @@ const I18N = {
     key_tap: "Marcar el pulso junto al click", key_views: "Las secciones del menú, en orden",
     key_open: "Abrir audio", key_analyze: "Analizar", key_undo: "Deshacer", key_redo: "Rehacer",
     key_sheet: "Esta hoja", key_close: "Cerrar un panel o esta hoja",
+    key_change: "Cambiar esta tecla", key_press: "Apretá una tecla… (Esc la deja)", key_reset: "Teclas predeterminadas",
+    bad_shortcut: "Esa tecla ya la usa otra acción o no se puede mover.",
+    key_palette: "Buscar cualquier acción", pal_title: "Comandos", pal_placeholder: "Escribí una acción o una sección…",
+    pal_empty: "No hay coincidencias.", pal_section: "Sección", pal_action: "Acción",
+    note_add: "Agregar nota en el cabezal", note_placeholder: "Una nota para este momento de la canción…", note_text: "Nota", note_seek: "Reproducir desde acá", note_delete: "Borrar esta nota",
+    bad_note: "Escribí primero la nota (hasta 500 caracteres).", too_many_notes: "Esta canción ya tiene 500 notas.",
+    note_unsaved: "La nota queda hasta que cierres Overtone, pero no se pudo guardar: {detail}",
     key_toggled: "{what}: {state}", key_state_on: "sí", key_state_off: "no",
     pb_loading: "Cargando la canción… {n}/{of}",
     pb_perc_preparing: "Separando la batería…",
@@ -1732,7 +1756,7 @@ function setView(view) {
   if (changed) $("content").scrollTop = 0;
   // The canvas measures its box: it can only be drawn while visible.
   if (view === "timing" && S.result) {
-    drawTrace(); waveLoad(); svMaps(); divsLoad(); swingLoad(); phLoad();
+    drawTrace(); waveLoad(); svMaps(); divsLoad(); swingLoad(); phLoad(); notesLoad();
   }
   if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); stxVolMaps(); }
   if (view === "hitsounds" && S.result) { hsvLoad(); sbView(); }
@@ -6589,6 +6613,24 @@ function stWire() {
     else if (reply.key !== "cancelled") toast(t(reply.key), true);
   };
   $("stFolderDefault").onclick = () => stSet({ output_folder: "" });
+  $("stFileExport").onclick = async () => {
+    if (!api()) return;
+    const reply = await api().export_settings();
+    if (reply.ok) toast(t("st_file_saved", { path: reply.path }));
+    else if (reply.key !== "cancelled") toast(t(reply.key, { detail: reply.detail || "" }), true);
+  };
+  $("stFileImport").onclick = async () => {
+    if (!api()) return;
+    const reply = await api().import_settings();
+    if (!reply.ok) {
+      if (reply.key !== "cancelled") toast(t(reply.key, { detail: reply.detail || "" }), true);
+      return;
+    }
+    stTake(reply);
+    toast(reply.skipped.length
+      ? t("st_file_skipped", { n: reply.imported.length, names: reply.skipped.join(", ") })
+      : t("st_file_read", { n: reply.imported.length }));
+  };
   $("stDiagCopy").onclick = async () => {
     if (!api()) return;
     const reply = await api().diagnostics();
@@ -6965,6 +7007,7 @@ const DRIFT_MS = 30;              // the drift lane's half height
 const SWING_LATE_MAX = 0.84;      // the swing lane's top: the engine's own bound
 const VIEW = { a: 0, b: 0, for: null };
 const WAVE = { for: null, bin: 256, rate: 0, min: null, max: null };
+const NOTES = { list: [], for: null };
 let DRIFT = { for: null, dev: null };
 const TL = { drag: null, moved: false, suppressClick: false };
 
@@ -7159,6 +7202,17 @@ function drawTrace(hoverX) {
         const h = on[i] * wh;
         if (h >= 0.6) ctx.fillRect(x, wmid - h, Math.max(((x1 - x0) / on.length) * (dur / span), 1), 2 * h);
       }
+    }
+  }
+
+  // notes: a flag over the waveform where each one is pinned
+  if (NOTES.for === r.path && NOTES.list.length) {
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+    for (const n of NOTES.list) {
+      if (n.time_s < v.a || n.time_s > v.b) continue;
+      const x = Math.round(X(n.time_s)) + 0.5;
+      ctx.fillRect(x - 0.5, yW0, 1, yW1 - yW0);
+      ctx.beginPath(); ctx.moveTo(x, yW0); ctx.lineTo(x + 7, yW0 + 4); ctx.lineTo(x, yW0 + 8); ctx.fill();
     }
   }
 
@@ -7553,28 +7607,70 @@ function openDrawer(open) {
 // ------------------------------------------------------------------ keyboard
 // Every shortcut, as the sheet (?) lists it: alternatives, each a chord of
 // keys. Named keys are translated; the rest read as printed on the key.
+// The keys the sheet lets the user move (overtone_web.SHORTCUT_DEFAULTS);
+// a row's third element names the action behind each of its keys.
+const KEY_DEFAULTS = { play: " ", tap: "t", loop: "l", click: "c", line_prev: "[", line_next: "]", sheet: "?" };
+const KEY_MODIFIERS = ["Shift", "Control", "Alt", "Meta", "AltGraph"];
+const KEYCAP = { action: null };
+
+function keyFor(action) {
+  const saved = ST.settings && ST.settings.shortcuts;
+  return (saved && saved[action]) || KEY_DEFAULTS[action];
+}
+
+function pressed(e, action) {
+  return e.key.toLowerCase() === keyFor(action);
+}
+
+function keyName(key) {
+  return key === " " ? t("kb_space") : key.length === 1 ? key.toUpperCase() : key;
+}
+
 const KEYS = [
-  [[["kb_space"]], "key_play"],
+  [[["kb_space"]], "key_play", ["play"]],
   [[["←"], ["→"]], "key_seek"],
   [[["kb_shift", "←"], ["kb_shift", "→"]], "key_seek_fine"],
-  [[["["], ["]"]], "key_lines"],
+  [[["["], ["]"]], "key_lines", ["line_prev", "line_next"]],
   [[["↑"], ["↓"]], "key_points"],
-  [[["L"]], "key_loop"],
-  [[["C"]], "key_click"],
-  [[["T"]], "key_tap"],
+  [[["L"]], "key_loop", ["loop"]],
+  [[["C"]], "key_click", ["click"]],
+  [[["T"]], "key_tap", ["tap"]],
   [[["1–9"], ["0"]], "key_views"],
   [[["Ctrl", "O"]], "key_open"],
   [[["kb_enter"], ["F5"]], "key_analyze"],
   [[["Ctrl", "Z"]], "key_undo"],
   [[["Ctrl", "Y"], ["Ctrl", "kb_shift", "Z"]], "key_redo"],
-  [[["?"]], "key_sheet"],
+  [[["Ctrl", "K"]], "key_palette"],
+  [[["?"]], "key_sheet", ["sheet"]],
   [[["Esc"]], "key_close"],
 ];
 
+// A movable key is a button: pressed, it waits for the next key and keeps
+// it. The bridge refuses a key another action holds or a fixed one.
 function renderKeys() {
   const kbd = (k) => `<kbd>${esc(k.startsWith("kb_") ? t(k) : k)}</kbd>`;
-  $("keysList").innerHTML = KEYS.map(([alts, what]) =>
-    `<dt>${alts.map((chord) => chord.map(kbd).join(" + ")).join(" / ")}</dt><dd>${esc(t(what))}</dd>`).join("");
+  const movable = (action) => KEYCAP.action === action
+    ? `<button class="keycap waiting" data-action="${action}">${esc(t("key_press"))}</button>`
+    : `<button class="keycap" data-action="${action}" title="${esc(t("key_change"))}"><kbd>${esc(keyName(keyFor(action)))}</kbd></button>`;
+  $("keysList").innerHTML = KEYS.map(([alts, what, actions]) =>
+    `<dt>${actions ? actions.map(movable).join(" / ")
+                   : alts.map((chord) => chord.map(kbd).join(" + ")).join(" / ")}</dt><dd>${esc(t(what))}</dd>`).join("");
+  $("keysReset").hidden = !Object.keys(KEY_DEFAULTS).some((a) => keyFor(a) !== KEY_DEFAULTS[a]);
+}
+
+async function keyTake(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (KEY_MODIFIERS.includes(e.key)) return;   // a modifier alone is not a key yet
+  const action = KEYCAP.action;
+  KEYCAP.action = null;
+  if (e.key !== "Escape" && api()) {
+    const shortcuts = Object.fromEntries(Object.keys(KEY_DEFAULTS).map((a) => [a, keyFor(a)]));
+    shortcuts[action] = e.key.toLowerCase();
+    const reply = await api().set_settings({ shortcuts });
+    if (reply.ok) stTake(reply); else toast(t(reply.key), true);
+  }
+  renderKeys();
 }
 
 function openKeys() {
@@ -7582,6 +7678,139 @@ function openKeys() {
   if (sheet.open) { sheet.close(); return; }
   renderKeys();
   sheet.showModal();
+}
+
+// Ctrl+K: the palette. Built when opened, from what the window has right
+// then: every section, the global actions, and every enabled button the
+// current section shows -- so a new button is in it without a list to keep.
+const PAL = { items: [], shown: [], at: 0 };
+
+function palFold(text) {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function palItems() {
+  const items = [];
+  document.querySelectorAll("#nav [data-view]").forEach((b) => {
+    if (items.some((it) => it.view === b.dataset.view)) return;
+    items.push({ label: t(VIEW_LABEL[b.dataset.view] || b.dataset.view), where: t("pal_section"),
+                 view: b.dataset.view, run: () => setView(b.dataset.view) });
+  });
+  [["key_open", () => openAudio()], ["key_analyze", () => analyze()], ["key_undo", () => undo()],
+   ["key_redo", () => redo()], ["key_sheet", () => openKeys()]]
+    .forEach(([key, run]) => items.push({ label: t(key), where: t("pal_action"), run }));
+  const here = t(VIEW_LABEL[S.view] || S.view);
+  document.querySelectorAll(".content > [data-view]:not([hidden]) button").forEach((b) => {
+    const label = (b.textContent || "").replace(/\s+/g, " ").trim();
+    if (!label || b.disabled || b.offsetParent === null) return;
+    items.push({ label, where: here, run: () => b.click() });
+  });
+  return items;
+}
+
+function palRender() {
+  const words = palFold($("paletteInput").value).split(/\s+/).filter(Boolean);
+  PAL.shown = PAL.items.filter((it) => {
+    const text = palFold(`${it.label} ${it.where}`);
+    return words.every((w) => text.includes(w));
+  }).slice(0, 60);
+  PAL.at = Math.min(PAL.at, Math.max(0, PAL.shown.length - 1));
+  $("paletteList").innerHTML = PAL.shown.map((it, i) =>
+    `<li role="option" data-i="${i}" aria-selected="${i === PAL.at}"><span>${esc(it.label)}</span>`
+    + `<span class="where">${esc(it.where)}</span></li>`).join("");
+  $("paletteEmpty").hidden = PAL.shown.length > 0;
+  const on = $("paletteList").children[PAL.at];
+  if (on) on.scrollIntoView({ block: "nearest" });
+}
+
+function palRun(i) {
+  const it = PAL.shown[i];
+  $("palette").close();
+  if (it) it.run();
+}
+
+function openPalette() {
+  const sheet = $("palette");
+  if (sheet.open) { sheet.close(); return; }
+  PAL.items = palItems();
+  PAL.at = 0;
+  $("paletteInput").value = "";
+  $("paletteInput").placeholder = t("pal_placeholder");
+  palRender();
+  sheet.showModal();
+  $("paletteInput").focus();
+}
+
+function palWire() {
+  $("paletteInput").oninput = () => { PAL.at = 0; palRender(); };
+  $("paletteInput").onkeydown = (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const n = PAL.shown.length;
+      if (n) PAL.at = (PAL.at + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+      palRender();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      palRun(PAL.at);
+    }
+  };
+  $("paletteList").onclick = (e) => {
+    const li = e.target.closest("li[data-i]");
+    if (li) palRun(+li.dataset.i);
+  };
+  // A click on the backdrop lands on the dialog itself: it closes, like Esc.
+  $("palette").onclick = (e) => { if (e.target === $("palette")) $("palette").close(); };
+}
+
+// Notes: free text pinned to a time of the song, kept beside its project.
+async function notesLoad() {
+  if (!api() || !S.result) return;
+  const path = S.result.path;
+  const reply = await api().notes();
+  if (!S.result || S.result.path !== path) return;
+  notesTake(reply, path);
+}
+
+function notesTake(reply, path) {
+  if (!reply.ok) { toast(t(reply.key), true); return; }
+  NOTES.list = reply.notes;
+  NOTES.for = path || (S.result && S.result.path);
+  if (reply.error) toast(t("note_unsaved", { detail: reply.error }), true);
+  notesRender();
+  drawTrace();
+}
+
+function notesRender() {
+  $("noteText").placeholder = t("note_placeholder");
+  const shown = S.result && NOTES.for === S.result.path ? NOTES.list : [];
+  $("notesList").innerHTML = shown.map((n) =>
+    `<li data-id="${n.id}"><button class="btn small num" data-seek="${n.time_s}" title="${esc(t("note_seek"))}">${esc(fmtTime(n.time_s))}</button>`
+    + `<input class="input" maxlength="500" value="${esc(n.text)}" aria-label="${esc(t("note_text"))}">`
+    + `<button class="btn small" data-del="${n.id}" title="${esc(t("note_delete"))}">×</button></li>`).join("");
+}
+
+async function noteAdd() {
+  const text = $("noteText").value.trim();
+  if (!text || !S.result) return;
+  const reply = await api().note_add(pbPosition(), text);
+  if (reply.ok) $("noteText").value = "";
+  notesTake(reply);
+}
+
+function notesWire() {
+  $("noteAdd").onclick = noteAdd;
+  $("noteText").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); noteAdd(); } });
+  $("notesList").onclick = async (e) => {
+    const seek = e.target.closest("[data-seek]"), del = e.target.closest("[data-del]");
+    if (seek) pbSeek(+seek.dataset.seek, true);
+    if (del) notesTake(await api().note_delete(+del.dataset.del));
+  };
+  $("notesList").onchange = async (e) => {
+    const li = e.target.closest("li[data-id]");
+    if (!li || e.target.tagName !== "INPUT") return;
+    const text = e.target.value.trim();
+    notesTake(await (text ? api().note_edit(+li.dataset.id, text) : api().note_delete(+li.dataset.id)));
+  };
 }
 
 // [ and ]: the red line before or after the playhead, selected, the playhead on it.
@@ -8883,21 +9112,45 @@ function wire() {
     .filter((v, i, all) => all.indexOf(v) === i)
     .forEach((view, i) => { if (i < 10) viewKeys[String((i + 1) % 10)] = view; });
   $("keysClose").onclick = () => $("keysSheet").close();
+  $("keysSheet").addEventListener("close", () => { KEYCAP.action = null; });
+  $("keysList").onclick = (e) => {
+    const cap = e.target.closest(".keycap");
+    if (!cap) return;
+    KEYCAP.action = KEYCAP.action === cap.dataset.action ? null : cap.dataset.action;
+    renderKeys();
+  };
+  $("keysReset").onclick = async () => {
+    const reply = await api().set_settings({ shortcuts: {} });
+    if (reply.ok) { stTake(reply); renderKeys(); }
+  };
+  palWire();
+  notesWire();
   window.addEventListener("keydown", (e) => {
-    // The sheet is modal: it takes no shortcut but its own (Esc closes it natively).
+    // Ctrl+K opens the palette from anywhere, a field included; open, it
+    // keeps every key but its own toggle.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      if ($("keysSheet").open) $("keysSheet").close();
+      openPalette();
+      return;
+    }
+    if ($("palette").open) return;
+    // The sheet is modal: it takes no shortcut but its own (Esc closes it
+    // natively), and while a key waits to be changed, the next key is it.
     if ($("keysSheet").open) {
-      if (e.key === "?") { e.preventDefault(); $("keysSheet").close(); }
+      if (KEYCAP.action) { keyTake(e); return; }
+      if (pressed(e, "sheet")) { e.preventDefault(); $("keysSheet").close(); }
       return;
     }
     if (e.key === "Escape") { openDrawer(false); return; }
     // A field, a slider or a list keeps its own keys (an arrow moves a select).
     const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName);
-    if (e.key === " " && S.result && !typing) {
+    if (pressed(e, "play") && S.result && !typing) {
       e.preventDefault();
       pbToggle();
       return;
     }
-    if ((e.key === "t" || e.key === "T") && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat
+    if (pressed(e, "tap") && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat
         && S.result && !typing) {
       e.preventDefault();
       tapNow(e);
@@ -8910,7 +9163,7 @@ function wire() {
     // Ctrl+Alt: a key AltGr produced is a plain key, not a chord.
     const plain = (e.getModifierState && e.getModifierState("AltGraph"))
       || (!e.ctrlKey && !e.metaKey && !e.altKey);
-    if (e.key === "?" && plain) { e.preventDefault(); openKeys(); return; }
+    if (pressed(e, "sheet") && plain) { e.preventDefault(); openKeys(); return; }
     if (plain && !$("drawer").classList.contains("open")) {
       if (viewKeys[e.key] && !e.shiftKey) { e.preventDefault(); setView(viewKeys[e.key]); return; }
       if (S.result && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
@@ -8919,9 +9172,11 @@ function wire() {
         pbSeek(Math.min(Math.max(pbPosition() + step, 0), S.result.duration), true);
         return;
       }
-      if (S.result && (e.key === "[" || e.key === "]")) { e.preventDefault(); jumpLine(e.key === "]" ? 1 : -1); return; }
-      if (S.result && !e.repeat && (e.key === "l" || e.key === "L")) { e.preventDefault(); toggleCheck("pbLoop"); return; }
-      if (S.result && !e.repeat && (e.key === "c" || e.key === "C")) { e.preventDefault(); toggleCheck("pbClick"); return; }
+      if (S.result && (pressed(e, "line_prev") || pressed(e, "line_next"))) {
+        e.preventDefault(); jumpLine(pressed(e, "line_next") ? 1 : -1); return;
+      }
+      if (S.result && !e.repeat && pressed(e, "loop")) { e.preventDefault(); toggleCheck("pbLoop"); return; }
+      if (S.result && !e.repeat && pressed(e, "click")) { e.preventDefault(); toggleCheck("pbClick"); return; }
     }
     // Enter on a button reached with Tab (a nav item, an export) presses that
     // button; it must not be swallowed by the analyze shortcut below. A button

@@ -1,0 +1,6 @@
+# The panel runs these on Linux: bash reads a CR as part of the command, and
+# the eggs embed install.sh byte for byte. LF on every checkout and platform.
+*.sh text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.py text eol=lf

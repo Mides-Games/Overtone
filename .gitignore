@@ -34,3 +34,9 @@ bench/.cache/
 # Tauri frontend
 /app/node_modules/
 /app/dist/
+# Website (site/): dependencies, builds and local secrets. `.env.example` is
+# committed; a real `.env` never is.
+/node_modules/
+/site/*/node_modules/
+/site/*/dist/
+/site/*/.env

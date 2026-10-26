@@ -561,6 +561,10 @@
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
+  "watch_file": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
+  },
   "export_osz": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"

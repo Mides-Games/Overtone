@@ -7,6 +7,7 @@ as the Tk GUI does, (2) returns only JSON types, and (3) never touches the
 user's real ~/.overtone.json.
 """
 import base64
+import codecs
 import contextlib
 import json
 import os
@@ -1910,7 +1911,8 @@ class SettingsBridgeTests(_IsolatedConfig):
             "output_folder": "", "skin_folder": "", "export_ask": True, "map_lead": True,
             "clean_bpm": True, "offset_decimals": 0,
             "click_subdivision": 1, "click_accent": True, "ui_scale": 1.0,
-            "reduced_motion": False, "theme": "dark"})
+            "reduced_motion": False, "theme": "dark",
+            "shortcuts": web.SHORTCUT_DEFAULTS})
         self.assertTrue(reply["output_default"].endswith(str(Path("Documents") / "Overtone")))
         api._cfg.update({"offset_decimals": 9, "click_subdivision": 5, "ui_scale": "huge",
                          "export_ask": "no", "output_folder": 7, "skin_folder": ["C:/"]})
@@ -1945,6 +1947,62 @@ class SettingsBridgeTests(_IsolatedConfig):
         self.assertEqual((reply["settings"]["offset_decimals"], reply["settings"]["output_folder"],
                           reply["settings"]["reduced_motion"]), (2, tmp, True))
         self.assertEqual(self.saved[-1]["offset_decimals"], 2)
+
+    def test_a_settings_file_carries_the_settings_to_another_pc(self) -> None:
+        api = web.Api()
+        with tempfile.TemporaryDirectory() as tmp:
+            api.set_settings({"offset_decimals": 3, "theme": "light", "output_folder": tmp})
+            target = Path(tmp) / "mine.json"
+            api._save_dialog = lambda *_args, **_kw: str(target)
+            self.assertTrue(api.export_settings()["ok"])
+            self.assertFalse(Path(str(target) + ".part").exists())
+            written = json.loads(target.read_text(encoding="utf-8"))
+            self.assertEqual(written["settings"]["offset_decimals"], 3)
+            # The other PC: its folder is not this one.
+            data = json.loads(target.read_text(encoding="utf-8"))
+            data["settings"]["output_folder"] = str(Path(tmp) / "elsewhere")
+            data["settings"]["ui_scale"] = 9
+            data["settings"]["future"] = 1
+            target.write_bytes(codecs.BOM_UTF8 + json.dumps(data).encode("utf-8"))
+            other = web.Api()
+            other._cfg = {}
+            reply = other.import_settings(str(target))
+        self.assertTrue(reply["ok"])
+        self.assertEqual((reply["settings"]["offset_decimals"], reply["settings"]["theme"],
+                          reply["settings"]["output_folder"], reply["settings"]["ui_scale"]),
+                         (3, "light", "", 1.0))
+        self.assertEqual(sorted(reply["skipped"]), ["future", "output_folder", "ui_scale"])
+
+    def test_a_file_that_is_not_a_settings_file_changes_nothing(self) -> None:
+        api = web.Api()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "x.json"
+            for text in ("{nope", "[1]", '{"settings": {"theme": "light"}}',
+                         '{"overtone_settings": 1, "settings": [1]}'):
+                with self.subTest(text=text):
+                    path.write_text(text, encoding="utf-8")
+                    self.assertEqual(api.import_settings(str(path))["key"], "bad_settings_file")
+            self.assertEqual(api.import_settings(str(Path(tmp) / "gone.json"))["key"],
+                             "bad_settings_file")
+        self.assertEqual(self.saved, [])
+    def test_a_key_moves_only_where_no_other_action_holds_it(self) -> None:
+        api = web.Api()
+        keys = dict(web.SHORTCUT_DEFAULTS)
+        for bad in ({**keys, "loop": "c"}, {**keys, "play": "1"}, {**keys, "tap": "Enter"},
+                    {**keys, "tap": "T"}, {**keys, "fly": "f"}, {**keys, "tap": 7}, ["t"]):
+            with self.subTest(bad=bad):
+                self.assertEqual(api.set_settings({"shortcuts": bad})["key"], "bad_shortcut")
+        self.assertEqual(self.saved, [])
+        reply = api.set_settings({"shortcuts": {**keys, "loop": "o", "play": "p"}})
+        self.assertEqual((reply["settings"]["shortcuts"]["loop"],
+                          reply["settings"]["shortcuts"]["play"]), ("o", "p"))
+        # Only what moved is kept, so a default changed later still reaches it.
+        self.assertEqual(self.saved[-1]["shortcuts"], {"loop": "o", "play": "p"})
+        # A hand-edited set that collides falls back whole, never half.
+        api._cfg["shortcuts"] = {"loop": "c"}
+        self.assertEqual(api.settings()["settings"]["shortcuts"], web.SHORTCUT_DEFAULTS)
+        self.assertEqual(api.set_settings({"shortcuts": {}})["settings"]["shortcuts"],
+                         web.SHORTCUT_DEFAULTS)
 
     def test_click_settings_rebuild_the_payloads_clicks(self) -> None:
         api = _api_with_points()
@@ -4316,6 +4374,37 @@ class ProjectTests(_IsolatedConfig):
         # The project's locks go back with its points: the fresh analysis had none.
         self.assertEqual(undone["locks"], [])
         self.assertEqual(later.redo()["locks"], [1000.0])
+
+    def test_notes_are_kept_per_song_and_come_back(self) -> None:
+        api = web.Api(save_projects=True)
+        self.assertEqual(api.notes()["key"], "first")
+        api._analysis = self._fresh()
+        for bad in ((-1, "x"), (1e9, "x"), (float("nan"), "x"), ("soon", "x"),
+                    (2.0, "   "), (2.0, "x" * (web.NOTE_MAX_CHARS + 1))):
+            with self.subTest(bad=bad):
+                self.assertEqual(api.note_add(*bad)["key"], "bad_note")
+        api.note_add(4.0, "kiai starts")
+        reply = api.note_add(1.5, "  check the intro  ")
+        self.assertEqual([(n["time_s"], n["text"]) for n in reply["notes"]],
+                         [(1.5, "check the intro"), (4.0, "kiai starts")])
+        first = reply["notes"][1]["id"]
+        self.assertEqual(api.note_edit(first, "kiai")["notes"][1]["text"], "kiai")
+        self.assertEqual(api.note_edit(99, "x")["key"], "bad_note")
+        [notes] = sorted((self.root / "out" / "Projects").glob("*.notes.json"))
+        self.assertFalse(notes.with_name(notes.name + ".part").exists())
+        # The next session reads them back; a project restore never touches them.
+        later = web.Api(save_projects=True)
+        later._analysis = self._fresh()
+        self.assertEqual([n["text"] for n in later.notes()["notes"]], ["check the intro", "kiai"])
+        self.assertEqual(len(later.note_delete(first)["notes"]), 1)
+        self.assertEqual(later.note_delete(first)["key"], "bad_note")
+
+    def test_notes_stay_in_memory_when_projects_are_off(self) -> None:
+        api = web.Api()
+        api._analysis = self._fresh()
+        self.assertTrue(api.note_add(1.0, "here")["ok"])
+        self.assertEqual(len(api.notes()["notes"]), 1)
+        self.assertFalse((self.root / "out").exists())
 
     def test_off_unless_asked(self) -> None:
         api = web.Api()                                  # as every test and the harness build it

@@ -5,6 +5,7 @@ tracks with known ground truth, so no fixture files are needed. The v2
 segmentation and gap-filling helpers are still covered — they remain in the
 fallback path used for rubato and non-percussive audio.
 """
+import codecs
 import json
 import os
 import struct
@@ -3673,6 +3674,9 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
             self.assertEqual(overtone.load_config(), {
                 "recent": ["a.mp3"], "file": "song.mp3", "persistence": "12",
                 "future_key": {"kept": 1}})
+            # Notepad saves with a BOM; the file is read, not reset.
+            overtone.CONFIG_PATH.write_bytes(codecs.BOM_UTF8 + b'{"language": "English"}')
+            self.assertEqual(overtone.load_config(), {"language": "English"})
             # Without a config of its own, the pre-rename file is read.
             overtone.CONFIG_PATH.unlink()
             overtone.LEGACY_CONFIG_PATH.write_text('{"language": "Español"}', encoding="utf-8")
@@ -12736,6 +12740,44 @@ class TrainDropTests(unittest.TestCase):
             self.assertTrue(plan["usable"], plan["refusals"])
             codes = {repair["code"] for repair in plan["repairs"]}
             self.assertIn("no_spinners_to_drop", codes)
+
+
+class WatchModeTests(unittest.TestCase):
+    """`--watch`: one run now, one per finished change, none per poll."""
+
+    def test_a_change_is_analysed_once_it_holds_still(self) -> None:
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "song.wav"
+            audio.write_bytes(b"a")
+            # Each poll is a step of a scripted edit: idle, a write that
+            # keeps growing for one poll, then still, then idle again.
+            script = iter([None, b"ab", b"abc", None, None, None])
+            runs: list[bytes] = []
+
+            def sleep(_seconds: float) -> None:
+                step = next(script, None)
+                if step is not None:
+                    audio.write_bytes(step)
+                    stamp = os.stat(audio).st_mtime_ns + len(step) * 1_000_000
+                    os.utime(audio, ns=(stamp, stamp))
+
+            polls = iter(range(6))
+            count = overtone.watch_file(audio, lambda: runs.append(audio.read_bytes()),
+                                        lambda _message: None, sleep=sleep,
+                                        stop=lambda: next(polls, None) is None)
+            self.assertEqual(runs, [b"a", b"abc"])
+            self.assertEqual(count, 2)
+
+    def test_a_missing_file_is_waited_for(self) -> None:
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "song.wav"
+            runs = []
+            polls = iter(range(3))
+            overtone.watch_file(audio, lambda: runs.append(1), lambda _message: None,
+                                sleep=lambda _s: None, stop=lambda: next(polls, None) is None)
+            self.assertEqual(runs, [])
 
 
 if __name__ == "__main__":

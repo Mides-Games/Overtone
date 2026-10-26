@@ -8918,10 +8918,9 @@ def sound_events(beatmap: dict) -> list[dict]:
     return events
 
 
-#: Source checkout: the engine lives in ``python/``, data at the repo root.
-#: Frozen build: modules sit beside the data inside the contents folder.
+#: The engine lives in ``python/``, data at the repo root.
 _HERE = Path(__file__).resolve().parent
-ROOT = _HERE if getattr(sys, "frozen", False) else _HERE.parent
+ROOT = _HERE.parent
 #: osu!'s floor: a sound is never quieter than this, whatever the map says.
 MIN_SAMPLE_VOLUME = 5
 
@@ -9751,7 +9750,7 @@ def main() -> None:
         # path, and a fresh process starts from the file as it is now.
         if Path(args.audio).is_dir():
             parser.error("--watch needs a single audio file")
-        command = [sys.executable] + ([] if getattr(sys, "frozen", False) else [sys.argv[0]])
+        command = [sys.executable, sys.argv[0]]
         command += [arg for arg in sys.argv[1:] if arg != "--watch"]
         import subprocess
         try:

@@ -28,7 +28,6 @@ import math
 import os
 import re
 import sqlite3
-import sys
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -40,10 +39,9 @@ import overtone as ta
 import overtone_rust
 from overtone_paths import data_root
 
-#: Source checkout: the engine lives in ``python/``, data at the repo root.
-#: Frozen build: modules sit beside the data inside the contents folder.
+#: The engine lives in ``python/``, data at the repo root.
 _HERE = Path(__file__).resolve().parent
-ROOT = _HERE if getattr(sys, "frozen", False) else _HERE.parent
+ROOT = _HERE.parent
 SCHEMA_PATH = ROOT / "python" / "library.sql"
 #: The version of ``library.sql`` this code reads and writes.
 SCHEMA_VERSION = 3

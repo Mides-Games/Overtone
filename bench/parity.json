@@ -20,22 +20,6 @@
    "where": "bench",
    "why": "bench/fixtures.py, the one list of bench fixtures"
   },
-   "InstallerAssocTests": {
-    "where": "python-only",
-    "why": "installer/Overtone.wxs: the .osz association the MSI registers, which no Rust crate holds"
-   },
-   "InstallerNoticesTests": {
-   "where": "bench",
-   "why": "installer/notices.py, the bundled licences gathered for publishing: packaging, not an engine stage"
-  },
-  "InstallerPortableSmokeTests": {
-   "where": "bench",
-   "why": "installer/smoke.py: which of a portable run's writes count as Overtone's own state, packaging not an engine stage"
-  },
-  "InstallerSbomTests": {
-   "where": "bench",
-   "why": "installer/sbom.py, the licence inventory for publishing: packaging, not an engine stage"
-  },
   "LoadErrorMessageTests": {
    "where": "shell",
    "why": "the app own wording for a file it cannot read; the sidecar says its own in cli.rs::a_missing_file_and_a_bad_command_line_say_so"
@@ -52,13 +36,9 @@
    "where": "bench",
    "why": "bench/gates.py perf, which times the stages it is given"
   },
-  "PortableDataTests": {
-   "where": "python-only",
-   "why": "python/overtone_paths.py: where a portable build keeps its state, which no Rust crate holds"
-  },
    "ProductVersionTests": {
     "where": "python-only",
-    "why": "python/overtone_paths.py: the product version a copy reports (the release, from its build or the workspace), which no Rust crate holds"
+    "why": "python/overtone_paths.py: the product version (the release, from the workspace) and Overtone's data folder, which no Rust crate holds"
    }
   },
  "format": 1,

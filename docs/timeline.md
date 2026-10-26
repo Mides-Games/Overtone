@@ -20,6 +20,34 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-26 · a push updates the server
+
+### Changed
+
+- `.github/workflows/deploy.yml`: a push to `feature/library-api` signs in
+  to the owner's server as `overtone-deploy` and starts
+  `overtone-update.service`; that user's key runs that one forced command
+  and nothing else (no shell, no forwarding, no terminal, key only), set up
+  once by `deploy/setup-deploy-user.sh`. root keeps its key and password.
+- `deploy/overtone-update.sh` does the update: fetch, fast-forward only,
+  rebuild overtone-cli when the Rust code changed, restart. A run going or
+  queued postpones it; a checkout left on another branch is left alone. Its
+  timer runs it every five minutes as the fallback.
+- CLAUDE.md / AGENTS.md, CI: GitHub Actions deploys and only deploys (the
+  owner's decision); no check runs there, and the deploy key is the only
+  secret.
+
+### Rejected / tried and dropped
+
+- Actions signing in as root: the server asks root for a key and a
+  password, and neither belongs in a workflow's secrets.
+- A webhook into Overtone: the server listens on 127.0.0.1 only, behind an
+  SSH tunnel, and stays that way.
+
+### Measured
+
+- Not measured: the first deploy on the server is pending its setup.
+
 ## Unreleased — 2026-10-26 · gates and the suite on the server
 
 ### Changed

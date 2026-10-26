@@ -258,6 +258,37 @@ corridas se comparan sabiendo qué código respondió cada una. Las mediciones
 no son gates: lo que decide si un cambio entra siguen siendo los gates
 locales de `CLAUDE.md`.
 
+## Actualización automática
+
+Cada push a `feature/library-api` llega solo a la VPS:
+
+1. GitHub Actions (`.github/workflows/deploy.yml`) entra a la VPS como
+   `overtone-deploy`, un usuario cuya llave solo puede arrancar
+   `overtone-update.service`: no abre una consola, no ejecuta nada más y no
+   usa contraseña. root sigue entrando con llave y contraseña, como antes.
+2. Ese servicio (`deploy/overtone-update.sh`) baja la rama (solo
+   fast-forward), recompila `overtone-cli` si cambió el código Rust y
+   reinicia Overtone. Si corre una medición, los gates o la suite, espera.
+3. Un timer hace lo mismo cada 5 minutos, por si GitHub falla o la VPS
+   estaba apagada.
+
+Solo se despliega esa rama: las experimentales nunca llegan solas. Si dejas
+la VPS en otra rama a mano, el actualizador la deja en paz y lo dice en el
+log.
+
+Instalarlo, una vez, como root (la llave pública la da quien configura los
+secretos de GitHub):
+
+```bash
+sh /opt/overtone/deploy/setup-deploy-user.sh 'ssh-ed25519 AAAA... github-actions-deploy'
+```
+
+Qué hizo cada vez:
+
+```bash
+journalctl -u overtone-update -n 20 --no-pager
+```
+
 ## Usarlo
 
 Desde tu PC, con un túnel:

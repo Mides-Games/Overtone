@@ -35,8 +35,15 @@ commit messages are English; only the app's own UI strings stay bilingual
 
 ## CI
 
-- **Do not create GitHub Actions workflows.** No `.github/workflows/`, no CI YAML, no
-  bots, no automated release pipelines. Checks run locally.
+- **GitHub Actions deploys, and only deploys** (owner's decision, 2026-10-26). One
+  workflow, `.github/workflows/deploy.yml`: a push to `feature/library-api` asks the
+  owner's server to update, signing in as `overtone-deploy`, whose key can start
+  `overtone-update.service` and nothing else (`deploy/setup-deploy-user.sh`). The server
+  pulls that branch fast-forward only, rebuilds and restarts, and waits while a run is
+  going; a timer does the same every five minutes when no push does.
+- **No checks run in Actions.** No test, gate or benchmark workflow, no bots, no release
+  pipelines, no secret but the deploy key. Checks run locally or on the owner's server
+  (`bench/remote.py gates|suite`), each one line (see **Verification** below).
 - The gates that would otherwise live in CI are run with local commands, and every one of
   them must be runnable in a single line (see **Verification** below). If a check cannot be
   run locally by a person, it does not exist.
@@ -227,6 +234,9 @@ crates/                   the v4 Rust workspace
   overtone-hitsound/        per-attack features, instrument templates, musical role
   overtone-bench/           golden-vector diff against the Python engine
   overtone-cli/             `overtone-cli analyze`: the v4 engine as one command
+deploy/                   the owner's server keeping itself current: overtone-update.sh,
+                          its systemd timer and setup-deploy-user.sh (docs/server.md)
+.github/workflows/        deploy.yml only: a push asks the server to update
 docs/                     audit, stack evaluation, architecture, UI, DSP, hitsounds,
                           roadmap, ML evaluation, naming, precision plan, MSI
                           distribution, comfort features, audit backlog,

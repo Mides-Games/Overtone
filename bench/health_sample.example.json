@@ -1,0 +1,32 @@
+{
+ "_example": "Shape only: the real file is bench/health_sample.local.json, gitignored, measured from a private osu! library (bench/local_data.py).",
+ "folder_seed": 6,
+ "sample_seed": 26,
+ "folders_scanned": 80,
+ "folders": [
+  "123456 Artist - Title"
+ ],
+ "actionable_found": 441,
+ "bar": "15/25",
+ "errors": [],
+ "sample": [
+  {
+   "folder": "123456 Artist - Title",
+   "file": "Artist - Title (Mapper) [Difficulty].osu",
+   "offset_ms": 60737.0,
+   "end_ms": 121937.0,
+   "bpm": 149.0,
+   "fitted_bpm": 148.99,
+   "issues": [
+    "offset"
+   ],
+   "relative_ms": -5.09,
+   "drift_ms": 4.07,
+   "attacks": 930,
+   "share": 0.646,
+   "stamp": "01:00:737 (1)",
+   "link": "osu://edit/01:00:000",
+   "n": 1
+  }
+ ]
+}

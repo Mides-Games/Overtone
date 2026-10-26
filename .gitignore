@@ -34,3 +34,7 @@ bench/.cache/
 # Tauri frontend
 /app/node_modules/
 /app/dist/
+# Measurements of a private osu! library (bench/local_data.py): Songs folders,
+# beatmap ids, mappers and SHA-1s. bench/<name>.example.json shows each shape.
+/bench/*.local.json
+/bench/*.local.md

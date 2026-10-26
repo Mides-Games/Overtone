@@ -58,12 +58,12 @@ Nothing on this phase ships without a measurable improvement on both corpora.
   (0.16 ms median). Cannot regress.
 - **Corpus B — real ranked maps.** Twenty ranked or loved maps from the local
   osu! Songs folder (not scraped: Overtone makes no network calls), named in
-  `bench/corpus_b.json` by folder, file and SHA-1. The audio is never
-  committed, and a file that changed is refused. They span every category the
+  `bench/corpus_b.local.json` by folder, file and SHA-1. Neither that file nor
+  the audio is committed, and a file that changed is refused. They span every category the
   plan needs to handle; the property column is what the plan expected, the
   last one what v3 measured on 2026-09-26:
 
-  | Category | Tracks | Property | In `corpus_b.json` | v3, within 5 / 50 ms |
+  | Category | Tracks | Property | In `corpus_b.local.json` | v3, within 5 / 50 ms |
   |---|---|---|---|---|
   | Constant-tempo EDM | 4 | v3 already exact | freedom-dive, take-you-down, steampunk-engines, i-remember | 0 / 75 % |
   | Constant-tempo rock/pop | 4 | v3 usually exact, sometimes octave wrong | diary-of-jane, camisa-negra, one-step-closer, imagination | 0 / 75 % |

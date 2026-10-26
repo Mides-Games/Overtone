@@ -1,0 +1,56 @@
+{
+ "_example": "Shape only: the real file is bench/labels.local.json, gitignored, measured from a private osu! library (bench/local_data.py).",
+ "folder_seed": 60,
+ "bar_points": 15.0,
+ "split_power_ratio": 1.5,
+ "halves": {
+  "tune": {
+   "rows": [
+    {
+     "folder": "123456 Artist - Title",
+     "usable": true,
+     "file": "Artist - Title (Mapper) [Difficulty].osu",
+     "chorus_s": 51.0,
+     "kiai_s": 18.5,
+     "under_s": 18.5,
+     "duration_s": 68.7,
+     "precision": 0.363,
+     "chance": 0.2694
+    }
+   ],
+   "summary": {
+    "n": 32,
+    "folders": 100,
+    "lit": 87,
+    "precision": 37.5,
+    "chance": 27.8,
+    "lift": 9.7,
+    "pass": false
+   }
+  },
+  "heldout": {
+   "rows": [
+    {
+     "folder": "123456 Artist - Title",
+     "usable": true,
+     "file": "Artist - Title (Mapper) [Difficulty].osu",
+     "chorus_s": 0.0,
+     "kiai_s": 19.1,
+     "under_s": 0.0,
+     "duration_s": 90.0,
+     "precision": null,
+     "chance": 0.2124
+    }
+   ],
+   "summary": {
+    "n": 17,
+    "folders": 100,
+    "lit": 87,
+    "precision": 39.1,
+    "chance": 24.9,
+    "lift": 14.2,
+    "pass": false
+   }
+  }
+ }
+}

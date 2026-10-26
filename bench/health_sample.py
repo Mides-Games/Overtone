@@ -5,7 +5,8 @@ The health check flags maps whose red lines the attacks disagree with, marked
 Those words have shipped since 2026-09-30 with no hand-checked number behind
 them. This script draws the sample the number must come from — deterministically,
 so anyone re-runs it and gets the same maps — and writes the review sheet a
-person listens through. Either the sample supports the labels or the labels
+person listens through, ``bench/health_sample.local.md`` (gitignored: it
+names a private library's maps, see bench/local_data.py). Either the sample supports the labels or the labels
 change; the rule is printed on the sheet before any verdict is filled in, so
 the bar cannot move after the listening.
 
@@ -168,7 +169,7 @@ def main() -> int:
                "folders_scanned": len(folders), "folders": [f.name for f in folders],
                "actionable_found": len(candidates), "bar": f"{BAR}/{args.sample}",
                "errors": errors, "sample": sample}
-    (HERE / "health_sample.json").write_text(json.dumps(payload, indent=1), encoding="utf-8")
+    (HERE / "health_sample.local.json").write_text(json.dumps(payload, indent=1), encoding="utf-8")
 
     lines = ["# Health precision sample", "",
              f"Drawn {time.strftime('%Y-%m-%d')} from {len(folders)} Songs folders "
@@ -189,7 +190,7 @@ def main() -> int:
                   f"- where: {row['stamp']} ({row['offset_ms']} ms) — {row['link']}",
                   f"- the flag claims: {evidence}",
                   "- verdict (true / false / skip): ", ""]
-    (HERE / "health_sample.md").write_text("\n".join(lines), encoding="utf-8")
+    (HERE / "health_sample.local.md").write_text("\n".join(lines), encoding="utf-8")
     print(f"actionable: {len(candidates)}, sampled: {len(sample)}, "
           f"errors: {len(errors)} ({time.perf_counter() - started:.0f} s)")
     return 0

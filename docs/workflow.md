@@ -60,7 +60,7 @@ Si el paso 1 no trae su test (unitario o gate), volver al paso 1.
   datos de `Songs` al repositorio. Ejemplo:
 
   ```powershell
-  .venv/Scripts/python.exe bench/labels.py --songs "C:\osu!\Songs" --seed 61 --exclude-from bench/labels.json --cache bench/.cache/t6/structures.json --output bench/.cache/t6/result.json
+  .venv/Scripts/python.exe bench/labels.py --songs "C:\osu!\Songs" --seed 61 --exclude-from bench/labels.local.json --cache bench/.cache/t6/structures.json --output bench/.cache/t6/result.json
   ```
 
   No reducir `--tune` / `--heldout` para declarar el roadmap cerrado: el bar es

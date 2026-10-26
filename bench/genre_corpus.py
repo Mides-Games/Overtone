@@ -18,7 +18,7 @@ that is stated rather than hidden, exactly as Corpus B states it.
 
     python bench/genre_corpus.py                   # the report
     python bench/genre_corpus.py --holdout         # against the hand rule, held out
-    python bench/genre_corpus.py --update          # write bench/genre_corpus.json
+    python bench/genre_corpus.py --update          # write bench/genre_corpus.local.json
     python bench/genre_corpus.py --profiles        # write profiles/<genre>.json
 
 **How a table is estimated.** Pooled counts over the maps, then 2 % of the mass
@@ -50,10 +50,12 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(HERE))
 
+import local_data  # noqa: E402
 import overtone as ov  # noqa: E402
 
-MANIFEST = HERE / "genre_corpus.json"
+MANIFEST = local_data.GENRE_CORPUS
 PROFILES = ROOT / "profiles"
 CACHE = HERE / ".cache" / "genre_corpus"
 FORMAT = 1

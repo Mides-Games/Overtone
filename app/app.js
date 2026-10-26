@@ -44,17 +44,6 @@ const I18N = {
     hist_op_resnap: "re-snap", hist_op_bookmarks: "bookmarks", hist_op_kiai: "kiai", hist_op_breaks: "breaks",
     hist_op_scroll: "constant scroll", hist_op_volumes: "section volumes", hist_op_hsdiff: "hitsound difficulty",
     hist_op_suggestion: "suggested red line",
-    hsd_title: "Hitsound difficulty",
-    hsd_sub: "A new difficulty beside the others with a circle at every sound of the mapset, each playing it exactly: hitsound in one place, then copy it to every difficulty (Mapset, Copy hitsounds). Where two difficulties sound together the source's sound wins; timing, events and settings are the source's own.",
-    hsd_source: "Sounds from", hsd_fill: "Fill in the other difficulties' sounds where the source has none",
-    hsd_preview: "Preview", hsd_write: "Write the difficulty",
-    hsd_would: "{dest}: {n} circles, {src} from {name} and {others} from the other difficulties ({merged} sounds shared within 5 ms).",
-    hsd_exact: "Every circle plays its sound exactly.",
-    hsd_stacked: "{n} of the source's sounds share their time with a different one (a chord, stacked objects): the circle keeps the first (the first at {time}).",
-    hsd_inexact: "{n} circles cannot play exactly: the format can only inherit an index of 0 there, and the source's green lines give another (the first at {time}).",
-    hsd_confirm: "Write {dest} beside the song? It is a new file: nothing is replaced.",
-    hsd_done: "Wrote {dest}: {n} circles.",
-    hsd_exists: "{dest} is already beside the song: remove or rename it to write a new one.",
     hist_added: "+{n} red lines", hist_removed: "−{n} red lines", hist_changed: "~{n} red lines moved",
     hist_no_change: "same red lines",
     hist_confirm: "Restore {file} from {backup}? The current file is kept as a new backup first.",
@@ -190,86 +179,8 @@ const I18N = {
     inject_warn: "\nThe .osu audio ({osu}) differs from the analyzed file ({src}).",
     drop_title: "Drop the audio", drop_body: "Release to time it with the current detection settings.",
     recent: "Recent",
-    nav_hitsounds: "Hitsounds",
-    hsv_sub: "What one difficulty plays: where its additions fall in the bar, every sound to hear one by one, and the decision engine's proposals to write or not.",
-    hsv_map: "Difficulty", hsv_none: "No difficulty beside this song plays its audio.",
-    hsv_sounds_n: "Sounds", hsv_sets: "Sample sets", hsv_samples: "Samples",
-    hsv_samples_v: "{map} the map's · {own} Overtone's",
-    hsv_where_title: "Where the additions fall",
-    hsv_where_note: "Share of each addition on each sixteenth of a {meter}/4 bar, read against the map's own red lines.",
-    hsv_top: "{pct} % on {slots}", hsv_none_add: "none",
-    hsv_between: "{n} between sixteenths (triplets and the like)", hsv_other_meter: "{n} under another meter",
-    hsv_sounds: "Sounds", hsv_all: "All", hsv_count: "{n} sounds",
-    hsv_t_time: "Time", hsv_t_place: "Bar · beat", hsv_t_part: "Part", hsv_t_sounds: "Sounds",
-    hsv_t_sets: "Sets", hsv_t_index: "Index", hsv_t_volume: "Volume",
-    hsv_play: "Hear this sound", hsv_more: "Show {n} more",
-    hsv_play_proposal: "Hear this sound as it would be written",
-    hsv_decide_title: "Propose and edit hitsounds",
-    hsv_decide_sub: "The decision engine proposes every object's sound; volume and sample index are yours to set. Tick what to keep, hear it over the song, preview, then write the file or a copy. Each write is backed up, and one undo restores it.",
-    hsv_propose: "Propose", hsv_proposing: "Deciding every sound…",
-    hsv_propose_all: "Every difficulty",
-    hsv_all_done: "{n} difficulties decided on one reading of the song.",
-    hsv_all_one: "1 difficulty decided.",
-    hsv_all_some: "{n} of {of} difficulties decided; {bad} could not be read.",
-    hsv_all_some_one: "{n} of {of} difficulties decided; 1 could not be read.",
-    hsv_profile: "Profile", hsv_prof_balanced: "Balanced",
-    hsv_evidence: "Evidence", hsv_ev_map: "Map + audio", hsv_ev_audio: "Audio only",
-    hsv_ev_note_audio: "Hears drums but no combos, bars or mapper prior — best on bare maps.",
-    hsv_ev_matched: "{n} sounds placed, {m} attacks with no object.",
-    hsv_prof_balanced_note: "Balanced, the default: every instrument heard can take its sound, placed by the beat.",
-    hsv_prof_drum_focused: "Drum-focused",
-    hsv_prof_drum_focused_note: "Drum-focused: kick, snare, hats and cymbals choose the sounds; vocals and melody only keep the plain sound; a finish leans to where a combo starts.",
-    hsv_prof_rock: "Rock", hsv_prof_rock_note: "Rock, measured on 110 mapsets: 61 % of claps on beats 2 and 4, the finish on the downbeat, whistles wherever the melody is.",
-    hsv_prof_punk: "Punk", hsv_prof_punk_note: "Punk, measured on 109 mapsets: the backbeat almost without exception, and the most additions an object of any rock genre here.",
-    hsv_prof_metal: "Metal", hsv_prof_metal_note: "Metal, measured on 110 mapsets: the clap follows the snare wherever the band puts it, so only 30 % of them land on beats 2 and 4, and the plain hit plays the drum bank half the time.",
-    hsv_prof_metalcore: "Metalcore", hsv_prof_metalcore_note: "Metalcore, measured on 65 mapsets: the flattest clap of all of them (24 % on beats 2 and 4) — the pattern is the drummer's, not the bar's.",
-    hsv_prof_jrock: "J-rock", hsv_prof_jrock_note: "J-rock, measured on 110 mapsets: between rock and pop, with more off-beat whistles than either.",
-    hsv_prof_pop: "Pop", hsv_prof_pop_note: "Pop, measured on 110 mapsets: the strictest backbeat here (72 % of claps on 2 and 4) and the finish almost only on the downbeat.",
-    hsv_prof_funk: "Funk", hsv_prof_funk_note: "Funk, measured on 29 mapsets: the backbeat plus whistles on the syncopated sixteenths, and the fewest additions an object.",
-    hsv_prof_electronic: "Electronic", hsv_prof_electronic_note: "Electronic, measured on 110 mapsets: a backbeat as strict as pop's, with more of the plain hit on the drum bank.",
-    hsv_prof_suggested: "suggested for this map",
-    hsv_prof_again: "The proposals shown were decided with {used}: press Propose to decide with {chosen}.",
-    bad_profile: "That hitsound profile is not in the profiles folder.",
-    hsv_proposed: "{n} proposals", hsv_decide_all: "All", hsv_decide_none: "None",
-    hsv_preview: "Preview", hsv_would_change: "{what}: {n} objects would change",
-    hsv_what_ticked: "{accepted} of {units} proposals ticked", hsv_edited: "{n} objects edited", hsv_and: " and ",
-    hsv_what_ticked_alt: "{accepted} of {units} proposals ticked, {chosen} of them an alternative",
-    hsv_alts: "{n} alternatives", hsv_alt_aria: "The proposal or one of its alternatives",
-    hsv_alt_note: "In the table, a proposal can be swapped for one of its alternatives. The percentages say how likely each sound is there on its own, among the 24 the engine weighs, which keeps them low. The proposal is the one that fits the whole sequence best, so an alternative can score higher alone.",
-    hsv_why_proposed: "Proposed", hsv_why_behind: "behind it:", hsv_why_heard: "Heard", hsv_why_terms: "Why",
-    hsv_why_sum: "Its score here", hsv_why_close: "Close",
-    hsv_why_silence: "Nothing was heard under it: the audio and its place in the bar say nothing here.",
-    hsv_why_tail: "A slider tail takes the sound of the object landing under it.",
-    hsv_why_tail_bare: "No object lands under this tail, so it stays bare.",
-    hsv_why_note: "The proposal is the best path through the whole map, not the best score here alone: these are its terms at this sound, added up.",
-    hsv_term_affinity: "the instrument heard", hsv_term_role: "its place in the bar", hsv_term_context: "a new combo",
-    hsv_term_prior: "what the map plays now", hsv_term_transition: "the sound before it",
-    hsv_div_1: "on a beat", hsv_div_2: "on an eighth", hsv_div_3: "on a triplet", hsv_div_4: "on a sixteenth",
-    hsv_div_6: "on a sextuplet", hsv_div_8: "on a 32nd", hsv_div_none: "off every grid",
-    hs_class_kick: "kick", hs_class_snare: "snare", hs_class_clap: "clap", hs_class_hat_closed: "closed hat",
-    hs_class_hat_open: "open hat", hs_class_tom: "tom", hs_class_cymbal: "cymbal", hs_class_ride: "ride",
-    hs_class_bass: "bass", hs_class_guitar: "guitar", hs_class_keys: "keys", hs_class_vocal: "vocal", hs_class_other: "other",
-    hsv_hear: "Hear before writing",
-    hsv_hearing: "The transport plays the file as it would be written ({what}): {n} sounds unlike the file, the first at {time}. Switch its hitsounds to {name} to compare.",
-    hsv_hearing_same: "The transport plays the file as it would be written ({what}), and every sound plays as the file already does.",
-    hsv_edit_volume: "Volume (%)", hsv_edit_index: "Sample index",
-    hsv_edit_set: "Set on the sounds shown", hsv_edit_clear: "Clear their edits",
-    hsv_edit_note: "0 follows the green line. A slider has one volume and one index for all its edges. All, None, Set and Clear act on the sounds the table shows: its filter and its bars.",
-    hsv_edit_empty: "Type a volume or a sample index first.",
-    hsv_edit_bad: "Volume goes from 0 to 100 and the sample index from 0 up, in whole numbers.",
-    hsv_line: "the line's", hsv_bars: "Bars", hsv_bar_from: "From bar", hsv_bar_to: "To bar",
-    hsv_write: "Write into this file", hsv_write_copy: "Write a copy",
-    hsv_undo: "Undo", hsv_confirm_write: "Write new hitsounds on {n} objects of {file}? Only hitsound fields change, and the file is backed up first.",
-    hsv_confirm_copy: "Write new hitsounds on {n} objects into a copy beside {file}? The original stays untouched.",
-    hsv_done: "New hitsounds on {n} objects, written into {file}.",
-    hsv_done_copy: "New hitsounds on {n} objects, written into {file}. The original stays untouched.",
-    hsv_undone: "Restored {file} from before the write.",
+    hsv_map: "Difficulty",
     hsv_no_rust: "Proposals run on the Rust engine (overtone-cli), and it is not built here: cargo build --release -p overtone-cli.",
-    hsv_no_proposal: "Propose or edit first: there is nothing to preview or write yet.",
-    hsv_t_proposal: "Proposal",
-    part_circle: "circle", part_head: "slider head", part_repeat: "slider repeat", part_tail: "slider tail",
-    part_spinner_end: "spinner end", part_hold: "hold",
-    lane_objects: "objects", lg_whistle: "whistle", lg_finish: "finish", lg_clap: "clap",
     g_v_short_section: "{count} sections last less than a bar. Check them by ear.",
     g_v_octave_check: "{count} sections change tempo by an octave: half-time feel or octave mistakes? Your call.",
     g_v_dup_points: "{count} red lines are duplicates, a few ms from another.",
@@ -279,58 +190,6 @@ const I18N = {
     g_v_bad_number: "{count} points have no usable number: re-analyze or delete them.",
     warn_show: "Show them", warn_hide: "Hide", warn_beats: "{beats} beats",
     warn_more: "{n} more notes", warn_fewer: "Show fewer notes",
-    pb_hs: "Hitsounds from", pb_hs_off: "Off", pb_hs_vol: "Hitsounds",
-    pb_hs_loading: "Loading the hitsounds of {name}…",
-    pb_hs_proposal: "{name}, as it would be written",
-    pb_hs_ready: "Hitsounds of {name}: {n} sounds and {bodies} slider slides; {map} from the map's own samples, {own} from Overtone's.",
-    pb_hs_unreadable: "{n} sample(s) this window cannot decode stay silent.",
-    pb_hs_ready_skin: "Hitsounds of {name}: {n} sounds and {bodies} slider slides; {map} from the map's own samples, {skin} from the skin, {own} from Overtone's.",
-    pb_hs_empty: "{n} sample(s) hold no audio and mute their sound.",
-    hsv_samples_v_skin: "{map} the map's · {skin} the skin's · {own} Overtone's",
-    sb_title: "Samples",
-    sb_sub: "The hitsound samples a folder holds, named as osu! names them: each set's four hits and the two sounds a slider body loops, then the numbered ones. Click one to hear it; a missing one plays what would play instead. The folder is only read.",
-    sb_src_song: "This song's folder", sb_src_skin: "Playback skin", sb_src_pick: "Another folder…",
-    sb_kind_skin: "skin", sb_kind_beatmap: "beatmap folder",
-    sb_hitnormal: "normal", sb_sliderslide: "slide", sb_sliderwhistle: "whistle slide",
-    sb_counts: "{hits} of 12 hits · {slides} of 6 slider sounds",
-    sb_counts_empty: "{n} with no audio in them: they mute their sound",
-    sb_missing_skin: "{n} missing: {skin} play the skin's, {own} Overtone's own",
-    sb_missing_all_skin: "{n} missing: the skin's play instead",
-    sb_missing_own: "{n} missing: Overtone's own play instead",
-    sb_cell_title: "{file} · {kb} KB",
-    sb_cell_empty: "empty", sb_cell_empty_title: "{file} holds no audio: it mutes this sound",
-    sb_cell_skin: "→ skin", sb_cell_own: "→ Overtone",
-    sb_cell_skin_title: "Not in this folder: the skin's {file} plays",
-    sb_cell_own_title: "Not in this folder: Overtone's own {file} plays",
-    sb_custom_beatmap: "Custom indices {list}: {n} samples a map asks this folder for by index",
-    sb_custom_skin: "{n} numbered samples: osu! asks a skin for no index, so none of them plays",
-    sb_unused: "Never played, {n}: {names}. Index 1 takes no number, and no index starts with a zero.",
-    sb_shadowed: "Shadowed, {n}: {names}. A file of the same name that osu! looks for first (wav, then ogg, then mp3) plays instead.",
-    sb_more: "{n} more",
-    sb_skin_none: "Playback asks no skin: what a map's folder lacks plays Overtone's own samples.",
-    sb_skin_is: "Playback skin: {name}. What a map's folder lacks plays its samples, else Overtone's own.",
-    sb_skin_gone: "The playback skin is not there any more ({path}): Overtone's own samples play instead.",
-    sb_use: "Use for playback", sb_stop: "Stop using a skin",
-    sb_used: "Playback now asks {name} for what a map's folder lacks.",
-    sb_stopped: "Playback asks no skin now: Overtone's own samples fill in.",
-    sb_hear: "Hear it at the selected sound",
-    sb_hear_pick: "Click a sample, then select a sound in the Sounds table: the song plays from a second before it, with the sample in that sound's place.",
-    sb_hear_sound: "Select a sound in the Sounds table: the song plays from a second before it, with {sample} in that sound's place.",
-    sb_hear_ready: "{sample} in place of the sound at {time} (bar {bar} · {beat}), from a second before.",
-    sb_hear_no_map: "No difficulty beside this song plays its audio, so there is no sound to hear it at.",
-    sb_hearing: "Playing {sample} at {time}…",
-    sb_loading: "Reading the folder…",
-    sb_gone: "That sample is not in its folder any more: read the folder again.",
-    sb_empty_heard: "{file} holds no audio: it plays nothing.",
-    hs_title: "Copy hitsounds", hs_preview: "Preview", hs_apply: "Copy hitsounds",
-    hs_sub: "Each sound of the chosen difficulties takes the source's sound at the same moment (within 5 ms): additions, sample sets and index. Sounds with nothing under them are left as they are. Only hitsound fields change, and every file is backed up first.",
-    hs_source: "From", hs_targets: "Onto",
-    hs_volumes: "Copy volumes too (usually the green lines' job; they are not copied)",
-    hs_no_targets: "Choose at least one difficulty to copy onto.", hs_same_file: "A difficulty cannot be copied onto itself.",
-    hs_t_diff: "Difficulty", hs_t_sounds: "Sounds", hs_t_matched: "With a source sound", hs_t_changed: "Will change",
-    hs_t_unmatched: "Nothing under them", hs_t_conflicts: "Index conflicts",
-    hs_conflict_note: "An index conflict is a sound whose sample index comes from a green line the target does not have, or a slider edge whose index differs from its head's: the copy leaves those indexes as they are.",
-    hs_confirm: "Write the hitsounds of {source} into {n} difficulties? Only hitsound fields change; each file is backed up first.",
     sw_title: "Audio swap", sw_preview: "Preview", sw_apply: "Move every time",
     sw_sub: "Measures the shift between the mapped audio and a new encode, and moves every timing line, object, preview point and bookmark by it; the lead-in, a wait before the song, stays. Tempo twins and strangers refuse; every file is backed up first.",
     sw_old: "Mapped audio", sw_new: "New encode",
@@ -348,8 +207,6 @@ const I18N = {
     ac_long_lead: "{ms} ms of near-silence before the first sound.",
     ac_low_rate: "{rate} Hz is under CD quality.",
     ms_no_audio: "That folder names no audio file its maps can play.",
-    hs_done: "Hitsounds copied into {n} difficulties ({objects} objects). Backups kept beside each file.",
-    hs_nothing: "Nothing to change: these difficulties already sound like {source}.",
     st_theme: "Theme", st_theme_system: "System", st_theme_dark: "Dark", st_theme_light: "Light",
     theme_to_light: "Light theme", theme_to_dark: "Dark theme",
     nav_structure: "Structure",
@@ -716,17 +573,6 @@ const I18N = {
     hist_op_resnap: "reajuste", hist_op_bookmarks: "bookmarks", hist_op_kiai: "kiai", hist_op_breaks: "breaks",
     hist_op_scroll: "scroll constante", hist_op_volumes: "volúmenes por sección", hist_op_hsdiff: "dificultad de hitsounds",
     hist_op_suggestion: "línea roja sugerida",
-    hsd_title: "Dificultad de hitsounds",
-    hsd_sub: "Una dificultad nueva junto a las demás, con un círculo en cada sonido del mapset que lo toca exacto: hitsoundeá en un solo lugar y después copiala a todas (Mapset, Copiar hitsounds). Donde dos dificultades suenan juntas gana la fuente; el timing, los eventos y los ajustes son los de la fuente.",
-    hsd_source: "Sonidos de", hsd_fill: "Completar con los sonidos de las demás dificultades donde la fuente no tiene",
-    hsd_preview: "Vista previa", hsd_write: "Escribir la dificultad",
-    hsd_would: "{dest}: {n} círculos, {src} de {name} y {others} de las demás dificultades ({merged} sonidos compartidos a menos de 5 ms).",
-    hsd_exact: "Cada círculo toca su sonido exacto.",
-    hsd_stacked: "{n} sonidos de la fuente comparten su instante con otro distinto (un acorde, objetos apilados): el círculo se queda con el primero (el primero en {time}).",
-    hsd_inexact: "{n} círculos no pueden sonar exacto: ahí el formato solo puede heredar un índice 0, y las líneas verdes de la fuente dan otro (el primero en {time}).",
-    hsd_confirm: "¿Escribir {dest} junto a la canción? Es un archivo nuevo: no se reemplaza nada.",
-    hsd_done: "{dest} escrito: {n} círculos.",
-    hsd_exists: "{dest} ya está junto a la canción: borralo o renombralo para escribir uno nuevo.",
     hist_added: "+{n} líneas rojas", hist_removed: "−{n} líneas rojas", hist_changed: "~{n} líneas rojas movidas",
     hist_no_change: "mismas líneas rojas",
     hist_confirm: "¿Restaurar {file} desde {backup}? El archivo actual se guarda como respaldo nuevo antes.",
@@ -862,86 +708,8 @@ const I18N = {
     inject_warn: "\nEl audio del .osu ({osu}) difiere del analizado ({src}).",
     drop_title: "Soltá el audio", drop_body: "Soltá para timearlo con los ajustes actuales.",
     recent: "Recientes",
-    nav_hitsounds: "Hitsounds",
-    hsv_sub: "Lo que suena en una dificultad: dónde caen sus adiciones en el compás, cada sonido para escucharlos uno por uno, y las propuestas del motor para escribirlas o no.",
-    hsv_map: "Dificultad", hsv_none: "Ninguna dificultad junto a esta canción usa su audio.",
-    hsv_sounds_n: "Sonidos", hsv_sets: "Sample sets", hsv_samples: "Samples",
-    hsv_samples_v: "{map} del mapa · {own} de Overtone",
-    hsv_where_title: "Dónde caen las adiciones",
-    hsv_where_note: "Proporción de cada adición en cada semicorchea de un compás de {meter}/4, leída contra las líneas rojas del propio mapa.",
-    hsv_top: "{pct} % en {slots}", hsv_none_add: "ninguna",
-    hsv_between: "{n} entre semicorcheas (tresillos y similares)", hsv_other_meter: "{n} bajo otro compás",
-    hsv_sounds: "Sonidos", hsv_all: "Todos", hsv_count: "{n} sonidos",
-    hsv_t_time: "Tiempo", hsv_t_place: "Compás · tiempo", hsv_t_part: "Parte", hsv_t_sounds: "Sonidos",
-    hsv_t_sets: "Sets", hsv_t_index: "Índice", hsv_t_volume: "Volumen",
-    hsv_play: "Escuchar este sonido", hsv_more: "Mostrar {n} más",
-    hsv_play_proposal: "Escuchar este sonido como quedaría escrito",
-    hsv_decide_title: "Proponer y editar hitsounds",
-    hsv_decide_sub: "El motor propone el sonido de cada objeto; el volumen y el índice de sample los ponés vos. Tildá lo que queda, escuchalo sobre la canción, previsualizá, y escribí el archivo o una copia. Cada escritura se respalda, y un deshacer lo restaura.",
-    hsv_propose: "Proponer", hsv_proposing: "Decidiendo cada sonido…",
-    hsv_propose_all: "Todas las dificultades",
-    hsv_all_done: "{n} dificultades decididas con una sola lectura de la canción.",
-    hsv_all_one: "1 dificultad decidida.",
-    hsv_all_some: "{n} de {of} dificultades decididas; {bad} no se pudieron leer.",
-    hsv_all_some_one: "{n} de {of} dificultades decididas; 1 no se pudo leer.",
-    hsv_profile: "Perfil", hsv_prof_balanced: "Equilibrado",
-    hsv_evidence: "Evidencia", hsv_ev_map: "Mapa + audio", hsv_ev_audio: "Solo audio",
-    hsv_ev_note_audio: "Escucha batería pero no combos, compases ni prior del mapper — mejor en mapas pelados.",
-    hsv_ev_matched: "{n} sonidos ubicados, {m} ataques sin objeto.",
-    hsv_prof_balanced_note: "Equilibrado, el de siempre: cada instrumento que se oye puede llevar su sonido, ubicado según el pulso.",
-    hsv_prof_drum_focused: "Centrado en la batería",
-    hsv_prof_drum_focused_note: "Centrado en la batería: bombo, caja, hi-hats y platillos eligen los sonidos; la voz y la melodía solo mantienen el sonido liso; un finish tiende a caer donde empieza un combo.",
-    hsv_prof_rock: "Rock", hsv_prof_rock_note: "Rock, medido en 110 mapsets: el 61 % de los claps en los tiempos 2 y 4, el finish en el primero, y los whistles donde esté la melodía.",
-    hsv_prof_punk: "Punk", hsv_prof_punk_note: "Punk, medido en 109 mapsets: el contratiempo casi sin excepción, y las adiciones por objeto más altas de los géneros de rock.",
-    hsv_prof_metal: "Metal", hsv_prof_metal_note: "Metal, medido en 110 mapsets: el clap sigue a la caja donde la ponga la banda, así que solo el 30 % cae en los tiempos 2 y 4, y el golpe liso usa el banco drum la mitad de las veces.",
-    hsv_prof_metalcore: "Metalcore", hsv_prof_metalcore_note: "Metalcore, medido en 65 mapsets: el clap más plano de todos (24 % en los tiempos 2 y 4) — el patrón es del baterista, no del compás.",
-    hsv_prof_jrock: "J-rock", hsv_prof_jrock_note: "J-rock, medido en 110 mapsets: entre el rock y el pop, con más whistles a contratiempo que ninguno de los dos.",
-    hsv_prof_pop: "Pop", hsv_prof_pop_note: "Pop, medido en 110 mapsets: el contratiempo más estricto de todos (72 % de los claps en 2 y 4) y el finish casi solo en el primer tiempo.",
-    hsv_prof_funk: "Funk", hsv_prof_funk_note: "Funk, medido en 29 mapsets: el contratiempo más whistles en las semicorcheas sincopadas, y las adiciones por objeto más bajas.",
-    hsv_prof_electronic: "Electrónica", hsv_prof_electronic_note: "Electrónica, medida en 110 mapsets: un contratiempo tan estricto como el del pop, con más golpe liso en el banco drum.",
-    hsv_prof_suggested: "sugerido para este mapa",
-    hsv_prof_again: "Las propuestas que ves se decidieron con {used}: tocá Proponer para decidir con {chosen}.",
-    bad_profile: "Ese perfil de hitsounds no está en la carpeta de perfiles.",
-    hsv_proposed: "{n} propuestas", hsv_decide_all: "Todas", hsv_decide_none: "Ninguna",
-    hsv_preview: "Vista previa", hsv_would_change: "{what}: {n} objetos cambiarían",
-    hsv_what_ticked: "{accepted} de {units} propuestas tildadas", hsv_edited: "{n} objetos editados", hsv_and: " y ",
-    hsv_what_ticked_alt: "{accepted} de {units} propuestas tildadas, {chosen} de ellas una alternativa",
-    hsv_alts: "{n} alternativas", hsv_alt_aria: "La propuesta o una de sus alternativas",
-    hsv_alt_note: "En la tabla, cada propuesta se puede cambiar por una de sus alternativas. Los porcentajes dicen qué tan probable es cada sonido ahí por sí solo, entre los 24 que pesa el motor, y por eso son bajos. La propuesta es la que mejor encaja en toda la secuencia, así que una alternativa puede puntuar más sola.",
-    hsv_why_proposed: "Propuesto", hsv_why_behind: "detrás:", hsv_why_heard: "Se oyó", hsv_why_terms: "Por qué",
-    hsv_why_sum: "Su puntaje acá", hsv_why_close: "Cerrar",
-    hsv_why_silence: "No se oyó nada debajo: el audio y su lugar en el compás no dicen nada acá.",
-    hsv_why_tail: "Una cola de slider toma el sonido del objeto que cae debajo.",
-    hsv_why_tail_bare: "Ningún objeto cae debajo de esta cola, así que queda sin adiciones.",
-    hsv_why_note: "La propuesta es el mejor camino por todo el mapa, no el mejor puntaje acá solo: estos son sus términos en este sonido, sumados.",
-    hsv_term_affinity: "el instrumento oído", hsv_term_role: "su lugar en el compás", hsv_term_context: "un combo nuevo",
-    hsv_term_prior: "lo que el mapa ya suena", hsv_term_transition: "el sonido anterior",
-    hsv_div_1: "en un tiempo", hsv_div_2: "en una corchea", hsv_div_3: "en un tresillo", hsv_div_4: "en una semicorchea",
-    hsv_div_6: "en un seisillo", hsv_div_8: "en una fusa", hsv_div_none: "fuera de toda grilla",
-    hs_class_kick: "bombo", hs_class_snare: "caja", hs_class_clap: "palmas", hs_class_hat_closed: "hi-hat cerrado",
-    hs_class_hat_open: "hi-hat abierto", hs_class_tom: "tom", hs_class_cymbal: "platillo", hs_class_ride: "ride",
-    hs_class_bass: "bajo", hs_class_guitar: "guitarra", hs_class_keys: "teclado", hs_class_vocal: "voz", hs_class_other: "otro",
-    hsv_hear: "Escuchar antes de escribir",
-    hsv_hearing: "El transporte toca el archivo como quedaría escrito ({what}): {n} sonidos distintos del archivo, el primero en {time}. Cambiá sus hitsounds a {name} para comparar.",
-    hsv_hearing_same: "El transporte toca el archivo como quedaría escrito ({what}), y cada sonido suena como ya suena en el archivo.",
-    hsv_edit_volume: "Volumen (%)", hsv_edit_index: "Índice de sample",
-    hsv_edit_set: "Poner en los sonidos mostrados", hsv_edit_clear: "Quitar sus ediciones",
-    hsv_edit_note: "0 sigue a la línea verde. Un slider tiene un solo volumen y un solo índice para todos sus bordes. Todas, Ninguna, Poner y Quitar actúan sobre los sonidos que muestra la tabla: su filtro y sus compases.",
-    hsv_edit_empty: "Escribí primero un volumen o un índice de sample.",
-    hsv_edit_bad: "El volumen va de 0 a 100 y el índice de sample de 0 para arriba, en números enteros.",
-    hsv_line: "el de la línea", hsv_bars: "Compases", hsv_bar_from: "Desde el compás", hsv_bar_to: "Hasta el compás",
-    hsv_write: "Escribir en este archivo", hsv_write_copy: "Escribir una copia",
-    hsv_undo: "Deshacer", hsv_confirm_write: "¿Escribir hitsounds nuevos en {n} objetos de {file}? Solo cambian los campos de hitsound, y el archivo se respalda antes.",
-    hsv_confirm_copy: "¿Escribir hitsounds nuevos en {n} objetos, en una copia junto a {file}? El original queda intacto.",
-    hsv_done: "Hitsounds nuevos en {n} objetos, escritos en {file}.",
-    hsv_done_copy: "Hitsounds nuevos en {n} objetos, escritos en {file}. El original queda intacto.",
-    hsv_undone: "{file} restaurado a antes de la escritura.",
+    hsv_map: "Dificultad",
     hsv_no_rust: "Las propuestas usan el motor Rust (overtone-cli), y acá no está compilado: cargo build --release -p overtone-cli.",
-    hsv_no_proposal: "Proponé o editá primero: no hay nada que previsualizar o escribir todavía.",
-    hsv_t_proposal: "Propuesta",
-    part_circle: "círculo", part_head: "cabeza de slider", part_repeat: "repetición de slider", part_tail: "cola de slider",
-    part_spinner_end: "fin de spinner", part_hold: "hold",
-    lane_objects: "objetos", lg_whistle: "whistle", lg_finish: "finish", lg_clap: "clap",
     g_v_short_section: "{count} secciones duran menos de un compás. Revisalas de oído.",
     g_v_octave_check: "{count} secciones cambian el tempo una octava: ¿half-time o errores de octava? Lo decidís vos.",
     g_v_dup_points: "{count} líneas rojas son duplicados, a pocos ms de otra.",
@@ -951,58 +719,6 @@ const I18N = {
     g_v_bad_number: "{count} puntos no tienen un número usable: re-analizá o borralos.",
     warn_show: "Verlas", warn_hide: "Ocultar", warn_beats: "{beats} beats",
     warn_more: "{n} avisos más", warn_fewer: "Mostrar menos avisos",
-    pb_hs: "Hitsounds de", pb_hs_off: "Apagados", pb_hs_vol: "Hitsounds",
-    pb_hs_loading: "Cargando los hitsounds de {name}…",
-    pb_hs_proposal: "{name}, como quedaría escrita",
-    pb_hs_ready: "Hitsounds de {name}: {n} sonidos y {bodies} slides de slider; {map} con samples propios del mapa, {own} con los de Overtone.",
-    pb_hs_unreadable: "{n} sample(s) que esta ventana no puede decodificar quedan en silencio.",
-    pb_hs_ready_skin: "Hitsounds de {name}: {n} sonidos y {bodies} slides de slider; {map} con samples propios del mapa, {skin} con los del skin, {own} con los de Overtone.",
-    pb_hs_empty: "{n} sample(s) sin audio silencian su sonido.",
-    hsv_samples_v_skin: "{map} del mapa · {skin} del skin · {own} de Overtone",
-    sb_title: "Samples",
-    sb_sub: "Los samples de hitsound de una carpeta, con los nombres que usa osu!: los cuatro golpes de cada set y los dos sonidos que repite el cuerpo de un slider, y después los numerados. Hacé clic en uno para escucharlo; uno que falta suena con lo que sonaría en su lugar. La carpeta solo se lee.",
-    sb_src_song: "Carpeta de esta canción", sb_src_skin: "Skin de reproducción", sb_src_pick: "Otra carpeta…",
-    sb_kind_skin: "skin", sb_kind_beatmap: "carpeta de beatmap",
-    sb_hitnormal: "normal", sb_sliderslide: "slide", sb_sliderwhistle: "whistle slide",
-    sb_counts: "{hits} de 12 golpes · {slides} de 6 sonidos de slider",
-    sb_counts_empty: "{n} sin audio: silencian su sonido",
-    sb_missing_skin: "faltan {n}: {skin} suenan con los del skin, {own} con los de Overtone",
-    sb_missing_all_skin: "faltan {n}: suenan los del skin en su lugar",
-    sb_missing_own: "faltan {n}: suenan los de Overtone en su lugar",
-    sb_cell_title: "{file} · {kb} KB",
-    sb_cell_empty: "vacío", sb_cell_empty_title: "{file} no tiene audio: silencia este sonido",
-    sb_cell_skin: "→ skin", sb_cell_own: "→ Overtone",
-    sb_cell_skin_title: "No está en esta carpeta: suena {file} del skin",
-    sb_cell_own_title: "No está en esta carpeta: suena {file} de Overtone",
-    sb_custom_beatmap: "Índices propios {list}: {n} samples que un mapa le pide a esta carpeta por índice",
-    sb_custom_skin: "{n} samples numerados: osu! no le pide índices a un skin, así que ninguno suena",
-    sb_unused: "Nunca suenan, {n}: {names}. El índice 1 no lleva número, y ningún índice empieza con cero.",
-    sb_shadowed: "Tapados, {n}: {names}. Suena en su lugar un archivo del mismo nombre que osu! busca antes (wav, después ogg, después mp3).",
-    sb_more: "{n} más",
-    sb_skin_none: "La reproducción no usa skin: lo que le falta a la carpeta de un mapa suena con los samples de Overtone.",
-    sb_skin_is: "Skin de reproducción: {name}. Lo que le falta a la carpeta de un mapa suena con sus samples, o si no con los de Overtone.",
-    sb_skin_gone: "El skin de reproducción ya no está ({path}): suenan los samples de Overtone en su lugar.",
-    sb_use: "Usar para la reproducción", sb_stop: "Dejar de usar un skin",
-    sb_used: "La reproducción ahora usa {name} para lo que le falta a la carpeta de un mapa.",
-    sb_stopped: "La reproducción ya no usa skin: completan los samples de Overtone.",
-    sb_hear: "Escucharlo en el sonido elegido",
-    sb_hear_pick: "Hacé clic en un sample y después elegí un sonido en la tabla Sonidos: la canción suena desde un segundo antes, con el sample en lugar de ese sonido.",
-    sb_hear_sound: "Elegí un sonido en la tabla Sonidos: la canción suena desde un segundo antes, con {sample} en lugar de ese sonido.",
-    sb_hear_ready: "{sample} en lugar del sonido de {time} (compás {bar} · {beat}), desde un segundo antes.",
-    sb_hear_no_map: "Ninguna dificultad junto a esta canción usa su audio, así que no hay sonido donde escucharlo.",
-    sb_hearing: "Sonando {sample} en {time}…",
-    sb_loading: "Leyendo la carpeta…",
-    sb_gone: "Ese sample ya no está en su carpeta: volvé a leer la carpeta.",
-    sb_empty_heard: "{file} no tiene audio: no suena nada.",
-    hs_title: "Copiar hitsounds", hs_preview: "Vista previa", hs_apply: "Copiar hitsounds",
-    hs_sub: "Cada sonido de las dificultades elegidas toma el sonido de la fuente en el mismo momento (a menos de 5 ms): adiciones, sample sets e índice. Los sonidos sin nada debajo quedan como están. Solo cambian los campos de hitsound, y cada archivo se respalda antes.",
-    hs_source: "Desde", hs_targets: "Hacia",
-    hs_volumes: "Copiar también los volúmenes (suelen ser trabajo de las líneas verdes, que no se copian)",
-    hs_no_targets: "Elegí al menos una dificultad de destino.", hs_same_file: "Una dificultad no se puede copiar sobre sí misma.",
-    hs_t_diff: "Dificultad", hs_t_sounds: "Sonidos", hs_t_matched: "Con sonido fuente", hs_t_changed: "Van a cambiar",
-    hs_t_unmatched: "Sin nada debajo", hs_t_conflicts: "Conflictos de índice",
-    hs_conflict_note: "Un conflicto de índice es un sonido cuyo índice de sample viene de una línea verde que el destino no tiene, o un borde de slider con un índice distinto al de su cabeza: la copia deja esos índices como están.",
-    hs_confirm: "¿Escribir los hitsounds de {source} en {n} dificultades? Solo cambian los campos de hitsound; cada archivo se respalda antes.",
     sw_title: "Cambio de audio", sw_preview: "Vista previa", sw_apply: "Mover todos los tiempos",
     sw_sub: "Mide el desplazamiento entre el audio mapeado y una nueva codificación, y mueve por él cada línea de timing, objeto, punto de preview y bookmark; el lead-in, una espera antes de la canción, queda igual. Gemelos de tempo y extraños se rechazan; cada archivo se respalda antes.",
     sw_old: "Audio mapeado", sw_new: "Nueva codificación",
@@ -1020,8 +736,6 @@ const I18N = {
     ac_long_lead: "{ms} ms de casi silencio antes del primer sonido.",
     ac_low_rate: "{rate} Hz bajo calidad CD.",
     ms_no_audio: "Esa carpeta no nombra ningún audio que sus mapas puedan usar.",
-    hs_done: "Hitsounds copiados en {n} dificultades ({objects} objetos). Los respaldos quedan junto a cada archivo.",
-    hs_nothing: "Nada que cambiar: estas dificultades ya suenan como {source}.",
     st_theme: "Tema", st_theme_system: "Sistema", st_theme_dark: "Oscuro", st_theme_light: "Claro",
     theme_to_light: "Tema claro", theme_to_dark: "Tema oscuro",
     nav_structure: "Estructura",
@@ -1386,11 +1100,8 @@ function translate() {
   renderSong();
   renderRecents();
   renderStructure();
-  if (HSV.report) renderHitsoundsView();
-  sbRender();
   renderNeedSong();
   renderMapset();
-  if (typeof renderCopier === "function") renderCopier();
   if (typeof renderSwapResult === "function" && S.mapset) renderSwap();
   if (S.result) renderResult(S.result);
   if (S.busy) $("analyzeText").textContent = t("analyzing");
@@ -1400,8 +1111,8 @@ function translate() {
 // One analysed song is shared by every view: switching only changes what is
 // visible, never the session. Views that read the analysis show the
 // "analyze first" panel until there is one, instead of blank space.
-const VIEWS = ["library", "timing", "structure", "hitsounds", "mapcheck", "mapset", "audio", "report", "export", "history", "settings"];
-const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", structure: "nav_structure", hitsounds: "nav_hitsounds", mapcheck: "nav_mapcheck", mapset: "nav_mapset", audio: "nav_audio", report: "nav_report", export: "nav_export", history: "nav_history", settings: "nav_settings" };
+const VIEWS = ["library", "timing", "structure", "mapcheck", "mapset", "audio", "report", "export", "history", "settings"];
+const VIEW_LABEL = { library: "nav_library", timing: "nav_timing", structure: "nav_structure", mapcheck: "nav_mapcheck", mapset: "nav_mapset", audio: "nav_audio", report: "nav_report", export: "nav_export", history: "nav_history", settings: "nav_settings" };
 
 function needsResult(view) {
   const section = document.querySelector(`.content > [data-view="${view}"]`);
@@ -1427,8 +1138,6 @@ function setView(view) {
     drawTrace(); waveLoad(); svMaps(); divsLoad(); swingLoad(); phLoad(); notesLoad();
   }
   if (view === "structure" && S.result) { stxLoad(); stxBmMaps(); stxKiaiMaps(); stxBreaksMaps(); stxVolMaps(); }
-  if (view === "hitsounds" && S.result) { hsvLoad(); sbView(); }
-  if (view === "export" && S.result) hsdfMaps();
   if (view === "audio" && S.result) audioLoad();
   if (view === "history") histLoad();
 }
@@ -1897,7 +1606,7 @@ function showResult(result) {
   S.snap = null;
   // A grade depends on the map and the song's attacks, not on the point list:
   // it stays through edits and goes with the song.
-  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; RA.report = null; labCancel(); pbReset(); hsMaps(); WARN.open.clear(); WARN.all = false; }
+  if (!sameSong) { S.ref = null; S.refFind = null; S.assist = null; S.report = null; RA.report = null; labCancel(); pbReset(); WARN.open.clear(); WARN.all = false; }
   if (!sameSong) { STX.view = null; STX.file = ""; STX.error = null; }
   if (!sameSong) S.comparePath = null;  // a map belongs to one song
   setView(S.view);  // lifts the "analyze first" panel off the current view
@@ -3414,828 +3123,6 @@ function stxShow(i) {
   pbSeek(s.start_s);
 }
 
-// ------------------------------------------------------------------ hitsounds view
-// Phase 6, H2: one difficulty, read only. Where its additions fall in the bar
-// (a small multiple per addition, on one scale), and every sound, to hear
-// one by one with the samples the transport plays.
-const HSV = { file: "", report: null, filter: "all", bars: { from: null, to: null }, shown: 200,
-              selected: null };
-const HSV_ADDS = ["whistle", "finish", "clap"];
-const HSV_PAGE = 200;
-
-function slotLabel(slot, meter) {
-  if (slot === null || slot === undefined) return "—";
-  return `${Math.floor(slot / 4) + 1}${["", "e", "+", "a"][slot % 4]}`;
-}
-
-async function hsvLoad() {
-  const box = $("hsvMap");
-  if (!api() || !S.result) return;
-  if (!box.options.length || box.dataset.for !== S.result.path) {
-    const reply = await api().song_maps();
-    const maps = reply.ok ? reply.maps : [];
-    box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
-    box.dataset.for = S.result.path;
-    box.disabled = !maps.length;
-    HSV.file = ""; HSV.report = null;
-    // Bars belong to one song: a new one starts from all of them.
-    HSV.bars = { from: null, to: null };
-    $("hsvBarFrom").value = $("hsvBarTo").value = "";
-    if (!maps.length) { renderHitsoundsView(); return; }
-    if (HSP.file && maps.some((m) => m.file === HSP.file)) box.value = HSP.file;
-  }
-  if (box.value && box.value !== HSV.file) await hsvPick(box.value);
-  else renderHitsoundsView();
-}
-
-async function hsvPick(file) {
-  // New file, new decision state; refreshing the same file after a write
-  // clears the (now stale) units but keeps a live undo.
-  if (HSV.file !== file) {
-    HSD.file = ""; HSD.units = []; HSD.byKey = new Map(); HSD.accepted = new Set(); HSD.choice = new Map();
-    HSD.edits = new Map(); HSD.undo = false;
-  }
-  HSV.file = file; HSV.report = null; HSV.shown = HSV_PAGE; HSV.selected = null;
-  hsdProfilesLoad(file);
-  $("hsvDecidePrevText").textContent = "";
-  const reply = await api().hitsound_report(file);
-  if (HSV.file !== file) return;
-  if (!reply.ok) { editFailure(reply); return; }
-  HSV.report = reply.report;
-  // A run over the whole mapset already decided this difficulty: show what it
-  // found instead of asking the sidecar for this one map again.
-  if (HSD.file !== file) {
-    const cached = await api().hitsound_decide_cached(file);
-    if (HSV.file !== file) return;
-    if (cached.ok) hsdAdopt(file, cached.units, cached.profile, cached.evidence);
-  }
-  renderHitsoundsView();
-  // The same difficulty in the transport: its samples load for the ▶ buttons.
-  if (HSP.file !== file) { $("pbHs").value = file; hsPick(file).then(renderHitsoundsView); }
-}
-
-function hsvChart(name, a, meter, peak) {
-  const n = a.slots.length, W = 300, H = 96, gap = 2, bw = (W - gap * (n - 1)) / n;
-  const bars = a.slots.map((c, k) => {
-    const share = a.total ? c / a.total : 0, h = peak ? (share / peak) * (H - 8) : 0;
-    const x = k * (bw + gap);
-    return `<rect class="bar" x="${x.toFixed(1)}" y="${(H - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(h, share ? 1 : 0).toFixed(1)}"><title>${slotLabel(k, meter)}: ${c} (${Math.round(share * 100)} %)</title></rect>`;
-  }).join("");
-  const labels = a.slots.map((_c, k) => k % 4 === 0
-    ? `<text class="beat" x="${(k * (bw + gap) + bw / 2).toFixed(1)}" y="${H + 14}" text-anchor="middle">${k / 4 + 1}</text>`
-    : (n <= 16 ? `<text class="sub" x="${(k * (bw + gap) + bw / 2).toFixed(1)}" y="${H + 14}" text-anchor="middle">${["", "e", "+", "a"][k % 4]}</text>` : "")).join("");
-  // The fewest sixteenths that hold 80 % of this addition, four at most.
-  const order = a.slots.map((c, k) => [c, k]).sort((x, y) => y[0] - x[0]);
-  let held = 0; const top = [];
-  for (const [c, k] of order) { if (!c || top.length === 4 || held >= 0.8 * a.total) break; top.push(k); held += c; }
-  const sum = a.total ? t("hsv_top", { pct: Math.round((held / a.total) * 100), slots: top.sort((x, y) => x - y).map((k) => slotLabel(k, meter)).join(", ") })
-                      : t("hsv_none_add");
-  const extra = [a.off_grid ? t("hsv_between", { n: a.off_grid }) : "", a.other_meter ? t("hsv_other_meter", { n: a.other_meter }) : ""].filter(Boolean).join(" · ");
-  return `<div class="hsv-chart k-${name}">
-    <div class="head"><span class="hsv-dot k-${name}"></span><b>${t("lg_" + name)}</b><span class="num">${a.total}</span><span class="sum">${esc(sum)}</span></div>
-    <svg viewBox="0 0 ${W} ${H + 18}" role="img" aria-label="${esc(t("lg_" + name) + ": " + sum)}">
-      ${bars}<line class="base" x1="0" x2="${W}" y1="${H + 0.5}" y2="${H + 0.5}"/>${labels}</svg>
-    ${extra ? `<div class="card-sub mt-s">${esc(extra)}</div>` : ""}</div>`;
-}
-
-// The sounds the table shows: its addition filter and its bars (either end
-// open). All, None, Set and Clear act on these, pages beyond the first too.
-function hsvShown() {
-  const r = HSV.report;
-  if (!r) return [];
-  const { from, to } = HSV.bars;
-  return r.sounds.filter((s) => (HSV.filter === "all" || s.sounds.includes(HSV.filter))
-    && (from === null || (s.bar !== null && s.bar >= from))
-    && (to === null || (s.bar !== null && s.bar <= to)));
-}
-
-function renderHitsoundsView() {
-  const r = HSV.report, box = $("hsvMap");
-  $("hsvWhereCard").hidden = $("hsvSoundsCard").hidden = !r;
-  if (!box.options.length) { $("hsvSummary").innerHTML = `<div class="card-sub">${t("hsv_none")}</div>`; hsdRender(); return; }
-  if (!r) { $("hsvSummary").innerHTML = ""; hsdRender(); return; }
-  const n = r.sounds.length, pct = (x) => (n ? Math.round((x / n) * 100) : 0);
-  const sets = r.sets.normal, setsText = ["normal", "soft", "drum"].filter((s) => sets[s]).map((s) => `${s} ${pct(sets[s])} %`).join(" · ");
-  const c = HSP.file === HSV.file && HSP.events && !HSP.proposal ? HSP.counts : null;
-  const stat = (label, value, small) => `<div class="hsv-stat"><div class="label">${label}</div><div class="value">${value}${small ? `<small>${small}</small>` : ""}</div></div>`;
-  $("hsvSummary").innerHTML = `<div class="hsv-stats">
-      ${stat(t("hsv_sounds_n"), n)}
-      ${HSV_ADDS.map((a) => stat(t("lg_" + a), r.additions[a].total, `${pct(r.additions[a].total)} %`)).join("")}
-      ${stat(t("hsv_sets"), `<span class="card-sub">${esc(setsText)}</span>`)}
-      ${c ? stat(t("hsv_samples"), `<span class="card-sub">${esc(t(c.skin ? "hsv_samples_v_skin" : "hsv_samples_v", { map: c.map + c.file, skin: c.skin, own: c.overtone }))}</span>`) : ""}
-    </div>`;
-  const peak = Math.max(1e-9, ...HSV_ADDS.flatMap((a) => r.additions[a].slots.map((x) => (r.additions[a].total ? x / r.additions[a].total : 0))));
-  $("hsvWhere").innerHTML = HSV_ADDS.map((a) => hsvChart(a, r.additions[a], r.meter, peak)).join("");
-  $("hsvWhereNote").textContent = t("hsv_where_note", { meter: r.meter });
-  const rows = hsvShown();
-  $("hsvCount").textContent = t("hsv_count", { n: rows.length });
-  // ▶ plays what the transport holds: the file, or the file as it would be written.
-  const playLabel = t(HSP.proposal && HSP.file === HSV.file ? "hsv_play_proposal" : "hsv_play");
-  // A hand edit shows beside what plays now; 0 hands the value back to the green line.
-  const cell = (now, set, unit) => set === undefined ? `${now}${unit}`
-    : `<span class="was">${now}${unit}</span> → <span class="now">${set === 0 ? t("hsv_line") : set + unit}</span>`;
-  $("hsvRows").innerHTML = rows.slice(0, HSV.shown).map((s) => {
-    const i = r.sounds.indexOf(s);
-    const adds = s.sounds.slice(1).map((a) => `<span class="hsv-dot k-${a}"></span>${t("lg_" + a)}`).join(" ");
-    const unit = hsdUnitFor(s);
-    const key = unit && hsdKey(unit.object, unit.part, unit.edge);
-    const tick = unit && `<input type="checkbox" data-hsd="${esc(key)}" ${HSD.accepted.has(key) ? "checked" : ""}>`;
-    // The proposal, or one of its runner-ups; a slider tail follows its head and has none.
-    const alts = unit && unit.alternatives && unit.alternatives.length ? unit.alternatives : null;
-    const chosen = alts && HSD.choice.has(key) ? HSD.choice.get(key) : -1;
-    const prop = !unit ? `<span class="muted">—</span>`
-      : !alts ? `<label class="check">${tick}<span>${esc(hsdLabel(unit.proposal))}</span></label>`
-      : `<span class="hsv-prop"><label class="check">${tick}</label><select class="input hsv-alt" data-hsd-alt="${esc(key)}" aria-label="${t("hsv_alt_aria")}">`
-        + [unit.proposal, ...alts].map((p, k) => `<option value="${k - 1}"${k - 1 === chosen ? " selected" : ""}>${esc(hsdLabel(p))}</option>`).join("")
-        + `</select></span>`;
-    const edit = HSD.file === HSV.file ? HSD.edits.get(s.object) : undefined;
-    return `<tr data-i="${i}"${i === HSV.selected ? ' class="sel"' : ""}>
-      <td class="txt num">${fmtTime(s.t)}</td>
-      <td class="num">${s.bar ?? "—"} · ${slotLabel(s.slot, s.meter)}</td>
-      <td class="txt">${t("part_" + s.part)}</td>
-      <td class="txt">${s.file ? esc(s.file) : (adds || `<span class="muted">normal</span>`)}</td>
-      <td class="txt">${s.normal_set}${s.sounds.length > 1 && s.addition_set !== s.normal_set ? ` / ${s.addition_set}` : ""}</td>
-      <td class="num">${cell(s.index, edit && edit.index, "")}</td><td class="num">${cell(s.volume, edit && edit.volume, " %")}</td>
-      <td class="txt">${prop}</td>
-      <td><button type="button" class="btn small icon" data-play="${i}" title="${playLabel}" aria-label="${playLabel}">▶</button></td>
-    </tr>`;
-  }).join("");
-  const more = rows.length - HSV.shown;
-  $("hsvMore").hidden = more <= 0;
-  $("hsvMore").textContent = t("hsv_more", { n: Math.min(more, HSV_PAGE) });
-  hsdRender();
-  hsdWhy();
-  sbRenderHear();
-}
-
-// ▶ plays one sound now, with the samples the transport loaded for this map.
-function hsvPlay(i) {
-  const s = HSV.report && HSV.report.sounds[i];
-  if (!s || !HSP.events || HSP.file !== HSV.file) return;
-  const k = lowerBound(HSP.events.t, s.t - 1e-6);
-  if (k >= HSP.events.t.length || Math.abs(HSP.events.t[k] - s.t) > 1e-3) return;
-  const ctx = pbContext();
-  if (ctx.state === "suspended") ctx.resume();
-  pbHitAt(ctx.currentTime + 0.02, HSP.events.keys[k], HSP.events.volume[k]);
-}
-
-// ------------------------------------------------------------------ decide
-// Phase 6, H5: the decision engine's proposals over the sounds table, and
-// volume and sample index by hand. Units join report sounds on (object,
-// part, edge); the ticked set is the accept list the bridge previews and
-// writes. Proposing runs the CLI once and caches server-side; writing clears
-// the cache, because the map the units were decided on is gone. Edits need
-// no proposal: one per object, keyed by the sound they were set on, so the
-// bridge can refuse them if that sound moved.
-const HSD = { file: "", units: [], byKey: new Map(), accepted: new Set(), choice: new Map(),
-              edits: new Map(), undo: false, proposing: false, evidence: "map",
-              profiles: ["balanced"], profile: "balanced", proposedWith: "",
-              suggested: "", picked: false, matched: null, unmatched: null };
-
-// Hitsound profiles by name, as the bridge lists them (balanced first): a
-// profile the page has words for shows them, any other its file's name.
-function hsdProfileLabel(name) {
-  const key = "hsv_prof_" + name;
-  return key in I18N.en ? t(key) : name;
-}
-
-// The selector shows only when there is a choice: balanced alone needs none.
-function hsdProfilesRender() {
-  const box = $("hsvProfile");
-  box.innerHTML = HSD.profiles.map((name) => {
-    const key = "hsv_prof_" + name;
-    const label = hsdProfileLabel(name)
-      // Marked whether or not the user has picked another: what the map's own
-      // tags asked for is worth seeing even when you decide against it.
-      + (name === HSD.suggested ? ` — ${t("hsv_prof_suggested")}` : "");
-    return `<option value="${esc(name)}">${esc(label)}</option>`;
-  }).join("");
-  box.value = HSD.profile;
-  $("hsvProfileField").hidden = HSD.profiles.length < 2;
-}
-
-async function hsdProfilesLoad(file) {
-  if (!api()) return;
-  const reply = await api().hitsound_profiles(file || "");
-  if (!reply || !reply.ok) return;
-  HSD.profiles = reply.profiles;
-  HSD.suggested = reply.suggested || "";
-  if (!HSD.profiles.includes(HSD.profile)) HSD.profile = reply.default;
-  // The map's own tags choose, until the user does: their pick is theirs, and
-  // opening another map must not quietly undo it.
-  if (HSD.suggested && !HSD.picked) HSD.profile = HSD.suggested;
-  hsdProfilesRender();
-}
-
-// What the chosen profile does, and a reminder when the proposals shown
-// were decided with another one.
-function hsdProfileNote() {
-  const key = `hsv_prof_${HSD.profile}_note`;
-  const note = HSD.profiles.length > 1 && key in I18N.en ? t(key) : "";
-  const shown = HSD.file === HSV.file && HSD.units.length > 0 && HSD.proposedWith;
-  const again = shown && HSD.proposedWith !== HSD.profile
-    ? t("hsv_prof_again", { used: hsdProfileLabel(HSD.proposedWith), chosen: hsdProfileLabel(HSD.profile) })
-    : "";
-  return [note, again].filter(Boolean).join(" ");
-}
-
-function hsdKey(object, part, edge) { return `${object}|${part}|${edge ?? ""}`; }
-
-function hsdUnitFor(sound) {
-  if (!HSD.units.length || HSD.file !== HSV.file) return null;
-  return HSD.byKey.get(hsdKey(sound.object, sound.part, sound.edge)) || null;
-}
-
-function hsdEditList() { return [...HSD.edits.values()]; }
-
-// The runner-ups chosen on ticked sounds, as [object, part, edge, index].
-function hsdChoiceList() {
-  return [...HSD.choice].filter(([key]) => HSD.accepted.has(key)).map(([key, k]) => {
-    const [object, part, edge] = key.split("|");
-    return [+object, part, edge === "" ? null : +edge, k];
-  });
-}
-
-// What a preview or the transport is made of, in words.
-function hsdWhat(r) {
-  const parts = [];
-  if (r.units) parts.push(t(r.chosen ? "hsv_what_ticked_alt" : "hsv_what_ticked",
-                            { accepted: r.accepted, units: r.units, chosen: r.chosen }));
-  if (r.edited) parts.push(t("hsv_edited", { n: r.edited }));
-  return parts.join(t("hsv_and"));
-}
-
-// Something to write: ticked-or-not proposals, or edits, for the difficulty shown.
-function hsdHas() { return HSD.file === HSV.file && (HSD.units.length > 0 || HSD.edits.size > 0); }
-
-// A proposal or a runner-up in words, compact for the table: its bank, its
-// additions, how likely on its own ("soft+whistle 7 %").
-function hsdLabel(p) {
-  const sure = typeof p.probability === "number" ? ` ${Math.round(p.probability * 100)} %` : "";
-  return p.bank + p.additions.map((a) => "+" + a).join("") + sure;
-}
-
-// The decision behind one sound, read off the computation (docs/06 §7): the
-// proposal and its runner-ups, what was heard under it, and every term the
-// engine added up there, signed. Opens on a row click, over the table.
-const HSD_TERMS = ["affinity", "role", "context", "prior"];
-
-function hsdWhy() {
-  const box = $("hsvWhy"), r = HSV.report;
-  const s = r && HSV.selected !== null ? r.sounds[HSV.selected] : null;
-  const unit = s && hsdUnitFor(s);
-  box.hidden = !unit;
-  if (!unit) { box.innerHTML = ""; return; }
-  const head = `${fmtTime(s.t)} · ${t("part_" + s.part)} · ${s.bar ?? "—"} · ${slotLabel(s.slot, s.meter)}`;
-  const row = (label, body) => `<div class="label">${label}</div><div>${body}</div>`;
-  const alts = (unit.alternatives || []).map((a) => esc(hsdLabel(a))).join(" · ");
-  let heard = "", why = "";
-  if (unit.tail) {
-    heard = esc(t(unit.follows === null ? "hsv_why_tail_bare" : "hsv_why_tail"));
-  } else if (!unit.heard) {
-    heard = esc(t("hsv_why_silence"));
-  } else {
-    const classes = unit.heard.classes.map((c) => `${esc(t("hs_class_" + c.class))} ${Math.round(c.probability * 100)} %`).join(" · ");
-    const d = unit.heard.division;
-    heard = `${classes} · ${esc(t(d ? "hsv_div_" + d : "hsv_div_none"))}`;
-  }
-  if (!unit.tail) {
-    const terms = HSD_TERMS.map((name) => [name, (unit.terms.find((x) => name in x) || {})[name] || 0]);
-    if (unit.transition_in !== null && unit.transition_in !== undefined) terms.push(["transition", unit.transition_in]);
-    const peak = Math.max(1e-9, ...terms.map(([, v]) => Math.abs(v)));
-    const sum = terms.reduce((a, [, v]) => a + v, 0);
-    why = `<div class="hsv-terms">${terms.map(([name, v]) => `<span>${esc(t("hsv_term_" + name))}</span>`
-      + `<span class="track"><span class="bar${v < 0 ? " neg" : ""}" style="width:${(Math.abs(v) / peak * 100).toFixed(1)}%"></span></span>`
-      + `<span class="num">${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}</span>`).join("")}`
-      + `<span><b>${esc(t("hsv_why_sum"))}</b></span><span></span><span class="num"><b>${sum >= 0 ? "+" : "−"}${Math.abs(sum).toFixed(2)}</b></span></div>`;
-  }
-  box.innerHTML = `<div class="hsv-why-head"><b>${esc(head)}</b><span class="spacer"></span>`
-    + `<button type="button" class="btn small icon" data-why-close title="${t("hsv_why_close")}" aria-label="${t("hsv_why_close")}">×</button></div>`
-    + `<div class="hsv-why-grid">`
-    + row(t("hsv_why_proposed"), `<b>${esc(hsdLabel(unit.proposal))}</b>${alts ? ` <span class="muted">· ${t("hsv_why_behind")} ${alts}</span>` : ""}`)
-    + row(t("hsv_why_heard"), heard)
-    + (why ? row(t("hsv_why_terms"), why) : "")
-    + `</div>${why ? `<div class="card-sub mt-s">${esc(t("hsv_why_note"))}</div>` : ""}`;
-}
-
-function hsdAcceptList() {
-  return [...HSD.accepted].map((key) => {
-    const [object, part, edge] = key.split("|");
-    return [+object, part, edge === "" ? null : +edge];
-  });
-}
-
-function hsdRender() {
-  const mine = HSD.file === HSV.file, units = mine && HSD.units.length > 0, has = hsdHas();
-  $("hsvDecideCard").hidden = !HSV.report;
-  $("hsvPropose").disabled = HSD.proposing || !HSV.file;
-  $("hsvProposeAll").disabled = HSD.proposing || !$("hsvMap").options.length;
-  $("hsvProfile").disabled = HSD.proposing;
-  $("hsvProfileNote").textContent = hsdProfileNote();
-  document.querySelectorAll("#hsvEvidence button").forEach((b) =>
-    b.classList.toggle("on", b.dataset.evidence === HSD.evidence));
-  $("hsvEvidenceNote").textContent = HSD.evidence === "audio"
-    ? [t("hsv_ev_note_audio"),
-       HSD.matched !== null && HSD.matched !== undefined
-         ? t("hsv_ev_matched", { n: HSD.matched, m: HSD.unmatched || 0 }) : ""]
-      .filter(Boolean).join(" ") : "";
-  $("hsvDecideAll").disabled = $("hsvDecideNone").disabled = !units;
-  for (const id of ["hsvDecidePreview", "hsvDecideHear", "hsvDecideApply", "hsvDecideCopy"]) {
-    $(id).disabled = !has;
-  }
-  $("hsvEditSet").disabled = !HSV.report;
-  $("hsvEditClear").disabled = !(mine && HSD.edits.size);
-  $("hsvDecideUndo").disabled = !HSD.undo;
-  const chosen = units ? hsdChoiceList().length : 0;
-  $("hsvDecideStatus").textContent = HSD.proposing ? t("hsv_proposing")
-    : [units ? t("hsv_proposed", { n: HSD.accepted.size }) : "",
-       units && HSD.proposedWith && HSD.profiles.length > 1 ? hsdProfileLabel(HSD.proposedWith) : "",
-       chosen ? t("hsv_alts", { n: chosen }) : "",
-       mine && HSD.edits.size ? t("hsv_edited", { n: HSD.edits.size }) : ""].filter(Boolean).join(" · ");
-  hsProposalOption(has ? HSD.file : "");
-  const h = has && HSP.proposal && HSP.file === HSD.file ? HSP.heard : null;
-  const plain = h && [...$("pbHs").options].find((o) => o.value === HSD.file);
-  $("hsvDecideHearText").textContent = !h ? ""
-    : h.differs ? t("hsv_hearing", { what: hsdWhat(h), n: h.differs, time: fmtTime(h.first),
-                                     name: plain ? plain.textContent : HSD.file })
-    : t("hsv_hearing_same", { what: hsdWhat(h) });
-}
-
-// Hear the ticked proposals and the edits over the song: the transport
-// switches to the difficulty as it would be written and plays, from the
-// playhead or, from the song's start, just before the first sound that changes.
-async function hsdHear() {
-  if (!api() || !hsdHas()) return;
-  hsProposalOption(HSD.file);
-  await hsPick(HS_PROPOSAL + HSD.file);
-  renderHitsoundsView();
-  const h = HSP.proposal && HSP.heard;
-  if (!h || P.playing) return;
-  pbPlay(P.pos > 0 || h.first === null ? P.pos : Math.max(0, h.first - 1));
-}
-
-// The ticks or the edits changed: the transport, when it plays the file as it
-// would be written, follows them once the changing pauses, heard on the next
-// beat like an edit to the click. With nothing left to write, that is the file.
-let hsdRehear = 0;
-function hsdTicked() {
-  clearTimeout(hsdRehear);
-  const live = () => HSP.proposal && HSP.file === HSV.file;
-  if (!live()) return;
-  hsdRehear = setTimeout(() => {
-    if (live()) hsPick(hsdHas() ? HS_PROPOSAL + HSV.file : HSV.file).then(hsdRender);
-  }, 250);
-}
-
-// Volume and sample index by hand on the sounds shown: the object's own
-// values, 0 to follow its green line again; a slider's for all its edges.
-function hsdEditSet() {
-  if (!HSV.report) return;
-  const read = (id, max) => {
-    const raw = $(id).value.trim();
-    if (raw === "") return undefined;
-    const v = Number(raw);
-    return Number.isInteger(v) && v >= 0 && v <= max ? v : NaN;
-  };
-  const volume = read("hsvEditVolume", 100), index = read("hsvEditIndex", Number.MAX_SAFE_INTEGER);
-  if (volume === undefined && index === undefined) { toast(t("hsv_edit_empty"), true); return; }
-  if (Number.isNaN(volume) || Number.isNaN(index)) { toast(t("hsv_edit_bad"), true); return; }
-  HSD.file = HSV.file;
-  for (const s of hsvShown()) {
-    const edit = HSD.edits.get(s.object)
-      || { object: s.object, part: s.part, edge: s.edge, time_ms: s.t * 1000 };
-    if (volume !== undefined) edit.volume = volume;
-    if (index !== undefined) edit.index = index;
-    HSD.edits.set(s.object, edit);
-  }
-  $("hsvDecidePrevText").textContent = "";
-  renderHitsoundsView();
-  hsdTicked();
-}
-
-function hsdEditClear() {
-  for (const s of hsvShown()) HSD.edits.delete(s.object);
-  $("hsvDecidePrevText").textContent = "";
-  renderHitsoundsView();
-  hsdTicked();
-}
-
-// One proposal's units become the decision state: every sound ticked, no
-// runner-up chosen, no hand edit, nothing to undo.
-function hsdAdopt(file, units, profile, evidence) {
-  HSD.file = file;
-  HSD.proposedWith = profile || HSD.profile;
-  HSD.evidence = evidence || "map";
-  HSD.units = units;
-  HSD.byKey = new Map(units.map((u) => [hsdKey(u.object, u.part, u.edge), u]));
-  HSD.choice = new Map();
-  HSD.accepted = new Set(HSD.byKey.keys());
-  HSD.undo = false;
-}
-
-async function hsvPropose() {
-  if (!api() || !HSV.file || HSD.proposing) return;
-  HSD.proposing = true; hsdRender();
-  try {
-    const reply = await api().hitsound_decide_propose(HSV.file, HSD.profile, HSD.evidence);
-    if (HSV.file !== (reply.file || HSV.file)) { hsdRender(); return; }
-    if (!reply.ok) {
-      if (reply.key === "no_rust") toast(t("hsv_no_rust"), true);
-      else editFailure(reply);
-      return;
-    }
-    HSD.matched = reply.matched;
-    HSD.unmatched = reply.unmatched;
-    hsdAdopt(HSV.file, reply.units, reply.profile, reply.evidence);
-  } finally {
-    HSD.proposing = false;
-  }
-  renderHitsoundsView();
-  hsdTicked();
-}
-
-// Every difficulty beside the song in one run of the sidecar: deciding is
-// mostly the song's work, and the song is the same, so a set costs about
-// what one map costs. Each map's proposal is cached, so moving between
-// difficulties afterwards asks for nothing.
-async function hsvProposeAll() {
-  if (!api() || HSD.proposing) return;
-  HSD.proposing = true; hsdRender();
-  let reply;
-  try {
-    reply = await api().hitsound_decide_propose_all(HSD.profile);
-  } finally {
-    HSD.proposing = false;
-  }
-  if (!reply.ok) {
-    if (reply.key === "no_rust") toast(t("hsv_no_rust"), true);
-    else editFailure(reply);
-    renderHitsoundsView();
-    return;
-  }
-  const bad = reply.maps.filter((m) => m.error !== undefined).length;
-  const done = reply.maps.length - bad;
-  toast(bad ? t(bad === 1 ? "hsv_all_some_one" : "hsv_all_some", { n: done, of: reply.maps.length, bad })
-    : t(done === 1 ? "hsv_all_one" : "hsv_all_done", { n: done }));
-  // the difficulty on screen shows its own share of the run
-  const mine = HSV.file && reply.maps.find((m) => m.file === HSV.file);
-  if (mine && mine.error === undefined) {
-    const cached = await api().hitsound_decide_cached(HSV.file);
-    if (cached.ok && HSV.file === cached.file) hsdAdopt(HSV.file, cached.units, cached.profile, cached.evidence);
-  }
-  renderHitsoundsView();
-  hsdTicked();
-}
-
-// Tick or untick the proposals of the sounds shown: every one, with no
-// filter and no bars.
-function hsdSetAll(on) {
-  for (const s of hsvShown()) {
-    const unit = hsdUnitFor(s);
-    if (!unit) continue;
-    const key = hsdKey(unit.object, unit.part, unit.edge);
-    if (on) HSD.accepted.add(key); else HSD.accepted.delete(key);
-  }
-  $("hsvDecidePrevText").textContent = "";
-  renderHitsoundsView();
-  hsdTicked();
-}
-
-async function hsdPreview() {
-  if (!api() || !hsdHas()) return;
-  const reply = await api().hitsound_decide_preview(HSV.file, hsdAcceptList(), hsdEditList(), hsdChoiceList());
-  if (!reply.ok) {
-    if (reply.key === "no_proposal") toast(t("hsv_no_proposal"), true);
-    else editFailure(reply);
-    return reply;
-  }
-  $("hsvDecidePrevText").textContent = t("hsv_would_change",
-    { what: hsdWhat(reply), n: reply.would_change });
-  return reply;
-}
-
-async function hsdWrite(copy) {
-  if (!api() || !hsdHas()) return;
-  const preview = await hsdPreview();
-  if (!preview || !preview.ok || !preview.would_change) return;
-  const ok = confirm(t(copy ? "hsv_confirm_copy" : "hsv_confirm_write",
-    { n: preview.would_change, file: HSV.file }));
-  if (!ok) return;
-  const reply = await api().hitsound_decide_apply(HSV.file, hsdAcceptList(), copy, hsdEditList(),
-                                                hsdChoiceList());
-  if (!reply.ok) { editFailure(reply); return; }
-  HSD.units = []; HSD.byKey = new Map(); HSD.accepted = new Set(); HSD.choice = new Map();
-  HSD.edits = new Map();
-  HSD.undo = reply.undo;
-  $("hsvDecidePrevText").textContent = "";
-  // A copy names the file it wrote, not the original it left alone.
-  const written = copy && reply.dest ? String(reply.dest).split(/[\\/]/).pop() : HSV.file;
-  toast(t(copy ? "hsv_done_copy" : "hsv_done", { n: reply.changed.length, file: written }));
-  await hsvPick(HSV.file);
-  if (HSP.file === HSV.file) await hsPick(HSV.file);
-  renderHitsoundsView();
-}
-
-async function hsdUndo() {
-  if (!api()) return;
-  const reply = await api().hitsound_decide_undo();
-  if (!reply.ok) { editFailure(reply); return; }
-  HSD.units = []; HSD.byKey = new Map(); HSD.accepted = new Set(); HSD.choice = new Map();
-  HSD.edits = new Map();
-  HSD.undo = false;
-  toast(t("hsv_undone", { file: reply.file }));
-  await hsvPick(reply.file);
-  if (HSP.file === reply.file) await hsPick(reply.file);
-  renderHitsoundsView();
-}
-
-// ------------------------------------------------------------------ hitsound difficulty
-// Phase 6, H5 export: a new difficulty with a circle at every sound of the
-// mapset, each playing it exactly, to hitsound in one place and copy from.
-const HSDF = { preview: null };
-
-async function hsdfMaps() {
-  const box = $("hsdSource");
-  let maps = [];
-  if (api()) {
-    const reply = await api().song_maps();
-    maps = reply.ok ? reply.maps : [];
-  }
-  // The densest difficulty first: the natural source, and the first to fill from.
-  maps.sort((a, b) => b.objects - a.objects);
-  const keep = box.value;
-  box.innerHTML = maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
-  if (maps.some((m) => m.file === keep)) box.value = keep;
-  box.disabled = $("hsdPreviewBtn").disabled = !maps.length;
-  HSDF.preview = null;
-  hsdfRender();
-}
-
-function hsdfRender() {
-  const p = HSDF.preview;
-  $("hsdWriteBtn").disabled = !(p && p.circles);
-  if (!p) { $("hsdResult").textContent = ""; return; }
-  const name = ($("hsdSource").selectedOptions[0] || {}).textContent || p.file;
-  $("hsdResult").textContent = [
-    t("hsd_would", { dest: p.dest, n: p.circles, src: p.from_source, name, others: p.from_others, merged: p.merged }),
-    p.stacked ? t("hsd_stacked", { n: p.stacked, time: fmtTime(p.stacked_times[0]) }) : "",
-    p.inexact ? t("hsd_inexact", { n: p.inexact, time: fmtTime(p.inexact_times[0]) }) : t("hsd_exact"),
-  ].filter(Boolean).join(" ");
-}
-
-async function hsdfPreview() {
-  const file = $("hsdSource").value;
-  if (!api() || !file) return;
-  const reply = await api().hitsound_difficulty_preview(file, $("hsdFill").checked);
-  HSDF.preview = reply.ok ? reply : null;
-  hsdfRender();
-  // One is there already: the card says so where the preview would be.
-  if (reply.key === "hsd_exists") $("hsdResult").textContent = t("hsd_exists", { dest: reply.dest });
-  else if (!reply.ok) editFailure(reply);
-}
-
-async function hsdfWrite() {
-  const p = HSDF.preview;
-  if (!api() || !p || !p.circles) return;
-  if (!confirm(t("hsd_confirm", { dest: p.dest }))) return;
-  const reply = await api().hitsound_difficulty_write(p.file, $("hsdFill").checked);
-  if (reply.key === "hsd_exists") { toast(t("hsd_exists", { dest: reply.dest }), true); return; }
-  if (!reply.ok) { editFailure(reply); return; }
-  toast(t("hsd_done", { dest: reply.dest, n: reply.circles }));
-  // The new difficulty is one of the song's now: its lists pick it up, and
-  // what the transport plays stays as it is.
-  $("hsvMap").dataset.for = "";
-  await hsMapsRefresh();
-  await hsdfMaps();
-}
-
-// The transport's list of difficulties again, what it plays untouched.
-async function hsMapsRefresh() {
-  if (!api()) return;
-  const box = $("pbHs"), keep = box.value;
-  const reply = await api().song_maps();
-  const maps = reply.ok ? reply.maps : [];
-  box.innerHTML = `<option value="">${t("pb_hs_off")}</option>` +
-    maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
-  box.disabled = !maps.length;
-  hsProposalOption(hsdHas() ? HSD.file : "");
-  box.value = keep;
-}
-
-// ------------------------------------------------------------------ samples
-// Phase 6, H6: the sample bank. A folder's samples as playback reads them:
-// the song's own folder, the playback skin, or any folder picked. Every cell
-// plays its sample, or what plays in its place; the last one heard can play
-// over the song in place of the sound selected in the Sounds table. The skin
-// playback asks is a setting, and changing it reloads what the transport holds.
-const SB = { reply: null, source: "song", for: "", sel: null, buffers: new Map(), token: 0,
-             loading: false, skinFound: null };
-// The song before and after the sound an audition replaces, in seconds.
-const SB_LEAD = 1, SB_TAIL = 1.5;
-
-function sbSkin() { return (ST.settings && ST.settings.skin_folder) || ""; }
-function sbBase(path) { return String(path).split(/[\\/]/).filter(Boolean).pop() || String(path); }
-
-// A few names, then how many more.
-function sbList(names, max = 4) {
-  return names.slice(0, max).join(", ") + (names.length > max ? `, ${t("sb_more", { n: names.length - max })}` : "");
-}
-
-// Where a cell's or a numbered sample's sound comes from: its own file, or
-// for a missing cell the skin's or Overtone's, named so a hearing says which.
-function sbWhere(entry) {
-  const bank = SB.reply.bank;
-  if (entry.file) return { folder: bank.folder, file: entry.file, label: entry.file };
-  const f = entry.fallback;
-  return { folder: f.folder, file: f.file,
-           label: `${f.source === "skin" ? sbBase(f.folder) : "Overtone"} · ${f.file}` };
-}
-
-function sbIsSel(where) { return !!SB.sel && SB.sel.folder === where.folder && SB.sel.file === where.file; }
-
-// The shown folder again: the song's own, the playback skin's, or the one picked.
-async function sbLoad(source) {
-  if (!api()) return;
-  if (source === "skin" && !sbSkin()) source = "song";
-  const folder = source === "skin" ? sbSkin() : source === "pick" && SB.reply ? SB.reply.bank.folder : "";
-  const token = ++SB.token;
-  SB.loading = true;
-  $("sbCounts").textContent = t("sb_loading");
-  const reply = await api().sample_bank(folder);
-  if (token !== SB.token) return;
-  SB.loading = false;
-  sbTake(reply, source);
-}
-
-async function sbPick() {
-  if (!api()) return;
-  const token = ++SB.token;
-  const reply = await api().pick_sample_folder();
-  if (token !== SB.token) return;
-  SB.loading = false;
-  if (!reply.ok) { if (reply.key !== "cancelled") editFailure(reply); sbRender(); return; }
-  sbTake(reply, "pick");
-}
-
-function sbTake(reply, source) {
-  if (!reply.ok) {
-    // A playback skin that moved away is said on the card, which shows the
-    // song's folder instead.
-    if (source === "skin" && reply.key === "bad_folder") { SB.skinFound = false; sbLoad("song"); return; }
-    editFailure(reply);
-    SB.reply = null;
-    sbRender();
-    return;
-  }
-  SB.reply = reply; SB.source = source; SB.buffers = new Map();
-  SB.for = source === "song" && S.result ? S.result.path : SB.for;
-  SB.skinFound = sbSkin() ? !!reply.skin : null;
-  sbRender();
-}
-
-// The Hitsounds view opened: the song's folder is read again for a new song.
-function sbView() {
-  if (!S.result) return;
-  if (!SB.reply || (SB.source === "song" && SB.for !== S.result.path)) sbLoad(SB.source);
-  else sbRender();
-}
-
-function sbCell(c, i) {
-  const where = sbWhere(c), on = sbIsSel(where) ? " on" : "";
-  if (c.file) {
-    const ext = c.file.split(".").pop().toLowerCase();
-    const kb = c.bytes === null ? "?" : (c.bytes / 1024).toFixed(1);
-    const title = c.empty ? t("sb_cell_empty_title", { file: c.file }) : t("sb_cell_title", { file: c.file, kb });
-    return `<button type="button" class="sb-cell${c.empty ? " empty" : ""}${on}" data-sb-cell="${i}" title="${esc(title)}">`
-      + `${esc(c.empty ? t("sb_cell_empty") : `${ext} · ${kb} KB`)}</button>`;
-  }
-  const skin = c.fallback.source === "skin";
-  const title = t(skin ? "sb_cell_skin_title" : "sb_cell_own_title", { file: c.fallback.file })
-    + (c.fallback.empty ? ` · ${t("sb_cell_empty")}` : "");
-  return `<button type="button" class="sb-cell miss${c.fallback.empty ? " empty" : ""}${on}" data-sb-cell="${i}" title="${esc(title)}">`
-    + `${esc(t(skin ? "sb_cell_skin" : "sb_cell_own"))}</button>`;
-}
-
-function sbRender() {
-  const r = SB.reply, bank = r && r.bank, skin = sbSkin();
-  document.querySelectorAll("#sbSource button").forEach((b) => {
-    b.classList.toggle("on", b.dataset.src === SB.source);
-    if (b.dataset.src === "skin") b.disabled = !skin;
-  });
-  $("sbKind").hidden = !bank;
-  $("sbName").textContent = bank ? bank.name : "";
-  $("sbRows").innerHTML = "";
-  $("sbCustom").innerHTML = "";
-  $("sbNotes").textContent = "";
-  if (bank) {
-    $("sbKind").textContent = t(bank.kind === "skin" ? "sb_kind_skin" : "sb_kind_beatmap");
-    const c = bank.counts, missing = c.to_skin + c.to_overtone;
-    const missingKey = !c.to_skin ? "sb_missing_own" : !c.to_overtone ? "sb_missing_all_skin" : "sb_missing_skin";
-    $("sbCounts").textContent = [t("sb_counts", { hits: c.hits, slides: c.slides }),
-      missing ? t(missingKey, { n: missing, skin: c.to_skin, own: c.to_overtone }) : "",
-      c.empty ? t("sb_counts_empty", { n: c.empty }) : ""].filter(Boolean).join(" · ");
-    $("sbRows").innerHTML = bank.sets.map((set) => `<tr><td>${esc(set)}</td>${bank.sounds.map((sound) => {
-      const i = bank.cells.findIndex((x) => x.set === set && x.sound === sound);
-      return `<td>${i < 0 ? "" : sbCell(bank.cells[i], i)}</td>`;
-    }).join("")}</tr>`).join("");
-    if (bank.custom.length) {
-      const head = bank.kind === "skin" ? t("sb_custom_skin", { n: bank.custom.length })
-        : t("sb_custom_beatmap", { list: sbList(bank.indices.map(String), 12), n: bank.custom.length });
-      $("sbCustom").innerHTML = `<div class="card-sub">${esc(head)}</div><div class="chips">`
-        + bank.custom.map((x, i) => `<button type="button" class="chip${x.empty ? " empty" : ""}${sbIsSel(sbWhere(x)) ? " on" : ""}" data-sb-custom="${i}"`
-          + ` title="${esc(x.empty ? t("sb_cell_empty_title", { file: x.file }) : t("sb_cell_title", { file: x.file, kb: x.bytes === null ? "?" : (x.bytes / 1024).toFixed(1) }))}">${esc(x.file)}</button>`).join("")
-        + `</div>`;
-    }
-    const shadowed = [...bank.cells, ...bank.custom].flatMap((x) => x.shadowed || []);
-    $("sbNotes").textContent = [bank.unused.length ? t("sb_unused", { n: bank.unused.length, names: sbList(bank.unused) }) : "",
-      shadowed.length ? t("sb_shadowed", { n: shadowed.length, names: sbList(shadowed) }) : ""].filter(Boolean).join(" ");
-  } else {
-    $("sbCounts").textContent = SB.loading ? t("sb_loading") : "";
-  }
-  $("sbSkinText").textContent = !skin ? t("sb_skin_none")
-    : SB.skinFound === false ? t("sb_skin_gone", { path: skin }) : t("sb_skin_is", { name: sbBase(skin) });
-  // A skin is a folder without maps, and never the song's own folder.
-  $("sbUse").hidden = !(bank && bank.kind === "skin" && !r.song && !r.in_use);
-  $("sbStop").hidden = !skin;
-  sbRenderHear();
-}
-
-// The sound an audition would replace: the row selected in the Sounds table.
-function sbSound() {
-  return HSV.report && HSV.selected !== null ? HSV.report.sounds[HSV.selected] || null : null;
-}
-
-function sbRenderHear() {
-  const s = sbSound(), sel = SB.sel, hearing = P.playing && P.swap && P.swap.label ? P.swap : null;
-  $("sbHear").disabled = !(sel && s);
-  $("sbHearText").textContent = hearing ? t("sb_hearing", { sample: hearing.label, time: fmtTime(hearing.t) })
-    : !$("hsvMap").options.length ? t("sb_hear_no_map")
-    : !sel ? t("sb_hear_pick")
-    : !s ? t("sb_hear_sound", { sample: sel.label })
-    : t("sb_hear_ready", { sample: sel.label, time: fmtTime(s.t), bar: s.bar ?? "—", beat: slotLabel(s.slot, s.meter) });
-}
-
-// A sample's decode, once per folder load: {empty, buffer}, or null when it
-// cannot be read or decoded (said in a toast).
-async function sbBuffer(where) {
-  const key = `${where.folder}|${where.file}`;
-  if (SB.buffers.has(key)) return SB.buffers.get(key);
-  const reply = await api().sample_audition(where.folder, where.file);
-  if (!reply.ok) { editFailure(reply); return null; }
-  let got = { empty: true, buffer: null };
-  if (!reply.empty) {
-    const raw = atob(reply.data), bytes = new Uint8Array(raw.length);
-    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-    try { got = { empty: false, buffer: await pbContext().decodeAudioData(bytes.buffer) }; }
-    catch (err) { toast(t("pb_hs_unreadable", { n: 1 }), true); return null; }
-  }
-  SB.buffers.set(key, got);
-  return got;
-}
-
-// A cell or a numbered sample clicked: heard now, alone, and kept for the song.
-async function sbHearAlone(where) {
-  if (!api()) return;
-  SB.sel = where;
-  sbRender();
-  const got = await sbBuffer(where);
-  if (!got) return;
-  if (got.empty) { toast(t("sb_empty_heard", { file: where.file })); return; }
-  const ctx = pbContext();
-  if (ctx.state === "suspended") await ctx.resume();
-  pbBufferAt(ctx.currentTime + 0.02, got.buffer, 1);
-}
-
-// The kept sample over the song: from a second before the selected sound, in
-// its place (a mute plays silence there), at the sound's own volume.
-async function sbHearAtSound() {
-  const s = sbSound(), where = SB.sel;
-  if (!api() || !s || !where) return;
-  const got = await sbBuffer(where);
-  if (!got) return;
-  await pbPlay(Math.max(0, s.t - SB_LEAD), {
-    t: s.t, buffer: got.buffer, label: where.label, until: s.t + SB_TAIL,
-    volume: Math.max(0.05, Math.min(1, (s.volume ?? 100) / 100)), onEnd: sbRenderHear });
-  sbRenderHear();
-}
-
-// The playback skin chosen or dropped: kept as a setting, and what the
-// transport holds is loaded again with it.
-async function sbSetSkin(folder) {
-  if (!api()) return;
-  const reply = await api().set_settings({ skin_folder: folder });
-  if (!reply.ok) { editFailure(reply); return; }
-  stTake(reply);
-  SB.skinFound = folder ? true : null;
-  toast(folder ? t("sb_used", { name: sbBase(folder) }) : t("sb_stopped"));
-  for (const key of Object.keys(HSP.decoded)) if (key.startsWith("skin:")) delete HSP.decoded[key];
-  if (HSP.file) {
-    await hsPick($("pbHs").value);
-    if (HSV.report) renderHitsoundsView();
-  }
-  await sbLoad(SB.source === "skin" && !folder ? "song" : SB.source);
-}
-
 async function dropAnalyze(file) {
   if (!api() || S.busy) return;
   const options = readOptions();
@@ -5170,7 +4057,7 @@ const P = {
   sched: 0, timer: 0, raf: 0, loop: null, rate: 1,
   // A loop drawn on the map (Shift-drag), in seconds: {a, b}, or null.
   userLoop: null,
-  levels: { song_volume: 0.8, click_volume: 0.6, hitsound_volume: 0.7 },
+  levels: { song_volume: 0.8, click_volume: 0.6 },
 };
 const PB_LOOKAHEAD = 0.15, PB_TICK_MS = 25, PB_LEAD = 0.06;
 
@@ -5179,7 +4066,6 @@ function pbContext() {
     P.ctx = new (window.AudioContext || window.webkitAudioContext)();
     P.song = P.ctx.createGain(); P.song.connect(P.ctx.destination);
     P.click = P.ctx.createGain(); P.click.connect(P.ctx.destination);
-    P.hits = P.ctx.createGain(); P.hits.connect(P.ctx.destination);
     pbApplyLevels();
   }
   return P.ctx;
@@ -5189,7 +4075,6 @@ function pbApplyLevels() {
   if (!P.ctx) return;
   P.song.gain.value = P.levels.song_volume;
   P.click.gain.value = $("pbClick").checked ? P.levels.click_volume : 0;
-  P.hits.gain.value = P.levels.hitsound_volume ?? 0.7;
 }
 
 async function pbFetch(kind) {
@@ -5282,150 +4167,6 @@ function pbClickAt(when, level) {
 // Zero unless a blind trial sets it; normal playback never sees it move.
 P.clickShiftMs = 0;
 
-// Hitsounds beside the song (Phase 6, P-3): one difficulty's sounds, found as
-// osu! finds its samples, scheduled on the playback clock like the click.
-// `proposal` is set while they are the file as it would be written (H5): the
-// ticked proposals and the hand edits made, not yet written; `heard` is what the
-// bridge counted then. Samples decode once per song: their keys name a file
-// of the song's folder, the same for every difficulty.
-const HSP = { file: "", proposal: false, heard: null, events: null, loops: null, loopsMax: 0,
-              objects: null, buffers: {}, decoded: {}, token: 0 };
-// The transport's option for a difficulty as it would be written. A "/" is
-// never in a file name the bridge takes, so it cannot be a difficulty's own.
-const HS_PROPOSAL = "proposal/";
-
-// The legend's addition keys show while a difficulty's object lane does.
-function hsLegend() {
-  document.querySelectorAll(".legend .hs-key").forEach((el) => { el.hidden = !HSP.objects; });
-}
-
-async function hsMaps() {
-  const box = $("pbHs");
-  HSP.file = ""; HSP.proposal = false; HSP.heard = null; HSP.events = null; HSP.loops = null;
-  HSP.objects = null; HSP.buffers = {}; HSP.decoded = {}; HSP.token++;
-  hsLegend();
-  let maps = [];
-  if (api()) {
-    const reply = await api().song_maps();
-    maps = reply.ok ? reply.maps : [];
-  }
-  box.innerHTML = `<option value="">${t("pb_hs_off")}</option>` +
-    maps.map((m) => `<option value="${esc(m.file)}">${esc(m.difficulty)}</option>`).join("");
-  box.disabled = !maps.length;
-}
-
-// The transport offers a difficulty as it would be written while there is
-// something to write (proposals or edits): until a write, an undo or another
-// difficulty.
-function hsProposalOption(file) {
-  const box = $("pbHs"), value = file ? HS_PROPOSAL + file : "";
-  for (const o of [...box.options]) if (o.value.startsWith(HS_PROPOSAL) && o.value !== value) o.remove();
-  const plain = file && [...box.options].find((o) => o.value === file);
-  if (!plain || [...box.options].some((o) => o.value === value)) return;
-  const o = document.createElement("option");
-  o.value = value;
-  o.textContent = t("pb_hs_proposal", { name: plain.textContent });
-  plain.after(o);
-}
-
-// Load a transport option: a difficulty's file, or HS_PROPOSAL + file for it
-// as the ticked proposals and the edits would write it. Between a file and
-// that version the old sounds play on until the new ones are in, so an A/B
-// while playing has no gap; another difficulty silences them at once.
-async function hsPick(value) {
-  const proposal = value.startsWith(HS_PROPOSAL);
-  const file = proposal ? value.slice(HS_PROPOSAL.length) : value;
-  const token = ++HSP.token;
-  $("pbHs").value = value;
-  if (HSP.file !== file || !file) {
-    HSP.events = null; HSP.loops = null; HSP.objects = null;
-    hsLegend();
-    if (S.result) drawTrace();
-  }
-  HSP.file = file; HSP.proposal = proposal; HSP.heard = null;
-  const option = $("pbHs").selectedOptions[0];
-  const name = option && option.value === value ? option.textContent : file;
-  if (!file) { $("pbStatus").textContent = t("pb_hint"); return; }
-  $("pbStatus").textContent = t("pb_hs_loading", { name });
-  const reply = proposal ? await api().hitsound_decide_playback(file, hsdAcceptList(), hsdEditList(),
-                                                              hsdChoiceList())
-                         : await api().hitsound_playback(file);
-  if (HSP.token !== token) return;           // another pick came in meanwhile
-  if (!reply.ok) {
-    if (reply.key === "no_proposal") toast(t("hsv_no_proposal"), true);
-    else editFailure(reply);
-    // A proposal that cannot be heard leaves the file as written playing.
-    if (proposal) { hsPick(file).then(() => { if (HSV.report) renderHitsoundsView(); }); return; }
-    HSP.file = ""; HSP.proposal = false; HSP.events = null; HSP.loops = null; HSP.objects = null;
-    $("pbHs").value = "";
-    hsLegend();
-    if (S.result) drawTrace();
-    return;
-  }
-  const ctx = pbContext(), buffers = {};
-  let unreadable = 0, empty = 0;
-  for (const [key, s] of Object.entries(reply.samples)) {
-    // A file with no audio in it mutes its sound: nothing to decode or play.
-    if (s.empty) { empty++; continue; }
-    if (!HSP.decoded[key]) {
-      const raw = atob(s.data), bytes = new Uint8Array(raw.length);
-      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-      try { HSP.decoded[key] = await ctx.decodeAudioData(bytes.buffer); } catch (err) { unreadable++; continue; }
-    }
-    buffers[key] = HSP.decoded[key];
-  }
-  if (HSP.token !== token) return;
-  HSP.buffers = buffers;
-  HSP.events = reply.events;
-  HSP.loops = reply.loops;
-  // The longest body bounds the look back for one already sounding.
-  HSP.loopsMax = Math.max(0, ...reply.loops.t.map((t0, i) => reply.loops.end[i] - t0));
-  HSP.objects = reply.objects;
-  HSP.counts = reply.counts;
-  HSP.heard = proposal ? { accepted: reply.accepted, units: reply.units, edited: reply.edited,
-                           chosen: reply.chosen, differs: reply.differs, first: reply.first } : null;
-  hsLegend();
-  if (S.result) drawTrace();
-  const c = reply.counts;
-  $("pbStatus").textContent = t(c.skin ? "pb_hs_ready_skin" : "pb_hs_ready",
-                                { name, n: c.sounds, bodies: c.slider_bodies, map: c.map + c.file,
-                                  skin: c.skin, own: c.overtone }) +
-    (empty ? ` ${t("pb_hs_empty", { n: empty })}` : "") +
-    (unreadable ? ` ${t("pb_hs_unreadable", { n: unreadable })}` : "");
-}
-
-// One decoded sample on the hitsound bus, so a stop cuts it and the level applies.
-function pbBufferAt(when, buffer, volume) {
-  const src = P.ctx.createBufferSource(), gain = P.ctx.createGain();
-  src.buffer = buffer;
-  gain.gain.value = volume;
-  src.connect(gain); gain.connect(P.hits);
-  src.start(when);
-}
-
-function pbHitAt(when, keys, volume) {
-  for (const key of keys) {
-    if (HSP.buffers[key]) pbBufferAt(when, HSP.buffers[key], volume);
-  }
-}
-
-// A slider's body: its slide, and whistle slide, looped from `when` to
-// `until` (context time) on the hitsound bus, so a stop cuts it too.
-function pbSlideAt(when, until, keys, volume) {
-  if (!(until > when)) return;
-  for (const key of keys) {
-    const buffer = HSP.buffers[key];
-    if (!buffer) continue;
-    const src = P.ctx.createBufferSource(), gain = P.ctx.createGain();
-    src.buffer = buffer;
-    src.loop = true;
-    gain.gain.value = volume;
-    src.connect(gain); gain.connect(P.hits);
-    src.start(when);
-    src.stop(until);
-  }
-}
-
 function pbTick() {
   if (!P.playing || !S.result) return;
   const clicks = S.result.clicks || { t: [], level: [] };
@@ -5439,43 +4180,7 @@ function pbTick() {
     for (let i = lowerBound(clicks.t, s0); i < clicks.t.length && clicks.t[i] < s0 + len * P.rate; i++) {
       pbClickAt(P.startCtx + P.sched + (clicks.t[i] - s0) / P.rate + (P.clickShiftMs || 0) / 1000, clicks.level[i]);
     }
-    // An audition (the Samples card): one sample in place of the sounds at one moment.
-    const swap = P.swap;
-    const hits = HSP.events;
-    if (hits) {
-      for (let i = lowerBound(hits.t, s0); i < hits.t.length && hits.t[i] < s0 + len * P.rate; i++) {
-        if (swap && Math.abs(hits.t[i] - swap.t) < 1e-3) continue;
-        pbHitAt(P.startCtx + P.sched + (hits.t[i] - s0) / P.rate, hits.keys[i], hits.volume[i]);
-      }
-    }
-    if (swap && !swap.done && swap.t >= s0 && swap.t < s0 + len * P.rate) {
-      if (swap.buffer) pbBufferAt(P.startCtx + P.sched + (swap.t - s0) / P.rate, swap.buffer, swap.volume);
-      swap.done = true;
-    }
-    const slides = HSP.loops;
-    if (slides && slides.t.length) {
-      const at = (s) => P.startCtx + P.sched + (s - s0) / P.rate;
-      const stop = (end) => at(Math.min(end, P.loop ? P.loop.b : Infinity));
-      const first = lowerBound(slides.t, s0);
-      // A body already sounding as playback starts, or as the loop wraps, joins in now.
-      if (P.sched === 0 || (P.loop && Math.abs(s0 - P.loop.a) < 1e-6)) {
-        for (let i = first - 1; i >= 0 && slides.t[i] >= s0 - HSP.loopsMax; i--) {
-          if (slides.end[i] > s0) pbSlideAt(at(s0), stop(slides.end[i]), slides.keys[i], slides.volume[i]);
-        }
-      }
-      for (let i = first; i < slides.t.length && slides.t[i] < s0 + len * P.rate; i++) {
-        pbSlideAt(at(slides.t[i]), stop(slides.end[i]), slides.keys[i], slides.volume[i]);
-      }
-    }
     P.sched += len > 1e-9 ? len : 1e-6;
-  }
-  // An audition stops on its own a moment after its sample.
-  if (P.swap && pbPosition() >= P.swap.until) {
-    const done = P.swap;
-    pbStop();
-    P.swap = null;
-    if (done.onEnd) done.onEnd();
-    return;
   }
   if (!P.loop && pbPosition() >= P.buffer.duration) { pbStop(); P.pos = 0; pbDraw(); }
 }
@@ -5490,10 +4195,7 @@ function pbLoopFor(pos) {
   return b - a > 0.05 ? { a: Math.max(0, a), b: Math.min(b, P.buffer.duration) } : null;
 }
 
-// `swap`, from an audition: {t, buffer, volume, until, label, onEnd}, the
-// sample to play at song time t in place of the sounds there, when to stop,
-// and what the Samples card calls it meanwhile.
-async function pbPlay(from, swap) {
+async function pbPlay(from) {
   if (!api() || !S.result) return;
   if (!(await pbLoad())) return;
   const ctx = pbContext();
@@ -5501,9 +4203,7 @@ async function pbPlay(from, swap) {
   pbStop();
   try { if (SCRUB.source) SCRUB.source.stop(); } catch (err) { /* already ended */ }
   let pos = Math.min(Math.max(0, from ?? P.pos), P.buffer.duration - 0.01);
-  // Any other play ends an audition; an audition plays through, never looped.
-  P.swap = swap || null;
-  P.loop = !P.swap && $("pbLoop").checked ? pbLoopFor(pos) : null;
+  P.loop = $("pbLoop").checked ? pbLoopFor(pos) : null;
   if (P.loop && (pos < P.loop.a || pos >= P.loop.b)) pos = P.loop.a;
   const source = ctx.createBufferSource();
   source.buffer = P.buffer;
@@ -5538,8 +4238,6 @@ function pbStop() {
   if (P.click) {
     P.click.disconnect();
     P.click = P.ctx.createGain(); P.click.connect(P.ctx.destination);
-    P.hits.disconnect();                         // and the hitsounds already scheduled
-    P.hits = P.ctx.createGain(); P.hits.connect(P.ctx.destination);
     pbApplyLevels();
   }
   pbButtons();
@@ -5605,7 +4303,6 @@ function pbButtons() {
   // SVG elements have no .hidden property: the attribute is what hides them.
   $("pbPlayIcon").toggleAttribute("hidden", P.playing);
   $("pbPauseIcon").toggleAttribute("hidden", !P.playing);
-  sbRenderHear();                                // an audition says while it plays
 }
 
 function pbFrame() {
@@ -5655,8 +4352,7 @@ function pbReset() {
 }
 
 function pbLevels() {
-  P.levels = { song_volume: +$("pbSongVol").value / 100, click_volume: +$("pbClickVol").value / 100,
-               hitsound_volume: +$("pbHsVol").value / 100 };
+  P.levels = { song_volume: +$("pbSongVol").value / 100, click_volume: +$("pbClickVol").value / 100 };
   pbApplyLevels();
   if (api()) api().set_playback(P.levels);
 }
@@ -6095,10 +4791,8 @@ async function runMapset(folder, quiet) {
   if (!api() || !folder) return;
   const reply = await api().mapset_check(folder);
   if (!reply.ok) { if (!quiet) editFailure(reply); return; }
-  if (!S.mapset || S.mapset.path !== folder) { HS.preview = null; $("hsTargets").innerHTML = ""; }
   S.mapset = { path: folder, name: reply.folder, report: reply.report };
   renderMapset();
-  renderCopier();
   renderSwap();
   renderAudioCheck();
 }
@@ -6107,80 +4801,6 @@ function msValue(value) {
   if (value === null || value === undefined) return `<span class="card-sub">${t("ms_not_set")}</span>`;
   if (value === "") return `<span class="card-sub">${t("ms_empty_value")}</span>`;
   return esc(value);
-}
-
-// ------------------------------------------------------------------ hitsound copier
-// Phase 6, H1: one difficulty's hitsounds onto others, by time. A preview
-// first, which writes nothing; the copy writes only hitsound fields.
-const HS = { preview: null };
-
-function hsReadable() {
-  return S.mapset ? S.mapset.report.difficulties.filter((d) => d.readable) : [];
-}
-
-function renderCopier() {
-  const diffs = hsReadable(), card = $("hsCard");
-  card.hidden = diffs.length < 2;
-  if (card.hidden) return;
-  const source = $("hsSource"), keep = source.value;
-  source.innerHTML = diffs.map((d) => `<option value="${esc(d.file)}">${esc(d.difficulty)}</option>`).join("");
-  if (diffs.some((d) => d.file === keep)) source.value = keep;
-  const chosen = new Set([...document.querySelectorAll("#hsTargets input:checked")].map((i) => i.value));
-  const fresh = !$("hsTargets").children.length;
-  $("hsTargets").innerHTML = diffs.filter((d) => d.file !== source.value).map((d) => `
-    <label class="check"><input type="checkbox" value="${esc(d.file)}" ${fresh || chosen.has(d.file) ? "checked" : ""}><span>${esc(d.difficulty)}</span></label>`).join("");
-  renderCopyResult();
-}
-
-function hsChoice() {
-  return { source: $("hsSource").value,
-           targets: [...document.querySelectorAll("#hsTargets input:checked")].map((i) => i.value),
-           options: { volumes: $("hsVolumes").checked } };
-}
-
-function hsName(file) {
-  const d = hsReadable().find((x) => x.file === file);
-  return d ? d.difficulty : file;
-}
-
-function renderCopyResult() {
-  const box = $("hsResult"), p = HS.preview;
-  $("hsApply").disabled = !p || !p.targets.some((r) => r.changed);
-  if (!p) { box.innerHTML = ""; return; }
-  const rows = p.targets.map((r) => `<tr>
-      <td class="txt">${esc(hsName(r.file))}</td><td class="num">${r.target_sounds}</td>
-      <td class="num">${r.matched}</td><td class="num">${r.changed}</td>
-      <td class="num">${r.unmatched}</td><td class="num">${r.index_conflicts}</td></tr>`).join("");
-  box.innerHTML = `<div class="table-scroll"><table class="ms-table">
-      <thead><tr><th class="txt">${t("hs_t_diff")}</th><th>${t("hs_t_sounds")}</th><th>${t("hs_t_matched")}</th>
-        <th>${t("hs_t_changed")}</th><th>${t("hs_t_unmatched")}</th><th>${t("hs_t_conflicts")}</th></tr></thead>
-      <tbody>${rows}</tbody></table></div>
-    ${p.targets.some((r) => r.index_conflicts) ? `<div class="card-sub mt-s">${t("hs_conflict_note")}</div>` : ""}`;
-}
-
-async function hsPreview() {
-  if (!api() || !S.mapset) return;
-  const c = hsChoice();
-  const reply = await api().hitsound_copy_preview(S.mapset.path, c.source, c.targets, c.options);
-  if (!reply.ok) { editFailure(reply); return; }
-  HS.preview = { ...reply, choice: JSON.stringify(c) };
-  renderCopyResult();
-}
-
-async function hsApply() {
-  if (!api() || !S.mapset || !HS.preview) return;
-  const c = hsChoice();
-  if (JSON.stringify(c) !== HS.preview.choice) { await hsPreview(); return; }   // the choice changed: preview it first
-  const n = HS.preview.targets.filter((r) => r.changed).length;
-  if (!n) { toast(t("hs_nothing", { source: hsName(c.source) })); return; }
-  if (!confirm(t("hs_confirm", { source: hsName(c.source), n }))) return;
-  const reply = await api().hitsound_copy_apply(S.mapset.path, c.source, c.targets, c.options);
-  if (!reply.ok) { editFailure(reply); return; }
-  const written = reply.targets.filter((r) => r.written);
-  toast(t("hs_done", { n: written.length, objects: written.reduce((a, r) => a + r.objects, 0) }));
-  HS.preview = null;
-  await hsPreview();                       // what is left: nothing, but index conflicts
-  runMapset(S.mapset.path, true);
 }
 
 // ------------------------------------------------------------------ audio swap
@@ -6395,7 +5015,6 @@ const C_TOKENS = {
   selected: "selected", cursor: "cursor", beat: "beat", beatBar: "bar", wave: "wave",
   ghost: "ghost", driftOk: "drift-ok", driftWarn: "drift-warn", driftBad: "drift-bad",
   playhead: "playhead", loop: "loop",
-  objects: "objects", hsWhistle: "whistle", hsFinish: "finish", hsClap: "clap",
   confHigh: "conf-high", confMid: "conf-mid", confLow: "conf-low", trial: "trial",
   swing: "swing", swingTriplets: "swing-triplets", swingStraight: "swing-straight",
   phHalf: "pulse-half", phDouble: "pulse-double",
@@ -6423,7 +5042,7 @@ function roundRect(ctx, x, y, w, h, r) {
 
 // The tempo map is a timeline: a visible window of the song (zoom, pan), the
 // local tempo on top, then the waveform and the drift lane under it.
-const LANES = { wave: 58, objects: 44, swing: 34, drift: 46, gap: 10 };
+const LANES = { wave: 58, swing: 34, drift: 46, gap: 10 };
 const TL_MIN_SPAN = 0.5;          // seconds: the closest zoom
 const TL_SNAP_PX = 6;             // a dragged red line snaps to an attack this close
 const DRIFT_MS = 30;              // the drift lane's half height
@@ -6533,18 +5152,14 @@ function drawTrace(hoverX) {
 
   const v = tlView(r), span = v.b - v.a, dur = Math.max(r.duration, 1e-3);
   const x0 = PAD.l, x1 = W - PAD.r;
-  // The lanes stack up from the drift lane's foot, and the two conditional
-  // ones take no room when they are off: the object lane (P-7) only while a
-  // difficulty's hitsounds are picked, the swing lane only when the song swings.
-  const lane = !!(HSP.events && HSP.objects);
+  // The lanes stack up from the drift lane's foot, and the swing lane takes
+  // no room unless the song swings.
   const swung = !!(SWING.report && SWING.report.spans.length);
   let foot = H - PAD.b;
   const yD1 = foot, yD0 = yD1 - LANES.drift;
   foot = yD0;
   let yS0 = foot, yS1 = foot;
   if (swung) { yS1 = foot - LANES.gap; yS0 = yS1 - LANES.swing; foot = yS0; }
-  let yO0 = foot, yO1 = foot;
-  if (lane) { yO1 = foot - LANES.gap; yO0 = yO1 - LANES.objects; foot = yO0; }
   const yW1 = foot - LANES.gap, yW0 = yW1 - LANES.wave;
   const y0 = PAD.t, y1 = yW0 - LANES.gap;
   const X = (s) => x0 + ((s - v.a) / span) * (x1 - x0);
@@ -6639,31 +5254,6 @@ function drawTrace(hoverX) {
     }
   }
 
-  // object lane: the picked difficulty's objects, and under them each
-  // sound's additions in rows of their own (whistle, finish, clap)
-  if (lane) {
-    const top = yO0 + 6, barH = 8, ob = HSP.objects;
-    ctx.fillStyle = C.objects;
-    for (let i = 0; i < ob.t.length; i++) {
-      const a = ob.t[i], e = ob.end[i] ?? a;
-      if (e < v.a || a > v.b) continue;
-      const xa = X(a), xb = X(e);
-      if (ob.end[i] !== null) { roundRect(ctx, xa, top, Math.max(3, xb - xa), barH, 3); ctx.fill(); }
-      else ctx.fillRect(Math.round(xa) - 1, top - 1, 3, barH + 2);
-    }
-    const ev = HSP.events, rows = [[2, C.hsWhistle], [4, C.hsFinish], [8, C.hsClap]];
-    for (let i = lowerBound(ev.t, v.a); i < ev.t.length && ev.t[i] <= v.b; i++) {
-      const adds = ev.adds[i];
-      if (!adds) continue;
-      const x = X(ev.t[i]);
-      rows.forEach(([bit, colour], k) => {
-        if (!(adds & bit)) return;
-        ctx.fillStyle = colour;
-        ctx.beginPath(); ctx.arc(x, top + barH + 7 + k * 7, 2.4, 0, 2 * Math.PI); ctx.fill();
-      });
-    }
-  }
-
   // swing lane: where each window's off-beat eighth falls inside the beat,
   // with the straight half and the two snaps a mapper would reach for ruled in
   if (swung) {
@@ -6714,7 +5304,6 @@ function drawTrace(hoverX) {
   ctx.fillStyle = C.gridText; ctx.textAlign = "right"; ctx.textBaseline = "middle";
   for (let b = Math.ceil(lo / ystep) * ystep; b <= hi; b += ystep) ctx.fillText(Number.isInteger(b) ? b : b.toFixed(1), x0 - 10, Y(b));
   ctx.fillText(t("lane_wave"), x0 - 10, wmid);
-  if (lane) ctx.fillText(t("lane_objects"), x0 - 10, (yO0 + yO1) / 2);
   if (swung) ctx.fillText(t("lane_swing"), x0 - 10, (yS0 + yS1) / 2);
   ctx.fillText(`±${DRIFT_MS}`, x0 - 10, dmid);
 
@@ -7282,99 +5871,6 @@ function wire() {
   $("halfBtn").onclick = () => rescale(0.5);
   $("doubleBtn").onclick = () => rescale(2);
   $("rows").onclick = (e) => { const tr = e.target.closest("tr"); if (tr) selectPoint(+tr.dataset.i); };
-  $("hsvMap").onchange = () => hsvPick($("hsvMap").value);
-  $("hsvFilter").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-f]");
-    if (!b) return;
-    HSV.filter = b.dataset.f; HSV.shown = HSV_PAGE;
-    document.querySelectorAll("#hsvFilter button").forEach((x) => x.classList.toggle("on", x === b));
-    renderHitsoundsView();
-  });
-  $("hsvMore").onclick = () => { HSV.shown += HSV_PAGE; renderHitsoundsView(); };
-  $("hsvPropose").onclick = () => hsvPropose();
-  $("hsvProposeAll").onclick = () => hsvProposeAll();
-  document.querySelectorAll("#hsvEvidence button").forEach((b) => {
-    b.onclick = () => { HSD.evidence = b.dataset.evidence; hsdRender(); };
-  });
-  $("hsvProfile").onchange = () => {
-    HSD.profile = $("hsvProfile").value; HSD.picked = true; hsdRender();
-  };
-  $("hsvDecideAll").onclick = () => hsdSetAll(true);
-  $("hsvDecideNone").onclick = () => hsdSetAll(false);
-  $("hsvDecidePreview").onclick = () => hsdPreview();
-  $("hsvDecideHear").onclick = () => hsdHear();
-  $("hsvDecideApply").onclick = () => hsdWrite(false);
-  $("hsvDecideCopy").onclick = () => hsdWrite(true);
-  $("hsvDecideUndo").onclick = () => hsdUndo();
-  $("hsvEditSet").onclick = () => hsdEditSet();
-  $("hsvEditClear").onclick = () => hsdEditClear();
-  ["hsvEditVolume", "hsvEditIndex"].forEach((id) => $(id).addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); hsdEditSet(); }
-  }));
-  ["hsvBarFrom", "hsvBarTo"].forEach((id) => $(id).addEventListener("input", () => {
-    const bar = (el) => (el.value.trim() === "" || !Number.isFinite(+el.value) ? null : Math.trunc(+el.value));
-    HSV.bars = { from: bar($("hsvBarFrom")), to: bar($("hsvBarTo")) };
-    HSV.shown = HSV_PAGE;
-    renderHitsoundsView();
-  }));
-  $("hsvRows").addEventListener("change", (e) => {
-    const alt = e.target.closest("[data-hsd-alt]");
-    if (alt) {
-      // A runner-up chosen is a sound wanted: it ticks itself.
-      const key = alt.dataset.hsdAlt, k = +alt.value;
-      if (k < 0) HSD.choice.delete(key);
-      else { HSD.choice.set(key, k); HSD.accepted.add(key); }
-      $("hsvDecidePrevText").textContent = "";
-      renderHitsoundsView();
-      hsdTicked();
-      return;
-    }
-    const box = e.target.closest("[data-hsd]");
-    if (!box) return;
-    if (box.checked) HSD.accepted.add(box.dataset.hsd);
-    else HSD.accepted.delete(box.dataset.hsd);
-    $("hsvDecidePrevText").textContent = "";
-    hsdRender();
-    hsdTicked();
-  });
-  $("hsvRows").addEventListener("click", (e) => {
-    const play = e.target.closest("[data-play]");
-    if (play) { hsvPlay(+play.dataset.play); return; }
-    if (e.target.closest("select, input, label")) return;   // a choice, not a seek
-    const row = e.target.closest("tr[data-i]");
-    const s = row && HSV.report && HSV.report.sounds[+row.dataset.i];
-    if (!s) return;
-    pbSeek(Math.max(0, s.t - 1));
-    // The row's decision opens over the table, and the row stays marked.
-    HSV.selected = +row.dataset.i;
-    document.querySelectorAll("#hsvRows tr.sel").forEach((tr) => tr.classList.remove("sel"));
-    row.classList.add("sel");
-    hsdWhy();
-    sbRenderHear();
-  });
-  $("hsvWhy").addEventListener("click", (e) => {
-    if (!e.target.closest("[data-why-close]")) return;
-    HSV.selected = null;
-    document.querySelectorAll("#hsvRows tr.sel").forEach((tr) => tr.classList.remove("sel"));
-    hsdWhy();
-    sbRenderHear();
-  });
-  $("sbSource").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-src]");
-    if (!b || b.disabled) return;
-    if (b.dataset.src === "pick") sbPick(); else sbLoad(b.dataset.src);
-  });
-  $("sbRows").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-sb-cell]");
-    if (b && SB.reply) sbHearAlone(sbWhere(SB.reply.bank.cells[+b.dataset.sbCell]));
-  });
-  $("sbCustom").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-sb-custom]");
-    if (b && SB.reply) sbHearAlone(sbWhere(SB.reply.bank.custom[+b.dataset.sbCustom]));
-  });
-  $("sbUse").onclick = () => { if (SB.reply) sbSetSkin(SB.reply.bank.folder); };
-  $("sbStop").onclick = () => sbSetSkin("");
-  $("sbHear").onclick = sbHearAtSound;
   $("stxBody").addEventListener("click", (e) => {
     const el = e.target.closest("[data-stx]");
     if (el) stxShow(+el.dataset.stx);
@@ -7480,15 +5976,13 @@ function wire() {
   $("tapCalibrate").onclick = tapCalibrate;
   $("tapAssist").onclick = tapAssist;
   $("tapClear").onclick = () => { TAP.taps = []; renderTaps(); };
-  ["pbSongVol", "pbClickVol", "pbHsVol"].forEach((id) => {
+  ["pbSongVol", "pbClickVol"].forEach((id) => {
     $(id).addEventListener("input", () => {
-      P.levels = { song_volume: +$("pbSongVol").value / 100, click_volume: +$("pbClickVol").value / 100,
-                   hitsound_volume: +$("pbHsVol").value / 100 };
+      P.levels = { song_volume: +$("pbSongVol").value / 100, click_volume: +$("pbClickVol").value / 100 };
       pbApplyLevels();
     });
     $(id).addEventListener("change", pbLevels);
   });
-  $("pbHs").onchange = () => hsPick($("pbHs").value).then(() => { if (HSV.report) renderHitsoundsView(); });
   $("trace").addEventListener("dblclick", (e) => {
     if (!S.result || !geom) return;
     pbPlay(Math.max(0, geom.S(tlX(e))));
@@ -7498,11 +5992,6 @@ function wire() {
   });
   $("msPick").onclick = pickMapset;
   $("msRecheck").onclick = () => { if (S.mapset) runMapset(S.mapset.path, false); };
-  $("hsPreview").onclick = hsPreview;
-  $("hsApply").onclick = hsApply;
-  $("hsSource").onchange = () => { HS.preview = null; $("hsTargets").innerHTML = ""; renderCopier(); };
-  $("hsTargets").onchange = () => { HS.preview = null; renderCopyResult(); };
-  $("hsVolumes").onchange = () => { HS.preview = null; renderCopyResult(); };
   $("swPreview").onclick = swPreview;
   $("swApply").onclick = swApply;
   $("swNew").onchange = () => { SW.preview = null; renderSwapResult(); };
@@ -7510,9 +5999,6 @@ function wire() {
   $("redoBtn").onclick = redo;
   $("injectBtn").onclick = injectOsu;
   $("injectAllPreviewBtn").onclick = injectAllPreview;
-  $("hsdPreviewBtn").onclick = () => hsdfPreview();
-  $("hsdWriteBtn").onclick = () => hsdfWrite();
-  ["hsdSource", "hsdFill"].forEach((id) => $(id).addEventListener("change", () => { HSDF.preview = null; hsdfRender(); }));
   $("injectAllBtn").onclick = injectAllApply;
   wireDrop();
   $("trace").addEventListener("mousemove", onTraceMove);
@@ -7689,22 +6175,19 @@ async function boot() {
   S.lang = st.language; S.presets = st.presets;
   S.recent = st.recent || [];
   if (st.playback) {
-    P.levels = { song_volume: st.playback.song_volume, click_volume: st.playback.click_volume,
-                 hitsound_volume: st.playback.hitsound_volume ?? 0.7 };
+    P.levels = { song_volume: st.playback.song_volume, click_volume: st.playback.click_volume };
     TAP.latency = st.playback.tap_latency_ms || 0;
   }
   renderTaps();
   stLoad();
   $("pbSongVol").value = String(Math.round(P.levels.song_volume * 100));
   $("pbClickVol").value = String(Math.round(P.levels.click_volume * 100));
-  $("pbHsVol").value = String(Math.round(P.levels.hitsound_volume * 100));
   S.rustAvailable = !!st.rust_available;
   $("version").textContent = st.version;
   if (st.logo) $("logo").src = st.logo;
   applyOptions(st.options);
   setFile(st.file);
   translate();
-  hsdProfilesLoad();
   // Offered only where built; a saved choice without a binary falls back.
   $("rustEngine").disabled = !S.rustAvailable;
   if (!S.rustAvailable) $("rustNote").textContent = t("t_rust_missing");

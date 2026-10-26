@@ -53,10 +53,6 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="5" height="12" rx="1.5"/><rect x="9.5" y="4" width="5" height="16" rx="1.5"/><rect x="16.5" y="8" width="5" height="8" rx="1.5"/></svg>
         <span class="nav-label" data-i18n="nav_structure">Structure</span>
       </button>
-      <button type="button" class="nav-item" data-view="hitsounds" data-i18n-title="nav_hitsounds" title="Hitsounds">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>
-        <span class="nav-label" data-i18n="nav_hitsounds">Hitsounds</span>
-      </button>
       <button type="button" class="nav-item" data-view="mapcheck" data-i18n-title="nav_mapcheck" title="Map check">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8.5 12 2.5 2.5 5-5"/><path d="M20 12.5V18a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3h8"/></svg>
         <span class="nav-label" data-i18n="nav_mapcheck">Map check</span>
@@ -226,9 +222,6 @@
               <span><i class="key-conf"></i><span data-i18n="lg_conf">confidence</span></span>
               <span class="swing-key" hidden><i class="key-swing"></i><span data-i18n="lg_swing">swing</span></span>
               <span class="ph-key" hidden><i class="key-pulse"></i><span data-i18n="lg_pulse">half/double</span></span>
-              <span class="hs-key" hidden><i class="key-whistle"></i><span data-i18n="lg_whistle">whistle</span></span>
-              <span class="hs-key" hidden><i class="key-finish"></i><span data-i18n="lg_finish">finish</span></span>
-              <span class="hs-key" hidden><i class="key-clap"></i><span data-i18n="lg_clap">clap</span></span>
             </div>
             <span class="card-sub num" id="tlZoom"></span>
             <button class="btn small" id="tlFit" hidden><span data-i18n="tl_fit">Show all</span></button>
@@ -258,11 +251,7 @@
             <span class="pb-levels">
               <label class="pb-level"><span data-i18n="pb_song">Song</span><input type="range" id="pbSongVol" min="0" max="100" step="1"></label>
               <label class="pb-level"><span data-i18n="pb_click_vol">Click</span><input type="range" id="pbClickVol" min="0" max="100" step="1"></label>
-              <label class="pb-level"><span data-i18n="pb_hs_vol">Hitsounds</span><input type="range" id="pbHsVol" min="0" max="100" step="1"></label>
             </span>
-            <label class="pb-level"><span data-i18n="pb_hs">Hitsounds from</span>
-              <select class="input pb-hs" id="pbHs" disabled><option value="" data-i18n="pb_hs_off">Off</option></select>
-            </label>
           </div>
           <div class="card-sub pb-status" id="pbStatus" data-i18n="pb_hint">Space plays and pauses · double-click the tempo map to play from there</div>
           <div class="taps">
@@ -557,25 +546,6 @@
           <div class="card-body" id="msBody"></div>
         </div>
 
-        <!-- copy one difficulty's hitsounds onto others (Phase 6, H1) -->
-        <div class="card cmp-card" id="hsCard" hidden>
-          <div class="card-head">
-            <div class="card-title" data-i18n="hs_title">Copy hitsounds</div>
-            <div class="spacer"></div>
-            <button class="btn small" id="hsPreview"><span data-i18n="hs_preview">Preview</span></button>
-            <button class="btn small primary" id="hsApply" disabled><span data-i18n="hs_apply">Copy hitsounds</span></button>
-          </div>
-          <div class="card-body stack">
-            <div class="card-sub" data-i18n="hs_sub">Each sound of the chosen difficulties takes the source's sound at the same moment (within 5 ms): additions, sample sets and index. Sounds with nothing under them are left as they are. Only hitsound fields change, and every file is backed up first.</div>
-            <div class="hs-form">
-              <label class="field"><span class="setting-name" data-i18n="hs_source">From</span><select class="input" id="hsSource"></select></label>
-              <div class="field"><span class="setting-name" data-i18n="hs_targets">Onto</span><div class="hs-targets" id="hsTargets"></div></div>
-            </div>
-            <label class="check"><input type="checkbox" id="hsVolumes"><span data-i18n="hs_volumes">Copy volumes too (usually the green lines' job; they are not copied)</span></label>
-            <div id="hsResult"></div>
-          </div>
-        </div>
-
         <!-- move one mapset's times onto a new encode of its audio -->
         <div class="card cmp-card" id="swCard" hidden>
           <div class="card-head">
@@ -701,147 +671,6 @@
               <label class="field"><span class="setting-name" data-i18n="hsv_map">Difficulty</span><select class="input" id="stxVolMap"></select></label>
             </div>
             <div class="card-sub" id="stxVolResult"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- hitsounds: what one difficulty plays, where its additions fall (Phase 6, H2) -->
-      <section class="view" id="viewHitsounds" data-view="hitsounds" data-needs-result hidden>
-        <div class="view-head">
-          <h2 class="view-title" data-i18n="nav_hitsounds">Hitsounds</h2>
-          <div class="view-sub" data-i18n="hsv_sub">What one difficulty plays: where its additions fall in the bar, every sound to hear one by one, and the decision engine's proposals to write or not.</div>
-        </div>
-
-        <div class="card cmp-card">
-          <div class="card-head">
-            <div class="card-title" data-i18n="hsv_map">Difficulty</div>
-            <div class="spacer"></div>
-            <select class="input hsv-pick" id="hsvMap"></select>
-          </div>
-          <div class="card-body" id="hsvSummary"></div>
-        </div>
-
-        <div class="card cmp-card" id="hsvDecideCard" hidden>
-          <div class="card-head">
-            <div class="card-title" data-i18n="hsv_decide_title">Propose and edit hitsounds</div>
-            <div class="spacer"></div>
-            <span class="card-sub" id="hsvDecideStatus"></span>
-          </div>
-          <div class="card-body">
-            <div class="card-sub" data-i18n="hsv_decide_sub">The decision engine proposes every object's sound; volume and sample index are yours to set. Tick what to keep, hear it over the song, preview, then write the file or a copy. Each write is backed up, and one undo restores it.</div>
-            <div class="hsv-profile-row" id="hsvProfileField" hidden>
-              <label class="hsv-profile"><span data-i18n="hsv_profile">Profile</span>
-                <select class="input" id="hsvProfile"></select>
-              </label>
-              <div class="card-sub hsv-profile-note" id="hsvProfileNote"></div>
-            </div>
-            <div class="hsv-profile-row" id="hsvEvidenceField">
-              <span data-i18n="hsv_evidence">Evidence</span>
-              <div class="segmented" id="hsvEvidence">
-                <button type="button" data-evidence="map" class="on"><span data-i18n="hsv_ev_map">Map + audio</span></button>
-                <button type="button" data-evidence="audio"><span data-i18n="hsv_ev_audio">Audio only</span></button>
-              </div>
-              <div class="card-sub" id="hsvEvidenceNote"></div>
-            </div>
-            <div class="drop-actions">
-              <button type="button" class="btn primary" id="hsvPropose"><span data-i18n="hsv_propose">Propose</span></button>
-              <button type="button" class="btn" id="hsvProposeAll"><span data-i18n="hsv_propose_all">Every difficulty</span></button>
-              <button type="button" class="btn small" id="hsvDecideAll"><span data-i18n="hsv_decide_all">All</span></button>
-              <button type="button" class="btn small" id="hsvDecideNone"><span data-i18n="hsv_decide_none">None</span></button>
-              <button type="button" class="btn small" id="hsvDecideHear"><span data-i18n="hsv_hear">Hear before writing</span></button>
-              <button type="button" class="btn small" id="hsvDecidePreview"><span data-i18n="hsv_preview">Preview</span></button>
-              <button type="button" class="btn small" id="hsvDecideApply"><span data-i18n="hsv_write">Write into this file</span></button>
-              <button type="button" class="btn small" id="hsvDecideCopy"><span data-i18n="hsv_write_copy">Write a copy</span></button>
-              <button type="button" class="btn small" id="hsvDecideUndo"><span data-i18n="hsv_undo">Undo</span></button>
-            </div>
-            <div class="hsv-edit">
-              <div class="field">
-                <label for="hsvEditVolume" data-i18n="hsv_edit_volume">Volume (%)</label>
-                <input class="input num" id="hsvEditVolume" type="number" step="1" min="0" max="100" placeholder="—">
-              </div>
-              <div class="field">
-                <label for="hsvEditIndex" data-i18n="hsv_edit_index">Sample index</label>
-                <input class="input num" id="hsvEditIndex" type="number" step="1" min="0" placeholder="—">
-              </div>
-              <button type="button" class="btn small" id="hsvEditSet"><span data-i18n="hsv_edit_set">Set on the sounds shown</span></button>
-              <button type="button" class="btn small" id="hsvEditClear"><span data-i18n="hsv_edit_clear">Clear their edits</span></button>
-            </div>
-            <div class="card-sub" data-i18n="hsv_edit_note">0 follows the green line. A slider has one volume and one index for all its edges. All, None, Set and Clear act on the sounds the table shows: its filter and its bars.</div>
-            <div class="card-sub" data-i18n="hsv_alt_note">In the table, a proposal can be swapped for one of its alternatives. The percentages say how likely each sound is there on its own, among the 24 the engine weighs, which keeps them low. The proposal is the one that fits the whole sequence best, so an alternative can score higher alone.</div>
-            <div class="card-sub" id="hsvDecideHearText"></div>
-            <div class="card-sub" id="hsvDecidePrevText"></div>
-          </div>
-        </div>
-
-        <div class="card cmp-card" id="hsvWhereCard" hidden>
-          <div class="card-head">
-            <div class="card-title" data-i18n="hsv_where_title">Where the additions fall</div>
-            <div class="spacer"></div>
-            <span class="card-sub" id="hsvWhereNote"></span>
-          </div>
-          <div class="card-body hsv-where" id="hsvWhere"></div>
-        </div>
-
-        <div class="card cmp-card table-card" id="hsvSoundsCard" hidden>
-          <div class="card-head">
-            <div class="card-title" data-i18n="hsv_sounds">Sounds</div>
-            <span class="pill" id="hsvCount"></span>
-            <div class="spacer"></div>
-            <label class="hsv-bars"><span data-i18n="hsv_bars">Bars</span>
-              <input class="input num" id="hsvBarFrom" type="number" step="1" placeholder="—" data-i18n-aria="hsv_bar_from" aria-label="From bar">
-              <span>–</span>
-              <input class="input num" id="hsvBarTo" type="number" step="1" placeholder="—" data-i18n-aria="hsv_bar_to" aria-label="To bar">
-            </label>
-            <div class="segmented" id="hsvFilter">
-              <button type="button" data-f="all" class="on" data-i18n="hsv_all">All</button>
-              <button type="button" data-f="whistle" data-i18n="lg_whistle">whistle</button>
-              <button type="button" data-f="finish" data-i18n="lg_finish">finish</button>
-              <button type="button" data-f="clap" data-i18n="lg_clap">clap</button>
-            </div>
-          </div>
-          <div class="card-body hsv-why" id="hsvWhy" hidden></div>
-          <div class="table-scroll hsv-table"><table class="ms-table">
-            <thead><tr><th class="txt" data-i18n="hsv_t_time">Time</th><th data-i18n="hsv_t_place">Bar · beat</th>
-              <th class="txt" data-i18n="hsv_t_part">Part</th><th class="txt" data-i18n="hsv_t_sounds">Sounds</th>
-              <th class="txt" data-i18n="hsv_t_sets">Sets</th><th data-i18n="hsv_t_index">Index</th>
-              <th data-i18n="hsv_t_volume">Volume</th><th class="txt" data-i18n="hsv_t_proposal">Proposal</th><th></th></tr></thead>
-            <tbody id="hsvRows"></tbody>
-          </table></div>
-          <div class="card-body"><button type="button" class="link" id="hsvMore" hidden></button></div>
-        </div>
-
-        <!-- the sample bank: what a folder holds, heard alone or over the song (Phase 6, H6) -->
-        <div class="card cmp-card" id="sbCard">
-          <div class="card-head">
-            <div class="card-title" data-i18n="sb_title">Samples</div>
-            <span class="pill" id="sbKind" hidden></span>
-            <div class="spacer"></div>
-            <div class="segmented" id="sbSource">
-              <button type="button" data-src="song" class="on" data-i18n="sb_src_song">This song's folder</button>
-              <button type="button" data-src="skin" data-i18n="sb_src_skin">Playback skin</button>
-              <button type="button" data-src="pick" data-i18n="sb_src_pick">Another folder…</button>
-            </div>
-          </div>
-          <div class="card-body">
-            <div class="card-sub" data-i18n="sb_sub">The hitsound samples a folder holds, named as osu! names them: each set's four hits and the two sounds a slider body loops, then the numbered ones. Click one to hear it; a missing one plays what would play instead. The folder is only read.</div>
-            <div class="sb-folder"><b id="sbName"></b><span class="card-sub" id="sbCounts"></span></div>
-            <div class="sb-scroll"><table class="sb-grid">
-              <thead><tr><th></th><th data-i18n="sb_hitnormal">normal</th><th data-i18n="lg_whistle">whistle</th>
-                <th data-i18n="lg_finish">finish</th><th data-i18n="lg_clap">clap</th>
-                <th data-i18n="sb_sliderslide">slide</th><th data-i18n="sb_sliderwhistle">whistle slide</th></tr></thead>
-              <tbody id="sbRows"></tbody>
-            </table></div>
-            <div class="sb-custom" id="sbCustom"></div>
-            <div class="card-sub" id="sbNotes"></div>
-            <div class="sb-actions">
-              <span class="card-sub" id="sbSkinText"></span>
-              <button type="button" class="btn small" id="sbUse" hidden><span data-i18n="sb_use">Use for playback</span></button>
-              <button type="button" class="btn small" id="sbStop" hidden><span data-i18n="sb_stop">Stop using a skin</span></button>
-            </div>
-            <div class="sb-actions">
-              <button type="button" class="btn small" id="sbHear" disabled><span data-i18n="sb_hear">Hear it at the selected sound</span></button>
-              <span class="card-sub" id="sbHearText"></span>
-            </div>
           </div>
         </div>
       </section>
@@ -1116,25 +945,6 @@
             </div>
             <button class="btn small" id="injectAllPreviewBtn"><span data-i18n="exp_inject_all_preview">Preview all</span></button>
             <button class="btn small primary" id="injectAllBtn" disabled><span data-i18n="actions_inject_all">Inject all…</span></button>
-          </div>
-        </div>
-
-        <div class="card cmp-card" id="hsdCard">
-          <div class="card-head">
-            <div class="card-title" data-i18n="hsd_title">Hitsound difficulty</div>
-          </div>
-          <div class="card-body">
-            <div class="card-sub" data-i18n="hsd_sub">A new difficulty beside the others with a circle at every sound of the mapset, each playing it exactly: hitsound in one place, then copy it to every difficulty (Mapset, Copy hitsounds). Where two difficulties sound together the source's sound wins; timing, events and settings are the source's own.</div>
-            <div class="hsd-form">
-              <div class="field">
-                <label for="hsdSource" data-i18n="hsd_source">Sounds from</label>
-                <select class="input" id="hsdSource" disabled></select>
-              </div>
-              <label class="check"><input type="checkbox" id="hsdFill" checked><span data-i18n="hsd_fill">Fill in the other difficulties' sounds where the source has none</span></label>
-              <button type="button" class="btn small" id="hsdPreviewBtn" disabled><span data-i18n="hsd_preview">Preview</span></button>
-              <button type="button" class="btn small primary" id="hsdWriteBtn" disabled><span data-i18n="hsd_write">Write the difficulty</span></button>
-            </div>
-            <div class="card-sub" id="hsdResult"></div>
           </div>
         </div>
       </section>

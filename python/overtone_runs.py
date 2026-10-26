@@ -74,6 +74,16 @@ SUITES = {"engine": ["-m", "unittest", "-v", "tests.test_overtone"],
           "web": ["-m", "unittest", "-v", "tests.test_overtone_web"]}
 #: "app" runs what the app runs: Rust, and v3 where Rust refuses or fails.
 ENGINES = ("rust", "app", "python")
+#: Engine changes a run may switch on by name, measured before any is on
+#: by default: each sets these attributes of the overtone module in the run's
+#: own process (its analyses fork from it and keep them), and its caches are
+#: its own, since the tools' cache keys name the code, not the flags.
+EXPERIMENTS = {
+    "local-fold": {"LOCAL_OCTAVE_FOLD": True},
+    "local-fold-halve": {"LOCAL_OCTAVE_FOLD": True, "LOCAL_OCTAVE_HALVE": True},
+    "local-fold-judge": {"LOCAL_OCTAVE_FOLD": True, "LOCAL_OCTAVE_HALVE": True,
+                         "LOCAL_OCTAVE_JUDGE": True},
+}
 #: The most analyses one run holds at once.
 MAX_JOBS = 8
 #: The log lines a run's summary carries.
@@ -157,8 +167,13 @@ def build_args(request: dict, db_path: str | os.PathLike[str],
     if not 1 <= jobs <= MAX_JOBS:
         raise ValueError(f"jobs must be between 1 and {MAX_JOBS}.")
     beat_vote = _flag(request, "beat_vote")
+    experiment = request.get("experiment") or ""
+    if experiment and experiment not in EXPERIMENTS:
+        raise ValueError(f"experiment is empty or one of {', '.join(EXPERIMENTS)}.")
     argv = ["--engine", engine, "--jobs", str(jobs), "--db", os.fspath(db_path)]
     settings = {"tool": tool, "engine": engine, "jobs": jobs, "beat_vote": beat_vote}
+    if experiment:
+        settings["experiment"] = experiment
     if tool == "stages":
         stage = request.get("stage")
         if stage not in {s["id"] for s in stage_ids()}:
@@ -368,10 +383,13 @@ class RunQueue:
         meta = self.store.meta(run_id)
         folder = self.store.folder(run_id)
         settings = meta["settings"]
-        cache = self.store.cache / ("vote" if settings.get("beat_vote", False) else "novote")
+        cache = (self.store.cache / ("vote" if settings.get("beat_vote", False) else "novote")
+                 / (settings.get("experiment") or "base"))
         command = [self.python, str(_HERE / "overtone_runs.py"), "worker",
                    "--cache", str(cache), "--result", str(folder / "result.json"),
-                   *(["--beat-vote"] if settings.get("beat_vote", False) else []), "--", *meta["argv"]]
+                   *(["--beat-vote"] if settings.get("beat_vote", False) else []),
+                   *(["--experiment", settings["experiment"]] if settings.get("experiment") else []),
+                   "--", *meta["argv"]]
         env = dict(os.environ if self.env is None else self.env)
         if self.songs:
             env["OVERTONE_SONGS"] = self.songs     # the bench's Songs folder is the server's
@@ -445,6 +463,7 @@ def worker(argv: list[str] | None = None) -> int:
     parser.add_argument("--cache", required=True, help="cache root for this vote setting")
     parser.add_argument("--result", required=True, help="where the tool's JSON report goes")
     parser.add_argument("--beat-vote", action="store_true")
+    parser.add_argument("--experiment", choices=sorted(EXPERIMENTS))
     parser.add_argument("tool", choices=TOOLS)
     parser.add_argument("args", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
@@ -467,13 +486,16 @@ def worker(argv: list[str] | None = None) -> int:
     import overtone as ta
     if not args.beat_vote:
         ta._BEAT_THIS_SESSION[:] = [None]
+    for name, value in EXPERIMENTS.get(args.experiment or "", {}).items():
+        setattr(ta, name, value)
     import corpus_b
     import single_bpm
     cache = Path(args.cache)
     corpus_b.CACHE_DIR = cache / "corpus_b"
     single_bpm.CACHE_DIR = cache / "single_bpm"
     print(f"overtone run: {args.tool} {' '.join(tool_args)}  "
-          f"(Beat This! vote {'on' if args.beat_vote else 'off'})", flush=True)
+          f"(Beat This! vote {'on' if args.beat_vote else 'off'}"
+          f"{', experiment ' + args.experiment if args.experiment else ''})", flush=True)
     if args.tool == "stages":
         import stages
         stages.OUT_DIR = cache / "stages"

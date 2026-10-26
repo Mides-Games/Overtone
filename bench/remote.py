@@ -140,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--tv", action="store_true", help="single_bpm: TV Size only")
     run.add_argument("--beat-vote", action="store_true", help="with the Beat This! vote (~1.5 GB a job)")
     run.add_argument("--baseline", choices=("save", "compare"))
+    run.add_argument("--experiment", help="engine flags for this run only "
+                     "(python/overtone_runs.py EXPERIMENTS)")
     run.add_argument("--all-maps", action="store_true",
                      help="every map of the stage, not only ranked and loved (default when "
                           "the server has an osu!.db)")
@@ -189,7 +191,8 @@ def main(argv: list[str] | None = None) -> int:
         args.command = "wait"
     if args.command == "run":
         request = {"tool": args.tool, "engine": args.engine, "jobs": args.jobs,
-                   "beat_vote": args.beat_vote, "max_songs": args.max_songs}
+                   "beat_vote": args.beat_vote, "max_songs": args.max_songs,
+                   "experiment": args.experiment or ""}
         if args.tool == "stages":
             if not args.stage:
                 raise SystemExit("Name a stage (python bench/remote.py status lists them).")

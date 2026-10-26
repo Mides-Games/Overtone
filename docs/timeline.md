@@ -20,6 +20,33 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-26 · local-tempo octave experiments, off by default
+
+### Changed
+
+- The local-tempo octave work, ported to the stable branch behind three
+  flags, all off (v3 reads as it did): LOCAL_OCTAVE_FOLD doubles a local
+  tempo below MAP_OCTAVE_RANGE; LOCAL_OCTAVE_HALVE reads one at 2x or 4x of
+  the reading it replaced back at that octave, keeping the beats on that
+  reading's (_thin_local); LOCAL_OCTAVE_JUDGE halves only where Beat This!
+  hears the slower pulse (_beat_this_tempo, its own session, so the judge
+  works where the vote is off, and asked only when a halving is in doubt).
+- Server runs take `experiment` (local-fold, local-fold-halve,
+  local-fold-judge): the flags set in the run's own process, caches of its
+  own. An engine change is measured on the server before it is on.
+
+### Rejected / tried and dropped
+
+- In-between beat energy as the octave judge: on 24 songs whose local
+  tempo doubled the tracker's, the slow ones read twice and the really fast
+  ones overlapped at 0.6-1.0 (between/kept onset strength); the best cut
+  saved two and broke one.
+
+### Measured
+
+- Not measured: the three experiments against the base on the server,
+  anime-single and bands-variable, are this entry's next job.
+
 ## Unreleased — 2026-10-26 · the suite and the gates as a server runs them
 
 ### Fixed

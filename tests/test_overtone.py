@@ -2001,6 +2001,67 @@ class LocalTempoTests(unittest.TestCase):
         path = _tempo_path([slow] * 5 + [fast] * 5 + [slow] * 5)
         self.assertEqual([round(b) for b in path], [130] * 5 + [260] * 5 + [130] * 5)
 
+    @staticmethod
+    def _local(bpm: float):
+        """A local-tempo analysis at ``bpm``: one red line, beats on it."""
+        beats = np.arange(0.5, 60.0, 60.0 / bpm)
+        return Analysis("song.mp3", 60.0, beats, np.full(beats.size, bpm),
+                        [TimingPoint(500.0, bpm, 0.9, 0)], 512, 44100, 1.0,
+                        global_bpm=bpm, engine="legacy", local_tempo=True)
+
+    def test_the_local_octave_fold_is_off_unless_switched_on(self):
+        from overtone import _fold_local_to_map_octave
+        local = self._local(67.5)
+        self.assertIs(_fold_local_to_map_octave(local), local)
+        fast = self._local(269.88)
+        self.assertIs(_fold_local_to_map_octave(fast, 134.855, None, lambda: 135.0), fast)
+
+    def test_a_local_tempo_below_the_map_octave_is_doubled(self):
+        from overtone import _fold_local_to_map_octave
+        with mock.patch("overtone.LOCAL_OCTAVE_FOLD", True):
+            folded = _fold_local_to_map_octave(self._local(67.5))
+            # Folding alone never halves: the reference is not consulted.
+            fast = _fold_local_to_map_octave(self._local(269.88), reference=134.855)
+        self.assertAlmostEqual(folded.global_bpm, 135.0)
+        self.assertAlmostEqual(folded.points[0].bpm, 135.0)
+        self.assertAlmostEqual(fast.global_bpm, 269.88)
+
+    def test_halving_reads_a_doubled_local_tempo_at_the_reference_on_its_beats(self):
+        # Ado - unravel: the tracker read 134.9 (mapped at 135), its local
+        # tempo 269.9. The beats kept are the ones on the reference's.
+        from overtone import _fold_local_to_map_octave
+        local = self._local(269.88)
+        reference_beats = local.beats[1::2]          # the tracker's beats: the odd ones
+        with mock.patch("overtone.LOCAL_OCTAVE_FOLD", True), \
+                mock.patch("overtone.LOCAL_OCTAVE_HALVE", True):
+            folded = _fold_local_to_map_octave(local, 134.855, reference_beats)
+            other_phase = _fold_local_to_map_octave(local, 134.855, local.beats[0::2])
+            not_double = _fold_local_to_map_octave(self._local(250.0), 150.0)
+            out_of_range = _fold_local_to_map_octave(self._local(250.0), 300.0)
+        self.assertAlmostEqual(folded.global_bpm, 134.94)
+        np.testing.assert_allclose(folded.beats, local.beats[1::2])
+        self.assertAlmostEqual(folded.points[0].offset_ms, local.beats[1] * 1000.0)
+        np.testing.assert_allclose(other_phase.beats, local.beats[0::2])
+        self.assertAlmostEqual(not_double.global_bpm, 250.0)
+        self.assertAlmostEqual(out_of_range.global_bpm, 250.0)
+
+    def test_the_judge_lets_a_halving_through_only_when_beat_this_hears_the_slower_pulse(self):
+        from overtone import _fold_local_to_map_octave
+        local = self._local(250.0)
+        flags = (mock.patch("overtone.LOCAL_OCTAVE_FOLD", True),
+                 mock.patch("overtone.LOCAL_OCTAVE_HALVE", True),
+                 mock.patch("overtone.LOCAL_OCTAVE_JUDGE", True))
+        for flag in flags:
+            flag.start()
+            self.addCleanup(flag.stop)
+        slow = _fold_local_to_map_octave(local, 125.0, None, lambda: 126.0)
+        fast = _fold_local_to_map_octave(local, 125.0, None, lambda: 248.0)   # a fast band
+        silent = _fold_local_to_map_octave(local, 125.0, None, lambda: None)
+        no_judge = _fold_local_to_map_octave(local, 125.0)
+        self.assertAlmostEqual(slow.global_bpm, 125.0)
+        for kept in (fast, silent, no_judge):
+            self.assertAlmostEqual(kept.global_bpm, 250.0)
+
     def test_lines_a_few_tenths_off_a_whole_bpm_snap_and_merge(self):
         # Attacks on a 174 BPM grid, read as two lines at 174.3 and 173.8.
         from overtone import _snap_whole_lines
@@ -6352,6 +6413,18 @@ class MeasurementRunTests(unittest.TestCase):
         self.assertEqual(rust["path"], "refused")      # Rust alone gives no answer
         self.assertNotEqual(corpus_b.engine_fingerprint("app", Path(__file__)),
                             corpus_b.engine_fingerprint("python", None))
+
+    def test_an_experiment_is_named_and_switches_its_flags_in_the_run_only(self):
+        _, _, settings = self.runs.build_args(
+            {"stage": "anime-single", "engine": "app", "experiment": "local-fold-judge"}, "/db")
+        self.assertEqual(settings["experiment"], "local-fold-judge")
+        self.assertNotIn("experiment", self.runs.build_args({"stage": "anime-single"}, "/db")[2])
+        with self.assertRaises(ValueError):
+            self.runs.build_args({"stage": "anime-single", "experiment": "rm -rf"}, "/db")
+        import overtone
+        for flags in self.runs.EXPERIMENTS.values():
+            for name in flags:
+                self.assertFalse(getattr(overtone, name), name)   # off unless a run says
 
     def test_gates_and_the_suite_are_named_runs_and_nothing_else(self):
         tool, argv, settings = self.runs.build_args({"tool": "gates"}, "/db")

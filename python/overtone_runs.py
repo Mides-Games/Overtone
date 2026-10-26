@@ -382,7 +382,8 @@ class RunQueue:
         with open(folder / "log.txt", "w", encoding="utf-8") as log:
             process = subprocess.Popen(command, cwd=str(ROOT), stdout=log,
                                        stderr=subprocess.STDOUT, env=env,
-                                       start_new_session=(os.name != "nt"))
+                                       start_new_session=(os.name != "nt"),
+                                       preexec_fn=_first_to_go if os.name != "nt" else None)
             with self._lock:
                 self._process = process
             code = process.wait()
@@ -397,6 +398,23 @@ class RunQueue:
         except (LookupError, ValueError, OSError):
             pass
         self.store.write(meta)
+
+
+#: How much more likely than the server a run is to be the one killed when
+#: the service's memory cap is reached (oom_score_adj, -1000..1000). A run
+#: may always raise its own; with it, the cap ends the run, never the server
+#: and the page it serves (the suite took the whole service down three times
+#: on the owner's server, 2026-10-26).
+RUN_OOM_SCORE_ADJ = 800
+
+
+def _first_to_go() -> None:
+    """In a run's process, before it starts: be the one the OOM killer picks."""
+    try:
+        with open("/proc/self/oom_score_adj", "w", encoding="ascii") as handle:
+            handle.write(str(RUN_OOM_SCORE_ADJ))
+    except OSError:
+        pass
 
 
 def _terminate(process: subprocess.Popen) -> None:

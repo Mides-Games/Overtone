@@ -3190,8 +3190,10 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
             if beat_vote and _beat_this_session() is not None:
                 say("Checking the beats with Beat This!…")
                 analysis = _beat_this_vote(analysis, y, sr)
-            return _snap_whole_points(_fold_local_to_map_octave(
-                analysis, before, before_beats, lambda: _beat_this_tempo(y, sr)))
+            analysis = _fold_local_to_map_octave(
+                analysis, before, before_beats, lambda: _beat_this_tempo(y, sr))
+            return _snap_whole_points(_fold_lines_to_song_octave(
+                analysis, lambda: _beat_this_judge_beats(y, sr)))
         if engine == "precision":
             raise ValueError(
                 "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
@@ -3203,8 +3205,9 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
     tracked = _local_tempo_track(analysis)
     if tracked is None:
         return _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
-    return _fold_local_to_map_octave(tracked, float(analysis.global_bpm), analysis.beats,
-                                     lambda: _beat_this_tempo(y, sr))
+    tracked = _fold_local_to_map_octave(tracked, float(analysis.global_bpm), analysis.beats,
+                                        lambda: _beat_this_tempo(y, sr))
+    return _fold_lines_to_song_octave(tracked, lambda: _beat_this_judge_beats(y, sr))
 
 
 def _fold_to_map_octave(analysis: Analysis, min_delta: float, persistence: int,
@@ -3712,6 +3715,89 @@ def _beat_this_tempo(y: np.ndarray, sr: int) -> float | None:
     if beats is None or beats.size < 16:
         return None
     return 60.0 / float(np.median(np.diff(beats)))
+
+
+#: Red lines read an octave off the rest of their song (one section at 310
+#: in a song at 155, the owner's Flower Petals - Sunday Cruise): each line
+#: near 2x or 1/2 of the song's own tempo -- the one that holds the most of
+#: its length -- is read at the song's octave where Beat This!, over that
+#: line's span, hears that octave. Off until measured on the server.
+SECTION_OCTAVE_JUDGE = False
+
+
+def _song_tempo(points: list, duration_ms: float) -> float | None:
+    """The BPM that holds the most of the song's length, by red line span."""
+    spans: dict[float, float] = {}
+    for n, point in enumerate(points):
+        end = points[n + 1].offset_ms if n + 1 < len(points) else duration_ms
+        if point.bpm > 0 and end > point.offset_ms:
+            key = round(float(point.bpm), 1)
+            spans[key] = spans.get(key, 0.0) + (end - point.offset_ms)
+    return max(spans, key=spans.get) if spans else None
+
+
+def _fold_lines_to_song_octave(analysis: Analysis, heard) -> Analysis:
+    """Lines an octave off their song read back at its octave, when Beat This!
+    agrees (SECTION_OCTAVE_JUDGE). ``heard()`` gives Beat This!'s beats (s),
+    asked once and only when a line is off; a halved line keeps the phase
+    nearest those beats, so it is not left half a beat off the map."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not SECTION_OCTAVE_JUDGE or len(points) < 2:
+        return analysis
+    duration_ms = float(analysis.duration) * 1000.0
+    song = _song_tempo(points, duration_ms)
+    if not song:
+        return analysis
+    beats = None
+    out, changed = [], False
+    for n, point in enumerate(points):
+        end = points[n + 1].offset_ms if n + 1 < len(points) else duration_ms
+        ratio = point.bpm / song
+        factor = (0.5 if abs(ratio / 2.0 - 1.0) <= LOCAL_OCTAVE_SLACK
+                  else 2.0 if abs(ratio / 0.5 - 1.0) <= LOCAL_OCTAVE_SLACK else None)
+        if factor is None or getattr(point, "manual", False) or end <= point.offset_ms:
+            out.append(point)
+            continue
+        if beats is None:
+            found = heard()
+            beats = np.asarray(found, dtype=float) * 1000.0 if found is not None else np.zeros(0)
+        inside = beats[(beats >= point.offset_ms) & (beats <= end)]
+        if inside.size < 8:
+            out.append(point)
+            continue
+        tempo = 60000.0 / float(np.median(np.diff(inside)))
+        target = point.bpm * factor
+        if abs(np.log2(tempo / target)) >= abs(np.log2(tempo / point.bpm)):
+            out.append(point)
+            continue
+        offset = point.offset_ms
+        if factor < 1.0:
+            # Of the two beats a halved line could start on, the one whose
+            # grid sits nearest Beat This!'s.
+            period = 60000.0 / target
+
+            def distance(start: float) -> float:
+                grid = start + np.arange(int((end - start) / period) + 1) * period
+                i = np.clip(np.searchsorted(inside, grid), 1, inside.size - 1)
+                return float(np.median(np.minimum(np.abs(inside[i - 1] - grid),
+                                                  np.abs(inside[i] - grid))))
+
+            offset = min((point.offset_ms, point.offset_ms + 60000.0 / point.bpm), key=distance)
+        out.append(replace(point, bpm=target, offset_ms=offset))
+        changed = True
+    if not changed:
+        return analysis
+    return replace(analysis, points=out)
+
+
+def _beat_this_judge_beats(y: np.ndarray, sr: int):
+    """Beat This!'s beats (s) by the judge's own session (the vote's switch
+    aside); None without the model or the runtime."""
+    if not _BEAT_THIS_JUDGE:
+        _BEAT_THIS_JUDGE.append(_load_beat_this())
+    if _BEAT_THIS_JUDGE[0] is None:
+        return None
+    return _beat_this_beats(y, sr, session=_BEAT_THIS_JUDGE[0])
 
 
 #: Beat This! as an extra voter (Phase 10, 10.3; owner decision 2026-10-24).

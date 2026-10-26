@@ -16,6 +16,7 @@ import threading
 import time
 import types
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -5273,6 +5274,38 @@ class WebHostTests(_IsolatedConfig):
             self.host.call("no_such_method", [])
         with self.assertRaises(TypeError):
             self.host.call("library_state", {"not": "a list"})
+
+    def test_the_bridge_refuses_files_outside_the_shared_folders(self) -> None:
+        upload = self.host.uploads / "python.osz"
+        with zipfile.ZipFile(upload, "w") as osz:
+            osz.writestr("map.osu", "osu file format v14\n")
+            osz.writestr("argparse.py", "raise SystemExit('ran')\n")
+        code = self.tmp / "code"
+        code.mkdir()
+        # Unpacking into the server's own code is the attack the check is for.
+        with self.assertRaises(ValueError):
+            self.host.call("import_osz", [str(upload), str(code)])
+        self.assertEqual(list(code.iterdir()), [])
+        for args in (["import_osz", [str(upload), "python"]],          # relative: the server's cwd
+                     ["import_osz", [str(upload), str(self.songs / ".." / "code")]],
+                     ["mapset_check", [str(self.outside.parent)]],
+                     ["inject_preview", [str(self.outside)]],
+                     ["set_settings", [{"output_folder": str(code)}]],
+                     ["swap_preview", [str(self.songs / "1 Band - Song"), "../private.txt", "b.ogg"]]):
+            with self.subTest(method=args[0]), self.assertRaises(ValueError):
+                self.host.check_paths(*args)
+
+    def test_the_bridge_lets_paths_under_the_shared_folders_and_plain_values_through(self) -> None:
+        song = self.songs / "1 Band - Song"
+        for method, args in (("mapset_check", [str(song)]),
+                             ("import_osz", [str(self.host.uploads / "a.osz"), str(self.songs)]),
+                             ("swap_preview", [str(song), "audio.ogg", "other.ogg"]),
+                             ("analyze_bytes", ["dropped song.mp3", "", {}]),
+                             ("compile_match_loudness", ["median"]),
+                             ("set_settings", [{"output_folder": str(self.host.exports),
+                                                "skin_folder": ""}])):
+            with self.subTest(method=method):
+                self.host.check_paths(method, args)
 
     def test_the_page_gets_the_servers_songs_folder_unless_one_here_was_chosen(self) -> None:
         self.assertEqual(self.host.api._cfg["songs_folder"], str(self.songs))

@@ -43,6 +43,16 @@ MAX_UPLOAD = 1024 * 1024 * 1024
 DOWNLOADABLE = (".osz", ".osu", ".csv", ".wav", ".zip")
 #: A file name as an upload keeps it: no folders, nothing a shell reads.
 _SAFE_NAME = re.compile(r"[^\w.\- ()\[\]&',!+]+", re.UNICODE)
+#: Api arguments and settings keys that name a file or a folder on the server.
+_PATH_NAME = re.compile(r"(^|_)(path|paths|folder|folders|dir|directory|file|source|targets"
+                        r"|audio|filename)$")
+#: Of those, the ones that are always a full path, never a name inside a folder.
+_PATH_ONLY = re.compile(r"(^|_)(path|paths|folder|folders|dir|directory)$")
+
+
+def _climbs(value: str) -> bool:
+    """Whether a relative path steps out of where it starts (``..``)."""
+    return ".." in re.split(r"[\\/]", value)
 
 
 def ensure_webview_names() -> None:
@@ -235,12 +245,50 @@ class WebHost:
             raise LookupError(f"No bridge method {method!r}.")
         if not isinstance(args, list):
             raise TypeError("args must be a list.")
+        self.check_paths(method, args)
         result = getattr(self.api, method)(*args)
         if isinstance(result, dict) and result.get("ok") and isinstance(result.get("path"), str):
             offer = self.download_offer(result["path"])
             if offer is not None:
                 result = {**result, "download": offer}
         return result
+
+    def check_paths(self, method: str, args: list) -> None:
+        """Refuse a call that would reach a file outside the shared roots.
+
+        The page names files on the server, and the Api trusts what it is
+        given, as it does on the desktop. Over HTTP that trust is the
+        browser's: ``import_osz(upload, "/opt/overtone")`` would unpack into
+        the server's own code. So every argument the Api reads as a file or
+        folder (by its name, or a settings key of that shape) must be a path
+        under the roots, and any absolute path anywhere must too. A plain
+        file name (no folders, no ``..``) stays allowed: the Api joins it to a
+        folder that was checked."""
+        try:
+            bound = inspect.signature(getattr(self.api, method)).bind(*args)
+        except TypeError:
+            return      # the call itself raises, as pywebview's would
+        # A bare name means a file inside a folder only next to a folder, or
+        # as the name a dropped file is staged under.
+        in_folder = "folder" in bound.arguments
+        for name, value in bound.arguments.items():
+            self._check_value(name, value, in_folder or name == "filename")
+
+    def _check_value(self, name: str, value, in_folder: bool = False) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                self._check_value(str(key), item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                self._check_value(name, item, in_folder)
+        elif isinstance(value, str) and value:
+            if os.path.isabs(value):
+                self.resolve(value)
+            elif _PATH_NAME.search(name) or _climbs(value):
+                if ("/" in value or "\\" in value or _climbs(value) or _PATH_ONLY.search(name)
+                        or not in_folder):
+                    raise ValueError(f"{name}: a path on the server must be absolute and "
+                                     "under the folders this server shares.")
 
     def download_offer(self, path: str) -> dict | None:
         """``{"path", "name", "size"}`` for an export the page may download."""

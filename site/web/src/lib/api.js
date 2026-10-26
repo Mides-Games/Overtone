@@ -38,3 +38,38 @@ export async function api(path, { method = 'GET', json, form } = {}) {
   if (!response.ok) throw new ApiError(response.status, data?.error?.code, data?.error?.message)
   return data
 }
+
+/**
+ * Uploads an audio file as the raw body of `POST /api/v1/analyses`, reporting
+ * the share sent through `onProgress(0..1)`. XMLHttpRequest rather than fetch
+ * because fetch cannot report upload progress. Resolves to `{ id, status,
+ * cached }`; rejects with an ApiError (`details` carries the server's).
+ */
+export function uploadAudio(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/v1/analyses')
+    xhr.setRequestHeader('Accept', 'application/json')
+    xhr.setRequestHeader('X-Requested-With', 'overtone-web')
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+    // A header is Latin-1: the name travels percent-encoded.
+    xhr.setRequestHeader('X-Filename', encodeURIComponent(file.name))
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) onProgress(event.loaded / event.total)
+    }
+    xhr.onload = () => {
+      let data = null
+      try {
+        data = JSON.parse(xhr.responseText)
+      } catch {
+        // Not JSON: a proxy's page, say. The status still says what happened.
+      }
+      if (xhr.status >= 200 && xhr.status < 300) return resolve(data)
+      const error = new ApiError(xhr.status, data?.error?.code, data?.error?.message)
+      error.details = data?.error?.details ?? null
+      return reject(error)
+    }
+    xhr.onerror = () => reject(new ApiError(0, 'NETWORK', 'The server could not be reached.'))
+    xhr.send(file)
+  })
+}

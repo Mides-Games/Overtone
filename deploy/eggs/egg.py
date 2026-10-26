@@ -136,7 +136,12 @@ def web():
          var("HSTS", "HSTS",
              "1 = every page carries Strict-Transport-Security (one year). The site is served over "
              "https only; 0 is for a server reached over plain http.",
-             default="1", rules="required|boolean")],
+             default="1", rules="required|boolean"),
+         secret("Proxy secret", "PROXY_SECRET",
+                "The same value as this environment's overtone-api PROXY_SECRET, 32+ characters. Sent "
+                "with every request forwarded to the API, which answers 404 without it: the API's own "
+                "port is public on the node.",
+                rules="required|string|min:32")],
     )
 
 
@@ -144,7 +149,9 @@ def api():
     return app_egg(
         "api", "api",
         "The Overtone API (Express 5): runs site/api's migrations, then site/api's server, on the "
-        "server's allocation. Not published on its own: overtone-web forwards /api to it.",
+        "server's allocation. Not published on its own: overtone-web forwards /api to it. Its port is "
+        "reachable on the node all the same, so it answers only requests carrying PROXY_SECRET "
+        "(from overtone-web) or WORKER_TOKEN (the worker's /api/internal).",
         NODE_IMAGES, ["overtone-api: listening on", "listening on port"],
         [
             secret("Database URL", "DATABASE_URL", "postgres://user:password@host:port/database"),
@@ -159,8 +166,25 @@ def api():
                 "address the rate limit counts; too low puts every visitor in one bucket. "
                 "overtone-web's TRUSTED_PROXY_HOPS + 1.",
                 default="2", rules="required|integer|between:0,10"),
-            var("Anonymous daily limit", "ANON_DAILY_LIMIT", "Analyses per day without an account."),
-            var("Max audio seconds", "MAX_AUDIO_SECONDS", "Longest audio accepted."),
+            secret("Proxy secret", "PROXY_SECRET",
+                   "32+ characters, the same value as this environment's overtone-web PROXY_SECRET. "
+                   "Every request without it in X-Overtone-Proxy gets a 404, except the worker's "
+                   "/api/internal routes, which demand WORKER_TOKEN instead.",
+                   rules="required|string|min:32"),
+            secret("Worker token", "WORKER_TOKEN",
+                   "32+ characters, the same value as this environment's overtone-worker WORKER_TOKEN: "
+                   "the bearer of /api/internal.",
+                   rules="required|string|min:32"),
+            var("Anonymous daily limit", "ANON_DAILY_LIMIT", "Analyses per day without an account (default 5)."),
+            var("User daily limit", "USER_DAILY_LIMIT", "Analyses per day with a Mides account (default 50)."),
+            var("Max audio seconds", "MAX_AUDIO_SECONDS", "Longest audio accepted (default 600)."),
+            var("Max upload MB", "MAX_UPLOAD_MB", "Largest upload, checked before the body is read (default 40)."),
+            var("Job timeout", "JOB_TIMEOUT_S",
+                "Seconds a job may run before it goes back to the queue; two attempts in all (default 900)."),
+            var("Spool folder", "SPOOL_DIR",
+                "Where uploads wait for the worker; deleted when the result arrives (ADR-W4). Inside the "
+                "server's disk, so a restart does not lose the queue's audio.",
+                default="/home/container/.overtone/spool", rules="required|string|starts_with:/home/container/"),
         ],
     )
 
@@ -168,15 +192,21 @@ def api():
 def worker():
     return app_egg(
         "worker", "worker",
-        "The Overtone analysis worker (v3 Python engine): takes jobs from the queue, analyses, "
-        "deletes the audio, stores the result. Installs python/requirements.lock and the Beat This! "
-        "model (Git LFS). Give it a CPU limit and pinning: one analysis wants about five cores.",
+        "The Overtone analysis worker (v3 Python engine, worker/main.py): claims jobs from overtone-api "
+        "over HTTP, analyses one at a time, posts the result; the API then deletes the audio. Installs "
+        "python/requirements.lock and the Beat This! model (Git LFS). Give it a CPU limit and pinning: "
+        "one analysis wants about five cores and 1.5 GB of RAM. More analyses at once = more worker servers.",
         PYTHON_IMAGES, "overtone-worker: ready",
         [
-            secret("Database URL", "DATABASE_URL", "postgres://user:password@host:port/database"),
-            var("Worker concurrency", "WORKER_CONCURRENCY",
-                "Analyses at once. About 1.5 GB of RAM each with the Beat This! vote, about 100 MB without."),
-            var("Max audio seconds", "MAX_AUDIO_SECONDS", "Longest audio accepted."),
+            var("API", "OVERTONE_API",
+                "This environment's overtone-api, http://<allocation ip>:<port>, reached directly (never "
+                "through overtone-web, which does not forward /api/internal). No trailing slash.",
+                rules="required|string|starts_with:http"),
+            secret("Worker token", "WORKER_TOKEN",
+                   "The same value as this environment's overtone-api WORKER_TOKEN.",
+                   rules="required|string|min:32"),
+            var("Poll seconds", "WORKER_POLL_S", "Seconds between claims while the queue is empty.",
+                default="2", rules="required|numeric|min:0.2"),
             var("Worker threads", "WORKER_THREADS",
                 "Threads per math library (OpenMP, BLAS, numba, and the worker's onnxruntime session): "
                 "the server's CPU limit / 100. Empty = one per core of the whole node, which a CPU limit "

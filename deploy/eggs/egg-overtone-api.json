@@ -7,7 +7,7 @@
     "exported_at": "2026-10-26T00:00:00+00:00",
     "name": "Overtone api",
     "author": "dev@midesprojects.com",
-    "description": "The Overtone API (Express 5): runs site/api's migrations, then site/api's server, on the server's allocation. Not published on its own: overtone-web forwards /api to it.",
+    "description": "The Overtone API (Express 5): runs site/api's migrations, then site/api's server, on the server's allocation. Not published on its own: overtone-web forwards /api to it. Its port is reachable on the node all the same, so it answers only requests carrying PROXY_SECRET (from overtone-web) or WORKER_TOKEN (the worker's /api/internal).",
     "features": null,
     "docker_images": {
         "Node.js 24": "ghcr.io/parkervcp/yolks:nodejs_24"
@@ -169,8 +169,28 @@
             "field_type": "text"
         },
         {
+            "name": "Proxy secret",
+            "description": "32+ characters, the same value as this environment's overtone-web PROXY_SECRET. Every request without it in X-Overtone-Proxy gets a 404, except the worker's /api/internal routes, which demand WORKER_TOKEN instead.",
+            "env_variable": "PROXY_SECRET",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "required|string|min:32",
+            "field_type": "text"
+        },
+        {
+            "name": "Worker token",
+            "description": "32+ characters, the same value as this environment's overtone-worker WORKER_TOKEN: the bearer of /api/internal.",
+            "env_variable": "WORKER_TOKEN",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "required|string|min:32",
+            "field_type": "text"
+        },
+        {
             "name": "Anonymous daily limit",
-            "description": "Analyses per day without an account.",
+            "description": "Analyses per day without an account (default 5).",
             "env_variable": "ANON_DAILY_LIMIT",
             "default_value": "",
             "user_viewable": true,
@@ -179,13 +199,53 @@
             "field_type": "text"
         },
         {
+            "name": "User daily limit",
+            "description": "Analyses per day with a Mides account (default 50).",
+            "env_variable": "USER_DAILY_LIMIT",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
             "name": "Max audio seconds",
-            "description": "Longest audio accepted.",
+            "description": "Longest audio accepted (default 600).",
             "env_variable": "MAX_AUDIO_SECONDS",
             "default_value": "",
             "user_viewable": true,
             "user_editable": false,
             "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Max upload MB",
+            "description": "Largest upload, checked before the body is read (default 40).",
+            "env_variable": "MAX_UPLOAD_MB",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Job timeout",
+            "description": "Seconds a job may run before it goes back to the queue; two attempts in all (default 900).",
+            "env_variable": "JOB_TIMEOUT_S",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Spool folder",
+            "description": "Where uploads wait for the worker; deleted when the result arrives (ADR-W4). Inside the server's disk, so a restart does not lose the queue's audio.",
+            "env_variable": "SPOOL_DIR",
+            "default_value": "/home/container/.overtone/spool",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|starts_with:/home/container/",
             "field_type": "text"
         }
     ]

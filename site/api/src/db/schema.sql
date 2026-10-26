@@ -63,7 +63,24 @@ CREATE TABLE IF NOT EXISTS analyses (
   confidence      real CHECK (confidence BETWEEN 0 AND 1),
   created_at      timestamptz NOT NULL DEFAULT now()
 );
+-- W3.4, the upload flow. The bigint id stays internal; the browser and the
+-- worker name an analysis by public_id, 128 random bits in hex, so ids cannot
+-- be walked. anon_hash is the SHA-256 of the anonymous cookie that created
+-- the row (never the cookie). cached_from marks a row answered from an earlier
+-- analysis of the same audio and engine: no job, and not counted in the quota.
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS public_id   char(32) UNIQUE CHECK (public_id ~ '^[0-9a-f]{32}$');
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS anon_hash   text;
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS filename    text CHECK (char_length(filename) <= 200);
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS size_bytes  bigint CHECK (size_bytes >= 0);
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS status      text NOT NULL DEFAULT 'queued'
+  CHECK (status IN ('queued', 'running', 'done', 'refused', 'failed'));
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS stage       text;
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS progress    real CHECK (progress BETWEEN 0 AND 1);
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS error       text;
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS finished_at timestamptz;
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS cached_from bigint REFERENCES analyses (id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS analyses_song_idx ON analyses (song_id);
+CREATE INDEX IF NOT EXISTS analyses_cache_idx ON analyses (song_id, engine_hash) WHERE result IS NOT NULL;
 CREATE INDEX IF NOT EXISTS analyses_account_idx ON analyses (account_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS analyses_ip_day_idx ON analyses (ip_hash, created_at) WHERE account_id IS NULL;
 
@@ -80,6 +97,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS jobs_queued_idx ON jobs (priority DESC, id) WHERE state = 'queued';
+-- The sweep that hands a stuck job back (JOB_TIMEOUT_S) reads running rows by age.
+CREATE INDEX IF NOT EXISTS jobs_running_idx ON jobs (locked_at) WHERE state = 'running';
 
 -- ── Timings and the social layer ────────────────────────────────────────────
 

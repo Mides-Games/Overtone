@@ -117,6 +117,16 @@
             "user_editable": false,
             "rules": "required|boolean",
             "field_type": "text"
+        },
+        {
+            "name": "Proxy secret",
+            "description": "The same value as this environment's overtone-api PROXY_SECRET, 32+ characters. Sent with every request forwarded to the API, which answers 404 without it: the API's own port is public on the node.",
+            "env_variable": "PROXY_SECRET",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "required|string|min:32",
+            "field_type": "text"
         }
     ]
 }

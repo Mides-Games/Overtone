@@ -1,14 +1,59 @@
 # The Overtone website (`site/`)
 
 The website of docs/16-web-platform.md: Overtone as a public Mides Projects
-site for timings, signed in with a Mides account. This is the skeleton of
-phase W3: it runs, signs people in and shows the pages, and it does not
-analyse anything yet.
+site for timings, signed in with a Mides account. Phases W2 and W3.4: it
+signs people in, takes an upload with or without an account, queues it,
+analyses it with the v3 engine and gives the timing back.
 
 ```
 site/api/   Express 5 + pg, plain ES modules (modelled on cavernia-api)
 site/web/   React 19 + Vite + Tailwind 4 + react-router 7 + i18next EN/ES
+worker/     the analysis worker: Python, standard library + python/overtone.py
 ```
+
+## How an analysis goes
+
+```
+browser --POST raw audio--> api --spool/<id>.audio, songs + analyses + jobs rows
+worker  --POST /api/internal/jobs/claim--> api        (Bearer WORKER_TOKEN)
+worker  --GET  .../audio, run overtone.py, POST .../progress, POST .../result
+api     --deletes the spooled audio, stores timing-result v1
+browser --GET /api/v1/analyses/<id> (polls) -> result, timing.txt, timing.csv
+```
+
+- **The API owns every piece of state** (ADR-W5): the queue, the spool and the
+  results. The worker is an HTTP client of `/api/internal`, so it carries no
+  database driver and no new Python dependency.
+- **The audio is never kept** (ADR-W4). It streams to `SPOOL_DIR/<id>.audio`,
+  named by the analysis id only, and is deleted when the result or the failure
+  arrives, when a job runs out of attempts, and at once on a cache hit.
+- **Cache.** An analysis is keyed by the audio's SHA-1 and the engine hash the
+  worker announces at every claim (`worker/timing_result.py`: the engine source,
+  the result builder, and whether the Beat This! vote ran). The same audio
+  through the same engine is answered at once and not counted in the quota.
+- **Who may read it.** The id is 128 random bits; the analysis is readable by
+  the session account or the anonymous `overtone_anon` cookie that created it
+  (the row keeps its SHA-256), and by nobody else: they get the same 404 as for
+  an id that does not exist.
+- **Quota** (ADR-W6): `ANON_DAILY_LIMIT` a UTC day per client address without
+  an account, `USER_DAILY_LIMIT` with one. The address is stored as an HMAC of
+  the address and the day. A separate limit allows 10 uploads per address per
+  10 minutes.
+- **Retries.** A job running longer than `JOB_TIMEOUT_S` goes back to the
+  queue; the second time it fails. Every worker call names its attempt, so a
+  late answer from an abandoned attempt gets a 409.
+- **What the worker runs.** `analyze_audio` with the defaults a fresh desktop
+  install had (`default_params()` in `worker/timing_result.py`), the Beat This!
+  vote included, never anybody's saved settings. A `ValueError` from the engine
+  is a **refusal**, stored as a result with no BPM and its reason (white noise
+  ends here, CLAUDE.md rule 2); anything else is a failed job.
+- **`timing-result v1`**: `engine`, `engine_hash`, `beat_vote`, `duration_s`,
+  `global_bpm`, `offset_ms`, `meter`, `red_lines` (`time_ms`, `bpm`, `meter`),
+  `sections` (confidence and level: high, medium, check by ear), the engine's
+  validation `findings`, `refused`/`refusal`, and `osu_timing`, the engine's
+  own `[TimingPoints]` rows. The schema is in `site/api/docs/openapi.yaml`.
+  The three levels are a reading of the engine's confidence (0.90 and 0.75)
+  and its residual (30 ms), not a measured accuracy.
 
 The root `package.json` and `pnpm-workspace.yaml` make the two one pnpm
 workspace. The engine (`python/`, `crates/`) is not part of it.
@@ -22,18 +67,40 @@ repository root:
 pnpm install && pnpm dev
 ```
 
-That starts the API on http://localhost:3001 and the web on
-http://localhost:5173 (open this one; it proxies `/api` to the API). `pnpm dev`
+You need the engine's Python environment too, for the worker: a `.venv` at
+the repository root with `python/requirements.lock` installed.
+
+That starts the API on http://localhost:3001, the web on
+http://localhost:5173 (open this one; it proxies `/api` to the API) and the
+analysis worker. `pnpm dev`
 turns on `MIDES_DEV_LOGIN`, so **Sign in** with Discord or Google signs you in
-as a test account without Mides, and with no `DATABASE_URL` the accounts live
-in memory and vanish when the API restarts. No secret and no database are
-needed to try it.
+as a test account without Mides, and with no `DATABASE_URL` the accounts and
+analyses live in memory and vanish when the API restarts. No secret and no
+database are needed to try it.
+
+The worker is `worker/main.py`, started by the API's dev launcher
+(`site/api/src/dev.js`) with the repository's `.venv` Python
+(`.venv/Scripts/python.exe` on Windows, `.venv/bin/python` elsewhere) and a
+`WORKER_TOKEN` generated for that run. Without a `.venv` the launcher says so
+and the site still runs; uploads then wait in the queue. Set `OVERTONE_PYTHON`
+to use another interpreter, or `OVERTONE_WORKER=0` to run a worker yourself:
+
+```bash
+OVERTONE_API=http://127.0.0.1:3001 WORKER_TOKEN=<the API's> .venv/Scripts/python.exe worker/main.py
+```
+
+The `.venv` is the engine's (`python/requirements.lock`), and the Beat This!
+model is a Git LFS file: with only the pointer in the checkout the worker runs
+without the vote and says so (`vote OFF`), and its results are cached under a
+different engine hash. The first analysis after a start loads the model (a few
+seconds); a 60 s song then takes about 10 s with the vote.
 
 Other commands:
 
 ```bash
 pnpm build                          # the web's production build, into site/web/dist
 pnpm check                          # schema.sql applied twice to a throwaway schema (skips without DATABASE_URL)
+pnpm test                           # site/api's unit tests (node:test): the guards and the upload helpers
 pnpm --dir site/api db:migrate      # apply schema.sql to DATABASE_URL (idempotent)
 pnpm --dir site/api start           # the API without the dev login, reading site/api/.env
 ```
@@ -59,8 +126,17 @@ is missing.
 | `MIDES_WEB_URL` | none | The Mides site that serves `/authorize`, e.g. `https://midesprojects.com`. |
 | `MIDES_APP` | `overtone` | The app name registered in Mides' `SSO_APPS`. |
 | `MIDES_DEV_LOGIN` | off (`pnpm dev` turns it on) | Fake sign-in without Mides. **Refused when `NODE_ENV=production`.** Set `0` in `.env` to try the real SSO in development. |
-| `ANON_DAILY_LIMIT` | `5` | Analyses a day without an account (shown on Analyze; not enforced yet). |
-| `MAX_AUDIO_SECONDS` | `600` | Longest song (checked in the browser today; the server check comes with W3.4). |
+| `ANON_DAILY_LIMIT` | `5` | Analyses a UTC day per client address without an account. |
+| `USER_DAILY_LIMIT` | `50` | Analyses a UTC day with a Mides account. |
+| `MAX_AUDIO_SECONDS` | `600` | Longest song: checked in the browser, then by the worker from the file's header (or the decoded length) before it is timed. |
+| `MAX_UPLOAD_MB` | `40` | Largest upload: refused on `Content-Length` before a byte is read, and cut off while the body streams. |
+| `SPOOL_DIR` | `<OS temp>/overtone-spool` | Where uploads wait for the worker (mode 0700). Without a database it is emptied at start, since the queue died with the process. |
+| `WORKER_TOKEN` | random per process | The bearer of `/api/internal`. 32+ characters. **Required in production.** `pnpm dev` generates one and hands it to the worker it starts. |
+| `JOB_TIMEOUT_S` | `900` | A job running longer goes back to the queue; two attempts in all. |
+| `PROXY_SECRET` | none | The header overtone-web (`deploy/web/serve.mjs`) adds to everything it forwards; without it the API answers 404, except `/api/internal`. 32+ characters. **Required in production** (docs/deploy.md). Not needed with Vite's proxy. |
+| `OVERTONE_PYTHON` | `.venv`'s | `pnpm dev` only: the Python that runs the worker. |
+| `OVERTONE_WORKER` | on | `pnpm dev` only: `0` starts the API without its worker. |
+| `WORKER_POLL_S` | `2` | The worker's wait between claims while the queue is empty. |
 
 ## Sign-in
 
@@ -83,14 +159,20 @@ The endpoints are described in `site/api/docs/openapi.yaml`.
 
 ## What is stubbed
 
-- `POST /api/v1/analyses` answers **501** without reading the body. The queue,
-  the worker and the results (W2, W3.4) are not built; the Analyze page says so.
-- The anonymous quota (`ANON_DAILY_LIMIT`) is shown, not enforced (W3.6).
+- The `.osu` with the timing injected and the click track are not offered yet;
+  the Analyze page lists them as "soon". Copy `[TimingPoints]`, `timing.txt` and
+  the CSV work.
+- An account's history: an analysis made while signed in is readable from any
+  browser of that account, but there is no list of them yet (the Analyze page's
+  "recent" list is this browser's own storage).
 - Profile is a placeholder: counters show a dash, timings come with publishing (W5).
-- The schema already holds every table of the plan's data model (songs,
-  analyses, jobs, timings, ratings, reactions, uses, comments, collections,
-  reports, notifications); only `accounts` and `mides_tokens` are used.
-- No tests yet beyond `pnpm check`; the flows were checked by hand (below).
+- The schema holds every table of the plan's data model; `accounts`,
+  `mides_tokens`, `songs`, `analyses` and `jobs` are used.
+- The PostgreSQL store of the queue (`services/analysis.service.js`) has not
+  run against a database yet: the end-to-end checks below ran on the in-memory
+  store. `pnpm check` should be run on a real server before W4.
+- Upload progress is reported; the worker's progress is coarse (one step per
+  engine stage, from its progress messages).
 
 ## Look
 
@@ -125,3 +207,31 @@ nothing is fetched from the network.
 
 Not checked: a real Mides sign-in (needs W3.2), and a real PostgreSQL server
 (PGlite stood in for it).
+
+### The analysis flow (W2 and W3.4, 2026-10-26)
+
+With `pnpm dev` (in-memory store, Node 24.22, Python 3.14 `.venv`, Beat This!
+vote on):
+
+- `bench/audio/change-128-142.wav` through the API: queued (position 1),
+  running through the stages, done in 11.7 s; red lines at 400 ms, **128 BPM**
+  and 30 400 ms, **142 BPM**, both "high"; `timing.txt` and the CSV as
+  documented; the spool empty afterwards.
+- `bench/audio/_noise.wav`: **refused**, `no_pulse`, no BPM and no red lines,
+  in 3.0 s; the spool empty afterwards.
+- The same `change-128-142.wav` again: 200 `cached: true`, the same result at
+  once, nothing spooled.
+- Without the cookie that created it, an analysis is a 404. Refusals answer as
+  documented: no CSRF header 403, multipart 415, `.exe` 400, a declared 41 MB
+  413 before the body, a streamed 60 MB cut off at the limit with nothing left in
+  the spool, a file that is not audio a failed job, the third anonymous upload
+  with `ANON_DAILY_LIMIT=2` 429 `QUOTA_EXCEEDED`, the eleventh upload in ten
+  minutes 429 `RATE_LIMITED`, `/api/internal` without or with a wrong token 401.
+- In the browser, through the Analyze form: a synthesized click track at 128
+  then 142 BPM came back as two red lines at 128 and 142, in EN and ES, dark
+  and light, at 375 px with no horizontal scroll; the downloads come with the
+  anonymous cookie.
+- `python -m unittest tests.test_worker` (9 tests, about 3 s), `pnpm test`
+  (12), `pnpm build` (363 kB JS, 115 kB gzip).
+- The worker leaves with the API: stopping the dev process left no Python
+  behind.

@@ -84,11 +84,11 @@ Allocation** y la pestaña **Network** de cada server), no en el repo.
 |---|---|---|
 | `overtone-web` (master) | `<node-ip>:<web-port>` | el proxy TLS |
 | `overtone-web-exp` (experimental) | `<node-ip>:<web-exp-port>` | el proxy TLS |
-| `overtone-api` | `<bridge-ip>:<api-port>` | `overtone-web` |
-| `overtone-api-exp` | `<bridge-ip>:<api-exp-port>` | `overtone-web-exp` |
+| `overtone-api` | `<bridge-ip>:<api-port>` | `overtone-web` (con `PROXY_SECRET`) y `overtone-worker` (con `WORKER_TOKEN`) |
+| `overtone-api-exp` | `<bridge-ip>:<api-exp-port>` | `overtone-web-exp` y `overtone-worker-exp`, igual |
 | `overtone-worker` | `<bridge-ip>:<worker-port>` | nadie: no escucha. El panel pide una allocation igual. |
 | `overtone-worker-exp` | `<bridge-ip>:<worker-exp-port>` | nadie |
-| `overtone-db` | `<bridge-ip>:<db-port>` | las dos APIs y los dos workers |
+| `overtone-db` | `<bridge-ip>:<db-port>` | las dos APIs (el worker no habla con la base: es cliente HTTP de la API) |
 
 **Admin → Nodes → NA-01 → Allocation:** crear `<bridge-ip>` con los cinco puertos
 de la API, el worker y la base (los dos entornos). Los de las dos webs van en la IP
@@ -101,6 +101,25 @@ sea Docker, porque si no, la base y la API quedan expuestas a internet.
 Lo mismo vale para los puertos de las webs: quien les pegue directo se salta el
 TLS. Lo ideal es que el firewall los abra solo para el proxy (ver
 [§9](#9-tls-la-pregunta-abierta)).
+
+### El puerto de la API se da por público (`PROXY_SECRET`)
+
+La revisión del despliegue (2026-10-26) encontró que en Reviactyl todo puerto de
+allocation es público. Si la API queda alcanzable desde internet, un cliente le
+puede pegar directo, sin pasar por `serve.mjs`, y escribir su propio
+`X-Forwarded-For`: elige la dirección con la que cuentan el rate limit y la cuota
+anónima. Por eso la API no confía en que su puerto esté escondido:
+
+- `overtone-web` y `overtone-api` comparten `PROXY_SECRET` (32+ caracteres,
+  `openssl rand -hex 32`, uno por entorno). `serve.mjs` lo agrega como
+  `X-Overtone-Proxy` a todo lo que reenvía, y descarta el que traiga el cliente.
+- La API responde **404** a cualquier pedido sin ese header (comparación en tiempo
+  constante), como si ahí no escuchara nada. En producción no arranca sin él; en
+  desarrollo es opcional, porque el navegador llega por el proxy de Vite.
+- La excepción son las rutas del worker, `/api/internal/*`: piden su propio
+  `Authorization: Bearer <WORKER_TOKEN>`, y `serve.mjs` **no las reenvía nunca**
+  (404, se escriban como se escriban: decodificadas, con barras dobles o en
+  mayúsculas). El worker le habla a la API directo, a su allocation.
 
 ## 3. Los siete servers
 
@@ -123,9 +142,9 @@ workers). Swap en 0 en todos.
 
 - **Por qué la web pide 1 GB:** es el pico del `vite build` en el arranque que
   trae código nuevo. Sirviendo usa menos de 100 MB.
-- **RAM del worker:** se calcula como `WORKER_CONCURRENCY × 1,5 GB + 0,5 GB`. Con
-  `WORKER_CONCURRENCY=1` son 2 GB. Cada análisis simultáneo más suma 1,5 GB, y CPU
-  en proporción. Si se arranca sin el voto (decisión abierta 3 del plan), alcanza
+- **RAM del worker:** un worker analiza de a un trabajo, y pide 1,5 GB + 0,5 GB =
+  2 GB. Más análisis simultáneos son más servers worker (cada uno 2 GB y su CPU),
+  no una variable: `WORKER_CONCURRENCY` se retiró con el worker real (2026-10-26). Si se arranca sin el voto (decisión abierta 3 del plan), alcanza
   con 512 MB, pero las red lines pueden diferir de la app.
 - **El CPU limit no alcanza solo.** Con el límite, el worker no pasa de cuatro
   núcleos de cuota, pero esa cuota la toma de cualquier núcleo, incluidos los que
@@ -155,12 +174,12 @@ repo es público, se deja vacío.
 
 | Server | Variables propias |
 |---|---|
-| `overtone-web` | `API_UPSTREAM=http://<bridge-ip>:<api-port>` |
-| `overtone-web-exp` | `API_UPSTREAM=http://<bridge-ip>:<api-exp-port>` |
-| `overtone-api` | `DATABASE_URL=postgres://<rol-prod>:<pw>@<bridge-ip>:<db-port>/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `TRUST_PROXY=2`, `SESSION_SECRET`, `TOKEN_KEY`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`, `ANON_DAILY_LIMIT`, `MAX_AUDIO_SECONDS` |
+| `overtone-web` | `API_UPSTREAM=http://<bridge-ip>:<api-port>`, `PROXY_SECRET` (el de la API de prod) |
+| `overtone-web-exp` | `API_UPSTREAM=http://<bridge-ip>:<api-exp-port>`, `PROXY_SECRET` (el de la API de staging) |
+| `overtone-api` | `DATABASE_URL=postgres://<rol-prod>:<pw>@<bridge-ip>:<db-port>/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `TRUST_PROXY=2`, `SESSION_SECRET`, `TOKEN_KEY`, `PROXY_SECRET`, `WORKER_TOKEN`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`; con valores por defecto: `ANON_DAILY_LIMIT` (5), `USER_DAILY_LIMIT` (50), `MAX_AUDIO_SECONDS` (600), `MAX_UPLOAD_MB` (40), `JOB_TIMEOUT_S` (900), `SPOOL_DIR` (`/home/container/.overtone/spool`) |
 | `overtone-api-exp` | Las mismas. `DATABASE_URL=…<rol-staging>:<pw>@<bridge-ip>:<db-port>/overtone_experimental`, `SITE_URL` de staging, y **secretos distintos** de los de prod. |
-| `overtone-worker` | `DATABASE_URL` (la de prod), `WORKER_CONCURRENCY=1`, `MAX_AUDIO_SECONDS`, `WORKER_THREADS=4` |
-| `overtone-worker-exp` | `DATABASE_URL` (la de staging), `WORKER_CONCURRENCY=1`, `MAX_AUDIO_SECONDS`, `WORKER_THREADS=2` |
+| `overtone-worker` | `OVERTONE_API=http://<bridge-ip>:<api-port>`, `WORKER_TOKEN` (el de la API de prod), `WORKER_POLL_S=2`, `WORKER_THREADS=4` |
+| `overtone-worker-exp` | `OVERTONE_API=http://<bridge-ip>:<api-exp-port>`, `WORKER_TOKEN` (el de staging), `WORKER_POLL_S=2`, `WORKER_THREADS=2` |
 | `overtone-db` | `PGPORT=<db-port>`, igual al puerto de la allocation. `POSTGRES_PASSWORD`: 24 caracteres o más. `POSTGRES_USER=postgres`, `POSTGRES_DB=overtone` y `PGDATA` vienen por defecto. |
 
 Los secretos se generan con `openssl rand -hex 32`. Viven solo en las variables
@@ -222,6 +241,10 @@ Estos son contratos para quien escribe `site/api` y `worker/main.py`:
   matarlo. La sesión de onnxruntime usa `WORKER_THREADS` hilos (`intra_op_num_threads`).
   Las otras librerías ya los toman de `OMP_NUM_THREADS` y similares, que el script
   exporta.
+  **Hecho así (2026-10-26):** el primer `^C` deja terminar el trabajo en curso y
+  publicar su resultado; un segundo sale en el acto, y la API devuelve ese trabajo a
+  la cola pasado `JOB_TIMEOUT_S` (dos intentos en total). El worker no tiene
+  driver de base: toma trabajos de `/api/internal` con `WORKER_TOKEN`.
 
 ## 5. Cómo es un release
 
@@ -353,6 +376,8 @@ La API confía en esos saltos con `TRUST_PROXY=2` (el proxy TLS y `serve.mjs`), 
 así el rate limit cuenta por visitante y no por `serve.mjs`. Si delante hay dos
 proxies (Cloudflare y además nginx), son `TRUSTED_PROXY_HOPS=2` y `TRUST_PROXY=3`.
 Quien llegue directo al puerto podría falsificarlos, y por eso el firewall importa.
+Para la API eso ya no depende del firewall: sin `PROXY_SECRET` responde 404
+([§2](#el-puerto-de-la-api-se-da-por-público-proxy_secret)).
 
 `serve.mjs` manda en cada página `Content-Security-Policy` (solo el propio origen;
 imágenes también de `https:`, por los avatares y banners de Mides; el script
@@ -386,9 +411,17 @@ Se verificó, el 2026-10-26, en Windows con Git Bash:
 No se verificó:
 
 - Nada corrió en el panel ni en NA-01 (esta sesión no tiene acceso).
-- `deploy/web/serve.mjs` no se ejecutó: esta máquina no tiene Node.
 - Que los eggs importen sin errores en Reviactyl.
 - Que la imagen oficial de postgres arranque con el uid de Wings.
 - Que `<bridge-ip>` sea de verdad la interfaz de Docker de NA-01.
-- Que `site/api` y `worker/main.py` cumplan los contratos de §4: todavía no
-  existen en `master`.
+
+Agregado el 2026-10-26, con el worker y el flujo de análisis (Node 24.22, Windows):
+
+- `serve.mjs` corrió delante de la API con `PROXY_SECRET`: la API directa sin el
+  header, o con otro valor, da 404; con él, 200; por `serve.mjs`, 200.
+  `/api/internal/jobs/claim`, `/api/%69nternal/…` y `/api//internal/…` por
+  `serve.mjs` dan 404 (y `/API/Internal/…` no es `/api`: 405 del estático). Las
+  rutas internas, directas y sin token, dan 401.
+- `pnpm --dir site/api test`: los guardias de `PROXY_SECRET` y de `WORKER_TOKEN`.
+- `worker/main.py` imprime `overtone-worker: ready` y analizó de punta a punta;
+  el `^C` en dos tiempos y `WORKER_THREADS` no se probaron en Linux.

@@ -1,4 +1,6 @@
 import { randomBytes } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 /**
  * The API's configuration, read once from the environment and validated.
@@ -51,7 +53,7 @@ const flag = (name) => ['1', 'true', 'yes'].includes(text(name).toLowerCase());
  * A generated one means every restart signs everyone out, which is fine on a
  * laptop and says so once.
  */
-const secret = (name) => {
+const secret = (name, consequence = 'sessions end on restart') => {
   const value = text(name);
   if (value) {
     if (value.length < 32) problems.push(`${name} must be at least 32 characters.`);
@@ -61,7 +63,7 @@ const secret = (name) => {
     problems.push(`${name} is required in production.`);
     return '';
   }
-  console.warn(`[env] ${name} is not set: using a random one for this process (sessions end on restart).`);
+  console.warn(`[env] ${name} is not set: using a random one for this process (${consequence}).`);
   return randomBytes(32).toString('base64url');
 };
 
@@ -95,8 +97,28 @@ export const env = {
   midesApp: text('MIDES_APP', 'overtone'),
   devLogin: devLogin && !isProduction,
   anonDailyLimit: integer('ANON_DAILY_LIMIT', 5, { min: 0, max: 10_000 }),
+  userDailyLimit: integer('USER_DAILY_LIMIT', 50, { min: 0, max: 100_000 }),
   maxAudioSeconds: integer('MAX_AUDIO_SECONDS', 600, { min: 10, max: 3600 }),
+  // The largest upload: checked against Content-Length before a byte is read,
+  // and again while the body streams to disk.
+  maxUploadMb: integer('MAX_UPLOAD_MB', 40, { min: 1, max: 1024 }),
+  // Where uploads wait for the worker. Files in it are named by analysis id
+  // only: the uploaded file's own name never reaches the filesystem.
+  spoolDir: resolve(text('SPOOL_DIR', join(tmpdir(), 'overtone-spool'))),
+  // The bearer the worker sends to /api/internal. `pnpm dev` generates one
+  // and hands it to the worker it starts.
+  workerToken: secret('WORKER_TOKEN', 'no worker started elsewhere can connect'),
+  // A job running longer than this goes back to the queue (two attempts in
+  // all), and a late answer from the abandoned attempt is refused.
+  jobTimeoutS: integer('JOB_TIMEOUT_S', 900, { min: 30, max: 86_400 }),
+  // The header overtone-web adds to everything it forwards. Without it the
+  // API answers 404 (middlewares/shared-secret.js). Optional in development,
+  // where the browser reaches the API through Vite's proxy.
+  proxySecret: text('PROXY_SECRET'),
 };
+
+if (env.proxySecret && env.proxySecret.length < 32) problems.push('PROXY_SECRET must be at least 32 characters.');
+if (isProduction && !env.proxySecret) problems.push('PROXY_SECRET is required in production: every allocation port is public.');
 
 if (isProduction && !env.databaseUrl) problems.push('DATABASE_URL is required in production.');
 if (isProduction && !env.siteUrl.startsWith('https://')) problems.push('SITE_URL must be https in production.');

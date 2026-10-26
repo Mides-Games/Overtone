@@ -20,6 +20,76 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-26 · W2 + W3.4: the site analyses a song
+
+### Changed
+
+- Phases W2 and W3.4 of [the web platform](16-web-platform.md): on a dev machine
+  `pnpm dev` starts the API, the web and an analysis worker, and a person can open
+  http://localhost:5173, upload an audio file without an account, watch it queue and
+  run, and get the real timing back: BPM, offset, meter, red lines, confidence per
+  section, a refusal when there is no pulse, and `[TimingPoints]` to copy, as
+  `timing.txt` or as CSV. How it fits together is in `docs/site.md`.
+- `worker/`: `main.py`, an HTTP client of the API's `/api/internal` routes (claim,
+  audio, progress, result, fail; one job at a time), and `timing_result.py`, which runs
+  `analyze_audio` with a fresh install's defaults and writes `timing-result v1`. The
+  engine is called directly: no desktop shell import, no saved settings, no engine edit.
+- `site/api`: the upload streams to a spool file named by a 128-bit id, hashed on the
+  way, with the size, format, quota and rate limit checked before it is read; songs,
+  analyses and jobs in Postgres (`FOR UPDATE SKIP LOCKED`) or in memory without a
+  database; a cache by audio SHA-1 and engine hash; retries after `JOB_TIMEOUT_S`
+  with attempt numbers; `timing.txt` and `timing.csv`. `schema.sql` gains the
+  columns idempotently.
+- `site/web`: the Analyze page uploads with progress; `/analyze/:id` follows the queue
+  and shows the result, EN and ES.
+- `deploy/`: `PROXY_SECRET` between overtone-web and the API, which answers 404 to
+  anything without it (the panel's ports are all public), `serve.mjs` never forwards
+  `/api/internal`, and the worker egg's variables are the worker's.
+- `bench/facts.py` counts every `tests/test_*.py`, as `unittest discover` does, and
+  the roadmap line names the worker's tests.
+
+### Hardening
+
+- The audio is deleted on result, failure, last timeout and cache hit (ADR-W4); a
+  file's name never becomes a path; the anonymous quota stores an HMAC of address and
+  UTC day, never the address (ADR-W6); an analysis is readable only by the account or
+  anonymous cookie that made it, with the same 404 as a missing one for anyone else;
+  the worker token and the proxy secret are compared in constant time; a late answer
+  from a timed-out attempt is refused (409).
+- The worker finishes the job in hand on a first ^C and caps Beat This!'s ONNX Runtime
+  threads at `WORKER_THREADS`, by wrapping the engine's loader from the worker.
+
+### Measured
+
+- End to end on the in-memory store, Beat This! vote on: `change-128-142.wav` came back
+  as red lines at 400 ms / 128 BPM and 30 400 ms / 142 BPM in 11.7 s (worker 10.2 s);
+  `_noise.wav` refused (`no_pulse`, no BPM) in 3.0 s; the second upload of the same
+  file a cache hit; the spool empty after each. Through the browser form, a synthesized
+  128-then-142 click track: 128 and 142.
+- `tests/test_worker.py`: 9 tests in about 3 s (the fixture cut to 24 s, vote off).
+  The suite: 784 tests OK in 788 s, 8 skipped (523 engine + 252 web shell + 9 worker;
+  run in a fresh worktree with no `overtone-cli` built, whose tests skip themselves;
+  W1's run had 1 skip). `pnpm --dir site/api
+  test` 12 pass; `pnpm --dir site/web build` 363 kB JS, 115 kB gzip.
+- `facts.py` ok; `fixtures.py` 38 = 38; `sbom.py --check` 40 wheels; `notices.py
+  --check` 91 components, nothing missing; `egg.py --check` 4 eggs. `python/overtone.py`
+  was not touched, so the engine gates were not re-run and nothing was re-baselined.
+- Not measured: the PostgreSQL queue against a real server (no Postgres on this
+  machine; the end-to-end runs used the in-memory store), the worker on Linux, and the
+  cost per minute of audio (W2.4).
+
+### Rejected / tried and dropped
+
+- **Buffering the upload with `express.raw`**, as first planned: it would hold up to
+  `MAX_UPLOAD_MB` in memory per concurrent upload. The body streams to disk with the
+  same limit instead, the contract (a raw `application/octet-stream` body) unchanged.
+- **A database driver in the worker**: it would add a Python dependency (lock, SBOM and
+  notices gates) and a second owner of the queue. The API claims with `SKIP LOCKED`
+  and the worker asks it over HTTP.
+- **Reading the defaults from `overtone_web.Api`**: that shell is leaving the
+  repository, and a server must never pick up a developer's saved settings; the
+  defaults are written out in the worker.
+
 ## Unreleased — 2026-10-26 · W1: the unfinished desktop extras parked
 
 ### Changed

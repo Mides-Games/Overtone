@@ -1,0 +1,82 @@
+{
+    "_comment": "Written by deploy/eggs/egg.py. Do not edit: edit deploy/eggs/ and run it again.",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-10-26T00:00:00+00:00",
+    "name": "Overtone db",
+    "author": "dev@midesprojects.com",
+    "description": "PostgreSQL for Overtone, from the official image, with its data in /home/container/pgdata so the panel's backups and disk limit cover it. One server for both environments: a database per environment.",
+    "features": null,
+    "docker_images": {
+        "PostgreSQL 18": "docker.io/library/postgres:18"
+    },
+    "file_denylist": [],
+    "startup": "postgres",
+    "config": {
+        "files": "{}",
+        "startup": "{\"done\": \"database system is ready to accept connections\"}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/bash\n# Install script of the overtone-db egg.\n#\n# Nothing to download: the official postgres image initialises PGDATA on its\n# first start, as the panel's user, with POSTGRES_USER, POSTGRES_PASSWORD and\n# POSTGRES_DB. This only checks that a reinstall will not hide an existing\n# cluster behind a new password: the image reads those variables when PGDATA\n# is empty and never again.\nset -euo pipefail\n\nmkdir -p /mnt/server\nif [ -f /mnt/server/pgdata/PG_VERSION ]; then\n    echo \"[overtone-db] /home/container/pgdata already holds a PostgreSQL $(cat /mnt/server/pgdata/PG_VERSION) cluster; kept as it is.\"\n    echo \"[overtone-db] POSTGRES_PASSWORD and POSTGRES_DB are not applied to it again.\"\nelse\n    echo \"[overtone-db] empty; the first start creates the cluster in /home/container/pgdata.\"\nfi\n",
+            "container": "ghcr.io/pterodactyl/installers:debian",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Port",
+            "description": "The server's allocation port. PostgreSQL listens where PGPORT says, and Wings maps the allocation to the same port inside the container.",
+            "env_variable": "PGPORT",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|integer|between:1024,65535",
+            "field_type": "text"
+        },
+        {
+            "name": "Superuser",
+            "description": "Created on the first start, with the password below.",
+            "env_variable": "POSTGRES_USER",
+            "default_value": "overtone",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|alpha_dash",
+            "field_type": "text"
+        },
+        {
+            "name": "Superuser password",
+            "description": "At least 24 characters. Read on the first start only; change it later with ALTER ROLE.",
+            "env_variable": "POSTGRES_PASSWORD",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "required|string|min:24",
+            "field_type": "text"
+        },
+        {
+            "name": "First database",
+            "description": "Created on the first start: production's.",
+            "env_variable": "POSTGRES_DB",
+            "default_value": "overtone",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|alpha_dash",
+            "field_type": "text"
+        },
+        {
+            "name": "Data directory",
+            "description": "Under /home/container, or the data is outside the server's disk and its backups.",
+            "env_variable": "PGDATA",
+            "default_value": "/home/container/pgdata",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|in:/home/container/pgdata",
+            "field_type": "text"
+        }
+    ]
+}

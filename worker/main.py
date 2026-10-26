@@ -20,6 +20,8 @@ Configuration (environment):
     OVERTONE_API   the API's origin, default http://127.0.0.1:3001
     WORKER_TOKEN   the bearer the API's internal routes demand (required)
     WORKER_POLL_S  seconds between claims while the queue is empty, default 2
+    WORKER_THREADS Beat This!'s ONNX Runtime threads (deploy/eggs/start.sh
+                   sets the math libraries' own from it), default: all cores
 
 The API, not the proxy in front of it, is what the worker talks to: the
 internal routes are never forwarded by overtone-web (deploy/web/serve.mjs).
@@ -31,8 +33,10 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import signal
 import sys
 import tempfile
+import threading
 import time
 import traceback
 import urllib.error
@@ -144,6 +148,26 @@ def main() -> int:
 
     if os.environ.get("WORKER_EXIT_WITH_STDIN") == "1":
         exit_with_stdin()
+    threads = os.environ.get("WORKER_THREADS", "").strip()
+    if threads.isdigit() and int(threads) > 0:
+        tr.limit_onnx_threads(int(threads))
+
+    # The panel's stop is ^C, and Wings waits up to ten minutes before it
+    # kills: the first one lets the job in hand finish and post its result,
+    # and no new job is claimed; a second one leaves at once (the API hands
+    # that job out again after JOB_TIMEOUT_S).
+    stop = threading.Event()
+
+    def on_stop(signum, _frame):
+        if stop.is_set():
+            raise KeyboardInterrupt
+        stop.set()
+        print("[worker] stopping: no new jobs; the one in hand finishes first (^C again to leave now)",
+              flush=True)
+
+    signal.signal(signal.SIGINT, on_stop)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, on_stop)
 
     api = Api(base, token)
     print("[worker] loading the engine…", flush=True)
@@ -156,7 +180,7 @@ def main() -> int:
           flush=True)
 
     unreachable = False
-    while True:
+    while not stop.is_set():
         try:
             job = api.claim(hash_)
             if unreachable:
@@ -167,16 +191,16 @@ def main() -> int:
                 print("[worker] the API refused the token (WORKER_TOKEN differs).", file=sys.stderr)
                 return 3
             print(f"[worker] claim failed: HTTP {exc.code}", file=sys.stderr)
-            time.sleep(poll)
+            stop.wait(poll)
             continue
         except (urllib.error.URLError, OSError):
             if not unreachable:
                 print(f"[worker] {base} does not answer yet; retrying", file=sys.stderr, flush=True)
                 unreachable = True
-            time.sleep(poll)
+            stop.wait(poll)
             continue
         if not job:
-            time.sleep(poll)
+            stop.wait(poll)
             continue
         started = time.perf_counter()
         print(f"[worker] job {job['id'][:8]}… attempt {job['attempt']}", flush=True)
@@ -191,6 +215,8 @@ def main() -> int:
                 pass
             state = "failed"
         print(f"[worker] job {job['id'][:8]}… {state} in {time.perf_counter() - started:.1f} s", flush=True)
+    print("[worker] stopped", flush=True)
+    return 0
 
 
 if __name__ == "__main__":

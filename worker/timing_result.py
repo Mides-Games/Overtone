@@ -62,6 +62,35 @@ def default_params() -> dict:
             "prefer_map_bpm": True, "refine_beats": True, "force_subdivision": 0.0}
 
 
+def limit_onnx_threads(threads: int) -> None:
+    """Make every Beat This! session the engine opens use ``threads`` intra-op
+    threads. ONNX Runtime sizes its pool from the machine's cores, not from a
+    container's CPU limit, so on a shared node an unlimited session spawns
+    dozens of threads fighting over four cores of quota (docs/deploy.md,
+    WORKER_THREADS). Call it before the first session loads; the engine's own
+    loader is wrapped, not edited, so the desktop path is untouched."""
+    original = ta._load_beat_this
+
+    def load():
+        try:
+            import onnxruntime
+        except ImportError:
+            return original()
+        path = ta.ROOT / "assets" / "models" / ta.BEAT_THIS_MODEL
+        if not path.is_file():
+            return None
+        options = onnxruntime.SessionOptions()
+        options.log_severity_level = 3
+        options.intra_op_num_threads = int(threads)
+        options.inter_op_num_threads = 1
+        try:
+            return onnxruntime.InferenceSession(str(path), options, providers=["CPUExecutionProvider"])
+        except Exception:  # noqa: BLE001 -- as the engine's loader: no session, no vote
+            return None
+
+    ta._load_beat_this = load
+
+
 def beat_vote_available() -> bool:
     """Whether the Beat This! vote will run: its runtime and model are there.
     Loads the model the first time (a few seconds), as the first analysis

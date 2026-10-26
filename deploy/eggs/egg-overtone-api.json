@@ -1,0 +1,192 @@
+{
+    "_comment": "Written by deploy/eggs/egg.py. Do not edit: edit deploy/eggs/ and run it again.",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-10-26T00:00:00+00:00",
+    "name": "Overtone api",
+    "author": "dev@midesprojects.com",
+    "description": "The Overtone API (Express 5): runs site/api's migrations, then site/api's server, on the server's allocation. Not published on its own: overtone-web forwards /api to it.",
+    "features": null,
+    "docker_images": {
+        "Node.js 24": "ghcr.io/parkervcp/yolks:nodejs_24"
+    },
+    "file_denylist": [],
+    "startup": "bash deploy/eggs/start.sh api",
+    "config": {
+        "files": "{}",
+        "startup": "{\"done\": [\"overtone-api: listening on\", \"listening on port\"]}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/bash\n# Install script of the overtone-web, overtone-api and overtone-worker eggs.\n#\n# Runs once, as root, in the panel's throwaway installer container, with the\n# server's disk at /mnt/server. It only puts the repository there: the\n# dependencies (pnpm, pip) are installed by deploy/eggs/start.sh on the first\n# start, inside the runtime image whose Node or Python they are built for.\n#\n# egg.py replaces api with web, api or worker when it writes the egg.\n#\n# Variables the eggs declare:\n#   GIT_ADDRESS   the repository, https\n#   BRANCH        master (production) or experimental (staging)\n#   GIT_TOKEN     read-only token while the repository is private; empty when public\n#   USER_UPLOAD   1 = do not clone: the files are uploaded by hand\n#\n# A reinstall over an existing clone switches it to BRANCH and keeps any file\n# git does not track; it refuses, and says so, when a tracked file was edited\n# on the server.\nset -euo pipefail\n\nROLE=api\nsay() { echo \"[overtone-$ROLE] $*\"; }\n\napt-get update -y >/dev/null\napt-get install -y --no-install-recommends git git-lfs ca-certificates >/dev/null\n\nmkdir -p /mnt/server\ncd /mnt/server\n\nif [ \"${USER_UPLOAD:-0}\" = 1 ]; then\n    say \"USER_UPLOAD=1: nothing cloned. Upload the repository to the server's root.\"\n    exit 0\nfi\n\ncase \"${BRANCH:-}\" in\n    master | experimental) ;;\n    *) say \"ERROR: BRANCH is '${BRANCH:-}', not master or experimental.\"; exit 1 ;;\nesac\nif [ -z \"${GIT_ADDRESS:-}\" ]; then\n    say \"ERROR: GIT_ADDRESS is empty.\"\n    exit 1\nfi\n\n# The token travels in a header for each command and is never written to\n# .git/config: anyone who opens the server's file manager would read it there.\n# The address is printed; the token never is.\nAUTH=()\nif [ -n \"${GIT_TOKEN:-}\" ]; then\n    AUTH=(-c \"http.extraHeader=Authorization: Basic $(printf 'x-access-token:%s' \"$GIT_TOKEN\" | base64 -w0)\")\nfi\n# The files belong to the panel's user, and this script runs as root.\ngit config --global --add safe.directory /mnt/server\n# The model is fetched below, by name, and only for the worker.\nexport GIT_LFS_SKIP_SMUDGE=1\n\nif [ -d .git ]; then\n    say \"reinstall: switching the existing clone to $BRANCH\"\n    git remote set-url origin \"$GIT_ADDRESS\"\n    git \"${AUTH[@]}\" fetch --quiet origin \"$BRANCH\"\n    if ! git diff --quiet HEAD --; then\n        say \"ERROR: tracked files were edited on the server:\"\n        git diff --stat HEAD -- | tail -n 20\n        say \"Delete them in the file manager, or set USER_UPLOAD=1 to keep them, then reinstall.\"\n        exit 1\n    fi\n    git checkout --quiet -B \"$BRANCH\" \"origin/$BRANCH\"\nelif [ -n \"$(ls -A)\" ]; then\n    say \"ERROR: /home/container has files but no clone. Empty it, or set USER_UPLOAD=1.\"\n    exit 1\nelse\n    say \"cloning $GIT_ADDRESS ($BRANCH)\"\n    git \"${AUTH[@]}\" clone --quiet --branch \"$BRANCH\" \"$GIT_ADDRESS\" .\nfi\ngit branch --quiet --set-upstream-to \"origin/$BRANCH\" \"$BRANCH\"\n# A mode change (chmod +x in the file manager) is not a change worth keeping,\n# and counting it as one blocks every fast-forward that touches that file.\ngit config core.fileMode false\n\nif [ \"$ROLE\" = worker ]; then\n    # The Beat This! model is a Git LFS file: without this, a 130-byte pointer.\n    # git-lfs is one static binary; start.sh finds it in ~/.local/bin when an\n    # update brings a new model, since the runtime image has no git-lfs.\n    mkdir -p .local/bin\n    cp \"$(command -v git-lfs)\" .local/bin/git-lfs\n    git lfs install --local >/dev/null\n    git \"${AUTH[@]}\" lfs pull\n    for m in assets/models/*.onnx; do\n        if head -c 40 \"$m\" | grep -q '^version https://git-lfs'; then\n            say \"ERROR: $m is still an LFS pointer after git lfs pull.\"\n            exit 1\n        fi\n    done\nfi\n\nsay \"installed $(git rev-parse --short HEAD) on $BRANCH; the first start installs the dependencies\"\n",
+            "container": "ghcr.io/pterodactyl/installers:debian",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Repository",
+            "description": "The repository cloned at install and fast-forwarded at start, over https.",
+            "env_variable": "GIT_ADDRESS",
+            "default_value": "https://github.com/Mides-Projects/Overtone.git",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|starts_with:https://",
+            "field_type": "text"
+        },
+        {
+            "name": "Branch",
+            "description": "master for production, experimental for staging. Changing it takes a reinstall, which switches the clone; a start never changes branch on its own.",
+            "env_variable": "BRANCH",
+            "default_value": "master",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|string|in:master,experimental",
+            "field_type": "text"
+        },
+        {
+            "name": "Auto update",
+            "description": "1 = fast-forward to origin/BRANCH on every start, so a restart is the release. Never a merge or a reset: a checkout that cannot fast-forward starts as it is, and says so.",
+            "env_variable": "AUTO_UPDATE",
+            "default_value": "1",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|boolean",
+            "field_type": "text"
+        },
+        {
+            "name": "User upload",
+            "description": "1 = the install does not clone and a start does not update: the files are uploaded by hand.",
+            "env_variable": "USER_UPLOAD",
+            "default_value": "0",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|boolean",
+            "field_type": "text"
+        },
+        {
+            "name": "Deploy token",
+            "description": "Read-only token while the repository is private (a fine-grained token with Contents: read). Sent as a header, never written to .git/config or printed. Empty once it is public.",
+            "env_variable": "GIT_TOKEN",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Rollback commit",
+            "description": "A commit this server had on BRANCH (see .overtone/deployed.log). When set, the server starts there and does not update; clear it to return to BRANCH.",
+            "env_variable": "ROLLBACK_COMMIT",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string|regex:/^[0-9a-f]{7,40}$/",
+            "field_type": "text"
+        },
+        {
+            "name": "Database URL",
+            "description": "postgres://user:password@host:port/database",
+            "env_variable": "DATABASE_URL",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Session secret",
+            "description": "Signs session cookies.",
+            "env_variable": "SESSION_SECRET",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Token key",
+            "description": "Encrypts stored tokens.",
+            "env_variable": "TOKEN_KEY",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Mides auth URL",
+            "description": "The Mides SSO.",
+            "env_variable": "MIDES_AUTH_URL",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Mides web URL",
+            "description": "Mides-Dev-Web, for profiles and the wall.",
+            "env_variable": "MIDES_WEB_URL",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Mides app",
+            "description": "This app's name in the Mides SSO.",
+            "env_variable": "MIDES_APP",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Site URL",
+            "description": "The public origin of this environment, https, no trailing slash.",
+            "env_variable": "SITE_URL",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Trust proxy",
+            "description": "Proxies in front of the API: 2 = the TLS proxy and overtone-web. Decides the client address the rate limit counts; too low puts every visitor in one bucket. overtone-web's TRUSTED_PROXY_HOPS + 1.",
+            "env_variable": "TRUST_PROXY",
+            "default_value": "2",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|integer|between:0,10",
+            "field_type": "text"
+        },
+        {
+            "name": "Anonymous daily limit",
+            "description": "Analyses per day without an account.",
+            "env_variable": "ANON_DAILY_LIMIT",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        },
+        {
+            "name": "Max audio seconds",
+            "description": "Longest audio accepted.",
+            "env_variable": "MAX_AUDIO_SECONDS",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        }
+    ]
+}

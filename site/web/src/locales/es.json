@@ -1,0 +1,133 @@
+{
+  "common": {
+    "skipToContent": "Saltar al contenido",
+    "loading": "Cargando…",
+    "byMides": "Una herramienta de Mides Projects"
+  },
+  "nav": {
+    "home": "Inicio",
+    "analyze": "Analizar",
+    "profile": "Perfil",
+    "mides": "Mides",
+    "signIn": "Entrar",
+    "signOut": "Salir",
+    "account": "Menú de la cuenta",
+    "changeTheme": "Cambiar tema",
+    "changeLanguage": "Switch to English",
+    "otherLanguage": "EN",
+    "openMenu": "Abrir menú",
+    "closeMenu": "Cerrar menú"
+  },
+  "ticker": [
+    "Overtone · timing automático para mapas de osu!",
+    "Cada timing muestra su confianza: revisalo antes de rankear",
+    "Código abierto · el engine también corre sin red en tu propia máquina",
+    "Entrá con tu cuenta de Mides · Discord o Google"
+  ],
+  "home": {
+    "eyebrow": "timing de osu!, medido",
+    "title": "Timeá una canción en minutos, no en horas",
+    "subtitle": "Subí el audio y Overtone encuentra el BPM, el offset y cada red line, y te dice qué tan seguro está de cada sección.",
+    "cta": "Timear una canción",
+    "secondary": "Entrá para guardar tu historial",
+    "honest": "Overtone no promete un timing perfecto. En el benchmark sintético es exacto; en mapas rankeados reales es un primer borrador sólido. La confianza está a la vista para que sepas dónde mirar.",
+    "features": {
+      "upload": {
+        "title": "Subís, salen red lines",
+        "body": "BPM, offset, compases y cambios de compás, listos para pegar en [TimingPoints]."
+      },
+      "confidence": {
+        "title": "Confianza por sección",
+        "body": "Cada sección dice cuánta evidencia la respalda, en vez de un número que parece preciso."
+      },
+      "account": {
+        "title": "Con una cuenta de Mides",
+        "body": "Guardá tus análisis, publicá timings y mirá quién más timeó la misma canción."
+      }
+    },
+    "checkByEar": "Revisar de oído"
+  },
+  "strip": {
+    "title": "Análisis",
+    "example": "Ejemplo",
+    "caption": "Un análisis de ejemplo: cuatro compases de 4/4 a 174 BPM con red lines en los compases 1 y 3.",
+    "bpm": "BPM",
+    "offset": "Offset",
+    "meter": "Compás",
+    "confidence": "Confianza",
+    "high": "Confianza alta",
+    "medium": "Media",
+    "check": "Revisar de oído"
+  },
+  "analyze": {
+    "title": "Analizar una canción",
+    "subtitle": "El audio se analiza y después se borra. Solo quedan su huella y el resultado.",
+    "audioHint": "MP3, OGG, WAV o FLAC.",
+    "osuLabel": "Archivo .osu (opcional)",
+    "osuHint": "Agrega el timing a tu propio mapa. Lo que no pediste cambiar sale byte a byte.",
+    "submit": "Analizar",
+    "sending": "Subiendo…",
+    "pickAudio": "Elegí un archivo de audio primero.",
+    "tooLong": "Esta canción dura {{minutes}} minutos; el límite es {{limit}}.",
+    "notReady": "El análisis todavía no está abierto. El sitio se está construyendo: lo que sigue es la cola y el worker de análisis. El servidor no leyó ni guardó tu archivo.",
+    "failed": "La subida falló: {{message}}",
+    "drop": "Soltá el audio acá o elegí un archivo",
+    "notReadyTitle": "Todavía no está abierto",
+    "limitsTitle": "Sin cuenta",
+    "perDay": "Análisis por día",
+    "maxLength": "Canción más larga",
+    "limitsNote": "Una cuenta de Mides sube los dos límites y guarda tu historial.",
+    "outputsTitle": "Lo que vas a descargar",
+    "outputs": {
+      "timingPoints": "Bloque [TimingPoints]",
+      "osu": ".osu con el timing agregado",
+      "csv": "CSV de red lines",
+      "click": "Click track"
+    },
+    "soon": "pronto",
+    "chooseOsu": "Elegir .osu",
+    "noOsu": "Ningún mapa elegido"
+  },
+  "login": {
+    "title": "Entrar",
+    "subtitle": "Overtone usa tu cuenta de Mides. Sin contraseña nueva, nada que recordar.",
+    "discord": "Seguir con Discord",
+    "google": "Seguir con Google",
+    "devNote": "El login de desarrollo está activo: estos botones entran con una cuenta de prueba, sin Mides.",
+    "notConfigured": "El login no está configurado en este servidor.",
+    "failed": "No se pudo empezar el login: {{message}}",
+    "privacy": "Overtone solo guarda tu perfil público de Mides: nombre, foto y banner. Nunca tu email.",
+    "devTitle": "Login de desarrollo"
+  },
+  "callback": {
+    "working": "Entrando…",
+    "stateMissing": "Este login no empezó en este navegador, o tardó demasiado. Empezá de nuevo.",
+    "failed": "El login no funcionó: {{message}}",
+    "back": "Volver a entrar"
+  },
+  "profile": {
+    "signInFirst": "Entrá para ver tu perfil.",
+    "timingsSoon": "Tus timings, calificaciones y usos van a aparecer acá cuando se abra la publicación.",
+    "onMides": "Abrir en midesprojects.com",
+    "since": "En Overtone desde el {{date}}",
+    "stats": {
+      "timings": "Timings",
+      "uses": "Usos",
+      "rating": "Calificación"
+    },
+    "timings": "Timings publicados"
+  },
+  "footer": {
+    "tagline": "Timing automático para osu!, medido y honesto sobre su confianza.",
+    "site": "Overtone",
+    "ecosystem": "Mides Projects",
+    "project": "Proyecto",
+    "source": "Código fuente",
+    "docs": "Cómo funciona",
+    "rights": "© {{year}} Mides Projects"
+  },
+  "notFound": {
+    "title": "Acá no hay nada",
+    "back": "Volver al inicio"
+  }
+}

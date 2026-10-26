@@ -1,0 +1,49 @@
+{
+ "_example": "Shape only: the real file is bench/corpus_b.local.json, gitignored, measured from a private osu! library (bench/local_data.py).",
+ "_comment": "Corpus B (docs/10-precision-plan.md): 20 ranked or loved osu! maps whose red lines were placed by hand, scored by bench/corpus_b.py. Only names and hashes are here; the audio and the maps stay in the user's own Songs folder and are never committed.",
+ "version": 1,
+ "chosen": "2026-09-26",
+ "songs_folder": "C:\\osu!\\Songs",
+ "selection": [
+  "Ranked, approved or loved in the local osu!.db on 2026-09-26 (read from a copy), and BeatmapSetID > 0 in the .osu.",
+  "No online offset and no local offset set on the difficulty in osu!.db.",
+  "Every difficulty of the set that plays this audio has the same red lines (offset to 1 ms, beat length to 0.001 ms, meter).",
+  "The truth difficulty is the one with the most hit objects; MP3 or OGG audio.",
+  "The precision plan's six categories in its counts (4, 4, 4, 3, 3, 2), spread over tempo (red lines from 47 to 257 BPM), length (90 s to 8 minutes of audio) and format (18 MP3, 2 OGG)."
+ ],
+ "categories": {
+  "edm": "Constant-tempo EDM: one red line; the plan expects v3 to be exact here.",
+  "rock-pop": "Constant-tempo rock/pop: one red line on a band or pop production; v3 usually exact, sometimes the octave is wrong.",
+  "live-drift": "Live-band with drift: 200+ hand-placed red lines following a band that does not keep one tempo (Vampires-style).",
+  "octave-swap": "Verse/chorus octave swap: the map turns between a BPM and its double at section changes (the Sunday Cruise class).",
+  "rubato-intro": "Rubato intro then steady: several red lines of changing tempo before a steady body; the plan expects v3 to fall back.",
+  "signature": "Signature changes: the bar changes length (6/4 to 3/4, 7/4 to 4/4) while the beat stays."
+ },
+ "tracks": [
+  {
+   "id": "example-track",
+   "category": "edm",
+   "folder": "123456 Artist - Title",
+   "osu": "Artist - Title (Mapper) [Difficulty].osu",
+   "audio": "audio.mp3",
+   "sha1_osu": "0000000000000000000000000000000000000000",
+   "sha1_audio": "0000000000000000000000000000000000000000",
+   "set_id": 123456,
+   "beatmap_id": 654321,
+   "artist": "Artist",
+   "title": "Title",
+   "creator": "Mapper",
+   "difficulty": "Difficulty",
+   "status": "loved",
+   "red_lines": 1,
+   "bpm_range": [
+    222.22
+   ],
+   "meters": [
+    4
+   ],
+   "audio_s": 276.1,
+   "why": "Why this track was chosen: what it tests, in one or two sentences."
+  }
+ ]
+}

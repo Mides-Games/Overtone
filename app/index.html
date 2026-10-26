@@ -1,0 +1,1492 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overtone</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ============================================================== splash -->
+<!-- Over the shell until boot() has the config, the strings and the first
+     view: what the window showed before was an untranslated skeleton. The
+     bars are the harmonic series (1, 1/2, 1/3, 1/4, 1/5) pulsing on a 500 ms
+     beat, which is 120 BPM: the app is a timing tool and says so while it
+     opens. Removed from the page once hidden, so it can never eat a click. -->
+<div id="splash" class="splash" role="status" aria-live="polite">
+  <div class="splash-card">
+    <div class="splash-bars" aria-hidden="true">
+      <i style="--h: 100%; --n: 0"></i>
+      <i style="--h: 62%; --n: 1"></i>
+      <i style="--h: 44%; --n: 2"></i>
+      <i style="--h: 32%; --n: 3"></i>
+      <i style="--h: 24%; --n: 4"></i>
+    </div>
+    <div class="splash-name">Overtone</div>
+    <div class="splash-sub" id="splashSub" data-i18n="splash_loading">Starting up…</div>
+    <div class="splash-line" aria-hidden="true"><span></span></div>
+  </div>
+</div>
+
+<div class="app">
+
+  <!-- ============================================================ sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <img id="logo" alt="">
+      <div class="brand-text">
+        <div class="brand-name">Overtone</div>
+        <div class="brand-sub" data-i18n="tagline">Timing for osu! maps</div>
+      </div>
+    </div>
+    <nav class="nav" id="nav" data-i18n-aria="nav_sections" aria-label="Sections">
+      <button type="button" class="nav-item active" data-view="library" data-i18n-title="nav_library" title="Library" aria-current="page">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>
+        <span class="nav-label" data-i18n="nav_library">Library</span>
+      </button>
+      <button type="button" class="nav-item" data-view="timing" data-i18n-title="nav_timing" title="Timing">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l2-6 3 12 3-9 2 5 2-2h5"/></svg>
+        <span class="nav-label" data-i18n="nav_timing">Timing</span>
+      </button>
+      <button type="button" class="nav-item" data-view="structure" data-i18n-title="nav_structure" title="Structure">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="5" height="12" rx="1.5"/><rect x="9.5" y="4" width="5" height="16" rx="1.5"/><rect x="16.5" y="8" width="5" height="8" rx="1.5"/></svg>
+        <span class="nav-label" data-i18n="nav_structure">Structure</span>
+      </button>
+      <button type="button" class="nav-item" data-view="hitsounds" data-i18n-title="nav_hitsounds" title="Hitsounds">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>
+        <span class="nav-label" data-i18n="nav_hitsounds">Hitsounds</span>
+      </button>
+      <button type="button" class="nav-item" data-view="mapcheck" data-i18n-title="nav_mapcheck" title="Map check">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8.5 12 2.5 2.5 5-5"/><path d="M20 12.5V18a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3h8"/></svg>
+        <span class="nav-label" data-i18n="nav_mapcheck">Map check</span>
+      </button>
+      <button type="button" class="nav-item" data-view="mapset" data-i18n-title="nav_mapset" title="Mapset">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 4.5-9 4.5-9-4.5z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></svg>
+        <span class="nav-label" data-i18n="nav_mapset">Mapset</span>
+      </button>
+      <button type="button" class="nav-item" data-view="audio" data-i18n-title="nav_audio" title="Audio">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h2.5M8 12h2.5M13 12h2.5M18 12h3"/><path d="M5.5 8v8M10.5 5v14M15.5 9v6M20.5 10v4"/></svg>
+        <span class="nav-label" data-i18n="nav_audio">Audio</span>
+      </button>
+      <button type="button" class="nav-item" data-view="compile" data-i18n-title="nav_compile" title="Compile">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h7"/><path d="M4 12h12"/><path d="M4 17h7"/><path d="M18 5v6"/><path d="M15 8h6"/></svg>
+        <span class="nav-label" data-i18n="nav_compile">Compile</span>
+      </button>
+      <button type="button" class="nav-item" data-view="train" data-i18n-title="nav_train" title="Train">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z"/></svg>
+        <span class="nav-label" data-i18n="nav_train">Train</span>
+      </button>
+      <button type="button" class="nav-item" data-view="report" data-i18n-title="nav_report" title="Report">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><path d="M16 5h1a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h1"/><path d="M9 11h6M9 15h4"/></svg>
+        <span class="nav-label" data-i18n="nav_report">Report</span>
+      </button>
+      <button type="button" class="nav-item" data-view="export" data-i18n-title="nav_export" title="Export">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>
+        <span class="nav-label" data-i18n="nav_export">Export</span>
+      </button>
+      <button type="button" class="nav-item" data-view="history" data-i18n-title="nav_history" title="History">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 3"/></svg>
+        <span class="nav-label" data-i18n="nav_history">History</span>
+      </button>
+      <div class="nav-sep" role="presentation"></div>
+      <button type="button" class="nav-item" data-view="settings" data-i18n-title="nav_settings" title="Settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+        <span class="nav-label" data-i18n="nav_settings">Settings</span>
+      </button>
+    </nav>
+    <div class="sidebar-foot">
+      <button type="button" class="theme-btn" id="themeBtn" data-i18n-title="theme_to_light" title="Switch to the light theme">
+        <svg class="theme-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.6M12 19.4V22M22 12h-2.6M4.6 12H2M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8M19.1 19.1l-1.8-1.8M6.7 6.7 4.9 4.9"/></svg>
+        <svg class="theme-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7Z"/></svg>
+        <span class="theme-label" id="themeLabel" data-i18n="theme_to_light">Light theme</span>
+      </button>
+      <div class="segmented stretch" id="langSwitch">
+        <button data-lang="en">EN</button><button data-lang="es">ES</button>
+      </div>
+      <div class="foot-note">v<span id="version">3.0</span> · <span data-i18n="offline">offline, nothing leaves this PC</span></div>
+    </div>
+  </aside>
+
+  <!-- =============================================================== main -->
+  <main class="main">
+    <header class="topbar">
+      <div class="song" id="song">
+        <div class="song-art">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        </div>
+        <div class="song-text">
+          <div class="song-title" id="songTitle" data-i18n="no_song">No song open</div>
+          <div class="song-meta" id="songMeta" data-i18n="no_song_hint">Open an audio file to start</div>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn" id="openBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        <span data-i18n="open">Open audio</span>
+      </button>
+      <button class="btn icon" id="settingsBtn" data-i18n-title="detection" title="Detection settings" aria-haspopup="dialog" aria-controls="drawer">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+      </button>
+      <button class="btn primary" id="analyzeBtn" disabled>
+        <svg id="analyzeIcon" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 3.8v16.4a1 1 0 0 0 1.5.86l13.2-8.2a1 1 0 0 0 0-1.72L7.5 2.94A1 1 0 0 0 6 3.8z"/></svg>
+        <span class="spinner" id="analyzeSpin" hidden></span>
+        <span id="analyzeText" data-i18n="analyze">Analyze</span>
+      </button>
+    </header>
+
+    <div class="progress" id="progress" hidden>
+      <div class="track"></div>
+      <div class="stages" id="progressStages"></div>
+      <div class="text" id="progressText"></div>
+      <span class="clock num" id="progressClock"></span>
+      <button class="btn small" id="stopBtn" data-i18n="stop">Stop</button>
+    </div>
+
+    <div class="content" id="content">
+      <!-- library: the home view, open audio or a beatmap folder -->
+      <section class="view empty" id="viewLibrary" data-view="library">
+        <div class="drop" id="drop">
+          <div class="halo">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l2-6 3 12 3-9 2 5 2-2h5"/></svg>
+          </div>
+          <h2 data-i18n="empty_title">Time a song in one click</h2>
+          <p data-i18n="empty_body">Open an audio file and Overtone finds every BPM change, offset and bar line.</p>
+          <div class="drop-actions">
+            <button class="btn primary" id="emptyOpen"><span data-i18n="open">Open audio</span></button>
+            <button class="btn" id="importBtn"><span data-i18n="import_folder">Import beatmap folder…</span></button>
+            <button class="btn" id="emptyAnalyze" hidden><span data-i18n="analyze_last">Analyze the last song</span></button>
+          </div>
+          <div class="formats">WAV · FLAC · OGG · MP3 · M4A · OPUS · AIFF</div>
+          <div class="kbd-hints"><span><kbd>Ctrl</kbd><kbd>O</kbd> <span data-i18n="k_open">open</span></span><span><kbd>Enter</kbd> <span data-i18n="k_analyze">analyze</span></span></div>
+        </div>
+        <div class="recents" id="recents" hidden>
+          <div class="recents-title" data-i18n="recent">Recent</div>
+          <div class="stack tight" id="recentList"></div>
+        </div>
+        <!-- the osu! Songs folder, from the library index (overtone_library.py) -->
+        <div class="songs" id="songs">
+          <div class="songs-head">
+            <div class="recents-title" data-i18n="songs_title">osu! Songs</div>
+            <span class="songs-info" id="songsInfo"></span>
+            <button class="btn small" id="songsPick"><span data-i18n="songs_pick">Folder…</span></button>
+            <button class="btn small" id="songsScan"><span id="songsScanText">Scan</span></button>
+          </div>
+          <input class="input" id="songsQuery" type="search" autocomplete="off" spellcheck="false" hidden>
+          <div class="stack songs-list" id="songsList"></div>
+        </div>
+        <!-- the library health check: maps whose red lines disagree with their audio -->
+        <div class="songs health" id="health">
+          <div class="songs-head">
+            <div class="recents-title" data-i18n="health_title">Timing health</div>
+            <span class="songs-info" id="healthInfo"></span>
+            <button class="btn small" id="healthStop" hidden><span data-i18n="health_stop">Stop</span></button>
+            <button class="btn small" id="healthRun"><span data-i18n="health_run">Check timing</span></button>
+          </div>
+          <div class="stack health-list" id="healthList"></div>
+        </div>
+      </section>
+
+      <!-- shown instead of a view that needs the analysed song -->
+      <section class="view empty" id="needSong" hidden>
+        <div class="need-song">
+          <div class="halo">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l2-6 3 12 3-9 2 5 2-2h5"/></svg>
+          </div>
+          <h2 id="needTitle" data-i18n="need_title">Nothing analyzed yet</h2>
+          <p id="needBody"></p>
+          <div class="drop-actions">
+            <button class="btn primary" id="needAnalyze" hidden><span id="needAnalyzeText"></span></button>
+            <button class="btn" id="needOpen"><span data-i18n="open">Open audio</span></button>
+            <button class="btn" id="needLibrary"><span data-i18n="need_library">Go to Library</span></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- timing: stats, verdict, tempo map, points and editor -->
+      <section class="view" id="viewTiming" data-view="timing" data-needs-result hidden>
+        <div class="stats">
+          <div class="stat">
+            <div class="label" data-i18n="stat_global">Global BPM</div>
+            <div class="value num" id="statGlobal">—</div>
+          </div>
+          <div class="stat">
+            <div class="label" data-i18n="stat_points">Timing points</div>
+            <div class="value num" id="statPoints">—</div>
+          </div>
+          <div class="stat">
+            <div class="label" data-i18n="stat_beats">Beats</div>
+            <div class="value num" id="statBeats">—</div>
+          </div>
+          <div class="stat">
+            <div class="label" data-i18n="stat_stability">Stability</div>
+            <div class="value num" id="statStability">—</div>
+          </div>
+          <div class="stat grow">
+            <div class="label" data-i18n="stat_engine">Engine</div>
+            <div class="value small" id="statEngine">—</div>
+          </div>
+        </div>
+
+        <!-- One line under the stats: which engine answered, what it says about
+             its own fit, and whether that is worth doubting. The thresholds are
+             Corpus B's, not taste: see verdict() in app.js. -->
+        <div class="verdict" id="verdict" hidden>
+          <i class="verdict-dot"></i>
+          <div class="verdict-text"><b id="verdictFacts"></b> <span id="verdictSays"></span></div>
+        </div>
+
+        <div class="warnings" id="projectOffer" hidden></div>
+        <div class="warnings" id="warnings"></div>
+
+        <div class="card trace-card">
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="trace_title">Tempo map</div>
+              <div class="card-sub" data-i18n="trace_sub">Local BPM over time · click to select the governing red line</div>
+            </div>
+            <div class="spacer"></div>
+            <div class="legend">
+              <span><i class="key-tempo"></i><span data-i18n="lg_tempo">tempo</span></span>
+              <span><i class="key-points"></i><span data-i18n="lg_points">timing points</span></span>
+              <span><i class="key-onsets"></i><span data-i18n="lg_onsets">onsets</span></span>
+              <span><i class="key-ghost"></i><span data-i18n="lg_ghost">map lines</span></span>
+              <span><i class="key-drift"></i><span data-i18n="lg_drift">drift</span></span>
+              <span><i class="key-conf"></i><span data-i18n="lg_conf">confidence</span></span>
+              <span class="swing-key" hidden><i class="key-swing"></i><span data-i18n="lg_swing">swing</span></span>
+              <span class="ph-key" hidden><i class="key-pulse"></i><span data-i18n="lg_pulse">half/double</span></span>
+              <span class="hs-key" hidden><i class="key-whistle"></i><span data-i18n="lg_whistle">whistle</span></span>
+              <span class="hs-key" hidden><i class="key-finish"></i><span data-i18n="lg_finish">finish</span></span>
+              <span class="hs-key" hidden><i class="key-clap"></i><span data-i18n="lg_clap">clap</span></span>
+            </div>
+            <span class="card-sub num" id="tlZoom"></span>
+            <button class="btn small" id="tlFit" hidden><span data-i18n="tl_fit">Show all</span></button>
+            <div class="segmented ml-m" title="Pulse octave">
+              <button id="halfBtn">÷2</button><button id="doubleBtn">×2</button>
+            </div>
+          </div>
+          <div class="trace-wrap" id="traceWrap">
+            <canvas id="trace"></canvas>
+            <canvas id="playhead" class="playhead"></canvas>
+            <div class="tooltip" id="tip" hidden></div>
+          </div>
+          <div class="transport">
+            <button class="btn icon play" id="pbPlay" data-i18n-title="pb_play" title="Play / pause (Space)">
+              <svg id="pbPlayIcon" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 3.8v16.4a1 1 0 0 0 1.5.86l13.2-8.2a1 1 0 0 0 0-1.72L7.5 2.94A1 1 0 0 0 6 3.8z"/></svg>
+              <svg id="pbPauseIcon" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" hidden><rect x="5" y="4" width="5" height="16" rx="1.5"/><rect x="14" y="4" width="5" height="16" rx="1.5"/></svg>
+            </button>
+            <button class="btn small" id="pbFromLine"><span data-i18n="pb_from_line">From red line</span></button>
+            <span class="num pb-time" id="pbTime">0:00.000</span>
+            <input type="range" class="pb-seek" id="pbSeek" min="0" max="1000" step="1" value="0" data-i18n-aria="pb_seek" aria-label="Position">
+            <label class="check"><input type="checkbox" id="pbClick" checked><span data-i18n="pb_click">Click</span></label>
+            <label class="check"><input type="checkbox" id="pbPerc"><span data-i18n="pb_perc">Percussion only</span></label>
+            <label class="check"><input type="checkbox" id="pbLoop"><span id="pbLoopText" data-i18n="pb_loop">Loop section</span></label>
+            <div class="segmented" id="pbRate" data-i18n-title="pb_rate" title="Speed: slower lowers the pitch, so every attack stays exactly in place">
+              <button data-rate="1" class="on">100%</button><button data-rate="0.75">75%</button><button data-rate="0.5">50%</button>
+            </div>
+            <span class="pb-levels">
+              <label class="pb-level"><span data-i18n="pb_song">Song</span><input type="range" id="pbSongVol" min="0" max="100" step="1"></label>
+              <label class="pb-level"><span data-i18n="pb_click_vol">Click</span><input type="range" id="pbClickVol" min="0" max="100" step="1"></label>
+              <label class="pb-level"><span data-i18n="pb_hs_vol">Hitsounds</span><input type="range" id="pbHsVol" min="0" max="100" step="1"></label>
+            </span>
+            <label class="pb-level"><span data-i18n="pb_hs">Hitsounds from</span>
+              <select class="input pb-hs" id="pbHs" disabled><option value="" data-i18n="pb_hs_off">Off</option></select>
+            </label>
+          </div>
+          <div class="card-sub pb-status" id="pbStatus" data-i18n="pb_hint">Space plays and pauses · double-click the tempo map to play from there</div>
+          <div class="taps">
+            <button class="btn small" id="tapBtn"><span data-i18n="tap_btn">Tap (T)</span></button>
+            <span class="card-sub" id="tapInfo"></span>
+            <div class="spacer"></div>
+            <button class="btn small" id="tapCalibrate" hidden><span data-i18n="tap_calibrate">Calibrate to these taps</span></button>
+            <button class="btn small" id="tapAssist" hidden><span data-i18n="tap_assist">Use for assisted timing</span></button>
+            <button class="btn small" id="tapClear" hidden><span data-i18n="tap_clear">Clear</span></button>
+          </div>
+          <div class="notes">
+            <div class="notes-add">
+              <input class="input" id="noteText" maxlength="500" data-i18n-aria="note_text" aria-label="Note">
+              <button class="btn small" id="noteAdd"><span data-i18n="note_add">Add note at the playhead</span></button>
+            </div>
+            <ul class="notes-list" id="notesList"></ul>
+          </div>
+        </div>
+
+        <div class="split">
+          <div class="card table-card">
+            <div class="card-head">
+              <div class="card-title" data-i18n="table_title">Timing points</div>
+              <span class="pill" id="tableCount"></span>
+              <div class="spacer"></div>
+              <span class="card-sub" data-i18n="table_hint">↑ ↓ to move</span>
+              <button class="btn small" id="undoBtn"><span data-i18n="undo">Undo</span></button>
+              <button class="btn small" id="redoBtn"><span data-i18n="redo">Redo</span></button>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead><tr>
+                  <th>#</th>
+                  <th data-i18n="col_offset">Offset (ms)</th>
+                  <th>BPM</th>
+                  <th data-i18n="col_beat">Beat (ms)</th>
+                  <th data-i18n="col_meter">Meter</th>
+                  <th data-i18n="col_conf">Confidence</th>
+                </tr></thead>
+                <tbody id="rows"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card detail-card" id="detail"></div>
+        </div>
+
+        <div class="card cmp-card" id="evCard" hidden>
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="ev_title">Evidence</div>
+              <div class="card-sub" data-i18n="ev_sub">What the engine read against: coherence candidates per section, the octave margin, residual and coverage. Using one writes its BPM into the governing red line.</div>
+            </div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="evEngine"></span>
+          </div>
+          <div class="card-body" id="evBody"></div>
+        </div>
+
+        <div class="card cmp-card" id="rampCard" hidden>
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="ramp_title">Ramps</div>
+              <div class="card-sub" data-i18n="ramp_sub">The elastic curve as the fewest red lines within the drift. Using them replaces the timing with hand-placed lines; undo brings it back.</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="assist-form">
+              <div class="field">
+                <label for="rampDrift" data-i18n="ramp_drift">Drift (ms)</label>
+                <input class="input num" id="rampDrift" type="number" step="1" min="1" value="5">
+              </div>
+              <div class="field">
+                <label for="rampMax" data-i18n="ramp_max">At most N lines</label>
+                <input class="input num" id="rampMax" type="number" step="1" min="1">
+              </div>
+              <button class="btn small primary" id="rampFit"><span data-i18n="ramp_fit">Fit</span></button>
+              <button class="btn small" id="rampUse" disabled><span data-i18n="ramp_use">Use these lines</span></button>
+            </div>
+            <div id="rampResult"></div>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="svCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="sv_title">Constant scroll</div>
+            <div class="spacer"></div>
+            <button type="button" class="btn small" id="svPreview"><span data-i18n="sv_preview">Preview</span></button>
+            <button type="button" class="btn small primary" id="svApply" disabled><span data-i18n="sv_apply">Write greens</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="sv_sub">Greens that cancel this difficulty's BPM changes: one at each red line, and every green after it scaled by the tempo ratio, so the scroll stays constant and the map's own SV changes keep their shape. A slider lasts by its SV, so a map with sliders after a BPM change is refused rather than moved off its beats. Sound, kiai and barlines never move; every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="hsv_map">Difficulty</span><select class="input" id="svMap"></select></label>
+            </div>
+            <div class="card-sub" id="svResult"></div>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="divCard" hidden>
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="div_title">Snap divisors</div>
+              <div class="card-sub" data-i18n="div_sub">Which divisor each section needs, from the song's own attacks. Thirds and sixths past the weight bar read 1/3 and 1/6, the rest 1/4. Read only.</div>
+            </div>
+          </div>
+          <div class="card-body card-sub" id="divBody"></div>
+        </div>
+
+        <div class="card cmp-card" id="swingCard" hidden>
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="swing_title">Swing</div>
+              <div class="card-sub" data-i18n="swing_sub">Where the off-beat eighth falls inside the beat, eight beats at a time: halfway is straight, later is swing. Measured from each window's own beat, so a grid a few ms off changes nothing. Read only — the snap is what you would set in the editor.</div>
+            </div>
+          </div>
+          <div class="card-body card-sub" id="swingBody"></div>
+        </div>
+
+        <div class="card cmp-card" id="phCard" hidden>
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="ph_title">Half and double time</div>
+              <div class="card-sub" data-i18n="ph_sub">A stretch inside one reported section where the song changes pulse. The grid keeps fitting, because every hit of the slow half still lands on the fast half's grid; what changes is how many slots are filled, and whether the filled ones fall on every other beat. Read only — nothing here moves a red line.</div>
+            </div>
+          </div>
+          <div class="card-body card-sub" id="phBody"></div>
+        </div>
+
+        <div class="card cmp-card" id="labCard" hidden>
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="lab_title">Offset lab</div>
+              <div class="card-sub" data-i18n="lab_sub">What the file says about its own delay, and the first attack through each decoder side by side.</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-sub" id="labHeader"></div>
+            <div class="drop-actions">
+              <button type="button" class="btn small" id="labCompare"><span data-i18n="lab_compare">Compare decoders</span></button>
+            </div>
+            <div class="card-sub" id="labResult"></div>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="labTestCard" hidden>
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="lab_test_title">Blind test</div>
+              <div class="card-sub" data-i18n="lab_test_sub">Hear the same passage twice with two hidden click shifts and pick the one in time. Each shift runs against no shift, three times each.</div>
+            </div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="labProgress"></span>
+          </div>
+          <div class="card-body">
+            <div class="drop-actions">
+              <button type="button" class="btn small primary" id="labStart"><span data-i18n="lab_start">Start</span></button>
+              <button type="button" class="btn small" id="labHear1" disabled><span data-i18n="lab_hear1">Hear 1</span></button>
+              <button type="button" class="btn small" id="labHear2" disabled><span data-i18n="lab_hear2">Hear 2</span></button>
+              <button type="button" class="btn small" id="labVote1" disabled><span data-i18n="lab_vote1">1 was in time</span></button>
+              <button type="button" class="btn small" id="labVote2" disabled><span data-i18n="lab_vote2">2 was in time</span></button>
+              <button type="button" class="btn small" id="labCancel" hidden><span data-i18n="lab_cancel">Cancel</span></button>
+            </div>
+            <div id="labTestResult"></div>
+          </div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="as_title">Assisted timing</div>
+              <div class="card-sub" data-i18n="as_sub">Where detection is wrong, mark two downbeats: the grid is fitted from there, or refused with the reason.</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="assist-form">
+              <div class="field">
+                <label for="asFirst" data-i18n="as_first">First downbeat (ms)</label>
+                <input class="input num" id="asFirst" type="number" step="1" min="0">
+              </div>
+              <div class="field">
+                <label for="asSecond" data-i18n="as_second">A later downbeat (ms)</label>
+                <input class="input num" id="asSecond" type="number" step="1" min="0">
+              </div>
+              <div class="field">
+                <label for="asBars" data-i18n="as_bars">Bars between</label>
+                <input class="input num" id="asBars" type="number" step="1" min="1" value="1">
+              </div>
+              <div class="field">
+                <label for="asMeter" data-i18n="as_meter">Beats per bar</label>
+                <input class="input num" id="asMeter" type="number" step="1" min="1" value="4">
+              </div>
+              <button class="btn small primary" id="asFit"><span data-i18n="as_fit">Fit</span></button>
+            </div>
+            <div id="asResult"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- map check: one difficulty against the analysed song -->
+      <section class="view" id="viewMapcheck" data-view="mapcheck" data-needs-result hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_mapcheck">Map check</h2>
+          <div class="view-sub" data-i18n="mapcheck_sub">One difficulty you mapped, checked against this analysis. Read only: nothing is written.</div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="cmp_title">Map vs detected</div>
+            <span class="pill" id="cmpCount" hidden></span>
+            <div class="spacer"></div>
+            <span class="card-sub" id="cmpFile"></span>
+            <button class="btn small" id="cmpPick"><span data-i18n="cmp_pick">Choose .osu…</span></button>
+          </div>
+          <div class="card-body" id="cmpBody"></div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="ref_title">Reference timing</div>
+            <span class="pill" id="refCount" hidden></span>
+            <div class="spacer"></div>
+            <span class="card-sub" id="refFile"></span>
+            <button class="btn small" id="refFind"><span data-i18n="ref_find">Maps of this song…</span></button>
+            <button class="btn small" id="refPick"><span data-i18n="ref_pick">Grade a .osu…</span></button>
+          </div>
+          <div class="card-body" id="refBody"></div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="align_title">Alignment</div>
+            <span class="pill" id="alignCount" hidden></span>
+            <div class="spacer"></div>
+            <span class="card-sub" id="alignFile"></span>
+            <button class="btn small" id="alignPick"><span data-i18n="align_pick">Check alignment…</span></button>
+          </div>
+          <div class="card-body" id="alignBody"></div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="den_title">Density</div>
+            <span class="pill" id="denCount" hidden></span>
+            <div class="spacer"></div>
+            <span class="card-sub" id="denFile"></span>
+            <button class="btn small" id="denPick"><span data-i18n="den_pick">Check density…</span></button>
+          </div>
+          <div class="card-body" id="denBody"></div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="snap_title">Snap audit</div>
+            <span class="pill" id="snapCount" hidden></span>
+            <div class="spacer"></div>
+            <span class="card-sub" id="snapFile"></span>
+            <button class="btn small" id="snapPick"><span data-i18n="snap_pick">Check snapping…</span></button>
+          </div>
+          <div class="card-body" id="snapBody"></div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="rs_title">Re-snap objects</div>
+            <span class="pill" id="rsCount" hidden></span>
+            <div class="spacer"></div>
+            <span class="card-sub" id="rsFile"></span>
+            <button class="btn small" id="rsPick"><span data-i18n="rs_pick">Choose .osu…</span></button>
+            <button class="btn small primary" id="rsApply" disabled><span data-i18n="rs_apply">Re-snap…</span></button>
+          </div>
+          <div class="card-body" id="rsBody"></div>
+        </div>
+      </section>
+
+      <!-- mapset: every difficulty of one folder, read only; needs no analysis -->
+      <section class="view" id="viewMapset" data-view="mapset" hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_mapset">Mapset</h2>
+          <div class="view-sub" data-i18n="mapset_sub">Every difficulty of one beatmap folder side by side: red lines, audio settings and metadata that must match. The comparison only lists differences; Copy hitsounds writes, after a preview, with backups.</div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="ms_title">Difficulties</div>
+            <span class="pill" id="msCount" hidden></span>
+            <span class="pill" id="msVerdict" hidden></span>
+            <div class="spacer"></div>
+            <span class="card-sub" id="msFolder"></span>
+            <button class="btn small" id="msRecheck" hidden><span data-i18n="ms_recheck">Check again</span></button>
+            <button class="btn small" id="msPick"><span data-i18n="ms_pick">Choose beatmap folder…</span></button>
+          </div>
+          <div class="card-body" id="msBody"></div>
+        </div>
+
+        <!-- copy one difficulty's hitsounds onto others (Phase 6, H1) -->
+        <div class="card cmp-card" id="hsCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="hs_title">Copy hitsounds</div>
+            <div class="spacer"></div>
+            <button class="btn small" id="hsPreview"><span data-i18n="hs_preview">Preview</span></button>
+            <button class="btn small primary" id="hsApply" disabled><span data-i18n="hs_apply">Copy hitsounds</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="hs_sub">Each sound of the chosen difficulties takes the source's sound at the same moment (within 5 ms): additions, sample sets and index. Sounds with nothing under them are left as they are. Only hitsound fields change, and every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="hs_source">From</span><select class="input" id="hsSource"></select></label>
+              <div class="field"><span class="setting-name" data-i18n="hs_targets">Onto</span><div class="hs-targets" id="hsTargets"></div></div>
+            </div>
+            <label class="check"><input type="checkbox" id="hsVolumes"><span data-i18n="hs_volumes">Copy volumes too (usually the green lines' job; they are not copied)</span></label>
+            <div id="hsResult"></div>
+          </div>
+        </div>
+
+        <!-- move one mapset's times onto a new encode of its audio -->
+        <div class="card cmp-card" id="swCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="sw_title">Audio swap</div>
+            <div class="spacer"></div>
+            <button class="btn small" id="swPreview"><span data-i18n="sw_preview">Preview</span></button>
+            <button class="btn small primary" id="swApply" disabled><span data-i18n="sw_apply">Move every time</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="sw_sub">Measures the shift between the mapped audio and a new encode, and moves every timing line, object, preview point and bookmark by it; the lead-in, a wait before the song, stays. Tempo twins and strangers refuse; every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="sw_old">Mapped audio</span><span class="card-sub" id="swOld"></span></label>
+              <label class="field"><span class="setting-name" data-i18n="sw_new">New encode</span><select class="input" id="swNew"></select></label>
+            </div>
+            <div id="swResult"></div>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="acCard" hidden>
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="ac_title">Audio file</div>
+              <div class="card-sub" data-i18n="ac_sub">Bitrate, sample rate, length, clipping and lead-in of the audio the maps name. Findings carry the tool's own bars; no ranking number is encoded.</div>
+            </div>
+          </div>
+          <div class="card-body card-sub" id="acBody"></div>
+        </div>
+
+        <div class="card cmp-card" id="msRedCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="ms_red_title">Red lines</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="msRedHint"></span>
+          </div>
+          <div class="card-body" id="msRedBody"></div>
+        </div>
+
+        <div class="card cmp-card" id="msFieldCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="ms_fields_title">Audio and metadata</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="msFieldHint"></span>
+          </div>
+          <div class="card-body" id="msFieldBody"></div>
+        </div>
+      </section>
+
+      <!-- structure: the song's sections, each label beside its evidence -->
+      <section class="view" id="viewStructure" data-view="structure" data-needs-result hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_structure">Structure</h2>
+          <div class="view-sub" data-i18n="stx_sub">Where the song's phrases change, what each part is, and why: every label beside the evidence it rests on. Read only.</div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="stx_title">Sections</div>
+            <span class="pill" id="stxCount" hidden></span>
+            <div class="spacer"></div>
+            <span class="card-sub" id="stxFile"></span>
+          </div>
+          <div class="card-body" id="stxBody"></div>
+        </div>
+
+        <div class="card cmp-card" id="stxBmCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="stx_bm_title">Bookmarks</div>
+            <div class="spacer"></div>
+            <button type="button" class="btn small" id="stxBmPreview"><span data-i18n="stx_bm_preview">Preview</span></button>
+            <button type="button" class="btn small primary" id="stxBmApply" disabled><span data-i18n="stx_bm_apply">Write bookmarks</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="stx_bm_sub">Section starts as editor bookmarks in one difficulty, merged with its own. Nothing is ever deleted; every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="hsv_map">Difficulty</span><select class="input" id="stxBmMap"></select></label>
+            </div>
+            <div class="card-sub" id="stxBmResult"></div>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="stxKiaiCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="stx_kiai_title">Kiai</div>
+            <div class="spacer"></div>
+            <button type="button" class="btn small" id="stxKiaiPreview"><span data-i18n="stx_kiai_preview">Preview</span></button>
+            <button type="button" class="btn small primary" id="stxKiaiApply" disabled><span data-i18n="stx_kiai_apply">Write kiai</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="stx_kiai_sub">Kiai on the chorus sections in one difficulty, written as green lines. Sound never changes — kiai is light, not sound; every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="hsv_map">Difficulty</span><select class="input" id="stxKiaiMap"></select></label>
+            </div>
+            <div class="card-sub" id="stxKiaiResult"></div>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="stxBreaksCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="stx_breaks_title">Breaks</div>
+            <div class="spacer"></div>
+            <button type="button" class="btn small" id="stxBreaksPreview"><span data-i18n="stx_breaks_preview">Preview</span></button>
+            <button type="button" class="btn small primary" id="stxBreaksApply" disabled><span data-i18n="stx_breaks_apply">Write breaks</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="stx_breaks_sub">Breaks where the song goes quiet and the map goes silent, written as 2,start,end lines. Only spans 5 s or longer are proposed; every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="hsv_map">Difficulty</span><select class="input" id="stxBreaksMap"></select></label>
+            </div>
+            <div class="card-sub" id="stxBreaksResult"></div>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="stxVolCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="stx_vol_title">Volume</div>
+            <div class="spacer"></div>
+            <button type="button" class="btn small" id="stxVolPreview"><span data-i18n="stx_vol_preview">Preview</span></button>
+            <button type="button" class="btn small primary" id="stxVolApply" disabled><span data-i18n="stx_vol_apply">Write volumes</span></button>
+          </div>
+          <div class="card-body stack">
+            <div class="card-sub" data-i18n="stx_vol_sub">Hitsound volume following section energy in one difficulty, written as green lines. A section where the map sets its own volumes is left alone; the others take their volume all the way through. Sets, samples and kiai never move; every file is backed up first.</div>
+            <div class="hs-form">
+              <label class="field"><span class="setting-name" data-i18n="hsv_map">Difficulty</span><select class="input" id="stxVolMap"></select></label>
+            </div>
+            <div class="card-sub" id="stxVolResult"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- hitsounds: what one difficulty plays, where its additions fall (Phase 6, H2) -->
+      <section class="view" id="viewHitsounds" data-view="hitsounds" data-needs-result hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_hitsounds">Hitsounds</h2>
+          <div class="view-sub" data-i18n="hsv_sub">What one difficulty plays: where its additions fall in the bar, every sound to hear one by one, and the decision engine's proposals to write or not.</div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="hsv_map">Difficulty</div>
+            <div class="spacer"></div>
+            <select class="input hsv-pick" id="hsvMap"></select>
+          </div>
+          <div class="card-body" id="hsvSummary"></div>
+        </div>
+
+        <div class="card cmp-card" id="hsvDecideCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="hsv_decide_title">Propose and edit hitsounds</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="hsvDecideStatus"></span>
+          </div>
+          <div class="card-body">
+            <div class="card-sub" data-i18n="hsv_decide_sub">The decision engine proposes every object's sound; volume and sample index are yours to set. Tick what to keep, hear it over the song, preview, then write the file or a copy. Each write is backed up, and one undo restores it.</div>
+            <div class="hsv-profile-row" id="hsvProfileField" hidden>
+              <label class="hsv-profile"><span data-i18n="hsv_profile">Profile</span>
+                <select class="input" id="hsvProfile"></select>
+              </label>
+              <div class="card-sub hsv-profile-note" id="hsvProfileNote"></div>
+            </div>
+            <div class="hsv-profile-row" id="hsvEvidenceField">
+              <span data-i18n="hsv_evidence">Evidence</span>
+              <div class="segmented" id="hsvEvidence">
+                <button type="button" data-evidence="map" class="on"><span data-i18n="hsv_ev_map">Map + audio</span></button>
+                <button type="button" data-evidence="audio"><span data-i18n="hsv_ev_audio">Audio only</span></button>
+              </div>
+              <div class="card-sub" id="hsvEvidenceNote"></div>
+            </div>
+            <div class="drop-actions">
+              <button type="button" class="btn primary" id="hsvPropose"><span data-i18n="hsv_propose">Propose</span></button>
+              <button type="button" class="btn" id="hsvProposeAll"><span data-i18n="hsv_propose_all">Every difficulty</span></button>
+              <button type="button" class="btn small" id="hsvDecideAll"><span data-i18n="hsv_decide_all">All</span></button>
+              <button type="button" class="btn small" id="hsvDecideNone"><span data-i18n="hsv_decide_none">None</span></button>
+              <button type="button" class="btn small" id="hsvDecideHear"><span data-i18n="hsv_hear">Hear before writing</span></button>
+              <button type="button" class="btn small" id="hsvDecidePreview"><span data-i18n="hsv_preview">Preview</span></button>
+              <button type="button" class="btn small" id="hsvDecideApply"><span data-i18n="hsv_write">Write into this file</span></button>
+              <button type="button" class="btn small" id="hsvDecideCopy"><span data-i18n="hsv_write_copy">Write a copy</span></button>
+              <button type="button" class="btn small" id="hsvDecideUndo"><span data-i18n="hsv_undo">Undo</span></button>
+            </div>
+            <div class="hsv-edit">
+              <div class="field">
+                <label for="hsvEditVolume" data-i18n="hsv_edit_volume">Volume (%)</label>
+                <input class="input num" id="hsvEditVolume" type="number" step="1" min="0" max="100" placeholder="—">
+              </div>
+              <div class="field">
+                <label for="hsvEditIndex" data-i18n="hsv_edit_index">Sample index</label>
+                <input class="input num" id="hsvEditIndex" type="number" step="1" min="0" placeholder="—">
+              </div>
+              <button type="button" class="btn small" id="hsvEditSet"><span data-i18n="hsv_edit_set">Set on the sounds shown</span></button>
+              <button type="button" class="btn small" id="hsvEditClear"><span data-i18n="hsv_edit_clear">Clear their edits</span></button>
+            </div>
+            <div class="card-sub" data-i18n="hsv_edit_note">0 follows the green line. A slider has one volume and one index for all its edges. All, None, Set and Clear act on the sounds the table shows: its filter and its bars.</div>
+            <div class="card-sub" data-i18n="hsv_alt_note">In the table, a proposal can be swapped for one of its alternatives. The percentages say how likely each sound is there on its own, among the 24 the engine weighs, which keeps them low. The proposal is the one that fits the whole sequence best, so an alternative can score higher alone.</div>
+            <div class="card-sub" id="hsvDecideHearText"></div>
+            <div class="card-sub" id="hsvDecidePrevText"></div>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="hsvWhereCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="hsv_where_title">Where the additions fall</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="hsvWhereNote"></span>
+          </div>
+          <div class="card-body hsv-where" id="hsvWhere"></div>
+        </div>
+
+        <div class="card cmp-card table-card" id="hsvSoundsCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="hsv_sounds">Sounds</div>
+            <span class="pill" id="hsvCount"></span>
+            <div class="spacer"></div>
+            <label class="hsv-bars"><span data-i18n="hsv_bars">Bars</span>
+              <input class="input num" id="hsvBarFrom" type="number" step="1" placeholder="—" data-i18n-aria="hsv_bar_from" aria-label="From bar">
+              <span>–</span>
+              <input class="input num" id="hsvBarTo" type="number" step="1" placeholder="—" data-i18n-aria="hsv_bar_to" aria-label="To bar">
+            </label>
+            <div class="segmented" id="hsvFilter">
+              <button type="button" data-f="all" class="on" data-i18n="hsv_all">All</button>
+              <button type="button" data-f="whistle" data-i18n="lg_whistle">whistle</button>
+              <button type="button" data-f="finish" data-i18n="lg_finish">finish</button>
+              <button type="button" data-f="clap" data-i18n="lg_clap">clap</button>
+            </div>
+          </div>
+          <div class="card-body hsv-why" id="hsvWhy" hidden></div>
+          <div class="table-scroll hsv-table"><table class="ms-table">
+            <thead><tr><th class="txt" data-i18n="hsv_t_time">Time</th><th data-i18n="hsv_t_place">Bar · beat</th>
+              <th class="txt" data-i18n="hsv_t_part">Part</th><th class="txt" data-i18n="hsv_t_sounds">Sounds</th>
+              <th class="txt" data-i18n="hsv_t_sets">Sets</th><th data-i18n="hsv_t_index">Index</th>
+              <th data-i18n="hsv_t_volume">Volume</th><th class="txt" data-i18n="hsv_t_proposal">Proposal</th><th></th></tr></thead>
+            <tbody id="hsvRows"></tbody>
+          </table></div>
+          <div class="card-body"><button type="button" class="link" id="hsvMore" hidden></button></div>
+        </div>
+
+        <!-- the sample bank: what a folder holds, heard alone or over the song (Phase 6, H6) -->
+        <div class="card cmp-card" id="sbCard">
+          <div class="card-head">
+            <div class="card-title" data-i18n="sb_title">Samples</div>
+            <span class="pill" id="sbKind" hidden></span>
+            <div class="spacer"></div>
+            <div class="segmented" id="sbSource">
+              <button type="button" data-src="song" class="on" data-i18n="sb_src_song">This song's folder</button>
+              <button type="button" data-src="skin" data-i18n="sb_src_skin">Playback skin</button>
+              <button type="button" data-src="pick" data-i18n="sb_src_pick">Another folder…</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-sub" data-i18n="sb_sub">The hitsound samples a folder holds, named as osu! names them: each set's four hits and the two sounds a slider body loops, then the numbered ones. Click one to hear it; a missing one plays what would play instead. The folder is only read.</div>
+            <div class="sb-folder"><b id="sbName"></b><span class="card-sub" id="sbCounts"></span></div>
+            <div class="sb-scroll"><table class="sb-grid">
+              <thead><tr><th></th><th data-i18n="sb_hitnormal">normal</th><th data-i18n="lg_whistle">whistle</th>
+                <th data-i18n="lg_finish">finish</th><th data-i18n="lg_clap">clap</th>
+                <th data-i18n="sb_sliderslide">slide</th><th data-i18n="sb_sliderwhistle">whistle slide</th></tr></thead>
+              <tbody id="sbRows"></tbody>
+            </table></div>
+            <div class="sb-custom" id="sbCustom"></div>
+            <div class="card-sub" id="sbNotes"></div>
+            <div class="sb-actions">
+              <span class="card-sub" id="sbSkinText"></span>
+              <button type="button" class="btn small" id="sbUse" hidden><span data-i18n="sb_use">Use for playback</span></button>
+              <button type="button" class="btn small" id="sbStop" hidden><span data-i18n="sb_stop">Stop using a skin</span></button>
+            </div>
+            <div class="sb-actions">
+              <button type="button" class="btn small" id="sbHear" disabled><span data-i18n="sb_hear">Hear it at the selected sound</span></button>
+              <span class="card-sub" id="sbHearText"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- report: every finding about one difficulty, as modders post them -->
+      <section class="view" id="viewAudio" data-view="audio" data-needs-result hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_audio">Audio</h2>
+          <div class="view-sub" data-i18n="audio_sub">What started, not just that something did: the onset flux split into seven bands, from the kick's 40 Hz up to 11 kHz. A kick moves the bottom lane, a hat the top, a broadband click all seven. Read only.</div>
+        </div>
+
+        <div class="card cmp-card" id="specCard">
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="spec_title">Spectrogram</div>
+              <div class="card-sub" id="specNote"></div>
+            </div>
+          </div>
+          <div class="band-wrap" id="specWrap">
+            <canvas id="specCanvas"></canvas>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="tmapCard">
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="tmap_title">Where the pulse is</div>
+              <div class="card-sub" id="tmapNote"></div>
+            </div>
+          </div>
+          <div class="band-wrap" id="tmapWrap">
+            <canvas id="tmapCanvas"></canvas>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="engCard">
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="eng_title">Loudness and sections</div>
+              <div class="card-sub" id="engNote"></div>
+            </div>
+          </div>
+          <div class="bal-wrap" id="engWrap">
+            <canvas id="engCanvas"></canvas>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="balCard">
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="bal_title">Hits against notes</div>
+              <div class="card-sub" id="balNote"></div>
+            </div>
+          </div>
+          <div class="bal-wrap" id="balWrap">
+            <canvas id="balCanvas"></canvas>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="bandCard">
+          <div class="card-head">
+            <div>
+              <div class="card-title" data-i18n="band_title">Onset bands</div>
+              <div class="card-sub" id="bandNote"></div>
+            </div>
+          </div>
+          <div class="band-wrap" id="bandWrap">
+            <canvas id="bandCanvas"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- several maps and their songs as one map (Phase 25) -->
+      <section class="view" id="viewCompile" data-view="compile" hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_compile">Compile</h2>
+          <div class="view-sub" data-i18n="cp_sub">Several maps and their songs as one map. Every object keeps the beat it had, each song's hitsounds and slider speed come with it, and nothing is ever written into a source folder. What a compilation cannot keep — one set of difficulty numbers — is listed instead of hidden.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="cp_sources">Songs</div>
+            <span class="pill" id="cpCount" hidden></span>
+            <span class="pill amber" id="cpRefused" hidden></span>
+            <div class="spacer"></div>
+            <button class="btn small" id="cpSuggest" hidden><span data-i18n="cp_suggest">Suggest an order</span></button>
+            <button class="btn small" id="cpMatch" hidden><span data-i18n="cp_match">Match volumes</span></button>
+            <button class="btn small" id="cpAddSong"><span data-i18n="cp_add_song">Add the open song's maps</span></button>
+            <button class="btn small" id="cpClear" hidden><span data-i18n="cp_clear">Clear</span></button>
+            <button class="btn small" id="cpAdd"><span data-i18n="cp_add">Add maps…</span></button>
+          </div>
+          <div class="card-body" id="cpBody"></div>
+        </div>
+
+        <div class="card" id="cpJoinCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="cp_join">Joining</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="cpJoinSub"></span>
+          </div>
+          <div class="card-body stack">
+            <div class="grid-2">
+              <label class="field"><span class="setting-name" data-i18n="cp_lead_in">Silence before the first song (ms)</span><input class="input num" id="cpLeadIn" type="number" min="0" step="100"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_gap">Silence between songs (ms)</span><input class="input num" id="cpGap" type="number" min="0" step="100"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_lead">Kept before a song's first object (ms)</span><input class="input num" id="cpLead" type="number" min="0" step="100"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_tail">Kept after its last sound (ms)</span><input class="input num" id="cpTail" type="number" min="0" step="100"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_gap_bars">Or that silence in bars of the song ending (0 = use ms)</span><input class="input num" id="cpGapBars" type="number" min="0" step="1"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_fade_in">Fade in (ms)</span><input class="input num" id="cpFadeIn" type="number" min="0" step="100"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_fade_out">Fade out (ms)</span><input class="input num" id="cpFadeOut" type="number" min="0" step="100"></label>
+            </div>
+            <div class="field">
+              <span class="setting-name" data-i18n="cp_difficulty">Difficulty numbers</span>
+              <div class="segmented stretch" id="cpDifficulty">
+                <button type="button" data-from="first" class="on" data-i18n="cp_diff_first">The first song's</button>
+                <button type="button" data-from="median" data-i18n="cp_diff_median">The median</button>
+              </div>
+              <span class="hint" data-i18n="cp_diff_hint">AR, OD, HP and the slider multiplier are one set for the whole map. Each song's own slider speed is kept anyway, through a green line.</span>
+            </div>
+            <label class="check"><input type="checkbox" id="cpDownbeat"><span data-i18n="cp_downbeat">Each song comes in on its own downbeat</span></label>
+            <label class="check"><input type="checkbox" id="cpBreaks" checked><span data-i18n="cp_breaks">A break over every junction, so the silence between two songs is silence</span></label>
+            <label class="check"><input type="checkbox" id="cpBookmarks" checked><span data-i18n="cp_bookmarks">A bookmark where each song starts</span></label>
+            <label class="check"><input type="checkbox" id="cpStrict"><span data-i18n="cp_strict">Strict: refuse the build if any source needed a repair</span></label>
+          </div>
+        </div>
+
+        <div class="card" id="cpNamesCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="cp_names">Names and credits</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="cpOsuName"></span>
+          </div>
+          <div class="card-body stack">
+            <div class="grid-2">
+              <label class="field"><span class="setting-name" data-i18n="cp_artist">Artist</span><input class="input" id="cpArtist" type="text"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_title">Title</span><input class="input" id="cpTitle" type="text"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_creator">Creator</span><input class="input" id="cpCreator" type="text"></label>
+              <label class="field"><span class="setting-name" data-i18n="cp_version">Difficulty name</span><input class="input" id="cpVersion" type="text"></label>
+            </div>
+            <div class="field"><span class="setting-name" data-i18n="cp_tags">Tags</span><div class="chips" id="cpTags"></div></div>
+            <div class="field"><span class="setting-name" data-i18n="cp_credits">credits.txt</span><pre class="cp-credits" id="cpCredits"></pre></div>
+          </div>
+        </div>
+
+        <div class="card" id="cpBuildCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="cp_build">What it would build</div>
+            <span class="pill" id="cpVerdict" hidden></span>
+            <div class="spacer"></div>
+            <div class="segmented" id="cpFormat">
+              <button type="button" data-format="mp3" class="on">MP3</button>
+              <button type="button" data-format="wav">WAV</button>
+            </div>
+            <label class="check inline"><input type="checkbox" id="cpOsz"><span data-i18n="cp_osz">.osz as well</span></label>
+            <button class="btn small" id="cpFolder"><span data-i18n="cp_folder">Choose folder…</span></button>
+            <button class="btn small primary" id="cpGo" disabled><span data-i18n="cp_go">Build</span></button>
+          </div>
+          <div class="card-body" id="cpBuildBody"></div>
+        </div>
+      </section>
+
+      <section class="view" id="viewTrain" data-view="train" hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_train">Train</h2>
+          <div class="view-sub" data-i18n="tr_sub">One difficulty as a practice copy at another speed. The rate goes on the grid, so every object keeps the beat it had; the song is resampled as the game's own DT does it, and the red lines are graded against the audio that was written.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="tr_source">Source map</div>
+            <div class="spacer"></div>
+            <button class="btn small" id="trDetect"><span data-i18n="tr_detect">Detect playing map</span></button>
+            <button class="btn small" id="trUseOpen"><span data-i18n="tr_use_open">Use the open song's map</span></button>
+            <button class="btn small" id="trClear" hidden><span data-i18n="tr_clear">Clear</span></button>
+            <button class="btn small" id="trPick"><span data-i18n="tr_pick">Pick a map…</span></button>
+          </div>
+          <div class="card-body" id="trBody"></div>
+          <div class="card-sub" id="trDetectNote"></div>
+        </div>
+
+        <div class="card" id="trRateCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="tr_rate">Rate and stats</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="trFeel"></span>
+          </div>
+          <div class="card-body stack">
+            <div class="grid-2">
+              <label class="field"><span class="setting-name" data-i18n="tr_rate_x">Rate (0.25–4×)</span><input class="input num" id="trRate" type="number" min="0.25" max="4" step="0.01"></label>
+              <label class="field"><span class="setting-name" data-i18n="tr_target">Or aim at this BPM</span><input class="input num" id="trTarget" type="number" min="1" step="1"></label>
+            </div>
+            <div class="field" id="trFromField" hidden><span class="setting-name" data-i18n="tr_from">Which of its tempi the target means</span><div class="segmented stretch" id="trFrom"></div></div>
+            <div class="card-sub" id="trTargetNote"></div>
+            <div class="field"><span class="setting-name" data-i18n="tr_mods">Mods</span><div class="segmented stretch" id="trMods">
+              <button type="button" data-mod="HR">HR</button><button type="button" data-mod="EZ">EZ</button><button type="button" data-mod="DT">DT</button><button type="button" data-mod="NC">NC</button><button type="button" data-mod="HT">HT</button>
+            </div></div>
+            <div class="card-sub" id="trModNote"></div>
+            <div class="field"><span class="setting-name" data-i18n="tr_presets">Presets</span>
+              <div class="row"><select class="input" id="trPreset"></select>
+              <button class="btn small" id="trPresetApply"><span data-i18n="tr_preset_apply">Use</span></button>
+              <button class="btn small" id="trPresetDelete"><span data-i18n="tr_preset_delete">Delete</span></button></div>
+              <div class="row mt-s"><input class="input" id="trPresetName" placeholder="Name this setup…">
+              <button class="btn small" id="trPresetSave"><span data-i18n="tr_preset_save">Save</span></button></div>
+            </div>
+            <div id="trStats"></div>
+            <label class="check" id="trDropField" hidden><input type="checkbox" id="trDrop"><span data-i18n="tr_drop">Drop spinners that become unspinnable</span></label>
+            <div class="card-sub" id="trDrops"></div>
+            <div class="card-sub" id="trFeel2"></div>
+          </div>
+        </div>
+
+        <div class="card" id="trNamesCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="tr_names">Name and credit</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="trCreator"></span>
+          </div>
+          <div class="card-body stack">
+            <label class="field"><span class="setting-name" data-i18n="tr_version">Difficulty name</span><input class="input" id="trVersion" type="text"></label>
+            <div class="field"><span class="setting-name" data-i18n="tr_tags">Tags</span><div class="chips" id="trTags"></div></div>
+          </div>
+        </div>
+
+        <div class="card" id="trBuildCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="tr_build">What it would build</div>
+            <div class="spacer"></div>
+            <span class="pill" id="trVerdict" hidden></span>
+          </div>
+          <div class="card-body stack">
+            <div class="field">
+              <span class="setting-name" data-i18n="tr_format">Song format</span>
+              <div class="segmented" id="trFormat">
+                <button type="button" data-format="mp3" class="on">MP3</button>
+                <button type="button" data-format="wav">WAV</button>
+              </div>
+            </div>
+            <label class="check inline"><input type="checkbox" id="trOsz"><span data-i18n="tr_osz">.osz as well</span></label>
+            <label class="check inline"><input type="checkbox" id="trHotkey"><span data-i18n="tr_hotkey">Build with Ctrl+Alt+B, from anywhere</span></label>
+            <button class="btn small" id="trFolder"><span data-i18n="tr_folder">Choose folder…</span></button>
+            <button class="btn small primary" id="trGo" disabled><span data-i18n="tr_go">Build</span></button>
+          </div>
+          <div class="card-body" id="trBuildBody"></div>
+        </div>
+
+        <div class="card" id="trLadderCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="tr_ladder">Rate ladder</div>
+            <div class="spacer"></div>
+            <span class="card-sub" data-i18n="tr_ladder_hint">One run, one mapset, a rung per rate.</span>
+          </div>
+          <div class="card-body stack">
+            <label class="field"><span class="setting-name" data-i18n="tr_ladder_rates">Rates, comma separated</span><input class="input" id="trLadder" type="text" placeholder="1.0, 1.1, 1.2"></label>
+            <button class="btn small primary" id="trLadderGo" disabled><span data-i18n="tr_ladder_go">Build ladder</span></button>
+          </div>
+          <div class="card-body" id="trLadderBody"></div>
+        </div>
+
+        <div class="card" id="trCopiesCard" hidden>
+          <div class="card-head">
+            <div class="card-title" data-i18n="tr_copies">Practice copies</div>
+            <div class="spacer"></div>
+            <span class="card-sub" id="trCopiesTotal"></span>
+          </div>
+          <div class="card-body" id="trCopiesBody"></div>
+        </div>
+      </section>
+
+      <section class="view" id="viewReport" data-view="report" data-needs-result hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_report">Report</h2>
+          <div class="view-sub" data-i18n="report_sub">Every finding about one difficulty as osu! editor timestamps, ready to paste into a mod post. A timestamp opens the editor there. Read only: nothing is written.</div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="rp_title">Mod report</div>
+            <span class="pill" id="rpCount" hidden></span>
+            <div class="spacer"></div>
+            <span class="card-sub" id="rpFile"></span>
+            <button class="btn small" id="rpCopy" hidden><span data-i18n="rp_copy">Copy all</span></button>
+            <button class="btn small" id="rpPick"><span data-i18n="rp_pick">Choose .osu…</span></button>
+          </div>
+          <div class="card-body" id="rpBody"></div>
+        </div>
+      </section>
+
+      <!-- settings: every option in one place; needs no analysis -->
+      <section class="view" id="viewSettings" data-view="settings" hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_settings">Settings</h2>
+          <div class="view-sub" data-i18n="settings_sub">Saved on this PC as you change them.</div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head"><div class="card-title" data-i18n="st_output">Exports</div></div>
+          <div class="card-body stack settings-body">
+            <div class="setting">
+              <div><div class="setting-name" data-i18n="st_folder">Output folder</div>
+                <div class="card-sub num" id="stFolder"></div></div>
+              <div class="spacer"></div>
+              <button class="btn small" id="stFolderDefault"><span data-i18n="st_folder_default">Use the default</span></button>
+              <button class="btn small" id="stFolderPick"><span data-i18n="st_folder_pick">Choose folder…</span></button>
+            </div>
+            <label class="check"><input type="checkbox" id="stAsk"><span data-i18n="st_ask">Ask where to save each export (the dialog opens in the song's folder)</span></label>
+            <label class="check"><input type="checkbox" id="stLead"><span data-i18n="st_lead">Write red lines as osu! maps are timed (28 ms before the sound)</span></label>
+            <div class="card-sub" data-i18n="st_lead_hint">Ranked maps put their red lines a little before the sound, and osu! plays them in time. Used by copy, .osz and inject; the click track and CSV stay on the sound. Lines you placed by hand never move.</div>
+            <label class="check"><input type="checkbox" id="stClean"><span data-i18n="st_clean">Write clean BPMs (whole, .5 or .1)</span></label>
+            <div class="card-sub" data-i18n="st_clean_hint">232.189 is written as 232.2 when every beat stays within 2 ms of the exact grid; on a long section a red line at the same BPM re-syncs it every few bars. Used by copy, .osz and inject; the analysis, the click track and the CSV keep the exact BPM. Lines you placed by hand never change.</div>
+            <div class="setting">
+              <div><div class="setting-name" data-i18n="st_decimals">Offset precision</div>
+                <div class="card-sub" data-i18n="st_decimals_hint">osu!stable reads whole milliseconds; osu!lazer keeps decimals. Used by copy, .osz and inject.</div></div>
+              <div class="spacer"></div>
+              <div class="segmented" id="stDecimals">
+                <button data-v="0">1 ms</button><button data-v="1">0.1</button><button data-v="2">0.01</button><button data-v="3">0.001</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head"><div class="card-title" data-i18n="st_click">Click</div></div>
+          <div class="card-body stack settings-body">
+            <div class="setting">
+              <div><div class="setting-name" data-i18n="st_sub">Clicks per beat</div>
+                <div class="card-sub" data-i18n="st_sub_hint">Extra soft clicks between beats, in the app and in the exported click track.</div></div>
+              <div class="spacer"></div>
+              <div class="segmented" id="stSub">
+                <button data-v="1">1/1</button><button data-v="2">1/2</button><button data-v="3">1/3</button><button data-v="4">1/4</button>
+              </div>
+            </div>
+            <label class="check"><input type="checkbox" id="stAccent"><span data-i18n="st_accent">Accent the first beat of each bar</span></label>
+          </div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head"><div class="card-title" data-i18n="st_look">Appearance</div></div>
+          <div class="card-body stack settings-body">
+            <div class="setting">
+              <div class="setting-name" data-i18n="st_scale">Interface size</div>
+              <div class="spacer"></div>
+              <input type="range" id="stScale" min="80" max="150" step="5" class="pb-seek short">
+              <span class="num readout" id="stScaleValue"></span>
+            </div>
+            <div class="setting">
+              <div class="setting-name" data-i18n="st_theme">Theme</div>
+              <div class="spacer"></div>
+              <div class="segmented" id="stTheme">
+                <button type="button" data-v="system" data-i18n="st_theme_system">System</button>
+                <button type="button" data-v="dark" data-i18n="st_theme_dark">Dark</button>
+                <button type="button" data-v="light" data-i18n="st_theme_light">Light</button>
+              </div>
+            </div>
+            <label class="check"><input type="checkbox" id="stMotion"><span data-i18n="st_motion">Reduce motion</span></label>
+          </div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head"><div class="card-title" data-i18n="st_detect">Detection and engine</div></div>
+          <div class="card-body settings-body">
+            <div class="setting">
+              <div class="card-sub" data-i18n="st_detect_hint">Change detection, pulse and the Rust engine in the panel the toolbar opens too.</div>
+              <div class="spacer"></div>
+              <button class="btn small" id="stDetect"><span data-i18n="st_detect_open">Detection settings…</span></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card cmp-card">
+          <div class="card-head"><div class="card-title" data-i18n="st_storage">Cache and backups</div></div>
+          <div class="card-body stack settings-body">
+            <div class="setting">
+              <div><div class="setting-name" data-i18n="st_cache">Result cache</div>
+                <div class="card-sub num" id="stCache"></div></div>
+              <div class="spacer"></div>
+              <button class="btn small" id="stCacheClear"><span data-i18n="st_cache_clear">Clear cache</span></button>
+            </div>
+            <div class="card-sub" data-i18n="st_backups">Backups: before any .osu is written, the bytes it replaces are kept beside it. The first is map.osu.bak and is never touched again; later ones are .bak2, .bak3…, so every earlier state survives.</div>
+          </div>
+        </div>
+              <div class="card cmp-card">
+          <div class="card-head"><div class="card-title" data-i18n="st_file">Settings file</div></div>
+          <div class="card-body stack settings-body">
+            <div class="card-sub" data-i18n="st_file_hint">Save these settings to a file and open it on another PC. A folder that does not exist there is left at its default.</div>
+            <div class="setting">
+              <div class="spacer"></div>
+              <button class="btn small" id="stFileExport"><span data-i18n="st_file_export">Save settings…</span></button>
+              <button class="btn small" id="stFileImport"><span data-i18n="st_file_import">Open settings…</span></button>
+            </div>
+          </div>
+        </div>
+              <div class="card cmp-card">
+          <div class="card-head"><div class="card-title" data-i18n="st_diag">Diagnostics</div></div>
+          <div class="card-body stack settings-body">
+            <div class="card-sub" data-i18n="st_diag_hint">The version, the build, the engines and your folders as plain text, for a bug report. It is copied to the clipboard only when you press the button; nothing is sent anywhere.</div>
+            <div class="setting">
+              <div class="spacer"></div>
+              <button class="btn small" id="stDiagCopy"><span data-i18n="st_diag_copy">Copy diagnostics</span></button>
+            </div>
+            <pre class="diag-text num" id="stDiag" hidden></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- export: every output of the analysed song in one place -->
+      <section class="view" id="viewExport" data-view="export" data-needs-result hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_export">Export</h2>
+          <div class="view-sub" data-i18n="export_sub">Everything here writes the current timing points, edits included.</div>
+        </div>
+        <div class="card export-list">
+          <div class="export-row">
+            <div class="export-text">
+              <div class="export-title" data-i18n="exp_osu_t">osu! timing points</div>
+              <div class="card-sub" data-i18n="exp_osu_d">The red lines as [TimingPoints] text, ready to paste into a .osu.</div>
+            </div>
+            <button class="btn small" id="copyOsuBtn"><span data-i18n="actions_copy">Copy .osu</span></button>
+          </div>
+          <div class="export-row">
+            <div class="export-text">
+              <div class="export-title" data-i18n="exp_qua_t">Quaver timing points</div>
+              <div class="card-sub" data-i18n="exp_qua_d">The red lines as a .qua TimingPoints block. Written from the format as documented — no game has opened one here, so check it once in the editor.</div>
+              <div class="card-sub" id="quaCheck"></div>
+            </div>
+            <button class="btn small" id="copyQuaBtn"><span data-i18n="actions_copy_qua">Copy .qua</span></button>
+          </div>
+          <div class="export-row">
+            <div class="export-text">
+              <div class="export-title" data-i18n="exp_sm_t">StepMania timing</div>
+              <div class="card-sub" data-i18n="exp_sm_d">#OFFSET and #BPMS for a .sm or .ssc. StepMania counts from beat 0 and states where it sits, so the offset is negative. Same caveat: no game has opened one here.</div>
+              <div class="card-sub" id="smCheck"></div>
+            </div>
+            <button class="btn small" id="copySmBtn"><span data-i18n="actions_copy_sm">Copy #BPMS</span></button>
+          </div>
+          <div class="export-row">
+            <div class="export-text">
+              <div class="export-title" data-i18n="exp_csv_t">CSV table</div>
+              <div class="card-sub" data-i18n="exp_csv_d">Offset, BPM, beat and confidence per point, for a spreadsheet.</div>
+            </div>
+            <button class="btn small" id="csvBtn"><span data-i18n="actions_csv">Save CSV…</span></button>
+          </div>
+          <div class="export-row">
+            <div class="export-text">
+              <div class="export-title" data-i18n="exp_click_t">Click track</div>
+              <div class="card-sub" data-i18n="exp_click_d">A metronome WAV on these red lines, to hear any drift against the song.</div>
+            </div>
+            <button class="btn small" id="clickBtn"><span data-i18n="actions_click">Save click track…</span></button>
+          </div>
+          <div class="export-row">
+            <div class="export-text">
+              <div class="export-title" data-i18n="exp_osz_t">.osz package</div>
+              <div class="card-sub" data-i18n="exp_osz_d">The audio plus a new beatmap carrying this timing.</div>
+            </div>
+            <button class="btn small" id="oszBtn"><span data-i18n="actions_osz">Save .osz…</span></button>
+          </div>
+          <div class="export-row">
+            <div class="export-text">
+              <div class="export-title" data-i18n="exp_inject_t">Inject into a .osu</div>
+              <div class="card-sub" data-i18n="exp_inject_d">Replaces the red lines of a difficulty you already have. You confirm first, and a backup is kept.</div>
+            </div>
+            <button class="btn small" id="injectBtn"><span data-i18n="actions_inject">Inject .osu…</span></button>
+          </div>
+          <div class="export-row">
+            <div class="export-text">
+              <div class="export-title" data-i18n="exp_inject_all_t">Inject into every difficulty</div>
+              <div class="card-sub" data-i18n="exp_inject_all_d">Replaces the red lines of every .osu beside the analyzed song. One preview, one confirmation, each file backed up first.</div>
+              <div class="card-sub" id="injectAllResult"></div>
+            </div>
+            <button class="btn small" id="injectAllPreviewBtn"><span data-i18n="exp_inject_all_preview">Preview all</span></button>
+            <button class="btn small primary" id="injectAllBtn" disabled><span data-i18n="actions_inject_all">Inject all…</span></button>
+          </div>
+        </div>
+
+        <div class="card cmp-card" id="hsdCard">
+          <div class="card-head">
+            <div class="card-title" data-i18n="hsd_title">Hitsound difficulty</div>
+          </div>
+          <div class="card-body">
+            <div class="card-sub" data-i18n="hsd_sub">A new difficulty beside the others with a circle at every sound of the mapset, each playing it exactly: hitsound in one place, then copy it to every difficulty (Mapset, Copy hitsounds). Where two difficulties sound together the source's sound wins; timing, events and settings are the source's own.</div>
+            <div class="hsd-form">
+              <div class="field">
+                <label for="hsdSource" data-i18n="hsd_source">Sounds from</label>
+                <select class="input" id="hsdSource" disabled></select>
+              </div>
+              <label class="check"><input type="checkbox" id="hsdFill" checked><span data-i18n="hsd_fill">Fill in the other difficulties' sounds where the source has none</span></label>
+              <button type="button" class="btn small" id="hsdPreviewBtn" disabled><span data-i18n="hsd_preview">Preview</span></button>
+              <button type="button" class="btn small primary" id="hsdWriteBtn" disabled><span data-i18n="hsd_write">Write the difficulty</span></button>
+            </div>
+            <div class="card-sub" id="hsdResult"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- history: every .osu write, its backup, restore -->
+      <section class="view" id="viewHistory" data-view="history" hidden>
+        <div class="view-head">
+          <h2 class="view-title" data-i18n="nav_history">History</h2>
+          <div class="view-sub" data-i18n="hist_sub">Every .osu write this app made, newest first, with the backup holding what it replaced. Restoring keeps the current file as a new backup first.</div>
+        </div>
+        <div class="card cmp-card table-card">
+          <div class="card-head">
+            <div class="card-title" data-i18n="hist_title">Writes</div>
+            <span class="pill" id="histCount" hidden></span>
+          </div>
+          <div class="table-scroll"><table class="hist-table">
+            <thead><tr><th class="txt" data-i18n="hist_t_when">When</th><th class="txt" data-i18n="hist_t_what">What</th>
+              <th class="txt" data-i18n="hist_t_file">File</th><th class="txt" data-i18n="hist_t_backup">Backup</th>
+              <th></th></tr></thead>
+            <tbody id="histRows"></tbody>
+          </table></div>
+          <div class="card-body" id="histDiff"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- ========================================================= settings drawer -->
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" aria-hidden="true" inert>
+  <div class="drawer-head">
+    <div>
+      <h3 data-i18n="detection">Detection settings</h3>
+      <div class="card-sub" data-i18n="inspector_note">Applied on the next Analyze. Shared with the classic window.</div>
+    </div>
+    <button class="btn icon ghost" id="closeDrawer" data-i18n-title="close" title="Close">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body stack">
+    <div class="banner info" id="songOptNote" hidden>
+      <div class="banner-text">
+        <span id="songOptText"></span>
+        <div class="banner-actions">
+          <button type="button" class="btn small" id="songOptBack"><span data-i18n="songopt_back">Use the previous ones</span></button>
+        </div>
+      </div>
+    </div>
+    <div class="field">
+      <label data-i18n="f_preset">Preset</label>
+      <div class="segmented stretch" id="presetSwitch">
+        <button data-preset="variable" data-i18n="preset_variable">Variable tempo</button>
+        <button data-preset="steady" data-i18n="preset_steady">Steady</button>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="field">
+        <label for="delta" data-i18n="f_delta">Min change (BPM)</label>
+        <input class="input num" id="delta" type="number" step="0.1" min="0.1">
+      </div>
+      <div class="field">
+        <label for="persistence" data-i18n="f_persist">Confirm beats</label>
+        <input class="input num" id="persistence" type="number" step="1" min="2">
+      </div>
+    </div>
+    <div class="field">
+      <label for="confidence" data-i18n="f_conf">Min confidence (%)</label>
+      <input class="input num" id="confidence" type="number" step="1" min="0" max="100">
+      <input type="range" class="pb-seek conf-range" id="confidenceRange" min="0" max="100" step="1" data-i18n-aria="f_conf" aria-label="Min confidence (%)">
+      <div class="conf-live" id="confLive" hidden>
+        <div class="card-sub" id="confLiveText"></div>
+        <button type="button" class="btn small" id="confLiveApply"><span data-i18n="conf_apply">Apply to this analysis</span></button>
+      </div>
+    </div>
+    <div class="field">
+      <label data-i18n="f_pulse">Pulse (octave)</label>
+      <div class="segmented stretch" id="pulseSwitch">
+        <button data-pulse="auto" data-i18n="auto">Auto</button>
+        <button data-pulse="/4">÷4</button><button data-pulse="/2">÷2</button>
+        <button data-pulse="x1">×1</button><button data-pulse="x2">×2</button><button data-pulse="x4">×4</button>
+      </div>
+    </div>
+    <div class="card compact">
+      <div class="card-body stack">
+        <label class="switch"><span data-i18n="t_prefer">Prefer map BPM (120–300)</span><input type="checkbox" id="preferMap"><i></i></label>
+        <div class="divider"></div>
+        <label class="switch"><span data-i18n="t_refine">Re-anchor beats to transients</span><input type="checkbox" id="refineBeats"><i></i></label>
+      </div>
+    </div>
+    <div class="card compact">
+      <div class="card-body stack">
+        <label class="switch"><span data-i18n="t_rust">Rust engine (faster, same results)</span><input type="checkbox" id="rustEngine"><i></i></label>
+        <div class="card-sub" id="rustNote" data-i18n="t_rust_note">Runs at the grid's own pulse. Where it finds no grid, the Python engine takes over and says so.</div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<dialog class="keys" id="keysSheet" aria-labelledby="keysTitle">
+  <div class="keys-head">
+    <h2 id="keysTitle" data-i18n="keys_title">Keyboard</h2>
+    <span class="spacer"></span>
+    <button class="btn small" id="keysReset" hidden><span data-i18n="key_reset">Default keys</span></button>
+    <button class="btn small" id="keysClose"><span data-i18n="close">Close</span></button>
+  </div>
+  <dl class="keys-list" id="keysList"></dl>
+</dialog>
+
+<dialog class="keys palette" id="palette" data-i18n-aria="pal_title" aria-label="Commands">
+  <input type="search" class="palette-input" id="paletteInput" autocomplete="off" spellcheck="false"
+         placeholder="Type an action or a section…"
+         role="combobox" aria-controls="paletteList" aria-expanded="true">
+  <ul class="palette-list" id="paletteList" role="listbox"></ul>
+  <div class="card-sub" id="paletteEmpty" data-i18n="pal_empty" hidden>Nothing matches.</div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+<div class="drop-overlay" id="dropOverlay" hidden>
+  <div class="drop-msg">
+    <div class="halo">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l2-6 3 12 3-9 2 5 2-2h5"/></svg>
+    </div>
+    <h2 data-i18n="drop_title">Drop the audio</h2>
+    <p data-i18n="drop_body">Release to time it with the current detection settings.</p>
+  </div>
+</div>
+<script src="web.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

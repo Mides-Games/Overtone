@@ -1,0 +1,584 @@
+{
+ "_comment": "What each genre's hitsounds sound like, measured by bench/genre_samples.py from the sample files the corpus mapsets ship. Medians only: no audio is copied, kept or shipped, and a kit built from these is Overtone's own synthesis aimed at them.",
+ "format": 2,
+ "measured": "2026-09-27",
+ "bands_hz": [20.0, 60.0, 150.0, 400.0, 1200.0, 3500.0, 8000.0, 20000.0],
+ "genres": {
+  "rock": {
+   "files": 1236,
+   "roles": {
+    "drum-hitclap": {
+     "n": 12,
+     "decay_ms": 544.5,
+     "attack_ms": 9.68,
+     "centroid_hz": 167.9,
+     "rolloff_hz": 160.0,
+     "zcr": 0.0213,
+     "bands": [0.00016, 0.64371, 0.34898, 0.00208, 0.00194, 0.00283, 0.0002]
+    },
+    "drum-hitfinish": {
+     "n": 17,
+     "decay_ms": 542.6,
+     "attack_ms": 16.78,
+     "centroid_hz": 106.0,
+     "rolloff_hz": 100.0,
+     "zcr": 0.0136,
+     "bands": [0.00029, 0.94801, 0.04913, 0.00053, 0.00092, 0.001, 0.00012]
+    },
+    "drum-hitnormal": {
+     "n": 5,
+     "decay_ms": 231.3,
+     "attack_ms": 13.51,
+     "centroid_hz": 101.5,
+     "rolloff_hz": 80.0,
+     "zcr": 0.0227,
+     "bands": [0.22477, 0.75068, 0.01694, 0.00042, 0.00134, 0.00466, 0.0007]
+    },
+    "drum-hitwhistle": {
+     "n": 9,
+     "decay_ms": 796.8,
+     "attack_ms": 120.0,
+     "centroid_hz": 6616.7,
+     "rolloff_hz": 10580.0,
+     "zcr": 0.3339,
+     "bands": [0.0, 4e-05, 0.00474, 0.09864, 0.10996, 0.4337, 0.35292]
+    },
+    "normal-hitclap": {
+     "n": 6,
+     "decay_ms": 398.6,
+     "attack_ms": 1.66,
+     "centroid_hz": 5062.0,
+     "rolloff_hz": 10380.0,
+     "zcr": 0.28,
+     "bands": [0.00253, 0.01097, 0.09258, 0.10745, 0.18648, 0.23531, 0.26233]
+    },
+    "normal-hitfinish": {
+     "n": 20,
+     "decay_ms": 1058.2,
+     "attack_ms": 105.67,
+     "centroid_hz": 3962.2,
+     "rolloff_hz": 6180.0,
+     "zcr": 0.1897,
+     "bands": [0.00811, 0.00034, 0.01274, 0.12208, 0.16514, 0.61875, 0.04244]
+    },
+    "soft-hitclap": {
+     "n": 8,
+     "decay_ms": 377.9,
+     "attack_ms": 7.63,
+     "centroid_hz": 931.65,
+     "rolloff_hz": 530.0,
+     "zcr": 0.1051,
+     "bands": [0.00063, 0.00242, 0.84355, 0.04348, 0.03368, 0.06948, 0.02001]
+    },
+    "soft-hitfinish": {
+     "n": 60,
+     "decay_ms": 901.5,
+     "attack_ms": 51.53,
+     "centroid_hz": 3662.95,
+     "rolloff_hz": 6660.0,
+     "zcr": 0.2101,
+     "bands": [9e-05, 0.00031, 0.0077, 0.32918, 0.17555, 0.38526, 0.07802]
+    },
+    "soft-hitwhistle": {
+     "n": 30,
+     "decay_ms": 729.5,
+     "attack_ms": 21.84,
+     "centroid_hz": 7770.2,
+     "rolloff_hz": 11520.0,
+     "zcr": 0.37,
+     "bands": [0.0, 2e-05, 0.00084, 0.01906, 0.05095, 0.49921, 0.35292]
+    }
+   }
+  },
+  "pop": {
+   "files": 954,
+   "roles": {
+    "drum-hitclap": {
+     "n": 9,
+     "decay_ms": 544.5,
+     "attack_ms": 9.68,
+     "centroid_hz": 316.8,
+     "rolloff_hz": 200.0,
+     "zcr": 0.0218,
+     "bands": [0.00016, 0.371, 0.34898, 0.00692, 0.02227, 0.00283, 0.0002]
+    },
+    "drum-hitfinish": {
+     "n": 9,
+     "decay_ms": 797.1,
+     "attack_ms": 13.38,
+     "centroid_hz": 154.3,
+     "rolloff_hz": 120.0,
+     "zcr": 0.0136,
+     "bands": [0.00061, 0.89284, 0.06674, 0.00414, 0.00623, 0.00377, 0.0002]
+    },
+    "drum-hitnormal": {
+     "n": 7,
+     "decay_ms": 479.3,
+     "attack_ms": 24.85,
+     "centroid_hz": 127.3,
+     "rolloff_hz": 120.0,
+     "zcr": 0.0086,
+     "bands": [0.07389, 0.79183, 0.10843, 0.01667, 0.00547, 0.00285, 0.00027]
+    },
+    "normal-hitfinish": {
+     "n": 7,
+     "decay_ms": 1058.2,
+     "attack_ms": 105.67,
+     "centroid_hz": 4075.2,
+     "rolloff_hz": 6400.0,
+     "zcr": 0.1996,
+     "bands": [0.00811, 0.00032, 0.01201, 0.12208, 0.15437, 0.61875, 0.05764]
+    },
+    "soft-hitclap": {
+     "n": 18,
+     "decay_ms": 249.0,
+     "attack_ms": 9.77,
+     "centroid_hz": 440.3,
+     "rolloff_hz": 220.0,
+     "zcr": 0.0694,
+     "bands": [0.00028, 0.00699, 0.88842, 0.04711, 0.02785, 0.0253, 0.00398]
+    },
+    "soft-hitfinish": {
+     "n": 78,
+     "decay_ms": 827.3,
+     "attack_ms": 51.29,
+     "centroid_hz": 3463.6,
+     "rolloff_hz": 6680.0,
+     "zcr": 0.211,
+     "bands": [1e-05, 0.00012, 0.00625, 0.2289, 0.16514, 0.38998, 0.07802]
+    }
+   }
+  },
+  "jrock": {
+   "files": 1634,
+   "roles": {
+    "drum-hitclap": {
+     "n": 11,
+     "decay_ms": 544.5,
+     "attack_ms": 9.68,
+     "centroid_hz": 167.9,
+     "rolloff_hz": 160.0,
+     "zcr": 0.0213,
+     "bands": [0.00016, 0.64371, 0.34898, 0.00208, 0.00194, 0.00283, 0.0002]
+    },
+    "drum-hitfinish": {
+     "n": 12,
+     "decay_ms": 553.65,
+     "attack_ms": 16.78,
+     "centroid_hz": 113.05,
+     "rolloff_hz": 110.0,
+     "zcr": 0.0136,
+     "bands": [0.00029, 0.93012, 0.04913, 0.00233, 0.00092, 0.001, 0.00012]
+    },
+    "drum-hitwhistle": {
+     "n": 8,
+     "decay_ms": 478.55,
+     "attack_ms": 24.4,
+     "centroid_hz": 5347.2,
+     "rolloff_hz": 10650.0,
+     "zcr": 0.2976,
+     "bands": [1e-05, 0.00202, 0.0048, 0.24114, 0.05865, 0.26269, 0.25889]
+    },
+    "normal-hitfinish": {
+     "n": 17,
+     "decay_ms": 1058.2,
+     "attack_ms": 73.49,
+     "centroid_hz": 3962.2,
+     "rolloff_hz": 6180.0,
+     "zcr": 0.1897,
+     "bands": [0.00012, 0.00034, 0.01274, 0.12208, 0.16514, 0.48549, 0.05749]
+    },
+    "normal-hitnormal": {
+     "n": 6,
+     "decay_ms": 1797.9,
+     "attack_ms": 33.63,
+     "centroid_hz": 120.1,
+     "rolloff_hz": 140.0,
+     "zcr": 0.0064,
+     "bands": [0.00394, 0.87723, 0.10971, 0.00772, 0.00018, 1e-05, 0.0]
+    },
+    "soft-hitclap": {
+     "n": 36,
+     "decay_ms": 249.0,
+     "attack_ms": 9.77,
+     "centroid_hz": 440.3,
+     "rolloff_hz": 220.0,
+     "zcr": 0.0694,
+     "bands": [0.00028, 0.00699, 0.88842, 0.04711, 0.02785, 0.0253, 0.00398]
+    },
+    "soft-hitfinish": {
+     "n": 114,
+     "decay_ms": 933.85,
+     "attack_ms": 51.405,
+     "centroid_hz": 3943.5,
+     "rolloff_hz": 6680.0,
+     "zcr": 0.2119,
+     "bands": [1e-05, 4e-05, 0.00212, 0.15915, 0.1519, 0.4337, 0.08031]
+    },
+    "soft-hitwhistle": {
+     "n": 124,
+     "decay_ms": 927.85,
+     "attack_ms": 25.26,
+     "centroid_hz": 4744.85,
+     "rolloff_hz": 11060.0,
+     "zcr": 0.2881,
+     "bands": [0.00202, 0.00992, 0.06112, 0.34108, 0.17169, 0.09576, 0.25948]
+    }
+   }
+  },
+  "electronic": {
+   "files": 1166,
+   "roles": {
+    "drum-hitfinish": {
+     "n": 7,
+     "decay_ms": 1483.3,
+     "attack_ms": 117.28,
+     "centroid_hz": 800.3,
+     "rolloff_hz": 780.0,
+     "zcr": 0.0803,
+     "bands": [0.00019, 0.0011, 0.00271, 0.15225, 0.06809, 0.01361, 0.01641]
+    },
+    "normal-hitfinish": {
+     "n": 17,
+     "decay_ms": 1483.3,
+     "attack_ms": 71.5,
+     "centroid_hz": 3413.6,
+     "rolloff_hz": 6400.0,
+     "zcr": 0.2119,
+     "bands": [0.00011, 0.00013, 0.00212, 0.15011, 0.13009, 0.33891, 0.07666]
+    },
+    "soft-hitclap": {
+     "n": 5,
+     "decay_ms": 258.5,
+     "attack_ms": 17.17,
+     "centroid_hz": 735.0,
+     "rolloff_hz": 1180.0,
+     "zcr": 0.0839,
+     "bands": [0.0001, 0.00258, 0.45869, 0.17186, 0.08816, 0.05199, 0.01366]
+    },
+    "soft-hitfinish": {
+     "n": 64,
+     "decay_ms": 988.0,
+     "attack_ms": 72.135,
+     "centroid_hz": 3413.6,
+     "rolloff_hz": 6680.0,
+     "zcr": 0.2119,
+     "bands": [4e-05, 0.00013, 0.00235, 0.32316, 0.17327, 0.34543, 0.07802]
+    },
+    "soft-hitwhistle": {
+     "n": 6,
+     "decay_ms": 464.75,
+     "attack_ms": 22.03,
+     "centroid_hz": 4303.85,
+     "rolloff_hz": 6940.0,
+     "zcr": 0.2037,
+     "bands": [0.0, 1e-05, 1e-05, 0.006, 0.19685, 0.23912, 0.12102]
+    }
+   }
+  },
+  "punk": {
+   "files": 894,
+   "roles": {
+    "drum-hitclap": {
+     "n": 13,
+     "decay_ms": 195.8,
+     "attack_ms": 9.75,
+     "centroid_hz": 446.5,
+     "rolloff_hz": 240.0,
+     "zcr": 0.0445,
+     "bands": [0.00052, 0.00547, 0.89657, 0.04422, 0.02422, 0.02517, 0.00385]
+    },
+    "drum-hitfinish": {
+     "n": 8,
+     "decay_ms": 1157.3,
+     "attack_ms": 34.04,
+     "centroid_hz": 148.15,
+     "rolloff_hz": 140.0,
+     "zcr": 0.029,
+     "bands": [0.00037, 0.8935, 0.06542, 0.00864, 0.00381, 0.00608, 0.00046]
+    },
+    "drum-hitwhistle": {
+     "n": 5,
+     "decay_ms": 352.2,
+     "attack_ms": 22.15,
+     "centroid_hz": 8235.7,
+     "rolloff_hz": 12540.0,
+     "zcr": 0.3866,
+     "bands": [0.00147, 2e-05, 0.00504, 0.00706, 0.05107, 0.59193, 0.35097]
+    },
+    "normal-hitfinish": {
+     "n": 12,
+     "decay_ms": 1061.05,
+     "attack_ms": 105.68,
+     "centroid_hz": 3935.7,
+     "rolloff_hz": 6180.0,
+     "zcr": 0.1906,
+     "bands": [0.00417, 0.00037, 0.01358, 0.13519, 0.15913, 0.61153, 0.04453]
+    },
+    "normal-hitnormal": {
+     "n": 5,
+     "decay_ms": 222.3,
+     "attack_ms": 17.98,
+     "centroid_hz": 67.2,
+     "rolloff_hz": 80.0,
+     "zcr": 0.0213,
+     "bands": [0.31084, 0.64766, 0.03285, 0.00129, 0.00043, 0.00027, 4e-05]
+    },
+    "soft-hitclap": {
+     "n": 16,
+     "decay_ms": 195.8,
+     "attack_ms": 9.75,
+     "centroid_hz": 446.5,
+     "rolloff_hz": 240.0,
+     "zcr": 0.0445,
+     "bands": [0.00052, 0.00547, 0.89657, 0.04422, 0.02422, 0.02517, 0.00385]
+    },
+    "soft-hitfinish": {
+     "n": 55,
+     "decay_ms": 956.9,
+     "attack_ms": 34.04,
+     "centroid_hz": 3463.6,
+     "rolloff_hz": 6680.0,
+     "zcr": 0.2119,
+     "bands": [1e-05, 4e-05, 0.00465, 0.32918, 0.19217, 0.38998, 0.07802]
+    },
+    "soft-hitwhistle": {
+     "n": 8,
+     "decay_ms": 435.6,
+     "attack_ms": 13.5,
+     "centroid_hz": 7591.75,
+     "rolloff_hz": 11670.0,
+     "zcr": 0.3637,
+     "bands": [0.00064, 8e-05, 0.00226, 0.00936, 0.06656, 0.59387, 0.33016]
+    }
+   }
+  },
+  "metal": {
+   "files": 3525,
+   "roles": {
+    "drum-hitclap": {
+     "n": 56,
+     "decay_ms": 195.8,
+     "attack_ms": 9.75,
+     "centroid_hz": 446.5,
+     "rolloff_hz": 240.0,
+     "zcr": 0.0445,
+     "bands": [0.00052, 0.00574, 0.89657, 0.04422, 0.02422, 0.02517, 0.00385]
+    },
+    "drum-hitfinish": {
+     "n": 134,
+     "decay_ms": 1064.0,
+     "attack_ms": 105.71,
+     "centroid_hz": 3894.5,
+     "rolloff_hz": 6180.0,
+     "zcr": 0.1901,
+     "bands": [0.00878, 0.00043, 0.01412, 0.13141, 0.16746, 0.60435, 0.04115]
+    },
+    "drum-hitnormal": {
+     "n": 9,
+     "decay_ms": 639.0,
+     "attack_ms": 23.29,
+     "centroid_hz": 153.9,
+     "rolloff_hz": 160.0,
+     "zcr": 0.0254,
+     "bands": [0.00447, 0.66787, 0.30226, 0.01363, 0.00649, 0.00335, 0.00012]
+    },
+    "drum-hitwhistle": {
+     "n": 110,
+     "decay_ms": 765.15,
+     "attack_ms": 28.845,
+     "centroid_hz": 2272.95,
+     "rolloff_hz": 4080.0,
+     "zcr": 0.1958,
+     "bands": [0.00022, 0.03756, 0.14879, 0.36792, 0.07396, 0.03733, 0.10054]
+    },
+    "normal-hitclap": {
+     "n": 14,
+     "decay_ms": 195.8,
+     "attack_ms": 11.7,
+     "centroid_hz": 446.5,
+     "rolloff_hz": 240.0,
+     "zcr": 0.0445,
+     "bands": [0.00052, 0.00689, 0.89009, 0.04559, 0.02491, 0.02534, 0.00397]
+    },
+    "normal-hitfinish": {
+     "n": 43,
+     "decay_ms": 1153.4,
+     "attack_ms": 73.9,
+     "centroid_hz": 3962.2,
+     "rolloff_hz": 6180.0,
+     "zcr": 0.1906,
+     "bands": [0.00021, 0.00034, 0.01274, 0.12476, 0.16514, 0.46186, 0.06513]
+    },
+    "normal-hitnormal": {
+     "n": 50,
+     "decay_ms": 1797.9,
+     "attack_ms": 33.63,
+     "centroid_hz": 120.1,
+     "rolloff_hz": 140.0,
+     "zcr": 0.0064,
+     "bands": [0.00394, 0.87723, 0.10971, 0.00772, 0.00018, 1e-05, 0.0]
+    },
+    "normal-hitwhistle": {
+     "n": 7,
+     "decay_ms": 1649.1,
+     "attack_ms": 56.49,
+     "centroid_hz": 2377.7,
+     "rolloff_hz": 5560.0,
+     "zcr": 0.176,
+     "bands": [4e-05, 0.0001, 0.00331, 0.46243, 0.05899, 0.16175, 0.0667]
+    },
+    "soft-hitclap": {
+     "n": 35,
+     "decay_ms": 195.8,
+     "attack_ms": 11.7,
+     "centroid_hz": 446.5,
+     "rolloff_hz": 240.0,
+     "zcr": 0.0436,
+     "bands": [0.00047, 0.00689, 0.89655, 0.04422, 0.02422, 0.02525, 0.00385]
+    },
+    "soft-hitfinish": {
+     "n": 151,
+     "decay_ms": 1058.2,
+     "attack_ms": 61.0,
+     "centroid_hz": 3962.3,
+     "rolloff_hz": 6720.0,
+     "zcr": 0.216,
+     "bands": [7e-05, 0.0002, 0.01274, 0.12208, 0.16514, 0.38966, 0.09841]
+    },
+    "soft-hitwhistle": {
+     "n": 97,
+     "decay_ms": 741.0,
+     "attack_ms": 21.63,
+     "centroid_hz": 967.0,
+     "rolloff_hz": 1260.0,
+     "zcr": 0.0631,
+     "bands": [0.00012, 0.01113, 0.16332, 0.36186, 0.09605, 0.01842, 0.00181]
+    }
+   }
+  },
+  "jazz": {
+   "files": 188,
+   "roles": {
+    "drum-hitfinish": {
+     "n": 6,
+     "decay_ms": 816.05,
+     "attack_ms": 30.43,
+     "centroid_hz": 615.95,
+     "rolloff_hz": 920.0,
+     "zcr": 0.0488,
+     "bands": [0.03583, 0.30962, 0.17094, 0.2464, 0.09451, 0.01563, 0.00549]
+    },
+    "soft-hitfinish": {
+     "n": 7,
+     "decay_ms": 564.8,
+     "attack_ms": 12.24,
+     "centroid_hz": 3463.6,
+     "rolloff_hz": 6680.0,
+     "zcr": 0.2119,
+     "bands": [1e-05, 4e-05, 0.00212, 0.38001, 0.19232, 0.34543, 0.08031]
+    }
+   }
+  },
+  "funk": {
+   "files": 176,
+   "roles": {
+    "drum-hitnormal": {
+     "n": 5,
+     "decay_ms": 479.3,
+     "attack_ms": 24.85,
+     "centroid_hz": 127.3,
+     "rolloff_hz": 120.0,
+     "zcr": 0.0086,
+     "bands": [0.07389, 0.79183, 0.10843, 0.01667, 0.00547, 0.00285, 0.00027]
+    },
+    "soft-hitfinish": {
+     "n": 5,
+     "decay_ms": 943.1,
+     "attack_ms": 49.12,
+     "centroid_hz": 2805.1,
+     "rolloff_hz": 5780.0,
+     "zcr": 0.1874,
+     "bands": [0.00055, 0.42953, 0.00366, 0.02035, 0.08487, 0.34013, 0.04174]
+    }
+   }
+  },
+  "metalcore": {
+   "files": 922,
+   "roles": {
+    "drum-hitclap": {
+     "n": 11,
+     "decay_ms": 219.5,
+     "attack_ms": 5.56,
+     "centroid_hz": 774.7,
+     "rolloff_hz": 900.0,
+     "zcr": 0.0712,
+     "bands": [0.00017, 0.00182, 0.80119, 0.06497, 0.06428, 0.05496, 0.01233]
+    },
+    "drum-hitfinish": {
+     "n": 28,
+     "decay_ms": 1070.3,
+     "attack_ms": 90.225,
+     "centroid_hz": 3917.1,
+     "rolloff_hz": 6160.0,
+     "zcr": 0.1878,
+     "bands": [9e-05, 0.0003, 0.03577, 0.36127, 0.1811, 0.35201, 0.04961]
+    },
+    "drum-hitwhistle": {
+     "n": 24,
+     "decay_ms": 931.15,
+     "attack_ms": 80.61,
+     "centroid_hz": 4247.85,
+     "rolloff_hz": 7930.0,
+     "zcr": 0.2593,
+     "bands": [3e-05, 0.00021, 0.01756, 0.09503, 0.06548, 0.46229, 0.13181]
+    },
+    "normal-hitclap": {
+     "n": 5,
+     "decay_ms": 195.8,
+     "attack_ms": 9.75,
+     "centroid_hz": 461.8,
+     "rolloff_hz": 240.0,
+     "zcr": 0.0445,
+     "bands": [0.00047, 0.00689, 0.89009, 0.04574, 0.02557, 0.02713, 0.00409]
+    },
+    "normal-hitfinish": {
+     "n": 30,
+     "decay_ms": 1058.2,
+     "attack_ms": 73.47,
+     "centroid_hz": 3935.8,
+     "rolloff_hz": 6180.0,
+     "zcr": 0.1897,
+     "bands": [0.00019, 0.00033, 0.01274, 0.13525, 0.16514, 0.61153, 0.04412]
+    },
+    "soft-hitclap": {
+     "n": 20,
+     "decay_ms": 195.8,
+     "attack_ms": 9.75,
+     "centroid_hz": 461.8,
+     "rolloff_hz": 240.0,
+     "zcr": 0.0445,
+     "bands": [0.00052, 0.00547, 0.89016, 0.04561, 0.02555, 0.02713, 0.00409]
+    },
+    "soft-hitfinish": {
+     "n": 26,
+     "decay_ms": 1058.2,
+     "attack_ms": 73.47,
+     "centroid_hz": 3514.5,
+     "rolloff_hz": 6230.0,
+     "zcr": 0.1999,
+     "bands": [7e-05, 0.00034, 0.00468, 0.12208, 0.18177, 0.38998, 0.07353]
+    },
+    "soft-hitwhistle": {
+     "n": 5,
+     "decay_ms": 394.3,
+     "attack_ms": 4.35,
+     "centroid_hz": 7966.3,
+     "rolloff_hz": 11520.0,
+     "zcr": 0.3711,
+     "bands": [2e-05, 3e-05, 0.01738, 0.02711, 0.01885, 0.49073, 0.35599]
+    }
+   }
+  }
+ }
+}

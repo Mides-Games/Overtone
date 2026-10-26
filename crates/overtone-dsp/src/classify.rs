@@ -1,0 +1,487 @@
+//! Section labels from structure: which repeated part is which.
+//!
+//! The structure stage finds *where* phrases change; this names them for the
+//! hitsound engine's per-section profiles. Rules, in order, each cheap and
+//! stated plainly because labelling pop form by heuristics is approximate
+//! by nature (the learned labeller stays a Phase 9 experiment):
+//!
+//! 1. Segments sharing harmonic material (segment-mean chroma cosine at or
+//!    above [`REPEAT_COSINE`]) belong to one repetition group. A group whose
+//!    members fall into a loud and a quiet family, at least two in each and
+//!    [`SPLIT_POWER_RATIO`] apart, is two groups: a chorus on the verse's
+//!    progression, which pop writes all the time.
+//! 2. The loudest repeated group is the **Chorus** — but only when at least
+//!    two groups repeat, because chorus-ness is relative (louder *than the
+//!    verse*). A single repeated family defaults to **Verse**; crowning it
+//!    Chorus from energy alone invents information.
+//!    Loudness decides only *within* repetition — a loud one-off is a
+//!    bridge, not a chorus.
+//! 3. Unique edge segments are **Intro** (first, under [`INTRO_MAX_S`]) and
+//!    **Outro** (last, any length).
+//! 4. Any other unique segment is a **Bridge**.
+//! 5. A track with a single segment is a **Verse**: the neutral default.
+//!
+//! Known approximations, recorded not hidden: a long opening maps to
+//! Bridge; two different sections sharing chords *and* level merge into one
+//! Verse group; and a single loud repeat of the verse's chords stays Verse,
+//! since one member cannot make a family. They need intent (or lyrics) no
+//! audio statistic carries.
+
+use crate::chroma;
+
+/// Cosine similarity at or above which two segments count as repetitions.
+/// Measured on the tests' sustained triads: C major against itself at twice
+/// the level 1.000; against F or G major, a fourth apart either way, 0.23 to
+/// 0.38; against E minor, which shares two of its three notes and is the
+/// closest different chord, 0.55. The margin below the bar is about 0.35.
+pub const REPEAT_COSINE: f64 = 0.90;
+/// Power ratio (mean square) between the quietest loud member and the
+/// loudest quiet member at which one repetition group splits in two. 2.0
+/// is 3 dB; pop choruses sit roughly 3-6 dB over their verses, and a verse
+/// played a little unevenly stays well under it.
+///
+/// Tried at 1.5 and reverted: on 100+100 Songs the lift over chance moved
+/// +7.5/+11.9 to +9.7/+14.2, under the pre-registered +15 bar on both
+/// halves. The failure is recall, not the threshold — full mixes collapse
+/// to one chroma family with 0-2.5 dB spreads, and no bar in that band is
+/// more than a coin flip informed by nothing. See bench/labels.py.
+pub const SPLIT_POWER_RATIO: f64 = 2.0;
+/// A unique opening longer than this is a section, not an introduction.
+pub const INTRO_MAX_S: f64 = 12.0;
+
+/// Pop-form role of one segment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SectionKind {
+    Intro,
+    Verse,
+    Chorus,
+    Bridge,
+    Outro,
+}
+
+/// One labelled span of the track, with the evidence its label rests on:
+/// the rules above read nothing else, so a caller can say why.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LabeledSection {
+    pub start: f64,
+    pub end: f64,
+    pub kind: SectionKind,
+    /// Repetition group, numbered by first appearance from 0: segments with
+    /// one number share harmonic material (and level, after the split).
+    pub group: usize,
+    /// How many segments the group holds; 1 is a one-off.
+    pub repeats: usize,
+    /// Mean power relative to the loudest segment, in dB (0 at the loudest,
+    /// floored at -120 for silence).
+    pub level_db: f64,
+}
+
+/// Label the segments implied by `boundaries` (plus track start/end).
+/// Empty in, empty out.
+pub fn classify(y: &[f32], sr: u32, boundaries: &[f64]) -> Vec<LabeledSection> {
+    let duration = y.len() as f64 / sr as f64;
+    let mut edges: Vec<f64> = vec![0.0];
+    edges.extend(boundaries.iter().copied());
+    edges.push(duration);
+    // Sort before dedup: dedup only collapses neighbours, and an unsorted
+    // caller must not produce zero-length spans downstream.
+    edges.sort_by(f64::total_cmp);
+    edges.dedup();
+    if edges.len() < 2 {
+        return Vec::new();
+    }
+    let spans: Vec<(f64, f64)> = edges.windows(2).map(|w| (w[0], w[1])).collect();
+    if spans.len() == 1 {
+        return vec![LabeledSection {
+            start: spans[0].0,
+            end: spans[0].1,
+            kind: SectionKind::Verse,
+            group: 0,
+            repeats: 1,
+            level_db: 0.0,
+        }];
+    }
+
+    // Segment-mean chroma plus mean energy, on the structure grid.
+    let n_fft = 2048;
+    // Reduced frame by frame, as in structure: never the whole spectrogram.
+    let chroma = crate::stft::map_frames(y, n_fft, 128, |power| {
+        chroma::chroma_frame(power, sr, n_fft)
+    });
+    // Segment seconds to STFT frame indices (128 hop).
+    let to_frame = |t: f64| t * sr as f64 / 128.0;
+    let mut signatures: Vec<[f64; 12]> = Vec::new();
+    let mut energies: Vec<f64> = Vec::new();
+    for &(start, end) in &spans {
+        let lo = (to_frame(start).floor() as usize).min(chroma.len());
+        let hi = (to_frame(end).ceil() as usize).min(chroma.len());
+        let mut mean = [0.0f64; 12];
+        let mut count = 0usize;
+        if hi > lo {
+            for frame in &chroma[lo..hi] {
+                for (c, acc) in mean.iter_mut().enumerate() {
+                    *acc += frame[c];
+                }
+                count += 1;
+            }
+            if count > 0 {
+                for acc in mean.iter_mut() {
+                    *acc /= count as f64;
+                }
+            }
+        }
+        signatures.push(mean);
+        let s0 = (start * sr as f64) as usize;
+        let s1 = (end * sr as f64).min(y.len() as f64) as usize;
+        let energy = if s1 > s0 {
+            y[s0..s1].iter().map(|&v| (v as f64).powi(2)).sum::<f64>() / (s1 - s0) as f64
+        } else {
+            0.0
+        };
+        energies.push(energy);
+    }
+
+    // Repetition groups by transitive closure over the cosine threshold.
+    let n = spans.len();
+    let mut group: Vec<usize> = (0..n).collect();
+    let cosine = |a: usize, b: usize| -> f64 {
+        let (na, nb): (f64, f64) = (
+            signatures[a].iter().map(|&x| x * x).sum::<f64>().sqrt(),
+            signatures[b].iter().map(|&x| x * x).sum::<f64>().sqrt(),
+        );
+        if na <= 0.0 || nb <= 0.0 {
+            return 0.0;
+        }
+        signatures[a]
+            .iter()
+            .zip(signatures[b].iter())
+            .map(|(&x, &y)| x * y)
+            .sum::<f64>()
+            / (na * nb)
+    };
+    for a in 0..n {
+        for b in a + 1..n {
+            if cosine(a, b) >= REPEAT_COSINE {
+                let (ga, gb) = (group[a], group[b]);
+                for g in group.iter_mut() {
+                    if *g == gb {
+                        *g = ga;
+                    }
+                }
+            }
+        }
+    }
+    split_by_level(&mut group, &energies);
+    let mut group_energy: std::collections::HashMap<usize, (f64, usize)> =
+        std::collections::HashMap::new();
+    for (i, &g) in group.iter().enumerate() {
+        let entry = group_energy.entry(g).or_insert((0.0, 0));
+        entry.0 += energies[i];
+        entry.1 += 1;
+    }
+    let mut group_mean: std::collections::HashMap<usize, f64> = std::collections::HashMap::new();
+    for (&g, &(sum, count)) in group_energy.iter() {
+        group_mean.insert(g, sum / count.max(1) as f64);
+    }
+    let mut group_size: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    for &g in group.iter() {
+        *group_size.entry(g).or_insert(0) += 1;
+    }
+    let repeated: Vec<usize> = group_mean
+        .keys()
+        .copied()
+        .filter(|&g| group_size.get(&g).copied().unwrap_or(0) >= 2)
+        .collect();
+    let chorus_group = (repeated.len() >= 2)
+        .then(|| {
+            repeated
+                .iter()
+                .max_by(|&&a, &&b| {
+                    group_mean
+                        .get(&a)
+                        .copied()
+                        .unwrap_or(0.0)
+                        .total_cmp(&group_mean.get(&b).copied().unwrap_or(0.0))
+                })
+                .copied()
+        })
+        .flatten();
+
+    // Group ids by first appearance, and levels against the loudest segment.
+    let mut order: Vec<usize> = Vec::new();
+    for &g in group.iter() {
+        if !order.contains(&g) {
+            order.push(g);
+        }
+    }
+    let loudest = energies.iter().copied().fold(0.0f64, f64::max);
+    let level_db = |e: f64| {
+        if loudest <= 0.0 || e <= 0.0 {
+            -120.0
+        } else {
+            (10.0 * (e / loudest).log10()).max(-120.0)
+        }
+    };
+
+    spans
+        .iter()
+        .enumerate()
+        .map(|(i, &(start, end))| {
+            let g = group[i];
+            let repeated = group_size.get(&g).copied().unwrap_or(0) >= 2;
+            let kind = if repeated {
+                if chorus_group == Some(g) {
+                    SectionKind::Chorus
+                } else {
+                    SectionKind::Verse
+                }
+            } else if i == 0 && end - start < INTRO_MAX_S {
+                SectionKind::Intro
+            } else if i == n - 1 {
+                SectionKind::Outro
+            } else {
+                SectionKind::Bridge
+            };
+            LabeledSection {
+                start,
+                end,
+                kind,
+                group: order.iter().position(|&o| o == g).unwrap_or(0),
+                repeats: group_size.get(&g).copied().unwrap_or(1),
+                level_db: level_db(energies[i]),
+            }
+        })
+        .collect()
+}
+
+/// Split each repetition group whose members fall into a quiet and a loud
+/// family, at least two in each and [`SPLIT_POWER_RATIO`] apart. Harmony
+/// alone put a chorus that shares the verse's progression into the verse's
+/// group, and rule 2 then never saw two repeated groups: every repeat came
+/// out Verse. The loud family takes a fresh group id; ids up to the segment
+/// count are indices, so ids from there on cannot collide.
+fn split_by_level(group: &mut [usize], energies: &[f64]) {
+    let n = group.len();
+    let mut ids = group.to_vec();
+    ids.sort_unstable();
+    ids.dedup();
+    let mut fresh = n;
+    for id in ids {
+        let mut members: Vec<usize> = (0..n).filter(|&i| group[i] == id).collect();
+        if members.len() < 4 {
+            continue;
+        }
+        members.sort_by(|&a, &b| energies[a].total_cmp(&energies[b]));
+        // The widest step in level that leaves two or more on each side.
+        let mut best: Option<(usize, f64)> = None;
+        for k in 2..=members.len() - 2 {
+            let ratio = energies[members[k]] / energies[members[k - 1]].max(1e-12);
+            if best.is_none_or(|(_, r)| ratio > r) {
+                best = Some((k, ratio));
+            }
+        }
+        if let Some((k, ratio)) = best {
+            if ratio >= SPLIT_POWER_RATIO {
+                for &i in &members[k..] {
+                    group[i] = fresh;
+                }
+                fresh += 1;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Sustained triad, peak-normalised with the track.
+    fn chord(sr: u32, root: f64, major: bool, amp: f64, seconds: f64) -> Vec<f32> {
+        let third = root * if major { 1.2599 } else { 1.1892 };
+        let fifth = root * 1.4983;
+        let n = (seconds * sr as f64) as usize;
+        (0..n)
+            .map(|i| {
+                let t = i as f64 / sr as f64;
+                let attack = 0.5 - 0.5 * (std::f64::consts::PI * (t / 0.1).min(1.0)).cos();
+                (amp * attack
+                    * ((2.0 * std::f64::consts::PI * root * t).sin()
+                        + 0.6 * (2.0 * std::f64::consts::PI * third * t).sin()
+                        + 0.6 * (2.0 * std::f64::consts::PI * fifth * t).sin()
+                        + 0.3 * (2.0 * std::f64::consts::PI * root * 2.0 * t).sin()))
+                    as f32
+            })
+            .collect()
+    }
+
+    fn concat(parts: &[Vec<f32>]) -> Vec<f32> {
+        let mut out = Vec::new();
+        for part in parts {
+            out.extend_from_slice(part);
+        }
+        let peak = out.iter().map(|v| v.abs()).fold(0.0f32, f32::max).max(1e-9);
+        out.iter().map(|v| v / peak * 0.99).collect()
+    }
+
+    fn kinds(y: &[f32], sr: u32, boundaries: &[f64]) -> Vec<SectionKind> {
+        classify(y, sr, boundaries).iter().map(|s| s.kind).collect()
+    }
+
+    #[test]
+    fn intro_verse_chorus_verse_chorus() {
+        // I(8 s, quiet Am) V(16 s C) C(16 s F, loud) V C.
+        let sr = 44_100;
+        let intro = chord(sr, 220.0, false, 0.2, 8.0);
+        let verse = chord(sr, 261.63, true, 0.3, 16.0);
+        let chorus = chord(sr, 174.61, true, 0.6, 16.0);
+        let y = concat(&[intro, verse.clone(), chorus.clone(), verse, chorus]);
+        assert_eq!(
+            kinds(&y, sr, &[8.0, 24.0, 40.0, 56.0]),
+            vec![
+                SectionKind::Intro,
+                SectionKind::Verse,
+                SectionKind::Chorus,
+                SectionKind::Verse,
+                SectionKind::Chorus,
+            ]
+        );
+    }
+
+    #[test]
+    fn verse_verse_chorus_bridge_chorus() {
+        // Repetition is the only signal the rules read, so the verse must
+        // actually repeat: V V C B C. A one-off opening is a bridge by the
+        // same rules, and rightly so — nothing marks it a verse.
+        let sr = 44_100;
+        let verse = chord(sr, 261.63, true, 0.3, 12.0);
+        let chorus = chord(sr, 174.61, true, 0.6, 12.0);
+        let bridge = chord(sr, 196.0, true, 0.42, 12.0);
+        let y = concat(&[verse.clone(), verse, chorus.clone(), bridge, chorus]);
+        assert_eq!(
+            kinds(&y, sr, &[12.0, 24.0, 36.0, 48.0]),
+            vec![
+                SectionKind::Verse,
+                SectionKind::Verse,
+                SectionKind::Chorus,
+                SectionKind::Bridge,
+                SectionKind::Chorus,
+            ]
+        );
+    }
+
+    #[test]
+    fn verse_verse_outro() {
+        // V(12 s C) V(12 s C) O(8 s Am, quiet, unique, last).
+        let sr = 44_100;
+        let verse = chord(sr, 261.63, true, 0.3, 12.0);
+        let outro = chord(sr, 220.0, false, 0.2, 8.0);
+        let y = concat(&[verse.clone(), verse, outro]);
+        assert_eq!(
+            kinds(&y, sr, &[12.0, 24.0]),
+            vec![SectionKind::Verse, SectionKind::Verse, SectionKind::Outro]
+        );
+    }
+
+    #[test]
+    fn a_chorus_on_the_verse_chords_is_still_a_chorus() {
+        // V C V C over one progression, the chorus 6 dB louder: harmony
+        // puts all four in one group, so rule 2 never saw two repeated
+        // groups and all four came out Verse.
+        let sr = 44_100;
+        let verse = chord(sr, 261.63, true, 0.3, 12.0);
+        let chorus = chord(sr, 261.63, true, 0.6, 12.0);
+        let y = concat(&[verse.clone(), chorus.clone(), verse, chorus]);
+        assert_eq!(
+            kinds(&y, sr, &[12.0, 24.0, 36.0]),
+            vec![
+                SectionKind::Verse,
+                SectionKind::Chorus,
+                SectionKind::Verse,
+                SectionKind::Chorus,
+            ]
+        );
+    }
+
+    #[test]
+    fn a_verse_played_a_little_unevenly_stays_one_verse() {
+        // The same four repeats within 1 dB of each other, and one loud
+        // repeat (6 dB) with no second loud one to pair with: no split.
+        let sr = 44_100;
+        let parts: Vec<Vec<f32>> = [0.30, 0.33, 0.30, 0.33]
+            .iter()
+            .map(|&amp| chord(sr, 261.63, true, amp, 12.0))
+            .collect();
+        assert_eq!(
+            kinds(&concat(&parts), sr, &[12.0, 24.0, 36.0]),
+            vec![SectionKind::Verse; 4]
+        );
+        let parts: Vec<Vec<f32>> = [0.3, 0.3, 0.3, 0.6]
+            .iter()
+            .map(|&amp| chord(sr, 261.63, true, amp, 12.0))
+            .collect();
+        assert_eq!(
+            kinds(&concat(&parts), sr, &[12.0, 24.0, 36.0]),
+            vec![SectionKind::Verse; 4]
+        );
+    }
+
+    #[test]
+    fn repeat_cosine_keeps_its_margin() {
+        // The separation REPEAT_COSINE's doc states, on the same triads and
+        // the same segment-mean chroma classify reads.
+        let sr = 44_100;
+        let signature = |y: &[f32]| {
+            let frames =
+                crate::stft::map_frames(y, 2048, 128, |p| chroma::chroma_frame(p, sr, 2048));
+            let mut mean = [0.0f64; 12];
+            for frame in &frames {
+                for (acc, &v) in mean.iter_mut().zip(frame) {
+                    *acc += v / frames.len() as f64;
+                }
+            }
+            mean
+        };
+        let c_major = signature(&chord(sr, 261.63, true, 0.3, 12.0));
+        let against = |root: f64, major: bool, amp: f64| {
+            let other = signature(&chord(sr, root, major, amp, 12.0));
+            let dot: f64 = c_major.iter().zip(&other).map(|(a, b)| a * b).sum();
+            let norm = |v: &[f64; 12]| v.iter().map(|x| x * x).sum::<f64>().sqrt();
+            dot / (norm(&c_major) * norm(&other))
+        };
+        // Measured 1.000; F3 0.234, F4 0.339, G3 0.382; E minor 0.548.
+        assert!(against(261.63, true, 0.6) > 0.99);
+        for root in [174.61, 349.23, 196.0] {
+            let cos = against(root, true, 0.3);
+            assert!(cos < 0.45, "a fourth apart ({root} Hz) scored {cos:.3}");
+        }
+        let e_minor = against(329.63, false, 0.3);
+        assert!(e_minor < 0.65, "E minor scored {e_minor:.3}");
+    }
+
+    #[test]
+    fn each_label_carries_its_group_repeats_and_level() {
+        // I V C V C again: groups by first appearance, the chorus loudest.
+        let sr = 44_100;
+        let intro = chord(sr, 220.0, false, 0.2, 8.0);
+        let verse = chord(sr, 261.63, true, 0.3, 16.0);
+        let chorus = chord(sr, 174.61, true, 0.6, 16.0);
+        let y = concat(&[intro, verse.clone(), chorus.clone(), verse, chorus]);
+        let sections = classify(&y, sr, &[8.0, 24.0, 40.0, 56.0]);
+        let groups: Vec<usize> = sections.iter().map(|s| s.group).collect();
+        let repeats: Vec<usize> = sections.iter().map(|s| s.repeats).collect();
+        assert_eq!(groups, vec![0, 1, 2, 1, 2]);
+        assert_eq!(repeats, vec![1, 2, 2, 2, 2]);
+        let chorus_db = sections[2].level_db;
+        assert!(chorus_db > -0.5 && chorus_db <= 0.0, "{chorus_db}");
+        // Twice the amplitude is 6 dB; the verse's triad is the same shape.
+        let verse_db = sections[1].level_db;
+        assert!((verse_db + 6.0).abs() < 1.0, "verse at {verse_db:.2} dB");
+        assert!(sections[0].level_db < verse_db);
+    }
+
+    #[test]
+    fn single_span_defaults_to_verse() {
+        let y = chord(44_100, 261.63, true, 0.4, 12.0);
+        assert_eq!(kinds(&y, 44_100, &[]), vec![SectionKind::Verse]);
+    }
+}

@@ -1,0 +1,12 @@
+{
+ "format": 1,
+ "model": "beat_this_final0.onnx",
+ "sha256": "10c691bc2d568a7370d9b74d980fe88d29f9324563db2a9d1976c068ada9e198",
+ "bytes": 83162649,
+ "what": "Beat This! (Foscarin, Schlueter, Widmer, ISMIR 2024), checkpoint final0 (trained on all data except GTZAN, seed 0), the network alone exported to ONNX; Overtone computes its log-mel input and picks its peaks itself (python/overtone.py, BEAT_THIS_*)",
+ "licence": "MIT (code and weights), LICENSE-beat-this.txt",
+ "source": "https://github.com/CPJKU/beat_this",
+ "checkpoint": {"name": "beat_this-final0.ckpt",
+                "sha256": "8c328b45f59d8dd3dff219253ff6a8d6482be57d0133a29140e2febbf8eb8331"},
+ "export": "proto/beat_this_export.py: beat_this 1.1.0, torch 2.14.1+cpu, opset 17, the time axis dynamic; checked against ONNX Runtime 1.31.0 within 2e-5 at 1500 and 900 frames, and every beat of 20 songs identical to Beat This!'s own"
+}

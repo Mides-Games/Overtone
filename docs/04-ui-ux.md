@@ -1,0 +1,392 @@
+# UI / UX design
+
+The brief asks for something that reads as a professional audio tool rather than a Python
+script with a window. That is mostly a matter of restraint: a small number of decisions,
+applied without exception.
+
+---
+
+## 1. Design language
+
+### Principles
+
+1. **The waveform is the interface.** Everything else is chrome and gets out of its way.
+   At any moment the timeline owns the majority of the pixels.
+2. **One accent colour.** Semantic colour is reserved for meaning — red lines, confidence,
+   hitsound layers. Nothing is coloured for decoration.
+3. **Numbers are monospaced and exact.** A tool that claims 0.16 ms shows
+   `422.535 ms`, not `422 ms`, and aligns digits so a column can be scanned.
+4. **No modal dialogs except for destructive confirmation.** Editing happens in place.
+5. **Motion communicates causality only.** 120–180 ms ease-out on state changes, nothing
+   decorative, nothing that delays input.
+6. **Uncertainty is always visible.** Confidence is shown wherever a number is shown. This
+   is a product rule, not a UI one: the engine's honesty is its main feature.
+
+### Tokens
+
+The source of truth is `app/styles.css`: every colour, size and radius is a token there,
+dark first, with a light block of the same roles. The look is **"Console"** (2026-09-24),
+the panel of a measuring instrument:
+
+```css
+--bg:#121019        /* violet graphite ground */  --text:#efecf5    /* primary          */
+--surface:#18161f   /* panels, flat           */  --muted:#aaa3b8   /* secondary        */
+--surface-2:#1e1b27 /* raised, lanes          */  --dim:#8f88a1     /* captions, 4.5:1  */
+--border:#2c2838    /* hairlines do the work  */  --accent:#3fd0dc  /* signal cyan      */
+--red:#ff5d6c       /* timing points (osu!)   */  --amber:#f5b44a   /* check by ear     */
+--blue:#a996ff      /* tempo, lavender        */  --sec-*           /* song sections    */
+```
+
+Dark is the default. The light theme (Settings, Theme: System, Dark, Light) is the same
+roles on cool paper, the timeline canvas included: it reads its ink from `--chart-*`.
+
+Type, offline and shipped with Windows: **Bahnschrift** (a DIN, the lettering of instruments)
+for titles and the big readouts, **Segoe UI** for the interface, **Cascadia Mono** for
+tabular numbers; small-caps labels with letter-spacing, like a panel's. Eight steps, 11.5 to
+34 px. Radii 3 to 12 px: squarer controls, flat panels. Borders do the work shadows usually do.
+
+**Rendered mockups:** four screens — dashboard, timing workspace, hitsound analyzer and the
+decision inspector — are built as an interactive canvas rather than described here. Ask for
+the link if you do not have it; the layouts below are the specification, the canvas is what
+they look like.
+
+---
+
+## 2. Screens
+
+### Dashboard
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  ◆ <app name>                                    ⌘K   ⚙            │
+│                                                                      │
+│      ┌────────────────────────────────────────────────────┐          │
+│      │                                                    │          │
+│      │            Drop audio or a beatmap folder          │          │
+│      │        WAV · FLAC · OGG · MP3 · M4A · AAC          │          │
+│      │                  or press ⌘O                       │          │
+│      └────────────────────────────────────────────────────┘          │
+│                                                                      │
+│  Recent                                                    Analyze ▸ │
+│  ┌──────────────────────────────────────────────────────────┐        │
+│  │ Sidetracked Day        224.000   2 sections   98%   2d   │        │
+│  │ Blue Zenith            200.000   1 section    99%   5d   │        │
+│  │ Freedom Dive           222.220   1 section    97%   1w   │        │
+│  └──────────────────────────────────────────────────────────┘        │
+│                                                                      │
+│  Analyze folder…   ·   Batch hitsound…   ·   Validate map…           │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+Drag-and-drop accepts an audio file, an `.osu`, or a whole beatmap folder (in which case
+the audio and every difficulty are picked up together). Recents show the numbers the user
+actually remembers a song by: BPM, sections, confidence.
+
+### Workspace
+
+Three regions: a fixed left rail for navigation, a top strip of stat cards, and the
+timeline filling the rest. An inspector slides in from the right when something is
+selected — it never pushes the timeline into a different layout.
+
+```
+┌────┬─────────────────────────────────────────────────────────────────────┐
+│    │ Sidetracked Day                          precision   0.31 ms resid  │
+│ ◆  ├─────────────────────────────────────────────────────────────────────┤
+│ ▸  │ ┌─────────┬─────────┬─────────┬─────────┬─────────┬─────────┐      │
+│ ♪  │ │ 224.000 │ 2:41    │ 2       │ 4/4     │ 99%     │ 0.31 ms │      │
+│ ⊞  │ │ BPM     │ length  │ sections│ meter   │ stable  │ residual│      │
+│ ✓  │ └─────────┴─────────┴─────────┴─────────┴─────────┴─────────┘      │
+│    ├─────────────────────────────────────────────────────────────────────┤
+│    │  240 ┤                              ╭──────────────  tempo          │
+│    │  224 ┤──────────────────────────────╯                               │
+│    │      ├─────────────────────────────────────────────────────────┤    │
+│    │      │▁▃▅█▆▃▁▂▅█▇▄▂▁▃▆█▅▃▁▂▄█▇▅▃▁▂▅█▆▄▂▁▃▅█▇▄▂▁▂▄▆█▅▃▁▂▄█▇▅▃▁│    │
+│    │      │        waveform · onset bed · beat grid · attacks       │    │
+│    │      ├──┬──────────────────────────────┬───────────────────────┤    │
+│    │      │ §1 224.000                      │ §2 226.500            │    │
+│    │      └──┴──────────────────────────────┴───────────────────────┘    │
+│    │  0:00        0:40        1:20        2:00        2:40               │
+│    ├─────────────────────────────────────────────────────────────────────┤
+│    │ ▶  0:42.318 / 2:41.004      ━━━━●────────────  🔊 ──── ⟲ L  1.0×   │
+│    └─────────────────────────────────────────────────────────────────────┘
+```
+
+Left rail: Dashboard · Timing · Hitsounds · Compare · Validate. Five destinations, icons
+with labels on hover, never a hamburger menu.
+
+The stat cards are the brief's information list, and each is a *hover target* that reveals
+its derivation — clicking "99% stable" explains what stability means and how it was
+computed, because a number nobody can interpret is decoration.
+
+---
+
+## 3. The timeline
+
+The single most important component, and the reason the stack choice went to a webview.
+
+### Layers, bottom to top
+
+| Layer | Source | Notes |
+|---|---|---|
+| Waveform | peak pyramid at current LOD | min/max envelope; RMS body at high zoom |
+| Onset bed | onset envelope | filled area, low contrast — texture, not data |
+| Spectral energy | spectrogram tiles | optional; off by default |
+| Beat grid | fitted sections | 1/1 heavy, subdivisions progressively fainter; appears only when zoom makes it readable |
+| Attacks | attack times + weights | tick height = weight |
+| Section shading | sections | alternating 2 % white wash |
+| Red timing points | timing points | draggable; label on hover |
+| Tempo curve | local BPM curve | own y-axis, drawn *above* the waveform, not overlaid on it |
+| Confidence ribbon | per-section confidence | thin band under the ruler; colour by confidence |
+| Hitsound lanes | hitsound analysis | separate stacked lanes, toggleable |
+| Swing lane | the swing lane's windows | where the off-beat eighth falls in the beat; only while something swings |
+| Pulse hints | density hints | a band over the confidence ribbon where a section holds half- or double-time, with the change dashed through the plot |
+| Playhead + selection | transport | |
+
+*Built 2026-09-27 (web shell), the swing lane:* a 34 px lane under the waveform, drawn
+only when the song has a swung stretch — the lanes stack up from the drift lane's foot and
+the conditional ones take no room when they are off, so a straight song's chart is
+unchanged. A window is one mark at the height of its eighth (0.5 at the foot, 0.84 at the
+top), with the straight half, 2/3 and 3/4 ruled across; swung marks are drawn thicker than
+straight ones, and the feel also carries in the Swing card's own words, never in colour
+alone. Its inks are the tempo curve's, the drift lane's amber and the objects' grey, each
+already read against this panel.
+
+*Built 2026-09-27 (web shell), a whole mapset proposed at once:* "Every difficulty" beside
+Propose decides every difficulty of the song on one reading of the audio and says how many
+came back, naming any it could not read. Each difficulty then shows its own proposal the
+moment it is picked, because picking one asks for its cached units before it would ask the
+engine — the set is decided once and browsed freely (0.55-0.75 s a switch, against the
+19 s a proposal costs). Propose stays for one difficulty on its own, or with another
+profile.
+
+*Built 2026-09-27 (web shell), half and double time:* a 5 px band just over the
+confidence ribbon marks the stretch a hint covers, and the beat the change sits on is
+dashed through the plot in the same ink — amber where the song halves, blue where it
+doubles. Neither is carried by colour alone: the card names the direction in words, says
+what to do about it (÷2 or ×2 on that section, or a red line there), and puts the evidence
+under it as percentages rather than as the raw coverage and parity. Both disappear, with
+the legend key, on a song that holds none.
+
+*Built 2026-09-27 (web shell), the theme in the rail:* a switch in the sidebar's foot,
+above the language one, showing the theme it would move to in an icon and in words. It sets
+the same preference the Settings three-way does, so the two never disagree; from System it
+resolves to the theme it was offering. The label goes on the collapsed rail and the name
+stays in `title` and `aria-label`.
+
+### Rendering
+
+WebGL2: the waveform is one instanced quad draw over a peak texture; overlays are
+line/point batches. One draw call per layer, so a 6-minute track scrolls at 60 fps because
+cost follows viewport width, not track length. Canvas2D fallback when WebGL is
+unavailable (identical palette, fewer layers).
+
+Text — ruler labels, section labels, hover readouts — is **DOM on top of the canvas**, not
+rendered into it. Crisp type, real font features, selectable numbers, accessible.
+
+### Interaction
+
+| Action | Input |
+|---|---|
+| Zoom | scroll wheel (cursor-anchored), `⌘+` / `⌘-`, pinch |
+| Scroll | shift-scroll, drag empty space, `←` `→` |
+| Select range | drag on the ruler |
+| Seek | click the ruler |
+| Move a red line | drag it; snaps to attacks, `alt` to free it |
+| Zoom to fit / to selection | `⇧F` / `⇧Z` |
+
+### Hover readout
+
+Follows the cursor, 120 ms fade, never covers the point being inspected:
+
+```
+┌──────────────────────────┐
+│ 1:24.318                 │
+│ 224.000 BPM              │
+│ beat length  267.857 ms  │
+│ offset        298 ms     │
+│ beat         §2 · 1128   │
+│ confidence      98.2%    │
+└──────────────────────────┘
+```
+
+---
+
+## 4. Beat grid editor
+
+A table docked below the timeline, selection synced both ways — clicking a row highlights
+its section, clicking a section selects its row.
+
+```
+  #   Offset        BPM        Beat length   Conf   Residual   🔒
+  §1     298 ms   224.000       267.857 ms    98%    0.28 ms   ○
+  §2   13240 ms   226.500       264.901 ms    94%    0.41 ms   ●
+```
+
+Editing is direct: click a cell, type, `↵`. Offset and BPM accept arithmetic (`×2`,
+`+5`, `/2`). Everything else is a button row acting on the selection:
+
+`±1 ms` `±5 ms` · `×2` `÷2` · `Add` `Delete` · `Split` `Merge` · `Recalculate` · `🔒 Lock`
+
+- **Lock** pins a point so re-analysis and recalculation leave it alone. A mapper who has
+  verified a section by ear must be able to protect it.
+- **Recalculate** refits *only* the selected section on its own attacks — a targeted
+  version of what the engine already does per section.
+- **Split** at the playhead, on the section's own beat nearest it; **Merge** drops the next
+  red line. Either way the sections involved are refitted on their own attacks, offsets
+  held, and the note says each one's BPM and share on its grid, or why the BPM stayed
+  (too few attacks, or under 40 % on grid). *Built 2026-09-26 (web shell):* the refit is
+  the reference grading's, started from the grid the section already had rather than a
+  fresh coherence scan, so a half moves at most 0.8–1.25× and cannot flip an octave.
+- Hand-edited points carry 100 % confidence and are marked as user-owned, as in v3 — with
+  the addition that the badge says *why* it is 100 % ("you set this").
+- Every edit is undoable. One undo stack per project, `⌘Z` / `⇧⌘Z`. *Built 2026-09-26
+  (web shell):* undoing a `×2`/`÷2` puts back the whole analysis it rebuilt (grid, pulse,
+  global tempo, the locks' BPMs), not only the point list, and the song keeps the octave
+  on screen as its own pulse setting.
+- *Built 2026-09-26 (web shell), the confidence tried live:* beside the minimum confidence
+  in the Detection drawer, a slider reads a grid analysis's sections again at another
+  value; the timeline dashes the red lines it would add and fades the ones it would
+  drop, and the drawer's veil lifts so the timeline stays readable and scrollable. Applied,
+  it is one undoable edit.
+
+---
+
+## 5. Transport
+
+Playback is part of the analysis loop, not a convenience: the click track is how a mapper
+verifies timing, and v3 made them export a WAV and open a DAW to hear it.
+
+```
+▶  0:42.318 / 2:41.004   ━━━━━●─────────────   🔊 ────○──   ⟲ Loop   ♪ Click 40%
+```
+
+| Key | Action |
+|---|---|
+| `Space` | play / pause |
+| `←` `→` | seek 1 s |
+| `⇧←` `⇧→` | seek 10 ms |
+| `⌥←` `⌥→` | previous / next beat |
+| `[` `]` | previous / next timing point |
+| `L` | loop selection |
+| `⇧L` | loop current section |
+| `M` | mute |
+| `C` | click track on/off |
+| `K` | solo click |
+| `1`–`5` | left-rail destinations |
+| `⌘O` `⌘S` `⌘Z` `F5` | open · save · undo · re-analyze |
+
+Clicking a beat or a timing point with `⌥` starts playback from it. The click track is
+mixed live in Rust against the *current* (including hand-edited) timing points, so the
+verification loop is: edit → hear it immediately.
+
+*Built 2026-09-26 (web shell):* the loop selection is drawn with Shift-drag on the tempo
+map, its ends on the nearest beats so it repeats whole beats (Alt: where the pointer
+lets go); it shows while paused, wins over the section loop, and a Shift-click clears it.
+
+*Keys as built (2026-09-26):* `Space`, `←` `→`, `⇧←` `⇧→` and `C` as above; `[` `]` go to
+the red line before or after the playhead and select it (AltGr counts as no modifier, as
+on a Spanish keyboard it types them); `L` turns the loop on and off, the drawn one when
+there is one; `1`–`9` and `0` are the rail's ten sections in order; `T` taps along; `?`
+shows every key. `⌥←` `⌥→`, `⇧L`, `M`, `K` and `⌘S` are not bound.
+
+---
+
+## 6. Hitsound workspace
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Profile  [ Balanced ▾ ]   Difficulty [ Another ▾ ]     Analyze ▸    │
+├─────────────────────────────────────────────────────────────────────┤
+│  waveform ▁▃▅█▆▃▁▂▅█▇▄▂▁▃▆█▅▃▁▂▄█▇▅▃▁▂▅█▆▄▂▁▃▅█▇▄▂▁▂▄▆█▅▃▁         │
+│                                                                     │
+│  Kick     ●       ●       ●       ●       ●       ●          ◉ on   │
+│  Snare        ●       ●       ●       ●       ●              ◉ on   │
+│  Hat      · · · · · · · · · · · · · · · · · ·                ◉ on   │
+│  Cymbal   ◆                               ◆                  ◉ on   │
+│  Vocal        ▲    ▲       ▲     ▲                           ○ off  │
+│  ─────────────────────────────────────────────────────────────────  │
+│  Objects  ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○                       │
+│  Assigned N C N F N C N N N C N F N C N N N C                       │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+Instrument lanes above, map objects below, sharing one time axis with the timing
+workspace — so zoom and scroll are shared state and switching views never loses your place.
+Each lane toggles. An object whose assignment disagrees with the audio evidence gets a
+`warn`-coloured ring, which is the whole point: it draws the eye to the places worth
+listening to.
+
+Selecting an object opens the inspector with the decision, the confidence, the itemised
+evidence and the alternatives — the explainability requirement is a first-class screen,
+designed in [`06-hitsound-engine.md`](06-hitsound-engine.md) §7.
+
+*Built 2026-09-26 (web shell):* the Profile selector sits on its own line in the Propose
+card, above the buttons, with a line saying what the chosen profile does; and a Samples
+card lists what a folder holds (the song's, the playback skin, another), set by sound,
+plays any sample alone or at the selected sound over the song, and chooses the skin
+playback asks for a sound the map's folder lacks. The instrument lanes above are not
+built: they wait until the templates hold on real audio.
+
+---
+
+## 7. Progress
+
+Analysis is not instant and pretending otherwise is worse than showing the truth.
+
+```
+Analyzing  ████████████████░░░░  78%          1.2 s
+
+  Decode      ✓  0.21 s
+  Peaks       ✓  0.08 s
+  Onsets      ✓  0.34 s
+  Attacks     ✓  0.19 s
+  Coherence   ✓  0.06 s
+  Octave      ✓  0.11 s
+  Sections    ⠋  …
+  Spectral    ·
+```
+
+Per-stage timings are always visible, not hidden behind a debug flag: they are how a user
+reports a performance problem, and how we notice one. Cancellable at any point. The
+previous analysis stays on screen and interactive throughout.
+
+*Built 2026-09-26 (web shell):* the bar names each stage the engine announces, ticks the
+finished ones with their times and runs a clock; the song panel keeps the times after.
+Stop lands inside the running stage: the engine asks at checkpoints in its long loops, on
+the analysing thread only, and the Rust engine's process is ended. On four songs a stop
+landed within half a second wherever it was pressed; asked only between stages, it had
+waited for the stage to end, up to 36 s. The result on screen stays.
+
+---
+
+## 8. Accessibility and honesty
+
+- Every interactive element reachable by keyboard; visible focus rings.
+- Contrast ≥ 4.5:1 for text, ≥ 3:1 for meaningful graphics against their background.
+- Colour is never the only carrier: confidence is a number *and* a colour; hitsound lanes
+  use distinct glyphs (`●` `◆` `▲` `·`) as well as position.
+- Respects `prefers-reduced-motion`: transitions become instant.
+- No spinner without a stage name. No percentage that is not derived from real work.
+- When the engine falls back or refuses, the UI says which and why, in one sentence, with
+  the diagnostic available — never a silent downgrade.
+
+---
+
+## 9. What is deliberately not in the UI
+
+- No mixer, no EQ, no effects. This is an analyser, not a DAW.
+- No beatmap *editing* beyond hitsounds and timing. osu!'s editor exists. Overtone never
+  draws, moves or reshapes an object on its own. Copying whole maps' objects unchanged and
+  moving them in time with their audio — the compilation builder, roadmap Phase 25, decided
+  by the owner 2026-10-03; the rate trainer, Phase 26, the same move with a different
+  multiplier — is bookkeeping, and allowed; inventing objects from the audio, as the Rhythm
+  guide proposal would, is still out.
+- **Settled by the owner 2026-10-07:** *dropping* a spinner the user explicitly asks
+  to drop is allowed on such a copy — a spinner that was three seconds long becomes
+  two at 1.5x and unspinnable, which is a physical minimum, not a mapping choice.
+  Never by default; the count and the kind go in the report and in the difficulty
+  name; the copy shows each spinner's length before the choice. Sliders and holds
+  stay: a short one is still playable. Inventing objects from the audio, as the
+  Rhythm guide proposal would, is still out.
+- No account, no sync, no telemetry, no update check. Offline is a feature.
+- No onboarding tour. The dashboard is one drop target and a list.

@@ -1,0 +1,47 @@
+# Deploy: ask the owner's server to update when the stable branch moves.
+#
+# The only workflow in this repository, and it checks nothing: the gates and
+# the suite run locally or on that server (CLAUDE.md). It signs in as
+# overtone-deploy, a user whose key can do one thing -- start
+# overtone-update.service (deploy/setup-deploy-user.sh) -- and that service
+# pulls, rebuilds and restarts, waiting while a run is going
+# (deploy/overtone-update.sh). Secrets: DEPLOY_HOST, DEPLOY_SSH_KEY,
+# DEPLOY_KNOWN_HOSTS.
+name: deploy
+
+on:
+  push:
+    branches: [experimental]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ask the server to update
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$KEY" ] || [ -z "$KNOWN_HOSTS" ]; then
+            echo "::notice::Deploy secrets are not set; nothing to do."
+            exit 0
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # The key's forced command starts the update; whatever is asked here is ignored.
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes -o ConnectTimeout=20 \
+              "overtone-deploy@$HOST" update
+          echo "::notice::Update started for ${GITHUB_SHA::8}; the server applies it unless a run is going."

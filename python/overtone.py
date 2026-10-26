@@ -1,0 +1,12609 @@
+"""Overtone — tempo map analyser for osu! beatmapping (v3 engine).
+
+The v2 engine read tempo from the *gaps between detected beats*. Differencing
+amplifies the few milliseconds of jitter every onset detector carries, so its
+BPM wandered by a couple of tenths and its offsets sat about 8 ms late.
+
+v3 never differences anything. It fits an explicit model
+
+    t(k) = offset + k · beat_length          (k = integer beat index)
+
+to the detected attack times by iteratively re-weighted least squares. Hundreds
+of inlier attacks average the jitter down by sqrt(N), which is what turns
+"±0.2 BPM" into "±0.001 BPM" and puts offsets inside a millisecond of the true
+attack. On the synthetic benchmark (24 tracks: odd tempos, noise, jitter, swing,
+drops, sparse bars, 2-4 tempo changes) every section lands within 0.05 BPM and
+5 ms of ground truth, most of them within 0.001 BPM and 0.3 ms.
+
+Pipeline
+--------
+1. Load mono audio at 44.1 kHz (SoundFile fast-path, librosa fallback).
+2. Detect attacks on a 2.9 ms onset envelope, then **re-time each one on the
+   raw waveform at sample resolution** — a spectral-flux peak lags the physical
+   attack by about a window, and an offset 8 ms late is audible in the editor.
+3. Find the *atomic* pulse with a weighted circular-coherence sweep,
+   R(f) = |Σ w·e^{2πi f t}| / Σ w, ranked by how much attack energy each grid
+   explains times how many of its own slots are filled.
+4. Lock that grid onto the track with expanding-window least squares.
+5. Decide how many atoms make a beat from the accent pattern (attacks grouped
+   by index modulo m) plus tempogram hints — the octave is chosen from
+   evidence, never by blind multiplication.
+6. Grow constant-tempo sections forward while attacks keep landing on the grid;
+   each new section re-seeds its own coherence scan, so an abrupt change cannot
+   poison it. Boundaries settle on the beat where the two grids cross, and each
+   section is refitted on its own attacks alone.
+7. Fall back to the v2 hybrid beat tracker when no grid fits at all (rubato,
+   free time, no percussion). Its beats sit on the onset envelope's peaks, so
+   they are moved by the envelope's lag behind the attacks, read on the
+   waveform for each song.
+
+Defaults (1.5 BPM / 12 beats / 75 %) target songs whose BPM changes often;
+the Steady preset (2.0 / 20 / 85 %) suits constant-tempo tracks.
+
+Everything is local: no uploads, no accounts.
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import os
+import queue
+import re
+import sys
+import threading
+import time
+from contextlib import contextmanager
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable
+
+import librosa
+import numpy as np
+import soundfile as sf
+from scipy import signal
+from scipy.ndimage import median_filter
+
+from overtone_paths import app_version, data_root, settings_home
+
+#: The release's version (overtone_paths.app_version): what the window, the about
+#: box and every written .osu header state. The engine generation is not the product.
+APP_VERSION = app_version()
+DEFAULT_LANGUAGE = "English"  # English is the default UI language.
+#: Where the preferences live: the profile of an installed copy, the portable
+#: ``data`` folder of a portable one (overtone_paths.py).
+CONFIG_PATH = settings_home() / ".overtone.json"
+#: The name before the project was renamed to Overtone. Read as a
+#: fallback so an existing install keeps its preferences.
+LEGACY_CONFIG_PATH = settings_home() / ".timing_analyzer.json"
+TARGET_SR = 44100
+HOP = 256  # ~5.8 ms at 44.1 kHz: timing-grid resolution suited to mapping.
+#: Pulse octaves the UI and CLI may force (1 = whatever the engine detected).
+ALLOWED_FACTORS = (0.25, 0.5, 1.0, 2.0, 4.0)
+#: The octave osu! songs are mapped at. Below it the engine has usually read
+#: half the mapper's beat, above it double: on the anime single-tempo stage
+#: (bench/stages.py, 2026-10-22) detections under 120 BPM were half the map in
+#: 227 of 249 dev maps and every one over 300 was double. Folding the global
+#: BPM into [120, 240] took the exact-octave share from 77.1 % to 95.2 % on dev,
+#: 75.8 % to 95.2 % held out, and 72.6 % to 86.8 % on every one-red-line map.
+MAP_OCTAVE_RANGE = (120.0, 240.0)
+#: Drift following (_follow_drift). Off until 2026-10-23: with a guard of
+#: "fits at all better" it took Take You Down, a steady song whose single red
+#: line puts 99.9 % of beats within 10 ms, to 5 lines and 81.9 %. With
+#: DRIFT_MIN_GAIN (10 % better) Take You Down keeps 99.9 % and Noble still
+#: rises 40.7 -> 58.9 %; held out, beats within 10 ms: anime one tempo
+#: 62.2 -> 75.2 %, anime tempo changes 48.2 -> 52.8 %, bands 26.9 -> 30.5 %.
+DRIFT_FOLLOW = True
+DRIFT_MIN_GAIN = 0.9
+
+
+# ---------------------------------------------------------------------------
+# Data model
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class TimingPoint:
+    offset_ms: float
+    bpm: float
+    confidence: float
+    beat_index: int
+    #: Beats per bar for this point, written into the .osu meter field and
+    #: used to accent the click track. Defaults to 4 so every existing caller
+    #: and every hand-made point keeps working unchanged.
+    meter: int = 4
+    #: True when the accents actually proved where the bar starts. When they
+    #: did not, the offset is anchored to a beat rather than a downbeat —
+    #: guessing a bar without evidence pushes the first red line up to three
+    #: beats past the first sound.
+    meter_known: bool = False
+    #: True when the mapper placed or edited this point. Export snapping never
+    #: moves it, and never pulls the next detected point onto its grid.
+    manual: bool = False
+
+
+@dataclass
+class Analysis:
+    source: str
+    duration: float
+    beats: np.ndarray
+    local_bpms: np.ndarray
+    points: list[TimingPoint]
+    hop_length: int
+    sample_rate: int
+    subdivision: float
+    # v2 enrichment (defaults keep old pickles/callers working)
+    global_bpm: float = 0.0
+    stability: float = 0.0
+    meter: str = "4/4"
+    onset: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.float32))
+    # Pre-subdivision beat grid (frames): lets the GUI/CLI re-resolve ×1/×2/×4
+    # without re-tracking beats.
+    base_frames: np.ndarray | None = None
+    # v3 precision engine: the raw evidence and the fitted grids. Present only
+    # when the grid engine ran; the legacy tracker leaves them empty and every
+    # consumer falls back to the beat-array path.
+    attack_times: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    attack_weights: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    sections: list["GridSection"] = field(default_factory=list)
+    meter_beats: int = 4
+    downbeat_class: int = 0
+    fit_residual_ms: float = 0.0
+    engine: str = "legacy"
+    # The fallback tracker's beats and red lines were moved by this much (s,
+    # negative: earlier) from the onset envelope's peaks it put them on: the
+    # envelope's lag behind the sound, measured on the song (_tracker_lag).
+    # base_frames stay where the tracker put them. 0 for the precision
+    # engine, which re-times every attack on the waveform instead.
+    beat_shift_s: float = 0.0
+    #: True when the red lines came from the local-tempo tracker
+    #: (_local_tempo_track): x2 / /2 then scale those lines, not the v2 grid.
+    local_tempo: bool = False
+    # The subdivision of base_frames the fallback tracker chose by itself
+    # (pulse Auto), before any factor the user asked for. Away from it a beat
+    # with no peak under it is held where the split put it, in the analysis
+    # and in a ×2 / ÷2 rebuild alike (_tracker_result). 0 for the precision
+    # engine; a result without it holds such beats above a subdivision of 1.
+    auto_subdivision: float = 0.0
+    # Whether the fallback tracker's beats were re-anchored to transients
+    # (analyze_audio's refine_beats); a ×2 / ÷2 rebuild re-anchors its own
+    # only then. The precision engine's rebuild reads its fitted grids and
+    # re-anchors nothing, so it never reads this.
+    refine_beats: bool = True
+
+
+# ---------------------------------------------------------------------------
+# Stopping an analysis
+# ---------------------------------------------------------------------------
+
+class AnalysisStopped(BaseException):
+    """Raised through the engine when the analysis running on this thread
+    was asked to stop (see ``checkpoint``). A BaseException, as asyncio's
+    CancelledError is: the engine falls back to the beat tracker on any
+    ``Exception`` from the precision fit, and passes over librosa's failures
+    in places, and a stop is not a failure."""
+
+
+#: Per thread on purpose: an analysis another thread runs meanwhile (a
+#: reference grade, a library scan) never sees this one's stop.
+_stop_requests = threading.local()
+
+
+def checkpoint() -> None:
+    """Where a long loop lets a stop land (roadmap 10.12).
+
+    Raises AnalysisStopped when the analysis running on this thread was asked
+    to stop; otherwise it costs a thread-local read. Nothing asks unless the
+    caller ran the analysis inside ``stop_requests``, so the CLI, the classic
+    window and every other thread run to the end as they always did.
+    """
+    asked = getattr(_stop_requests, "asked", None)
+    if asked is not None and asked():
+        raise AnalysisStopped()
+
+
+@contextmanager
+def stop_requests(asked: Callable[[], bool]):
+    """Let ``asked()`` stop what this thread analyses inside the block: every
+    checkpoint calls it, and a true answer raises AnalysisStopped there."""
+    previous = getattr(_stop_requests, "asked", None)
+    _stop_requests.asked = asked
+    try:
+        yield
+    finally:
+        _stop_requests.asked = previous
+
+
+# ---------------------------------------------------------------------------
+# Onset envelope
+# ---------------------------------------------------------------------------
+
+def _fast_onset_envelope(y: np.ndarray, sr: int, hop: int) -> np.ndarray:
+    """Fast spectral-flux envelope, independent of the slow beat tracker."""
+    _, _, spectrum = signal.stft(y, fs=sr, nperseg=1024, noverlap=1024 - hop,
+                                 boundary=None, padded=False)
+    magnitude = np.abs(spectrum)
+    return np.maximum(np.diff(magnitude, axis=1), 0).mean(axis=0).astype(np.float32)
+
+
+#: Spectrogram and tempogram are built a block at a time. librosa materialises
+#: each whole: the linear spectrogram behind the onset envelope was ~1.3 GB for
+#: a 5-minute song at FIT_HOP, the tempogram behind the fallback tracker's
+#: tempo estimate ~3.5 GB -- enough, two songs at a time, to freeze a 16 GB
+#: machine. Block sizes are the fastest measured on that song: large for the
+#: spectrogram (2.2 s against 1.9 s one-shot, ~0.2 GB), small for the
+#: tempogram, whose column FFTs then stay in cache (6.0 s a pass against 7.0 s
+#: one-shot, ~70 MB). The frames come out the same (see _mel_power, _tempogram).
+SPECTROGRAM_BLOCK = 8192
+TEMPOGRAM_BLOCK = 1024
+ONSET_N_FFT = 2048
+#: Frames of a block's STFT computed between two stop checks: a quarter of a
+#: block, 0.1-0.2 s of work. A block whole took up to 1.6 s on a busy machine.
+STFT_RUN = 2048
+
+
+def _block_power(segment: np.ndarray, hop: int) -> np.ndarray:
+    """``|stft(segment)| ** 2``, uncentred: the power librosa's melspectrogram
+    computes from ``y=segment`` before its mel projection, a run of frames at
+    a time with a stop asked between runs.
+
+    librosa.stft hands scipy's FFT a fixed number of columns at a time
+    (MAX_MEM_BLOCK bytes of frames: 32 here). Runs of whole batches make
+    exactly its calls on exactly its frames, so the matrix is its matrix,
+    bit for bit; a test holds the result to librosa's own.
+    """
+    frames = 1 + (segment.size - ONSET_N_FFT) // hop
+    batch = max(1, librosa.util.MAX_MEM_BLOCK // (ONSET_N_FFT * segment.itemsize))
+    run = max(batch, STFT_RUN // batch * batch)
+    matrix = np.empty((1 + ONSET_N_FFT // 2, frames), dtype=np.complex64, order="F")
+    for first in range(0, frames, run):
+        checkpoint()
+        last = min(frames, first + run)
+        librosa.stft(segment[first * hop:(last - 1) * hop + ONSET_N_FFT], n_fft=ONSET_N_FFT,
+                     hop_length=hop, center=False, out=matrix[:, first:last])
+    power = np.abs(matrix) ** 2.0
+    checkpoint()                  # the mel projection comes next, a step of its own
+    return power
+
+
+def _mel_power(y: np.ndarray, sr: int, hop: int) -> np.ndarray:
+    """librosa's centred 128-band mel power spectrogram, a block at a time.
+
+    Each frame is the same zero-padded slice of the signal as in the one-shot
+    call, so only the mel projection's float32 summation order can differ:
+    at most ~2e-6 of the envelope's range, measured on a real song.
+    """
+    padded = np.pad(y.astype(np.float32), ONSET_N_FFT // 2, mode="constant")
+    frames = 1 + y.size // hop
+    blocks = []
+    for first in range(0, frames, SPECTROGRAM_BLOCK):
+        last = min(frames, first + SPECTROGRAM_BLOCK)
+        blocks.append(librosa.feature.melspectrogram(
+            S=_block_power(padded[first * hop:(last - 1) * hop + ONSET_N_FFT], hop),
+            sr=sr, n_fft=ONSET_N_FFT, fmax=11025, n_mels=128))
+    return np.concatenate(blocks, axis=-1)
+
+
+# -- multi-band flux: what started, not just that something did ---------------
+#
+# The default envelope answers "did anything start". A mapper looking at a
+# song wants "what started, and where": a kick moves the sub band, a hat the
+# top, a broadband click all seven. This is a port of
+# `crates/overtone-dsp/src/multiband.rs`, constant for constant, so the page
+# shows the same bands the Rust front end computes; a measurement holds the
+# two to each other on the corpus.
+
+#: Seven log-spaced bands over the mel path's own range, so both front ends
+#: cover the same spectrum: 40, 89, 199, 445, 992, 2214, 4940, 11025 Hz, each
+#: 2.23 times the last. These are **not** the hitsound features' musical
+#: bands (docs/06 §2): band i here is not band i there, and nothing above
+#: 11.025 kHz moves any of them, a cymbal's air shimmer included.
+BAND_COUNT = 7
+BAND_LO_HZ = 40.0
+BAND_HI_HZ = 11025.0
+#: The dB floor under the loudest band energy, as the default envelope's
+#: `power_to_db` uses. Global on purpose: one loud transient raises the floor
+#: everywhere, and a per-block floor would make the answer depend on blocking.
+BAND_TOP_DB = 80.0
+BAND_AMIN = 1e-10
+
+
+def band_edges() -> np.ndarray:
+    """The seven bands' eight edges in Hz."""
+    edges = BAND_LO_HZ * (BAND_HI_HZ / BAND_LO_HZ) ** (np.arange(BAND_COUNT + 1) / BAND_COUNT)
+    edges[BAND_COUNT] = BAND_HI_HZ
+    return edges
+
+
+#: Mel bands the spectrogram is read on, and the top of its range. The same
+#: 128 bands to 11.025 kHz the analysis path itself uses, so the picture is
+#: the spectrum the engine listened to and not a second opinion drawn beside
+#: it. (`_mel_power` passes both to librosa; they live here to be reported.)
+MEL_BANDS = 128
+MEL_FMAX_HZ = 11025.0
+#: How far under the loudest cell a cell can be before it is simply black.
+#: librosa's own default for a display spectrogram, and the same floor the
+#: onset path uses on its own scale.
+MEL_TOP_DB = 80.0
+
+
+def mel_frequencies() -> np.ndarray:
+    """The centre frequency of each mel band, in Hz, for the axis labels."""
+    return librosa.mel_frequencies(n_mels=MEL_BANDS, fmax=MEL_FMAX_HZ)
+
+
+#: How far under the loudest moment the energy curve's floor sits. Wider than
+#: the spectrogram's 80 dB on purpose: this is one line about a whole song,
+#: and a quiet intro should still have somewhere to be drawn.
+LOUDNESS_FLOOR_DB = 60.0
+#: Under this, a file has no loudest moment to be read against. The curve is
+#: relative to the song's own peak, and a silent file normalised against its
+#: own silence would draw a full line — silence claiming to be loud. No music
+#: sits here: the quietest thing the corpus holds peaks near -40 dB RMS.
+LOUDNESS_SILENT_DB = -80.0
+
+
+def loudness_curve(y: np.ndarray, sr: int, columns: int) -> tuple[np.ndarray, float]:
+    """How loud the song is over time: ``columns`` values in 0..1, and its peak.
+
+    Root-mean-square per column, in dB under the loudest column, then mapped
+    so 0 is :data:`LOUDNESS_FLOOR_DB` under that peak and 1 is the peak
+    itself. RMS and not a sample maximum: a curve about how loud a *stretch*
+    is should not be set by one sample of one hit.
+    """
+    y = np.asarray(y, dtype=np.float32)
+    columns = max(1, int(columns))
+    if y.size == 0 or sr <= 0:
+        return np.zeros(0, dtype=np.float32), 0.0
+    columns = min(columns, y.size)
+    edges = np.linspace(0, y.size, columns + 1).astype(int)
+    power = np.empty(columns, dtype=np.float64)
+    for i in range(columns):
+        lo, hi = edges[i], max(edges[i + 1], edges[i] + 1)
+        block = y[lo:hi].astype(np.float64)
+        power[i] = float(np.dot(block, block) / block.size)
+    decibels = 10.0 * np.log10(np.maximum(power, 1e-12))
+    peak = float(decibels.max())
+    if peak <= LOUDNESS_SILENT_DB:
+        return np.zeros(columns, dtype=np.float32), round(peak, 3)
+    scaled = (decibels - peak + LOUDNESS_FLOOR_DB) / LOUDNESS_FLOOR_DB
+    return np.clip(scaled, 0.0, 1.0).astype(np.float32), round(peak, 3)
+
+
+# -- how much of a moment is a hit and how much is a note ---------------------
+#
+# Fitzgerald's median separation: a sustained partial is a horizontal line on
+# a spectrogram, so a median along **time** keeps it and erases transients; a
+# hit is a vertical line, so a median along **frequency** keeps it and erases
+# partials. Soft Wiener masks split each cell between the two, and the
+# percussive mask's share of a frame's energy is how much of that moment was
+# a hit.
+#
+# Run on the analysis path's own mel grid rather than on linear bins, because
+# 1025 bins cost 22 s of median filtering on a one-minute song against 1.4 s
+# on 128 mel bands, and the answer moves by 0.003. That grid is not the one
+# `crates/overtone-dsp/src/hpss.rs` uses, so its kernels do not carry over:
+# a mel filterbank smears a partial across neighbouring bands, and the
+# frequency kernel has to step over that smear. Both were chosen by what they
+# do to signals whose truth is known (timeline, 2026-09-27).
+
+#: The time median's span. Measured on 2 ms clicks, 40 ms noise snares, a
+#: 55 Hz kick decaying over 150 ms, a held tone and a held chord: at 100 ms
+#: a click reads 1.000 percussive, a snare 0.981, a tone 0.000 and a chord
+#: 0.102, and a kick 0.543 — half transient, half body, which is what a kick
+#: is. Longer kernels widen the gap no further and start claiming the body
+#: too: 0.788 at 150 ms, 0.988 at 300.
+HPSS_KERNEL_MS = 100.0
+#: The frequency median's span, in mel bands. The gap between the worst hit
+#: and the worst tonal signal peaks here at every kernel length tried
+#: (+0.879 at 100 ms, against +0.539 at 3 bands): fewer bands leave a smeared
+#: partial standing and a chord reads 0.41 percussive.
+HPSS_KERNEL_BANDS = 13
+#: Frames for this measure. A balance is a texture over tenths of a second,
+#: and halving the frame rate from the fitting envelope's halves the cost
+#: while moving the answer by 0.003.
+HPSS_HOP = 256
+
+
+def percussive_balance(y: np.ndarray, sr: int, columns: int,
+                       hop: int = HPSS_HOP) -> tuple[np.ndarray, np.ndarray, float]:
+    """How much of each moment is a hit rather than a note.
+
+    Returns ``columns`` shares in 0..1, the same columns' **loudness** as a
+    fraction of the loudest one, and the whole song's own share. Everything
+    is weighted by energy: a silent frame has no balance to report, and
+    averaging it in as zero would make a quiet song read tonal.
+
+    The loudness comes back because a silent column's share is 0 and 0 means
+    "all notes" on the lane, which is a claim about silence rather than a
+    reading of it. What is drawn is broken where nothing was heard.
+    """
+    y = np.asarray(y, dtype=np.float32)
+    columns = max(1, int(columns))
+    empty = (np.zeros(0, dtype=np.float32), np.zeros(0, dtype=np.float32), 0.0)
+    if y.size < ONSET_N_FFT or hop < 1:
+        return empty
+    power = _mel_power(y, sr, hop)                      # (bands, frames)
+    if power.shape[1] == 0:
+        return empty
+    checkpoint()
+    span = max(3, int(round(HPSS_KERNEL_MS / 1000.0 * sr / hop)) | 1)
+    harmonic = median_filter(power, size=(1, span), mode="nearest")
+    checkpoint()
+    percussive = median_filter(power, size=(HPSS_KERNEL_BANDS, 1), mode="nearest")
+    denominator = harmonic * harmonic + percussive * percussive
+    mask = np.where(denominator > 0, (percussive * percussive)
+                    / np.maximum(denominator, 1e-30), 0.0)
+    energy = power.sum(axis=0)
+    share = np.where(energy > 0, (power * mask).sum(axis=0)
+                     / np.maximum(energy, 1e-30), 0.0)
+    columns = min(columns, share.size)
+    edges = np.linspace(0, share.size, columns + 1).astype(int)
+    pooled = np.zeros(columns, dtype=np.float32)
+    loudness = np.zeros(columns, dtype=np.float32)
+    for i in range(columns):
+        lo, hi = edges[i], max(edges[i + 1], edges[i] + 1)
+        weight = float(energy[lo:hi].sum())
+        loudness[i] = weight / max(hi - lo, 1)
+        if weight > 0:
+            pooled[i] = (share[lo:hi] * energy[lo:hi]).sum() / weight
+    peak = float(loudness.max())
+    if peak > 0:
+        loudness /= peak
+    whole = float((share * energy).sum() / energy.sum()) if energy.sum() > 0 else 0.0
+    return pooled, loudness, whole
+
+
+def mel_image(y: np.ndarray, sr: int, columns: int, hop: int | None = None) -> np.ndarray:
+    """The song's mel spectrogram in dB, pooled to ``columns``: (bands, columns).
+
+    Pooled by **maximum**, not by mean: a column of a drawn spectrogram stands
+    for tens of frames, and a mean turns every transient into a smear — the
+    opposite of what the picture is looked at for. Values are dB under the
+    loudest cell, clipped at :data:`MEL_TOP_DB`, so 0 is the loudest moment of
+    this song and the scale is the song's own.
+    """
+    hop = FIT_HOP if hop is None else hop
+    y = np.asarray(y, dtype=np.float32)
+    columns = max(1, int(columns))
+    if y.size < ONSET_N_FFT or hop < 1:
+        return np.zeros((MEL_BANDS, 0), dtype=np.float32)
+    power = _mel_power(y, sr, hop)                      # (bands, frames)
+    frames = power.shape[1]
+    if frames == 0:
+        return np.zeros((MEL_BANDS, 0), dtype=np.float32)
+    columns = min(columns, frames)
+    edges = np.linspace(0, frames, columns + 1).astype(int)
+    pooled = np.empty((power.shape[0], columns), dtype=np.float32)
+    for i in range(columns):
+        checkpoint()
+        pooled[:, i] = power[:, edges[i]:max(edges[i + 1], edges[i] + 1)].max(axis=1)
+    decibels = 10.0 * np.log10(np.maximum(pooled, 1e-10))
+    return np.maximum(decibels - decibels.max(), -MEL_TOP_DB).astype(np.float32)
+
+
+def band_flux(y: np.ndarray, sr: int, hop: int | None = None) -> np.ndarray:
+    """Rectified dB flux per band: ``(frames, BAND_COUNT)``.
+
+    On the same frames, pad and hop as :func:`_onset_envelope`, so a peak at
+    row k is the same moment of audio in both and the lanes line up with the
+    attacks. Values are absolute dB flux, comparable between bands: no
+    per-band normalisation, which would invent peaks in a silent one.
+
+    ``hop`` defaults to the fitting envelope's ``FIT_HOP``, resolved here
+    because that constant is defined further down the module.
+    """
+    hop = FIT_HOP if hop is None else hop
+    y = np.asarray(y, dtype=np.float32)
+    if y.size < ONSET_N_FFT or hop < 1:
+        return np.zeros((0, BAND_COUNT), dtype=np.float32)
+    padded = np.pad(y, ONSET_N_FFT // 2, mode="constant")
+    frames = 1 + y.size // hop
+    bin_hz = sr / ONSET_N_FFT
+    edges = band_edges()
+    ranges = []
+    for b in range(BAND_COUNT):
+        lo = max(1, int(np.floor(edges[b] / bin_hz)))
+        hi = min(ONSET_N_FFT // 2 + 1, int(np.ceil(edges[b + 1] / bin_hz)))
+        ranges.append((lo, max(hi, lo + 1)))
+    energy = np.empty((frames, BAND_COUNT), dtype=np.float64)
+    for first in range(0, frames, SPECTROGRAM_BLOCK):
+        checkpoint()
+        last = min(frames, first + SPECTROGRAM_BLOCK)
+        power = _block_power(padded[first * hop:(last - 1) * hop + ONSET_N_FFT], hop)
+        for b, (lo, hi) in enumerate(ranges):
+            energy[first:last, b] = power[lo:hi, :].sum(axis=0)
+    energy = 10.0 * np.log10(np.maximum(energy, BAND_AMIN))
+    peak = float(energy.max()) if energy.size else 0.0
+    if np.isfinite(peak):
+        np.maximum(energy, peak - BAND_TOP_DB, out=energy)
+    # Front-padded exactly as the default envelope is, so row k means the same
+    # audio moment in both curves.
+    pad = 1 + ONSET_N_FFT // (2 * hop)
+    out = np.zeros((frames, BAND_COUNT), dtype=np.float32)
+    rise = np.maximum(np.diff(energy, axis=0), 0.0)
+    room = max(0, frames - min(pad, frames))
+    out[min(pad, frames):] = rise[:room]
+    return out
+
+
+def _onset_envelope(y: np.ndarray, sr: int, hop: int) -> np.ndarray:
+    """Normalized onset-strength envelope (librosa first, flux fallback).
+
+    The flux envelope is for what librosa refuses as audio (samples that are
+    not finite, which the loader already zeroes). It used to take any failure,
+    a MemoryError included, and a different envelope means different attacks
+    and a different grid, with nothing said: a failure now reaches the caller.
+    """
+    try:
+        # The two whole-track calls after the blocks take about half a second
+        # each on an eight-minute song, so a stop is asked before each. The
+        # power is rebound, not kept: it is let go once it is in decibels.
+        spectrum = _mel_power(y, sr, hop)
+        checkpoint()
+        spectrum = librosa.power_to_db(spectrum)
+        checkpoint()
+        env = librosa.onset.onset_strength(
+            S=spectrum, sr=sr, hop_length=hop, n_fft=ONSET_N_FFT, aggregate=np.median,
+        ).astype(np.float32)
+    except librosa.util.exceptions.ParameterError:
+        env = _fast_onset_envelope(y, sr, hop)
+    if env.size == 0:
+        return env
+    # Normalize to [0, 1] with a robust ceiling so thresholds are portable
+    # across quiet/loud masters.
+    ceiling = float(np.percentile(env, 99.5))
+    if ceiling > 1e-9:
+        env = env / ceiling
+    return np.clip(env, 0.0, 1.5).astype(np.float32)
+
+
+# ---------------------------------------------------------------------------
+# Beat tracking (hybrid)
+# ---------------------------------------------------------------------------
+
+def _peak_beats(onset: np.ndarray, sr: int, hop: int) -> np.ndarray:
+    """Find musical attacks and reconstruct occasional missing beats."""
+    frame_rate = sr / hop
+    prominence = float(np.percentile(onset, 65))
+    peaks, _ = signal.find_peaks(onset, distance=max(1, round(frame_rate * 0.18)),
+                                 prominence=max(prominence, 1e-8))
+    if len(peaks) < 8:
+        return peaks.astype(int)
+    gaps = np.diff(peaks)
+    band = (gaps > frame_rate * 0.18) & (gaps < frame_rate * 0.42)
+    typical = float(np.median(gaps[band])) if np.any(band) else float(np.median(gaps))
+    if not np.isfinite(typical) or typical <= 0:
+        return peaks.astype(int)
+    rebuilt = [int(peaks[0])]
+    for left, right in zip(peaks[:-1], peaks[1:]):
+        # Capped: a pathological ``typical`` would otherwise expand one gap into
+        # millions of phantom beats.
+        count = min(64, max(1, int(round((right - left) / typical))))
+        rebuilt.extend(np.rint(np.linspace(left, right, count + 1)[1:]).astype(int).tolist())
+    return np.asarray(rebuilt, dtype=int)
+
+
+def _regularity_score(frames: np.ndarray) -> float:
+    """Higher = more clock-like. Used to pick between tracker candidates."""
+    if len(frames) < 8:
+        return -1e9
+    gaps = np.diff(frames.astype(float))
+    med = float(np.median(gaps))
+    if med <= 0:
+        return -1e9
+    mad = float(np.median(np.abs(gaps - med)))
+    cv = mad / med  # robust coefficient of variation
+    coverage = len(frames) / max(1.0, (frames[-1] - frames[0]) / med)
+    return float(coverage - 6.0 * cv)
+
+
+def _tempogram(onset: np.ndarray, sr: int, hop: int, win_length: int,
+               columns: int | None = None):
+    """librosa.feature.tempogram(onset, center=True), in blocks of columns
+    (``columns`` each, TEMPOGRAM_BLOCK unless given).
+
+    The envelope is padded once exactly as librosa pads it, and each block is
+    the uncentred tempogram of its own slice: every column is the same window
+    of the same signal, so the blocks join bit for bit into the one-shot array
+    (checked on fixtures and a real song) without its FFT buffers.
+    """
+    n = onset.shape[-1]
+    half = win_length // 2
+    padded = np.pad(onset, (half, half), mode="linear_ramp", end_values=[0, 0])
+    step = columns or TEMPOGRAM_BLOCK
+    for first in range(0, n, step):
+        checkpoint()
+        last = min(n, first + step)
+        yield librosa.feature.tempogram(onset_envelope=padded[first:last - 1 + win_length],
+                                        sr=sr, hop_length=hop, win_length=win_length,
+                                        center=False)
+
+
+def _tempo_readings(onset: np.ndarray, sr: int, hop: int) -> tuple[np.ndarray, np.ndarray]:
+    """Both of the fallback tracker's readings of librosa's 8-second tempogram.
+
+    ``(per-frame tempo, overall tempo)``: what _global_tempo_guides reads with
+    ``aggregate=None, std_bpm=1.0``, and what librosa.beat.beat_track estimates
+    for itself (the time-mean read through the default prior). v3 built that
+    tempogram twice, whole; this is one pass in blocks. The per-frame tempo is
+    column for column the same; the mean is summed block by block and differs
+    from numpy's one-shot mean by ~1e-16, which picks the same tempo bin.
+    """
+    win = int(librosa.time_to_frames(8.0, sr=sr, hop_length=hop))
+    per_frame, total = [], 0.0
+    for block in _tempogram(onset, sr, hop, win):
+        per_frame.append(librosa.feature.rhythm.tempo(tg=block, sr=sr, hop_length=hop,
+                                                      aggregate=None, std_bpm=1.0))
+        total = total + block.sum(axis=-1, keepdims=True)
+    overall = librosa.feature.rhythm.tempo(tg=total / onset.shape[-1], sr=sr, hop_length=hop)
+    return np.concatenate(per_frame, axis=-1), overall
+
+
+def _track_beats_hybrid(onset: np.ndarray, sr: int, hop: int,
+                        prior_tempo: float | None = None,
+                        tracker_bpm: np.ndarray | None = None) -> np.ndarray:
+    """Combine librosa trackers with the peak fallback; keep the steadiest.
+
+    ``tracker_bpm`` is the DP tracker's own tempo estimate when the caller has
+    it already (see _tempo_readings).
+    """
+    candidates: list[np.ndarray] = []
+    # 1) Dynamic-programming beat tracker (tight: less drift on steady music).
+    checkpoint()
+    try:
+        if tracker_bpm is None:
+            tracker_bpm = _tempo_readings(onset, sr, hop)[1]
+        _tempo, lib_frames = librosa.beat.beat_track(
+            onset_envelope=onset, sr=sr, hop_length=hop,
+            tightness=100, trim=False, bpm=tracker_bpm)
+        lib_frames = np.asarray(lib_frames, dtype=int)
+        if len(lib_frames) >= 8:
+            candidates.append(lib_frames)
+    except Exception:
+        pass
+    # 2) Predominant local pulse, peak-picked at the prior tempo scale.
+    checkpoint()
+    try:
+        pulse = librosa.beat.plp(onset_envelope=onset, sr=sr, hop_length=hop,
+                                 prior=prior_tempo if prior_tempo else None)
+        distance = None
+        if prior_tempo and np.isfinite(prior_tempo) and prior_tempo > 0:
+            beat_frames_est = (60.0 / prior_tempo) * (sr / hop)
+            distance = max(2, int(round(beat_frames_est * 0.6)))
+        plp_peaks, _ = signal.find_peaks(
+            pulse, distance=distance or max(2, int(round(sr / hop * 0.25))),
+            prominence=float(np.percentile(pulse, 70)))
+        if len(plp_peaks) >= 8:
+            candidates.append(plp_peaks.astype(int))
+    except Exception:
+        pass
+    # 3) Always-available peak fallback.
+    checkpoint()
+    fallback = _peak_beats(onset, sr, hop)
+    if len(fallback) >= 8:
+        candidates.append(fallback)
+    if not candidates:
+        # Degenerate: return whatever we have rather than failing outright.
+        return fallback.astype(int)
+    candidates.sort(key=_regularity_score, reverse=True)
+    return np.unique(candidates[0]).astype(int)
+
+
+def _refine_beats_to_transients(beat_frames: np.ndarray, onset: np.ndarray,
+                                sr: int, hop: int, radius_ms: float = 35.0,
+                                return_float: bool = False,
+                                hold_without_peak: bool = False) -> np.ndarray:
+    """Re-anchor each beat to its strongest nearby transient.
+
+    Parabolic interpolation gives sub-frame precision. With integer frames
+    (``return_float=False``) the correction is rounded back so downstream
+    code stays frame-exact; with ``return_float=True`` the fractional part is
+    kept — essential above ~200 BPM, where a single 5.8 ms frame already spans
+    ~2 % of tempo and would make 225 vs 222 BPM sections flip-flop.
+    ``radius_ms`` widens after subdivision inserts, whose interpolated
+    positions can sit far from the true attack.
+
+    ``hold_without_peak`` leaves a beat where it is when the loudest point in
+    its window is on the window's edge: that is the tail or the rise of a
+    neighbouring hit, not an attack of its own. Inserted beats need it -- on a
+    bare click track at x2 they were dragged to the previous click's tail and
+    120 BPM came out as 186.
+    """
+    if len(beat_frames) == 0 or len(onset) == 0:
+        return np.asarray(beat_frames, dtype=float if return_float else int)
+    radius = max(2, int(round(radius_ms / 1000.0 * sr / hop)))
+    refined = []
+    for frame in beat_frames:
+        center = int(np.clip(round(frame), 0, len(onset) - 1))
+        lo, hi = max(0, center - radius), min(len(onset), center + radius + 1)
+        window = onset[lo:hi]
+        if window.size == 0:
+            refined.append(float(center))
+            continue
+        best = lo + int(np.argmax(window))
+        if hold_without_peak and best in (lo, hi - 1):
+            refined.append(float(frame))
+            continue
+        shift = 0.0
+        if 0 < best < len(onset) - 1:
+            a, b, c = float(onset[best - 1]), float(onset[best]), float(onset[best + 1])
+            denom = (a - 2 * b + c)
+            shift = 0.5 * (a - c) / denom if abs(denom) > 1e-9 else 0.0
+            shift = float(np.clip(shift, -0.5, 0.5))
+        refined.append(float(best) + shift)
+    out = np.asarray(refined, dtype=float)
+    if not return_float:
+        out = np.unique(np.rint(out).astype(int))
+        return out[out < len(onset)]
+    out = out[(out >= 0) & (out < len(onset))]
+    return np.unique(out)
+
+
+# ---------------------------------------------------------------------------
+# Tempo helpers
+# ---------------------------------------------------------------------------
+
+def _fill_missed_beats(frames: np.ndarray, max_fill: int = 8,
+                       ratio: float = 1.7) -> np.ndarray:
+    """Interpolate beats the tracker dropped (sparse breakdowns, soft bars).
+
+    A gap is filled only when the tempo on *both* sides agrees (past and
+    future medians within 25 %) and the gap is an integer multiple (up to
+    ``max_fill`` + 1) of that tempo. This keeps abrupt 2× jumps intact — old
+    gaps are never paved with new-tempo phantom beats — while isolated drops
+    inside steady passages are rebuilt. Long holes and song edges are left
+    alone; the grid restarts naturally after the break.
+    Only lengthens gaps — tempo jumps (shorter intervals) never trigger it.
+    """
+    frames = np.asarray(np.sort(np.asarray(frames, dtype=float)))
+    if len(frames) < 5:
+        return frames
+    gaps = np.diff(frames)
+    out: list[float] = [float(frames[0])]
+    for k, gap in enumerate(gaps):
+        left, right = float(frames[k]), float(frames[k + 1])
+        past, future = gaps[max(0, k - 6):k], gaps[k + 1:k + 7]
+        count = 1
+        if len(past) >= 2 and len(future) >= 2:
+            past_med, fut_med = float(np.median(past)), float(np.median(future))
+            if past_med > 0 and fut_med > 0:
+                agree = min(past_med, fut_med) / max(past_med, fut_med)
+                if agree >= 0.75:
+                    ref = (past_med + fut_med) / 2.0
+                    if gap / ref >= ratio:
+                        multi = int(round(gap / ref))
+                        if 2 <= multi <= max_fill + 1:
+                            sub = gap / multi
+                            if abs(sub - ref) / ref <= 0.35:
+                                count = multi
+        if count >= 2:
+            step = (right - left) / count
+            out.extend(left + step * s for s in range(1, count))
+        out.append(right)
+    return np.unique(np.asarray(out, dtype=float))
+
+
+def _robust_local_bpms(beats: np.ndarray, radius: int = 3) -> np.ndarray:
+    """Median of neighbouring beat intervals + MAD outlier rejection."""
+    beats = np.asarray(beats, dtype=float)
+    if beats.size < 2:
+        return np.zeros(beats.size, dtype=float)
+    intervals = np.diff(beats)
+    raw = 60.0 / np.maximum(intervals, 1e-5)
+    width = min(len(raw) if len(raw) % 2 else len(raw) - 1, radius * 2 + 1)
+    smooth = median_filter(raw, size=max(1, width), mode="nearest")
+    # Hampel-style clamp: single missed/doubled intervals snap back to the
+    # local median instead of dragging it.
+    mad = np.abs(raw - smooth)
+    scale = float(np.median(mad)) if len(mad) else 0.0
+    if scale > 1e-9:
+        tol = np.maximum(6.0 * scale, smooth * 0.06)
+        smooth = np.where(np.abs(raw - smooth) > tol, smooth, raw)
+        smooth = median_filter(smooth, size=max(1, width), mode="nearest")
+    # One output per beat; copy the last local tempo to its trailing beat.
+    return np.append(smooth, smooth[-1])
+
+
+def _global_tempo_guides(onset: np.ndarray, sr: int, hop: int,
+                         frame_tempi: np.ndarray | None = None) -> list[tuple[float, float]]:
+    """Return [(bpm, weight)] tempo hypotheses from a tempogram + tracker.
+
+    Legacy (v2) path only; the v3 engine uses ``_tempo_hints`` instead.
+    ``frame_tempi`` is the per-frame tempo when the caller has it already
+    (see _tempo_readings).
+    """
+    guides: list[tuple[float, float]] = []
+    try:
+        # aggregate=None returns one estimate per frame (shape 2×T); collapse
+        # across time with a median — never just read the first frames, which
+        # cover the (often unrepresentative) song intro.
+        if frame_tempi is None:
+            frame_tempi = _tempo_readings(onset, sr, hop)[0]
+        tempo_frames = np.atleast_2d(np.asarray(frame_tempi, dtype=float))
+        for value in np.median(tempo_frames, axis=1):
+            if 30 <= value <= 600 and np.isfinite(value):
+                guides.append((float(value), 1.0))
+    except Exception:
+        pass
+    try:
+        tempogram = np.concatenate(list(_tempogram(onset, sr, hop, 384)), axis=-1)
+        agg = np.mean(tempogram, axis=1)
+        freqs = librosa.tempo_frequencies(len(agg), hop_length=hop, sr=sr)
+        mask = (freqs >= 30) & (freqs <= 600)
+        agg, freqs = agg[mask], freqs[mask]
+        if agg.size:
+            agg = agg / max(float(np.max(agg)), 1e-9)
+            peaks, props = signal.find_peaks(agg, prominence=0.08, distance=4)
+            order = np.argsort(props.get("prominences", np.zeros_like(peaks, dtype=float)))[::-1]
+            for idx in order[:6]:
+                guides.append((float(freqs[peaks[idx]]), float(agg[peaks[idx]])))
+    except Exception:
+        pass
+    # Deduplicate near-identical hypotheses, keeping the strongest weight.
+    merged: list[tuple[float, float]] = []
+    for bpm, weight in sorted(guides, key=lambda t: -t[1]):
+        if all(abs(bpm - kept) >= max(1.5, kept * 0.01) for kept, _ in merged):
+            merged.append((bpm, weight))
+    return merged[:8]
+
+
+def _segment_tempi(beats: np.ndarray, bpms: np.ndarray, min_delta: float,
+                   persistence: int) -> list[TimingPoint]:
+    """Create stable tempo regions from beat-level estimates.
+
+    A candidate must differ from the current region by ``min_delta`` and stay
+    near its own median for ``persistence`` beats. One outlier per window is
+    tolerated (second-largest deviation rules), so a single noisy beat can't
+    veto a real change — or fabricate one. Confirmed starts are backtracked
+    to the midpoint crossing so red lines land on the musical change, not
+    ``persistence`` beats late.
+    """
+    if len(beats) == 0:
+        return []
+    points: list[TimingPoint] = []
+    current = float(np.median(bpms[:min(len(bpms), persistence)]))
+
+    def add(index: int, tempo: float, region: np.ndarray) -> None:
+        spread = float(np.median(np.abs(region - np.median(region)))) if len(region) else 0.0
+        steadiness = max(0.0, min(1.0, 1.0 - spread / max(tempo * 0.04, 0.5)))
+        # Longer sections earn trust: a 4-beat wobble should rarely outrank a
+        # 40-beat plateau even if both look steady.
+        length_bonus = min(0.15, 0.15 * len(region) / max(persistence * 3, 1))
+        confidence = max(0.0, min(1.0, steadiness * 0.9 + length_bonus))
+        points.append(TimingPoint(float(beats[index] * 1000), float(tempo), confidence, index))
+
+    def backtrack(from_index: int, region_start: int, old: float, new: float) -> int:
+        """Walk back to where the curve crossed the old/new midpoint."""
+        mid = (old + new) / 2.0
+        j = from_index - 1
+        limit = max(region_start, from_index - 2 * persistence)
+        if new > old:
+            while j > limit and bpms[j] >= mid:
+                j -= 1
+        else:
+            while j > limit and bpms[j] <= mid:
+                j -= 1
+        return j + 1
+
+    add(0, current, bpms[:persistence])
+    region_start = 0
+    i = persistence
+    while i < len(bpms):
+        window = bpms[i:min(i + persistence, len(bpms))]
+        candidate = float(np.median(window))
+        tol = max(min_delta, candidate * 0.012)
+        # Tolerate a single outlier: the second-largest deviation decides.
+        devs = np.sort(np.abs(window - candidate))
+        steady = len(window) >= persistence and (devs[-2] if len(devs) > 1 else devs[-1]) < tol
+        if steady and abs(candidate - current) >= min_delta:
+            # Confirm it is a meaningful, sustained new tempo.
+            start = backtrack(i, region_start, current, candidate)
+            add(start, candidate, bpms[start:min(start + persistence, len(bpms))])
+            region_start, current = start, candidate
+            i += persistence
+        else:
+            i += 1
+
+    # Refine each displayed BPM using its complete assigned region.
+    refined: list[TimingPoint] = []
+    for n, point in enumerate(points):
+        end = points[n + 1].beat_index if n + 1 < len(points) else len(bpms)
+        region = bpms[point.beat_index:end]
+        tempo = float(np.median(region)) if len(region) else point.bpm
+        spread = float(np.median(np.abs(region - tempo))) if len(region) else 0.0
+        steadiness = max(0.0, min(1.0, 1.0 - spread / max(tempo * 0.04, 0.5)))
+        length_bonus = min(0.15, 0.15 * len(region) / max(persistence * 3, 1))
+        confidence = max(0.0, min(1.0, steadiness * 0.9 + length_bonus))
+        refined.append(TimingPoint(point.offset_ms, tempo, confidence, point.beat_index))
+    # Refinement can make two initially distinct noisy regions converge. Do
+    # not export a red line unless its final BPM still clears the filter.
+    final = [refined[0]]
+    for point in refined[1:]:
+        if abs(point.bpm - final[-1].bpm) >= min_delta:
+            final.append(point)
+    return final
+
+
+def _subdivision_support(onset: np.ndarray, beat_frames: np.ndarray, factor: int) -> float:
+    """Measure whether attacks exist at the proposed grid positions."""
+    if factor == 1:
+        positions = beat_frames.astype(float)
+    else:
+        # Score only *new* positions. Including the already-detected beats
+        # would make an empty half-time grid look strong by construction.
+        positions = np.concatenate([np.linspace(a, b, factor, endpoint=False)[1:]
+                                    for a, b in zip(beat_frames[:-1], beat_frames[1:])])
+    values = []
+    for index in np.rint(positions).astype(int):
+        values.append(float(np.max(onset[max(0, index - 2):min(len(onset), index + 3)])))
+    return float(np.median(values)) if values else 0.0
+
+
+def _guide_weight_at(tempo_guides: list[tuple[float, float]] | None, bpm: float,
+                     tol: float = 0.03) -> float:
+    """Strongest tempogram-hypothesis weight within ``tol`` of ``bpm``."""
+    if not tempo_guides:
+        return 0.0
+    best = 0.0
+    for tempo_hint, weight in tempo_guides:
+        for mult in (0.5, 1.0, 2.0):
+            if abs(tempo_hint * mult - bpm) <= max(1.5, bpm * tol):
+                best = max(best, float(weight))
+    return best
+
+
+def _choose_subdivision(onset: np.ndarray, beat_frames: np.ndarray,
+                        prefer_map_bpm: bool,
+                        tempo_guides: list[tuple[float, float]] | None = None) -> int:
+    """Resolve half/double-time with onset evidence, not blind multiplication.
+
+    Why this is lenient when the base pulse sits *outside* the 120–300 map
+    range: a tracker that locks onto 112 BPM when the song is really 224 BPM
+    halves every later section gap too (112.5 vs 111.1 differs by only
+    ~1.4 BPM < min_delta), collapsing the whole map into one "constant"
+    section. So an out-of-range base only needs moderate in-between attack
+    evidence to double, while an in-range base still needs strong evidence.
+
+    It only ever keeps the tracked pulse or doubles / quadruples it. A lock
+    above 300 BPM is kept as it is; nothing here halves it, so ÷2 is the way
+    back from a double-time read.
+    """
+    if len(beat_frames) < 4:
+        return 1
+    frame_rate = TARGET_SR / HOP
+    base_bpm = 60.0 / max(float(np.median(np.diff(beat_frames.astype(float)))), 1e-6) * frame_rate
+    base_support = max(_subdivision_support(onset, beat_frames, 1), 1e-9)
+    base_in_map = 120 <= base_bpm <= 300
+    # A base pulse outside the map range starts disfavoured: doubling out of
+    # it should be easy, staying on it should require the doubled grid to
+    # genuinely lack attacks.
+    best_factor, best_score = 1, 1.0 if base_in_map else 0.72
+    for factor in (2, 4):
+        bpm = base_bpm * factor
+        if not 30 <= bpm <= 600:
+            continue
+        support_ratio = _subdivision_support(onset, beat_frames, factor) / base_support
+        guide_boost = 0.15 * min(_guide_weight_at(tempo_guides, bpm), 1.0)
+        in_map = 120 <= bpm <= 300
+        if prefer_map_bpm and not base_in_map and in_map:
+            range_bonus, need = 0.45, 0.30
+        elif prefer_map_bpm and in_map:
+            range_bonus, need = 0.22, 0.42
+        else:
+            range_bonus, need = 0.0, 0.50
+        need -= 0.10 * min(_guide_weight_at(tempo_guides, bpm), 1.0)
+        score = support_ratio + range_bonus + guide_boost
+        if support_ratio >= need and score > best_score:
+            best_factor, best_score = factor, score
+    return best_factor
+
+
+def _insert_subdivisions(frames: np.ndarray, factor: int) -> np.ndarray:
+    """Split each beat step into ``factor`` even sub-steps (float frames).
+
+    Kept in float so sub-frame transient corrections survive: rounding here
+    would re-impose ±1-frame tempo quantization (~±2 % at 225 BPM).
+    """
+    frames = np.asarray(frames, dtype=float)
+    if factor == 1:
+        return frames
+    pieces = [np.linspace(a, b, factor, endpoint=False) for a, b in zip(frames[:-1], frames[1:])]
+    return np.append(np.concatenate(pieces), frames[-1])
+
+
+def _resubdivide(frames: np.ndarray, subdivision: float) -> np.ndarray:
+    """Beats at ``subdivision`` times the tracked rate.
+
+    1, 2, 4 split each tracked step evenly (_insert_subdivisions). 0.5 and 0.25
+    keep every 2nd / 4th tracked beat from the first, as the precision grid
+    does when it is halved. Not the more accented phase: the onset envelope
+    favours the snare, and on a 170 BPM kit that put the halved grid on the
+    backbeat (see HALF_BAR_CONTRAST).
+    """
+    frames = np.asarray(frames, dtype=float)
+    if subdivision >= 1:
+        return _insert_subdivisions(frames, int(subdivision))
+    return frames[::int(round(1.0 / subdivision))]
+
+
+def _trim_leading_silence(beat_frames: np.ndarray, onset: np.ndarray) -> np.ndarray:
+    """Drop beats extrapolated into leading silence before the music starts.
+
+    The DP tracker emits a grid from frame 0 even when the song fades in
+    later; without trimming, the first red line lands at 0 ms instead of on
+    the first real attack. Only beats *before* the first loud transient with
+    no local onset support are removed, so soft intros keep their grid.
+    """
+    frames = np.asarray(beat_frames, dtype=float)
+    if len(frames) < 2 or len(onset) < 8:
+        return frames
+    ceiling = float(np.max(onset))
+    if ceiling <= 1e-9:
+        return frames
+    loud = np.flatnonzero(onset >= ceiling * 0.25)
+    if loud.size == 0:
+        return frames
+    first_sound = float(loud[0])
+
+    def support(frame: float) -> float:
+        center = int(np.clip(round(frame), 0, len(onset) - 1))
+        lo, hi = max(0, center - 2), min(len(onset), center + 3)
+        return float(np.max(onset[lo:hi]))
+
+    i = 0
+    while (i < len(frames) and frames[i] < first_sound
+           and support(frames[i]) < ceiling * 0.12 and i < 8):
+        i += 1
+    trimmed = frames[i:]
+    return trimmed if len(trimmed) >= 2 else frames
+
+
+def _guess_meter(beats: np.ndarray, onset: np.ndarray, sr: int, hop: int) -> str:
+    """Cheap 3/4 vs 4/4 guess from accent periodicity at bar multiples."""
+    try:
+        if len(beats) < 16:
+            return "4/4"
+        frame_rate = sr / hop
+        beat_frames = np.rint(beats * frame_rate).astype(int)
+        beat_frames = beat_frames[(beat_frames >= 0) & (beat_frames < len(onset))]
+        strengths = np.array([float(np.max(onset[max(0, f - 2):f + 3])) for f in beat_frames])
+        if strengths.size < 16 or float(np.std(strengths)) < 1e-9:
+            return "4/4"
+        scores = {}
+        for period in (3, 4, 6):
+            if len(strengths) < period * 3:
+                continue
+            trimmed = strengths[:len(strengths) - len(strengths) % period].reshape(-1, period)
+            accents = trimmed[:, 0].mean()
+            others = trimmed[:, 1:].mean()
+            scores[period] = accents / max(others, 1e-9)
+        if not scores:
+            return "4/4"
+        best = max(scores, key=lambda k: scores[k])
+        if scores[best] < 1.08:
+            return "4/4"
+        return {3: "3/4", 4: "4/4", 6: "6/8"}[best]
+    except Exception:
+        return "4/4"
+
+
+def _stability(local: np.ndarray) -> float:
+    if len(local) < 2:
+        return 0.0
+    med = float(np.median(local))
+    mad = float(np.median(np.abs(local - med)))
+    return float(max(0.0, min(1.0, 1.0 - (mad / max(med * 0.03, 0.4)))))
+
+
+# ---------------------------------------------------------------------------
+# Precision grid engine (v3)
+# ---------------------------------------------------------------------------
+# The v2 engine derived BPM from *differences between consecutive detected
+# beats*. That is inherently noisy: every beat carries a few milliseconds of
+# onset-detection jitter, and differencing amplifies it, so the reported tempo
+# wobbled by ~0.2 BPM and offsets landed ~8 ms late.
+#
+# v3 never differentiates. It fits an explicit linear model
+#
+#       t(k) = offset + k * period          (k = integer beat index)
+#
+# to the detected attack times by iteratively re-weighted least squares. With
+# a few hundred inlier attacks the fitted period averages the jitter down by
+# sqrt(N), which is what turns "±0.2 BPM" into "±0.001 BPM" and puts offsets
+# inside a millisecond of the true attack.
+#
+# Stages:
+#   1. Attacks are detected on a 2.9 ms envelope and then re-timed on the raw
+#      waveform at sample resolution (removes the ~8 ms detector latency).
+#   2. A weighted circular-coherence sweep  R(f) = |Σ w·e^{2πi f t}| / Σ w
+#      scores every plausible pulse rate; candidates are then ranked by how
+#      much attack energy each grid explains times how many of its own slots
+#      are filled. R is an O(N) statistic per frequency, so the whole range is
+#      swept at once instead of trusting one tracker's guess.
+#   3. Expanding-window least squares locks a grid onto a span without ever
+#      slipping a beat index, and a robust re-centring pass puts its phase on
+#      the densest residual cluster rather than the mean of everything nearby.
+#   4. Attacks are grouped by index modulo m; the accent depth plus tempogram
+#      hints choose how many atoms make one beat (and, with meter, which atom
+#      is the downbeat). This is the octave decision, made from evidence.
+#   5. Sections grow forward while attacks keep landing on the grid, each one
+#      re-seeding its own coherence scan so a tempo change cannot poison it.
+#      Boundaries settle on the beat where the two grids cross, and every
+#      section is refitted on its own attacks alone.
+
+FIT_HOP = 128            # 2.9 ms frames for the fitting envelope
+MAX_SCAN_ONSETS = 5000   # cap the coherence/kernel sweeps on dense tracks
+MAX_SCAN_FREQS = 20000   # ... and on very long seed windows
+SCAN_SPAN_S = 90.0       # anchor window for the octave decision
+MAX_AUDIO_SECONDS = 3600.0        # refuse absurd inputs instead of thrashing RAM
+MAX_OSU_BYTES = 16 * 1024 * 1024  # a beatmap is a few hundred kB; this is generous
+MAX_CONFIG_BYTES = 256 * 1024
+MAX_CLICK_SECONDS = 1800.0
+BEAT_MULTIPLES = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 16)
+
+
+@dataclass(frozen=True)
+class GridSection:
+    """One constant-tempo region, fitted as offset + k*period."""
+    start_s: float
+    end_s: float
+    period: float          # seconds per beat
+    phase: float           # time of beat index 0 (may sit before start_s)
+    inliers: int
+    residual_ms: float     # RMS distance from attacks to the grid
+    coverage: float        # fraction of grid positions that carry an attack
+
+    @property
+    def bpm(self) -> float:
+        return 60.0 / self.period if self.period > 0 else 0.0
+
+
+# -- attack detection --------------------------------------------------------
+
+def _pick_onsets(env: np.ndarray, sr: int, hop: int) -> tuple[np.ndarray, np.ndarray]:
+    """Peak-pick the envelope with parabolic (sub-frame) interpolation."""
+    if env.size < 8:
+        return np.zeros(0), np.zeros(0)
+    distance = max(1, int(round(0.025 * sr / hop)))
+    floor = max(0.04, float(np.percentile(env, 55)))
+    peaks, _ = signal.find_peaks(env, distance=distance, prominence=0.05, height=floor)
+    if peaks.size == 0:
+        peaks, _ = signal.find_peaks(env, distance=distance)
+    if peaks.size == 0:
+        return np.zeros(0), np.zeros(0)
+    frames = peaks.astype(float)
+    inner = (peaks > 0) & (peaks < env.size - 1)
+    a = env[peaks[inner] - 1].astype(float)
+    b = env[peaks[inner]].astype(float)
+    c = env[peaks[inner] + 1].astype(float)
+    denom = a - 2 * b + c
+    shift = np.where(np.abs(denom) > 1e-9, 0.5 * (a - c) / np.where(denom == 0, 1, denom), 0.0)
+    frames[inner] += np.clip(shift, -0.5, 0.5)
+    return frames * hop / sr, env[peaks].astype(float)
+
+
+def _retime_onsets(y: np.ndarray, sr: int, times: np.ndarray,
+                   back_s: float = 0.030, ahead_s: float = 0.012) -> np.ndarray:
+    """Re-time each attack on the raw waveform, at sample resolution.
+
+    A spectral-flux peak is reported roughly one analysis window *after* the
+    physical attack (~8 ms with a 1024-sample window). Since every attack is
+    delayed by about the same amount the tempo survives, but the offset does
+    not — and an offset 8 ms late is audible in the osu! editor. So each
+    coarse time is refined by looking at the local energy rise in the raw
+    signal and taking the point where it crosses 20 % of that rise.
+    """
+    if times.size == 0 or y.size == 0:
+        return times
+    win = max(8, int(round(0.0015 * sr)))       # 1.5 ms energy window
+    back = int(round(back_s * sr))
+    ahead = int(round(ahead_s * sr))
+    out = np.array(times, dtype=np.float64)
+    for i, t in enumerate(times):
+        if i % 1024 == 0:
+            checkpoint()
+        centre = int(round(t * sr))
+        lo = max(0, centre - back)
+        hi = min(y.size, centre + ahead)
+        if hi - lo < win * 3:
+            continue
+        seg = y[lo:hi].astype(np.float64)
+        power = np.cumsum(seg * seg)
+        # Energy inside the window ending at each sample; the rise starts when
+        # the window's trailing edge reaches the attack.
+        energy = np.sqrt(np.maximum(power[win:] - power[:-win], 0.0))
+        if energy.size < 4:
+            continue
+        top = int(np.argmax(energy))
+        if top == 0:
+            continue
+        base = float(np.min(energy[:top + 1]))
+        peak = float(energy[top])
+        if peak <= base * 1.6 or peak <= 1e-7:
+            continue                              # no clear attack: keep the envelope time
+        level = base + 0.20 * (peak - base)
+        below = np.flatnonzero(energy[:top + 1] <= level)
+        if below.size == 0:
+            continue
+        j = int(below[-1])
+        if j >= top:
+            continue
+        span = energy[j + 1] - energy[j]
+        frac = (level - energy[j]) / span if span > 1e-12 else 0.0
+        refined = (lo + j + float(np.clip(frac, 0.0, 1.0)) + win) / sr
+        if abs(refined - t) <= back_s:
+            out[i] = refined
+    return out
+
+
+def _detect_attacks(y: np.ndarray, sr: int, hop: int = FIT_HOP,
+                    retime: bool = True) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return (times, weights, envelope) for every detected attack."""
+    env = _onset_envelope(y, sr, hop)
+    times, weights = _pick_onsets(env, sr, hop)
+    if retime and times.size:
+        times = _retime_onsets(y, sr, times)
+        order = np.argsort(times)
+        times, weights = times[order], weights[order]
+        # Sub-sample retiming can collide two neighbours; keep the earlier of
+        # any pair within 4 ms, whatever the weights (the Rust port matches).
+        if times.size > 1:
+            keep = np.r_[True, np.diff(times) > 0.004]
+            times, weights = times[keep], weights[keep]
+    return times, weights, env
+
+
+# -- circular coherence ------------------------------------------------------
+
+def _coherence_curve(times: np.ndarray, weights: np.ndarray,
+                     freqs: np.ndarray, block: int = 512) -> np.ndarray:
+    """R(f) = |Σ w·exp(2πi f t)| / Σ w  — phase agreement at pulse rate f."""
+    total = float(np.sum(weights))
+    if total <= 0 or times.size == 0:
+        return np.zeros(freqs.size)
+    out = np.empty(freqs.size, dtype=np.float64)
+    t = times.astype(np.float64)
+    w = weights.astype(np.float64)
+    for start in range(0, freqs.size, block):
+        checkpoint()
+        chunk = freqs[start:start + block]
+        angle = 2.0 * np.pi * np.outer(t, chunk)
+        out[start:start + chunk.size] = np.hypot(w @ np.cos(angle), w @ np.sin(angle))
+    return out / total
+
+
+# -- the pulse over the whole track, as a surface --------------------------
+#
+# The seed scan anchors on one densest window because the sweep is expensive
+# in NumPy; this walks the same sweep across the track, so the pulse can be
+# *seen* rather than inferred from where sections ended up. A port of
+# `crates/overtone-tempo/src/map.rs` (DSP §B.3) as far as the surface and its
+# ridge go; what Rust does with it afterwards — seeding, replacing the
+# tempogram — stays there.
+
+#: Sliding window and hop, in seconds. Twelve seconds holds enough attacks
+#: for R(f) to have a peak worth reading, and two is fine enough to see a
+#: change arrive.
+MAP_WIDTH_S = 12.0
+MAP_HOP_S = 2.0
+#: The pulse rates swept, as periods. The candidate sweep's own range.
+MAP_PERIOD_RANGE = (0.055, 1.35)
+#: Attacks a window needs before its column is worth a ridge point.
+MAP_MIN_ATTACKS = 8
+#: A peak this far under the column's best is not a candidate for the ridge.
+MAP_PEAK_FLOOR = 0.3
+
+
+def map_frequencies(width: float = MAP_WIDTH_S) -> np.ndarray:
+    """The frequency grid every column shares, so columns compare.
+
+    Stepped at ``0.2 / width``: one window resolves two lobes no closer than
+    that, which is the candidate sweep's own rule.
+    """
+    lo, hi = 1.0 / MAP_PERIOD_RANGE[1], 1.0 / MAP_PERIOD_RANGE[0]
+    step = max(0.2 / max(width, 1e-9), 1e-4)
+    return np.arange(lo, hi + 1e-12, step)
+
+
+def coherence_map(times: np.ndarray, weights: np.ndarray,
+                  width: float = MAP_WIDTH_S,
+                  hop: float = MAP_HOP_S) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """``R(t, f)`` over the track: (centres_s, freqs_hz, columns).
+
+    One row of ``columns`` per window, each the phase agreement of that
+    window's attacks at every swept rate. A window with fewer than
+    :data:`MAP_MIN_ATTACKS` carries no peak worth tracking and is skipped
+    rather than given a noisy one.
+    """
+    times = np.asarray(times, dtype=np.float64)
+    weights = np.asarray(weights, dtype=np.float64)
+    freqs = map_frequencies(width)
+    if times.size == 0 or width <= 0 or hop <= 0 or weights.shape != times.shape:
+        return np.zeros(0), freqs, np.zeros((0, freqs.size), dtype=np.float32)
+    order = np.argsort(times)
+    times, weights = times[order], weights[order]
+    centres, columns = [], []
+    edge = float(times[0])
+    last = float(times[-1])
+    while edge + width <= last + 1e-9:
+        checkpoint()
+        inside = (times >= edge) & (times < edge + width)
+        if int(inside.sum()) >= MAP_MIN_ATTACKS:
+            columns.append(_coherence_curve(times[inside], weights[inside], freqs))
+            centres.append(edge + 0.5 * width)
+        edge += hop
+    if not columns:
+        return np.zeros(0), freqs, np.zeros((0, freqs.size), dtype=np.float32)
+    return (np.asarray(centres), freqs,
+            np.asarray(columns, dtype=np.float32))
+
+
+def map_ridge(centres: np.ndarray, freqs: np.ndarray,
+              columns: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Follow the strongest peak through the map: (centres, periods, R).
+
+    Each window takes the peak nearest the last one in log2, among those
+    above :data:`MAP_PEAK_FLOOR` of its column's best. Without that
+    continuity a window whose 2x harmonic momentarily wins reads as a tempo
+    doubling; at a real change the old multiple collapses outright, so
+    stickiness cannot hide one.
+    """
+    out_at, out_period, out_r = [], [], []
+    previous = None
+    for centre, column in zip(np.asarray(centres), np.asarray(columns)):
+        best = float(column.max()) if column.size else 0.0
+        if not np.isfinite(best) or best <= 1e-6:
+            continue
+        rises = np.flatnonzero((column[1:-1] >= column[:-2]) & (column[1:-1] > column[2:])) + 1
+        peaks = rises[column[rises] >= MAP_PEAK_FLOOR * best]
+        if peaks.size == 0:
+            peaks = np.array([int(np.argmax(column))])
+        if previous is None:
+            chosen = int(peaks[np.argmax(column[peaks])])
+        else:
+            chosen = int(peaks[np.argmin(np.abs(np.log2(1.0 / freqs[peaks]) - previous))])
+        previous = float(np.log2(1.0 / freqs[chosen]))
+        out_at.append(float(centre))
+        out_period.append(float(1.0 / freqs[chosen]))
+        out_r.append(float(column[chosen]))
+    return np.asarray(out_at), np.asarray(out_period), np.asarray(out_r)
+
+
+def _atomic_grid_candidates(times: np.ndarray, weights: np.ndarray,
+                            period_range: tuple[float, float] = (0.055, 1.35),
+                            keep: int = 10) -> list[tuple[float, float, float]]:
+    """Candidate atomic pulses as [(period, phase, coherence)], shortest period first.
+
+    ``R`` is high at the atomic pulse *and at every multiple of it*, and low at
+    sub-multiples — so the fundamental is the slowest strong peak, which is
+    exactly what we want to hand to the least-squares stage. The ``keep``
+    slowest strong peaks are kept, each joined by its 2-4x multiples (up to
+    1.6 times the range's slowest period), and the whole list is sorted by
+    ascending period: fastest first, so ``[0]`` is not the fundamental.
+    """
+    if times.size < 8:
+        return []
+    if times.size > MAX_SCAN_ONSETS:        # bound the scan on very dense audio
+        # Must not be called `keep`: that is the parameter naming how many
+        # candidates to return, and rebinding it here made the final
+        # `strong[:keep]` slice raise TypeError on dense tracks.
+        dense = np.sort(np.argsort(weights)[-MAX_SCAN_ONSETS:])
+        times, weights = times[dense], weights[dense]
+    span = float(times[-1] - times[0])
+    if span <= 1.0:
+        return []
+    lo_f, hi_f = 1.0 / period_range[1], 1.0 / period_range[0]
+    step = 0.2 / span                      # keeps the coherence lobe resolvable
+    freqs = np.arange(lo_f, hi_f, max(step, 1e-4))
+    if freqs.size < 4:
+        return []
+    if freqs.size > MAX_SCAN_FREQS:
+        # Only reachable if someone widens the seed windows; the sweep cost is
+        # onsets x frequencies, so cap it rather than stall on a long window.
+        freqs = np.linspace(lo_f, hi_f, MAX_SCAN_FREQS)
+    curve = _coherence_curve(times, weights, freqs)
+    peaks, _ = signal.find_peaks(curve, distance=2)
+    if peaks.size == 0:
+        peaks = np.array([int(np.argmax(curve))])
+    best = float(np.max(curve[peaks]))
+    if best <= 1e-6:
+        return []
+    strong = peaks[curve[peaks] >= 0.55 * best]
+    strong = strong[np.argsort(freqs[strong])][:keep]
+    out: list[tuple[float, float, float]] = []
+    total = float(np.sum(weights))
+    for idx in strong:
+        f = float(freqs[idx])
+        angle = 2.0 * np.pi * f * times
+        c = float(weights @ np.cos(angle))
+        s = float(weights @ np.sin(angle))
+        # z = Σ w·e^{2πi f t} has arg(z) = 2π f φ, so φ = arg(z)/(2πf).
+        phase = float(np.arctan2(s, c) / (2.0 * np.pi * f))
+        out.append((1.0 / f, phase % (1.0 / f), float(curve[idx] if total else 0.0)))
+    # A real grid is often also visible one or two octaves *down*; the slower
+    # reading is the safer atom (it still contains every attack) and it keeps
+    # swung or shuffled music, which has no clean sub-beat grid, fittable.
+    widened: list[tuple[float, float, float]] = []
+    for period, phase, coherence in out:
+        for multiple in (1, 2, 3, 4):
+            slower = period * multiple
+            if slower > period_range[1] * 1.6:
+                continue
+            if all(abs(slower - kept) > 0.004 for kept, _p, _c in widened):
+                widened.append((slower, phase % slower, coherence))
+    widened.sort(key=lambda item: item[0])
+    return widened
+
+
+# -- least squares -----------------------------------------------------------
+
+def _ls_fit(times: np.ndarray, weights: np.ndarray, period: float, phase: float,
+            tol_s: float) -> tuple[float, float, np.ndarray] | None:
+    """One weighted least-squares pass of t ≈ phase + k·period."""
+    if times.size < 4 or period <= 0:
+        return None
+    k = np.round((times - phase) / period)
+    inlier = np.abs(times - (phase + k * period)) <= tol_s
+    if int(inlier.sum()) < 4:
+        return None
+    x, t, w = k[inlier], times[inlier], weights[inlier]
+    if float(np.ptp(x)) < 2:
+        return None
+    sw = float(np.sum(w))
+    xm, tm = float(w @ x) / sw, float(w @ t) / sw
+    dx = x - xm
+    sxx = float(w @ (dx * dx))
+    if sxx <= 1e-12:
+        return None
+    new_period = float((w @ (dx * (t - tm))) / sxx)
+    if not np.isfinite(new_period) or new_period <= 0:
+        return None
+    if not 0.5 * period <= new_period <= 2.0 * period:
+        return None
+    return new_period, float(tm - new_period * xm), inlier
+
+
+def _recentre_phase(times: np.ndarray, weights: np.ndarray, period: float,
+                    phase: float, sigma: float | None = None) -> float:
+    """Snap the phase onto the *densest* residual cluster, not their average.
+
+    Least squares balances everything inside its tolerance window, so a second
+    population of attacks — swung off-beats, ghost notes, flams — drags the
+    grid halfway towards them and the offset lands milliseconds late. Scoring
+    candidate shifts with a narrow Gaussian kernel finds the mode instead of
+    the mean, which is what the ear actually locks onto.
+    """
+    if times.size < 4 or period <= 0:
+        return phase
+    width = sigma if sigma is not None else min(0.012, 0.06 * period)
+    if times.size > MAX_SCAN_ONSETS:
+        # The kernel scan is onsets x shifts; the mode does not need every
+        # attack, so score it on the strongest ones.
+        keep = np.sort(np.argsort(weights)[-MAX_SCAN_ONSETS:])
+        times, weights = times[keep], weights[keep]
+    residual = np.mod(times - phase + 0.5 * period, period) - 0.5 * period
+    shifts = np.linspace(-0.5 * period, 0.5 * period, 401)
+    scaled = (residual[:, None] - shifts[None, :]) / width
+    score = weights @ np.exp(-0.5 * np.clip(scaled * scaled, 0.0, 60.0))
+    return float(phase + shifts[int(np.argmax(score))])
+
+
+def _refine_grid(times: np.ndarray, weights: np.ndarray, period: float, phase: float,
+                 tolerances=(0.30, 0.18, 0.10, 0.06, 0.04)) -> tuple[float, float, np.ndarray]:
+    """Iteratively tighten the fit; each pass discards attacks off the grid."""
+    inlier = np.ones(times.size, dtype=bool)
+    for n, ratio in enumerate(tolerances):
+        if n == 2:
+            # Re-centre once the period is trustworthy but before the tolerance
+            # gets narrow enough to lock a biased phase in place.
+            phase = _recentre_phase(times, weights, period, phase)
+        fit = _ls_fit(times, weights, period, phase, max(ratio * period, 0.006))
+        if fit is None:
+            break
+        period, phase, inlier = fit
+    return period, phase, inlier
+
+
+#: The share gate (0.40) alone let sparse random attacks through: with 24-40
+#: attacks in 30-40 s, the best of the seed search's grids cleared it in
+#: 38-55 % of trials, and 53 of 240 rendered random-click files got a grid.
+#: No single statistic separates them from real music. The chance of so many
+#: inliers (_pulse_log10p) reached 10**-5.47 for random attacks but was as
+#: weak as 10**-1.30 for real songs whose vocals sit off the grid. The fitting
+#: envelope's pulse gap (_fit_pulse_gap) reached 0.072 for the random clicks,
+#: and 0.105 for random attack times, while five of 109 real songs sat
+#: between 0.035 and 0.101. Together they do: a grid is refused only when both
+#: are weak. At 0.10 one of 240 random attack sets kept a grid; at 0.15 none
+#: does. Of the songs weak enough to consult the envelope, two score above it
+#: (0.200, 0.426) and keep their grid. Three are refused, and none had a grid
+#: worth keeping: a ballad guessed at 73 BPM whose ranked map has 363 red lines
+#: between 47 and 68.5, and two songs whose grids put 5 % and 18 % of their
+#: ranked map's beats within 10 ms (median 48 and 28 ms off). Python hands
+#: those to the fallback tracker; Rust reports no grid.
+WEAK_PULSE_LOG10P = -6.0
+STRONG_PULSE_GAP = 0.15
+
+
+def _pulse_log10p(times: np.ndarray, period: float, phase: float,
+                  tol_ratio: float = 0.12) -> float:
+    """log10 of the chance that uniformly random attack times land this many
+    inliers on the grid (a binomial tail with p = 2*tol/period)."""
+    n = int(times.size)
+    if n == 0 or period <= 0:
+        return 0.0
+    tol = max(tol_ratio * period, 0.006)
+    chance = min(1.0, 2.0 * tol / period)
+    k = np.round((times - phase) / period)
+    inliers = int(np.sum(np.abs(times - (phase + k * period)) <= tol))
+    if inliers == 0 or chance >= 1.0:
+        return 0.0
+    from scipy.stats import binom
+    return float(binom.logsf(inliers - 1, n, chance) / np.log(10.0))
+
+
+def _grid_quality(times: np.ndarray, weights: np.ndarray, period: float,
+                  phase: float, tol_ratio: float = 0.12) -> tuple[float, float, float]:
+    """(inlier fraction, coverage of grid positions, RMS residual in ms)."""
+    if times.size == 0 or period <= 0:
+        return 0.0, 0.0, 999.0
+    k = np.round((times - phase) / period)
+    resid = times - (phase + k * period)
+    tol = max(tol_ratio * period, 0.006)
+    inlier = np.abs(resid) <= tol
+    n = int(inlier.sum())
+    if n == 0:
+        return 0.0, 0.0, 999.0
+    share = float(np.sum(weights[inlier]) / max(float(np.sum(weights)), 1e-9))
+    slots = float(np.ptp(k[inlier])) + 1.0
+    coverage = min(1.0, len(np.unique(k[inlier])) / max(slots, 1.0))
+    rms = float(np.sqrt(np.mean(resid[inlier] ** 2)) * 1000.0)
+    return share, coverage, rms
+
+
+def _expand_fit(times: np.ndarray, weights: np.ndarray, period: float, phase: float,
+                start: float, stop: float) -> tuple[float, float]:
+    """Grow the fit outward in doubling spans so beat indices never slip."""
+    centre = 0.5 * (start + stop)
+    span = 12.0
+    while True:
+        lo, hi = max(start, centre - span), min(stop, centre + span)
+        window = (times >= lo) & (times <= hi)
+        if int(window.sum()) >= 8:
+            period, phase, _ = _refine_grid(times[window], weights[window], period, phase)
+        if lo <= start and hi >= stop:
+            break
+        span *= 2.0
+    return period, phase
+
+
+# -- octave / beat level -----------------------------------------------------
+
+def _tempo_hints(env: np.ndarray, sr: int, hop: int,
+                 decimate: int = 4) -> list[tuple[float, float]]:
+    """Perceptual tempo hypotheses, used *only* to choose the octave.
+
+    The grid fit already knows the pulse to six decimals; what it cannot know
+    is which multiple of it a human calls "the beat". That is what a tempogram
+    read through librosa's log-normal prior around 120 BPM answers. It is run
+    on a max-pooled envelope (≈12 ms frames) because a tempo hint needs no more
+    resolution than that, and the full-rate tempogram costs ~10 s per track.
+    """
+    hints: list[tuple[float, float]] = []
+    try:
+        usable = (env.size // decimate) * decimate
+        coarse = env[:usable].reshape(-1, decimate).max(axis=1) if usable else env
+        step = hop * decimate
+        # librosa's tempogram, joined from blocks before the mean is taken, so
+        # a stop is asked between them: one call took up to a second. The
+        # blocks are TEMPOGRAM_BLOCK columns wide for the reason that constant
+        # gives -- the column FFTs stay in cache. This asked for eight times
+        # that, on the grounds that short windows make a wide block nearly
+        # free; they do not. A six-minute song is 31,008 columns, and at 192
+        # lags of float64 the eight-wide block is 12.6 MB whose FFT axis is
+        # strided 64 KB apart, with a 47.6 MB join after it: 1.094 s of CPU
+        # against 0.359 s at TEMPOGRAM_BLOCK (and 0.188 s at 256, left alone
+        # because this constant already carries the reason). Blocks join bit
+        # for bit, so the aggregate is unchanged -- checked array_equal at
+        # every width from 64 to 8192 on edm-174 and long-6min.
+        gram = np.concatenate(list(_tempogram(coarse.astype(np.float32), sr, step, 192)),
+                              axis=-1)
+        agg = np.mean(gram, axis=1)
+        freqs = librosa.tempo_frequencies(len(agg), hop_length=step, sr=sr)
+        mask = np.isfinite(freqs) & (freqs >= 40) & (freqs <= 420)
+        agg, freqs = agg[mask], freqs[mask]
+        if agg.size:
+            agg = np.maximum(agg, 0.0)
+            agg = agg / max(float(np.max(agg)), 1e-9)
+            # librosa's tempo prior: log-normal in log2 space, centred on 120.
+            prior = np.exp(-0.5 * (np.log2(freqs / 120.0) / 1.0) ** 2)
+            peaks, props = signal.find_peaks(agg, prominence=0.05, distance=3)
+            if peaks.size:
+                weighted = agg[peaks] * prior[peaks]
+                best = int(peaks[int(np.argmax(weighted))])
+                hints.append((float(freqs[best]), 1.0))
+                order = np.argsort(props.get("prominences", np.zeros(peaks.size)))[::-1]
+                for idx in order[:5]:
+                    hints.append((float(freqs[peaks[idx]]), float(agg[peaks[idx]])))
+    except Exception:
+        pass
+    return hints
+
+
+def _hint_score(hints: list[tuple[float, float]], bpm: float) -> float:
+    """Gaussian agreement in log2-tempo space (2× away scores ≈ 0)."""
+    best = 0.0
+    for hint, weight in hints:
+        if hint <= 0:
+            continue
+        distance = abs(np.log2(bpm / hint))
+        best = max(best, float(weight) * float(np.exp(-(distance ** 2) / (2 * 0.35 ** 2))))
+    return best
+
+
+def _beat_from_atoms(times: np.ndarray, weights: np.ndarray, period: float, phase: float,
+                     hints: list[tuple[float, float]], prefer_map_bpm: bool) -> tuple[int, int]:
+    """Choose (atoms per beat, phase class) from accent pattern + tempo hints.
+
+    Attacks are grouped by their atom index modulo ``m``. If ``m`` atoms really
+    make a beat, one class holds the kicks/snares and the others the filler, so
+    its mean strength stands out. The tempo hints resolve the remaining
+    ambiguity between "beat" and "half-bar", which accents alone cannot.
+    """
+    k = np.round((times - phase) / period)
+    inlier = np.abs(times - (phase + k * period)) <= 0.15 * period
+    if int(inlier.sum()) < 8:
+        return 1, 0
+    k = k[inlier].astype(np.int64)
+    w = weights[inlier].astype(float)
+    best = (1, 0, -1e9)
+    for m in BEAT_MULTIPLES:
+        bpm = 60.0 / (period * m)
+        if not 55.0 <= bpm <= 420.0:
+            continue
+        cls = np.mod(k, m)
+        totals = np.bincount(cls, weights=w, minlength=m)
+        counts = np.bincount(cls, minlength=m)
+        if m > 1 and int(np.min(counts)) == 0:
+            means = np.where(counts > 0, totals / np.maximum(counts, 1), 0.0)
+        else:
+            means = totals / np.maximum(counts, 1)
+        r = int(np.argmax(means))
+        # Accent depth, not a ratio to the mean: if m atoms really make a beat
+        # one class holds the kicks and another the filler, so the spread
+        # between the strongest and weakest class is large. m = 1 scores 0 by
+        # construction, which is right — an unsubdivided atom shows no accent.
+        depth = float((means[r] - float(np.min(means))) / max(means[r], 1e-9))
+        beats = (float(np.ptp(k)) / m) + 1.0
+        coverage = min(1.0, counts[r] / max(beats, 1.0))
+        in_range = 120.0 <= bpm <= 300.0
+        score = (0.95 * _hint_score(hints, bpm)
+                 + 0.85 * min(depth / 0.35, 1.0)
+                 + 0.70 * coverage
+                 # osu! is mapped at 120-300 BPM; when the accent evidence is
+                 # equally happy either way this is what breaks the tie.
+                 + (0.40 if (prefer_map_bpm and in_range) else 0.0)
+                 - 0.45 * max(0.0, float(np.log2(90.0 / bpm)))
+                 - 0.45 * max(0.0, float(np.log2(bpm / 340.0))))
+        if score > best[2]:
+            best = (m, r, score)
+    return best[0], best[1]
+
+
+#: A 4-beat bar's downbeat must also out-weigh the beat half a bar away. The
+#: onset envelope favours broadband hits, so a snare on 2 and 4 -- or, read at
+#: double tempo, on every other "beat" -- can out-weigh the kick on 1, and a
+#: pattern that repeats every half bar says nothing about which half starts
+#: the bar. Measured against 88 ranked maps: of the 21 bars claimed, only 5 sat
+#: on the map's downbeat, and the 9 below 1.25 all missed (7 of them one beat
+#: early, on the backbeat before the 1); the synthetic fixtures with a real
+#: accent score 1.29 and 1.55.
+HALF_BAR_CONTRAST = 1.25
+
+
+def _meter_from_grid(times: np.ndarray, weights: np.ndarray, period: float,
+                     phase: float) -> tuple[str, int, int]:
+    """Guess the meter, the downbeat class, and how many beats to snap to.
+
+    The third value is the bar length only when the accents actually prove one;
+    otherwise it is 1, meaning "align the first red line to a beat, not a bar".
+    Guessing a bar without evidence would push the first offset up to three
+    beats past the first sound.
+    """
+    k = np.round((times - phase) / period)
+    inlier = np.abs(times - (phase + k * period)) <= 0.15 * period
+    if int(inlier.sum()) < 12:
+        return "4/4", 0, 1
+    k = k[inlier].astype(np.int64)
+    w = weights[inlier].astype(float)
+    best_meter, best_class, best_contrast = 4, 0, 0.0
+    best_means = np.ones(4)
+    for meter in (4, 3):
+        if float(np.ptp(k)) < meter * 4:
+            continue
+        cls = np.mod(k, meter)
+        totals = np.bincount(cls, weights=w, minlength=meter)
+        counts = np.bincount(cls, minlength=meter)
+        means = totals / np.maximum(counts, 1)
+        r = int(np.argmax(means))
+        contrast = float(means[r] / max(float(np.mean(means)), 1e-9))
+        if contrast > best_contrast:
+            best_meter, best_class, best_contrast, best_means = meter, r, contrast, means
+    if best_contrast < 1.20:
+        return "4/4", 0, 1                    # no usable accent: do not move the offset
+    if best_meter % 2 == 0:
+        opposite = best_means[(best_class + best_meter // 2) % best_meter]
+        if best_means[best_class] < HALF_BAR_CONTRAST * opposite:
+            return "4/4", 0, 1                # the accent repeats every half bar
+    return ("4/4" if best_meter == 4 else "3/4"), best_class, best_meter
+
+
+# -- section growing ---------------------------------------------------------
+
+def _seed_grid(times: np.ndarray, weights: np.ndarray, lo: float, hi: float,
+               prior_period: float | None = None,
+               widths: tuple[float, ...] = (30.0, 16.0, 9.0)) -> tuple[float, float] | None:
+    """Fit an atomic grid on the window starting at ``lo``.
+
+    Each tempo region seeds itself instead of inheriting the previous fit: a
+    period carried across a 128 → 142 BPM change assigns the wrong beat indices
+    on the far side, and least squares cannot recover from a slipped index. The
+    window shrinks until a grid actually locks, so a short region still gets a
+    seed. ``prior_period`` keeps consecutive regions on the same octave — real
+    tempo changes are small, octave flips are artefacts.
+
+    Candidates are ranked by ``share × coverage``: *share* is the fraction of
+    attack energy the grid explains (a grid twice too slow drops to a half),
+    *coverage* is the fraction of its own slots that carry an attack (a grid
+    twice too fast drops to a half). Only the true atom scores well on both.
+    """
+    best_pool: list[tuple[float, float, float]] = []
+    best_score = 0.0
+    for width in widths:
+        span = min(width, hi - lo)
+        if span < 4.0:
+            continue
+        window = (times >= lo) & (times <= lo + span)
+        w_times, w_weights = times[window], weights[window]
+        if w_times.size < 10:
+            continue
+        pool: list[tuple[float, float, float]] = []
+        for period, phase, _coherence in _atomic_grid_candidates(w_times, w_weights):
+            checkpoint()
+            fitted, fit_phase, _inlier = _refine_grid(w_times, w_weights, period, phase)
+            share, coverage, rms = _grid_quality(w_times, w_weights, fitted, fit_phase)
+            if rms > 0.09 * fitted * 1000.0:
+                continue
+            pool.append((fitted, fit_phase, share * (0.25 + 0.75 * coverage)))
+        if not pool:
+            continue
+        top = max(item[2] for item in pool)
+        if top > best_score:
+            best_pool, best_score = pool, top
+        if top >= 0.45:
+            break                       # a real grid locked; no need to shrink
+    if not best_pool:
+        return None
+    # Near-ties go to the slowest grid (it is the fundamental, and it keeps the
+    # beat reachable); with a prior, to whichever stays on the same octave.
+    near = [item for item in best_pool if item[2] >= 0.92 * best_score]
+    if prior_period and prior_period > 0:
+        near.sort(key=lambda item: (round(abs(np.log2(item[0] / prior_period)), 2), -item[0]))
+    else:
+        near.sort(key=lambda item: -item[0])
+    return near[0][0], near[0][1]
+
+
+#: Beats of the grid carried forward through growth. Refitting everything
+#: since the section began made the loop quadratic -- on the six-minute
+#: fixture, 189 refits over 205,604 attack-rows, 3.16 s of a 10.9 s analysis
+#: -- and bought nothing the final fit does not do itself, since that one runs
+#: on the whole span. A window this long still spans 32 bars of 4/4, which is
+#: a longer lever arm than any growth step needs; a section shorter than it is
+#: fitted over everything, exactly as before.
+GROWTH_WINDOW_BEATS = 128
+
+
+def _grow_sections(times: np.ndarray, weights: np.ndarray, period: float, phase: float,
+                   min_delta: float, persistence: int,
+                   seed_s: float = 8.0, step_s: float = 2.0) -> list[GridSection]:
+    """Grow constant-tempo regions forward while attacks keep landing on the grid.
+
+    Extending stops when a fresh chunk stops fitting — roughly where the tempo
+    changed. The next region then runs its *own* coherence scan (see
+    ``_seed_grid``) rather than inheriting the period that just failed, which
+    is what lets an abrupt 128 → 142 switch be caught instead of averaged away.
+    The rough boundary is refined afterwards by ``_settle_boundaries``.
+    """
+    if times.size < 8:
+        return []
+    sections: list[GridSection] = []
+    start = float(times[0])
+    finish = float(times[-1])
+    prior = period
+    guard = 0
+    # Every counted pass ends at or past its seed window, so it moves start on
+    # by seed_s or to the end: the track needs at most this many, and the guard
+    # only backs that up. A fixed 64 stopped a 15-minute mix that changes tempo
+    # every 9 s at 576 s and left the rest with no section and no red line.
+    limit = max(64, int(np.ceil((finish - start) / seed_s)) + 2)
+    while start < finish - 1.0 and guard < limit:
+        checkpoint()
+        guard += 1
+        seed_hi = min(finish, start + max(seed_s, 12 * prior))
+        # Short seed windows on purpose: a long one straddles the very tempo
+        # change we are looking for. Growth extends a good seed anyway.
+        fresh = _seed_grid(times, weights, start, seed_hi, prior_period=prior,
+                           widths=(12.0, 7.0, 4.5))
+        if fresh is not None:
+            local_period, local_phase = fresh
+        else:
+            seed = (times >= start - 0.5 * prior) & (times <= seed_hi)
+            if int(seed.sum()) < 6:
+                # Too few attacks to seed from here -- a lone click, a count-in,
+                # a quiet intro. Move on to the next attack instead of giving up
+                # on the whole track: one click at 0.3 s before drums at 8 s used
+                # to leave no section at all. Skips do not count against the
+                # guard; start only moves forward through a finite list.
+                later = times[times > start]
+                if later.size == 0:
+                    break
+                start = float(later[0])
+                guard -= 1
+                continue
+            local_period, local_phase, _ = _refine_grid(times[seed], weights[seed], prior, phase)
+        edge = seed_hi
+        while edge < finish:
+            # Each step refits the whole section so far: on a long song at one
+            # tempo, most of this stage's time.
+            checkpoint()
+            nxt = min(finish, edge + max(step_s, 4 * local_period))
+            chunk = (times > edge) & (times <= nxt)
+            if int(chunk.sum()) < 3:
+                edge = nxt
+                continue
+            share, _cov, rms = _grid_quality(times[chunk], weights[chunk],
+                                             local_period, local_phase, tol_ratio=0.11)
+            if share < 0.55 or rms > 0.09 * local_period * 1000.0:
+                break
+            # The grid carried forward is refit on a trailing window, not on
+            # everything since the section began: it only has to be good
+            # enough to judge the next chunk and to seed the final fit, and
+            # that one runs on the whole span anyway. A section shorter than
+            # the window is fitted exactly as it was.
+            from_s = max(start, nxt - GROWTH_WINDOW_BEATS * local_period)
+            recent = (times >= from_s - 0.5 * local_period) & (times <= nxt)
+            local_period, local_phase, _ = _refine_grid(times[recent], weights[recent],
+                                                        local_period, local_phase)
+            edge = nxt
+        end = edge
+        window = (times >= start - 0.5 * local_period) & (times <= end)
+        local_period, local_phase, inlier = _refine_grid(times[window], weights[window],
+                                                         local_period, local_phase)
+        share, coverage, rms = _grid_quality(times[window], weights[window],
+                                             local_period, local_phase)
+        sections.append(GridSection(start, end, local_period, local_phase,
+                                    int(inlier.sum()), rms, coverage))
+        prior, phase = local_period, local_phase
+        if end <= start + 1e-6:
+            break
+        start = end
+    return _merge_sections(times, weights, sections, min_delta, persistence)
+
+
+def _merge_sections(times: np.ndarray, weights: np.ndarray, sections: list[GridSection],
+                    min_delta: float, persistence: int) -> list[GridSection]:
+    """Fuse neighbours that share a tempo, drop regions too short to trust."""
+    if not sections:
+        return []
+    merged: list[GridSection] = [sections[0]]
+    for section in sections[1:]:
+        checkpoint()
+        previous = merged[-1]
+        same = abs(section.bpm - previous.bpm) < min_delta
+        tiny = (section.end_s - section.start_s) < persistence * section.period
+        if same or tiny:
+            merged[-1] = _refit_span(times, weights, previous.start_s, section.end_s,
+                                     previous.period, previous.phase) or previous
+        else:
+            merged.append(section)
+    # A tail region can still be too short after fusing; fold it backwards.
+    while len(merged) > 1 and (merged[-1].end_s - merged[-1].start_s) < persistence * merged[-1].period:
+        checkpoint()
+        previous = merged[-2]
+        fused = _refit_span(times, weights, previous.start_s, merged[-1].end_s,
+                            previous.period, previous.phase)
+        merged = merged[:-2] + [fused or previous]
+    return merged
+
+
+def _refit_span(times: np.ndarray, weights: np.ndarray, start: float, end: float,
+                period: float, phase: float) -> GridSection | None:
+    """Least-squares refit of one span; the number a red line will carry."""
+    # Tight margins: a section fitted across even a couple of the neighbour's
+    # bars picks up a phase error of several milliseconds.
+    window = (times >= start - 0.15 * period) & (times <= end + 0.15 * period)
+    if int(window.sum()) < 6:
+        return None
+    new_period, new_phase = _expand_fit(times[window], weights[window], period, phase,
+                                        start - period, end + period)
+    share, coverage, rms = _grid_quality(times[window], weights[window], new_period, new_phase)
+    inlier = int(np.sum(np.abs(times[window] - (new_phase + np.round(
+        (times[window] - new_phase) / new_period) * new_period)) <= 0.12 * new_period))
+    return GridSection(start, end, new_period, new_phase, inlier, rms, coverage)
+
+
+def _nearest_attack(times: np.ndarray, moment: float) -> float:
+    """Distance from ``moment`` to the closest attack (inf when there are none)."""
+    if times.size == 0:
+        return float("inf")
+    i = int(np.searchsorted(times, moment))
+    best = float("inf")
+    for j in (i - 1, i):
+        if 0 <= j < times.size:
+            best = min(best, abs(float(times[j]) - moment))
+    return best
+
+
+def _grid_reach(times: np.ndarray, period: float, phase: float, anchor: float,
+                limit: float, backwards: bool, tolerance: float,
+                allowed_misses: int = 1) -> float:
+    """Walk a grid until its beats stop finding attacks; return the last that did."""
+    step = -period if backwards else period
+    beat = float(phase + np.round((anchor - phase) / period) * period)
+    last, misses = beat, 0
+    while True:
+        beat += step
+        if (backwards and beat < limit) or (not backwards and beat > limit):
+            break
+        if _nearest_attack(times, beat) <= tolerance:
+            last, misses = beat, 0
+        else:
+            misses += 1
+            if misses > allowed_misses:
+                break
+    return last
+
+
+def _tune_boundary(times: np.ndarray, weights: np.ndarray, left: GridSection,
+                   right: GridSection, reach: float = 10.0) -> float:
+    """Place the split on the beat where the old grid stops explaining the music.
+
+    Both grids pass through the change itself, so a least-squares cost is flat
+    there — a beat either side scores the same. What is *not* flat is where
+    each grid stops predicting attacks: the old one fails on the first beat of
+    the new tempo, the new one fails on the last beat of the old. The red line
+    belongs on the beat those two answers meet.
+    """
+    if left.period <= 0 or right.period <= 0:
+        return right.start_s
+    span = min(reach, 0.45 * (left.end_s - left.start_s), 0.45 * (right.end_s - right.start_s))
+    if span <= 2 * left.period:
+        return right.start_s
+    lo = max(left.start_s + left.period, right.start_s - span)
+    hi = min(right.end_s - right.period, right.start_s + span)
+    if hi <= lo:
+        return right.start_s
+    # The tolerance has to be tight enough that the old grid cannot claim the
+    # first beat of the new tempo, yet loose enough for a human drummer. Each
+    # side's own fit residual sets it, so a jittery track relaxes on its own.
+    def window_of(section: GridSection) -> float:
+        return float(min(0.06 * section.period,
+                         max(0.010, 4.0 * section.residual_ms / 1000.0)))
+
+    earliest = _grid_reach(times, right.period, right.phase,
+                           min(hi, right.start_s + 2 * right.period), lo,
+                           backwards=True, tolerance=window_of(right))
+    latest = _grid_reach(times, left.period, left.phase,
+                         max(lo, left.end_s - 2 * left.period), hi,
+                         backwards=False, tolerance=window_of(left))
+    # Music does not jump: the new grid continues where the old one left off, so
+    # at the true change the two grids share a beat and drift apart linearly on
+    # either side. Their crossing is therefore a sharp minimum — far sharper
+    # than any residual cost, which is flat there because both grids fit.
+    span_lo = max(lo, min(earliest, latest) - 2 * right.period)
+    span_hi = min(hi, max(earliest, latest) + 2 * right.period)
+    if span_hi < span_lo:
+        span_lo, span_hi = lo, hi
+    k0 = int(np.ceil((span_lo - right.phase) / right.period - 1e-9))
+    k1 = int(np.floor((span_hi - right.phase) / right.period + 1e-9))
+    if k1 < k0:
+        return float(min(max(right.start_s, lo), hi))
+    beats = right.phase + np.arange(k0, k1 + 1) * right.period
+    drift = np.abs(beats - (left.phase + np.round((beats - left.phase) / left.period) * left.period))
+    best = float(beats[int(np.argmin(drift))])
+    return float(min(max(best, lo), hi))
+
+
+def _settle_boundaries(times: np.ndarray, weights: np.ndarray,
+                       sections: list[GridSection], rounds: int = 2) -> list[GridSection]:
+    """Alternate boundary search and per-section refit until both agree.
+
+    Each pass moves the split to the beat that best separates the two grids,
+    then refits both sides on their new spans — a section fitted across even a
+    couple of foreign bars carries a phase error of several milliseconds.
+    """
+    if len(sections) < 2:
+        return sections
+    for _ in range(rounds):
+        for i in range(len(sections) - 1):
+            checkpoint()
+            split = _tune_boundary(times, weights, sections[i], sections[i + 1])
+            left, right = sections[i], sections[i + 1]
+            sections[i] = GridSection(left.start_s, split, left.period, left.phase,
+                                      left.inliers, left.residual_ms, left.coverage)
+            sections[i + 1] = GridSection(split, right.end_s, right.period, right.phase,
+                                          right.inliers, right.residual_ms, right.coverage)
+        refitted: list[GridSection] = []
+        for section in sections:
+            checkpoint()
+            fitted = _refit_span(times, weights, section.start_s, section.end_s,
+                                 section.period, section.phase)
+            refitted.append(fitted or section)
+        sections = refitted
+    return sections
+
+
+# -- driver ------------------------------------------------------------------
+
+def _phase_class(times: np.ndarray, weights: np.ndarray, period: float, phase: float,
+                 m: int) -> int:
+    """Which atom class inside a beat carries the accents (0 when unclear)."""
+    if m <= 1:
+        return 0
+    k = np.round((times - phase) / period)
+    inlier = np.abs(times - (phase + k * period)) <= 0.15 * period
+    if int(inlier.sum()) < 4:
+        return 0
+    cls = np.mod(k[inlier].astype(np.int64), m)
+    totals = np.bincount(cls, weights=weights[inlier].astype(float), minlength=m)
+    counts = np.bincount(cls, minlength=m)
+    means = totals / np.maximum(counts, 1)
+    return int(np.argmax(means))
+
+
+def _beat_sections(atom_sections: list[GridSection], times: np.ndarray,
+                   weights: np.ndarray, m: int, first_class: int) -> list[GridSection]:
+    """Convert atomic sections to beat-level ones (period ×m, phase on the accent)."""
+    out: list[GridSection] = []
+    for n, section in enumerate(atom_sections):
+        window = (times >= section.start_s - section.period) & (times <= section.end_s + section.period)
+        r = first_class if n == 0 else _phase_class(times[window], weights[window],
+                                                    section.period, section.phase, m)
+        out.append(GridSection(section.start_s, section.end_s, section.period * m,
+                               section.phase + r * section.period, section.inliers,
+                               section.residual_ms, section.coverage))
+    return out
+
+
+def _one_octave(sections: list[GridSection], times: np.ndarray,
+                weights: np.ndarray) -> list[GridSection]:
+    """Read every section at the octave of the longest one.
+
+    Sections seed their own grids, and a near-tie can seed one at twice or
+    half the beat of its neighbours: on the anime single-tempo stage
+    (2026-10-22) songs came out as 145, 290, 145, 290 ... BPM, and the red
+    line written was the 290. Music changes tempo by a few BPM, not by an
+    octave, so a section a whole octave away is re-read at the longest
+    section's octave: a faster one keeps whichever of its beats carries the
+    accents, a slower one has its beat split.
+    """
+    if len(sections) < 2:
+        return sections
+    ref = max(sections, key=lambda s: s.end_s - s.start_s).period
+    out: list[GridSection] = []
+    for section in sections:
+        k = int(round(np.log2(ref / section.period)))
+        if k == 0:
+            out.append(section)
+            continue
+        period, phase = section.period, section.phase
+        if k > 0:                         # read too fast: keep the accented beat
+            m = 2 ** k
+            window = (times >= section.start_s - period) & (times <= section.end_s + period)
+            r = _phase_class(times[window], weights[window], period, phase, m)
+            period, phase = period * m, phase + r * period
+        else:                             # read too slow: split the beat
+            period = period / 2 ** (-k)
+        out.append(replace(section, period=period, phase=phase))
+    return out
+
+
+def _section_confidence(section: GridSection, persistence: int) -> float:
+    beat_ms = section.period * 1000.0
+    if beat_ms <= 0:
+        return 0.0
+    tightness = 1.0 - min(1.0, section.residual_ms / max(0.06 * beat_ms, 2.0))
+    beats = max(1.0, (section.end_s - section.start_s) / section.period)
+    length_bonus = min(1.0, beats / max(persistence * 3.0, 1.0))
+    value = 0.55 * tightness + 0.30 * min(1.0, section.coverage * 1.15) + 0.15 * length_bonus
+    return float(max(0.0, min(1.0, value)))
+
+
+def section_measures(sections: list[GridSection], times: np.ndarray,
+                     weights: np.ndarray) -> list[tuple[str, int, int]]:
+    """Per-section ``(meter text, downbeat class, beats per bar)``.
+
+    v3 read the meter once, from the first section, and wrote that same number
+    into every red line. A song that moves to 3/4 for a bridge therefore came
+    out wrong everywhere after the change, and every red line after the first
+    was anchored to a plain beat, so osu!'s bar lines drifted out of step with
+    the music.
+
+    Each section is now measured on **its own attacks**. The rule that matters
+    is inherited unchanged: a section whose accents do not prove a bar reports
+    ``1``, meaning "anchor to a beat, not a bar". Guessing a bar without
+    evidence pushes a red line up to three beats past where the music changed,
+    which is worse than not knowing.
+    """
+    out: list[tuple[str, int, int]] = []
+    for section in sections:
+        window = ((times >= section.start_s - section.period)
+                  & (times <= section.end_s + section.period))
+        if int(window.sum()) < 12:
+            out.append(("4/4", 0, 1))
+            continue
+        out.append(_meter_from_grid(times[window], weights[window],
+                                    section.period, section.phase))
+    return out
+
+
+#: Beats a bar may hold. Not every integer: 11 beats to a bar is not a time
+#: signature, it is a fit artefact.
+BAR_MULTIPLES = (2, 3, 4, 5, 6, 7, 8, 9, 12)
+#: Beats-per-bar a *region* may be written in, given a bar. These are the
+#: subdivisions a mapper actually chooses between.
+BEATS_PER_BAR = (2, 3, 4, 6, 8, 12)
+#: A bar is only claimed when its downbeat stands out by this much.
+BAR_CONTRAST = 1.20
+#: A meter region must hold at least this many bars to be worth a red line.
+MIN_METER_BARS = 4
+
+
+def detect_bar(times: np.ndarray, weights: np.ndarray, period: float,
+               phase: float) -> tuple[float, float, int, float] | None:
+    """Find the **bar**: how many of this grid's beats make one measure.
+
+    Tempora's timeline is measures, not beats, and its physical quantity is
+    measures per second — BPM is a presentation of it through the time
+    signature (`MpsToBpm(mps) = mps * 60 * beats_per_bar`). Finding the bar is
+    therefore the first thing an automatic version has to do, and everything
+    else is expressed against it.
+
+    Returns ``(bar_seconds, bar_phase, beats_in_bar, contrast)``, or None when
+    the accents do not prove a bar. Refusing is the right answer then: a bar
+    invented from nothing moves every red line.
+    """
+    if times.size < 16 or period <= 0:
+        return None
+    k = np.round((times - phase) / period)
+    inlier = np.abs(times - (phase + k * period)) <= 0.15 * period
+    if int(inlier.sum()) < 16:
+        return None
+    k = k[inlier].astype(np.int64)
+    w = weights[inlier].astype(float)
+    span = float(np.ptp(k))
+
+    best: tuple[float, float, int, float] | None = None
+    for m in BAR_MULTIPLES:
+        if span < m * 4:
+            continue
+        cls = np.mod(k, m)
+        totals = np.bincount(cls, weights=w, minlength=m)
+        counts = np.bincount(cls, minlength=m)
+        means = totals / np.maximum(counts, 1)
+        r = int(np.argmax(means))
+        contrast = float(means[r] / max(float(np.mean(means)), 1e-9))
+        # Strongest downbeat wins. Preferring the *longest* bar was tried and
+        # is wrong: a four-bar hypermeasure still shows some contrast (1.24 on
+        # the reference track) and beat a true 3-beat bar at 1.5, giving a
+        # 4800 ms measure where the truth is 1200. Near-ties go to the shorter
+        # reading, which is the one a mapper writes.
+        if contrast < BAR_CONTRAST:
+            continue
+        if best is None or contrast > best[3] * 1.05:
+            best = (period * m, phase + r * period, m, contrast)
+    return best
+
+
+def meter_segments(times: np.ndarray, weights: np.ndarray, bar: float,
+                   bar_phase: float, window_bars: int = 4
+                   ) -> list[tuple[float, float, int, float]]:
+    """Split a track into regions by **how the bar is subdivided**.
+
+    This is the piece v3 had no notion of. Sections are grown on tempo — on
+    measures per second — so a song whose bar never changes length but whose
+    time signature moves between 6/4, 3/4 and 4/4 comes out as one section with
+    one BPM. Measured on a track built to that shape, v3 reported two sections
+    where the truth has six, and chose a single subdivision for all of it.
+
+    Each window is scored against every plausible beats-per-bar with the same
+    ``share x coverage`` ranking the seeder uses, and for the same reason: a
+    grid twice too fine fills half its own slots, a grid too coarse leaves
+    attacks off it, and only the written subdivision scores on both.
+
+    Returns ``[(start_s, end_s, beats_in_bar, score)]``.
+    """
+    if times.size < 16 or bar <= 0:
+        return []
+    start = float(times[0])
+    stop = float(times[-1])
+    span = window_bars * bar
+    if stop - start < 2 * span:
+        return []
+
+    windows: list[tuple[float, int, float]] = []
+    edge = bar_phase + np.floor((start - bar_phase) / bar) * bar
+    while edge + span <= stop + 1e-9:
+        mask = (times >= edge) & (times < edge + span)
+        if int(mask.sum()) >= 6:
+            w_times, w_weights = times[mask], weights[mask]
+            scored: list[tuple[float, int]] = []
+            for beats in BEATS_PER_BAR:
+                share, coverage, _rms = _grid_quality(
+                    w_times, w_weights, bar / beats, bar_phase)
+                scored.append((share * coverage, beats))
+            scored.sort(key=lambda item: (-item[0], -item[1]))
+            windows.append((edge, scored[0][1], scored[0][0]))
+        edge += span
+
+    if len(windows) < 2:
+        return []
+
+    # Merge neighbouring windows that agree, then drop runs too short to be a
+    # time-signature change rather than a fill.
+    runs: list[list] = []
+    for edge, beats, score in windows:
+        if runs and runs[-1][2] == beats:
+            runs[-1][1] = edge + span
+            runs[-1][3].append(score)
+        else:
+            runs.append([edge, edge + span, beats, [score]])
+    # Counted in whole windows: the run's length in seconds is exactly one
+    # window for a single-window run, and comparing it with MIN_METER_BARS
+    # bars was an ulp coin flip -- at a 1.2 s bar, 85 of 200 such runs kept
+    # and 115 dropped, by where the song started.
+    merged = [r for r in runs if len(r[3]) * window_bars >= MIN_METER_BARS]
+    if len(merged) < 2:
+        return []
+    # A dropped short run leaves a hole; hand it to the run before it. Then
+    # settle each boundary on the exact bar, because a window wide enough to
+    # read a signature is too wide to locate its change: a window straddling
+    # the switch is labelled by whichever side fills more of it, which put
+    # every boundary exactly one bar early on the reference track.
+    out: list[tuple[float, float, int, float]] = []
+    for n, run in enumerate(merged):
+        end = merged[n + 1][0] if n + 1 < len(merged) else stop
+        out.append([run[0], end, int(run[2]), float(np.mean(run[3]))])
+    for n in range(1, len(out)):
+        settled = _settle_meter_boundary(times, weights, bar, bar_phase,
+                                         out[n - 1][2], out[n][2], out[n][0],
+                                         window_bars)
+        out[n - 1][1] = settled
+        out[n][0] = settled
+    return [(a, b, c, d) for a, b, c, d in out]
+
+
+def _settle_meter_boundary(times: np.ndarray, weights: np.ndarray, bar: float,
+                           bar_phase: float, left_beats: int, right_beats: int,
+                           rough: float, window_bars: int) -> float:
+    """The first bar that reads as ``right_beats`` rather than ``left_beats``.
+
+    Scored one bar at a time. A single bar is thin evidence, so the walk takes
+    the first bar where the new signature wins *and keeps winning* through the
+    next one — a single ambiguous bar at a transition is common and should not
+    move the red line.
+    """
+    if left_beats == right_beats or bar <= 0:
+        return rough
+
+    def reads_as(bar_index: float) -> int | None:
+        lo = bar_phase + bar_index * bar
+        mask = (times >= lo) & (times < lo + bar)
+        if int(mask.sum()) < 3:
+            return None
+        scores = []
+        for beats in (left_beats, right_beats):
+            share, coverage, _rms = _grid_quality(times[mask], weights[mask],
+                                                  bar / beats, bar_phase)
+            scores.append(share * coverage)
+        if abs(scores[0] - scores[1]) < 1e-9:
+            return None
+        return right_beats if scores[1] > scores[0] else left_beats
+
+    centre = round((rough - bar_phase) / bar)
+    for step in range(-window_bars, window_bars + 1):
+        index = centre + step
+        if reads_as(index) == right_beats and reads_as(index + 1) != left_beats:
+            return bar_phase + index * bar
+    return rough
+
+
+#: How close, in beats, every section's beat must divide the measured bar for
+#: the whole track to be one bar in several notations. Measured: signature
+#: changes over a constant bar tile it to 0.0001; 128 -> 150 BPM misses by 0.31.
+BAR_TILE_TOL = 0.02
+
+
+def points_from_meter(sections: list[GridSection], times: np.ndarray,
+                      weights: np.ndarray, persistence: int,
+                      factor: float = 1.0) -> list[TimingPoint] | None:
+    """Red lines from the **measure grid**, one per time-signature region.
+
+    This is Tempora's model, automated. Its physical quantity is measures per
+    second; BPM is a presentation of it through the signature, via
+    ``MpsToBpm(mps) = mps * 60 * beats_per_bar``. A song whose bar never
+    changes length but whose signature moves between 6/4, 3/4 and 4/4 is one
+    tempo and several notations — and v3, which grows sections on tempo alone,
+    could only ever report it as one BPM.
+
+    Returns None when the track gives no reason to use this path: no provable
+    bar, or a single signature throughout. Then the ordinary per-section
+    placement stands, unchanged.
+
+    It also returns None when the sections do not share that bar. The bar is
+    measured on one section and applied to the whole track, so with a real
+    tempo change it used to replace the correct sections: 128 -> 150 BPM with
+    an audible downbeat came out as one 128 BPM red line for the whole song.
+    A signature change over a constant bar tiles it with every section's beat
+    (1.2 s / 0.4 s = 3, / 0.6 s = 2); a tempo change does not
+    (1.875 s / 0.4 s = 4.69). A tempo change is the section path's job.
+    """
+    if not sections or times.size < 16 or factor != 1.0:
+        return None
+    primary = max(sections, key=lambda sec: sec.end_s - sec.start_s)
+    found = detect_bar(times, weights, primary.period, primary.phase)
+    if found is None:
+        return None
+    bar, bar_phase, _beats_in_bar, _contrast = found
+    for section in sections:
+        beats = bar / section.period
+        if round(beats) < 1 or abs(beats - round(beats)) > BAR_TILE_TOL:
+            return None
+
+    segments = meter_segments(times, weights, bar, bar_phase)
+    if len(segments) < 2:
+        return None
+
+    points: list[TimingPoint] = []
+    for n, (start, end, beats, score) in enumerate(segments):
+        # Tempora's formula, with measures per second as the physical quantity.
+        bpm = (60.0 / bar) * beats
+        if not 20.0 <= bpm <= 900.0:
+            return None
+        confidence = float(min(1.0, max(0.0, score)))
+        points.append(TimingPoint(float(start * 1000.0), float(bpm),
+                                  confidence, n, int(beats), True))
+    return points
+
+
+def _first_on_grid(times: np.ndarray, section: GridSection, tol_ratio: float = 0.12) -> float:
+    """The first attack the first section's grid counts as its own.
+
+    The first red line is placed from the first sound. With no bar to anchor
+    it, an attack off the grid before the music -- noise from 0 s, a stray
+    click -- put it on the grid beat nearest that attack, a beat before the
+    music began (``very-noisy-132``: -34.65 ms, the music at 420 ms). An
+    inlier is what the fit itself counts: within ``tol_ratio`` of a beat.
+    """
+    if times.size == 0:
+        return float(section.start_s)
+    k = np.round((times - section.phase) / section.period)
+    on_grid = np.abs(times - (section.phase + k * section.period)) <= tol_ratio * section.period
+    return float(times[on_grid][0]) if on_grid.any() else float(times[0])
+
+
+def _points_from_sections(sections: list[GridSection], first_sound: float,
+                          persistence: int, downbeat_class: int, meter: int,
+                          factor: float = 1.0,
+                          measures: list[tuple[str, int, int]] | None = None
+                          ) -> list[TimingPoint]:
+    """Turn fitted grids into osu! red lines, each on a (down)beat of its own grid."""
+    points: list[TimingPoint] = []
+    for n, section in enumerate(sections):
+        period = section.period / factor
+        if not np.isfinite(period) or period <= 0:
+            continue
+        bpm = 60.0 / period
+        # The plausibility range is about the music, so it reads the section's
+        # own tempo: a pulse factor the user chose must not silently drop one.
+        if not 20.0 <= 60.0 / section.period <= 900.0:
+            continue
+        # Per-section bar, falling back to the global reading for section 0 so
+        # behaviour is unchanged when no per-section measurement was made.
+        if measures is not None and n < len(measures):
+            _text, section_downbeat, section_bar = measures[n]
+        elif n == 0:
+            _text, section_downbeat, section_bar = ("4/4", downbeat_class, meter)
+        else:
+            _text, section_downbeat, section_bar = ("4/4", 0, 1)
+        known = section_bar > 1
+
+        if n == 0:
+            # The first red line should land on a downbeat so osu!'s bar lines
+            # match the music — but only when the accents prove where the bar
+            # starts.
+            anchor = section.phase + section_downbeat * section.period
+            span = section.period * max(1, section_bar)
+            start = max(section.start_s, first_sound) - 0.25 * period
+            offset = anchor + np.ceil((start - anchor) / span - 1e-9) * span
+            while offset < first_sound - 0.55 * period:
+                offset += span
+        elif known:
+            # A tempo change lands on a bar line in practically all music, and
+            # a red line on a downbeat is what makes osu!'s editor agree with
+            # the song. Only done when this section's accents prove the bar.
+            anchor = section.phase + section_downbeat * section.period
+            span = section.period * section_bar
+            # A quarter-period of slack, as section 0 has: the settled start
+            # is a beat of this grid, and the final refit can leave that beat
+            # microseconds before it -- ceil(x - 1e-9) then chose the next
+            # one and the red line landed a whole beat (or bar) late.
+            offset = anchor + np.ceil((section.start_s - 0.25 * period - anchor) / span - 1e-9) * span
+        else:
+            anchor = section.phase
+            k = np.ceil((section.start_s - 0.25 * period - anchor) / period - 1e-9)
+            offset = anchor + k * period
+
+        points.append(TimingPoint(float(offset * 1000.0), float(bpm),
+                                  _section_confidence(section, persistence), n,
+                                  max(1, int(section_bar)) if known else 4,
+                                  bool(known)))
+    return points
+
+
+def _synth_beats(sections: list[GridSection], factor: float = 1.0) -> np.ndarray:
+    """Beat times implied by the fitted sections (used by the GUI trace)."""
+    beats: list[float] = []
+    for section in sections:
+        period = section.period / factor
+        if period <= 0:
+            continue
+        k0 = int(np.ceil((section.start_s - section.phase) / period - 1e-9))
+        k1 = int(np.floor((section.end_s - section.phase) / period + 1e-9))
+        if k1 < k0 or k1 - k0 > 200000:
+            continue
+        beats.extend(section.phase + np.arange(k0, k1 + 1) * period)
+    return np.asarray(sorted(beats), dtype=np.float64)
+
+
+def _local_bpm_curve(times: np.ndarray, weights: np.ndarray, sections: list[GridSection],
+                     beats: np.ndarray, factor: float = 1.0) -> np.ndarray:
+    """A genuine local-tempo trace: short least-squares fits, not beat deltas."""
+    if beats.size == 0:
+        return np.zeros(0)
+    curve = np.zeros(beats.size, dtype=np.float64)
+    for section in sections:
+        period = section.period / factor
+        if period <= 0:
+            continue
+        mask = (beats >= section.start_s - 1e-9) & (beats <= section.end_s + 1e-9)
+        idx = np.flatnonzero(mask)
+        if idx.size == 0:
+            continue
+        curve[idx] = 60.0 / period
+        half = max(4.0 * section.period, 3.0)
+        for j in idx[::4]:
+            t = beats[j]
+            window = (times >= t - half) & (times <= t + half)
+            if int(window.sum()) < 8:
+                continue
+            fit = _ls_fit(times[window], weights[window], section.period, section.phase,
+                          0.12 * section.period)
+            if fit is None:
+                continue
+            local = fit[0] / factor
+            if 0.6 * period <= local <= 1.7 * period:
+                curve[j] = 60.0 / local
+        # fill the sampled points across the section
+        sampled = idx[::4]
+        if sampled.size >= 2:
+            curve[idx] = np.interp(beats[idx], beats[sampled], curve[sampled])
+    unset = curve <= 0
+    if np.any(unset) and np.any(~unset):
+        curve[unset] = float(np.median(curve[~unset]))
+    return curve
+
+
+def _precision_engine(y: np.ndarray, sr: int, min_delta: float, persistence: int,
+                      prefer_map_bpm: bool, retime: bool,
+                      say: Callable[[str], None]) -> dict | None:
+    """Full precision pipeline. Returns None when the audio has no usable grid."""
+    say("Detecting attacks at sample resolution…")
+    times, weights, env = _detect_attacks(y, sr, FIT_HOP, retime=retime)
+    if times.size < 24:
+        return None
+
+    say("Scanning pulse coherence…")
+    span_lo = float(times[0])
+    span_hi = float(times[-1])
+    # Anchor on the densest window: intros, outros and breakdowns are the least
+    # informative places to decide what the beat is.
+    anchor = span_lo
+    if span_hi - span_lo > SCAN_SPAN_S:
+        edges = np.arange(span_lo, span_hi - SCAN_SPAN_S + 1e-9, SCAN_SPAN_S / 3.0)
+        if edges.size:
+            counts = [int(np.sum((times >= e) & (times < e + SCAN_SPAN_S))) for e in edges]
+            anchor = float(edges[int(np.argmax(counts))])
+    anchor_hi = min(span_hi, anchor + SCAN_SPAN_S)
+    seed = _seed_grid(times, weights, anchor, anchor_hi)
+    if seed is None:
+        return None
+    atom_period, atom_phase = seed
+    window = (times >= anchor) & (times <= anchor_hi)
+    share, _coverage, _rms = _grid_quality(times[window], weights[window],
+                                           atom_period, atom_phase)
+    if share < 0.40:
+        return None                       # no regular pulse: let the tracker try
+    if (_pulse_log10p(times[window], atom_period, atom_phase) > WEAK_PULSE_LOG10P
+            and _fit_pulse_gap(env, sr) < STRONG_PULSE_GAP):
+        return None                       # chance explains the grid and the envelope agrees
+
+    say("Resolving the beat octave…")
+    hints = _tempo_hints(env, sr, FIT_HOP)
+    m, first_class = _beat_from_atoms(times[window], weights[window], atom_period,
+                                      atom_phase, hints, prefer_map_bpm)
+
+    say("Fitting tempo sections…")
+    # Sections are grown on the atomic grid, whose BPM is m times the beat BPM,
+    # so both thresholds scale by m to keep the user-facing parameters honest.
+    atom_sections = _grow_sections(times, weights, atom_period, atom_phase,
+                                   max(min_delta * m, 1e-3), max(2, persistence * m))
+    if not atom_sections:
+        return None
+    # first_class counts atoms from the anchor seed's phase, but section 0 was
+    # seeded again inside _grow_sections and its phase can sit whole atoms
+    # away; applied as-is, the class then names the off-beat (the only red line
+    # 250 ms late at 120 BPM on tracks that start on the eighth-note grid).
+    # Re-express it in section 0's own frame. floor(x + 0.5), not round():
+    # the Rust port rounds halves the same way.
+    shift = int(np.floor((atom_sections[0].phase - atom_phase) / atom_period + 0.5))
+    first_class = (first_class - shift) % max(m, 1)
+    sections = _beat_sections(atom_sections, times, weights, m, first_class)
+    sections = _one_octave(sections, times, weights)
+    sections = _settle_boundaries(times, weights, sections)
+    meter_text, downbeat, bar_beats = _meter_from_grid(
+        times, weights, sections[0].period, sections[0].phase)
+    return {"times": times, "weights": weights, "env": env, "sections": sections,
+            "meter": meter_text, "meter_beats": bar_beats, "downbeat": downbeat,
+            "atoms_per_beat": m, "first_sound": _first_on_grid(times, sections[0])}
+
+
+# ---------------------------------------------------------------------------
+# Main analysis entry point
+# ---------------------------------------------------------------------------
+
+#: Frames decoded at a time: about 24 s of audio at 44.1 kHz, under a tenth
+#: of a second's work for an MP3, so a stop is asked that often.
+DECODE_BLOCK = 1 << 20
+
+
+def _decode(path: str | os.PathLike[str]) -> tuple[np.ndarray, int]:
+    """``sf.read(path, dtype="float32")`` mixed down to mono, a block at a time.
+
+    The one call decoded a whole song before a stop could land (1.0 s for an
+    eight-minute MP3, and 0.8 s more to mix it down). The blocks are read as
+    sf.read reads, from the start and no further than the header's length,
+    and each is mixed down on its own, row by row as the whole array was.
+    libsndfile seeks between blocks, which is exact for PCM; for MP3 and Ogg
+    the samples came out identical on all 20 Corpus B files.
+    """
+    with sf.SoundFile(path) as handle:
+        frames, channels = handle.frames, handle.channels
+        if handle.seekable():
+            handle.seek(0)
+        mono = np.empty(frames, dtype=np.float32)
+        done = 0
+        while done < frames:
+            checkpoint()
+            want = min(DECODE_BLOCK, frames - done)
+            if channels == 1:
+                got = len(handle.read(want, dtype="float32", out=mono[done:done + want]))
+            else:
+                block = handle.read(want, dtype="float32")
+                got = len(block)
+                mono[done:done + got] = np.mean(block, axis=1, dtype=np.float32)
+            done += got
+            if got < want:
+                break                 # the header promised more than the stream holds
+        return mono[:done], handle.samplerate
+
+
+def _load_audio(path: str | os.PathLike[str],
+                say: Callable[[str], None]) -> tuple[np.ndarray, int]:
+    """Decode to mono float32 at 44.1 kHz, peak-normalized."""
+    say("Loading and normalizing audio…")
+    # A missing or empty file is not a codec problem. All three used to read
+    # "Could not decode audio ... install FFmpeg", which sends the user off to
+    # install a program that cannot help.
+    name = os.path.basename(os.fspath(path))
+    if not os.path.isfile(path):
+        raise RuntimeError(f"No audio file at {os.fspath(path)}.")
+    if os.path.getsize(path) == 0:
+        raise RuntimeError(f"{name} is empty (0 bytes).")
+    try:
+        # Ask libsndfile for the header first: a mistyped path to a multi-hour
+        # file should cost nothing, not gigabytes of decoded samples.
+        info = sf.info(str(path))
+        if info.samplerate > 0 and info.frames / info.samplerate > MAX_AUDIO_SECONDS:
+            raise ValueError(
+                f"Audio is longer than {MAX_AUDIO_SECONDS / 60:.0f} minutes; "
+                "trim the file before analysing it.")
+    except ValueError:
+        raise
+    except Exception:
+        pass                          # unreadable header: the decoders below decide
+    try:
+        # SoundFile decodes WAV/FLAC/OGG/MP3 directly and avoids an
+        # unnecessary, expensive resample when already at 44.1 kHz.
+        y, sr = _decode(path)
+        if sr != TARGET_SR:
+            checkpoint()
+            y = librosa.resample(y, orig_sr=sr, target_sr=TARGET_SR, res_type="soxr_hq")
+            sr = TARGET_SR
+    except Exception:
+        try:
+            y, sr = librosa.load(path, sr=TARGET_SR, mono=True, res_type="soxr_hq")
+        except Exception as exc:
+            if Path(name).suffix.lower() in (".mp3", ".m4a", ".aac", ".mp4", ".wma"):
+                raise RuntimeError(
+                    "Could not decode audio. For MP3/M4A/AAC install FFmpeg and add it to "
+                    "PATH; WAV/FLAC/OGG open directly."
+                ) from exc
+            # WAV, FLAC, OGG and AIFF need no FFmpeg: this file is damaged or
+            # is not the audio its name says.
+            raise RuntimeError(
+                f"Could not decode {name}: it is not audio this program can read, "
+                "or it is damaged."
+            ) from exc
+    checkpoint()
+    y = np.asarray(y, dtype=np.float32).reshape(-1)
+    if not np.all(np.isfinite(y)):
+        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+    if y.size < sr * 2:
+        raise ValueError("Audio must be at least two seconds long.")
+    if y.size > sr * MAX_AUDIO_SECONDS:
+        # A cap keeps a mistyped path (or a hostile multi-hour file) from
+        # turning into gigabytes of intermediate arrays.
+        raise ValueError(
+            f"Audio is longer than {MAX_AUDIO_SECONDS / 60:.0f} minutes; "
+            "trim the file before analysing it.")
+    peak = float(np.max(np.abs(y)))
+    if peak > 1e-9:
+        y = (y / peak * 0.99).astype(np.float32)
+    return y, int(sr)
+
+
+def percussive_wav(y: np.ndarray, sr: int) -> bytes:
+    """The percussive stem as 16-bit mono WAV bytes (Phase 4, audition).
+
+    librosa's HPSS, same length in and out, peak-normalized like a decode.
+    Thin on purpose: the bridge caches the bytes per analysis, and the only
+    promise made here is bytes that decode — attack preservation is measured
+    where it is used, not asserted here.
+    """
+    import io
+    _harmonic, percussive = librosa.effects.hpss(np.asarray(y, dtype=np.float32))
+    peak = float(np.max(np.abs(percussive)))
+    if peak > 1e-9:
+        percussive = (percussive / peak * 0.99).astype(np.float32)
+    buffer = io.BytesIO()
+    sf.write(buffer, np.asarray(percussive, dtype=np.float32), int(sr),
+             format="WAV", subtype="PCM_16")
+    return buffer.getvalue()
+
+
+def mp3_gapless_info(path: str | os.PathLike[str]) -> dict:
+    """The MP3's own gapless numbers, read from its header (Phase 19, lab).
+
+    Skips an ID3v2 tag, finds the first frame, reads the MPEG version for
+    the Xing offset, and unpacks the LAME tag's encoder delay and padding
+    (12 bits each at LAME+21). Returns encoder string, delay and padding in
+    samples and milliseconds at the file's own rate, or ``present`` False
+    for anything without a LAME tag — Fraunhofer and old encoders write
+    none, and that is reported, not guessed. Read only; plain JSON types.
+    """
+    name = str(path)
+    if Path(name).suffix.lower() != ".mp3":
+        return {"present": False}
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(8192)
+    except OSError:
+        return {"present": False}
+    pos = 0
+    if head[:3] == b"ID3":
+        if len(head) < 10:
+            return {"present": False}
+        size = 0
+        for byte in head[6:10]:
+            size = (size << 7) | (byte & 0x7F)
+        pos = 10 + size
+    sync = -1
+    for i in range(pos, min(pos + 256, len(head) - 4)):
+        if head[i] == 0xFF and head[i + 1] & 0xE0 == 0xE0:
+            sync = i
+            break
+    if sync < 0:
+        return {"present": False}
+    version = (head[sync + 1] >> 3) & 0x03
+    mono = ((head[sync + 3] >> 6) & 0x03) == 3
+    if version == 3:
+        xing_at = sync + 4 + (17 if mono else 32)
+        rates = (44100, 48000, 32000, 0)
+    elif version in (2, 0):
+        xing_at = sync + 4 + (9 if mono else 17)
+        rates = (22050, 24000, 16000, 0) if version == 2 else (11025, 12000, 8000, 0)
+    else:
+        return {"present": False}
+    sample_rate = rates[(head[sync + 2] >> 2) & 0x03]
+    if not sample_rate or head[xing_at:xing_at + 4] not in (b"Xing", b"Info"):
+        return {"present": False}
+    lame_at = head.find(b"LAME", xing_at + 4, xing_at + 240)
+    if lame_at < 0 or lame_at + 24 > len(head):
+        return {"present": False}
+    lame = head[lame_at:lame_at + 24]
+    raw = int.from_bytes(lame[21:24], "big")
+    delay, padding = (raw >> 12) & 0xFFF, raw & 0xFFF
+    encoder = lame[0:9].decode("ascii", "replace").strip("\x00")
+    if not encoder.startswith("LAME"):
+        return {"present": False}
+    scale = 1000.0 / sample_rate
+    return {"present": True, "encoder": encoder, "sample_rate": sample_rate,
+            "delay_samples": delay, "padding_samples": padding,
+            "delay_ms": round(delay * scale, 3), "padding_ms": round(padding * scale, 3)}
+
+
+#: A file with this share of samples at full scale reads as clipped.
+#: Mastering can sit near zero innocently, so the bar is a share, not a peak:
+#: one stray full-scale sample is not clipping.
+AUDIO_CLIP_SHARE = 0.001
+#: Leading near-silence past this reads as trimmable dead air. The number is
+#: the tool's own bar, not the client's: no ranking rule was verifiable
+#: offline, so no ranking number is encoded anywhere in this report.
+AUDIO_LEAD_WARN_MS = 2000.0
+#: Below CD quality gets a note, as a fact about the file, not a verdict.
+AUDIO_RATE_FLOOR = 44100
+
+
+def audio_file_report(path: str | os.PathLike[str]) -> dict:
+    """Bitrate, sample rate, length, clipping and lead-in of one audio file
+    (Phase 21, Audio file check).
+
+    Header facts come from libsndfile: rate, channels, duration. Bitrate is
+    exact for PCM (rate × bits × channels) and a file-size average otherwise,
+    labeled which. Peak, clipped share (samples at full scale) and leading
+    near-silence (first 100 ms window peaking past -60 dBFS) are measured on
+    the raw decode — never the peak-normalized analysis buffer, which would
+    hide every one of them. Findings carry the tool's own bars, stated in the
+    constants above: ranking numbers were not verifiable offline and are not
+    encoded here. Read only, plain JSON types.
+    """
+    file = Path(path)
+    if not file.is_file():
+        raise ValueError(f"{file} is not a file.")
+    try:
+        info = sf.info(str(file))
+    except Exception as exc:
+        raise ValueError(f"Could not read {file.name}: {exc}") from exc
+    if info.samplerate <= 0 or info.frames <= 0:
+        raise ValueError(f"{file.name} has no audio in it.")
+    duration_s = info.frames / info.samplerate
+    subtype = str(info.subtype or "").upper()
+    bits = {"PCM_16": 16, "PCM_24": 24, "PCM_32": 32,
+            "FLOAT": 32, "DOUBLE": 64}.get(subtype)
+    if bits is not None:
+        bitrate_kbps = int(round(info.samplerate * bits * info.channels / 1000.0))
+        bitrate_how = "header"
+    else:
+        size = file.stat().st_size
+        bitrate_kbps = int(round(size * 8.0 / duration_s / 1000.0)) if duration_s > 0 else 0
+        bitrate_how = "average"
+    try:
+        raw, _rate = sf.read(str(file), dtype="float32", always_2d=False)
+    except Exception as exc:
+        raise ValueError(f"Could not decode {file.name}: {exc}") from exc
+    mono = np.abs(np.asarray(raw, dtype=np.float64))
+    mono = mono.max(axis=1) if mono.ndim == 2 else mono
+    peak = float(mono.max(initial=0.0))
+    peak_db = round(20.0 * np.log10(peak), 1) if peak > 0 else None
+    clipped_share = round(float(np.mean(mono >= 0.999)) if mono.size else 0.0, 6)
+    window = max(1, int(info.samplerate // 10))
+    lead_ms = round(duration_s * 1000.0, 1)
+    for start in range(0, mono.size, window):
+        if float(mono[start:start + window].max(initial=0.0)) > 0.001:
+            lead_ms = round(start / info.samplerate * 1000.0, 1)
+            break
+    findings = []
+    if clipped_share > AUDIO_CLIP_SHARE:
+        findings.append({"key": "clipping", "level": "warn",
+                         "share_pct": round(clipped_share * 100.0, 2)})
+    if lead_ms > AUDIO_LEAD_WARN_MS:
+        findings.append({"key": "long_lead", "level": "warn", "lead_ms": lead_ms})
+    if info.samplerate < AUDIO_RATE_FLOOR:
+        findings.append({"key": "low_rate", "level": "info",
+                         "sample_rate": int(info.samplerate)})
+    return {"file": file.name, "format": str(info.format or ""), "subtype": subtype,
+            "sample_rate": int(info.samplerate), "channels": int(info.channels),
+            "duration_s": round(duration_s, 3), "bitrate_kbps": bitrate_kbps,
+            "bitrate_how": bitrate_how, "peak_db": peak_db,
+            "clipped_share": clipped_share, "lead_ms": lead_ms, "findings": findings}
+
+
+def _weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
+    if values.size == 0:
+        return 0.0
+    order = np.argsort(values)
+    values, weights = values[order], np.maximum(weights[order], 0.0)
+    total = float(np.sum(weights))
+    if total <= 0:
+        return float(np.median(values))
+    cumulative = np.cumsum(weights) / total
+    return float(values[int(np.searchsorted(cumulative, 0.5))])
+
+
+def _assemble_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int, fit: dict,
+                       min_delta: float, persistence: int, min_confidence: float,
+                       factor: float) -> Analysis:
+    """Build the public :class:`Analysis` from a precision fit."""
+    sections: list[GridSection] = fit["sections"]
+    # A time-signature change at a constant tempo is invisible to section
+    # growth, which splits on measures per second. When the bar is provable
+    # and the signature moves, the measure grid places the red lines instead.
+    points = points_from_meter(sections, fit["times"], fit["weights"],
+                               persistence, factor)
+    if points is None:
+        measures = section_measures(sections, fit["times"], fit["weights"])
+        points = _points_from_sections(sections, fit["first_sound"], persistence,
+                                       fit["downbeat"], fit["meter_beats"], factor,
+                                       measures)
+    kept = [p for p in points if p.confidence >= min_confidence]
+    if not kept and points:
+        # Never hand back an empty map when a grid was clearly found.
+        kept = [max(points, key=lambda p: p.confidence)]
+    # Two sections can converge once each is refitted on its own attacks.
+    final: list[TimingPoint] = kept[:1]
+    for point in kept[1:]:
+        # point.bpm already carries the pulse factor, so the threshold must too:
+        # compared raw, ÷4 shrank a 3.5 BPM change to 0.875 and dropped it.
+        if abs(point.bpm - final[-1].bpm) >= min_delta * factor:
+            final.append(point)
+    beats = _synth_beats(sections, factor)
+    local = _local_bpm_curve(fit["times"], fit["weights"], sections, beats, factor)
+    durations = np.array([max(s.end_s - s.start_s, 1e-6) for s in sections])
+    bpms = np.array([s.bpm * factor for s in sections])
+    global_bpm = _weighted_median(bpms, durations)
+    residual = float(np.average([s.residual_ms for s in sections], weights=durations))
+    natural = _synth_beats(sections, 1.0)          # the un-multiplied beat grid
+    base_frames = natural * sr / FIT_HOP if natural.size else np.zeros(0)
+    return Analysis(str(path), y.size / sr, beats, local, final, FIT_HOP, sr,
+                    factor, global_bpm, _stability(local),
+                    fit["meter"], fit["env"], np.asarray(base_frames, dtype=float),
+                    fit["times"], fit["weights"], sections, fit["meter_beats"],
+                    fit["downbeat"], residual, "precision")
+
+
+#: Below this, the onset envelope is no more periodic than itself shuffled:
+#: there is no pulse to time. Measured with _pulse_gap exactly as written:
+#: white, pink and brown noise and the benchmark's noise fixture +0.014..+0.022;
+#: 27 real songs from an osu! Songs folder (including the live-band track that
+#: falls back to the tracker) +0.090 or more, median +0.225; every synthetic
+#: fixture, ramps included, +0.257 or more. 0.05 still let the tracker answer
+#: 12 of 240 random-click renders (gaps 0.0505-0.0779); at 0.07 it answers one
+#: (0.0779), and none of 28 more real songs that reach the tracker scores below
+#: 0.0956. Higher would be cutting into music on a sample this size.
+MIN_PULSE_GAP = 0.07
+PULSE_SHUFFLES = 5
+#: One analysis window in 16 (~93 ms apart at 44.1 kHz). The median barely
+#: moves (0.64289 -> 0.64295 on secs-4) and the check costs ~0.25 s, not ~7 s.
+PULSE_STRIDE = 16
+PULSE_WINDOW = 384
+
+
+def _pulse_clarity(onset: np.ndarray, sr: int, hop: int) -> float:
+    """Median over the track of the best 40-300 BPM self-similarity.
+
+    librosa.feature.tempogram's autocorrelation (periodic Hann, centred with a
+    linear ramp, each window normalised by its peak) written in numpy and
+    evaluated every PULSE_STRIDE frames; with a stride of 1 it matches librosa
+    to 6e-16. It must not *call* librosa: a tempogram computed before the
+    fallback tracker's first call changed that tracker's global BPM on a real
+    song (198.07 -> 199.27), and a safeguard must not move a result.
+    """
+    checkpoint()          # a whole-track pass, called six times in a row
+    env = np.asarray(onset, dtype=np.float64)
+    k = np.arange(PULSE_WINDOW)
+    half = PULSE_WINDOW // 2
+    padded = np.pad(env, (half, half), mode="linear_ramp", end_values=(0, 0))
+    hann = 0.5 - 0.5 * np.cos(2.0 * np.pi * k / PULSE_WINDOW)
+    starts = np.arange(0, env.size, PULSE_STRIDE)
+    frames = padded[starts[:, None] + k[None, :]] * hann[None, :]
+    nfft = 1 << int(np.ceil(np.log2(2 * PULSE_WINDOW - 1)))
+    spectrum = np.fft.rfft(frames, n=nfft, axis=1)
+    lagged = np.fft.irfft(spectrum * np.conj(spectrum), n=nfft, axis=1)[:, :PULSE_WINDOW]
+    peak = np.abs(lagged).max(axis=1, keepdims=True)
+    lagged = np.divide(lagged, peak, out=np.zeros_like(lagged), where=peak > 0)
+    lags = k * hop / sr
+    band = (lags >= 0.2) & (lags <= 1.5)
+    return float(np.median(lagged[:, band].max(axis=1)))
+
+
+def _pulse_gap(onset: np.ndarray, sr: int, hop: int) -> float:
+    """How much more periodic the onset envelope is than itself, shuffled.
+
+    Shuffling the frames keeps the loudness distribution and destroys any
+    rhythm, so noise scores about zero whatever its colour, while music — even
+    rubato, even a live band whose tempo drifts — scores clearly above it. The
+    shuffles use a fixed seed: the same audio always gets the same verdict.
+    """
+    onset = np.asarray(onset, dtype=np.float64)
+    if onset.size < 64 or not np.any(onset > 0):
+        return 0.0
+    rng = np.random.default_rng(0)
+    shuffled = [_pulse_clarity(rng.permutation(onset), sr, hop) for _ in range(PULSE_SHUFFLES)]
+    return _pulse_clarity(onset, sr, hop) - float(np.mean(shuffled))
+
+
+def _splitmix64(x: np.ndarray) -> np.ndarray:
+    """SplitMix64 of each uint64: a hash Rust computes bit for bit."""
+    z = x + np.uint64(0x9E3779B97F4A7C15)
+    z = (z ^ (z >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+    z = (z ^ (z >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+    return z ^ (z >> np.uint64(31))
+
+
+def _fit_pulse_gap(env: np.ndarray, sr: int) -> float:
+    """_pulse_gap on the fitting envelope, for the precision engine's gate.
+
+    The envelope at FIT_HOP is max-pooled in pairs, which puts its frames at
+    HOP and the tempogram's 0.2-1.5 s lags inside its window. The shuffles
+    order the frames by a SplitMix64 hash instead of numpy's generator, so the
+    Rust engine takes the same decision on the same envelope.
+    """
+    usable = (env.size // 2) * 2
+    onset = np.asarray(env[:usable], dtype=np.float64).reshape(-1, 2).max(axis=1)
+    if onset.size < 64 or not np.any(onset > 0):
+        return 0.0
+    hop = 2 * FIT_HOP
+    index = np.arange(onset.size, dtype=np.uint64)
+    shuffled = []
+    for shuffle in range(PULSE_SHUFFLES):
+        keys = _splitmix64(index + np.uint64(shuffle << 32))
+        shuffled.append(_pulse_clarity(onset[np.argsort(keys, kind="stable")], sr, hop))
+    return _pulse_clarity(onset, sr, hop) - float(np.mean(shuffled))
+
+
+#: A song's tracker lag is read only when at least this many of the fallback
+#: tracker's beats, and at least half of them, sit on an attack the re-timing
+#: can see (98-99 % do on the four Corpus B songs that fall back).
+MIN_LAG_BEATS = 8
+
+
+def _tracker_lag(y: np.ndarray, sr: int, beat_times: np.ndarray) -> float:
+    """The shift (s) that puts the fallback tracker's beats on their attacks.
+
+    The tracker follows the onset envelope and ends each beat on one of its
+    peaks, which come after the sound starts: with the tracker forced, the
+    beats of Corpus A's fixtures landed a median 7.4-8.9 ms after their hits
+    (13 and 17 ms under noise), and on the four Corpus B songs that fall back
+    to it the sound starts 21-24 ms before its beats. Each beat is re-timed
+    on the waveform as the precision engine re-times its attacks
+    (_retime_onsets), and the median shift of the beats that moved is the
+    song's lag.
+
+    One median for the song, not each beat's own re-timing: on those four
+    songs a beat's own reading scattered the beats (the interquartile width
+    of their distance to the maps' hand-timed beats grew from 5.1 to 8.6, 9.6
+    to 16.3 and 5.8 to 13.7 ms on three of them), and a fallback red line
+    sits on a single beat. 0 when too few beats sit on an attack to read it.
+    """
+    beat_times = np.asarray(beat_times, dtype=np.float64)
+    if beat_times.size == 0 or y.size == 0:
+        return 0.0
+    shift = _retime_onsets(y, sr, beat_times) - beat_times
+    moved = shift[shift != 0.0]
+    if moved.size < max(MIN_LAG_BEATS, 0.5 * beat_times.size):
+        return 0.0
+    return float(np.median(moved))
+
+
+def _tracker_result(source: str, duration: float, onset: np.ndarray,
+                    base_frames: np.ndarray, sr: int, hop: int, subdivision: float,
+                    auto_subdivision: float, min_delta: float, persistence: int,
+                    min_confidence: float, refine: bool = True) -> Analysis:
+    """The fallback tracker's result at ``subdivision`` times the pulse of the
+    beats it tracked (``base_frames``), before its lag is taken off (_moved_by).
+
+    The analysis and the ×2 / ÷2 rebuild both end here, so a rebuild at the
+    analysis's own pulse gives the analysis back. Each used to run its own
+    copy of these steps, and the copies held a beat with no peak under it
+    differently: where the tracker doubled its own pulse, 11 of 32 fallback
+    analyses came back from ÷2 then ×2 changed, Calm Down Juliet with 10 red
+    lines for 3. ``refine`` is the analysis's refine_beats, which the result
+    keeps: without it the beats stay where the split put them, in a rebuild
+    as in the analysis.
+    """
+    frames = _resubdivide(base_frames, subdivision)
+    if refine:
+        # Interpolated midpoints can sit up to half a beat away from the true
+        # attack, so widen the snap window proportionally to the beat length.
+        median_gap_s = (float(np.median(np.diff(np.asarray(frames, dtype=float)))) * hop / sr
+                        if len(frames) > 1 else 0.5)
+        frames = _refine_beats_to_transients(
+            frames, onset, sr, hop,
+            radius_ms=float(np.clip(0.30 * median_gap_s * 1000, 25, 90)),
+            # A beat with no peak under it is held only away from the pulse
+            # the tracker chose itself, where the user asked for the beats. On
+            # the tracker's own doubling holding changed 9 of 27 real songs
+            # with no net gain against their ranked maps (within 10 ms 0.128
+            # -> 0.125).
+            return_float=True,
+            hold_without_peak=subdivision > 1 and subdivision != auto_subdivision)
+    frames = _trim_leading_silence(frames, onset)
+    frames = _fill_missed_beats(frames)
+    beat_times = np.asarray(frames, dtype=np.float64) * hop / sr
+    local = _robust_local_bpms(beat_times)
+    valid = (local >= 30) & (local <= 600)
+    beats_v, local_v = beat_times[valid], local[valid]
+    candidates = _segment_tempi(beats_v, local_v, min_delta, persistence)
+    points = [point for point in candidates if point.confidence >= min_confidence]
+    if not points and candidates:
+        points = [max(candidates, key=lambda p: p.confidence)]
+    # The median of the measured beats. Averaging it with a nearby tempogram
+    # guide was tried: a guide is a bin a few tenths of a BPM wide, and on 16
+    # single-tempo corpus cases the average was further from the truth 14
+    # times (median error 0.39 against 0.17 BPM).
+    global_bpm = float(np.median(local_v)) if len(local_v) else 0.0
+    return Analysis(source, duration, beats_v, local_v, points, hop, sr, subdivision,
+                    global_bpm, _stability(local_v), _guess_meter(beats_v, onset, sr, hop),
+                    onset, np.asarray(base_frames, dtype=float),
+                    auto_subdivision=auto_subdivision, refine_beats=refine)
+
+
+def _moved_by(result: Analysis, shift: float) -> Analysis:
+    """The fallback tracker's result with its beats moved by ``shift`` (none
+    before 0 s), and each red line with the beat it sits on. The tempo is
+    untouched."""
+    moved = np.maximum(np.asarray(result.beats, dtype=np.float64) + shift, 0.0)
+    points = [replace(p, offset_ms=float(moved[p.beat_index] * 1000.0)) for p in result.points]
+    return replace(result, beats=moved, points=points, beat_shift_s=shift)
+
+
+def _legacy_analysis(path: str | os.PathLike[str], y: np.ndarray, sr: int,
+                     min_delta: float, persistence: int, prefer_map_bpm: bool,
+                     min_confidence: float, say: Callable[[str], None],
+                     factor: float, refine_beats: bool) -> Analysis:
+    """v2 tracker path: used when no regular pulse grid can be fitted.
+
+    It refuses audio with no pulse at all instead of tracking one: a beat
+    tracker always finds *some* beats, so on white noise it used to report
+    127.68 BPM. A tempo that drifts or ramps still passes; noise does not.
+
+    Its beats sit on the onset envelope's peaks, after the sound starts, so
+    with ``refine_beats`` they and the red lines on them are moved by the lag
+    measured on the song (_tracker_lag). Sections, BPMs, the pulse and the
+    meter are still read on the tracker's own beats. From the tracked beats
+    on it is _tracker_result, which the ×2 / ÷2 rebuild runs as well.
+    """
+    say("Extracting transients and tempo hypotheses…")
+    hop = HOP
+    onset = _onset_envelope(y, sr, hop)
+    if onset.size < 8:
+        raise ValueError("Not enough beats detected. Try a file with clearer percussion.")
+    if _pulse_gap(onset, sr, hop) < MIN_PULSE_GAP:
+        raise ValueError("No rhythmic pulse found: this audio sounds like noise or has no beat, "
+                         "so there is no BPM to report.")
+    try:
+        frame_tempi, tracker_bpm = _tempo_readings(onset, sr, hop)
+    except Exception:
+        frame_tempi = tracker_bpm = None
+    guides = _global_tempo_guides(onset, sr, hop, frame_tempi)
+    prior = guides[0][0] if guides else None
+
+    say("Tracking beats (hybrid DP + PLP + peaks)…")
+    beat_frames = _track_beats_hybrid(onset, sr, hop, prior, tracker_bpm)
+    if len(beat_frames) < 8:
+        raise ValueError("Not enough beats detected. Try a file with clearer percussion.")
+    if refine_beats:
+        beat_frames = _refine_beats_to_transients(beat_frames, onset, sr, hop)
+
+    say("Resolving half/double-time pulse…")
+    # ``factor`` multiplies the pulse the tracker settles on, as it does the
+    # precision engine's: 0 or 1 is that pulse. It was read as an absolute
+    # subdivision, so 1 switched the octave choice off and 0.5 / 0.25 were
+    # dropped without a word.
+    auto_subdivision = _choose_subdivision(onset, beat_frames, prefer_map_bpm, guides)
+    subdivision = auto_subdivision * float(factor) if factor else auto_subdivision
+
+    say("Computing local tempo and persistent changes…")
+    result = _tracker_result(str(path), y.size / sr, onset, np.asarray(beat_frames, dtype=float),
+                             sr, hop, subdivision, float(auto_subdivision), min_delta,
+                             persistence, min_confidence, refine_beats)
+    if len(result.beats) < 8:
+        raise ValueError("Detected tempo is outside the usable range.")
+    return _moved_by(result, _tracker_lag(y, sr, result.beats) if refine_beats else 0.0)
+
+
+def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
+                  persistence: int = 12, prefer_map_bpm: bool = True,
+                  min_confidence: float = 0.75,
+                  progress: Callable[[str], None] | None = None,
+                  force_subdivision: float = 0, refine_beats: bool = True,
+                  engine: str = "auto", osu_conventions: bool = True,
+                  follow_drift: bool = DRIFT_FOLLOW, beat_vote: bool = True) -> Analysis:
+    """Analyse an audio file and return stable timing points.
+
+    Most common formats work when libsndfile supports them. For MP3/M4A and
+    other compressed formats, install FFmpeg so librosa can use its fallback.
+
+    The default ``engine="auto"`` runs the v3 precision grid fitter and falls
+    back to the v2 beat tracker only when the audio has no fittable pulse
+    (rubato, free time, no percussion). ``engine="legacy"`` forces the v2 path,
+    ``engine="precision"`` refuses to fall back.
+
+    ``force_subdivision`` multiplies the detected beat rate (0 = auto; 0.5
+    halves it, 2 doubles it). Use it when you *know* the song's octave — e.g.
+    a 225 BPM stream reported as 112 BPM — or from the GUI pulse selector.
+    ``osu_conventions`` reads the result as osu! maps are timed: at the octave
+    in MAP_OCTAVE_RANGE and at the whole BPM where the attacks agree. Off, the
+    engine's own reading comes back -- what the golden vectors pin, since the
+    Rust engine gets the same conventions from overtone_rust.py.
+    ``beat_vote`` lets Beat This! replace the precision engine's red lines
+    where they explain the attacks clearly better (_beat_this_vote).
+    ``follow_drift`` adds red lines where the tempo drifts (_follow_drift);
+    on by default (DRIFT_FOLLOW).
+    ``refine_beats`` re-times every attack on the raw waveform at sample
+    resolution (and moves the fallback tracker's beats by the lag read that
+    way); disable it only to diagnose whether that snapping drifts.
+    """
+    if min_delta <= 0 or persistence < 2 or not 0 <= min_confidence <= 1:
+        raise ValueError("Minimum delta must be positive, persistence at least 2, confidence between 0 and 1.")
+    if engine not in ("auto", "precision", "legacy"):
+        raise ValueError("Engine must be 'auto', 'precision' or 'legacy'.")
+    if force_subdivision and float(force_subdivision) not in ALLOWED_FACTORS:
+        raise ValueError(f"Subdivision must be one of {sorted(ALLOWED_FACTORS)} (or 0 for auto).")
+    say = progress or (lambda _message: None)
+    y, sr = _load_audio(path, say)
+    factor = float(force_subdivision) if force_subdivision else 1.0
+
+    if engine in ("auto", "precision"):
+        failure = ""
+        try:
+            fit = _precision_engine(y, sr, min_delta, persistence, prefer_map_bpm,
+                                    refine_beats, say)
+        except Exception as exc:
+            if engine == "precision":
+                raise
+            # Falling back is correct, but doing it *silently* would hide a real
+            # bug behind merely-worse numbers, so say what went wrong.
+            fit, failure = None, f" ({type(exc).__name__}: {exc})"
+        if fit is not None:
+            analysis = _assemble_analysis(path, y, sr, fit, min_delta, persistence,
+                                          min_confidence, factor)
+            if force_subdivision or not prefer_map_bpm or not osu_conventions:
+                return analysis
+            analysis = _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
+            analysis = _snap_whole_bpm(analysis, min_delta, persistence, min_confidence)
+            if follow_drift:
+                analysis = _follow_drift(analysis)
+            before, before_beats = float(analysis.global_bpm), analysis.beats
+            if beat_vote and _beat_this_session() is not None:
+                say("Checking the beats with Beat This!…")
+                analysis = _beat_this_vote(analysis, y, sr)
+            analysis = _fold_local_to_map_octave(
+                analysis, before, before_beats, lambda: _beat_this_tempo(y, sr))
+            return _snap_whole_points(_fold_lines_to_song_octave(
+                analysis, lambda: _beat_this_judge_beats(y, sr)))
+        if engine == "precision":
+            raise ValueError(
+                "No steady pulse could be fitted. Try engine='auto' or a file with clearer percussion.")
+        say("No fittable grid — falling back to the beat tracker…" + failure)
+    analysis = _legacy_analysis(path, y, sr, min_delta, persistence, prefer_map_bpm,
+                                min_confidence, say, float(force_subdivision), refine_beats)
+    if force_subdivision or not prefer_map_bpm or not osu_conventions:
+        return analysis
+    tracked = _local_tempo_track(analysis)
+    if tracked is None:
+        return _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
+    tracked = _fold_local_to_map_octave(tracked, float(analysis.global_bpm), analysis.beats,
+                                        lambda: _beat_this_tempo(y, sr))
+    return _fold_lines_to_song_octave(tracked, lambda: _beat_this_judge_beats(y, sr))
+
+
+def _fold_to_map_octave(analysis: Analysis, min_delta: float, persistence: int,
+                        min_confidence: float) -> Analysis:
+    """Read the analysis at the octave osu! maps use (MAP_OCTAVE_RANGE).
+
+    The grids are kept; only the pulse they are read at changes, exactly as
+    the ×2 / ÷2 quick fix does, so the user can still undo it there. A BPM
+    already in range, or one whose fold would leave ALLOWED_FACTORS, is
+    returned as it is.
+    """
+    bpm = float(analysis.global_bpm)
+    if not np.isfinite(bpm) or bpm <= 0:
+        return analysis
+    lo, hi = MAP_OCTAVE_RANGE
+    step = 1.0
+    # A hair of slack: 59.9999 BPM doubled is 120, not a reason to double again.
+    while bpm * step < lo - 0.01:
+        step *= 2.0
+    while bpm * step > hi + 0.01:
+        step /= 2.0
+    target = float(analysis.subdivision) * step
+    if step == 1.0 or target not in ALLOWED_FACTORS:
+        return analysis
+    if step > 1.0 and _swings(analysis):
+        # A swung beat's off-beat sits at two thirds, not halfway: doubled,
+        # every other "beat" would land on nothing (shuffle-96 read at 192).
+        return analysis
+    return rebuild_with_subdivision(analysis, target, min_delta, persistence, min_confidence)
+
+
+#: How far a section's BPM may sit from a whole number and still be tried on
+#: it, and how much worse the whole-number grid may fit its attacks. Mappers
+#: time anime songs at whole BPMs (97 % of the S1 misses, 2026-10-23), and a
+#: least-squares fit over a short section lands a few tenths away from them.
+WHOLE_BPM_REACH = 0.5
+WHOLE_BPM_SLACK = (1.2, 0.5)        # rms may grow x1.2 + 0.5 ms
+
+
+def _grid_rms(times: np.ndarray, weights: np.ndarray, period: float,
+              phase: float) -> tuple[float, float, int]:
+    """(rms ms, best phase, inliers) of a grid with its phase refitted."""
+    k = np.round((times - phase) / period)
+    res = times - (phase + k * period)
+    inlier = np.abs(res) <= 0.15 * period
+    if int(inlier.sum()) < 8:
+        return float("inf"), phase, 0
+    w = weights[inlier]
+    shift = float(np.average(res[inlier], weights=w))
+    res = res[inlier] - shift
+    return float(np.sqrt(np.average(res ** 2, weights=w)) * 1000.0), phase + shift, int(inlier.sum())
+
+
+def _snap_whole_bpm(analysis: Analysis, min_delta: float, persistence: int,
+                    min_confidence: float) -> Analysis:
+    """Read each section at the whole BPM next to it when its attacks agree.
+
+    A fractional BPM the music really has (decimal-128.37) fits its attacks
+    clearly better than the whole number beside it and is kept; a section a
+    few tenths off a whole BPM only because its fit was short is moved.
+    """
+    if not analysis.sections:
+        return analysis
+    factor = float(analysis.subdivision) or 1.0
+    times = np.asarray(analysis.attack_times, dtype=float)
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    grow, add = WHOLE_BPM_SLACK
+    changed, out = False, []
+    for section in analysis.sections:
+        shown = section.bpm * factor
+        whole = round(shown)
+        if whole <= 0 or abs(shown - whole) > WHOLE_BPM_REACH or abs(shown - whole) < 1e-6:
+            out.append(section)
+            continue
+        window = (times >= section.start_s) & (times <= section.end_s)
+        rms, _, n = _grid_rms(times[window], weights[window], section.period, section.phase)
+        period = 60.0 / (whole / factor)
+        rms2, phase2, n2 = _grid_rms(times[window], weights[window], period, section.phase)
+        if n and n2 >= 0.95 * n and rms2 <= rms * grow + add:
+            out.append(replace(section, period=period, phase=phase2))
+            changed = True
+        else:
+            out.append(section)
+    if not changed:
+        return analysis
+    return rebuild_with_subdivision(replace(analysis, sections=out), factor,
+                                    min_delta, persistence, min_confidence)
+
+
+#: Drift following (Phase 10, stage plan): a fixed grid slowly leaves a song
+#: whose tempo breathes, and mappers correct it with a red line every few
+#: bars. The grid is re-fitted every DRIFT_WINDOW_BEATS beats on that window's
+#: attacks and a red line written where it moved. Kept only when the fixed and
+#: the followed grids part by more than DRIFT_MIN_MS (90th percentile) AND the
+#: followed one fits the attacks better. Chosen on dev samples of the three
+#: stages (2026-10-23) and confirmed on held-out ones: beats within 10 ms of the
+#: map's, anime one tempo 62.2 -> 76.8 %, anime tempo changes 48.2 -> 53.9 %,
+#: live bands 26.9 -> 30.3 %. Windows of 4-8 beats followed noise, and with no
+#: guard single-tempo songs lost 6 points.
+DRIFT_WINDOW_BEATS = 96
+DRIFT_MIN_MS = 15.0
+DRIFT_MAX_STEP = 0.03       # a window may move the tempo by at most 3 %
+
+
+def _beats_of(lines: list[tuple[float, float]], duration_s: float) -> np.ndarray:
+    """Beat times (s) of red lines, the first run back to 0 s as osu! does."""
+    out: list[float] = []
+    for n, (offset, bpm) in enumerate(lines):
+        step = 60000.0 / bpm
+        end = lines[n + 1][0] if n + 1 < len(lines) else duration_s * 1000.0
+        k = -np.floor(offset / step) if n == 0 else 0.0
+        while offset + k * step < end:
+            out.append((offset + k * step) / 1000.0)
+            k += 1
+    return np.asarray(out, dtype=float)
+
+
+def _attack_rms_ms(beats: np.ndarray, times: np.ndarray, weights: np.ndarray) -> float:
+    """Weighted RMS of attacks to their nearest beat, within a quarter beat."""
+    if beats.size < 2 or times.size == 0:
+        return float("inf")
+    i = np.clip(np.searchsorted(beats, times), 1, beats.size - 1)
+    d = np.minimum(np.abs(beats[i - 1] - times), np.abs(beats[i] - times))
+    near = d <= 0.25 * float(np.median(np.diff(beats)))
+    if not near.any():
+        return float("inf")
+    return float(np.sqrt(np.average(d[near] ** 2, weights=weights[near])) * 1000.0)
+
+
+def _follow_drift(analysis: Analysis) -> Analysis:
+    """Write a red line wherever the song's tempo drifted off the fixed grid."""
+    if not analysis.sections or not analysis.points:
+        return analysis
+    times = np.asarray(analysis.attack_times, dtype=float)
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    factor = float(analysis.subdivision) or 1.0
+    duration = float(analysis.duration)
+    lines: list[tuple[float, float]] = []
+    for n, section in enumerate(analysis.sections):
+        period = section.period / factor
+        end = analysis.sections[n + 1].start_s if n + 1 < len(analysis.sections) else duration
+        if n == 0:
+            # Start at the first attack, a whole number of bars before the
+            # first red line, so the lines stay on the bar it proved.
+            first = analysis.points[0].offset_ms / 1000.0
+            t = section.phase + round((first - section.phase) / period) * period
+            if times.size:
+                bar = max(1, int(analysis.points[0].meter)) * period
+                t -= max(0.0, np.floor((t - times[0]) / bar)) * bar
+        else:
+            t = section.phase + np.ceil((section.start_s - section.phase) / period - 1e-9) * period
+        while t < end - period:
+            hi = min(end, t + DRIFT_WINDOW_BEATS * period)
+            window = (times >= t - 0.5 * period) & (times < hi + 0.5 * period)
+            if int(window.sum()) >= 6:
+                fitted, phase, _ = _refine_grid(times[window], weights[window], period, t)
+                if abs(fitted - period) / period < DRIFT_MAX_STEP:
+                    moved = phase + round((t - phase) / fitted) * fitted
+                    if abs(moved - t) < 0.25 * period:
+                        period, t = fitted, moved
+            lines.append((t * 1000.0, 60.0 / period))
+            t = t + max(1, round((hi - t) / period)) * period
+    if len(lines) < 2:
+        return analysis
+    merged = [lines[0]]
+    for offset, bpm in lines[1:]:
+        last_offset, last_bpm = merged[-1]
+        step = 60000.0 / last_bpm
+        if (abs(bpm - last_bpm) < 0.05
+                and abs(last_offset + round((offset - last_offset) / step) * step - offset) < 2.0):
+            continue
+        merged.append((offset, bpm))
+    fixed = _beats_of([(p.offset_ms, p.bpm) for p in analysis.points], duration)
+    followed = _beats_of(merged, duration)
+    followed = followed[followed >= merged[0][0] / 1000.0 - 1e-9]
+    if followed.size == 0 or fixed.size < 2:
+        return analysis
+    i = np.clip(np.searchsorted(fixed, followed), 1, fixed.size - 1)
+    apart = np.minimum(np.abs(fixed[i - 1] - followed), np.abs(fixed[i] - followed)) * 1000.0
+    if float(np.percentile(apart, 90)) <= DRIFT_MIN_MS:
+        return analysis
+    if _attack_rms_ms(_beats_of(merged, duration), times, weights) >= DRIFT_MIN_GAIN *             _attack_rms_ms(_beats_of([(p.offset_ms, p.bpm) for p in analysis.points], duration),
+                           times, weights):
+        return analysis
+    points = []
+    for offset, bpm in merged:
+        governing = analysis.points[0]
+        for point in analysis.points:
+            if point.offset_ms <= offset + 30000.0 / bpm:
+                governing = point
+        points.append(replace(governing, offset_ms=float(offset), bpm=float(bpm)))
+    return replace(analysis, points=points, beats=_beats_of(merged, duration))
+
+
+#: The local-tempo tracker, for the songs the precision engine refuses (Phase
+#: 10, 2026-10-23). The v2 tracker held one tempo near its prior, so a song
+#: that moves between 130, 180 and 260 BPM (Sledgehammer) came out at ~128
+#: throughout. Each LOCAL_WINDOW_S window of the onset envelope offers its
+#: autocorrelation tempi and their octaves; a Viterbi path trades candidate
+#: strength against tempo jumps (an exact octave jump is cheap: mappers double
+#: a double-time section) and distance outside LOCAL_RANGE_BPM; librosa's
+#: dynamic-programming beat tracker then follows that tempo curve, and the
+#: beats become red lines wherever their spacing leaves the line's grid by more
+#: than LOCAL_LINE_TOL_MS. Chosen on 40-song dev samples; held out (60 songs a
+#: stage), beats within 10 ms on the songs that take this path: anime one tempo
+#: 13.7 -> 73.4 %, anime tempo changes 7.4 -> 66.1 %, bands 13.8 -> 43.1 %.
+#: On songs the precision engine times it is worse (82.0 -> 70.0 % on anime),
+#: so it replaces only the fallback.
+LOCAL_WINDOW_S = 8.0
+LOCAL_HOP_S = 4.0
+LOCAL_RANGE_BPM = (140.0, 300.0)
+#: bias: a little cheaper the faster the tempo, as mappers time a
+#: double-time part at the speed the drums play (S3 dev 56.4 -> 66.4 %).
+LOCAL_COSTS = {"jump": 0.5, "octave": 0.2, "prior": 0.6, "bias": 0.1}
+LOCAL_TIGHTNESS = 1000.0
+LOCAL_LINE_TOL_MS = 8.0
+
+
+def _window_tempi(env: np.ndarray, fps: float, k: int = 6) -> list[tuple[float, float]]:
+    """A window's autocorrelation tempi (bpm, strength) and their octaves."""
+    lo_bpm, hi_bpm = 55.0, 330.0
+    seg = env - env.mean()
+    if seg.size < 8 or not np.any(seg):
+        return []
+    n = seg.size
+    spec = np.fft.rfft(seg, 2 * n)
+    ac = np.fft.irfft(spec * np.conj(spec))[:n]
+    ac = ac / max(float(ac[0]), 1e-12)
+    out = []
+    for i in range(max(int(60 * fps / hi_bpm), 2), min(n - 2, int(np.ceil(60 * fps / lo_bpm)))):
+        if ac[i] > ac[i - 1] and ac[i] >= ac[i + 1] and ac[i] > 0:
+            d = 0.5 * (ac[i - 1] - ac[i + 1]) / (ac[i - 1] - 2 * ac[i] + ac[i + 1] + 1e-12)
+            out.append((60 * fps / (i + d), float(ac[i])))
+    out.sort(key=lambda c: -c[1])
+    out = out[:k]
+    extra = []
+    for bpm, strength in out:
+        for f in (0.5, 2.0):
+            if lo_bpm <= bpm * f <= hi_bpm and not any(abs(bpm * f / b - 1) < 0.03 for b, _ in out):
+                extra.append((bpm * f, 0.6 * strength))
+    return out + extra
+
+
+def _tempo_path(cands: list[list[tuple[float, float]]]) -> list[float]:
+    """The cheapest tempo per window (Viterbi), as LOCAL_COSTS weigh it."""
+    lo, hi = LOCAL_RANGE_BPM
+
+    def node(bpm: float, strength: float) -> float:
+        return (-strength + LOCAL_COSTS["prior"] * (max(0.0, np.log2(lo / bpm))
+                                                    + max(0.0, np.log2(bpm / hi)))
+                - LOCAL_COSTS["bias"] * np.log2(bpm / 120.0))
+
+    def trans(a: float, b: float) -> float:
+        r = abs(np.log2(b / a))
+        return LOCAL_COSTS["octave"] if abs(r - 1.0) < 0.04 else LOCAL_COSTS["jump"] * r
+
+    cost = [node(b, s) for b, s in cands[0]]
+    back = []
+    for w in range(1, len(cands)):
+        new, ptr = [], []
+        for b, s in cands[w]:
+            best = min(range(len(cands[w - 1])),
+                       key=lambda i: cost[i] + trans(cands[w - 1][i][0], b))
+            new.append(cost[best] + trans(cands[w - 1][best][0], b) + node(b, s))
+            ptr.append(best)
+        cost = new
+        back.append(ptr)
+    i = int(np.argmin(cost))
+    path = [i]
+    for ptr in reversed(back):
+        i = ptr[i]
+        path.append(i)
+    path.reverse()
+    return [cands[w][path[w]][0] for w in range(len(cands))]
+
+
+def _beats_to_lines(beats: np.ndarray, tol_ms: float) -> list[tuple[float, float]]:
+    """Red lines through beat times (s). A line grows beat by beat, refitted
+    on every beat it holds, while the next beat lands within ``tol_ms`` of
+    where the fit puts it; the beat that does not starts the next line."""
+    lines: list[tuple[float, float]] = []
+    n = beats.size
+    i = 0
+    while i < n - 1:
+        k = i + 1                         # the line holds beats[i..k]
+        while k + 1 < n:
+            idx = np.arange(k - i + 1)
+            if k - i >= 2:
+                slope, icpt = np.polyfit(idx, beats[i:k + 1], 1)
+            else:
+                slope, icpt = beats[k] - beats[i], beats[i]
+            if abs(icpt + slope * (k - i + 1) - beats[k + 1]) * 1000.0 > tol_ms:
+                break
+            k += 1
+        idx = np.arange(k - i + 1)
+        if k - i >= 2:
+            slope, icpt = np.polyfit(idx, beats[i:k + 1], 1)
+        else:
+            slope, icpt = beats[k] - beats[i], beats[i]
+        lines.append((float(icpt) * 1000.0, 60.0 / float(slope)))
+        i = k + 1 if k - i < 1 else k
+        if i == k and k + 1 >= n:
+            break
+    return _merge_lines(lines)
+
+
+def _merge_lines(lines: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Drop a red line that only continues the one before it."""
+    merged = lines[:1]
+    for offset, bpm in lines[1:]:
+        last_offset, last_bpm = merged[-1]
+        step = 60000.0 / last_bpm
+        if (abs(bpm / last_bpm - 1) < 0.002
+                and abs(last_offset + round((offset - last_offset) / step) * step - offset) < 2.0):
+            continue
+        merged.append((offset, bpm))
+    return merged
+
+
+def _snap_whole_lines(lines: list[tuple[float, float]], times: np.ndarray,
+                      weights: np.ndarray, duration_s: float) -> list[tuple[float, float]]:
+    """Red lines read at the whole BPM beside them where their attacks agree,
+    by _snap_whole_bpm's test; lines that then continue each other merge."""
+    grow, add = WHOLE_BPM_SLACK
+    out = []
+    for n, (offset, bpm) in enumerate(lines):
+        whole = round(bpm)
+        if whole <= 0 or abs(bpm - whole) > WHOLE_BPM_REACH or abs(bpm - whole) < 1e-6:
+            out.append((offset, bpm))
+            continue
+        end = lines[n + 1][0] / 1000.0 if n + 1 < len(lines) else duration_s
+        window = (times >= offset / 1000.0) & (times <= end)
+        rms, _, k = _grid_rms(times[window], weights[window], 60.0 / bpm, offset / 1000.0)
+        rms2, phase2, k2 = _grid_rms(times[window], weights[window], 60.0 / whole, offset / 1000.0)
+        if k and k2 >= 0.95 * k and rms2 <= rms * grow + add:
+            out.append((phase2 * 1000.0, float(whole)))
+        else:
+            out.append((offset, bpm))
+    return _merge_lines(out)
+
+
+def _local_tempo_track(analysis: Analysis) -> Analysis | None:
+    """Red lines for a fallback analysis from a tempo that may move."""
+    env = np.asarray(analysis.onset, dtype=float)
+    fps = analysis.sample_rate / analysis.hop_length
+    duration = float(analysis.duration)
+    if env.size < 4 or duration < LOCAL_WINDOW_S or not analysis.points:
+        return None
+    starts = np.arange(0.0, duration - LOCAL_WINDOW_S + 1e-9, LOCAL_HOP_S)
+    cands = [_window_tempi(env[int(lo * fps):int((lo + LOCAL_WINDOW_S) * fps)], fps)
+             for lo in starts]
+    good = [c for c in cands if c]
+    if not good:
+        return None
+    cands = [c if c else good[0] for c in cands]
+    curve = np.interp(np.arange(env.size) / fps, starts + LOCAL_WINDOW_S / 2, _tempo_path(cands))
+    _, beats = librosa.beat.beat_track(onset_envelope=env, sr=analysis.sample_rate,
+                                       hop_length=analysis.hop_length, bpm=curve,
+                                       tightness=LOCAL_TIGHTNESS, units="time")
+    # The envelope's peaks lag the attacks; the v2 tracker read that lag on
+    # the waveform for this song (beat_shift_s) and the same lag applies here.
+    beats = np.asarray(beats, dtype=float) + float(getattr(analysis, "beat_shift_s", 0.0))
+    if beats.size < 8:
+        return None
+    lines = _beats_to_lines(beats, LOCAL_LINE_TOL_MS)
+    if not lines:
+        return None
+    points = []
+    for offset, bpm in lines:
+        governing = analysis.points[0]
+        for point in analysis.points:
+            if point.offset_ms <= offset:
+                governing = point
+        points.append(replace(governing, offset_ms=float(offset), bpm=float(bpm)))
+    bpms = np.array([p.bpm for p in points])
+    spans = np.diff([p.offset_ms for p in points] + [duration * 1000.0])
+    return replace(analysis, points=points, beats=beats, local_tempo=True,
+                   global_bpm=_weighted_median(bpms, np.maximum(spans, 1e-6)))
+
+
+def _rescale_local(analysis: Analysis, factor: float) -> Analysis:
+    """A local-tempo analysis read at another pulse: every line's BPM scaled,
+    beats split or thinned; the same factor back gives the analysis back."""
+    ratio = factor / (float(analysis.subdivision) or 1.0)
+    if ratio == 1.0:
+        return analysis
+    beats = np.asarray(analysis.beats, dtype=float)
+    if ratio > 1.0 and beats.size > 1:
+        m = int(round(ratio))
+        steps = np.arange(m) / m
+        beats = (beats[:-1, None] + np.diff(beats)[:, None] * steps).ravel()
+    elif ratio < 1.0:
+        beats = beats[::int(round(1.0 / ratio))]
+    points = [replace(p, bpm=p.bpm * ratio) for p in analysis.points]
+    return replace(analysis, points=points, beats=beats, subdivision=factor,
+                   global_bpm=float(analysis.global_bpm) * ratio)
+
+
+#: A local-tempo reading's octave (the fallback tracker's _local_tempo_track,
+#: or Beat This!'s lines), three experiments measured on the owner's server
+#: before any is on by default (timeline, 2026-10-26). LOCAL_OCTAVE_FOLD
+#: doubles one below MAP_OCTAVE_RANGE (the fix/local-tempo-octave work).
+#: LOCAL_OCTAVE_HALVE also reads one at 2x or 4x of the reading it replaced
+#: back at that reading's octave: right for slow anime the tracker read at
+#: their pulse, wrong for fast bands it read at half. LOCAL_OCTAVE_JUDGE
+#: halves only where Beat This! hears the slower pulse. All off: v3 as it was.
+LOCAL_OCTAVE_FOLD = True
+LOCAL_OCTAVE_HALVE = True
+LOCAL_OCTAVE_JUDGE = True
+#: How close a local-tempo reading must sit to 2x or 4x the reading it
+#: replaced to be taken as that reading an octave or two up.
+LOCAL_OCTAVE_SLACK = 0.06
+
+
+def _fold_local_to_map_octave(analysis: Analysis, reference: float | None = None,
+                              reference_beats=None, judge=None) -> Analysis:
+    """A local-tempo analysis read at the octave osu! maps use, as
+    _fold_to_map_octave reads a grid (LOCAL_OCTAVE_FOLD; off, it is
+    returned as it is).
+
+    Below MAP_OCTAVE_RANGE it is doubled. With LOCAL_OCTAVE_HALVE, one at 2x
+    or 4x of ``reference`` (the reading it replaced, when that sat in the
+    range) is read back at that octave, keeping the beats nearest
+    ``reference_beats`` (_thin_local): Ado - unravel, read 134.9 by the
+    tracker and mapped at 135, came out at 269.9. With LOCAL_OCTAVE_JUDGE that
+    halving waits for ``judge()``, a tempo heard by Beat This!, to sit nearer
+    the slower reading; no judge or no answer, no halving."""
+    if not LOCAL_OCTAVE_FOLD or not analysis.local_tempo:
+        return analysis
+    bpm = float(analysis.global_bpm)
+    if not np.isfinite(bpm) or bpm <= 0:
+        return analysis
+    lo, hi = MAP_OCTAVE_RANGE
+    step = 1.0
+    # Doubling only on the local BPM itself: halved on that alone, the fast
+    # bands (DragonForce, ~200-280 BPM) lost their octave (S3 held out
+    # 73.7 -> 59.2 %, 2026-10-25).
+    while bpm * step < lo - 0.01:
+        step *= 2.0
+    if (step == 1.0 and LOCAL_OCTAVE_HALVE and reference is not None
+            and np.isfinite(reference) and lo - 0.01 <= reference <= hi + 0.01):
+        for up in (2.0, 4.0):
+            if abs(bpm / (reference * up) - 1.0) <= LOCAL_OCTAVE_SLACK:
+                if not LOCAL_OCTAVE_JUDGE:
+                    step = 1.0 / up
+                else:
+                    heard = judge() if judge is not None else None
+                    if (heard is not None and np.isfinite(heard) and heard > 0
+                            and abs(np.log2(heard / (bpm / up))) < abs(np.log2(heard / bpm))):
+                        step = 1.0 / up
+                break
+    if step == 1.0:
+        return analysis
+    if step < 1.0:
+        return _thin_local(analysis, step, reference_beats)
+    return _rescale_local(analysis, (float(analysis.subdivision) or 1.0) * step)
+
+
+def _thin_local(analysis: Analysis, step: float, reference_beats=None) -> Analysis:
+    """A local-tempo analysis read at 1/2 or 1/4 of its pulse, keeping the
+    beats that fall on the reference's.
+
+    Every other beat of a doubled tempo is an off-beat. Keeping the first
+    whatever it is put half the songs half a beat off the map (Astrosexy:
+    66 -> 12 % of beats within 10 ms, server stages 2026-10-26), so the kept
+    phase is the one nearest the reference reading's own beats, which were
+    at this octave, and each red line moves onto a kept beat."""
+    beats = np.asarray(analysis.beats, dtype=float)
+    every = int(round(1.0 / step))
+    phase = 0
+    reference = (np.asarray(reference_beats, dtype=float) if reference_beats is not None
+                 else np.zeros(0))
+    if beats.size >= 2 * every and reference.size >= 8:
+        reference = np.sort(reference)
+
+        def distance(kept: np.ndarray) -> float:
+            i = np.clip(np.searchsorted(reference, kept), 1, reference.size - 1)
+            return float(np.median(np.minimum(np.abs(reference[i - 1] - kept),
+                                              np.abs(reference[i] - kept))))
+
+        phase = min(range(every), key=lambda k: distance(beats[k::every]))
+    points = []
+    for point in analysis.points:
+        offset = point.offset_ms
+        if beats.size:
+            i = int(np.argmin(np.abs(beats - offset / 1000.0)))
+            j = i + (phase - i) % every
+            if abs(beats[i] * 1000.0 - offset) <= 0.25 * 60000.0 / point.bpm and j < beats.size:
+                offset = float(beats[j] * 1000.0)
+        points.append(replace(point, offset_ms=offset, bpm=point.bpm * step))
+    factor = (float(analysis.subdivision) or 1.0) * step
+    return replace(analysis, points=points, beats=beats[phase::every], subdivision=factor,
+                   global_bpm=float(analysis.global_bpm) * step)
+
+
+def _beat_this_tempo(y: np.ndarray, sr: int) -> float | None:
+    """The tempo Beat This! hears (BPM, from its beats' median spacing), for
+    LOCAL_OCTAVE_JUDGE: loaded on its own, so the judge works where the vote
+    is off; None without the model, the runtime or enough beats."""
+    if not _BEAT_THIS_JUDGE:
+        _BEAT_THIS_JUDGE.append(_load_beat_this())
+    if _BEAT_THIS_JUDGE[0] is None:
+        return None
+    beats = _beat_this_beats(y, sr, session=_BEAT_THIS_JUDGE[0])
+    if beats is None or beats.size < 16:
+        return None
+    return 60.0 / float(np.median(np.diff(beats)))
+
+
+#: Red lines read an octave off the rest of their song (one section at 310
+#: in a song at 155, the owner's Flower Petals - Sunday Cruise): each line
+#: near 2x or 1/2 of the song's own tempo -- the one that holds the most of
+#: its length -- is read at the song's octave where Beat This!, over that
+#: line's span, hears that octave. On since 2026-10-26 (bands held out
+#: tempo ok 57.7 -> 59.9 %, dev unchanged).
+SECTION_OCTAVE_JUDGE = True
+
+
+def _song_tempo(points: list, duration_ms: float) -> float | None:
+    """The BPM that holds the most of the song's length, by red line span."""
+    spans: dict[float, float] = {}
+    for n, point in enumerate(points):
+        end = points[n + 1].offset_ms if n + 1 < len(points) else duration_ms
+        if point.bpm > 0 and end > point.offset_ms:
+            key = round(float(point.bpm), 1)
+            spans[key] = spans.get(key, 0.0) + (end - point.offset_ms)
+    return max(spans, key=spans.get) if spans else None
+
+
+def _fold_lines_to_song_octave(analysis: Analysis, heard) -> Analysis:
+    """Lines an octave off their song read back at its octave, when Beat This!
+    agrees (SECTION_OCTAVE_JUDGE). ``heard()`` gives Beat This!'s beats (s),
+    asked once and only when a line is off; a halved line keeps the phase
+    nearest those beats, so it is not left half a beat off the map."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not SECTION_OCTAVE_JUDGE or len(points) < 2:
+        return analysis
+    duration_ms = float(analysis.duration) * 1000.0
+    song = _song_tempo(points, duration_ms)
+    if not song:
+        return analysis
+    beats = None
+    out, changed = [], False
+    for n, point in enumerate(points):
+        end = points[n + 1].offset_ms if n + 1 < len(points) else duration_ms
+        ratio = point.bpm / song
+        factor = (0.5 if abs(ratio / 2.0 - 1.0) <= LOCAL_OCTAVE_SLACK
+                  else 2.0 if abs(ratio / 0.5 - 1.0) <= LOCAL_OCTAVE_SLACK else None)
+        if factor is None or getattr(point, "manual", False) or end <= point.offset_ms:
+            out.append(point)
+            continue
+        if beats is None:
+            found = heard()
+            beats = np.asarray(found, dtype=float) * 1000.0 if found is not None else np.zeros(0)
+        inside = beats[(beats >= point.offset_ms) & (beats <= end)]
+        if inside.size < 8:
+            out.append(point)
+            continue
+        tempo = 60000.0 / float(np.median(np.diff(inside)))
+        target = point.bpm * factor
+        if abs(np.log2(tempo / target)) >= abs(np.log2(tempo / point.bpm)):
+            out.append(point)
+            continue
+        offset = point.offset_ms
+        if factor < 1.0:
+            # Of the two beats a halved line could start on, the one whose
+            # grid sits nearest Beat This!'s.
+            period = 60000.0 / target
+
+            def distance(start: float) -> float:
+                grid = start + np.arange(int((end - start) / period) + 1) * period
+                i = np.clip(np.searchsorted(inside, grid), 1, inside.size - 1)
+                return float(np.median(np.minimum(np.abs(inside[i - 1] - grid),
+                                                  np.abs(inside[i] - grid))))
+
+            offset = min((point.offset_ms, point.offset_ms + 60000.0 / point.bpm), key=distance)
+        out.append(replace(point, bpm=target, offset_ms=offset))
+        changed = True
+    if not changed:
+        return analysis
+    return replace(analysis, points=out)
+
+
+def _beat_this_judge_beats(y: np.ndarray, sr: int):
+    """Beat This!'s beats (s) by the judge's own session (the vote's switch
+    aside); None without the model or the runtime."""
+    if not _BEAT_THIS_JUDGE:
+        _BEAT_THIS_JUDGE.append(_load_beat_this())
+    if _BEAT_THIS_JUDGE[0] is None:
+        return None
+    return _beat_this_beats(y, sr, session=_BEAT_THIS_JUDGE[0])
+
+
+#: Beat This! as an extra voter (Phase 10, 10.3; owner decision 2026-10-24).
+#: The network (assets/models/beat_this_final0.onnx, MIT, see beat_this.json)
+#: reads a log-mel spectrogram and marks each 20 ms frame as a beat or not;
+#: its beats become red lines (_beats_to_lines) and replace the precision
+#: engine's only where they explain the song's own attacks better by
+#: BEAT_THIS_MARGIN (attack-to-beat F-measure at BEAT_THIS_TOL_MS). Chosen on
+#: 40-song dev samples; held out (60 songs a stage), beats within 10 ms of the
+#: map: anime one tempo 80.5 -> 81.6 %, anime tempo changes 64.3 -> 65.1 %,
+#: bands 40.7 -> 43.5 % (within 20 ms 64.3 -> 69.5 %). Alone it is worse at
+#: 10 ms (its beats sit on a 50 fps grid), and on the songs the precision
+#: engine refuses the local-tempo tracker does better, so it votes only there.
+#: Without the model file or onnxruntime the vote is skipped.
+BEAT_THIS_MODEL = "beat_this_final0.onnx"
+BEAT_THIS_MARGIN = 0.05
+BEAT_THIS_TOL_MS = 15.0
+BEAT_THIS_SR = 22050
+BEAT_THIS_FFT = 1024
+BEAT_THIS_HOP = 441                    # 50 frames a second
+BEAT_THIS_MELS = 128
+BEAT_THIS_BAND_HZ = (30.0, 11000.0)
+BEAT_THIS_CHUNK = 1500                 # frames per network call, as Beat This! runs it
+BEAT_THIS_BORDER = 6                   # frames discarded at each chunk edge
+_BEAT_THIS_SESSION: list = []          # [session] once loaded, [None] when unavailable
+_BEAT_THIS_JUDGE: list = []            # the octave judge's own, the vote's switch aside
+
+
+def _load_beat_this():
+    """A new ONNX Runtime session on the model; None without one or the other."""
+    path = ROOT / "assets" / "models" / BEAT_THIS_MODEL
+    try:
+        import onnxruntime
+        if not path.is_file():
+            return None
+        options = onnxruntime.SessionOptions()
+        options.log_severity_level = 3
+        return onnxruntime.InferenceSession(str(path), options,
+                                            providers=["CPUExecutionProvider"])
+    except Exception:  # noqa: BLE001 -- no runtime or no model: nothing to ask
+        return None
+
+
+def _beat_this_session():
+    """The vote's ONNX Runtime session, loaded once; None without the model
+    or the runtime, or where the vote is turned off."""
+    if not _BEAT_THIS_SESSION:
+        _BEAT_THIS_SESSION.append(_load_beat_this())
+    return _BEAT_THIS_SESSION[0]
+
+
+def _beat_this_mel_filters() -> np.ndarray:
+    """Slaney mel filters without area normalisation, as torchaudio builds them."""
+    f_sp, min_log_hz = 200.0 / 3, 1000.0
+    min_log_mel, logstep = min_log_hz / f_sp, np.log(6.4) / 27.0
+
+    def to_mel(f):
+        f = np.asarray(f, dtype=float)
+        return np.where(f >= min_log_hz,
+                        min_log_mel + np.log(np.maximum(f, 1e-9) / min_log_hz) / logstep, f / f_sp)
+
+    def to_hz(m):
+        m = np.asarray(m, dtype=float)
+        return np.where(m >= min_log_mel, min_log_hz * np.exp(logstep * (m - min_log_mel)), f_sp * m)
+
+    freqs = np.linspace(0, BEAT_THIS_SR // 2, BEAT_THIS_FFT // 2 + 1)
+    lo, hi = BEAT_THIS_BAND_HZ
+    edges = to_hz(np.linspace(to_mel(lo), to_mel(hi), BEAT_THIS_MELS + 2))
+    gaps = np.diff(edges)
+    slopes = edges[None, :] - freqs[:, None]
+    return np.maximum(0.0, np.minimum(-slopes[:, :-2] / gaps[:-1], slopes[:, 2:] / gaps[1:]))
+
+
+def _beat_this_spectrogram(signal: np.ndarray) -> np.ndarray:
+    """Beat This!'s input: log(1 + 1000 * mel magnitude), (frames, 128)."""
+    pad = BEAT_THIS_FFT // 2
+    x = np.pad(np.asarray(signal, dtype=np.float32), pad, mode="reflect")
+    window = np.hanning(BEAT_THIS_FFT + 1)[:-1].astype(np.float32)     # periodic Hann
+    count = 1 + (len(x) - BEAT_THIS_FFT) // BEAT_THIS_HOP
+    if count < 1:
+        return np.zeros((0, BEAT_THIS_MELS), dtype=np.float32)
+    mel = _beat_this_mel_filters().astype(np.float32)
+    out = np.empty((count, BEAT_THIS_MELS), dtype=np.float32)
+    for lo in range(0, count, 4096):            # a few thousand frames at a time
+        hi = min(count, lo + 4096)
+        idx = np.arange(BEAT_THIS_FFT)[None, :] + BEAT_THIS_HOP * np.arange(lo, hi)[:, None]
+        # torchaudio's normalized="frame_length" divides by sqrt(n_fft)
+        magnitude = np.abs(np.fft.rfft(x[idx] * window, axis=1)) / np.sqrt(BEAT_THIS_FFT)
+        out[lo:hi] = np.log1p(1000.0 * (magnitude @ mel))
+    return out
+
+
+def _beat_this_logits(session, spect: np.ndarray) -> np.ndarray:
+    """Frame-wise beat logits over the whole song, chunk by chunk."""
+    frames = len(spect)
+    step = BEAT_THIS_CHUNK - 2 * BEAT_THIS_BORDER
+    starts = np.arange(-BEAT_THIS_BORDER, frames - BEAT_THIS_BORDER, step)
+    if frames > step:
+        starts[-1] = frames - (BEAT_THIS_CHUNK - BEAT_THIS_BORDER)
+    logits = np.full(frames, -1000.0, dtype=np.float32)
+    for start in starts[::-1]:                  # earlier chunks win their overlap
+        a, b = max(int(start), 0), min(int(start) + BEAT_THIS_CHUNK, frames)
+        chunk = np.pad(spect[a:b], ((max(0, -int(start)),
+                                     max(0, min(BEAT_THIS_BORDER, int(start) + BEAT_THIS_CHUNK - frames))),
+                                    (0, 0)))
+        checkpoint()
+        out = session.run(None, {"spect": chunk[None]})[0][0][BEAT_THIS_BORDER:-BEAT_THIS_BORDER]
+        lo = int(start) + BEAT_THIS_BORDER
+        keep = max(0, min(len(out), frames - lo))
+        logits[lo:lo + keep] = out[:keep]
+    return logits
+
+
+def _beat_this_beats(y: np.ndarray, sr: int, session=None) -> np.ndarray | None:
+    """Beat times (s) by Beat This!, or None when the network is unavailable;
+    ``session`` instead of the vote's."""
+    session = session if session is not None else _beat_this_session()
+    if session is None or y.size == 0:
+        return None
+    import soxr
+    signal = soxr.resample(np.asarray(y, dtype=np.float64), sr, BEAT_THIS_SR) \
+        if sr != BEAT_THIS_SR else np.asarray(y, dtype=np.float64)
+    logits = _beat_this_logits(session, _beat_this_spectrogram(signal))
+    padded = np.pad(logits, 3, constant_values=-1000.0)
+    local_max = np.lib.stride_tricks.sliding_window_view(padded, 7).max(axis=1)
+    frames = np.flatnonzero((logits == local_max) & (logits > 0))
+    beats: list[float] = []
+    mean, count = None, 0
+    for f in frames:                            # adjacent peaks become their mean
+        if mean is not None and f - mean <= 1:
+            count += 1
+            mean += (f - mean) / count
+        else:
+            if mean is not None:
+                beats.append(mean)
+            mean, count = float(f), 1
+    if mean is not None:
+        beats.append(mean)
+    return np.asarray(beats, dtype=float) * BEAT_THIS_HOP / BEAT_THIS_SR
+
+
+def _grid_fit_score(beats: np.ndarray, times: np.ndarray, weights: np.ndarray,
+                    tol_ms: float) -> float:
+    """How well a beat grid explains the attacks: F-measure of attack weight
+    within ``tol_ms`` of a beat and beats within ``tol_ms`` of an attack."""
+    if beats.size < 4 or times.size < 2:
+        return 0.0
+    i = np.clip(np.searchsorted(beats, times), 1, beats.size - 1)
+    d = np.minimum(np.abs(beats[i - 1] - times), np.abs(beats[i] - times)) * 1000.0
+    recall = float(np.sum(weights[d <= tol_ms]) / max(float(np.sum(weights)), 1e-12))
+    j = np.clip(np.searchsorted(times, beats), 1, times.size - 1)
+    e = np.minimum(np.abs(times[j - 1] - beats), np.abs(times[j] - beats)) * 1000.0
+    precision = float(np.mean(e <= tol_ms))
+    return 0.0 if recall + precision == 0 else 2 * recall * precision / (recall + precision)
+
+
+def _beat_this_vote(analysis: Analysis, y: np.ndarray, sr: int) -> Analysis:
+    """The precision analysis, or Beat This!'s lines where they fit the attacks
+    clearly better (BEAT_THIS_MARGIN). Never runs on a fallback analysis."""
+    if analysis.engine != "precision" or not analysis.points:
+        return analysis
+    times = np.asarray(analysis.attack_times, dtype=float)
+    weights = np.asarray(analysis.attack_weights, dtype=float)
+    if times.size < 8:
+        return analysis
+    beats = _beat_this_beats(y, sr)
+    if beats is None or beats.size < 8:
+        return analysis
+    duration = float(analysis.duration)
+    lines = _beats_to_lines(beats, LOCAL_LINE_TOL_MS)
+    if not lines:
+        return analysis
+    ours = _grid_fit_score(_beats_of([(p.offset_ms, p.bpm) for p in analysis.points], duration),
+                           times, weights, BEAT_THIS_TOL_MS)
+    theirs = _grid_fit_score(_beats_of(lines, duration), times, weights, BEAT_THIS_TOL_MS)
+    if theirs <= ours + BEAT_THIS_MARGIN:
+        return analysis
+    points = []
+    for offset, bpm in lines:
+        governing = analysis.points[0]
+        for point in analysis.points:
+            if point.offset_ms <= offset:
+                governing = point
+        points.append(replace(governing, offset_ms=float(offset), bpm=float(bpm)))
+    bpms = np.array([p.bpm for p in points])
+    spans = np.diff([p.offset_ms for p in points] + [duration * 1000.0])
+    return replace(analysis, points=points, beats=beats, local_tempo=True,
+                   global_bpm=_weighted_median(bpms, np.maximum(spans, 1e-6)))
+
+
+def _with_lines(analysis: Analysis, lines: list[tuple[float, float]], **changes) -> Analysis:
+    """The analysis with these red lines, each keeping the meter and kiai of
+    the point that governed its offset."""
+    points = []
+    for offset, bpm in lines:
+        governing = analysis.points[0]
+        for point in analysis.points:
+            if point.offset_ms <= offset:
+                governing = point
+        points.append(replace(governing, offset_ms=float(offset), bpm=float(bpm)))
+    bpms = np.array([p.bpm for p in points])
+    spans = np.diff([p.offset_ms for p in points] + [float(analysis.duration) * 1000.0])
+    return replace(analysis, points=points, **changes,
+                   global_bpm=_weighted_median(bpms, np.maximum(spans, 1e-6)))
+
+
+def _snap_whole_points(analysis: Analysis) -> Analysis:
+    """The finished red lines read at whole BPMs where the attacks agree.
+
+    Drift following and the Beat This! vote write lines a few hundredths off
+    the whole BPM a mapper uses (142.08 / 141.94 / 141.75 for one 142 line),
+    which _snap_whole_bpm, running on the sections before them, never sees.
+    """
+    if analysis.engine != "precision" or not analysis.points:
+        return analysis
+    lines = [(p.offset_ms, p.bpm) for p in analysis.points]
+    snapped = _snap_whole_lines(lines, np.asarray(analysis.attack_times, dtype=float),
+                                np.asarray(analysis.attack_weights, dtype=float),
+                                float(analysis.duration))
+    if snapped == lines:
+        return analysis
+    return _with_lines(analysis, snapped,
+                       beats=_beats_of(snapped, float(analysis.duration)))
+
+
+def _swings(analysis: Analysis) -> bool:
+    """Whether most of the song's swing-lane windows swing or play triplets."""
+    try:
+        windows = swing_lane(analysis.points, analysis.attack_times,
+                             analysis.attack_weights, analysis.duration)["windows"]
+    except (ValueError, TypeError):
+        return False
+    swung = sum(w["feel"] in ("swing", "triplets") for w in windows)
+    return bool(windows) and swung >= 0.5 * len(windows)
+
+
+def analyze_batch(folder: str | os.PathLike[str], min_delta: float = 1.5,
+                  persistence: int = 12, prefer_map_bpm: bool = True,
+                  min_confidence: float = 0.75, force_subdivision: float = 0.0,
+                  refine_beats: bool = True, progress=None,
+                  engine: str = "auto") -> list[dict]:
+    """Analyze every audio file in a folder; one bad file never stops the rest.
+
+    Phase 8 batch entry point (single flat folder — osu! song folders are
+    flat, and so is this). Each row is plain JSON types: ``{"file", "ok",
+    "global_bpm", "points", "duration", "error"}`` with the file's basename,
+    sorted by name so two runs print the same table.
+    """
+    root = Path(folder)
+    if not root.is_dir():
+        raise ValueError(f"{root} is not a folder.")
+    try:
+        names = sorted(p.name for p in root.iterdir()
+                       if p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS)
+    except OSError as exc:
+        raise ValueError(f"Could not list {root}: {exc}") from exc
+    rows: list[dict] = []
+    for name in names:
+        try:
+            analysis = analyze_audio(str(root / name), min_delta, persistence,
+                                     prefer_map_bpm, min_confidence, progress,
+                                     force_subdivision, refine_beats, engine)
+        except (ValueError, RuntimeError, OSError) as exc:
+            rows.append({"file": name, "ok": False, "global_bpm": 0.0,
+                         "points": 0, "duration": 0.0, "error": str(exc)})
+            continue
+        rows.append({"file": name, "ok": True,
+                     "global_bpm": round(float(analysis.global_bpm), 4),
+                     "points": len(analysis.points),
+                     "duration": round(float(analysis.duration), 2), "error": ""})
+    return rows
+
+
+def rebuild_with_subdivision(analysis: Analysis, factor: float,
+                             min_delta: float = 1.5, persistence: int = 12,
+                             min_confidence: float = 0.75) -> Analysis:
+    """Re-resolve an existing analysis at another pulse octave, no re-analysis.
+
+    Powers the GUI "×2 / ÷2" quick fix. With a precision analysis this is exact
+    — the fitted grids are simply read at a different beat rate. With the
+    fallback tracker's, the beats it tracked are split or thinned again and
+    finished by the analysis's own steps (_tracker_result), so a rebuild at
+    the analysis's own pulse gives the analysis back. Raises ``ValueError``
+    for an unsupported factor or an analysis with no stored grid.
+    """
+    if float(factor) not in ALLOWED_FACTORS:
+        raise ValueError(f"Subdivision factor must be one of {sorted(ALLOWED_FACTORS)}.")
+    factor = float(factor)
+    if getattr(analysis, "local_tempo", False):
+        return _rescale_local(analysis, factor)
+    if analysis.sections:
+        fit = {"times": analysis.attack_times, "weights": analysis.attack_weights,
+               "env": analysis.onset, "sections": analysis.sections,
+               "meter": analysis.meter, "meter_beats": analysis.meter_beats,
+               "downbeat": analysis.downbeat_class,
+               "first_sound": _first_on_grid(analysis.attack_times, analysis.sections[0])}
+        rebuilt = _assemble_analysis(analysis.source, np.zeros(1), analysis.sample_rate,
+                                     fit, min_delta, persistence, min_confidence, factor)
+        return Analysis(analysis.source, analysis.duration, rebuilt.beats,
+                        rebuilt.local_bpms, rebuilt.points, rebuilt.hop_length,
+                        rebuilt.sample_rate, factor,
+                        rebuilt.global_bpm, rebuilt.stability, rebuilt.meter,
+                        rebuilt.onset, rebuilt.base_frames, rebuilt.attack_times,
+                        rebuilt.attack_weights, rebuilt.sections, rebuilt.meter_beats,
+                        rebuilt.downbeat_class, rebuilt.fit_residual_ms, "precision")
+    if analysis.base_frames is None or len(analysis.base_frames) < 4:
+        raise ValueError("This analysis has no stored beat grid to rebuild from.")
+    rebuilt = _tracker_result(analysis.source, analysis.duration, analysis.onset,
+                              analysis.base_frames, analysis.sample_rate,
+                              analysis.hop_length, factor,
+                              float(getattr(analysis, "auto_subdivision", 0.0)),
+                              min_delta, persistence, min_confidence,
+                              bool(getattr(analysis, "refine_beats", True)))
+    # There is no audio here to read the lag on, so the song's own moves the
+    # new beats; a rebuild's beats, read on the audio, lag within 2.5 ms of it.
+    return _moved_by(rebuilt, float(getattr(analysis, "beat_shift_s", 0.0)))
+
+
+# ---------------------------------------------------------------------------
+# Exports
+# ---------------------------------------------------------------------------
+
+def export_csv(analysis: Analysis, destination: str | os.PathLike[str]) -> None:
+    """The red lines as the table, .osu, .osz and click track have them: snapped."""
+    with open(destination, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["offset_ms", "bpm", "beat_index", "confidence"])
+        writer.writerows((f"{p.offset_ms:.3f}", f"{p.bpm:.6f}", p.beat_index, f"{p.confidence:.3f}")
+                         for p in snap_timing_points(analysis.points))
+
+
+# ---------------------------------------------------------------------------
+# The same timing for the other rhythm games
+# ---------------------------------------------------------------------------
+#
+# Both write the red lines and nothing else: Overtone has no notes for those
+# games, and timing is the part that transfers. Both are checked the only way
+# they can be checked from here — `timing_beat_times` re-derives the beats
+# from what was written and compares them against the grid osu! would play
+# (see `verify_export`). That catches a sign, a unit or a beat-accumulation
+# error, which are the mistakes worth catching; it cannot promise a game
+# accepts the file, and nothing here claims it does.
+
+
+def _export_lines(analysis: "Analysis") -> list[tuple[float, float]]:
+    """The red lines an export writes: snapped, finite, in time order."""
+    lines = [(float(p.offset_ms), float(p.bpm))
+             for p in snap_timing_points(list(getattr(analysis, "points", None) or []))
+             if np.isfinite(p.offset_ms) and np.isfinite(p.bpm) and p.bpm > 0]
+    return sorted(lines)
+
+
+def quaver_timing_text(analysis: "Analysis", decimals: int = 0) -> str:
+    """The red lines as a Quaver ``.qua`` ``TimingPoints:`` block.
+
+    Quaver's file is YAML and its timing points carry an absolute
+    ``StartTime`` in milliseconds and a ``Bpm``, which is exactly what a red
+    line is — so the conversion is a change of spelling, not of units, and
+    nothing can be lost in it. A point at or before zero is kept: Quaver
+    allows a negative StartTime, as osu! does.
+    """
+    lines = _export_lines(analysis)
+    if not lines:
+        raise ValueError("No timing to export.")
+    rows = [f"# Generated by Overtone v{APP_VERSION}", "TimingPoints:"]
+    for offset_ms, bpm in lines:
+        offset = (f"{offset_ms:.{int(decimals)}f}" if decimals > 0
+                  else str(int(round(offset_ms))))
+        rows.append(f"- StartTime: {offset}")
+        rows.append(f"  Bpm: {bpm:.6f}".rstrip("0").rstrip("."))
+    return "\n".join(rows) + "\n"
+
+
+#: Decimals StepMania's tags are written with. Both are floats in the format
+#: and most hand-written files use three, but three decimals of a BPM is a
+#: coarser grid than this engine fits: on the pinned readings, rounding the
+#: BPM there alone walked a chart up to 3.7 ms off its own beats over an hour
+#: of them. Six costs a few bytes and puts that under a microsecond.
+STEPMANIA_DECIMALS = 6
+
+
+def stepmania_timing_text(analysis: "Analysis", decimals: int = STEPMANIA_DECIMALS) -> str:
+    """The red lines as StepMania's ``#OFFSET`` and ``#BPMS`` tags.
+
+    StepMania counts from **beat 0**, which is the first red line, and states
+    where that beat sits with ``#OFFSET`` — in seconds, and **negated**: a
+    first beat 1.234 s into the audio is written ``#OFFSET:-1.234000``, which
+    is why real files carry negative offsets. Every later change is then a
+    ``beat=bpm`` pair, the beat counted forward through the tempi before it,
+    so a tempo change 30 s into a 150 BPM song is beat 75, not second 30.
+    Both are where a conversion goes wrong, and both are re-derived and
+    checked by :func:`verify_export`.
+    """
+    lines = _export_lines(analysis)
+    if not lines:
+        raise ValueError("No timing to export.")
+    first_ms = lines[0][0]
+    pairs, beat = [], 0.0
+    for i, (offset_ms, bpm) in enumerate(lines):
+        if i:
+            previous_ms, previous_bpm = lines[i - 1]
+            beat += (offset_ms - previous_ms) / (60000.0 / previous_bpm)
+        pairs.append(f"{beat:.{int(decimals)}f}={bpm:.{int(decimals)}f}")
+    return (f"// Generated by Overtone v{APP_VERSION}\n"
+            f"#OFFSET:{-first_ms / 1000.0:.{int(decimals)}f};\n"
+            "#BPMS:" + "\n,".join(pairs) + ";\n")
+
+
+def _quaver_points(text: str) -> list[tuple[float, float]]:
+    """The (offset_ms, bpm) a ``.qua`` states, from its ``TimingPoints:``.
+
+    Read with the block in mind rather than by hunting for field names:
+    ``SliderVelocities:`` holds entries with a ``StartTime`` of their own, and
+    a reader that took every ``StartTime`` it saw would import the scroll
+    changes as tempo. A top-level key ends the block; a point with no ``Bpm``
+    is skipped rather than guessed at.
+    """
+    points, inside, start, bpm = [], False, None, None
+
+    def keep() -> None:
+        if start is not None and bpm is not None:
+            points.append((start, bpm))
+
+    for raw in text.replace("\r\n", "\n").split("\n"):
+        line = raw.split("#", 1)[0] if raw.lstrip().startswith("#") else raw
+        stripped = line.strip()
+        if line[:1] not in (" ", "\t", "-", "") and ":" in line:
+            if inside:
+                keep()
+                start = bpm = None
+            inside = line.split(":", 1)[0].strip() == "TimingPoints"
+            continue
+        if not inside or not stripped:
+            continue
+        if stripped.startswith("- "):
+            keep()
+            start = bpm = None
+            stripped = stripped[2:].strip()
+        for key, value in (part.split(":", 1) for part in [stripped] if ":" in part):
+            name, text_value = key.strip(), value.strip()
+            try:
+                if name == "StartTime":
+                    start = float(text_value)
+                elif name == "Bpm":
+                    bpm = float(text_value)
+            except ValueError:
+                pass
+    keep()
+    return sorted(p for p in points if np.isfinite(p[0]) and np.isfinite(p[1]) and p[1] > 0)
+
+
+def _stepmania_points(text: str) -> list[tuple[float, float]]:
+    """The same for StepMania's tags, undoing the offset's sign and turning
+    its beat numbers back into times.
+
+    ``//`` comments are dropped first, and only the **first** ``#OFFSET`` and
+    ``#BPMS`` are read: a ``.ssc`` may repeat both per chart after
+    ``#NOTEDATA``, and those belong to one difficulty, not to the song.
+
+    A rate that cannot be played — zero, negative (StepMania's warps) or not
+    a number — raises rather than being dropped. Here the times are
+    **accumulated** through the tempi before them, so a pair thrown away does
+    not just lose itself: every beat after it lands somewhere else. Quaver
+    states each time absolutely, so there a bad point costs only itself.
+    """
+    body = "\n".join(line.split("//", 1)[0] for line in text.replace("\r\n", "\n").split("\n"))
+    offset_s, pairs = 0.0, []
+    seen_offset = seen_bpms = False
+    for tag in body.split("#"):
+        name, _, rest = tag.partition(":")
+        if name.strip().upper() == "OFFSET" and not seen_offset:
+            try:
+                offset_s = float(rest.split(";")[0].strip())
+                seen_offset = True
+            except ValueError:
+                pass
+        elif name.strip().upper() == "BPMS" and not seen_bpms:
+            seen_bpms = True
+            for pair in rest.split(";")[0].replace("\n", "").split(","):
+                if "=" not in pair:
+                    continue
+                at, _, bpm = pair.partition("=")
+                try:
+                    beat, rate = float(at), float(bpm)
+                except ValueError:
+                    raise ValueError(f"#BPMS holds {pair.strip()!r}, which is not "
+                                     "a beat and a rate.") from None
+                if not (np.isfinite(beat) and np.isfinite(rate) and rate > 0):
+                    raise ValueError(
+                        f"#BPMS sets {rate} BPM at beat {beat}: beats are counted through "
+                        "the rates before them, so nothing after that can be placed.")
+                pairs.append((beat, rate))
+    pairs.sort()
+    points, time_ms = [], -offset_s * 1000.0
+    for i, (beat, bpm) in enumerate(pairs):
+        if i:
+            previous_beat, previous_bpm = pairs[i - 1]
+            time_ms += (beat - previous_beat) * (60000.0 / previous_bpm)
+        points.append((time_ms, bpm))
+    return points
+
+
+#: What `read_timing_file` reads, by the extension it reads it from.
+TIMING_FORMATS = {".qua": "quaver", ".sm": "stepmania", ".ssc": "stepmania"}
+#: A timing file is tags and numbers; anything this size is not one.
+MAX_TIMING_BYTES = 16 * 1024 * 1024
+
+
+def read_timing_file(path: str | os.PathLike[str]) -> dict:
+    """Another game's timing, as the red lines it states.
+
+    The counterpart of :func:`quaver_timing_text` and
+    :func:`stepmania_timing_text`, and the same conventions in reverse: a
+    ``.sm``'s beat numbers become times through the tempi before them, and its
+    negated ``#OFFSET`` becomes where the first line sits. The result carries
+    ``timing.reds``, which is the shape :func:`grade_reference_timing` already
+    grades, so an imported chart is compared with the song exactly as an
+    ``.osu`` is. Reading only: nothing is written and no BPM is changed.
+    """
+    target = Path(path)
+    kind = TIMING_FORMATS.get(target.suffix.lower())
+    if kind is None:
+        raise ValueError(f"{target.name}: not a timing file this reads "
+                         f"({', '.join(sorted(TIMING_FORMATS))}).")
+    if not target.is_file():
+        raise ValueError(f"{target} is not a file.")
+    if target.stat().st_size > MAX_TIMING_BYTES:
+        raise ValueError(f"{target.name} is too large to be a timing file.")
+    text = target.read_bytes().decode("utf-8", errors="replace")
+    points = (_quaver_points if kind == "quaver" else _stepmania_points)(text)
+    if not points:
+        raise ValueError(f"{target.name}: no timing found in it.")
+    # Not "format": read_osu_beatmap already uses that for the .osu file
+    # version, and both dicts reach the same grading and the same bridge.
+    return {"timing_format": kind, "file": target.name, "path": str(target),
+            "timing": {"reds": [[round(offset, 3), bpm] for offset, bpm in points]},
+            "hitobjects": []}
+
+
+def verify_export(analysis: "Analysis", text: str, kind: str, beats: int = 4000) -> dict:
+    """Re-derive a written export's grid and compare it with Overtone's.
+
+    The one check available offline: the file says where every beat falls,
+    and so does the analysis, so the two must agree. A flipped ``#OFFSET``
+    sign, a beat counted as a second, or a tempo change placed at the wrong
+    beat all move a beat far further than a rounding does. It says nothing
+    about whether the game parses the file — no game has opened one.
+
+    Each red line is compared **against its own counterpart**, over its own
+    beats, rather than beat number against beat number across the whole song:
+    a line rounded half a millisecond earlier can otherwise fit one more beat
+    before the next one, and every beat after that is compared with its
+    neighbour, which reads as a whole beat of error where there is half a
+    millisecond of it.
+    """
+    readers = {"quaver": _quaver_points, "stepmania": _stepmania_points}
+    if kind not in readers:
+        raise ValueError(f"Unknown export: {kind}")
+    ours = _export_lines(analysis)
+    try:
+        theirs = readers[kind](text)
+    except ValueError as exc:
+        # A check reports; it does not raise because what it read is broken.
+        return {"ok": False, "lines": len(ours), "read_back": 0, "worst_ms": None,
+                "worst_bpm": None, "kind": kind, "detail": str(exc)}
+    if not ours or len(theirs) != len(ours):
+        return {"ok": False, "lines": len(ours), "read_back": len(theirs),
+                "worst_ms": None, "worst_bpm": None, "kind": kind}
+    worst_ms = worst_bpm = 0.0
+    per_line = max(1, beats // len(ours))
+    for (our_ms, our_bpm), (their_ms, their_bpm) in zip(ours, theirs):
+        worst_bpm = max(worst_bpm, abs(our_bpm - their_bpm))
+        for k in range(per_line):
+            worst_ms = max(worst_ms, abs((our_ms + k * 60000.0 / our_bpm)
+                                         - (their_ms + k * 60000.0 / their_bpm)))
+    return {"ok": worst_ms <= 1.0, "lines": len(ours), "read_back": len(theirs),
+            "worst_ms": round(worst_ms, 6), "worst_bpm": round(worst_bpm, 9),
+            "beats_per_line": per_line, "kind": kind}
+
+
+#: Beats one red line may click before the schedule gives up on it: a guard
+#: against a hand-typed BPM in the thousands, not a limit any song reaches.
+MAX_CLICKS_PER_LINE = 20000
+
+
+#: Click levels: the first beat of a bar, any other beat, a subdivision.
+CLICK_BAR, CLICK_BEAT, CLICK_SUB = 2, 1, 0
+#: Subdivisions a click may add between beats (1 = beats only).
+CLICK_SUBDIVISIONS = (1, 2, 3, 4)
+
+
+def click_schedule(analysis: Analysis, duration: float | None = None,
+                   subdivision: int = 1, accent: bool = True) -> list[tuple[float, int]]:
+    """Every metronome click the red lines imply, as ``(seconds, level)``.
+
+    One source for the exported click track and the app's live click, so what
+    is heard in the app is what the WAV holds. Each red line clicks from its
+    offset up to, not onto, the next line: the next line clicks its own first
+    beat. It used to click onto it too, so every change of tempo clicked twice
+    (at once when the change fell on the old grid, milliseconds apart when it
+    did not). The first beat of a bar is ``CLICK_BAR`` (unless ``accent`` is
+    off), on the line's own bar when it proved one, else on the song's meter
+    (audit F-03: a waltz must not click in 4). ``subdivision`` adds that many
+    evenly spaced ``CLICK_SUB`` clicks per beat, 2 for eighths, 4 for sixteenths.
+    """
+    if subdivision not in CLICK_SUBDIVISIONS:
+        raise ValueError(f"Click subdivision must be one of {CLICK_SUBDIVISIONS}.")
+    points = snap_timing_points(list(getattr(analysis, "points", None) or []))
+    if duration is None:
+        duration = float(min(max(analysis.duration, 1.0), MAX_CLICK_SECONDS))
+    clicks: list[tuple[float, int]] = []
+    for s, point in enumerate(points):
+        if not np.isfinite(point.bpm) or point.bpm <= 0 or not np.isfinite(point.offset_ms):
+            continue
+        start = point.offset_ms / 1000.0
+        last = s + 1 == len(points)
+        end = duration if last else points[s + 1].offset_ms / 1000.0
+        beat_len = 60.0 / point.bpm
+        bar = 4
+        if getattr(point, "meter_known", False):
+            bar = max(1, int(getattr(point, "meter", 4) or 4))
+        else:
+            try:
+                bar = max(1, min(16, int(str(getattr(analysis, "meter", "4/4")).split("/")[0])))
+            except (ValueError, TypeError):
+                bar = 4
+        for k in range(MAX_CLICKS_PER_LINE * subdivision):
+            t = start + k * beat_len / subdivision
+            # The song's last line clicks to the end of the audio, inclusive.
+            if (t > end + 1e-6) if last else (t >= end - 1e-6):
+                break
+            if k % subdivision:
+                level = CLICK_SUB
+            elif accent and (k // subdivision) % bar == 0:
+                level = CLICK_BAR
+            else:
+                level = CLICK_BEAT
+            clicks.append((t, level))
+    return clicks
+
+
+def export_click_track(analysis: Analysis, destination: str | os.PathLike[str],
+                       sr: int = 44100, subdivision: int = 1, accent: bool = True) -> None:
+    """Write a metronome WAV aligned to the detected red lines.
+
+    Import it as a second track (or whistle-test it against the song) to
+    *hear* whether the timing map drifts. The bar's first beat is the high
+    tone, other beats the middle one, subdivisions a soft low one.
+    """
+    if not analysis.points:
+        raise ValueError("Analyze audio first — there are no timing points.")
+    if not 8000 <= sr <= 192000:
+        raise ValueError("Click-track sample rate must be between 8 and 192 kHz.")
+    # Checked before rendering, in words: soundfile raised a TypeError for an
+    # unknown extension and "System error." for a missing folder, and only
+    # after a long click track had been built.
+    target = Path(destination)
+    if not sf.check_format(target.suffix.lstrip(".").upper() or "?"):
+        raise ValueError(f"{target.name}: give the click track a sound file extension such as .wav.")
+    if not target.parent.is_dir():
+        raise ValueError(f"Folder not found: {target.parent}")
+    duration = float(min(max(analysis.duration, 1.0), MAX_CLICK_SECONDS))
+    total = int((duration + 1.0) * sr)
+    click = np.zeros(total, dtype=np.float32)
+    # Pre-render both clicks once: rebuilding them per beat costs more than the
+    # rest of the export put together on a long map.
+    length = max(1, int(0.045 * sr))
+    decay = np.exp(-np.arange(length) / (0.008 * sr))
+    steps = np.arange(length) / sr
+    # The app's live click uses the same three tones and levels.
+    tones = {CLICK_BAR: (np.sin(2 * np.pi * 2093.0 * steps) * decay).astype(np.float32),
+             CLICK_BEAT: (np.sin(2 * np.pi * 1568.0 * steps) * decay * 0.7).astype(np.float32),
+             CLICK_SUB: (np.sin(2 * np.pi * 1318.5 * steps) * decay * 0.4).astype(np.float32)}
+
+    for time_s, level in click_schedule(analysis, duration, subdivision, accent):
+        idx = int(time_s * sr)
+        if not 0 <= idx < total:
+            continue
+        tone = tones[level]
+        end = min(total, idx + length)
+        click[idx:end] += tone[:end - idx]
+    peak = float(np.max(np.abs(click)))
+    if peak > 1e-9:
+        click = (click / peak * 0.9).astype(np.float32)
+    sf.write(destination, click, sr)
+
+
+#: How far export snapping may move a detected red line onto the previous
+#: grid. Measured: the precision engine's section changes sit 0.005-0.026 ms
+#: off it (rounding noise, the only thing snapping is for). The old tolerance,
+#: a quarter beat, moved the fallback tracker's red lines by up to 75 ms on a
+#: real song and hand-placed ones by up to a quarter beat.
+SNAP_TOLERANCE_MS = 1.0
+
+
+def snap_timing_points(points: list[TimingPoint]) -> list[TimingPoint]:
+    """Remove rounding noise between a tempo change and the previous grid.
+
+    osu! continues a red-line grid until the next red line. When a detected
+    change sits within SNAP_TOLERANCE_MS of a beat of the preceding section,
+    it is placed exactly on it, so the grids join without a sub-millisecond
+    phase step. Anything further off is where the music put it and stays.
+    Points the mapper placed or edited are never moved, and a detected point
+    is never pulled onto the grid of one they moved.
+    """
+    if not points:
+        return []
+    snapped = [points[0]]
+    for point in points[1:]:
+        previous = snapped[-1]
+        if previous.bpm <= 0 or point.manual or previous.manual:
+            snapped.append(point)
+            continue
+        beat_length = 60000.0 / previous.bpm
+        beat_count = max(1, round((point.offset_ms - previous.offset_ms) / beat_length))
+        offset = previous.offset_ms + beat_count * beat_length
+        # The v3 engine fits every section on its own attacks, so its offsets
+        # are already exact. Only nudge one onto the previous grid when the two
+        # nearly agree — a large "correction" means the change genuinely does
+        # not fall on the old grid, and moving it there would invent an error.
+        if abs(offset - point.offset_ms) > SNAP_TOLERANCE_MS:
+            snapped.append(point)
+            continue
+        # Carry the bar across: rebuilding a point without it silently
+        # reset every section to 'unknown', so the per-section meter
+        # never reached the .osu or the click track.
+        snapped.append(TimingPoint(offset, point.bpm, point.confidence,
+                                   point.beat_index, point.meter, point.meter_known))
+    return snapped
+
+
+#: How far before the sound ranked maps put their red lines (10.0a): the
+#: median signed distance from a map's red line to Overtone's grid, fitted on
+#: the dev songs of the three Songs-folder stages (bench/stages.py,
+#: 2026-10-23: 27.6 ms pooled; 28.0 / 26.4 / 25.0 by stage), never in the
+#: engine -- only on what is written for osu! (with_map_lead). Held out, the
+#: map's first red line within 5 ms of the written one: anime one tempo
+#: 1.7 -> 41.9 %, anime tempo changes 1.9 -> 35.3 %, bands 0.5 -> 34.8 %.
+MAP_LEAD_MS = 28.0
+
+
+def with_map_lead(analysis: Analysis, lead_ms: float = MAP_LEAD_MS) -> Analysis:
+    """The analysis as osu! maps are timed: every detected red line moved
+    ``lead_ms`` earlier. Lines the user placed or edited (``manual``) stay
+    where they are; the grid, BPMs and meters are untouched, and nothing in
+    the analysis itself changes."""
+    if not lead_ms or not getattr(analysis, "points", None):
+        return analysis
+    points = [p if getattr(p, "manual", False) else replace(p, offset_ms=p.offset_ms - lead_ms)
+              for p in analysis.points]
+    return replace(analysis, points=points)
+
+
+def osu_timing_text(analysis: Analysis, decimals: int = 0) -> str:
+    """Return uninherited (red) timing points ready for an .osu [TimingPoints].
+
+    Offsets are whole milliseconds by default: that is what the .osu format
+    specifies and what osu!stable writes, and the fit is sub-millisecond, so
+    rounding costs at most 0.5 ms. Pass ``decimals`` to keep the fractional part
+    for tools that accept it (osu!lazer does).
+    """
+    # osu! only guarantees comments on their own lines. Do not append a human
+    # annotation after the Effects field: some parsers treat it as invalid.
+    rows = ["// Generated by Overtone v" + APP_VERSION]
+    try:
+        fallback = max(1, min(16, int(str(getattr(analysis, "meter", "4/4")).split("/")[0])))
+    except (ValueError, TypeError):
+        fallback = 4
+    for p in snap_timing_points(list(getattr(analysis, "points", None) or [])):
+        if not np.isfinite(p.bpm) or p.bpm <= 0 or not np.isfinite(p.offset_ms):
+            continue
+        beat_length = 60000.0 / p.bpm
+        offset = (f"{p.offset_ms:.{int(decimals)}f}" if decimals > 0
+                  else str(int(round(p.offset_ms))))
+        # Each point carries the bar its own section proved. A song that moves
+        # to 3/4 for a bridge used to get the first section's meter written
+        # into every line.
+        #
+        # A point that does *not* know its own bar — a hand-added one, or a
+        # section whose accents proved nothing — falls back to the analysis
+        # meter rather than to a hard-coded 4. Writing 4 over a detected 3/4
+        # would be inventing information the engine did not have.
+        meter = fallback
+        if getattr(p, "meter_known", False):
+            meter = max(1, min(16, int(getattr(p, "meter", fallback) or fallback)))
+        rows.append(f"{offset},{beat_length:.12f},{meter},1,0,100,1,0")
+    return "\n".join(rows)
+
+
+def analysis_evidence(analysis: Analysis) -> dict:
+    """The engine's alternatives for one analysis (Phase 19, Evidence).
+
+    Read only. Per settled section: its BPM, residual, coverage and inliers,
+    plus the coherence candidates the seed search read — each with its BPM
+    and coherence, the seeding one marked — the octave margin (seeded
+    coherence minus the strongest coherence an octave away, halves and
+    doubles within 3 %), and the half/double readings themselves when the
+    sweep saw them. The margin is the number the octave decision stood on,
+    not a retelling of it. Legacy analyses keep no attacks, so they report
+    that instead of inventing alternatives. Plain JSON types.
+    """
+    times = np.asarray(getattr(analysis, "attack_times", []), dtype=np.float64)
+    weights = np.asarray(getattr(analysis, "attack_weights", []), dtype=np.float64)
+    if times.size == 0 or weights.size != times.size:
+        return {"engine": analysis.engine, "sections": [],
+                "note": "no_attacks"}
+    out = []
+    for section in getattr(analysis, "sections", []):
+        window = ((times >= section.start_s - section.period)
+                  & (times <= section.end_s + section.period))
+        found = _atomic_grid_candidates(times[window], weights[window])
+        candidates = [{"bpm": round(60.0 / period, 4), "coherence": round(coherence, 4)}
+                      for period, _phase, coherence in found]
+        seeded = -1
+        if candidates and section.bpm > 0:
+            seeded = min(range(len(found)),
+                         key=lambda i: abs(np.log((60.0 / found[i][0]) / section.bpm)))
+        halves = [c for c in candidates
+                  if abs(c["bpm"] / (section.bpm / 2) - 1) <= 0.03] if section.bpm > 0 else []
+        doubles = [c for c in candidates
+                   if abs(c["bpm"] / (section.bpm * 2) - 1) <= 0.03] if section.bpm > 0 else []
+        octave = halves + doubles
+        margin = None
+        if candidates and seeded >= 0 and octave:
+            margin = round(candidates[seeded]["coherence"]
+                           - max(c["coherence"] for c in octave), 4)
+        out.append({"start_s": round(float(section.start_s), 3),
+                    "end_s": round(float(section.end_s), 3),
+                    "bpm": round(float(section.bpm), 4),
+                    "residual_ms": round(float(section.residual_ms), 3),
+                    "coverage": round(float(section.coverage), 4),
+                    "inliers": int(section.inliers),
+                    "candidates": candidates, "seeded": seeded,
+                    "octave_margin": margin,
+                    "half": max(halves, key=lambda c: c["coherence"]) if halves else None,
+                    "double": max(doubles, key=lambda c: c["coherence"]) if doubles else None})
+    return {"engine": analysis.engine,
+            "residual_ms": round(float(analysis.fit_residual_ms), 3),
+            "sections": out}
+
+
+def analysis_report(analysis: Analysis) -> dict:
+    """Machine-readable report (CLI --json, Phase 8).
+
+    Snapped points — what the exporters write — plus the validation findings,
+    all plain JSON types.
+    """
+    return {
+        "source": str(getattr(analysis, "source", "")),
+        "duration": float(analysis.duration),
+        "global_bpm": float(analysis.global_bpm),
+        "stability": float(analysis.stability),
+        "meter": analysis.meter,
+        "engine": analysis.engine,
+        "subdivision": float(analysis.subdivision),
+        "residual_ms": float(analysis.fit_residual_ms),
+        "points": [{"offset_ms": p.offset_ms, "bpm": p.bpm,
+                    "confidence": p.confidence, "meter": p.meter,
+                    "meter_known": bool(p.meter_known)}
+                   for p in snap_timing_points(analysis.points)],
+        "findings": validate_timing_points(analysis),
+    }
+
+
+def analysis_summary(analysis: Analysis) -> str:
+    """One-page human-readable report (CLI --stats and GUI details)."""
+    lines = [
+        f"Source:      {analysis.source}",
+        f"Duration:    {analysis.duration:.2f} s   •   {len(analysis.beats)} beats",
+        f"Global BPM:  {analysis.global_bpm:.2f}   •   meter {analysis.meter}   •   pulse x{analysis.subdivision}",
+        f"Stability:   {analysis.stability:.0%}   •   sections {len(analysis.points)}",
+        f"Engine:      {analysis.engine}   •   grid residual {analysis.fit_residual_ms:.2f} ms",
+        "",
+        f"{'#':>3}  {'offset_ms':>10}  {'bpm':>10}  {'beat_len':>9}  {'conf':>6}",
+    ]
+    for i, p in enumerate(snap_timing_points(analysis.points), 1):
+        beat_len = 60000.0 / p.bpm if p.bpm > 0 else float("nan")
+        lines.append(f"{i:>3}  {p.offset_ms:10.1f}  {p.bpm:10.4f}  {beat_len:9.2f}  {p.confidence:6.0%}")
+    suggestions = suggest_section_pulse(analysis)
+    if suggestions:
+        lines.append("")
+        lines.append("Pulse suggestions (select the section, then 2× § / ÷2 §):")
+        for idx, factor, ratio in suggestions:
+            lines.append(f"  §{idx + 1}: try ×{factor} (off-beat support {ratio:.0%})")
+    findings = validate_timing_points(analysis)
+    if findings:
+        lines.append("")
+        lines.append("Validation (check by ear):")
+        for finding in findings:
+            where = f"§{finding['index'] + 1}" if finding["index"] >= 0 else "song"
+            lines.append(f"  {finding['level']:5} {where}: {_finding_text(finding)}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Validation findings (Phase 7, first row)
+# ---------------------------------------------------------------------------
+
+#: Two red lines this close (in units of the governing beat) cannot both sit
+#: on downbeats: one of them is a duplicate.
+DUPLICATE_BEATS = 1.0
+#: A section shorter than one bar is suspicious but possible (fills, pickups).
+MIN_BEATS_PER_SECTION = 4.0
+#: Past this adjacent-section ratio the change is a detection error, not music.
+IMPOSSIBLE_RATIO = 4.0
+#: Within this band of x2 (or /2, in log2 space — octaves live there) the
+#: octave is a human judgement call, and the finding says exactly that: it
+#: never asserts which side is right.
+OCTAVE_BAND_LOG = 0.15
+#: A first red line this far after the first beat leaves the intro untimed.
+LATE_FIRST_LINE_S = 2.0
+
+
+def validate_timing_points(analysis: Analysis) -> list[dict]:
+    """Findings a mapper should review by ear before trusting the red lines.
+
+    Pure Phase 7, first row: duplicate points, very short sections, impossible
+    changes, suspicious offsets, octave mistakes. Operates on the *snapped*
+    points — what the exporters write — so a finding names the line the mapper
+    actually sees. Each finding is ``{"level", "key", "index", "values"}`` with
+    plain JSON types; ``index`` is the governing point, -1 for song-level.
+    Levels: ``error`` (the map is wrong), ``warn`` (check it), ``info`` (a
+    judgement call, stated as one). An empty map has no findings, and findings
+    never raise: validation must not break on the input it is checking.
+    """
+    try:
+        points = snap_timing_points(list(getattr(analysis, "points", None) or []))
+    except Exception:
+        return []
+    if not points:
+        return []
+    try:
+        duration = float(getattr(analysis, "duration", 0.0) or 0.0)
+        beats = np.asarray(getattr(analysis, "beats", []), dtype=np.float64)
+        first_beat = float(beats[0]) if beats.size else 0.0
+    except (TypeError, ValueError):
+        duration, first_beat = 0.0, 0.0
+
+    findings: list[dict] = []
+
+    def err(key: str, index: int, values: dict | None = None) -> None:
+        findings.append({"level": "error", "key": key, "index": index,
+                         "values": values or {}})
+
+    def warn(key: str, index: int, values: dict | None = None) -> None:
+        findings.append({"level": "warn", "key": key, "index": index,
+                         "values": values or {}})
+
+    def info(key: str, index: int, values: dict | None = None) -> None:
+        findings.append({"level": "info", "key": key, "index": index,
+                         "values": values or {}})
+
+    for n, point in enumerate(points):
+        offset = getattr(point, "offset_ms", float("nan"))
+        bpm = getattr(point, "bpm", float("nan"))
+        try:
+            bad = not (np.isfinite(offset) and np.isfinite(bpm))
+        except TypeError:
+            bad = True
+        if bad or bpm <= 0:
+            err("bad_number", n)
+            continue
+        if offset < 0:
+            err("negative_offset", n, {"ms": f"{offset:.1f}"})
+        elif duration > 0 and offset / 1000.0 > duration + 0.001:
+            warn("past_end", n, {"ms": f"{offset:.1f}"})
+        if n == 0 and first_beat > 0 and offset / 1000.0 - first_beat > LATE_FIRST_LINE_S:
+            warn("late_first", n, {"line": f"{offset / 1000.0:.1f}",
+                                   "beat": f"{first_beat:.1f}"})
+
+    for n in range(1, len(points)):
+        prev, point = points[n - 1], points[n]
+        if prev.bpm <= 0 or not np.isfinite(prev.bpm) or not np.isfinite(point.bpm):
+            continue
+        gap_ms = point.offset_ms - prev.offset_ms
+        beat_ms = 60000.0 / prev.bpm
+        if gap_ms < DUPLICATE_BEATS * beat_ms:
+            err("dup_points", n, {"gap": f"{gap_ms:.1f}"})
+            continue
+        if gap_ms < MIN_BEATS_PER_SECTION * beat_ms:
+            warn("short_section", n - 1, {"beats": f"{gap_ms / beat_ms:.1f}"})
+        ratio = point.bpm / prev.bpm
+        if ratio >= IMPOSSIBLE_RATIO or ratio <= 1.0 / IMPOSSIBLE_RATIO:
+            err("impossible_change", n,
+                {"from": f"{prev.bpm:.2f}", "to": f"{point.bpm:.2f}"})
+        elif min(abs(float(np.log2(ratio)) - 1.0),
+                 abs(float(np.log2(ratio)) + 1.0)) <= OCTAVE_BAND_LOG:
+            info("octave_check", n,
+                 {"from": f"{prev.bpm:.2f}", "to": f"{point.bpm:.2f}"})
+
+    # The last section runs to the end of the song: it can be short too.
+    last = points[-1]
+    if last.bpm > 0 and np.isfinite(last.bpm) and duration > 0:
+        tail_beats = (duration - last.offset_ms / 1000.0) / (60.0 / last.bpm)
+        if 0 <= tail_beats < MIN_BEATS_PER_SECTION:
+            warn("short_section", len(points) - 1, {"beats": f"{tail_beats:.1f}"})
+    return findings
+
+
+def _finding_text(finding: dict) -> str:
+    """One human line per validation finding (CLI --stats, GUI details)."""
+    key, values = finding["key"], finding["values"]
+    if key == "dup_points":
+        return f"two red lines {values['gap']} ms apart — one is a duplicate"
+    if key == "short_section":
+        return f"section lasts {values['beats']} beats, less than a bar"
+    if key == "impossible_change":
+        return f"tempo {values['from']} → {values['to']} BPM is a detection error, not music"
+    if key == "octave_check":
+        return f"tempo {values['from']} → {values['to']} BPM: half-time or an octave mistake?"
+    if key == "negative_offset":
+        return f"offset {values['ms']} ms is before the audio starts"
+    if key == "bad_number":
+        return "no usable number — re-analyze or delete"
+    if key == "late_first":
+        return f"first red line at {values['line']} s, music starts at {values['beat']} s"
+    if key == "past_end":
+        return f"offset {values['ms']} ms is past the end of the audio"
+    return f"{key} {values}"
+
+
+# ---------------------------------------------------------------------------
+# Manual timing-point editing (pure helpers — GUI calls these)
+# ---------------------------------------------------------------------------
+
+def _nearest_beat_index(beats: np.ndarray, offset_ms: float) -> int:
+    if len(beats) == 0:
+        return 0
+    return int(np.argmin(np.abs(beats * 1000.0 - offset_ms)))
+
+
+def add_timing_point(points: list[TimingPoint], beats: np.ndarray,
+                     offset_ms: float, bpm: float) -> list[TimingPoint]:
+    """Insert a hand-placed point, keeping the list sorted by offset.
+
+    Hand-placed points carry confidence 1.0: the mapper — not the detector —
+    vouches for them. Raises ``ValueError`` on non-positive BPM.
+    """
+    if not np.isfinite(offset_ms) or not np.isfinite(bpm) or bpm <= 0:
+        raise ValueError("Offset must be finite and BPM positive.")
+    merged = list(points) + [TimingPoint(float(offset_ms), float(bpm), 1.0,
+                                         _nearest_beat_index(beats, offset_ms),
+                                         manual=True)]
+    merged.sort(key=lambda p: p.offset_ms)
+    return merged
+
+
+def update_timing_point(points: list[TimingPoint], beats: np.ndarray, index: int,
+                        offset_ms: float, bpm: float) -> list[TimingPoint]:
+    """Replace one point's offset/BPM (confidence preserved), re-sorted."""
+    if not 0 <= index < len(points):
+        raise ValueError("No timing point at that index.")
+    if not np.isfinite(offset_ms) or not np.isfinite(bpm) or bpm <= 0:
+        raise ValueError("Offset must be finite and BPM positive.")
+    old = points[index]
+    merged = list(points)
+    # Editing a point's offset or BPM does not change its time signature, so
+    # the bar it knows travels with it.
+    merged[index] = TimingPoint(float(offset_ms), float(bpm), old.confidence,
+                                _nearest_beat_index(beats, offset_ms),
+                                old.meter, old.meter_known, manual=True)
+    merged.sort(key=lambda p: p.offset_ms)
+    return merged
+
+
+def delete_timing_point(points: list[TimingPoint], index: int) -> list[TimingPoint]:
+    """Remove one point. The first point (section 1) cannot be deleted."""
+    if not 0 <= index < len(points):
+        raise ValueError("No timing point at that index.")
+    if index == 0:
+        raise ValueError("The first timing point anchors the map and cannot be deleted.")
+    return [p for n, p in enumerate(points) if n != index]
+
+
+def _shown_offset(points: list[TimingPoint], index: int) -> float:
+    """Where the table shows point ``index`` and the .osu writes it: a detected
+    line within SNAP_TOLERANCE_MS of the previous grid sits on that grid.
+
+    An edit makes a point hand-placed, and snapping skips those, so an edit
+    that starts from the raw offset moves the line by up to that tolerance
+    before doing what was asked: a -1 ms nudge on a line shown at 5000.0 but
+    detected at 5000.6 showed 4999.6 and still wrote 5000. Edits that keep a
+    line where it is, or move it by a step, start from here instead.
+    """
+    return snap_timing_points(points)[index].offset_ms
+
+
+def nudge_timing_point(points: list[TimingPoint], beats: np.ndarray, index: int,
+                       delta_ms: float) -> list[TimingPoint]:
+    """Shift one point's offset by ``delta_ms`` from where it is shown
+    (``_shown_offset``), beat index refreshed.
+
+    A nudge stops at 0 ms rather than carry a point from the audio into the
+    time before it. A point already before 0 ms (an anacrusis, or audio that
+    opens on its first beat) moves by exactly ``delta_ms``: clamping it too
+    turned a -1 ms nudge on a line at -20 ms into a +20 ms jump.
+    """
+    if not 0 <= index < len(points):
+        raise ValueError("No timing point at that index.")
+    old = points[index]
+    shown = _shown_offset(points, index)
+    offset = shown + delta_ms
+    if shown >= 0.0 > offset:
+        offset = 0.0
+    merged = list(points)
+    merged[index] = TimingPoint(offset, old.bpm, old.confidence,
+                                _nearest_beat_index(beats, offset),
+                                old.meter, old.meter_known, manual=True)
+    merged.sort(key=lambda p: p.offset_ms)
+    return merged
+
+
+#: The bar lengths the editor offers, in beats: the largest in 25,174 local
+#: maps is 16 (MAX_METER bounds what the reader accepts, not what a mapper sets).
+EDIT_METERS = range(1, 17)
+
+
+def set_meter(points: list[TimingPoint], index: int, meter: int) -> list[TimingPoint]:
+    """Change one red line's bar length, in beats, keeping its beat: the BPM
+    and the offset where it is shown (``_shown_offset``). The bars from it to
+    the next line are counted in the new length, and since the mapper said so
+    the meter is known from here on."""
+    if not 0 <= index < len(points):
+        raise ValueError("No timing point at that index.")
+    if isinstance(meter, bool) or int(meter) != meter or int(meter) not in EDIT_METERS:
+        raise ValueError(f"A bar holds {EDIT_METERS.start} to {EDIT_METERS.stop - 1} beats.")
+    old = points[index]
+    merged = list(points)
+    merged[index] = TimingPoint(_shown_offset(points, index), old.bpm, old.confidence,
+                                old.beat_index, int(meter), True, manual=True)
+    return merged
+
+
+def rescale_section(points: list[TimingPoint], index: int, factor: float) -> list[TimingPoint]:
+    """Multiply one section's BPM (per-section ×2/÷2 fix). The line stays
+    where it is shown (``_shown_offset``)."""
+    if not 0 <= index < len(points):
+        raise ValueError("No timing point at that index.")
+    if factor not in (0.5, 2.0):
+        raise ValueError("Section factor must be 2 or 1/2.")
+    old = points[index]
+    bpm = old.bpm * factor
+    if not 30 <= bpm <= 600:
+        raise ValueError(f"Resulting BPM {bpm:.1f} is outside 30–600.")
+    merged = list(points)
+    merged[index] = TimingPoint(_shown_offset(points, index), bpm, old.confidence,
+                                old.beat_index, old.meter, old.meter_known, manual=True)
+    return merged
+
+
+def _refit_section(times: np.ndarray, weights: np.ndarray, offset_ms: float, bpm: float,
+                   end_ms: float) -> dict:
+    """One section's beat refitted to the attacks it spans, its red line held.
+
+    The reference grading's fit (``_grade_span``), started from the section's
+    own grid: the BPM follows the attacks, never further than
+    ``REFERENCE_PERIOD_BAND`` from where it started. Fewer than
+    ``REFERENCE_MIN_ATTACKS`` attacks (``kept: "few"``), or a grid explaining
+    less than ``REFERENCE_MIN_SHARE`` of their weight (``kept: "weak"``),
+    keeps the BPM as it was and says why, instead of guessing.
+    """
+    start_s, beat_s, end_s = offset_ms / 1000.0, 60.0 / bpm, end_ms / 1000.0
+    # An attack up to half the finest subdivision early belongs to the line it opens.
+    slack = 0.5 * beat_s / max(REFERENCE_DIVISORS)
+    inside = (times >= start_s - slack) & (times < end_s - slack)
+    span_t, span_w = times[inside], weights[inside]
+    row = {"offset_ms": float(offset_ms), "bpm_before": float(bpm), "bpm": float(bpm),
+           "attacks": int(span_t.size), "share": None, "kept": None}
+    if span_t.size < REFERENCE_MIN_ATTACKS or end_s <= start_s:
+        row["kept"] = "few"
+        return row
+    graded = _grade_span(span_t, span_w, start_s, beat_s, end_s)
+    row["share"] = float(graded["share"])
+    if graded["share"] < REFERENCE_MIN_SHARE:
+        row["kept"] = "weak"
+        return row
+    row["bpm"] = float(graded["fitted_bpm"])
+    return row
+
+
+def split_section(points: list[TimingPoint], beats: np.ndarray, index: int, at_ms: float,
+                  attack_times, attack_weights, end_ms: float) -> tuple[list[TimingPoint], dict]:
+    """Split section ``index`` in two where a tempo changes inside it (editor).
+
+    The new red line goes on the beat of the section's own grid nearest
+    ``at_ms``, so the bars before it stay where they were; it must be a beat
+    or more after the section's line and before the next. Both halves are
+    then refitted to their attacks (``_refit_section``): the section keeps
+    its offset, the new line its place, each gets the BPM its attacks keep
+    or keeps the old one with the reason. Returns the new points and a
+    report of both halves.
+    """
+    if not 0 <= index < len(points):
+        raise ValueError("No timing point at that index.")
+    point, start = points[index], _shown_offset(points, index)
+    stop = _shown_offset(points, index + 1) if index + 1 < len(points) else float(end_ms)
+    beat_ms = 60000.0 / point.bpm
+    k = int(round((float(at_ms) - start) / beat_ms))
+    split_ms = start + k * beat_ms
+    if k < 1 or split_ms > stop - 0.5 * beat_ms:
+        raise ValueError("Split inside the section: a beat or more after its red line, "
+                         "before the next one.")
+    times = np.asarray(attack_times, dtype=np.float64)
+    weights = np.asarray(attack_weights, dtype=np.float64)
+    first = _refit_section(times, weights, start, point.bpm, split_ms)
+    second = _refit_section(times, weights, split_ms, point.bpm, stop)
+    merged = list(points)
+    merged[index] = TimingPoint(start, first["bpm"], point.confidence,
+                                point.beat_index, point.meter, point.meter_known, manual=True)
+    # A split on a beat need not be on a bar: the new line's meter is a guess.
+    merged.append(TimingPoint(split_ms, second["bpm"], 1.0, _nearest_beat_index(beats, split_ms),
+                              point.meter, False, manual=True))
+    merged.sort(key=lambda p: p.offset_ms)
+    return merged, {"split_ms": split_ms, "sections": [first, second]}
+
+
+def merge_sections(points: list[TimingPoint], beats: np.ndarray, index: int,
+                   attack_times, attack_weights, end_ms: float) -> tuple[list[TimingPoint], dict]:
+    """Merge section ``index`` with the next one: the next red line goes and
+    the whole span is refitted from ``index``'s line (``_refit_section``),
+    which keeps its offset. Returns the new points and a report."""
+    if not 0 <= index < len(points) - 1:
+        raise ValueError("There is no next section to merge with.")
+    point, start = points[index], _shown_offset(points, index)
+    stop = _shown_offset(points, index + 2) if index + 2 < len(points) else float(end_ms)
+    row = _refit_section(np.asarray(attack_times, dtype=np.float64),
+                         np.asarray(attack_weights, dtype=np.float64),
+                         start, point.bpm, stop)
+    merged = [p for n, p in enumerate(points) if n != index + 1]
+    merged[index] = TimingPoint(start, row["bpm"], point.confidence, point.beat_index,
+                                point.meter, point.meter_known, manual=True)
+    return merged, {"removed_ms": _shown_offset(points, index + 1), "sections": [row]}
+
+
+# ---------------------------------------------------------------------------
+# Per-section pulse suggestions
+# ---------------------------------------------------------------------------
+
+def suggest_section_pulse(analysis: Analysis,
+                          low_bpm: float = 120.0,
+                          min_ratio: float = 0.55) -> list[tuple[int, int, float]]:
+    """Flag sections that look like half-time tracker locks.
+
+    Returns [(point_index, suggested_factor, support_ratio)]. Only *suggests*:
+    a 112 BPM half-time *feel* section with busy hats is musically correct at
+    112, so doubling stays a one-click manual decision (GUI "2× §"), never
+    automatic. Sections already in map range are never flagged.
+    """
+    suggestions: list[tuple[int, int, float]] = []
+    if analysis.base_frames is None or len(analysis.onset) < 8:
+        return suggestions
+    snapped = snap_timing_points(analysis.points)
+    frame_rate = analysis.sample_rate / analysis.hop_length
+    section_frames = np.rint(np.asarray(analysis.base_frames, dtype=float))
+    section_frames = section_frames[(section_frames >= 0) & (section_frames < len(analysis.onset))]
+    # The envelope is read where the fallback tracker put each beat, on its
+    # peaks, not where the beat was moved to (Analysis.beat_shift_s).
+    shift = float(getattr(analysis, "beat_shift_s", 0.0))
+    for idx, point in enumerate(snapped):
+        if point.bpm >= low_bpm:
+            continue
+        doubled = point.bpm * 2
+        if not 120 <= doubled <= 400:
+            continue
+        start_s = point.offset_ms / 1000.0
+        end_s = snapped[idx + 1].offset_ms / 1000.0 if idx + 1 < len(snapped) else analysis.duration
+        mask = (analysis.beats >= start_s) & (analysis.beats < end_s)
+        grid = np.rint((analysis.beats[mask] - shift) * frame_rate).astype(int)
+        grid = grid[(grid >= 0) & (grid < len(analysis.onset))]
+        if len(grid) < 4:
+            continue
+        base_support = max(_subdivision_support(analysis.onset, grid, 1), 1e-9)
+        ratio = _subdivision_support(analysis.onset, grid, 2) / base_support
+        if ratio >= min_ratio:
+            suggestions.append((idx, 2, float(ratio)))
+    return suggestions
+
+
+# ---------------------------------------------------------------------------
+# .osz export
+# ---------------------------------------------------------------------------
+
+#: An .osz is a zip; a mistyped path should not turn into a gigabyte of audio.
+MAX_OSZ_AUDIO_BYTES = 64 * 1024 * 1024
+#: Characters Windows refuses in a filename, plus the ones osu! trips over.
+_UNSAFE_FILENAME = str.maketrans({c: "_" for c in '<>:"/\\|?*'})
+
+
+def _safe_component(text: str, fallback: str) -> str:
+    """A filename piece that is safe on Windows and readable afterwards.
+
+    Path separators are already replaced, so traversal is not reachable, but a
+    run of dots is collapsed as well: ".." inside an archive entry is harmless
+    here and alarming everywhere else, and some extractors refuse it outright.
+    A single dot survives, because "Mr. Blue" is a legitimate artist.
+    """
+    cleaned = " ".join(str(text).translate(_UNSAFE_FILENAME).split())
+    cleaned = re.sub(r"\.{2,}", "_", cleaned)
+    # Trimmed again after the cut: 80 characters can end in a space or a dot,
+    # which Windows drops on extraction.
+    return cleaned.strip(". ")[:80].rstrip(". ") or fallback
+
+
+def _romanised(text: str) -> bool:
+    """osu!'s romanised metadata fields take printable ASCII only."""
+    return bool(text) and all(32 <= ord(ch) < 127 for ch in text)
+
+
+def song_metadata(audio_path: str | os.PathLike[str]) -> dict:
+    """What a beatmap made for this audio should call it (Phase 21: metadata
+    from tags).
+
+    A map beside it that plays this audio knows best: its [Metadata] as the
+    mapper wrote it, romanised and Unicode fields apart, with its source.
+    Otherwise the audio's own tags (ID3, Vorbis comments, RIFF INFO, as
+    libsndfile reads them): a tag goes to the Unicode field as written, and to
+    the romanised one only when it is plain ASCII, since romanising is a
+    judgement, not a lookup. Fields found go under ``title``,
+    ``title_unicode``, ``artist``, ``artist_unicode`` and ``source``; missing
+    ones are left out, so a caller's defaults stay; ``from`` says which of
+    "map", "tags" or "none" answered. An unreadable map or tag is skipped,
+    never raised.
+    """
+    path = Path(audio_path)
+    try:
+        maps = sorted(path.parent.glob("*.osu"))
+    except OSError:
+        maps = []
+    for osu in maps:
+        try:
+            beatmap = read_osu_beatmap(osu)
+        except (OSError, ValueError):
+            continue
+        general = beatmap.get("general") or {}
+        if str(general.get("AudioFilename", "")).strip().lower() != path.name.lower():
+            continue
+        meta = beatmap.get("metadata") or {}
+        found = {"title": meta.get("Title", ""), "title_unicode": meta.get("TitleUnicode", ""),
+                 "artist": meta.get("Artist", ""), "artist_unicode": meta.get("ArtistUnicode", ""),
+                 "source": meta.get("Source", "")}
+        found = {key: " ".join(str(value).split()) for key, value in found.items()}
+        found = {key: value for key, value in found.items() if value}
+        if found.get("title") or found.get("artist"):
+            return {**found, "from": "map"}
+    try:
+        with sf.SoundFile(str(path)) as handle:
+            tags = handle.copy_metadata()
+    except (RuntimeError, OSError, ValueError, TypeError):
+        tags = {}
+    out: dict = {}
+    for key in ("title", "artist"):
+        value = " ".join(str(tags.get(key, "") or "").split())
+        if value:
+            out[f"{key}_unicode"] = value
+            if _romanised(value):
+                out[key] = value
+    return {**out, "from": "tags" if out else "none"}
+
+
+def osu_beatmap_text(analysis: "Analysis", audio_filename: str,
+                     metadata: dict | None = None, decimals: int = 0) -> str:
+    """A complete, openable .osu carrying this analysis and nothing else.
+
+    Timing a song from nothing is the one part of Tempora's workflow Overtone
+    could not do: it could only inject red lines into a beatmap that already
+    existed. This writes the beatmap.
+
+    Deliberately minimal — no hit objects, no background, default difficulty
+    settings. The point is a file a mapper can open in the editor with the
+    timing already correct, not a playable map.
+    """
+    meta = {
+        "title": "Untitled",
+        "artist": "Unknown Artist",
+        "creator": "Overtone",
+        "version": "Timing",
+        "source": "",
+        "tags": "",
+    }
+    # One line each: a tag can hold a line break, which would end the field.
+    meta.update({k: " ".join(str(v).split()) for k, v in (metadata or {}).items()
+                 if v is not None})
+    # The Unicode fields as given, else the romanised ones, as before.
+    meta["title_unicode"] = meta.get("title_unicode") or meta["title"]
+    meta["artist_unicode"] = meta.get("artist_unicode") or meta["artist"]
+
+    timing = "\n".join(
+        row for row in osu_timing_text(analysis, decimals).splitlines()
+        if row and not row.startswith("//")
+    )
+    if not timing:
+        raise ValueError("This analysis has no usable timing points to export.")
+
+    return "\n".join([
+        "osu file format v14",
+        "",
+        "[General]",
+        f"AudioFilename: {audio_filename}",
+        "AudioLeadIn: 0",
+        "PreviewTime: -1",
+        "Countdown: 0",
+        "SampleSet: Normal",
+        "StackLeniency: 0.7",
+        "Mode: 0",
+        "LetterboxInBreaks: 0",
+        "WidescreenStoryboard: 0",
+        "",
+        "[Editor]",
+        "DistanceSpacing: 1",
+        "BeatDivisor: 4",
+        "GridSize: 4",
+        "TimelineZoom: 1",
+        "",
+        "[Metadata]",
+        f"Title:{meta['title']}",
+        f"TitleUnicode:{meta['title_unicode']}",
+        f"Artist:{meta['artist']}",
+        f"ArtistUnicode:{meta['artist_unicode']}",
+        f"Creator:{meta['creator']}",
+        f"Version:{meta['version']}",
+        f"Source:{meta['source']}",
+        f"Tags:{meta['tags']}",
+        "BeatmapID:0",
+        "BeatmapSetID:-1",
+        "",
+        "[Difficulty]",
+        "HPDrainRate:5",
+        "CircleSize:4",
+        "OverallDifficulty:7",
+        "ApproachRate:9",
+        "SliderMultiplier:1.4",
+        "SliderTickRate:1",
+        "",
+        "[Events]",
+        "//Background and Video events",
+        "//Break Periods",
+        "//Storyboard Layer 0 (Background)",
+        "//Storyboard Layer 1 (Fail)",
+        "//Storyboard Layer 2 (Pass)",
+        "//Storyboard Layer 3 (Foreground)",
+        "//Storyboard Layer 4 (Overlay)",
+        "//Storyboard Sound Samples",
+        "",
+        "[TimingPoints]",
+        timing,
+        "",
+        "",
+        "[HitObjects]",
+        "",
+    ])
+
+
+def export_osz(analysis: "Analysis", destination: str | os.PathLike[str],
+               audio_path: str | os.PathLike[str] | None = None,
+               metadata: dict | None = None, decimals: int = 0) -> dict:
+    """Write a .osz: the audio plus a beatmap carrying this timing.
+
+    The archive is built in a temporary file and renamed into place, so an
+    interrupted export cannot leave a half-written .osz that osu! will refuse
+    and the user will not think to delete. What the caller does not name comes
+    from the song (``song_metadata``: a map beside it, else the audio's tags),
+    then from the file's name; ``metadata`` in the result says what was used
+    and where it came from.
+    """
+    import zipfile
+
+    source = Path(audio_path) if audio_path else Path(getattr(analysis, "source", ""))
+    if not source.is_file():
+        raise ValueError(f"Audio file not found: {source}")
+    size = source.stat().st_size
+    if size > MAX_OSZ_AUDIO_BYTES:
+        raise ValueError(
+            f"{source.name} is {size / 1e6:.0f} MB; that is not a beatmap's audio.")
+
+    # Drop keys the caller passed as None -- a CLI flag that was not given
+    # arrives as None, and keeping it would shadow the default with "None".
+    meta = {k: v for k, v in (metadata or {}).items() if v is not None}
+    given = bool(meta.get("title") or meta.get("artist"))
+    found = song_metadata(source)
+    taken = []
+    for field in ("title", "artist"):
+        # A name the caller gave is both fields' unless it gave the Unicode one too.
+        if field not in meta:
+            for key in (field, f"{field}_unicode"):
+                if key in found and key not in meta:
+                    meta[key] = found[key]
+                    taken.append(key)
+    if "source" in found and "source" not in meta:
+        meta["source"] = found["source"]
+        taken.append("source")
+    origin = found["from"] if taken else "given" if given else "none"
+    meta.setdefault("title", source.stem)
+    artist = _safe_component(meta.get("artist", "Unknown Artist"), "Unknown Artist")
+    title = _safe_component(meta.get("title", "Untitled"), "Untitled")
+    creator = _safe_component(meta.get("creator", "Overtone"), "Overtone")
+    version = _safe_component(meta.get("version", "Timing"), "Timing")
+
+    # Stem and extension apart: through _safe_component whole, a name over 80
+    # characters lost its ".mp3", and "Title....mp3" came out "Title_mp3".
+    suffix = re.sub(r"[^.a-z0-9]", "", source.suffix.lower())
+    audio_name = _safe_component(source.stem, "audio") + suffix
+    osu_name = f"{artist} - {title} ({creator}) [{version}].osu"
+    text = osu_beatmap_text(analysis, audio_name, meta, decimals)
+
+    target = Path(destination)
+    temp = target.with_name(target.name + ".part")
+    try:
+        with open(temp, "wb") as handle:
+            with zipfile.ZipFile(handle, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr(osu_name, text.encode("utf-8"))
+                archive.write(source, audio_name)
+            _sync(handle)
+        os.replace(temp, target)
+    except BaseException:
+        try:
+            temp.unlink()
+        except OSError:
+            pass
+        raise
+    return {"osu": osu_name, "audio": audio_name,
+            "points": len(snap_timing_points(list(analysis.points))),
+            "bytes": target.stat().st_size,
+            "metadata": {"title": meta["title"], "artist": meta.get("artist", "Unknown Artist"),
+                         "title_unicode": meta.get("title_unicode") or meta["title"],
+                         "artist_unicode": (meta.get("artist_unicode")
+                                            or meta.get("artist", "Unknown Artist")),
+                         "from": origin}}
+
+
+# ---------------------------------------------------------------------------
+# .osu injection
+# ---------------------------------------------------------------------------
+
+def _sync(handle) -> None:
+    """Push a temp file's bytes to the disk before it is renamed into place.
+
+    The OS may persist a rename before the data it points at. After a power
+    cut or a crash between the two, the name then holds an empty or
+    zero-filled file and the content it replaced is gone. Syncing first
+    leaves the old file or the complete new one, never neither.
+    """
+    handle.flush()
+    os.fsync(handle.fileno())
+
+
+def _write_synced(path: Path, payload: bytes) -> None:
+    with open(path, "wb") as handle:
+        handle.write(payload)
+        _sync(handle)
+
+
+# -- Write history ------------------------------------------------------------
+# Every .osu write lands here: what changed, and the backup holding what it
+# replaced, so the History view can list, diff and restore. One JSON object
+# per line; a torn tail line never hides the rest.
+
+#: Entries kept; the file is rewritten at twice this, so it stays small.
+HISTORY_LIMIT = 200
+
+
+def history_path(history_dir: str | os.PathLike[str] | None = None) -> Path:
+    """Where the write log lives: beside the result cache, never the app.
+    ``OVERTONE_HISTORY_DIR`` overrides it (the test suite points it at a
+    scratch folder so no test run lands in real history)."""
+    if history_dir is not None:
+        return Path(history_dir) / "writes.jsonl"
+    override = os.environ.get("OVERTONE_HISTORY_DIR")
+    base = Path(override) if override else data_root()
+    return base / "writes.jsonl"
+
+
+def log_write(path: str | os.PathLike[str], op: str, backup: str | None,
+              summary: dict | None = None,
+              history_dir: str | os.PathLike[str] | None = None) -> dict:
+    """Append one write entry: when, what operation, which file, which backup
+    holds the replaced bytes, and a small summary. Never fails the write it
+    records: a log that cannot be kept is skipped, not raised."""
+    entry = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+             "op": str(op), "path": str(path),
+             "backup": str(backup) if backup else None,
+             "summary": dict(summary or {})}
+    try:
+        log = history_path(history_dir)
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with open(log, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry) + "\n")
+        lines = log.read_text(encoding="utf-8").splitlines()
+        if len(lines) > 2 * HISTORY_LIMIT:
+            log.write_text("\n".join(lines[-HISTORY_LIMIT:]) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+    return entry
+
+
+def read_history(history_dir: str | os.PathLike[str] | None = None) -> list[dict]:
+    """The write log, newest first; malformed lines are skipped, not fatal."""
+    try:
+        lines = history_path(history_dir).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    entries = []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(entry, dict) and entry.get("path"):
+            entries.append(entry)
+    entries.reverse()
+    return entries
+
+
+def _reds_of_text(text: str) -> list[tuple[float, float]]:
+    """Every red line of .osu text as ``(offset_ms, bpm)``."""
+    reds = []
+    in_timing = False
+    for line in _osu_lines(text):
+        stripped = line.strip()
+        if stripped.startswith("["):
+            in_timing = stripped.lower() == "[timingpoints]"
+            continue
+        if in_timing and stripped and not stripped.startswith("//"):
+            red = _parse_red_line(line)
+            if red is not None:
+                reds.append(red)
+    return reds
+
+
+def diff_reds(old_text: str, new_text: str) -> dict:
+    """Red lines old vs new: added and removed offsets, and offsets both hold
+    whose BPM moved. Offsets pair within 1 ms, BPM past 0.001 counts as
+    moved; lists show the first 20, counts cover all. Plain JSON types."""
+    old, new = _reds_of_text(old_text), _reds_of_text(new_text)
+    used = [False] * len(new)
+    added, removed, changed = [], [], []
+    for offset, bpm in old:
+        match = next((j for j, (o, _b) in enumerate(new)
+                      if not used[j] and abs(o - offset) <= 1.0), None)
+        if match is None:
+            removed.append(round(offset, 1))
+            continue
+        used[match] = True
+        if abs(new[match][1] - bpm) > 0.001:
+            changed.append({"offset": round(offset, 1),
+                            "old_bpm": round(bpm, 4), "new_bpm": round(new[match][1], 4)})
+    for j, (offset, bpm) in enumerate(new):
+        if not used[j]:
+            added.append({"offset": round(offset, 1), "bpm": round(bpm, 4)})
+    return {"added": added[:20], "removed": [round(o, 1) for o in removed[:20]],
+            "changed": changed[:20], "n_added": len(added),
+            "n_removed": len(removed), "n_changed": len(changed)}
+
+
+def restore_write(path: str | os.PathLike[str], backup: str | os.PathLike[str],
+                  history_dir: str | os.PathLike[str] | None = None) -> dict:
+    """Restore a backup over its file, keeping the current bytes as a new
+    backup first: no restore ever destroys. Atomic temp-plus-rename, logged
+    as a restore. Missing files refuse with a message, not a traceback."""
+    target, spare = Path(path), Path(backup)
+    if not target.is_file():
+        raise ValueError(f"{target.name} is gone: nothing to restore over.")
+    if not spare.is_file():
+        raise ValueError(f"{spare.name} is gone: nothing to restore from.")
+    payload = spare.read_bytes()
+    kept = _backup_before_write(target, target.read_bytes())
+    _atomic_write_bytes(target, payload)
+    log_write(target, "restore", str(kept), {}, history_dir)
+    return {"backup": str(kept)}
+
+
+def _atomic_write_bytes(path: Path, payload: bytes) -> None:
+    """Write via a sibling temp file, synced, then renamed.
+
+    Injecting rewrites the user's beatmap in place. Truncating the real file
+    and then failing mid-write would destroy work that may not exist anywhere
+    else, so the new content is only ever swapped in once it is complete.
+
+    A file the user made read-only is refused, as Windows refuses it: on
+    Linux a rename replaces a read-only file whenever its folder is
+    writable, and a server would have rewritten such a map (robustness gate
+    on the owner's server, 2026-10-26).
+    """
+    if path.exists() and not os.access(path, os.W_OK):
+        raise PermissionError(f"{path.name} is read-only; it was left as it was.")
+    temp = path.with_name(path.name + ".part")
+    try:
+        _write_synced(temp, payload)
+        os.replace(temp, path)
+    except BaseException:
+        try:
+            temp.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def _backup_before_write(path: Path, raw: bytes) -> Path:
+    """Keep ``raw``, the bytes a write is about to replace; return where.
+
+    The first backup is ``map.osu.bak`` and stays pristine for good. Each later
+    write keeps what it replaces in the next free ``.bak2``, ``.bak3``... unless
+    the newest backup already holds exactly those bytes. A backup is written
+    to a temp file and renamed into place, so a full disk or a lock halfway
+    through leaves no truncated ``.bak`` for a retry to trust; os.rename, not
+    os.replace, because on Windows it refuses an existing target, so no
+    backup is ever overwritten.
+    """
+    newest, number = None, 1
+    while True:
+        spare = Path(f"{path}.bak{number if number > 1 else ''}")
+        if not spare.exists():
+            break
+        newest, number = spare, number + 1
+    if newest is not None and newest.read_bytes() == raw:
+        return newest
+    temp = spare.with_name(spare.name + ".part")
+    try:
+        _write_synced(temp, raw)
+        os.rename(temp, spare)
+    except BaseException:
+        try:
+            temp.unlink()
+        except OSError:
+            pass
+        raise
+    return spare
+
+
+def _is_red_line(line: str) -> bool:
+    """True for an uninherited (red) timing line, across every .osu version.
+
+    Format v3-v4 wrote only ``time,beatLength``; v5+ added the ``uninherited``
+    flag in field 7. A negative beat length has always meant "inherited", and
+    that beats a contradictory flag — otherwise a legacy map keeps its old red
+    lines *and* gains the new ones.
+    """
+    fields = line.split(",")
+    if len(fields) < 2:
+        return False
+    try:
+        inherited_by_length = float(fields[1]) < 0
+    except ValueError:
+        return False
+    if len(fields) >= 7:
+        return fields[6].strip() == "1" and not inherited_by_length
+    return not inherited_by_length
+
+
+@dataclass(frozen=True)
+class _PlayState:
+    """What a timing point makes audible from its time on.
+
+    Red lines reset slider velocity to 1.0; green lines set it. Both set the
+    hitsound sample set, index, volume and kiai. Timing (BPM, meter) is not
+    part of it: that is exactly what injection is asked to change.
+    """
+    sv: float
+    sample_set: int
+    sample_index: int
+    volume: int
+    kiai: bool
+
+    def same_as(self, other: "_PlayState") -> bool:
+        return (abs(self.sv - other.sv) <= 1e-9 * max(1.0, abs(other.sv))
+                and (self.sample_set, self.sample_index, self.volume, self.kiai)
+                == (other.sample_set, other.sample_index, other.volume, other.kiai))
+
+
+def _timing_point_fields(line: str) -> dict | None:
+    """One [TimingPoints] line with osu!'s defaults for the fields old formats omit."""
+    fields = [f.strip() for f in line.split(",")]
+    if len(fields) < 2:
+        return None
+    try:
+        time = float(fields[0])
+        beat_length = float(fields[1])
+        if not (np.isfinite(time) and np.isfinite(beat_length)):
+            return None                      # "inf" or "nan": a line osu! cannot read
+
+        def number(n: int, default: int) -> int:
+            return int(float(fields[n])) if len(fields) > n and fields[n] else default
+
+        return {"time": time, "beat_length": beat_length, "red": _is_red_line(line),
+                "meter": number(2, 4), "sample_set": number(3, 0),
+                "sample_index": number(4, 0), "volume": number(5, 100),
+                "effects": number(7, 0)}
+    except (ValueError, OverflowError):
+        return None
+
+
+def _apply_point(state: "_PlayState | None", point: dict) -> _PlayState:
+    if point["red"]:
+        sv = 1.0
+    elif point["beat_length"] < 0:
+        sv = -100.0 / point["beat_length"]
+    else:
+        sv = state.sv if state is not None else 1.0
+    return _PlayState(sv, point["sample_set"], point["sample_index"], point["volume"],
+                      bool(point["effects"] & 1))
+
+
+def _ordered(points: list[dict]) -> list[dict]:
+    """Time order, a red before a green at the same time (osu!'s own order)."""
+    return sorted(points, key=lambda q: (q["time"], 0 if q["red"] else 1, q["order"]))
+
+
+def _states_at_events(points: list[dict], events: list[float]) -> list["_PlayState | None"]:
+    """The audible state at each event time; before the first point, the first
+    point's settings apply, as in osu!."""
+    ordered = _ordered(points)
+    first = _apply_point(None, ordered[0]) if ordered else None
+    out: list[_PlayState | None] = []
+    state, i = None, 0
+    for time in events:
+        while i < len(ordered) and ordered[i]["time"] <= time + 1e-6:
+            state = _apply_point(state, ordered[i])
+            i += 1
+        out.append(state if state is not None else first)
+    return out
+
+
+def inject_osu_timing_points(osu_path: str | os.PathLike[str],
+                             analysis: Analysis,
+                             backup: bool = True,
+                             dry_run: bool = False,
+                             decimals: int = 0) -> dict:
+    """Replace the red (uninherited) lines of an .osu with this analysis.
+
+    Only the timing changes. Each new red line takes the sample set, index,
+    volume and kiai the original map had at its time, and where moving the red
+    lines would change what plays — slider velocity, which a red line resets,
+    or the hitsound state an old red line set — a green line carrying the
+    original values is added at that time. So the map sounds and scrolls as it
+    did, with the new timing; nothing the user did not ask for changes.
+
+    Green lines keep their exact bytes, and so does everything outside
+    [TimingPoints]: the BOM, each line's own line ending, a missing final
+    newline. The timing section is written in time order, a red before a green
+    at the same time. Unless ``backup`` is False, what the write replaces is
+    kept first (see _backup_before_write): the pristine ``.bak`` on the first
+    inject, a ``.bak2``, ``.bak3``... after the mapper has worked on the map
+    since; no backup is ever overwritten. With ``dry_run`` nothing is written.
+    Returns ``reds_replaced``, ``reds_added``, ``greens_kept``,
+    ``greens_added``, ``backup`` (the path holding the replaced bytes, or
+    None) and an ``audio_mismatch`` warning when the .osu's AudioFilename
+    differs from the analysed file.
+    """
+    path = Path(osu_path)
+    if not path.is_file():
+        raise ValueError(f"{path} is not a file.")
+    size = path.stat().st_size
+    if size > MAX_OSU_BYTES:
+        raise ValueError(f"{path.name} is {size / 1e6:.1f} MB — that is not a beatmap.")
+    new_rows = [row for row in osu_timing_text(analysis, decimals).splitlines()
+                if row and not row.startswith("//")]
+    if not new_rows:
+        raise ValueError("This analysis has no usable timing points to inject.")
+
+    raw = path.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"Could not decode {path.name} as UTF-8.") from exc
+    newline = "\r\n" if b"\r\n" in raw else "\n"
+    lines = _osu_lines(text, keepends=True)  # every line keeps its own ending
+
+    header_idx = next((n for n, line in enumerate(lines)
+                       if line.strip() == "[TimingPoints]"), None)
+    if header_idx is None:
+        raise ValueError("No [TimingPoints] section found in this .osu file.")
+    end_idx = len(lines)
+    for n in range(header_idx + 1, len(lines)):
+        stripped = lines[n].strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            end_idx = n
+            break
+    body = lines[header_idx + 1:end_idx]
+    # Blank lines closing the section stay where they are; so do comments and
+    # anything else that is not a point, above the points.
+    tail_start = len(body)
+    while tail_start > 0 and not body[tail_start - 1].strip():
+        tail_start -= 1
+    tail = body[tail_start:]
+    others: list[str] = []
+    originals: list[dict] = []
+    for n, line in enumerate(body[:tail_start]):
+        point = _timing_point_fields(line.strip()) if line.strip() else None
+        if point is None:
+            others.append(line)
+        else:
+            point.update(order=n, raw=line)
+            originals.append(point)
+    old_reds = [q for q in originals if q["red"]]
+    greens = [q for q in originals if not q["red"]]
+
+    # New reds carry the state the original map had at their own time.
+    parsed = [(row, _timing_point_fields(row)) for row in new_rows]
+    parsed = [(row, q) for row, q in parsed if q is not None]
+    carried = _states_at_events(originals, [q["time"] for _row, q in parsed])
+    omit_barline = {round(q["time"]) for q in old_reds if q["effects"] & 8}
+    reds: list[dict] = []
+    for (row, q), state in zip(parsed, carried):
+        fields = [f.strip() for f in row.split(",")]
+        if state is not None:
+            effects = (1 if state.kiai else 0) | (8 if round(q["time"]) in omit_barline else 0)
+            fields[3:6] = [str(state.sample_set), str(state.sample_index), str(state.volume)]
+            fields[7] = str(effects)
+            q.update(sample_set=state.sample_set, sample_index=state.sample_index,
+                     volume=state.volume, effects=effects)
+        q.update(order=-1, raw=",".join(fields) + newline)
+        reds.append(q)
+
+    # Wherever the new set would play differently, a green restores the original.
+    events = sorted({q["time"] for q in originals} | {q["time"] for q in reds})
+    wanted = _states_at_events(originals, events)
+    added: list[dict] = []
+    for time, want in zip(events, wanted):
+        if want is None:
+            continue
+        have = _states_at_events(reds + greens + added, [time])[0]
+        if have is not None and have.same_as(want):
+            continue
+        governing = [q for q in reds if q["time"] <= time + 1e-6] or reds[:1]
+        meter = governing[-1]["meter"] if governing else 4
+        stamp = (f"{time:.{int(decimals)}f}" if decimals > 0 else str(int(round(time))))
+        row = (f"{stamp},{-100.0 / want.sv:.12g},{meter},{want.sample_set},"
+               f"{want.sample_index},{want.volume},0,{1 if want.kiai else 0}")
+        point = _timing_point_fields(row)
+        point.update(order=len(body) + len(added), raw=row + newline)
+        added.append(point)
+
+    out_body = others + [q["raw"] for q in _ordered(reds + greens + added)] + tail
+    # The last line of the section needs an ending even if the file's last
+    # line did not have one (the section is followed by more content).
+    if end_idx < len(lines) and out_body and not out_body[-1].endswith(("\n", "\r")):
+        out_body[-1] += newline
+
+    audio_name = ""
+    for line in lines[:header_idx]:
+        if line.startswith("AudioFilename:"):
+            audio_name = line.split(":", 1)[1].strip()
+            break
+    analysed_name = Path(getattr(analysis, "source", "")).name
+
+    spare = None
+    if not dry_run:
+        if backup:
+            spare = _backup_before_write(path, raw)
+        # Bytes, not write_text: on Windows, text mode would translate our
+        # existing "\r\n" into "\r\r\n".
+        payload = "".join(lines[:header_idx + 1] + out_body + lines[end_idx:]).encode("utf-8")
+        if bom:
+            payload = b"\xef\xbb\xbf" + payload
+        _atomic_write_bytes(path, payload)
+        log_write(path, "inject", str(spare) if spare else None,
+                  {"reds_replaced": len(old_reds), "reds_added": len(reds)})
+
+    return {"reds_replaced": len(old_reds), "reds_added": len(reds),
+            "greens_kept": len(greens), "greens_added": len(added),
+            "backup": str(spare) if spare else None,
+            "audio_mismatch": bool(audio_name and analysed_name
+                                   and audio_name.lower() != analysed_name.lower()),
+            "osu_audio": audio_name, "analysed_audio": analysed_name}
+
+
+def inject_mapset(folder: str | os.PathLike[str], analysis: Analysis,
+                  backup: bool = True, dry_run: bool = False,
+                  decimals: int = 0) -> dict:
+    """Replace the red lines of every difficulty in a song folder (Phase 21).
+
+    One confirmation for the whole mapset: each ``.osu`` in ``folder`` goes
+    through :func:`inject_osu_timing_points` with this analysis, and one bad
+    map never stops the rest — its error rides along in its own entry. With
+    ``dry_run`` nothing is written anywhere. Plain JSON types:
+    ``{"folder", "files": [{"file", "ok", ...summary | "error"}], "ok",
+    "failed"}``.
+    """
+    root = Path(folder)
+    if not root.is_dir():
+        raise ValueError(f"{root} is not a folder.")
+    try:
+        maps = sorted(p for p in root.iterdir()
+                      if p.is_file() and p.suffix.lower() == ".osu")
+    except OSError as exc:
+        raise ValueError(f"Could not list {root}: {exc}") from exc
+    if not maps:
+        raise ValueError(f"No difficulties in {root}.")
+    files = []
+    for path in maps:
+        try:
+            summary = inject_osu_timing_points(path, analysis, backup=backup,
+                                               dry_run=dry_run, decimals=decimals)
+            diff = inject_diff(path, analysis, decimals=decimals)
+        except (ValueError, OSError) as exc:
+            files.append({"file": path.name, "ok": False, "error": str(exc)})
+            continue
+        files.append({"file": path.name, "ok": True, **summary, "diff": diff})
+    return {"folder": str(root), "files": files,
+            "ok": sum(1 for f in files if f["ok"]),
+            "failed": sum(1 for f in files if not f["ok"])}
+
+
+def inject_diff(osu_path: str | os.PathLike[str], analysis: Analysis,
+                decimals: int = 0) -> dict:
+    """Each old red line beside its new value, and the drift it causes
+    (Phase 21, Inject diff).
+
+    Pairs the map's red lines with the analysis' new ones by order: the i-th
+    span's timing moves from the i-th old line to the i-th new one, which is
+    what the inject writes. ``drift_end_ms`` is where an object sitting at the
+    old span's end lands off the new grid — the offset shift plus the span
+    length times the beat change, exact given the pairing — or None past the
+    last old line, where no span ends. Lines beyond the shorter side ride
+    along as ``removed`` (the map's) or ``added`` (the analysis'). Read only,
+    plain JSON types.
+    """
+    path = Path(osu_path)
+    if not path.is_file():
+        raise ValueError(f"{path} is not a file.")
+    try:
+        text = path.read_bytes().decode("utf-8-sig")
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Could not read {path.name}: {exc}") from exc
+    old = []
+    inside = False
+    for line in _osu_lines(text):
+        stripped = line.strip()
+        if stripped == "[TimingPoints]":
+            inside = True
+            continue
+        if inside and stripped.startswith("[") and stripped.endswith("]"):
+            break
+        if not inside:
+            continue
+        point = _timing_point_fields(stripped) if stripped else None
+        if point is not None and point["red"]:
+            old.append({"offset_ms": round(point["time"], 3),
+                        "bpm": round(60000.0 / point["beat_length"], 3),
+                        "meter": point["meter"]})
+    new = []
+    for line in osu_timing_text(analysis, decimals).splitlines():
+        point = _timing_point_fields(line.strip()) if line.strip() else None
+        if point is not None and point["red"]:
+            new.append({"offset_ms": round(point["time"], 3),
+                        "bpm": round(60000.0 / point["beat_length"], 3),
+                        "meter": point["meter"]})
+    if not new:
+        raise ValueError("This analysis has no usable timing points to inject.")
+    pairs = []
+    for i, (before, after) in enumerate(zip(old, new)):
+        end = old[i + 1]["offset_ms"] if i + 1 < len(old) else None
+        drift = None
+        if end is not None:
+            drift = round((after["offset_ms"] - before["offset_ms"])
+                          + (end - before["offset_ms"])
+                          * ((60000.0 / before["bpm"]) / (60000.0 / after["bpm"]) - 1), 2)
+        pairs.append({"old": before, "new": after,
+                      "delta_offset_ms": round(after["offset_ms"] - before["offset_ms"], 3),
+                      "delta_bpm": round(after["bpm"] - before["bpm"], 3),
+                      "drift_end_ms": drift})
+    return {"pairs": pairs, "removed": old[len(new):], "added": new[len(old):]}
+
+
+# ---------------------------------------------------------------------------
+# Audio swap (Phase 19): one mapset's times onto a new encode of its audio
+# ---------------------------------------------------------------------------
+
+#: Comparison rate for the shift: 0.09 ms a lag, anti-aliased against codec
+#: highs loss, and a 5-minute song fits the FFT in tens of megabytes.
+SWAP_SR = 11025
+#: Refusals, measured on synthetic shifts and real pairs: true shifts read
+#: peak 0.96 and up, re-encodes apart; tempo twins and strangers read under
+#: 0.11; different cuts sit between and refuse, which is the safe side.
+SWAP_MIN_PEAK = 0.5
+SWAP_MIN_SHARP = 50.0
+#: A tempo ratio past this is not a shift: over 3 minutes, 0.5 % already
+#: walks 0.9 s.
+SWAP_MAX_TEMPO_DRIFT = 0.005
+
+
+def _swap_envelope(y: np.ndarray, sr: int) -> np.ndarray:
+    """Onset-strength envelope at the comparison rate, for tempo checks."""
+    hop = max(1, sr // 86)
+    return _fast_onset_envelope(np.asarray(y, dtype=np.float32), sr, hop).astype(np.float64)
+
+
+def _envelope_period(envelope: np.ndarray, sr: int, hop: int) -> float:
+    """Dominant onset period in seconds, 40-400 BPM; octave errors are the
+    caller's to normalise, here by comparing up to an octave."""
+    working = envelope - envelope.mean()
+    n = len(working)
+    spectrum = np.abs(np.fft.rfft(working, n)) ** 2
+    autocorr = np.fft.irfft(spectrum)[:n] / max(1, n)
+    lo, hi = int(60.0 / 400 * sr / hop), int(60.0 / 40 * sr / hop)
+    lo, hi = max(1, lo), min(n - 1, max(lo + 1, hi))
+    return float(np.argmax(autocorr[lo:hi + 1]) + lo) * hop / sr
+
+
+def shift_samples(old: np.ndarray, new: np.ndarray, sr: int) -> dict:
+    """How far map times move from the old audio to the new one (Phase 19).
+
+    Both mono at one rate: downsampled once to the comparison rate, then a
+    full cross-correlation, parabolically refined. Returns ``shift_ms`` with
+    ``peak``, ``sharp`` and ``tempo_ratio`` beside it. Refuses instead of
+    guessing: a weak or dull peak is no alignment, and a tempo ratio past a
+    quarter beat over a song is not a shift. Pure; plain JSON types.
+    """
+    old = np.asarray(old, dtype=np.float64).ravel()
+    new = np.asarray(new, dtype=np.float64).ravel()
+    if old.size < sr or new.size < sr:
+        raise ValueError("Both audios must hold at least a second to align.")
+    if sr % SWAP_SR:
+        raise ValueError(f"Comparison needs a multiple of {SWAP_SR} Hz, got {sr}.")
+    factor = sr // SWAP_SR
+    old_d = signal.resample_poly(old - old.mean(), 1, factor)
+    new_d = signal.resample_poly(new - new.mean(), 1, factor)
+    n = 1
+    while n < len(old_d) + len(new_d):
+        n *= 2
+    corr = np.fft.irfft(np.fft.rfft(old_d, n) * np.conj(np.fft.rfft(new_d, n)), n)
+    denom = float(np.sqrt((old_d @ old_d) * (new_d @ new_d)))
+    corr = corr / denom if denom > 0 else corr * 0.0
+    peak_idx = int(np.argmax(corr))
+    lag = peak_idx if peak_idx <= n // 2 else peak_idx - n
+    if 0 < peak_idx < n - 1:
+        y0, y1, y2 = corr[peak_idx - 1], corr[peak_idx], corr[peak_idx + 1]
+        if y0 - 2 * y1 + y2 < 0:
+            lag += 0.5 * (y0 - y2) / (y0 - 2 * y1 + y2)
+    peak, sharp = float(corr[peak_idx]), float(corr[peak_idx] / max(1e-9, np.median(np.abs(corr))))
+    old_e = _swap_envelope(np.asarray(old, dtype=np.float32), sr)
+    new_e = _swap_envelope(np.asarray(new, dtype=np.float32), sr)
+    hop = max(1, sr // 86)
+    raw = _envelope_period(new_e, sr, hop) / max(1e-9, _envelope_period(old_e, sr, hop))
+    ratio = min((abs(raw / k - 1.0), raw / k) for k in (0.5, 1.0, 2.0))[1]
+    ratio = float(ratio)
+    # Tempo first: a mismatch names itself even when some peak survived it.
+    if abs(ratio - 1.0) > SWAP_MAX_TEMPO_DRIFT:
+        raise ValueError(f"Tempo mismatch (ratio {ratio:.4f}): times do not map by one shift.")
+    if peak < SWAP_MIN_PEAK or sharp < SWAP_MIN_SHARP:
+        raise ValueError(f"No reliable alignment (peak {peak:.2f}, sharpness {sharp:.0f}): "
+                         "these do not sound like two encodes of one song.")
+    # The lag is old-against-new; map times move the other way.
+    return {"shift_ms": round(-lag / SWAP_SR * 1000.0, 3), "peak": round(peak, 4),
+            "sharp": round(sharp, 1), "tempo_ratio": round(ratio, 5)}
+
+
+def audio_shift(old_path: str | os.PathLike[str], new_path: str | os.PathLike[str]) -> dict:
+    """``shift_samples`` on two decoded files: mono 44.1 kHz from the loader,
+    so any two formats it reads compare. Refusals read as messages."""
+    old_y, old_sr = _load_audio(old_path, lambda _message: None)
+    new_y, new_sr = _load_audio(new_path, lambda _message: None)
+    if old_sr != new_sr:
+        raise ValueError(f"Sample rates differ ({old_sr} vs {new_sr}).")
+    return shift_samples(np.asarray(old_y, dtype=np.float64),
+                         np.asarray(new_y, dtype=np.float64), old_sr)
+
+
+def _shifted_number(text: str, shift_ms: float, decimals: int = 3) -> str:
+    """A time field moved by the shift: whole milliseconds stay whole (what
+    osu!stable reads), the rest keeps ``decimals`` places like inject."""
+    value = round(float(text) + shift_ms, decimals)
+    whole = round(value)
+    if abs(value - whole) < 0.5 * 10 ** -decimals:
+        return str(int(whole))
+    return f"{value:.{decimals}f}"
+
+
+def shift_osu_text(text: str, shift_ms: float, audio_name: str | None = None,
+                   decimals: int = 3) -> tuple[str, dict]:
+    """Every time of one .osu moved by ``shift_ms`` (Phase 19, Audio swap).
+
+    Red and green offsets, object starts, spinner and hold ends, a set
+    PreviewTime and editor bookmarks; optionally the AudioFilename with it.
+    AudioLeadIn stays: it is a wait before the song starts, not a moment in
+    it, and moving it refused every encode with less silence up front on a
+    map with a lead-in of 0. Lines keep their shape and order — only the
+    numbers move. Storyboard times are not parsed anywhere and stay as they
+    were, stated here instead of hidden. An object, preview or bookmark
+    landing before zero, and a missing section the move needs, refuses the
+    whole text: half a shifted mapset is a corruption, not a subset. Timing
+    lines may sit before zero, as osu! allows (a first red line at -3189 ms
+    refused a whole real mapset). Returns the shifted text (split
+    lines, no trailing newline) with the red lines and objects moved (every
+    timing line moves; greens are not counted as red lines).
+    """
+    lines = _osu_lines(text)
+    section = ""
+    out: list[str] = []
+    seen = {"timing": False, "objects": False, "general": False, "editor": False}
+    moved = {"reds": 0, "objects": 0}
+
+    def move(raw: str) -> str:
+        shifted = _shifted_number(raw, shift_ms, decimals)
+        if float(shifted) < 0:
+            raise ValueError(f"A time lands before zero ({raw} ms): refusing.")
+        return shifted
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
+            section = stripped[1:-1].lower()
+            out.append(line)
+            continue
+        if not stripped or stripped.startswith("//"):
+            out.append(line)
+            continue
+        if section == "timingpoints":
+            seen["timing"] = True
+            fields = line.split(",")
+            if len(fields) < 2:
+                raise ValueError(f"Unusable timing line: {stripped[:40]}.")
+            # A timing line may sit before zero — a first red line there lines
+            # the bars up — so only objects and marks refuse a negative time.
+            fields[0] = _shifted_number(fields[0], shift_ms, decimals)
+            moved["reds"] += _is_red_line(stripped)
+            out.append(",".join(fields))
+        elif section == "hitobjects":
+            seen["objects"] = True
+            fields = line.split(",")
+            if len(fields) < 5:
+                raise ValueError(f"Unusable object line: {stripped[:40]}.")
+            try:
+                type_bits = int(fields[3])
+            except ValueError:
+                raise ValueError(f"Unusable object line: {stripped[:40]}.")
+            fields[2] = move(fields[2])
+            rest = fields[5:]
+            if type_bits & 128 and rest:
+                head, colon, tail = rest[0].partition(":")
+                rest[0] = move(head) + colon + tail if colon else move(head)
+            elif type_bits & 8 and rest:
+                rest[0] = move(rest[0])
+            fields[5:] = rest
+            moved["objects"] += 1
+            out.append(",".join(fields))
+        elif section == "general":
+            seen["general"] = True
+            name, colon, value = line.partition(":")
+            key = name.strip().lower()
+            if key == "previewtime" and colon:
+                number = value.strip()
+                if number and float(number) >= 0:
+                    out.append(f"{name.strip()}: {move(number)}")
+                    continue
+            if key == "audiofilename" and colon and audio_name is not None:
+                out.append(f"{name}: {audio_name}")
+                continue
+            out.append(line)
+        elif section == "editor":
+            seen["editor"] = True
+            name, colon, value = line.partition(":")
+            if name.strip().lower() == "bookmarks" and colon and value.strip():
+                try:
+                    marks = [move(mark) for mark in value.split(",") if mark.strip()]
+                except ValueError:
+                    raise ValueError("A bookmark lands before zero: refusing.")
+                out.append(f"{name}: {','.join(marks)}")
+                continue
+            out.append(line)
+        else:
+            out.append(line)
+    if not seen["timing"] or not seen["objects"]:
+        raise ValueError("No [TimingPoints] or [HitObjects] to move.")
+    return "\n".join(out), moved
+
+
+def preview_audio_swap(map_paths: list, shift_ms: float, decimals: int = 3) -> dict:
+    """What a shift would move, read only: per map the red lines, objects and
+    new audio name, without touching a byte."""
+    rows = []
+    for raw in map_paths:
+        path = Path(raw)
+        try:
+            text = path.read_bytes().decode("utf-8-sig")
+            _shifted, moved = shift_osu_text(text, shift_ms, decimals=decimals)
+        except (OSError, ValueError, UnicodeDecodeError) as exc:
+            rows.append({"file": path.name, "ok": False, "error": str(exc)})
+            continue
+        rows.append({"file": path.name, "ok": True, **moved})
+    return {"shift_ms": round(float(shift_ms), 3), "maps": rows,
+            "refused": sum(1 for row in rows if not row["ok"])}
+
+
+def apply_audio_swap(map_paths: list, shift_ms: float, audio_name: str | None = None,
+                     dry_run: bool = False, decimals: int = 3) -> dict:
+    """Move every time of every map by ``shift_ms``, each file backed up
+    first and logged, through the atomic writer. A refusal anywhere writes
+    nothing anywhere: the preview runs first inside, and one bad map stops
+    the set. Returns per-file bytes written and backups."""
+    paths = [Path(raw) for raw in map_paths]
+    preview = preview_audio_swap(paths, shift_ms, decimals)
+    if preview["refused"]:
+        bad = next(row for row in preview["maps"] if not row["ok"])
+        raise ValueError(f"{bad['file']}: {bad['error']}")
+    if dry_run:
+        return {**preview, "written": False}
+    rows = []
+    for path in paths:
+        raw = path.read_bytes()
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"Could not decode {path.name} as UTF-8.") from exc
+        shifted, _moved = shift_osu_text(text, shift_ms, audio_name, decimals)
+        newline = "\r\n" if b"\r\n" in raw else "\n"
+        if raw.endswith((b"\n", b"\r")):
+            shifted += "\n"
+        payload = shifted.replace("\n", newline).encode("utf-8")
+        if raw.startswith(b"\xef\xbb\xbf"):
+            payload = b"\xef\xbb\xbf" + payload
+        spare = _backup_before_write(path, raw)
+        _atomic_write_bytes(path, payload)
+        log_write(path, "swap", str(spare), {"shift_ms": round(float(shift_ms), 3)})
+        rows.append({"file": path.name, "bytes": len(payload), "backup": str(spare)})
+    return {**preview, "written": True, "maps": rows}
+
+
+# ---------------------------------------------------------------------------
+# .osu red-line reading and map-vs-detected comparison (Phase 5)
+# ---------------------------------------------------------------------------
+
+def _load_osu_text(osu_path: str | os.PathLike[str]) -> tuple[str, bool]:
+    """The whole .osu as text plus whether it carried a BOM.
+
+    Size and encoding guards in one place; the writer needs the BOM flag so an
+    untouched file comes back byte-identical.
+    """
+    path = Path(osu_path)
+    if not path.is_file():
+        raise ValueError(f"{path} is not a file.")
+    size = path.stat().st_size
+    if size > MAX_OSU_BYTES:
+        raise ValueError(f"{path.name} is {size / 1e6:.1f} MB — that is not a beatmap.")
+    raw = path.read_bytes()
+    try:
+        return raw.decode("utf-8-sig"), raw.startswith(b"\xef\xbb\xbf")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"Could not decode {path.name} as UTF-8.") from exc
+
+
+_OSU_LINE = re.compile(r"[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+\Z")
+
+
+def _osu_lines(text: str, keepends: bool = False) -> list[str]:
+    """The lines of .osu text as osu! reads them: broken at \\r\\n, \\r and \\n
+    only. ``str.splitlines`` also breaks at \\v, \\f, \\x1c-\\x1e, \\x85,
+    \\u2028 and \\u2029, which osu! keeps inside a line: a title holding one
+    was two lines here and one in the game, and a writer counting lines one
+    way while the reader counted the other could edit the wrong line."""
+    lines = _OSU_LINE.findall(text)
+    return lines if keepends else [line.rstrip("\r\n") for line in lines]
+
+
+def _timing_section_lines(osu_path: str | os.PathLike[str]) -> list[str]:
+    """Raw body lines of the .osu [TimingPoints] section."""
+    text, _bom = _load_osu_text(osu_path)
+    lines = _osu_lines(text)
+    header_idx = next((n for n, line in enumerate(lines)
+                       if line.strip() == "[TimingPoints]"), None)
+    if header_idx is None:
+        raise ValueError("No [TimingPoints] section found in this .osu file.")
+    end_idx = len(lines)
+    for n in range(header_idx + 1, len(lines)):
+        stripped = lines[n].strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            end_idx = n
+            break
+    return [line for line in lines[header_idx + 1:end_idx] if line.strip()]
+
+
+def _parse_red_line(line: str) -> tuple[float, float] | None:
+    """One red line as ``(offset_ms, bpm)``, or None when it has no numbers."""
+    if not _is_red_line(line.strip()):
+        return None
+    fields = line.strip().split(",")
+    try:
+        offset = float(fields[0])
+        beat_length = float(fields[1])
+    except (ValueError, IndexError):
+        return None
+    if not (np.isfinite(offset) and np.isfinite(beat_length)) or beat_length <= 0:
+        return None
+    return (offset, 60000.0 / beat_length)
+
+
+def read_osu_red_lines(osu_path: str | os.PathLike[str]) -> list[tuple[float, float]]:
+    """Every uninherited (red) timing line as ``(offset_ms, bpm)``.
+
+    The first half of Phase 5's map-vs-detected compare, and the reader the
+    full .osu work will grow into. Green (inherited) lines are timing-neutral
+    by definition — negative slider-velocity multipliers, not tempo — so they
+    are skipped, not parsed. Legacy v3-v4 two-field lines count when their
+    beat length is positive; decimal offsets (osu!lazer) survive as floats.
+    Lines with no usable numbers are skipped rather than fatal: one hand-broken
+    line must not hide the rest of the map.
+    """
+    return [red for line in _timing_section_lines(osu_path)
+            if (red := _parse_red_line(line)) is not None]
+
+
+#: Past this octave-normalised BPM gap the map and the detection disagree
+#: rather than round differently. Offsets reuse the benchmark's 5 ms bar.
+MAP_BPM_TOLERANCE = 1.0
+MAP_OFFSET_TOLERANCE_MS = 5.0
+
+
+def compare_map_timing(osu_path: str | os.PathLike[str],
+                       analysis: Analysis) -> dict:
+    """Per-section map-vs-detected diff table (Phase 5, second row).
+
+    For every detected section, the governing map line — the last red line at
+    or before the section start, with half a beat of slack, exactly as the
+    benchmark scores ground truth — and two questions: is its BPM right (up
+    to an octave), and does its grid pass through the detected beats. Returns
+    ``{"sections": [...], "findings": [...]}`` with plain JSON types; findings
+    reuse the validation vocabulary (``map_octave`` is info, because the
+    octave is a judgement call; the rest are warns, never errors — the map is
+    someone's work, and disagreement is review material, not a verdict).
+    """
+    detected = snap_timing_points(list(getattr(analysis, "points", None) or []))
+    if not detected:
+        return {"sections": [], "findings": [
+            {"level": "error", "key": "no_detected", "index": -1, "values": {}}]}
+    try:
+        reds = read_osu_red_lines(osu_path)
+    except (ValueError, OSError) as exc:
+        return {"sections": [], "findings": [
+            {"level": "error", "key": "map_unreadable", "index": -1,
+             "values": {"detail": str(exc)}}]}
+    if not reds:
+        return {"sections": [], "findings": [
+            {"level": "error", "key": "map_no_reds", "index": -1, "values": {}}]}
+
+    sections: list[dict] = []
+    findings: list[dict] = []
+    for n, point in enumerate(detected):
+        start_s = point.offset_ms / 1000.0
+        step = 60.0 / point.bpm if point.bpm > 0 else 0.0
+        governing = reds[0]
+        for offset_ms, _bpm in reds:
+            if offset_ms / 1000.0 <= start_s + 0.5 * step:
+                governing = (offset_ms, _bpm)
+        map_offset, map_bpm = governing
+        ratio = point.bpm / map_bpm if map_bpm > 0 else 1.0
+        octave = 2.0 ** round(float(np.log2(ratio))) if ratio > 0 else 1.0
+        bpm_error = abs(point.bpm / octave - map_bpm)
+        beats = (map_offset / 1000.0 - start_s) / step if step > 0 else 0.0
+        offset_error = abs(beats - round(beats)) * step * 1000.0
+        sections.append({
+            "index": n, "det_offset_ms": point.offset_ms, "det_bpm": point.bpm,
+            "map_offset_ms": map_offset, "map_bpm": map_bpm,
+            "bpm_error": bpm_error, "offset_error_ms": offset_error,
+            "octave": octave,
+        })
+        if octave != 1:
+            findings.append({"level": "info", "key": "map_octave", "index": n,
+                             "values": {"map": f"{map_bpm:.2f}",
+                                        "det": f"{point.bpm:.2f}",
+                                        "octave": f"x{octave:g}"}})
+        elif bpm_error > MAP_BPM_TOLERANCE:
+            findings.append({"level": "warn", "key": "map_bpm", "index": n,
+                             "values": {"map": f"{map_bpm:.2f}",
+                                        "det": f"{point.bpm:.2f}",
+                                        "err": f"{bpm_error:.2f}"}})
+        if offset_error > MAP_OFFSET_TOLERANCE_MS:
+            findings.append({"level": "warn", "key": "map_offset", "index": n,
+                             "values": {"ms": f"{offset_error:.1f}"}})
+    if len(reds) != len(detected):
+        findings.append({"level": "info", "key": "map_count", "index": -1,
+                         "values": {"map": len(reds), "det": len(detected)}})
+    return {"sections": sections, "findings": findings}
+
+
+#: Audio extensions Overtone can analyse, shared by the GUIs' file dialogs.
+AUDIO_EXTENSIONS = (".wav", ".flac", ".ogg", ".mp3", ".m4a", ".aac", ".opus", ".aiff")
+
+
+def scan_beatmap_folder(folder: str | os.PathLike[str]) -> dict:
+    """Beatmap folder import, first half (Phase 5): audio plus difficulties.
+
+    An osu! song folder holds one audio file and one .osu per difficulty.
+    Returns ``{"folder", "audio" (path or None), "beatmaps" (sorted paths),
+    "audio_from" (the beatmap that named the audio, or None)}`` with plain
+    types. Audio choice: the first beatmap's AudioFilename when that file
+    exists — the mapper's own word beats guessing; else the single audio file
+    when there is exactly one; else None. Several candidates with no map to
+    arbitrate is ambiguity, and guessing an audio file is worse than asking.
+    Flat listing on purpose: osu! song folders are flat.
+    """
+    root = Path(folder)
+    if not root.is_dir():
+        raise ValueError(f"{root} is not a folder.")
+    try:
+        entries = sorted(p for p in root.iterdir() if p.is_file())
+    except OSError as exc:
+        raise ValueError(f"Could not list {root}: {exc}") from exc
+    beatmaps = [str(p) for p in entries if p.suffix.lower() == ".osu"]
+    audios = [p for p in entries if p.suffix.lower() in AUDIO_EXTENSIONS]
+    audio: Path | None = None
+    audio_from: str | None = None
+    for beatmap in beatmaps:
+        try:
+            text = Path(beatmap).read_bytes().decode("utf-8-sig")
+        except (OSError, ValueError):
+            continue
+        named = next((line.split(":", 1)[1].strip() for line in _osu_lines(text)
+                      if line.startswith("AudioFilename:")), "")
+        if named and (root / named).is_file():
+            audio, audio_from = root / named, beatmap
+            break
+    if audio is None and len(audios) == 1:
+        audio = audios[0]
+    return {"folder": str(root), "audio": str(audio) if audio else None,
+            "beatmaps": beatmaps, "audio_from": audio_from}
+
+
+# ---------------------------------------------------------------------------
+# Full .osu reading (Phase 5, first row)
+# ---------------------------------------------------------------------------
+
+def _split_osu_sections(text: str) -> tuple[int, list[str], list[str], list[dict]]:
+    """Format version, pre-section head lines and their endings, and every
+    section in file order.
+
+    Unknown sections ride along verbatim in ``sections`` — the span-preserving
+    writer's contract is that a field nobody asked to change comes out
+    byte-identical, and that starts with the reader losing nothing, including
+    the exact head lines before the first section and each line's own ending:
+    a CRLF file can hold a bare LF line, and ``endings`` (beside ``lines``)
+    and ``header_ending`` keep it one.
+    """
+    version = 0
+    head: list[str] = []
+    head_endings: list[str] = []
+    sections: list[dict] = []
+    current: dict | None = None
+    for raw in _osu_lines(text, keepends=True):
+        line = raw.rstrip("\r\n")
+        ending = raw[len(line):]
+        stripped = line.strip()
+        if version == 0 and stripped.startswith("osu file format v"):
+            try:
+                version = int(stripped.rsplit("v", 1)[1])
+            except ValueError:
+                pass
+        if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
+            # ``header`` keeps the line as written (a stray space or tab around
+            # the brackets included), so the writer gives it back unchanged.
+            current = {"name": stripped[1:-1], "lines": [], "endings": [],
+                       "header": line, "header_ending": ending}
+            sections.append(current)
+            continue
+        if current is None:
+            head.append(line)
+            head_endings.append(ending)
+        else:
+            current["lines"].append(line)
+            current["endings"].append(ending)
+    return version, head, head_endings, sections
+
+
+def _osu_key_values(lines: list[str]) -> dict:
+    """``Key: value`` pairs; comments and blanks skipped, last key wins."""
+    values: dict[str, str] = {}
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("//") or ":" not in stripped:
+            continue
+        key, value = stripped.split(":", 1)
+        values[key.strip()] = value.strip()
+    return values
+
+
+def _parse_hit_sample(text: str) -> dict:
+    """``normal:addition:index:volume:file`` — short forms pad with silence."""
+    parts = (text or "").split(":")
+    while len(parts) < 5:
+        parts.append("")
+    out: dict = {"raw": text}
+    for key, part in zip(("normal_set", "addition_set", "index", "volume"), parts[:4]):
+        try:
+            out[key] = int(part)
+        except ValueError:
+            out[key] = 0
+    out["file"] = parts[4]
+    return out
+
+
+def _parse_slider_curve(data: str) -> dict:
+    """``B|123:456|789:12`` — curve kind plus integer anchor points."""
+    kind, _, rest = data.partition("|")
+    points: list[tuple[int, int]] = []
+    for token in rest.split("|"):
+        if ":" not in token:
+            continue
+        try:
+            px, py = token.split(":")
+            points.append((int(px), int(py)))
+        except ValueError:
+            continue
+    return {"curve_type": kind, "points": points}
+
+
+def _parse_hit_object(line: str) -> dict:
+    """One [HitObjects] line as plain types, always keeping the raw line.
+
+    Circles, sliders (curve, slides, length, edges), spinners and mania holds;
+    anything else — including a hand-broken line — comes back as ``unparsed``
+    with its raw text, so one bad object never hides the rest of the map.
+    """
+    obj: dict = {"raw": line, "kind": "unparsed"}
+    fields = line.split(",")
+    if len(fields) < 5:
+        return obj
+    try:
+        x, y = int(fields[0]), int(fields[1])
+        time = float(fields[2])
+        type_bits, hit_sound = int(fields[3]), int(fields[4])
+    except ValueError:
+        return obj
+    if not np.isfinite(time):
+        return obj
+    obj.update({"x": x, "y": y, "time": time, "type": type_bits,
+                "hit_sound": hit_sound, "new_combo": bool(type_bits & 4),
+                "combo_skip": (type_bits >> 4) & 7})
+    rest = fields[5:]
+    if type_bits & 128:  # mania hold: endTime, then the sample
+        try:
+            end, _, sample = rest[0].partition(":")
+            obj.update({"kind": "hold", "end_time": int(end),
+                        "hit_sample": _parse_hit_sample(sample)})
+        except (ValueError, IndexError):
+            pass
+    elif type_bits & 8:  # spinner: endTime, then the sample
+        try:
+            obj.update({"kind": "spinner", "end_time": int(rest[0]),
+                        "hit_sample": _parse_hit_sample(rest[1] if len(rest) > 1 else "")})
+        except (ValueError, IndexError):
+            pass
+    elif type_bits & 2:  # slider: curve, slides, length, then edges and sample
+        try:
+            curve = _parse_slider_curve(rest[0])
+            obj.update({"kind": "slider", "curve": curve,
+                        "slides": int(rest[1]), "length": float(rest[2])})
+        except (ValueError, IndexError):
+            return obj
+        if len(rest) > 3:
+            obj["edge_sounds"] = rest[3]
+        if len(rest) > 4:
+            obj["edge_sets"] = rest[4]
+        if len(rest) > 5:
+            obj["hit_sample"] = _parse_hit_sample(rest[5])
+    elif type_bits & 1:
+        obj.update({"kind": "circle",
+                    "hit_sample": _parse_hit_sample(rest[0] if rest else "")})
+    return obj
+
+
+def read_osu_beatmap(osu_path: str | os.PathLike[str]) -> dict:
+    """The whole beatmap as plain types (Phase 5, first row).
+
+    ``sections`` carries every section in file order with raw lines, so
+    unknown sections and keys survive even though only the known ones get
+    parsed views (``general``/``editor``/``metadata``/``difficulty``,
+    ``timing`` reds plus green raws, ``hitobjects``). Hit sounds parse into
+    ``normal_set``/``addition_set``/``index``/``volume``/``file``. ``head``,
+    ``head_endings``, each section's ``endings`` and ``header_ending``,
+    ``newline`` and ``bom`` exist for one reason: the writer rebuilds from
+    them, so an untouched file comes back byte-identical, mixed line endings
+    included. ``newline`` is only for lines added since the read.
+    """
+    text, bom = _load_osu_text(osu_path)
+    version, head, head_endings, sections = _split_osu_sections(text)
+    by_name: dict[str, dict] = {}
+    for section in sections:
+        by_name.setdefault(section["name"], section)
+
+    def body(name: str) -> list[str]:
+        return by_name.get(name, {}).get("lines", [])
+
+    timing = [line for line in body("TimingPoints") if line.strip()
+              and not line.strip().startswith("//")]
+    objects = [line for line in body("HitObjects") if line.strip()
+               and not line.strip().startswith("//")]
+    return {
+        "format": version,
+        "head": head,
+        "head_endings": head_endings,
+        "newline": "\r\n" if "\r\n" in text else "\n",
+        "trailing_newline": text.endswith(("\n", "\r")),
+        "bom": bom,
+        "sections": sections,
+        "general": _osu_key_values(body("General")),
+        "editor": _osu_key_values(body("Editor")),
+        "metadata": _osu_key_values(body("Metadata")),
+        "difficulty": _osu_key_values(body("Difficulty")),
+        "timing": {
+            "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
+            "greens": [line for line in timing if not _is_red_line(line.strip())],
+        },
+        "hitobjects": [_parse_hit_object(line) for line in objects],
+    }
+
+
+def set_beatmap_reds(beatmap: dict, new_reds: list[str]) -> int:
+    """Replace the red raws in place; greens, comments and blanks stay put.
+
+    New reds take the position of the first old red (same rule as inject, but
+    on the parsed structure instead of the file); with no old reds they append
+    at the end of the section. Every other line keeps its own ending; the
+    k-th new red takes the k-th old red's, and reds beyond the old count take
+    none, so the writer gives them the file's ``newline``. The ``timing`` view
+    is refreshed, and the replaced red count returns.
+    """
+    section = next((s for s in beatmap["sections"] if s["name"] == "TimingPoints"), None)
+    if section is None:
+        raise ValueError("No [TimingPoints] section in this beatmap.")
+    endings = _aligned_endings(section["lines"], section.get("endings"))
+    is_red = [bool(line.strip()) and _is_red_line(line.strip()) for line in section["lines"]]
+    red_endings = [ending for ending, red in zip(endings, is_red) if red]
+    new_endings = [red_endings[k] if k < len(red_endings) else None
+                   for k in range(len(new_reds))]
+    replaced = len(red_endings)
+    out: list[str] = []
+    out_endings: list[str | None] = []
+    done = False
+    for line, ending, red in zip(section["lines"], endings, is_red):
+        if red:
+            if not done:
+                out.extend(new_reds)
+                out_endings.extend(new_endings)
+                done = True
+        else:
+            out.append(line)
+            out_endings.append(ending)
+    if not done:
+        out.extend(new_reds)
+        out_endings.extend(new_endings)
+    section["lines"] = out
+    section["endings"] = out_endings
+    timing = [line for line in out if line.strip() and not line.strip().startswith("//")]
+    beatmap["timing"] = {
+        "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
+        "greens": [line for line in timing if not _is_red_line(line.strip())],
+    }
+    return replaced
+
+
+#: What osu! reads for the fields an old green line leaves out: meter,
+#: sample set, sample index, volume, uninherited (0: a green) and effects.
+_GREEN_FIELD_DEFAULTS = ("", "", "4", "0", "0", "100", "0", "0")
+
+
+def _green_fields(line: str) -> list[str]:
+    """A green line's eight fields, the missing ones at osu!'s defaults: an
+    empty field would not read back (osu! reads a character from it)."""
+    fields = [f.strip() for f in line.split(",")]
+    while len(fields) < 8:
+        fields.append(_GREEN_FIELD_DEFAULTS[len(fields)])
+    return fields
+
+
+def _point_time_text(section: dict, time_ms: float) -> str | None:
+    """The time field of a timing line at ``time_ms``, exactly as the map
+    wrote it. A green inserted at a red line's time must carry the same
+    number: rounded, 17837.0114440535 became 17837.011 and landed before the
+    red line it was meant to follow, which then undid it."""
+    for line in section.get("lines", []):
+        text = line.strip()
+        if text and not text.startswith("//") and (point := _timing_point_fields(text)) is not None \
+                and abs(point["time"] - time_ms) <= 0.01:
+            return text.split(",", 1)[0].strip()
+    return None
+
+
+def _first_red_time(beatmap: dict) -> float | None:
+    """The map's first red line: nothing is written before it, since osu!
+    reads the first line's settings back to the song's start, and a green
+    placed there would become what the whole intro reads."""
+    rows = [o for o, b, _m in _beatmap_red_rows(beatmap) if np.isfinite(o) and np.isfinite(b)]
+    return min(rows) if rows else None
+
+
+def _insert_timing_line(section: dict, row: str) -> None:
+    """``row`` into [TimingPoints] before the first point later than it,
+    every other line keeping its own ending; the new one takes the file's."""
+    time_ms = float(row.split(",", 1)[0])
+    at = next((n for n, line in enumerate(section["lines"])
+               if line.strip() and not line.strip().startswith("//")
+               and (point := _timing_point_fields(line)) is not None
+               and point["time"] > time_ms + 1e-6), len(section["lines"]))
+    endings = section.get("endings")
+    if endings is not None and len(endings) == len(section["lines"]):
+        endings.insert(at, None)
+    section["lines"].insert(at, row)
+
+
+def set_chorus_kiai(beatmap: dict, spans: list[tuple[float, float]]) -> dict:
+    """Kiai on chorus spans, written as green lines (Phase 21, Kiai).
+
+    Choruses that touch or overlap light as one run: a chorus ending where
+    the next one begins must not switch kiai off at the seam. Inside a run
+    every point reads kiai, because a point carries its own kiai bit and the
+    map's own greens (SV, volume) would switch it off a beat in: a green
+    where kiai reads off gets its bit set, and a time with no green to set
+    (the run's start, or a red line inside, which carries its own effects)
+    gets a new green carrying the audible state in force there (SV, sets,
+    index, volume), so nothing plays differently — kiai is light, not sound.
+    At the run's end, kiai goes back to what the map itself had there. A
+    boundary already reading right is kept, so a second run changes nothing.
+    Raw lines move, the ``timing`` view is refreshed, and comments and
+    blanks stay put. In place, like the P-2 field edits. Returns added
+    (greens), flipped (kiai bits) and kept (boundaries already right).
+    """
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "TimingPoints"), None)
+    if section is None:
+        raise ValueError("No [TimingPoints] section in this beatmap.")
+    cursor = _TimingCursor(beatmap)      # the map as read: audible state and its own kiai
+    import bisect
+
+    def meter_at(time_ms: float) -> int:
+        rows = _beatmap_red_rows(beatmap)
+        i = bisect.bisect_right([o for o, _b, _m in rows], time_ms + 1e-6) - 1
+        return rows[max(i, 0)][2] if rows else 4
+
+    def stamp(time_ms: float) -> str:
+        whole = round(time_ms)
+        return str(int(whole)) if abs(time_ms - whole) < 1e-6 else f"{time_ms:.3f}"
+
+    # The kiai each point time reads once every point there is applied, in
+    # osu!'s order, and the green read last there: the one a flip goes to.
+    rows = []
+    for order, line in enumerate(section["lines"]):
+        text = line.strip()
+        if text and not text.startswith("//") and (point := _timing_point_fields(text)) is not None:
+            point["order"] = order
+            rows.append(point)
+    kiai_at: dict[float, bool] = {}
+    last_green: dict[float, int] = {}
+    for row in _ordered(rows):
+        kiai_at[row["time"]] = bool(row["effects"] & 1)
+        if not row["red"]:
+            last_green[row["time"]] = row["order"]
+    times = sorted(kiai_at)
+    flips: dict[int, bool] = {}
+    inserts: list[tuple[float, bool]] = []
+
+    def point_time(time_ms: float) -> float | None:
+        i = bisect.bisect_left(times, time_ms - 0.01)
+        return times[i] if i < len(times) and times[i] <= time_ms + 0.01 else None
+
+    def kiai_now(time_ms: float) -> bool:
+        # Before the first point, the first point's settings apply, as in osu!.
+        i = bisect.bisect_right(times, time_ms + 1e-6) - 1
+        return kiai_at[times[max(i, 0)]] if times else False
+
+    def decide(time_ms: float, on: bool) -> str:
+        at = point_time(time_ms)
+        if at is None:
+            at = time_ms
+            bisect.insort(times, at)
+        kiai_at[at] = on
+        if at in last_green:
+            flips[last_green[at]] = on
+            return "flipped"
+        inserts.append((at, on))            # no green there, or only a red line
+        return "added"
+
+    first_red = _first_red_time(beatmap)
+    runs: list[list[float]] = []
+    for start_ms, end_ms in sorted((float(a), float(b)) for a, b in spans):
+        if first_red is not None:
+            start_ms = max(start_ms, first_red)
+        if not end_ms > start_ms:
+            continue
+        if runs and start_ms <= runs[-1][1] + 0.01:
+            runs[-1][1] = max(runs[-1][1], end_ms)
+        else:
+            runs.append([start_ms, end_ms])
+    counts = {"added": 0, "flipped": 0, "kept": 0}
+    for start_ms, end_ms in runs:
+        # What follows the run is the map's own kiai there, read before any edit.
+        _beat, after = cursor.at(end_ms)
+        restore = bool(after is not None and after.kiai)
+        if kiai_now(start_ms):
+            counts["kept"] += 1
+        else:
+            counts[decide(start_ms, True)] += 1
+        for time_ms in [t for t in times if start_ms + 0.01 < t < end_ms - 0.01]:
+            if not kiai_now(time_ms):
+                counts[decide(time_ms, True)] += 1
+        if kiai_now(end_ms) == restore:
+            counts["kept"] += 1
+        else:
+            counts[decide(end_ms, restore)] += 1
+    for index, on in flips.items():
+        fields = _green_fields(section["lines"][index])
+        effects = int(float(fields[7])) if fields[7] else 0
+        fields[7] = str((effects | 1) if on else (effects & ~1))
+        section["lines"][index] = ",".join(fields)
+    for time_ms, on in inserts:
+        _beat, state = cursor.at(time_ms)
+        sv, sample_set, sample_index, volume = ((state.sv, state.sample_set, state.sample_index,
+                                                 state.volume) if state is not None else (1.0, 0, 0, 100))
+        when = _point_time_text(section, time_ms) or stamp(time_ms)
+        _insert_timing_line(section, f"{when},{-100.0 / sv:.12g},{meter_at(time_ms)},"
+                                     f"{sample_set},{sample_index},{volume},0,{1 if on else 0}")
+    timing = [line for line in section["lines"]
+              if line.strip() and not line.strip().startswith("//")]
+    beatmap["timing"] = {
+        "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
+        "greens": [line for line in timing if not _is_red_line(line.strip())],
+    }
+    return counts
+
+
+def set_section_volumes(beatmap: dict, sections: list[dict]) -> dict:
+    """Hitsound volume from section energy, as greens (Phase 21, Volume).
+
+    Each section plays at the loudest section's volume scaled by their level
+    distance in dB — amplitude math, not taste — so a chorus hits harder than
+    its verse by exactly how much louder it is. The scale's anchor is the
+    volume the loudest section plays longest, which the tool never changes: a
+    second run reads its own greens as right instead of turning them down
+    again, and a short mute at that section's start (5 % on a real map) does
+    not become the scale.
+
+    The mapper's own volumes are kept. A section where the map changes the
+    volume, at its start or anywhere inside, is left as it is and counted as
+    the mapper's. A section the map plays at one volume from start to end is
+    set to its target all the way through: its start, the volume of every
+    green inside, and a new green at each red line inside, since a red line
+    carries a volume of its own. New greens carry the audible state in force
+    there, so SV, sets, index and kiai never move with the volume. A section
+    already at its target throughout is kept. One case reads wrong on a second
+    run: a mapper's section whose one volume equals the target this tool
+    wrote into the section before it reads as inherited and is set. Sections
+    run to their stated end, else to the next start. In place, like the P-2
+    field edits. Returns sections set, kept (at their target already) and
+    mapper (left to the map's own volumes), and the green lines added and
+    flipped (volume rewritten) to set them.
+    """
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "TimingPoints"), None)
+    if section is None:
+        raise ValueError("No [TimingPoints] section in this beatmap.")
+    counts = {"added": 0, "flipped": 0, "kept": 0, "mapper": 0, "set": 0}
+    entries = []
+    for entry in sections or []:
+        try:
+            start = float(entry["start_s"]) * 1000.0
+            level = float(entry.get("level_db", float("nan")))
+            end = float(entry.get("end_s", float("nan"))) * 1000.0
+        except (TypeError, ValueError, KeyError):
+            continue
+        if np.isfinite(start) and np.isfinite(level):
+            entries.append((start, level, end))
+    if not entries:
+        return counts
+    # One boundary per start: contiguous sections never share one, but a
+    # hand-built list might, and two greens on the same millisecond are junk.
+    unique: list[tuple[float, float, float]] = []
+    for start, level, end in sorted(entries):
+        if not unique or abs(start - unique[-1][0]) > 0.01:
+            unique.append((start, level, end))
+    cursor = _TimingCursor(beatmap)      # the map as read, before any edit here
+    import bisect
+
+    def meter_at(time_ms: float) -> int:
+        rows = _beatmap_red_rows(beatmap)
+        i = bisect.bisect_right([o for o, _b, _m in rows], time_ms + 1e-6) - 1
+        return rows[max(i, 0)][2] if rows else 4
+
+    def stamp(time_ms: float) -> str:
+        whole = round(time_ms)
+        return str(int(whole)) if abs(time_ms - whole) < 1e-6 else f"{time_ms:.3f}"
+
+    def volume_at(time_ms: float) -> int:
+        _beat, state = cursor.at(time_ms)
+        return state.volume if state is not None else 100
+
+    points = []
+    for order, line in enumerate(section["lines"]):
+        text = line.strip()
+        if text and not text.startswith("//") and (point := _timing_point_fields(text)) is not None:
+            point["order"] = order
+            points.append(point)
+    points = _ordered(points)
+    ends = [float(o.get("end_time") or o.get("time") or 0.0)
+            for o in beatmap.get("hitobjects", []) if "time" in o]
+    last = max([p["time"] for p in points] + ends + [unique[-1][0]]) + 1.0
+    spans = []
+    for n, (start, level, end) in enumerate(unique):
+        following = unique[n + 1][0] if n + 1 < len(unique) else None
+        stop = end if np.isfinite(end) and end > start else (following if following is not None else last)
+        if following is not None:
+            stop = min(stop, following)
+        spans.append((start, max(stop, start), level, following is not None))
+    # Nothing is written before the first red line (osu! would read it back
+    # to the song's start), and the scale comes from what is left.
+    first_red = _first_red_time(beatmap)
+    if first_red is not None:
+        spans = [(max(s, first_red), e, lv, more) for s, e, lv, more in spans if e > first_red + 0.01]
+    if not spans:
+        return counts
+    loudest = max(lv for _s, _e, lv, _m in spans)
+
+    def longest_volume(start: float, stop: float) -> int:
+        cuts = sorted({start, stop} | {p["time"] for p in points if start < p["time"] < stop})
+        held: dict[int, float] = {}
+        for a, b in zip(cuts, cuts[1:]):
+            held[volume_at(a)] = held.get(volume_at(a), 0.0) + (b - a)
+        return max(held, key=lambda v: (held[v], v)) if held else volume_at(start)
+
+    anchor = min(spans, key=lambda s: (-s[2], s[0]))
+    reference = longest_volume(anchor[0], anchor[1])
+    flips: dict[int, int] = {}
+    # New greens by time: a set section's closing green and the next
+    # section's own start land on the same millisecond, and the start wins.
+    inserts: dict[float, tuple[float, int]] = {}
+    for start, stop, level, more in spans:
+        # Never under osu!'s own floor: a fade 47 dB down came out at 0.
+        target = max(MIN_SAMPLE_VOLUME, min(100, int(round(reference * 10.0 ** ((level - loudest) / 20.0)))))
+        inside = [p for p in points if start - 0.01 <= p["time"] < stop - 0.01]
+        times = sorted({start} | {p["time"] for p in inside})
+        if all(volume_at(t) == target for t in times):
+            counts["kept"] += 1
+            continue
+        before = volume_at(start - 0.01)
+        if any(p["volume"] != before for p in inside):
+            counts["mapper"] += 1
+            continue
+        counts["set"] += 1
+        for time_ms in times:
+            greens = [p for p in inside if not p["red"] and abs(p["time"] - time_ms) <= 0.01]
+            for green in greens:
+                flips[green["order"]] = target
+            if greens:
+                inserts.pop(round(time_ms, 2), None)
+            else:
+                inserts[round(time_ms, 2)] = (time_ms, target)
+        # The target must not run on past the section: where the next one
+        # starts with no line of its own, a green gives back what the map
+        # played there (the next section's own start may still replace it).
+        opens_own = any(abs(p["time"] - stop) <= 0.01 for p in points)
+        if (more or stop < last - 1.0) and not opens_own and volume_at(stop) != target:
+            inserts[round(stop, 2)] = (stop, volume_at(stop))
+    counts["flipped"] = len(flips)
+    counts["added"] = len(inserts)
+    for order, volume in flips.items():
+        fields = _green_fields(section["lines"][order])
+        fields[5] = str(volume)
+        section["lines"][order] = ",".join(fields)
+    for time_ms, volume in inserts.values():
+        _beat, state = cursor.at(time_ms)
+        sv, sample_set, sample_index, kiai = ((state.sv if state.sv > 0 else 1.0, state.sample_set,
+                                               state.sample_index, state.kiai)
+                                              if state is not None else (1.0, 0, 0, False))
+        when = _point_time_text(section, time_ms) or stamp(time_ms)
+        _insert_timing_line(section, f"{when},{-100.0 / sv:.12g},{meter_at(time_ms)},"
+                                     f"{sample_set},{sample_index},{volume},0,{1 if kiai else 0}")
+    timing = [line for line in section["lines"]
+              if line.strip() and not line.strip().startswith("//")]
+    beatmap["timing"] = {
+        "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
+        "greens": [line for line in timing if not _is_red_line(line.strip())],
+    }
+    return counts
+
+
+def suggest_breaks(beatmap: dict, sections: list[dict], min_length_s: float = 5.0,
+                 quiet_db: float = 6.0) -> list[dict]:
+    """Quiet spans long enough for a break (Phase 21, Breaks).
+
+    A break lives where the song goes quiet *and* the map goes silent: each
+    section at least ``quiet_db`` under the loudest one's level is covered,
+    adjacent quiet sections merged, and every gap between the map's own sound
+    events (see :func:`sound_events`) meeting that cover for at least
+    ``min_length_s`` becomes a span. Both bars are the tool's own, adjustable —
+    the preview shows each span's length and depth so the mapper judges, never
+    a claim about the client's. Read only, plain JSON types: ``start_ms``,
+    ``end_ms``, the section ``kind`` holding the span's start, ``under_db``
+    and the ``gap_s`` it was cut from.
+    """
+    usable = []
+    for section in sections or []:
+        try:
+            start = float(section["start_s"]) * 1000.0
+            end = float(section["end_s"]) * 1000.0
+            level = float(section.get("level_db", float("nan")))
+        except (TypeError, ValueError, KeyError):
+            continue
+        if not np.isfinite(level) or end <= start:
+            continue
+        usable.append((start, end, str(section.get("kind", "")), level))
+    if not usable:
+        return []
+    loudest = max(level for _s, _e, _k, level in usable)
+    quiet = sorted([(s, e, k, loudest - level)
+                    for s, e, k, level in usable if loudest - level >= quiet_db])
+    if not quiet:
+        return []
+    # One cover: adjacent quiet sections read as one silence.
+    cover: list[list] = []
+    for start, end, kind, under in quiet:
+        if cover and start <= cover[-1][1] + 1e-6:
+            cover[-1][1] = max(cover[-1][1], end)
+        else:
+            cover.append([start, end, kind, under])
+    times = sorted({float(e["time"]) for e in sound_events(beatmap)})
+    if len(times) < 2:
+        return []
+    minimum = float(min_length_s) * 1000.0
+    spans = []
+    for start, end, kind, under in cover:
+        for before, after in zip(times, times[1:]):
+            low, high = max(before, start), min(after, end)
+            if high - low >= minimum - 1e-6:
+                spans.append({
+                    "start_ms": int(round(low)), "end_ms": int(round(high)),
+                    "kind": kind, "under_db": round(under, 1),
+                    "gap_s": round((after - before) / 1000.0, 2),
+                })
+    return sorted(spans, key=lambda s: (s["start_ms"], s["end_ms"]))
+
+
+def set_map_breaks(beatmap: dict, spans: list[tuple[float, float]]) -> dict:
+    """Break spans as ``2,start,end`` lines in [Events] (Phase 21, Breaks).
+
+    A span already covered by a break line is kept, the rest are added after
+    the ``//Break Periods`` comment when the map has one, else at the
+    section's end — line order inside [Events] means nothing to the client,
+    every line is typed. Whole milliseconds; a span ending at or before its
+    start refuses the map, and a missing [Events] refuses it too, rather than
+    inventing file structure. Comments and blanks stay put. In place, like the
+    P-2 field edits. Returns added and kept.
+    """
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "Events"), None)
+    if section is None:
+        raise ValueError("No [Events] section in this beatmap.")
+    have: list[tuple[int, int]] = []
+    for line in section["lines"]:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("//"):
+            continue
+        fields = stripped.split(",")
+        if len(fields) >= 3 and fields[0].strip() == "2":
+            try:
+                have.append((int(float(fields[1])), int(float(fields[2]))))
+            except ValueError:
+                continue
+    added = kept = 0
+    fresh: list[str] = []
+    for start_ms, end_ms in spans:
+        start, end = int(round(float(start_ms))), int(round(float(end_ms)))
+        if end <= start:
+            raise ValueError(f"Break ends at or before its start: {start_ms} -> {end_ms}.")
+        if any(begin <= start + 1 and finish >= end - 1 for begin, finish in have):
+            kept += 1
+            continue
+        have.append((start, end))
+        fresh.append(f"2,{start},{end}")
+        added += 1
+    if fresh:
+        at = next((n + 1 for n, line in enumerate(section["lines"])
+                   if line.strip() == "//Break Periods"), len(section["lines"]))
+        section["lines"][at:at] = fresh
+    return {"added": added, "kept": kept}
+
+
+#: The multipliers osu! plays a green line's slider velocity at: 0.1x to 10x.
+SV_RANGE = (0.1, 10.0)
+
+
+class ScrollMovesSliders(ValueError):
+    """Normalising would move slider ends: in osu! a slider lasts by the SV
+    it starts under, so scaling that SV moves its tail and repeats off the
+    beats they were snapped to. On 225 local maps with BPM changes, the
+    first version of the tool moved slider ends in 194."""
+
+    def __init__(self, count: int, first_ms: float) -> None:
+        super().__init__(f"{count} sliders start where the scroll would be rescaled (the first at "
+                         f"{first_ms:.0f} ms): a slider lasts by its SV, so each end would leave "
+                         "its beat. Refusing the map.")
+        self.count = count
+        self.first_ms = first_ms
+#: A span reads constant already when the scroll right after its red line is
+#: within this share of the reference's: normalised by hand, or by a first run.
+SCROLL_TOLERANCE = 1e-4
+
+
+def scroll_profile(beatmap: dict) -> str:
+    """A fingerprint of what the map scrolls at: every change of BPM or SV
+    multiplier, in osu!'s order, rounded to 1e-6. Writes that leave scroll
+    alone keep it — a kiai or volume green carries the SV in force — while a
+    restore, an inject, a hand edit of SV or another copy of the map change
+    it. Constant scroll records it in History, so a map it normalised is not
+    normalised twice in any session, and a map that changed since is free."""
+    import hashlib
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "TimingPoints"), None)
+    points = []
+    for order, line in enumerate((section or {}).get("lines", [])):
+        text = line.strip()
+        if text and not text.startswith("//") and (point := _timing_point_fields(text)) is not None:
+            point["order"] = order
+            points.append(point)
+    bpm, sv, changes = None, 1.0, []
+    for point in _ordered(points):
+        if point["red"] and point["beat_length"] > 0:
+            bpm, sv = 60000.0 / point["beat_length"], 1.0
+        elif not point["red"] and point["beat_length"] < 0:
+            sv = -100.0 / point["beat_length"]
+        now = (None if bpm is None else round(bpm, 6), round(sv, 6))
+        if not changes or changes[-1][1:] != now:
+            changes.append((round(point["time"], 3), *now))
+    return hashlib.sha1(repr(changes).encode("utf-8")).hexdigest()
+
+
+def set_constant_scroll(beatmap: dict) -> dict:
+    """Greens that cancel BPM changes, so scroll and slider speed stay
+    constant (Phase 21, SV normaliser).
+
+    The first red line's BPM is the reference. Under every later red with a
+    different BPM, each green's multiplier is scaled by reference over that
+    BPM, so the mapper's own SV changes keep their shape at the reference's
+    speed instead of the new tempo's; a red with no green at its own time
+    gets one carrying reference over its BPM (red before green, as osu!
+    orders them), with the audible state in force there — SV is scroll, not
+    sound — and the red's own effects, so kiai and barlines read as before.
+
+    A span already reading constant is kept whole: when the scroll right
+    after its red line is the reference's (``SCROLL_TOLERANCE``), it was
+    normalised, by hand or by a first run, and is not scaled twice. osu!
+    resets SV to 1.0 at every red line, so "right after" is what the map sets
+    there, not what played before it. One case reads wrong: a span whose own
+    green at the red line held another multiplier than 1.0 reads as not yet
+    normalised on a second run and is scaled again — History restores it.
+    A multiplier scaled out of ``SV_RANGE`` refuses the map, naming its time.
+    So does a slider starting in a span that would be rescaled
+    (:class:`ScrollMovesSliders`): a slider lasts by its SV, and scaling it
+    would move every tail and repeat off its beat, so only maps with nothing
+    but circles, spinners and holds there (osu!mania's, for one) are written.
+    Reds at the reference BPM are not this tool's business and never count.
+    In place, like the P-2 field edits. Returns added (greens at red lines),
+    flipped (greens rescaled) and kept (spans already constant).
+    """
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "TimingPoints"), None)
+    if section is None:
+        raise ValueError("No [TimingPoints] section in this beatmap.")
+    rows = [(o, b, m) for o, b, m in _beatmap_red_rows(beatmap)
+            if np.isfinite(o) and np.isfinite(b) and b > 0]
+    if not rows:
+        raise ValueError("No usable red lines in this beatmap.")
+    reference = rows[0][1]
+    cursor = _TimingCursor(beatmap)
+    import bisect
+
+    def stamp(time_ms: float) -> str:
+        whole = round(time_ms)
+        return str(int(whole)) if abs(time_ms - whole) < 1e-6 else f"{time_ms:.3f}"
+
+    def red_effects(time_ms: float) -> int:
+        for line in section["lines"]:
+            point = _timing_point_fields(line.strip()) if line.strip() else None
+            if point is not None and point["red"] and abs(point["time"] - time_ms) < 1e-6:
+                return point["effects"]
+        return 0
+
+    # Every green, in osu!'s order, under the red line it plays at.
+    points = []
+    for order, line in enumerate(section["lines"]):
+        text = line.strip()
+        if text and not text.startswith("//") and (point := _timing_point_fields(text)) is not None:
+            point["order"] = order
+            points.append(point)
+    greens = [p for p in _ordered(points) if not p["red"] and p["beat_length"] < 0]
+    red_times = [o for o, _b, _m in rows]
+    by_span: dict[int, list[dict]] = {}
+    for green in greens:
+        span = bisect.bisect_right(red_times, green["time"] + 1e-6) - 1
+        if span >= 0:
+            by_span.setdefault(span, []).append(green)
+
+    added = flipped = kept = 0
+    rescaled: dict[int, float] = {}
+    inserts: list[tuple[float, float, int]] = []
+    slider_starts = sorted(float(o["time"]) for o in beatmap.get("hitobjects", [])
+                           if o.get("kind") == "slider" and "time" in o)
+    moved: list[float] = []
+    for span, (offset, bpm, meter) in enumerate(rows):
+        need = reference / bpm
+        if span == 0 or abs(need - 1.0) < 1e-9:
+            continue
+        own = by_span.get(span, [])
+        at_red = [g for g in own if abs(g["time"] - offset) <= 0.01]
+        after = -100.0 / at_red[-1]["beat_length"] if at_red else 1.0
+        if abs(bpm * after / reference - 1.0) <= SCROLL_TOLERANCE:
+            kept += 1
+            continue
+        until = rows[span + 1][0] if span + 1 < len(rows) else float("inf")
+        moved += [t for t in slider_starts if offset - 1e-6 <= t < until - 1e-6]
+        for green in own:
+            value = -100.0 / green["beat_length"] * need
+            if not SV_RANGE[0] - 1e-9 <= value <= SV_RANGE[1] + 1e-9:
+                raise ValueError(f"Scaling the green at {stamp(green['time'])} ms gives "
+                                 f"{value:.3f}x, outside osu!'s {SV_RANGE[0]:g}x-{SV_RANGE[1]:g}x: "
+                                 "refusing the map.")
+            rescaled[green["order"]] = value
+        flipped += len(own)
+        if not at_red:
+            inserts.append((offset, need, meter))
+            added += 1
+    if moved:
+        raise ScrollMovesSliders(len(moved), min(moved))
+    for order, value in rescaled.items():
+        fields = _green_fields(section["lines"][order])
+        fields[1] = f"{-100.0 / value:.12g}"
+        section["lines"][order] = ",".join(fields)
+    for offset, need, meter in inserts:
+        _beat, state = cursor.at(offset)
+        sample_set, sample_index, volume = ((state.sample_set, state.sample_index, state.volume)
+                                            if state is not None else (0, 0, 100))
+        when = _point_time_text(section, offset) or stamp(offset)
+        _insert_timing_line(section, f"{when},{-100.0 / need:.12g},{meter},"
+                                     f"{sample_set},{sample_index},{volume},0,{red_effects(offset)}")
+    timing = [line for line in section["lines"]
+              if line.strip() and not line.strip().startswith("//")]
+    beatmap["timing"] = {
+        "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
+        "greens": [line for line in timing if not _is_red_line(line.strip())],
+    }
+    return {"added": added, "flipped": flipped, "kept": kept}
+
+def _aligned_endings(lines: list[str], endings: list | None) -> list[str | None]:
+    """``endings`` when they still pair one to one with ``lines``; otherwise
+    None for every line, since pairing by position would misplace them."""
+    if endings is None or len(endings) != len(lines):
+        return [None] * len(lines)
+    return list(endings)
+
+
+def beatmap_text(beatmap: dict) -> str:
+    """Head plus sections in order, raw lines untouched, each with its own ending.
+
+    A line keeps the ending it was read with, so a CRLF file holding one bare
+    LF comes back as it was. A line with no ending on record (added since the
+    read, or in a section whose ``lines`` changed length without its
+    ``endings``) takes ``newline``, as does a line that was last and no
+    longer is. The file ends with a line break exactly when it did.
+    """
+    newline = beatmap.get("newline", "\n")
+    head = beatmap.get("head", [])
+    rows = list(zip(head, _aligned_endings(head, beatmap.get("head_endings"))))
+    for section in beatmap["sections"]:
+        rows.append((section.get("header") or f"[{section['name']}]", section.get("header_ending")))
+        rows.extend(zip(section["lines"],
+                        _aligned_endings(section["lines"], section.get("endings"))))
+    trailing = beatmap.get("trailing_newline", True)
+    out: list[str] = []
+    for n, (line, ending) in enumerate(rows):
+        if n == len(rows) - 1:
+            ending = (ending or newline) if trailing else ""
+        elif not ending:
+            ending = newline
+        out.append(line + ending)
+    return "".join(out)
+
+
+def write_osu_beatmap(osu_path: str | os.PathLike[str], beatmap: dict,
+                      backup: bool = True, op: str = "write", summary: dict | None = None) -> dict:
+    """Write a parsed beatmap back (Phase 5, writer row).
+
+    Untouched lines come out byte-identical — same text, same line ending
+    (each its own, mixed or not), same BOM — because the reader kept them
+    all. Atomic temp-plus-rename, and backups follow inject's rules
+    (_backup_before_write): written first, never overwritten, skipped when
+    there is no original to protect. ``backup`` in the result is the path
+    holding the replaced bytes, or None. ``op`` names the write in the
+    history log (kiai, breaks...), so History says which tool wrote it, and
+    ``summary`` adds to what the log keeps of it.
+    """
+    path = Path(osu_path)
+    original = path.read_bytes() if path.is_file() else None
+    payload = beatmap_text(beatmap).encode("utf-8-sig" if beatmap.get("bom") else "utf-8")
+    spare = None
+    if backup and original is not None:
+        try:
+            spare = _backup_before_write(path, original)
+        except OSError as exc:
+            raise ValueError(f"Could not back up {path.name}: {exc}") from exc
+    try:
+        _atomic_write_bytes(path, payload)
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Could not write {path.name}: {exc}") from exc
+    log_write(path, op, str(spare) if spare else None, {"bytes": len(payload), **(summary or {})})
+    return {"bytes": len(payload), "backup": str(spare) if spare else None}
+
+
+# ---------------------------------------------------------------------------
+# Attack object context (Phase 6: what the map was doing at each attack)
+# ---------------------------------------------------------------------------
+
+#: An object within this of an attack belongs to it. Mappers think in
+#: milliseconds, and 50 ms is an eighth note at 150 BPM — generous enough for
+#: human timing, tight enough to exclude the neighbour.
+OBJECT_WINDOW_MS = 50.0
+#: Nearest-neighbour object gap under this with small steps reads as a stream.
+STREAM_GAP_MS = 250.0
+STREAM_STEP_PX = 150.0
+#: A step at least this big on a fast gap reads as a jump.
+JUMP_STEP_PX = 200.0
+JUMP_GAP_MS = 500.0
+
+
+def attack_object_context(times: np.ndarray, weights: np.ndarray,
+                          beatmap: dict,
+                          tolerance_ms: float = OBJECT_WINDOW_MS) -> list[dict]:
+    """Per-attack map context for the hitsound decision (Phase 6, first row).
+
+    For every attack: the nearest **sound event** inside the tolerance, the
+    spacing around it, a coarse pattern class (stream/jump/single/none), the
+    running combo, and what the map already plays there.
+
+    A sound event, not an object start: osu! plays a slider at every edge it
+    has — head, each repeat, tail — and a spinner at its end, and those carry
+    their own ``edgeSounds``. Matching attacks to starts alone left 28 % of
+    what a map plays with no context at all on the set this was measured on,
+    and reported a slider tail's sound as its head's, which is a different
+    sound whenever the mapper set one.
+
+    ``part`` and ``edge`` say which edge answered; ``x``/``y`` are the owning
+    object's own, since a repeat's position needs the slider path and this
+    reader does not walk it — stated rather than invented. Slider bodies are
+    left out: they span, they do not land.
+
+    Attack times arrive in seconds (engine convention, like beats) and are
+    reported in milliseconds (map convention, like objects). Attacks with no
+    event nearby come back with nulls, never invented context. All plain JSON
+    types.
+    """
+    try:
+        hitobjects = [o for o in beatmap.get("hitobjects", [])
+                      if isinstance(o, dict) and np.isfinite(o.get("time", float("nan")))]
+    except (TypeError, ValueError):
+        hitobjects = []
+
+    combos: list[int] = []
+    combo = 0
+    for obj in sorted(hitobjects, key=lambda o: o["time"]):
+        if obj.get("new_combo"):
+            combo += 1
+        combos.append(combo)
+    by_index: dict[int, int] = {}
+    for position, obj in enumerate(sorted(hitobjects, key=lambda o: o["time"])):
+        by_index[id(obj)] = position
+
+    try:
+        events = [e for e in sound_events(beatmap) if e.get("part") != "body"]
+    except (TypeError, ValueError, KeyError):
+        events = []
+    events.sort(key=lambda e: float(e["time"]))
+    event_times = np.asarray([float(e["time"]) for e in events], dtype=np.float64)
+
+    rows: list[dict] = []
+    times = np.asarray(times, dtype=np.float64) * 1000.0
+    weights = np.asarray(weights, dtype=np.float64)
+    # Both sides are sorted, so the nearest event is one of the two the
+    # insertion point sits between: a scan over every event per attack was
+    # quadratic, and a long map is thousands of each.
+    right = np.searchsorted(event_times, times) if event_times.size else None
+    for n, attack in enumerate(times):
+        weight = float(weights[n]) if n < weights.size else 0.0
+        best, best_dt = -1, float("inf")
+        if right is not None:
+            for candidate in (int(right[n]) - 1, int(right[n])):
+                if 0 <= candidate < event_times.size:
+                    dt = abs(event_times[candidate] - float(attack))
+                    if dt < best_dt:
+                        best, best_dt = candidate, dt
+        if best < 0 or best_dt > tolerance_ms:
+            rows.append({"time": float(attack), "weight": weight, "object": None,
+                         "spacing_prev_ms": None, "spacing_next_ms": None,
+                         "step_px": None, "pattern": "none", "combo": None,
+                         "new_combo": False, "hitsound": {}})
+            continue
+        event = events[best]
+        obj = hitobjects[event["object"]] if 0 <= event["object"] < len(hitobjects) else {}
+        prev_event = events[best - 1] if best > 0 else None
+        next_event = events[best + 1] if best + 1 < len(events) else None
+        prev_obj = (hitobjects[prev_event["object"]]
+                    if prev_event and 0 <= prev_event["object"] < len(hitobjects) else None)
+        next_obj = (hitobjects[next_event["object"]]
+                    if next_event and 0 <= next_event["object"] < len(hitobjects) else None)
+        gap_prev = float(event["time"] - prev_event["time"]) if prev_event else None
+        gap_next = float(next_event["time"] - event["time"]) if next_event else None
+        # Distance is the objects' own: two edges of one slider share a
+        # position here, which reads as no movement, and that is the truth
+        # this reader has.
+        step_prev = _object_step(obj, prev_obj) if obj and prev_obj else None
+        step_next = _object_step(obj, next_obj) if obj and next_obj else None
+        pattern, step_px = _pattern_class(gap_prev, step_prev, gap_next, step_next)
+        if step_px is None:
+            step_px = step_prev
+        sample = obj.get("hit_sample") or {} if obj else {}
+        rows.append({
+            "time": float(attack), "weight": weight,
+            "object": {"kind": obj.get("kind") if obj else None,
+                       "time": float(event["time"]),
+                       "dt_ms": float(event["time"]) - float(attack),
+                       "x": obj.get("x") if obj else None,
+                       "y": obj.get("y") if obj else None,
+                       "part": event.get("part"), "edge": event.get("edge"),
+                       "index": int(event["object"])},
+            "spacing_prev_ms": gap_prev, "spacing_next_ms": gap_next,
+            "step_px": step_prev,
+            "pattern": pattern,
+            "combo": combos[by_index[id(obj)]] if obj and id(obj) in by_index else None,
+            "new_combo": bool(obj.get("new_combo")) if obj else False,
+            # What osu! plays at this edge, resolved (P-1), beside the raw
+            # fields the object carries: a tail's sound is its own.
+            "hitsound": {"sound": int(event.get("bits", 0)),
+                         "sounds": list(event.get("sounds", [])),
+                         "normal_set": event.get("normal_set"),
+                         "addition_set": event.get("addition_set"),
+                         "sample": {k: sample.get(k) for k in
+                                    ("normal_set", "addition_set", "index", "volume", "file")}},
+        })
+    return rows
+
+
+def _object_step(obj: dict, other: dict | None) -> float | None:
+    """Playfield distance in pixels, None when either end lacks a position."""
+    if other is None:
+        return None
+    try:
+        return float(np.hypot(obj["x"] - other["x"], obj["y"] - other["y"]))
+    except (TypeError, KeyError):
+        return None
+
+
+def _pattern_class(gap_prev: float | None, step_prev: float | None,
+                   gap_next: float | None, step_next: float | None
+                   ) -> tuple[str, float | None]:
+    """Coarse pattern class plus the deciding step (nearest neighbour first).
+
+    Shared by the object context and the density report so both mean the same
+    thing by stream and jump. No neighbour with a position: single.
+    """
+    gaps = [(g, s) for g, s in ((gap_prev, step_prev), (gap_next, step_next))
+            if g is not None and s is not None]
+    if not gaps:
+        return "single", None
+    gap, step = min(gaps, key=lambda gs: gs[0])
+    if gap < STREAM_GAP_MS and step < STREAM_STEP_PX:
+        return "stream", step
+    if step >= JUMP_STEP_PX and gap < JUMP_GAP_MS:
+        return "jump", step
+    return "single", step
+
+
+def alignment_report(analysis: Analysis, beatmap: dict,
+                     tolerance_ms: float = OBJECT_WINDOW_MS) -> dict:
+    """Objects not on attacks; strong attacks with no object (Phase 7, row 3).
+
+    Objects match their nearest attack start,     slider ends excluded like in the
+    context — an end is a release, not a hit to land. Only attacks at half the
+    strongest weight or above can leave an object uncovered: ghost notes stay
+    unmapped on purpose, and flagging them would be noise, not signal. Attack
+    times arrive in seconds (engine convention) and are reported in
+    milliseconds (map convention). Findings
+    stay summarized (counts plus worst case) rather than one banner per object
+    because a real map holds hundreds. Legacy analyses carry no attacks, so
+    they report that instead of inventing alignment. All plain JSON types.
+    """
+    times = np.asarray(getattr(analysis, "attack_times", []), dtype=np.float64) * 1000.0
+    weights = np.asarray(getattr(analysis, "attack_weights", []), dtype=np.float64)
+    try:
+        objects = [(float(o["time"]), o.get("kind")) for o in beatmap.get("hitobjects", [])
+                   if isinstance(o, dict) and np.isfinite(o.get("time", float("nan")))]
+    except (TypeError, ValueError):
+        objects = []
+    objects.sort()
+    otimes = np.array([t for t, _kind in objects])
+    if times.size == 0:
+        return {"objects": len(objects), "matched": 0, "attacks": 0, "covered": 0,
+                "offenders": [], "uncovered": [],
+                "findings": [{"level": "info", "key": "no_attacks",
+                              "index": -1, "values": {}}]}
+
+    offenders: list[dict] = []
+    for time, kind in objects:
+        near = _nearest_sorted(times, time)
+        ms = abs(time - near)
+        if ms > tolerance_ms:
+            offenders.append({"time": time, "kind": kind, "ms": round(ms, 1)})
+
+    peak = float(weights.max()) if weights.size else 0.0
+    strong = times if peak <= 0 else times[np.asarray(weights) >= 0.5 * peak]
+    uncovered: list[float] = []
+    for attack in strong:
+        if otimes.size == 0 or abs(float(attack) - _nearest_sorted(otimes, float(attack))) > tolerance_ms:
+            uncovered.append(round(float(attack), 1))
+
+    findings: list[dict] = []
+    if offenders:
+        worst = max(o["ms"] for o in offenders)
+        findings.append({"level": "warn", "key": "objects_off_grid", "index": -1,
+                         "values": {"n": len(offenders), "worst": worst}})
+    if uncovered:
+        findings.append({"level": "warn", "key": "attacks_without_objects", "index": -1,
+                         "values": {"n": len(uncovered)}})
+    return {"objects": len(objects), "matched": len(objects) - len(offenders),
+            "attacks": int(times.size), "covered": int(len(strong) - len(uncovered)),
+            "offenders": offenders, "uncovered": uncovered, "findings": findings}
+
+
+def density_report(beatmap: dict, bucket_s: float = 5.0) -> dict:
+    """Objects per second plus stream/jump/single breakdown over time (P7).
+
+    Buckets cover the map from 0 to the last object; every bucket reports its
+    count, rate and pattern split using the same rule as the object context.
+    Spinners and holds count once at their start — the report measures hit
+    density, not held time. Empty maps report zeros, and everything stays
+    plain JSON types.
+    """
+    if bucket_s <= 0:
+        raise ValueError("Bucket length must be positive.")
+    try:
+        objects = [o for o in beatmap.get("hitobjects", [])
+                   if isinstance(o, dict) and np.isfinite(o.get("time", float("nan")))]
+    except (TypeError, ValueError):
+        objects = []
+    objects.sort(key=lambda o: o["time"])
+    if not objects:
+        return {"objects": 0, "buckets": [], "peak_per_second": 0.0,
+                "mean_per_second": 0.0, "stream": 0, "jump": 0, "single": 0}
+    kinds: list[str] = []
+    for i, obj in enumerate(objects):
+        prev = objects[i - 1] if i > 0 else None
+        nxt = objects[i + 1] if i + 1 < len(objects) else None
+        gap_prev = float(obj["time"] - prev["time"]) if prev else None
+        gap_next = float(nxt["time"] - obj["time"]) if nxt else None
+        pattern, _step = _pattern_class(gap_prev, _object_step(obj, prev),
+                                        gap_next, _object_step(obj, nxt))
+        kinds.append(pattern)
+    last_ms = float(objects[-1]["time"])
+    span_s = last_ms / 1000.0
+    count = max(1, int(np.ceil(span_s / bucket_s)))
+    buckets: list[dict] = []
+    for b in range(count):
+        t0, t1 = b * bucket_s, (b + 1) * bucket_s
+        in_bucket = [k for o, k in zip(objects, kinds)
+                     if t0 <= o["time"] / 1000.0 < t1 or (b == count - 1 and o["time"] / 1000.0 == t1)]
+        buckets.append({"t0": round(t0, 2), "t1": round(t1, 2), "objects": len(in_bucket),
+                        "per_second": round(len(in_bucket) / bucket_s, 2),
+                        "stream": in_bucket.count("stream"),
+                        "jump": in_bucket.count("jump"),
+                        "single": in_bucket.count("single")})
+    rates = [b["per_second"] for b in buckets]
+    totals = {kind: kinds.count(kind) for kind in ("stream", "jump", "single")}
+    return {"objects": len(objects), "buckets": buckets,
+            "peak_per_second": max(rates), "mean_per_second": round(sum(rates) / len(rates), 2),
+            **totals}
+
+
+#: The snap divisors osu!'s editor offers, coarsest first.
+SNAP_DIVISORS = (1, 2, 3, 4, 6, 8, 12, 16)
+#: How far an object may sit from its exact tick and still count as snapped.
+#: osu! stores whole milliseconds against a red line whose beat is fractional,
+#: so a snapped object can sit past 1 ms: on 61 ranked maps, 272 of 30,553
+#: objects sat 1-2 ms from a tick and 5 past 2 ms. At 1 ms the audit flagged
+#: those 272 as unsnapped. A name of its own: it once shared
+#: SNAP_TOLERANCE_MS with export snapping, and the later definition silently
+#: set both.
+OBJECT_SNAP_TOLERANCE_MS = 2.0
+
+
+def _snap_of(time_ms: float, reds: list[tuple[float, float]]) -> dict:
+    """Where one time sits on a red-line grid: the coarsest divisor it hits
+    within OBJECT_SNAP_TOLERANCE_MS, or the nearest tick it misses."""
+    governing = reds[0]
+    for red in reds:
+        if red[0] <= time_ms + 1e-9:
+            governing = red
+    offset, bpm = governing
+    beat_ms = 60000.0 / bpm
+    position = (time_ms - offset) / beat_ms
+    best = None
+    for divisor in SNAP_DIVISORS:
+        tick = round(position * divisor) / divisor
+        off = time_ms - (offset + tick * beat_ms)
+        if abs(off) <= OBJECT_SNAP_TOLERANCE_MS:
+            return {"divisor": divisor, "off_ms": off, "snapped": True}
+        if best is None or abs(off) < abs(best["off_ms"]) - 1e-9:
+            best = {"divisor": divisor, "off_ms": off, "snapped": False}
+    return best
+
+
+def snap_audit(beatmap: dict, analysis: Analysis | None = None,
+               duration_s: float | None = None) -> dict:
+    """Objects off the map's own grid, and what a new timing would unsnap
+    (Phase 7, "Snap audit").
+
+    Every object start is placed on the red line governing it at the snap
+    divisors the editor offers (1/1 to 1/16). An object on none of them within
+    OBJECT_SNAP_TOLERANCE_MS is listed with the nearest tick and how far it misses.
+    Objects before the first red line and, given the audio length, past its
+    end are listed too. With an analysis, the same audit runs against the red
+    lines an inject would write, and the report says how many objects that
+    would move off the grid and how many it would put back on — the question
+    to ask before injecting. Starts only, like the alignment check: slider
+    ends follow from length and slider velocity, and spinner and hold ends are
+    not audited yet. Nothing is changed. All plain JSON types.
+    """
+    reds = sorted(beatmap.get("timing", {}).get("reds", []))
+    objects = [o for o in beatmap.get("hitobjects", []) if "time" in o]
+    unparsed = sum(1 for o in beatmap.get("hitobjects", []) if "time" not in o)
+    if not reds:
+        return {"ok": False, "reason": "no_red_lines", "objects": len(objects),
+                "unparsed": unparsed}
+    audited, histogram = [], {str(d): 0 for d in SNAP_DIVISORS}
+    for obj in objects:
+        snap = _snap_of(float(obj["time"]), reds)
+        audited.append((obj, snap))
+        if snap["snapped"]:
+            histogram[str(snap["divisor"])] += 1
+    unsnapped = [{"time_ms": float(obj["time"]), "kind": obj.get("kind", "unparsed"),
+                  "nearest_divisor": snap["divisor"], "off_ms": round(snap["off_ms"], 3)}
+                 for obj, snap in audited if not snap["snapped"]]
+    report = {
+        "ok": True,
+        "objects": len(objects),
+        "unparsed": unparsed,
+        "red_lines": len(reds),
+        "snapped": len(objects) - len(unsnapped),
+        "by_divisor": histogram,
+        "unsnapped": unsnapped,
+        "before_first_red": [float(o["time"]) for o in objects if o["time"] < reds[0][0]],
+        "past_audio": ([float(o["time"]) for o in objects if o["time"] > duration_s * 1000.0]
+                       if duration_s is not None else None),
+    }
+    if analysis is not None:
+        detected = [(p.offset_ms, p.bpm) for p in snap_timing_points(analysis.points)
+                    if np.isfinite(p.offset_ms) and p.bpm > 0]
+        if detected:
+            detected.sort()
+            would_unsnap, would_snap = [], 0
+            for obj, snap in audited:
+                after = _snap_of(float(obj["time"]), detected)
+                if snap["snapped"] and not after["snapped"]:
+                    would_unsnap.append({"time_ms": float(obj["time"]),
+                                         "nearest_divisor": after["divisor"],
+                                         "off_ms": round(after["off_ms"], 3)})
+                elif after["snapped"] and not snap["snapped"]:
+                    would_snap += 1
+            report["with_detected_timing"] = {"would_unsnap": would_unsnap,
+                                              "would_snap": would_snap}
+    return report
+
+
+#: An attack this far from a divisor tick still counts as on it. The snap
+#: audit's 2 ms is about objects, stored whole-millisecond; attacks are
+#: measured, with detection jitter on top, so the bar is looser — and it is
+#: the tool's own, adjustable, not the client's.
+DIVISOR_TOLERANCE_MS = 15.0
+#: A section needs a finer divisor when the attacks on thirds or sixths carry
+#: this share of its weight, with at least this many of them. Weighted, not
+#: counted: sample echoes and noise-floor detections sit on triplet grids by
+#: coincidence of tempo, but they are quiet next to the drums — on straight
+#: 120-132 BPM material they held up to 20 % of the count yet under 7 % of
+#: the weight, while real triplets hold both. One stray triplet is feel.
+DIVISOR_MIN_WSHARE = 0.10
+DIVISOR_MIN_COUNT = 3
+
+
+def snap_divisors(analysis: Analysis, tol_ms: float = DIVISOR_TOLERANCE_MS) -> dict:
+    """Where the song needs 1/3, 1/4 or 1/6, per section (Phase 21).
+
+    Every attack takes the coarsest of the 1/1-1/16 grids it sits on within
+    ``tol_ms`` — the same divisors the editor offers — and each section
+    counts how many need thirds (divisor 3), sixths (6 and nothing coarser),
+    finer grids (8 and up, past this row's scope but reported), or none (far
+    off-grid feel such as heavy shuffle lives here; the swing lane is its own
+    row). The verdict follows the weight, not the count: a section reads 1/6
+    past the count and weight bars, else 1/3, else 1/4 — a soft triplet still
+    counts, but the prominent rhythm decides. Read only, plain JSON types.
+    """
+    if tol_ms <= 0:
+        raise ValueError("Tolerance must be positive.")
+    points = [p for p in list(getattr(analysis, "points", None) or [])
+              if np.isfinite(getattr(p, "offset_ms", float("nan")))
+              and np.isfinite(getattr(p, "bpm", float("nan"))) and p.bpm > 0]
+    times = np.asarray(getattr(analysis, "attack_times", []), dtype=np.float64) * 1000.0
+    weights = np.asarray(getattr(analysis, "attack_weights", []), dtype=np.float64)
+    finite = np.isfinite(times)
+    times = times[finite]
+    weights = weights[finite] if weights.shape == finite.shape else np.ones_like(times)
+    weights = np.where(np.isfinite(weights) & (weights > 0), weights, 0.0)
+    duration_ms = float(getattr(analysis, "duration", 0.0) or 0.0) * 1000.0
+    out = []
+    for i, point in enumerate(points):
+        offset, bpm = float(point.offset_ms), float(point.bpm)
+        end = float(points[i + 1].offset_ms) if i + 1 < len(points) else duration_ms
+        beat_ms = 60000.0 / bpm
+        in_span = (times >= offset - 1e-6) & (times < end - 1e-6)
+        span, span_w = times[in_span], weights[in_span]
+        thirds = sixths = finer = other = 0
+        thirds_w = sixths_w = 0.0
+        for attack, weight in zip(span, span_w):
+            position = (float(attack) - offset) / beat_ms
+            hit = None
+            for divisor in SNAP_DIVISORS:
+                tick = round(position * divisor) / divisor
+                if abs(position - tick) * beat_ms <= float(tol_ms) + 1e-9:
+                    hit = divisor
+                    break
+            if hit is None:
+                other += 1
+            elif hit == 3:
+                thirds += 1
+                thirds_w += float(weight)
+            elif hit == 6:
+                sixths += 1
+                sixths_w += float(weight)
+            elif hit in (8, 12, 16):
+                finer += 1
+        total = len(span)
+        weight_total = float(span_w.sum())
+        sixth_share = sixths_w / weight_total if weight_total > 0 else 0.0
+        third_share = thirds_w / weight_total if weight_total > 0 else 0.0
+        if sixths >= DIVISOR_MIN_COUNT and sixth_share >= DIVISOR_MIN_WSHARE:
+            divisor = "1/6"
+        elif thirds >= DIVISOR_MIN_COUNT and third_share >= DIVISOR_MIN_WSHARE:
+            divisor = "1/3"
+        else:
+            divisor = "1/4"
+        out.append({"offset_ms": round(offset, 3), "bpm": round(bpm, 3),
+                    "attacks": int(total), "quarters": total - thirds - sixths - finer - other,
+                    "thirds": thirds, "sixths": sixths, "finer": finer, "other": other,
+                    "third_share": round(third_share, 3),
+                    "sixth_share": round(sixth_share, 3),
+                    "divisor": divisor})
+    return {"sections": out}
+
+
+#: The swing lane reads the song this many beats at a time: two bars of 4/4.
+#: A feel is a pattern that repeats, so one beat says nothing, and a window
+#: this short still changes where the song does.
+SWING_WINDOW_BEATS = 8
+#: How far either side of its beat a beat's own attacks are looked for.
+SWING_ON_SPAN = 0.2
+#: The latest the off-beat eighth is looked for, as a share of the beat: past
+#: a 5:1 swing it is the next beat's pickup, not an eighth.
+SWING_LATE_MAX = 0.84
+#: The swung eighth has to carry this share of the window's attack weight...
+SWING_MIN_SHARE = 0.10
+#: ...and the straight eighth at most this share of the swung one's. Measured
+#: on 34 local maps whose reading is the map's own pulse (12 of Corpus B, 22
+#: tagged swing or jazz): of the windows this calls swung, the mapper snapped
+#: their off-beats late too in 72 %, and 6 % of the straight windows had late
+#: objects. Neither bar is tuned to a song — every pair from 0.15-0.35 here and
+#: 0.05-0.20 above lands between 65 % and 87 %, at 6-7 % (2026-09-27).
+SWING_MAX_STRAIGHT = 0.25
+
+
+def _swing_peak(x: np.ndarray, w: np.ndarray, lo: float, hi: float, tol: float,
+                beat_ms: float) -> tuple[float | None, np.ndarray]:
+    """The weighted median of the values within ``tol`` of the densest place
+    between ``lo`` and ``hi`` (a 6 ms kernel, 1 ms steps), and which values
+    those are. None when nothing with weight lies there."""
+    zone = (x >= lo) & (x <= hi)
+    if hi <= lo or not zone.any() or float(w[zone].sum()) <= 0:
+        return None, np.zeros_like(zone)
+    grid = np.linspace(lo, hi, max(int((hi - lo) * beat_ms), 8))
+    sigma = max(6.0 / beat_ms, 1e-3)
+    density = (w[zone][None, :]
+               * np.exp(-0.5 * ((grid[:, None] - x[zone][None, :]) / sigma) ** 2)).sum(axis=1)
+    peak = float(grid[int(np.argmax(density))])
+    near = zone & (np.abs(x - peak) <= tol)
+    order = np.argsort(x[near])
+    cumulative = np.cumsum(w[near][order])
+    middle = min(int(np.searchsorted(cumulative, cumulative[-1] / 2.0)), len(order) - 1)
+    return float(x[near][order][middle]), near
+
+
+def _swing_window(phases: np.ndarray, weights: np.ndarray, beat_of: np.ndarray,
+                  beats: int, beat_ms: float, tol_ms: float) -> dict:
+    """One window's feel from its attacks' places within their beats."""
+    tol = tol_ms / beat_ms
+    need = (beats + 1) // 2
+
+    def on_beats(mask: np.ndarray) -> int:
+        return len(set(beat_of[mask].tolist()))
+
+    out = {"feel": "none", "at": None, "on_ms": None}
+    wrapped = np.where(phases > 1.0 - SWING_ON_SPAN, phases - 1.0, phases)
+    on_at, on = _swing_peak(wrapped, weights, -SWING_ON_SPAN, SWING_ON_SPAN, tol, beat_ms)
+    if on_at is None or on_beats(on) < need:
+        return out  # no beat of its own to measure the eighth from
+    out["on_ms"] = round(on_at * beat_ms, 1)
+    rel = phases - on_at
+    rel = np.where(rel < -SWING_ON_SPAN, rel + 1.0, rel)
+    straight = np.abs(rel - 0.5) <= tol
+    at, late = _swing_peak(rel, weights, 0.5 + 2.0 * tol, SWING_LATE_MAX, tol, beat_ms)
+    late_w = float(weights[late].sum()) if at is not None else 0.0
+    if (at is not None and at - 0.5 >= 2.0 * tol and on_beats(late) >= need
+            and float(weights[straight].sum()) <= SWING_MAX_STRAIGHT * late_w
+            and late_w >= SWING_MIN_SHARE * float(weights.sum())):
+        thirds = float(weights[np.abs(rel - 1.0 / 3.0) <= tol].sum())
+        triplet = abs(at - 2.0 / 3.0) * beat_ms <= tol_ms and thirds >= 0.5 * late_w
+        out.update(feel="triplets" if triplet else "swing", at=at)
+    elif on_beats(straight) >= need:
+        out.update(feel="straight", at=0.5)
+    return out
+
+
+def _swung(at: float, beat_ms: float, tol_ms: float) -> dict:
+    """A swung eighth's numbers: where (a share of the beat), the ratio of the
+    pair, how late in ms, and the coarsest editor snap within ``tol_ms``."""
+    out = {"at": round(at, 3), "ratio": round(at / (1.0 - at), 2),
+           "late_ms": round((at - 0.5) * beat_ms, 1),
+           "snap": None, "divisor": None, "snap_off_ms": None}
+    for divisor in SNAP_DIVISORS[1:]:
+        tick = round(at * divisor)
+        if abs(at - tick / divisor) * beat_ms <= float(tol_ms) + 1e-9:
+            common = int(np.gcd(tick, divisor))
+            out.update(snap=f"{tick // common}/{divisor // common}", divisor=divisor,
+                       snap_off_ms=round((at - tick / divisor) * beat_ms, 1))
+            break
+    return out
+
+
+def swing_lane(points: list, attack_times: np.ndarray, attack_weights: np.ndarray,
+               duration_s: float, tol_ms: float = DIVISOR_TOLERANCE_MS,
+               window_beats: int = SWING_WINDOW_BEATS) -> dict:
+    """Where the music swings, eight beats at a time (Phase 21).
+
+    Within each beat of the red lines' grid, where does the off-beat eighth
+    fall: halfway (straight), later (swing: 0.58 light, 0.67 the triplet
+    swing, 0.75 a hard shuffle), or on the thirds as well (triplets)? Measured
+    from the window's own beat -- the densest place its attacks sit around the
+    beats -- so a grid a few ms off moves nothing, and that beat's distance from
+    the grid comes back as ``on_ms``. A window swings when its late eighth sits
+    two tolerances past the straight one (the two never overlap), on at least
+    half its beats, with a tenth of the window's attack weight, and the
+    straight eighth is nearly empty; one that neither swings nor keeps a
+    straight eighth on half its beats says ``none``. For a swung window: the
+    coarsest editor snap within ``tol_ms`` of the eighth, and how far off.
+    Windows restart at each red line; a remainder under half a window joins
+    the one before. Consecutive swung windows of one feel and tempo make a
+    span, its eighth the median of theirs. Read only, plain JSON types.
+    """
+    if tol_ms <= 0:
+        raise ValueError("Tolerance must be positive.")
+    if window_beats < 2:
+        raise ValueError("A window needs at least two beats.")
+    points = [p for p in list(points or [])
+              if np.isfinite(getattr(p, "offset_ms", float("nan")))
+              and np.isfinite(getattr(p, "bpm", float("nan"))) and p.bpm > 0]
+    times = np.asarray(attack_times, dtype=np.float64) * 1000.0
+    weights = np.asarray(attack_weights, dtype=np.float64)
+    if weights.shape != times.shape:
+        weights = np.ones_like(times)
+    keep = np.isfinite(times) & np.isfinite(weights) & (weights > 0)
+    order = np.argsort(times[keep])
+    times, weights = times[keep][order], weights[keep][order]
+    duration_ms = float(duration_s or 0.0) * 1000.0
+    windows = []
+    for i, point in enumerate(points):
+        offset, bpm = float(point.offset_ms), float(point.bpm)
+        end = float(points[i + 1].offset_ms) if i + 1 < len(points) else duration_ms
+        beat_ms = 60000.0 / bpm
+        count = int(np.floor((end - offset) / beat_ms + 1e-9))
+        if count < 1:
+            continue
+        cuts = list(range(0, count, window_beats))
+        if len(cuts) > 1 and count - cuts[-1] < (window_beats + 1) // 2:
+            cuts.pop()
+        for k, first in enumerate(cuts):
+            last = cuts[k + 1] if k + 1 < len(cuts) else count
+            starts = offset + np.arange(first, last) * beat_ms
+            a, b = np.searchsorted(times, [starts[0], starts[-1] + beat_ms])
+            beat_of = np.searchsorted(starts, times[a:b], side="right") - 1
+            phases = (times[a:b] - starts[beat_of]) / beat_ms
+            feel = _swing_window(phases, weights[a:b], beat_of, last - first, beat_ms, tol_ms)
+            row = {"start_ms": round(float(starts[0]), 3),
+                   "end_ms": round(float(starts[-1] + beat_ms), 3),
+                   "bpm": round(bpm, 3), "beats": int(last - first),
+                   "feel": feel["feel"], "at": None, "ratio": None, "late_ms": None,
+                   "snap": None, "divisor": None, "snap_off_ms": None,
+                   "on_ms": feel["on_ms"]}
+            if feel["feel"] == "straight":
+                row["at"] = 0.5
+            elif feel["at"] is not None:
+                row.update(_swung(feel["at"], beat_ms, tol_ms))
+            windows.append(row)
+    spans = []
+    for row in windows:
+        if row["feel"] not in ("swing", "triplets"):
+            continue
+        last = spans[-1] if spans else None
+        # the next window starts where the last one ended (a dropped partial
+        # beat at a red line aside): a window of another feel between breaks it
+        if (last is not None and row["start_ms"] - last["end_ms"] < 30000.0 / row["bpm"]
+                and last["feel"] == row["feel"] and last["bpm"] == row["bpm"]):
+            last["_at"].append(row["at"])
+            last["end_ms"] = row["end_ms"]
+            last["windows"] += 1
+        else:
+            spans.append({"start_ms": row["start_ms"], "end_ms": row["end_ms"], "bpm": row["bpm"],
+                          "feel": row["feel"], "windows": 1, "_at": [row["at"]]})
+    for span in spans:
+        at = float(np.median(span.pop("_at")))
+        span.update(_swung(at, 60000.0 / span["bpm"], tol_ms))
+    return {"windows": windows, "spans": spans,
+            "swung": sum(r["feel"] in ("swing", "triplets") for r in windows),
+            "measured": sum(r["feel"] != "none" for r in windows),
+            "window_beats": int(window_beats), "tol_ms": float(tol_ms)}
+
+
+# ---------------------------------------------------------------------------
+# Half- and double-time inside one reported section — audit F-11
+# ---------------------------------------------------------------------------
+#
+# `_grow_sections` extends a section while its inlier share holds, and that
+# share cannot move across an exact 2x change: the grid is continuous, so
+# every attack of the slow half still lands on the fast half's grid. What
+# moves is **coverage** on a subdivided grid, which the growth loop computes
+# and throws away.
+#
+# Coverage alone is not enough — a drop, a breakdown and a sparse bar all
+# lower it. The discriminator is **parity**: in a half-time region the filled
+# slots share one residue mod 2; in a thinned-out one they are scattered.
+#
+#     coverage ~0.5   "half the slots are empty"
+#     parity   ~1.0   "and it is every other one, not a random half"
+#
+# What this produces is what DSP §B.2 asks for: a hint, surfaced, never a
+# silent split. Mapping the whole track at the reported BPM stays defensible,
+# so nothing here moves a red line by itself.
+
+#: Windows are sized in beats of the reported grid. Eight beats is two bars of
+#: 4/4 — short enough to localise a change, long enough that one missed hit
+#: does not move the statistics.
+DENSITY_WINDOW_BEATS = 8
+#: Subdivisions of the reported beat to test. The signal is invisible at the
+#: beat itself: a half-time region still has an attack on every beat.
+DENSITY_SUBDIVISIONS = (2, 4)
+#: A window is "thinned" when at most this fraction of its slots is filled...
+DENSITY_COVERAGE_MAX = 0.70
+#: ...and at least this fraction of the filled weight shares a residue mod 2.
+#: Random thinning gives about 0.5; an exact half-time gives about 1.0.
+DENSITY_PARITY_MIN = 0.85
+#: Both sides of a proposed change must be this many windows long.
+DENSITY_MIN_RUN = 2
+#: The thinned run's coverage must sit this far under the rest of its section.
+DENSITY_COVERAGE_DROP = 0.2
+#: An attack this far from a slot still fills it (or 6 ms, whichever is more).
+DENSITY_TOL_RATIO = 0.12
+
+
+def density_window(times: np.ndarray, weights: np.ndarray, period: float,
+                   phase: float, tol_ratio: float = DENSITY_TOL_RATIO) -> tuple[float, float, int]:
+    """One window's (coverage, parity at m=2, inlier count) on a subdivided grid."""
+    times = np.asarray(times, dtype=np.float64)
+    if times.size == 0 or period <= 0:
+        return 0.0, 0.0, 0
+    k = np.round((times - phase) / period)
+    inlier = np.abs(times - (phase + k * period)) <= max(tol_ratio * period, 0.006)
+    n = int(inlier.sum())
+    if n < 4:
+        return 0.0, 0.0, n
+    ki = k[inlier].astype(np.int64)
+    slots = float(np.ptp(ki)) + 1.0
+    coverage = min(1.0, len(np.unique(ki)) / max(slots, 1.0))
+    # Weighted by attack strength, so a ghost note cannot carry the parity.
+    totals = np.bincount(np.mod(ki, 2),
+                         weights=np.asarray(weights, dtype=np.float64)[inlier], minlength=2)
+    return coverage, float(np.max(totals) / max(np.sum(totals), 1e-9)), n
+
+
+def _density_runs(thin: list[bool]) -> list[tuple[int, int]]:
+    """The runs of thinned windows long enough to be a region, as [a, b)."""
+    runs, start = [], None
+    for i, flag in enumerate(thin):
+        if flag and start is None:
+            start = i
+        elif not flag and start is not None:
+            runs.append((start, i))
+            start = None
+    if start is not None:
+        runs.append((start, len(thin)))
+    return [(a, b) for a, b in runs if b - a >= DENSITY_MIN_RUN]
+
+
+def _density_section(index: int, section: "GridSection", times: np.ndarray,
+                     weights: np.ndarray, window_beats: int) -> dict | None:
+    """The best-scoring pulse change inside one section, or None."""
+    span = window_beats * section.period
+    if span <= 0 or section.end_s - section.start_s < (2 * DENSITY_MIN_RUN + 1) * span:
+        return None
+    best = None
+    for sub in DENSITY_SUBDIVISIONS:
+        period = section.period / sub
+        rows, edge = [], section.start_s
+        while edge + span <= section.end_s + 1e-9:
+            inside = (times >= edge) & (times < edge + span)
+            coverage, parity, count = density_window(times[inside], weights[inside],
+                                                     period, section.phase)
+            rows.append({"at": edge, "coverage": coverage, "parity": parity, "n": count})
+            edge += span
+        if len(rows) < 2 * DENSITY_MIN_RUN + 1:
+            continue
+        thin = [r["coverage"] <= DENSITY_COVERAGE_MAX and r["parity"] >= DENSITY_PARITY_MIN
+                and r["n"] >= 4 for r in rows]
+        runs = _density_runs(thin)
+        # A run covering the whole section means the subdivision guess is
+        # simply too fine for this music, not that the pulse changes in it.
+        if not runs or all(b - a >= len(thin) - 1 for a, b in runs):
+            continue
+        a, b = max(runs, key=lambda r: r[1] - r[0])   # the first of equal lengths
+        covs = np.array([r["coverage"] for r in rows])
+        outside = np.r_[covs[:a], covs[b:]]
+        if outside.size == 0 or float(outside.mean()) - float(covs[a:b].mean()) < DENSITY_COVERAGE_DROP:
+            continue
+        from_s, to_s = float(rows[a]["at"]), float(rows[b - 1]["at"] + span)
+        # The change sits at whichever edge of the run is not a section edge: a
+        # half-time drop thins the tail, so it is where the run starts; a
+        # double-time chorus thins the head, so it is where the run ends.
+        # Reporting the start either way put the double-time case 25.6 s off.
+        at_head, at_tail = a == 0, b >= len(rows)
+        hint = {
+            "section": int(index), "subdivision": int(sub),
+            "from_s": round(from_s, 3), "to_s": round(to_s, 3),
+            "boundary_s": round(to_s if (at_head and not at_tail) else from_s, 3),
+            "thin_side": "head" if at_head else ("tail" if at_tail else "mid"),
+            "factor": 0.5,          # the thinned region reads half the reported rate
+            "coverage_in": round(float(covs[a:b].mean()), 3),
+            "coverage_out": round(float(outside.mean()), 3),
+            "parity_in": round(float(np.mean([r["parity"] for r in rows[a:b]])), 3),
+            "parity_out": round(float(np.mean([r["parity"] for r in rows[:a] + rows[b:]])), 3),
+            "windows": len(rows), "thinned": int(b - a),
+        }
+        # Rounded first, then multiplied and rounded again: two subdivisions
+        # within rounding of each other must pick the same one every run.
+        hint["score"] = round((hint["coverage_out"] - hint["coverage_in"]) * hint["parity_in"], 3)
+        if best is None or hint["score"] > best["score"]:
+            best = hint
+    return best
+
+
+def density_hints(analysis: "Analysis", window_beats: int = DENSITY_WINDOW_BEATS) -> list[dict]:
+    """Where one reported section holds a half- or double-time region (F-11).
+
+    Eight beats at a time, on the reported beat halved and quartered: a run of
+    windows that is both empty enough and regular enough is a pulse change,
+    not a drop. Each hint says which section, where the change sits, which end
+    thinned out, the coverage and parity in and out, and a score to rank it
+    by. Read only, plain JSON types: nothing here changes a BPM or a red line.
+    """
+    if window_beats < 1:
+        raise ValueError("A window needs at least one beat.")
+    times = np.asarray(getattr(analysis, "attack_times", []), dtype=np.float64)
+    weights = np.asarray(getattr(analysis, "attack_weights", []), dtype=np.float64)
+    sections = list(getattr(analysis, "sections", None) or [])
+    if times.size == 0 or weights.shape != times.shape or not sections:
+        return []
+    order = np.argsort(times)
+    times, weights = times[order], weights[order]
+    hints = [_density_section(n, s, times, weights, window_beats)
+             for n, s in enumerate(sections)]
+    return [h for h in hints if h is not None]
+
+
+def resnap_objects(beatmap: dict, pairs: list[dict]) -> dict:
+    """Move hit objects onto the new grid after a timing change (Phase 21).
+
+    ``pairs`` are :func:`inject_diff`'s: each old red beside its new value.
+    An object start that sat on the old grid — snapped before, snapped still,
+    by the snap audit's own 2 ms — moves by that span's drift, so it lands on
+    the same beat of the new timing; slider heads move and their tails follow
+    from the slider's own length under the new BPM, while spinner and hold
+    ends move by the drift at their own time. Anything else stays exactly
+    where the mapper put it and is listed, with its nearest divisor and miss:
+    swing, drags and deliberate offsets are not "fixed". Times are rewritten
+    whole-millisecond over the file's own object lines; every other byte of
+    each line survives. A move landing before zero is skipped, never written
+    negative. In place. Returns moved, left and skipped.
+    """
+    old_reds = [(float(p["old"]["offset_ms"]), float(p["old"]["bpm"])) for p in pairs]
+    new_reds = [(float(p["new"]["offset_ms"]), float(p["new"]["bpm"])) for p in pairs]
+    if not old_reds:
+        raise ValueError("No red-line pairs to resnap onto.")
+
+    def drift(time_ms: float) -> float:
+        index = 0
+        for i, red in enumerate(old_reds):
+            if red[0] <= time_ms + 1e-9:
+                index = i
+        old_off, old_bpm = old_reds[index]
+        new_off, new_bpm = new_reds[index]
+        return new_off + (time_ms - old_off) * ((60000.0 / new_bpm) / (60000.0 / old_bpm))
+
+    def shift(time_ms: float) -> int | None:
+        moved = int(round(drift(time_ms)))
+        return moved if moved >= 0 else None
+
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "HitObjects"), None)
+    if section is None:
+        raise ValueError("No [HitObjects] section in this beatmap.")
+    moved = skipped = 0
+    left: list[dict] = []
+    out: list[str] = []
+    for line in section["lines"]:
+        stripped = line.strip()
+        obj = _parse_hit_object(line) if stripped else None
+        if obj is None or obj.get("kind") == "unparsed" or "time" not in obj:
+            if stripped and not stripped.startswith("//"):
+                skipped += 1
+            out.append(line)
+            continue
+        snap = _snap_of(float(obj["time"]), old_reds)
+        if not snap["snapped"]:
+            left.append({"time_ms": float(obj["time"]), "kind": obj.get("kind", "unparsed"),
+                         "nearest_divisor": snap["divisor"], "off_ms": round(snap["off_ms"], 3)})
+            out.append(line)
+            continue
+        start = shift(float(obj["time"]))
+        if start is None:
+            skipped += 1
+            out.append(line)
+            continue
+        fields = line.split(",")
+        fields[2] = str(start)
+        if obj.get("kind") in ("spinner", "hold") and "end_time" in obj:
+            end = shift(float(obj["end_time"]))
+            if end is None:
+                skipped += 1
+                out.append(line)
+                continue
+            if obj["kind"] == "spinner":
+                fields[5] = str(end)
+            else:
+                _head, _, tail = fields[5].partition(":")
+                fields[5] = f"{end}:{tail}" if tail else str(end)
+        out.append(",".join(fields))
+        moved += 1
+    section["lines"] = out
+    objects = [line for line in out if line.strip() and not line.strip().startswith("//")]
+    beatmap["hitobjects"] = [_parse_hit_object(line) for line in objects]
+    return {"moved": moved, "left": left, "skipped": skipped}
+
+
+def suggest_missing_lines(analysis: Analysis, beatmap: dict,
+                          tolerance_beats: float = 1.0) -> list[dict]:
+    """Detected sections with no nearby map red (Phase 9: timing suggestions).
+
+    For every detected point past the first, the nearest map red line; when
+    none sits within ``tolerance_beats`` of the detected tempo, the detector
+    hears a change the map does not have. Proposals, never auto-fixes — Phase 7
+    consents first. Each is ``{"index", "offset_ms", "bpm", "nearest_ms"}``
+    with plain JSON types; a map with no reds proposes every section past the
+    first, which is exactly timing-from-scratch assistance. ``meter`` is the
+    bar the detector proved for that section, or None when it proved none.
+
+    ``map_bpm`` is the tempo of the map's red line in force there (its first
+    before it begins; None without one), and ``octave`` the factor (2, 4, 1/2,
+    1/4) the suggestion sits at from it, within the band the octave finding
+    uses, or None. Such a suggestion is more often the same pulse counted
+    differently than a change the map lacks: on Corpus B 6 of 23 are, and
+    they hold all five that move the slider ends under them past 25 ms.
+    """
+    if tolerance_beats <= 0:
+        raise ValueError("Tolerance must be positive.")
+    detected = snap_timing_points(list(getattr(analysis, "points", None) or []))
+    try:
+        rows = sorted((float(offset), float(bpm))
+                      for offset, bpm in beatmap.get("timing", {}).get("reds", []))
+    except (TypeError, ValueError):
+        rows = []
+    rows = [(offset, bpm) for offset, bpm in rows if np.isfinite(offset) and np.isfinite(bpm)]
+    reds = [offset for offset, _bpm in rows]
+    suggestions: list[dict] = []
+    for n in range(1, len(detected)):
+        point = detected[n]
+        if not np.isfinite(point.bpm) or point.bpm <= 0 or not np.isfinite(point.offset_ms):
+            continue
+        beat_ms = 60000.0 / point.bpm
+        nearest = min((abs(red - point.offset_ms) for red in reds), default=float("inf"))
+        if nearest > tolerance_beats * beat_ms:
+            in_force = ([bpm for offset, bpm in rows if offset <= point.offset_ms]
+                        or [bpm for _offset, bpm in rows[:1]])
+            map_bpm = in_force[-1] if in_force and in_force[-1] > 0 else None
+            suggestions.append({"index": n, "offset_ms": point.offset_ms,
+                                "bpm": point.bpm,
+                                # Infinity is not JSON: no red line reads as null.
+                                "nearest_ms": None if nearest == float("inf") else nearest,
+                                "meter": int(point.meter) if point.meter_known else None,
+                                "map_bpm": map_bpm,
+                                "octave": _octave_apart(point.bpm, map_bpm)})
+    return suggestions
+
+
+def _octave_apart(bpm: float, reference: float | None) -> float | None:
+    """The factor (2, 4, 1/2 or 1/4) ``bpm`` sits at from ``reference``, when
+    within OCTAVE_BAND_LOG of it in log2, as the octave finding reads a jump
+    between sections; None for anything else, the same tempo included."""
+    if reference is None or not (bpm > 0 and reference > 0):
+        return None
+    apart = float(np.log2(bpm / reference))
+    return next((float(2.0 ** k) for k in (1, 2, -1, -2) if abs(apart - k) <= OCTAVE_BAND_LOG),
+                None)
+
+
+#: A red line closer than this to another is the same line written twice.
+RED_LINE_CLASH_MS = 1.0
+
+
+def add_red_line(beatmap: dict, offset_ms: float, bpm: float, meter: int | None = None,
+                 decimals: int = 0) -> dict:
+    """One red line into [TimingPoints], in place (Phase 9: apply a suggestion).
+
+    A suggestion adds a line; it does not rewrite the map's timing the way
+    inject does, so every other line keeps its bytes and its place. The new
+    line carries the sample set, index, volume and kiai the map plays at its
+    time, and goes before any green at that time (the order osu! reads).
+    A red line resets slider velocity, so where the map would then play
+    differently — a velocity other than 1.0 in force there — a green at the
+    same time restores what it played. The meter is the one the detector
+    proved there, else the map's own at that time: a bar nobody measured is
+    not invented. Offsets are whole milliseconds unless ``decimals`` says
+    otherwise, as inject writes them.
+
+    What it does change is the beat that objects follow from its time to the
+    next red line, which is the point; sliders there keep their length in
+    beats, so their ends move with the tempo, and the summary says by how
+    much. ``map_bpm`` is the tempo of the map's own red line in force there:
+    a suggestion at twice or four times it is more often the same pulse
+    counted differently than a new tempo, and that is where slider ends move
+    furthest (on Corpus B, every shift past 25 ms). Returns ``row``,
+    ``offset_ms`` (as written), ``bpm``, ``meter``, ``map_bpm`` (None
+    without a red line), ``greens_added``, ``objects`` (under the new line),
+    ``sliders`` (of those), ``slider_ends_moved`` (by half a millisecond or
+    more) and ``max_end_shift_ms`` (signed, None without sliders). Plain JSON
+    types.
+    """
+    section = next((s for s in beatmap.get("sections", []) if s.get("name") == "TimingPoints"),
+                   None)
+    if section is None:
+        raise ValueError("No [TimingPoints] section in this beatmap.")
+    try:
+        offset_ms, bpm = float(offset_ms), float(bpm)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("A red line needs a time and a BPM.") from exc
+    if not (np.isfinite(offset_ms) and np.isfinite(bpm)) or bpm <= 0:
+        raise ValueError("A red line needs a finite time and a positive BPM.")
+    if meter is not None and (isinstance(meter, bool) or int(meter) != meter
+                              or int(meter) not in EDIT_METERS):
+        raise ValueError(f"A bar holds {EDIT_METERS.start} to {EDIT_METERS.stop - 1} beats.")
+    stamp = f"{offset_ms:.{int(decimals)}f}" if decimals > 0 else str(int(round(offset_ms)))
+    time_ms = float(stamp)
+
+    points: list[dict] = []
+    for order, line in enumerate(section["lines"]):
+        text = line.strip()
+        if text and not text.startswith("//") and (point := _timing_point_fields(text)) is not None:
+            point.update(order=order, line=order)
+            points.append(point)
+    reds = _ordered([q for q in points if q["red"]])
+    clash = next((q for q in reds if abs(q["time"] - time_ms) < RED_LINE_CLASH_MS), None)
+    if clash is not None:
+        raise ValueError(f"A red line already sits at {clash['time']:g} ms.")
+    # The map's own red line in force there (its first, before it begins).
+    governing = [q for q in reds if q["time"] <= time_ms + 1e-6] or reds[:1]
+    in_force = governing[-1] if governing else None
+    if meter is None:
+        meter = max(1, in_force["meter"]) if in_force is not None else 4
+    state = _states_at_events(points, [time_ms])[0]
+    sample_set, sample_index, volume, kiai = (
+        (state.sample_set, state.sample_index, state.volume, state.kiai) if state is not None
+        else (0, 0, 100, False))
+    row = f"{stamp},{60000.0 / bpm:.12f},{int(meter)},{sample_set},{sample_index},{volume},1,{int(kiai)}"
+
+    before = _TimingCursor(beatmap)
+    # Before the first point at or after its time; after the last point when
+    # none is, so blank lines closing the section stay where they are.
+    at = next((q["line"] for q in points if q["time"] >= time_ms - 1e-6),
+              max((q["line"] for q in points), default=-1) + 1)
+    red = _timing_point_fields(row)
+    red.update(order=-1)
+    endings = section.get("endings")
+    aligned = endings is not None and len(endings) == len(section["lines"])
+    section["lines"].insert(at, row)
+    if aligned:
+        endings.insert(at, None)
+
+    # Wherever the map would now play differently, a green restores it.
+    events = sorted({q["time"] for q in points} | {time_ms})
+    wanted = _states_at_events(points, events)
+    added: list[dict] = []
+    for event, want in zip(events, wanted):
+        if event < time_ms - 1e-6 or want is None:
+            continue
+        have = _states_at_events(points + [red] + added, [event])[0]
+        if have is not None and have.same_as(want):
+            continue
+        governing = [q for q in _ordered(reds + [red]) if q["time"] <= event + 1e-6]
+        text = (stamp if abs(event - time_ms) <= 1e-6
+                else _point_time_text(section, event) or f"{event:g}")
+        green = (f"{text},{-100.0 / want.sv:.12g},{governing[-1]['meter']},{want.sample_set},"
+                 f"{want.sample_index},{want.volume},0,{int(want.kiai)}")
+        point = _timing_point_fields(green)
+        point.update(order=len(section["lines"]) + len(added))
+        added.append(point)
+        if abs(event - time_ms) <= 1e-6:
+            section["lines"].insert(at + 1, green)
+            if aligned:
+                endings.insert(at + 1, None)
+        else:
+            _insert_timing_line(section, green)
+
+    timing = [line for line in section["lines"]
+              if line.strip() and not line.strip().startswith("//")]
+    beatmap["timing"] = {
+        "reds": [red for line in timing if (red := _parse_red_line(line)) is not None],
+        "greens": [line for line in timing if not _is_red_line(line.strip())],
+    }
+
+    # The objects the new line times, up to the next red line, and how far
+    # the ends of the sliders among them move at the new beat length.
+    after = _TimingCursor(beatmap)
+    until = next((q["time"] for q in reds if q["time"] > time_ms + 1e-6), float("inf"))
+    try:
+        multiplier = float((beatmap.get("difficulty") or {}).get("SliderMultiplier", 1.4))
+    except (TypeError, ValueError):
+        multiplier = 1.4
+    if not np.isfinite(multiplier) or multiplier <= 0:
+        multiplier = 1.4
+
+    def end_of(obj: dict, cursor: _TimingCursor) -> float | None:
+        beat, play = cursor.at(float(obj["time"]))
+        sv = play.sv if play is not None else 1.0
+        length = float(obj.get("length", 0.0) or 0.0)
+        if not beat or sv <= 0 or length <= 0 or not np.isfinite(length):
+            return None
+        slides = max(1, _sample_int(obj.get("slides"), 1))
+        return float(obj["time"]) + length / (multiplier * 100.0 * sv) * beat * slides
+
+    under = []
+    for obj in beatmap.get("hitobjects", []):
+        try:
+            start = float(obj["time"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if np.isfinite(start) and time_ms - 1e-6 <= start < until - 1e-6:
+            under.append(obj)
+    shifts = []
+    for obj in under:
+        if obj.get("kind") == "slider":
+            old, new = end_of(obj, before), end_of(obj, after)
+            if old is not None and new is not None:
+                shifts.append(new - old)
+    worst = max(shifts, key=abs) if shifts else None
+    map_bpm = (60000.0 / in_force["beat_length"]
+               if in_force is not None and in_force["beat_length"] > 0 else None)
+    return {"row": row, "offset_ms": time_ms, "bpm": bpm, "meter": int(meter), "map_bpm": map_bpm,
+            "greens_added": len(added), "objects": len(under), "sliders": len(shifts),
+            "slider_ends_moved": sum(1 for s in shifts if abs(s) >= 0.5),
+            "max_end_shift_ms": None if worst is None else round(worst, 1)}
+
+
+def _nearest_sorted(values: np.ndarray, target: float) -> float:
+    """Nearest entry of a sorted array (binary search, edges included)."""
+    idx = int(np.searchsorted(values, target))
+    candidates = [v for v in (idx - 1, idx) if 0 <= v < values.size]
+    if not candidates:
+        return float("inf")
+    return float(min((values[v] for v in candidates), key=lambda v: abs(v - target)))
+
+
+# ---------------------------------------------------------------------------
+# Mapset check (proposal P1): what every difficulty of one set must share
+# ---------------------------------------------------------------------------
+
+#: Beat lengths closer than this are one number written twice (a float
+#: round-trip in some editor); offsets are compared exactly as written.
+MAPSET_BEAT_TOLERANCE_MS = 1e-6
+#: Fields the difficulties of one set must agree on, by .osu section.
+MAPSET_AUDIO_FIELDS = ("AudioFilename", "PreviewTime", "AudioLeadIn")
+MAPSET_METADATA_FIELDS = ("Artist", "ArtistUnicode", "Title", "TitleUnicode",
+                          "Creator", "Source", "Tags")
+#: osu!'s value for a [General] number that is left out, so a missing
+#: AudioLeadIn and an explicit 0 read as the same setting.
+_MAPSET_GENERAL_DEFAULTS = {"PreviewTime": -1.0, "AudioLeadIn": 0.0}
+
+
+def _mapset_difficulty_name(path: Path, beatmap: dict | None) -> str:
+    """The difficulty name: ``Version`` when the map has one, else the file's."""
+    version = str(((beatmap or {}).get("metadata") or {}).get("Version", "")).strip()
+    if version:
+        return version
+    bracket = re.search(r"\[([^\]]+)\]\s*$", path.stem)
+    return bracket.group(1) if bracket else path.stem
+
+
+def _mapset_timing_lines(beatmap: dict) -> list[dict]:
+    """Every timing line with usable numbers, red or green, in file order.
+
+    The parsed ``timing`` view keeps reds as ``(offset, bpm)`` only; this
+    check needs the beat length as written, the meter and the kiai bit, so it
+    reads the raw section. Lines without numbers are skipped, never fatal.
+    """
+    section = next((s for s in beatmap.get("sections", [])
+                    if s.get("name") == "TimingPoints"), None)
+    lines: list[dict] = []
+    for raw in (section or {}).get("lines", []):
+        text = str(raw).strip()
+        if not text or text.startswith("//"):
+            continue
+        fields = text.split(",")
+        try:
+            time_ms = float(fields[0])
+            beat_length = float(fields[1])
+        except (ValueError, IndexError):
+            continue
+        if not (np.isfinite(time_ms) and np.isfinite(beat_length)):
+            continue
+        meter: int | str = 4
+        if len(fields) > 2 and fields[2].strip():
+            try:
+                meter = int(fields[2])
+            except ValueError:
+                meter = fields[2].strip()  # compared as written, not guessed
+        try:
+            effects = int(fields[7]) if len(fields) > 7 and fields[7].strip() else 0
+        except ValueError:
+            effects = 0
+        lines.append({"time": time_ms, "beat_length": beat_length, "meter": meter,
+                      "red": _is_red_line(text) and beat_length > 0,
+                      "kiai": bool(effects & 1)})
+    return lines
+
+
+def _mapset_kiai_spans(lines: list[dict]) -> list[dict]:
+    """Kiai on/off spans; ``end_ms`` None means kiai runs to the end of the map."""
+    spans: list[dict] = []
+    active, start = False, 0.0
+    for line in sorted(lines, key=lambda item: item["time"]):  # stable: file order at ties
+        if line["kiai"] == active:
+            continue
+        if line["kiai"]:
+            start = line["time"]
+        elif line["time"] > start:
+            spans.append({"start_ms": start, "end_ms": line["time"]})
+        active = line["kiai"]
+    if active:
+        spans.append({"start_ms": start, "end_ms": None})
+    return spans
+
+
+def _mapset_red_differences(reference: list[dict], other: list[dict]) -> list[dict]:
+    """How ``other``'s red lines differ from ``reference``'s, one entry each.
+
+    Lines pair on an identical offset first; a leftover within half a
+    reference beat of a leftover is the same line moved (``offset``). Paired
+    lines then compare beat length (within ``MAPSET_BEAT_TOLERANCE_MS``) and
+    meter. Whatever stays unpaired is ``missing`` from, or ``extra`` in,
+    ``other``. Sorted by offset.
+    """
+    ref_left, other_left = list(reference), list(other)
+    pairs: list[tuple[dict, dict]] = []
+    diffs: list[dict] = []
+    for red in reference:
+        match = next((o for o in other_left if o["time"] == red["time"]), None)
+        if match is not None:
+            other_left.remove(match)
+            ref_left.remove(red)
+            pairs.append((red, match))
+    for red in sorted(ref_left, key=lambda item: item["time"]):
+        near = min(other_left, key=lambda o: abs(o["time"] - red["time"]), default=None)
+        if near is None or abs(near["time"] - red["time"]) > 0.5 * red["beat_length"]:
+            continue
+        other_left.remove(near)
+        ref_left.remove(red)
+        pairs.append((red, near))
+        diffs.append({"offset_ms": red["time"], "kind": "offset",
+                      "expected": red["time"], "found": near["time"]})
+    for red, found in pairs:
+        if abs(red["beat_length"] - found["beat_length"]) > MAPSET_BEAT_TOLERANCE_MS:
+            diffs.append({"offset_ms": red["time"], "kind": "beat_length",
+                          "expected": red["beat_length"], "found": found["beat_length"]})
+        if red["meter"] != found["meter"]:
+            diffs.append({"offset_ms": red["time"], "kind": "meter",
+                          "expected": red["meter"], "found": found["meter"]})
+    diffs += [{"offset_ms": red["time"], "kind": "missing", "expected": red["time"],
+               "found": None} for red in ref_left]
+    diffs += [{"offset_ms": extra["time"], "kind": "extra", "expected": None,
+               "found": extra["time"]} for extra in other_left]
+    return sorted(diffs, key=lambda d: d["offset_ms"])
+
+
+def _mapset_field_key(field_name: str, value: str | None):
+    """What two values of one field must share to count as the same setting."""
+    if field_name in _MAPSET_GENERAL_DEFAULTS:
+        if value is None or not value.strip():
+            return _MAPSET_GENERAL_DEFAULTS[field_name]
+        try:
+            number = float(value)
+        except ValueError:
+            return value
+        return number if np.isfinite(number) else value
+    if field_name == "Tags" and value is not None:
+        return frozenset(value.split())  # order and spacing carry no meaning
+    return value
+
+
+def mapset_report(folder: str | os.PathLike[str]) -> dict:
+    """Every difficulty of one beatmap folder, checked for what must match.
+
+    Read only: differences are listed, never fixed. Compared across
+    difficulties: red lines (offset exactly as written, beat length within
+    ``MAPSET_BEAT_TOLERANCE_MS``, meter), ``AudioFilename``/``PreviewTime``/
+    ``AudioLeadIn`` (osu!'s defaults stand in for a missing number) and the
+    metadata in ``MAPSET_METADATA_FIELDS`` (tags as a set of words). Reported
+    per difficulty for information: kiai spans, and object density from
+    ``density_report`` -- objects per second, not a star rating.
+
+    Red lines are compared against one reference difficulty: the one the
+    most others match exactly (first in file order on a tie), so a single
+    odd difficulty is the one that shows up, not everything compared to it.
+    Fields use the value most difficulties share. A file that cannot be read
+    is reported with the reason and left out of the comparison; it never
+    stops the rest. Raises ``ValueError`` only when ``folder`` is not a
+    folder. Plain JSON types throughout.
+    """
+    scan = scan_beatmap_folder(folder)
+    difficulties: list[dict] = []
+    parsed: list[tuple[dict, dict, list[dict]]] = []
+    for name in scan["beatmaps"]:
+        path = Path(name)
+        entry: dict = {"file": path.name}
+        try:
+            beatmap = read_osu_beatmap(path)
+            lines = _mapset_timing_lines(beatmap)
+            density = density_report(beatmap)
+        except (ValueError, OSError, TypeError, KeyError) as exc:
+            entry.update({"difficulty": _mapset_difficulty_name(path, None),
+                          "readable": False, "detail": str(exc)})
+            difficulties.append(entry)
+            continue
+        reds = [line for line in lines if line["red"]]
+        entry.update({
+            "difficulty": _mapset_difficulty_name(path, beatmap), "readable": True,
+            "reference": False, "red_lines": len(reds),
+            "kiai": _mapset_kiai_spans(lines),
+            "density": {"objects": density["objects"],
+                        "mean_per_second": density["mean_per_second"],
+                        "peak_per_second": density["peak_per_second"]},
+            "checks": {"red_lines": 0, "audio": [], "metadata": []},
+        })
+        difficulties.append(entry)
+        parsed.append((entry, beatmap, reds))
+
+    reference = None
+    red_differences: list[dict] = []
+    if parsed:
+        def agreeing(candidate: list[dict]) -> int:
+            return sum(1 for _e, _b, reds in parsed
+                       if not _mapset_red_differences(candidate, reds))
+        ref_index = max(range(len(parsed)), key=lambda n: (agreeing(parsed[n][2]), -n))
+        ref_entry, _ref_map, ref_reds = parsed[ref_index]
+        reference = ref_entry["file"]
+        ref_entry["reference"] = True
+        for entry, _beatmap, reds in parsed:
+            if entry is ref_entry:
+                continue
+            found = _mapset_red_differences(ref_reds, reds)
+            entry["checks"]["red_lines"] = len(found)
+            red_differences += [{"file": entry["file"], "difficulty": entry["difficulty"],
+                                 **diff} for diff in found]
+        # The reference's value breaks ties, so it goes first.
+        parsed = [parsed[ref_index]] + parsed[:ref_index] + parsed[ref_index + 1:]
+
+    fields: list[dict] = []
+    for section, names, check in (("General", MAPSET_AUDIO_FIELDS, "audio"),
+                                  ("Metadata", MAPSET_METADATA_FIELDS, "metadata")):
+        for field_name in names:
+            values = [(entry, (beatmap.get(section.lower()) or {}).get(field_name))
+                      for entry, beatmap, _reds in parsed]
+            keys = [_mapset_field_key(field_name, value) for _entry, value in values]
+            common = max(dict.fromkeys(keys), key=keys.count) if keys else None
+            shown = next((value for (_entry, value), key in zip(values, keys)
+                          if key == common), None)
+            odd = []
+            for (entry, value), key in zip(values, keys):
+                if key != common:
+                    entry["checks"][check].append(field_name)
+                    odd.append({"file": entry["file"], "difficulty": entry["difficulty"],
+                                "value": value})
+            fields.append({"section": section, "field": field_name,
+                           "identical": not odd, "value": shown, "differences": odd})
+
+    unreadable = sum(1 for entry in difficulties if not entry["readable"])
+    field_differences = sum(len(f["differences"]) for f in fields)
+    return {"folder": scan["folder"], "reference": reference,
+            "difficulties": difficulties, "red_lines": red_differences,
+            "fields": fields, "unreadable": unreadable,
+            "differences": len(red_differences) + field_differences,
+            "consistent": not red_differences and not field_differences and not unreadable}
+
+
+# ---------------------------------------------------------------------------
+# Reference timing (proposal P1): any map's red lines, graded by the attacks
+# ---------------------------------------------------------------------------
+
+#: The subdivisions of a red line's beat its attacks are read at, coarsest
+#: first. Straight music sits on 1/2 or 1/4, a shuffle on 1/3.
+REFERENCE_DIVISORS = (1, 2, 3, 4)
+#: A finer subdivision is taken only when it explains clearly more attack
+#: weight: 1/4 always catches what 1/2 does, so without this slack every
+#: span would read at 1/4 and resolve its offset to only an eighth of a beat.
+REFERENCE_DIVISOR_SLACK = 0.9
+#: Fewer attacks than this in a span cannot pin both an offset and a slope.
+REFERENCE_MIN_ATTACKS = 8
+#: The engine's own share gate: below it a grid explains too little of the
+#: attack weight to vouch for, or against, the red line.
+REFERENCE_MIN_SHARE = 0.40
+#: Past this a line's offset or its end-of-span drift is worth a look. It is
+#: the benchmark's 5 ms bar, the same one the compare card uses.
+REFERENCE_TOLERANCE_MS = MAP_OFFSET_TOLERANCE_MS
+#: An error is flagged only past this many of its own standard errors too.
+REFERENCE_SIGMAS = 2.0
+
+
+#: A meter past this is no meter: the largest in 25,174 local maps is 16, and a
+#: fuzzed 2**64 made the hitsound report ask for a list of 2**66 slots.
+MAX_METER = 1024
+
+
+def _red_line_meter(line: str) -> int:
+    """The meter field of one red line; 4 when it is missing or unreadable."""
+    fields = line.strip().split(",")
+    try:
+        meter = int(fields[2])
+    except (ValueError, IndexError):
+        return 4
+    return meter if 0 < meter <= MAX_METER else 4
+
+
+def _beatmap_red_rows(beatmap: dict) -> list[tuple[float, float, int]]:
+    """Every red line as ``(offset_ms, bpm, meter)``, sorted by offset."""
+    lines = next((s.get("lines", []) for s in beatmap.get("sections", [])
+                  if s.get("name") == "TimingPoints"), None)
+    if lines is None:
+        # A beatmap built by hand (tests, callers) may carry only the view.
+        return sorted((float(o), float(b), 4) for o, b in beatmap.get("timing", {}).get("reds", []))
+    rows = []
+    for line in lines:
+        red = _parse_red_line(line)
+        if red is not None:
+            rows.append((red[0], red[1], _red_line_meter(line)))
+    return sorted(rows)
+
+
+#: The first window a span is locked in, in beats of the map. The map's grid
+#: is best known at its own red line, so the fit starts there and grows
+#: forward; started mid-span, a BPM 1 % off has already walked a beat away.
+REFERENCE_LOCK_BEATS = 8
+#: How far the fit may move the map's beat. A typed BPM is off by tenths or
+#: a few percent; a fit that wanders further has found another pulse (on one
+#: real song it shrank each pass until the least squares overflowed), so the
+#: last fit inside the band is kept and the share says how little it explains.
+REFERENCE_PERIOD_BAND = (0.8, 1.25)
+
+
+def _forward_fit(times: np.ndarray, weights: np.ndarray, period: float,
+                 phase: float, start: float, stop: float, lock: float) -> tuple[float, float]:
+    """Lock the phase on the span's first window, then refit on windows that
+    double forward from the start, so beat indices never slip."""
+    lo, hi = (period * r for r in REFERENCE_PERIOD_BAND)
+    span = lock
+    first = (times >= start) & (times <= start + span)
+    phase = _recentre_phase(times[first], weights[first], period, phase)
+    while True:
+        window = (times >= start) & (times <= min(stop, start + span))
+        if int(window.sum()) >= 8:
+            fitted, moved, _ = _refine_grid(times[window], weights[window], period, phase)
+            if not lo <= fitted <= hi:
+                return period, phase
+            period, phase = fitted, moved
+        if start + span >= stop:
+            return period, phase
+        span *= 2.0
+
+
+def _grade_span(times: np.ndarray, weights: np.ndarray, offset_s: float,
+                beat_s: float, end_s: float) -> dict:
+    """Fit one red line's span at each divisor and keep the coarsest that
+    explains the attacks; errors are measured against the map's own grid."""
+    fits = []
+    for divisor in REFERENCE_DIVISORS:
+        atom = beat_s / divisor
+        period, phase = _forward_fit(times, weights, atom, offset_s, offset_s, end_s,
+                                     REFERENCE_LOCK_BEATS * beat_s)
+        share, _coverage, rms = _grid_quality(times, weights, period, phase)
+        fits.append((divisor, atom, period, phase, share, rms))
+    top = max(fit[4] for fit in fits)
+    divisor, atom, period, phase, share, rms = next(
+        fit for fit in fits if fit[4] >= REFERENCE_DIVISOR_SLACK * top)
+    # The fitted tick nearest the red line, as an error in the map's frame:
+    # E(k) = E0 + k * (period - atom) along the span.
+    tick = phase + np.round((offset_s - phase) / period) * period
+    atoms = (end_s - offset_s) / atom
+    # Standard errors of a straight line through the inliers, sampled at the
+    # red line and across the span: few attacks, or loose ones, cannot
+    # vouch for a 5 ms error, and saying so is the point.
+    k = np.round((times - phase) / period)
+    inlier = np.abs(times - (phase + k * period)) <= max(0.12 * period, 0.006)
+    x = times[inlier] - offset_s
+    n = int(x.size)
+    sxx = float(np.sum((x - x.mean()) ** 2)) if n else 0.0
+    # Infinity is not JSON: an error with no spread to measure reads as null.
+    offset_se = drift_se = None
+    if n >= 3 and sxx > 0:
+        sigma = rms / 1000.0
+        offset_se = float(sigma * np.sqrt(1.0 / n + x.mean() ** 2 / sxx)) * 1000.0
+        drift_se = float(sigma * (end_s - offset_s) / np.sqrt(sxx)) * 1000.0
+    return {"divisor": divisor, "share": share, "residual_ms": rms, "inliers": n,
+            "offset_error_ms": float(tick - offset_s) * 1000.0,
+            "drift_ms": atoms * (period - atom) * 1000.0,
+            "offset_se_ms": offset_se, "drift_se_ms": drift_se,
+            "fitted_bpm": 60.0 / (period * divisor)}
+
+
+def grade_reference_timing(beatmap: dict, attack_times: np.ndarray,
+                           attack_weights: np.ndarray,
+                           duration_s: float | None = None) -> dict:
+    """Grade each red line of any .osu against the audio's attacks (P19).
+
+    Every red line governs its span, up to the next red line (the last one up
+    to its last attack). The attacks in a span are fitted with the engine's
+    own tools, started from the map's grid: the phase goes to the densest
+    cluster of attacks (``_recentre_phase``), then least squares
+    (``_refine_grid``) follows the tempo the attacks keep, on windows that
+    double forward from the red line. That is read at 1/1, 1/2, 1/3 and 1/4
+    of the map's beat, and the coarsest subdivision that explains nearly as
+    much weight as the best is kept.
+
+    Per line: ``share`` of attack weight on the fitted grid, ``residual_ms``
+    around it, ``offset_error_ms`` (positive: the attacks sit after the line,
+    measured modulo one subdivision), ``drift_ms`` (how far the map's grid has
+    walked from the attacks by the span's end) and ``fitted_bpm``. The map's
+    common shift is the median offset, weighted by attacks; it is reported
+    once (``ref_shift``) rather than on every line. A line whose offset leaves
+    it (``relative_ms``), or whose drift grows, by more than 5 ms and more than
+    two of its own standard errors is ``check``, with ``issues`` saying which. Lines with too few attacks, or a grid that
+    explains too little, are ``too_few`` or ``weak`` instead of guessed.
+    Nothing is changed and everything is plain JSON types.
+    """
+    rows = _beatmap_red_rows(beatmap)
+    times = np.asarray(attack_times, dtype=np.float64)
+    weights = np.asarray(attack_weights, dtype=np.float64)
+    if not rows:
+        return {"ok": False, "reason": "no_red_lines"}
+    if times.size == 0:
+        return {"ok": False, "reason": "no_attacks"}
+    order = np.argsort(times)
+    times, weights = times[order], weights[order]
+
+    lines: list[dict] = []
+    for n, (offset_ms, bpm, meter) in enumerate(rows):
+        start_s = offset_ms / 1000.0
+        beat_s = 60.0 / bpm
+        # An attack up to half the finest subdivision early still belongs to
+        # the line it opens, not to the one before.
+        slack = 0.5 * beat_s / max(REFERENCE_DIVISORS)
+        last = n + 1 == len(rows)
+        lo = start_s - slack
+        hi = np.inf if last else rows[n + 1][0] / 1000.0 - slack
+        inside = (times >= lo) & (times < hi)
+        span_t, span_w = times[inside], weights[inside]
+        end_s = rows[n + 1][0] / 1000.0 if not last else (
+            float(span_t[-1]) if span_t.size else start_s)
+        if duration_s is not None and last:
+            end_s = min(end_s, float(duration_s))
+        line = {"index": n, "offset_ms": offset_ms, "bpm": bpm, "meter": meter,
+                "end_ms": end_s * 1000.0, "attacks": int(span_t.size),
+                "verdict": "too_few", "issues": []}
+        if span_t.size >= REFERENCE_MIN_ATTACKS and end_s > start_s:
+            line.update(_grade_span(span_t, span_w, start_s, beat_s, end_s))
+            line["verdict"] = "weak" if line["share"] < REFERENCE_MIN_SHARE else "ok"
+        lines.append(line)
+
+    # Offsets are judged against the map's own common shift, not against
+    # zero: on real songs every line of a ranked map reads 12-46 ms before
+    # the attacks, MP3 and OGG alike, and that is not explained yet (roadmap,
+    # Phase 22). The shift is reported once; a line that leaves it is flagged.
+    graded = [line for line in lines if line["verdict"] == "ok"]
+    common = (_weighted_median(np.array([line["offset_error_ms"] for line in graded]),
+                               np.array([float(line["attacks"]) for line in graded]))
+              if graded else None)
+
+    def beyond(error: float, se: float | None) -> bool:
+        # Past 5 ms and past twice its own standard error: a real error, not
+        # the spread of a few loose attacks. No spread measured, no verdict.
+        return se is not None and abs(error) > max(REFERENCE_TOLERANCE_MS,
+                                                   REFERENCE_SIGMAS * se)
+
+    for line in graded:
+        line["relative_ms"] = line["offset_error_ms"] - common
+        if beyond(line["relative_ms"], line["offset_se_ms"]):
+            line["issues"].append("offset")
+        if beyond(line["drift_ms"], line["drift_se_ms"]):
+            line["issues"].append("drift")
+        if line["issues"]:
+            line["verdict"] = "check"
+    findings: list[dict] = []
+    if common is not None and abs(common) > REFERENCE_TOLERANCE_MS:
+        findings.append({"level": "info", "key": "ref_shift", "index": -1,
+                         "values": {"ms": f"{common:+.1f}"}})
+    # Two lines 10 ms apart have no majority: the median takes one side and
+    # flags the other, which may be the right one. Say that no side won.
+    # Lines vote, not attacks: each is one decision of the mapper's.
+    agree = sum(1 for line in graded if "offset" not in line["issues"])
+    if len(graded) > 1 and 2 * agree <= len(graded):
+        findings.append({"level": "warn", "key": "ref_split", "index": -1,
+                         "values": {"n": len(graded)}})
+    first_s, first_beat = rows[0][0] / 1000.0, 60.0 / rows[0][1]
+    early = int(np.sum(times < first_s - 0.5 * first_beat / max(REFERENCE_DIVISORS)))
+    if early:
+        findings.append({"level": "info", "key": "ref_before", "index": -1,
+                         "values": {"n": early}})
+    counts = {verdict: sum(1 for line in lines if line["verdict"] == verdict)
+              for verdict in ("ok", "check", "weak", "too_few")}
+    return {"ok": True, "lines": lines, "common_offset_ms": common,
+            "counts": counts, "findings": findings}
+
+
+def reference_points(beatmap: dict, beats: np.ndarray | None = None) -> list[TimingPoint]:
+    """A map's red lines as the working timing: the mapper vouches for them.
+
+    Each becomes a hand-placed point (confidence 1.0, ``manual`` so export
+    snapping never moves it) carrying the line's own meter as a known bar.
+    Raises ``ValueError`` when the map has no red lines to load.
+    """
+    rows = _beatmap_red_rows(beatmap)
+    if not rows:
+        raise ValueError("This map has no red lines to load.")
+    beats = np.zeros(0) if beats is None else np.asarray(beats, dtype=np.float64)
+    return [TimingPoint(offset, bpm, 1.0, _nearest_beat_index(beats, offset),
+                        meter, True, manual=True) for offset, bpm, meter in rows]
+
+
+def _file_digest(path: Path) -> str:
+    import hashlib
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def same_audio(osu_path: str | os.PathLike[str], beatmap: dict,
+               audio_path: str | os.PathLike[str]) -> bool | None:
+    """Whether a map's AudioFilename holds the same bytes as ``audio_path``.
+
+    None when either file is missing: a name alone proves nothing, since two
+    encodes of one song share names and offsets do not transfer between them.
+    """
+    named = str((beatmap.get("general") or {}).get("AudioFilename", "")).strip()
+    mine, theirs = Path(audio_path), Path(osu_path).parent / named
+    if not named or not mine.is_file() or not theirs.is_file():
+        return None
+    try:
+        if mine.stat().st_size != theirs.stat().st_size:
+            return False
+        return _file_digest(mine) == _file_digest(theirs)
+    except OSError:
+        return None
+
+
+def find_same_audio_maps(audio_path: str | os.PathLike[str],
+                         root: str | os.PathLike[str]) -> dict:
+    """Every beatmap under ``root`` whose audio is byte for byte this file.
+
+    Walks ``root`` and one level of folders below it, the shape of an osu!
+    Songs folder. Only audio files of the same size are hashed, so a whole
+    Songs folder costs a directory listing plus a hash or two. Each match
+    lists the .osu files in its folder that name that audio. Plain types.
+    """
+    audio = Path(audio_path)
+    base = Path(root)
+    if not audio.is_file():
+        raise ValueError(f"{audio} is not a file.")
+    if not base.is_dir():
+        raise ValueError(f"{base} is not a folder.")
+    size = audio.stat().st_size
+    want: str | None = None
+    # os.scandir, not Path.iterdir: on Windows each entry carries its size, so
+    # a 4,800-set Songs folder (59,000 audio files with the hitsound samples)
+    # costs a listing, not a stat per file. iterdir took 9-21 s on one.
+    try:
+        with os.scandir(base) as entries:
+            folders = [base] + sorted(Path(e.path) for e in entries if e.is_dir())
+    except OSError as exc:
+        raise ValueError(f"Could not list {base}: {exc}") from exc
+    scanned = same_size = 0
+    matches: list[dict] = []
+    for folder in folders:
+        try:
+            with os.scandir(folder) as entries:
+                files = sorted((e for e in entries if e.is_file()), key=lambda e: e.name)
+        except OSError:
+            continue
+        for entry in files:
+            if os.path.splitext(entry.name)[1].lower() not in AUDIO_EXTENSIONS:
+                continue
+            scanned += 1
+            try:
+                if entry.stat().st_size != size:
+                    continue
+                same_size += 1
+                want = want or _file_digest(audio)
+                if _file_digest(Path(entry.path)) != want:
+                    continue
+            except OSError:
+                continue
+            candidate = Path(entry.path)
+            beatmaps = []
+            for osu in (Path(e.path) for e in files if e.name.lower().endswith(".osu")):
+                try:
+                    beatmap = read_osu_beatmap(osu)
+                except (ValueError, OSError):
+                    continue
+                named = str(beatmap["general"].get("AudioFilename", "")).strip()
+                if named.lower() == candidate.name.lower():
+                    beatmaps.append({"path": str(osu),
+                                     "difficulty": _mapset_difficulty_name(osu, beatmap)})
+            matches.append({"folder": str(folder), "audio": str(candidate),
+                            "beatmaps": beatmaps})
+    return {"root": str(base), "scanned": scanned, "same_size": same_size,
+            "matches": matches}
+
+
+# ---------------------------------------------------------------------------
+# Hitsounds (Phase 6, P-1): every object as the sounds osu! plays for it
+# ---------------------------------------------------------------------------
+
+#: hitSound bits. The normal sound always plays; these three are additions.
+HIT_WHISTLE, HIT_FINISH, HIT_CLAP = 2, 4, 8
+#: Sample sets as the format numbers them; 0 means "inherit".
+SAMPLE_SET_NAMES = {1: "normal", 2: "soft", 3: "drum"}
+#: A sound takes the timing point in force this long after it, as osu!lazer's
+#: legacy decoder does, so a green line placed a hair late still reaches the
+#: object it was meant for. Stable's own rule is not verified here.
+SAMPLE_LENIENCY_MS = 5.0
+
+
+def _addition_names(bits: int) -> list[str]:
+    return [name for bit, name in ((HIT_WHISTLE, "whistle"), (HIT_FINISH, "finish"),
+                                   (HIT_CLAP, "clap")) if bits & bit]
+
+
+def _sample_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+class _TimingCursor:
+    """What the timing points say at any time, in any query order: the red
+    line's beat length, slider velocity, sample set, index and volume.
+    Before the first point, the first point's settings apply, as in osu!."""
+
+    def __init__(self, beatmap: dict) -> None:
+        import bisect
+        self._bisect = bisect.bisect_right
+        section = next((s for s in beatmap.get("sections", [])
+                        if s.get("name") == "TimingPoints"), None)
+        rows = []
+        for order, raw in enumerate((section or {}).get("lines", [])):
+            text = str(raw).strip()
+            if not text or text.startswith("//"):
+                continue
+            fields = _timing_point_fields(text)
+            if fields is None or not (np.isfinite(fields["time"])
+                                      and np.isfinite(fields["beat_length"])):
+                continue
+            fields["order"] = order
+            rows.append(fields)
+        rows = _ordered(rows)
+        self.times = [r["time"] for r in rows]
+        self.states: list[tuple[float | None, _PlayState]] = []
+        beat, state = None, None
+        for r in rows:
+            if r["red"] and r["beat_length"] > 0:
+                beat = r["beat_length"]
+            state = _apply_point(state, r)
+            self.states.append((beat, state))
+        first_beat = next((r["beat_length"] for r in rows if r["red"] and r["beat_length"] > 0),
+                          None)
+        # A green line before the first red one still needs a beat length.
+        self.states = [(b if b is not None else first_beat, s) for b, s in self.states]
+
+    def at(self, time_ms: float) -> tuple[float | None, "_PlayState | None"]:
+        if not self.states:
+            return None, None
+        i = self._bisect(self.times, time_ms + 1e-6) - 1
+        return self.states[max(i, 0)]
+
+
+def _event_sample(state: "_PlayState | None", default_set: int, normal_raw: int,
+                  addition_raw: int, index_raw: int, volume_raw: int, file: str) -> dict:
+    """One sound's sample, resolved the way osu! resolves it: the object's own
+    value where it set one, else the timing point's, else the map's default.
+    The additions' set follows the normal sound's set when it is 0."""
+    point_set = state.sample_set if state is not None and state.sample_set in SAMPLE_SET_NAMES \
+        else default_set
+    normal = normal_raw if normal_raw in SAMPLE_SET_NAMES else point_set
+    addition = addition_raw if addition_raw in SAMPLE_SET_NAMES else normal
+    return {"normal_set": SAMPLE_SET_NAMES[normal], "addition_set": SAMPLE_SET_NAMES[addition],
+            "index": index_raw if index_raw > 0 else (state.sample_index if state else 0),
+            "volume": volume_raw if volume_raw > 0 else (state.volume if state else 100),
+            "file": file,
+            "raw": {"normal_set": normal_raw, "addition_set": addition_raw,
+                    "index": index_raw, "volume": volume_raw, "file": file}}
+
+
+# -- Genre: which hitsound profile a song asks for ---------------------------
+
+#: Genre by tag, most specific first: a set lands in the first that matches, so
+#: a metalcore map is not counted as plain rock as well. These are the words
+#: mappers actually write in ``Tags``, and the list is the one
+#: ``bench/genre_corpus.py`` measured each profile's table with — the same
+#: classifier both times, or a song would be graded under one genre and
+#: hitsounded under another.
+GENRE_TAGS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("metalcore", ("metalcore", "post-hardcore", "deathcore")),
+    ("metal", ("metal", "heavy metal", "death metal", "thrash")),
+    ("punk", ("pop punk", "punk rock", "punk")),
+    ("jrock", ("j-rock", "jrock", "japanese rock")),
+    ("rock", ("rock", "alternative rock", "hard rock", "indie rock")),
+    ("funk", ("funk", "funky", "disco")),
+    ("jazz", ("jazz", "swing", "bossa nova")),
+    ("pop", ("pop", "j-pop", "k-pop", "synthpop")),
+    ("electronic", ("electronic", "edm", "house", "dubstep", "drum and bass")),
+)
+
+#: Bands whose genre is not in doubt, read before the tags, because a mapper's
+#: tags often are. Lowercase, matched as a substring of the artist field.
+GENRE_BANDS: dict[str, tuple[str, ...]] = {
+    "rock": ("my chemical romance", "pierce the veil", "paramore", "green day",
+             "fall out boy", "linkin park", "sleeping with sirens", "all time low"),
+    "metalcore": ("bring me the horizon", "asking alexandria", "of mice & men",
+                  "architects", "a day to remember"),
+    "metal": ("metallica", "avenged sevenfold", "bullet for my valentine",
+              "system of a down", "trivium", "slipknot", "babymetal", "band-maid"),
+}
+
+
+def hitsound_genre(artist: str, tags: str) -> str:
+    """The genre a song's own metadata claims, or ``""`` when nothing does.
+
+    The band list wins over the tags: a My Chemical Romance map tagged
+    "emo alternative" is rock whatever the tags left out. Tags are matched as
+    whole words, so "poprock" is not "pop" and a title word cannot smuggle a
+    genre in. Never guesses from the audio — that is a measurement nobody has
+    made here yet, and a wrong guess picks the wrong hitsounds.
+    """
+    name = (artist or "").lower()
+    for genre, bands in GENRE_BANDS.items():
+        if any(band in name for band in bands):
+            return genre
+    text = " " + (tags or "").lower().replace(",", " ") + " "
+    for genre, words in GENRE_TAGS:
+        if any(f" {word} " in text for word in words):
+            return genre
+    return ""
+
+
+def beatmap_genre(beatmap: dict) -> str:
+    """:func:`hitsound_genre` of a read beatmap's own metadata."""
+    meta = beatmap.get("metadata") if isinstance(beatmap, dict) else None
+    if not isinstance(meta, dict):
+        return ""
+    return hitsound_genre(str(meta.get("Artist", "")), str(meta.get("Tags", "")))
+
+
+def sound_events(beatmap: dict) -> list[dict]:
+    """Every sound a map's objects make, resolved to what osu! plays (P-1).
+
+    A circle and a mania hold sound at their start; a spinner at its end. A
+    slider sounds at each edge (head, every repeat, tail), each with its own
+    ``edgeSounds`` bits and ``edgeSets`` sets where the map gives them, the
+    slider's own otherwise, and its body carries the slide (plus the whistle
+    slide when the slider's whistle bit is set). Slider ticks are not events:
+    they take no hitsound of their own in the format.
+
+    Resolution follows osu!lazer's legacy decoder: each sound reads the
+    timing point in force ``SAMPLE_LENIENCY_MS`` after it (a body reads the
+    slider's end); an object's set of 0 inherits the timing point's, and a
+    timing point's 0 the map's ``SampleSet``; an addition set of 0 follows
+    the normal set; index and volume of 0 inherit. A custom ``filename``
+    plays alone, in place of the named samples. Every event keeps the raw
+    values beside the resolved ones, so a copy or an edit writes what the
+    map wrote, not what it resolved to. Plain JSON types, in object order.
+    """
+    cursor = _TimingCursor(beatmap)
+    general = beatmap.get("general") or {}
+    default_set = {"normal": 1, "soft": 2, "drum": 3}.get(
+        str(general.get("SampleSet", "Normal")).strip().lower(), 1)
+    try:
+        multiplier = float((beatmap.get("difficulty") or {}).get("SliderMultiplier", 1.4))
+    except (TypeError, ValueError):
+        multiplier = 1.4
+    if not np.isfinite(multiplier) or multiplier <= 0:
+        multiplier = 1.4
+
+    events: list[dict] = []
+
+    def emit(obj_index: int, part: str, edge, time_ms: float, bits: int, normal_raw: int,
+             addition_raw: int, sample: dict, resolve_at: float, end_ms=None) -> None:
+        _beat, state = cursor.at(resolve_at + SAMPLE_LENIENCY_MS)
+        resolved = _event_sample(state, default_set, normal_raw, addition_raw,
+                                 _sample_int(sample.get("index")),
+                                 _sample_int(sample.get("volume")), str(sample.get("file") or ""))
+        if part == "body":
+            names = ["slide"] + (["whistle"] if bits & HIT_WHISTLE else [])
+        else:
+            names = ["normal"] + _addition_names(bits)
+        events.append({"object": obj_index, "part": part, "edge": edge,
+                       "time": round(float(time_ms), 3),
+                       "end": None if end_ms is None else round(float(end_ms), 3),
+                       "bits": int(bits), "sounds": names, **resolved})
+
+    for n, obj in enumerate(beatmap.get("hitobjects", [])):
+        kind = obj.get("kind")
+        if kind not in ("circle", "slider", "spinner", "hold") or "time" not in obj:
+            continue
+        sample = obj.get("hit_sample") or {}
+        bits = _sample_int(obj.get("hit_sound"))
+        normal_raw = _sample_int(sample.get("normal_set"))
+        addition_raw = _sample_int(sample.get("addition_set"))
+        start = float(obj["time"])
+        if kind in ("circle", "hold"):
+            emit(n, kind, None, start, bits, normal_raw, addition_raw, sample, start)
+        elif kind == "spinner":
+            end = float(obj.get("end_time", start))
+            emit(n, "spinner_end", None, end, bits, normal_raw, addition_raw, sample, end)
+        else:
+            beat, state = cursor.at(start)
+            sv = state.sv if state is not None else 1.0
+            slides = max(1, _sample_int(obj.get("slides"), 1))
+            length = float(obj.get("length", 0.0) or 0.0)
+            span = (length / (multiplier * 100.0 * sv) * beat
+                    if beat and sv > 0 and length > 0 and np.isfinite(length) else None)
+            edge_bits = [_sample_int(b) for b in str(obj.get("edge_sounds") or "").split("|")
+                         if b.strip()]
+            edge_sets = []
+            for pair in str(obj.get("edge_sets") or "").split("|"):
+                if pair.strip():
+                    normal, _, addition = pair.partition(":")
+                    edge_sets.append((_sample_int(normal), _sample_int(addition)))
+            for k in range(slides + 1):
+                if span is None and k > 0:
+                    break                       # no timing to place the edges on
+                at = start + k * (span or 0.0)
+                part = "head" if k == 0 else "tail" if k == slides else "repeat"
+                e_normal, e_addition = edge_sets[k] if k < len(edge_sets) else (normal_raw,
+                                                                                  addition_raw)
+                emit(n, part, k, at, edge_bits[k] if k < len(edge_bits) else bits,
+                     e_normal, e_addition, sample, at)
+            if span is not None:
+                end = start + slides * span
+                emit(n, "body", None, start, bits, normal_raw, addition_raw, sample, end, end)
+    return events
+
+
+# -- P-5: each sound event's nearest attack ------------------------------------
+
+def match_sound_events(events: list[dict], attack_times,
+                       attack_weights=None,
+                       tolerance_ms: float = OBJECT_WINDOW_MS) -> list[dict]:
+    """Each sound event's nearest attack, or no attack at all (P-5).
+
+    The object-centric half of the hitsound evidence: where
+    :func:`attack_object_context` asks "which object caused this attack", this
+    asks "which attack does this sound sit on". Every event of
+    :func:`sound_events` — circle hits, each slider edge, spinner ends, and
+    slider bodies at their start (a slide starts somewhere, even if it spans)
+    — gets its nearest attack by binary search, with the attack's time, its
+    distance in ms (negative: the attack sounds first) and its weight.
+    Further than ``tolerance_ms`` from every attack, or with no attacks at
+    all, the event comes back with ``attack`` None: "no attack here" is a
+    state of its own, the one H3 reads for sounds over silence, never an
+    error and never a guess.
+
+    Attack times arrive in seconds (engine convention) and are reported in
+    milliseconds (map convention), like everywhere else; they are sorted with
+    their weights kept beside them, so an unsorted input still matches. Plain
+    JSON types, in event order.
+    """
+    times = np.asarray(attack_times, dtype=np.float64)
+    if attack_weights is None:
+        weights: np.ndarray | None = None
+    else:
+        weights = np.asarray(attack_weights, dtype=np.float64)
+    order = np.argsort(times, kind="stable")
+    sorted_times = (times[order] * 1000.0
+                    if times.size else np.zeros(0, dtype=np.float64))
+    sorted_weights = (weights[order] if weights is not None and weights.size == times.size
+                      else None)
+    finite = np.isfinite(sorted_times)
+    sorted_times = sorted_times[finite]
+    if sorted_weights is not None:
+        sorted_weights = sorted_weights[finite]
+
+    rows: list[dict] = []
+    for n, event in enumerate(events):
+        try:
+            at = float(event.get("time", float("nan")))
+        except (TypeError, ValueError):
+            at = float("nan")
+        attack = None
+        if np.isfinite(at) and sorted_times.size:
+            idx = int(np.searchsorted(sorted_times, at))
+            best = min((v for v in (idx - 1, idx) if 0 <= v < sorted_times.size),
+                       key=lambda v: abs(float(sorted_times[v]) - at))
+            dt = float(sorted_times[best]) - at
+            if abs(dt) <= tolerance_ms:
+                attack = {"time": round(float(sorted_times[best]), 3),
+                          "dt_ms": round(dt, 3),
+                          "weight": (round(float(sorted_weights[best]), 6)
+                                     if sorted_weights is not None else None)}
+        rows.append({"event": n,
+                     "object": event.get("object"), "part": event.get("part"),
+                     "edge": event.get("edge"), "time": at if np.isfinite(at) else None,
+                     "sounds": list(event.get("sounds") or []),
+                     "attack": attack, "matched": attack is not None})
+    return rows
+
+
+# -- P-2: the hitsound fields of a hit object line, and nothing else ---------
+
+_SAMPLE_KEYS = ("normal_set", "addition_set", "index", "volume", "file")
+
+
+def _check_hitsound_values(bits=None, sample=None, edges=None) -> None:
+    """Refuse what osu! could not read, before anything is written."""
+    if bits is not None and not (isinstance(bits, int) and 0 <= bits <= 15):
+        raise ValueError(f"hitSound must be 0-15, got {bits!r}.")
+    for key, value in (sample or {}).items():
+        if key not in _SAMPLE_KEYS:
+            raise ValueError(f"Unknown sample field {key!r}.")
+        if key == "file":
+            if any(c in str(value) for c in ",:|\r\n"):
+                raise ValueError("A sample file name cannot hold , : | or a line break.")
+        elif key in ("normal_set", "addition_set"):
+            if value not in SAMPLE_SET_NAMES and value != 0:
+                raise ValueError(f"{key} must be 0-3, got {value!r}.")
+        elif key == "index" and not (isinstance(value, int) and value >= 0):
+            raise ValueError(f"index must be 0 or more, got {value!r}.")
+        elif key == "volume" and not (isinstance(value, int) and 0 <= value <= 100):
+            raise ValueError(f"volume must be 0-100, got {value!r}.")
+    for edge in edges or []:
+        _check_hitsound_values(edge.get("bits"),
+                               {k: v for k, v in edge.items() if k in ("normal_set", "addition_set")})
+
+
+def _sample_text(original: str | None, changes: dict) -> str:
+    """``normal:addition:index:volume:file`` with ``changes`` applied, the
+    original text untouched when nothing in it changes."""
+    parsed = _parse_hit_sample(original or "")
+    if original is not None and all(parsed.get(k) == v for k, v in changes.items()):
+        return original
+    merged = {**{k: parsed.get(k) for k in _SAMPLE_KEYS}, **changes}
+    return ":".join(str(merged[k] if merged[k] is not None else (0 if k != "file" else ""))
+                    for k in _SAMPLE_KEYS)
+
+
+def _edited_object_line(line: str, obj: dict, change: dict) -> str:
+    fields = line.split(",")
+    bits = change.get("bits")
+    sample = change.get("sample") or {}
+    edges = change.get("edges")
+    old_bits = int(obj.get("hit_sound", 0))
+    kind = obj.get("kind")
+    if kind == "unparsed":
+        raise ValueError(f"Object at line {line!r} cannot be read, so it is not edited.")
+    if bits is not None and bits != old_bits:
+        fields[4] = str(bits)
+    if kind == "circle":
+        where = 5
+    elif kind == "spinner":
+        where = 6
+    elif kind == "hold":
+        where = None
+    else:                                           # slider
+        where = 10
+        slides = int(obj.get("slides", 1))
+        old_sample = obj.get("hit_sample") or {}
+        if edges is not None and len(edges) != slides + 1:
+            raise ValueError(f"A slider with {slides} slide(s) has {slides + 1} edges, "
+                             f"not {len(edges)}.")
+        have_bits = [b for b in str(obj.get("edge_sounds") or "").split("|") if b.strip()]
+        have_sets = [s for s in str(obj.get("edge_sets") or "").split("|") if s.strip()]
+        # An edge without its own field plays the slider's bits and sets, so a
+        # change to those would reach the edges too: fill the missing fields
+        # first with what the edges play now, and the change stays the body's.
+        # (A copy that removed a whistle only the body had took it off every
+        # edge of 16 sliders on 300 local mapsets before this.)
+        incomplete = len(have_bits) != slides + 1 or len(have_sets) != slides + 1
+        body_changes = (bits is not None and bits != old_bits) or \
+            any(k in sample for k in ("normal_set", "addition_set")) or (sample and len(fields) <= 8)
+        if edges is not None or (incomplete and body_changes):
+            cur_bits = [int(have_bits[k]) if k < len(have_bits) else old_bits
+                        for k in range(slides + 1)]
+            cur_sets = []
+            for k in range(slides + 1):
+                if k < len(have_sets):
+                    normal, _, addition = have_sets[k].partition(":")
+                    cur_sets.append((_sample_int(normal), _sample_int(addition)))
+                else:
+                    cur_sets.append((_sample_int(old_sample.get("normal_set")),
+                                     _sample_int(old_sample.get("addition_set"))))
+            new_bits, new_sets = list(cur_bits), list(cur_sets)
+            for k, edge in enumerate(edges or []):
+                if edge.get("bits") is not None:
+                    new_bits[k] = edge["bits"]
+                new_sets[k] = (edge.get("normal_set", new_sets[k][0]),
+                               edge.get("addition_set", new_sets[k][1]))
+            while len(fields) < 10:
+                fields.append("")
+            if new_bits != cur_bits or len(have_bits) != slides + 1:
+                fields[8] = "|".join(str(b) for b in new_bits)
+            if new_sets != cur_sets or len(have_sets) != slides + 1:
+                fields[9] = "|".join(f"{n}:{a}" for n, a in new_sets)
+    if sample:
+        if where is None:                          # hold: endTime:sample in one field
+            end, _, text = fields[5].partition(":")
+            fields[5] = end + ":" + _sample_text(text, sample)
+        else:
+            while len(fields) <= where:
+                fields.append(None)
+            fields[where] = _sample_text(fields[where], sample)
+    return ",".join("" if f is None else f for f in fields)
+
+
+def set_object_hitsounds(beatmap: dict, changes: dict[int, dict]) -> dict:
+    """Change the hitsounds of some objects, in place (P-2).
+
+    ``changes`` maps an index into ``beatmap["hitobjects"]`` to what changes:
+    ``bits`` (the hitSound field), ``sample`` (any of ``normal_set``,
+    ``addition_set``, ``index``, ``volume``, ``file``) and, for a slider,
+    ``edges``: one dict per edge, head to tail, with any of ``bits``,
+    ``normal_set``, ``addition_set``. Only those fields of those lines are
+    rewritten, and a line whose values do not change keeps its exact text,
+    so a write of nothing is the file it read. Values osu! could not read
+    are refused before anything changes. Returns the indices changed.
+    """
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "HitObjects"), None)
+    if section is None:
+        raise ValueError("No [HitObjects] section in this beatmap.")
+    line_of = [i for i, line in enumerate(section["lines"])
+               if line.strip() and not line.strip().startswith("//")]
+    objects = beatmap.get("hitobjects", [])
+    edits: dict[int, str] = {}
+    for n, change in changes.items():
+        if not (isinstance(n, int) and 0 <= n < len(objects) == len(line_of)):
+            raise ValueError(f"No object {n!r} in this beatmap.")
+        _check_hitsound_values(change.get("bits"), change.get("sample"), change.get("edges"))
+        old = section["lines"][line_of[n]]
+        new = _edited_object_line(old, objects[n], change)
+        if new != old:
+            edits[n] = new
+    for n, new in edits.items():
+        section["lines"][line_of[n]] = new
+        objects[n] = _parse_hit_object(new)
+    return {"changed": sorted(edits)}
+
+
+def write_object_hitsounds(osu_path: str | os.PathLike[str], changes: dict[int, dict],
+                           backup: bool = True, dry_run: bool = False) -> dict:
+    """``set_object_hitsounds`` on a file, as edits over its own text (P-2).
+
+    The file is not rebuilt: each changed object line is replaced where it
+    stands, keeping its own line ending, and every other byte (BOM, stray
+    line endings, sections the reader never looks at) stays as it was. No
+    change, no write: the file and its backups are not touched. Otherwise the
+    write is atomic and backed up by inject's rules (a pristine ``.bak``,
+    then ``.bak2``... never overwritten). Returns ``changed`` (object
+    indices), ``written`` and ``backup`` (the path holding the old bytes).
+    """
+    path = Path(osu_path)
+    original = path.read_bytes() if path.is_file() else None
+    beatmap = read_osu_beatmap(path)
+    result = set_object_hitsounds(beatmap, changes)
+    if not result["changed"] or dry_run:
+        return {**result, "written": False, "backup": None}
+    text, bom = _load_osu_text(path)
+    lines = _osu_lines(text, keepends=True)
+    start = next((i for i, line in enumerate(lines) if line.strip() == "[HitObjects]"), None)
+    if start is None:
+        raise ValueError("No [HitObjects] section in this beatmap.")
+    object_lines = []
+    for i in range(start + 1, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
+            break
+        if stripped and not stripped.startswith("//"):
+            object_lines.append(i)
+    section = next(s for s in beatmap["sections"] if s["name"] == "HitObjects")
+    edited = [line for line in section["lines"] if line.strip() and not line.strip().startswith("//")]
+    for n in result["changed"]:
+        i = object_lines[n]
+        body = lines[i].rstrip("\r\n")
+        lines[i] = edited[n] + lines[i][len(body):]
+    payload = "".join(lines).encode("utf-8-sig" if bom else "utf-8")
+    spare = None
+    if backup and original is not None:
+        try:
+            spare = _backup_before_write(path, original)
+        except OSError as exc:
+            raise ValueError(f"Could not back up {path.name}: {exc}") from exc
+    try:
+        _atomic_write_bytes(path, payload)
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Could not write {path.name}: {exc}") from exc
+    log_write(path, "hitsounds", str(spare) if spare else None,
+              {"changed": len(result["changed"])})
+    return {**result, "written": True, "backup": str(spare) if spare else None}
+
+
+# -- H1: one difficulty's hitsounds onto another -----------------------------
+
+#: How far apart two sounds may be and still be one moment in two
+#: difficulties. A set's difficulties share their timing, so their objects
+#: land on the same milliseconds; 5 ms absorbs rounding and hand placement
+#: and stays under a 1/16 at 240 BPM (15.6 ms).
+COPY_TOLERANCE_MS = 5.0
+_SET_NUMBER = {name: number for number, name in SAMPLE_SET_NAMES.items()}
+
+
+def _copy_fields(source: dict, cursor: "_TimingCursor", default_set: int, at: float,
+                 volumes: bool) -> tuple[dict, bool]:
+    """What to write so a target sound at ``at`` resolves like ``source``.
+
+    The source's own raw values when they resolve the same way under the
+    target's timing points (a copy writes what the mapper wrote), explicit
+    values where they would not. Returns the fields and whether the sample
+    index could be matched: an object's index of 0 means "the timing
+    point's", so an index-0 sound cannot be forced over a green line that
+    sets another index.
+    """
+    _beat, state = cursor.at(at + SAMPLE_LENIENCY_MS)
+    raw = source["raw"]
+
+    def resolves(normal, addition, index, volume):
+        got = _event_sample(state, default_set, normal, addition, index, volume, "")
+        return got
+
+    normal = raw["normal_set"] if raw["normal_set"] in (0, *SAMPLE_SET_NAMES) else 0
+    addition = raw["addition_set"] if raw["addition_set"] in (0, *SAMPLE_SET_NAMES) else 0
+    got = resolves(normal, addition, 0, 0)
+    if got["normal_set"] != source["normal_set"]:
+        normal = _SET_NUMBER[source["normal_set"]]
+    got = resolves(normal, addition, 0, 0)
+    if got["addition_set"] != source["addition_set"]:
+        addition = 0 if source["addition_set"] == source["normal_set"] \
+            else _SET_NUMBER[source["addition_set"]]
+    fields = {"normal_set": normal, "addition_set": addition}
+    index_ok = True
+    index = raw["index"] if isinstance(raw["index"], int) and raw["index"] >= 0 else 0
+    if resolves(normal, addition, index, 0)["index"] != source["index"]:
+        if source["index"] > 0:
+            index = source["index"]
+        else:
+            index_ok = False                     # 0 inherits; it cannot be forced
+    fields["index"] = index
+    if volumes:
+        volume = raw["volume"] if isinstance(raw["volume"], int) and 0 <= raw["volume"] <= 100 else 0
+        if resolves(normal, addition, index, volume)["volume"] != source["volume"]:
+            volume = source["volume"]
+        fields["volume"] = volume
+    fields["file"] = source["file"]
+    return fields, index_ok
+
+
+def copy_hitsounds(source: dict, target: dict, tolerance_ms: float = COPY_TOLERANCE_MS,
+                   volumes: bool = False) -> dict:
+    """What makes ``target`` sound like ``source`` where their objects meet (H1).
+
+    Each of the target's sounds (a circle, each slider edge, a spinner's
+    end, a hold) takes the source sound at the same moment, within
+    ``tolerance_ms``: its additions, its sample sets and index, its custom
+    file, and its volume when ``volumes`` is set (off by default: volume is
+    usually the green lines' job, and those are not copied). A slider's body
+    takes the whistle of a source slider starting with it. Sounds with no
+    source sound are left as they are. Only sounds that would change are
+    written, so copying a difficulty onto itself changes nothing.
+
+    Returns ``changes`` for ``set_object_hitsounds`` and the counts a
+    preview shows: target sounds, matched, changed, unmatched (with the
+    first times), source sounds nothing took, and index conflicts.
+    """
+    import bisect
+    src_all = sound_events(source)
+    src = sorted((e for e in src_all if e["part"] != "body"), key=lambda e: e["time"])
+    src_times = [e["time"] for e in src]
+    src_bodies = sorted((e for e in src_all if e["part"] == "body"), key=lambda e: e["time"])
+    body_times = [e["time"] for e in src_bodies]
+    used: set[int] = set()
+
+    def nearest(times, t):
+        i = bisect.bisect_left(times, t)
+        best = None
+        for j in (i - 1, i):
+            if 0 <= j < len(times) and abs(times[j] - t) <= tolerance_ms + 1e-9:
+                if best is None or abs(times[j] - t) < abs(times[best] - t):
+                    best = j
+        return best
+
+    cursor = _TimingCursor(target)
+    default_set = {"normal": 1, "soft": 2, "drum": 3}.get(
+        str((target.get("general") or {}).get("SampleSet", "Normal")).strip().lower(), 1)
+    keys = ("sounds", "normal_set", "addition_set", "index", "file") + (("volume",) if volumes else ())
+    by_object: dict[int, list[dict]] = {}
+    for event in sound_events(target):
+        by_object.setdefault(event["object"], []).append(event)
+
+    changes: dict[int, dict] = {}
+    counts = {"target_sounds": 0, "matched": 0, "changed": 0, "index_conflicts": 0}
+    unmatched: list[float] = []
+    for n, events in by_object.items():
+        obj = target["hitobjects"][n]
+        points = [e for e in events if e["part"] != "body"]
+        body = next((e for e in events if e["part"] == "body"), None)
+        wanted: dict[int, tuple[dict, dict]] = {}          # edge (or 0) -> (event, source)
+        for e in points:
+            counts["target_sounds"] += 1
+            j = nearest(src_times, e["time"])
+            if j is None:
+                unmatched.append(e["time"])
+                continue
+            counts["matched"] += 1
+            used.add(j)
+            if all(e[k] == src[j][k] for k in keys):
+                continue
+            counts["changed"] += 1
+            wanted[e["edge"] or 0] = (e, src[j])
+        body_bits = None
+        if body is not None:
+            b = nearest(body_times, body["time"])
+            if b is not None and (src_bodies[b]["bits"] & HIT_WHISTLE) != (body["bits"] & HIT_WHISTLE):
+                body_bits = (body["bits"] & ~HIT_WHISTLE) | (src_bodies[b]["bits"] & HIT_WHISTLE)
+        if not wanted and body_bits is None:
+            continue
+        change: dict = {}
+        if obj["kind"] == "slider":
+            # One index for the whole slider: the head's. An edge whose source
+            # sound uses another one cannot take it, and counts as a conflict.
+            head = wanted.get(0)
+            slider_index = (_copy_fields(head[1], cursor, default_set, head[0]["time"], volumes)[0]["index"]
+                            if head else _sample_int((obj.get("hit_sample") or {}).get("index")))
+            edges = []
+            for e in points:
+                edge = {"bits": e["bits"] & 15, "normal_set": e["raw"]["normal_set"],
+                        "addition_set": e["raw"]["addition_set"]}
+                if e["edge"] in wanted:
+                    _e, s = wanted[e["edge"]]
+                    fields, ok = _copy_fields(s, cursor, default_set, e["time"], volumes)
+                    counts["index_conflicts"] += not ok or (e["edge"] != 0 and fields["index"] != slider_index)
+                    edge = {"bits": (e["bits"] & 1) | (s["bits"] & 14),
+                            "normal_set": fields["normal_set"], "addition_set": fields["addition_set"]}
+                    if e["edge"] == 0:           # the slider's own sample: index, volume, file
+                        change["sample"] = {k: fields[k] for k in fields
+                                            if k in ("index", "volume", "file")}
+                edges.append(edge)
+            if wanted:
+                change["edges"] = edges
+            if body_bits is not None:
+                change["bits"] = body_bits & 15
+        else:
+            e, s = wanted[0]
+            fields, ok = _copy_fields(s, cursor, default_set, e["time"], volumes)
+            counts["index_conflicts"] += not ok
+            change = {"bits": (e["bits"] & 1) | (s["bits"] & 14), "sample": fields}
+        changes[n] = change
+    return {"changes": changes, **counts, "unmatched": len(unmatched),
+            "unmatched_times": [round(t, 1) for t in unmatched[:20]],
+            "source_sounds": len(src), "source_unused": len(src) - len(used)}
+
+
+# -- H5: the decision onto the map --------------------------------------------
+
+#: Proposal banks to sample sets, as the mapper writes them.
+BANK_SETS = {"normal": 1, "soft": 2, "drum": 3}
+
+
+def proposal_changes(beatmap: dict, units: list[dict], accept=None,
+                     tolerance_ms: float = COPY_TOLERANCE_MS) -> dict:
+    """A decision's proposals as P-2 field changes (H5, engine half).
+
+    Each unit names ``object``, ``part`` and ``edge`` (the CLI's proposal
+    shape) with ``proposal`` carrying ``bank`` and ``bits``. The bank becomes
+    the sample sets, the bits the additions — keeping bit 0 as H1 does — and
+    slider edges group per object, untouched edges keeping what they play.
+    Volume, index and custom files are never touched: H4 proposes no values
+    for them, and inventing some would be guessing. ``accept`` is a set of
+    ``(object, part, edge)`` to take, or everything when None: refusing is
+    the editor's job, this only counts. A unit whose sound moved since the
+    proposal (past ``tolerance_ms``) or names no sound refuses the whole
+    apply with its times, because half a stale decision is a corruption, not
+    a subset. Read only; returns the P-2 ``changes`` with counts.
+    """
+    events = {(e["object"], e["part"], e["edge"]): e for e in sound_events(beatmap)}
+    wanted: dict = {}
+    stale: list[float] = []
+    for unit in units or []:
+        key = (unit.get("object"), unit.get("part"), unit.get("edge"))
+        if accept is not None and key not in accept:
+            continue
+        event = events.get(key)
+        if event is None or abs(float(event["time"]) - float(unit.get("time_ms", 0.0))) > tolerance_ms:
+            stale.append(round(float(unit.get("time_ms", 0.0)), 1))
+            continue
+        proposal = unit.get("proposal") or {}
+        bank = proposal.get("bank")
+        if bank not in BANK_SETS:
+            raise ValueError(f"Unknown proposal bank {bank!r}.")
+        wanted[key] = (event, BANK_SETS[bank], int(proposal.get("bits", 0)) & 14)
+    if stale:
+        raise ValueError(f"{len(stale)} proposed sounds moved since the decision "
+                         f"(first at {stale[0]} ms): re-run it on this map.")
+    by_object: dict[int, list] = {}
+    for (n, _part, _edge), (event, bank_set, bits) in wanted.items():
+        by_object.setdefault(n, []).append((event, bank_set, bits))
+    edge_points: dict[int, list] = {}
+    for e in events.values():
+        if e["part"] in ("head", "repeat", "tail"):
+            edge_points.setdefault(e["object"], []).append(e)
+    changes: dict[int, dict] = {}
+    for n, items in by_object.items():
+        if len(items) == 1 and items[0][0]["part"] not in ("head", "repeat", "tail"):
+            event, bank_set, bits = items[0]
+            changes[n] = {"bits": (event["bits"] & 1) | bits,
+                          "sample": {"normal_set": bank_set, "addition_set": bank_set}}
+            continue
+        edges = []
+        for e in sorted(edge_points.get(n, []), key=lambda e: e["edge"] or 0):
+            edge = {"bits": e["bits"] & 15, "normal_set": e["raw"]["normal_set"],
+                    "addition_set": e["raw"]["addition_set"]}
+            for event, bank_set, bits in items:
+                if event["edge"] == e["edge"]:
+                    edge = {"bits": (e["bits"] & 1) | bits,
+                            "normal_set": bank_set, "addition_set": bank_set}
+            edges.append(edge)
+        changes[n] = {"edges": edges}
+    return {"changes": changes, "units": len(units or []), "accepted": len(wanted)}
+
+
+def edit_changes(beatmap: dict, edits: list[dict], changes: dict | None = None,
+                 tolerance_ms: float = COPY_TOLERANCE_MS) -> dict:
+    """Volume and sample index set by hand, as P-2 field changes (H5).
+
+    Each edit names a sound as a proposal unit does (``object``, ``part``,
+    ``edge``, ``time_ms``) and carries ``volume`` and/or ``index``: the
+    object's own values, 0 to follow its green line again. The format keeps
+    one volume and one index per object, so an edit on one edge of a slider
+    is the slider's: every edge and the body play it. The edits merge into
+    ``changes`` (a decision's, say), whose sets and additions they leave as
+    they are. As with proposals, a sound that moved since the edit (past
+    ``tolerance_ms``) refuses the whole apply, and so do two edits giving one
+    object different values, or a value osu! could not read. Read only;
+    returns the merged ``changes`` and how many objects the edits reach.
+    """
+    events = {(e["object"], e["part"], e["edge"]): e for e in sound_events(beatmap)}
+    wanted: dict[int, dict] = {}
+    stale: list[float] = []
+    for edit in edits or []:
+        key = (edit.get("object"), edit.get("part"), edit.get("edge"))
+        event = events.get(key)
+        if event is None or abs(float(event["time"]) - float(edit.get("time_ms", 0.0))) > tolerance_ms:
+            stale.append(round(float(edit.get("time_ms", 0.0)), 1))
+            continue
+        values = {k: edit[k] for k in ("volume", "index") if edit.get(k) is not None}
+        _check_hitsound_values(sample=values)
+        have = wanted.setdefault(event["object"], {})
+        for name, value in values.items():
+            if have.get(name, value) != value:
+                raise ValueError(f"Two edits give the object at {event['time']} ms "
+                                 f"{name} {have[name]} and {value}.")
+            have[name] = value
+    if stale:
+        raise ValueError(f"{len(stale)} edited sounds moved since the edit "
+                         f"(first at {stale[0]} ms): edit them again on this map.")
+    merged = dict(changes or {})
+    for n, values in wanted.items():
+        if values:
+            change = dict(merged.get(n) or {})
+            change["sample"] = {**(change.get("sample") or {}), **values}
+            merged[n] = change
+    return {"changes": merged, "edited": sum(1 for values in wanted.values() if values)}
+
+
+def preview_proposals(beatmap: dict, units: list[dict], accept=None, edits=None) -> dict:
+    """What applying would change, without touching anything: the P-2 change
+    on a copy, counted. Read only."""
+    import copy
+    result = proposal_changes(beatmap, units, accept)
+    edited = edit_changes(beatmap, edits, result["changes"])
+    changed = set_object_hitsounds(copy.deepcopy(beatmap), edited["changes"])["changed"]
+    return {**result, **edited, "would_change": len(changed)}
+
+
+def apply_proposals(src_path: str | os.PathLike[str], units: list[dict], accept=None,
+                    dest: str | os.PathLike[str] | None = None, preview: bool = False,
+                    edits=None) -> dict:
+    """A decision and hand edits onto a file: preview, or write through P-2
+    (H5, engine half).
+
+    ``dest`` None writes over the original with inject's backups; given, it
+    must not exist, and the source's bytes are copied there first while the
+    source stays untouched (no backup is made of a file that did not exist
+    before). ``preview`` counts and writes nothing. Volume, index and custom
+    files keep playing what they played, unless ``edits`` set them.
+    """
+    src = Path(src_path)
+    beatmap = read_osu_beatmap(src)
+    if preview:
+        return {**preview_proposals(beatmap, units, accept, edits), "written": False,
+                "backup": None, "dest": None}
+    changes = edit_changes(beatmap, edits,
+                           proposal_changes(beatmap, units, accept)["changes"])["changes"]
+    if dest is None:
+        return {**write_object_hitsounds(src, changes), "dest": None}
+    target = Path(dest)
+    if target.exists():
+        raise ValueError(f"{target.name} already exists: remove it or pick another copy.")
+    target.write_bytes(src.read_bytes())
+    return {**write_object_hitsounds(target, changes, backup=False), "dest": str(target)}
+
+
+# -- H5 export: a hitsound difficulty -----------------------------------------
+
+#: The difficulty name, and the file's bracket, a hitsound difficulty takes.
+HITSOUND_DIFFICULTY = "Hitsounds"
+
+
+def _sound_key(event: dict) -> tuple:
+    """What a sound plays, resolved: two sounds with one key sound alike."""
+    return (tuple(event["sounds"]), event["normal_set"], event["addition_set"],
+            event["index"], event["volume"], event["file"])
+
+
+def hitsound_difficulty(source: dict, others=(), tolerance_ms: float = COPY_TOLERANCE_MS) -> dict:
+    """A mapset's hitsound difficulty, built in memory (H5, export).
+
+    One circle at every time a sound falls: each of the source's sounds
+    first, then every time another difficulty sounds where no circle is
+    within ``tolerance_ms`` yet, taking that difficulty's sound, the
+    ``others`` in the order given. Slider edges become circles; a body's
+    slide stays with its slider, which the circles cannot carry. Each circle
+    writes its sound in full (additions, both sets, index, volume, custom
+    file), so it plays what it played where it came from whatever the green
+    lines say, except an index of 0, which the format can only inherit.
+    Every circle is therefore checked through P-1 against its origin, and
+    the ones that differ are counted with their times, not guessed at. So
+    are the source's sounds that share their time with a different one (a
+    mania chord, stacked objects): one circle per time keeps the first, and
+    combining them would change what each object plays.
+    Returns the ``beatmap`` (the source's own sections, its metadata named
+    ``Hitsounds`` with no BeatmapID, its objects replaced) and counts.
+    """
+    import bisect
+    import copy
+    taken: list[float] = []
+    held: list[tuple[dict, int]] = []           # beside ``taken``: each circle's sound, origin
+    rows: list[tuple[float, dict, int]] = []
+    merged, stacked = 0, []
+    for rank, beatmap in enumerate([source, *others]):
+        for event in sound_events(beatmap):
+            if event["part"] == "body":
+                continue
+            t = float(event["time"])
+            k = bisect.bisect_left(taken, t)
+            near = [j for j in (k - 1, k) if 0 <= j < len(taken) and abs(taken[j] - t) <= tolerance_ms]
+            if near:
+                merged += 1
+                # The source's own sounds that share a time with a different
+                # one (a chord, stacked objects): one circle keeps the first.
+                circle, origin = held[near[0]]
+                if rank == 0 and origin == 0 and _sound_key(circle) != _sound_key(event):
+                    stacked.append(round(t / 1000.0, 3))
+                continue
+            taken.insert(k, t)
+            held.insert(k, (event, rank))
+            rows.append((t, event, rank))
+    rows.sort(key=lambda r: r[0])
+    lines = [f"256,192,{int(round(t))},1,{e['bits'] & 15},"
+             f"{_SET_NUMBER[e['normal_set']]}:{_SET_NUMBER[e['addition_set']]}:"
+             f"{e['index']}:{e['volume']}:{e['file']}" for t, e, _rank in rows]
+    out = copy.deepcopy(source)
+    for section in out["sections"]:
+        if section["name"] == "Metadata":
+            body = section["lines"]
+            endings = section.get("endings")
+            for key, value in (("Version", HITSOUND_DIFFICULTY), ("BeatmapID", "0")):
+                at = next((i for i, line in enumerate(body)
+                           if ":" in line and line.split(":", 1)[0].strip() == key), None)
+                if at is not None:
+                    body[at] = f"{key}:{value}"
+                else:
+                    body.append(f"{key}:{value}")
+                    if endings is not None and len(endings) == len(body) - 1:
+                        endings.append(None)
+            out["metadata"] = _osu_key_values(body)
+        elif section["name"] == "HitObjects":
+            section["lines"] = list(lines)
+            section["endings"] = [None] * len(lines)
+    if not any(s["name"] == "HitObjects" for s in out["sections"]):
+        raise ValueError("No [HitObjects] section to write the circles into.")
+    out["hitobjects"] = [_parse_hit_object(line) for line in lines]
+    check = sound_events(out)
+    inexact = [round(t / 1000.0, 3) for (t, e, _rank), got in zip(rows, check)
+               if _sound_key(got) != _sound_key(e)]
+    return {"beatmap": out, "circles": len(rows),
+            "from_source": sum(1 for r in rows if r[2] == 0),
+            "from_others": sum(1 for r in rows if r[2] > 0), "merged": merged,
+            "stacked": len(stacked), "stacked_times": stacked[:20],
+            "inexact": len(inexact), "inexact_times": inexact[:20]}
+
+
+def hitsound_difficulty_path(source_path: str | os.PathLike[str]) -> Path:
+    """``Artist - Title (Mapper) [Hitsounds].osu`` beside the source."""
+    src = Path(source_path)
+    stem = src.stem
+    if stem.endswith("]") and "[" in stem:
+        stem = stem[:stem.rfind("[")].rstrip()
+    return src.with_name(f"{stem} [{HITSOUND_DIFFICULTY}].osu")
+
+
+def write_hitsound_difficulty(source_path: str | os.PathLike[str], other_paths=(),
+                              dest: str | os.PathLike[str] | None = None,
+                              preview: bool = False) -> dict:
+    """A mapset's hitsound difficulty as a new .osu (H5, export).
+
+    Written beside the source as ``hitsound_difficulty_path`` names it, or at
+    ``dest``; either way it must not exist, since this never replaces a
+    file. Every section but the metadata's Version and BeatmapID and the
+    objects is the source's own, byte for byte. ``preview`` builds and
+    checks it and writes nothing. Logged in History as ``hsdiff``.
+    """
+    src = Path(source_path)
+    target = Path(dest) if dest is not None else hitsound_difficulty_path(src)
+    if target.exists():
+        raise ValueError(f"{target.name} already exists: remove or rename it first.")
+    built = hitsound_difficulty(read_osu_beatmap(src), [read_osu_beatmap(Path(p)) for p in other_paths])
+    result = {k: v for k, v in built.items() if k != "beatmap"}
+    if preview:
+        return {**result, "dest": str(target), "written": False}
+    write_osu_beatmap(target, built["beatmap"], backup=False, op="hsdiff",
+                      summary={"source": src.name, "circles": built["circles"]})
+    return {**result, "dest": str(target), "written": True}
+
+
+# -- P-3: which sample each sound plays --------------------------------------
+
+#: Overtone's own samples (assets/samples.py makes them): what plays where a
+#: map names no custom sample. osu!'s own defaults are not Overtone's to ship.
+#: Source checkout: the engine lives in ``python/``, data at the repo root.
+#: Frozen build: modules sit beside the data inside the contents folder.
+_HERE = Path(__file__).resolve().parent
+ROOT = _HERE if getattr(sys, "frozen", False) else _HERE.parent
+DEFAULT_SAMPLE_DIR = ROOT / "assets" / "samples"
+#: What a beatmap folder's samples may be, in the order osu! looks for them.
+SAMPLE_EXTENSIONS = (".wav", ".ogg", ".mp3")
+#: osu!'s floor: a sound is never quieter than this, whatever the map says.
+MIN_SAMPLE_VOLUME = 5
+
+
+def _sample_listing(folder: str | os.PathLike[str] | None,
+                    sizes: dict[str, int] | None = None) -> dict[str, Path]:
+    """A folder's files by lower-cased name: a map names its samples in any
+    case, and osu! finds them on Windows whatever it is. No folder, or one
+    that cannot be read, lists nothing. ``sizes``, when given, takes each
+    file's size in bytes, which the listing carries on Windows at no cost."""
+    files: dict[str, Path] = {}
+    if folder is None:
+        return files
+    try:
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                try:
+                    if entry.is_file():
+                        name = entry.name.lower()
+                        files[name] = Path(entry.path)
+                        if sizes is not None:
+                            sizes[name] = entry.stat().st_size
+                except OSError:
+                    continue
+    except OSError:
+        pass
+    return files
+
+
+def _find_sample(listing: dict[str, Path], stem: str, index: int = 1) -> Path | None:
+    """``stem`` (``soft-hitclap``) at sample ``index`` in a folder's listing,
+    named as osu! names it: index 1 bare, 2 and up numbered
+    (``soft-hitclap2``), wav then ogg then mp3. Index 0 names no file."""
+    if index < 1:
+        return None
+    name = stem + (str(index) if index > 1 else "")
+    return next((listing[name + ext] for ext in SAMPLE_EXTENSIONS if name + ext in listing), None)
+
+
+def hitsound_playback(beatmap: dict, folder: str | os.PathLike[str],
+                      skin: str | os.PathLike[str] | None = None) -> dict:
+    """What every sound of a map plays, found as osu! finds it (P-3).
+
+    A sound with a custom ``filename`` plays that file from the beatmap
+    folder, alone. Otherwise each of its samples (the normal sound in the
+    normal set, each addition in the addition set) is looked up in the
+    folder by index: index 1 is ``soft-hitclap.wav``, index 2
+    ``soft-hitclap2.wav``, and so on, wav then ogg then mp3. Index 0, or a
+    custom sample the folder does not have, plays the skin's: ``skin``, a
+    folder, asked for the bare name (``soft-hitclap``) whatever the index,
+    since only a beatmap's folder has custom indices (osu!lazer's legacy
+    skins keep that rule from stable; stable is not verified here). Without
+    a skin, or where it has none, Overtone's own plays. A custom filename
+    that is missing falls back to the named samples, and is counted. Volume
+    is the sound's, never under osu!'s 5 %.
+
+    A slider's body holds its slide from head to tail, looped: the slide in
+    the normal set and, when the slider has its whistle bit, the whistle
+    slide in the addition set, found by index as the hits are. A custom
+    filename is left to the hits (what osu! loops then is not verified here).
+
+    Returns ``events`` in song time (seconds) with the ``keys`` they play,
+    a 0-1 ``volume`` and their ``adds`` (the whistle/finish/clap bits);
+    ``loops``, each body's start, end, keys and volume; ``objects`` with
+    their start, end (None for a circle) and kind, for the timeline's object
+    lane (P-7); ``samples``, each key's ``path`` and ``source`` (``file``,
+    ``map``, ``skin`` or ``overtone``); and ``counts`` of each.
+    """
+    listing = _sample_listing(folder)
+    skin_listing = _sample_listing(skin)
+    samples: dict[str, dict] = {}
+    events: list[dict] = []
+    counts = {"sounds": 0, "file": 0, "map": 0, "skin": 0, "overtone": 0, "missing_file": 0,
+              "slider_bodies": 0}
+
+    def use(path: Path, source: str) -> str:
+        key = f"{source}:{path.name.lower()}"
+        samples.setdefault(key, {"path": str(path), "source": source})
+        counts[source] += 1
+        return key
+
+    def named(stem: str, index: int) -> str:
+        """A named sample: the map's own by index, else the skin's, else Overtone's."""
+        found = _find_sample(listing, stem, index)
+        if found is not None:
+            return use(found, "map")
+        found = _find_sample(skin_listing, stem)
+        return (use(found, "skin") if found is not None
+                else use(DEFAULT_SAMPLE_DIR / f"{stem}.wav", "overtone"))
+
+    def level(event: dict) -> float:
+        return max(MIN_SAMPLE_VOLUME, min(100, event["volume"])) / 100.0
+
+    loops: list[dict] = []
+    all_events = sound_events(beatmap)
+    for event in all_events:
+        if event["part"] == "body":
+            counts["slider_bodies"] += 1
+            keys = [named(f"{event['normal_set'] if sound == 'slide' else event['addition_set']}"
+                          f"-slider{sound}", event["index"]) for sound in event["sounds"]]
+            loops.append({"t": round(event["time"] / 1000.0, 6),
+                          "end": round(event["end"] / 1000.0, 6), "keys": keys,
+                          "volume": level(event)})
+            continue
+        counts["sounds"] += 1
+        keys: list[str] = []
+        if event["file"]:
+            found = listing.get(event["file"].lower())
+            if found is not None:
+                keys = [use(found, "file")]
+            else:
+                counts["missing_file"] += 1
+        if not keys:
+            for sound in event["sounds"]:
+                sample_set = event["normal_set"] if sound == "normal" else event["addition_set"]
+                keys.append(named(f"{sample_set}-hit{sound}", event["index"]))
+        events.append({"t": round(event["time"] / 1000.0, 6), "keys": keys,
+                       "volume": level(event),
+                       "adds": event["bits"] & (HIT_WHISTLE | HIT_FINISH | HIT_CLAP)})
+    events.sort(key=lambda e: e["t"])
+    loops.sort(key=lambda e: e["t"])
+    by_object: dict[int, list[dict]] = {}
+    for event in all_events:
+        by_object.setdefault(event["object"], []).append(event)
+    objects = []
+    for n, evs in by_object.items():
+        obj = beatmap["hitobjects"][n]
+        body = next((e for e in evs if e["part"] == "body"), None)
+        end = body["end"] if body else (evs[-1]["time"] if obj["kind"] == "spinner" else None)
+        objects.append({"t": round(float(obj["time"]) / 1000.0, 6), "kind": obj["kind"],
+                        "end": None if end is None else round(end / 1000.0, 6)})
+    objects.sort(key=lambda o: o["t"])
+    return {"events": events, "loops": loops, "objects": objects, "samples": samples,
+            "counts": counts}
+
+
+# -- H6: a sample folder, read as playback reads it ----------------------------
+
+#: What playback plays of each sample set, in the bank's order: the four hits,
+#: then the slide and the whistle slide a slider body loops. Ticks it does not play.
+BANK_SOUNDS = ("hitnormal", "hitwhistle", "hitfinish", "hitclap", "sliderslide", "sliderwhistle")
+#: A lower-cased file name naming one of them: set, sound, index digits, extension.
+_BANK_NAME = re.compile(r"^(normal|soft|drum)-(" + "|".join(BANK_SOUNDS) + r")(\d*)("
+                        + "|".join(re.escape(ext) for ext in SAMPLE_EXTENSIONS) + r")$")
+#: How much of a WAV is read to find its data chunk; a header alone is 44 bytes.
+_WAV_HEAD_BYTES = 4096
+
+
+def _sample_empty(path: Path, size: int) -> bool:
+    """Whether a sample holds no audio: an empty file, or a WAV whose data
+    chunk is empty and ends the file, the header alone that mappers and
+    skinners use to mute a sound. A sample of digital silence is not
+    detected: that needs a decode. Anything unreadable counts as sound."""
+    if size == 0:
+        return True
+    # The data chunk must end the file inside the bytes read, so a larger
+    # file is never empty here: not opening it spares a cold disk a seek.
+    if path.suffix.lower() != ".wav" or size > _WAV_HEAD_BYTES:
+        return False
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(_WAV_HEAD_BYTES)
+    except OSError:
+        return False
+    if head[:4] != b"RIFF" or head[8:12] != b"WAVE":
+        return False
+    at = 12
+    while at + 8 <= len(head):
+        length = int.from_bytes(head[at + 4:at + 8], "little")
+        if head[at:at + 4] == b"data":
+            return length == 0 and at + 8 >= size
+        at += 8 + length + (length & 1)
+    return False
+
+
+def sample_bank(folder: str | os.PathLike[str], skin: str | os.PathLike[str] | None = None) -> dict:
+    """The hitsound samples a folder holds, named as osu! names them (H6).
+
+    ``folder`` is a skin or a beatmap folder, read as :func:`hitsound_playback`
+    reads one: for each sample set, the four hits and the two sounds a slider
+    body loops (:data:`BANK_SOUNDS`), each by its bare name (``soft-hitclap``:
+    what a skin plays, and what a map's index 1 asks its own folder for),
+    wav then ogg then mp3, in any case; and every numbered one
+    (``soft-hitclap2.wav``), a custom index a map asks its own folder for.
+    A skin's numbered files are listed and never played: playback asks a
+    skin for the bare name only (see :func:`hitsound_playback`).
+
+    A sound the folder lacks is not an error (``06`` §8): each missing cell
+    says what plays instead, as playback falls back. In a beatmap folder
+    that is the skin's (``skin``, a folder, when it has it), else Overtone's
+    own; in a skin, Overtone's own, since choosing a skin replaces the one
+    in use rather than falling back to it. A file another extension of
+    the same name shadows, and a name no lookup reaches (index 0 or 1 written
+    out, a leading zero), are listed and never played. ``empty`` marks a
+    sample that holds no audio (:func:`_sample_empty`).
+
+    Read only. Returns the ``folder``, its ``kind`` (``beatmap`` when it holds
+    an .osu, else ``skin``), ``cells`` (set by set, sound by sound), ``custom``
+    (by index, then set and sound), the ``indices`` found, ``unused`` names
+    and ``counts``. Raises ValueError when ``folder`` is not a folder.
+    """
+    base = Path(folder)
+    if not base.is_dir():
+        raise ValueError(f"Not a folder: {base}")
+    sizes: dict[str, int] = {}
+    skin_sizes: dict[str, int] = {}
+    listing = _sample_listing(base, sizes)
+    kind = "beatmap" if any(name.endswith(".osu") for name in listing) else "skin"
+    skin_listing = _sample_listing(skin if kind == "beatmap" else None, skin_sizes)
+    named: dict[tuple[str, str, str], dict[str, Path]] = {}
+    unused: list[str] = []
+    for name, path in listing.items():
+        match = _BANK_NAME.match(name)
+        if match is None:
+            continue
+        sample_set, sound, digits, ext = match.groups()
+        if digits and (int(digits) < 2 or digits.startswith("0")):
+            unused.append(path.name)            # osu! asks for index 1 bare, 2 as "2"
+            continue
+        named.setdefault((sample_set, sound, digits), {})[ext] = path
+
+    def found(paths: dict[str, Path]) -> dict:
+        ordered = [paths[ext] for ext in SAMPLE_EXTENSIONS if ext in paths]
+        size = sizes.get(ordered[0].name.lower())
+        return {"file": ordered[0].name, "bytes": size,
+                "empty": size is not None and _sample_empty(ordered[0], size),
+                "shadowed": sorted(p.name for p in ordered[1:])}
+
+    def fallback(stem: str) -> dict:
+        path = _find_sample(skin_listing, stem)
+        if path is None:
+            return {"source": "overtone", "folder": str(DEFAULT_SAMPLE_DIR),
+                    "file": f"{stem}.wav", "empty": False}
+        size = skin_sizes.get(path.name.lower())
+        return {"source": "skin", "folder": str(path.parent), "file": path.name,
+                "empty": size is not None and _sample_empty(path, size)}
+
+    sets = list(SAMPLE_SET_NAMES.values())
+    cells = []
+    for sample_set in sets:
+        for sound in BANK_SOUNDS:
+            paths = named.get((sample_set, sound, ""))
+            cells.append({"set": sample_set, "sound": sound,
+                          **(found(paths) if paths else
+                             {"file": None, "bytes": None, "empty": False, "shadowed": []}),
+                          "fallback": None if paths else fallback(f"{sample_set}-{sound}")})
+    custom = sorted(({"set": s, "sound": sound, "index": int(digits), **found(paths)}
+                     for (s, sound, digits), paths in named.items() if digits),
+                    key=lambda c: (c["index"], sets.index(c["set"]), BANK_SOUNDS.index(c["sound"])))
+    hits = [c for c in cells if c["sound"].startswith("hit")]
+    slides = [c for c in cells if c["sound"].startswith("slider")]
+    missing = [c["fallback"]["source"] for c in cells if c["fallback"]]
+    return {
+        "folder": str(base), "name": base.name, "kind": kind,
+        "sets": sets, "sounds": list(BANK_SOUNDS), "cells": cells, "custom": custom,
+        "indices": sorted({c["index"] for c in custom}), "unused": sorted(unused),
+        "counts": {"hits": sum(c["file"] is not None for c in hits), "hits_of": len(hits),
+                   "slides": sum(c["file"] is not None for c in slides), "slides_of": len(slides),
+                   "custom": len(custom),
+                   "empty": sum(x["empty"] for x in cells + custom if x["file"]),
+                   "shadowed": sum(len(x["shadowed"]) for x in cells + custom),
+                   "unused": len(unused),
+                   "to_skin": missing.count("skin"), "to_overtone": missing.count("overtone")},
+    }
+
+
+# -- H2: where a map's hitsounds fall -----------------------------------------
+
+#: A sound counts as on a sixteenth when it is this close to one, in beats.
+#: Ranked maps snap far tighter; 0.06 beat is 15 ms at 240 BPM, 30 at 120.
+POSITION_TOLERANCE_BEATS = 0.06
+#: Slots per beat the report places sounds on: sixteenths in 4/4.
+SLOTS_PER_BEAT = 4
+
+
+def _bar_positions(rows: list[tuple[float, float, int]], times_ms: list[float]):
+    """For each time: (bar number from 1, slot in the bar or None off the
+    grid, the bar's meter), read against the map's own red lines. Before the
+    first line, the first line's grid extends backwards, as in osu!."""
+    import bisect
+    import math
+    if not rows:
+        return [(None, None, None) for _ in times_ms]
+    starts = [r[0] for r in rows]
+    first_bar = []
+    bar = 1
+    for i, (offset, bpm, meter) in enumerate(rows):
+        first_bar.append(bar)
+        if i + 1 < len(rows):
+            span_beats = (rows[i + 1][0] - offset) / (60000.0 / bpm)
+            bar += max(1, math.ceil(span_beats / meter - 1e-6))
+    out = []
+    for t in times_ms:
+        i = max(0, bisect.bisect_right(starts, t + 1e-6) - 1)
+        offset, bpm, meter = rows[i]
+        beats = (t - offset) / (60000.0 / bpm)
+        bar_index = math.floor(beats / meter + 1e-9)
+        within = (beats - bar_index * meter) * SLOTS_PER_BEAT
+        q = round(within)
+        slot = q % (meter * SLOTS_PER_BEAT) if abs(within - q) <= POSITION_TOLERANCE_BEATS * SLOTS_PER_BEAT \
+            else None
+        out.append((first_bar[i] + bar_index, slot, meter))
+    return out
+
+
+def hitsound_report(beatmap: dict) -> dict:
+    """Every sound of a map with its place in the bar, and where each
+    addition falls (H2). Read only.
+
+    Places are read against the map's own red lines, in sixteenths of its
+    meter: slot 0 is the downbeat, slot 4 beat 2 in 4/4. A sound further than
+    ``POSITION_TOLERANCE_BEATS`` from every sixteenth is off the grid. The
+    distribution per addition counts the sounds under the meter most of the
+    map uses; the ones under another meter are counted apart. Slider bodies
+    are left out: they span, they do not land. Plain JSON types.
+    """
+    rows = _beatmap_red_rows(beatmap)
+    events = [e for e in sound_events(beatmap) if e["part"] != "body"]
+    places = _bar_positions(rows, [e["time"] for e in events])
+    meters = [m for _b, _s, m in places if m]
+    meter = max(set(meters), key=meters.count) if meters else 4
+    slots = meter * SLOTS_PER_BEAT
+    additions = {name: {"total": 0, "slots": [0] * slots, "off_grid": 0, "other_meter": 0}
+                 for name in ("whistle", "finish", "clap")}
+    sets = {"normal": {"normal": 0, "soft": 0, "drum": 0}, "addition": {"normal": 0, "soft": 0, "drum": 0}}
+    sounds = []
+    for event, (bar, slot, m) in zip(events, places):
+        sets["normal"][event["normal_set"]] += 1
+        for name in event["sounds"][1:]:
+            sets["addition"][event["addition_set"]] += 1
+            a = additions[name]
+            a["total"] += 1
+            if m != meter:
+                a["other_meter"] += 1
+            elif slot is None:
+                a["off_grid"] += 1
+            else:
+                a["slots"][slot] += 1
+        sounds.append({"t": round(event["time"] / 1000.0, 6), "object": event["object"],
+                       "part": event["part"], "edge": event["edge"], "bar": bar, "slot": slot, "meter": m,
+                       "sounds": event["sounds"], "normal_set": event["normal_set"],
+                       "addition_set": event["addition_set"], "index": event["index"],
+                       "volume": event["volume"], "file": event["file"]})
+    return {"meter": meter, "slots_per_beat": SLOTS_PER_BEAT, "sounds": sounds,
+            "additions": additions, "sets": sets, "red_lines": len(rows)}
+
+
+# -- H3: the map's own hitsound pattern, and what breaks it -------------------
+
+#: Strong beats in 4/4, as sixteenth slots, with the beat a modder names.
+CLAP_BEATS = {4: "2", 12: "4"}
+#: Bars read on each side of a position; the plan's "15 of the 16 bars
+#: around it", which the corpus measures as the readable bar (p90 2 + 1
+#: flags a map; 14/16 already reaches 22).
+PATTERN_BARS = 8
+#: Neighbours that must carry a clap to call the middle one missing, and at
+#: most to call it extra. Measured, not tasted: see the probe in timeline P-6.
+PATTERN_NEED = 15
+#: A map that barely claps has no pattern to break.
+MIN_PATTERN_CLAPS = 10
+
+
+def hitsound_consistency(beatmap: dict) -> dict:
+    """Objects whose sound breaks the map's own clap pattern (H3, map half).
+
+    Read only, map and grid only, no audio. On 4/4 maps with claps to speak
+    of, every beat 2 and 4 that carries a sound is set against the same beat
+    of the eight bars around it: no clap where 15 of the 16 neighbours clap
+    is missing, a clap where 1 or none do is extra. All 16 neighbours must
+    exist (carry a sound), so sparse maps and song edges stay silent instead
+    of guessing. Weak slots are not judged: a clap off beats 2 and 4 is the
+    norm somewhere, and an absolute-position rule would flag hundreds (P-6).
+    Advice with the numbers behind it, never an edit. Plain JSON types.
+    """
+    report = hitsound_report(beatmap)
+    findings: list[dict] = []
+    if report["meter"] != 4 or report["additions"]["clap"]["total"] < MIN_PATTERN_CLAPS:
+        return {"findings": findings}
+    at: dict[tuple[int, int], list] = {}
+    for sound in report["sounds"]:
+        if sound["part"] == "body" or sound["meter"] != 4 or sound["slot"] is None:
+            continue
+        key = (sound["bar"], sound["slot"])
+        cell = at.setdefault(key, [0, None])
+        cell[0] += "clap" in sound["sounds"]
+        if cell[1] is None:
+            cell[1] = sound["t"] * 1000.0
+    for (bar, slot), (claps, first_ms) in sorted(at.items()):
+        if slot not in CLAP_BEATS:
+            continue
+        neighbours = [(bar + k, slot) for k in range(-PATTERN_BARS, PATTERN_BARS + 1) if k]
+        if any(nb not in at for nb in neighbours):
+            continue
+        with_clap = sum(1 for nb in neighbours if at[nb][0] > 0)
+        beat = CLAP_BEATS[slot]
+        if claps == 0 and with_clap >= PATTERN_NEED:
+            findings.append({"level": "info", "key": "hitsound_missing_clap",
+                             "time_ms": first_ms,
+                             "values": {"bar": bar, "beat": beat,
+                                        "have": with_clap, "of": 2 * PATTERN_BARS}})
+        elif claps > 0 and with_clap <= 2 * PATTERN_BARS - PATTERN_NEED:
+            findings.append({"level": "info", "key": "hitsound_extra_clap",
+                             "time_ms": first_ms,
+                             "values": {"bar": bar, "beat": beat,
+                                        "have": with_clap, "of": 2 * PATTERN_BARS}})
+    return {"findings": findings}
+
+
+def hitsound_silence_check(beatmap: dict, attack_times, attack_weights,
+                           tolerance_ms: float = OBJECT_WINDOW_MS) -> dict:
+    """Finishes and claps with no attack under them (H3, audio half).
+
+    Read only. Every sound event carrying a finish or a clap is set against
+    the detected attacks through :func:`match_sound_events`: further than
+    ``tolerance_ms`` from every attack, the addition sounds over silence.
+    Whistles are not judged: unmatched whistles sit a median 66 ms from the
+    nearest attack (melodic overlap, measured on 23 songs), so calling them
+    silence would mislead, while unmatched finishes and claps sit truly
+    isolated (over 70 % past 100 ms). Slider bodies are left out: a slide
+    spans, it does not land. With no attacks at all there is nothing to
+    judge — everything would flag, so nothing does. Quiet passages may hold
+    sounds too soft to detect, so each finding is advice with its addition,
+    never an edit. Plain JSON types.
+    """
+    times = np.asarray(attack_times, dtype=np.float64)
+    weights = np.asarray(attack_weights, dtype=np.float64)
+    if times.size == 0:
+        return {"findings": []}
+    findings: list[dict] = []
+    events = [e for e in sound_events(beatmap) if e["part"] != "body"]
+    for event, row in zip(events, match_sound_events(events, times, weights,
+                                                     tolerance_ms)):
+        if row["matched"]:
+            continue
+        for addition in ("finish", "clap"):
+            if addition in event["sounds"]:
+                findings.append({"level": "info", "key": "hitsound_on_silence",
+                                 "time_ms": float(event["time"]),
+                                 "values": {"addition": addition}})
+    return {"findings": findings}
+
+
+# ---------------------------------------------------------------------------
+# Structure view (Phase 19): the Rust engine's phrases, on this song's bars
+# ---------------------------------------------------------------------------
+
+#: A phrase boundary moves to a proven downbeat at most this far. The
+#: boundaries sit on a 0.5 s feature grid and the Rust tests hold them within
+#: 1.5 s of the truth; past that, the nearest bar line is another phrase's.
+STRUCTURE_SNAP_S = 1.5
+#: The proven bar beside the nearest one takes the edge when the level changes
+#: more there, the way it goes from one section to the next, by this many dB:
+#: the phrase's first bar is where the change lands, and the novelty peak
+#: (4 s either side, on 0.5 s windows) sits up to a bar off it, most often a
+#: bar early, on a break or a fill before a chorus. On ranked maps' kiai starts
+#: with an edge within 2 bars, the kiai's own bar: nearest 42 % -> this rule
+#: 65 % on the 500 songs it was chosen on; 46 % -> 56 % on 500 held out (27
+#: fixed, 12 broken, p 0.024), short of the bar set beforehand (+10 points and
+#: p < 0.01); frozen, then 35 % -> 49 % on the 673 songs neither used (46
+#: fixed, 19 broken, sign test p 0.001), kiai ends 50 % -> 52 %. See timeline.md.
+STRUCTURE_PHRASE_MARGIN_DB = 0.5
+#: Points the energy lane keeps: enough for a wide window, few for the bridge.
+STRUCTURE_LANE_POINTS = 800
+
+
+def downbeat_times(analysis: Analysis) -> list[tuple[float, bool]]:
+    """Every bar line the red lines imply, as ``(seconds, proven)``.
+
+    The bars ``click_schedule`` accents, by the same rules: each red line
+    counts bars from its own offset, in its own meter when it proved one,
+    else in the song's. ``proven`` is True where the line's bar was proved
+    by the accents or set by the mapper; a bar counted on a guessed meter
+    is a bar line, but not evidence for a phrase.
+    """
+    return [(t, proven) for t, proven, _bar in _bar_lines(analysis)]
+
+
+def _bar_lines(analysis: Analysis) -> list[tuple[float, bool, float]]:
+    """:func:`downbeat_times` with each line's own bar length in seconds:
+    ``(seconds, proven, bar)``. A bar a later red line cuts short keeps its
+    line's length here, so a level read over "one bar" is always a bar."""
+    points = snap_timing_points(list(getattr(analysis, "points", None) or []))
+    duration = float(getattr(analysis, "duration", 0.0) or 0.0)
+    try:
+        song_bar = max(1, min(16, int(str(getattr(analysis, "meter", "4/4")).split("/")[0])))
+    except (ValueError, TypeError):
+        song_bar = 4
+    out: list[tuple[float, bool, float]] = []
+    for s, point in enumerate(points):
+        if not np.isfinite(point.bpm) or point.bpm <= 0 or not np.isfinite(point.offset_ms):
+            continue
+        proven = bool(point.meter_known or point.manual)
+        bar = max(1, int(point.meter or 4)) if point.meter_known else song_bar
+        start = point.offset_ms / 1000.0
+        end = duration if s + 1 == len(points) else points[s + 1].offset_ms / 1000.0
+        step = bar * 60.0 / point.bpm
+        for k in range(MAX_CLICKS_PER_LINE):
+            t = start + k * step
+            if t >= end - 1e-6 and not (s + 1 == len(points) and t <= end + 1e-6):
+                break
+            out.append((t, proven, step))
+    return out
+
+
+def _lane_power(energy: np.ndarray, hop: float, start: float, end: float) -> float | None:
+    """Mean power of the RMS lane over ``[start, end)``, each window weighed by
+    how much of it the span covers; the span is clipped to the lane first.
+    None when nothing of it is on the lane."""
+    start, end = max(start, 0.0), min(end, energy.size * hop)
+    if hop <= 0 or end <= start:
+        return None
+    first, last = int(np.floor(start / hop)), min(int(np.ceil(end / hop)), energy.size)
+    edges = np.arange(first, last) * hop
+    cover = np.clip(np.minimum(edges + hop, end) - np.maximum(edges, start), 0.0, None)
+    return float(np.sum(cover * energy[first:last] ** 2) / (end - start))
+
+
+def _bar_change_db(energy: np.ndarray, hop: float, bar: float, before: float,
+                   after: float) -> float:
+    """The level of the bar from ``bar`` on over the bar before it, in dB.
+    0.0 where either side is off the lane: no level, no evidence."""
+    later = _lane_power(energy, hop, bar, bar + after)
+    earlier = _lane_power(energy, hop, bar - before, bar)
+    if later is None or earlier is None:
+        return 0.0
+    return float(10.0 * np.log10(max(later, 1e-12) / max(earlier, 1e-12)))
+
+
+def _pooled_lane(values: list[float], hop: float, points: int) -> dict:
+    """The energy lane at most ``points`` long: each point the loudest of the
+    windows it covers, so a short hit survives the pooling."""
+    energy = np.asarray(values, dtype=np.float64)
+    if energy.size == 0:
+        return {"values": [], "hop": hop}
+    factor = max(1, int(np.ceil(energy.size / points)))
+    usable = energy[: energy.size - energy.size % factor] if factor > 1 else energy
+    pooled = usable.reshape(-1, factor).max(axis=1) if factor > 1 else usable
+    if factor > 1 and energy.size % factor:
+        pooled = np.append(pooled, energy[energy.size - energy.size % factor:].max())
+    peak = float(pooled.max()) or 1.0
+    return {"values": [round(float(v) / peak, 4) for v in pooled], "hop": hop * factor}
+
+
+def structure_view(report: dict, analysis: Analysis) -> dict:
+    """The Structure view of one song: phrases snapped to proven downbeats,
+    each label beside the evidence it rests on. Plain types.
+
+    ``report`` is ``overtone-cli structure``'s JSON. Each inner boundary
+    moves to the nearest proven downbeat within ``STRUCTURE_SNAP_S``, or to
+    the proven bar line either side of it when the level changes more there
+    (``STRUCTURE_PHRASE_MARGIN_DB``), the way it goes from the section before
+    to the one after: one bar after the line against one bar before, on the
+    report's energy lane. Each says how far it moved, which of the two put
+    it there and the change at its bar. One with no proven downbeat that
+    close stays on the 0.5 s feature grid and says so. The song's start and
+    end never move.
+
+    Labels are the Rust rules' (repetition, then level); ``why`` names the
+    rule that decided each one, with the numbers it read. Groups are letters
+    by first appearance, so "A B A B" reads at a glance whatever the labels.
+    """
+    duration = float(report.get("duration") or getattr(analysis, "duration", 0.0) or 0.0)
+    lines = _bar_lines(analysis)
+    every = np.asarray([t for t, _known, _bar in lines], dtype=np.float64)
+    known = np.asarray([k for _t, k, _bar in lines], dtype=bool)
+    length = np.asarray([b for _t, _known, b in lines], dtype=np.float64)
+    raw = list(report.get("sections") or [])
+    energy = np.asarray(report.get("energy") or [], dtype=np.float64)
+    hop = float(report.get("energy_hop") or 0.5)
+
+    def snap(t: float, rising: bool) -> tuple[float, float | None, str | None, float | None]:
+        """Where an edge lands, how far it moved, which rule put it there and
+        the level change at its bar: ``(t, None, None, None)`` with no proven
+        bar close enough."""
+        if not known.any():
+            return t, None, None, None
+        n = int(np.argmin(np.where(known, np.abs(every - t), np.inf)))
+        if abs(every[n] - t) > STRUCTURE_SNAP_S:
+            return t, None, None, None
+        sign = 1.0 if rising else -1.0
+        # A bar against the one before it, each its own line's length.
+        change = {i: _bar_change_db(energy, hop, float(every[i]),
+                                    float(length[i - 1] if i > 0 else length[i]), float(length[i]))
+                  for i in (n - 1, n, n + 1) if 0 <= i < every.size and known[i]}
+        # Ties go to the nearest line, then to the earlier one.
+        best = max(change, key=lambda i: (sign * change[i], -abs(i - n), -i))
+        if sign * change[best] < sign * change[n] + STRUCTURE_PHRASE_MARGIN_DB:
+            best = n
+        to = float(every[best])
+        return to, to - t, "nearest" if best == n else "level", round(change[best], 1)
+
+    edges = [snap(float(raw[i]["start_s"]),
+                  float(raw[i]["level_db"]) >= float(raw[i - 1]["level_db"]))
+             for i in range(1, len(raw))]
+
+    def bar_number(t: float) -> int | None:
+        # 1 from the first red line's bar; None before it, where no bar is counted.
+        count = int(np.searchsorted(every, t + 1e-6, side="right")) if every.size else 0
+        return count or None
+
+    def power(section: dict) -> float:
+        return 10.0 ** (float(section["level_db"]) / 10.0)
+
+    families: dict[int, list[dict]] = {}
+    for section in raw:
+        families.setdefault(int(section["group"]), []).append(section)
+    family_db = {g: 10.0 * np.log10(max(np.mean([power(s) for s in members]), 1e-12))
+                 for g, members in families.items()}
+    repeated = sorted((g for g, members in families.items() if len(members) >= 2),
+                      key=lambda g: family_db[g], reverse=True)
+
+    sections: list[dict] = []
+    for i, section in enumerate(raw):
+        start, end = float(section["start_s"]), float(section["end_s"])
+        start_to, start_moved, placed, change = (start, None, None, None) if i == 0 else edges[i - 1]
+        # Sections are contiguous: an end is the next start, snapped once.
+        end_to = end if i + 1 == len(raw) else edges[i][0]
+        kind, group = str(section["kind"]), int(section["group"])
+        repeats = int(section["repeats"])
+        if kind == "chorus":
+            louder = family_db[group] - family_db[repeated[1]] if len(repeated) > 1 else None
+            why = {"rule": "chorus_loudest", "repeats": repeats,
+                   "over_db": None if louder is None else round(float(louder), 1)}
+        elif kind == "verse" and len(raw) == 1:
+            why = {"rule": "verse_single"}
+        elif kind == "verse" and len(repeated) >= 2:
+            why = {"rule": "verse_quieter", "repeats": repeats,
+                   "under_db": round(float(family_db[repeated[0]] - family_db[group]), 1)}
+        elif kind == "verse":
+            why = {"rule": "verse_one_family", "repeats": repeats}
+        elif kind == "intro":
+            why = {"rule": "intro_first", "length_s": round(end - start, 1),
+                   "max_s": (report.get("rules") or {}).get("intro_max_s")}
+        elif kind == "outro":
+            why = {"rule": "outro_last"}
+        else:
+            why = {"rule": "bridge_once"}
+        sections.append({
+            "index": i, "kind": kind, "group": chr(ord("A") + group) if group < 26 else str(group),
+            "repeats": repeats, "level_db": round(float(section["level_db"]), 1),
+            "start_s": round(start_to, 4), "end_s": round(end_to, 4),
+            "raw_start_s": start, "moved_ms": None if start_moved is None else round(start_moved * 1000, 1),
+            "snapped": i == 0 or start_moved is not None, "bar": bar_number(start_to),
+            "snap": placed, "change_db": change,
+            "why": why,
+        })
+    one_family = len(families) == 1 and len(raw) > 1
+    return {
+        "duration": duration,
+        "sections": sections,
+        "families": len(families),
+        "one_family": one_family,
+        "proven_bars": int(known.sum()),
+        "bars": int(every.size),
+        "lane": _pooled_lane(report.get("energy") or [], float(report.get("energy_hop") or 0.5),
+                             STRUCTURE_LANE_POINTS),
+        "rules": report.get("rules") or {},
+        "snap_s": STRUCTURE_SNAP_S,
+        "phrase_margin_db": STRUCTURE_PHRASE_MARGIN_DB,
+        "timings_s": report.get("timings_s") or {},
+        "preview": suggest_preview_time(sections),
+    }
+
+
+def suggest_preview_time(sections: list[dict]) -> dict | None:
+    """Where a song-select preview should start (Phase 21, Preview point).
+
+    The loudest chorus's start; without a chorus, the loudest part that is
+    neither intro nor outro; without anything, nothing. Starts are the
+    snapped ones when they come from the view, so the point sits on a bar.
+    A suggestion with its reason, never a write. Plain JSON types.
+    """
+    if not sections:
+        return None
+
+    def pick(pool: list[dict]) -> dict:
+        return max(pool, key=lambda s: (float(s.get("level_db", 0.0)), -float(s.get("start_s", 0.0))))
+
+    choruses = [s for s in sections if s.get("kind") == "chorus"]
+    if choruses:
+        chosen, why = pick(choruses), "chorus_loudest"
+    else:
+        parts = [s for s in sections if s.get("kind") not in ("intro", "outro")]
+        if parts:
+            chosen, why = pick(parts), "loudest_part"
+        else:
+            chosen, why = pick(list(sections)), "loudest_only"
+    return {"time_s": float(chosen["start_s"]), "time_ms": int(round(float(chosen["start_s"]) * 1000)),
+            "kind": chosen["kind"], "why": why}
+
+
+def set_editor_bookmarks(beatmap: dict, times_ms: list[float]) -> dict:
+    """Section starts as editor bookmarks (Phase 21, Bookmarks).
+
+    Merges whole-millisecond times into the map's own bookmarks, sorted —
+    the mapper's survive, nothing is ever deleted, negative times are
+    dropped (bookmarks live at or past zero). A bookmarks line with
+    unreadable entries refuses the map instead of silently dropping them.
+    Only the bookmarks line moves (appended at the section's end when the
+    map has none); every other byte waits for the writer. In place, like
+    the P-2 field edits. Returns added and total.
+    """
+    section = next((s for s in beatmap.get("sections", []) if s["name"] == "Editor"), None)
+    if section is None:
+        raise ValueError("No [Editor] section in this beatmap.")
+    kept: list[int] = []
+    index = next((i for i, line in enumerate(section["lines"])
+                  if line.strip().lower().startswith("bookmarks:")), None)
+    if index is not None:
+        for token in section["lines"][index].split(":", 1)[1].split(","):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                kept.append(int(token))
+            except ValueError:
+                raise ValueError(f"Unusable bookmarks: {token!r}.")
+    wanted = sorted({int(round(t)) for t in times_ms if t is not None} | set(kept))
+    wanted = [t for t in wanted if t >= 0]
+    # Commas alone, as osu! writes the line: the mapper's own marks read back
+    # as they were, and the diff against the backup is the added numbers.
+    listed = ",".join(str(t) for t in wanted)
+    if index is None:
+        section["lines"].append(f"Bookmarks: {listed}")
+    else:
+        head = section["lines"][index].split(":", 1)[0]
+        section["lines"][index] = f"{head}: {listed}"
+    editor = beatmap.setdefault("editor", {})
+    if isinstance(editor, dict):
+        editor["Bookmarks"] = listed
+    return {"added": len(wanted) - len(kept), "total": len(wanted)}
+
+
+# ---------------------------------------------------------------------------
+# Assisted timing (proposal P1): two marked downbeats seed the grid
+# ---------------------------------------------------------------------------
+
+#: Tempos an assisted grid may take, wider than osu!'s usual range: the user
+#: says where the bars are, so a 70 BPM ballad is a fact, not an octave error.
+ASSISTED_BPM_RANGE = (40.0, 400.0)
+#: How far past the second mark the seed window reaches at least, in beats:
+#: two marks one bar apart hold too few attacks to fit a slope on.
+ASSISTED_SEED_BEATS = 8
+#: Growth past the marks, as the engine grows a section: a chunk must put this
+#: much of its weight on the grid, within this fraction of a subdivision. The
+#: engine's 0.55 assumes a grid that explains nearly every attack; a swung song
+#: read at the beat puts only 0.54-0.57 on it, even beside the marks, and never
+#: grew past them. So a chunk must fit about as well as the seed did: 0.8 of the
+#: seed's share, between the share gate and the engine's bar.
+ASSISTED_GROW_SHARE = 0.55
+ASSISTED_GROW_RATIO = 0.8
+ASSISTED_GROW_RMS = 0.09
+#: A mark snaps to the strongest attack within a quarter beat of it, and never
+#: further than a hand in the editor is off.
+ASSISTED_SNAP_BEATS = 0.25
+ASSISTED_SNAP_S = 0.060
+#: The longest stretch the grid may be lost in and still continue, as long as
+#: the same grid comes back after it: a breakdown of 16 bars at 128 BPM.
+ASSISTED_GAP_S = 30.0
+#: Where growth stops, this much further is searched for a grid of its own; a
+#: period within this fraction of ours, up to an octave, is ours.
+ASSISTED_CHANGE_WINDOW_S = 12.0
+ASSISTED_SAME_GRID = 0.005
+#: A grid that held fewer bars than this is answered but called short. Marked
+#: on 30 ranked maps, every fit that held 11 bars or fewer missed the map's BPM
+#: by 0.25-1.9, and every one that held 22 or more came within 0.043. The
+#: least-squares standard error was tried and dropped: it put nearly every fit,
+#: good ones included, past two of its own errors.
+ASSISTED_MIN_BARS = 16
+#: Adding the line keeps detected lines this close to the span's end.
+ASSISTED_EDGE_BEATS = 8
+#: The engine refuses a grid chance explains at 10**-6 because its seed search
+#: tries thousands of grids and keeps the best. Here the user proposed one, so
+#: one in a thousand is the same bar. Marks on white noise score 0 to -1.
+ASSISTED_CHANCE_LOG10P = -3.0
+
+
+def _snap_mark(times: np.ndarray, weights: np.ndarray, mark: float, reach: float) -> float:
+    """The strongest attack within ``reach`` of a mark, or the mark itself."""
+    near = np.abs(times - mark) <= reach
+    if not near.any():
+        return mark
+    candidates = np.flatnonzero(near)
+    return float(times[candidates[int(np.argmax(weights[candidates]))]])
+
+
+def _chunk_fits(times: np.ndarray, weights: np.ndarray, period: float, phase: float,
+                a: float, b: float, min_share: float) -> bool | None:
+    """Whether the attacks in (a, b] land on the grid; None when too few to say."""
+    chunk = (times > a) & (times <= b)
+    if int(chunk.sum()) < 3:
+        return None
+    share, _coverage, rms = _grid_quality(times[chunk], weights[chunk], period, phase,
+                                          tol_ratio=0.11)
+    return share >= min_share and rms <= ASSISTED_GROW_RMS * period * 1000.0
+
+
+def _another_grid(times: np.ndarray, weights: np.ndarray, period: float,
+                  lo: float, hi: float) -> bool:
+    """Whether a stretch the grid does not fit holds a grid of its own.
+
+    The engine's seed search is run on it. A grid that explains the stretch as
+    well as growth demands, at a tempo other than ours up to an octave, is a
+    tempo change; anything less is a gap (a breakdown, a bar of vocals) that
+    the same grid may resume after. Skipping gaps alone ran secs-3's first
+    145 BPM line across its 152 BPM section into the 145 after it.
+    """
+    fresh = _seed_grid(times, weights, lo, hi, prior_period=period, widths=(12.0, 7.0, 4.5))
+    if fresh is None:
+        return False
+    other, other_phase = fresh
+    window = (times >= lo) & (times <= hi)
+    share, _coverage, _rms = _grid_quality(times[window], weights[window], other, other_phase)
+    if share < ASSISTED_GROW_SHARE:
+        return False
+    ratio = other / period
+    ratio /= 2.0 ** round(float(np.log2(ratio)))
+    return abs(ratio - 1.0) > ASSISTED_SAME_GRID
+
+
+def _grow_assisted(times: np.ndarray, weights: np.ndarray, period: float, phase: float,
+                   lo: float, hi: float, forward: bool,
+                   min_share: float) -> tuple[float, float, float]:
+    """Extend a seeded grid one way while fresh chunks keep landing on it,
+    refitting on everything covered so far. Returns (period, phase, edge).
+
+    A chunk that does not fit (a breakdown, a bar of vocals alone) ends the
+    span only if the grid does not come back within ``ASSISTED_GAP_S``: on 30
+    ranked maps, stopping at the first one covered a median 31 % of the line.
+    """
+    band = (period * REFERENCE_PERIOD_BAND[0], period * REFERENCE_PERIOD_BAND[1])
+    finish = float(times[-1]) if forward else float(times[0])
+    edge = hi if forward else lo
+    while (edge < finish) if forward else (edge > finish):
+        step = max(2.0, 4.0 * period)
+        nxt = min(finish, edge + step) if forward else max(finish, edge - step)
+        a, b = (edge, nxt) if forward else (nxt - 1e-9, edge - 1e-9)
+        fits = _chunk_fits(times, weights, period, phase, a, b, min_share)
+        if fits is False:
+            # A stretch that holds another grid is a tempo change: stop there.
+            window = ((edge, min(finish, edge + ASSISTED_CHANGE_WINDOW_S)) if forward
+                      else (max(finish, edge - ASSISTED_CHANGE_WINDOW_S), edge))
+            if _another_grid(times, weights, period, *window):
+                break
+            # One with no grid is a gap: resume where the same grid holds again.
+            resume = None
+            probe = nxt
+            while resume is None and abs(probe - edge) <= ASSISTED_GAP_S and (
+                    (probe < finish) if forward else (probe > finish)):
+                after = min(finish, probe + step) if forward else max(finish, probe - step)
+                pa, pb = (probe, after) if forward else (after - 1e-9, probe - 1e-9)
+                if _chunk_fits(times, weights, period, phase, pa, pb, min_share):
+                    resume = after
+                probe = after
+            if resume is None:
+                break
+            nxt, fits = resume, True
+        if fits:
+            if forward:
+                whole = (times >= lo - 0.5 * period) & (times <= nxt)
+            else:
+                whole = (times >= nxt) & (times <= hi + 0.5 * period)
+            fitted, moved, _ = _refine_grid(times[whole], weights[whole], period, phase)
+            if not band[0] <= fitted <= band[1]:
+                break
+            period, phase = fitted, moved
+        edge = nxt
+        if forward:
+            hi = edge
+        else:
+            lo = edge
+    return period, phase, _settle_edge(times, weights, period, phase, edge, forward)
+
+
+def _settle_edge(times: np.ndarray, weights: np.ndarray, period: float, phase: float,
+                 edge: float, forward: bool) -> float:
+    """Where the grid really stops, inside the last chunk that passed.
+
+    A chunk passes with most, not all, of its weight on the grid, so the last
+    one can carry up to a step of the next tempo: at a 150 -> 120 BPM change at 31 s
+    the span ran to 32.2 s, and adding the line would have dropped the real
+    change. The attacks of the last two steps are scored +weight on the grid
+    and -weight off it; the edge is the attack that closes the best-scoring
+    run from the inside.
+    """
+    reach = 2.0 * max(2.0, 4.0 * period)
+    if forward:
+        region = (times > edge - reach) & (times <= edge)
+    else:
+        region = (times >= edge) & (times < edge + reach)
+    t, w = times[region], weights[region]
+    if t.size == 0:
+        return edge
+    k = np.round((t - phase) / period)
+    on = np.abs(t - (phase + k * period)) <= max(0.11 * period, 0.006)
+    signed = np.where(on, w, -w)
+    if not forward:
+        t, signed = t[::-1], signed[::-1]
+    run = np.cumsum(signed)
+    best = int(np.argmax(run))
+    return float(t[best]) if run[best] > 0 else edge
+
+
+def assisted_grid(attack_times: np.ndarray, attack_weights: np.ndarray,
+                  first_ms: float, second_ms: float, bars: int = 1,
+                  meter: int = 4) -> dict:
+    """One red line from two downbeats the user marked (P19, assisted timing).
+
+    Where the detector refuses or reads the wrong octave or bar, the user
+    knows two things it does not: where a bar starts, and how many bars lie
+    between two marks. That fixes the beat, ``(second - first) / (bars *
+    meter)``, and the downbeat. Each mark first snaps to the strongest attack
+    near it. The attacks then do the rest: the seed is fitted around the marks
+    exactly as a reference line is (the coarsest of 1/1-1/4 that explains
+    them), and grows backward and forward while fresh chunks keep landing on
+    it, as the engine grows a section. It crosses a stretch with no grid (a
+    breakdown) when the same grid comes back, and stops at one that holds a
+    grid of its own (a tempo change). The red line goes on the first downbeat
+    of the span; how far each mark moved is reported, and a grid that held
+    fewer than 16 bars is answered but marked ``short``.
+
+    Refuses instead of guessing: marks out of order, a tempo outside 40-400
+    BPM, too few attacks around the marks, a grid that explains too little of
+    them, or one chance explains as well. The number of bars between the marks
+    is the user's: two marks one bar apart called two bars read at double
+    tempo, consistently, and nothing in the attacks can say otherwise.
+    Plain JSON types.
+    """
+    times = np.asarray(attack_times, dtype=np.float64)
+    weights = np.asarray(attack_weights, dtype=np.float64)
+
+    def refuse(reason: str, **values) -> dict:
+        return {"ok": False, "reason": reason, "values": values}
+
+    try:
+        first_s, second_s = float(first_ms) / 1000.0, float(second_ms) / 1000.0
+        bars, meter = int(bars), int(meter)
+    except (TypeError, ValueError):
+        return refuse("bad_marks")
+    if not (np.isfinite(first_s) and np.isfinite(second_s)) or second_s <= first_s:
+        return refuse("bad_marks")
+    if bars < 1 or meter < 1:
+        return refuse("bad_marks")
+    if times.size == 0:
+        return refuse("no_attacks")
+    order = np.argsort(times)
+    times, weights = times[order], weights[order]
+    # Each mark goes to the strongest attack near it before the beat is taken
+    # from them, as the editor snaps a click. At 300 BPM one bar is 0.8 s, and
+    # marks 15 ms late and 20 ms early made the seed 4.6 % fast: enough to slip
+    # an index over the seed window and refuse a clean track.
+    reach = min(ASSISTED_SNAP_BEATS * (second_s - first_s) / (bars * meter), ASSISTED_SNAP_S)
+    marked = (first_s, second_s)
+    first_s, second_s = (_snap_mark(times, weights, mark, reach) for mark in marked)
+    if second_s <= first_s:
+        return refuse("bad_marks")
+    beat_s = (second_s - first_s) / (bars * meter)
+    seed_bpm = 60.0 / beat_s
+    if not ASSISTED_BPM_RANGE[0] <= seed_bpm <= ASSISTED_BPM_RANGE[1]:
+        return refuse("bpm_range", bpm=f"{seed_bpm:.1f}")
+
+    slack = 0.5 * beat_s / max(REFERENCE_DIVISORS)
+    seed_hi = max(second_s, first_s + ASSISTED_SEED_BEATS * beat_s)
+    seed = (times >= first_s - slack) & (times <= seed_hi + slack)
+    if int(seed.sum()) < REFERENCE_MIN_ATTACKS:
+        return refuse("too_few", n=int(seed.sum()))
+    grade = _grade_span(times[seed], weights[seed], first_s, beat_s, seed_hi)
+    if grade["share"] < REFERENCE_MIN_SHARE:
+        return refuse("weak", share=f"{grade['share']:.2f}")
+    divisor = grade["divisor"]
+    period = 60.0 / (grade["fitted_bpm"] * divisor)
+    phase = first_s + grade["offset_error_ms"] / 1000.0
+
+    min_share = min(ASSISTED_GROW_SHARE,
+                    max(REFERENCE_MIN_SHARE, ASSISTED_GROW_RATIO * grade["share"]))
+    period, phase, lo = _grow_assisted(times, weights, period, phase,
+                                       first_s, seed_hi, False, min_share)
+    period, phase, hi = _grow_assisted(times, weights, period, phase,
+                                       lo, seed_hi, True, min_share)
+    span = (times >= lo - 0.5 * period) & (times <= hi + 0.5 * period)
+    share, _coverage, rms = _grid_quality(times[span], weights[span], period, phase)
+    # The engine's own test: a grid that chance explains as well is no grid,
+    # whoever seeded it. Marks on white noise found a 157 BPM "grid" at 0.41.
+    chance = _pulse_log10p(times[span], period, phase)
+    if chance > ASSISTED_CHANCE_LOG10P:
+        return refuse("chance", log10p=f"{chance:.1f}")
+
+    beat = period * divisor
+    bar = beat * meter
+    downbeat = phase + np.round((first_s - phase) / period) * period
+    # The red line opens the span on a downbeat: whole bars back from the mark,
+    # never before the first attack the grid holds.
+    offset = downbeat - np.floor((downbeat - (lo - 0.5 * period)) / bar) * bar
+    second_tick = downbeat + bars * bar
+    held = (hi - lo) / bar
+    return {"ok": True, "offset_ms": float(offset) * 1000.0, "bpm": 60.0 / beat,
+            "bars_held": float(held), "short": bool(held < ASSISTED_MIN_BARS),
+            "meter": meter, "divisor": divisor, "seed_bpm": seed_bpm,
+            "share": share, "residual_ms": rms,
+            "start_ms": float(lo) * 1000.0, "end_ms": float(hi) * 1000.0,
+            "first_shift_ms": float(downbeat - marked[0]) * 1000.0,
+            "second_shift_ms": float(second_tick - marked[1]) * 1000.0}
+
+
+def apply_assisted_grid(points: list[TimingPoint], fit: dict,
+                        beats: np.ndarray | None = None) -> list[TimingPoint]:
+    """The working timing with an assisted red line added.
+
+    Points inside the span the grid holds are dropped: there the user's marks
+    and the attacks agree on one tempo, so a detected line in between would
+    only contradict it. Points outside stay, hand-placed ones included, and so
+    do points in the span's last ``ASSISTED_EDGE_BEATS``: the end is known to a
+    few beats (the grids of two close tempos agree that long), and a line
+    there is most likely the change that ended it. On secs-3 the span ran
+    0.4 s past the 152 -> 145 change and dropped its red line. The new line is
+    hand-placed with its meter known.
+    """
+    if not fit.get("ok"):
+        raise ValueError("That grid was refused; there is nothing to add.")
+    start, end = float(fit["start_ms"]), float(fit["end_ms"])
+    offset = float(fit["offset_ms"])
+    edge = end - ASSISTED_EDGE_BEATS * 60000.0 / float(fit["bpm"])
+    beats = np.zeros(0) if beats is None else np.asarray(beats, dtype=np.float64)
+    kept = [p for p in points if not (min(start, offset) - 1.0 <= p.offset_ms < edge)]
+    kept.append(TimingPoint(offset, float(fit["bpm"]), 1.0, _nearest_beat_index(beats, offset),
+                            int(fit["meter"]), True, manual=True))
+    kept.sort(key=lambda p: p.offset_ms)
+    return kept
+
+
+# ---------------------------------------------------------------------------
+# Mod report (proposal P2): every finding as an osu! editor timestamp
+# ---------------------------------------------------------------------------
+
+#: A timestamp the osu! editor understands: minutes (any number), seconds and
+#: milliseconds, then the combo numbers of the objects it names, if any.
+MOD_STAMP = re.compile(r"^\d{2,}:\d{2}:\d{3}( \(\d+(,\d+)*\))?$")
+#: The order sources are listed in when two findings share a moment.
+MOD_SOURCES = ("reference", "suggestion", "snap", "alignment", "hitsound")
+
+
+def mod_timestamp(time_ms: float, combo: list[int] | None = None) -> str:
+    """``mm:ss:mmm (1,2)`` as modders write it; times before 0 clamp to 0."""
+    whole = int(round(max(0.0, float(time_ms))))
+    minutes, rest = divmod(whole, 60000)
+    seconds, millis = divmod(rest, 1000)
+    stamp = f"{minutes:02d}:{seconds:02d}:{millis:03d}"
+    return f"{stamp} ({','.join(str(n) for n in combo)})" if combo else stamp
+
+
+def mod_editor_link(stamp: str) -> str:
+    """The ``osu://edit/`` link that opens the local editor at a timestamp.
+
+    Only a well-formed timestamp becomes a link: it is handed to the shell.
+    """
+    if not MOD_STAMP.match(stamp or ""):
+        raise ValueError(f"Not an osu! editor timestamp: {stamp!r}")
+    return "osu://edit/" + stamp.replace(" ", "%20")
+
+
+def _combo_numbers(objects: list[dict]) -> dict[float, int]:
+    """Each object's number inside its combo, keyed by time, as the editor
+    counts them: a new-combo object is 1, the next ones count up."""
+    numbers: dict[float, int] = {}
+    count = 0
+    for obj in sorted((o for o in objects if "time" in o), key=lambda o: o["time"]):
+        count = 1 if (obj.get("new_combo") or count == 0) else count + 1
+        numbers.setdefault(float(obj["time"]), count)
+    return numbers
+
+
+def _mod_text(item: dict) -> str:
+    """The English line a modder would post for one finding."""
+    key, v = item["key"], item["values"]
+    if key == "ref_offset":
+        return (f"red line sits {v['ms']} ms from the rest of the map's offset "
+                f"(±{v['se']} ms): check it by ear")
+    if key == "ref_drift":
+        return (f"by here the red line's grid is {v['ms']} ms off the music (±{v['se']} ms), "
+                f"the attacks fit {v['bpm']} BPM")
+    if key == "ref_weak":
+        return f"the music does not follow this red line's grid ({v['share']}% of the attacks on it)"
+    if key == "missing_line":
+        return f"the tempo changes here to {v['bpm']} BPM and the map has no red line for it"
+    if key == "unsnapped":
+        return f"unsnapped: {v['ms']} ms off the nearest 1/{v['divisor']} tick"
+    if key == "before_red":
+        return "object before the first red line"
+    if key == "past_audio":
+        return "object after the audio ends"
+    if key == "ref_split":
+        return (f"the {v['n']} red lines do not agree on one offset and no majority says "
+                "which are right: check them by ear")
+    if key == "ref_shift":
+        return (f"every red line sits {v['ms']} ms from the attacks; Overtone reads real songs "
+                "about +26 ms here and why is not known, so check the offset by ear first")
+    if key == "off_attack":
+        # What is measured: quiet passages may hold sounds too soft to detect.
+        return f"{v['ms']} ms from the nearest attack Overtone detects"
+    if key == "hitsound_missing_clap":
+        return (f"no clap on beat {v['beat']} of bar {v['bar']}, with {v['have']} of "
+                f"the {v['of']} bars around it clapped")
+    if key == "hitsound_extra_clap":
+        return (f"a clap on beat {v['beat']} of bar {v['bar']}, with only {v['have']} "
+                f"of the {v['of']} bars around it clapped")
+    if key == "hitsound_on_silence":
+        # What is measured: quiet passages may hold sounds too soft to detect.
+        return f"{v['addition']} with no attack Overtone detects nearby"
+    return f"{key} {v}"
+
+
+def mod_report(beatmap: dict, attack_times: np.ndarray, attack_weights: np.ndarray,
+               duration_s: float | None = None, analysis: Analysis | None = None) -> dict:
+    """Every finding about one difficulty, as the lines a modder would post.
+
+    Gathers what the other checks already measure and nothing new:
+    ``grade_reference_timing`` (red lines to check, with their error),
+    ``suggest_missing_lines`` (tempo changes the map has no red line for;
+    needs an analysis), ``snap_audit`` (objects off the map's own grid, before
+    its first red line or past the audio) and ``alignment_report`` (objects
+    away from any attack). Each item carries its time, an editor timestamp
+    with the combo numbers of the objects it names, the number behind it, a
+    level and the English line; ``text`` is the whole report, ready to paste.
+    Plain JSON types. Nothing is changed.
+    """
+    objects = [o for o in beatmap.get("hitobjects", []) if "time" in o]
+    combos = _combo_numbers(objects)
+    items: list[dict] = []
+
+    def add(source: str, level: str, key: str, time_ms: float | None, values: dict,
+            on_object: bool = False) -> None:
+        # No time: a finding about the whole map, posted under "General".
+        if time_ms is None:
+            items.append({"source": source, "level": level, "key": key, "time_ms": None,
+                          "stamp": "General", "values": values})
+            return
+        combo = [combos[float(time_ms)]] if on_object and float(time_ms) in combos else None
+        items.append({"source": source, "level": level, "key": key, "time_ms": float(time_ms),
+                      "stamp": mod_timestamp(time_ms, combo), "values": values})
+
+    times = np.asarray(attack_times, dtype=np.float64)
+    weights = np.asarray(attack_weights, dtype=np.float64)
+    graded = grade_reference_timing(beatmap, times, weights, duration_s)
+    for finding in graded.get("findings", []):
+        if finding["key"] in ("ref_split", "ref_shift"):
+            add("reference", finding["level"], finding["key"], None, finding["values"])
+    for line in graded.get("lines", []):
+        if "offset" in line["issues"]:
+            add("reference", "warn", "ref_offset", line["offset_ms"],
+                {"ms": f"{line['relative_ms']:+.1f}", "se": f"{2 * line['offset_se_ms']:.1f}"})
+        if "drift" in line["issues"]:
+            add("reference", "warn", "ref_drift", line["end_ms"],
+                {"ms": f"{line['drift_ms']:+.1f}", "se": f"{2 * line['drift_se_ms']:.1f}",
+                 "bpm": f"{line['fitted_bpm']:.3f}"})
+        if line["verdict"] == "weak":
+            add("reference", "warn", "ref_weak", line["offset_ms"],
+                {"share": f"{100 * line['share']:.0f}"})
+
+    if analysis is not None:
+        for suggestion in suggest_missing_lines(analysis, beatmap):
+            add("suggestion", "info", "missing_line", suggestion["offset_ms"],
+                {"bpm": f"{suggestion['bpm']:.3f}"})
+
+    audit = snap_audit(beatmap, duration_s=duration_s)
+    if audit.get("ok"):
+        for obj in audit["unsnapped"]:
+            add("snap", "warn", "unsnapped", obj["time_ms"],
+                {"ms": f"{obj['off_ms']:+.1f}", "divisor": obj["nearest_divisor"]}, True)
+        for time_ms in audit["before_first_red"]:
+            add("snap", "warn", "before_red", time_ms, {}, True)
+        for time_ms in audit["past_audio"] or []:
+            add("snap", "warn", "past_audio", time_ms, {}, True)
+
+    if times.size:
+        from types import SimpleNamespace
+        aligned = alignment_report(SimpleNamespace(attack_times=times, attack_weights=weights),
+                                   beatmap)
+        for obj in aligned["offenders"]:
+            add("alignment", "info", "off_attack", obj["time"], {"ms": f"{obj['ms']:.1f}"}, True)
+        for finding in hitsound_silence_check(beatmap, times, weights)["findings"]:
+            add("hitsound", finding["level"], finding["key"], finding["time_ms"],
+                finding["values"], True)
+
+    for finding in hitsound_consistency(beatmap)["findings"]:
+        add("hitsound", finding["level"], finding["key"], finding["time_ms"],
+            finding["values"], True)
+
+    items.sort(key=lambda item: (item["time_ms"] is not None, item["time_ms"] or 0.0,
+                                 MOD_SOURCES.index(item["source"])))
+    for item in items:
+        item["text"] = _mod_text(item)
+    counts = {source: sum(1 for item in items if item["source"] == source)
+              for source in MOD_SOURCES}
+    return {"items": items, "counts": counts,
+            "text": "\n".join(f"{item['stamp']} - {item['text']}" for item in items)}
+
+
+# ---------------------------------------------------------------------------
+# Taskbar identity
+# ---------------------------------------------------------------------------
+
+#: The taskbar groups windows by application id. A process without one is
+#: grouped under its executable, pythonw.exe, and shows the Python logo
+#: instead of the window's own icon.
+APP_USER_MODEL_ID = "Overtone.TimingWorkbench"
+
+
+def claim_taskbar_identity() -> bool:
+    """Give this process Overtone's own taskbar identity, so the taskbar shows
+    the window's icon, not python.exe's. Call before the first window opens.
+    True when Windows took it; False elsewhere or when it refused."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        result = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+    except (AttributeError, OSError):
+        return False
+    return result == 0      # S_OK
+
+
+# ---------------------------------------------------------------------------
+# Settings persistence
+# ---------------------------------------------------------------------------
+
+#: The type each saved preference must have. The classic window saves its
+#: numbers as the text in its fields, the web shell as numbers; both are fine.
+CONFIG_TYPES: dict[str, tuple[type, ...]] = {
+    "cfg_version": (int,), "file": (str,), "language": (str,), "pulse": (str,),
+    "delta": (int, float, str), "persistence": (int, float, str),
+    "confidence": (int, float, str), "prefer_map_bpm": (bool,), "refine_beats": (bool,),
+    "recent": (list,), "songs_folder": (str,),
+    "song_volume": (int, float), "click_volume": (int, float), "tap_latency_ms": (int, float),
+    "hitsound_volume": (int, float),
+    "output_folder": (str,), "export_ask": (bool,), "offset_decimals": (int,),
+    "click_subdivision": (int,), "click_accent": (bool,), "ui_scale": (int, float),
+    "reduced_motion": (bool,), "theme": (str,), "song_options": (dict,), "shortcuts": (dict,),
+}
+
+
+def load_config() -> dict:
+    """Read the saved preferences, tolerating anything that is not a dict.
+
+    A truncated or hand-edited config used to crash the app on startup with an
+    AttributeError, which is unrecoverable without deleting the file by hand.
+    So did a value of the wrong type -- ``"cfg_version": "2"`` or
+    ``"prefer_map_bpm": "on"`` stopped the classic window on every launch. A
+    known key whose value has the wrong type is dropped, so its reader's
+    default applies; unknown keys are kept as they are. Notepad saves with a
+    BOM, which ``json.loads`` refuses, so the file is read as ``utf-8-sig``.
+    """
+    for path in (CONFIG_PATH, LEGACY_CONFIG_PATH):
+        try:
+            if not path.is_file() or path.stat().st_size > MAX_CONFIG_BYTES:
+                continue
+            data = json.loads(path.read_bytes().decode("utf-8-sig"))
+            break
+        except (OSError, ValueError):
+            continue
+    else:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    config = {}
+    for key, value in data.items():
+        key = str(key)
+        allowed = CONFIG_TYPES.get(key)
+        if allowed is not None:
+            # bool is an int to Python; only a real bool is a flag, and a flag
+            # is never a version or a number.
+            if isinstance(value, bool) != (bool in allowed) or not isinstance(value, allowed):
+                continue
+            if key == "recent":
+                value = [item for item in value if isinstance(item, str)]
+        config[key] = value
+    return config
+
+
+def save_config(data: dict) -> None:
+    """Persist preferences atomically; never let a failure break the app."""
+    try:
+        payload = json.dumps(data, indent=2).encode("utf-8")
+        temp = CONFIG_PATH.with_name(CONFIG_PATH.name + ".part")
+        temp.write_bytes(payload)
+        os.replace(temp, CONFIG_PATH)
+    except (OSError, TypeError, ValueError):
+        pass
+
+
+# ---------------------------------------------------------------------------
+# GUI
+# ---------------------------------------------------------------------------
+
+class TimingAnalyzerApp:
+    TEXT = {
+        "English": {
+            "title": "Overtone", "subtitle": "Precise BPM and offsets for your beatmap",
+            "source": "①  Source audio", "browse": "Browse…", "no_file": "No file selected",
+            "detection": "②  Detection", "delta": "Min change (BPM)", "persistence": "Confirmation beats",
+            "quality": "Min confidence (%)", "preference": "Prefer map BPM (120–300)",
+            "refine": "Re-anchor beats to transients", "analyze": "⟳  Analyze",
+            "tap": "Tap tempo", "tap_hint": "Click in rhythm, then compare with the result.",
+            "taps": "Taps: {n}  •  {bpm}",
+            "results": "③  Results", "global": "GLOBAL", "sections": "SECTIONS",
+            "beats": "BEATS", "stability": "STABLE", "meter": "METER",
+            "export_csv": "Export CSV", "copy": "Copy .osu", "click": "Click track…",
+            "csv": "CSV",
+            "inject": "Inject .osu…",
+            "details": "Details…", "offset": "Offset (ms)", "beatlen": "Beat (ms)",
+            "confidence": "Confidence", "overview": "TEMPO TRACE — click a row to highlight its section",
+            "hint": "Tip: the presets set the trade-off — Variable catches short sections, Steady ignores wobble. BPM and offsets come from a least-squares grid fit, so they are exact to ~0.001 BPM when the song has a steady pulse; what stays a judgement call is the octave. If the BPM reads half or double (e.g. 112 instead of 225), hit ×2 or ÷2 — that is instant and exact. Export the click track and listen before mapping.",
+            "pulse": "Pulse (octave)",
+            "preset_variable": "⚡ Variable", "preset_steady": "🛡 Steady",
+            "rescaled": "Pulse ×{factor}: {points} section(s) • {bpm} BPM. Verify with the click track.",
+            "discard_title": "Discard manual edits?",
+            "discard_edits": "You edited the timing points {n} time(s) since this result was made and have not exported them. This replaces them with the detected points. Continue?",
+            "ready": "Choose an audio file, then press Analyze.",
+            "bad_file": "Choose a valid audio file first.", "bad_values": "Parameters must be valid numbers.",
+            "preparing": "Preparing analysis…", "error": "Error: {value}",
+            "done": "Done: {points} timing point(s), {beats} beats • pulse {mode} • {bpm} BPM.",
+            "first": "Analyze audio first.", "saved": "CSV saved: {path}",
+            "click_saved": "Click track saved: {path}",
+            "copied": "Red timing points copied — paste into [TimingPoints] in your .osu.",
+            "normal": "normal", "confirmed": "×{factor} (confirmed subdivision)",
+            "edit": "④  Edit timing points", "apply": "Apply", "add": "Add",
+            "delete": "Delete", "sec_double": "2× §", "sec_halve": "÷2 §",
+            "no_selection": "Select a table row first.",
+            "bad_numbers": "Offset and BPM must be numbers, BPM above 0.",
+            "first_locked": "§1 anchors the map and cannot be deleted.",
+            "edited": "§{n} updated: {bpm} BPM @ {ms} ms.",
+            "added_point": "Point added: {bpm} BPM @ {ms} ms.",
+            "deleted_point": "§{n} deleted.",
+            "section_rescaled": "§{n} now {bpm} BPM.",
+            "suggest": "§{n} reads {bpm} BPM but off-beats suggest ×2 — press 2× § to fix.",
+            "inject_confirm": "Replace {reds} red line(s), keep {greens} green line(s) in\n{file}?\nA .bak backup will be created.{warn}",
+            "inject_warn": "\nWARNING: .osu audio is '{osu}', you analyzed '{src}'.",
+            "inject_greens": "\nIt also adds {n} green line(s) so slider velocity and hitsounds play as before.",
+            "injected": "Injected {added} red lines ({replaced} replaced, {greens} greens kept). Backup saved.",
+            "all_audio": "Audio files", "all": "All files",
+            "language": "Language", "file": "Audio file",
+            "trace_title": "TEMPO TRACE",
+            "trace_beat": "beat  {ms} ms", "trace_conf": "conf  {pct}",
+            "trace_empty": "Analyze an audio file to preview its tempo trace",
+            "section": "§{n}  {bpm} BPM @ {ms}",
+            "menu_file": "File", "menu_export": "Export", "menu_help": "Help",
+            "about": "About", "quit": "Quit",
+            "about_text": "Overtone v{version}\nLocal BPM / offset detector for mapping.\nLeast-squares grid fitting; offsets exported as whole ms.\nAlways verify red lines in the osu! editor.",
+            "stable_yes": "constant", "stable_var": "variable",
+        },
+        "Español": {
+            "title": "Overtone", "subtitle": "BPM y offsets precisos para tu beatmap",
+            "source": "①  Audio de origen", "browse": "Examinar…", "no_file": "Sin archivo seleccionado",
+            "detection": "②  Detección", "delta": "Cambio mínimo (BPM)", "persistence": "Beats de confirmación",
+            "quality": "Confianza mínima (%)", "preference": "Preferir BPM de mapa (120–300)",
+            "refine": "Reanclar beats a transitorios", "analyze": "⟳  Analizar",
+            "tap": "Tap tempo", "tap_hint": "Pulsa al ritmo y compara con el resultado.",
+            "taps": "Toques: {n}  •  {bpm}",
+            "results": "③  Resultados", "global": "GLOBAL", "sections": "SECCIONES",
+            "beats": "BEATS", "stability": "ESTABLE", "meter": "COMPÁS",
+            "export_csv": "Exportar CSV", "copy": "Copiar .osu", "click": "Click track…",
+            "csv": "CSV", "inject": "Inyectar .osu…",
+            "details": "Detalles…", "offset": "Offset (ms)", "beatlen": "Beat (ms)",
+            "confidence": "Confianza", "overview": "CURVA DE TEMPO — clic en una fila para resaltar su sección",
+            "hint": "Consejo: los presets fijan el equilibrio — Variable detecta secciones cortas, Estable ignora fluctuaciones. El BPM y los offsets salen de un ajuste por mínimos cuadrados, así que son exactos a ~0,001 BPM si la canción tiene pulso estable; lo que sigue siendo criterio es la octava. Si el BPM sale a la mitad o al doble (p. ej. 112 en vez de 225), pulsa ×2 o ÷2 — es instantáneo y exacto. Exporta el click track y escúchalo antes de mapear.",
+            "pulse": "Pulso (octava)",
+            "preset_variable": "⚡ Variable", "preset_steady": "🛡 Estable",
+            "rescaled": "Pulso ×{factor}: {points} sección(es) • {bpm} BPM. Verifícalo con el click track.",
+            "discard_title": "¿Descartar ediciones manuales?",
+            "discard_edits": "Editaste los timing points {n} vez/veces desde este resultado y no los exportaste. Esto los reemplaza por los puntos detectados. ¿Continuar?",
+            "ready": "Elige un audio y pulsa Analizar.",
+            "bad_file": "Elige primero un archivo de audio válido.", "bad_values": "Los parámetros deben ser números válidos.",
+            "preparing": "Preparando análisis…", "error": "Error: {value}",
+            "done": "Listo: {points} punto(s), {beats} beats • pulso {mode} • {bpm} BPM.",
+            "first": "Analiza un audio primero.", "saved": "CSV guardado: {path}",
+            "click_saved": "Click track guardado: {path}",
+            "copied": "Puntos rojos copiados — pégalos en [TimingPoints] de tu .osu.",
+            "normal": "normal", "confirmed": "×{factor} (subdivisión confirmada)",
+            "edit": "④  Editar timing points", "apply": "Aplicar", "add": "Añadir",
+            "delete": "Borrar", "sec_double": "2× §", "sec_halve": "÷2 §",
+            "no_selection": "Selecciona primero una fila de la tabla.",
+            "bad_numbers": "Offset y BPM deben ser números, BPM mayor que 0.",
+            "first_locked": "§1 ancla el mapa y no se puede borrar.",
+            "edited": "§{n} actualizado: {bpm} BPM @ {ms} ms.",
+            "added_point": "Punto añadido: {bpm} BPM @ {ms} ms.",
+            "deleted_point": "§{n} borrado.",
+            "section_rescaled": "§{n} ahora {bpm} BPM.",
+            "suggest": "§{n} marca {bpm} BPM pero los contratiempos sugieren ×2 — pulsa 2× § para corregirlo.",
+            "inject_confirm": "¿Reemplazar {reds} línea(s) roja(s), mantener {greens} verde(s) en\n{file}?\nSe creará backup .bak.{warn}",
+            "inject_warn": "\nAVISO: el audio del .osu es '{osu}', analizaste '{src}'.",
+            "inject_greens": "\nTambién agrega {n} línea(s) verde(s) para que la velocidad de sliders y los hitsounds suenen igual.",
+            "injected": "Inyectadas {added} líneas rojas ({replaced} reemplazadas, {greens} verdes intactas). Backup guardado.",
+            "all_audio": "Archivos de audio", "all": "Todos los archivos",
+            "language": "Idioma", "file": "Archivo de audio",
+            "trace_title": "CURVA DE TEMPO",
+            "trace_beat": "beat  {ms} ms", "trace_conf": "confianza  {pct}",
+            "trace_empty": "Analiza un audio para ver su curva de tempo",
+            "section": "§{n}  {bpm} BPM @ {ms}",
+            "menu_file": "Archivo", "menu_export": "Exportar", "menu_help": "Ayuda",
+            "about": "Acerca de", "quit": "Salir",
+            "about_text": "Overtone v{version}\nDetector local de BPM / offsets para mapping.\nAjuste de rejilla por mínimos cuadrados; offsets en ms enteros.\nVerifica siempre las líneas rojas en el editor de osu!.",
+            "stable_yes": "constante", "stable_var": "variable",
+        },
+    }
+
+    ACCENT = "#6EE7B7"
+
+    #: Detection presets. VARIABLE is the default: tuned for songs whose BPM
+    #: changes often (short sections, quick transitions). STEADY trades recall
+    #: for precision on constant-tempo songs (ignores wobble, fewer red lines).
+    PRESETS = {
+        "variable": {"delta": "1.5", "persistence": "12", "confidence": "75"},
+        "steady": {"delta": "2.0", "persistence": "20", "confidence": "85"},
+    }
+    CFG_VERSION = 2
+
+    def __init__(self) -> None:
+        import tkinter as tk
+        from tkinter import ttk
+        self.tk, self.ttk = tk, ttk
+        cfg = load_config()
+        claim_taskbar_identity()
+        self.root = tk.Tk()
+        # 1070: the Results header needs 1061 px in Spanish once its buttons
+        # size to their labels (measured off-screen); at 1020 CSV was cut.
+        self.root.minsize(1070, 680)
+        self.root.geometry("1120x760")
+        self._set_window_icon()
+        # --- English is the default; Spanish stays available. ---
+        # Old configs (v1) stored conservative steady-song values; migrate to
+        # the variable-tempo defaults unless the user customized them in v2.
+        if cfg.get("cfg_version", 1) < self.CFG_VERSION:
+            fresh = {"file": cfg.get("file", ""), "language": cfg.get("language", DEFAULT_LANGUAGE),
+                     "pulse": cfg.get("pulse", "Auto"),
+                     "prefer_map_bpm": cfg.get("prefer_map_bpm", True),
+                     "refine_beats": cfg.get("refine_beats", True)}
+            cfg = fresh
+        defaults = self.PRESETS["variable"]
+        self.file = tk.StringVar(value=cfg.get("file", ""))
+        self.delta = tk.StringVar(value=str(cfg.get("delta", defaults["delta"])))
+        self.persistence = tk.StringVar(value=str(cfg.get("persistence", defaults["persistence"])))
+        self.minimum_confidence = tk.StringVar(value=str(cfg.get("confidence", defaults["confidence"])))
+        self.language = tk.StringVar(value=cfg.get("language", DEFAULT_LANGUAGE))
+        if self.language.get() not in self.TEXT:
+            self.language.set("English")
+        self.pulse = tk.StringVar(value=cfg.get("pulse", "Auto"))
+        self.prefer_map_bpm = tk.BooleanVar(value=cfg.get("prefer_map_bpm", True))
+        self.refine_beats = tk.BooleanVar(value=cfg.get("refine_beats", True))
+        self.status = tk.StringVar()
+        self.tap_label = tk.StringVar()
+        self.stat_vars = {key: tk.StringVar(value="—") for key in ("global", "sections", "beats", "stability")}
+        self.analysis: Analysis | None = None
+        self.events: queue.Queue[tuple[str, object]] = queue.Queue()
+        self.widgets: dict[str, object] = {}
+        self.taps: list[float] = []
+        self.selected_section: int | None = None
+        self.suggestions: dict[int, tuple[int, float]] = {}
+        self._busy = False
+        # Hand edits made since the last analysis, pulse change or export.
+        # ×2/÷2 and Analyze rebuild the points from the detected sections, so
+        # while this is non-zero they ask before throwing the edits away.
+        self._manual_edits = 0
+        self._theme()
+        self._build()
+        self._translate()
+        self.root.protocol("WM_DELETE_WINDOW", self._quit)
+
+    def _set_window_icon(self) -> None:
+        """Window and taskbar icon from ``assets/``, generated by ``assets/logo.py``.
+
+        Never allowed to break startup: a missing file, an old Tk without
+        PNG support, or a headless session all fall through silently — the
+        icon is decoration, the analysis is the product. The photo image is
+        kept on ``self`` so Tk does not garbage-collect it mid-session.
+        """
+        try:
+            import os
+            png = os.path.join(str(ROOT), "assets", "logo.png")
+            if os.path.isfile(png):
+                self._icon = self.tk.PhotoImage(file=png)  # kept: Tk drops it otherwise
+                self.root.iconphoto(True, self._icon)
+                return
+            ico = os.path.join(str(ROOT), "assets", "logo.ico")
+            if os.path.isfile(ico):
+                self.root.iconbitmap(ico)
+        except Exception:
+            pass
+
+    # -- i18n ------------------------------------------------------------
+    def tr(self, key: str, **values: object) -> str:
+        table = self.TEXT.get(self.language.get(), self.TEXT["English"])
+        return table.get(key, self.TEXT["English"].get(key, key)).format(**values)
+
+    # -- theme -----------------------------------------------------------
+    def _theme(self) -> None:
+        style = self.ttk.Style(self.root)
+        try:
+            style.theme_use("clam")
+        except Exception:
+            pass
+        # Three greys instead of two -- cards blend into the page rather than
+        # sitting on top of it. Every value chosen so a card outline of one
+        # step darker is still readable.
+        bg     = "#0F1420"
+        panel  = "#151B28"
+        panel2 = "#1B2231"
+        field  = "#1F2735"
+        fg     = "#E8ECF2"
+        muted  = "#8892A5"
+        dim    = "#5F6B80"
+        border = "#232B3B"
+        accent = self.ACCENT                                     # soft mint
+        accent_ink = "#0A0D14"                                   # on-accent text
+        accent_dim = "#3F8F73"                                   # accent, dulled
+        # Tk cannot draw border-radius, so "rounded" is: taller padding, thin
+        # outline, subdued hover -- reads as a pill next to the sharper table.
+        self.C = {"bg": bg, "panel": panel, "panel2": panel2, "field": field,
+                  "fg": fg, "muted": muted, "border": border, "accent": accent}
+        self.root.configure(bg=bg)
+
+        style.configure("TFrame", background=bg)
+        style.configure("Card.TFrame", background=panel, borderwidth=1, relief="flat")
+        style.configure("Stat.TFrame", background=panel2, borderwidth=1, relief="flat")
+
+        style.configure("TLabel", background=bg, foreground=fg, font=("Segoe UI", 10))
+        style.configure("Card.TLabel", background=panel, foreground=fg, font=("Segoe UI", 10))
+        style.configure("Muted.TLabel", background=panel, foreground=muted, font=("Segoe UI", 9))
+        style.configure("CardHead.TLabel", background=panel, foreground=fg,
+                        font=("Segoe UI Semibold", 11))
+        style.configure("Title.TLabel", background=bg, foreground=fg,
+                        font=("Segoe UI Semibold", 22))
+        style.configure("Subtitle.TLabel", background=bg, foreground=muted,
+                        font=("Segoe UI", 10))
+        # The version pill: an outline instead of a filled brand colour, so it
+        # reads as metadata rather than a call to action.
+        style.configure("Pill.TLabel", background=panel2, foreground=muted,
+                        font=("Segoe UI Semibold", 9), padding=(11, 4),
+                        borderwidth=1, relief="solid")
+        style.configure("StatBig.TLabel", background=panel2, foreground=fg,
+                        font=("Segoe UI Semibold", 22))
+        style.configure("StatCap.TLabel", background=panel2, foreground=dim,
+                        font=("Segoe UI Semibold", 9))
+        style.configure("Status.TLabel", background=panel, foreground="#B8C1D2",
+                        font=("Segoe UI", 10))
+
+        style.configure("TEntry", fieldbackground=field, foreground=fg, insertcolor=fg,
+                        borderwidth=1, relief="flat", padding=10)
+        style.configure("TCombobox", fieldbackground=field, background=field,
+                        foreground=fg, padding=8)
+        style.map("TCombobox", fieldbackground=[("readonly", field)],
+                  foreground=[("readonly", fg)])
+        style.configure("TCheckbutton", background=panel, foreground=fg,
+                        font=("Segoe UI", 10))
+        style.map("TCheckbutton", background=[("active", panel)],
+                  foreground=[("active", fg)])
+
+        # Buttons: taller vertical padding, thin outline. Read as pills against
+        # the flat table below them. Active state lifts one step; disabled
+        # keeps the outline but drops the fill so it does not shout.
+        # Padding tuned so the widest button row (Results: Export / Copy .osu /
+        # Click track / ÷2 / ×2 / Inject / Details) still fits at the default
+        # 1120 px window -- a taller value was tried and cropped "Export" to
+        # "E>". A shorter one loses the pill shape. This is the compromise.
+        style.configure("TButton", background=panel2, foreground=fg,
+                        bordercolor=border, focuscolor=border,
+                        borderwidth=1, relief="solid",
+                        padding=(13, 10), font=("Segoe UI Semibold", 10))
+        style.map("TButton",
+                  background=[("active", "#232C40"), ("disabled", panel)],
+                  foreground=[("disabled", dim)],
+                  bordercolor=[("active", "#2E3852")])
+        style.configure("Accent.TButton", background=accent, foreground=accent_ink,
+                        borderwidth=0, relief="flat",
+                        padding=(20, 12), font=("Segoe UI Semibold", 11))
+        style.map("Accent.TButton",
+                  background=[("active", "#8DEDC4"), ("disabled", accent_dim)],
+                  foreground=[("disabled", "#22392E")])
+        # Ghost buttons live in dense rows (the Results header carries seven
+        # of them). width=0 lets each one size to its label: the clam theme
+        # gives every TButton an 11-character minimum, so all seven asked for
+        # 105 px (even ÷2 and ×2) and the header needed 1204 px (1259 in
+        # Spanish) -- more than the window, which cut CSV to 21 px. Measured
+        # after: 1052 px (1061 in Spanish), nothing cut at the default size.
+        style.configure("Ghost.TButton", background=panel, foreground=muted,
+                        bordercolor=border, borderwidth=1, relief="solid",
+                        padding=(11, 8), width=0)
+        style.map("Ghost.TButton",
+                  background=[("active", panel2)],
+                  foreground=[("active", fg)])
+
+        style.configure("Treeview", background=panel, fieldbackground=panel,
+                        foreground=fg, rowheight=32, borderwidth=0,
+                        font=("Segoe UI", 10))
+        style.configure("Treeview.Heading", background=panel2, foreground=muted,
+                        relief="flat", font=("Segoe UI Semibold", 10),
+                        padding=(12, 9))
+        # Selection uses a tinted accent instead of purple -- keeps to the
+        # single-accent rule.
+        style.map("Treeview",
+                  background=[("selected", "#1E3A32")],
+                  foreground=[("selected", fg)])
+        style.configure("Horizontal.TProgressbar", background=accent,
+                        troughcolor=panel2, borderwidth=0, thickness=6)
+
+    # -- layout ----------------------------------------------------------
+    def _card(self, parent, title_key: str):
+        frame = self.ttk.Frame(parent, style="Card.TFrame", padding=16)
+        head = self.ttk.Label(frame, style="CardHead.TLabel")
+        head.pack(anchor="w", pady=(0, 10))
+        self.widgets[title_key] = head
+        inner = self.ttk.Frame(frame, style="Card.TFrame")
+        inner.pack(fill="both", expand=True)
+        return frame, inner
+
+    def _build(self) -> None:
+        ttk = self.ttk
+        # Menu (useful, minimal)
+        import tkinter as tk
+        menubar = tk.Menu(self.root)
+        self.menubar = menubar
+        self.menu_file = tk.Menu(menubar, tearoff=0)
+        self.menu_export = tk.Menu(menubar, tearoff=0)
+        self.menu_help = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(menu=self.menu_file, label="File")
+        menubar.add_cascade(menu=self.menu_export, label="Export")
+        menubar.add_cascade(menu=self.menu_help, label="Help")
+        self.root.configure(menu=menubar)
+
+        root = ttk.Frame(self.root, padding=(22, 18), style="TFrame")
+        root.pack(fill="both", expand=True)
+
+        # Header: accent dot + title + version pill + language
+        header = ttk.Frame(root)
+        header.pack(fill="x", pady=(0, 2))
+        dot = tk.Canvas(header, width=26, height=26, bg=self.C["bg"], highlightthickness=0)
+        dot.pack(side="left", padx=(0, 10))
+        dot.create_oval(3, 3, 23, 23, fill=self.ACCENT, outline="")
+        dot.create_oval(9, 9, 17, 17, fill="#FFFFFF", outline="")
+        title_box = ttk.Frame(header)
+        title_box.pack(side="left")
+        ttk.Label(title_box, text="Overtone", style="Title.TLabel").pack(anchor="w")
+        self.widgets["subtitle"] = ttk.Label(title_box, style="Subtitle.TLabel")
+        self.widgets["subtitle"].pack(anchor="w")
+        right = ttk.Frame(header)
+        right.pack(side="right", anchor="e")
+        self.widgets["pill"] = ttk.Label(right, text=f"v{APP_VERSION}", style="Pill.TLabel")
+        self.widgets["pill"].pack(side="right", padx=(10, 0))
+        lang = ttk.Combobox(right, textvariable=self.language, values=("English", "Español"),
+                            state="readonly", width=10)
+        lang.pack(side="right")
+        lang.bind("<<ComboboxSelected>>", lambda _e: (self._translate(), self._save_prefs()))
+        self.widgets["language_lbl"] = ttk.Label(right, style="TLabel", text="Language")
+        self.widgets["language_lbl"].pack(side="right", padx=(0, 8))
+
+        # Two-column body
+        body = ttk.Frame(root)
+        body.pack(fill="both", expand=True, pady=(12, 0))
+        left = ttk.Frame(body)
+        left.pack(side="left", fill="y", padx=(0, 14))
+        center = ttk.Frame(body)
+        center.pack(side="left", fill="both", expand=True)
+        left.configure(width=330)
+
+        # --- Source card ---
+        card, inner = self._card(left, "source")
+        card.pack(fill="x", pady=(0, 12))
+        self.widgets["file_info"] = ttk.Label(inner, style="Muted.TLabel", text="—", wraplength=290)
+        self.widgets["file_info"].pack(anchor="w", pady=(0, 8))
+        ttk.Entry(inner, textvariable=self.file, width=34).pack(fill="x", pady=(0, 8))
+        self.widgets["browse"] = ttk.Button(inner, command=self.choose)
+        self.widgets["browse"].pack(fill="x")
+
+        # --- Detection card ---
+        card2, inner2 = self._card(left, "detection")
+        card2.pack(fill="x", pady=(0, 12))
+        grid = ttk.Frame(inner2, style="Card.TFrame")
+        grid.pack(fill="x")
+        self.widgets["delta"] = ttk.Label(grid, style="Muted.TLabel")
+        self.widgets["delta"].grid(row=0, column=0, sticky="w")
+        self.widgets["persistence"] = ttk.Label(grid, style="Muted.TLabel")
+        self.widgets["persistence"].grid(row=0, column=1, sticky="w", padx=(12, 0))
+        ttk.Entry(grid, textvariable=self.delta, width=9).grid(row=1, column=0, sticky="ew", pady=(4, 10))
+        ttk.Entry(grid, textvariable=self.persistence, width=9).grid(row=1, column=1, sticky="ew", padx=(12, 0), pady=(4, 10))
+        self.widgets["quality"] = ttk.Label(grid, style="Muted.TLabel")
+        self.widgets["quality"].grid(row=2, column=0, sticky="w")
+        self.widgets["pulse"] = ttk.Label(grid, style="Muted.TLabel")
+        self.widgets["pulse"].grid(row=2, column=1, sticky="w", padx=(12, 0))
+        ttk.Entry(grid, textvariable=self.minimum_confidence, width=9).grid(row=3, column=0, sticky="ew", pady=(4, 10))
+        pulse_menu = ttk.Combobox(grid, textvariable=self.pulse,
+                                  values=("Auto", "÷4", "÷2", "×1", "×2", "×4"),
+                                  state="readonly", width=7)
+        pulse_menu.grid(row=3, column=1, sticky="ew", padx=(12, 0), pady=(4, 10))
+        pulse_menu.bind("<<ComboboxSelected>>", lambda _e: self._save_prefs())
+        grid.columnconfigure(0, weight=1)
+        grid.columnconfigure(1, weight=1)
+        self.widgets["preference"] = ttk.Checkbutton(inner2, variable=self.prefer_map_bpm)
+        self.widgets["preference"].pack(anchor="w", pady=(0, 2))
+        self.widgets["refine"] = ttk.Checkbutton(inner2, variable=self.refine_beats)
+        self.widgets["refine"].pack(anchor="w", pady=(0, 8))
+        preset_row = ttk.Frame(inner2, style="Card.TFrame")
+        preset_row.pack(fill="x", pady=(0, 10))
+        self.widgets["preset_variable"] = ttk.Button(preset_row, command=lambda: self._apply_preset("variable"),
+                                                     style="Ghost.TButton")
+        self.widgets["preset_variable"].pack(side="left", fill="x", expand=True, padx=(0, 6))
+        self.widgets["preset_steady"] = ttk.Button(preset_row, command=lambda: self._apply_preset("steady"),
+                                                   style="Ghost.TButton")
+        self.widgets["preset_steady"].pack(side="left", fill="x", expand=True)
+        self.widgets["analyze"] = ttk.Button(inner2, command=self.run, style="Accent.TButton")
+        self.widgets["analyze"].pack(fill="x")
+        self.progress = ttk.Progressbar(inner2, mode="indeterminate", style="Horizontal.TProgressbar")
+        self.progress.pack(fill="x", pady=(10, 0))
+
+        # --- Tap tempo card (handy manual cross-check) ---
+        card3, inner3 = self._card(left, "tap")
+        card3.pack(fill="x")
+        self.widgets["tap_btn"] = ttk.Button(inner3, command=self.tap, style="Ghost.TButton", text="Tap")
+        self.widgets["tap_btn"].pack(fill="x")
+        ttk.Label(inner3, textvariable=self.tap_label, style="Muted.TLabel").pack(anchor="w", pady=(6, 0))
+        self.widgets["tap_hint"] = ttk.Label(inner3, style="Muted.TLabel", wraplength=290)
+        self.widgets["tap_hint"].pack(anchor="w", pady=(2, 0))
+
+        # --- Results column ---
+        res_head = ttk.Frame(center)
+        res_head.pack(fill="x", pady=(0, 8))
+        self.widgets["results"] = ttk.Label(res_head, style="TLabel", font=("Segoe UI Semibold", 12))
+        self.widgets["results"].pack(side="left")
+        btns = ttk.Frame(res_head)
+        btns.pack(side="right")
+        self.widgets["details"] = ttk.Button(btns, command=self.show_details, style="Ghost.TButton")
+        self.widgets["details"].pack(side="right", padx=(8, 0))
+        self.widgets["inject"] = ttk.Button(btns, command=self.inject_osu, style="Ghost.TButton")
+        self.widgets["inject"].pack(side="right", padx=(8, 0))
+        self.widgets["double"] = ttk.Button(btns, command=lambda: self._rescale_pulse(2),
+                                            style="Ghost.TButton", text="×2")
+        self.widgets["double"].pack(side="right", padx=(8, 0))
+        self.widgets["half"] = ttk.Button(btns, command=lambda: self._rescale_pulse(0.5),
+                                          style="Ghost.TButton", text="÷2")
+        self.widgets["half"].pack(side="right", padx=(8, 0))
+        self.widgets["click"] = ttk.Button(btns, command=self.save_click, style="Ghost.TButton")
+        self.widgets["click"].pack(side="right", padx=(8, 0))
+        self.widgets["copy"] = ttk.Button(btns, command=self.copy_osu, style="Ghost.TButton")
+        self.widgets["copy"].pack(side="right", padx=(8, 0))
+        self.widgets["csv"] = ttk.Button(btns, command=self.save_csv, style="Ghost.TButton")
+        self.widgets["csv"].pack(side="right")
+
+        stats = ttk.Frame(center)
+        stats.pack(fill="x", pady=(0, 10))
+        self.stat_cards: dict[str, object] = {}
+        for i, key in enumerate(("global", "sections", "beats", "stability")):
+            cell = ttk.Frame(stats, style="Stat.TFrame", padding=(14, 10))
+            cell.pack(side="left", fill="x", expand=True, padx=(0, 10) if i < 3 else (0, 0))
+            cap = ttk.Label(cell, style="StatCap.TLabel")
+            cap.pack(anchor="w")
+            big = ttk.Label(cell, textvariable=self.stat_vars[key], style="StatBig.TLabel")
+            big.pack(anchor="w")
+            self.stat_cards[key] = cap
+            self.widgets[f"stat_{key}"] = cap
+
+        status_panel = ttk.Frame(center, padding=(14, 9), style="Card.TFrame")
+        status_panel.pack(fill="x", pady=(0, 10))
+        ttk.Label(status_panel, textvariable=self.status, style="Status.TLabel", wraplength=640).pack(anchor="w")
+
+        self.widgets["overview"] = ttk.Label(center, style="TLabel", font=("Segoe UI Semibold", 10),
+                                             foreground=self.C["muted"], background=self.C["bg"])
+        self.widgets["overview"].pack(anchor="w", pady=(0, 4))
+        table_frame = ttk.Frame(center)
+        table_frame.pack(fill="both", expand=True)
+        cols = ("n", "offset", "bpm", "beatlen", "confidence")
+        self.table = ttk.Treeview(table_frame, columns=cols, show="headings", height=7)
+        for col, w in (("n", 50), ("offset", 130), ("bpm", 130), ("beatlen", 110), ("confidence", 120)):
+            self.table.column(col, width=w, anchor="center")
+        self.table.pack(side="left", fill="both", expand=True)
+        self.table.tag_configure("odd", background="#161D2D")
+        self.table.bind("<<TreeviewSelect>>", lambda _e: self._on_row())
+        scroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.table.yview)
+        scroll.pack(side="right", fill="y")
+        self.table.configure(yscrollcommand=scroll.set)
+
+        # --- Manual editor ------------------------------------------------
+        editor = ttk.Frame(center, padding=(14, 10), style="Card.TFrame")
+        editor.pack(fill="x", pady=(10, 0))
+        self.widgets["edit"] = ttk.Label(editor, style="CardHead.TLabel")
+        self.widgets["edit"].pack(anchor="w", pady=(0, 8))
+        row1 = ttk.Frame(editor, style="Card.TFrame")
+        row1.pack(fill="x")
+        ttk.Label(row1, text="ms", style="Muted.TLabel").pack(side="left", padx=(0, 4))
+        self.edit_offset = ttk.Entry(row1, width=12)
+        self.edit_offset.pack(side="left", padx=(0, 10))
+        ttk.Label(row1, text="BPM", style="Muted.TLabel").pack(side="left", padx=(0, 4))
+        self.edit_bpm = ttk.Entry(row1, width=10)
+        self.edit_bpm.pack(side="left", padx=(0, 10))
+        self.widgets["apply"] = ttk.Button(row1, command=self.edit_apply, style="Ghost.TButton")
+        self.widgets["apply"].pack(side="left", padx=(0, 6))
+        self.widgets["add"] = ttk.Button(row1, command=self.edit_add, style="Ghost.TButton")
+        self.widgets["add"].pack(side="left", padx=(0, 6))
+        self.widgets["delete"] = ttk.Button(row1, command=self.edit_delete, style="Ghost.TButton")
+        self.widgets["delete"].pack(side="left", padx=(0, 6))
+        row2 = ttk.Frame(editor, style="Card.TFrame")
+        row2.pack(fill="x", pady=(8, 0))
+        for label, ms in (("−5", -5.0), ("−1", -1.0), ("+1", 1.0), ("+5", 5.0)):
+            ttk.Button(row2, text=label, command=lambda v=ms: self.edit_nudge(v),
+                       style="Ghost.TButton", width=4).pack(side="left", padx=(0, 6))
+        self.widgets["sec_double"] = ttk.Button(row2, command=lambda: self.edit_rescale(2.0),
+                                                style="Ghost.TButton", text="2× §")
+        self.widgets["sec_double"].pack(side="left", padx=(12, 6))
+        self.widgets["sec_halve"] = ttk.Button(row2, command=lambda: self.edit_rescale(0.5),
+                                               style="Ghost.TButton", text="÷2 §")
+        self.widgets["sec_halve"].pack(side="left")
+        self.suggest_var = self.tk.StringVar()
+        ttk.Label(editor, textvariable=self.suggest_var, style="Muted.TLabel",
+                  wraplength=640).pack(anchor="w", pady=(6, 0))
+
+        self.preview = tk.Canvas(center, height=208, bg=self.TRACE["bg"],
+                                 highlightthickness=1,
+                                 highlightbackground=self.C["border"])
+        self.preview.pack(fill="both", expand=True, pady=(10, 0))
+        self.preview.bind("<Configure>", lambda _e: self._draw_preview())
+        self.preview.bind("<Motion>", self._trace_hover)
+        self.preview.bind("<Leave>", lambda _e: self.preview.delete("hover"))
+        self.widgets["hint"] = ttk.Label(center, style="Subtitle.TLabel", wraplength=720)
+        self.widgets["hint"].pack(anchor="w", pady=(8, 0))
+
+        self._build_menus()
+        self._refresh_file_info()
+
+    def _build_menus(self) -> None:
+        self.menu_file.delete(0, "end")
+        self.menu_file.add_command(label=self.tr("browse"), command=self.choose, accelerator="Ctrl+O")
+        self.menu_file.add_separator()
+        self.menu_file.add_command(label=self.tr("quit"), command=self._quit)
+        self.menu_export.delete(0, "end")
+        self.menu_export.add_command(label=self.tr("csv"), command=self.save_csv)
+        self.menu_export.add_command(label=self.tr("copy"), command=self.copy_osu)
+        self.menu_export.add_command(label=self.tr("click"), command=self.save_click)
+        self.menu_export.add_command(label=self.tr("inject"), command=self.inject_osu)
+        self.menu_help.delete(0, "end")
+        self.menu_help.add_command(label=self.tr("about"), command=self._about)
+        self.root.bind("<Control-o>", lambda _e: self.choose())
+        self.root.bind("<Control-c>", self._copy_shortcut)
+        self.root.bind("<F5>", lambda _e: self.run())
+
+    # -- text / state ----------------------------------------------------
+    def _translate(self) -> None:
+        self.root.title(self.tr("title"))
+        for key in ("subtitle", "source", "detection", "delta", "persistence", "quality",
+                    "pulse", "preference", "refine", "preset_variable", "preset_steady",
+                    "analyze", "tap", "tap_hint", "results",
+                    "csv", "copy", "click", "inject", "details", "edit", "apply", "add",
+                    "delete", "hint", "overview", "browse"):
+            widget = self.widgets.get(key)
+            if widget is not None:
+                try:
+                    widget.configure(text=self.tr(key))  # type: ignore[union-attr]
+                except Exception:
+                    pass
+        for key in ("global", "sections", "beats", "stability"):
+            cap = self.stat_cards.get(key)
+            if cap is not None:
+                try:
+                    cap.configure(text=self.tr(key))  # type: ignore[union-attr]
+                except Exception:
+                    pass
+        try:
+            self.widgets["language_lbl"].configure(text=self.tr("language"))  # type: ignore[union-attr]
+        except Exception:
+            pass
+        heads = {"n": "#", "offset": self.tr("offset"), "bpm": "BPM",
+                 "beatlen": self.tr("beatlen"), "confidence": self.tr("confidence")}
+        for col, text in heads.items():
+            try:
+                self.table.heading(col, text=text)
+            except Exception:
+                pass
+        self.tap_label.set(self.tr("taps", n=len(self.taps), bpm="—"))
+        try:
+            self.menubar.entryconfigure(0, label=self.tr("menu_file"))
+            self.menubar.entryconfigure(1, label=self.tr("menu_export"))
+            self.menubar.entryconfigure(2, label=self.tr("menu_help"))
+        except Exception:
+            pass
+        self._build_menus()
+        if not self.analysis and not self._busy:
+            self.status.set(self.tr("ready"))
+        self._draw_preview()
+
+    def _save_prefs(self) -> None:
+        save_config({"cfg_version": self.CFG_VERSION,
+                     "language": self.language.get(), "file": self.file.get(),
+                     "delta": self.delta.get(), "persistence": self.persistence.get(),
+                     "confidence": self.minimum_confidence.get(),
+                     "pulse": self.pulse.get(),
+                     "prefer_map_bpm": bool(self.prefer_map_bpm.get()),
+                     "refine_beats": bool(self.refine_beats.get())})
+
+    def _apply_preset(self, name: str) -> None:
+        preset = self.PRESETS[name]
+        self.delta.set(preset["delta"])
+        self.persistence.set(preset["persistence"])
+        self.minimum_confidence.set(preset["confidence"])
+        self._save_prefs()
+
+    def _refresh_file_info(self) -> None:
+        path = Path(self.file.get()) if self.file.get() else None
+        info = self.widgets.get("file_info")
+        if info is None:
+            return
+        if path and path.is_file():
+            try:
+                size_mb = path.stat().st_size / 1e6
+                info.configure(text=f"♪  {path.name}  •  {size_mb:.1f} MB")  # type: ignore[union-attr]
+            except Exception:
+                info.configure(text=f"♪  {path.name}")  # type: ignore[union-attr]
+        else:
+            info.configure(text=f"○  {self.tr('no_file')}")  # type: ignore[union-attr]
+
+    # -- actions ---------------------------------------------------------
+    def choose(self) -> None:
+        from tkinter import filedialog
+        value = filedialog.askopenfilename(
+            filetypes=[(self.tr("all_audio"), "*.wav *.flac *.ogg *.mp3 *.m4a *.aac *.opus *.aiff"),
+                       (self.tr("all") if "all" in self.TEXT["English"] else "All files", "*.*")])
+        if value:
+            self.file.set(value)
+            self._refresh_file_info()
+            self._save_prefs()
+
+    def tap(self) -> None:
+        now = time.perf_counter()
+        if self.taps and now - self.taps[-1] > 2.5:
+            self.taps.clear()
+        self.taps.append(now)
+        self.taps = self.taps[-16:]
+        if len(self.taps) >= 3:
+            intervals = np.diff(np.asarray(self.taps))
+            bpm = 60.0 / max(float(np.median(intervals)), 1e-6)
+            self.tap_label.set(self.tr("taps", n=len(self.taps), bpm=f"{bpm:.1f} BPM"))
+        else:
+            self.tap_label.set(self.tr("taps", n=len(self.taps), bpm="…"))
+
+    def run(self) -> None:
+        if self._busy:
+            return
+        if not self._confirm_discard():
+            return
+        if not Path(self.file.get()).is_file():
+            self.status.set(self.tr("bad_file"))
+            return
+        try:
+            delta, persistence = float(self.delta.get()), int(self.persistence.get())
+            confidence = float(self.minimum_confidence.get()) / 100
+            if not 0 <= confidence <= 1:
+                raise ValueError
+        except ValueError:
+            self.status.set(self.tr("bad_values"))
+            return
+        self._busy = True
+        self.selected_section = None
+        try:
+            self.widgets["analyze"].configure(state="disabled")  # type: ignore[union-attr]
+        except Exception:
+            pass
+        self.progress.start(12)
+        self.status.set(self.tr("preparing"))
+        self._save_prefs()
+        pulse_map = {"÷4": 0.25, "÷2": 0.5, "×1": 1.0, "×2": 2.0, "×4": 4.0}
+        force = pulse_map.get(self.pulse.get(), 0.0)
+        # Capture Tk state here: worker threads must not touch Tk variables.
+        path = self.file.get()
+        refine = bool(self.refine_beats.get())
+        prefer = bool(self.prefer_map_bpm.get())
+        threading.Thread(target=self._worker,
+                         args=(path, delta, persistence, prefer, confidence,
+                               force, refine),
+                         daemon=True).start()
+        self.root.after(100, self._poll)
+
+    def _worker(self, path: str, delta: float, persistence: int, prefer_map_bpm: bool,
+                confidence: float, force_subdivision: float = 0.0,
+                refine_beats: bool = True) -> None:
+        try:
+            result = analyze_audio(path, delta, persistence, prefer_map_bpm,
+                                   confidence, lambda x: self.events.put(("status", x)),
+                                   force_subdivision, refine_beats)
+            self.events.put(("done", result))
+        except Exception as exc:
+            self.events.put(("error", str(exc)))
+
+    def _confirm_discard(self) -> bool:
+        """True when nothing hand-edited would be lost, or the user agrees."""
+        if not self._manual_edits:
+            return True
+        from tkinter import messagebox
+        return bool(messagebox.askyesno(self.tr("discard_title"),
+                                        self.tr("discard_edits", n=self._manual_edits)))
+
+    def _current_params(self) -> tuple[float, int, float]:
+        try:
+            return (float(self.delta.get()), int(self.persistence.get()),
+                    float(self.minimum_confidence.get()) / 100)
+        except ValueError:
+            return (1.5, 12, 0.75)
+
+    def _rescale_pulse(self, mult: float) -> None:
+        """Instant ×2 / ÷2 fix from the results header (no re-analysis)."""
+        if not self.analysis:
+            self.status.set(self.tr("first"))
+            return
+        if not self.analysis.sections and self.analysis.base_frames is None:
+            self.status.set(self.tr("error", value="No stored beat grid — re-run Analyze first."))
+            return
+        if not self._confirm_discard():
+            return
+        target = float(self.analysis.subdivision) * mult
+        factor = min(ALLOWED_FACTORS, key=lambda f: abs(np.log2(f / target)))
+        delta, persistence, confidence = self._current_params()
+        try:
+            self.analysis = rebuild_with_subdivision(self.analysis, factor, delta,
+                                                     persistence, confidence)
+        except Exception as exc:
+            self.status.set(self.tr("error", value=str(exc)))
+            return
+        self._manual_edits = 0
+        self.selected_section = None
+        self._render_results()
+        self.status.set(self.tr("rescaled", factor=f"{factor:g}",
+                                points=len(self.analysis.points),
+                                bpm=f"{self.analysis.global_bpm:.2f}"))
+
+    def _poll(self) -> None:
+        try:
+            while True:
+                kind, value = self.events.get_nowait()
+                if kind == "status":
+                    self.status.set(self._localize_engine_message(str(value)))
+                elif kind == "error":
+                    self.status.set(self.tr("error", value=self._localize_engine_message(str(value))))
+                    self._finish()
+                else:
+                    self.analysis = value  # type: ignore[assignment]
+                    self._manual_edits = 0
+                    self._render_results()
+                    self._finish()
+        except queue.Empty:
+            if self._busy:
+                self.root.after(100, self._poll)
+
+    def _finish(self) -> None:
+        self._busy = False
+        try:
+            self.progress.stop()
+            self.widgets["analyze"].configure(state="normal")  # type: ignore[union-attr]
+        except Exception:
+            pass
+
+    def _render_results(self) -> None:
+        assert self.analysis is not None
+        analysis = self.analysis
+        for item in self.table.get_children():
+            self.table.delete(item)
+        snapped = snap_timing_points(analysis.points)
+        for i, p in enumerate(snapped, 1):
+            tag = ("odd",) if i % 2 == 0 else ()
+            beat_len = f"{60000 / p.bpm:.2f}" if p.bpm > 0 else "—"
+            self.table.insert("", "end",
+                              values=(i, f"{p.offset_ms:.1f}", f"{p.bpm:.3f}",
+                                      beat_len, f"{p.confidence:.0%}"),
+                              tags=tag)
+        stable_txt = self.tr("stable_yes") if analysis.stability >= 0.75 else self.tr("stable_var")
+        self.stat_vars["global"].set(f"{analysis.global_bpm:.2f}")
+        self.stat_vars["sections"].set(f"{len(analysis.points)}  ({analysis.meter})")
+        self.stat_vars["beats"].set(f"{len(analysis.beats)}")
+        self.stat_vars["stability"].set(f"{analysis.stability:.0%} {stable_txt}")
+        mode = (self.tr("normal") if float(analysis.subdivision) == 1.0
+                else self.tr("confirmed", factor=f"{float(analysis.subdivision):g}"))
+        self.status.set(self.tr("done", points=len(analysis.points), beats=len(analysis.beats),
+                                mode=mode, bpm=f"{analysis.global_bpm:.1f}"))
+        if analysis.points:
+            first = analysis.points[0]
+            self._set_editor(f"{first.offset_ms:.1f}", f"{first.bpm:.2f}")
+        self._refresh_suggestion()
+        self._draw_preview()
+
+    def _on_row(self) -> None:
+        selection = self.table.selection()
+        if not selection or not self.analysis:
+            self.selected_section = None
+        else:
+            try:
+                self.selected_section = self.table.index(selection[0])
+            except Exception:
+                self.selected_section = None
+        if (self.selected_section is not None and self.analysis
+                and 0 <= self.selected_section < len(self.analysis.points)):
+            point = self.analysis.points[self.selected_section]
+            self._set_editor(f"{point.offset_ms:.1f}", f"{point.bpm:.2f}")
+        self._refresh_suggestion()
+        self._draw_preview()
+
+    # -- manual editor ---------------------------------------------------
+    def _set_editor(self, offset: str, bpm: str) -> None:
+        self.edit_offset.delete(0, "end")
+        self.edit_offset.insert(0, offset)
+        self.edit_bpm.delete(0, "end")
+        self.edit_bpm.insert(0, bpm)
+
+    def _editor_values(self) -> tuple[float, float]:
+        try:
+            return float(self.edit_offset.get()), float(self.edit_bpm.get())
+        except ValueError as exc:
+            raise ValueError(self.tr("bad_numbers")) from exc
+
+    def _edited_index(self, before: list[TimingPoint]) -> int:
+        """Where the point an edit made sits now, after the re-sort.
+
+        The edit helpers copy every other point as it is, so the one object
+        missing from ``before`` is the edited one; an offset search could land
+        on a neighbour at the same time.
+        """
+        assert self.analysis is not None
+        kept = {id(point) for point in before}
+        return next((n for n, point in enumerate(self.analysis.points) if id(point) not in kept),
+                    self.selected_section or 0)
+
+    def _after_edit(self, message: str, select: int | None = None) -> None:
+        """Redraw after a hand edit, keeping row ``select`` selected.
+
+        Every edit used to clear the selection and refill the editor with §1,
+        so a second press of +1 said "Select a table row first."
+        """
+        assert self.analysis is not None
+        self._manual_edits += 1
+        self.selected_section = None
+        self._render_results()
+        rows = self.table.get_children()
+        if select is not None and 0 <= select < len(rows):
+            self.table.selection_set(rows[select])
+            self.table.see(rows[select])
+            self._on_row()
+        self.status.set(message)
+
+    def edit_apply(self) -> None:
+        if not self.analysis or self.selected_section is None:
+            self.status.set(self.tr("no_selection"))
+            return
+        before = self.analysis.points
+        try:
+            offset, bpm = self._editor_values()
+            self.analysis.points = update_timing_point(
+                self.analysis.points, self.analysis.beats, self.selected_section, offset, bpm)
+        except ValueError as exc:
+            self.status.set(self.tr("error", value=str(exc)))
+            return
+        index = self._edited_index(before)
+        point = self.analysis.points[index]
+        self._after_edit(self.tr("edited", n=index + 1,
+                                 bpm=f"{point.bpm:.3f}", ms=f"{point.offset_ms:.1f}"), index)
+
+    def edit_add(self) -> None:
+        if not self.analysis:
+            self.status.set(self.tr("first"))
+            return
+        before = self.analysis.points
+        try:
+            offset, bpm = self._editor_values()
+            self.analysis.points = add_timing_point(
+                self.analysis.points, self.analysis.beats, offset, bpm)
+        except ValueError as exc:
+            self.status.set(self.tr("error", value=str(exc)))
+            return
+        self._after_edit(self.tr("added_point", bpm=f"{bpm:.2f}", ms=f"{offset:.1f}"),
+                         self._edited_index(before))
+
+    def edit_delete(self) -> None:
+        if not self.analysis or self.selected_section is None:
+            self.status.set(self.tr("no_selection"))
+            return
+        if self.selected_section == 0:
+            # delete_timing_point refuses it too, but in English only.
+            self.status.set(self.tr("first_locked"))
+            return
+        try:
+            n = self.selected_section + 1
+            self.analysis.points = delete_timing_point(self.analysis.points, self.selected_section)
+        except ValueError as exc:
+            self.status.set(self.tr("error", value=str(exc)))
+            return
+        self._after_edit(self.tr("deleted_point", n=n))
+
+    def edit_nudge(self, delta_ms: float) -> None:
+        if not self.analysis or self.selected_section is None:
+            self.status.set(self.tr("no_selection"))
+            return
+        before = self.analysis.points
+        try:
+            self.analysis.points = nudge_timing_point(
+                self.analysis.points, self.analysis.beats, self.selected_section, delta_ms)
+        except ValueError as exc:
+            self.status.set(self.tr("error", value=str(exc)))
+            return
+        index = self._edited_index(before)
+        point = self.analysis.points[index]
+        self._after_edit(self.tr("edited", n=index + 1,
+                                 bpm=f"{point.bpm:.3f}", ms=f"{point.offset_ms:.1f}"), index)
+
+    def edit_rescale(self, factor: float) -> None:
+        if not self.analysis or self.selected_section is None:
+            self.status.set(self.tr("no_selection"))
+            return
+        try:
+            self.analysis.points = rescale_section(
+                self.analysis.points, self.selected_section, factor)
+        except ValueError as exc:
+            self.status.set(self.tr("error", value=str(exc)))
+            return
+        index = self.selected_section
+        point = self.analysis.points[index]
+        self._after_edit(self.tr("section_rescaled", n=index + 1, bpm=f"{point.bpm:.2f}"), index)
+
+    def _refresh_suggestion(self) -> None:
+        try:
+            suggestions = {idx: (factor, ratio) for idx, factor, ratio
+                           in suggest_section_pulse(self.analysis)} if self.analysis else {}
+        except Exception:
+            suggestions = {}
+        self.suggestions = suggestions
+        if self.selected_section in suggestions:
+            factor, ratio = suggestions[self.selected_section]
+            point = self.analysis.points[self.selected_section] if self.analysis else None
+            bpm = f"{point.bpm:.1f}" if point else "?"
+            self.suggest_var.set(self.tr("suggest", n=self.selected_section + 1, bpm=bpm))
+        else:
+            self.suggest_var.set("")
+
+    def inject_osu(self) -> None:
+        if not self.analysis:
+            self.status.set(self.tr("first"))
+            return
+        from tkinter import filedialog, messagebox
+        target = filedialog.askopenfilename(filetypes=[("osu! beatmap", "*.osu")])
+        if not target:
+            return
+        try:
+            summary = inject_osu_timing_points(target, self.analysis, dry_run=True)
+        except (ValueError, OSError) as exc:
+            self.status.set(self.tr("error", value=str(exc)))
+            return
+        warn = ""
+        if summary["audio_mismatch"]:
+            warn = self.tr("inject_warn", osu=summary["osu_audio"], src=summary["analysed_audio"])
+        if summary.get("greens_added"):
+            warn += self.tr("inject_greens", n=summary["greens_added"])
+        if not messagebox.askyesno(self.tr("inject"),
+                                   self.tr("inject_confirm", reds=summary["reds_replaced"],
+                                           greens=summary["greens_kept"],
+                                           file=Path(target).name, warn=warn)):
+            return
+        try:
+            done = inject_osu_timing_points(target, self.analysis, backup=True)
+        except (ValueError, OSError) as exc:
+            self.status.set(self.tr("error", value=str(exc)))
+            return
+        self._manual_edits = 0
+        self.status.set(self.tr("injected", added=done["reds_added"],
+                                replaced=done["reds_replaced"], greens=done["greens_kept"]))
+
+    def save_csv(self) -> None:
+        if not self.analysis:
+            self.status.set(self.tr("first"))
+            return
+        from tkinter import filedialog
+        target = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+        if target:
+            try:
+                export_csv(self.analysis, target)
+            except OSError as exc:
+                # A CSV open in Excel is locked on Windows. Uncaught, the error
+                # went to stderr -- invisible from a shortcut -- and the status
+                # bar kept its last "Done" while nothing had been written.
+                self.status.set(self.tr("error", value=str(exc)))
+                return
+            self._manual_edits = 0
+            self.status.set(self.tr("saved", path=target))
+
+    def save_click(self) -> None:
+        if not self.analysis:
+            self.status.set(self.tr("first"))
+            return
+        from tkinter import filedialog
+        target = filedialog.asksaveasfilename(defaultextension=".wav", filetypes=[("WAV", "*.wav")])
+        if target:
+            try:
+                export_click_track(self.analysis, target)
+            except Exception as exc:
+                self.status.set(self.tr("error", value=str(exc)))
+                return
+            self.status.set(self.tr("click_saved", path=target))
+
+    #: Widgets whose own Ctrl+C copies what the user selected in them.
+    TEXT_WIDGETS = ("Entry", "TEntry", "Text", "Spinbox", "TSpinbox", "TCombobox")
+
+    def _copy_shortcut(self, event) -> None:
+        """Ctrl+C copies the timing block -- unless it was pressed in a text field.
+
+        Bound on the window, it ran after the field's own copy and replaced
+        the offset the user had just selected with the whole [TimingPoints]
+        block (and, before any analysis, the status with "Analyze first").
+        """
+        widget = getattr(event, "widget", None)
+        if widget is not None and widget.winfo_class() in self.TEXT_WIDGETS:
+            return
+        self.copy_osu()
+
+    def copy_osu(self) -> None:
+        if not self.analysis:
+            self.status.set(self.tr("first"))
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(osu_timing_text(self.analysis))
+        self._manual_edits = 0
+        self.status.set(self.tr("copied"))
+
+    def show_details(self) -> None:
+        import tkinter as tk
+        if not self.analysis:
+            self.status.set(self.tr("first"))
+            return
+        window = tk.Toplevel(self.root)
+        window.title(analysis_summary(self.analysis).splitlines()[0][:60])
+        window.configure(bg=self.C["bg"])
+        text = tk.Text(window, width=72, height=24, bg=self.C["panel"], fg=self.C["fg"],
+                       insertbackground=self.C["fg"], font=("Consolas", 10), padx=12, pady=12)
+        text.pack(fill="both", expand=True, padx=12, pady=12)
+        text.insert("1.0", analysis_summary(self.analysis))
+        text.configure(state="disabled")
+
+    def _about(self) -> None:
+        from tkinter import messagebox
+        messagebox.showinfo(self.tr("about"), self.tr("about_text", version=APP_VERSION))
+
+    def _quit(self) -> None:
+        self._save_prefs()
+        self.root.destroy()
+
+    def _localize_engine_message(self, message: str) -> str:
+        if self.language.get() == "English":
+            translations = {
+                "Cargando y normalizando el audio…": "Loading and normalizing audio…",
+                "Extrayendo transitorios y beats…": "Extracting attacks and beats…",
+                "Extrayendo transitorios y hipótesis de tempo…": "Extracting transients and tempo hypotheses…",
+                "Resolviendo si el pulso detectado es half-time…": "Resolving half/double-time pulse…",
+                "Resolviendo el pulso half/double-time…": "Resolving half/double-time pulse…",
+                "Calculando tempo local y cambios persistentes…": "Computing local tempo and persistent changes…",
+                "Siguiendo beats (DP híbrida + PLP + picos)…": "Tracking beats (hybrid DP + PLP + peaks)…",
+                "Detectando ataques con precisión de muestra…": "Detecting attacks at sample resolution…",
+                "Buscando la coherencia del pulso…": "Scanning pulse coherence…",
+                "Resolviendo la octava del beat…": "Resolving the beat octave…",
+                "Ajustando las secciones de tempo…": "Fitting tempo sections…",
+                "Sin rejilla ajustable — usando el rastreador de beats…":
+                    "No fittable grid — falling back to the beat tracker…",
+            }
+            return translations.get(message, message)
+        reverse = {
+            "Loading and normalizing audio…": "Cargando y normalizando el audio…",
+            "Extracting transients and tempo hypotheses…": "Extrayendo transitorios y beats…",
+            "Tracking beats (hybrid DP + PLP + peaks)…": "Extrayendo transitorios y beats…",
+            "Resolving half/double-time pulse…": "Resolviendo si el pulso detectado es half-time…",
+            "Computing local tempo and persistent changes…": "Calculando tempo local y cambios persistentes…",
+            "Detecting attacks at sample resolution…": "Detectando ataques con precisión de muestra…",
+            "Scanning pulse coherence…": "Buscando la coherencia del pulso…",
+            "Resolving the beat octave…": "Resolviendo la octava del beat…",
+            "Fitting tempo sections…": "Ajustando las secciones de tempo…",
+            "No fittable grid — falling back to the beat tracker…":
+                "Sin rejilla ajustable — usando el rastreador de beats…",
+        }
+        return reverse.get(message, message)
+
+    # -- tempo trace -----------------------------------------------------
+    #: One palette for the trace, kept apart from the widget theme so the plot
+    #: can be read as its own surface. Semantic only: red means a timing point,
+    #: blue means tempo, amber means the current selection. Nothing is coloured
+    #: for decoration.
+    TRACE = {
+        "bg": "#0F1420",
+        "lane": "#151B28",
+        "grid": "#232B3B",
+        "grid_soft": "#1B2231",
+        "bed": "#2A3244",
+        "text": "#B8C1D2",
+        "muted": "#8892A5",
+        "dim": "#5F6B80",
+        "tempo": "#7AA2F7",
+        "tempo_fill": "#1A2437",
+        "red": "#F0616D",
+        "sel": "#FFD166",
+    }
+
+    @staticmethod
+    def _tick_step(span: float, target: int = 6) -> float:
+        """A round time step so axis labels land on values a human reads."""
+        if span <= 0:
+            return 1.0
+        for step in (1, 2, 5, 10, 15, 30, 60, 120, 300, 600):
+            if span / step <= target:
+                return float(step)
+        return 900.0
+
+    @staticmethod
+    def _mmss(seconds: float) -> str:
+        seconds = max(0.0, seconds)
+        return f"{int(seconds) // 60}:{int(seconds) % 60:02d}"
+
+    def _trace_geometry(self):
+        """Shared layout so hover and drawing cannot disagree."""
+        canvas = self.preview
+        width = max(canvas.winfo_width(), 1)
+        height = max(canvas.winfo_height(), 1)
+        pad_l, pad_r = 44, 14
+        head = 24                      # title row
+        axis = 18                      # time labels along the bottom
+        body_top = head + 8
+        body_bottom = height - axis - 6
+        # The tempo curve gets the upper two thirds, the onset bed the lower.
+        split = body_top + (body_bottom - body_top) * 0.62
+        return {
+            "w": width, "h": height, "l": pad_l, "r": width - pad_r,
+            "top": body_top, "split": split, "bottom": body_bottom,
+        }
+
+    def _trace_scales(self):
+        """(duration, low, high) for the current analysis, or None."""
+        if not self.analysis or len(self.analysis.local_bpms) < 2:
+            return None
+        values = np.asarray(self.analysis.local_bpms, dtype=float)
+        times = np.asarray(self.analysis.beats, dtype=float)
+        if times.size < 2:
+            return None
+        low, high = (float(v) for v in np.quantile(values, [0.02, 0.98]))
+        if high - low < 1.0:                     # a constant-tempo track
+            centre = 0.5 * (low + high)
+            low, high = centre - 1.5, centre + 1.5
+        else:
+            margin = 0.25 * (high - low)
+            low, high = low - margin, high + margin
+        duration = max(float(self.analysis.duration or times[-1]), 0.001)
+        return duration, low, high
+
+    def _draw_preview(self) -> None:
+        """Tempo trace: onset bed, tempo curve, sections and red lines."""
+        canvas = self.preview
+        canvas.delete("all")
+        C = self.TRACE
+        g = self._trace_geometry()
+
+        canvas.create_text(14, 13, anchor="w", fill=C["muted"],
+                           font=("Segoe UI Semibold", 9), text=self.tr("trace_title"))
+
+        scales = self._trace_scales()
+        if scales is None:
+            canvas.create_text(g["w"] / 2, g["h"] / 2, fill=C["dim"],
+                               font=("Segoe UI", 10), text=self.tr("trace_empty"))
+            return
+        duration, low, high = scales
+        values = np.asarray(self.analysis.local_bpms, dtype=float)
+        times = np.asarray(self.analysis.beats, dtype=float)
+        snapped = snap_timing_points(self.analysis.points)
+
+        def x_of(t: float) -> float:
+            return g["l"] + (g["r"] - g["l"]) * min(max(float(t) / duration, 0.0), 1.0)
+
+        def y_of(bpm: float) -> float:
+            frac = (float(bpm) - low) / max(high - low, 1e-9)
+            return g["split"] - (g["split"] - g["top"]) * min(max(frac, 0.0), 1.0)
+
+        # -- lanes ------------------------------------------------------
+        canvas.create_rectangle(g["l"], g["top"], g["r"], g["bottom"],
+                                fill=C["lane"], outline="")
+
+        # -- section shading, behind everything else --------------------
+        edges = [0.0] + [p.offset_ms / 1000.0 for p in snapped[1:]] + [duration]
+        for i in range(len(edges) - 1):
+            if i == self.selected_section:
+                fill = "#1D2740"
+            elif i % 2 == 1:
+                fill = "#18202F"
+            else:
+                continue
+            canvas.create_rectangle(x_of(edges[i]), g["top"], x_of(edges[i + 1]),
+                                    g["bottom"], fill=fill, outline="")
+
+        # -- BPM grid ---------------------------------------------------
+        for frac in (0.0, 0.5, 1.0):
+            bpm = low + (high - low) * frac
+            y = y_of(bpm)
+            canvas.create_line(g["l"], y, g["r"], y, fill=C["grid_soft"])
+            canvas.create_text(g["l"] - 7, y, anchor="e", fill=C["dim"],
+                               font=("Consolas", 8), text=f"{bpm:.0f}")
+
+        # -- onset bed, max-pooled per pixel column ---------------------
+        # One sample per column would miss the peaks entirely and draw noise;
+        # taking the maximum over each column's frames is what makes the bed
+        # look like the music instead of like static.
+        try:
+            bed = np.asarray(self.analysis.onset, dtype=float)
+            columns = int(g["r"] - g["l"])
+            if bed.size > 8 and columns > 8:
+                bins = np.minimum((np.arange(bed.size) * columns) // bed.size,
+                                  columns - 1)
+                pooled = np.zeros(columns)
+                np.maximum.at(pooled, bins, bed)
+                peak = max(float(pooled.max()), 1e-9)
+                floor = g["bottom"]
+                span = (g["bottom"] - g["split"]) - 4
+                points = [g["l"], floor]
+                for c in range(columns):
+                    points.extend((g["l"] + c, floor - span * pooled[c] / peak))
+                points.extend((g["r"], floor))
+                canvas.create_polygon(*points, fill=C["bed"],
+                                      outline="")
+        except Exception:
+            pass
+        canvas.create_line(g["l"], g["split"], g["r"], g["split"], fill=C["grid"])
+
+        # -- tempo curve ------------------------------------------------
+        # No spline smoothing: a smoothed curve through hundreds of beats
+        # invents wiggles the engine never reported. Decimated to about two
+        # points per pixel so long tracks stay responsive.
+        step = max(1, times.size // max(int(g["r"] - g["l"]) * 2, 1))
+        coords: list[float] = []
+        for t, bpm in zip(times[::step], values[::step]):
+            coords.extend((x_of(t), y_of(bpm)))
+        if len(coords) >= 4:
+            fill_pts = [coords[0], g["split"]] + coords + [coords[-2], g["split"]]
+            canvas.create_polygon(*fill_pts, fill=C["tempo_fill"], outline="")
+            canvas.create_line(*coords, fill=C["tempo"], width=2)
+
+        # -- red lines and their section chips --------------------------
+        for i, point in enumerate(snapped):
+            x = x_of(point.offset_ms / 1000.0)
+            selected = self.selected_section == i
+            colour = C["sel"] if selected else C["red"]
+            canvas.create_line(x, g["top"], x, g["bottom"], fill=colour,
+                               width=2 if selected else 1)
+            canvas.create_polygon(x - 4, g["top"], x + 4, g["top"], x, g["top"] + 6,
+                                  fill=colour, outline="")
+            label = f"{point.bpm:.3f}"
+            tx = min(max(x + 6, g["l"] + 2), g["r"] - 54)
+            canvas.create_rectangle(tx - 3, g["top"] + 3, tx + 50, g["top"] + 19,
+                                    fill=C["bg"], outline=colour)
+            canvas.create_text(tx, g["top"] + 11, anchor="w", fill=colour,
+                               font=("Consolas", 8), text=label)
+
+        # -- time axis --------------------------------------------------
+        step_s = self._tick_step(duration)
+        tick = 0.0
+        while tick <= duration + 1e-6:
+            x = x_of(tick)
+            canvas.create_line(x, g["bottom"], x, g["bottom"] + 4, fill=C["grid"])
+            canvas.create_text(x, g["bottom"] + 12, fill=C["dim"],
+                               font=("Consolas", 8), text=self._mmss(tick))
+            tick += step_s
+
+    def _trace_hover(self, event) -> None:
+        """Read out the time, tempo and section under the cursor."""
+        canvas = self.preview
+        canvas.delete("hover")
+        scales = self._trace_scales()
+        if scales is None:
+            return
+        duration, _low, _high = scales
+        g = self._trace_geometry()
+        if not (g["l"] <= event.x <= g["r"] and g["top"] <= event.y <= g["bottom"]):
+            return
+        C = self.TRACE
+        at = duration * (event.x - g["l"]) / max(g["r"] - g["l"], 1)
+
+        snapped = snap_timing_points(self.analysis.points)
+        section = 0
+        for i, point in enumerate(snapped):
+            if point.offset_ms / 1000.0 <= at + 1e-9:
+                section = i
+        point = snapped[section] if snapped else None
+
+        canvas.create_line(event.x, g["top"], event.x, g["bottom"],
+                           fill=C["muted"], dash=(2, 3), tags="hover")
+        if point is None:
+            return
+        beat_ms = 60000.0 / point.bpm if point.bpm > 0 else float("nan")
+        lines = [
+            self._mmss(at),
+            f"{point.bpm:.3f} BPM",
+            self.tr("trace_beat", ms=f"{beat_ms:.3f}"),
+            self.tr("trace_conf", pct=f"{point.confidence:.0%}"),
+        ]
+        box_w, box_h = 118, 14 * len(lines) + 10
+        bx = event.x + 10
+        if bx + box_w > g["r"]:
+            bx = event.x - 10 - box_w
+        by = min(max(g["top"] + 2, event.y - box_h - 8), g["bottom"] - box_h)
+        canvas.create_rectangle(bx, by, bx + box_w, by + box_h, fill=C["bg"],
+                                outline=C["grid"], tags="hover")
+        for n, text in enumerate(lines):
+            canvas.create_text(bx + 8, by + 12 + n * 14, anchor="w",
+                               fill=C["text"] if n else C["sel"],
+                               font=("Consolas", 8), text=text, tags="hover")
+
+    def start(self) -> None:
+        self.root.mainloop()
+
+
+def _file_stamp(path: str | os.PathLike[str]) -> tuple[int, int] | None:
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
+def watch_file(path: str | os.PathLike[str], run, note, poll: float = 0.5,
+               sleep=time.sleep, stop=lambda: False) -> int:
+    """Call ``run`` now and again each time ``path`` changes; returns how many runs.
+
+    A change counts once the file holds still for one poll: a DAW rendering
+    the file writes it over several seconds, and analysing it half written
+    reads a different song. A file that disappears is waited for instead of
+    ending the watch -- some editors save by deleting and renaming.
+    """
+    runs = 0
+    seen = _file_stamp(path)
+    if seen is not None:
+        run()
+        runs += 1
+    note(f"Watching {path} for changes (Ctrl+C stops)")
+    while not stop():
+        sleep(poll)
+        current = _file_stamp(path)
+        if current is None or current == seen:
+            continue
+        sleep(poll)
+        if _file_stamp(path) != current:    # still being written
+            continue
+        seen = current
+        note(f"{path} changed; analysing again")
+        run()
+        runs += 1
+    return runs
+
+
+def main() -> None:
+    # Redirected (`> timing.txt`, a pipe), Windows hands Python its ANSI code
+    # page, and a Japanese file name in a batch row or an error ended the run
+    # in a traceback. UTF-8 holds every name; a console is left as it is.
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, "reconfigure") and not stream.isatty():
+            stream.reconfigure(encoding="utf-8", errors="replace")
+    parser = argparse.ArgumentParser(description="Overtone — BPM and offset detector for osu! mapping")
+    parser.add_argument("audio", nargs="?", help="Audio file to analyze (a folder analyses every audio file in it; no argument opens the GUI)")
+    parser.add_argument("--delta", type=float, default=1.5, help="Minimum BPM change (default 1.5)")
+    parser.add_argument("--persistence", type=int, default=12, help="Beats required to confirm a change (default 12; 20+ for steady songs)")
+    parser.add_argument("--min-confidence", type=float, default=75, help="Minimum confidence of exported points (0-100; default 75)")
+    parser.add_argument("--csv", help="Output CSV path")
+    parser.add_argument("--click", help="Output click-track WAV path (metronome aligned to red lines)")
+    parser.add_argument("--stats", action="store_true", help="Print a human-readable summary table")
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON instead of the human report")
+    parser.add_argument("--subdivision", choices=("auto", "0.25", "0.5", "1", "2", "4"), default="auto",
+                        help="Multiply the detected beat rate: 2 doubles (fixes a half-time read), 0.5 halves. Default: auto.")
+    parser.add_argument("--engine", choices=("auto", "precision", "legacy"), default="auto",
+                        help="auto (default) fits the grid and falls back to the v2 tracker; "
+                             "precision refuses to fall back; legacy forces the v2 tracker.")
+    parser.add_argument("--decimal-offsets", type=int, default=0, metavar="N",
+                        help="Write N decimals on offsets (default 0 — whole ms, what osu!stable expects)")
+    parser.add_argument("--no-refine", action="store_true", help="Skip sample-resolution attack re-timing (diagnostic)")
+    parser.add_argument("--osz", metavar="OUT.OSZ", help="Write a complete beatmap archive: the audio plus an .osu carrying this timing")
+    parser.add_argument("--artist", help="Artist for --osz metadata (default: unknown)")
+    parser.add_argument("--title", help="Title for --osz metadata (default: the audio filename)")
+    parser.add_argument("--creator", help="Creator for --osz metadata (default: Overtone)")
+    parser.add_argument("--inject", metavar="MAP.OSU", help="Inject red lines into an .osu [TimingPoints] (backup .bak, greens kept)")
+    parser.add_argument("--no-backup", action="store_true", help="Skip the .bak backup when injecting")
+    parser.add_argument("--no-map-preference", action="store_true", help="Do not prefer 120-300 mapping BPM when resolving the octave")
+    parser.add_argument("--check", metavar="MAP.OSU",
+                        help="Check a map against this audio and print the modder's report instead of "
+                             "red lines (red lines to check, changes the map lacks, snapping, objects "
+                             "away from the music); exits 3 when it finds something, 0 when clean")
+    parser.add_argument("--watch", action="store_true",
+                        help="Re-run the analysis, with every other option given, each time the "
+                             "audio file changes; Ctrl+C stops")
+    args = parser.parse_args()
+    if args.watch:
+        # Each run is its own process: main() ends in SystemExit on every
+        # path, and a fresh process starts from the file as it is now.
+        if not args.audio or Path(args.audio).is_dir():
+            parser.error("--watch needs a single audio file")
+        command = [sys.executable] + ([] if getattr(sys, "frozen", False) else [sys.argv[0]])
+        command += [arg for arg in sys.argv[1:] if arg != "--watch"]
+        import subprocess
+        try:
+            watch_file(args.audio, lambda: subprocess.run(command, check=False).returncode,
+                       lambda message: print(message, file=sys.stderr))
+        except KeyboardInterrupt:
+            pass
+        return
+
+    def note(message: str) -> None:
+        """Progress, status and errors go to stderr: stdout carries only the
+        red lines (or the JSON), so `> timing.txt` holds nothing else."""
+        print(message, file=sys.stderr)
+
+    # A flag that cannot act is refused, never dropped: --inject with the
+    # audio forgotten opened the window, and --title without --osz wrote
+    # nothing anywhere, both without a word.
+    given = sorted("--" + name.replace("_", "-") for name, value in vars(args).items()
+                   if name != "audio" and value != parser.get_default(name))
+    if not args.audio:
+        if given:
+            parser.error(f"{', '.join(given)} {'needs' if len(given) == 1 else 'need'} an "
+                         "audio file to analyze; with no arguments at all the window opens")
+        TimingAnalyzerApp().start()
+        return
+    metadata = [flag for flag in ("--artist", "--title", "--creator") if flag in given]
+    if metadata and not args.osz:
+        parser.error(f"{', '.join(metadata)} only {'names' if len(metadata) == 1 else 'name'} "
+                     "what --osz writes; add --osz OUT.osz")
+    if args.no_backup and not args.inject:
+        parser.error("--no-backup only applies to --inject; nothing else makes a backup")
+    if not 0 <= args.decimal_offsets <= 6:
+        note("Error: --decimal-offsets must be between 0 and 6")
+        raise SystemExit(2)
+    force = 0.0 if args.subdivision == "auto" else float(args.subdivision)
+    if Path(args.audio).is_dir():
+        single = [flag for flag in ("--click", "--osz", "--inject", "--stats", "--decimal-offsets",
+                                    "--check") if flag in given]
+        if single:
+            note(f"Error: {'/'.join(single)} need a single audio file, not a folder")
+            raise SystemExit(2)
+        try:
+            rows = analyze_batch(args.audio, args.delta, args.persistence, not args.no_map_preference,
+                                 args.min_confidence / 100, force, refine_beats=not args.no_refine,
+                                 engine=args.engine)
+        except ValueError as exc:
+            note(f"Error: {exc}")
+            raise SystemExit(1)
+        failures = sum(not row["ok"] for row in rows)
+        if args.json:
+            print(json.dumps(rows, indent=2))
+        else:
+            print(f"{'file':<32} {'bpm':>10} {'points':>7} {'seconds':>8}  status")
+            for row in rows:
+                status = "ok" if row["ok"] else f"FAILED: {row['error']}"
+                print(f"{row['file']:<32} {row['global_bpm']:>10.2f} {row['points']:>7d} "
+                      f"{row['duration']:>8.1f}  {status}")
+        if args.csv:
+            try:
+                with open(args.csv, "w", newline="", encoding="utf-8") as handle:
+                    writer = csv.writer(handle)
+                    writer.writerow(["file", "ok", "global_bpm", "points", "duration", "error"])
+                    writer.writerows([[row["file"], row["ok"], row["global_bpm"],
+                                       row["points"], row["duration"], row["error"]] for row in rows])
+            except OSError as exc:
+                note(f"Error writing output: {exc}")
+                raise SystemExit(1)
+        raise SystemExit(1 if failures else 0)
+    try:
+        analysis = analyze_audio(args.audio, args.delta, args.persistence, not args.no_map_preference,
+                                 args.min_confidence / 100, note, force,
+                                 refine_beats=not args.no_refine, engine=args.engine)
+    except (ValueError, RuntimeError, OSError) as exc:
+        note(f"Error: {exc}")
+        raise SystemExit(1)
+    check = None
+    if args.check:
+        # The mod report the app's Report section posts, for one map: read
+        # only, and scriptable, since a finding changes the exit code.
+        try:
+            beatmap = read_osu_beatmap(args.check)
+            times = np.asarray(analysis.attack_times, dtype=np.float64)
+            weights = np.asarray(analysis.attack_weights, dtype=np.float64)
+            if times.size == 0:     # the fallback tracker keeps none: found here, once
+                y, sr = _load_audio(args.audio, lambda _message: None)
+                times, weights, _envelope = _detect_attacks(y, sr, FIT_HOP)
+            check = mod_report(beatmap, times, weights, float(analysis.duration), analysis)
+        except (ValueError, OSError, RuntimeError) as exc:
+            note(f"Error checking {args.check}: {exc}")
+            raise SystemExit(1)
+    if args.json:
+        report = analysis_report(analysis)
+        print(json.dumps(report if check is None else {"analysis": report, "check": check},
+                         indent=2))
+    elif check is not None:
+        if args.stats:
+            print(analysis_summary(analysis))
+            print()
+        print(check["text"] or "No findings.")
+    else:
+        if args.stats:
+            print(analysis_summary(analysis))
+            print()
+        print(osu_timing_text(analysis, args.decimal_offsets))
+    try:
+        if args.csv:
+            export_csv(analysis, args.csv)
+        if args.click:
+            export_click_track(analysis, args.click)
+        if args.osz:
+            written = export_osz(
+                analysis, args.osz, args.audio,
+                {"artist": args.artist, "title": args.title, "creator": args.creator},
+                args.decimal_offsets)
+            note(f"Wrote {args.osz}: {written['osu']} "
+                 f"({written['points']} red line(s), {written['bytes'] / 1e6:.1f} MB)")
+    except (OSError, ValueError, RuntimeError) as exc:  # soundfile's errors are RuntimeErrors
+        note(f"Error writing output: {exc}")
+        raise SystemExit(1)
+    if args.inject:
+        try:
+            summary = inject_osu_timing_points(args.inject, analysis, backup=not args.no_backup,
+                                               decimals=args.decimal_offsets)
+        except (ValueError, OSError) as exc:
+            note(f"Error injecting into {args.inject}: {exc}")
+            raise SystemExit(1)
+        note(f"Injected {summary['reds_added']} red lines "
+             f"({summary['reds_replaced']} replaced, {summary['greens_kept']} greens kept, "
+             f"{summary['greens_added']} greens added to keep SV and hitsounds)"
+             + (" [audio mismatch!]" if summary["audio_mismatch"] else ""))
+        if summary["backup"]:
+            note(f"Backup: {summary['backup']}")
+    # A check that found something says so to a script, as a linter does.
+    if check is not None and check["items"]:
+        raise SystemExit(3)
+
+
+if __name__ == "__main__":
+    main()

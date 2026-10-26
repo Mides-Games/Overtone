@@ -1,0 +1,12786 @@
+"""Tests for Overtone (v3 engine).
+
+Fast unit tests run without audio; end-to-end tests synthesize click and drum
+tracks with known ground truth, so no fixture files are needed. The v2
+segmentation and gap-filling helpers are still covered — they remain in the
+fallback path used for rubato and non-percussive audio.
+"""
+import codecs
+import json
+import os
+import struct
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import numpy as np
+
+from overtone import (
+    HOP,
+    hitsound_genre,
+    beatmap_genre,
+    MIN_PULSE_GAP,
+    _load_audio,
+    _onset_envelope,
+    _pulse_gap,
+    _pulse_log10p,
+    _meter_from_grid,
+    DEFAULT_LANGUAGE,
+    Analysis,
+    GridSection,
+    TimingAnalyzerApp,
+    TimingPoint,
+    _choose_subdivision,
+    _fill_missed_beats,
+    _atomic_grid_candidates,
+    _expand_fit,
+    _global_tempo_guides,
+    _is_red_line,
+    _recentre_phase,
+    _refine_grid,
+    _retime_onsets,
+    _robust_local_bpms,
+    _segment_tempi,
+    _tune_boundary,
+    add_timing_point,
+    analysis_summary,
+    analyze_audio,
+    delete_timing_point,
+    export_click_track,
+    inject_osu_timing_points,
+    nudge_timing_point,
+    osu_timing_text,
+    rebuild_with_subdivision,
+    rescale_section,
+    export_osz,
+    osu_beatmap_text,
+    section_measures,
+    detect_bar,
+    meter_segments,
+    points_from_meter,
+    _points_from_sections,
+    snap_timing_points,
+    suggest_section_pulse,
+    update_timing_point,
+    validate_timing_points,
+    read_osu_red_lines,
+    compare_map_timing,
+    scan_beatmap_folder,
+    analyze_batch,
+    read_osu_beatmap,
+    set_beatmap_reds,
+    write_osu_beatmap,
+    attack_object_context,
+    alignment_report,
+    analysis_report,
+    density_report,
+    suggest_missing_lines,
+    add_red_line,
+    beatmap_text,
+    mapset_report,
+    main,
+)
+from bench.mapper_agreement import OsuDbFormatError, parse_osu_db
+
+
+def _click_track(path: Path, bpm: float, duration: float = 12.0,
+                 change_at: float | None = None, second_bpm: float = 140.0,
+                 sr: int = 44100) -> None:
+    import soundfile as sf
+    y = np.zeros(int(sr * duration), dtype=np.float32)
+    n = int(0.04 * sr)
+    t = np.arange(n) / sr
+    kick = (np.sin(2 * np.pi * 160 * t) * np.exp(-t / 0.006)).astype(np.float32)
+    tt = 0.25
+    while tt < duration - 0.2:
+        idx = int(tt * sr)
+        y[idx:idx + n] += kick
+        current = bpm if change_at is None or tt < change_at else second_bpm
+        tt += 60.0 / current
+    sf.write(str(path), y, sr)
+
+
+def _click_ramp(path: Path, bpm0: float, bpm1: float, duration: float,
+                sr: int = 44100) -> np.ndarray:
+    """A click on every beat of a tempo ramping from ``bpm0`` to ``bpm1``: no
+    grid fits it, so it reaches the fallback tracker. Returns each click's
+    time, to the sample it starts on."""
+    import soundfile as sf
+    y = np.zeros(int(sr * duration), dtype=np.float32)
+    n = int(0.03 * sr)
+    t = np.arange(n) / sr
+    click = (np.sin(2 * np.pi * 1800 * t) * np.exp(-t / 0.004)).astype(np.float32) * 0.9
+    clicks, tt = [], 0.5
+    while tt < duration - 0.5:
+        i = int(round(tt * sr))
+        y[i:i + n] += click
+        clicks.append(i / sr)
+        tt += 60.0 / (bpm0 + (bpm1 - bpm0) * tt / duration)
+    sf.write(str(path), y, sr)
+    return np.asarray(clicks)
+
+
+def _from_nearest_ms(times, targets, reach: float = 0.06) -> np.ndarray:
+    """Each time less its nearest target, in ms (+ when later); those with no
+    target within ``reach`` seconds are left out."""
+    times, targets = np.asarray(times, dtype=float), np.asarray(targets, dtype=float)
+    right = np.clip(np.searchsorted(targets, times), 1, targets.size - 1)
+    nearest = np.where(np.abs(times - targets[right - 1]) <= np.abs(times - targets[right]),
+                       targets[right - 1], targets[right])
+    gap = times - nearest
+    return gap[np.abs(gap) <= reach] * 1000.0
+
+
+#: The write-history log points at a scratch folder for the whole suite, so
+#: writer tests never land in real history. Removed afterwards.
+_HISTORY_SCRATCH = tempfile.TemporaryDirectory(prefix="overtone-history-")
+
+
+def setUpModule() -> None:
+    os.environ["OVERTONE_HISTORY_DIR"] = _HISTORY_SCRATCH.name
+
+
+def tearDownModule() -> None:
+    os.environ.pop("OVERTONE_HISTORY_DIR", None)
+    _HISTORY_SCRATCH.cleanup()
+
+
+class SegmentationTests(unittest.TestCase):
+    def test_small_variation_is_ignored(self):
+        beats = np.arange(30) * (60 / 225)
+        bpms = np.full(30, 225.2)
+        bpms[:10] = 225.0
+        points = _segment_tempi(beats, bpms, min_delta=1.5, persistence=5)
+        self.assertEqual(len(points), 1)
+
+    def test_sustained_change_is_emitted(self):
+        beats = np.arange(30) * 0.5
+        bpms = np.r_[np.full(12, 120.0), np.full(18, 140.0)]
+        points = _segment_tempi(beats, bpms, min_delta=1.5, persistence=5)
+        self.assertEqual(len(points), 2)
+        # One outlier-tolerant window ([120, 140×4]) already confirms the new
+        # tempo, so the change is reported a beat before the step completes.
+        self.assertEqual(points[1].offset_ms, 5500.0)
+        self.assertIn("428.571428571429", osu_timing_text(type("A", (), {"points": points})()))
+
+    def test_backtrack_lands_on_midpoint_crossing(self):
+        beats = np.arange(40) * 0.5
+        bpms = np.r_[np.full(10, 120.0), [130.0], np.full(29, 140.0)]
+        points = _segment_tempi(beats, bpms, min_delta=1.5, persistence=5)
+        self.assertEqual(len(points), 2)
+        self.assertEqual(points[1].offset_ms, 5000.0)
+
+    def test_single_spike_does_not_veto_real_change(self):
+        beats = np.arange(30) * 0.5
+        bpms = np.r_[np.full(12, 120.0), [140.0, 140.0, 200.0], np.full(15, 140.0)]
+        points = _segment_tempi(beats, bpms, min_delta=1.5, persistence=5)
+        self.assertEqual(len(points), 2)
+        # The spike sits inside the confirming window; tolerance still
+        # confirms at the true boundary instead of slipping 3 beats late.
+        self.assertEqual(points[1].offset_ms, 6000.0)
+
+    def test_single_spike_does_not_create_section(self):
+        beats = np.arange(30) * 0.5
+        bpms = np.full(30, 120.0)
+        bpms[15] = 200.0  # lone outlier, no sustained change
+        points = _segment_tempi(beats, bpms, min_delta=1.5, persistence=5)
+        self.assertEqual(len(points), 1)
+
+    def test_double_time_requires_in_between_attacks(self):
+        onset = np.zeros(1000)
+        onset[np.arange(100, 900, 100)] = 1.0
+        onset[np.arange(150, 900, 100)] = 0.9
+        self.assertEqual(_choose_subdivision(onset, np.arange(100, 900, 100), True), 2)
+
+    def test_absent_subdivisions_do_not_double(self):
+        onset = np.zeros(1000)
+        onset[np.arange(100, 900, 100)] = 1.0
+        self.assertEqual(_choose_subdivision(onset, np.arange(100, 900, 100), True), 1)
+
+    def test_export_snaps_only_rounding_noise(self):
+        # 0.4 ms off the previous grid is rounding: joined exactly. 7 ms off is
+        # where the music put the change (the engine's own changes sit within
+        # 0.03 ms), and moving it would invent an error: left alone.
+        near = [TimingPoint(353, 225, 1, 0), TimingPoint(13153.4, 222, 1, 48)]
+        self.assertAlmostEqual(snap_timing_points(near)[1].offset_ms, 13153.0, places=6)
+        far = [TimingPoint(353, 225, 1, 0), TimingPoint(13160, 222, 1, 48)]
+        self.assertEqual(snap_timing_points(far)[1].offset_ms, 13160)
+
+    def test_out_of_range_base_doubles_with_moderate_evidence(self):
+        # Half-time lock scenario: tracker sits on ~112.5 BPM while the song
+        # is really ~225 BPM. Off-beat attacks are weaker (0.55) than beats
+        # (1.0) — the old stricter gate stayed at half, collapsing 225/222.2
+        # sections into one "constant" map.
+        onset = np.zeros(2000)
+        beats = np.arange(100, 1900, 92)  # ~112.4 BPM at 172.27 frames/sec
+        onset[beats] = 1.0
+        midpoints = ((beats[:-1] + beats[1:]) / 2).astype(int)
+        onset[midpoints] = 0.55
+        self.assertEqual(_choose_subdivision(onset, beats, True), 2)
+
+    def test_in_range_base_does_not_double_on_weak_evidence(self):
+        onset = np.zeros(2000)
+        beats = np.arange(100, 1900, 77)  # ~223 BPM, already in map range
+        onset[beats] = 1.0
+        midpoints = ((beats[:-1] + beats[1:]) / 2).astype(int)
+        onset[midpoints] = 0.15
+        self.assertEqual(_choose_subdivision(onset, beats, True), 1)
+
+    def test_a_lock_above_300_is_kept_not_halved(self):
+        # A branch here claimed to halve a double-time lock; it returned 1
+        # either way. The chooser never halves, so ÷2 is the user's way back.
+        onset = np.zeros(700)
+        beats = np.arange(10, 650, 30)  # ~344.5 BPM, every beat struck
+        onset[beats] = 1.0
+        self.assertEqual(_choose_subdivision(onset, beats, True), 1)
+
+
+class RobustnessTests(unittest.TestCase):
+    def test_invalid_parameters_rejected_before_io(self):
+        with self.assertRaises(ValueError):
+            analyze_audio("whatever.wav", min_delta=-1.0)
+        with self.assertRaises(ValueError):
+            analyze_audio("whatever.wav", persistence=1)
+        with self.assertRaises(ValueError):
+            analyze_audio("whatever.wav", min_confidence=1.5)
+
+    def test_undecodable_file_raises_runtime_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(RuntimeError):
+                analyze_audio(str(Path(tmp) / "missing.wav"))
+
+    def test_single_bad_interval_does_not_drag_local_bpm(self):
+        beats = np.arange(20) * 0.5
+        beats[10:] += 0.25  # one doubled gap (missed beat)
+        local = _robust_local_bpms(beats)
+        self.assertAlmostEqual(float(np.median(local)), 120.0, delta=6.0)
+
+    def test_gap_fill_interpolates_isolated_miss(self):
+        frames = np.array([0.0, 40.0, 80.0, 160.0, 200.0, 240.0])
+        filled = _fill_missed_beats(frames)
+        self.assertEqual(len(filled), 7)
+        self.assertAlmostEqual(float(filled[3]), 120.0, delta=1.0)
+
+    def test_gap_fill_leaves_long_silence_alone(self):
+        # A whole sparse neighbourhood: the local median grows with the gap.
+        frames = np.array([0.0, 40.0, 2000.0, 4000.0, 6000.0, 8000.0, 8040.0])
+        filled = _fill_missed_beats(frames)
+        self.assertEqual(len(filled), len(frames))
+
+    def test_gap_fill_rejects_non_integer_hole(self):
+        # One 25× hole: not representable within max_fill → left alone.
+        frames = np.array([0.0, 40.0, 80.0, 120.0, 160.0, 200.0, 1200.0, 1240.0, 1280.0])
+        filled = _fill_missed_beats(frames)
+        self.assertEqual(len(filled), len(frames))
+
+    def test_gap_fill_ignores_tempo_jump(self):
+        # Abrupt 120 → 240 BPM: shorter intervals must never trigger fills.
+        frames = np.array([0.0, 500.0, 1000.0, 1250.0, 1500.0, 1750.0])
+        filled = _fill_missed_beats(frames)
+        self.assertEqual(len(filled), len(frames))
+
+    def test_english_is_default_language(self):
+        self.assertEqual(DEFAULT_LANGUAGE, "English")
+        self.assertEqual(list(TimingAnalyzerApp.TEXT.keys())[0], "English")
+        for table in TimingAnalyzerApp.TEXT.values():
+            self.assertIn("analyze", table)
+        self.assertIn("English", TimingAnalyzerApp.TEXT)
+        self.assertIn("Español", TimingAnalyzerApp.TEXT)
+
+    def test_variable_preset_is_default(self):
+        variable = TimingAnalyzerApp.PRESETS["variable"]
+        steady = TimingAnalyzerApp.PRESETS["steady"]
+        self.assertEqual(TimingAnalyzerApp.CFG_VERSION, 2)
+        # Variable preset: sensitive enough for songs that change often.
+        self.assertLessEqual(int(variable["persistence"]), 12)
+        self.assertLessEqual(float(variable["confidence"]), 75)
+        # Steady preset: strictly more conservative on every axis.
+        self.assertGreater(float(steady["delta"]), float(variable["delta"]))
+        self.assertGreater(int(steady["persistence"]), int(variable["persistence"]))
+        self.assertGreater(float(steady["confidence"]), float(variable["confidence"]))
+
+
+class EndToEndTests(unittest.TestCase):
+    def test_steady_click_reports_correct_global_bpm(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "steady.wav"
+            _click_track(path, bpm=128.0)
+            analysis = analyze_audio(path)
+        self.assertGreaterEqual(len(analysis.points), 1)
+        self.assertAlmostEqual(analysis.global_bpm, 128.0, delta=128.0 * 0.03)
+        self.assertAlmostEqual(analysis.points[0].bpm, 128.0, delta=128.0 * 0.03)
+        self.assertGreaterEqual(analysis.stability, 0.7)
+        self.assertLess(abs(analysis.points[0].offset_ms - 250), 60)
+        text = osu_timing_text(analysis)
+        self.assertIn("// Generated", text)
+        self.assertIn("Source:", analysis_summary(analysis))
+
+    def test_tempo_change_produces_two_sections(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "variable.wav"
+            _click_track(path, bpm=120.0, duration=16.0, change_at=8.0, second_bpm=140.0)
+            analysis = analyze_audio(path)
+        self.assertGreaterEqual(len(analysis.points), 2)
+        bpms = sorted(p.bpm for p in analysis.points)
+        self.assertAlmostEqual(bpms[0], 120.0, delta=120.0 * 0.04)
+        self.assertAlmostEqual(bpms[-1], 140.0, delta=140.0 * 0.04)
+
+    def test_tempo_guides_contain_true_tempo(self):
+        import soundfile as sf
+        from overtone import _global_tempo_guides, _onset_envelope
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "steady.wav"
+            _click_track(path, bpm=128.0)
+            y, sr = sf.read(str(path), dtype="float32", always_2d=False)
+            onset = _onset_envelope(np.asarray(y, dtype=np.float32), sr, 256)
+            guides = _global_tempo_guides(onset, sr, 256)
+        self.assertTrue(any(abs(bpm - 128.0) <= max(4.0, 128.0 * 0.03) for bpm, _w in guides),
+                        f"guides missing 128 BPM: {guides}")
+
+    def test_no_refine_path_still_reports_tempo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "steady.wav"
+            _click_track(path, bpm=128.0)
+            analysis = analyze_audio(path, refine_beats=False)
+        self.assertGreaterEqual(len(analysis.points), 1)
+        self.assertAlmostEqual(analysis.global_bpm, 128.0, delta=128.0 * 0.05)
+
+    def test_click_track_export_is_audible_and_aligned(self):
+        import soundfile as sf
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "steady.wav"
+            _click_track(path, bpm=128.0)
+            analysis = analyze_audio(path)
+            out = Path(tmp) / "click.wav"
+            export_click_track(analysis, out)
+            data, _sr = sf.read(str(out))
+            self.assertGreater(float(np.max(np.abs(data))), 0.1)
+
+    def test_rebuild_with_subdivision_doubles_bpm_without_retracking(self):
+        # Synthetic grid: strong attacks every 80 frames (~129 BPM) plus
+        # weaker off-beat attacks halfway between — so a ×2 grid is musical.
+        from overtone import Analysis
+        sr, hop = 44100, 256
+        onset = np.zeros(2000, dtype=np.float32)
+        onset[np.arange(50, 1950, 80)] = 1.0
+        onset[np.arange(90, 1950, 80)] = 0.8
+        base = np.arange(50, 1950, 80)
+        beats = base.astype(float) * hop / sr
+        local = np.full(len(beats), 129.2)
+        analysis = Analysis("synthetic", float(beats[-1] + 1), beats, local,
+                            [TimingPoint(float(beats[0] * 1000), 129.2, 1.0, 0)],
+                            hop, sr, 1, 129.2, 1.0, "4/4", onset, base)
+        doubled = rebuild_with_subdivision(analysis, 2)
+        self.assertEqual(doubled.subdivision, 2)
+        self.assertAlmostEqual(doubled.global_bpm, analysis.global_bpm * 2,
+                               delta=analysis.global_bpm * 2 * 0.05)
+        with self.assertRaises(ValueError):
+            rebuild_with_subdivision(analysis, 3)
+
+
+def _two_points():
+    beats = np.arange(0.0, 20.0, 0.5)
+    return beats, [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(5000.0, 140.0, 0.8, 10)]
+
+
+class ManualEditTests(unittest.TestCase):
+    def test_add_keeps_sorted_and_snaps_beat_index(self):
+        beats, points = _two_points()
+        out = add_timing_point(points, beats, 2500.0, 130.0)
+        self.assertEqual([p.offset_ms for p in out], [0.0, 2500.0, 5000.0])
+        self.assertEqual(out[1].beat_index, 5)
+        self.assertEqual(out[1].confidence, 1.0)
+        with self.assertRaises(ValueError):
+            add_timing_point(points, beats, 2500.0, 0.0)
+
+    def test_update_preserves_confidence_and_resorts(self):
+        beats, points = _two_points()
+        out = update_timing_point(points, beats, 1, 1000.0, 150.0)
+        self.assertEqual([p.offset_ms for p in out], [0.0, 1000.0])
+        self.assertEqual(out[1].confidence, 0.8)
+        with self.assertRaises(ValueError):
+            update_timing_point(points, beats, 7, 1000.0, 150.0)
+
+    def test_delete_protects_first_point(self):
+        _, points = _two_points()
+        with self.assertRaises(ValueError):
+            delete_timing_point(points, 0)
+        out = delete_timing_point(points, 1)
+        self.assertEqual(len(out), 1)
+        with self.assertRaises(ValueError):
+            delete_timing_point(points, 5)
+
+    def test_nudge_clamps_at_zero(self):
+        beats, points = _two_points()
+        out = nudge_timing_point(points, beats, 0, -50.0)
+        self.assertEqual(out[0].offset_ms, 0.0)
+        out = nudge_timing_point(points, beats, 1, 4.0)
+        self.assertAlmostEqual(out[1].offset_ms, 5004.0)
+
+    def test_nudge_moves_a_line_before_zero_the_way_it_was_asked(self):
+        # Every negative offset came out as 0, so -1 ms on -20 moved it +20.
+        beats = np.arange(-0.02, 20.0, 0.5)
+        points = [TimingPoint(-20.0, 120.0, 0.9, 0), TimingPoint(5000.0, 140.0, 0.9, 10)]
+        self.assertEqual(nudge_timing_point(points, beats, 0, -1.0)[0].offset_ms, -21.0)
+        self.assertEqual(nudge_timing_point(points, beats, 0, 5.0)[0].offset_ms, -15.0)
+        self.assertEqual(nudge_timing_point(points, beats, 0, 30.0)[0].offset_ms, 10.0)
+        # From at or after zero, a nudge still stops at zero.
+        start = [TimingPoint(3.0, 120.0, 0.9, 0)]
+        self.assertEqual(nudge_timing_point(start, beats, 0, -5.0)[0].offset_ms, 0.0)
+
+    def test_nudge_refreshes_the_beat_index(self):
+        beats = np.arange(0.0, 20.0, 0.5)
+        points = [TimingPoint(1000.0, 120.0, 0.9, 2), TimingPoint(5000.0, 140.0, 0.9, 10)]
+        self.assertEqual(nudge_timing_point(points, beats, 1, 1000.0)[1].beat_index, 12)
+
+    def test_rescale_section(self):
+        _, points = _two_points()
+        out = rescale_section(points, 0, 2.0)
+        self.assertAlmostEqual(out[0].bpm, 240.0)
+        self.assertEqual(out[0].offset_ms, 0.0)
+        out = rescale_section(points, 1, 0.5)
+        self.assertAlmostEqual(out[1].bpm, 70.0)
+        with self.assertRaises(ValueError):
+            rescale_section(points, 0, 3.0)
+        with self.assertRaises(ValueError):  # 400 × 2 = 800 exceeds the 600 cap
+            rescale_section([TimingPoint(0.0, 400.0, 1.0, 0)], 0, 2.0)
+
+    @staticmethod
+    def _tempo_change():
+        # 120 BPM for 20 beats from 0 ms, then 125 BPM from 10 s: one tempo
+        # change the detector missed, under a single 120 BPM red line.
+        first = np.arange(20) * 0.5
+        second = 10.0 + np.arange(30) * 0.48
+        times = np.concatenate([first, second])
+        return times, np.ones_like(times)
+
+    def test_split_puts_a_line_on_the_section_grid_and_refits_both_halves(self):
+        from overtone import split_section
+        times, weights = self._tempo_change()
+        beats = np.arange(0.0, 25.0, 0.5)
+        points = [TimingPoint(0.0, 120.0, 0.9, 0)]
+        out, report = split_section(points, beats, 0, 10110.0, times, weights, 24500.0)
+        self.assertEqual([p.offset_ms for p in out], [0.0, 10000.0])
+        self.assertAlmostEqual(out[0].bpm, 120.0, delta=0.05)
+        self.assertAlmostEqual(out[1].bpm, 125.0, delta=0.05)
+        self.assertTrue(all(p.manual for p in out))
+        self.assertEqual((out[1].meter_known, report["split_ms"]), (False, 10000.0))
+        self.assertEqual([s["kept"] for s in report["sections"]], [None, None])
+
+    def test_a_split_off_the_section_is_refused(self):
+        from overtone import split_section
+        times, weights = self._tempo_change()
+        points = [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(10000.0, 125.0, 0.9, 20)]
+        for at in (100.0, 9900.0, 12000.0):       # on the line, on the next, past it
+            with self.subTest(at=at), self.assertRaises(ValueError):
+                split_section(points, np.arange(0.0, 25.0, 0.5), 0, at, times, weights, 24500.0)
+
+    def test_merge_drops_the_next_line_and_refits_the_whole_span(self):
+        from overtone import merge_sections
+        times = np.arange(40) * 0.5                   # a steady 120 BPM
+        points = [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(10000.0, 118.0, 0.7, 20)]
+        out, report = merge_sections(points, np.arange(0.0, 20.0, 0.5), 0, times,
+                                     np.ones_like(times), 20000.0)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].offset_ms, 0.0)
+        self.assertAlmostEqual(out[0].bpm, 120.0, delta=0.05)
+        self.assertEqual((report["removed_ms"], report["sections"][0]["kept"]), (10000.0, None))
+        with self.assertRaises(ValueError):
+            merge_sections(out, np.arange(0.0, 20.0, 0.5), 0, times, np.ones_like(times), 20000.0)
+
+    def test_too_few_or_scattered_attacks_keep_the_bpm_and_say_why(self):
+        from overtone import merge_sections
+        points = [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(10000.0, 118.0, 0.7, 20)]
+        few = np.array([0.5, 1.0, 1.5])
+        out, report = merge_sections(points, np.arange(0.0, 20.0, 0.5), 0, few,
+                                     np.ones_like(few), 20000.0)
+        self.assertEqual((out[0].bpm, report["sections"][0]["kept"]), (120.0, "few"))
+        scattered = np.random.default_rng(3).uniform(0.0, 20.0, 60)
+        out, report = merge_sections(points, np.arange(0.0, 20.0, 0.5), 0, np.sort(scattered),
+                                     np.ones(60), 20000.0)
+        self.assertEqual((out[0].bpm, report["sections"][0]["kept"]), (120.0, "weak"))
+
+    def test_a_bar_length_change_keeps_the_beat(self):
+        from overtone import set_meter
+        points = [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(5000.6, 120.0, 0.9, 10, meter=4)]
+        out = set_meter(points, 1, 3)
+        # The bar is three beats now and known; the beat and the shown line stay.
+        self.assertEqual((out[1].meter, out[1].meter_known, out[1].manual), (3, True, True))
+        self.assertEqual((out[1].bpm, out[1].offset_ms), (120.0, 5000.0))
+        self.assertEqual(out[0], points[0])
+        for bad in (0, 17, 3.5, "3", True):
+            with self.subTest(meter=bad), self.assertRaises(ValueError):
+                set_meter(points, 1, bad)
+        with self.assertRaises(ValueError):
+            set_meter(points, 2, 3)
+
+    def test_edits_start_from_the_line_as_it_is_shown(self):
+        from overtone import merge_sections, split_section
+        # Detected 0.6 ms after a beat of the grid before it: rounding noise,
+        # shown and written on that beat. An edit makes the line hand-placed,
+        # which snapping skips, so starting from the raw 5000.6 moved it first:
+        # -1 ms showed 4999.6 and the .osu still read 5000.
+        beats = np.arange(0.0, 30.0, 0.5)
+        points = [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(5000.6, 120.0, 0.9, 10),
+                  TimingPoint(15000.0, 125.0, 0.9, 30)]
+        self.assertEqual(snap_timing_points(points)[1].offset_ms, 5000.0)
+        for step in (-1.0, 1.0, 5.0):
+            with self.subTest(step=step):
+                nudged = snap_timing_points(nudge_timing_point(points, beats, 1, step))
+                self.assertAlmostEqual(nudged[1].offset_ms, 5000.0 + step, places=9)
+        # Edits that keep the line keep it where it was shown.
+        self.assertEqual(rescale_section(points, 1, 2.0)[1].offset_ms, 5000.0)
+        none = np.zeros(0)
+        split, report = split_section(points, beats, 1, 7100.0, none, none, 30000.0)
+        self.assertEqual([p.offset_ms for p in split[:3]], [0.0, 5000.0, 7000.0])
+        merged, report = merge_sections(points, beats, 0, none, none, 30000.0)
+        self.assertEqual((report["removed_ms"], [p.offset_ms for p in merged]),
+                         (5000.0, [0.0, 15000.0]))
+        merged, _report = merge_sections(points, beats, 1, none, none, 30000.0)
+        self.assertEqual([p.offset_ms for p in merged], [0.0, 5000.0])
+
+
+def _section_analysis(mid_amp: float, bpm: float = 112.4):
+    from overtone import Analysis
+    sr, hop = 44100, 256
+    step = int(round(60.0 / bpm * sr / hop))
+    onset = np.zeros(3000, dtype=np.float32)
+    grid = np.arange(50, 2900, step)
+    onset[grid] = 1.0
+    onset[((grid[:-1] + grid[1:]) / 2).astype(int)] = mid_amp
+    beats = grid.astype(float) * hop / sr
+    local = np.full(len(beats), bpm)
+    return Analysis("synthetic", float(beats[-1] + 2), beats, local,
+                    [TimingPoint(float(beats[0] * 1000), bpm, 0.9, 0)],
+                    hop, sr, 1, bpm, 1.0, "4/4", onset, grid)
+
+
+class SectionPulseTests(unittest.TestCase):
+    def test_slow_section_with_offbeats_is_suggested(self):
+        suggestions = suggest_section_pulse(_section_analysis(0.7))
+        self.assertEqual(len(suggestions), 1)
+        self.assertEqual(suggestions[0][:2], (0, 2))
+
+    def test_slow_section_without_offbeats_is_not_suggested(self):
+        self.assertEqual(suggest_section_pulse(_section_analysis(0.0)), [])
+
+    def test_in_range_section_is_never_suggested(self):
+        self.assertEqual(suggest_section_pulse(_section_analysis(0.9, bpm=224.0)), [])
+
+    def test_pulse_hints_only_ever_suggest_doubling(self):
+        """Documents a real gap, not desired behaviour — audit finding F-11.
+
+        Every suggestion the helper can emit is ``x2``: it skips any point at
+        or above ``low_bpm`` before looking at the audio, so a section reported
+        at 175 BPM whose note rate has actually halved to 87.5 gets no hint.
+        The benchmark cannot see this either (it normalizes octaves), and
+        ``bench/gates.py coverage`` measures the signal that would drive the
+        missing halving hint. When v4 adds it, this test should be replaced by
+        one asserting the hint appears.
+        """
+        # A sparse, fast section: attacks on every other beat of the reported
+        # grid, which is what a half-time region looks like from here.
+        analysis = _section_analysis(0.0, bpm=200.0)
+        self.assertEqual(suggest_section_pulse(analysis), [])
+        factors = {factor for _idx, factor, _ratio in
+                   suggest_section_pulse(_section_analysis(0.7))}
+        self.assertEqual(factors, {2}, "the helper has no downward direction")
+
+
+class OsuInjectTests(unittest.TestCase):
+    FAKE_OSU = ("osu file format v14\n[General]\nAudioFilename: song.mp3\n"
+                "[TimingPoints]\n"
+                "353,266.666666666667,4,2,0,100,1,0\n"
+                "1000,500,4,2,0,60,0,0\n"
+                "13153,270.270270270270,4,2,0,85,1,1\n"
+                "[HitObjects]\n64,80,1000,1,0\n")
+
+    def _analysis(self, source="song.mp3"):
+        from types import SimpleNamespace
+        return SimpleNamespace(source=source,
+                               points=[TimingPoint(360.0, 224.0, 0.95, 1),
+                                       TimingPoint(14000.0, 222.0, 0.9, 60)])
+
+    def test_replace_reds_keeps_greens_byte_identical(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            original = self.FAKE_OSU.replace("\n", "\r\n").encode("utf-8")
+            target.write_bytes(original)
+            summary = inject_osu_timing_points(target, self._analysis())
+            out = target.read_bytes()
+            self.assertEqual(summary["reds_replaced"], 2)
+            self.assertEqual(summary["reds_added"], 2)
+            self.assertEqual(summary["greens_kept"], 1)
+            self.assertFalse(summary["audio_mismatch"])
+            self.assertIn(b"1000,500,4,2,0,60,0,0\r\n", out)  # green untouched
+            self.assertNotIn(b"266.666666666667", out)  # old red gone
+            self.assertTrue((Path(str(target) + ".bak")).is_file())
+            self.assertEqual((Path(str(target) + ".bak")).read_bytes(), original)
+            # Idempotent: injecting again changes nothing.
+            inject_osu_timing_points(target, self._analysis(), backup=False)
+            second = target.read_bytes()
+            inject_osu_timing_points(target, self._analysis(), backup=False)
+            self.assertEqual(target.read_bytes(), second)
+
+    def test_missing_section_and_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "empty.osu"
+            target.write_text("[General]\n[HitObjects]\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                inject_osu_timing_points(target, self._analysis())
+            target2 = Path(tmp) / "other.osu"
+            target2.write_text("[General]\nAudioFilename: song.mp3\n[TimingPoints]\n", encoding="utf-8")
+            summary = inject_osu_timing_points(target2, self._analysis(source="different.wav"),
+                                               backup=False)
+            self.assertEqual(summary["reds_replaced"], 0)
+            self.assertTrue(summary["audio_mismatch"])
+
+
+class InjectDiffTests(unittest.TestCase):
+    FAKE_OSU = ("osu file format v14\n[General]\nAudioFilename: song.mp3\n"
+                "[TimingPoints]\n"
+                "353,266.666666666667,4,2,0,100,1,0\n"
+                "1000,500,4,2,0,60,0,0\n"
+                "13153,270.270270270270,4,2,0,85,1,1\n"
+                "[HitObjects]\n64,80,1000,1,0\n")
+
+    def _analysis(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(source="song.mp3",
+                               points=[TimingPoint(360.0, 224.0, 0.95, 1),
+                                       TimingPoint(14000.0, 222.0, 0.9, 60)])
+
+    def test_pairs_by_order_with_drift_and_leftovers(self) -> None:
+        from overtone import inject_diff
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_bytes(self.FAKE_OSU.replace("\n", "\r\n").encode("utf-8"))
+            diff = inject_diff(target, self._analysis())
+            json.dumps(diff)
+            self.assertEqual(len(diff["pairs"]), 2)
+            first, second = diff["pairs"]
+            self.assertEqual(first["old"], {"offset_ms": 353.0, "bpm": 225.0, "meter": 4})
+            self.assertEqual(first["new"], {"offset_ms": 360, "bpm": 224.0, "meter": 4})
+            self.assertEqual((first["delta_offset_ms"], first["delta_bpm"]), (7.0, -1.0))
+            self.assertAlmostEqual(first["drift_end_ms"], -49.89, places=2)
+            self.assertEqual(second["old"], {"offset_ms": 13153.0, "bpm": 222.0, "meter": 4})
+            self.assertEqual(second["new"], {"offset_ms": 14000, "bpm": 222.0, "meter": 4})
+            self.assertEqual((second["delta_offset_ms"], second["delta_bpm"]), (847.0, 0.0))
+            self.assertIsNone(second["drift_end_ms"])
+            self.assertEqual((diff["removed"], diff["added"]), ([], []))
+
+    def test_empty_sides_and_missing_points(self) -> None:
+        from types import SimpleNamespace
+        from overtone import inject_diff
+        with tempfile.TemporaryDirectory() as tmp:
+            bare = Path(tmp) / "bare.osu"
+            bare.write_text("[General]\n[TimingPoints]\n[HitObjects]\n", encoding="utf-8")
+            diff = inject_diff(bare, self._analysis())
+            self.assertEqual((diff["pairs"], diff["removed"]), ([], []))
+            self.assertEqual(len(diff["added"]), 2)
+            with self.assertRaises(ValueError):
+                inject_diff(bare, SimpleNamespace(source="song.mp3", points=[]))
+            with self.assertRaises(ValueError):
+                inject_diff(Path(tmp) / "missing.osu", self._analysis())
+
+    def test_extra_old_lines_ride_along_as_removed(self) -> None:
+        from types import SimpleNamespace
+        from overtone import inject_diff
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_bytes(self.FAKE_OSU.replace("\n", "\r\n").encode("utf-8"))
+            one = SimpleNamespace(source="song.mp3",
+                                  points=[TimingPoint(360.0, 224.0, 0.95, 1)])
+            diff = inject_diff(target, one)
+            json.dumps(diff)
+            self.assertEqual(len(diff["pairs"]), 1)
+            self.assertEqual(diff["removed"],
+                             [{"offset_ms": 13153.0, "bpm": 222.0, "meter": 4}])
+            self.assertEqual(diff["added"], [])
+
+
+class InjectMapsetTests(unittest.TestCase):
+    FAKE_OSU = ("osu file format v14\n[General]\nAudioFilename: song.mp3\n"
+                "[TimingPoints]\n353,266.666666666667,4,2,0,100,1,0\n"
+                "[HitObjects]\n64,80,1000,1,0\n")
+
+    def _analysis(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(source="song.mp3",
+                               points=[TimingPoint(360.0, 224.0, 0.95, 1)])
+
+    def _folder(self, tmp: str) -> Path:
+        root = Path(tmp)
+        (root / "easy.osu").write_bytes(self.FAKE_OSU.replace("\n", "\r\n").encode("utf-8"))
+        (root / "hard.osu").write_bytes(self.FAKE_OSU.replace("\n", "\r\n").encode("utf-8"))
+        (root / "broken.osu").write_text("[General]\n[HitObjects]\n", encoding="utf-8")
+        return root
+
+    def test_dry_run_writes_nothing_and_a_bad_map_does_not_stop_the_rest(self) -> None:
+        from overtone import inject_mapset
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._folder(tmp)
+            report = inject_mapset(root, self._analysis(), dry_run=True)
+            json.dumps(report)
+            self.assertEqual((report["ok"], report["failed"]), (2, 1))
+            self.assertEqual([f["file"] for f in report["files"]],
+                             ["broken.osu", "easy.osu", "hard.osu"])
+            broken = next(f for f in report["files"] if f["file"] == "broken.osu")
+            self.assertFalse(broken["ok"])
+            self.assertIn("TimingPoints", broken["error"])
+            self.assertFalse((root / "easy.osu.bak").exists())
+
+    def test_apply_writes_every_difficulty_with_its_backup(self) -> None:
+        from overtone import inject_mapset
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._folder(tmp)
+            report = inject_mapset(root, self._analysis())
+            self.assertEqual((report["ok"], report["failed"]), (2, 1))
+            for name in ("easy.osu", "hard.osu"):
+                out = (root / name).read_bytes()
+                self.assertNotIn(b"266.666666666667", out)
+                self.assertTrue((Path(str(root / name) + ".bak")).is_file())
+            with self.assertRaises(ValueError):
+                inject_mapset(root / "missing", self._analysis())
+            (root / "easy.osu").unlink()
+            (root / "hard.osu").unlink()
+            (root / "broken.osu").unlink()
+            with self.assertRaises(ValueError):
+                inject_mapset(root, self._analysis())
+
+
+def _timing_rows(text: str) -> list[list[str]]:
+    rows, inside = [], False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped == "[TimingPoints]":
+            inside = True
+            continue
+        if inside and stripped.startswith("["):
+            break
+        if inside and stripped and not stripped.startswith("//"):
+            rows.append([f.strip() for f in stripped.split(",")])
+    return rows
+
+
+def _heard_at(text: str, t: float) -> tuple:
+    """What osu! plays at time t: (SV, sample set, index, volume, kiai).
+
+    Written independently of the injector on purpose: a red line resets SV to
+    1, a green sets it to -100/beatLength, both set the sample fields; points
+    at the same time apply red first; before the first point, the first
+    point's settings apply.
+    """
+    points = []
+    for n, f in enumerate(_timing_rows(text)):
+        length = float(f[1])
+        red = length > 0 and (len(f) < 7 or f[6] == "1")
+        points.append((float(f[0]), 0 if red else 1, n, length, red,
+                       int(f[3]), int(f[4]), int(f[5]), int(f[7]) & 1))
+    points.sort()
+    active = [q for q in points if q[0] <= t] or points[:1]
+    sv, heard = 1.0, None
+    for time, _o, _n, length, red, sample_set, index, volume, kiai in active:
+        sv = 1.0 if red else (-100.0 / length if length < 0 else sv)
+        heard = (sample_set, index, volume, kiai)
+    return (round(sv, 9),) + heard
+
+
+class InjectKeepsWhatPlaysTests(unittest.TestCase):
+    """Injection changes the timing and nothing a player hears or sees scroll.
+
+    Before this, every new red line was written as Normal / 100 % / no kiai and
+    the section was left out of time order: re-injecting a hitsounded map with
+    kiai silently flattened it.
+    """
+
+    # Soft 60 % from 400; kiai from 20 s; a red at 30 s re-states Soft 60 with
+    # kiai; kiai off at 45 s. A 2.0x slider-velocity green at 22 s.
+    MAP = ("osu file format v14\n[General]\nAudioFilename: song.mp3\n\n"
+           "[TimingPoints]\n"
+           "400,400,4,2,0,60,1,0\n"
+           "20000,-100,4,2,0,60,0,1\n"
+           "22000,-50,4,2,0,60,0,1\n"
+           "30000,375,4,2,0,60,1,1\n"
+           "45000,-100,4,2,1,40,0,0\n"
+           "\n[HitObjects]\n")
+    OBJECTS = [1000, 5000, 19000, 20500, 22500, 25000, 29000, 30500, 31000,
+               33000, 39000, 41000, 44000, 46000, 50000]
+
+    def _map(self, tmp: str, text: str = "", newline: str = "\n", bom: bool = False) -> Path:
+        text = text or self.MAP + "".join(f"256,192,{t},1,0\n" for t in self.OBJECTS)
+        path = Path(tmp) / "map.osu"
+        data = text.replace("\n", newline).encode("utf-8")
+        path.write_bytes((b"\xef\xbb\xbf" if bom else b"") + data)
+        return path
+
+    def _analysis(self):
+        from types import SimpleNamespace
+        # red lines that do not sit where the old ones were
+        return SimpleNamespace(source="song.mp3", meter="4/4",
+                               points=[TimingPoint(500.0, 150.0, 0.95, 0),
+                                       TimingPoint(25000.0, 160.0, 0.9, 60),
+                                       TimingPoint(40000.0, 170.0, 0.9, 100)])
+
+    def test_every_object_plays_as_before(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp)
+            before = path.read_text(encoding="utf-8")
+            inject_osu_timing_points(path, self._analysis(), backup=False)
+            after = path.read_text(encoding="utf-8")
+        for t in self.OBJECTS:
+            self.assertEqual(_heard_at(after, t), _heard_at(before, t), f"object at {t} ms")
+
+    def test_new_red_lines_carry_the_state_they_land_in(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp)
+            inject_osu_timing_points(path, self._analysis(), backup=False)
+            reds = [r for r in _timing_rows(path.read_text(encoding="utf-8")) if r[6] == "1"]
+        # offsets as exported: 25000 is 100 ms off the 150 BPM grid, so export
+        # snapping (rounding noise only) leaves it where it is
+        self.assertEqual([r[0] for r in reds], ["500", "25000", "40000"])
+        self.assertEqual(reds[0][3:8], ["2", "0", "60", "1", "0"])   # Soft 60, before kiai
+        self.assertEqual(reds[1][3:8], ["2", "0", "60", "1", "1"])   # inside the kiai
+        self.assertEqual(reds[2][3:8], ["2", "0", "60", "1", "1"])
+
+    def test_timing_section_is_in_time_order_red_before_green(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp)
+            summary = inject_osu_timing_points(path, self._analysis(), backup=False)
+            rows = _timing_rows(path.read_text(encoding="utf-8"))
+        keys = [(float(r[0]), 0 if r[6] == "1" else 1) for r in rows]
+        self.assertEqual(keys, sorted(keys))
+        self.assertEqual(summary["reds_replaced"], 2)
+        self.assertEqual(summary["reds_added"], 3)
+        self.assertEqual(summary["greens_kept"], 3)
+        self.assertGreater(summary["greens_added"], 0)  # SV 2.0 around the moved reds
+
+    def test_original_greens_are_byte_identical(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp, newline="\r\n")
+            inject_osu_timing_points(path, self._analysis(), backup=False)
+            out = path.read_bytes()
+        for green in (b"20000,-100,4,2,0,60,0,1\r\n", b"22000,-50,4,2,0,60,0,1\r\n",
+                      b"45000,-100,4,2,1,40,0,0\r\n"):
+            self.assertIn(green, out)
+        self.assertNotIn(b"\r\r\n", out)
+
+    def test_injecting_twice_changes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp, newline="\r\n")
+            inject_osu_timing_points(path, self._analysis(), backup=False)
+            first = path.read_bytes()
+            summary = inject_osu_timing_points(path, self._analysis(), backup=False)
+            self.assertEqual(path.read_bytes(), first)
+        self.assertEqual(summary["greens_added"], 0)
+
+    def test_bom_and_missing_final_newline_survive(self):
+        text = self.MAP + "256,192,1000,1,0"  # no newline at the end of the file
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp, text=text, newline="\r\n", bom=True)
+            original = path.read_bytes()
+            inject_osu_timing_points(path, self._analysis(), backup=False)
+            out = path.read_bytes()
+        self.assertTrue(out.startswith(b"\xef\xbb\xbfosu file format v14\r\n"))
+        head = original[:original.index(b"[TimingPoints]")]
+        self.assertTrue(out.startswith(head))
+        self.assertTrue(out.endswith(b"\r\n\r\n[HitObjects]\r\n256,192,1000,1,0"))
+
+    def test_a_map_without_timing_gets_plain_red_lines(self):
+        text = "osu file format v14\n[General]\nAudioFilename: song.mp3\n\n[TimingPoints]\n\n[HitObjects]\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._map(tmp, text=text)
+            summary = inject_osu_timing_points(path, self._analysis(), backup=False)
+            rows = _timing_rows(path.read_text(encoding="utf-8"))
+        self.assertEqual(summary["greens_added"], 0)
+        self.assertEqual([r[3:8] for r in rows], [["1", "0", "100", "1", "0"]] * 3)
+
+
+# ---------------------------------------------------------------------------
+# v3 precision engine
+# ---------------------------------------------------------------------------
+
+def _drum_track(path: Path, sections, duration: float = 24.0, sr: int = 44100,
+                hats: bool = True, seed: int = 7) -> list[tuple[float, float]]:
+    """Kick/snare/hat pattern with a known grid. Returns [(start_s, bpm)]."""
+    import soundfile as sf
+    rng = np.random.default_rng(seed)
+
+    def kick():
+        n = int(0.18 * sr)
+        t = np.arange(n) / sr
+        sweep = 2 * np.pi * np.cumsum(120 * np.exp(-t / 0.03) + 45) / sr
+        return (np.sin(sweep) * np.exp(-t / 0.055)
+                + rng.standard_normal(n) * np.exp(-t / 0.0025) * 0.35).astype(np.float32)
+
+    def snare():
+        n = int(0.16 * sr)
+        t = np.arange(n) / sr
+        return ((rng.standard_normal(n) * np.exp(-t / 0.045)) * 0.7
+                + np.sin(2 * np.pi * 190 * t) * np.exp(-t / 0.03) * 0.5).astype(np.float32) * 0.7
+
+    def hat():
+        n = int(0.05 * sr)
+        t = np.arange(n) / sr
+        return (rng.standard_normal(n) * np.exp(-t / 0.008)).astype(np.float32) * 0.28
+
+    KICK, SNARE, HAT = kick(), snare(), hat()
+    buffer = np.zeros(int(duration * sr) + sr, dtype=np.float32)
+
+    def place(sample, at, gain=1.0):
+        i = int(round(at))
+        end = min(len(buffer), i + len(sample))
+        if 0 <= i < end:
+            buffer[i:end] += sample[:end - i] * gain
+
+    truth, t, beat, si = [], sections[0][0], 0, 0
+    truth.append((t, sections[0][1]))
+    while t < duration:
+        while si + 1 < len(sections) and t >= sections[si + 1][0] - 1e-9:
+            si += 1
+            truth.append((t, sections[si][1]))
+            beat = 0
+        step = 60.0 / sections[si][1]
+        place(KICK if beat % 4 in (0, 2) else SNARE, t * sr, 1.0 if beat % 4 == 0 else 0.85)
+        if hats:
+            place(HAT, t * sr, 0.7)
+            place(HAT, (t + step / 2) * sr, 0.5)
+        t += step
+        beat += 1
+    peak = float(np.max(np.abs(buffer)))
+    sf.write(str(path), (buffer[:int(duration * sr)] / max(peak, 1e-9) * 0.9), sr)
+    return truth
+
+
+def _offset_error_ms(offset_ms: float, true_start_s: float, bpm: float) -> float:
+    """Distance from a detected offset to the nearest true beat, in ms."""
+    step = 60.0 / bpm
+    d = (offset_ms / 1000.0 - true_start_s) / step
+    return abs(d - round(d)) * step * 1000.0
+
+
+class PrecisionEngineTests(unittest.TestCase):
+    def test_odd_tempo_is_exact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "odd.wav"
+            truth = _drum_track(path, [(0.6173, 174.37)], duration=26.0)
+            analysis = analyze_audio(path)
+        self.assertEqual(analysis.engine, "precision")
+        self.assertEqual(len(analysis.points), 1)
+        self.assertAlmostEqual(analysis.points[0].bpm, 174.37, delta=0.02)
+        self.assertLess(_offset_error_ms(analysis.points[0].offset_ms, truth[0][0], 174.37), 3.0)
+
+    def test_two_sections_are_both_exact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "two.wav"
+            truth = _drum_track(path, [(0.41, 150.0), (16.0, 162.0)], duration=34.0)
+            analysis = analyze_audio(path)
+        points = snap_timing_points(analysis.points)
+        self.assertEqual(len(points), 2)
+        self.assertAlmostEqual(points[0].bpm, 150.0, delta=0.02)
+        self.assertAlmostEqual(points[1].bpm, 162.0, delta=0.02)
+        for point, (start, bpm) in zip(points, truth):
+            self.assertLess(_offset_error_ms(point.offset_ms, start, bpm), 4.0)
+        # The second red line must land on the beat where the tempo changed.
+        self.assertLess(abs(points[1].offset_ms / 1000.0 - truth[1][0]), 0.5)
+
+    def test_forced_octave_is_exact_and_reversible(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "oct.wav"
+            _drum_track(path, [(0.5, 160.0)], duration=24.0)
+            base = analyze_audio(path)
+            halved = analyze_audio(path, force_subdivision=0.5)
+        self.assertAlmostEqual(halved.points[0].bpm, base.points[0].bpm / 2, delta=0.01)
+        back = rebuild_with_subdivision(halved, 1.0)
+        self.assertAlmostEqual(back.points[0].bpm, base.points[0].bpm, delta=0.01)
+        with self.assertRaises(ValueError):
+            analyze_audio(path, force_subdivision=3)
+
+    def test_legacy_engine_still_available(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "legacy.wav"
+            _drum_track(path, [(0.5, 150.0)], duration=24.0)
+            analysis = analyze_audio(path, engine="legacy")
+        self.assertEqual(analysis.engine, "legacy")
+        self.assertAlmostEqual(analysis.global_bpm, 150.0, delta=150.0 * 0.03)
+        with self.assertRaises(ValueError):
+            analyze_audio(path, engine="nonsense")
+
+    def test_precision_engine_refuses_ungriddable_audio(self):
+        import soundfile as sf
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pad.wav"
+            sr = 44100
+            t = np.arange(sr * 8) / sr
+            drone = (np.sin(2 * np.pi * 220 * t) * 0.4).astype(np.float32)
+            sf.write(str(path), drone, sr)
+            with self.assertRaises(ValueError):
+                analyze_audio(path, engine="precision")
+
+
+class StopInsideStageTests(unittest.TestCase):
+    """A stop lands inside the stage it is asked in (roadmap 10.12), asked for
+    nothing the engine runs as before, and a request is its own thread's."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.path = Path(cls._tmp.name) / "drums.wav"
+        _drum_track(cls.path, [(0.5, 150.0)], duration=24.0)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def _stop_in(self, stage: str, engine: str) -> list[str]:
+        """The stages announced when a stop asked for as soon as ``stage``
+        is announced has landed."""
+        import overtone as ta
+
+        said: list[str] = []
+        with ta.stop_requests(lambda: bool(said) and said[-1].startswith(stage)):
+            with self.assertRaises(ta.AnalysisStopped):
+                ta.analyze_audio(self.path, progress=said.append, engine=engine)
+        return said
+
+    def test_a_stop_lands_inside_every_stage_that_loops(self):
+        # Before, a stop waited for the next announcement, so each of these
+        # stages ran to its end first. The fallback's half/double stage has no
+        # loop, and a stop in it still lands as the next stage is announced.
+        for engine, stages in (("auto", ("Loading", "Detecting attacks", "Scanning pulse",
+                                         "Resolving the beat octave",
+                                         "Fitting tempo sections")),
+                               ("legacy", ("Extracting transients", "Tracking beats",
+                                           "Computing local tempo"))):
+            for stage in stages:
+                with self.subTest(stage=stage):
+                    said = self._stop_in(stage, engine)
+                    self.assertTrue(said[-1].startswith(stage), said)
+
+    def test_a_spectrogram_block_in_runs_is_librosas_own(self):
+        # The STFT a run of frames at a time, then the power and the mel
+        # projection whole: librosa's own values, bit for bit.
+        import librosa
+        from unittest import mock
+
+        import overtone as ta
+
+        y, sr = _load_audio(str(self.path), lambda _message: None)
+        frames, hop = 1500, ta.FIT_HOP
+        segment = np.pad(y, ta.ONSET_N_FFT // 2)[:(frames - 1) * hop + ta.ONSET_N_FFT]
+        whole = librosa.feature.melspectrogram(y=segment, sr=sr, n_fft=ta.ONSET_N_FFT,
+                                               hop_length=hop, center=False, fmax=11025,
+                                               n_mels=128)
+        for run in (ta.STFT_RUN, 100, 7):             # whole runs, ragged ends, one batch
+            with self.subTest(run=run), mock.patch.object(ta, "STFT_RUN", run):
+                ours = librosa.feature.melspectrogram(S=ta._block_power(segment, hop), sr=sr,
+                                                      n_fft=ta.ONSET_N_FFT, fmax=11025,
+                                                      n_mels=128)
+                self.assertTrue(np.array_equal(ours, whole))
+
+    def test_the_octave_tempogram_in_blocks_is_librosas_own(self):
+        import librosa
+        from unittest import mock
+
+        import overtone as ta
+
+        y, sr = _load_audio(str(self.path), lambda _message: None)
+        env = ta._onset_envelope(y, sr, ta.FIT_HOP)
+        coarse = env[:env.size // 4 * 4].reshape(-1, 4).max(axis=1).astype(np.float32)
+        whole = librosa.feature.tempogram(onset_envelope=coarse, sr=sr,
+                                          hop_length=4 * ta.FIT_HOP, win_length=192)
+        for columns in (None, 700):                           # several blocks, a ragged last
+            with self.subTest(columns=columns), mock.patch.object(ta, "TEMPOGRAM_BLOCK", 300):
+                blocks = np.concatenate(list(ta._tempogram(coarse, sr, 4 * ta.FIT_HOP, 192,
+                                                           columns=columns)), axis=-1)
+                self.assertTrue(np.array_equal(blocks, whole))
+
+    def test_the_decode_in_blocks_is_the_one_calls_samples(self):
+        # Several blocks and a ragged last one; lossy codecs seek between them.
+        import soundfile as sf
+        from unittest import mock
+
+        import overtone as ta
+
+        rng = np.random.default_rng(5)
+        cases = [(1, "WAV", "PCM_24"), (2, "WAV", "PCM_16"), (6, "WAV", "FLOAT"),
+                 (2, "OGG", "VORBIS")]
+        if "MP3" in sf.available_formats():
+            cases.append((2, "MP3", "MPEG_LAYER_III"))
+        with tempfile.TemporaryDirectory() as tmp:
+            for channels, form, subtype in cases:
+                path = Path(tmp) / f"{channels}.{form.lower()}"
+                data = (rng.standard_normal((44100 * 3 + 17, channels)) * 0.2).astype(np.float32)
+                sf.write(str(path), data[:, 0] if channels == 1 else data, 44100,
+                         format=form, subtype=subtype)
+                whole, rate = sf.read(str(path), dtype="float32", always_2d=False)
+                if whole.ndim == 2:
+                    whole = np.mean(whole, axis=1, dtype=np.float32)
+                with mock.patch.object(ta, "DECODE_BLOCK", 10_000):
+                    blocks, block_rate = ta._decode(path)
+                with self.subTest(form=form, channels=channels):
+                    self.assertEqual(block_rate, rate)
+                    self.assertEqual(blocks.dtype, np.float32)
+                    self.assertTrue(np.array_equal(blocks, whole))
+
+    def test_asked_for_nothing_the_engine_runs_as_before(self):
+        import overtone as ta
+
+        plain = ta.analyze_audio(self.path)
+        asked: list[int] = []
+        with ta.stop_requests(lambda: asked.append(1) or False):
+            listened = ta.analyze_audio(self.path)
+        self.assertGreater(len(asked), 20)
+        self.assertEqual(listened.points, plain.points)
+        np.testing.assert_array_equal(listened.beats, plain.beats)
+        np.testing.assert_array_equal(listened.attack_times, plain.attack_times)
+        np.testing.assert_array_equal(listened.onset, plain.onset)
+
+    def test_a_checkpoint_asks_only_inside_a_request(self):
+        import overtone as ta
+
+        self.assertIsNone(ta.checkpoint())              # nothing installed: nothing
+        asked: list[int] = []
+        with ta.stop_requests(lambda: asked.append(1) or False):
+            ta.checkpoint()
+            with ta.stop_requests(lambda: True):
+                with self.assertRaises(ta.AnalysisStopped):
+                    ta.checkpoint()
+            ta.checkpoint()                              # the outer request is back
+        ta.checkpoint()                                  # and none after the block
+        self.assertEqual(len(asked), 2)
+        # Not an Exception: the engine's fallbacks catch those and carry on.
+        self.assertFalse(issubclass(ta.AnalysisStopped, Exception))
+
+    def test_a_stop_request_never_reaches_another_thread(self):
+        import threading
+
+        import overtone as ta
+
+        seen: dict[str, str] = {}
+        inside, release = threading.Event(), threading.Event()
+
+        def ask(name: str) -> None:
+            try:
+                ta.checkpoint()
+                seen[name] = "ran on"
+            except ta.AnalysisStopped:
+                seen[name] = "stopped"
+
+        def stopping() -> None:
+            with ta.stop_requests(lambda: True):
+                child = threading.Thread(target=ask, args=("its child",))
+                child.start()
+                child.join()
+                inside.set()
+                release.wait(10)
+                ask("itself")
+
+        worker = threading.Thread(target=stopping)
+        worker.start()
+        self.assertTrue(inside.wait(10))
+        ask("another thread")
+        release.set()
+        worker.join()
+        self.assertEqual(seen, {"its child": "ran on", "another thread": "ran on",
+                                "itself": "stopped"})
+
+
+class ClassicWindowLayoutTests(unittest.TestCase):
+    """The Tk window's Results header fits the window it opens in.
+
+    Every ghost button inherited the clam theme's 11-character minimum, so the
+    seven header buttons asked for 1204 px (1259 in Spanish) and CSV was cut
+    to 21 px at the default 1120.
+    """
+
+    def test_results_toolbar_fits_at_default_and_minimum_size(self):
+        from unittest import mock
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp,                 mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"),                 mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
+            try:
+                app = TimingAnalyzerApp()
+            except Exception as exc:  # no display: nothing to lay out
+                self.skipTest(f"Tk unavailable: {exc}")
+            try:
+                app.root.attributes("-alpha", 0.0)
+                width, height = app.root.minsize()
+                for language in ("English", "Español"):
+                    app.language.set(language)
+                    app._translate()
+                    for geometry in ("1120x760", f"{width}x{height}"):
+                        app.root.geometry(geometry + "+-3000+-3000")
+                        app.root.update()
+                        for key in ("csv", "copy", "click", "half", "double", "inject", "details"):
+                            widget = app.widgets[key]
+                            with self.subTest(language=language, geometry=geometry, button=key):
+                                self.assertGreaterEqual(widget.winfo_width(), widget.winfo_reqwidth() - 1)
+            finally:
+                app.root.destroy()
+
+
+class ClassicWindowEditGuardTests(unittest.TestCase):
+    """×2/÷2 and Analyze rebuild the points from the detected sections; in the
+    classic window they used to throw hand edits away without a word."""
+
+    def _app(self, tmp):
+        from unittest import mock
+        import overtone
+        for name in ("CONFIG_PATH", "LEGACY_CONFIG_PATH"):
+            patcher = mock.patch.object(overtone, name, Path(tmp) / f"{name}.json")
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        try:
+            app = TimingAnalyzerApp()
+        except Exception as exc:  # no display
+            self.skipTest(f"Tk unavailable: {exc}")
+        self.addCleanup(app.root.destroy)
+        app.root.attributes("-alpha", 0.0)
+        wav = Path(tmp) / "drums.wav"
+        _drum_track(wav, [(0.5, 128.0), (12.0, 140.0)], duration=24.0)
+        app.analysis = analyze_audio(wav)
+        app._render_results()
+        return app
+
+    def _edit(self, app):
+        app.selected_section = 1
+        app.edit_nudge(7.0)
+        return app.analysis.points[1].offset_ms
+
+    def test_declining_keeps_the_edit_and_accepting_drops_it(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp)
+            edited = self._edit(app)
+            with mock.patch("tkinter.messagebox.askyesno", return_value=False) as ask:
+                app._rescale_pulse(2.0)
+            ask.assert_called_once()
+            self.assertEqual(app.analysis.points[1].offset_ms, edited)  # still there
+            bpm = app.analysis.global_bpm
+            with mock.patch("tkinter.messagebox.askyesno", return_value=True):
+                app._rescale_pulse(2.0)
+            self.assertAlmostEqual(app.analysis.global_bpm, 2 * bpm, places=1)
+            with mock.patch("tkinter.messagebox.askyesno") as ask:  # nothing edited now
+                app._rescale_pulse(0.5)
+            ask.assert_not_called()
+
+    def test_exporting_makes_the_edits_safe(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp)
+            self._edit(app)
+            app.copy_osu()
+            with mock.patch("tkinter.messagebox.askyesno") as ask:
+                app._rescale_pulse(2.0)
+            ask.assert_not_called()
+
+    def test_analyze_asks_before_replacing_edits(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp)
+            edited = self._edit(app)
+            with mock.patch("tkinter.messagebox.askyesno", return_value=False) as ask:
+                app.run()
+            ask.assert_called_once()
+            self.assertFalse(app._busy)  # no analysis started
+            self.assertEqual(app.analysis.points[1].offset_ms, edited)
+
+
+def _classic_app(test, tmp):
+    """The Tk window on a throwaway config, hidden, or skip without a display."""
+    from unittest import mock
+    import overtone
+    for name in ("CONFIG_PATH", "LEGACY_CONFIG_PATH"):
+        patcher = mock.patch.object(overtone, name, Path(tmp) / f"{name}.json")
+        patcher.start()
+        test.addCleanup(patcher.stop)
+    try:
+        app = TimingAnalyzerApp()
+    except Exception as exc:  # no display
+        test.skipTest(f"Tk unavailable: {exc}")
+    test.addCleanup(app.root.destroy)
+    app.root.attributes("-alpha", 0.0)
+    app.root.geometry("1120x760+-3000+-3000")
+    return app
+
+
+def _grid_analysis(offsets_bpms):
+    """A 30 s analysis at 120 BPM carrying the given (offset_ms, bpm) points."""
+    points = [TimingPoint(float(ms), float(bpm), 0.9, n) for n, (ms, bpm) in enumerate(offsets_bpms)]
+    return Analysis("synthetic.wav", 30.0, np.arange(60) * 0.5, np.full(60, 120.0), points,
+                    HOP, 44100, 1.0, 120.0, 1.0, "4/4", np.zeros(4000, dtype=np.float32))
+
+
+class ClassicWindowSpanishTests(unittest.TestCase):
+    """With Español selected, the classic window still showed English: the
+    language label, the trace title and hover, and the refusal to delete §1."""
+
+    def test_spanish_reaches_the_label_trace_hover_and_delete(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            app = _classic_app(self, tmp)
+            app.language.set("Español")
+            app._translate()
+            self.assertEqual(app.widgets["language_lbl"].cget("text"), "Idioma")
+
+            app.analysis = _grid_analysis([(1000.0, 120.0), (11000.0, 140.0)])
+            app._render_results()
+            app.root.geometry("1120x1000+-3000+-3000")  # room for the trace
+            app.root.update()
+            app._draw_preview()
+            canvas = app.preview
+            texts = [canvas.itemcget(i, "text") for i in canvas.find_all()
+                     if canvas.type(i) == "text"]
+            self.assertIn("CURVA DE TEMPO", texts)
+            self.assertNotIn("TEMPO TRACE", texts)
+
+            g = app._trace_geometry()
+            app._trace_hover(SimpleNamespace(x=(g["l"] + g["r"]) / 2,
+                                             y=(g["top"] + g["bottom"]) / 2))
+            hover = [canvas.itemcget(i, "text") for i in canvas.find_withtag("hover")
+                     if canvas.type(i) == "text"]
+            self.assertTrue(any(text.startswith("confianza") for text in hover), hover)
+
+            app.selected_section = 0
+            app.edit_delete()
+            self.assertEqual(app.status.get(), TimingAnalyzerApp.TEXT["Español"]["first_locked"])
+            self.assertEqual(len(app.analysis.points), 2)
+
+
+class ClassicWindowKeepsTheRowTests(unittest.TestCase):
+    """An edit re-rendered the table, which dropped the selection and put §1 in
+    the editor: a second +1 ms said "Select a table row first."."""
+
+    def _app(self, tmp):
+        app = _classic_app(self, tmp)
+        app.analysis = _grid_analysis([(1000.0, 120.0), (11000.0, 140.0), (21000.0, 120.0)])
+        app._render_results()
+        app.table.selection_set(app.table.get_children()[2])
+        app.root.update()                       # delivers <<TreeviewSelect>>
+        self.assertEqual(app.selected_section, 2)
+        return app
+
+    def test_nudging_twice_moves_the_same_point_twice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp)
+            for _ in range(2):
+                app.edit_nudge(1.0)
+                app.root.update()               # the re-render's own select events
+            self.assertEqual(app.analysis.points[2].offset_ms, 21002.0)
+            self.assertEqual(app.selected_section, 2)
+            self.assertEqual(app.edit_offset.get(), "21002.0")
+            self.assertEqual(app.table.index(app.table.selection()[0]), 2)
+
+    def test_the_editor_follows_the_point_it_edited(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp)
+            app.edit_rescale(2.0)
+            app.root.update()
+            self.assertEqual(app.selected_section, 2)
+            self.assertEqual(app.edit_bpm.get(), "240.00")    # §3, not §1's 120
+            # An offset edit that re-sorts the point still keeps it selected.
+            app._set_editor("5000.0", "150")
+            app.edit_apply()
+            app.root.update()
+            self.assertEqual(app.selected_section, 1)
+            self.assertEqual(app.analysis.points[1].offset_ms, 5000.0)
+            self.assertEqual(app.edit_offset.get(), "5000.0")
+            app.edit_delete()
+            app.root.update()
+            self.assertIsNone(app.selected_section)          # nothing to keep
+            self.assertEqual(len(app.analysis.points), 2)
+
+
+class NoPulseRefusalTests(unittest.TestCase):
+    """White noise must not return a BPM (CLAUDE.md rule 2).
+
+    The precision engine already gave up on noise; the beat-tracker fallback
+    then invented 127.68 BPM for it. It now refuses, while audio whose pulse
+    drifts keeps its answer.
+    """
+
+    def _noise(self, path: Path, colour: str = "white", seconds: float = 20.0) -> None:
+        import soundfile as sf
+        sr = 22050
+        rng = np.random.default_rng(3)
+        spectrum = np.fft.rfft(rng.standard_normal(int(seconds * sr)))
+        tilt = {"white": 0.0, "pink": 0.5, "brown": 1.0}[colour]
+        signal = np.fft.irfft(spectrum / (np.arange(spectrum.size) + 1.0) ** tilt, int(seconds * sr))
+        sf.write(str(path), (0.3 * signal / np.max(np.abs(signal))).astype(np.float32), sr)
+
+    def test_noise_of_any_colour_gets_no_bpm(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for colour in ("white", "pink", "brown"):
+                path = Path(tmp) / f"{colour}.wav"
+                self._noise(path, colour)
+                for engine in ("auto", "legacy"):
+                    with self.subTest(colour=colour, engine=engine):
+                        with self.assertRaises(ValueError):
+                            analyze_audio(path, engine=engine)
+
+    def test_scattered_clicks_get_no_bpm_from_the_fallback(self):
+        # One of 12 random-click renders out of 240 that the tracker still
+        # answered at MIN_PULSE_GAP 0.05 (188.6 BPM, gap 0.0558): 34 decaying
+        # noise bursts at random times in 28 s, over a faint noise floor.
+        import soundfile as sf
+        rng = np.random.default_rng(1006)
+        sr = 22050
+        seconds = float(rng.uniform(20, 45))
+        n = int(seconds * rng.uniform(0.6, 1.6))
+        y = (rng.standard_normal(int(seconds * sr)) * rng.uniform(0, 0.01)).astype(np.float32)
+        for t in rng.uniform(0.2, seconds - 0.5, n):
+            i, gain = int(t * sr), rng.uniform(0.2, 0.9)
+            burst = rng.standard_normal(300) * np.exp(-np.arange(300) / 60.0)
+            y[i:i + 300] += (gain * burst[: y.size - i]).astype(np.float32)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "scatter.wav"
+            sf.write(str(path), y, sr)
+            with self.assertRaises(ValueError):
+                analyze_audio(path)
+
+    def test_a_pulse_through_the_fallback_still_gets_its_bpm(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "drums.wav"
+            _drum_track(path, [(0.5, 140.0)], duration=20.0)
+            analysis = analyze_audio(path, engine="legacy")
+        # not refused; the tracker's octave preference (120-300) may double it
+        octave_error = min(abs(analysis.global_bpm - 140.0), abs(analysis.global_bpm - 280.0))
+        self.assertLess(octave_error, 140.0 * 0.03)
+
+    def test_the_gap_separates_noise_from_a_beat(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            noise, drums = Path(tmp) / "noise.wav", Path(tmp) / "drums.wav"
+            self._noise(noise)
+            _drum_track(drums, [(0.5, 128.0)], duration=20.0)
+            gaps = {}
+            for name, path in (("noise", noise), ("drums", drums)):
+                y, sr = _load_audio(str(path), lambda _message: None)  # the engine's own path
+                gaps[name] = _pulse_gap(_onset_envelope(y, sr, HOP), sr, HOP)
+        self.assertLess(gaps["noise"], MIN_PULSE_GAP)
+        self.assertGreater(gaps["drums"], 3 * MIN_PULSE_GAP)
+        self.assertEqual(_pulse_gap(np.zeros(4000), 22050, HOP), 0.0)  # silence
+
+
+class FirstRedLinePhaseTests(unittest.TestCase):
+    """The first red line lands on the beat when the song starts on the atom grid.
+
+    Section 0 used to apply a beat class counted from the anchor seed's phase
+    while its own phase came from a second seed a whole atom away, so on 5 of 8
+    plain constant-tempo renders the only red line sat on the off-beat (250 ms
+    late at 120 BPM). The 24-case corpus never starts on those offsets.
+    """
+
+    def test_start_on_the_eighth_note_grid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for start, bpm in ((0.5, 120.0), (1.0, 120.0), (0.25, 120.0), (0.6, 150.0), (0.4, 150.0)):
+                path = Path(tmp) / f"s{start}_{bpm}.wav"
+                _drum_track(path, [(start, bpm)], duration=24.0)
+                first = snap_timing_points(analyze_audio(path).points)[0]
+                with self.subTest(start=start, bpm=bpm):
+                    self.assertLess(_offset_error_ms(first.offset_ms, start, bpm), 5.0)
+
+
+def _accented_attacks(segments, start=0.5):
+    """Attack times and weights: a heavy downbeat, light beats. segments = [(bpm, bars, beats)]."""
+    times, weights, t = [], [], start
+    for bpm, bars, beats in segments:
+        for _bar in range(bars):
+            for b in range(beats):
+                times.append(t)
+                weights.append(1.0 if b == 0 else 0.25)
+                t += 60.0 / bpm
+    return np.asarray(times), np.asarray(weights)
+
+
+def _accented_track(path: Path, segments, sr: int = 44100) -> None:
+    """Kick-like thump on every downbeat, a quiet tick on the other beats."""
+    import soundfile as sf
+    times, weights = _accented_attacks(segments)
+    buffer = np.zeros(int((times[-1] + 2.0) * sr), dtype=np.float32)
+    n = int(0.12 * sr)
+    tt = np.arange(n) / sr
+    rng = np.random.default_rng(5)
+    thump = (np.sin(2 * np.pi * 60 * tt) * np.exp(-tt / 0.05)
+             + rng.standard_normal(n) * np.exp(-tt / 0.004) * 0.4).astype(np.float32)
+    for t, w in zip(times, weights):
+        i = int(round(t * sr))
+        buffer[i:i + n] += thump[:len(buffer) - i] * w
+    sf.write(str(path), buffer / np.max(np.abs(buffer)) * 0.9, sr)
+
+
+class MeterPathTempoChangeTests(unittest.TestCase):
+    """The measure grid must not swallow a real tempo change.
+
+    It measures the bar on one section and applied it to the whole track; with
+    an audible downbeat, 128 -> 150 BPM came out as a single 128 BPM red line.
+    """
+
+    def test_tempo_change_with_a_clear_downbeat_keeps_both_red_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "change.wav"
+            _accented_track(path, [(128.0, 24, 4), (150.0, 24, 4)])
+            points = snap_timing_points(analyze_audio(path).points)
+        self.assertEqual([round(p.bpm) for p in points], [128, 150])
+        change = 0.5 + 24 * 4 * 60.0 / 128.0
+        self.assertLess(abs(points[1].offset_ms / 1000.0 - change), 0.005)
+
+    def test_sections_that_do_not_tile_one_bar_leave_the_meter_path(self):
+        times, weights = _accented_attacks([(128.0, 24, 4), (150.0, 24, 4)])
+        change = 0.5 + 24 * 4 * 60.0 / 128.0
+        sections = [GridSection(0.5, change, 60.0 / 128.0, 0.5, 96, 0.1, 1.0),
+                    GridSection(change, float(times[-1]), 60.0 / 150.0, change, 96, 0.1, 1.0)]
+        self.assertIsNone(points_from_meter(sections, times, weights, 12))
+
+    def test_a_signature_change_over_one_bar_still_tiles(self):
+        # 6/4 at 300 then 3/4 at 150: one 1.2 s bar, two notations
+        times, weights = _accented_attacks([(300.0, 12, 6), (150.0, 12, 3), (300.0, 12, 6)])
+        first_end = 0.5 + 12 * 1.2
+        sections = [GridSection(0.5, first_end, 0.2, 0.5, 72, 0.1, 1.0),
+                    GridSection(first_end, float(times[-1]), 0.4, first_end, 36, 0.1, 1.0)]
+        points = points_from_meter(sections, times, weights, 12)
+        self.assertIsNotNone(points)
+        self.assertEqual([p.meter for p in points], [6, 3, 6])
+
+
+class PulseFactorKeepsChangesTests(unittest.TestCase):
+    """÷2 / ÷4 must not delete a real tempo change.
+
+    The duplicate filter compared BPMs that already carried the pulse factor
+    against a threshold that did not: at ÷4 a 3.5 BPM change became 0.875 BPM
+    and fell under the 1.5 BPM minimum.
+    """
+
+    def test_a_small_change_survives_halving_and_quartering(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "change.wav"
+            _drum_track(path, [(0.5, 200.0), (16.0, 203.5)], duration=32.0)
+            analysis = analyze_audio(path)
+        self.assertEqual(len(analysis.points), 2)
+        for factor in (0.5, 0.25):
+            with self.subTest(factor=factor):
+                rebuilt = rebuild_with_subdivision(analysis, factor)
+                self.assertEqual([round(p.bpm, 2) for p in rebuilt.points],
+                                 [round(200.0 * factor, 2), round(203.5 * factor, 2)])
+
+
+class HandPlacedPointsStayPutTests(unittest.TestCase):
+    """Export snapping used to move any red line within a quarter beat of the
+    previous grid — including the ones the mapper typed in."""
+
+    BEATS = np.arange(0.0, 60.0, 0.5)
+
+    def _rows(self, points):
+        from types import SimpleNamespace
+        text = osu_timing_text(SimpleNamespace(points=points, meter="4/4"))
+        return [row.split(",")[0] for row in text.splitlines()[1:]]
+
+    def test_a_hand_added_point_is_exported_where_it_was_typed(self):
+        # 10100 ms is 0.2 beat off the 120 BPM grid: it used to leave as 10000.
+        points = add_timing_point([TimingPoint(0.0, 120.0, 0.9, 0)], self.BEATS, 10100.0, 140.0)
+        self.assertEqual(self._rows(points), ["0", "10100"])
+
+    def test_nudging_one_line_does_not_move_the_next(self):
+        points = [TimingPoint(353.0, 225.0, 0.9, 0), TimingPoint(13153.0, 222.0, 0.9, 48)]
+        nudged = nudge_timing_point(points, self.BEATS, 0, 10.0)
+        self.assertEqual(self._rows(nudged), ["363", "13153"])  # it used to write 13163
+
+    def test_every_edit_marks_its_point(self):
+        base = [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(8000.0, 130.0, 0.9, 16)]
+        self.assertTrue(update_timing_point(base, self.BEATS, 1, 8010.0, 131.0)[1].manual)
+        self.assertTrue(nudge_timing_point(base, self.BEATS, 1, 1.0)[1].manual)
+        self.assertTrue(rescale_section(base, 1, 2.0)[1].manual)
+        self.assertFalse(base[1].manual)
+
+
+class ChangeRedLineOnItsBeatTests(unittest.TestCase):
+    """A section's red line sits on the beat at its start, even when the final
+    refit leaves that beat a hair before the start.
+
+    Red lines after the first were placed with ceil(x - 1e-9): a beat 0.03 ms
+    before the settled start counted as "before", so the next beat was taken
+    and the red line landed a whole beat (with a proven bar, a whole bar) late.
+    """
+
+    def _sections(self):
+        p1, p2 = 60.0 / 132.0, 60.0 / 138.0
+        change = 0.5 + 70 * p1
+        # the new grid's beat sits 0.03 ms before the settled start
+        return [GridSection(0.5, change, p1, 0.5, 140, 0.2, 1.0),
+                GridSection(change, change + 30.0, p2, change - 3e-5, 130, 0.2, 1.0)], change
+
+    def test_beat_branch(self):
+        sections, change = self._sections()
+        points = _points_from_sections(sections, 0.5, 12, 0, 1)
+        self.assertLess(abs(points[1].offset_ms - (change * 1000.0 - 0.03)), 1e-6)
+
+    def test_known_bar_branch(self):
+        sections, change = self._sections()
+        points = _points_from_sections(sections, 0.5, 12, 0, 4,
+                                       measures=[("4/4", 0, 4), ("4/4", 0, 4)])
+        self.assertLess(abs(points[1].offset_ms - (change * 1000.0 - 0.03)), 1e-6)
+
+
+class SparseNoiseRefusalTests(unittest.TestCase):
+    """Scattered transients with no pulse must not get a grid.
+
+    About one random attack per second for 30 s (speech, ambient, an FX clip)
+    passed the 0.40 share gate often enough that 4 of these 12 renders came
+    out with a BPM between 29.7 and 48.3. A sparse pulse that really is there
+    must keep its answer, off-grid attacks and all.
+    """
+
+    @staticmethod
+    def _scatter(path: Path, trial: int, sr: int = 22050) -> None:
+        import soundfile as sf
+        rng = np.random.default_rng(trial)
+        n, seconds = int(rng.integers(24, 45)), 30.0
+        y = np.zeros(int(seconds * sr), dtype=np.float32)
+        for t in np.sort(rng.uniform(0.2, seconds - 0.5, n)):
+            i = int(t * sr)
+            y[i:i + 300] += (rng.standard_normal(300) * np.exp(-np.arange(300) / 60)).astype(np.float32) * 0.6
+        sf.write(str(path), y, sr)
+
+    def test_random_clicks_get_no_bpm(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for trial in range(12):
+                path = Path(tmp) / f"scatter{trial}.wav"
+                self._scatter(path, trial)
+                with self.subTest(trial=trial), self.assertRaises(ValueError):
+                    analyze_audio(path)
+
+    def test_a_sparse_pulse_keeps_its_bpm(self):
+        import soundfile as sf
+        with tempfile.TemporaryDirectory() as tmp:
+            for bpm in (60.0, 90.0):
+                path = Path(tmp) / f"sparse{bpm:.0f}.wav"
+                _click_track(path, bpm, duration=30.0)
+                y, sr = sf.read(str(path), dtype="float32")
+                rng = np.random.default_rng(1)  # a third as many attacks again, off the grid
+                for t in rng.uniform(0.3, 29.5, int(bpm / 6)):
+                    i = int(t * sr)
+                    y[i:i + 300] += (rng.standard_normal(300) * np.exp(-np.arange(300) / 60)).astype(np.float32) * 0.4
+                sf.write(str(path), y, sr)
+                # The pulse as found, before the fold to osu!'s octave.
+                analysis = analyze_audio(path, prefer_map_bpm=False)
+                with self.subTest(bpm=bpm):
+                    self.assertEqual(analysis.engine, "precision")
+                    self.assertAlmostEqual(analysis.global_bpm, bpm, places=2)
+
+    def test_the_pulse_is_read_at_the_mapped_octave(self):
+        # MAP_OCTAVE_RANGE: a slow pulse is read doubled, a fast one halved,
+        # one in range is left alone, and forcing a factor skips the fold.
+        with tempfile.TemporaryDirectory() as tmp:
+            for bpm, expected in ((60.0, 120.0), (90.0, 180.0), (174.0, 174.0), (300.0, 150.0)):
+                path = Path(tmp) / f"click{bpm:.0f}.wav"
+                _click_track(path, bpm, duration=30.0)
+                with self.subTest(bpm=bpm):
+                    self.assertAlmostEqual(analyze_audio(path).global_bpm, expected, places=1)
+            forced = analyze_audio(Path(tmp) / "click90.wav", force_subdivision=1.0)
+            self.assertAlmostEqual(forced.global_bpm, 90.0, places=1)
+
+    def test_a_drifting_tempo_gets_red_lines_that_follow_it(self):
+        # DRIFT_*: a pulse that slows from 150 to 146 BPM over three minutes
+        # leaves a fixed grid by far more than 15 ms; followed, it stays
+        # several times closer to the clicks. A steady pulse keeps one line.
+        import soundfile as sf
+        sr = 44100
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "drift.wav"
+            duration = 180.0
+            y = np.zeros(int(sr * duration), dtype=np.float32)
+            t = np.arange(int(0.04 * sr)) / sr
+            kick = (np.sin(2 * np.pi * 160 * t) * np.exp(-t / 0.006)).astype(np.float32)
+            clicks, tt = [], 0.25
+            while tt < duration - 0.2:
+                y[int(tt * sr):int(tt * sr) + kick.size] += kick
+                clicks.append(tt)
+                tt += 60.0 / (150.0 - 4.0 * tt / duration)
+            sf.write(str(path), y, sr)
+            followed = analyze_audio(path, follow_drift=True)
+            fixed = analyze_audio(path, osu_conventions=False)
+            self.assertGreater(len(followed.points), len(fixed.points))
+            from overtone import _beats_of
+            clicks = np.asarray(clicks)
+
+            def apart(analysis):
+                beats = _beats_of([(p.offset_ms, p.bpm) for p in analysis.points], duration)
+                i = np.clip(np.searchsorted(beats, clicks), 1, beats.size - 1)
+                return np.minimum(np.abs(beats[i - 1] - clicks), np.abs(beats[i] - clicks)) * 1000
+
+            # A ramp keeps moving inside every window, so the followed grid is
+            # not exact; it must still be several times closer than the fixed one.
+            self.assertLess(np.median(apart(followed)), np.median(apart(fixed)) / 4)
+            self.assertLess(np.percentile(apart(followed), 90), np.percentile(apart(fixed), 90) / 2)
+            steady = Path(tmp) / "steady.wav"
+            _click_track(steady, 150.0, duration=60.0)
+            self.assertEqual(len(analyze_audio(steady, follow_drift=True).points), 1)
+            # On by default (DRIFT_FOLLOW), and off when asked.
+            self.assertEqual(len(analyze_audio(path).points), len(followed.points))
+            # Beat This! follows a ramp too, so its vote is off here as well.
+            self.assertEqual(len(analyze_audio(path, follow_drift=False, beat_vote=False).points),
+                             len(fixed.points))
+
+    def test_the_chance_of_the_inliers(self):
+        rng = np.random.default_rng(0)
+        scattered = np.sort(rng.uniform(0.0, 30.0, 30))
+        regular = np.arange(30) * 0.8 + 0.1
+        self.assertGreater(_pulse_log10p(scattered, 0.8, 0.1), -2.0)
+        self.assertLess(_pulse_log10p(regular, 0.8, 0.1), -15.0)
+        self.assertEqual(_pulse_log10p(np.array([]), 0.8, 0.1), 0.0)
+
+
+class LegacyPulseFactorTests(unittest.TestCase):
+    """The fallback tracker must honour ÷2 and ÷4, and read x1 as the precision engine does.
+
+    It took the factor as an absolute subdivision of its tracked beats: 0.5 and
+    0.25 fell back to auto without a word -- a 100 BPM kit read at 199.5 stayed
+    at 199.5 when the user asked for half -- and 1 switched its octave choice off.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.path = Path(cls._tmp.name) / "kit100.wav"
+        _drum_track(cls.path, [(0.5, 100.0)], duration=20.0)
+        cls.auto = analyze_audio(cls.path, engine="legacy", osu_conventions=False)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_half_is_applied_from_the_first_beat(self):
+        self.assertAlmostEqual(self.auto.global_bpm, 200.0, delta=2.0)   # read at double time
+        half = analyze_audio(self.path, engine="legacy", force_subdivision=0.5, osu_conventions=False)
+        self.assertAlmostEqual(half.global_bpm, 100.0, delta=1.0)
+        self.assertEqual(half.subdivision, 0.5)
+        self.assertLess(abs(snap_timing_points(half.points)[0].offset_ms - 500.0), 20.0)
+
+    def test_one_means_as_detected(self):
+        same = analyze_audio(self.path, engine="legacy", force_subdivision=1, osu_conventions=False)
+        self.assertEqual(same.global_bpm, self.auto.global_bpm)
+        self.assertEqual([(p.offset_ms, p.bpm) for p in same.points],
+                         [(p.offset_ms, p.bpm) for p in self.auto.points])
+
+    def test_doubling_a_bare_click_doubles_it(self):
+        # Nothing sounds between the clicks, so the inserted beats have no
+        # attack of their own; they were dragged to the previous click's tail
+        # and x2 on a 120 BPM click read 186 BPM.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "click120.wav"
+            _click_track(path, 120.0, duration=20.0)
+            doubled = analyze_audio(path, engine="legacy", force_subdivision=2, osu_conventions=False)
+            rebuilt = rebuild_with_subdivision(analyze_audio(path, engine="legacy", osu_conventions=False), 2.0)
+        self.assertAlmostEqual(doubled.global_bpm, 240.0, delta=2.0)
+        self.assertAlmostEqual(rebuilt.global_bpm, 240.0, delta=2.0)
+
+    def test_halving_a_legacy_result_needs_no_reanalysis(self):
+        half = rebuild_with_subdivision(self.auto, 0.5)
+        self.assertAlmostEqual(half.global_bpm, 100.0, delta=1.0)
+
+    def test_global_bpm_is_the_measured_median(self):
+        # It was averaged with a tempogram bin, a few tenths of a BPM coarse:
+        # odd-222.22 read 222.88 against a median of 222.15, and pressing the
+        # same pulse again (a rebuild, which never averaged) moved it.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "click150.wav"
+            _click_track(path, 150.0, duration=20.0)
+            analysis = analyze_audio(path, engine="legacy", osu_conventions=False)
+        self.assertEqual(analysis.subdivision, 1.0)
+        self.assertEqual(analysis.global_bpm, float(np.median(analysis.local_bpms)))
+        again = rebuild_with_subdivision(analysis, analysis.subdivision)
+        self.assertEqual(again.global_bpm, analysis.global_bpm)
+
+
+class FallbackLagTests(unittest.TestCase):
+    """The fallback tracker's beats land on their attacks, not after them.
+
+    The tracker ends each beat on a peak of the onset envelope, and those
+    peaks come after the sound starts: forced on Corpus A, its beats landed a
+    median 7.4-8.9 ms after their hits (13 and 17 ms under noise), and on
+    the four Corpus B songs that reach it the sound starts 21-24 ms before
+    its beats. The lag is read on the song's waveform and taken off every
+    beat and red line; the tempo the tracker read stays as it was.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.path = Path(cls._tmp.name) / "ramp.wav"
+        cls.clicks = _click_ramp(cls.path, 100.0, 140.0, 24.0)
+        cls.analysis = analyze_audio(cls.path, osu_conventions=False)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_a_ramp_through_the_fallback_lands_on_its_clicks(self):
+        analysis = self.analysis
+        self.assertEqual((analysis.engine, analysis.subdivision), ("legacy", 1.0))
+        # A bare click's envelope peaks about 6 ms after the click starts.
+        self.assertTrue(-0.009 < analysis.beat_shift_s < -0.003, analysis.beat_shift_s)
+        errors = _from_nearest_ms(analysis.beats, self.clicks)
+        self.assertGreater(errors.size, 0.9 * analysis.beats.size)
+        self.assertLess(abs(float(np.median(errors))), 1.0)             # +6.1 ms before
+        first = _from_nearest_ms([snap_timing_points(analysis.points)[0].offset_ms / 1000.0],
+                                 self.clicks)
+        self.assertEqual(first.size, 1)
+        self.assertLess(abs(float(first[0])), 2.0)
+
+    def test_only_the_positions_move(self):
+        from unittest import mock
+        import overtone
+        with mock.patch.object(overtone, "_tracker_lag", return_value=0.0):
+            unmoved = analyze_audio(self.path, osu_conventions=False)
+        moved, shift = self.analysis, self.analysis.beat_shift_s
+        self.assertNotEqual(shift, 0.0)
+        self.assertEqual(unmoved.beat_shift_s, 0.0)
+        np.testing.assert_array_equal(moved.local_bpms, unmoved.local_bpms)
+        np.testing.assert_array_equal(moved.base_frames, unmoved.base_frames)
+        self.assertEqual((moved.global_bpm, moved.meter, moved.subdivision),
+                         (unmoved.global_bpm, unmoved.meter, unmoved.subdivision))
+        self.assertEqual([(p.bpm, p.confidence, p.beat_index, p.meter) for p in moved.points],
+                         [(p.bpm, p.confidence, p.beat_index, p.meter) for p in unmoved.points])
+        np.testing.assert_allclose(moved.beats - unmoved.beats, shift, atol=1e-12)
+        np.testing.assert_allclose([p.offset_ms for p in moved.points],
+                                   [p.offset_ms + shift * 1000.0 for p in unmoved.points],
+                                   atol=1e-9)
+
+    def test_a_rebuild_moves_its_beats_by_the_songs_lag(self):
+        # A rebuild has no audio to read the lag on; the song's own is kept.
+        analysis = self.analysis
+        same = rebuild_with_subdivision(analysis, analysis.subdivision)
+        np.testing.assert_array_equal(same.beats, analysis.beats)
+        self.assertEqual([(p.offset_ms, p.bpm) for p in same.points],
+                         [(p.offset_ms, p.bpm) for p in analysis.points])
+        half = rebuild_with_subdivision(analysis, analysis.subdivision / 2)
+        self.assertEqual(half.beat_shift_s, analysis.beat_shift_s)
+        errors = _from_nearest_ms(half.beats, self.clicks)
+        self.assertGreater(errors.size, 0.9 * half.beats.size)
+        self.assertLess(abs(float(np.median(errors))), 1.0)
+
+    def test_the_pulse_suggestion_reads_the_envelope_where_the_tracker_put_the_beats(self):
+        # Moved 20 ms earlier, a beat's +-2 frame window no longer holds the
+        # envelope peak it was tracked on, and the suggestion would vanish.
+        from overtone import suggest_section_pulse
+        rate = 44100 / HOP
+        beats = 0.5 + np.arange(40) * 0.6                   # 100 BPM, off-beats between
+        onset = np.zeros(int(26 * rate), dtype=np.float32)
+        onset[np.rint(beats * rate).astype(int)] = 1.0
+        onset[np.rint((beats + 0.3) * rate).astype(int)] = 0.8
+
+        def analysis(shift: float) -> Analysis:
+            return Analysis("x.wav", 25.0, beats + shift, np.full(40, 100.0),
+                            [TimingPoint(500.0 + shift * 1000.0, 100.0, 1.0, 0)], HOP, 44100,
+                            1.0, 100.0, 1.0, "4/4", onset, beats * rate, beat_shift_s=shift)
+
+        where = suggest_section_pulse(analysis(0.0))
+        self.assertEqual([(index, factor) for index, factor, _ratio in where], [(0, 2)])
+        self.assertEqual(suggest_section_pulse(analysis(-0.020)), where)
+
+    def test_no_lag_is_read_without_attacks_under_the_beats(self):
+        from overtone import _tracker_lag
+        sr = 44100
+        y = np.zeros(sr * 12, dtype=np.float32)
+        n = int(0.03 * sr)
+        t = np.arange(n) / sr
+        click = (np.sin(2 * np.pi * 1800 * t) * np.exp(-t / 0.004)).astype(np.float32)
+        hits = 0.5 + np.arange(20) * 0.5
+        for hit in hits:
+            i = int(round(hit * sr))
+            y[i:i + n] += click
+        self.assertAlmostEqual(_tracker_lag(y, sr, hits + 0.007), -0.007, delta=0.0005)
+        # In silence, too few on an attack, or under half of them: nothing to read.
+        self.assertEqual(_tracker_lag(y, sr, hits + 0.25), 0.0)
+        self.assertEqual(_tracker_lag(y, sr, hits[:6] + 0.007), 0.0)
+        self.assertEqual(_tracker_lag(y, sr, np.r_[hits[:9] + 0.007, hits[9:] + 0.25]), 0.0)
+        self.assertEqual(_tracker_lag(np.zeros(0, dtype=np.float32), sr, hits), 0.0)
+
+
+class MapLeadTests(unittest.TestCase):
+    """with_map_lead: osu!'s red-line convention, applied only at export."""
+
+    def test_detected_lines_move_and_hand_placed_ones_stay(self):
+        from dataclasses import replace as dc_replace
+        from overtone import MAP_LEAD_MS, TimingPoint, with_map_lead, osu_timing_text
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "click.wav"
+            _click_track(path, 120.0, duration=12.0)
+            analysis = analyze_audio(path)
+        base = dc_replace(analysis, points=[TimingPoint(1000.0, 120.0, 0.9, 0),
+                                            TimingPoint(9000.0, 150.0, 0.9, 1, manual=True)])
+        moved = with_map_lead(base)
+        self.assertEqual([p.offset_ms for p in moved.points], [1000.0 - MAP_LEAD_MS, 9000.0])
+        self.assertEqual([p.bpm for p in moved.points], [120.0, 150.0])
+        self.assertEqual([p.offset_ms for p in base.points], [1000.0, 9000.0])   # untouched
+        self.assertIs(with_map_lead(base, 0.0), base)
+        rows = osu_timing_text(moved).splitlines()
+        self.assertTrue(rows[1].startswith(f"{int(round(1000 - MAP_LEAD_MS))},"))
+
+
+class BeatThisTests(unittest.TestCase):
+    """Beat This! as an extra voter: the model, its beats and the vote."""
+
+    @classmethod
+    def setUpClass(cls):
+        import overtone
+        cls.ta = overtone
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.click = Path(cls.tmp.name) / "click120.wav"
+        _click_track(cls.click, 120.0, duration=30.0)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_the_model_is_the_one_recorded(self):
+        # A checkout without Git LFS holds a pointer, not the model.
+        import hashlib, json
+        folder = self.ta.ROOT / "assets" / "models"
+        record = json.loads((folder / "beat_this.json").read_text(encoding="utf-8"))
+        data = (folder / record["model"]).read_bytes()
+        self.assertEqual(len(data), record["bytes"])
+        self.assertEqual(hashlib.sha256(data).hexdigest(), record["sha256"])
+        self.assertTrue((folder / "LICENSE-beat-this.txt").read_text(encoding="utf-8")
+                        .startswith("MIT License"))
+
+    def test_it_hears_a_click_track_on_its_beats(self):
+        import soundfile as sf
+        y, sr = sf.read(str(self.click), dtype="float32")
+        beats = self.ta._beat_this_beats(y, sr)
+        self.assertIsNotNone(beats)
+        gaps = np.diff(beats)
+        # its beats come on a 50 fps grid: 0.5 s apart within a frame
+        self.assertGreater(np.mean(np.abs(gaps - 0.5) <= 0.021), 0.9)
+
+    def test_a_grid_the_engine_already_fits_keeps_its_lines(self):
+        voted = analyze_audio(self.click)
+        alone = analyze_audio(self.click, beat_vote=False)
+        self.assertEqual([(p.offset_ms, p.bpm) for p in voted.points],
+                         [(p.offset_ms, p.bpm) for p in alone.points])
+
+    def test_without_the_model_the_vote_is_skipped(self):
+        saved = list(self.ta._BEAT_THIS_SESSION)
+        self.ta._BEAT_THIS_SESSION[:] = [None]
+        try:
+            self.assertIsNone(self.ta._beat_this_beats(np.zeros(44100, np.float32), 44100))
+            alone = analyze_audio(self.click, beat_vote=False)
+            self.assertEqual(self.ta._beat_this_vote(alone, np.zeros(10), 44100), alone)
+        finally:
+            self.ta._BEAT_THIS_SESSION[:] = saved
+
+    def test_the_fit_score_prefers_the_grid_on_the_attacks(self):
+        times = np.arange(0.5, 30.0, 0.5)
+        weights = np.ones_like(times)
+        on = self.ta._grid_fit_score(times, times, weights, 15.0)
+        off = self.ta._grid_fit_score(times + 0.05, times, weights, 15.0)
+        self.assertAlmostEqual(on, 1.0)
+        self.assertLess(off, 0.1)
+
+
+class LocalTempoTests(unittest.TestCase):
+    """The local-tempo tracker that replaces the v2 tracker's red lines."""
+
+    def test_a_song_that_doubles_gets_both_tempi(self):
+        # Beats at 130 BPM, then a double-time part at 260: two red lines.
+        from overtone import _beats_to_lines
+        beats = np.concatenate([0.5 + np.arange(40) * 60 / 130,
+                                0.5 + 40 * 60 / 130 + np.arange(80) * 60 / 260])
+        lines = _beats_to_lines(beats, 8.0)
+        self.assertEqual([round(b) for _, b in lines], [130, 260])
+
+    def test_the_path_takes_a_double_time_part(self):
+        # Window tempi: 130 strongest, then 260 strongest for a while.
+        from overtone import _tempo_path
+        slow = [(130.0, 0.9), (260.0, 0.5)]
+        fast = [(130.0, 0.5), (260.0, 0.9)]
+        path = _tempo_path([slow] * 5 + [fast] * 5 + [slow] * 5)
+        self.assertEqual([round(b) for b in path], [130] * 5 + [260] * 5 + [130] * 5)
+
+    @staticmethod
+    def _local(bpm: float):
+        """A local-tempo analysis at ``bpm``: one red line, beats on it."""
+        beats = np.arange(0.5, 60.0, 60.0 / bpm)
+        return Analysis("song.mp3", 60.0, beats, np.full(beats.size, bpm),
+                        [TimingPoint(500.0, bpm, 0.9, 0)], 512, 44100, 1.0,
+                        global_bpm=bpm, engine="legacy", local_tempo=True)
+
+    def test_the_local_octave_fold_does_nothing_switched_off(self):
+        from overtone import _fold_local_to_map_octave
+        local = self._local(67.5)
+        with mock.patch("overtone.LOCAL_OCTAVE_FOLD", False):
+            self.assertIs(_fold_local_to_map_octave(local), local)
+            fast = self._local(269.88)
+            self.assertIs(_fold_local_to_map_octave(fast, 134.855, None, lambda: 135.0), fast)
+
+    def test_a_local_tempo_below_the_map_octave_is_doubled(self):
+        from overtone import _fold_local_to_map_octave
+        with mock.patch("overtone.LOCAL_OCTAVE_FOLD", True):
+            folded = _fold_local_to_map_octave(self._local(67.5))
+            # Folding alone never halves: the reference is not consulted.
+            fast = _fold_local_to_map_octave(self._local(269.88), reference=134.855)
+        self.assertAlmostEqual(folded.global_bpm, 135.0)
+        self.assertAlmostEqual(folded.points[0].bpm, 135.0)
+        self.assertAlmostEqual(fast.global_bpm, 269.88)
+
+    def test_halving_reads_a_doubled_local_tempo_at_the_reference_on_its_beats(self):
+        # Ado - unravel: the tracker read 134.9 (mapped at 135), its local
+        # tempo 269.9. The beats kept are the ones on the reference's.
+        from overtone import _fold_local_to_map_octave
+        local = self._local(269.88)
+        reference_beats = local.beats[1::2]          # the tracker's beats: the odd ones
+        with mock.patch("overtone.LOCAL_OCTAVE_FOLD", True), \
+                mock.patch("overtone.LOCAL_OCTAVE_HALVE", True), \
+                mock.patch("overtone.LOCAL_OCTAVE_JUDGE", False):
+            folded = _fold_local_to_map_octave(local, 134.855, reference_beats)
+            other_phase = _fold_local_to_map_octave(local, 134.855, local.beats[0::2])
+            not_double = _fold_local_to_map_octave(self._local(250.0), 150.0)
+            out_of_range = _fold_local_to_map_octave(self._local(250.0), 300.0)
+        self.assertAlmostEqual(folded.global_bpm, 134.94)
+        np.testing.assert_allclose(folded.beats, local.beats[1::2])
+        self.assertAlmostEqual(folded.points[0].offset_ms, local.beats[1] * 1000.0)
+        np.testing.assert_allclose(other_phase.beats, local.beats[0::2])
+        self.assertAlmostEqual(not_double.global_bpm, 250.0)
+        self.assertAlmostEqual(out_of_range.global_bpm, 250.0)
+
+    def test_the_judge_lets_a_halving_through_only_when_beat_this_hears_the_slower_pulse(self):
+        from overtone import _fold_local_to_map_octave
+        local = self._local(250.0)
+        flags = (mock.patch("overtone.LOCAL_OCTAVE_FOLD", True),
+                 mock.patch("overtone.LOCAL_OCTAVE_HALVE", True),
+                 mock.patch("overtone.LOCAL_OCTAVE_JUDGE", True))
+        for flag in flags:
+            flag.start()
+            self.addCleanup(flag.stop)
+        slow = _fold_local_to_map_octave(local, 125.0, None, lambda: 126.0)
+        fast = _fold_local_to_map_octave(local, 125.0, None, lambda: 248.0)   # a fast band
+        silent = _fold_local_to_map_octave(local, 125.0, None, lambda: None)
+        no_judge = _fold_local_to_map_octave(local, 125.0)
+        self.assertAlmostEqual(slow.global_bpm, 125.0)
+        for kept in (fast, silent, no_judge):
+            self.assertAlmostEqual(kept.global_bpm, 250.0)
+
+    def test_lines_a_few_tenths_off_a_whole_bpm_snap_and_merge(self):
+        # Attacks on a 174 BPM grid, read as two lines at 174.3 and 173.8.
+        from overtone import _snap_whole_lines
+        times = 0.5 + np.arange(200) * 60 / 174
+        weights = np.ones_like(times)
+        lines = [(500.0, 174.3), (500.0 + 100 * 60000 / 174, 173.8)]
+        self.assertEqual(_snap_whole_lines(lines, times, weights, 70.0),
+                         [(mock.ANY, 174.0)])
+
+    def test_a_fractional_bpm_the_attacks_keep_is_kept(self):
+        from overtone import _snap_whole_lines
+        times = 0.5 + np.arange(400) * 60 / 128.37
+        weights = np.ones_like(times)
+        lines = _snap_whole_lines([(500.0, 128.37)], times, weights, 190.0)
+        self.assertEqual(lines, [(500.0, 128.37)])
+
+    def test_the_lines_follow_the_beats(self):
+        from overtone import _beats_to_lines
+        rng = np.random.default_rng(3)
+        beats = np.cumsum(np.full(200, 60 / 174)) + rng.normal(0, 0.0005, 200)
+        lines = _beats_to_lines(beats, 8.0)
+        self.assertEqual(len(lines), 1)
+        self.assertAlmostEqual(lines[0][1], 174.0, delta=0.05)
+
+
+class FallbackRebuildTests(unittest.TestCase):
+    """A ×2 / ÷2 rebuild of a fallback result at its own pulse gives it back.
+
+    The analysis and the rebuild finished the tracker's beats in two copies of
+    the same steps, and held a beat with no peak under it differently: on the
+    tracker's own doubling the analysis let the refinement drag it to its
+    window's edge, the rebuild held it. ÷2 then ×2 changed 11 of 32 fallback
+    analyses; Calm Down Juliet came back with 10 red lines for 3.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import soundfile as sf
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.path = Path(cls._tmp.name) / "kit90-drop.wav"
+        _drum_track(cls.path, [(0.5, 90.0)], duration=16.0)
+        # Three silent seconds: the beats the doubled grid puts there have no
+        # peak under them.
+        y, sr = sf.read(str(cls.path), dtype="float32")
+        y[6 * sr:9 * sr] = 0.0
+        sf.write(str(cls.path), y, sr)
+        cls.analysis = analyze_audio(cls.path, engine="legacy", osu_conventions=False)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def assertSameResult(self, got: Analysis, want: Analysis) -> None:
+        np.testing.assert_array_equal(got.beats, want.beats)
+        np.testing.assert_array_equal(got.local_bpms, want.local_bpms)
+        self.assertEqual(got.points, want.points)
+        self.assertEqual(
+            (got.subdivision, got.global_bpm, got.stability, got.meter, got.beat_shift_s),
+            (want.subdivision, want.global_bpm, want.stability, want.meter, want.beat_shift_s))
+
+    def test_the_trackers_own_doubling_comes_back(self):
+        from dataclasses import replace
+        analysis = self.analysis
+        self.assertEqual((analysis.engine, analysis.subdivision), ("legacy", 2))  # 90 BPM doubled
+        self.assertSameResult(rebuild_with_subdivision(analysis, analysis.subdivision), analysis)
+        # The silent seconds do leave beats with no peak under them: holding
+        # them, as rebuilds did at every pulse above 1, gives another result.
+        held = rebuild_with_subdivision(replace(analysis, auto_subdivision=0.0), 2.0)
+        self.assertFalse(np.array_equal(held.beats, analysis.beats))
+
+    def test_x2_then_half_and_half_then_x2_come_back(self):
+        for away in (4.0, 1.0):
+            with self.subTest(away=away):
+                there = rebuild_with_subdivision(self.analysis, away)
+                self.assertSameResult(rebuild_with_subdivision(there, 2.0), self.analysis)
+
+    def test_x2_after_an_analysis_forced_to_half_is_auto(self):
+        # Analysed at ÷2, then ×2: back on the pulse the tracker chose itself,
+        # so the result is Auto's. Each analysis reads its lag on its own
+        # beats; it is left out here so that the two compare exactly.
+        from unittest import mock
+        import overtone
+        with mock.patch.object(overtone, "_tracker_lag", return_value=0.0):
+            auto = analyze_audio(self.path, engine="legacy", osu_conventions=False)
+            half = analyze_audio(self.path, engine="legacy", force_subdivision=0.5, osu_conventions=False)
+        self.assertEqual(half.subdivision, 1.0)
+        self.assertSameResult(rebuild_with_subdivision(half, 2.0), auto)
+
+    def test_with_re_anchoring_off_a_rebuild_leaves_the_beats_as_tracked(self):
+        # Re-anchoring off leaves every beat where the tracker's split put it
+        # (and reads no lag); a rebuild re-anchored them all regardless, so at
+        # its own pulse every beat moved.
+        off = analyze_audio(self.path, engine="legacy", refine_beats=False, osu_conventions=False)
+        self.assertSameResult(rebuild_with_subdivision(off, off.subdivision), off)
+        doubled = analyze_audio(self.path, engine="legacy", refine_beats=False,
+                                force_subdivision=2, osu_conventions=False)
+        self.assertSameResult(rebuild_with_subdivision(off, doubled.subdivision), doubled)
+
+
+class OneWindowSignatureTests(unittest.TestCase):
+    """A signature region exactly one window long is a region, wherever the song starts.
+
+    Its length in seconds was compared with MIN_METER_BARS bars, which it
+    equals: an ulp coin flip on accumulated float edges. At a 1.2 s bar, 85 of
+    200 such runs were kept and 115 dropped.
+    """
+
+    def test_a_four_bar_interlude_in_three(self):
+        bar = 1.2
+        found = []
+        for step in range(37):
+            phase = 0.25 + step * 0.0271
+            times, weights = [], []
+            for n in range(68):
+                beats = 3 if 32 <= n < 36 else 4
+                for k in range(beats):
+                    times.append(phase + n * bar + k * bar / beats)
+                    weights.append(1.0 if k == 0 else 0.6)
+            regions = meter_segments(np.array(times), np.array(weights, dtype=np.float32),
+                                     bar, phase)
+            found.append([beats for _a, _b, beats, _s in regions])
+        self.assertEqual(found, [[4, 3, 4]] * 37)
+
+
+class LongMixTests(unittest.TestCase):
+    """Section growth must reach the end of a long track.
+
+    It stopped after 64 passes: a 15-minute mix changing tempo every 9 s came
+    out as 64 sections ending at 576.5 s, and the last 323 s had none.
+    """
+
+    def test_growth_covers_a_fifteen_minute_mix(self):
+        from overtone import _grow_sections
+        times, t = [], 0.5
+        while t < 900.0:
+            bpm = 120.0 if int((t - 0.5) // 9.0) % 2 == 0 else 127.0
+            times.append(t)
+            t += 60.0 / bpm
+        times = np.array(times)
+        sections = _grow_sections(times, np.full(times.size, 0.8, dtype=np.float32),
+                                  0.5, 0.5, 1.5, 12)
+        self.assertGreater(len(sections), 64)
+        self.assertGreater(sections[-1].end_s, times[-1] - 1.0)
+
+
+class HalfBarDownbeatTests(unittest.TestCase):
+    """A bar is only claimed when its downbeat beats the class half a bar away.
+
+    The onset envelope favours broadband hits: a snare can out-weigh the kick
+    on 1, and read at double tempo the "bar" of four is two beats of kick and
+    snare. The old rule compared the strongest class with the mean only, so it
+    claimed the backbeat as the 1 -- 3 of 60 tempo-change renders put a red
+    line one beat late, and on 88 ranked maps 16 of 21 claimed bars missed the
+    map's downbeat.
+    """
+
+    @staticmethod
+    def _grid(class_weights, bars: int = 64, period: float = 0.25):
+        k = np.arange(bars * len(class_weights))
+        rng = np.random.default_rng(0)
+        weights = np.array(class_weights)[k % len(class_weights)] * rng.uniform(0.97, 1.03, k.size)
+        return 0.5 + k * period, weights.astype(np.float32), period, 0.5
+
+    def test_a_backbeat_is_not_a_downbeat(self):
+        # Kick-beats 1.05, snare-beats 1.25, off-beats 0.85: 1.25 over the mean,
+        # enough for the old rule, but only 1.19 over the class half a bar away.
+        times, weights, period, phase = self._grid([1.05, 0.85, 1.25, 0.85])
+        self.assertEqual(_meter_from_grid(times, weights, period, phase), ("4/4", 0, 1))
+
+    def test_a_real_accent_still_proves_the_bar(self):
+        times, weights, period, phase = self._grid([1.5, 1.0, 1.0, 1.0])
+        self.assertEqual(_meter_from_grid(times, weights, period, phase), ("4/4", 0, 4))
+        times, weights, period, phase = self._grid([1.0, 1.0, 1.5, 1.0])
+        self.assertEqual(_meter_from_grid(times, weights, period, phase), ("4/4", 2, 4))
+        # An odd bar has no half-bar class; 3/4 keeps the rule it had.
+        times, weights, period, phase = self._grid([1.5, 1.0, 1.0])
+        self.assertEqual(_meter_from_grid(times, weights, period, phase), ("3/4", 0, 3))
+
+
+class BoundedMemoryTests(unittest.TestCase):
+    """Long songs must not take gigabytes, and the blocks must not move a result.
+
+    librosa builds a whole spectrogram for the onset envelope and a whole
+    8-second tempogram (twice) for the fallback tracker. For a 5-minute song
+    that peaked at 3.7 GB; two analyses at once froze a 16 GB machine. Both are
+    now built in blocks that join into the same frames.
+    """
+
+    @staticmethod
+    def _envelope(seconds: float = 40.0) -> tuple[np.ndarray, int]:
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "drums.wav"
+            _drum_track(path, [(0.5, 128.0), (seconds / 2, 140.0)], duration=seconds)
+            y, sr = _load_audio(str(path), lambda _message: None)
+        return ta._onset_envelope(y, sr, HOP), sr
+
+    def test_blocks_rebuild_librosas_tempogram_exactly(self):
+        import librosa
+        from unittest import mock
+        import overtone as ta
+        onset, sr = self._envelope()
+        with mock.patch.object(ta, "TEMPOGRAM_BLOCK", 300):   # several blocks, a ragged last one
+            for win in (384, 1378):
+                pieces = np.concatenate(list(ta._tempogram(onset, sr, HOP, win)), axis=-1)
+                whole = librosa.feature.tempogram(onset_envelope=onset, sr=sr,
+                                                  hop_length=HOP, win_length=win)
+                with self.subTest(win=win):
+                    self.assertTrue(np.array_equal(pieces, whole))
+
+    def test_tempo_readings_are_librosas(self):
+        import librosa
+        import overtone as ta
+        onset, sr = self._envelope()
+        per_frame, overall = ta._tempo_readings(onset, sr, HOP)
+        self.assertTrue(np.array_equal(per_frame, librosa.feature.rhythm.tempo(
+            onset_envelope=onset, sr=sr, hop_length=HOP, aggregate=None, std_bpm=1.0)))
+        self.assertTrue(np.array_equal(overall, librosa.feature.rhythm.tempo(
+            onset_envelope=onset, sr=sr, hop_length=HOP)))
+
+    def test_mel_blocks_match_the_one_shot_spectrogram(self):
+        import librosa
+        from unittest import mock
+        import overtone as ta
+        rng = np.random.default_rng(0)
+        y = (rng.standard_normal(22050 * 8) * 0.1).astype(np.float32)
+        with mock.patch.object(ta, "SPECTROGRAM_BLOCK", 500):
+            pieces = ta._mel_power(y, 22050, HOP)
+        whole = librosa.feature.melspectrogram(y=y, sr=22050, hop_length=HOP,
+                                               fmax=11025, n_mels=128)
+        self.assertEqual(pieces.shape, whole.shape)
+        # Same frames; only float32 summation order in the mel projection differs.
+        self.assertTrue(np.allclose(pieces, whole, rtol=1e-5, atol=1e-6 * float(whole.max())))
+
+    def test_a_two_minute_song_stays_small(self):
+        import tracemalloc
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "long.wav"
+            _drum_track(path, [(0.5, 128.0)], duration=120.0)
+            y, sr = _load_audio(str(path), lambda _message: None)
+        tracemalloc.start()
+        try:
+            start = tracemalloc.get_traced_memory()[0]
+            ta._onset_envelope(y, sr, ta.FIT_HOP)
+            envelope = tracemalloc.get_traced_memory()[1] - start
+            onset = ta._onset_envelope(y, sr, HOP)
+            tracemalloc.reset_peak()
+            start = tracemalloc.get_traced_memory()[0]
+            ta._global_tempo_guides(onset, sr, HOP)
+            ta._track_beats_hybrid(onset, sr, HOP)
+            tracker = tracemalloc.get_traced_memory()[1] - start
+        finally:
+            tracemalloc.stop()
+        # Measured: 533 MB and 1363 MB before, 160 MB and 131 MB in blocks.
+        self.assertLess(envelope / 2**20, 300)
+        self.assertLess(tracker / 2**20, 400)
+
+    def test_a_failed_envelope_is_not_swapped_for_another_in_silence(self):
+        from unittest import mock
+        import overtone as ta
+        y = np.zeros(22050 * 3, dtype=np.float32)
+        y[::5000] = 1.0
+        # Out of memory mid-spectrogram: the caller hears of it. Any failure
+        # used to get the flux envelope instead, and a different grid.
+        with mock.patch.object(ta, "_mel_power", side_effect=MemoryError), \
+                self.assertRaises(MemoryError):
+            ta._onset_envelope(y, 22050, HOP)
+        # What librosa refuses as audio still gets the flux envelope.
+        y[100] = np.nan
+        with mock.patch.object(ta, "_fast_onset_envelope",
+                               wraps=ta._fast_onset_envelope) as flux:
+            ta._onset_envelope(y, 22050, HOP)
+        self.assertEqual(flux.call_count, 1)
+
+
+class LoadErrorMessageTests(unittest.TestCase):
+    """A missing, empty or junk file says which it is (roadmap Phase 22).
+
+    All three read "Could not decode audio ... install FFmpeg", which is the
+    wrong advice for every one of them.
+    """
+
+    def test_missing_empty_and_junk_files_each_get_their_own_message(self):
+        import overtone as ta
+
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            empty = folder / "empty.wav"
+            empty.write_bytes(b"")
+            junk = folder / "notes.wav"
+            junk.write_text("not audio at all")
+            cases = {
+                folder / "missing.wav": "No audio file at",
+                empty: "empty.wav is empty (0 bytes)",
+                junk: "Could not decode notes.wav: it is not audio",
+                folder: "No audio file at",
+            }
+            for path, message in cases.items():
+                with self.subTest(path=path.name):
+                    with self.assertRaises(RuntimeError) as caught:
+                        ta.analyze_audio(str(path))
+                    self.assertIn(message, str(caught.exception))
+                    self.assertNotIn("FFmpeg", str(caught.exception))
+
+    def test_a_compressed_file_that_fails_still_points_at_ffmpeg(self):
+        import overtone as ta
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = Path(tmp) / "song.mp3"
+            fake.write_bytes(b"ID3" + bytes(64))
+            with self.assertRaises(RuntimeError) as caught:
+                ta.analyze_audio(str(fake))
+            self.assertIn("FFmpeg", str(caught.exception))
+
+
+class RustSidecarTests(unittest.TestCase):
+    """The v4 engine through overtone-cli builds v3's own Analysis (Phase 22)."""
+
+    REPORT = {
+        "source": "song.wav", "duration": 10.0, "global_bpm": 150.0, "stability": 0.99,
+        "meter": "4/4", "residual_ms": 0.4,
+        "sections": [{"start_s": 0.5, "end_s": 9.8, "bpm": 150.0, "period_s": 0.4,
+                      "phase_s": 0.5, "residual_ms": 0.4, "coverage": 0.97, "inliers": 24}],
+        "evidence": {"hop": 128, "sample_rate": 44100, "onset": [0.0, 1.0, 0.5],
+                     "attack_times": [0.5, 0.9], "attack_weights": [1.0, 0.6],
+                     "beats": [0.5, 0.9, 1.3], "local_bpms": [150.0, 150.0, 150.0],
+                     "meter_beats": 4, "downbeat_class": 0,
+                     "points": [{"offset_ms": 500.25, "bpm": 150.0, "confidence": 0.98,
+                                 "section": 0, "meter": 4, "meter_known": True}]},
+    }
+
+    def test_a_report_becomes_the_analysis_v3_would_store(self):
+        import overtone_rust as rs
+
+        analysis = rs.analysis_from_report(self.REPORT)
+        self.assertEqual(analysis.engine, "precision")
+        self.assertEqual((analysis.hop_length, analysis.sample_rate), (128, 44100))
+        self.assertEqual(analysis.onset.dtype, np.float32)
+        np.testing.assert_allclose(analysis.base_frames, np.array([0.5, 0.9, 1.3]) * 44100 / 128)
+        point = analysis.points[0]
+        self.assertEqual((point.offset_ms, point.beat_index, point.meter, point.meter_known),
+                         (500.25, 0, 4, True))
+        section = analysis.sections[0]
+        self.assertEqual((section.period, section.phase, section.inliers), (0.4, 0.5, 24))
+        self.assertIn("500,400.000000000000,4", osu_timing_text(analysis))
+
+    def test_without_a_binary_it_says_so(self):
+        from unittest import mock
+
+        import overtone_rust as rs
+
+        self.assertIsNone(rs.find_cli([Path("no/such/overtone-cli.exe")]))
+        with mock.patch.object(rs, "find_cli", return_value=None):
+            with self.assertRaises(rs.SidecarUnavailable):
+                rs.analyze("song.wav")
+            with self.assertRaises(rs.SidecarUnavailable):
+                rs.hitsound("song.wav", "map.osu")
+            with self.assertRaises(rs.SidecarUnavailable):
+                rs.ramps("song.wav")
+
+    def test_audio_only_sends_no_map_and_returns_its_units(self):
+        import overtone_rust as rs
+        report = {"mode": "audio-only", "source": "song.wav",
+                  "units": [{"object": None, "part": "attack", "edge": None,
+                             "time_ms": 500.0,
+                             "proposal": {"bank": "drum", "additions": ["clap"]}}]}
+        seen = {}
+
+        def fake_run(args, timeout):
+            seen["args"] = args
+            import json
+            import subprocess
+            return subprocess.CompletedProcess(
+                args, 0, json.dumps(report).encode("utf-8"), b"")
+
+        from unittest import mock
+        with mock.patch.object(rs, "find_cli", return_value=Path("cli")), \
+                mock.patch.object(rs, "_run", side_effect=fake_run):
+            out = rs.hitsound("song.wav", None)
+        self.assertEqual(seen["args"], [str(Path("cli")), "hitsound", "song.wav"])
+        self.assertEqual(out["mode"], "audio-only")
+        self.assertEqual(out["units"], report["units"])
+
+    def test_the_rust_engine_reads_what_v3_reads(self):
+        import overtone as ta
+        import overtone_rust as rs
+
+        if rs.find_cli() is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        sr = 44_100
+        y = np.zeros(20 * sr, dtype=np.float32)
+        rng = np.random.default_rng(3)
+        burst = np.exp(-np.arange(1300) / 180.0) * (rng.random(1300) - 0.5)
+        for k, t in enumerate(np.arange(0.5, 19.5, 0.4)):
+            start = int(t * sr)
+            y[start:start + 1300] += (0.9 if k % 4 == 0 else 0.5) * burst
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "clicks.wav"
+            ta.sf.write(str(path), y, sr, subtype="PCM_16")
+            ours, theirs = rs.analyze(path), ta.analyze_audio(str(path))
+            noise = Path(tmp) / "noise.wav"
+            ta.sf.write(str(noise), (rng.random(10 * sr) - 0.5).astype(np.float32), sr,
+                        subtype="PCM_16")
+            with self.assertRaises(rs.SidecarRefused) as refused:
+                rs.analyze(noise)
+        self.assertEqual(theirs.engine, "precision")
+        self.assertAlmostEqual(ours.global_bpm, theirs.global_bpm, places=6)
+        np.testing.assert_allclose(ours.beats, theirs.beats, atol=1e-6)
+        rows = [line.split(",")[0] for line in osu_timing_text(ours).splitlines()[1:]]
+        self.assertEqual(rows, [line.split(",")[0]
+                                for line in osu_timing_text(theirs).splitlines()[1:]])
+        self.assertIn("No rhythmic pulse", str(refused.exception))
+
+    #: A process that would outlive every test here, standing in for the CLI.
+    SLEEPER = [sys.executable, "-c", "import time; time.sleep(60)"]
+
+    @staticmethod
+    def _spied():
+        """Popen as ever, keeping every process it starts."""
+        import subprocess
+        from unittest import mock
+
+        started, real = [], subprocess.Popen
+
+        def spy(*args, **kwargs):
+            started.append(real(*args, **kwargs))
+            return started[-1]
+        return started, mock.patch.object(subprocess, "Popen", side_effect=spy)
+
+    def test_a_stop_ends_the_sidecar_and_leaves_no_process(self):
+        import time
+
+        import overtone as ta
+        import overtone_rust as rs
+
+        started, spy = self._spied()
+        asked_at = time.perf_counter() + 0.3
+        with spy, ta.stop_requests(lambda: time.perf_counter() >= asked_at):
+            with self.assertRaises(ta.AnalysisStopped):
+                rs._run(self.SLEEPER, timeout=60)
+        waited = time.perf_counter() - asked_at
+        self.assertEqual(len(started), 1)
+        self.assertIsNotNone(started[0].poll())         # ended, and reaped
+        self.assertLess(waited, 10.0)                   # not the 60 s it sleeps
+
+    def test_a_sidecar_past_its_timeout_is_ended_too(self):
+        import overtone_rust as rs
+
+        started, spy = self._spied()
+        with spy, self.assertRaises(RuntimeError) as raised:
+            rs._run(self.SLEEPER, timeout=0.5)
+        self.assertIn("was stopped", str(raised.exception))
+        self.assertIsNotNone(started[0].poll())
+
+    def test_what_the_sidecar_writes_arrives_whole(self):
+        # Read in slices between the stop checks, output larger than a pipe
+        # holds, written across several slices, loses nothing.
+        import overtone_rust as rs
+
+        code = ("import sys, time; sys.stdout.write('x' * 1000000); sys.stdout.flush(); "
+                "time.sleep(0.3); sys.stdout.write('y' * 2000000); sys.stderr.write('done')")
+        done = rs._run([sys.executable, "-c", code], timeout=60)
+        self.assertEqual(done.returncode, 0)
+        self.assertEqual(done.stdout, b"x" * 1000000 + b"y" * 2000000)
+        self.assertEqual(done.stderr, b"done")
+
+    def test_a_sidecar_that_cannot_start_is_unavailable(self):
+        import overtone_rust as rs
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(rs.SidecarUnavailable):
+                rs._run([str(Path(tmp) / "overtone-cli.exe"), "analyze"], timeout=5)
+
+
+class SnapAuditTests(unittest.TestCase):
+    """Objects off the map's own grid, and what an inject would unsnap."""
+
+    MAP = ("osu file format v14\r\n\r\n[General]\r\nAudioFilename: a.mp3\r\n\r\n"
+           "[TimingPoints]\r\n1000,500,4,1,0,100,1,0\r\n5000,400,4,1,0,100,1,0\r\n\r\n"
+           "[HitObjects]\r\n"
+           "256,192,500,1,0,0:0:0:0:\r\n"      # before the first red line, on 1/1
+           "256,192,1000,1,0,0:0:0:0:\r\n"     # 1/1
+           "256,192,1250,1,0,0:0:0:0:\r\n"     # 1/2
+           "256,192,1167,1,0,0:0:0:0:\r\n"     # 1/3: 1166.67, rounded
+           "256,192,1125,1,0,0:0:0:0:\r\n"     # 1/4
+           "256,192,1300,1,0,0:0:0:0:\r\n"     # off: nearest tick 1/12 at 1291.67
+           "256,192,5200,1,0,0:0:0:0:\r\n"     # second red line (150 BPM): 1/2
+           "256,192,70000,1,0,0:0:0:0:\r\n"    # past a 60 s audio, 1/2 of line two
+           "broken line\r\n")
+
+    def beatmap(self) -> dict:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(self.MAP.encode("utf-8"))
+            return read_osu_beatmap(path)
+
+    def test_objects_are_placed_on_their_own_red_line(self):
+        from overtone import snap_audit
+
+        report = snap_audit(self.beatmap(), duration_s=60.0)
+        self.assertTrue(report["ok"])
+        self.assertEqual((report["objects"], report["unparsed"], report["red_lines"]), (8, 1, 2))
+        self.assertEqual(len(report["unsnapped"]), 1)
+        off = report["unsnapped"][0]
+        self.assertEqual((off["time_ms"], off["nearest_divisor"]), (1300.0, 12))
+        self.assertAlmostEqual(off["off_ms"], round(1300 - (1000 + 7 / 12 * 500), 3))
+        self.assertEqual(report["by_divisor"]["1"], 2)   # 500 and 1000
+        # 1250; 5200 and 70000 on the second line's 400 ms beat (162.5 beats in)
+        self.assertEqual(report["by_divisor"]["2"], 3)
+        self.assertEqual(report["by_divisor"]["3"], 1)
+        self.assertEqual(report["by_divisor"]["4"], 1)
+        self.assertEqual(report["before_first_red"], [500.0])
+        self.assertEqual(report["past_audio"], [70000.0])
+        json.dumps(report)
+
+    def test_a_shifted_detection_says_what_an_inject_would_unsnap(self):
+        from overtone import snap_audit
+
+        analysis = Analysis("x.wav", 60.0, np.zeros(0), np.zeros(0),
+                            [TimingPoint(1010.0, 120.0, 1.0, 0)], 128, 44100, 1.0)
+        report = snap_audit(self.beatmap(), analysis)
+        moved = report["with_detected_timing"]
+        # 10 ms later, 120 BPM throughout: every snapped object moves off
+        # except the ones a fine tick still catches within 2 ms. 1300, off
+        # the map's grid, lands 1.7 ms from a 1/12 tick of the shifted one
+        # and comes back on.
+        self.assertGreater(len(moved["would_unsnap"]), 0)
+        self.assertEqual(moved["would_snap"], 1)
+        self.assertNotIn(1300.0, [m["time_ms"] for m in moved["would_unsnap"]])
+
+    def test_no_red_lines_is_said_not_guessed(self):
+        from overtone import snap_audit
+
+        report = snap_audit({"timing": {"reds": []}, "hitobjects": [{"time": 5.0}]})
+        self.assertEqual((report["ok"], report["reason"]), (False, "no_red_lines"))
+
+    def test_rounding_up_to_2_ms_is_snapped_and_export_keeps_1_ms(self):
+        from overtone import snap_audit
+
+        # 61 ranked maps put 272 objects 1-2 ms from a tick: whole-ms objects on a
+        # fractional beat. 1.5 ms is snapped, 2.5 ms is not.
+        beatmap = {"timing": {"reds": [(1000.0, 180.0)]},
+                   "hitobjects": [{"time": 1335.0, "kind": "circle"},     # 1/1 at 1333.33
+                                  {"time": 1669.0, "kind": "circle"}]}    # 1/1 at 1666.67
+        report = snap_audit(beatmap)
+        self.assertEqual([o["time_ms"] for o in report["unsnapped"]], [1669.0])
+        # Export snapping keeps its own 1 ms: a detected change 1.5 ms off the
+        # previous grid stays where the music put it. (Both once shared one
+        # name, and the audit's definition silently set export's too.)
+        points = [TimingPoint(1000.0, 180.0, 0.9, 0), TimingPoint(21001.5, 181.0, 0.9, 60)]
+        self.assertEqual(snap_timing_points(points)[1].offset_ms, 21001.5)
+
+
+class SnapDivisorTests(unittest.TestCase):
+    """Where the song needs 1/3, 1/4 or 1/6, per section."""
+
+    @staticmethod
+    def _analysis(points, attacks_s, duration=60.0, weight=1.0):
+        analysis = Analysis("x.wav", duration, np.zeros(0), np.zeros(0),
+                            points, 128, 44100, 1.0)
+        analysis.attack_times = np.array(attacks_s, dtype=np.float64)
+        analysis.attack_weights = np.full(len(attacks_s), weight)
+        return analysis
+
+    def test_triplets_read_third_quarters_read_quarter(self) -> None:
+        from overtone import snap_divisors
+        points = [TimingPoint(1000.0, 120.0, 0.9, 0)]
+        triplets = [1.0 + k / 6.0 for k in range(13)]
+        report = snap_divisors(self._analysis(points, triplets))
+        json.dumps(report)
+        section = report["sections"][0]
+        self.assertEqual(section["divisor"], "1/3")
+        self.assertEqual((section["attacks"], section["thirds"]), (13, 8))
+        quarters = [1.0 + k * 0.125 for k in range(17)]
+        plain = snap_divisors(self._analysis(points, quarters))["sections"][0]
+        self.assertEqual((plain["divisor"], plain["thirds"], plain["sixths"]), ("1/4", 0, 0))
+
+    def test_sixth_notes_read_sixth_and_swing_reads_other(self) -> None:
+        from overtone import snap_divisors
+        points = [TimingPoint(1000.0, 120.0, 0.9, 0)]
+        sixths = [1.0 + (k + (1 / 6 if k % 2 == 0 else 5 / 6)) * 0.5 for k in range(6)]
+        sixths += [1.0, 2.0]
+        report = snap_divisors(self._analysis(points, sixths))["sections"][0]
+        self.assertEqual((report["divisor"], report["sixths"]), ("1/6", 6))
+        swung = [1.0 + k * 0.5 + (0.025 if k % 2 else 0.0) for k in range(9)]
+        off = snap_divisors(self._analysis(points, swung))["sections"][0]
+        self.assertEqual((off["divisor"], off["thirds"]), ("1/4", 0))
+        self.assertGreater(off["finer"], 0)
+        tight = snap_divisors(self._analysis(points, swung), tol_ms=5.0)["sections"][0]
+        self.assertEqual((tight["divisor"], tight["other"]), ("1/4", 4))
+
+    def test_sections_verdict_apart_and_empties_stay_quarter(self) -> None:
+        from overtone import snap_divisors
+        points = [TimingPoint(1000.0, 120.0, 0.9, 0), TimingPoint(5000.0, 120.0, 0.9, 10)]
+        attacks = [1.0 + k / 6.0 for k in range(13)] + [5.0 + k * 0.125 for k in range(9)]
+        report = snap_divisors(self._analysis(points, attacks))
+        self.assertEqual([s["divisor"] for s in report["sections"]], ["1/3", "1/4"])
+        self.assertEqual(snap_divisors(self._analysis(points, []))["sections"][0]["attacks"], 0)
+        self.assertEqual(snap_divisors(self._analysis(points, []))["sections"][0]["divisor"], "1/4")
+        bare = self._analysis([], [])
+        self.assertEqual(snap_divisors(bare), {"sections": []})
+        with self.assertRaises(ValueError):
+            snap_divisors(self._analysis(points, [1.0]), tol_ms=0)
+
+    def test_quiet_thirds_under_loud_quarters_stay_quarter(self) -> None:
+        from overtone import snap_divisors
+        points = [TimingPoint(1000.0, 120.0, 0.9, 0)]
+        quarters = [1.0 + k * 0.5 for k in range(9)]
+        thirds = [1.0 + k / 6.0 for k in (2, 4, 8, 10, 14, 16, 20, 22)]
+        analysis = self._analysis(points, quarters + thirds)
+        analysis.attack_weights = np.array([1.0] * 9 + [0.05] * 8)
+        section = snap_divisors(analysis)["sections"][0]
+        self.assertEqual(section["thirds"], 8)
+        self.assertLess(section["third_share"], 0.10)
+        self.assertEqual(section["divisor"], "1/4")
+
+
+class DensityHintTests(unittest.TestCase):
+    """F-11: half- and double-time inside one reported section."""
+
+    @staticmethod
+    def _analysis(attacks, weights=None, start=0.0, end=80.0, period=0.5, phase=0.0):
+        section = GridSection(start, end, period, phase, len(attacks), 0.5, 0.95)
+        analysis = Analysis("x.wav", end, np.zeros(0), np.zeros(0), [], 128, 44100, 1.0)
+        analysis.sections = [section]
+        analysis.attack_times = np.asarray(attacks, dtype=float)
+        analysis.attack_weights = (np.ones(len(attacks)) if weights is None
+                                   else np.asarray(weights, dtype=float))
+        return analysis
+
+    @staticmethod
+    def _beats(n, step, start=0.0):
+        return [start + i * step for i in range(n)]
+
+    def test_a_half_time_tail_is_hinted_where_it_starts(self) -> None:
+        from overtone import density_hints
+        # 80 s at 120 BPM: eighths throughout, then only quarters from 40 s.
+        fast = self._beats(160, 0.25)
+        slow = self._beats(80, 0.5, start=40.0)
+        hints = density_hints(self._analysis(fast[:160] + slow, end=80.0))
+        json.dumps(hints)
+        self.assertEqual(len(hints), 1)
+        hint = hints[0]
+        self.assertEqual((hint["section"], hint["thin_side"], hint["factor"]), (0, "tail", 0.5))
+        self.assertAlmostEqual(hint["boundary_s"], 40.0, delta=4.0)
+        self.assertGreater(hint["coverage_out"] - hint["coverage_in"], 0.2)
+        self.assertGreaterEqual(hint["parity_in"], 0.85)
+
+    def test_a_double_time_head_reports_where_the_thinning_ends(self) -> None:
+        from overtone import density_hints
+        # the mirror image: the head is the thin one, so the change is its end
+        slow = self._beats(80, 0.5)
+        fast = self._beats(160, 0.25, start=40.0)
+        hint = density_hints(self._analysis(slow + fast, end=80.0))[0]
+        self.assertEqual(hint["thin_side"], "head")
+        self.assertAlmostEqual(hint["boundary_s"], 40.0, delta=4.0)
+
+    def test_a_sparse_stretch_is_not_a_pulse_change(self) -> None:
+        from overtone import density_hints
+        # Half the slots of the tail dropped at random: coverage falls as it
+        # would for a real change, parity does not. This is the discriminator.
+        rng = np.random.default_rng(7)
+        fast = self._beats(160, 0.25)
+        tail = [t for t in self._beats(160, 0.25, start=40.0) if rng.random() < 0.5]
+        hints = density_hints(self._analysis(fast + tail, end=80.0))
+        self.assertEqual(hints, [])
+
+    def test_a_section_thin_all_through_says_nothing(self) -> None:
+        from overtone import density_hints
+        # Quarters against a grid subdivided into eighths: every window is
+        # "thin", which means the subdivision is too fine, not that it changes.
+        self.assertEqual(density_hints(self._analysis(self._beats(160, 0.5), end=80.0)), [])
+
+    def test_a_section_too_short_to_hold_a_change_is_skipped(self) -> None:
+        from overtone import density_hints
+        # Five windows of eight beats are needed; at 120 BPM that is 20 s.
+        short = self._analysis(self._beats(40, 0.25), end=10.0)
+        self.assertEqual(density_hints(short), [])
+
+    def test_nothing_to_read(self) -> None:
+        from overtone import density_hints
+        bare = Analysis("x.wav", 60.0, np.zeros(0), np.zeros(0), [], 128, 44100, 1.0)
+        self.assertEqual(density_hints(bare), [])
+        self.assertEqual(density_hints(self._analysis([])), [])
+        with self.assertRaises(ValueError):
+            density_hints(self._analysis(self._beats(160, 0.25)), window_beats=0)
+
+    def test_the_window_statistic_separates_thinned_from_scattered(self) -> None:
+        from overtone import density_window
+        every_other = np.array([i * 0.5 for i in range(16)])
+        coverage, parity, n = density_window(every_other, np.ones(16), 0.25, 0.0)
+        self.assertEqual(n, 16)
+        self.assertAlmostEqual(coverage, 16 / 31, places=3)   # half the slots
+        self.assertAlmostEqual(parity, 1.0, places=6)         # all on one residue
+        scattered = np.array([0.0, 0.25, 0.75, 1.0, 1.5, 1.75, 2.25, 2.5])
+        _cov, par, _n = density_window(scattered, np.ones(8), 0.25, 0.0)
+        self.assertLess(par, 0.85)
+        # Under four inliers there is nothing to say.
+        self.assertEqual(density_window(np.array([0.0, 0.25]), np.ones(2), 0.25, 0.0),
+                         (0.0, 0.0, 2))
+        self.assertEqual(density_window(np.zeros(0), np.zeros(0), 0.25, 0.0), (0.0, 0.0, 0))
+
+    def test_a_quiet_ghost_note_cannot_carry_the_parity(self) -> None:
+        from overtone import density_window
+        # On-beat hits loud, a faint one between each: weighted, the parity
+        # still reads the half-time; counted, it would not.
+        times = np.array([i * 0.25 for i in range(16)])
+        weights = np.array([1.0 if i % 2 == 0 else 0.02 for i in range(16)])
+        _cov, weighted, _n = density_window(times, weights, 0.25, 0.0)
+        _cov, flat, _n = density_window(times, np.ones(16), 0.25, 0.0)
+        self.assertGreater(weighted, 0.9)
+        self.assertAlmostEqual(flat, 0.5, places=2)
+
+
+class SwingLaneTests(unittest.TestCase):
+    """Where the off-beat eighth falls, eight beats at a time."""
+
+    POINTS = [TimingPoint(1000.0, 120.0, 0.9, 0)]
+
+    @staticmethod
+    def _beats(places, beats=16, start=1.0, beat=0.5):
+        """An attack on each beat and at each of ``places`` within it."""
+        return np.array([start + k * beat + p * beat for k in range(beats) for p in (0.0,) + places])
+
+    def _lane(self, times, points=None, weights=None, duration=9.0, **kwargs):
+        from overtone import swing_lane
+        weights = np.ones(len(times)) if weights is None else np.asarray(weights, dtype=float)
+        report = swing_lane(self.POINTS if points is None else points, times, weights,
+                            duration, **kwargs)
+        json.dumps(report)
+        return report
+
+    def test_straight_eighths_read_straight(self) -> None:
+        report = self._lane(self._beats((0.5,)))
+        self.assertEqual([w["feel"] for w in report["windows"]], ["straight", "straight"])
+        self.assertEqual([w["at"] for w in report["windows"]], [0.5, 0.5])
+        self.assertEqual((report["swung"], report["measured"], report["spans"]), (0, 2, []))
+        self.assertEqual(report["windows"][0]["start_ms"], 1000.0)
+        self.assertEqual(report["windows"][1]["end_ms"], 9000.0)
+
+    def test_a_light_swing_reads_its_place_and_its_snap(self) -> None:
+        report = self._lane(self._beats((0.58,)))
+        window = report["windows"][0]
+        self.assertEqual((window["feel"], window["at"], window["ratio"], window["late_ms"]),
+                         ("swing", 0.58, 1.38, 40.0))
+        # 290 ms into a 500 ms beat: nothing coarser than 1/12 lands within 15 ms
+        self.assertEqual((window["snap"], window["divisor"], window["snap_off_ms"]), ("7/12", 12, -1.7))
+        self.assertEqual(len(report["spans"]), 1)
+        span = report["spans"][0]
+        self.assertEqual((span["start_ms"], span["end_ms"], span["windows"], span["at"], span["snap"]),
+                         (1000.0, 9000.0, 2, 0.58, "7/12"))
+
+    def test_triplet_swing_and_shuffle_land_on_the_snaps_mappers_use(self) -> None:
+        triplet = self._lane(self._beats((2 / 3,)))["windows"][0]
+        self.assertEqual((triplet["feel"], triplet["snap"], triplet["divisor"], triplet["ratio"]),
+                         ("swing", "2/3", 3, 2.0))
+        shuffle = self._lane(self._beats((0.75,)))["windows"][0]
+        self.assertEqual((shuffle["feel"], shuffle["snap"], shuffle["divisor"], shuffle["ratio"]),
+                         ("swing", "3/4", 4, 3.0))
+
+    def test_triplets_and_sixteenths_are_not_swing(self) -> None:
+        thirds = self._lane(self._beats((1 / 3, 2 / 3)))["windows"][0]
+        self.assertEqual((thirds["feel"], thirds["snap"]), ("triplets", "2/3"))
+        sixteenths = self._lane(self._beats((0.25, 0.5, 0.75)))["windows"][0]
+        self.assertEqual(sixteenths["feel"], "straight")
+
+    def test_the_beat_is_measured_from_its_own_attacks(self) -> None:
+        # the whole song 20 ms after its grid: the swing is where it was
+        window = self._lane(self._beats((0.58,)) + 0.02)["windows"][0]
+        self.assertEqual((window["feel"], window["at"], window["on_ms"]), ("swing", 0.58, 20.0))
+
+    def test_nothing_on_the_off_beat_says_none(self) -> None:
+        beats_only = self._lane(self._beats(()))
+        self.assertEqual([w["feel"] for w in beats_only["windows"]], ["none", "none"])
+        self.assertEqual(beats_only["measured"], 0)
+        silent = self._lane(np.zeros(0))
+        self.assertEqual([w["feel"] for w in silent["windows"]], ["none", "none"])
+        self.assertEqual(self._lane(np.zeros(0), points=[])["windows"], [])
+
+    def test_a_faint_straight_eighth_under_a_loud_swung_one(self) -> None:
+        times = self._beats((0.5, 0.66))
+        faint = np.tile([1.0, 0.2, 1.0], 16)
+        self.assertEqual(self._lane(times, weights=faint)["windows"][0]["feel"], "swing")
+        heard = np.tile([1.0, 0.3, 1.0], 16)
+        self.assertEqual(self._lane(times, weights=heard)["windows"][0]["feel"], "straight")
+
+    def test_a_swing_on_too_few_beats_is_not_one(self) -> None:
+        times = [1.0 + k * 0.5 + (0.33 if k % 8 < 3 else 0.25) for k in range(16)]
+        times = np.sort(np.concatenate([self._beats(()), times]))
+        self.assertEqual([w["feel"] for w in self._lane(times)["windows"]], ["straight", "straight"])
+
+    def test_windows_restart_at_red_lines_and_short_remainders_join(self) -> None:
+        points = [TimingPoint(1000.0, 120.0, 0.9, 0), TimingPoint(5500.0, 120.0, 0.9, 9)]
+        times = np.concatenate([self._beats((0.66,), beats=9), self._beats((0.5,), beats=13, start=5.5)])
+        report = self._lane(times, points=points, duration=12.0)
+        self.assertEqual([(w["beats"], w["feel"]) for w in report["windows"]],
+                         [(9, "swing"), (8, "straight"), (5, "straight")])
+        self.assertEqual([(s["start_ms"], s["end_ms"]) for s in report["spans"]], [(1000.0, 5500.0)])
+
+    def test_bad_input(self) -> None:
+        from overtone import swing_lane
+        with self.assertRaises(ValueError):
+            swing_lane(self.POINTS, np.zeros(0), np.zeros(0), 9.0, tol_ms=0)
+        with self.assertRaises(ValueError):
+            swing_lane(self.POINTS, np.zeros(0), np.zeros(0), 9.0, window_beats=1)
+        times = np.append(self._beats((0.58,)), [np.nan, np.inf])
+        report = self._lane(times, weights=np.ones(3))  # a weight per attack or none
+        self.assertEqual(report["windows"][0]["feel"], "swing")
+
+    def test_the_benchmark_fixtures_read_their_truth(self) -> None:
+        # bench/benchmark.py places each off-beat hat at step / 2 + swing * step
+        golden = Path(__file__).resolve().parent.parent / "bench" / "golden"
+        for case, truth in (("swing-120", 0.58), ("shuffle-96", 0.66), ("edm-174", None)):
+            vector = json.loads((golden / f"{case}.json").read_text(encoding="utf-8"))
+            points = [TimingPoint(p["offset_ms"], p["bpm"], p["confidence"], 0)
+                      for p in vector["result"]["points"]]
+            report = self._lane(np.asarray(vector["attacks"]["times_s"]), points=points,
+                                weights=vector["attacks"]["weights"],
+                                duration=vector["result"]["duration_s"])
+            feels = {w["feel"] for w in report["windows"]}
+            if truth is None:
+                self.assertEqual(feels, {"straight"}, case)
+                continue
+            self.assertEqual(feels, {"swing"}, case)
+            for window in report["windows"]:
+                self.assertAlmostEqual(window["at"], truth, delta=0.005, msg=case)
+
+
+class ResnapTests(unittest.TestCase):
+    @staticmethod
+    def _map(objects: str):
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+                 "[TimingPoints]", "1000,500,4,2,0,70,1,0", "", "[HitObjects]"] + \
+                objects.split("\n") + [""]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes("\r\n".join(lines).encode("utf-8"))
+            return read_osu_beatmap(path)
+
+    _SHIFT = [{"old": {"offset_ms": 1000.0, "bpm": 120.0, "meter": 4},
+               "new": {"offset_ms": 1010.0, "bpm": 120.0, "meter": 4},
+               "delta_offset_ms": 10.0, "delta_bpm": 0.0, "drift_end_ms": None}]
+
+    def test_shift_moves_snapped_lists_the_rest(self) -> None:
+        from overtone import resnap_objects
+        beatmap = self._map("256,192,1000,1,0,0:0:0:0:\n"
+                            "256,192,1500,1,0,0:0:0:0:\n"
+                            "256,192,2000,2,0,B|320:192,1,100,0:0:0:0:\n"
+                            "256,192,2500,12,0,3000,0:0:0:0:\n"
+                            "256,192,1300,1,0,0:0:0:0:")
+        result = resnap_objects(beatmap, self._SHIFT)
+        json.dumps(result)
+        self.assertEqual((result["moved"], result["skipped"]), (4, 0))
+        self.assertEqual([(o["time_ms"], o["kind"]) for o in result["left"]],
+                         [(1300.0, "circle")])
+        objects = beatmap["hitobjects"]
+        self.assertEqual([o["time"] for o in objects], [1010.0, 1510.0, 2010.0, 2510.0, 1300.0])
+        spinner = next(o for o in objects if o["kind"] == "spinner")
+        self.assertEqual(spinner["end_time"], 3010)
+        self.assertEqual(beatmap["hitobjects"][2]["hit_sound"], 0)
+
+    def test_tempo_change_scales_and_diff_shapes_fit(self) -> None:
+        from overtone import inject_diff, resnap_objects
+        from types import SimpleNamespace
+        beatmap = self._map("256,192,1500,1,0,0:0:0:0:")
+        pairs = [{"old": {"offset_ms": 1000.0, "bpm": 120.0, "meter": 4},
+                  "new": {"offset_ms": 1000.0, "bpm": 150.0, "meter": 4},
+                  "delta_offset_ms": 0.0, "delta_bpm": 30.0, "drift_end_ms": None}]
+        result = resnap_objects(beatmap, pairs)
+        self.assertEqual((result["moved"], beatmap["hitobjects"][0]["time"]), (1, 1400.0))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(("osu file format v14\n[General]\nAudioFilename: a.mp3\n"
+                              "[TimingPoints]\n1000,500,4,2,0,70,1,0\n"
+                              "[HitObjects]\n256,192,1500,1,0,0:0:0:0:\n").encode("utf-8"))
+            analysis = SimpleNamespace(source="a.mp3", points=[TimingPoint(1010.0, 120.0, 0.9, 0)])
+            diff = inject_diff(path, analysis)
+            beatmap = read_osu_beatmap(path)
+            moved = resnap_objects(beatmap, diff["pairs"])
+            self.assertEqual(moved["moved"], 1)
+            self.assertEqual(beatmap["hitobjects"][0]["time"], 1510.0)
+            self.assertEqual(read_osu_beatmap(path)["hitobjects"][0]["time"], 1500.0)
+
+    def test_no_pairs_or_no_objects_refuses(self) -> None:
+        from overtone import resnap_objects
+        beatmap = self._map("256,192,1000,1,0,0:0:0:0:")
+        with self.assertRaises(ValueError):
+            resnap_objects(beatmap, [])
+        with self.assertRaises(ValueError):
+            resnap_objects({"sections": []}, self._SHIFT)
+
+
+class NoiseBeforeTheMusicTests(unittest.TestCase):
+    """The first red line starts where the grid starts, not at the first noise.
+
+    With no bar claimed, the first line went to the grid beat nearest the
+    first attack -- on very-noisy-132 a noise onset at 27 ms, so the line sat
+    at -34.65 ms, a beat before music that starts at 420 ms.
+    """
+
+    def test_a_burst_before_the_drums(self):
+        import soundfile as sf
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "burst.wav"
+            _drum_track(path, [(0.42, 132.0)], duration=30.0)
+            y, sr = sf.read(str(path), dtype="float32")
+            rng = np.random.default_rng(2)
+            i = int(0.027 * sr)   # 0.135 of a beat off the grid
+            y[i:i + 600] += (rng.standard_normal(600) * np.exp(-np.arange(600) / 120)).astype(np.float32) * 0.6
+            sf.write(str(path), y, sr)
+            analysis = analyze_audio(path)
+        self.assertEqual(analysis.engine, "precision")
+        first = snap_timing_points(analysis.points)[0]
+        self.assertLess(abs(first.offset_ms - 420.0), 2.0, first.offset_ms)
+
+
+class StrayLeadInTests(unittest.TestCase):
+    """A lone click before the music must not throw the grid away.
+
+    Section growth gave up when its first seed window held fewer than six
+    attacks, so a click at 0.3 s before drums at 8 s left no section: the
+    precision engine returned nothing and the fallback tracker answered with
+    the wrong BPM and a red line on the click.
+    """
+
+    def test_a_click_before_the_drums(self):
+        import soundfile as sf
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "leadin.wav"
+            _drum_track(path, [(8.0, 150.0)], duration=40.0)
+            y, sr = sf.read(str(path), dtype="float32")
+            i = int(0.3 * sr)  # a sharp click, not a smooth bump: it must read as an attack
+            y[i:i + 400] += (np.hanning(400) * 0.8 * np.sign(np.sin(np.arange(400)))).astype(np.float32)
+            sf.write(str(path), y, sr)
+            analysis = analyze_audio(path)
+        self.assertEqual(analysis.engine, "precision")
+        first = snap_timing_points(analysis.points)[0]
+        self.assertAlmostEqual(first.bpm, 150.0, places=2)
+        self.assertLess(_offset_error_ms(first.offset_ms, 8.0, 150.0), 2.0)
+
+
+class GridMathTests(unittest.TestCase):
+    def test_coherence_phase_has_the_right_sign(self):
+        # Regression: the phase used to come back negated, putting the seed
+        # grid in anti-phase and forcing least squares to start half a beat off.
+        period, phase = 0.25, 0.1234
+        times = phase + np.arange(120) * period
+        weights = np.ones_like(times)
+        candidates = _atomic_grid_candidates(times, weights)
+        self.assertTrue(candidates)
+        best = min(candidates, key=lambda c: abs(c[0] - period))
+        self.assertAlmostEqual(best[0], period, places=3)
+        self.assertAlmostEqual(best[1] % period, phase % period, places=2)
+        # Fastest first, as the docstring says (it used to say slowest).
+        periods = [c[0] for c in candidates]
+        self.assertEqual(periods, sorted(periods))
+
+    def test_least_squares_beats_interval_differencing(self):
+        rng = np.random.default_rng(3)
+        period, phase = 60.0 / 174.31, 0.4137
+        k = np.arange(400)
+        times = phase + k * period + rng.normal(0, 0.004, k.size)   # 4 ms jitter
+        weights = np.ones_like(times)
+        # Seeded 1 % off, as a coherence scan on a short window would be: the
+        # expanding fit has to walk that in without slipping a beat index.
+        fitted, fitted_phase = _expand_fit(times, weights, period * 1.01, phase + 0.01,
+                                           float(times[0]), float(times[-1]))
+        self.assertAlmostEqual(60.0 / fitted, 174.31, delta=0.01)
+        # The beat-index origin may shift; only the phase modulo one beat means
+        # anything, and it must land within a couple of milliseconds.
+        drift = ((fitted_phase - phase + period / 2) % period) - period / 2
+        self.assertLess(abs(drift), 0.002)
+        # For contrast, the v2 approach — differencing consecutive beats — is
+        # two orders of magnitude noisier on the very same data.
+        naive = float(np.median(60.0 / np.diff(times)))
+        self.assertGreater(abs(naive - 174.31), abs(60.0 / fitted - 174.31))
+
+    def test_recentre_phase_picks_the_dense_cluster(self):
+        period = 0.5
+        beats = np.arange(60) * period
+        ghosts = beats[:-1] + 0.04                    # weak, consistently late
+        times = np.sort(np.concatenate([beats, ghosts]))
+        weights = np.where(np.isin(times, beats), 1.0, 0.45)
+        biased = 0.018                                 # what plain LS would settle on
+        fixed = _recentre_phase(times, weights, period, biased)
+        self.assertLess(abs(((fixed + period / 2) % period) - period / 2), 0.004)
+
+    def test_boundary_lands_where_the_grids_cross(self):
+        change = 20.0
+        left = GridSection(0.0, change, 0.5, 0.0, 40, 0.5, 1.0)
+        right = GridSection(change, 40.0, 0.46, change, 40, 0.5, 1.0)
+        times = np.concatenate([np.arange(0, change, 0.5),
+                                change + np.arange(0, 20.0, 0.46)])
+        weights = np.ones_like(times)
+        split = _tune_boundary(times, weights, left, right)
+        self.assertAlmostEqual(split, change, delta=0.5)
+
+    def test_attack_retiming_removes_detector_latency(self):
+        sr = 44100
+        y = np.zeros(sr * 3, dtype=np.float32)
+        hits = np.array([0.5, 1.0, 1.5, 2.0])
+        n = int(0.12 * sr)
+        decay = np.exp(-np.arange(n) / (0.02 * sr)).astype(np.float32)
+        tone = (np.sin(2 * np.pi * 90 * np.arange(n) / sr) * decay).astype(np.float32)
+        for hit in hits:
+            i = int(hit * sr)
+            y[i:i + n] += tone
+        late = hits + 0.008                            # a flux peak lags the attack
+        fixed = _retime_onsets(y, sr, late)
+        self.assertTrue(np.all(np.abs(fixed - hits) < 0.003),
+                        f"retimed {np.round((fixed - hits) * 1000, 2)} ms off")
+
+
+class ExportHardeningTests(unittest.TestCase):
+    def _analysis(self, points, meter="4/4"):
+        from types import SimpleNamespace
+        return SimpleNamespace(source="song.mp3", points=points, meter=meter)
+
+    def test_csv_carries_the_snapped_offsets(self):
+        # 0.4 ms off the first section's grid: the table, .osu and click
+        # track join it to 11000 ms; the CSV wrote the raw 11000.400.
+        import csv
+        from overtone import export_csv
+        analysis = _grid_analysis([(1000.0, 120.0), (11000.4, 140.0)])
+        with tempfile.TemporaryDirectory() as tmp:
+            export_csv(analysis, Path(tmp) / "timing.csv")
+            with open(Path(tmp) / "timing.csv", encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+        self.assertEqual([row["offset_ms"] for row in rows], ["1000.000", "11000.000"])
+        self.assertIn("\n11000,", osu_timing_text(analysis))
+
+    def test_offsets_are_whole_milliseconds_by_default(self):
+        text = osu_timing_text(self._analysis([TimingPoint(353.4137, 225.0, 1.0, 0)]))
+        self.assertIn("\n353,", text)
+        self.assertNotIn("353.4", text)
+        detailed = osu_timing_text(self._analysis([TimingPoint(353.4137, 225.0, 1.0, 0)]), decimals=3)
+        self.assertIn("353.414,", detailed)
+
+    def test_meter_is_written_from_the_detection(self):
+        text = osu_timing_text(self._analysis([TimingPoint(0.0, 120.0, 1.0, 0)], meter="3/4"))
+        self.assertTrue(text.splitlines()[1].split(",")[2] == "3")
+
+    def test_impossible_points_are_skipped_not_crashed(self):
+        text = osu_timing_text(self._analysis([TimingPoint(0.0, 0.0, 1.0, 0),
+                                               TimingPoint(10.0, 120.0, 1.0, 1)]))
+        self.assertEqual(len(text.splitlines()), 2)      # comment + one usable row
+
+    def test_snap_keeps_an_exact_offset_it_cannot_improve(self):
+        # A change that genuinely does not sit on the old grid must not be
+        # dragged onto it — the v3 fit already knows where it is.
+        points = [TimingPoint(0.0, 120.0, 1.0, 0), TimingPoint(5250.0, 140.0, 1.0, 10)]
+        self.assertEqual(snap_timing_points(points)[1].offset_ms, 5250.0)
+
+    def test_click_track_survives_a_hand_edited_zero_bpm(self):
+        from types import SimpleNamespace
+        analysis = SimpleNamespace(duration=4.0, points=[TimingPoint(0.0, 120.0, 1.0, 0),
+                                                         TimingPoint(2000.0, 0.0, 1.0, 4)])
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "c.wav"
+            export_click_track(analysis, out)
+            self.assertTrue(out.is_file())
+
+
+class MeasureGridTests(unittest.TestCase):
+    """Per-section bars: audit F-03, and Tempora's measure model automated.
+
+    v3 read the meter once, from the first section, wrote that number into
+    every red line, and anchored every line after the first to a plain beat.
+    A song that moves to 3/4 came out wrong everywhere after the change, and
+    osu!'s bar lines drifted out of step with the music.
+    """
+
+    @staticmethod
+    def _accented(period, phase, count, bar, start_class=0):
+        """Attacks on a grid, accented once per `bar` beats."""
+        times = np.array([phase + k * period for k in range(count)])
+        weights = np.array(
+            [1.0 if (k % bar) == start_class else 0.3 for k in range(count)],
+            dtype=float,
+        )
+        return times, weights
+
+    def test_section_measures_reads_each_section_separately(self):
+        # 4/4 for 16 bars, then 3/4 for 16 bars, on the same tempo.
+        period = 0.5
+        a_times, a_weights = self._accented(period, 0.0, 64, 4)
+        b_start = 64 * period
+        b_times, b_weights = self._accented(period, b_start, 48, 3)
+        times = np.r_[a_times, b_times]
+        weights = np.r_[a_weights, b_weights]
+        sections = [
+            GridSection(0.0, b_start, period, 0.0, 64, 0.1, 1.0),
+            GridSection(b_start, b_start + 48 * period, period, b_start, 48, 0.1, 1.0),
+        ]
+        measures = section_measures(sections, times, weights)
+        self.assertEqual(measures[0][2], 4, f"first section: {measures[0]}")
+        self.assertEqual(measures[1][2], 3, f"second section: {measures[1]}")
+
+    def test_a_proven_bar_anchors_the_red_line_to_a_downbeat(self):
+        # The second section's downbeat sits two beats after its start, so a
+        # beat-anchored line would land on the wrong beat of the bar.
+        period = 0.5
+        sections = [
+            GridSection(0.0, 10.0, period, 0.0, 20, 0.1, 1.0),
+            GridSection(10.0, 20.0, period, 9.0, 20, 0.1, 1.0),
+        ]
+        measures = [("4/4", 0, 4), ("4/4", 1, 4)]
+        points = _points_from_sections(sections, 0.0, 4, 0, 4, 1.0, measures)
+        self.assertEqual(len(points), 2)
+        second = points[1]
+        # phase 9.0, downbeat class 1 -> downbeats at 9.5, 11.5, 13.5 ...
+        # The first at or after the section start (10.0) is 11.5.
+        self.assertAlmostEqual(second.offset_ms, 11500.0, places=6)
+        self.assertTrue(second.meter_known)
+        self.assertEqual(second.meter, 4)
+
+    def test_no_evidence_keeps_the_old_beat_anchoring(self):
+        # A section whose accents prove nothing must behave exactly as before:
+        # anchored to the next beat, not pushed forward to an invented bar.
+        period = 0.5
+        sections = [
+            GridSection(0.0, 10.0, period, 0.0, 20, 0.1, 1.0),
+            GridSection(10.0, 20.0, period, 9.0, 20, 0.1, 1.0),
+        ]
+        measures = [("4/4", 0, 1), ("4/4", 0, 1)]
+        points = _points_from_sections(sections, 0.0, 4, 0, 1, 1.0, measures)
+        # phase 9.0, beats at 9.0, 9.5, 10.0 -> the first at/after 10.0 is 10.0
+        self.assertAlmostEqual(points[1].offset_ms, 10000.0, places=6)
+        self.assertFalse(points[1].meter_known)
+
+    def test_each_point_writes_its_own_meter(self):
+        analysis = Analysis("s", 30.0, np.zeros(0), np.zeros(0),
+                            [TimingPoint(0.0, 120.0, 1.0, 0, 4, True),
+                             TimingPoint(8000.0, 120.0, 1.0, 1, 3, True)],
+                            512, 44100, 1, 120.0, 1.0, "4/4")
+        rows = [r for r in osu_timing_text(analysis).splitlines() if not r.startswith("//")]
+        self.assertEqual(rows[0].split(",")[2], "4")
+        self.assertEqual(rows[1].split(",")[2], "3", "the 3/4 section must say 3")
+
+    def test_an_unknown_meter_falls_back_to_the_analysis(self):
+        # A hand-added point knows no bar; writing a hard-coded 4 over a
+        # detected 3/4 would invent information the engine did not have.
+        analysis = Analysis("s", 30.0, np.zeros(0), np.zeros(0),
+                            [TimingPoint(0.0, 120.0, 1.0, 0)],
+                            512, 44100, 1, 120.0, 1.0, "3/4")
+        rows = [r for r in osu_timing_text(analysis).splitlines() if not r.startswith("//")]
+        self.assertEqual(rows[0].split(",")[2], "3")
+
+    def test_click_track_accents_on_the_detected_meter(self):
+        """Audit F-03: the metronome accented every 4th beat on a waltz."""
+        import soundfile as sf
+        bpm, bar = 120.0, 3
+        analysis = Analysis("s", 8.0, np.zeros(0), np.zeros(0),
+                            [TimingPoint(0.0, bpm, 1.0, 0, bar, True)],
+                            512, 44100, 1, bpm, 1.0, "3/4")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "click.wav"
+            export_click_track(analysis, path)
+            y, sr = sf.read(str(path))
+        beat = 60.0 / bpm
+        # Peak amplitude in a short window at each beat. The accent tone is
+        # louder, so accented beats must be the maxima.
+        levels = []
+        for k in range(12):
+            start = int(k * beat * sr)
+            levels.append(float(np.max(np.abs(y[start:start + int(0.03 * sr)]))))
+        # The unaccented tone is rendered at 0.7 of the accent's gain, so a
+        # 0.6 threshold would call every beat an accent. 0.85 separates them.
+        accents = [k for k, level in enumerate(levels) if level > 0.85 * max(levels)]
+        self.assertTrue(accents, f"no accents found in {levels}")
+        self.assertTrue(
+            all(k % bar == 0 for k in accents),
+            f"accents at {accents} should all be multiples of {bar}",
+        )
+
+
+class OszExportTests(unittest.TestCase):
+    """Timing a song from nothing — the part of Tempora's flow v3 could not do.
+
+    v3 could only inject red lines into a beatmap that already existed. These
+    cover writing the beatmap.
+    """
+
+    def _analysis(self, source="song.wav"):
+        return Analysis(source, 30.0, np.zeros(0), np.zeros(0),
+                        [TimingPoint(298.0, 224.0, 0.98, 0, 4, True),
+                         TimingPoint(13240.0, 226.5, 0.94, 1, 3, True)],
+                        512, 44100, 1, 224.0, 1.0, "4/4")
+
+    @staticmethod
+    def _audio(path: Path) -> Path:
+        import soundfile as sf
+        sf.write(str(path), np.zeros(4410, dtype=np.float32), 44100)
+        return path
+
+    def test_archive_holds_the_audio_and_one_beatmap(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = self._audio(Path(tmp) / "song.wav")
+            out = Path(tmp) / "map.osz"
+            written = export_osz(self._analysis(), out, audio)
+            self.assertTrue(out.is_file())
+            with zipfile.ZipFile(out) as archive:
+                self.assertIsNone(archive.testzip())
+                names = archive.namelist()
+                osu = [n for n in names if n.endswith(".osu")]
+                self.assertEqual(len(osu), 1, names)
+                self.assertIn("song.wav", names)
+                text = archive.read(osu[0]).decode("utf-8")
+            # The beatmap must point at the name the archive actually used, or
+            # osu! opens a map with no audio.
+            self.assertIn(f"AudioFilename: {written['audio']}", text)
+            self.assertEqual(written["points"], 2)
+
+    @staticmethod
+    def _tagged(path: Path, **tags) -> Path:
+        import soundfile as sf
+        with sf.SoundFile(str(path), "w", samplerate=44100, channels=1, format="WAV") as handle:
+            for key, value in tags.items():
+                setattr(handle, key, value)
+            handle.write(np.zeros(4410, dtype=np.float32))
+        return path
+
+    @staticmethod
+    def _osu_in(out: Path) -> tuple[str, str]:
+        import zipfile
+        with zipfile.ZipFile(out) as archive:
+            name = next(n for n in archive.namelist() if n.endswith(".osu"))
+            return name, archive.read(name).decode("utf-8")
+
+    def test_the_song_is_named_by_its_tags_unicode_kept_apart(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = self._tagged(Path(tmp) / "track01.wav", title="信仰は儚き人間の為に", artist="YUI")
+            written = export_osz(self._analysis(), Path(tmp) / "map.osz", audio)
+            name, text = self._osu_in(Path(tmp) / "map.osz")
+        self.assertEqual(written["metadata"]["from"], "tags")
+        self.assertIn("TitleUnicode:信仰は儚き人間の為に\n", text)
+        self.assertIn("Title:track01\n", text)          # no romanisation invented
+        self.assertIn("Artist:YUI\n", text)
+        self.assertIn("ArtistUnicode:YUI\n", text)
+        self.assertTrue(name.startswith("YUI - track01 (Overtone)"), name)
+
+    def test_a_map_beside_the_audio_names_it_best(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = self._tagged(Path(tmp) / "audio.wav", title="Wrong", artist="Wrong")
+            (Path(tmp) / "a.osu").write_text(
+                "osu file format v14\n\n[General]\nAudioFilename: other.mp3\n\n[Metadata]\n"
+                "Title:Not This\nArtist:Not This\n", encoding="utf-8")
+            (Path(tmp) / "b.osu").write_text(
+                "osu file format v14\n\n[General]\nAudioFilename: audio.wav\n\n[Metadata]\n"
+                "Title:Shinkou wa Hakanaki Ningen no Tame ni\nTitleUnicode:信仰は儚き人間の為に\n"
+                "Artist:KISIDA KYODAN\nArtistUnicode:岸田教団\nSource:Touhou\n", encoding="utf-8")
+            written = export_osz(self._analysis(), Path(tmp) / "map.osz", audio)
+            _name, text = self._osu_in(Path(tmp) / "map.osz")
+        self.assertEqual(written["metadata"]["from"], "map")
+        for line in ("Title:Shinkou wa Hakanaki Ningen no Tame ni", "TitleUnicode:信仰は儚き人間の為に",
+                     "Artist:KISIDA KYODAN", "ArtistUnicode:岸田教団", "Source:Touhou"):
+            self.assertIn(line + "\n", text)
+
+    def test_a_name_given_wins_and_nothing_found_falls_back(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = self._tagged(Path(tmp) / "song.wav", title="Tagged", artist="Tagger")
+            written = export_osz(self._analysis(), Path(tmp) / "a.osz", audio, {"title": "Mine"})
+            _name, text = self._osu_in(Path(tmp) / "a.osz")
+            bare = export_osz(self._analysis(), Path(tmp) / "b.osz", self._audio(Path(tmp) / "plain.wav"))
+        # The title given is both title fields; the artist still comes from the tags.
+        for line in ("Title:Mine", "TitleUnicode:Mine", "Artist:Tagger"):
+            self.assertIn(line + "\n", text)
+        self.assertEqual(written["metadata"]["from"], "tags")
+        self.assertEqual((bare["metadata"]["from"], bare["metadata"]["title"]), ("none", "plain"))
+
+    def test_a_tag_with_a_line_break_stays_one_field(self):
+        text = osu_beatmap_text(self._analysis(), "song.mp3", {"title": "Two\nLines", "artist": "A\r\nB"})
+        self.assertIn("Title:Two Lines\n", text)
+        self.assertIn("ArtistUnicode:A B\n", text)
+
+    def test_the_audio_keeps_its_extension_whatever_its_name(self):
+        import zipfile
+        long_name = ("Some Artist Name feat. Another Artist - A Rather Long Song "
+                     "Title (Extended Club Mix)")
+        for stem in (long_name, "Title...", "Hmm...."):
+            with self.subTest(stem=stem), tempfile.TemporaryDirectory() as tmp:
+                audio = self._audio(Path(tmp) / f"{stem}.wav")
+                out = Path(tmp) / "map.osz"
+                written = export_osz(self._analysis(), out, audio)
+                name = written["audio"]
+                self.assertTrue(name.endswith(".wav"), name)
+                self.assertEqual(name, name.strip())
+                self.assertNotIn("..", name)
+                with zipfile.ZipFile(out) as archive:
+                    self.assertIn(name, archive.namelist())
+                    osu = next(n for n in archive.namelist() if n.endswith(".osu"))
+                    self.assertIn(f"AudioFilename: {name}\n",
+                                  archive.read(osu).decode("utf-8").replace("\r\n", "\n"))
+
+    def test_the_beatmap_has_every_section_osu_expects(self):
+        text = osu_beatmap_text(self._analysis(), "song.mp3")
+        self.assertTrue(text.startswith("osu file format v14"))
+        for section in ("[General]", "[Editor]", "[Metadata]", "[Difficulty]",
+                        "[Events]", "[TimingPoints]", "[HitObjects]"):
+            self.assertIn(section, text, section)
+
+    def test_each_points_own_meter_reaches_the_beatmap(self):
+        text = osu_beatmap_text(self._analysis(), "song.mp3")
+        body = text[text.index("[TimingPoints]"):]
+        rows = [r for r in body.splitlines()[1:] if r.strip()][:2]
+        self.assertEqual(rows[0].split(",")[2], "4")
+        self.assertEqual(rows[1].split(",")[2], "3")
+
+    def test_unsafe_metadata_cannot_escape_the_filename(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = self._audio(Path(tmp) / "song.wav")
+            out = Path(tmp) / "map.osz"
+            written = export_osz(self._analysis(), out, audio,
+                                 {"artist": "../../evil", "title": 'a:b"c|d?e*f'})
+            for bad in ("..", "/", "\\", ":", '"', "|", "?", "*"):
+                self.assertNotIn(bad, written["osu"], f"{bad!r} in {written['osu']!r}")
+            with zipfile.ZipFile(out) as archive:
+                for name in archive.namelist():
+                    self.assertFalse(Path(name).is_absolute())
+                    self.assertNotIn("..", name)
+
+    def test_an_empty_analysis_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = self._audio(Path(tmp) / "song.wav")
+            empty = Analysis("song.wav", 30.0, np.zeros(0), np.zeros(0), [],
+                             512, 44100, 1, 0.0, 0.0, "4/4")
+            with self.assertRaises(ValueError):
+                export_osz(empty, Path(tmp) / "map.osz", audio)
+
+    def test_missing_audio_is_refused_before_writing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "map.osz"
+            with self.assertRaises(ValueError):
+                export_osz(self._analysis(), out, Path(tmp) / "nope.wav")
+            self.assertFalse(out.exists())
+            self.assertFalse((Path(tmp) / "map.osz.part").exists())
+
+    def test_a_failed_export_leaves_no_half_written_archive(self):
+        # An interrupted export must not leave a .osz osu! will refuse and the
+        # user will not think to delete.
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = self._audio(Path(tmp) / "song.wav")
+            out = Path(tmp) / "map.osz"
+            broken = Analysis("song.wav", 30.0, np.zeros(0), np.zeros(0),
+                              [TimingPoint(0.0, 0.0, 1.0, 0)],
+                              512, 44100, 1, 0.0, 0.0, "4/4")
+            with self.assertRaises(ValueError):
+                export_osz(broken, out, audio)
+            self.assertFalse(out.exists())
+            self.assertFalse((Path(tmp) / "map.osz.part").exists())
+
+
+class SignatureRegionTests(unittest.TestCase):
+    """Tempora's measure model, automated.
+
+    Tempora's physical quantity is measures per second; BPM is a presentation
+    of it through the time signature (`MpsToBpm(mps) = mps * 60 * beats`). A
+    song can therefore change signature without changing tempo, and v3 — which
+    grows sections on measures per second — could only report one BPM for it.
+    """
+
+    @staticmethod
+    def _track(bar: float, phase: float, regions, bars: int):
+        """Attacks on a constant bar, subdivided differently per region."""
+        def beats_at(index: int) -> int:
+            current = regions[0][1]
+            for start, beats in regions:
+                if index >= start:
+                    current = beats
+            return current
+
+        times, weights = [], []
+        for index in range(bars):
+            beats = beats_at(index)
+            beat = bar / beats
+            start = phase + index * bar
+            for b in range(beats):
+                times.append(start + b * beat)
+                weights.append(1.0 if b == 0 else 0.3)
+        return np.asarray(times), np.asarray(weights, dtype=float)
+
+    def test_detect_bar_finds_the_measure_not_a_hypermeasure(self):
+        # Four bars of anything also show some accent contrast; the bar is the
+        # strongest reading, not the longest. Getting this wrong gave a
+        # 4800 ms measure where the truth is 1200.
+        bar, phase = 1.2, 0.168
+        times, weights = self._track(bar, phase, [(0, 6)], 60)
+        found = detect_bar(times, weights, bar / 6, phase)
+        self.assertIsNotNone(found)
+        self.assertAlmostEqual(found[0], bar, places=6)
+        self.assertAlmostEqual(found[1], phase, places=6)
+
+    def test_detect_bar_refuses_without_accents(self):
+        # Every attack equally loud: there is no downbeat, so claiming a bar
+        # would move every red line on no evidence.
+        times = np.arange(200) * 0.2
+        weights = np.ones(200)
+        self.assertIsNone(detect_bar(times, weights, 0.2, 0.0))
+
+    def test_meter_segments_splits_on_the_subdivision(self):
+        bar, phase = 1.2, 0.168
+        regions = [(0, 6), (20, 3), (40, 6)]
+        times, weights = self._track(bar, phase, regions, 60)
+        segments = meter_segments(times, weights, bar, phase)
+        self.assertEqual([beats for _s, _e, beats, _sc in segments], [6, 3, 6])
+        for (start, _end, _beats, _score), (index, _b) in zip(segments, regions):
+            self.assertAlmostEqual(start, phase + index * bar, places=3)
+
+    def test_meter_segments_is_silent_on_one_signature(self):
+        # Nothing to split: the ordinary per-section placement must stand.
+        bar, phase = 1.2, 0.0
+        times, weights = self._track(bar, phase, [(0, 4)], 60)
+        self.assertEqual(meter_segments(times, weights, bar, phase), [])
+
+    def test_bpm_follows_temporas_formula(self):
+        # BPM = measures-per-second * 60 * beats-in-bar. A 1.2 s bar written
+        # in 6 is 300 BPM, in 3 is 150, in 4 is 200 -- the same tempo.
+        bar, phase = 1.2, 0.168
+        regions = [(0, 6), (20, 3), (40, 4)]
+        times, weights = self._track(bar, phase, regions, 60)
+        sections = [GridSection(phase, phase + 60 * bar, bar / 6, phase,
+                                len(times), 0.1, 1.0)]
+        points = points_from_meter(sections, times, weights, 4)
+        self.assertIsNotNone(points)
+        self.assertEqual([round(p.bpm, 6) for p in points], [300.0, 150.0, 200.0])
+        self.assertEqual([p.meter for p in points], [6, 3, 4])
+        self.assertTrue(all(p.meter_known for p in points))
+
+    def test_every_red_line_lands_on_a_bar_line(self):
+        bar, phase = 1.2, 0.168
+        regions = [(0, 6), (20, 3), (40, 6)]
+        times, weights = self._track(bar, phase, regions, 60)
+        sections = [GridSection(phase, phase + 60 * bar, bar / 6, phase,
+                                len(times), 0.1, 1.0)]
+        points = points_from_meter(sections, times, weights, 4)
+        for point in points:
+            bars = (point.offset_ms / 1000.0 - phase) / bar
+            self.assertAlmostEqual(bars, round(bars), places=3,
+                                   msg=f"{point.offset_ms} is not on a bar line")
+
+    def test_a_forced_octave_falls_back_to_the_ordinary_path(self):
+        # points_from_meter derives BPM from the bar, so a user-forced pulse
+        # octave has no meaning in it; it must decline rather than ignore the
+        # user's choice.
+        bar, phase = 1.2, 0.168
+        times, weights = self._track(bar, phase, [(0, 6), (20, 3)], 60)
+        sections = [GridSection(phase, phase + 60 * bar, bar / 6, phase,
+                                len(times), 0.1, 1.0)]
+        self.assertIsNone(points_from_meter(sections, times, weights, 4, factor=2.0))
+
+
+class ConfigAndInjectHardeningTests(unittest.TestCase):
+    LEGACY_OSU = ("osu file format v4\n[General]\nAudioFilename: song.mp3\n"
+                  "[TimingPoints]\n500,344.827\n1200,-50\n[HitObjects]\n")
+
+    def _analysis(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(source="song.mp3", meter="4/4",
+                               points=[TimingPoint(431.0, 174.0, 0.95, 1)])
+
+    def test_legacy_two_field_red_lines_are_replaced(self):
+        self.assertTrue(_is_red_line("500,344.827"))
+        self.assertFalse(_is_red_line("1200,-50"))
+        self.assertFalse(_is_red_line("1200,-50,4,2,0,60,1,0"))   # negative wins
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "old.osu"
+            target.write_text(self.LEGACY_OSU, encoding="utf-8")
+            summary = inject_osu_timing_points(target, self._analysis(), backup=False)
+            out = target.read_text(encoding="utf-8")
+        self.assertEqual(summary["reds_replaced"], 1)
+        self.assertEqual(summary["greens_kept"], 1)
+        self.assertNotIn("500,344.827", out)
+        self.assertIn("1200,-50", out)
+
+    def test_every_rename_follows_a_sync(self):
+        # A rename can reach the disk before its data: a crash in between left
+        # map.osu (or its .bak, or the .osz) empty or zero-filled.
+        import os
+        from unittest import mock
+        import overtone
+        events = []
+
+        def record(name, real):
+            def call(*args):
+                events.append(name)
+                return real(*args)
+            return call
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(self.LEGACY_OSU, encoding="utf-8")
+            audio = Path(tmp) / "song.mp3"
+            audio.write_bytes(b"\xff\xfb" * 64)
+            with mock.patch.object(overtone.os, "fsync", record("fsync", os.fsync)), \
+                    mock.patch.object(overtone.os, "replace", record("replace", os.replace)), \
+                    mock.patch.object(overtone.os, "rename", record("rename", os.rename)):
+                inject_osu_timing_points(target, self._analysis())
+                export_osz(_grid_analysis([(431.0, 174.0)]), Path(tmp) / "map.osz", audio)
+            self.assertTrue(Path(str(target) + ".bak").is_file())
+        self.assertEqual(events, ["fsync", "rename", "fsync", "replace", "fsync", "replace"])
+
+    def test_backup_keeps_the_pristine_original(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(self.LEGACY_OSU, encoding="utf-8")
+            inject_osu_timing_points(target, self._analysis())
+            inject_osu_timing_points(target, self._analysis())
+            spare = Path(str(target) + ".bak").read_text(encoding="utf-8")
+        self.assertEqual(spare, self.LEGACY_OSU)
+
+    def test_a_failed_backup_leaves_no_truncated_bak(self):
+        # A full disk or an AV lock halfway through the backup used to leave a
+        # truncated .bak; the retry saw it existed, kept it for good, and
+        # overwrote the map with no usable backup.
+        from unittest import mock
+        import overtone
+        real_write = overtone._write_synced
+
+        def disk_full(path, data):
+            if ".bak" in path.name:
+                real_write(path, data[: len(data) // 2])
+                raise OSError(28, "No space left on device")
+            return real_write(path, data)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(self.LEGACY_OSU, encoding="utf-8")
+            original = target.read_bytes()
+            with mock.patch.object(overtone, "_write_synced", disk_full):
+                with self.assertRaises(OSError):
+                    inject_osu_timing_points(target, self._analysis())
+            self.assertEqual(target.read_bytes(), original)  # the map was not touched
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["map.osu"])
+            summary = inject_osu_timing_points(target, self._analysis())  # space freed
+            self.assertEqual(Path(str(target) + ".bak").read_bytes(), original)
+            self.assertEqual(summary["backup"], str(target) + ".bak")
+
+    def test_every_inject_keeps_what_it_overwrites(self):
+        # Hours of mapping between two injects used to be overwritten with no
+        # backup: the .bak held the pre-first-inject file, and the summary still
+        # said backup=True. The .bak stays pristine; the state each inject
+        # replaces goes to the next free name, once.
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(self.LEGACY_OSU, encoding="utf-8")
+            original = target.read_bytes()
+            first = inject_osu_timing_points(target, self._analysis())
+            self.assertEqual(first["backup"], str(target) + ".bak")
+            mapped = target.read_bytes() + b"256,192,1000,1,0,0:0:0:0:\n"  # the mapper's work
+            target.write_bytes(mapped)
+            second = inject_osu_timing_points(target, self._analysis())
+            self.assertEqual(second["backup"], str(target) + ".bak2")
+            self.assertEqual(Path(str(target) + ".bak").read_bytes(), original)
+            self.assertEqual(Path(str(target) + ".bak2").read_bytes(), mapped)
+            # Nothing new to keep: these injects replace bytes .bak2 already holds.
+            self.assertEqual(target.read_bytes(), mapped)
+            third = inject_osu_timing_points(target, self._analysis())
+            fourth = inject_osu_timing_points(target, self._analysis())
+            self.assertEqual(third["backup"], str(target) + ".bak2")
+            self.assertEqual(fourth["backup"], str(target) + ".bak2")
+            self.assertFalse(Path(str(target) + ".bak3").exists())
+
+    def test_inject_refuses_an_empty_analysis(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(self.LEGACY_OSU, encoding="utf-8")
+            with self.assertRaises(ValueError):
+                inject_osu_timing_points(
+                    target, SimpleNamespace(source="s", points=[], meter="4/4"))
+            with self.assertRaises(ValueError):
+                inject_osu_timing_points(Path(tmp) / "missing.osu", self._analysis())
+            self.assertEqual(target.read_text(encoding="utf-8"), self.LEGACY_OSU)
+
+    def test_config_tolerates_garbage(self):
+        from unittest import mock
+        import overtone
+        # Both paths: an unreadable config falls through to the pre-rename
+        # one, so leaving LEGACY_CONFIG_PATH real made "{not json" read back
+        # whatever ~/.timing_analyzer.json holds on the developer's machine.
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "cfg.json"), \
+                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "legacy.json"):
+            overtone.CONFIG_PATH.write_text("[1, 2, 3]", encoding="utf-8")
+            self.assertEqual(overtone.load_config(), {})
+            overtone.CONFIG_PATH.write_text("{not json", encoding="utf-8")
+            self.assertEqual(overtone.load_config(), {})
+            overtone.save_config({"language": "English"})
+            self.assertEqual(overtone.load_config(), {"language": "English"})
+            # An unserialisable value must not raise, and must not corrupt
+            # the file that is already there.
+            overtone.save_config({"bad": object()})
+            self.assertEqual(overtone.load_config(), {"language": "English"})
+            # Hand-edited values of the wrong type used to crash the classic
+            # window on every launch. They are dropped; the rest is kept.
+            overtone.CONFIG_PATH.write_text(json.dumps({
+                "cfg_version": "2", "prefer_map_bpm": "on", "refine_beats": None,
+                "delta": True, "language": 5, "recent": ["a.mp3", 7, None],
+                "file": "song.mp3", "persistence": "12", "theme": {"a": 1},
+                "song_options": ["x"], "future_key": {"kept": 1}}),
+                encoding="utf-8")
+            # A key this version does not know is kept as it is (a newer
+            # version wrote it); a known key of the wrong type is dropped.
+            self.assertEqual(overtone.load_config(), {
+                "recent": ["a.mp3"], "file": "song.mp3", "persistence": "12",
+                "future_key": {"kept": 1}})
+            # Notepad saves with a BOM; the file is read, not reset.
+            overtone.CONFIG_PATH.write_bytes(codecs.BOM_UTF8 + b'{"language": "English"}')
+            self.assertEqual(overtone.load_config(), {"language": "English"})
+            # Without a config of its own, the pre-rename file is read.
+            overtone.CONFIG_PATH.unlink()
+            overtone.LEGACY_CONFIG_PATH.write_text('{"language": "Español"}', encoding="utf-8")
+            self.assertEqual(overtone.load_config(), {"language": "Español"})
+
+    def test_ctrl_c_in_a_field_copies_the_field(self):
+        import tkinter
+        from unittest import mock
+        import overtone
+        try:
+            tkinter.Tk().destroy()
+        except tkinter.TclError as exc:
+            self.skipTest(f"Tk unavailable: {exc}")
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"), \
+                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
+            app = TimingAnalyzerApp()
+            try:
+                app.root.attributes("-alpha", 0.0)
+                app.root.geometry("1120x760+-3000+-3000")
+                app.root.update()
+                # A mock, so the test never touches the real clipboard; nothing
+                # is selected in the field, so its own copy leaves it alone too.
+                with mock.patch.object(app, "copy_osu") as copy_osu:
+                    for field in (app.edit_offset, app.edit_bpm):
+                        field.focus_force()
+                        app.root.update()
+                        field.event_generate("<Control-c>")
+                        app.root.update()
+                    self.assertEqual(copy_osu.call_count, 0)
+                    app.table.focus_force()
+                    app.root.update()
+                    app.table.event_generate("<Control-c>")
+                    app.root.update()
+                    self.assertEqual(copy_osu.call_count, 1)
+            finally:
+                app.root.destroy()
+
+    def test_a_csv_that_cannot_be_written_says_so(self):
+        import tkinter
+        from unittest import mock
+        import overtone
+        try:
+            tkinter.Tk().destroy()
+        except tkinter.TclError as exc:
+            self.skipTest(f"Tk unavailable: {exc}")
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"), \
+                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
+            app = TimingAnalyzerApp()
+            try:
+                app.analysis = _validation_analysis([TimingPoint(500.0, 150.0, 0.9, 0)])
+                app._manual_edits = 2
+                # Like a CSV Excel holds open: the write raises an OSError.
+                unwritable = str(Path(tmp) / "no such folder" / "timing.csv")
+                with mock.patch("tkinter.filedialog.asksaveasfilename", return_value=unwritable):
+                    app.save_csv()                  # raised out of the Tk callback
+                self.assertIn(app.tr("error", value=""), app.status.get())
+                self.assertEqual(app._manual_edits, 2)   # nothing was exported
+            finally:
+                app.root.destroy()
+
+    def test_the_classic_window_opens_on_a_badly_typed_config(self):
+        import tkinter
+        from unittest import mock
+        import overtone
+        try:
+            tkinter.Tk().destroy()
+        except tkinter.TclError as exc:
+            self.skipTest(f"Tk unavailable: {exc}")
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"), \
+                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
+            overtone.CONFIG_PATH.write_text(json.dumps(
+                {"cfg_version": "2", "prefer_map_bpm": "on", "refine_beats": "abc"}),
+                encoding="utf-8")
+            app = TimingAnalyzerApp()   # raised TypeError before the window opened
+            try:
+                self.assertTrue(app.prefer_map_bpm.get())
+                self.assertTrue(app.refine_beats.get())
+            finally:
+                app.root.destroy()
+
+    def test_local_bpm_helper_handles_degenerate_input(self):
+        self.assertEqual(len(_robust_local_bpms(np.zeros(0))), 0)
+        self.assertEqual(len(_robust_local_bpms(np.array([1.0]))), 1)
+
+
+def _validation_analysis(points, duration=60.0) -> Analysis:
+    beats = np.arange(0.5, duration, 0.4)
+    return Analysis(
+        source="test", duration=duration, beats=beats,
+        local_bpms=np.full(beats.size, 150.0), points=list(points),
+        hop_length=512, sample_rate=22050, subdivision=1.0,
+        global_bpm=150.0, stability=0.9,
+        onset=np.zeros(100, dtype=np.float32), engine="precision",
+        fit_residual_ms=0.4)
+
+
+class ValidationTests(unittest.TestCase):
+    def keys(self, analysis):
+        return [(f["level"], f["key"]) for f in validate_timing_points(analysis)]
+
+    def test_clean_map_has_no_findings_and_is_json(self) -> None:
+        import json
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        findings = validate_timing_points(analysis)
+        self.assertEqual(findings, [])
+        json.dumps(findings)
+
+    def test_two_lines_within_a_beat_are_a_duplicate(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(1000.0, 120.0, 0.9, 0), TimingPoint(1200.0, 120.0, 0.9, 1)])
+        self.assertIn(("error", "dup_points"), self.keys(analysis))
+
+    def test_section_shorter_than_a_bar_warns(self) -> None:
+        # 150 BPM: 3 beats = 1200 ms, under the 4-beat bar.
+        analysis = _validation_analysis(
+            [TimingPoint(0.0, 150.0, 0.9, 0), TimingPoint(1200.0, 150.0, 0.9, 3)],
+            duration=60.0)
+        self.assertIn(("warn", "short_section"), self.keys(analysis))
+
+    def test_fourfold_jump_is_impossible_but_twofold_is_a_question(self) -> None:
+        impossible = _validation_analysis(
+            [TimingPoint(0.0, 120.0, 0.9, 0), TimingPoint(30000.0, 500.0, 0.9, 60)])
+        self.assertIn(("error", "impossible_change"), self.keys(impossible))
+        halved = _validation_analysis(
+            [TimingPoint(0.0, 140.0, 0.9, 0), TimingPoint(30000.0, 280.0, 0.9, 70)])
+        keys = self.keys(halved)
+        self.assertIn(("info", "octave_check"), keys)
+        self.assertNotIn(("error", "impossible_change"), keys)
+        drift = _validation_analysis(
+            [TimingPoint(0.0, 140.0, 0.9, 0), TimingPoint(30000.0, 150.0, 0.9, 70)])
+        self.assertNotIn(("info", "octave_check"), self.keys(drift))
+
+    def test_bad_numbers_never_raise(self) -> None:
+        import json
+        analysis = _validation_analysis(
+            [TimingPoint(-50.0, 120.0, 0.9, 0),
+             TimingPoint(10000.0, float("nan"), 0.5, 20)])
+        keys = self.keys(analysis)
+        self.assertIn(("error", "negative_offset"), keys)
+        self.assertIn(("error", "bad_number"), keys)
+        json.dumps(validate_timing_points(analysis))
+        self.assertEqual(validate_timing_points(_validation_analysis([])), [])
+
+    def test_first_line_long_after_the_music_warns(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(70393.1, 196.5, 0.74, 150)], duration=90.0)
+        late = [f for f in validate_timing_points(analysis) if f["key"] == "late_first"]
+        self.assertEqual(len(late), 1)
+        self.assertEqual(late[0]["values"], {"line": "70.4", "beat": "0.5"})
+
+    def test_point_past_the_end_of_the_audio_warns(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(65000.0, 150.0, 0.9, 150)],
+            duration=60.0)
+        self.assertIn(("warn", "past_end"), self.keys(analysis))
+
+    def test_trailing_stub_section_warns(self) -> None:
+        # Last red line two beats before the song ends.
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(59200.0, 150.0, 0.9, 145)],
+            duration=60.0)
+        self.assertIn(("warn", "short_section"), self.keys(analysis))
+
+    def test_summary_carries_findings_for_cli_and_gui_details(self) -> None:
+        clean = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        self.assertNotIn("Validation", analysis_summary(clean))
+        dup = _validation_analysis(
+            [TimingPoint(1000.0, 120.0, 0.9, 0), TimingPoint(1200.0, 120.0, 0.9, 1)])
+        summary = analysis_summary(dup)
+        self.assertIn("Validation (check by ear):", summary)
+        self.assertIn("one is a duplicate", summary)
+        halved = _validation_analysis(
+            [TimingPoint(0.0, 140.0, 0.9, 0), TimingPoint(30000.0, 280.0, 0.9, 70)])
+        self.assertIn("octave mistake?", analysis_summary(halved))
+
+
+_MAP_OSU = "\n".join([
+    "osu file format v14",
+    "",
+    "[General]",
+    "AudioFilename: audio.mp3",
+    "",
+    "[TimingPoints]",
+    "// a comment line",
+    "1000,400,4,1,0,100,1,0",
+    "2000,-50,4,2,0,100,0,0",
+    "3000,500",
+    "4000.5,333.333333333333,4,1,0,100,1,0",
+    "oops,not-a-line",
+    "",
+    "[HitObjects]",
+    "",
+])
+
+
+def _write_osu(tmp: str, text: str, name: str = "map.osu") -> str:
+    target = str(Path(tmp) / name)
+    Path(target).write_text(text, encoding="utf-8")
+    return target
+
+
+def _compare_analysis(points, duration=60.0) -> Analysis:
+    beats = np.arange(0.5, duration, 0.4)
+    return Analysis(
+        source="test", duration=duration, beats=beats,
+        local_bpms=np.full(beats.size, 150.0), points=list(points),
+        hop_length=512, sample_rate=22050, subdivision=1.0)
+
+
+class MapReaderTests(unittest.TestCase):
+    def test_reads_reds_skips_greens_and_broken_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reds = read_osu_red_lines(_write_osu(tmp, _MAP_OSU))
+        self.assertEqual(len(reds), 3)
+        self.assertAlmostEqual(reds[0][0], 1000.0)
+        self.assertAlmostEqual(reds[0][1], 150.0)
+        self.assertAlmostEqual(reds[1][0], 3000.0)  # legacy two-field line
+        self.assertAlmostEqual(reds[1][1], 120.0)
+        self.assertAlmostEqual(reds[2][0], 4000.5)  # lazer decimal offset
+        self.assertAlmostEqual(reds[2][1], 180.0, places=4)
+
+    def test_missing_section_missing_file_or_no_reds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                read_osu_red_lines(_write_osu(tmp, "[General]\n", name="a.osu"))
+            with self.assertRaises(ValueError):
+                read_osu_red_lines(str(Path(tmp) / "missing.osu"))
+            greens = _write_osu(tmp, "[TimingPoints]\n2000,-50,4,2,0,100,0,0\n", name="b.osu")
+            self.assertEqual(read_osu_red_lines(greens), [])
+
+    def test_round_trip_through_the_own_exporter(self) -> None:
+        analysis = _compare_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        with tempfile.TemporaryDirectory() as tmp:
+            reds = read_osu_red_lines(
+                _write_osu(tmp, osu_beatmap_text(analysis, "audio.mp3")))
+        snapped = snap_timing_points(analysis.points)
+        self.assertEqual(len(reds), len(snapped))
+        for (offset, bpm), point in zip(reds, snapped):
+            self.assertLessEqual(abs(offset - point.offset_ms), 0.5)  # whole-ms file
+            self.assertAlmostEqual(bpm, point.bpm, places=6)
+
+
+class MapCompareTests(unittest.TestCase):
+    def _report(self, analysis, text):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            report = compare_map_timing(_write_osu(tmp, text), analysis)
+        json.dumps(report)  # sections and findings stay plain JSON types
+        return report
+
+    def test_identical_map_is_clean(self) -> None:
+        analysis = _compare_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        report = self._report(analysis, osu_beatmap_text(analysis, "audio.mp3"))
+        self.assertEqual(len(report["sections"]), 2)
+        for row in report["sections"]:
+            self.assertLess(row["bpm_error"], 0.05)
+            self.assertLessEqual(row["offset_error_ms"], 0.5)
+            self.assertEqual(row["octave"], 1)
+        self.assertEqual(report["findings"], [])
+
+    def test_shifted_line_warns_with_milliseconds(self) -> None:
+        analysis = _compare_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        lines = osu_beatmap_text(analysis, "audio.mp3").splitlines()
+        lines = [line.replace("30500,", "30530,") if line.startswith("30500,") else line
+                 for line in lines]
+        report = self._report(analysis, "\n".join(lines))
+        offset = [f for f in report["findings"] if f["key"] == "map_offset"]
+        self.assertEqual(len(offset), 1)
+        self.assertEqual(offset[0]["level"], "warn")
+        self.assertEqual(offset[0]["values"], {"ms": "30.0"})
+
+    def test_doubled_map_bpm_is_an_octave_question(self) -> None:
+        analysis = _compare_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        lines = osu_beatmap_text(analysis, "audio.mp3").splitlines()
+        # Halve the second line's beat length: the map runs at 2x detection.
+        for n, line in enumerate(lines):
+            if line.startswith("30500,"):
+                fields = line.split(",")
+                fields[1] = repr(float(fields[1]) / 2)
+                lines[n] = ",".join(fields)
+        report = self._report(analysis, "\n".join(lines))
+        octave = [f for f in report["findings"] if f["key"] == "map_octave"]
+        self.assertEqual(len(octave), 1)
+        self.assertEqual(octave[0]["level"], "info")
+        self.assertEqual(octave[0]["values"]["octave"], "x0.5")
+        self.assertNotIn("map_bpm", [f["key"] for f in report["findings"]])
+
+    def test_empty_sides_report_instead_of_crashing(self) -> None:
+        greens = "[TimingPoints]\n2000,-50,4,2,0,100,0,0\n"
+        report = self._report(_compare_analysis([TimingPoint(500.0, 150.0, 0.9, 0)]), greens)
+        self.assertEqual([(f["level"], f["key"]) for f in report["findings"]],
+                         [("error", "map_no_reds")])
+        report = compare_map_timing("whatever.osu", _compare_analysis([]))
+        self.assertEqual([(f["level"], f["key"]) for f in report["findings"]],
+                         [("error", "no_detected")])
+
+
+class FolderScanTests(unittest.TestCase):
+    def _song(self, tmp: str, audio: str = "song.mp3") -> Path:
+        root = Path(tmp) / "123 Artist - Title"
+        root.mkdir()
+        (root / audio).write_bytes(b"RIFF....")
+        (root / "map [Easy].osu").write_text(
+            "[General]\nAudioFilename: song.mp3\n\n[TimingPoints]\n1000,400,4,1,0,100,1,0\n",
+            encoding="utf-8")
+        (root / "map [Hard].osu").write_text(
+            "[General]\nAudioFilename: song.mp3\n\n[TimingPoints]\n1000,500,4,1,0,100,1,0\n",
+            encoding="utf-8")
+        return root
+
+    def test_finds_audio_and_difficulties_sorted(self) -> None:
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = scan_beatmap_folder(self._song(tmp))
+        self.assertTrue(scan["audio"].endswith("song.mp3"))
+        self.assertEqual(len(scan["beatmaps"]), 2)
+        self.assertEqual(scan["beatmaps"], sorted(scan["beatmaps"]))
+        self.assertTrue(scan["audio_from"].endswith("[Easy].osu"))
+        json.dumps(scan)
+
+    def test_single_audio_without_maps_is_enough(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "song"
+            root.mkdir()
+            (root / "audio.ogg").write_bytes(b"OggS....")
+            scan = scan_beatmap_folder(root)
+        self.assertTrue(scan["audio"].endswith("audio.ogg"))
+        self.assertEqual(scan["beatmaps"], [])
+        self.assertIsNone(scan["audio_from"])
+
+    def test_ambiguity_returns_no_audio_rather_than_guessing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "song"
+            root.mkdir()
+            (root / "a.mp3").write_bytes(b"ID3.....")
+            (root / "b.mp3").write_bytes(b"ID3.....")
+            scan = scan_beatmap_folder(root)
+        self.assertIsNone(scan["audio"])
+
+    def test_missing_named_audio_falls_back_to_the_single_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._song(tmp)
+            (root / "song.mp3").unlink()
+            (root / "other.wav").write_bytes(b"RIFF....")
+            scan = scan_beatmap_folder(root)
+        self.assertTrue(scan["audio"].endswith("other.wav"))
+        self.assertIsNone(scan["audio_from"])
+
+    def test_not_a_folder_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                scan_beatmap_folder(str(Path(tmp) / "missing"))
+
+
+class BatchTests(unittest.TestCase):
+    def _songs(self, tmp: str) -> Path:
+        folder = Path(tmp) / "songs"
+        folder.mkdir()
+        _click_track(folder / "a-150.wav", bpm=150.0)
+        _click_track(folder / "b-140.wav", bpm=140.0)
+        (folder / "broken.wav").write_bytes(b"RIFF....")
+        (folder / "notes.txt").write_text("not audio", encoding="utf-8")
+        return folder
+
+    def test_batch_reports_each_audio_and_never_stops(self) -> None:
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = analyze_batch(str(self._songs(tmp)))
+        self.assertEqual([row["file"] for row in rows], ["a-150.wav", "b-140.wav", "broken.wav"])
+        a, b, broken = rows
+        self.assertTrue(a["ok"])
+        self.assertAlmostEqual(a["global_bpm"], 150.0, delta=150.0 * 0.04)
+        self.assertGreaterEqual(a["points"], 1)
+        self.assertTrue(b["ok"])
+        self.assertAlmostEqual(b["global_bpm"], 140.0, delta=140.0 * 0.04)
+        self.assertFalse(broken["ok"])
+        self.assertTrue(broken["error"])
+        json.dumps(rows)
+
+    def test_empty_folder_is_empty_and_missing_is_an_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            empty = Path(tmp) / "empty"
+            empty.mkdir()
+            self.assertEqual(analyze_batch(str(empty)), [])
+            with self.assertRaises(ValueError):
+                analyze_batch(str(Path(tmp) / "missing"))
+
+
+_FULL_OSU = "\n".join([
+    "osu file format v14",
+    "",
+    "[General]",
+    "AudioFilename: audio.mp3",
+    "AudioLeadIn: 0",
+    "Mode: 0",
+    "CustomTag: keep me",
+    "",
+    "[Editor]",
+    "Bookmarks: 1000,2000",
+    "",
+    "[Metadata]",
+    "Title:Test",
+    "Artist:Me",
+    "Creator:Mapper",
+    "Version:Hard",
+    "",
+    "[Difficulty]",
+    "HPDrainRate:5",
+    "CircleSize:4",
+    "",
+    "[Events]",
+    "//Background and Video events",
+    '0,0,"bg.jpg",0,0',
+    "",
+    "[TimingPoints]",
+    "1000,400,4,1,0,100,1,0",
+    "2000,-100,4,2,0,100,0,0",
+    "",
+    "[Colours]",
+    "Combo1 : 255,0,0",
+    "",
+    "[HitObjects]",
+    "256,192,1000,1,0,0:0:0:0:",
+    "100,100,2000,2,0,B|150:150|200:100,2,120.5,2|1,0:0|0:0,0:0:0:0:",
+    "256,192,5000,8,0,8000,0:0:0:0:",
+    "192,192,9000,132,0,9500:0:0:0:0:",
+    "broken,line",
+    "",
+])
+
+
+class MapFullReaderTests(unittest.TestCase):
+    def _read(self, text, **kwargs):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            newline = kwargs.get("newline", "\n")
+            target.write_bytes(text.replace("\n", newline).encode("utf-8"))
+            beatmap = read_osu_beatmap(target)
+        json.dumps(beatmap)  # everything stays plain JSON types
+        return beatmap
+
+    def test_sections_and_known_keys_with_unknowns_preserved(self) -> None:
+        beatmap = self._read(_FULL_OSU)
+        self.assertEqual(beatmap["format"], 14)
+        self.assertEqual([s["name"] for s in beatmap["sections"]],
+                         ["General", "Editor", "Metadata", "Difficulty",
+                          "Events", "TimingPoints", "Colours", "HitObjects"])
+        self.assertEqual(beatmap["general"]["AudioFilename"], "audio.mp3")
+        self.assertEqual(beatmap["general"]["CustomTag"], "keep me")
+        self.assertEqual(beatmap["metadata"]["Version"], "Hard")
+        self.assertEqual(beatmap["difficulty"]["CircleSize"], "4")
+        colours = next(s for s in beatmap["sections"] if s["name"] == "Colours")
+        self.assertEqual(colours["lines"], ["Combo1 : 255,0,0", ""])
+        events = next(s for s in beatmap["sections"] if s["name"] == "Events")
+        self.assertIn('0,0,"bg.jpg",0,0', events["lines"])
+
+    def test_timing_reds_and_greens(self) -> None:
+        timing = self._read(_FULL_OSU)["timing"]
+        self.assertEqual(timing["reds"], [(1000.0, 150.0)])
+        self.assertEqual(timing["greens"], ["2000,-100,4,2,0,100,0,0"])
+
+    def test_hitobjects_all_kinds(self) -> None:
+        objects = self._read(_FULL_OSU)["hitobjects"]
+        self.assertEqual([o["kind"] for o in objects],
+                         ["circle", "slider", "spinner", "hold", "unparsed"])
+        circle, slider, spinner, hold, broken = objects
+        self.assertEqual((circle["x"], circle["y"], circle["time"]), (256, 192, 1000))
+        self.assertFalse(circle["new_combo"])
+        self.assertEqual(circle["hit_sample"]["volume"], 0)
+        self.assertEqual(slider["curve"], {"curve_type": "B", "points": [(150, 150), (200, 100)]})
+        self.assertEqual(slider["slides"], 2)
+        self.assertAlmostEqual(slider["length"], 120.5)
+        self.assertEqual(slider["edge_sounds"], "2|1")
+        self.assertEqual(slider["edge_sets"], "0:0|0:0")
+        self.assertEqual(spinner["end_time"], 8000)
+        self.assertTrue(hold["new_combo"])  # type 132 carries the combo flag
+        self.assertEqual(hold["end_time"], 9500)
+        self.assertEqual(broken["raw"], "broken,line")
+
+    def test_crlf_and_missing_file(self) -> None:
+        beatmap = self._read(_FULL_OSU, newline="\r\n")
+        self.assertEqual(beatmap["format"], 14)
+        self.assertEqual(len(beatmap["hitobjects"]), 5)
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                read_osu_beatmap(str(Path(tmp) / "missing.osu"))
+
+    def test_decimal_time_survives_as_float(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text("[HitObjects]\n256,192,1000.5,1,0,0:0:0:0:\n",
+                              encoding="utf-8")
+            objects = read_osu_beatmap(target)["hitobjects"]
+        self.assertEqual(len(objects), 1)
+        self.assertEqual(objects[0]["kind"], "circle")
+        self.assertAlmostEqual(objects[0]["time"], 1000.5)
+
+
+class MapWriterTests(unittest.TestCase):
+    @staticmethod
+    def _kiai_map(timing: str):
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+                 "[TimingPoints]"] + timing.split("\n") + ["", "[HitObjects]",
+                 "256,192,1000,1,0,0:0:0:0:", ""]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes("\r\n".join(lines).encode("utf-8"))
+            return read_osu_beatmap(path)
+
+    def _write(self, raw: bytes, name: str = "map.osu"):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / name
+            target.write_bytes(raw)
+            beatmap = read_osu_beatmap(target)
+            out = Path(tmp) / ("out-" + name)
+            info = write_osu_beatmap(out, beatmap)
+            result = out.read_bytes()
+        json.dumps(info)
+        return beatmap, result, info
+
+    def test_untouched_file_round_trips_byte_identical(self) -> None:
+        for newline in ("\n", "\r\n"):
+            raw = _FULL_OSU.replace("\n", newline).encode("utf-8")
+            _beatmap, result, info = self._write(raw)
+            self.assertEqual(result, raw)
+            self.assertTrue(info["bytes"] > 0)
+            self.assertFalse(info["backup"])  # new path: nothing to protect
+
+    def test_bom_and_missing_trailing_newline_survive(self) -> None:
+        raw = b"\xef\xbb\xbf" + _FULL_OSU.encode("utf-8")
+        _beatmap, result, _info = self._write(raw)
+        self.assertEqual(result, raw)
+        raw = _FULL_OSU.encode("utf-8").rstrip(b"\n")
+        _beatmap, result, _info = self._write(raw)
+        self.assertEqual(result, raw)
+
+    def test_mixed_line_endings_survive_read_write_and_set_reds(self) -> None:
+        # A CRLF map with bare LFs, as in a real one from the Songs folder
+        # (a lone "\n" before [Colours]). Bytes, not _write_osu: text mode
+        # would translate the endings on Windows before the reader saw them.
+        red = b"1000,400,4,1,0,100,1,0"
+        raw = (_FULL_OSU.replace("\n", "\r\n").encode("utf-8")
+               .replace(b"osu file format v14\r\n", b"osu file format v14\n")
+               .replace(b"[Metadata]\r\n", b"[Metadata]\n")
+               .replace(red + b"\r\n", red + b"\n")
+               .replace(b"\r\n[Colours]", b"\n[Colours]"))
+        self.assertEqual(raw.count(b"\r\n"), _FULL_OSU.count("\n") - 4)
+        beatmap, result, info = self._write(raw)
+        self.assertEqual(result, raw)
+        self.assertFalse(info["backup"])
+        self.assertEqual(beatmap["newline"], "\r\n")
+        # An edit keeps every other line's ending; a new red takes the ending
+        # of the red it replaces, and one past the old count the file's own.
+        one, two = b"1000,60000,4,1,0,100,1,0", b"5000,30000,4,1,0,100,1,0"
+        for reds, expected in (([one], raw.replace(red + b"\n", one + b"\n")),
+                               ([one, two], raw.replace(red + b"\n",
+                                                        one + b"\n" + two + b"\r\n"))):
+            with tempfile.TemporaryDirectory() as tmp:
+                target = Path(tmp) / "map.osu"
+                target.write_bytes(raw)
+                beatmap = read_osu_beatmap(target)
+                self.assertEqual(set_beatmap_reds(beatmap, [r.decode() for r in reds]), 1)
+                write_osu_beatmap(target, beatmap)
+                self.assertEqual(target.read_bytes(), expected)
+                self.assertEqual(Path(str(target) + ".bak").read_bytes(), raw)
+
+    def test_set_reds_changes_only_reds_with_pristine_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            original = _FULL_OSU.encode("utf-8")
+            target.write_bytes(original)
+            beatmap = read_osu_beatmap(target)
+            replaced = set_beatmap_reds(beatmap, ["1000,60000.000000000000,4,1,0,100,1,0"])
+            self.assertEqual(replaced, 1)
+            self.assertEqual(beatmap["timing"]["reds"], [(1000.0, 1.0)])
+            self.assertEqual(beatmap["timing"]["greens"], ["2000,-100,4,2,0,100,0,0"])
+            info = write_osu_beatmap(target, beatmap)
+            self.assertTrue(info["backup"])
+            kept = [line for line in target.read_text(encoding="utf-8").splitlines()
+                    if line.strip() and not line.strip().startswith("//")]
+            before = [line for line in original.decode("utf-8").splitlines()
+                      if line.strip() and not line.strip().startswith("//")]
+            self.assertEqual(len(kept), len(before))
+            self.assertEqual([l for l in kept if "Combo1" in l or "bg.jpg" in l],
+                             [l for l in before if "Combo1" in l or "bg.jpg" in l])
+            # A second write keeps the pristine original, never the last write,
+            # and keeps what it replaces beside it.
+            first_write = target.read_bytes()
+            set_beatmap_reds(beatmap, ["1000,30000.000000000000,4,1,0,100,1,0"])
+            info = write_osu_beatmap(target, beatmap)
+            self.assertEqual(Path(str(target) + ".bak").read_bytes(), original)
+            self.assertEqual(info["backup"], str(target) + ".bak2")
+            self.assertEqual(Path(info["backup"]).read_bytes(), first_write)
+
+    def test_set_reds_without_timing_section_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text("[General]\nAudioFilename: a.mp3\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                set_beatmap_reds(read_osu_beatmap(target), ["1,500,4,1,0,100,1,0"])
+
+    @staticmethod
+    def _kiai_reads(beatmap, times_ms):
+        from overtone import _TimingCursor
+        cursor = _TimingCursor(beatmap)
+        return [cursor.at(t)[1].kiai for t in times_ms]
+
+    def test_chorus_kiai_opens_and_closes_carrying_state(self) -> None:
+        from overtone import set_chorus_kiai, sound_events
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1500,-100,4,2,1,60,0,0")
+        before = sound_events(beatmap)
+        result = set_chorus_kiai(beatmap, [(1000.0, 2000.0)])
+        json.dumps(result)
+        # The map's own green inside the chorus would switch kiai off half
+        # way through: it is lit too, not left to cancel the chorus.
+        self.assertEqual(result, {"added": 2, "flipped": 1, "kept": 0})
+        self.assertEqual(sound_events(beatmap), before)
+        greens = beatmap["timing"]["greens"]
+        self.assertEqual([(g.split(",")[0], g.split(",")[7]) for g in greens],
+                         [("1000", "1"), ("1500", "1"), ("2000", "0")])
+        self.assertTrue(greens[0].startswith("1000,-100,"))
+        self.assertEqual(self._kiai_reads(beatmap, [900, 1200, 1700, 2100]), [False, True, True, False])
+        # Second run changes nothing: kiai already reads right.
+        self.assertEqual(set_chorus_kiai(beatmap, [(1000.0, 2000.0)]),
+                         {"added": 0, "flipped": 0, "kept": 2})
+
+    def test_chorus_kiai_keeps_touching_choruses_lit(self) -> None:
+        # Two choruses back to back: the seam closed kiai right after the
+        # second one opened, so only the first was lit (Master of Tides).
+        from overtone import set_chorus_kiai
+        beatmap = self._kiai_map("0,500,4,2,1,70,1,0\n2000,-100,4,2,1,60")
+        result = set_chorus_kiai(beatmap, [(1000.0, 2000.0), (2000.0, 3000.0)])
+        self.assertEqual(result, {"added": 2, "flipped": 1, "kept": 0})
+        self.assertEqual(self._kiai_reads(beatmap, [900, 1500, 2000, 2500, 3100]),
+                         [False, True, True, True, False])
+        # An old six-field green takes the defaults osu! reads for the rest.
+        self.assertIn("2000,-100,4,2,1,60,0,1", beatmap["timing"]["greens"])
+
+    def test_chorus_kiai_lights_a_red_line_inside_and_gives_back_the_maps_own(self) -> None:
+        from overtone import set_chorus_kiai, sound_events
+        # A tempo change inside the chorus carries its own kiai bit (off); the
+        # mapper's own kiai from 1800 runs past the chorus and stays.
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1400,400,4,2,1,70,1,0\n"
+                                 "1800,-100,4,2,1,70,0,1\n2500,-100,4,2,1,70,0,0")
+        before = sound_events(beatmap)
+        result = set_chorus_kiai(beatmap, [(1000.0, 2000.0)])
+        self.assertEqual(result, {"added": 2, "flipped": 0, "kept": 1})
+        self.assertEqual(sound_events(beatmap), before)
+        self.assertEqual(self._kiai_reads(beatmap, [1200, 1500, 1900, 2200, 2600]),
+                         [True, True, True, True, False])
+        self.assertEqual([g.split(",")[0] for g in beatmap["timing"]["greens"]],
+                         ["1000", "1400", "1800", "2500"])
+
+    def test_chorus_kiai_follows_a_red_line_to_its_last_decimal(self) -> None:
+        # Rounded to three decimals, a green meant to follow a lazer-precision
+        # red line landed before it, and the red line switched kiai off again.
+        from overtone import set_chorus_kiai
+        beatmap = self._kiai_map("0,500,4,2,1,70,1,0\n1500.0114440535,400,4,2,1,70,1,0")
+        set_chorus_kiai(beatmap, [(1000.0, 2000.0)])
+        self.assertIn("1500.0114440535,-100,4,2,1,70,0,1", beatmap["timing"]["greens"])
+        self.assertEqual(self._kiai_reads(beatmap, [1600]), [True])
+
+    def test_chorus_kiai_writes_nothing_before_the_first_red_line(self) -> None:
+        # osu! reads the first line's settings back to the song's start: a
+        # green before it would become what the whole intro reads.
+        from overtone import set_chorus_kiai
+        beatmap = self._kiai_map("5000,500,4,2,1,70,1,0")
+        set_chorus_kiai(beatmap, [(1000.0, 8000.0)])
+        times = [float(g.split(",")[0]) for g in beatmap["timing"]["greens"]]
+        self.assertEqual(times, [5000.0, 8000.0])
+        self.assertEqual(self._kiai_reads(beatmap, [6000, 9000]), [True, False])
+
+    def test_chorus_kiai_keeps_each_lines_own_ending(self) -> None:
+        from overtone import set_chorus_kiai, write_osu_beatmap
+        raw = ("osu file format v14\r\n\r\n[General]\r\nAudioFilename: audio.mp3\r\n\r\n"
+               "[TimingPoints]\r\n1000,500,4,2,1,70,1,0\n3000,-100,4,2,1,60,0,0\r\n\r\n"
+               "[HitObjects]\r\n256,192,1000,1,0,0:0:0:0:\r\n").encode("utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(raw)
+            beatmap = read_osu_beatmap(path)
+            set_chorus_kiai(beatmap, [(1500.0, 2000.0)])
+            write_osu_beatmap(path, beatmap, backup=False)
+            written = path.read_bytes()
+        # The red line's bare LF survives the insert; the new greens take CRLF.
+        self.assertIn(b"1000,500,4,2,1,70,1,0\n1500,", written)
+        self.assertIn(b"1500,-100,4,2,1,70,0,1\r\n2000,-100,4,2,1,70,0,0\r\n3000,", written)
+
+    def test_chorus_kiai_flips_a_green_instead_of_doubling(self) -> None:
+        from overtone import set_chorus_kiai
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1000,-100,4,2,1,70,0,0")
+        result = set_chorus_kiai(beatmap, [(1000.0, 2000.0)])
+        self.assertEqual((result["flipped"], result["added"]),
+                         (1, 1))
+        self.assertEqual(len(beatmap["timing"]["greens"]), 2)
+
+    @staticmethod
+    def _breaks_map(events: str, objects: str):
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+                 "[Events]"] + events.split("\n") + ["", "[TimingPoints]",
+                 "0,500,4,2,0,70,1,0", "", "[HitObjects]"] + objects.split("\n") + [""]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes("\r\n".join(lines).encode("utf-8"))
+            return read_osu_beatmap(path)
+
+    _BREAK_SECTIONS = [
+        {"start_s": 0.0, "end_s": 10.0, "kind": "verse", "level_db": -8.0},
+        {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -14.0},
+    ]
+
+    def test_suggest_breaks_cuts_quiet_gaps(self) -> None:
+        from overtone import suggest_breaks
+        beatmap = self._breaks_map(
+            "//Background and Video events\n//Break Periods",
+            "256,192,1000,1,0,0:0:0:0:\n256,192,2000,1,0,0:0:0:0:\n256,192,30000,1,0,0:0:0:0:")
+        spans = suggest_breaks(beatmap, self._BREAK_SECTIONS)
+        json.dumps(spans)
+        self.assertEqual(spans, [{"start_ms": 10000, "end_ms": 30000, "kind": "chorus",
+                                  "under_db": 6.0, "gap_s": 28.0}])
+
+    def test_suggest_breaks_silent_where_loud_or_short(self) -> None:
+        from overtone import suggest_breaks
+        beatmap = self._breaks_map(
+            "//Break Periods",
+            "256,192,1000,1,0,0:0:0:0:\n256,192,2000,1,0,0:0:0:0:\n256,192,6000,1,0,0:0:0:0:")
+        loud = [dict(s, level_db=-8.0) for s in self._BREAK_SECTIONS]
+        self.assertEqual(suggest_breaks(beatmap, loud), [])
+        self.assertEqual(suggest_breaks(beatmap, self._BREAK_SECTIONS), [])
+
+    def test_set_map_breaks_adds_after_the_comment_and_dedupes(self) -> None:
+        from overtone import set_map_breaks
+        beatmap = self._breaks_map(
+            "//Background and Video events\n//Break Periods",
+            "256,192,1000,1,0,0:0:0:0:")
+        self.assertEqual(set_map_breaks(beatmap, [(10000.0, 30000.0)]),
+                         {"added": 1, "kept": 0})
+        lines = next(s for s in beatmap["sections"] if s["name"] == "Events")["lines"]
+        self.assertEqual(lines[1:3], ["//Break Periods", "2,10000,30000"])
+        self.assertEqual(set_map_breaks(beatmap, [(10000.0, 30000.0)]),
+                         {"added": 0, "kept": 1})
+
+    def test_set_map_breaks_refuses_junk_and_missing_events(self) -> None:
+        from overtone import set_map_breaks
+        beatmap = self._breaks_map("//Break Periods", "256,192,1000,1,0,0:0:0:0:")
+        with self.assertRaises(ValueError):
+            set_map_breaks(beatmap, [(5000.0, 5000.0)])
+        with self.assertRaises(ValueError):
+            set_map_breaks(beatmap, [(9000.0, 4000.0)])
+        bare = self._kiai_map("0,500,4,2,0,70,1,0")
+        with self.assertRaises(ValueError):
+            set_map_breaks(bare, [(10000.0, 30000.0)])
+
+    def test_constant_scroll_compensates_bpm_changes(self) -> None:
+        from overtone import set_constant_scroll, sound_events
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n2000,400,4,2,1,70,1,0")
+        before = sound_events(beatmap)
+        result = set_constant_scroll(beatmap)
+        json.dumps(result)
+        self.assertEqual(result, {"added": 1, "flipped": 0, "kept": 0})
+        self.assertEqual(sound_events(beatmap), before)
+        self.assertEqual(beatmap["timing"]["greens"], ["2000,-125,4,2,1,70,0,0"])
+        self.assertEqual(set_constant_scroll(beatmap), {"added": 0, "flipped": 0, "kept": 1})
+
+    def test_constant_scroll_leaves_reference_tempo_alone(self) -> None:
+        from overtone import set_constant_scroll
+        same = self._kiai_map("1000,500,4,2,1,70,1,0\n2000,500,4,2,1,70,1,0")
+        self.assertEqual(set_constant_scroll(same), {"added": 0, "flipped": 0, "kept": 0})
+        single = self._kiai_map("1000,500,4,2,1,70,1,0")
+        self.assertEqual(set_constant_scroll(single), {"added": 0, "flipped": 0, "kept": 0})
+        with self.assertRaises(ValueError):
+            set_constant_scroll({"sections": []})
+
+    def test_constant_scroll_rewrites_a_wrong_green(self) -> None:
+        from overtone import set_constant_scroll
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n2000,400,4,2,1,70,1,0\n"
+                                 "2000,-100,4,2,1,70,0,0")
+        self.assertEqual(set_constant_scroll(beatmap), {"added": 0, "flipped": 1, "kept": 0})
+        self.assertEqual(beatmap["timing"]["greens"], ["2000,-125,4,2,1,70,0,0"])
+
+    def test_constant_scroll_scales_the_maps_own_greens(self) -> None:
+        # Only a green at the red line went in before: the map's 0.5x and
+        # 1.25x after the change stayed relative to 150 BPM and undid it at
+        # the first one. Every green under the change now scales by 120/150.
+        from overtone import set_constant_scroll, sound_events
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1500,-133.333333333333,4,2,1,70,0,0\n"
+                                 "2000,400,4,2,1,70,1,0\n2500,-200,4,2,1,70,0,0\n"
+                                 "3000,-80,4,2,1,70,0,0")
+        before = sound_events(beatmap)
+        self.assertEqual(set_constant_scroll(beatmap), {"added": 1, "flipped": 2, "kept": 0})
+        self.assertEqual(sound_events(beatmap), before)
+        self.assertEqual(beatmap["timing"]["greens"],
+                         ["1500,-133.333333333333,4,2,1,70,0,0", "2000,-125,4,2,1,70,0,0",
+                          "2500,-250,4,2,1,70,0,0", "3000,-100,4,2,1,70,0,0"])
+        # Normalised now: a second run finds the span constant and scales nothing.
+        self.assertEqual(set_constant_scroll(beatmap), {"added": 0, "flipped": 0, "kept": 1})
+
+    def test_constant_scroll_keeps_a_span_normalised_by_hand(self) -> None:
+        from overtone import set_constant_scroll
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n2000,400,4,2,1,70,1,0\n"
+                                 "2000,-125,4,2,1,70,0,0\n2500,-250,4,2,1,70,0,0")
+        self.assertEqual(set_constant_scroll(beatmap), {"added": 0, "flipped": 0, "kept": 1})
+        self.assertEqual(beatmap["timing"]["greens"],
+                         ["2000,-125,4,2,1,70,0,0", "2500,-250,4,2,1,70,0,0"])
+
+    def test_constant_scroll_green_follows_a_red_line_to_its_last_decimal(self) -> None:
+        from overtone import set_constant_scroll
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n2000.0114440535,400,4,2,1,70,1,0")
+        set_constant_scroll(beatmap)
+        self.assertEqual(beatmap["timing"]["greens"], ["2000.0114440535,-125,4,2,1,70,0,0"])
+
+    def test_scroll_profile_follows_scroll_and_nothing_else(self) -> None:
+        from overtone import scroll_profile, set_chorus_kiai, set_constant_scroll, set_section_volumes
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1500,-125,4,2,1,70,0,0\n"
+                                 "2000,400,4,2,1,70,1,0")
+        plain = scroll_profile(beatmap)
+        set_chorus_kiai(beatmap, [(1200.0, 1800.0)])
+        set_section_volumes(beatmap, [{"start_s": 1.0, "end_s": 1.8, "level_db": -6.0},
+                                      {"start_s": 1.8, "end_s": 9.0, "level_db": 0.0}])
+        self.assertEqual(scroll_profile(beatmap), plain)       # light and sound, not scroll
+        set_constant_scroll(beatmap)
+        self.assertNotEqual(scroll_profile(beatmap), plain)
+
+    def test_constant_scroll_refuses_to_move_slider_ends(self) -> None:
+        # A slider lasts by the SV it starts under: scaled, its tail and
+        # repeats leave their beats. The first version moved slider ends on
+        # 194 of 225 local maps with BPM changes.
+        from overtone import ScrollMovesSliders, set_constant_scroll
+        timing = "1000,500,4,2,1,70,1,0\n2000,400,4,2,1,70,1,0"
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: audio.mp3", "",
+                 "[Difficulty]", "SliderMultiplier:1.4", "", "[TimingPoints]"] + timing.split("\n") + [
+                 "", "[HitObjects]", "256,192,1200,2,0,L|356:192,1,140", "256,192,2400,2,0,L|356:192,1,140",
+                 "256,192,2800,2,0,L|356:192,1,140", ""]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes("\r\n".join(lines).encode("utf-8"))
+            beatmap = read_osu_beatmap(path)
+        with self.assertRaises(ScrollMovesSliders) as refused:
+            set_constant_scroll(beatmap)
+        # Two sliders start after the change; the one before it stays out of it.
+        self.assertEqual((refused.exception.count, refused.exception.first_ms), (2, 2400.0))
+        self.assertEqual(beatmap["timing"]["greens"], [])
+
+    def test_constant_scroll_refuses_a_multiplier_osu_cannot_play(self) -> None:
+        from overtone import set_constant_scroll
+        # 120 -> 60 BPM doubles every multiplier: 8.33x would become 16.7x.
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n2000,1000,4,2,1,70,1,0\n"
+                                 "2500,-12,4,2,1,70,0,0")
+        with self.assertRaisesRegex(ValueError, "2500"):
+            set_constant_scroll(beatmap)
+
+    _VOLUME_SECTIONS = [
+        {"start_s": 0.0, "end_s": 10.0, "kind": "verse", "level_db": -8.0},
+        {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -14.0},
+    ]
+
+    @staticmethod
+    def _volumes_read(beatmap, times_ms):
+        from overtone import _TimingCursor
+        cursor = _TimingCursor(beatmap)
+        return [cursor.at(t)[1].volume for t in times_ms]
+
+    def test_section_volumes_follow_energy_and_keep_the_mappers(self) -> None:
+        from overtone import set_section_volumes
+        # The verse, loudest, changes volume at 1500: the mapper's, kept. The
+        # chorus plays 60 throughout: set to its target, the anchor being the
+        # volume the verse plays longest (60), not the one at its start (70).
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n1500,-100,4,2,1,60,0,0")
+        result = set_section_volumes(beatmap, self._VOLUME_SECTIONS)
+        json.dumps(result)
+        self.assertEqual(result, {"added": 1, "flipped": 0, "kept": 0, "mapper": 1, "set": 1})
+        self.assertEqual(beatmap["timing"]["greens"],
+                         ["1500,-100,4,2,1,60,0,0", "10000,-100,4,2,1,30,0,0"])
+        self.assertEqual(self._volumes_read(beatmap, [1200, 5000, 20000]), [70, 60, 30])
+        self.assertEqual(set_section_volumes(beatmap, self._VOLUME_SECTIONS),
+                         {"added": 0, "flipped": 0, "kept": 1, "mapper": 1, "set": 0})
+
+    def test_section_volumes_leave_a_mappers_volume_at_a_section_start(self) -> None:
+        # A green at the chorus start with its own volume is the mapper's
+        # choice: the old tool rewrote it to the target.
+        from overtone import set_section_volumes
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0\n"
+                                 "10000,-100,4,2,1,60,0,0")
+        self.assertEqual(set_section_volumes(beatmap, self._VOLUME_SECTIONS),
+                         {"added": 0, "flipped": 0, "kept": 1, "mapper": 1, "set": 0})
+        self.assertEqual(beatmap["timing"]["greens"], ["10000,-100,4,2,1,60,0,0"])
+
+    def test_section_volumes_set_a_flat_section_all_the_way_through(self) -> None:
+        # The map plays 60 everywhere: an SV green and a tempo change inside
+        # the quiet verse would each have put 60 back a beat in. Both take the
+        # target, and the loud chorus after it keeps its 60.
+        from overtone import set_section_volumes, sound_events
+        beatmap = self._kiai_map("0,500,4,2,1,60,1,0\n4000,-125,4,2,1,60,0,0\n"
+                                 "6000,400,4,2,1,60,1,0")
+        sections = [{"start_s": 0.0, "end_s": 10.0, "kind": "verse", "level_db": -12.0},
+                    {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -6.0}]
+        before = [(e["time"], e["sounds"], e["normal_set"]) for e in sound_events(beatmap)]
+        result = set_section_volumes(beatmap, sections)
+        # A green at the verse start and at the red line inside, the SV
+        # green's volume rewritten, and a green giving the chorus its 60 back.
+        self.assertEqual(result, {"added": 3, "flipped": 1, "kept": 1, "mapper": 0, "set": 1})
+        self.assertEqual(self._volumes_read(beatmap, [1000, 5000, 7000, 12000]), [30, 30, 30, 60])
+        self.assertIn("4000,-125,4,2,1,30,0,0", beatmap["timing"]["greens"])
+        self.assertIn("6000,-100,4,2,1,30,0,0", beatmap["timing"]["greens"])
+        self.assertIn("10000,-100,4,2,1,60,0,0", beatmap["timing"]["greens"])
+        self.assertEqual([(e["time"], e["sounds"], e["normal_set"]) for e in sound_events(beatmap)],
+                         before)
+        self.assertEqual(set_section_volumes(beatmap, sections),
+                         {"added": 0, "flipped": 0, "kept": 2, "mapper": 0, "set": 0})
+
+    def test_section_volumes_anchor_on_what_the_loudest_part_plays_longest(self) -> None:
+        # A 5 % mute at the loudest section's start (Master of Tides has one)
+        # would have scaled every target from 5.
+        from overtone import set_section_volumes
+        beatmap = self._kiai_map("0,500,4,2,1,70,1,0\n10000,-100,4,2,1,5,0,0\n"
+                                 "10200,-100,4,2,1,80,0,0")
+        sections = [{"start_s": 0.0, "end_s": 10.0, "kind": "verse", "level_db": -12.0},
+                    {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -6.0}]
+        set_section_volumes(beatmap, sections)
+        self.assertEqual(self._volumes_read(beatmap, [5000]), [40])      # 80 at -6 dB
+
+    def test_section_volumes_follow_a_red_line_to_its_last_decimal(self) -> None:
+        # Rounded to 17837.011, the green landed before a lazer-precision red
+        # line at 17837.0114440535, which then put its own volume back.
+        from overtone import set_section_volumes
+        beatmap = self._kiai_map("0,500,4,2,1,60,1,0\n1700.0114440535,400,4,2,1,60,1,0")
+        sections = [{"start_s": 0.0, "end_s": 10.0, "kind": "verse", "level_db": -12.0},
+                    {"start_s": 10.0, "end_s": 40.0, "kind": "chorus", "level_db": -6.0}]
+        set_section_volumes(beatmap, sections)
+        self.assertIn("1700.0114440535,-100,4,2,1,30,0,0", beatmap["timing"]["greens"])
+        self.assertEqual(self._volumes_read(beatmap, [1800]), [30])
+
+    def test_section_volumes_write_nothing_before_the_first_red_line(self) -> None:
+        # A green at 20 s before a first red line at 44 s became what the whole
+        # intro read, the anchor's section included: a second run then
+        # rescaled everything from it (a real map, Age Of Reason).
+        from overtone import set_section_volumes
+        beatmap = self._kiai_map("44000,500,4,2,1,52,1,0")
+        sections = [{"start_s": 0.0, "end_s": 20.0, "kind": "intro", "level_db": 0.0},
+                    {"start_s": 20.0, "end_s": 60.0, "kind": "verse", "level_db": -6.0},
+                    {"start_s": 60.0, "end_s": 90.0, "kind": "chorus", "level_db": -3.0}]
+        first = set_section_volumes(beatmap, sections)
+        times = [float(g.split(",")[0]) for g in beatmap["timing"]["greens"]]
+        self.assertTrue(all(t >= 44000 for t in times), times)
+        self.assertEqual(first["added"], 2)          # the verse from 44 s, and the chorus's own back
+        self.assertEqual(set_section_volumes(beatmap, sections)["added"]
+                         + set_section_volumes(beatmap, sections)["flipped"], 0)
+
+    def test_section_volumes_never_go_under_osus_floor(self) -> None:
+        # A fade 47 dB under the loudest section came out at volume 0.
+        from overtone import MIN_SAMPLE_VOLUME, set_section_volumes
+        beatmap = self._kiai_map("0,500,4,2,1,70,1,0")
+        sections = [{"start_s": 0.0, "end_s": 10.0, "kind": "chorus", "level_db": 0.0},
+                    {"start_s": 10.0, "end_s": 12.0, "kind": "outro", "level_db": -47.0}]
+        set_section_volumes(beatmap, sections)
+        self.assertEqual(self._volumes_read(beatmap, [11000]), [MIN_SAMPLE_VOLUME])
+
+    def test_section_volumes_silent_without_levels_or_timing(self) -> None:
+        from overtone import set_section_volumes
+        beatmap = self._kiai_map("1000,500,4,2,1,70,1,0")
+        nothing = {"added": 0, "flipped": 0, "kept": 0, "mapper": 0, "set": 0}
+        self.assertEqual(set_section_volumes(beatmap, []), nothing)
+        self.assertEqual(set_section_volumes(beatmap, [{"start_s": 0.0}]), nothing)
+        with self.assertRaises(ValueError):
+            set_section_volumes({"sections": []}, self._VOLUME_SECTIONS)
+
+
+_CONTEXT_OSU = "\n".join([
+    "osu file format v14",
+    "",
+    "[General]",
+    "AudioFilename: audio.mp3",
+    "",
+    "[Difficulty]",
+    "SliderMultiplier:1.0",
+    "",
+    "[TimingPoints]",
+    "1000,400,4,1,0,100,1,0",
+    "",
+    "[HitObjects]",
+    "64,192,1000,5,0,0:0:0:0:",
+    "80,192,1100,1,0,0:0:0:0:",
+    "96,192,1200,1,2,2:0:0:25:",
+    "400,100,1400,5,0,0:0:0:0:",
+    "100,300,5000,1,0,0:0:0:0:",
+    "256,192,8000,8,0,9000,0:0:0:0:",
+    "",
+])
+
+#: A slider with one repeat, each edge sounding differently: head whistle,
+#: repeat clap, tail plain, landing at 6000, 6800 and 7600 ms. Its own map,
+#: because _CONTEXT_OSU is shared with the alignment and density tests and an
+#: object added there moves their counts.
+_SLIDER_OSU = "\n".join([
+    "osu file format v14",
+    "",
+    "[General]",
+    "AudioFilename: audio.mp3",
+    "",
+    "[Difficulty]",
+    "SliderMultiplier:1.0",
+    "",
+    "[TimingPoints]",
+    "1000,400,4,1,0,100,1,0",
+    "",
+    "[HitObjects]",
+    "100,100,6000,6,0,L|300:100,2,200,2|8|0,0:0|0:0|0:0,0:0:0:0:",
+    "",
+])
+
+
+class ObjectContextTests(unittest.TestCase):
+    def _context(self, attacks):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(_CONTEXT_OSU, encoding="utf-8")
+            beatmap = read_osu_beatmap(target)
+        times = np.array(attacks, dtype=np.float64)
+        rows = attack_object_context(times, np.ones(times.size), beatmap)
+        json.dumps(rows)
+        return rows
+
+    def test_patterns_combos_and_sounds(self) -> None:
+        rows = self._context([1.005, 1.103, 1.198, 1.402, 5.0, 30.0])
+        kinds = [r["object"]["kind"] if r["object"] else None for r in rows]
+        self.assertEqual(kinds, ["circle", "circle", "circle", "circle", "circle", None])
+        self.assertEqual([r["pattern"] for r in rows],
+                         ["stream", "stream", "stream", "jump", "single", "none"])
+        self.assertEqual([r["combo"] for r in rows], [1, 1, 1, 2, 2, None])
+        self.assertEqual([r["new_combo"] for r in rows],
+                         [True, False, False, True, False, False])
+        third = rows[2]
+        self.assertAlmostEqual(third["object"]["dt_ms"], 2.0)
+        self.assertEqual(third["spacing_prev_ms"], 100.0)
+        self.assertEqual(third["spacing_next_ms"], 200.0)
+        self.assertEqual(third["hitsound"]["sound"], 2)
+        self.assertEqual(third["hitsound"]["sounds"], ["normal", "whistle"])
+        self.assertEqual(third["hitsound"]["sample"]["volume"], 25)
+        stray = rows[5]
+        self.assertIsNone(stray["object"])
+        self.assertIsNone(stray["spacing_prev_ms"])
+        self.assertEqual(stray["hitsound"], {})
+
+    def _slider_context(self, attacks):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(_SLIDER_OSU, encoding="utf-8")
+            beatmap = read_osu_beatmap(target)
+        times = np.array(attacks, dtype=np.float64)
+        return attack_object_context(times, np.ones(times.size), beatmap)
+
+    def test_every_edge_a_slider_sounds_has_its_own_context(self) -> None:
+        # The gap this closed: matching attacks to object starts left a
+        # slider's repeat and tail with no context at all, and reported the
+        # head's sound for all three. On one ranked set, 28 % of what the map
+        # plays was invisible that way.
+        head, repeat, tail = self._slider_context([6.0, 6.8, 7.6])
+        self.assertEqual([r["object"]["part"] for r in (head, repeat, tail)],
+                         ["head", "repeat", "tail"])
+        self.assertEqual([r["object"]["edge"] for r in (head, repeat, tail)], [0, 1, 2])
+        # Each edge plays what the mapper wrote for it, not what the head plays.
+        self.assertEqual(head["hitsound"]["sounds"], ["normal", "whistle"])
+        self.assertEqual(repeat["hitsound"]["sounds"], ["normal", "clap"])
+        self.assertEqual(tail["hitsound"]["sounds"], ["normal"])
+        # They are one object, so combo and kind are the slider's, and the
+        # spacing between them is the slider's own rhythm.
+        for row in (head, repeat, tail):
+            self.assertEqual(row["object"]["kind"], "slider")
+            self.assertEqual(row["combo"], repeat["combo"])
+        self.assertEqual(repeat["spacing_prev_ms"], 800.0)
+        self.assertEqual(repeat["spacing_next_ms"], 800.0)
+
+    def test_a_spinner_sounds_at_its_end_and_not_at_its_start(self) -> None:
+        # osu! plays a spinner when it finishes. An attack on its start has
+        # nothing to carry a sound, and saying so is better than pointing at
+        # an object that will not play one.
+        start, end = self._context([8.0, 9.0])
+        self.assertIsNone(start["object"])
+        self.assertEqual(end["object"]["part"], "spinner_end")
+        self.assertEqual(end["object"]["kind"], "spinner")
+
+    def test_tolerance_boundary_and_empty_map(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(_CONTEXT_OSU, encoding="utf-8")
+            beatmap = read_osu_beatmap(target)
+        # 1050 ms sits exactly 50 ms from the first circle: inclusive by default.
+        attack = np.array([1.05])
+        default = attack_object_context(attack, np.ones(1), beatmap)
+        self.assertIsNotNone(default[0]["object"])
+        strict = attack_object_context(attack, np.ones(1), beatmap, tolerance_ms=49.0)
+        self.assertIsNone(strict[0]["object"])
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text("[General]\n", encoding="utf-8")
+            beatmap = read_osu_beatmap(target)
+        rows = attack_object_context(np.array([1.0]), np.array([1.0]), beatmap)
+        self.assertEqual([(r["pattern"], r["object"]) for r in rows], [("none", None)])
+
+
+def _alignment_analysis(times, weights) -> Analysis:
+    beats = np.arange(0.5, 60.0, 0.4)
+    return Analysis(
+        source="test", duration=60.0, beats=beats,
+        local_bpms=np.full(beats.size, 150.0), points=[],
+        hop_length=512, sample_rate=22050, subdivision=1.0,
+        attack_times=np.asarray(times, dtype=float),
+        attack_weights=np.asarray(weights, dtype=float))
+
+
+def _context_beatmap(tmp: str, text: str = _CONTEXT_OSU):
+    target = Path(tmp) / "map.osu"
+    target.write_text(text, encoding="utf-8")
+    return read_osu_beatmap(target)
+
+
+class AlignmentTests(unittest.TestCase):
+    def test_aligned_map_is_clean(self) -> None:
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = _context_beatmap(tmp)
+        times = [1.0, 1.1, 1.2, 1.4, 5.0, 8.0]
+        report = alignment_report(
+            _alignment_analysis(times, np.ones(len(times))), beatmap)
+        self.assertEqual((report["objects"], report["matched"]), (6, 6))
+        self.assertEqual((report["attacks"], report["covered"]), (6, 6))
+        self.assertEqual(report["offenders"], [])
+        self.assertEqual(report["uncovered"], [])
+        self.assertEqual(report["findings"], [])
+        json.dumps(report)
+
+    def test_shifted_object_and_stray_attack_are_flagged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = _context_beatmap(
+                tmp, _CONTEXT_OSU.replace("80,192,1100,", "80,192,1300,"))
+        times = [1.0, 1.1, 1.2, 1.4, 5.0, 8.0, 30.0, 20.0]
+        weights = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.1]
+        report = alignment_report(_alignment_analysis(times, weights), beatmap)
+        self.assertEqual(report["offenders"], [{"time": 1300.0, "kind": "circle", "ms": 100.0}])
+        # The abandoned attack joins the stray; the weak one stays unreported.
+        self.assertEqual(report["uncovered"], [1100.0, 30000.0])
+        self.assertEqual([(f["level"], f["key"]) for f in report["findings"]],
+                         [("warn", "objects_off_grid"), ("warn", "attacks_without_objects")])
+        self.assertEqual(report["findings"][0]["values"], {"n": 1, "worst": 100.0})
+
+    def test_no_attacks_reports_instead_of_inventing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = _context_beatmap(tmp)
+        report = alignment_report(_alignment_analysis([], []), beatmap)
+        self.assertEqual(report["objects"], 6)
+        self.assertEqual([(f["level"], f["key"]) for f in report["findings"]],
+                         [("info", "no_attacks")])
+
+
+class DensityTests(unittest.TestCase):
+    def _report(self, text, **kwargs):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text(text, encoding="utf-8")
+            report = density_report(read_osu_beatmap(target), **kwargs)
+        json.dumps(report)
+        return report
+
+    def test_stream_section_reads_ten_per_second(self) -> None:
+        lines = ["osu file format v14", "", "[HitObjects]"]
+        lines += [f"64,192,{n * 100},1,0,0:0:0:0:" for n in range(21)]
+        report = self._report("\n".join(lines) + "\n")
+        self.assertEqual(report["objects"], 21)
+        self.assertEqual(len(report["buckets"]), 1)
+        bucket = report["buckets"][0]
+        self.assertEqual((bucket["objects"], bucket["stream"]), (21, 21))
+        self.assertAlmostEqual(bucket["per_second"], 4.2)
+        self.assertEqual(report["peak_per_second"], 4.2)
+
+    def test_mixed_map_splits_stream_jump_single(self) -> None:
+        report = self._report(_CONTEXT_OSU)
+        self.assertEqual(report["objects"], 6)
+        self.assertEqual((report["stream"], report["jump"], report["single"]), (3, 1, 2))
+        self.assertEqual(len(report["buckets"]), 2)
+        self.assertEqual(report["buckets"][0]["objects"], 4)
+        self.assertEqual(report["buckets"][1]["objects"], 2)
+
+    def test_empty_map_and_bad_bucket(self) -> None:
+        report = self._report("[General]\n")
+        self.assertEqual(report, {"objects": 0, "buckets": [], "peak_per_second": 0.0,
+                                  "mean_per_second": 0.0, "stream": 0, "jump": 0, "single": 0})
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_text("[General]\n", encoding="utf-8")
+            beatmap = read_osu_beatmap(target)
+        with self.assertRaises(ValueError):
+            density_report(beatmap, bucket_s=0)
+
+
+def _reds_map(reds) -> dict:
+    return {"timing": {"reds": list(reds), "greens": []}}
+
+
+class SuggestTests(unittest.TestCase):
+    def test_missing_section_is_proposed(self) -> None:
+        import json
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        suggestions = suggest_missing_lines(analysis, _reds_map([(500.0, 150.0)]))
+        self.assertEqual(len(suggestions), 1)
+        self.assertEqual(suggestions[0]["index"], 1)
+        self.assertAlmostEqual(suggestions[0]["offset_ms"], 30500.0)
+        self.assertAlmostEqual(suggestions[0]["nearest_ms"], 30000.0)
+        json.dumps(suggestions)
+
+    def test_complete_and_empty_maps(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        self.assertEqual(suggest_missing_lines(
+            analysis, _reds_map([(500.0, 150.0), (30500.0, 152.0)])), [])
+        partial = suggest_missing_lines(analysis, _reds_map([]))
+        self.assertEqual([s["index"] for s in partial], [1])
+        self.assertIsNone(partial[0]["nearest_ms"])  # null, not Infinity: the JS bridge
+        self.assertEqual(suggest_missing_lines(_validation_analysis([]), _reds_map([])), [])
+
+    def test_tolerance_is_honoured_and_validated(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        # 300 ms off a 394.7 ms beat: inside one beat, outside half a beat.
+        beatmap = _reds_map([(500.0, 150.0), (30800.0, 152.0)])
+        self.assertEqual(suggest_missing_lines(analysis, beatmap), [])
+        self.assertEqual(len(suggest_missing_lines(analysis, beatmap, tolerance_beats=0.5)), 1)
+        with self.assertRaises(ValueError):
+            suggest_missing_lines(analysis, beatmap, tolerance_beats=0)
+
+    def test_an_octave_of_the_maps_own_tempo_is_marked(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(20500.0, 300.0, 0.8, 50),
+             TimingPoint(40500.0, 152.0, 0.8, 100), TimingPoint(50500.0, 37.8, 0.8, 110)])
+        found = suggest_missing_lines(analysis, _reds_map([(1000.0, 150.0)]))
+        # x2 and /4 of the map's 150 BPM in force are marked; 152 is not.
+        self.assertEqual([(s["map_bpm"], s["octave"]) for s in found],
+                         [(150.0, 2.0), (150.0, None), (150.0, 0.25)])
+        # Before the map's first red line its tempo still reads back.
+        early = suggest_missing_lines(
+            _validation_analysis([TimingPoint(500.0, 150.0, 0.9, 0),
+                                  TimingPoint(20500.0, 75.0, 0.8, 50)]),
+            _reds_map([(40000.0, 150.0)]))
+        self.assertEqual((early[0]["map_bpm"], early[0]["octave"]), (150.0, 0.5))
+        # No red line at all: nothing to be an octave of.
+        bare = suggest_missing_lines(analysis, _reds_map([]))
+        self.assertTrue(all(s["map_bpm"] is None and s["octave"] is None for s in bare))
+
+    def test_the_meter_rides_along_when_proven(self) -> None:
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0),
+             TimingPoint(20500.0, 152.0, 0.8, 50, meter=3, meter_known=True),
+             TimingPoint(40500.0, 150.0, 0.8, 100, meter=3)])
+        found = suggest_missing_lines(analysis, _reds_map([(500.0, 150.0)]))
+        self.assertEqual([(s["index"], s["meter"]) for s in found], [(1, 3), (2, None)])
+
+
+class AddRedLineTests(unittest.TestCase):
+    """One suggested red line into a map (Phase 9): that line, a green where
+    the map would otherwise play differently, and nothing else."""
+
+    #: CRLF like the editor writes, one bare-LF line, a BOM: every one of
+    #: them must come back as it was.
+    LINES = ["osu file format v14", "", "[General]", "AudioFilename: song.mp3",
+             "SampleSet: Soft", "", "[Difficulty]", "SliderMultiplier:1.4", "",
+             "[TimingPoints]", "1000,500,3,2,1,70,1,0", "5000,-125,3,2,1,60,0,1",
+             "9000,-100,3,2,3,40,0,0", "20000,400,4,2,1,70,1,0", "", "",
+             "[HitObjects]", "256,192,1000,1,0,0:0:0:0:", "256,192,6000,2,0,B|300:192,1,140",
+             "256,192,8000,1,0,0:0:0:0:", "256,192,8500,2,0,B|300:192,2,70",
+             "256,192,21000,2,0,B|300:192,1,140"]
+
+    def _read(self, tmp: str) -> tuple[Path, dict]:
+        path = Path(tmp) / "map.osu"
+        text = "\r\n".join(self.LINES[:4]) + "\n" + "\r\n".join(self.LINES[4:]) + "\r\n"
+        path.write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))
+        return path, read_osu_beatmap(path)
+
+    def _added(self, before: bytes, after: bytes) -> list[bytes]:
+        """The lines ``after`` holds that ``before`` does not, with the rest
+        of ``after`` required to be ``before`` byte for byte, in order."""
+        old, new = before.splitlines(keepends=True), after.splitlines(keepends=True)
+        extra, n = [], 0
+        for line in new:
+            if n < len(old) and line == old[n]:
+                n += 1
+            else:
+                extra.append(line)
+        self.assertEqual(n, len(old), "a line of the map changed or went missing")
+        return extra
+
+    def test_one_red_line_the_green_it_needs_and_nothing_else(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._read(tmp)
+            before = path.read_bytes()
+            summary = add_red_line(beatmap, 7000.0, 150.0)
+            write_osu_beatmap(path, beatmap, op="suggestion")
+            after = path.read_bytes()
+        # The state in force at 7000 ms is the green at 5000: soft, index 1,
+        # 60 %, kiai on, and 0.8x the slider velocity, which the red resets.
+        self.assertEqual(self._added(before, after),
+                         [b"7000,400.000000000000,3,2,1,60,1,1\r\n", b"7000,-125,3,2,1,60,0,1\r\n"])
+        self.assertTrue(after.startswith(b"\xef\xbb\xbf"))
+        self.assertEqual((summary["greens_added"], summary["meter"], summary["offset_ms"]), (1, 3, 7000.0))
+        self.assertEqual(summary["map_bpm"], 120.0)  # the red at 1000 ms, in force there
+        self.assertEqual([round(o) for o, _b in beatmap["timing"]["reds"]], [1000, 7000, 20000])
+
+    def test_a_green_at_its_own_time_follows_it_and_needs_no_twin(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._read(tmp)
+            before = path.read_bytes()
+            summary = add_red_line(beatmap, 9000.0, 150.0)
+            write_osu_beatmap(path, beatmap, backup=False)
+            after = path.read_bytes()
+        self.assertEqual(self._added(before, after), [b"9000,400.000000000000,3,2,3,40,1,0\r\n"])
+        self.assertLess(after.index(b"9000,400."), after.index(b"9000,-100,"))
+        self.assertEqual(summary["greens_added"], 0)
+
+    def test_before_the_first_red_it_carries_what_the_intro_played(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._read(tmp)
+            before = path.read_bytes()
+            summary = add_red_line(beatmap, 500.0, 150.0)
+            write_osu_beatmap(path, beatmap, backup=False)
+            added = self._added(before, path.read_bytes())
+        self.assertEqual(added, [b"500,400.000000000000,3,2,1,70,1,0\r\n"])
+        self.assertEqual(summary["map_bpm"], 120.0)  # the map's first red, read back to the start
+        self.assertEqual((summary["objects"], summary["sliders"]), (0, 0))
+        self.assertIsNone(summary["max_end_shift_ms"])
+
+    def test_slider_ends_under_the_new_line_are_counted_and_measured(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._read(tmp)
+            summary = add_red_line(beatmap, 7000.0, 150.0)
+        # 8000 and 8500 fall under it; 21000 follows the red at 20000. The
+        # slider at 8500 (70 px, 2 slides, 0.8x) takes 625 ms at 500 ms a
+        # beat and 500 ms at 400: its end moves 125 ms earlier.
+        self.assertEqual((summary["objects"], summary["sliders"], summary["slider_ends_moved"]),
+                         (2, 1, 1))
+        self.assertEqual(summary["max_end_shift_ms"], -125.0)
+
+    def test_the_meter_given_or_the_maps_own(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._read(tmp)
+            self.assertEqual(add_red_line(beatmap, 22000.0, 150.0)["meter"], 4)
+            self.assertEqual(add_red_line(beatmap, 30000.0, 150.0, meter=7)["row"].split(",")[2], "7")
+            for bad in (0, 17, 2.5, True):
+                with self.assertRaises(ValueError):
+                    add_red_line(beatmap, 40000.0, 150.0, meter=bad)
+
+    def test_decimals_as_inject_writes_them(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._read(tmp)
+            summary = add_red_line(beatmap, 7000.256, 150.0, decimals=2)
+        self.assertTrue(summary["row"].startswith("7000.26,"))
+        self.assertEqual(summary["offset_ms"], 7000.26)
+
+    def test_refusals_leave_the_map_as_it_was(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._read(tmp)
+            text = beatmap_text(beatmap)
+            for offset, bpm in ((1000.4, 150.0), (float("nan"), 150.0), (7000.0, 0.0),
+                                (7000.0, float("inf")), ("soon", 150.0)):
+                with self.assertRaises(ValueError):
+                    add_red_line(beatmap, offset, bpm)
+            self.assertEqual(beatmap_text(beatmap), text)
+            path.write_text("osu file format v14\n\n[General]\nAudioFilename: a.mp3\n",
+                            encoding="utf-8")
+            with self.assertRaises(ValueError):
+                add_red_line(read_osu_beatmap(path), 7000.0, 150.0)
+
+
+def _mapset_osu(version: str, audio: str = "song.mp3", reds=((1000, 400.0, 4), (30000, 300.0, 4)),
+                lead_in: str | None = "0", preview: str | None = "12000",
+                tags: str = "drum bass electronic", kiai=(), objects=()) -> str:
+    """A small but complete difficulty, CRLF like the osu! editor writes."""
+    lines = ["osu file format v14", "", "[General]", f"AudioFilename: {audio}"]
+    if lead_in is not None:
+        lines.append(f"AudioLeadIn: {lead_in}")
+    if preview is not None:
+        lines.append(f"PreviewTime: {preview}")
+    lines += ["", "[Metadata]", "Title:Song", "TitleUnicode:Song", "Artist:Band",
+              "ArtistUnicode:Band", "Creator:Mapper", f"Version:{version}", "Source:",
+              f"Tags:{tags}", "", "[TimingPoints]"]
+    lines += [f"{offset},{beat!r},{meter},2,0,60,1,0" for offset, beat, meter in reds]
+    lines += [f"{time},-100,4,2,0,60,0,{1 if on else 0}" for time, on in kiai]
+    lines += ["", "[HitObjects]"]
+    lines += [f"256,192,{time},1,0,0:0:0:0:" for time in objects]
+    return "\r\n".join(lines) + "\r\n"
+
+
+class MapsetReportTests(unittest.TestCase):
+    """Proposal P1: what the difficulties of one set must share. Read only."""
+
+    def _report(self, maps: dict, raw: dict | None = None) -> dict:
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "123 Band - Song"
+            root.mkdir()
+            for name, text in maps.items():
+                (root / f"Band - Song (Mapper) [{name}].osu").write_bytes(text.encode("utf-8"))
+            for name, data in (raw or {}).items():
+                (root / name).write_bytes(data)
+            before = {p.name: p.read_bytes() for p in root.iterdir()}
+            report = mapset_report(root)
+            after = {p.name: p.read_bytes() for p in root.iterdir()}
+        self.assertEqual(before, after)  # read only: nothing written, nothing fixed
+        json.dumps(report)
+        return report
+
+    def test_identical_mapset_has_no_differences(self) -> None:
+        report = self._report({name: _mapset_osu(name) for name in ("Easy", "Hard", "Insane")})
+        self.assertTrue(report["consistent"])
+        self.assertEqual(report["differences"], 0)
+        self.assertEqual(report["red_lines"], [])
+        self.assertTrue(all(f["identical"] for f in report["fields"]))
+        self.assertEqual([f["field"] for f in report["fields"]],
+                         ["AudioFilename", "PreviewTime", "AudioLeadIn", "Artist", "ArtistUnicode",
+                          "Title", "TitleUnicode", "Creator", "Source", "Tags"])
+        self.assertEqual([d["difficulty"] for d in report["difficulties"]], ["Easy", "Hard", "Insane"])
+        self.assertEqual(report["reference"], "Band - Song (Mapper) [Easy].osu")
+        for entry in report["difficulties"]:
+            self.assertTrue(entry["readable"])
+            self.assertEqual(entry["red_lines"], 2)
+            self.assertEqual(entry["checks"], {"red_lines": 0, "audio": [], "metadata": []})
+
+    def test_shifted_red_line_is_reported_against_the_majority(self) -> None:
+        # The odd one sorts first: the reference must still be a majority map,
+        # so only Easy is flagged, not Hard and Insane for disagreeing with it.
+        maps = {name: _mapset_osu(name) for name in ("Hard", "Insane")}
+        maps["Easy"] = _mapset_osu("Easy", reds=((1000, 400.0, 4), (30005, 300.0, 4)))
+        report = self._report(maps)
+        self.assertFalse(report["consistent"])
+        self.assertEqual(report["reference"], "Band - Song (Mapper) [Hard].osu")
+        self.assertEqual(len(report["red_lines"]), 1)
+        diff = report["red_lines"][0]
+        self.assertEqual((diff["difficulty"], diff["kind"]), ("Easy", "offset"))
+        self.assertEqual((diff["offset_ms"], diff["expected"], diff["found"]), (30000.0, 30000.0, 30005.0))
+        checks = {d["difficulty"]: d["checks"]["red_lines"] for d in report["difficulties"]}
+        self.assertEqual(checks, {"Easy": 1, "Hard": 0, "Insane": 0})
+
+    def test_beat_length_meter_missing_and_extra_lines(self) -> None:
+        base = ((1000, 400.0, 4), (30000, 300.0, 4))
+        maps = {
+            "A": _mapset_osu("A", reds=base),
+            "B": _mapset_osu("B", reds=base),
+            # 5e-7 ms off: the same number written twice, not a difference.
+            "C": _mapset_osu("C", reds=((1000, 400.0000005, 4), (30000, 300.0, 4))),
+            "D": _mapset_osu("D", reds=((1000, 400.01, 3), (30000, 300.0, 4), (60000, 250.0, 4))),
+            "E": _mapset_osu("E", reds=((1000, 400.0, 4),)),
+        }
+        report = self._report(maps)
+        self.assertEqual(report["reference"], "Band - Song (Mapper) [A].osu")
+        kinds = sorted((d["difficulty"], d["kind"]) for d in report["red_lines"])
+        self.assertEqual(kinds, [("D", "beat_length"), ("D", "extra"), ("D", "meter"), ("E", "missing")])
+        beat = next(d for d in report["red_lines"] if d["kind"] == "beat_length")
+        self.assertEqual((beat["expected"], beat["found"]), (400.0, 400.01))
+        meter = next(d for d in report["red_lines"] if d["kind"] == "meter")
+        self.assertEqual((meter["expected"], meter["found"]), (4, 3))
+        self.assertEqual(next(d for d in report["red_lines"] if d["kind"] == "missing")["offset_ms"], 30000.0)
+        self.assertEqual(next(d for d in report["red_lines"] if d["kind"] == "extra")["offset_ms"], 60000.0)
+
+    def test_different_audio_filename_is_reported(self) -> None:
+        maps = {name: _mapset_osu(name) for name in ("Easy", "Hard")}
+        maps["Insane"] = _mapset_osu("Insane", audio="song (1).mp3")
+        report = self._report(maps)
+        self.assertFalse(report["consistent"])
+        audio = next(f for f in report["fields"] if f["field"] == "AudioFilename")
+        self.assertFalse(audio["identical"])
+        self.assertEqual(audio["value"], "song.mp3")
+        self.assertEqual(audio["differences"], [{"file": "Band - Song (Mapper) [Insane].osu",
+                                                 "difficulty": "Insane", "value": "song (1).mp3"}])
+        checks = {d["difficulty"]: d["checks"]["audio"] for d in report["difficulties"]}
+        self.assertEqual(checks, {"Easy": [], "Hard": [], "Insane": ["AudioFilename"]})
+        self.assertEqual(report["red_lines"], [])
+
+    def test_defaults_and_tag_order_are_not_differences(self) -> None:
+        maps = {
+            "Easy": _mapset_osu("Easy", lead_in=None, preview="12000", tags="drum bass electronic"),
+            "Hard": _mapset_osu("Hard", lead_in="0", preview="12000", tags="electronic  drum bass"),
+            "Insane": _mapset_osu("Insane", lead_in="0", preview="-1", tags="drum bass electronic"),
+        }
+        report = self._report(maps)
+        fields = {f["field"]: f for f in report["fields"]}
+        self.assertTrue(fields["AudioLeadIn"]["identical"])
+        self.assertTrue(fields["Tags"]["identical"])
+        self.assertFalse(fields["PreviewTime"]["identical"])
+        self.assertEqual([d["difficulty"] for d in fields["PreviewTime"]["differences"]], ["Insane"])
+
+    def test_unreadable_osu_is_reported_without_stopping_the_rest(self) -> None:
+        maps = {name: _mapset_osu(name) for name in ("Easy", "Hard")}
+        maps["Normal"] = _mapset_osu("Normal", audio="other.mp3")
+        report = self._report(maps, raw={"Band - Song (Mapper) [Broken].osu": b"\xff\xfe\x00 not utf-8"})
+        self.assertEqual(report["unreadable"], 1)
+        self.assertFalse(report["consistent"])
+        broken = next(d for d in report["difficulties"] if not d["readable"])
+        self.assertEqual((broken["difficulty"], broken["file"]), ("Broken", "Band - Song (Mapper) [Broken].osu"))
+        self.assertIn("UTF-8", broken["detail"])
+        self.assertEqual(sum(1 for d in report["difficulties"] if d["readable"]), 3)
+        audio = next(f for f in report["fields"] if f["field"] == "AudioFilename")
+        self.assertEqual([d["difficulty"] for d in audio["differences"]], ["Normal"])
+
+    def test_kiai_spans_and_density_are_reported_per_difficulty(self) -> None:
+        objects = [n * 250 for n in range(41)]  # 0 .. 10 s, 4 per second
+        # Greens switch kiai on and off; a span still open at the last line
+        # runs to the end of the map.
+        maps = {
+            "Easy": _mapset_osu("Easy", kiai=((5000, True), (20000, False), (40000, True)),
+                                objects=objects),
+            "Hard": _mapset_osu("Hard", kiai=((5000, True), (35000, False))),
+        }
+        report = self._report(maps)
+        easy, hard = report["difficulties"]
+        self.assertEqual(easy["kiai"], [{"start_ms": 5000.0, "end_ms": 20000.0},
+                                        {"start_ms": 40000.0, "end_ms": None}])
+        # A red line's own effects count: kiai off at 30000, before the green.
+        self.assertEqual(hard["kiai"], [{"start_ms": 5000.0, "end_ms": 30000.0}])
+        self.assertEqual(easy["density"]["objects"], 41)
+        self.assertGreater(easy["density"]["peak_per_second"], 0)
+        self.assertEqual(hard["density"], {"objects": 0, "mean_per_second": 0.0, "peak_per_second": 0.0})
+        # Kiai and density are information, not consistency checks.
+        self.assertTrue(report["consistent"])
+
+    def test_folder_without_maps_and_missing_folder(self) -> None:
+        report = self._report({})
+        self.assertEqual((report["difficulties"], report["reference"]), ([], None))
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                mapset_report(Path(tmp) / "missing")
+
+
+class JsonReportTests(unittest.TestCase):
+    def test_report_carries_snapped_points_and_findings(self) -> None:
+        import json
+        analysis = _validation_analysis(
+            [TimingPoint(500.0, 150.0, 0.9, 0), TimingPoint(30500.0, 152.0, 0.8, 70)])
+        report = analysis_report(analysis)
+        self.assertEqual(report["global_bpm"], 150.0)
+        self.assertEqual(len(report["points"]), 2)
+        self.assertEqual(report["points"][0]["offset_ms"], 500.0)
+        self.assertEqual(report["findings"], [])
+        json.dumps(report)
+
+    def test_cli_json_single_file(self) -> None:
+        import contextlib
+        import io
+        import json
+        import sys
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "steady.wav"
+            _click_track(wav, bpm=128.0)
+            out = io.StringIO()
+            with mock.patch.object(sys, "argv", ["overtone.py", str(wav), "--json"]):
+                with contextlib.redirect_stdout(out):
+                    main()
+        report = json.loads(out.getvalue())
+        self.assertAlmostEqual(report["global_bpm"], 128.0, delta=128.0 * 0.04)
+        self.assertGreaterEqual(len(report["points"]), 1)
+
+    def test_cli_json_batch_folder(self) -> None:
+        import contextlib
+        import io
+        import json
+        import sys
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            _click_track(Path(tmp) / "steady.wav", bpm=128.0)
+            out = io.StringIO()
+            with mock.patch.object(sys, "argv", ["overtone.py", tmp, "--json"]):
+                with contextlib.redirect_stdout(out):
+                    with self.assertRaises(SystemExit) as done:
+                        main()
+        self.assertEqual(done.exception.code, 0)
+        rows = json.loads(out.getvalue())
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]["ok"])
+
+
+def _run_cli(argv, analysis=None):
+    """main() on ``argv`` -> (exit code, stdout, stderr).
+
+    The analysis is stubbed with ``analysis`` when given (a function stands in
+    for analyze_audio itself), and the GUI never opens: it is a mock, so a
+    command that would launch it only says so.
+    """
+    import contextlib
+    import io
+    import sys
+    from unittest import mock
+    import overtone
+    out, err = io.StringIO(), io.StringIO()
+    code = 0
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(mock.patch.object(sys, "argv", ["overtone.py", *argv]))
+        gui = stack.enter_context(mock.patch.object(overtone, "TimingAnalyzerApp"))
+        if callable(analysis):
+            stack.enter_context(mock.patch.object(overtone, "analyze_audio", analysis))
+        elif analysis is not None:
+            stack.enter_context(mock.patch.object(overtone, "analyze_audio",
+                                                  return_value=analysis))
+        stack.enter_context(contextlib.redirect_stdout(out))
+        stack.enter_context(contextlib.redirect_stderr(err))
+        try:
+            main()
+        except SystemExit as exc:
+            code = exc.code
+    if gui.called:
+        err.write("<GUI opened>")
+    return code, out.getvalue(), err.getvalue()
+
+
+class CliCheckTests(unittest.TestCase):
+    """``--check MAP.osu``: the modder's report for one map, from the command
+    line, with an exit code a script can read (3: findings, 0: clean)."""
+
+    @staticmethod
+    def _analysis():
+        analysis = _grid_analysis([(1000.0, 120.0)])
+        # Attacks on the 120 BPM grid from 1 s, as the grid engine keeps them.
+        analysis.attack_times = np.arange(1.0, 29.0, 0.5)
+        analysis.attack_weights = np.ones_like(analysis.attack_times)
+        return analysis
+
+    @staticmethod
+    def _map(tmp: str, red_ms: int) -> Path:
+        lines = ["osu file format v14", "", "[General]", "AudioFilename: song.wav", "",
+                 "[Difficulty]", "SliderMultiplier:1.4", "",
+                 "[TimingPoints]", f"{red_ms},500,4,1,0,100,1,0", "", "[HitObjects]"]
+        lines += [f"256,192,{1000 + k * 500},1,0,0:0:0:0:" for k in range(40)]
+        path = Path(tmp) / "map.osu"
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
+
+    def test_a_map_off_the_music_is_reported_and_exits_3(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            osu = self._map(tmp, 1010)
+            before = osu.read_bytes()
+            code, out, err = _run_cli([str(Path(tmp) / "song.wav"), "--check", str(osu)],
+                                      self._analysis())
+            self.assertEqual(osu.read_bytes(), before)            # read only
+        self.assertEqual(code, 3, err)
+        self.assertRegex(out, r"\d\d:\d\d:\d\d\d")                # editor timestamps
+        self.assertNotIn("500.000000000000", out)                 # no red lines on stdout
+
+    def test_a_clean_map_exits_0(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out, err = _run_cli([str(Path(tmp) / "song.wav"), "--check",
+                                       str(self._map(tmp, 1000))], self._analysis())
+        self.assertIn(code, (0, None), err)
+        self.assertEqual(out.strip(), "No findings.")
+
+    def test_json_carries_the_analysis_and_the_check(self) -> None:
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out, _err = _run_cli([str(Path(tmp) / "song.wav"), "--json", "--check",
+                                        str(self._map(tmp, 1010))], self._analysis())
+        body = json.loads(out)
+        self.assertEqual(code, 3)
+        self.assertEqual(set(body), {"analysis", "check"})
+        self.assertTrue(body["check"]["items"])
+        self.assertIn("points", body["analysis"])
+
+    def test_refusals(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            code, _out, err = _run_cli([tmp, "--check", "map.osu"], self._analysis())
+            self.assertEqual(code, 2)
+            self.assertIn("--check", err)
+            code, _out, err = _run_cli([str(Path(tmp) / "song.wav"), "--check",
+                                        str(Path(tmp) / "gone.osu")], self._analysis())
+            self.assertEqual(code, 1)
+            self.assertIn("Error checking", err)
+
+
+class CliOutputTests(unittest.TestCase):
+    def test_a_click_path_soundfile_cannot_write_is_an_error_not_a_traceback(self):
+        analysis = _grid_analysis([(1000.0, 120.0)])
+        with tempfile.TemporaryDirectory() as tmp:
+            for click, words in ((Path(tmp) / "click", "extension"),
+                                 (Path(tmp) / "no such folder" / "click.wav", "Folder not found")):
+                with self.subTest(click=click.name):
+                    code, out, err = _run_cli([str(Path(tmp) / "song.wav"), "--click", str(click)],
+                                              analysis)
+                    self.assertEqual(code, 1)
+                    self.assertIn("Error writing output", out + err)
+                    self.assertIn(words, out + err)
+
+    def test_stdout_carries_only_the_timing(self):
+        # `overtone.py song.mp3 > timing.txt` wrote the progress lines ahead of
+        # the red lines, and "Wrote x.osz" after them -- after the JSON too.
+        analysis = _grid_analysis([(1000.0, 120.0), (11000.0, 140.0)])
+
+        def analyse(path, delta, persistence, prefer, confidence, progress, *rest, **options):
+            progress("Loading and normalizing audio…")
+            return analysis
+
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "song.wav"
+            audio.write_bytes(b"RIFF")
+            osz = str(Path(tmp) / "map.osz")
+            code, out, err = _run_cli([str(audio), "--osz", osz], analyse)
+            self.assertEqual(code, 0)
+            lines = [line for line in out.splitlines() if line]
+            self.assertTrue(lines[0].startswith("// Generated"), lines[0])
+            self.assertTrue(all(line.startswith("//") or line.count(",") == 7 for line in lines),
+                            lines)
+            self.assertIn("Loading", err)
+            self.assertIn("Wrote", err)
+            code, out, err = _run_cli([str(audio), "--json", "--osz", osz], analyse)
+            self.assertEqual(json.loads(out)["global_bpm"], 120.0)
+            code, out, err = _run_cli([str(Path(tmp) / "missing.wav")])
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("Error:", err)
+
+
+class CliEncodingTests(unittest.TestCase):
+    def test_redirected_output_takes_any_file_name(self):
+        # Redirected, Windows hands Python its ANSI code page, and a Japanese
+        # name in a batch row ended the run in a UnicodeEncodeError traceback.
+        import io
+        import sys
+        from unittest import mock
+        import overtone
+        rows = [{"file": "東方 テスト.wav", "ok": False, "global_bpm": 0.0, "points": 0,
+                 "duration": 0.0, "error": "No rhythmic pulse found"}]
+        out, err = io.BytesIO(), io.BytesIO()
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(sys, "argv", ["overtone.py", tmp]), \
+                mock.patch.object(sys, "stdout", io.TextIOWrapper(out, encoding="cp1252")) as stdout, \
+                mock.patch.object(sys, "stderr", io.TextIOWrapper(err, encoding="cp1252")), \
+                mock.patch.object(overtone, "analyze_batch", return_value=rows), \
+                self.assertRaises(SystemExit) as done:
+            main()
+        stdout.flush()
+        self.assertEqual(done.exception.code, 1)               # the row failed, the run did not
+        self.assertIn("東方 テスト.wav", out.getvalue().decode("utf-8"))
+
+
+class CliFlagTests(unittest.TestCase):
+    """A flag that cannot act is refused: --inject with the audio forgotten
+    opened the window, and --title without --osz wrote nothing, both silently."""
+
+    def test_flags_without_audio_do_not_open_the_window(self):
+        code, out, err = _run_cli(["--inject", "map.osu"])
+        self.assertEqual(code, 2)
+        self.assertIn("--inject needs an audio file", err)
+        self.assertNotIn("<GUI opened>", err)
+        code, out, err = _run_cli([])
+        self.assertIn("<GUI opened>", err)          # no arguments at all still opens it
+
+    def test_flags_that_need_another_flag_say_so(self):
+        analysis = _grid_analysis([(1000.0, 120.0)])
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = str(Path(tmp) / "song.wav")
+            for argv, words in (([audio, "--title", "X", "--artist", "Y"], "--osz"),
+                                ([audio, "--no-backup"], "--inject")):
+                with self.subTest(argv=argv[1:]):
+                    code, out, err = _run_cli(argv, analysis)
+                    self.assertEqual((code, out), (2, ""))
+                    self.assertIn(words, err)
+
+    def test_a_folder_refuses_offsets_and_honours_the_engine(self):
+        from unittest import mock
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out, err = _run_cli([tmp, "--decimal-offsets", "3"])
+            self.assertEqual(code, 2)
+            self.assertIn("--decimal-offsets need a single audio file", err)
+            with mock.patch.object(overtone, "analyze_batch", return_value=[]) as batch:
+                code, out, err = _run_cli([tmp, "--engine", "legacy", "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(batch.call_args.kwargs["engine"], "legacy")
+
+
+def _eighths(bpm=150.0, start=1.0, stop=61.0, jitter_ms=1.5, seed=1):
+    """Attacks on the 8ths of a steady grid, beats twice as loud, a little jitter."""
+    beat = 60.0 / bpm
+    times = np.arange(start, stop, beat / 2)
+    weights = np.where(np.arange(times.size) % 2 == 0, 1.0, 0.5)
+    times = times + np.random.default_rng(seed).normal(0.0, jitter_ms / 1000.0, times.size)
+    return times, weights
+
+
+class ReferenceTimingTests(unittest.TestCase):
+    """Proposal P1: any map's red lines graded against the attacks."""
+
+    @staticmethod
+    def _grade(reds, times, weights, duration=61.0):
+        from overtone import grade_reference_timing
+        report = grade_reference_timing({"timing": {"reds": reds}}, times, weights, duration)
+        json.dumps(report)
+        return report
+
+    def test_a_true_map_is_ok_and_a_late_map_is_one_shift(self):
+        times, weights = _eighths()
+        report = self._grade([(1000.0, 150.0)], times, weights)
+        line = report["lines"][0]
+        self.assertEqual((line["verdict"], line["issues"], line["divisor"]), ("ok", [], 2))
+        self.assertEqual((line["offset_ms"], line["bpm"]), (1000.0, 150.0))  # the line itself
+        self.assertLess(abs(line["drift_ms"]), 1.0)
+        self.assertGreater(line["share"], 0.95)
+        self.assertEqual(report["findings"], [])
+        late = self._grade([(1010.0, 150.0)], times, weights)
+        # The attacks sit 10 ms before the line: a negative offset, said once
+        # for the map; the line agrees with the map's own shift.
+        self.assertEqual(late["lines"][0]["verdict"], "ok")
+        self.assertAlmostEqual(late["lines"][0]["offset_error_ms"], -10.0, delta=0.5)
+        self.assertEqual([f["key"] for f in late["findings"]], ["ref_shift"])
+        self.assertAlmostEqual(late["common_offset_ms"], -10.0, delta=0.5)
+
+    def test_a_bpm_slightly_off_drifts_and_the_fit_says_by_how_much(self):
+        times, weights = _eighths()
+        for bpm in (150.1, 151.0, 155.0):
+            with self.subTest(bpm=bpm):
+                line = self._grade([(1000.0, bpm)], times, weights)["lines"][0]
+                self.assertIn("drift", line["issues"])
+                self.assertAlmostEqual(line["fitted_bpm"], 150.0, delta=0.01)
+                # The map's 8th is short by (1 - 150/bpm) of the true one, over
+                # every 8th of the span up to its last attack.
+                atoms = (times[-1] - 1.0) / (30.0 / bpm)
+                expected = atoms * (0.2 - 30.0 / bpm) * 1000.0
+                self.assertAlmostEqual(line["drift_ms"], expected, delta=0.02 * expected)
+
+    def test_a_shuffle_reads_at_a_third_and_an_octave_is_not_an_error(self):
+        beat = 0.6
+        on = np.arange(1.0, 61.0, beat)
+        times = np.sort(np.r_[on, on + 2 * beat / 3])
+        line = self._grade([(1000.0, 100.0)], times, np.ones(times.size))["lines"][0]
+        self.assertEqual((line["verdict"], line["divisor"]), ("ok", 3))
+        times, weights = _eighths()
+        for bpm in (75.0, 300.0):
+            with self.subTest(bpm=bpm):
+                line = self._grade([(1000.0, bpm)], times, weights)["lines"][0]
+                self.assertEqual(line["verdict"], "ok")
+                self.assertAlmostEqual(line["fitted_bpm"], bpm, delta=0.01)
+
+    def test_a_line_that_leaves_the_maps_shift_is_flagged(self):
+        times, weights = _eighths()
+        # The last line placed 12 ms late; the other two are the majority.
+        report = self._grade([(1000.0, 150.0), (21000.0, 150.0), (41012.0, 150.0)],
+                             times, weights)
+        self.assertEqual([line["verdict"] for line in report["lines"]], ["ok", "ok", "check"])
+        last = report["lines"][2]
+        self.assertEqual(last["issues"], ["offset"])
+        self.assertAlmostEqual(last["offset_error_ms"], -12.0, delta=1.0)
+        self.assertAlmostEqual(last["relative_ms"], -12.0, delta=1.0)
+        self.assertLess(last["offset_se_ms"], 1.0)
+        self.assertEqual(report["counts"], {"ok": 2, "check": 1, "weak": 0, "too_few": 0})
+        self.assertEqual(report["findings"], [])
+
+    def test_two_lines_apart_are_a_split_not_a_verdict(self):
+        times, weights = _eighths()
+        # The median takes one side; which line is right needs an ear.
+        report = self._grade([(1000.0, 150.0), (41012.0, 150.0)], times, weights)
+        self.assertEqual(sum(line["verdict"] == "check" for line in report["lines"]), 1)
+        self.assertEqual([f["key"] for f in report["findings"]], ["ref_split"])
+
+    def test_loose_attacks_widen_the_error_instead_of_raising_a_flag(self):
+        # 12 ms of jitter and 40 attacks: a 10 ms drift is inside the noise.
+        # A flat 5 ms bar would flag it; two standard errors do not.
+        times, weights = _eighths(stop=9.0, jitter_ms=12.0, seed=3)
+        line = self._grade([(1000.0, 150.0)], times, weights, duration=9.0)["lines"][0]
+        self.assertGreater(abs(line["drift_ms"]), 5.0)
+        self.assertGreater(line["drift_se_ms"], 4.0)
+        self.assertEqual(line["issues"], [])
+
+    def test_a_shift_every_line_shares_flags_no_line(self):
+        times, weights = _eighths()
+        report = self._grade([(1025.0, 150.0), (31025.0, 150.0)], times, weights)
+        self.assertEqual([line["verdict"] for line in report["lines"]], ["ok", "ok"])
+        self.assertEqual([f["key"] for f in report["findings"]], ["ref_shift"])
+        self.assertAlmostEqual(float(report["findings"][0]["values"]["ms"]), -25.0, delta=1.0)
+
+    def test_too_few_weak_and_missing_evidence_are_said_not_guessed(self):
+        times, weights = _eighths(stop=2.0)
+        self.assertEqual(self._grade([(1000.0, 150.0)], times, weights)["lines"][0]["verdict"],
+                         "too_few")
+        rng = np.random.default_rng(7)
+        noise = np.sort(rng.uniform(1.0, 61.0, 200))
+        self.assertEqual(self._grade([(1000.0, 150.0)], noise, np.ones(200))["lines"][0]["verdict"],
+                         "weak")
+        self.assertEqual(self._grade([], *_eighths()), {"ok": False, "reason": "no_red_lines"})
+        self.assertEqual(self._grade([(1000.0, 150.0)], np.zeros(0), np.zeros(0)),
+                         {"ok": False, "reason": "no_attacks"})
+
+    def test_attacks_before_the_first_line_are_counted(self):
+        times, weights = _eighths(start=0.2)
+        report = self._grade([(1000.0, 150.0)], times, weights)
+        self.assertEqual(report["findings"], [{"level": "info", "key": "ref_before",
+                                               "index": -1, "values": {"n": 4}}])
+
+    def test_a_map_loads_as_hand_placed_points_with_its_own_meter(self):
+        from overtone import reference_points
+        text = ("osu file format v14\r\n\r\n[TimingPoints]\r\n"
+                "1000,400,3,1,0,100,1,0\r\n2000,-50,4,1,0,100,0,0\r\n"
+                "30000,375,4,1,0,100,1,0\r\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = read_osu_beatmap(_write_osu(tmp, text))
+        points = reference_points(beatmap, np.arange(0.5, 60.0, 0.4))
+        self.assertEqual([(p.offset_ms, p.bpm, p.meter) for p in points],
+                         [(1000.0, 150.0, 3), (30000.0, 160.0, 4)])
+        self.assertTrue(all(p.manual and p.meter_known and p.confidence == 1.0 for p in points))
+        # Hand-placed: export snapping never moves them onto each other.
+        self.assertEqual(snap_timing_points(points), points)
+        with self.assertRaises(ValueError):
+            reference_points({"timing": {"reds": []}})
+
+    def test_same_audio_compares_bytes_not_names(self):
+        from overtone import same_audio
+        with tempfile.TemporaryDirectory() as tmp:
+            song = Path(tmp) / "mine" / "song.mp3"
+            song.parent.mkdir()
+            song.write_bytes(b"ID3" + bytes(range(200)))
+            folder = Path(tmp) / "set"
+            folder.mkdir()
+            osu = folder / "map.osu"
+            beatmap = {"general": {"AudioFilename": "audio.mp3"}}
+            self.assertIsNone(same_audio(osu, beatmap, song))        # map's audio missing
+            (folder / "audio.mp3").write_bytes(song.read_bytes())
+            self.assertTrue(same_audio(osu, beatmap, song))
+            (folder / "audio.mp3").write_bytes(b"ID3" + bytes(reversed(range(200))))
+            self.assertFalse(same_audio(osu, beatmap, song))         # same size, other bytes
+            self.assertIsNone(same_audio(osu, {"general": {}}, song))
+
+    def test_same_audio_maps_are_found_across_a_songs_folder(self):
+        from overtone import find_same_audio_maps
+        with tempfile.TemporaryDirectory() as tmp:
+            song = Path(tmp) / "song.ogg"
+            song.write_bytes(b"OggS" + bytes(range(100)))
+            songs = Path(tmp) / "Songs"
+            twin, other, bigger = songs / "1 A - B", songs / "2 C - D", songs / "3 E - F"
+            for folder in (twin, other, bigger):
+                folder.mkdir(parents=True)
+            (twin / "audio.ogg").write_bytes(song.read_bytes())
+            _write_osu(str(twin), "[General]\nAudioFilename: audio.ogg\n\n[Metadata]\nVersion:Hard\n",
+                       name="A - B (x) [Hard].osu")
+            _write_osu(str(twin), "[General]\nAudioFilename: other.ogg\n", name="A - B (x) [Alt].osu")
+            (other / "audio.ogg").write_bytes(b"OggS" + bytes(reversed(range(100))))
+            (bigger / "audio.ogg").write_bytes(b"OggS" + bytes(300))
+            report = find_same_audio_maps(song, songs)
+        json.dumps(report)
+        self.assertEqual((report["scanned"], report["same_size"]), (3, 2))
+        self.assertEqual(len(report["matches"]), 1)
+        match = report["matches"][0]
+        self.assertTrue(match["audio"].endswith("audio.ogg"))
+        self.assertEqual([m["difficulty"] for m in match["beatmaps"]], ["Hard"])
+
+
+class LibraryIndexTests(unittest.TestCase):
+    """Phase 24, SQL: the Songs folder in SQLite, searched and kept in step."""
+
+    def setUp(self) -> None:
+        import overtone_library
+        self.ol = overtone_library
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.tmp = Path(scratch.name)
+        self.songs = self.tmp / "Songs"
+        self.library = overtone_library.Library(self.tmp / "index" / "library.sqlite3")
+
+    def _set(self, folder: str, audio: bytes, diffs, artist="Band", title="Song",
+             unicode_title="Song", tags="drum bass electronic") -> Path:
+        path = self.songs / folder
+        path.mkdir(parents=True)
+        (path / "audio.ogg").write_bytes(audio)
+        for version in diffs:
+            text = _mapset_osu(version, audio="audio.ogg", tags=tags, objects=(1000, 1500, 2000))
+            text = (text.replace("Artist:Band", f"Artist:{artist}")
+                        .replace("Title:Song", f"Title:{title}")
+                        .replace("TitleUnicode:Song", f"TitleUnicode:{unicode_title}"))
+            (path / f"{artist} - {title} (Mapper) [{version}].osu").write_text(
+                text, encoding="utf-8", newline="")
+        return path
+
+    def test_the_schema_file_states_the_version_the_code_reads(self):
+        self.assertEqual(self.ol.schema_file_version(), self.ol.SCHEMA_VERSION)
+        self.assertEqual(sorted(self.ol.MIGRATIONS), list(range(2, self.ol.SCHEMA_VERSION + 1)))
+        with self.assertRaises(ValueError):
+            self.ol.schema_file_version("CREATE TABLE t (x);")
+
+    def test_a_header_reads_like_the_full_parser_without_the_objects(self):
+        from overtone import read_osu_beatmap
+        text = _mapset_osu("Insane", reds=((500, 333.333, 4), (60000, 250.0, 3)),
+                           kiai=((20000, True),), objects=(1000, 1200, 1400, 1600))
+        text = text.replace("[TimingPoints]", "[Events]\r\n//Storyboard\r\n"
+                            "Sprite,Foreground,Centre,\"sb\\x[HitObjects].png\",320,240\r\n"
+                            "\r\n[TimingPoints]")
+        path = self.tmp / "map.osu"
+        path.write_text(text, encoding="utf-8", newline="")
+        header = self.ol.read_osu_header(path)
+        full = read_osu_beatmap(path)
+        self.assertEqual(header["objects"], len(full["hitobjects"]))
+        self.assertEqual(header["red_lines"], len(full["timing"]["reds"]))
+        self.assertAlmostEqual(header["first_bpm"], full["timing"]["reds"][0][1], places=3)
+        self.assertEqual((header["version"], header["audio_file"], header["mode"]),
+                         ("Insane", "song.mp3", 0))
+
+    def test_red_lines_are_counted_as_the_parser_reads_them(self):
+        from overtone import _parse_red_line
+        lines = ["1000,500,4,2,0,60,1,0", "2000,-100,4,2,0,60,0,0", "3000,400",
+                 "4000,-50", "5000,400,4,2,0,60,0,0", "6000,-400,4,2,0,60,1,0",
+                 "7000,nan,4,2,0,60,1,0", "x,400,4,2,0,60,1,0", "8000,0,4,2,0,60,1,0",
+                 "// comment", "", " 9000 , 300 ,4,2,0,60, 1 ,0"]
+        want = [red for line in lines if (red := _parse_red_line(line)) is not None]
+        count, first = self.ol._red_lines(lines)
+        self.assertEqual(count, len(want))
+        self.assertEqual(first, want[0][1])
+
+    def test_a_scan_indexes_every_set_and_search_finds_them(self):
+        self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
+        self._set("2 Néko - Kaze", b"OggS" + bytes(200), ["Insane"], artist="Néko",
+                  title="Kaze", unicode_title="風の歌", tags="vocaloid")
+        (self.songs / "not a set").mkdir()
+        seen = []
+        report = self.library.scan(self.songs,
+                                   progress=lambda done, total, removing: seen.append(total))
+        json.dumps(report)
+        self.assertEqual((report["sets"], report["beatmaps"], report["audio"]), (2, 3, 2))
+        self.assertEqual((report["added"], report["failed"]), (3, 0))
+        self.assertEqual(seen[-1], report["folders"])
+        found = self.library.search("neko")                  # accents ignored
+        self.assertEqual([s["name"] for s in found["sets"]], ["2 Néko - Kaze"])
+        self.assertEqual(found["sets"][0]["beatmaps"][0]["objects"], 3)
+        self.assertEqual(self.library.search("風の歌")["beatmaps"], 1)
+        self.assertEqual(self.library.search("voc")["beatmaps"], 1)       # a prefix
+        self.assertEqual(self.library.search("band hard")["beatmaps"], 1)  # every word
+        self.assertEqual(self.library.search("")["beatmaps"], 3)
+        for text in ('"', "AND", "-x", "title:", "a OR b", "(*)"):   # never FTS5 syntax
+            with self.subTest(text=text):
+                self.assertIn("sets", self.library.search(text))
+        self.assertTrue(self.library.covers(self.songs))
+        self.assertFalse(self.library.covers(self.tmp))
+
+    def test_one_letter_lists_in_index_order_and_longer_words_are_ranked(self):
+        self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy"], tags="sun")
+        self._set("2 Sun - Sun", b"OggS" + bytes(200), ["Sun"], artist="Sun", title="Sun",
+                  unicode_title="Sun", tags="sun")
+        self.library.scan(self.songs)
+        # Ranking every map a letter matches was most of a search's time; a
+        # letter lists them as indexed, words rank the map named Sun first.
+        self.assertEqual([s["name"] for s in self.library.search("s")["sets"]],
+                         ["1 Band - Song", "2 Sun - Sun"])
+        self.assertEqual([s["name"] for s in self.library.search("su")["sets"]],
+                         ["2 Sun - Sun", "1 Band - Song"])
+        self.assertEqual(self.library.search("s")["beatmaps"], self.library.search("su")["beatmaps"])
+
+    def test_a_rescan_reads_only_what_changed_and_forgets_what_is_gone(self):
+        first = self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
+        second = self._set("2 Other - Tune", b"OggS" + bytes(200), ["Normal"],
+                           artist="Other", title="Tune")
+        self.library.scan(self.songs)
+        again = self.library.scan(self.songs)
+        self.assertEqual((again["unchanged"], again["added"], again["updated"]), (3, 0, 0))
+        easy = next(first.glob("*Easy*.osu"))
+        easy.write_text(easy.read_text(encoding="utf-8").replace("Version:Easy", "Version:Cup"),
+                        encoding="utf-8", newline="")
+        stat = easy.stat()
+        import os
+        os.utime(easy, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+        next(first.glob("*Hard*.osu")).unlink()
+        for file in second.iterdir():
+            file.unlink()
+        second.rmdir()
+        report = self.library.scan(self.songs)
+        self.assertEqual((report["updated"], report["removed"], report["unchanged"]), (1, 2, 0))
+        self.assertEqual((report["sets"], report["beatmaps"], report["audio"]), (1, 1, 1))
+        self.assertEqual(self.library.search("cup")["beatmaps"], 1)
+        self.assertEqual(self.library.search("easy")["beatmaps"], 0)   # the old text is gone
+        self.assertEqual(self.library.search("tune")["beatmaps"], 0)
+
+    def test_same_audio_comes_from_the_index_and_keeps_its_hashes(self):
+        from overtone import find_same_audio_maps
+        audio = b"OggS" + bytes(range(100))
+        song = self.tmp / "song.ogg"
+        song.write_bytes(audio)
+        self._set("1 A - B", audio, ["Hard"])
+        self._set("2 C - D", b"OggS" + bytes(reversed(range(100))), ["Easy"])   # same size
+        self._set("3 E - F", b"OggS" + bytes(300), ["Normal"])
+        self.library.scan(self.songs)
+        report = self.library.same_audio_maps(song)
+        walked = find_same_audio_maps(song, self.songs)
+        json.dumps(report)
+        self.assertTrue(report["indexed"])
+        self.assertEqual(report["same_size"], 2)
+        self.assertEqual([(m["audio"], [b["difficulty"] for b in m["beatmaps"]])
+                          for m in report["matches"]],
+                         [(m["audio"], [b["difficulty"] for b in m["beatmaps"]])
+                          for m in walked["matches"]])
+        import sqlite3
+        from contextlib import closing
+        with closing(sqlite3.connect(self.library.path)) as db:
+            hashed = db.execute("SELECT COUNT(*) FROM audio WHERE sha256 IS NOT NULL").fetchone()[0]
+        self.assertEqual(hashed, 2)
+
+    def test_an_index_from_a_newer_schema_or_no_database_is_refused(self):
+        import sqlite3
+        from contextlib import closing
+        self.library.stats()
+        with closing(sqlite3.connect(self.library.path)) as db:
+            db.execute(f"PRAGMA user_version = {self.ol.SCHEMA_VERSION + 1}")
+        with self.assertRaises(ValueError):
+            self.library.stats()
+        self.library.reset()
+        self.assertFalse(self.library.path.exists())
+        self.assertEqual(self.library.stats()["beatmaps"], 0)   # rebuilt empty
+        self.library.reset()
+        self.library.path.write_bytes(b"not a database, just bytes" * 40)
+        with self.assertRaises(ValueError):
+            self.library.stats()
+        with self.assertRaises(ValueError):
+            self.library.scan(self.tmp / "missing")
+
+    def test_progress_counts_folders_in_the_index_and_says_what_is_removed(self):
+        from unittest import mock
+        import shutil
+        for n in range(6):
+            self._set(f"{n} Band - Song{n}", b"OggS" + bytes(100 + n), ["Easy"], title=f"Song{n}")
+        (self.songs / "not a set").mkdir()
+        parsed: list[str] = []
+        real = self.ol._parse_osu_header
+
+        def parse(raw, name, size=None):
+            parsed.append(name)
+            return real(raw, name, size)
+
+        calls = []
+        with mock.patch.object(self.ol, "_parse_osu_header", parse), \
+                mock.patch.object(self.ol, "PROGRESS_SECONDS", 0.0):
+            report = self.library.scan(self.songs, progress=lambda done, total, removing:
+                                       calls.append((done, total, removing, len(parsed))))
+        total = report["folders"]                        # the root, 6 sets, "not a set"
+        self.assertEqual(total, 8)
+        # From (0, total) as soon as the folder is listed, one call per folder
+        # here, and a folder is counted only once its maps are parsed and
+        # written (both on the scanning thread, before the call): the reader
+        # threads' lead never shows. Before, each call ran one folder ahead
+        # of the work and the last came before the removals.
+        self.assertEqual([(d, t, r) for d, t, r, _p in calls],
+                         [(done, total, 0) for done in range(total + 1)])
+        self.assertEqual([p for _d, _t, _r, p in calls], [0, 0, 1, 2, 3, 4, 5, 6, 6])
+        for folder in ("0 Band - Song0", "1 Band - Song1"):
+            shutil.rmtree(self.songs / folder)
+        calls.clear()
+        with mock.patch.object(self.ol, "PROGRESS_SECONDS", 3600.0):
+            again = self.library.scan(self.songs, progress=lambda done, total, removing:
+                                      calls.append((done, total, removing)))
+        total = again["folders"]
+        # Throttled to the first and the last, and then the rows being removed.
+        self.assertEqual(calls, [(0, total, 0), (total, total, 0), (total, total, 2)])
+        self.assertEqual((again["removed"], again["beatmaps"]), (2, 4))
+
+    def test_a_folder_that_cannot_be_listed_keeps_its_maps_and_is_named(self):
+        from unittest import mock
+        self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
+        locked = self._set("2 Other - Tune", b"OggS" + bytes(200), ["Normal"],
+                           artist="Other", title="Tune")
+        self.library.scan(self.songs)
+        real = os.scandir
+
+        def scandir(path="."):
+            if os.fspath(path) == str(locked):
+                raise PermissionError(13, "Access is denied", str(locked))
+            return real(path)
+
+        with mock.patch.object(self.ol.os, "scandir", scandir):
+            report = self.library.scan(self.songs)
+        # Not listed is not gone: before, its maps were reported removed and
+        # dropped, with no failure named.
+        self.assertEqual((report["removed"], report["failed"], report["beatmaps"],
+                          report["sets"], report["audio"]), (0, 1, 3, 2, 2))
+        self.assertEqual(report["failures"][0]["path"], str(locked))
+        self.assertEqual(self.library.search("tune")["beatmaps"], 1)
+        self.assertEqual(self.library.stats()["failed"], 1)       # kept for the page
+        again = self.library.scan(self.songs)
+        self.assertEqual((again["failed"], again["unchanged"], again["removed"]), (0, 3, 0))
+        self.assertEqual(self.library.stats()["failures"], [])
+
+    def test_a_map_that_cannot_be_opened_keeps_its_row_until_it_can(self):
+        from unittest import mock
+        folder = self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
+        self.library.scan(self.songs)
+        hard = next(folder.glob("*Hard*.osu"))
+        hard.write_text(hard.read_text(encoding="utf-8").replace("Version:Hard", "Version:Harder"),
+                        encoding="utf-8", newline="")
+        stat = hard.stat()
+        os.utime(hard, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+        real_open = open
+
+        def held(path, *args, **kwargs):          # osu! writing it, say
+            if os.fspath(path) == str(hard):
+                raise PermissionError(13, "The file is in use", str(hard))
+            return real_open(path, *args, **kwargs)
+
+        with mock.patch.object(self.ol, "open", held, create=True):
+            report = self.library.scan(self.songs)
+        self.assertEqual((report["failed"], report["removed"], report["updated"],
+                          report["beatmaps"]), (1, 0, 0, 2))
+        self.assertEqual([s["beatmaps"][0]["version"] for s in self.library.search("hard")["sets"]],
+                         ["Hard"])                    # the row it had
+        again = self.library.scan(self.songs)
+        self.assertEqual((again["failed"], again["updated"], again["unchanged"]), (0, 1, 1))
+        self.assertEqual(self.library.search("harder")["beatmaps"], 1)
+
+    def test_files_that_are_not_beatmaps_are_failures_not_blank_maps(self):
+        folder = self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
+        (folder / "empty.osu").write_bytes(b"")
+        (folder / "junk.osu").write_bytes(bytes(range(256)) * 4)
+        report = self.library.scan(self.songs)
+        self.assertEqual((report["beatmaps"], report["added"], report["failed"]), (2, 2, 2))
+        self.assertTrue(all("not a beatmap" in f["detail"] for f in report["failures"]),
+                        report["failures"])
+        for path in (folder / "empty.osu", folder / "junk.osu"):
+            with self.assertRaises(ValueError):
+                self.ol.read_osu_header(path)
+        easy = next(folder.glob("*Easy*.osu"))
+        easy.write_bytes(b"")                       # emptied since the last scan
+        again = self.library.scan(self.songs)
+        # Its row goes, counted as failed, never as removed: the file is there.
+        self.assertEqual((again["beatmaps"], again["failed"], again["removed"]), (1, 3, 0))
+        self.assertEqual(self.library.search("easy")["beatmaps"], 0)
+        # Past the size limit only the limit is read, and the true size is said.
+        from unittest import mock
+        (folder / "huge.osu").write_bytes(b"osu file format v14\r\n" + b"x" * 260_000)
+        with mock.patch.object(self.ol.ta, "MAX_OSU_BYTES", 100_000):
+            read = dict((p, v) for kind, p, v in self.ol._read_folder(str(folder), {})["maps"])
+            huge = self.library.scan(self.songs)
+        self.assertEqual(len(read[str(folder / "huge.osu")][2]), 100_001)
+        self.assertIn("huge.osu is 0.3 MB", next(f["detail"] for f in huge["failures"]
+                                                 if f["path"].endswith("huge.osu")))
+
+    def test_a_damaged_index_is_rebuilt_by_the_next_scan(self):
+        import sqlite3
+        from contextlib import closing
+        self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
+        for damage in ("junk", "truncated", "pages overwritten"):
+            with self.subTest(damage=damage):
+                self.library.reset()
+                self.library.scan(self.songs)
+                with closing(sqlite3.connect(self.library.path)) as db:
+                    db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                size = self.library.path.stat().st_size
+                with open(self.library.path, "r+b") as handle:
+                    if damage == "junk":
+                        handle.write(b"not a database, just bytes" * 40)
+                    elif damage == "truncated":
+                        handle.truncate(size // 2)
+                    else:                             # every page after the first
+                        handle.seek(4096)
+                        handle.write(bytes(range(256)) * ((size - 4096) // 256))
+                with self.assertRaises((ValueError, sqlite3.DatabaseError)) as caught:
+                    self.library.stats()
+                self.assertTrue(self.ol.is_damaged(caught.exception), caught.exception)
+                # Before, every call failed from here on, a scan included.
+                report = self.library.scan(self.songs)
+                self.assertTrue(report.get("rebuilt"))
+                self.assertEqual((report["beatmaps"], report["added"]), (2, 2))
+                self.assertEqual(self.library.search("band")["beatmaps"], 2)
+
+    def test_a_busy_index_is_not_damaged_and_a_newer_one_is_refused_not_rebuilt(self):
+        import sqlite3
+        from contextlib import closing
+        self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy"])
+        self.library.scan(self.songs)
+        holder = sqlite3.connect(self.library.path)
+        holder.execute("BEGIN IMMEDIATE")
+        try:
+            with closing(sqlite3.connect(self.library.path, timeout=0)) as db, \
+                    self.assertRaises(sqlite3.OperationalError) as caught:
+                db.execute("INSERT INTO meta (key, value) VALUES ('x', 'y')")
+        finally:
+            holder.rollback()
+            holder.close()
+        self.assertFalse(self.ol.is_damaged(caught.exception))
+        with closing(sqlite3.connect(self.library.path)) as db:
+            db.execute(f"PRAGMA user_version = {self.ol.SCHEMA_VERSION + 1}")
+        with self.assertRaises(ValueError) as newer:
+            self.library.scan(self.songs)
+        self.assertFalse(self.ol.is_damaged(newer.exception))
+        self.assertTrue(self.library.path.exists())      # never rewritten
+
+    def test_a_version_1_index_gains_the_health_and_analysis_tables_and_keeps_its_maps(self):
+        import sqlite3
+        from contextlib import closing
+        self._set("1 Band - Song", b"OggS" + bytes(100), ["Easy", "Hard"])
+        self.library.scan(self.songs)
+
+        def health_schema():
+            with closing(sqlite3.connect(self.library.path)) as db:
+                return (db.execute("PRAGMA user_version").fetchone()[0],
+                        sorted(" ".join(sql.split()) for (sql,) in db.execute(
+                            "SELECT sql FROM sqlite_master WHERE tbl_name IN ('health', "
+                            "'analysis') AND sql IS NOT NULL")))
+
+        fresh = health_schema()
+        with closing(sqlite3.connect(self.library.path)) as db:
+            db.execute("DROP TABLE health")
+            db.execute("DROP TABLE analysis")
+            db.execute("PRAGMA user_version = 1")
+        self.assertEqual(self.library.stats()["beatmaps"], 2)     # opened: migrated
+        self.assertEqual(health_schema(), fresh)
+        self.assertEqual(fresh[0], self.ol.SCHEMA_VERSION)
+
+    def _clicks(self, name: str, duration: float = 24.0, **tempo) -> Path:
+        folder = self.songs / name
+        folder.mkdir(parents=True)
+        # A kick every 500 ms from 250 (``change_at``/``second_bpm`` move it on).
+        _click_track(folder / "audio.wav", 120.0, duration=duration, **tempo)
+        return folder
+
+    @staticmethod
+    def _timed(folder: Path, version: str, reds, audio: str = "audio.wav",
+               first: int = 1000, last: int = 23500) -> Path:
+        path = folder / f"Band - Clicks (Mapper) [{version}].osu"
+        path.write_text(_mapset_osu(version, audio=audio, reds=reds, objects=(first, last)),
+                        encoding="utf-8", newline="")
+        return path
+
+    def test_health_grades_each_map_against_its_audio_and_keeps_the_verdict(self):
+        from unittest import mock
+        clicks = self._clicks("1 Band - Clicks")
+        self._timed(clicks, "True", ((250, 500.0, 4), (8250, 500.0, 4), (16250, 500.0, 4)))
+        twin = self._timed(clicks, "Twin", ((250, 500.0, 4), (8250, 500.0, 4), (16250, 500.0, 4)))
+        moved = self._timed(clicks, "Moved", ((250, 500.0, 4), (8250, 500.0, 4), (16270, 500.0, 4)))
+        self._timed(clicks, "Untimed", ())
+        gone = self.songs / "2 Band - Gone"
+        gone.mkdir()
+        self._timed(gone, "Lost", ((250, 500.0, 4),), audio="missing.mp3")
+        self.library.scan(self.songs)
+        seen = []
+        run = self.library.health(engine="python", progress=lambda done, total: seen.append((done, total)))
+        json.dumps(run)
+        self.assertEqual((run["graded"], run["audio"], run["pending"]), (5, 2, 0))
+        self.assertEqual(seen, [(0, 2), (1, 2), (2, 2)])
+        report = self.library.health_report(self.ol.HEALTH_VERDICTS)
+        json.dumps(report)
+        # Worst first: the moved line, the missing audio, no timing, then the rest.
+        self.assertEqual([(m["version"], m["verdict"]) for m in report["maps"]],
+                         [("Moved", "check"), ("Lost", "no_audio"), ("Untimed", "no_timing"),
+                          ("True", "ok"), ("Twin", "ok")])
+        moved_report = report["maps"][0]
+        self.assertEqual([(c["index"], c["issues"]) for c in moved_report["checks"]], [(2, ["offset"])])
+        self.assertAlmostEqual(moved_report["checks"][0]["relative_ms"], -20.0, delta=2.0)
+        self.assertAlmostEqual(moved_report["worst_ms"], 20.0, delta=2.0)
+        self.assertEqual(report["counts"], {"check": 1, "error": 0, "no_audio": 1, "unsure": 0,
+                                            "no_timing": 1, "ok": 2, "ungraded": 0})
+        # A rerun grades nothing; a changed .osu is graded alone, a new grading
+        # grades everything again.
+        self.assertEqual(self.library.health(engine="python")["graded"], 0)
+        stat = moved.stat()
+        os.utime(moved, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+        self.assertEqual(self.library.health(engine="python")["graded"], 1)
+        with mock.patch.object(self.ol, "HEALTH_GRADER", self.ol.HEALTH_GRADER + 1):
+            self.assertEqual(self.library.health(engine="python")["graded"], 5)
+        twin.unlink()                    # gone since the scan: the next scan's to drop
+        with mock.patch.object(self.ol, "HEALTH_GRADER", self.ol.HEALTH_GRADER + 2):
+            run = self.library.health(engine="python")
+        self.assertEqual((run["graded"], run["counts"]["error"]), (4, 0))
+
+    def test_health_grades_a_map_where_it_is_played(self):
+        import soundfile as sf
+        # A pack: another song at 124 BPM, then this one on the map's 120 BPM
+        # grid from 12.25 s. Graded on every attack, a pack map read up to
+        # 1,019 ms of drift from the songs around it (-723 ms here); between
+        # its own first and last objects it is right.
+        folder = self.songs / "1 Various - Pack"
+        folder.mkdir(parents=True)
+        sr = 44100
+        kicks = np.r_[np.arange(0.25, 12.0, 60 / 124), np.arange(12.25, 24.0, 0.5)]
+        y = np.zeros(24 * sr, dtype=np.float32)
+        t = np.arange(int(0.04 * sr)) / sr
+        kick = (np.sin(2 * np.pi * 160 * t) * np.exp(-t / 0.006)).astype(np.float32)
+        for at in kicks:
+            y[int(at * sr):int(at * sr) + kick.size] += kick
+        sf.write(str(folder / "audio.wav"), y, sr)
+        self._timed(folder, "Its own part", ((250, 500.0, 4),), first=12500, last=23500)
+        self._timed(folder, "Whole file", ((250, 500.0, 4),), first=1000, last=23500)
+        self.library.scan(self.songs)
+        self.library.health(engine="python")
+        maps = self.library.health_report(self.ol.HEALTH_VERDICTS)["maps"]
+        self.assertEqual([(m["version"], m["verdict"]) for m in maps],
+                         [("Whole file", "check"), ("Its own part", "ok")])
+        self.assertGreater(maps[0]["worst_ms"], 20.0)
+
+    def test_health_stops_between_audio_files_and_resumes(self):
+        import threading
+        for n in (1, 2):
+            self._timed(self._clicks(f"{n} Band - Clicks{n}", duration=12.0), f"Map{n}",
+                        ((250, 500.0, 4),))
+        self.library.scan(self.songs)
+        stop = threading.Event()
+        stop.set()
+        self.assertEqual(self.library.health(engine="python", stop=stop)["graded"], 0)
+        first = self.library.health(engine="python", limit=1)
+        self.assertEqual((first["graded"], first["pending"], first["counts"]["ungraded"]), (1, 1, 1))
+        second = self.library.health(engine="python")
+        self.assertEqual((second["graded"], second["pending"], second["counts"]["ok"]), (1, 0, 2))
+        with self.assertRaises(ValueError):
+            self.library.health(engine="cobol")
+
+    def test_health_reads_the_same_verdicts_through_the_rust_engine(self):
+        import overtone_rust as rs
+        if rs.find_cli() is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        from unittest import mock
+        clicks = self._clicks("1 Band - Clicks")
+        self._timed(clicks, "True", ((250, 500.0, 4), (8250, 500.0, 4), (16250, 500.0, 4)))
+        self._timed(clicks, "Moved", ((250, 500.0, 4), (8250, 500.0, 4), (16270, 500.0, 4)))
+        self.library.scan(self.songs)
+        self.library.health(engine="python")
+        python = self.library.health_report(self.ol.HEALTH_VERDICTS)["maps"]
+        with mock.patch.object(self.ol, "HEALTH_GRADER", self.ol.HEALTH_GRADER + 1):
+            self.assertEqual(self.library.health(engine="rust")["graded"], 2)
+        rust = self.library.health_report(self.ol.HEALTH_VERDICTS)["maps"]
+        self.assertEqual([(m["version"], m["verdict"]) for m in rust],
+                         [(m["version"], m["verdict"]) for m in python])
+        self.assertEqual({m["engine"] for m in rust}, {"rust"})
+        self.assertAlmostEqual(rust[0]["worst_ms"], python[0]["worst_ms"], delta=0.5)
+
+    # -- the BPM cache ----------------------------------------------------------
+    def test_analysis_reads_each_songs_audio_once_and_keeps_it(self):
+        from unittest import mock
+        clicks = self._clicks("1 Band - Clicks", duration=4.0)
+        self._timed(clicks, "Easy", ((250, 500.0, 4),))
+        self._timed(clicks, "Hard", ((250, 500.0, 4),))
+        gone = self.songs / "2 Band - Gone"
+        gone.mkdir()
+        self._timed(gone, "Lost", ((250, 500.0, 4),), audio="missing.mp3")
+        self.library.scan(self.songs)
+        found = {"verdict": "ok", "grid": "precision", "bpm": 120.0, "stability": 0.99,
+                 "meter": "4/4", "residual_ms": 0.4, "duration": 4.0,
+                 "lines": json.dumps([[250.0, 120.0, 4]]), "seconds": 0.01}
+        seen = []
+        with mock.patch.object(self.ol, "_analyse_audio", return_value=found) as engine:
+            run = self.library.analyze(engine="python",
+                                       progress=lambda done, total: seen.append((done, total)))
+            json.dumps(run)
+            # The two difficulties share one audio file, read once.
+            self.assertEqual(engine.call_count, 1)
+            self.assertEqual((run["analysed"], run["pending"]), (2, 0))
+            self.assertEqual(seen, [(0, 2), (1, 2), (2, 2)])
+            self.assertEqual(run["counts"], {"ok": 1, "refused": 0, "error": 0, "no_audio": 1,
+                                             "pending": 0})
+            # Nothing changed: nothing read. A touched file is read alone, a
+            # changed engine reads everything again.
+            self.assertEqual(self.library.analyze(engine="python")["analysed"], 0)
+            audio = clicks / "audio.wav"
+            stat = audio.stat()
+            os.utime(audio, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+            self.assertEqual(self.library.analyze(engine="python")["analysed"], 1)
+            with mock.patch.object(self.ol, "engine_fingerprint", return_value="another"):
+                self.assertEqual(self.library.analyze(engine="python")["analysed"], 2)
+            self.assertEqual(engine.call_count, 3)
+        cached = self.library.analyses([str(audio), str(gone / "missing.mp3"), "elsewhere.ogg"])
+        self.assertEqual(sorted(cached), sorted([str(audio), str(gone / "missing.mp3")]))
+        self.assertEqual(cached[str(audio)]["lines"], [{"offset_ms": 250.0, "bpm": 120.0, "meter": 4}])
+        self.assertEqual((cached[str(audio)]["bpm"], cached[str(audio)]["engine"]), (120.0, "python"))
+        self.assertEqual(cached[str(gone / "missing.mp3")]["verdict"], "no_audio")
+        self.assertIsNone(cached[str(gone / "missing.mp3")]["bpm"])
+        # A song gone from the folder takes its analysis with it.
+        import shutil
+        shutil.rmtree(gone)
+        self.library.scan(self.songs)
+        with mock.patch.object(self.ol, "_analyse_audio", return_value=found):
+            self.assertEqual(self.library.analyze(engine="python")["dropped"], 1)
+        with self.assertRaises(ValueError):
+            self.library.analyze(engine="cobol")
+
+    def test_analysis_keeps_a_refusal_without_inventing_a_bpm(self):
+        from unittest import mock
+        with mock.patch.object(self.ol.ta, "analyze_audio",
+                               side_effect=ValueError("No rhythmic pulse found")):
+            refused = self.ol._analyse_audio("noise.wav", "python")
+        self.assertEqual((refused["verdict"], refused["detail"]), ("refused", "No rhythmic pulse found"))
+        self.assertNotIn("bpm", refused)
+        with mock.patch.object(self.ol.ta, "analyze_audio", side_effect=RuntimeError("Cannot load")):
+            self.assertEqual(self.ol._analyse_audio("broken.mp3", "python")["verdict"], "error")
+
+    def test_the_beat_this_vote_is_part_of_what_an_analysis_came_from(self):
+        from unittest import mock
+        with mock.patch.object(self.ol.ta, "_beat_this_session", return_value=None):
+            without = self.ol.engine_fingerprint("python")
+            self.assertFalse(self.ol.beat_vote())
+        with mock.patch.object(self.ol.ta, "_beat_this_session", return_value=object()):
+            self.assertNotEqual(self.ol.engine_fingerprint("python"), without)
+            self.assertTrue(self.ol.beat_vote())
+
+    def test_analysis_through_the_rust_engine_reads_the_click_tempo(self):
+        import overtone_rust as rs
+        if rs.find_cli() is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        clicks = self._clicks("1 Band - Clicks")
+        self._timed(clicks, "Easy", ())
+        self.library.scan(self.songs)
+        run = self.library.analyze(engine="rust", jobs=2)
+        self.assertEqual((run["analysed"], run["counts"]["ok"]), (1, 1))
+        found = self.library.analyses([str(clicks / "audio.wav")])[str(clicks / "audio.wav")]
+        self.assertEqual((found["engine"], found["verdict"], found["grid"]), ("rust", "ok", "precision"))
+        self.assertAlmostEqual(found["bpm"], 120.0, delta=0.05)
+        self.assertAlmostEqual(found["lines"][0]["bpm"], 120.0, delta=0.05)
+
+
+class LibraryServerTests(unittest.TestCase):
+    """The library API: the index and the BPM cache over HTTP, behind a token."""
+
+    def setUp(self) -> None:
+        import threading
+        import overtone_library
+        import overtone_server
+        self.server_module = overtone_server
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.tmp = Path(scratch.name)
+        songs = self.tmp / "Songs" / "1 Band - Song"
+        songs.mkdir(parents=True)
+        (songs / "audio.ogg").write_bytes(b"OggS" + bytes(100))
+        (songs / "Band - Song (Mapper) [Hard].osu").write_text(
+            _mapset_osu("Hard", audio="audio.ogg", objects=(1000, 2000)), encoding="utf-8",
+            newline="")
+        self.audio = str(songs / "audio.ogg")
+        self.service = overtone_server.Service(self.tmp / "Songs", self.tmp / "library.sqlite3",
+                                               engine="python")
+        self.server = overtone_server.serve(self.service, "127.0.0.1", 0, "secret", log=False)
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.base = f"http://127.0.0.1:{self.server.server_address[1]}"
+        self.ol = overtone_library
+
+    def _call(self, method: str, path: str, body=None, token: str | None = "secret"):
+        import urllib.error
+        import urllib.request
+        data = body if isinstance(body, bytes) else (
+            json.dumps(body).encode() if body is not None else None)
+        request = urllib.request.Request(self.base + path, data=data, method=method)
+        if token is not None:
+            request.add_header("Authorization", f"Bearer {token}")
+        try:
+            with urllib.request.urlopen(request, timeout=10) as reply:
+                return reply.status, json.loads(reply.read())
+        except urllib.error.HTTPError as exc:
+            with exc:
+                raw = exc.read()
+            return exc.code, json.loads(raw) if raw.startswith(b"{") else raw
+
+    def _wait(self, job: str) -> dict:
+        import time
+        # An analysis loads the Beat This! model first: seconds, more on a busy machine.
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            state = self._call("GET", "/api/status")[1]["jobs"][job]
+            if not state["running"]:
+                return state
+            time.sleep(0.05)
+        self.fail(f"the {job} never ended")
+
+    def test_every_request_needs_the_token(self):
+        self.assertEqual(self._call("GET", "/api/status", token=None)[0], 401)
+        self.assertEqual(self._call("GET", "/api/status", token="wrong")[0], 401)
+        self.assertEqual(self._call("POST", "/api/scan", {}, token=None)[0], 401)
+        self.assertEqual(self._call("GET", "/api/status")[0], 200)
+
+    def test_a_scan_then_an_analysis_fill_the_songs_with_their_bpm(self):
+        from unittest import mock
+        self.assertEqual(self._call("POST", "/api/scan"), (202, {"started": "scan"}))
+        scan = self._wait("scan")
+        self.assertIsNone(scan["error"])
+        self.assertEqual(scan["result"]["added"], 1)
+        status, songs = self._call("GET", "/api/songs?q=band")
+        self.assertEqual(status, 200)
+        beatmap = songs["sets"][0]["beatmaps"][0]
+        self.assertEqual((beatmap["audio_path"], beatmap["analysis"]), (self.audio, None))
+        found = {"verdict": "ok", "grid": "precision", "bpm": 150.0, "lines": "[[1000.0, 150.0, 4]]"}
+        with mock.patch.object(self.ol, "_analyse_audio", return_value=found):
+            self.assertEqual(self._call("POST", "/api/analyze", {"limit": 5})[0], 202)
+            analysis = self._wait("analyze")
+        self.assertIsNone(analysis["error"])
+        self.assertEqual((analysis["done"], analysis["result"]["analysed"]), (1, 1))
+        beatmap = self._call("GET", "/api/songs?q=band")[1]["sets"][0]["beatmaps"][0]
+        self.assertEqual((beatmap["analysis"]["bpm"], beatmap["analysis"]["verdict"]), (150.0, "ok"))
+        from urllib.parse import quote
+        status, one = self._call("GET", f"/api/analysis?path={quote(self.audio)}")
+        self.assertEqual((status, one["lines"]), (200, [{"offset_ms": 1000.0, "bpm": 150.0, "meter": 4}]))
+        self.assertEqual(self._call("GET", "/api/analysis?path=elsewhere.ogg")[0], 404)
+        self.assertEqual(self._call("GET", "/api/status")[1]["analysis"]["ok"], 1)
+
+    def test_bad_requests_are_named_not_run(self):
+        self.assertEqual(self._call("POST", "/api/analyze", {"limit": "many"})[0], 400)
+        self.assertEqual(self._call("POST", "/api/analyze", b"[1, 2]")[0], 400)
+        self.assertEqual(self._call("POST", "/api/analyze", b"{not json")[0], 400)
+        self.assertEqual(self._call("GET", "/api/songs?limit=lots")[0], 400)
+        self.assertEqual(self._call("GET", "/api/analysis")[0], 400)
+        self.assertEqual(self._call("GET", "/api/nothing")[0], 404)
+        self.assertEqual(self._call("DELETE", "/api/status")[0], 501)
+        self.assertEqual(self._call("POST", "/api/stop"), (200, {"stopping": False}))
+
+    def test_one_run_of_each_job_at_a_time(self):
+        import threading
+        release = threading.Event()
+        self.assertTrue(self.service.analyze_job.start(lambda progress, stop: release.wait(5)))
+        self.addCleanup(release.set)
+        self.assertEqual(self._call("POST", "/api/analyze")[0], 409)
+        self.assertEqual(self._call("POST", "/api/stop"), (202, {"stopping": True}))
+        self.assertTrue(self.service.analyze_job.stop.is_set())
+        release.set()
+        self._wait("analyze")
+
+    def test_the_server_can_turn_the_beat_this_vote_off(self):
+        import overtone as ta
+        from unittest import mock
+        with mock.patch.object(ta, "_BEAT_THIS_SESSION", [object()]):
+            self.assertTrue(self._call("GET", "/api/status")[1]["beat_vote"])
+            self.server_module.disable_beat_vote()
+            self.assertFalse(self._call("GET", "/api/status")[1]["beat_vote"])
+            self.assertEqual(ta._BEAT_THIS_SESSION, [None])
+
+    def test_measurement_runs_are_queued_followed_and_refused_over_http(self):
+        import time
+        status, overview = self._call("GET", "/api/v1/runs")
+        self.assertEqual(status, 200)
+        self.assertIn("anime-single", [s["id"] for s in overview["stages"]])
+        self.assertEqual((overview["runs"], overview["queue"]["running"]), ([], None))
+        self.assertEqual(self._call("POST", "/api/v1/runs", {"tool": "rm"})[0], 400)
+        self.assertEqual(self._call("POST", "/api/v1/runs", {"stage": "anime-single",
+                                                              "jobs": 99})[0], 400)
+        # No index yet: the run is queued, fails, and says why in its log.
+        status, meta = self._call("POST", "/api/v1/runs", {"stage": "anime-single",
+                                                            "engine": "python", "max_songs": 1})
+        self.assertEqual((status, meta["state"]), (202, "queued"))
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            detail = self._call("GET", f"/api/v1/runs/{meta['id']}")[1]
+            if detail["state"] not in ("queued", "running"):
+                break
+            time.sleep(0.1)
+        self.assertEqual(detail["state"], "failed")
+        self.assertTrue(detail["log"])
+        self.assertEqual(self._call("GET", f"/api/v1/runs/{meta['id']}/result")[0], 404)
+        self.assertEqual(self._call("POST", f"/api/v1/runs/{meta['id']}/stop"),
+                         (200, {"stopping": False}))
+        for bad in ("nope", "..%2F..%2Fetc", "20261025-000000-abcdef"):
+            self.assertEqual(self._call("GET", f"/api/v1/runs/{bad}")[0], 404)
+        self.assertEqual([r["id"] for r in self._call("GET", "/api/v1/runs")[1]["runs"]],
+                         [meta["id"]])
+
+    def test_the_token_is_generated_once_and_kept_private(self):
+        from unittest import mock
+        path = self.tmp / "token"
+        with mock.patch.dict(os.environ, {self.server_module.TOKEN_ENV: ""}):
+            first = self.server_module.load_token(str(path))
+            self.assertGreaterEqual(len(first), 32)
+            self.assertEqual(self.server_module.load_token(str(path)), first)
+        if os.name != "nt":
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        from_env = "e" * self.server_module.MIN_TOKEN
+        with mock.patch.dict(os.environ, {self.server_module.TOKEN_ENV: from_env}):
+            self.assertEqual(self.server_module.load_token(str(path)), from_env)
+        # A short token is guessable: the server refuses to start on one.
+        with mock.patch.dict(os.environ, {self.server_module.TOKEN_ENV: "from-env"}):
+            with self.assertRaises(SystemExit):
+                self.server_module.load_token(str(path))
+        path.write_text("short", encoding="utf-8")
+        with mock.patch.dict(os.environ, {self.server_module.TOKEN_ENV: ""}):
+            with self.assertRaises(SystemExit):
+                self.server_module.load_token(str(path))
+
+
+
+class MeasurementRunTests(unittest.TestCase):
+    """Server runs of the bench's timing stages: one at a time, each in its
+    own process, kept on disk with the code that produced it."""
+
+    def setUp(self) -> None:
+        import overtone_library
+        import overtone_runs
+        self.runs = overtone_runs
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.tmp = Path(scratch.name)
+        self.songs = self.tmp / "Songs"
+        self.index = self.tmp / "library.sqlite3"
+        self.library = overtone_library.Library(self.index)
+
+    def _anime_song(self, folder: str) -> None:
+        path = self.songs / folder
+        path.mkdir(parents=True)
+        _click_track(path / "audio.wav", 120.0, duration=24.0)
+        text = _mapset_osu("Hard", audio="audio.wav", reds=((250, 500.0, 4),),
+                           tags="anime opening", objects=(1000, 23500))
+        (path / "Band - Clicks (Mapper) [Hard].osu").write_text(text, encoding="utf-8", newline="")
+
+    def _wait(self, queue, run_id: str) -> dict:
+        import time
+        deadline = time.monotonic() + 300
+        while time.monotonic() < deadline:
+            meta = queue.store.meta(run_id)
+            if meta["state"] not in ("queued", "running"):
+                return meta
+            time.sleep(0.1)
+        self.fail(f"run {run_id} never ended")
+
+    def test_a_request_becomes_the_tools_own_arguments_or_is_refused(self):
+        tool, argv, settings = self.runs.build_args(
+            {"tool": "stages", "stage": "anime-single", "split": "dev", "jobs": 2,
+             "baseline": "compare"}, "/srv/index.sqlite3", "/srv/Songs")
+        self.assertEqual(tool, "stages")
+        self.assertEqual(argv, ["anime-single", "--engine", "rust", "--jobs", "2", "--db",
+                                "/srv/index.sqlite3", "--split", "dev", "--compare"])
+        self.assertFalse(settings["beat_vote"])
+        tool, argv, _ = self.runs.build_args({"tool": "single_bpm", "sample": 50, "tv": True},
+                                             "/db", "/srv/Songs")
+        self.assertEqual(argv[-5:], ["--songs", "/srv/Songs", "--sample", "50", "--tv"])
+        for bad in ({"tool": "rm"}, {"stage": "nope"}, {"stage": "anime-single", "jobs": 99},
+                    {"stage": "anime-single", "jobs": True}, {"stage": "anime-single", "split": "all"},
+                    {"stage": "anime-single", "beat_vote": "yes"}, {"stage": "anime-single",
+                    "max_songs": -1}, {"stage": "anime-single", "baseline": "--refresh"}, []):
+            with self.assertRaises(ValueError, msg=bad):
+                self.runs.build_args(bad, "/db")
+
+    def test_the_app_engine_falls_back_to_v3_where_rust_refuses_as_the_app_does(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import corpus_b
+        import overtone_rust
+        self.assertIn("app", self.runs.ENGINES)
+        self.assertEqual(self.runs.build_args({"stage": "anime-single", "engine": "app"},
+                                              "/db")[1][2], "app")
+        audio = self.tmp / "clicks.wav"
+        _click_track(audio, 120.0, duration=12.0)
+        refusal = overtone_rust.SidecarRefused("No rhythmic pulse found", [])
+        with mock.patch.object(overtone_rust, "analyze", side_effect=refusal):
+            app = corpus_b.analyse(str(audio), "app", "overtone-cli")
+            rust = corpus_b.analyse(str(audio), "rust", "overtone-cli")
+        self.assertEqual((app["backend"], app["path"]), ("python", "precision"))
+        self.assertIn("SidecarRefused", app["rust_said"])
+        self.assertAlmostEqual(app["global_bpm"], 120.0, delta=0.05)
+        self.assertEqual(rust["path"], "refused")      # Rust alone gives no answer
+        self.assertNotEqual(corpus_b.engine_fingerprint("app", Path(__file__)),
+                            corpus_b.engine_fingerprint("python", None))
+
+    def test_an_experiment_is_named_and_switches_its_flags_in_the_run_only(self):
+        _, _, settings = self.runs.build_args(
+            {"stage": "anime-single", "engine": "app", "experiment": "local-fold-judge"}, "/db")
+        self.assertEqual(settings["experiment"], "local-fold-judge")
+        self.assertNotIn("experiment", self.runs.build_args({"stage": "anime-single"}, "/db")[2])
+        with self.assertRaises(ValueError):
+            self.runs.build_args({"stage": "anime-single", "experiment": "rm -rf"}, "/db")
+        import overtone
+        for flags in self.runs.EXPERIMENTS.values():
+            for name in flags:
+                self.assertIsInstance(getattr(overtone, name), bool, name)
+
+    def test_gates_and_the_suite_are_named_runs_and_nothing_else(self):
+        tool, argv, settings = self.runs.build_args({"tool": "gates"}, "/db")
+        self.assertEqual((tool, argv, settings["gates"]), ("gates", list(self.runs.GATES), "all"))
+        tool, argv, settings = self.runs.build_args(
+            {"tool": "gates", "only": ["golden", "benchmark"]}, "/db")
+        self.assertEqual(argv, ["benchmark", "golden"])            # CLAUDE.md's order
+        self.assertEqual(self.runs.build_args({"tool": "suite", "suite": "web"}, "/db")[1], ["web"])
+        for bad in ({"tool": "gates", "only": ["rm -rf"]}, {"tool": "gates", "only": "golden"},
+                    {"tool": "suite", "suite": "../tests"}):
+            with self.assertRaises(ValueError, msg=bad):
+                self.runs.build_args(bad, "/db")
+        # Every gate CLAUDE.md lists for Python is here, as it is written there.
+        claude = (Path(__file__).resolve().parent.parent / "CLAUDE.md").read_text(encoding="utf-8")
+        for command in self.runs.GATES.values():
+            self.assertIn(" ".join(command), claude)
+
+    def test_a_gates_run_reports_each_gate(self):
+        import time
+        store = self.runs.RunStore(self.tmp / "runs")
+        queue = self.runs.RunQueue(store, self.index, self.songs)
+        meta = queue.submit({"tool": "gates", "only": ["fixtures"]})
+        deadline = time.monotonic() + 120
+        while store.meta(meta["id"])["state"] in ("queued", "running") and time.monotonic() < deadline:
+            time.sleep(0.1)
+        done = store.meta(meta["id"])
+        self.assertEqual(done["state"], "done", "\n".join(store.log_tail(meta["id"])))
+        self.assertEqual(done["summary"], {"checked": 1, "passed": 1, "failed": []})
+        report = store.result(meta["id"])
+        self.assertEqual([(r["name"], r["exit"]) for r in report["rows"]], [("fixtures", 0)])
+        self.assertIn("fixtures.json matches", "\n".join(report["rows"][0]["tail"]))
+
+    def test_ranked_runs_need_an_osu_db_and_use_it_by_default(self):
+        osu_db = self.tmp / "osu!.db"
+        _, argv, settings = self.runs.build_args({"stage": "anime-single"}, "/db", "", osu_db)
+        self.assertNotIn("--ranked-db", argv)
+        self.assertFalse(settings["ranked"])
+        with self.assertRaises(ValueError):
+            self.runs.build_args({"stage": "anime-single", "ranked": True}, "/db", "", osu_db)
+        osu_db.write_bytes(OsuDbAuditTests._database([(4, 0)]))
+        _, argv, settings = self.runs.build_args({"stage": "anime-single"}, "/db", "", osu_db)
+        self.assertEqual(argv[-2:], ["--ranked-db", str(osu_db)])
+        self.assertTrue(settings["ranked"])
+        _, argv, _ = self.runs.build_args({"stage": "anime-single", "ranked": False}, "/db", "", osu_db)
+        self.assertNotIn("--ranked-db", argv)
+        with self.assertRaises(ValueError):
+            self.runs.build_args({"stage": "anime-single", "ranked": "yes"}, "/db", "", osu_db)
+
+    def test_a_ranked_stage_keeps_only_the_maps_osu_db_lists_as_ranked_or_loved(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import stages
+        self._anime_song("1 Band - Clicks")
+        self._anime_song("2 Band - Pending")
+        self.library.scan(self.songs)
+        osu_db = self.tmp / "osu!.db"
+        name = "Band - Clicks (Mapper) [Hard].osu"
+        # Ranked, and a pending map of the other song; folder case differs.
+        osu_db.write_bytes(OsuDbAuditTests._database([(4, 0, "1 BAND - Clicks", name),
+                                                      (2, 0, "2 Band - Pending", name)]))
+        ranked, header = stages.ranked_maps(osu_db)
+        self.assertEqual((len(ranked), header["version"]), (1, 20260924))
+        stage = next(s for s in stages.load_manifest()["stages"] if s["id"] == "anime-single")
+        every, _ = stages.build_stage(stage, self.index, 0.3)
+        self.assertEqual(sorted(Path(s["folder"]).name for s in every),
+                         ["1 Band - Clicks", "2 Band - Pending"])
+        kept, skipped = stages.build_stage(stage, self.index, 0.3, ranked)
+        self.assertEqual([Path(s["folder"]).name for s in kept], ["1 Band - Clicks"])
+        self.assertEqual(skipped, ["1 maps not ranked, approved or loved in osu!.db"])
+
+    def test_the_commit_is_read_from_the_checkout(self):
+        commit = self.runs.git_commit()
+        self.assertRegex(commit or "", r"^[0-9a-f]{40}$")
+        self.assertIsNone(self.runs.git_commit(self.tmp))
+
+    def test_a_run_measures_a_stage_and_keeps_its_report(self):
+        import overtone_rust as rs
+        if rs.find_cli() is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        self._anime_song("1 Band - Clicks")
+        self.library.scan(self.songs)
+        store = self.runs.RunStore(self.tmp / "runs")
+        queue = self.runs.RunQueue(store, self.index, self.songs)
+        meta = queue.submit({"tool": "stages", "stage": "anime-single", "engine": "rust"})
+        self.assertEqual(meta["state"], "queued")
+        self.assertEqual(meta["commit"], self.runs.git_commit())
+        done = self._wait(queue, meta["id"])
+        log = "\n".join(store.log_tail(meta["id"]))
+        self.assertEqual((done["state"], done["exit_code"]), ("done", 0), log)
+        self.assertIn("Beat This! vote off", log)
+        report = store.result(meta["id"])
+        self.assertEqual((report["stage"]["id"], report["engine"]), ("anime-single", "rust"))
+        self.assertEqual(len(report["maps"]), 1)
+        self.assertTrue(report["maps"][0]["tempo_ok"], report["maps"][0])
+        self.assertEqual(done["summary"], report["summary"])
+        # Caches live under the store, one tree per vote setting.
+        self.assertTrue(any((store.cache / "novote").rglob("*.json")))
+        self.assertFalse((store.cache / "vote").exists())
+        self.assertEqual([m["id"] for m in store.runs()], [meta["id"]])
+
+    def test_runs_go_one_at_a_time_and_can_be_cancelled_or_stopped(self):
+        store = self.runs.RunStore(self.tmp / "runs")
+        queue = self.runs.RunQueue(store, self.tmp / "missing.sqlite3", self.songs)
+        first = queue.submit({"tool": "stages", "stage": "anime-single", "engine": "python"})
+        second = queue.submit({"tool": "stages", "stage": "anime-variable", "engine": "python"})
+        self.assertTrue(queue.stop(second["id"]))
+        self.assertEqual(store.meta(second["id"])["state"], "cancelled")
+        ended = self._wait(queue, first["id"])
+        # An index that is not there fails the run, and says so in its log.
+        self.assertEqual(ended["state"], "failed")
+        self.assertTrue(store.log_tail(first["id"]))
+        self.assertFalse(queue.stop(first["id"]))
+        with self.assertRaises(LookupError):
+            store.meta("../../etc")
+        with self.assertRaises(LookupError):
+            store.result(first["id"])
+
+    def test_a_run_the_server_died_under_is_marked_interrupted(self):
+        store = self.runs.RunStore(self.tmp / "runs")
+        meta = store.create({"tool": "stages"}, ["stages"])
+        meta["state"] = "running"
+        store.write(meta)
+        self.runs.RunQueue(store, self.index, self.songs)
+        self.assertEqual(store.meta(meta["id"])["state"], "interrupted")
+
+
+
+def _structure_report(bounds, kinds, groups, levels, duration=64.0, energy=None):
+    """``overtone-cli structure``'s JSON for hand-made sections."""
+    edges = [0.0] + list(bounds) + [duration]
+    repeats = [groups.count(g) for g in groups]
+    return {"duration": duration, "boundaries": list(bounds),
+            "sections": [{"start_s": edges[i], "end_s": edges[i + 1], "kind": kinds[i],
+                          "group": groups[i], "repeats": repeats[i], "level_db": levels[i]}
+                         for i in range(len(kinds))],
+            "energy": list(energy if energy is not None else np.linspace(0.1, 1.0, 128)),
+            "energy_hop": 0.5,
+            "rules": {"window_s": 0.5, "edge_blind_s": 4.0, "intro_max_s": 12.0},
+            "timings_s": {"structure": 0.1, "classify": 0.1}}
+
+
+_SOUND_MAP = """osu file format v14
+
+[General]
+AudioFilename: audio.mp3
+SampleSet: Soft
+
+[Difficulty]
+SliderMultiplier:1.4
+
+[TimingPoints]
+0,500,4,0,0,70,1,0
+2000,-50,4,3,2,40,0,0
+
+[HitObjects]
+256,192,1000,1,8,0:0:0:0:
+256,192,1500,1,2,1:2:0:0:
+256,192,1995,1,4,0:0:0:0:
+256,192,2500,2,0,L|356:192,1,140,4|8,0:0|3:1,0:0:0:0:
+256,192,3000,2,2,L|326:192,2,70
+256,192,4000,12,4,5000,0:0:0:0:
+256,192,6000,1,0,0:0:0:0:hit.wav
+64,192,7000,128,2,7500:0:0:0:0:
+bad line
+"""
+
+
+class SoundEventTests(unittest.TestCase):
+    """Phase 6, P-1: every object as the sounds osu! plays for it."""
+
+    def _events(self, text=_SOUND_MAP):
+        from overtone import read_osu_beatmap, sound_events
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = read_osu_beatmap(_write_osu(tmp, text))
+        events = sound_events(beatmap)
+        json.dumps(events)
+        return events
+
+    def test_circles_inherit_from_the_timing_point_then_the_map(self):
+        events = self._events()
+        first, second, late = events[0], events[1], events[2]
+        # Timing point set 0 -> the map's SampleSet (Soft); volume from the point.
+        self.assertEqual((first["sounds"], first["normal_set"], first["addition_set"],
+                          first["index"], first["volume"]),
+                         (["normal", "clap"], "soft", "soft", 0, 70))
+        self.assertEqual(first["raw"]["normal_set"], 0)
+        # The object's own sets win; its addition set is its own.
+        self.assertEqual((second["sounds"], second["normal_set"], second["addition_set"]),
+                         (["normal", "whistle"], "normal", "soft"))
+        # 5 ms before a green line, the green line already applies.
+        self.assertEqual((late["time"], late["normal_set"], late["index"], late["volume"]),
+                         (1995.0, "drum", 2, 40))
+
+    def test_slider_edges_carry_their_own_sounds_and_sets(self):
+        events = [e for e in self._events() if e["object"] == 3]
+        self.assertEqual([(e["part"], e["time"]) for e in events],
+                         [("head", 2500.0), ("tail", 2750.0), ("body", 2500.0)])
+        head, tail, body = events
+        self.assertEqual((head["sounds"], head["normal_set"]), (["normal", "finish"], "drum"))
+        self.assertEqual((tail["sounds"], tail["normal_set"], tail["addition_set"]),
+                         (["normal", "clap"], "drum", "normal"))
+        self.assertEqual((body["sounds"], body["end"]), (["slide"], 2750.0))
+
+    def test_a_slider_without_edge_fields_sounds_its_own_bits_on_every_edge(self):
+        events = [e for e in self._events() if e["object"] == 4]
+        self.assertEqual([(e["part"], e["time"]) for e in events],
+                         [("head", 3000.0), ("repeat", 3125.0), ("tail", 3250.0), ("body", 3000.0)])
+        self.assertTrue(all(e["sounds"][-1] == "whistle" for e in events))
+        self.assertEqual(events[-1]["sounds"], ["slide", "whistle"])
+
+    def test_spinners_sound_at_their_end_holds_at_their_start_files_alone(self):
+        events = self._events()
+        spinner = next(e for e in events if e["object"] == 5)
+        custom = next(e for e in events if e["object"] == 6)
+        hold = next(e for e in events if e["object"] == 7)
+        self.assertEqual((spinner["part"], spinner["time"], spinner["sounds"]),
+                         ("spinner_end", 5000.0, ["normal", "finish"]))
+        self.assertEqual((custom["file"], custom["raw"]["file"]), ("hit.wav", "hit.wav"))
+        self.assertEqual((hold["part"], hold["time"], hold["sounds"]),
+                         ("hold", 7000.0, ["normal", "whistle"]))
+        self.assertFalse(any(e["object"] == 8 for e in events))    # the bad line
+
+    def test_no_timing_points_still_places_every_head(self):
+        text = _SOUND_MAP.split("[TimingPoints]")[0] + "[HitObjects]\n" + \
+            _SOUND_MAP.split("[HitObjects]\n")[1]
+        events = self._events(text)
+        slider = [e["part"] for e in events if e["object"] == 3]
+        self.assertEqual(slider, ["head"])                  # no beat length: no tail to place
+        self.assertEqual((events[0]["normal_set"], events[0]["volume"]), ("soft", 100))
+
+
+class ReaderFuzzRegressionTests(unittest.TestCase):
+    """What bench/fuzz_reader.py found: each case once, fast."""
+
+    @staticmethod
+    def _read(tmp, data: bytes):
+        from overtone import read_osu_beatmap
+        path = Path(tmp) / "map.osu"
+        path.write_bytes(data)
+        return path, read_osu_beatmap(path)
+
+    def test_a_header_with_stray_whitespace_comes_back_as_written(self):
+        from overtone import beatmap_text
+        text = _SOUND_MAP.replace("[General]", "[General]\t").replace("[HitObjects]", " [HitObjects] ")
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._read(tmp, text.replace("\n", "\r\n").encode("utf-8"))
+        self.assertEqual(beatmap_text(beatmap), text.replace("\n", "\r\n"))
+        self.assertEqual([s["name"] for s in beatmap["sections"]][0], "General")
+
+    def test_unicode_line_separators_stay_inside_their_line_as_in_osu(self):
+        from overtone import beatmap_text, write_object_hitsounds, read_osu_beatmap
+        # osu! breaks lines at CR and LF only; U+2028, U+0085 and \v are text.
+        text = _SOUND_MAP.replace("[Difficulty]", "[Metadata]\nTitle:A B\x85C\vD\n\n[Difficulty]")
+        data = text.replace("\n", "\r\n").encode("utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._read(tmp, data)
+            self.assertEqual(beatmap["metadata"]["Title"], "A B\x85C\vD")
+            self.assertEqual(beatmap_text(beatmap).encode("utf-8"), data)
+            # The text-level writer counts lines as the reader does: object 0 changes.
+            write_object_hitsounds(path, {0: {"bits": 4}}, backup=False)
+            after = path.read_bytes()
+            self.assertEqual(read_osu_beatmap(path)["hitobjects"][0]["hit_sound"], 4)
+        changed = [(a, b) for a, b in zip(data.split(b"\r\n"), after.split(b"\r\n")) if a != b]
+        self.assertEqual(changed, [(b"256,192,1000,1,8,0:0:0:0:", b"256,192,1000,1,4,0:0:0:0:")])
+
+    def test_a_timing_line_osu_cannot_read_is_skipped_not_fatal(self):
+        from overtone import sound_events
+        text = _SOUND_MAP.replace("2000,-50,4,3,2,40,0,0",
+                                  "2000,-50,inf,3,2,40,0,0\ninf,500,4,2,0,70,1,0\n1000,nan,4,2,0,70,1,0")
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._read(tmp, text.replace("\n", "\r\n").encode("utf-8"))
+        events = sound_events(beatmap)
+        self.assertEqual((events[0]["normal_set"], events[0]["volume"]), ("soft", 70))
+
+    def test_a_meter_beyond_any_real_map_reads_as_four(self):
+        from overtone import hitsound_report
+        text = _SOUND_MAP.replace("0,500,4,0,0,70,1,0", "0,500,18446744073709551616,0,0,70,1,0")
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._read(tmp, text.replace("\n", "\r\n").encode("utf-8"))
+        self.assertEqual(hitsound_report(beatmap)["meter"], 4)
+
+
+class HitsoundWriterTests(unittest.TestCase):
+    """Phase 6, P-2: only the hitsound fields of the chosen objects change."""
+
+    def _map(self, tmp, text=_SOUND_MAP):
+        from overtone import read_osu_beatmap
+        path = str(Path(tmp) / "map.osu")
+        Path(path).write_bytes(text.replace("\n", "\r\n").encode("utf-8"))   # CRLF, as osu! writes
+        return path, read_osu_beatmap(path)
+
+    def test_nothing_asked_nothing_changed_byte_for_byte(self):
+        from overtone import beatmap_text, set_object_hitsounds
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._map(tmp)
+            original = Path(path).read_bytes()
+            same = {n: {"bits": o.get("hit_sound"), "sample": {
+                        k: (o.get("hit_sample") or {}).get(k) for k in ("normal_set", "volume")}}
+                    for n, o in enumerate(beatmap["hitobjects"]) if o["kind"] in ("circle", "spinner")}
+            result = set_object_hitsounds(beatmap, same)
+        self.assertEqual(result["changed"], [])
+        self.assertEqual(beatmap_text(beatmap).encode("utf-8"), original)
+
+    def test_a_circle_changes_its_bits_and_sample_and_nothing_else(self):
+        from overtone import beatmap_text, set_object_hitsounds, sound_events
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._map(tmp)
+            before = beatmap_text(beatmap).split("\r\n")
+            set_object_hitsounds(beatmap, {0: {"bits": 4, "sample": {"normal_set": 3, "volume": 55}}})
+            after = beatmap_text(beatmap).split("\r\n")
+        changed = [(a, b) for a, b in zip(before, after) if a != b]
+        self.assertEqual(changed, [("256,192,1000,1,8,0:0:0:0:", "256,192,1000,1,4,3:0:0:55:")])
+        event = sound_events(beatmap)[0]
+        self.assertEqual((event["sounds"], event["normal_set"], event["volume"]),
+                         (["normal", "finish"], "drum", 55))
+
+    def test_slider_edges_change_alone_and_missing_fields_keep_the_sound(self):
+        from overtone import set_object_hitsounds, sound_events
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._map(tmp)
+            before = [e for e in sound_events(beatmap) if e["object"] == 4]
+            # Object 4 has no edge fields: a volume change must add them without
+            # changing what any edge plays.
+            set_object_hitsounds(beatmap, {4: {"sample": {"volume": 30}}})
+            line = beatmap["sections"][-1]["lines"][4]
+            after = [e for e in sound_events(beatmap) if e["object"] == 4]
+            set_object_hitsounds(beatmap, {3: {"edges": [{"bits": 0}, {"bits": 2, "normal_set": 2}]}})
+            slider = [e for e in sound_events(beatmap) if e["object"] == 3]
+        self.assertEqual(line, "256,192,3000,2,2,L|326:192,2,70,2|2|2,0:0|0:0|0:0,0:0:0:30:")
+        self.assertEqual([(e["sounds"], e["normal_set"]) for e in before],
+                         [(e["sounds"], e["normal_set"]) for e in after])
+        self.assertEqual([(e["part"], e["sounds"], e["normal_set"]) for e in slider[:2]],
+                         [("head", ["normal"], "drum"), ("tail", ["normal", "whistle"], "soft")])
+
+    def test_what_osu_cannot_read_is_refused_before_anything_changes(self):
+        from overtone import beatmap_text, set_object_hitsounds
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._map(tmp)
+            original = beatmap_text(beatmap)
+            for bad in ({0: {"bits": 16}}, {0: {"sample": {"normal_set": 4}}},
+                        {0: {"sample": {"volume": 101}}}, {0: {"sample": {"file": "a,b.wav"}}},
+                        {3: {"edges": [{"bits": 2}]}}, {8: {"bits": 2}}, {99: {"bits": 2}},
+                        {0: {"sample": {"colour": 1}}}):
+                with self.subTest(bad=bad), self.assertRaises(ValueError):
+                    set_object_hitsounds(beatmap, {**{1: {"bits": 8}}, **bad})
+            self.assertEqual(beatmap_text(beatmap), original)
+
+    def test_on_disk_only_the_changed_lines_move_and_their_endings_stay(self):
+        from overtone import write_object_hitsounds
+        mixed = _SOUND_MAP.replace("\n", "\r\n").replace("[HitObjects]\r\n", "[HitObjects]\n")
+        mixed = mixed.replace("256,192,1500,1,2,1:2:0:0:\r\n", "256,192,1500,1,2,1:2:0:0:\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(b"\xef\xbb\xbf" + mixed.encode("utf-8"))
+            original = path.read_bytes()
+            nothing = write_object_hitsounds(path, {0: {"bits": 8}})
+            untouched = path.read_bytes()
+            done = write_object_hitsounds(path, {1: {"bits": 10}})
+            after = path.read_bytes()
+            backup = Path(done["backup"]).read_bytes()
+        self.assertEqual((nothing["written"], nothing["backup"], untouched), (False, None, original))
+        self.assertEqual(done["changed"], [1])
+        self.assertEqual(backup, original)
+        self.assertEqual(after, original.replace(b"256,192,1500,1,2,1:2:0:0:\n",
+                                                 b"256,192,1500,1,10,1:2:0:0:\n"))
+
+    def test_a_body_change_does_not_reach_edges_that_have_no_field_of_their_own(self):
+        from overtone import set_object_hitsounds, sound_events
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._map(tmp)
+            # Object 4 has no edge fields: its edges play its own whistle bit.
+            set_object_hitsounds(beatmap, {4: {"bits": 0}})
+            events = [e for e in sound_events(beatmap) if e["object"] == 4]
+            line = beatmap["sections"][-1]["lines"][4]
+        self.assertEqual([(e["part"], e["sounds"]) for e in events],
+                         [("head", ["normal", "whistle"]), ("repeat", ["normal", "whistle"]),
+                          ("tail", ["normal", "whistle"]), ("body", ["slide"])])
+        self.assertEqual(line, "256,192,3000,2,0,L|326:192,2,70,2|2|2,0:0|0:0|0:0")
+
+    def test_holds_and_spinners_keep_their_other_fields(self):
+        from overtone import set_object_hitsounds
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._map(tmp)
+            set_object_hitsounds(beatmap, {5: {"sample": {"addition_set": 3}},
+                                           7: {"bits": 8, "sample": {"volume": 20}}})
+            lines = beatmap["sections"][-1]["lines"]
+        self.assertEqual(lines[5], "256,192,4000,12,4,5000,0:3:0:0:")
+        self.assertEqual(lines[7], "64,192,7000,128,8,7500:0:0:0:20:")
+
+
+def _copy_map(objects, timing="0,500,4,2,0,70,1,0", sample_set="Soft"):
+    return (f"osu file format v14\n\n[General]\nAudioFilename: audio.mp3\nSampleSet: {sample_set}\n\n"
+            "[Difficulty]\nSliderMultiplier:1.4\n\n"
+            f"[TimingPoints]\n{timing}\n\n[HitObjects]\n" + "\n".join(objects) + "\n")
+
+
+class HitsoundCopyTests(unittest.TestCase):
+    """Phase 6, H1: one difficulty's hitsounds onto another, by time."""
+
+    def _read(self, tmp, text, name):
+        from overtone import read_osu_beatmap
+        path = Path(tmp) / name
+        path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+        return read_osu_beatmap(path)
+
+    def test_a_difficulty_copied_onto_itself_changes_nothing(self):
+        from overtone import copy_hitsounds
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = self._read(tmp, _SOUND_MAP, "a.osu")
+        report = copy_hitsounds(beatmap, beatmap)
+        self.assertEqual((report["changes"], report["changed"]), ({}, 0))
+        self.assertEqual(report["matched"], report["target_sounds"])
+
+    def test_sounds_at_the_same_moment_are_copied_and_the_rest_left(self):
+        from overtone import copy_hitsounds, set_object_hitsounds, sound_events
+        source = _copy_map(["256,192,1000,1,8,0:0:0:0:", "256,192,2000,1,4,3:0:0:0:",
+                            "256,192,3000,1,2,0:0:0:0:"])
+        target = _copy_map(["100,100,1003,1,0,0:0:0:0:", "100,100,1500,1,2,0:0:0:0:",
+                            "100,100,2000,1,0,0:0:0:0:", "100,100,3000,1,2,0:0:0:0:"])
+        with tempfile.TemporaryDirectory() as tmp:
+            src, tgt = self._read(tmp, source, "s.osu"), self._read(tmp, target, "t.osu")
+        report = copy_hitsounds(src, tgt)
+        json.dumps(report)
+        self.assertEqual((report["target_sounds"], report["matched"], report["changed"],
+                          report["unmatched"], report["unmatched_times"]), (4, 3, 2, 1, [1500.0]))
+        self.assertEqual(sorted(report["changes"]), [0, 2])
+        set_object_hitsounds(tgt, report["changes"])
+        after = sound_events(tgt)
+        self.assertEqual([(e["sounds"], e["normal_set"]) for e in after],
+                         [(["normal", "clap"], "soft"), (["normal", "whistle"], "soft"),
+                          (["normal", "finish"], "drum"), (["normal", "whistle"], "soft")])
+        self.assertEqual(copy_hitsounds(src, tgt)["changed"], 0)       # a second copy: nothing left
+
+    def test_sets_are_written_so_they_resolve_like_the_source(self):
+        from overtone import copy_hitsounds, set_object_hitsounds, sound_events
+        # Source inherits Soft from its timing point; the target's point says Drum.
+        source = _copy_map(["256,192,1000,1,8,0:0:0:0:"], timing="0,500,4,2,0,70,1,0")
+        target = _copy_map(["256,192,1000,1,0,0:0:0:0:"], timing="0,500,4,3,0,70,1,0")
+        with tempfile.TemporaryDirectory() as tmp:
+            src, tgt = self._read(tmp, source, "s.osu"), self._read(tmp, target, "t.osu")
+        report = copy_hitsounds(src, tgt)
+        self.assertEqual(report["changes"][0]["sample"]["normal_set"], 2)     # explicit Soft
+        set_object_hitsounds(tgt, report["changes"])
+        event = sound_events(tgt)[0]
+        self.assertEqual((event["sounds"], event["normal_set"], event["addition_set"]),
+                         (["normal", "clap"], "soft", "soft"))
+
+    def test_slider_edges_take_the_sounds_under_them_and_the_body_its_whistle(self):
+        from overtone import copy_hitsounds, set_object_hitsounds, sound_events
+        # One beat is 500 ms; 140 px at SV 1 and multiplier 1.4 is one beat.
+        source = _copy_map(["256,192,1000,2,2,L|356:192,1,140,8|4,0:0|3:0,0:0:0:0:"])
+        target = _copy_map(["256,192,1000,2,0,L|356:192,1,140"])
+        with tempfile.TemporaryDirectory() as tmp:
+            src, tgt = self._read(tmp, source, "s.osu"), self._read(tmp, target, "t.osu")
+        report = copy_hitsounds(src, tgt)
+        set_object_hitsounds(tgt, report["changes"])
+        after = [(e["part"], e["sounds"], e["normal_set"]) for e in sound_events(tgt)]
+        self.assertEqual(after, [("head", ["normal", "clap"], "soft"),
+                                 ("tail", ["normal", "finish"], "drum"),
+                                 ("body", ["slide", "whistle"], "soft")])
+
+    def test_volume_is_copied_only_when_asked(self):
+        from overtone import copy_hitsounds
+        source = _copy_map(["256,192,1000,1,8,0:0:0:40:"])
+        target = _copy_map(["256,192,1000,1,8,0:0:0:0:"])
+        with tempfile.TemporaryDirectory() as tmp:
+            src, tgt = self._read(tmp, source, "s.osu"), self._read(tmp, target, "t.osu")
+        self.assertEqual(copy_hitsounds(src, tgt)["changes"], {})
+        with_volume = copy_hitsounds(src, tgt, volumes=True)["changes"]
+        self.assertEqual(with_volume[0]["sample"]["volume"], 40)
+
+
+class HitsoundSampleTests(unittest.TestCase):
+    """Phase 6, P-3: Overtone's own samples, and which sample a sound plays."""
+
+    def test_the_committed_samples_are_what_the_generator_makes(self):
+        import importlib.util
+        import wave
+        spec = importlib.util.spec_from_file_location("samples", Path(__file__).resolve().parent.parent / "assets" / "samples.py")
+        samples = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(samples)
+        with tempfile.TemporaryDirectory() as tmp:
+            made = samples.main(Path(tmp))
+            self.assertEqual(len(made), 18)
+            for path in made:
+                committed = samples.OUT / path.name
+                with self.subTest(sample=path.name):
+                    self.assertEqual(path.read_bytes(), committed.read_bytes())
+                    with wave.open(str(committed)) as w:
+                        self.assertEqual((w.getnchannels(), w.getsampwidth(), w.getframerate()), (1, 2, 44100))
+                        self.assertLess(w.getnframes() / 44100, 1.5)
+
+    def test_a_slide_loops_without_a_seam(self):
+        # Looped end to start, the jump is no bigger than the largest jump
+        # between two neighbours inside the file: nothing clicks.
+        import wave
+        slides = sorted((Path(__file__).resolve().parent.parent / "assets" / "samples").glob("*-slider*.wav"))
+        self.assertEqual(len(slides), 6)
+        for path in slides:
+            with self.subTest(sample=path.name), wave.open(str(path)) as w:
+                x = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(float)
+                inside = np.abs(np.diff(x)).max()
+                self.assertLessEqual(abs(x[0] - x[-1]), inside)
+                self.assertEqual(w.getnframes(), 44100)
+
+    def test_samples_are_found_as_osu_finds_them(self):
+        from overtone import DEFAULT_SAMPLE_DIR, hitsound_playback, read_osu_beatmap
+        text = _copy_map(["256,192,1000,1,8,0:0:0:0:",          # index 0: Overtone's
+                          "256,192,2000,1,8,0:0:1:0:",          # index 1: soft-hitclap.wav
+                          "256,192,3000,1,8,0:0:2:0:",          # index 2: soft-hitclap2.ogg
+                          "256,192,4000,1,8,0:0:3:0:",          # index 3: missing, Overtone's
+                          "256,192,5000,1,0,0:0:0:0:boom.wav",  # a custom file, alone
+                          "256,192,6000,1,0,0:0:0:0:gone.wav",  # missing: the named samples
+                          "256,192,7000,1,0,0:0:0:2:",          # volume 2 %: floored at 5
+                          "256,192,8000,2,0,L|356:192,1,140"])  # a slider: its body loops apart
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            (folder / "map.osu").write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            for name in ("soft-hitclap.wav", "Soft-HitClap2.ogg", "boom.wav"):
+                (folder / name).write_bytes(b"RIFF")
+            plan = hitsound_playback(read_osu_beatmap(folder / "map.osu"), folder)
+        json.dumps(plan)
+        keys = [e["keys"] for e in plan["events"]]
+        self.assertEqual(keys[0], ["overtone:soft-hitnormal.wav", "overtone:soft-hitclap.wav"])
+        self.assertEqual(keys[1], ["overtone:soft-hitnormal.wav", "map:soft-hitclap.wav"])
+        self.assertEqual(keys[2][1], "map:soft-hitclap2.ogg")
+        self.assertEqual(keys[3][1], "overtone:soft-hitclap.wav")
+        self.assertEqual(keys[4], ["file:boom.wav"])
+        self.assertEqual(keys[5], ["overtone:soft-hitnormal.wav"])
+        self.assertEqual(plan["events"][6]["volume"], 0.05)
+        self.assertEqual([e["t"] for e in plan["events"]][-2:], [8.0, 8.5])    # head and tail
+        self.assertEqual((plan["counts"]["missing_file"], plan["counts"]["slider_bodies"]), (1, 1))
+        self.assertEqual(Path(plan["samples"]["overtone:soft-hitclap.wav"]["path"]).parent, DEFAULT_SAMPLE_DIR)
+        # The object lane: circles have no end, the slider spans head to tail.
+        self.assertEqual([(o["t"], o["end"], o["kind"]) for o in plan["objects"]][-2:],
+                         [(7.0, None, "circle"), (8.0, 8.5, "slider")])
+        self.assertEqual([e["adds"] for e in plan["events"]][:2], [8, 8])
+        self.assertTrue(all(Path(s["path"]).is_file() for s in plan["samples"].values()
+                            if s["source"] == "overtone"))
+
+    def test_a_slider_body_loops_its_slide_and_whistle_slide(self):
+        from overtone import hitsound_playback, read_osu_beatmap
+        # A bare slider holds the slide; one with its whistle bit adds the
+        # whistle slide in its addition set, found by index like a hit.
+        text = _copy_map(["256,192,1000,2,0,L|356:192,1,140",
+                          "256,192,3000,2,2,L|356:192,2,140,0|0|0,0:0|0:0|0:0,0:3:2:40:"])
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            (folder / "map.osu").write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            (folder / "drum-sliderwhistle2.wav").write_bytes(b"RIFF")
+            plan = hitsound_playback(read_osu_beatmap(folder / "map.osu"), folder)
+        json.dumps(plan)
+        self.assertEqual(plan["loops"], [
+            {"t": 1.0, "end": 1.5, "keys": ["overtone:soft-sliderslide.wav"], "volume": 0.7},
+            {"t": 3.0, "end": 4.0, "keys": ["overtone:soft-sliderslide.wav", "map:drum-sliderwhistle2.wav"],
+             "volume": 0.4}])
+        self.assertEqual((plan["counts"]["slider_bodies"], plan["counts"]["sounds"]), (2, 5))
+        self.assertTrue(Path(plan["samples"]["overtone:soft-sliderslide.wav"]["path"]).is_file())
+
+    def test_a_skin_plays_where_the_map_has_nothing_and_only_by_its_bare_name(self):
+        from overtone import hitsound_playback, read_osu_beatmap
+        text = _copy_map(["256,192,1000,1,8,0:0:0:0:",          # index 0: the skin, never the map
+                          "256,192,2000,1,8,0:0:1:0:",          # index 1: the map's clap
+                          "256,192,3000,1,8,0:0:2:0:",          # index 2: not the skin's clap2
+                          "256,192,4000,2,0,L|356:192,1,140"])  # the body: the skin's slide
+        with tempfile.TemporaryDirectory() as tmp:
+            folder, skin = Path(tmp) / "map", Path(tmp) / "skin"
+            folder.mkdir()
+            skin.mkdir()
+            (folder / "map.osu").write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            (folder / "soft-hitclap.wav").write_bytes(b"RIFF")
+            for name in ("Soft-HitNormal.ogg", "soft-hitclap2.wav", "soft-sliderslide.wav"):
+                (skin / name).write_bytes(b"RIFF")
+            beatmap = read_osu_beatmap(folder / "map.osu")
+            plan = hitsound_playback(beatmap, folder, skin=skin)
+            plain = hitsound_playback(beatmap, folder)
+        json.dumps(plan)
+        keys = [e["keys"] for e in plan["events"]]
+        self.assertEqual(keys[:3], [["skin:soft-hitnormal.ogg", "overtone:soft-hitclap.wav"],
+                                    ["skin:soft-hitnormal.ogg", "map:soft-hitclap.wav"],
+                                    ["skin:soft-hitnormal.ogg", "overtone:soft-hitclap.wav"]])
+        self.assertEqual(plan["loops"][0]["keys"], ["skin:soft-sliderslide.wav"])
+        self.assertEqual(Path(plan["samples"]["skin:soft-hitnormal.ogg"]["path"]).parent, skin)
+        self.assertEqual((plan["counts"]["skin"], plan["counts"]["map"], plan["counts"]["overtone"]),
+                         (6, 1, 2))
+        # Without a skin, what was the skin's is Overtone's, as before skins.
+        self.assertEqual([e["keys"] for e in plain["events"]][0],
+                         ["overtone:soft-hitnormal.wav", "overtone:soft-hitclap.wav"])
+        self.assertEqual(plain["counts"]["skin"], 0)
+
+
+def _wav_bytes(frames: int) -> bytes:
+    """A 16-bit mono 44.1 kHz WAV of ``frames`` frames of silence; 0 frames
+    is the 44-byte header alone."""
+    import io
+    import wave
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(bytes(2 * frames))
+    return buffer.getvalue()
+
+
+class SampleBankTests(unittest.TestCase):
+    """Phase 6, H6: what a skin or beatmap folder holds, named as osu! names it."""
+
+    def test_a_skin_folder_is_read_as_playback_finds_its_samples(self):
+        from overtone import DEFAULT_SAMPLE_DIR, sample_bank
+        files = {"normal-hitnormal.wav": _wav_bytes(100),
+                 "soft-hitclap.wav": _wav_bytes(100), "Soft-HitClap.OGG": b"OggS",  # wav wins
+                 "drum-sliderslide.wav": _wav_bytes(0),        # a header alone: mutes the slide
+                 "drum-hitfinish.mp3": b"",                    # an empty file
+                 "normal-hitclap2.wav": _wav_bytes(10),        # a custom index
+                 "soft-hitnormal1.wav": _wav_bytes(10),        # index 1 is never numbered
+                 "drum-hitfinish02.ogg": b"OggS",              # nor with a leading zero
+                 "normal-slidertick.wav": _wav_bytes(10),      # ticks are not played
+                 "skin.ini": b"[General]", "cursor.png": b"\x89PNG"}
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, data in files.items():
+                (Path(tmp) / name).write_bytes(data)
+            bank = sample_bank(tmp)
+        json.dumps(bank)
+        self.assertEqual(bank["kind"], "skin")
+        self.assertEqual([(c["set"], c["sound"]) for c in bank["cells"]],
+                         [(s, sound) for s in ("normal", "soft", "drum")
+                          for sound in ("hitnormal", "hitwhistle", "hitfinish", "hitclap",
+                                        "sliderslide", "sliderwhistle")])
+        cell = {(c["set"], c["sound"]): c for c in bank["cells"]}
+        self.assertEqual((cell["normal", "hitnormal"]["file"], cell["normal", "hitnormal"]["empty"],
+                          cell["normal", "hitnormal"]["fallback"]), ("normal-hitnormal.wav", False, None))
+        self.assertEqual((cell["soft", "hitclap"]["file"], cell["soft", "hitclap"]["shadowed"]),
+                         ("soft-hitclap.wav", ["Soft-HitClap.OGG"]))
+        self.assertTrue(cell["drum", "sliderslide"]["empty"])
+        self.assertEqual((cell["drum", "hitfinish"]["bytes"], cell["drum", "hitfinish"]["empty"]), (0, True))
+        whistle = cell["normal", "hitwhistle"]
+        self.assertIsNone(whistle["file"])
+        self.assertEqual((whistle["fallback"]["source"], whistle["fallback"]["file"]),
+                         ("overtone", "normal-hitwhistle.wav"))
+        self.assertTrue((DEFAULT_SAMPLE_DIR / whistle["fallback"]["file"]).is_file())
+        self.assertEqual([(c["set"], c["sound"], c["index"], c["file"]) for c in bank["custom"]],
+                         [("normal", "hitclap", 2, "normal-hitclap2.wav")])
+        self.assertEqual((bank["indices"], bank["unused"]),
+                         ([2], ["drum-hitfinish02.ogg", "soft-hitnormal1.wav"]))
+        self.assertEqual(bank["counts"], {"hits": 3, "hits_of": 12, "slides": 1, "slides_of": 6,
+                                          "custom": 1, "empty": 2, "shadowed": 1, "unused": 2,
+                                          "to_skin": 0, "to_overtone": 14})
+
+    def test_a_beatmap_folders_missing_samples_fall_back_to_the_skin_then_overtone(self):
+        from overtone import sample_bank
+        with tempfile.TemporaryDirectory() as tmp:
+            folder, skin = Path(tmp) / "map", Path(tmp) / "skin"
+            folder.mkdir()
+            skin.mkdir()
+            (folder / "map.osu").write_bytes(b"osu file format v14\r\n")
+            (folder / "soft-hitnormal.wav").write_bytes(_wav_bytes(10))
+            (folder / "soft-hitclap3.ogg").write_bytes(b"OggS")
+            (skin / "soft-hitclap.wav").write_bytes(_wav_bytes(10))
+            (skin / "normal-sliderslide.wav").write_bytes(_wav_bytes(0))
+            bank = sample_bank(folder, skin=skin)
+        cell = {(c["set"], c["sound"]): c for c in bank["cells"]}
+        self.assertEqual(bank["kind"], "beatmap")
+        self.assertEqual(cell["soft", "hitnormal"]["file"], "soft-hitnormal.wav")
+        self.assertEqual(cell["soft", "hitclap"]["fallback"],
+                         {"source": "skin", "folder": str(skin), "file": "soft-hitclap.wav", "empty": False})
+        self.assertTrue(cell["normal", "sliderslide"]["fallback"]["empty"])
+        self.assertEqual(cell["drum", "hitclap"]["fallback"]["source"], "overtone")
+        self.assertEqual([(c["file"], c["index"]) for c in bank["custom"]], [("soft-hitclap3.ogg", 3)])
+        self.assertEqual((bank["counts"]["to_skin"], bank["counts"]["to_overtone"]), (2, 15))
+
+    def test_a_skins_missing_samples_never_fall_back_to_another_skin(self):
+        # Choosing a skin replaces the one in use: what it lacks plays
+        # Overtone's own, whichever skin plays now.
+        from overtone import sample_bank
+        with tempfile.TemporaryDirectory() as tmp:
+            candidate, in_use = Path(tmp) / "candidate", Path(tmp) / "in use"
+            candidate.mkdir()
+            in_use.mkdir()
+            (candidate / "normal-hitnormal.wav").write_bytes(_wav_bytes(10))
+            (in_use / "soft-hitclap.wav").write_bytes(_wav_bytes(10))
+            bank = sample_bank(candidate, skin=in_use)
+        cell = {(c["set"], c["sound"]): c for c in bank["cells"]}
+        self.assertEqual(bank["kind"], "skin")
+        self.assertEqual(cell["soft", "hitclap"]["fallback"]["source"], "overtone")
+        self.assertEqual((bank["counts"]["to_skin"], bank["counts"]["to_overtone"]), (0, 17))
+
+    def test_the_bank_says_what_playback_plays(self):
+        from overtone import hitsound_playback, read_osu_beatmap, sample_bank
+        # Every hit of every set asking index 1: each plays the bank's cell,
+        # or what the bank says plays instead.
+        objects = [f"256,192,{1000 + 500 * n},1,{bits},{s}:{s}:1:0:"
+                   for n, (s, bits) in enumerate((s, bits) for s in (1, 2, 3) for bits in (2, 4, 8))]
+        with tempfile.TemporaryDirectory() as tmp:
+            folder, skin = Path(tmp) / "map", Path(tmp) / "skin"
+            folder.mkdir()
+            skin.mkdir()
+            (folder / "map.osu").write_bytes(_copy_map(objects).replace("\n", "\r\n").encode("utf-8"))
+            for name in ("normal-hitnormal.wav", "soft-hitwhistle.ogg", "drum-hitclap.mp3"):
+                (folder / name).write_bytes(_wav_bytes(10))
+            for name in ("soft-hitnormal.wav", "normal-hitclap.wav", "drum-hitfinish.ogg"):
+                (skin / name).write_bytes(_wav_bytes(10))
+            plan = hitsound_playback(read_osu_beatmap(folder / "map.osu"), folder, skin=skin)
+            bank = sample_bank(folder, skin=skin)
+        heard = {key for e in plan["events"] for key in e["keys"]}
+        for cell in bank["cells"]:
+            if not cell["sound"].startswith("hit"):
+                continue
+            where = ("map", cell["file"]) if cell["file"] else (cell["fallback"]["source"],
+                                                               cell["fallback"]["file"])
+            with self.subTest(cell=(cell["set"], cell["sound"])):
+                self.assertIn(f"{where[0]}:{where[1].lower()}", heard)
+        self.assertEqual(len(heard), 12)
+
+    def test_an_empty_sample_is_one_that_holds_no_audio(self):
+        from overtone import _sample_empty
+        streamed = _wav_bytes(0) + bytes(400)       # a data size of 0, then sound anyway
+        cases = {"a.ogg": (b"", True), "b.wav": (_wav_bytes(0), True), "c.wav": (_wav_bytes(5), False),
+                 "d.wav": (streamed, False), "e.wav": (b"not a riff at all", False),
+                 "f.mp3": (b"ID3" + bytes(40), False)}
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, (data, empty) in cases.items():
+                path = Path(tmp) / name
+                path.write_bytes(data)
+                with self.subTest(name=name):
+                    self.assertEqual(_sample_empty(path, len(data)), empty)
+
+    def test_only_a_folder_is_read(self):
+        from overtone import sample_bank
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "file.wav").write_bytes(b"RIFF")
+            for bad in (Path(tmp) / "missing", Path(tmp) / "file.wav"):
+                with self.subTest(bad=bad.name), self.assertRaises(ValueError):
+                    sample_bank(bad)
+
+
+class HitsoundReportTests(unittest.TestCase):
+    """Phase 6, H2: every sound's place in the bar, and where additions fall."""
+
+    def test_places_are_read_against_the_maps_own_red_lines(self):
+        from overtone import hitsound_report, read_osu_beatmap
+        # 120 BPM from 1000 ms: a beat is 500 ms, a bar 2 s; 3/4 from 9000 ms.
+        text = _copy_map(["256,192,1000,1,4,0:0:0:0:",     # bar 1, the downbeat: a finish
+                          "256,192,1500,1,8,0:0:0:0:",     # bar 1, beat 2: a clap
+                          "256,192,1250,1,2,0:0:0:0:",     # bar 1, 1+ (slot 2): a whistle
+                          "256,192,1190,1,2,0:0:0:0:",     # 0.38 beat: off the grid
+                          "256,192,2500,1,8,0:0:0:0:",     # bar 1, beat 4: a clap
+                          "256,192,3500,1,8,0:0:0:0:",     # bar 2, beat 2: a clap
+                          "256,192,500,1,0,0:0:0:0:",      # a beat before the first line: bar 0, beat 4
+                          "256,192,9500,1,8,0:0:0:0:"],    # the 3/4 line's beat 2
+                         timing="1000,500,4,2,0,70,1,0\n9000,500,3,2,0,70,1,0")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            report = hitsound_report(read_osu_beatmap(path))
+        json.dumps(report)
+        self.assertEqual(report["meter"], 4)
+        claps = report["additions"]["clap"]
+        self.assertEqual((claps["total"], claps["slots"][4], claps["slots"][12], claps["other_meter"]),
+                         (4, 2, 1, 1))
+        whistles = report["additions"]["whistle"]
+        self.assertEqual((whistles["total"], whistles["slots"][2], whistles["off_grid"]), (2, 1, 1))
+        self.assertEqual(report["additions"]["finish"]["slots"][0], 1)
+        by_time = {s["t"]: s for s in report["sounds"]}
+        self.assertEqual((by_time[1.5]["bar"], by_time[1.5]["slot"]), (1, 4))
+        self.assertEqual((by_time[3.5]["bar"], by_time[3.5]["slot"]), (2, 4))
+        self.assertEqual((by_time[0.5]["bar"], by_time[0.5]["slot"]), (0, 12))
+        self.assertEqual((by_time[9.5]["bar"], by_time[9.5]["slot"], by_time[9.5]["meter"]), (5, 4, 3))
+        self.assertEqual(report["sets"]["normal"]["soft"], 8)
+
+    def test_no_red_lines_places_nothing_and_does_not_fail(self):
+        from overtone import hitsound_report
+        beatmap = {"sections": [{"name": "TimingPoints", "lines": []}],
+                   "hitobjects": [{"kind": "circle", "time": 100.0, "hit_sound": 8, "hit_sample": {}}],
+                   "general": {}, "difficulty": {}}
+        report = hitsound_report(beatmap)
+        self.assertEqual((report["sounds"][0]["bar"], report["sounds"][0]["slot"]), (None, None))
+        self.assertEqual(report["additions"]["clap"]["total"], 1)
+
+
+class SoundEventMatchingTests(unittest.TestCase):
+    """Phase 6, P-5: each sound event's nearest attack, or no attack at all."""
+
+    @staticmethod
+    def _events(*times):
+        return [{"object": n, "part": "circle", "edge": None, "time": t,
+                 "sounds": ["normal", "clap"]} for n, t in enumerate(times)]
+
+    def test_each_event_takes_its_nearest_attack_with_dt_and_weight(self):
+        from overtone import match_sound_events
+        rows = match_sound_events(self._events(1000.0, 2000.0),
+                                  [0.995, 2.010], [0.8, 0.4])
+        json.dumps(rows)
+        self.assertEqual([(r["matched"], r["attack"]["dt_ms"], r["attack"]["weight"])
+                          for r in rows],
+                         [(True, -5.0, 0.8), (True, 10.0, 0.4)])
+
+    def test_a_sound_over_silence_is_a_state_not_an_error(self):
+        from overtone import match_sound_events
+        rows = match_sound_events(self._events(1000.0, 5000.0), [1.0], [0.9])
+        self.assertEqual((rows[0]["matched"], rows[1]["matched"]), (True, False))
+        self.assertIsNone(rows[1]["attack"])
+
+    def test_no_attacks_leaves_everything_unmatched(self):
+        from overtone import match_sound_events
+        rows = match_sound_events(self._events(1000.0), [])
+        self.assertEqual([(r["matched"], r["attack"]) for r in rows], [(False, None)])
+
+    def test_tolerance_boundary_is_inclusive(self):
+        from overtone import match_sound_events
+        rows = match_sound_events(self._events(1000.0, 2000.0), [1.05, 2.051])
+        self.assertEqual((rows[0]["matched"], rows[1]["matched"]), (True, False))
+
+    def test_unsorted_attacks_still_match_with_their_weights(self):
+        from overtone import match_sound_events
+        rows = match_sound_events(self._events(1000.0), [2.0, 0.999], [0.1, 0.7])
+        self.assertEqual((rows[0]["attack"]["dt_ms"], rows[0]["attack"]["weight"]),
+                         (-1.0, 0.7))
+
+    def test_slider_edges_each_match_their_own_attack(self):
+        from overtone import match_sound_events, sound_events
+        text = _copy_map(["256,192,1000,2,0,L|356:192,1,140"])  # head + tail
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            events = [e for e in sound_events(read_osu_beatmap(path))
+                      if e["part"] in ("head", "tail")]
+        self.assertEqual([e["part"] for e in events], ["head", "tail"])
+        rows = match_sound_events(events, [e["time"] / 1000.0 for e in events])
+        self.assertEqual([r["matched"] for r in rows], [True, True])
+        self.assertEqual([r["part"] for r in rows], ["head", "tail"])
+
+
+class HitsoundEvalTests(unittest.TestCase):
+    """Phase 6, P-6: mapper agreement against the positional baselines."""
+
+    @staticmethod
+    def _eval():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "eval_hitsounds",
+            Path(__file__).resolve().parent.parent / "bench" / "eval_hitsounds.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_full_agreement_scores_one(self):
+        ev = self._eval()
+        # slots 4 and 12 are beats 2 and 4; the mapper claps exactly there.
+        rows = ev.score_slots([(0, False), (4, True), (8, False), (12, True)],
+                              ev.CLAP_SLOTS)
+        self.assertEqual((rows["tp"], rows["fp"], rows["fn"], rows["skipped"]),
+                         (2, 0, 0, 0))
+        self.assertEqual((rows["precision"], rows["recall"], rows["f1"]),
+                         (1.0, 1.0, 1.0))
+
+    def test_no_mapper_positives_is_undefined_not_zero(self):
+        ev = self._eval()
+        rows = ev.score_slots([(4, False), (12, False)], ev.CLAP_SLOTS)
+        self.assertEqual((rows["tp"], rows["fp"]), (0, 2))
+        self.assertIsNone(rows["recall"])
+        self.assertIsNone(rows["f1"])
+
+    def test_unplaced_events_are_skipped_never_scored(self):
+        ev = self._eval()
+        rows = ev.score_slots([(None, True), (None, False), (4, True)],
+                              ev.CLAP_SLOTS)
+        self.assertEqual((rows["skipped"], rows["tp"]), (2, 1))
+
+    def test_a_map_clapped_on_two_and_four_scores_one(self):
+        ev = self._eval()
+        from overtone import read_osu_beatmap
+        text = _copy_map(["256,192,1000,1,0,0:0:0:0:",
+                          "256,192,1500,1,8,0:0:0:0:",
+                          "256,192,2500,1,8,0:0:0:0:"],
+                         timing="1000,500,4,2,0,70,1,0")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            tallies = ev.evaluate_map(str(path))
+        self.assertTrue(tallies["meter4"])
+        self.assertEqual(tallies["clap"]["f1"], 1.0)
+        self.assertEqual(tallies["mapper_claps"], 2)
+
+    def test_a_map_with_no_red_lines_skips_everything(self):
+        ev = self._eval()
+        beatmap = {"sections": [{"name": "TimingPoints", "lines": []}],
+                   "hitobjects": [{"kind": "circle", "time": 100.0, "hit_sound": 8,
+                                   "hit_sample": {}}],
+                   "general": {}, "difficulty": {}}
+        import json
+        from unittest import mock
+        with mock.patch.object(ev.ov, "read_osu_beatmap", return_value=beatmap):
+            tallies = ev.evaluate_map("whatever.osu")
+        json.dumps(tallies)
+        self.assertEqual(tallies["finish"]["skipped"], 1)
+        self.assertIsNone(tallies["finish"]["f1"])
+
+
+class HitsoundProposalEvalTests(unittest.TestCase):
+    """Phase 6, H4e: mapper-vs-proposal tallies joined on (object, part, edge)."""
+
+    @staticmethod
+    def _eval():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "eval_proposals",
+            Path(__file__).resolve().parent.parent / "bench" / "eval_proposals.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _event(object, part, edge, sounds):
+        return {"object": object, "part": part, "edge": edge, "time": 1000.0,
+                "sounds": sounds}
+
+    @staticmethod
+    def _unit(object, part, edge, additions):
+        return {"object": object, "part": part, "edge": edge,
+                "proposal": {"bank": "drum", "additions": additions, "bits": 0}}
+
+    def test_full_agreement_scores_one(self):
+        ev = self._eval()
+        events = [self._event(0, "circle", None, ["normal", "clap"]),
+                  self._event(1, "circle", None, ["normal"])]
+        units = [self._unit(0, "circle", None, ["clap"]),
+                 self._unit(1, "circle", None, [])]
+        tallies = ev.score_proposals(events, units)
+        json.dumps(tallies)
+        self.assertEqual((tallies["clap"]["tp"], tallies["clap"]["fp"],
+                          tallies["clap"]["fn"], tallies["clap"]["uncovered"]),
+                         (1, 0, 0, 0))
+        self.assertEqual(tallies["clap"]["f1"], 1.0)
+
+    def test_uncovered_events_count_apart_never_as_misses(self):
+        ev = self._eval()
+        events = [self._event(0, "circle", None, ["normal", "clap"])]
+        tallies = ev.score_proposals(events, [])
+        self.assertEqual((tallies["clap"]["uncovered"], tallies["clap"]["fn"]),
+                         (1, 0))
+        self.assertIsNone(tallies["clap"]["f1"])
+
+    def test_bodies_ride_neither_side(self):
+        ev = self._eval()
+        events = [self._event(0, "body", None, ["slide", "whistle"])]
+        units = [self._unit(0, "body", None, ["whistle"])]
+        tallies = ev.score_proposals(events, units)
+        self.assertEqual((tallies["whistle"]["tp"], tallies["whistle"]["mapper"]), (0, 0))
+
+    def test_a_run_past_the_timeout_is_one_error_not_the_end(self):
+        # The loop counts RuntimeError as one skipped song; a raw
+        # TimeoutExpired used to end the whole evaluation instead.
+        ev = self._eval()
+        from unittest import mock
+        stopped = ev.subprocess.TimeoutExpired(["overtone-cli"], ev.TIMEOUT_S)
+        with mock.patch.object(ev.subprocess, "run", side_effect=stopped):
+            with self.assertRaises(RuntimeError) as raised:
+                ev.run_proposals("overtone-cli.exe", "song.mp3", "map.osu")
+        self.assertIn("map.osu", str(raised.exception))
+
+    @staticmethod
+    def _eighths(bars, sounds, timing="1000,500,4,2,0,70,1,0"):
+        """A map with a circle on every eighth of ``bars`` 4/4 bars at 120
+        BPM, each carrying ``sounds[sixteenth slot]`` (hitSound bits, 0 if
+        absent)."""
+        from overtone import read_osu_beatmap
+        lines = [f"256,192,{1000 + 250 * k},1,{sounds.get((k % 8) * 2, 0)},0:0:0:0:"
+                 for k in range(8 * bars)]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(_copy_map(lines, timing).replace("\n", "\r\n").encode("utf-8"))
+            return read_osu_beatmap(path)
+
+    def test_the_style_rule_reads_the_mappers_own_sounds(self):
+        ev = self._eval()
+        # Claps on beats 2 and 4 only: 20 claps on 80 circles, all on a beat.
+        sparse = ev.style_metrics(self._eighths(10, {4: 8, 12: 8}))
+        # The same claps, a finish on every downbeat, a whistle on every "and"
+        # of 1: 0.5 additions an object, a quarter of them whistles.
+        drums = ev.style_metrics(self._eighths(10, {0: 4, 2: 2, 4: 8, 12: 8}))
+        # The drum map's claps and finishes, and a whistle on every off-beat
+        # eighth: a melody line leads (whistles 4 of 7 additions), not the drums.
+        melody = ev.style_metrics(self._eighths(10, {0: 4, 2: 2, 4: 8, 6: 2, 10: 2, 12: 8, 14: 2}))
+        in_three = ev.style_metrics(self._eighths(10, {4: 8, 12: 8}, "1000,500,3,2,0,70,1,0"))
+        json.dumps([sparse, drums, melody])
+        self.assertEqual((sparse["clap"], sparse["additions_per_object"], sparse["on_beat"],
+                          sparse["claps_on_2_and_4"]), (20, 0.25, 1.0, 1.0))
+        self.assertEqual((drums["additions_per_object"], drums["finishes_on_1"],
+                          drums["whistle_share"]), (0.5, 1.0, 0.25))
+        verdicts = [(ev.in_style(m, "minimal"), ev.in_style(m, "drum"))
+                    for m in (sparse, drums, melody, in_three)]
+        self.assertEqual(verdicts, [(True, False), (False, True), (False, False), (False, False)])
+
+    def test_a_bare_copy_strips_every_sound_and_nothing_else(self):
+        ev = self._eval()
+        from overtone import read_osu_beatmap, sound_events
+        text = _copy_map(["256,192,1000,5,8,3:2:1:60:clap.wav",
+                          "256,192,1500,2,2,L|356:192,1,70,2|8,1:2|3:0,2:0:0:0:",
+                          "256,192,2500,12,4,3500,0:0:0:0:",
+                          "256,192,4000,1,0,0:0:0:0:"], timing="1000,500,4,2,0,70,1,0")
+        with tempfile.TemporaryDirectory() as tmp:
+            source, dest = Path(tmp) / "map.osu", Path(tmp) / "bare.osu"
+            source.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            before = source.read_bytes()
+            ev.bare_copy(str(source), dest)
+            original, bare = read_osu_beatmap(source), read_osu_beatmap(dest)
+            stripped = dest.read_bytes()
+            self.assertEqual(source.read_bytes(), before)
+        events = sound_events(bare)
+        self.assertEqual(len(events), len(sound_events(original)))
+        self.assertTrue(all(e["bits"] == 0 and not any(e["raw"][k] for k in e["raw"])
+                            for e in events))
+        self.assertEqual([(o["kind"], o["time"], o["new_combo"]) for o in bare["hitobjects"]],
+                         [(o["kind"], o["time"], o["new_combo"]) for o in original["hitobjects"]])
+        cut = before.index(b"[HitObjects]")
+        self.assertEqual(stripped[:cut], before[:cut])
+        self.assertNotIn(b"\n", stripped.replace(b"\r\n", b""))
+
+    def test_character_counts_additions_and_where_they_fall(self):
+        ev = self._eval()
+        # Proposals on the downbeat, beat 2, the eighth after it and beat 3;
+        # the mapper claps beat 2 and whistles that eighth.
+        beatmap = self._eighths(1, {4: 8, 6: 2})
+        units = [self._unit(0, "circle", None, ["finish"]), self._unit(2, "circle", None, ["clap"]),
+                 self._unit(3, "circle", None, []), self._unit(4, "circle", None, ["whistle", "clap"])]
+        shape = ev.character(beatmap, units)
+        self.assertEqual(shape["objects"], 8)
+        self.assertEqual(shape["mapper"], {"additions": 2, "placed": 2, "on_beat": 1})
+        self.assertEqual(shape["proposed"], {"additions": 4, "placed": 4, "on_beat": 4})
+
+    def test_every_shipped_profile_is_whole_and_its_rows_can_fire(self):
+        # The CLI refuses an unknown class, bank or addition, but a row whose
+        # additions are out of bit order (whistle, finish, clap) loads and never
+        # matches a candidate: a silent row. And every class must appear.
+        classes = {"kick", "snare", "clap", "hat_closed", "hat_open", "tom", "cymbal", "other",
+                   "ride", "bass", "guitar", "keys", "vocal"}
+        folder = Path(__file__).resolve().parent.parent / "profiles"
+        shipped = sorted(folder.glob("*.json"))
+        self.assertIn(folder / "balanced.json", shipped)
+        for path in shipped:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(set(raw["affinity"]), classes, path.name)
+            for rows in raw["affinity"].values():
+                self.assertTrue(rows, path.name)
+                for row in rows:
+                    self.assertIn(row["bank"], ("normal", "soft", "drum", "inherit"), path.name)
+                    order = [a for a in ("whistle", "finish", "clap") if a in row["additions"]]
+                    self.assertEqual(row["additions"], order, path.name)
+                    self.assertTrue(np.isfinite(row["w"]) and row["w"] >= 0, path.name)
+            self.assertEqual(set(raw["weights"]), {"role", "energy", "context", "prior"})
+            self.assertEqual(set(raw["transition"]), {"stream_consistency", "phrase_symmetry",
+                                                      "finish_spacing", "switch_cost"})
+            numbers = list(raw["weights"].values()) + list(raw["transition"].values())
+            self.assertTrue(all(np.isfinite(v) and v >= 0 for v in numbers), path.name)
+
+    def test_the_cli_decides_with_every_shipped_profile(self):
+        # The CLI's own loader is the strict one: every shipped file must load
+        # there, and its report must name the file it decided with.
+        import overtone_rust as rs
+        cli = rs.find_cli()
+        if cli is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        ev = self._eval()
+        folder = Path(__file__).resolve().parent.parent / "profiles"
+        lines = [f"256,192,{500 + 500 * k},{5 if k % 4 == 0 else 1},0,0:0:0:0:" for k in range(20)]
+        with tempfile.TemporaryDirectory() as tmp:
+            audio, osu = Path(tmp) / "drums.wav", Path(tmp) / "drums.osu"
+            _drum_track(audio, [(0.5, 120.0)], duration=11.0)
+            osu.write_bytes(_copy_map(lines, "500,500,4,2,0,70,1,0").replace("\n", "\r\n")
+                            .encode("utf-8"))
+            reports = {path.name: ev.run_proposals(str(cli), str(audio), str(osu), str(path))
+                       for path in sorted(folder.glob("*.json"))}
+            reports["baked"] = ev.run_proposals(str(cli), str(audio), str(osu))
+        for name, report in reports.items():
+            self.assertEqual(len(report["units"]), 20, name)
+            self.assertEqual(report["profile"], "balanced" if name == "baked"
+                             else str(folder / name), name)
+
+    def test_audio_only_proposes_on_strong_attacks(self):
+        import overtone_rust as rs
+        cli = rs.find_cli()
+        if cli is None:
+            self.skipTest("overtone-cli is not built (cargo build --release -p overtone-cli)")
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "drums.wav"
+            _drum_track(audio, [(0.5, 120.0)], duration=11.0)
+            report = rs.hitsound(str(audio), None, cli=cli)
+        self.assertEqual(report["mode"], "audio-only")
+        units = report["units"]
+        self.assertTrue(units)
+        for unit in units:
+            self.assertIsNone(unit["object"])
+            self.assertEqual(unit["part"], "attack")
+            self.assertIn(unit["proposal"]["bank"], ("normal", "soft", "drum"))
+            self.assertTrue(all(a in ("whistle", "finish", "clap")
+                                for a in unit["proposal"]["additions"]))
+
+
+class HitsoundApplyTests(unittest.TestCase):
+    """Phase 6, H5 engine half: a decision's proposals onto the map."""
+
+    @staticmethod
+    def _unit(object, part, edge, time_ms, bank, bits):
+        return {"object": object, "part": part, "edge": edge, "time_ms": time_ms,
+                "proposal": {"bank": bank, "additions": [], "bits": bits}}
+
+    def _map(self, tmp, lines, timing="1000,500,4,2,0,70,1,0"):
+        from overtone import read_osu_beatmap
+        path = Path(tmp) / "map.osu"
+        path.write_bytes(_copy_map(lines, timing).replace("\n", "\r\n").encode("utf-8"))
+        return path, read_osu_beatmap(path)
+
+    def test_a_clap_proposal_lands_bits_and_sets_leaving_the_rest(self):
+        from overtone import apply_proposals, sound_events
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:",
+                                            "256,192,1500,1,0,0:0:0:0:"])
+            before = path.read_bytes()
+            units = [self._unit(1, "circle", None, 1500.0, "drum", 8)]
+            preview = apply_proposals(path, units, preview=True)
+            self.assertEqual(preview["would_change"], 1)
+            self.assertEqual(path.read_bytes(), before)
+            result = apply_proposals(path, units)
+            self.assertEqual(result["changed"], [1])
+            after = sound_events(__import__("overtone").read_osu_beatmap(path))
+            changed = [e for e in after if e["object"] == 1][0]
+            self.assertEqual((changed["sounds"], changed["normal_set"], changed["addition_set"]),
+                             (["normal", "clap"], "drum", "drum"))
+            # Only the changed object line moved.
+            old_lines, new_lines = before.split(b"\r\n"), path.read_bytes().split(b"\r\n")
+            self.assertEqual(len(old_lines), len(new_lines))
+            self.assertEqual(sum(1 for a, b in zip(old_lines, new_lines) if a != b), 1)
+
+    def test_slider_edges_take_their_own_proposal_each(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,2,0,L|356:192,1,140"])
+            events = sound_events(overtone.read_osu_beatmap(path))
+            edges = [(e["part"], e["edge"], e["time"]) for e in events
+                     if e["part"] in ("head", "tail")]
+            self.assertEqual([p for p, _e, _t in edges], ["head", "tail"])
+            units = [self._unit(0, part, edge, t, "soft", 2) for part, edge, t in edges]
+            apply_proposals(path, units)
+            after = sound_events(overtone.read_osu_beatmap(path))
+            for e in after:
+                if e["part"] in ("head", "tail"):
+                    self.assertEqual((e["sounds"], e["normal_set"]),
+                                     (["normal", "whistle"], "soft"))
+
+    def test_accepting_a_subset_applies_only_it(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:",
+                                             "256,192,1500,1,0,0:0:0:0:"])
+            units = [self._unit(0, "circle", None, 1000.0, "drum", 8),
+                     self._unit(1, "circle", None, 1500.0, "drum", 8)]
+            result = apply_proposals(path, units, accept={(1, "circle", None)})
+            self.assertEqual(result["changed"], [1])
+            after = sound_events(overtone.read_osu_beatmap(path))
+            self.assertEqual([e["sounds"] for e in after],
+                             [["normal"], ["normal", "clap"]])
+
+    def test_a_moved_sound_refuses_the_whole_apply(self):
+        from overtone import apply_proposals
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:"])
+            before = path.read_bytes()
+            units = [self._unit(0, "circle", None, 1200.0, "drum", 8)]
+            with self.assertRaises(ValueError):
+                apply_proposals(path, units, preview=True)
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_a_copy_leaves_the_source_untouched(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:"])
+            before = path.read_bytes()
+            dest = Path(tmp) / "map_hitsounded.osu"
+            units = [self._unit(0, "circle", None, 1000.0, "soft", 4)]
+            result = apply_proposals(path, units, dest=dest)
+            self.assertEqual(Path(result["dest"]), dest)
+            self.assertEqual(path.read_bytes(), before)
+            self.assertFalse(Path(str(dest) + ".bak").exists())
+            after = sound_events(overtone.read_osu_beatmap(dest))
+            self.assertEqual(after[0]["sounds"], ["normal", "finish"])
+            with self.assertRaises(ValueError):
+                apply_proposals(path, units, dest=dest)
+
+    def test_an_unknown_bank_is_refused(self):
+        from overtone import proposal_changes
+        with tempfile.TemporaryDirectory() as tmp:
+            _path, beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:"])
+            units = [self._unit(0, "circle", None, 1000.0, "brass", 8)]
+            with self.assertRaises(ValueError):
+                proposal_changes(beatmap, units)
+
+    @staticmethod
+    def _edit(object, part, edge, time_ms, **values):
+        return {"object": object, "part": part, "edge": edge, "time_ms": time_ms, **values}
+
+    def test_a_hand_edit_sets_volume_and_index_and_nothing_else(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,8,2:0:0:0:",
+                                             "256,192,1500,1,0,0:0:0:0:"])
+            before = path.read_bytes()
+            result = apply_proposals(path, [], edits=[self._edit(0, "circle", None, 1000.0,
+                                                                 volume=40, index=2)])
+            self.assertEqual(result["changed"], [0])
+            after = path.read_bytes()
+            self.assertIn(b"256,192,1000,1,8,2:0:2:40:", after)
+            old_lines, new_lines = before.split(b"\r\n"), after.split(b"\r\n")
+            self.assertEqual(sum(1 for a, b in zip(old_lines, new_lines) if a != b), 1)
+            event = sound_events(overtone.read_osu_beatmap(path))[0]
+            self.assertEqual((event["volume"], event["index"], event["sounds"], event["normal_set"]),
+                             (40, 2, ["normal", "clap"], "soft"))
+
+    def test_an_edit_on_one_edge_is_the_sliders_for_every_edge(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,2,0,L|356:192,1,140,2|8,1:0|3:0"])
+            tail = [e for e in sound_events(overtone.read_osu_beatmap(path)) if e["part"] == "tail"][0]
+            apply_proposals(path, [], edits=[self._edit(0, "tail", 1, tail["time"], volume=30)])
+            after = sound_events(overtone.read_osu_beatmap(path))
+            self.assertEqual([(e["part"], e["volume"]) for e in after],
+                             [("head", 30), ("tail", 30), ("body", 30)])
+            # The edges keep their own additions and sets.
+            self.assertEqual([(e["sounds"], e["normal_set"]) for e in after if e["part"] != "body"],
+                             [(["normal", "whistle"], "normal"), (["normal", "clap"], "drum")])
+
+    def test_edits_merge_with_the_ticked_proposals(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:0:0:",
+                                             "256,192,1500,1,0,0:0:0:0:"])
+            units = [self._unit(0, "circle", None, 1000.0, "drum", 8)]
+            edits = [self._edit(0, "circle", None, 1000.0, volume=55),
+                     self._edit(1, "circle", None, 1500.0, index=3)]
+            preview = apply_proposals(path, units, preview=True, edits=edits)
+            self.assertEqual((preview["accepted"], preview["edited"], preview["would_change"]),
+                             (1, 2, 2))
+            apply_proposals(path, units, edits=edits)
+            first, second = sound_events(overtone.read_osu_beatmap(path))
+            self.assertEqual((first["sounds"], first["normal_set"], first["volume"]),
+                             (["normal", "clap"], "drum", 55))
+            self.assertEqual((second["sounds"], second["index"], second["volume"]),
+                             (["normal"], 3, 70))
+
+    def test_zero_follows_the_green_line_again(self):
+        from overtone import apply_proposals, sound_events
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:4:90:"])
+            self.assertEqual(sound_events(overtone.read_osu_beatmap(path))[0]["volume"], 90)
+            apply_proposals(path, [], edits=[self._edit(0, "circle", None, 1000.0,
+                                                        volume=0, index=0)])
+            event = sound_events(overtone.read_osu_beatmap(path))[0]
+            self.assertEqual((event["volume"], event["index"]), (70, 0))
+
+    def test_an_edit_to_what_plays_already_writes_nothing(self):
+        from overtone import apply_proposals
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _beatmap = self._map(tmp, ["256,192,1000,1,0,0:0:2:40:"])
+            before = path.read_bytes()
+            edits = [self._edit(0, "circle", None, 1000.0, volume=40, index=2)]
+            self.assertEqual(apply_proposals(path, [], preview=True, edits=edits)["would_change"], 0)
+            self.assertEqual(apply_proposals(path, [], edits=edits)["written"], False)
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_moved_conflicting_or_unreadable_edits_refuse_everything(self):
+        from overtone import apply_proposals, edit_changes, read_osu_beatmap
+        with tempfile.TemporaryDirectory() as tmp:
+            path, beatmap = self._map(tmp, ["256,192,1000,2,0,L|356:192,1,140"])
+            head, tail = 1000.0, 1000.0 + 140 / 140 * 500
+            before = path.read_bytes()
+            for edits in ([self._edit(0, "head", 0, 1200.0, volume=40)],
+                          [self._edit(0, "head", 0, head, volume=40),
+                           self._edit(0, "tail", 1, tail, volume=50)],
+                          [self._edit(0, "head", 0, head, volume=101)],
+                          [self._edit(0, "head", 0, head, index=-1)],
+                          [self._edit(3, "circle", None, head, volume=40)]):
+                with self.subTest(edits=edits), self.assertRaises(ValueError):
+                    edit_changes(beatmap, edits)
+            with self.assertRaises(ValueError):
+                apply_proposals(path, [], edits=[self._edit(0, "head", 0, 1200.0, volume=40)])
+            self.assertEqual(path.read_bytes(), before)
+            # The same value from two edges is one edit, not a conflict.
+            same = edit_changes(read_osu_beatmap(path),
+                                [self._edit(0, "head", 0, head, volume=40),
+                                 self._edit(0, "tail", 1, tail, volume=40)])
+            self.assertEqual((same["edited"], same["changes"]), (1, {0: {"sample": {"volume": 40}}}))
+
+
+class HitsoundDifficultyTests(unittest.TestCase):
+    """Phase 6, H5 export: a mapset's hitsound difficulty."""
+
+    @staticmethod
+    def _write(tmp, name, objects, version, timing="0,500,4,2,0,70,1,0"):
+        text = _copy_map(objects, timing).replace(
+            "[Difficulty]", f"[Metadata]\nTitle:Song\nVersion:{version}\nBeatmapID:123\nBeatmapSetID:9\n\n[Difficulty]")
+        path = Path(tmp) / f"Artist - Song (Mapper) [{version}].osu"
+        path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+        return path
+
+    def test_every_sound_of_the_mapset_becomes_a_circle_that_plays_it(self):
+        from overtone import read_osu_beatmap, sound_events, write_hitsound_difficulty
+        with tempfile.TemporaryDirectory() as tmp:
+            hard = self._write(tmp, "hard", ["256,192,1000,1,8,0:0:0:0:",
+                                             "256,192,2000,2,0,L|356:192,1,140,2|0,0:0|0:0"], "Hard")
+            # The Normal sounds 2 ms off the Hard's clap (the same time) and once alone.
+            normal = self._write(tmp, "normal", ["256,192,1002,1,0,0:0:0:0:",
+                                                 "256,192,3000,1,4,3:0:0:60:"], "Normal")
+            preview = write_hitsound_difficulty(hard, [normal], preview=True)
+            self.assertFalse(Path(preview["dest"]).exists())
+            done = write_hitsound_difficulty(hard, [normal])
+            dest = Path(done["dest"])
+            written = dest.read_bytes()
+            again = None
+            try:
+                write_hitsound_difficulty(hard, [normal])
+            except ValueError as exc:
+                again = str(exc)
+            events = sound_events(read_osu_beatmap(dest))
+            want = sound_events(read_osu_beatmap(hard)) + sound_events(read_osu_beatmap(normal))[1:]
+            source = hard.read_bytes()
+        self.assertEqual(dest.name, "Artist - Song (Mapper) [Hitsounds].osu")
+        self.assertEqual({k: preview[k] for k in ("circles", "from_source", "from_others", "merged", "inexact")},
+                         {"circles": 4, "from_source": 3, "from_others": 1, "merged": 1, "inexact": 0})
+        self.assertIn("already exists", again)
+        objects = written.split(b"[HitObjects]\r\n")[1].split(b"\r\n")
+        self.assertEqual(objects[:4], [b"256,192,1000,1,8,2:2:0:70:", b"256,192,2000,1,2,2:2:0:70:",
+                                       b"256,192,2500,1,0,2:2:0:70:", b"256,192,3000,1,4,3:3:0:60:"])
+        # Each circle plays what it played where it came from (the slider's
+        # body is not a sound a circle can carry).
+        key = lambda e: (e["time"], e["sounds"], e["normal_set"], e["addition_set"], e["index"], e["volume"])
+        self.assertEqual([key(e) for e in events], [key(e) for e in want if e["part"] != "body"])
+        # Everything but the objects, the Version and the BeatmapID is the source's.
+        self.assertIn(b"Version:Hitsounds\r\nBeatmapID:0\r\nBeatmapSetID:9\r\n", written)
+        self.assertEqual(written.split(b"[HitObjects]")[0].replace(b"Version:Hitsounds\r\nBeatmapID:0",
+                                                                     b"Version:Hard\r\nBeatmapID:123"),
+                         source.split(b"[HitObjects]")[0])
+
+    def test_an_index_the_format_can_only_inherit_is_counted_not_guessed(self):
+        from overtone import hitsound_difficulty, read_osu_beatmap
+        # The source's green gives index 2 at 3000 ms; the Normal's sound there
+        # plays index 0 under its own lines, which a circle cannot say.
+        with tempfile.TemporaryDirectory() as tmp:
+            hard = self._write(tmp, "hard", ["256,192,1000,1,0,0:0:0:0:"], "Hard",
+                               timing="0,500,4,2,0,70,1,0\n2500,-100,4,2,2,70,0,0")
+            normal = self._write(tmp, "normal", ["256,192,3000,1,8,0:0:0:0:"], "Normal")
+            built = hitsound_difficulty(read_osu_beatmap(hard), [read_osu_beatmap(normal)])
+        self.assertEqual((built["circles"], built["inexact"], built["inexact_times"]), (2, 1, [3.0]))
+
+    def test_a_chord_keeps_its_first_sound_and_says_how_many_it_left(self):
+        from overtone import hitsound_difficulty, read_osu_beatmap
+        # Two notes of the source at one time with different sounds, and a
+        # third that sounds like the first: one circle, one sound left out.
+        with tempfile.TemporaryDirectory() as tmp:
+            hard = self._write(tmp, "hard", ["64,192,1000,1,8,0:0:0:0:", "192,192,1000,1,4,0:0:0:0:",
+                                             "320,192,1001,1,8,0:0:0:0:"], "Hard")
+            built = hitsound_difficulty(read_osu_beatmap(hard))
+        self.assertEqual((built["circles"], built["merged"], built["stacked"], built["stacked_times"]),
+                         (1, 2, 1, [1.0]))
+
+
+class AnalysisEvidenceTests(unittest.TestCase):
+    """Phase 19, Evidence: the engine's alternatives, octave margin included."""
+
+    def test_a_clean_grid_names_its_octave_with_a_margin(self):
+        from types import SimpleNamespace
+        from overtone import GridSection, analysis_evidence
+        times = np.arange(0.5, 10.0, 0.4)
+        section = GridSection(0.5, 10.0, 0.4, 0.5, len(times), 0.1, 0.9)
+        analysis = SimpleNamespace(attack_times=times, attack_weights=np.ones_like(times),
+                                   sections=[section], engine="precision",
+                                   fit_residual_ms=0.1)
+        evidence = analysis_evidence(analysis)
+        json.dumps(evidence)
+        self.assertEqual(evidence["engine"], "precision")
+        [row] = evidence["sections"]
+        self.assertEqual((row["bpm"], row["residual_ms"], row["coverage"]), (150.0, 0.1, 0.9))
+        seeded = row["candidates"][row["seeded"]]["bpm"]
+        self.assertLess(abs(seeded / 150.0 - 1), 0.02)
+        self.assertIsNotNone(row["half"])
+        self.assertAlmostEqual(row["half"]["bpm"] / 75.0, 1.0, delta=0.03)
+        self.assertIsNotNone(row["octave_margin"])
+
+    def test_no_attacks_reports_that_instead_of_alternatives(self):
+        from types import SimpleNamespace
+        from overtone import analysis_evidence
+        analysis = SimpleNamespace(attack_times=np.zeros(0), attack_weights=np.zeros(0),
+                                   sections=[], engine="legacy", fit_residual_ms=0.0)
+        evidence = analysis_evidence(analysis)
+        json.dumps(evidence)
+        self.assertEqual((evidence["sections"], evidence["note"]), ([], "no_attacks"))
+
+
+class AudioFileReportTests(unittest.TestCase):
+    """Phase 21, Audio file check: facts about the file plus stated bars."""
+
+    @staticmethod
+    def _tone(path: Path, gain: float, lead_s: float = 0.0, seconds: float = 4.0,
+              sr: int = 44100) -> None:
+        import soundfile as sfile
+        n = int(seconds * sr)
+        t = np.arange(n) / sr
+        y = (np.sin(2 * np.pi * 440.0 * t) * gain).astype(np.float32)
+        y[:int(lead_s * sr)] = 0.0
+        stereo = np.stack([y, y], axis=1)
+        sfile.write(str(path), stereo, sr, subtype="PCM_16")
+
+    def test_facts_and_exact_pcm_bitrate(self) -> None:
+        from overtone import audio_file_report
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "song.wav"
+            self._tone(path, 0.5)
+            report = audio_file_report(path)
+            json.dumps(report)
+            self.assertEqual((report["sample_rate"], report["channels"],
+                              report["duration_s"], report["bitrate_kbps"],
+                              report["bitrate_how"]),
+                             (44100, 2, 4.0, 1411, "header"))
+            self.assertAlmostEqual(report["peak_db"], -6.0, places=1)
+            self.assertEqual(report["clipped_share"], 0.0)
+            self.assertEqual((report["lead_ms"], report["findings"]), (0.0, []))
+
+    def test_clipping_and_long_lead_flagged(self) -> None:
+        from overtone import audio_file_report
+        with tempfile.TemporaryDirectory() as tmp:
+            loud = Path(tmp) / "loud.wav"
+            self._tone(loud, 1.0)
+            clipped = audio_file_report(loud)
+            self.assertGreater(clipped["clipped_share"], 0.001)
+            self.assertEqual([f["key"] for f in clipped["findings"]], ["clipping"])
+            gapped = Path(tmp) / "gapped.wav"
+            self._tone(gapped, 0.5, lead_s=2.5)
+            lead = audio_file_report(gapped)
+            self.assertGreaterEqual(lead["lead_ms"], 2400.0)
+            self.assertEqual([f["key"] for f in lead["findings"]], ["long_lead"])
+
+    def test_missing_or_empty_refuses(self) -> None:
+        from overtone import audio_file_report
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                audio_file_report(Path(tmp) / "missing.wav")
+            empty = Path(tmp) / "empty.wav"
+            empty.write_bytes(b"")
+            with self.assertRaises(ValueError):
+                audio_file_report(empty)
+
+
+class AudioSwapTests(unittest.TestCase):
+    """Phase 19, Audio swap: the shift between two encodes, every time moved."""
+
+    @staticmethod
+    def _clicks(bpm=150.0, seconds=8.0, seed=7):
+        import math
+        rng = np.random.default_rng(seed)
+        y = np.zeros(int(seconds * 44100), dtype=np.float64)
+        k = 0
+        while True:
+            t = 0.5 + k * 60.0 / bpm
+            if t > seconds - 0.2:
+                break
+            n = int(0.03 * 44100)
+            burst = np.exp(-np.arange(n) / (0.004 * 44100)) * (rng.random(n) - 0.5)
+            y[int(t * 44100):int(t * 44100) + n] += (0.9 if k % 4 == 0 else 0.5) * burst
+            k += 1
+        return y / max(1e-9, np.abs(y).max())
+
+    @staticmethod
+    def _delayed(y, ms):
+        shift = int(round(ms / 1000 * 44100))
+        out = np.zeros_like(y)
+        if shift >= 0:
+            out[shift:] = y[:len(y) - shift]
+        else:
+            out[:shift] = y[-shift:]
+        return out
+
+    def test_a_shift_reads_sub_millisecond_and_refusals_refuse(self):
+        from overtone import shift_samples
+        base = self._clicks()
+        self.assertAlmostEqual(shift_samples(base, self._delayed(base, 26.0), 44100)["shift_ms"],
+                               26.0, delta=0.1)
+        self.assertAlmostEqual(shift_samples(base, base, 44100)["shift_ms"], 0.0, delta=0.001)
+        with self.assertRaises(ValueError):
+            shift_samples(base, self._clicks(bpm=165.0), 44100)
+        with self.assertRaises(ValueError):
+            shift_samples(base, np.random.default_rng(1).standard_normal(len(base)), 44100)
+        with self.assertRaises(ValueError):
+            shift_samples(base[:100], base[:100], 44100)
+
+    def test_every_time_moves_and_nothing_else(self):
+        from overtone import read_osu_beatmap, shift_osu_text
+        text = "\n".join([
+            "osu file format v14", "", "[General]", "AudioFilename: old.mp3",
+            "PreviewTime: 2000", "AudioLeadIn: 500", "", "[Editor]", "Bookmarks: 1000,2000",
+            "", "[TimingPoints]", "1000,500,4,2,0,70,1,0", "1500,-100,4,2,0,60,0,0", "",
+            "[HitObjects]",
+            "256,192,1000,1,4,0:0:0:0:",
+            "256,192,2000,2,2,L|356:192,1,140,2|2|2,0:0|0:0|0:0,0:0:0:30:",
+            "256,192,3000,12,0,4000,0:0:0:0:",
+            "100,100,5000,128,0,6000:0:0:0:0:", ""])
+        shifted, moved = shift_osu_text(text, 26.0, audio_name="new.mp3")
+        json.dumps(moved)
+        # One red line and one green: both move, one counts as a red line.
+        self.assertEqual((moved["reds"], moved["objects"]), (1, 4))
+        self.assertIn("1026,500,4,2,0,70,1,0", shifted)
+        self.assertIn("1526,-100,4,2,0,60,0,0", shifted)
+        self.assertIn("256,192,1026,1,4,0:0:0:0:", shifted)
+        self.assertIn("256,192,3026,12,0,4026,0:0:0:0:", shifted)
+        self.assertIn("100,100,5026,128,0,6026:0:0:0:0:", shifted)
+        self.assertIn("AudioFilename: new.mp3", shifted)
+        self.assertIn("PreviewTime: 2026", shifted)
+        # The lead-in is a wait before the song, not a moment in it.
+        self.assertIn("AudioLeadIn: 500", shifted)
+        self.assertIn("Bookmarks: 1026,2026", shifted)
+        # The shifted text parses with every time moved.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(shifted.replace("\n", "\r\n").encode("utf-8"))
+            beatmap = read_osu_beatmap(path)
+        self.assertEqual([o["time"] for o in beatmap["hitobjects"]],
+                         [1026.0, 2026.0, 3026.0, 5026.0])
+
+    def test_a_negative_landing_or_missing_section_refuses(self):
+        from overtone import shift_osu_text
+        text = _copy_map(["256,192,1000,1,0,0:0:0:0:"])
+        with self.assertRaises(ValueError):
+            shift_osu_text(text, -2000.0)
+        with self.assertRaises(ValueError):
+            shift_osu_text("[General]\n", 10.0)
+
+    def test_an_encode_with_less_silence_moves_a_map_with_no_lead_in(self):
+        # Every real map writes "AudioLeadIn: 0", and moving it refused every
+        # negative shift at 0 ms although nothing timed landed before zero.
+        from overtone import shift_osu_text
+        text = _copy_map(["256,192,1000,1,0,0:0:0:0:"], timing="1000,500,4,2,0,70,1,0").replace(
+            "[General]\n", "[General]\nAudioLeadIn: 0\n")
+        shifted, moved = shift_osu_text(text, -40.0)
+        self.assertIn("AudioLeadIn: 0", shifted)
+        self.assertIn("960,500,4,2,0,70,1,0", shifted)
+        self.assertIn("256,192,960,1,0,0:0:0:0:", shifted)
+        self.assertEqual((moved["reds"], moved["objects"]), (1, 1))
+
+    def test_a_red_line_before_zero_moves_like_any_other(self):
+        # osu! allows a first red line before the song starts; the swap
+        # refused every map of a real set with one at -3189 ms.
+        from overtone import shift_osu_text
+        text = _copy_map(["256,192,1000,1,0,0:0:0:0:"], timing="-3189,500,4,2,0,70,1,0")
+        for shift, red, obj in ((40.0, "-3149,500,", "256,192,1040,"),
+                                (-40.0, "-3229,500,", "256,192,960,")):
+            shifted, _moved = shift_osu_text(text, shift)
+            self.assertIn(red, shifted)
+            self.assertIn(obj, shifted)
+
+    def test_apply_moves_a_set_atomically_with_backups(self):
+        from overtone import apply_audio_swap, preview_audio_swap, read_history
+        with tempfile.TemporaryDirectory() as tmp:
+            first = Path(tmp) / "a.osu"
+            second = Path(tmp) / "b.osu"
+            for path in (first, second):
+                path.write_bytes(_copy_map(["256,192,1000,1,0,0:0:0:0:"]).replace(
+                    "\n", "\r\n").encode("utf-8"))
+            preview = preview_audio_swap([first, second], 26.0)
+            self.assertTrue(all(row["ok"] for row in preview["maps"]))
+            self.assertEqual(preview["maps"][0]["objects"], 1)
+            done = apply_audio_swap([first, second], 26.0, audio_name="new.mp3")
+            self.assertTrue(done["written"])
+            self.assertTrue(first.with_name("a.osu.bak").is_file())
+            # One bad map stops the set before any byte moves.
+            bad = Path(tmp) / "bad.osu"
+            bad.write_bytes(b"junk")
+            before = second.read_bytes()
+            with self.assertRaises(ValueError):
+                apply_audio_swap([second, bad], 10.0)
+            self.assertEqual(second.read_bytes(), before)
+            entries = [e for e in read_history() if e["op"] == "swap"]
+        json.dumps([preview, done])
+        self.assertEqual(len(entries), 2)
+
+
+class OffsetLabTests(unittest.TestCase):
+    """Phase 19, Offset lab: the MP3's own gapless numbers from its header."""
+
+    @staticmethod
+    def _mp3(lame=True):
+        frame = (b"\xff\xfb\x90\x00" + bytes(32) + b"Xing" + b"\x00\x00\x00\x0f"
+                 + bytes(4 + 4 + 100 + 4))
+        if lame:
+            frame += b"LAME3.99r" + bytes(12) + bytes((0x84, 0x00, 100))
+        return b"ID3\x04\x00\x00" + bytes(4) + frame + bytes(2000)
+
+    def test_lame_delay_and_padding_unpack(self):
+        from overtone import mp3_gapless_info
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "song.mp3"
+            path.write_bytes(self._mp3())
+            info = mp3_gapless_info(path)
+        json.dumps(info)
+        self.assertEqual((info["present"], info["encoder"], info["sample_rate"],
+                          info["delay_samples"], info["padding_samples"]),
+                         (True, "LAME3.99r", 44100, 2112, 100))
+        self.assertAlmostEqual(info["delay_ms"], 2112 * 1000 / 44100, places=3)
+
+    def test_no_lame_tag_junk_or_other_format_reports_absent(self):
+        from overtone import mp3_gapless_info
+        with tempfile.TemporaryDirectory() as tmp:
+            bare = Path(tmp) / "bare.mp3"
+            bare.write_bytes(self._mp3(lame=False))
+            self.assertEqual(mp3_gapless_info(bare)["present"], False)
+            junk = Path(tmp) / "junk.mp3"
+            junk.write_bytes(bytes(100))
+            self.assertEqual(mp3_gapless_info(junk)["present"], False)
+            other = Path(tmp) / "song.wav"
+            other.write_bytes(self._mp3())
+            self.assertEqual(mp3_gapless_info(other)["present"], False)
+            self.assertEqual(mp3_gapless_info(Path(tmp) / "missing.mp3")["present"], False)
+
+
+class PercussionTests(unittest.TestCase):
+    """Phase 4, percussion-only audition: the drums as playable bytes."""
+
+    def test_percussive_stem_decodes_at_full_length(self):
+        import soundfile as sf
+        from overtone import percussive_wav
+        sr = 44100
+        t = np.arange(3 * sr) / sr
+        # Clicks over a sustained hum: drums plus something to remove.
+        y = (0.5 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)
+        for k in range(12):
+            start = int((0.5 + k * 0.2) * sr)
+            y[start:start + 400] += 0.9
+        room = tempfile.TemporaryDirectory()
+        self.addCleanup(room.cleanup)
+        raw = percussive_wav(y, sr)
+        self.assertTrue(raw.startswith(b"RIFF"))
+        path = str(Path(room.name) / "perc.wav")
+        with open(path, "wb") as handle:
+            handle.write(raw)
+        back, back_sr = sf.read(path, dtype="float32")
+        self.assertEqual((len(back), back_sr), (len(y), sr))
+        self.assertGreater(float(np.abs(back).max()), 0.0)
+
+
+class WriteHistoryTests(unittest.TestCase):
+    """Phase 19, History: every .osu write logged, diffed and restorable."""
+
+    def test_log_and_read_round_trip_newest_first(self):
+        from overtone import log_write, read_history
+        with tempfile.TemporaryDirectory() as tmp:
+            log_write("a.osu", "inject", "a.osu.bak", {"reds_added": 2}, history_dir=tmp)
+            log_write("b.osu", "hitsounds", None, {}, history_dir=tmp)
+            entries = read_history(tmp)
+        json.dumps(entries)
+        self.assertEqual([(e["op"], e["path"], e["backup"]) for e in entries],
+                         [("hitsounds", "b.osu", None), ("inject", "a.osu", "a.osu.bak")])
+        self.assertEqual(entries[1]["summary"], {"reds_added": 2})
+
+    def test_torn_lines_do_not_hide_the_rest(self):
+        from overtone import read_history
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "writes.jsonl").write_text('{"op": "x", "path": "a.osu"}\nbroken\n',
+                                                    encoding="utf-8")
+            self.assertEqual(len(read_history(tmp)), 1)
+
+    def test_restore_keeps_the_current_bytes_as_a_new_backup(self):
+        from overtone import read_history, restore_write
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_bytes(b"v2")
+            target.with_name("map.osu.bak").write_bytes(b"v1")
+            result = restore_write(target, target.with_name("map.osu.bak"), history_dir=tmp)
+            self.assertEqual(target.read_bytes(), b"v1")
+            self.assertEqual(Path(result["backup"]).read_bytes(), b"v2")
+            self.assertEqual(read_history(tmp)[0]["op"], "restore")
+            with self.assertRaises(ValueError):
+                restore_write(target, Path(tmp) / "missing.bak", history_dir=tmp)
+
+    def test_red_diff_pairs_offsets_and_names_movers(self):
+        from overtone import diff_reds
+        old = "[TimingPoints]\n1000,500,4,2,0,70,1,0\n2000,400,4,2,0,70,1,0\n3000,500,4,2,0,70,1,0\n"
+        new = "[TimingPoints]\n1000,500,4,2,0,70,1,0\n2000,300,4,2,0,70,1,0\n4000,500,4,2,0,70,1,0\n"
+        diff = diff_reds(old, new)
+        json.dumps(diff)
+        self.assertEqual((diff["n_added"], diff["n_removed"], diff["n_changed"]), (1, 1, 1))
+        self.assertEqual(diff["changed"][0]["new_bpm"], 200.0)
+        self.assertEqual(diff["added"][0]["offset"], 4000.0)
+
+    def test_a_hitsound_write_logs_itself(self):
+        from overtone import read_history, write_object_hitsounds
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "map.osu"
+            target.write_bytes(_copy_map(["256,192,1000,1,0,0:0:0:0:"]).replace(
+                "\n", "\r\n").encode("utf-8"))
+            write_object_hitsounds(target, {0: {"bits": 8}})
+            entries = read_history()
+        self.assertEqual(entries[0]["op"], "hitsounds")
+        self.assertEqual(entries[0]["summary"], {"changed": 1})
+        self.assertTrue(entries[0]["backup"].endswith(".bak"))
+
+
+class HitsoundConsistencyTests(unittest.TestCase):
+    """Phase 6, H3 map half: sounds breaking the map's own clap pattern."""
+
+    @staticmethod
+    def _bars(n, clap_beat2=None, clap_beat4=True):
+        # 120 BPM from 1000 ms: bar b (1-based) beats 2/4 at fixed times.
+        lines = []
+        for b in range(1, n + 1):
+            beat2 = 1500 + (b - 1) * 2000
+            beat4 = 2500 + (b - 1) * 2000
+            if clap_beat2 is None or b in clap_beat2:
+                lines.append(f"256,192,{beat2},1,8,0:0:0:0:")
+            else:
+                lines.append(f"256,192,{beat2},1,0,0:0:0:0:")
+            lines.append(f"256,192,{beat4},1,{'8' if clap_beat4 else '0'},0:0:0:0:")
+        return _copy_map(lines, timing="1000,500,4,2,0,70,1,0")
+
+    def _report(self, text):
+        from overtone import read_osu_beatmap
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "map.osu"
+            path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+            return read_osu_beatmap(path)
+
+    def test_a_bare_beat_two_in_sixteen_clapped_bars_is_missing(self):
+        from overtone import hitsound_consistency
+        beatmap = self._report(self._bars(20, clap_beat2=set(range(1, 21)) - {12}))
+        findings = hitsound_consistency(beatmap)["findings"]
+        missing = [f for f in findings if f["key"] == "hitsound_missing_clap"]
+        self.assertEqual(len(missing), 1)
+        self.assertEqual((missing[0]["values"]["bar"], missing[0]["values"]["beat"],
+                          missing[0]["values"]["have"], missing[0]["values"]["of"]),
+                         (12, "2", 16, 16))
+
+    def test_a_lone_clap_among_bare_beats_flags_when_the_map_claps(self):
+        from overtone import hitsound_consistency
+        # Beat 4 clapped everywhere (the map's pattern), beat 2 bare but for bar 12.
+        lines = []
+        for b in range(1, 21):
+            lines.append(f"256,192,{1500 + (b - 1) * 2000},1,"
+                         f"{'8' if b == 12 else '0'},0:0:0:0:")
+            lines.append(f"256,192,{2500 + (b - 1) * 2000},1,8,0:0:0:0:")
+        beatmap = self._report(_copy_map(lines, timing="1000,500,4,2,0,70,1,0"))
+        findings = hitsound_consistency(beatmap)["findings"]
+        extra = [f for f in findings if f["key"] == "hitsound_extra_clap"]
+        self.assertEqual(len(extra), 1)
+        self.assertEqual((extra[0]["values"]["bar"], extra[0]["values"]["beat"],
+                          extra[0]["values"]["have"]),
+                         (12, "2", 0))
+
+    def test_a_map_that_barely_claps_has_no_pattern_to_break(self):
+        from overtone import hitsound_consistency
+        beatmap = self._report(self._bars(20, clap_beat2={1}, clap_beat4=False))
+        self.assertEqual(hitsound_consistency(beatmap)["findings"], [])
+
+    def test_mod_report_lists_the_pattern_break_as_a_mod_line(self):
+        import numpy as np
+        from overtone import mod_report
+        beatmap = self._report(self._bars(20, clap_beat2=set(range(1, 21)) - {12}))
+        report = mod_report(beatmap, np.zeros(0), np.zeros(0), 61.0)
+        items = [i for i in report["items"] if i["source"] == "hitsound"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["text"],
+                         "no clap on beat 2 of bar 12, with 16 of the 16 bars around it clapped")
+        self.assertEqual(report["counts"]["hitsound"], 1)
+        json.dumps(report)
+
+    def test_a_finish_with_no_attack_under_it_is_flagged(self):
+        import numpy as np
+        from overtone import hitsound_silence_check
+        beatmap = self._report(_copy_map(["256,192,1000,1,4,0:0:0:0:",
+                                          "256,192,2000,1,8,0:0:0:0:"],
+                                         timing="1000,500,4,2,0,70,1,0"))
+        findings = hitsound_silence_check(beatmap, np.array([2.0]), np.array([1.0]))["findings"]
+        self.assertEqual([(f["key"], f["values"]["addition"], f["time_ms"]) for f in findings],
+                         [("hitsound_on_silence", "finish", 1000.0)])
+
+    def test_a_lone_whistle_is_not_judged(self):
+        # Unmatched whistles sit a median 66 ms from attacks on real songs
+        # (melodic overlap), so calling them silence would mislead.
+        import numpy as np
+        from overtone import hitsound_silence_check
+        beatmap = self._report(_copy_map(["256,192,1000,1,2,0:0:0:0:"],
+                                         timing="1000,500,4,2,0,70,1,0"))
+        self.assertEqual(hitsound_silence_check(
+            beatmap, np.array([2.0]), np.array([1.0]))["findings"], [])
+
+    def test_a_clap_on_an_attack_and_silence_everywhere_flag_nothing(self):
+        import numpy as np
+        from overtone import hitsound_silence_check
+        beatmap = self._report(_copy_map(["256,192,2000,1,8,0:0:0:0:"],
+                                         timing="1000,500,4,2,0,70,1,0"))
+        self.assertEqual(hitsound_silence_check(
+            beatmap, np.array([2.0]), np.array([1.0]))["findings"], [])
+        self.assertEqual(hitsound_silence_check(
+            beatmap, np.zeros(0), np.zeros(0))["findings"], [])
+
+
+class StructureViewTests(unittest.TestCase):
+    """Phase 19, Structure: phrases on the song's proven bars, labels with why."""
+
+    @staticmethod
+    def _analysis(points, duration=64.0):
+        return Analysis("synthetic.wav", duration, np.arange(128) * 0.5, np.full(128, 120.0),
+                        points, HOP, 44100, 1.0, 120.0, 1.0, "4/4",
+                        np.zeros(4000, dtype=np.float32))
+
+    def test_downbeats_follow_each_line_and_say_which_are_proven(self):
+        from overtone import downbeat_times
+        points = [TimingPoint(0.0, 120.0, 0.9, 0, 4, True),        # 2 s bars, proven
+                  TimingPoint(8000.0, 90.0, 0.9, 1, 3, False)]     # 3/4 unproven: song's 4/4
+        bars = downbeat_times(self._analysis(points, duration=20.0))
+        self.assertEqual([round(t, 6) for t, _ in bars[:5]], [0.0, 2.0, 4.0, 6.0, 8.0])
+        self.assertEqual([known for _, known in bars[:4]], [True] * 4)
+        later = [(round(t, 4), known) for t, known in bars[4:]]
+        self.assertEqual(later, [(8.0, False), (10.6667, False), (13.3333, False),
+                                 (16.0, False), (18.6667, False)])
+        manual = [TimingPoint(0.0, 120.0, 0.9, 0, 4, False, manual=True)]
+        self.assertTrue(all(k for _, k in downbeat_times(self._analysis(manual, 10.0))))
+        self.assertEqual(downbeat_times(self._analysis([], 10.0)), [])
+
+    def test_edges_snap_to_proven_downbeats_and_say_how_far(self):
+        from overtone import structure_view
+        points = [TimingPoint(0.0, 120.0, 0.9, 0, 4, True)]        # bar lines every 2 s
+        report = _structure_report([16.5, 31.2, 47.4], ["verse", "chorus", "verse", "chorus"],
+                                   [0, 1, 0, 1], [-6.0, 0.0, -6.2, -0.1])
+        view = structure_view(report, self._analysis(points))
+        json.dumps(view)
+        starts = [s["start_s"] for s in view["sections"]]
+        self.assertEqual(starts, [0.0, 16.0, 32.0, 48.0])
+        self.assertEqual([s["moved_ms"] for s in view["sections"]], [None, -500.0, 800.0, 600.0])
+        self.assertEqual([s["end_s"] for s in view["sections"]], [16.0, 32.0, 48.0, 64.0])
+        self.assertEqual([s["bar"] for s in view["sections"]], [1, 9, 17, 25])
+        self.assertEqual([s["group"] for s in view["sections"]], ["A", "B", "A", "B"])
+        # No proven bar within reach: the edge stays where the audio put it.
+        unproven = [TimingPoint(0.0, 120.0, 0.9, 0, 4, False)]
+        loose = structure_view(report, self._analysis(unproven))
+        self.assertEqual([s["start_s"] for s in loose["sections"]], [0.0, 16.5, 31.2, 47.4])
+        self.assertEqual([s["snapped"] for s in loose["sections"]], [True, False, False, False])
+        far = [TimingPoint(0.0, 20.0, 0.9, 0, 4, True)]            # 12 s bars
+        self.assertEqual(structure_view(report, self._analysis(far))["sections"][1]["start_s"], 16.5)
+        # Before the first red line no bar is counted: no "bar 0".
+        late = [TimingPoint(3000.0, 120.0, 0.9, 0, 4, True)]
+        self.assertEqual([s["bar"] for s in structure_view(report, self._analysis(late))["sections"]],
+                         [None, 8, 15, 23])
+
+    @staticmethod
+    def _lane(*spans):
+        """An RMS lane at 0.5 s windows over 64 s: ``(from_s, level)`` pairs,
+        each level held until the next pair."""
+        t = np.arange(128) * 0.5
+        lane = np.zeros(128)
+        for start, level in spans:
+            lane[t >= start] = level
+        return lane
+
+    def test_an_edge_takes_the_bar_where_the_level_changes_not_the_nearest(self):
+        from overtone import structure_view
+        bars = [TimingPoint(0.0, 120.0, 0.9, 0, 4, True)]           # bar lines every 2 s
+        # The novelty peak at 30.8 s is nearest the bar at 30 s; the chorus
+        # starts at 32 s, where the level rises 20 dB.
+        rise = _structure_report([30.8], ["verse", "chorus"], [0, 1], [-20.0, 0.0],
+                                 energy=self._lane((0.0, 0.1), (32.0, 1.0)))
+        view = structure_view(rise, self._analysis(bars))
+        json.dumps(view)
+        chorus = view["sections"][1]
+        self.assertEqual((chorus["start_s"], chorus["moved_ms"], chorus["bar"]), (32.0, 1200.0, 17))
+        self.assertEqual((chorus["snap"], chorus["change_db"]), ("level", 20.0))
+        self.assertEqual(view["sections"][0]["end_s"], 32.0)
+        self.assertEqual((view["sections"][0]["snap"], view["phrase_margin_db"]), (None, 0.5))
+        # A fall takes the bar where the level falls, by the same rule.
+        fall = _structure_report([30.8], ["chorus", "verse"], [0, 1], [0.0, -20.0],
+                                 energy=self._lane((0.0, 1.0), (32.0, 0.1)))
+        verse = structure_view(fall, self._analysis(bars))["sections"][1]
+        self.assertEqual((verse["start_s"], verse["snap"], verse["change_db"]), (32.0, "level", -20.0))
+
+    def test_the_sections_levels_say_which_way_the_change_goes(self):
+        from overtone import structure_view
+        bars = [TimingPoint(0.0, 120.0, 0.9, 0, 4, True)]
+        # A stop bar at 30-32 s: the level falls 20 dB at 30 s and rises 20 dB
+        # at 32 s. Into a louder section, the phrase starts at the rise...
+        stop = self._lane((0.0, 0.5), (30.0, 0.05), (32.0, 0.5))
+        louder = _structure_report([30.2], ["verse", "chorus"], [0, 1], [-1.0, 0.0], energy=stop)
+        chorus = structure_view(louder, self._analysis(bars))["sections"][1]
+        self.assertEqual((chorus["start_s"], chorus["moved_ms"], chorus["snap"]), (32.0, 1800.0, "level"))
+        # ...and into a quieter one at the fall, the nearest bar here.
+        quieter = _structure_report([30.2], ["chorus", "verse"], [0, 1], [0.0, -1.0], energy=stop)
+        verse = structure_view(quieter, self._analysis(bars))["sections"][1]
+        self.assertEqual((verse["start_s"], verse["snap"], verse["change_db"]), (30.0, "nearest", -20.0))
+
+    def test_the_nearest_bar_stays_unless_another_proven_one_changes_more(self):
+        from overtone import STRUCTURE_PHRASE_MARGIN_DB, structure_view
+        bars = [TimingPoint(0.0, 120.0, 0.9, 0, 4, True)]
+
+        def start(step_db, points=bars):
+            lane = self._lane((0.0, 1.0), (32.0, 10.0 ** (step_db / 20.0)))
+            report = _structure_report([30.8], ["verse", "chorus"], [0, 1], [-1.0, 0.0], energy=lane)
+            first = structure_view(report, self._analysis(points))["sections"][1]
+            return first["start_s"], first["snap"]
+
+        self.assertEqual(STRUCTURE_PHRASE_MARGIN_DB, 0.5)
+        self.assertEqual(start(0.4), (30.0, "nearest"))             # under the margin
+        self.assertEqual(start(0.6), (32.0, "level"))
+        # A bar the accents did not prove is never taken, however loud.
+        unproven = bars + [TimingPoint(32000.0, 120.0, 0.9, 1, 4, False)]
+        self.assertEqual(start(20.0, unproven), (30.0, "nearest"))
+
+    def test_every_label_names_the_rule_and_the_numbers_it_read(self):
+        from overtone import structure_view
+        report = _structure_report([8.0, 24.0, 40.0, 50.0, 60.0],
+                                   ["intro", "verse", "chorus", "bridge", "chorus", "outro"],
+                                   [0, 1, 2, 3, 2, 4], [-12.0, -6.0, 0.0, -3.0, 0.0, -9.0], 70.0)
+        view = structure_view(report, self._analysis([], 70.0))
+        why = [s["why"] for s in view["sections"]]
+        self.assertEqual([w["rule"] for w in why], ["intro_first", "verse_one_family",
+                                                    "chorus_loudest", "bridge_once",
+                                                    "chorus_loudest", "outro_last"])
+        self.assertEqual((why[0]["length_s"], why[0]["max_s"]), (8.0, 12.0))
+        self.assertIsNone(why[2]["over_db"])      # only one repeated family to be louder than
+        two = _structure_report([16.0, 32.0, 48.0], ["verse", "chorus", "verse", "chorus"],
+                                [0, 1, 0, 1], [-6.0, 0.0, -6.0, 0.0])
+        rules = [s["why"] for s in structure_view(two, self._analysis([]))["sections"]]
+        self.assertEqual(rules[0], {"rule": "verse_quieter", "repeats": 2, "under_db": 6.0})
+        self.assertEqual(rules[1], {"rule": "chorus_loudest", "repeats": 2, "over_db": 6.0})
+        one = _structure_report([20.0, 40.0], ["verse"] * 3, [0, 0, 0], [0.0, -1.0, -0.5])
+        view = structure_view(one, self._analysis([]))
+        self.assertTrue(view["one_family"])
+        self.assertEqual(view["sections"][0]["why"], {"rule": "verse_one_family", "repeats": 3})
+
+    def test_preview_starts_at_the_loudest_chorus(self):
+        from overtone import structure_view, suggest_preview_time
+        report = _structure_report([8.0, 24.0, 40.0, 50.0, 60.0],
+                                   ["intro", "verse", "chorus", "bridge", "chorus", "outro"],
+                                   [0, 1, 2, 3, 2, 4], [-12.0, -6.0, -1.0, -3.0, 0.0, -9.0], 70.0)
+        view = structure_view(report, self._analysis([], 70.0))
+        json.dumps(view)
+        self.assertEqual(view["preview"],
+                         {"time_s": 50.0, "time_ms": 50000, "kind": "chorus",
+                          "why": "chorus_loudest"})
+
+    def test_preview_without_a_chorus_takes_the_loudest_part(self):
+        from overtone import suggest_preview_time
+        sections = [{"kind": "intro", "level_db": 0.0, "start_s": 0.0},
+                    {"kind": "verse", "level_db": -3.0, "start_s": 10.0},
+                    {"kind": "bridge", "level_db": -1.0, "start_s": 30.0},
+                    {"kind": "outro", "level_db": -6.0, "start_s": 50.0}]
+        self.assertEqual(suggest_preview_time(sections)["why"], "loudest_part")
+        self.assertEqual(suggest_preview_time(sections)["time_s"], 30.0)
+        only_intro = [{"kind": "intro", "level_db": 0.0, "start_s": 0.0}]
+        self.assertEqual(suggest_preview_time(only_intro)["why"], "loudest_only")
+        self.assertIsNone(suggest_preview_time([]))
+
+    def test_the_energy_lane_is_pooled_by_its_peaks(self):
+        from overtone import STRUCTURE_LANE_POINTS, structure_view
+        energy = np.full(2000, 0.1)
+        energy[1234] = 2.0                                          # one short hit
+        report = _structure_report([], ["verse"], [0], [0.0], duration=1000.0, energy=energy)
+        lane = structure_view(report, self._analysis([], 1000.0))["lane"]
+        self.assertLessEqual(len(lane["values"]), STRUCTURE_LANE_POINTS)
+        self.assertEqual(max(lane["values"]), 1.0)
+        self.assertAlmostEqual(lane["hop"] * len(lane["values"]), 1000.0, delta=lane["hop"])
+        self.assertEqual(structure_view(report, self._analysis([], 1000.0))["sections"][0]["why"],
+                         {"rule": "verse_single"})
+
+    def test_bookmarks_merge_sorted_and_keep_the_mappers(self):
+        from overtone import set_editor_bookmarks
+        beatmap = {"sections": [{"name": "Editor",
+                                 "lines": ["Bookmarks: 3000,1000", "DistanceSpacing: 1.2"]}],
+                   "editor": {}}
+        result = set_editor_bookmarks(beatmap, [2000.4, 1000.0, -50.0])
+        json.dumps(result)
+        self.assertEqual(result, {"added": 1, "total": 3})
+        # Commas alone, as osu! writes the line.
+        self.assertEqual(beatmap["sections"][0]["lines"],
+                         ["Bookmarks: 1000,2000,3000", "DistanceSpacing: 1.2"])
+        self.assertEqual(beatmap["editor"]["Bookmarks"], "1000,2000,3000")
+
+    def test_bookmarks_append_when_missing_and_refuse_junk(self):
+        from overtone import set_editor_bookmarks
+        bare = {"sections": [{"name": "Editor", "lines": ["DistanceSpacing: 1.2"]}],
+                "editor": {}}
+        self.assertEqual(set_editor_bookmarks(bare, [500.0])["added"], 1)
+        self.assertIn("Bookmarks: 500", bare["sections"][0]["lines"])
+        junk = {"sections": [{"name": "Editor", "lines": ["Bookmarks: 1000,soon"]}],
+                "editor": {}}
+        with self.assertRaises(ValueError):
+            set_editor_bookmarks(junk, [2000.0])
+        with self.assertRaises(ValueError):
+            set_editor_bookmarks({"sections": []}, [2000.0])
+
+
+class AssistedTimingTests(unittest.TestCase):
+    """Proposal P1: two marked downbeats seed the grid, the attacks do the rest."""
+
+    @staticmethod
+    def _fit(times, weights, first, second, bars=1, meter=4):
+        from overtone import assisted_grid
+        fit = assisted_grid(times, weights, first, second, bars, meter)
+        json.dumps(fit)
+        return fit
+
+    def test_two_sloppy_marks_give_the_whole_grid(self):
+        times, weights = _eighths()          # 150 BPM from 1.0 s to 61 s
+        for first, second, bars in ((9020.0, 10575.0, 1), (9010.0, 15380.0, 4)):
+            with self.subTest(bars=bars):
+                fit = self._fit(times, weights, first, second, bars)
+                self.assertTrue(fit["ok"])
+                self.assertAlmostEqual(fit["bpm"], 150.0, delta=0.01)
+                self.assertAlmostEqual(fit["offset_ms"], 1000.0, delta=1.0)
+                self.assertLess(fit["start_ms"], 1010.0)
+                self.assertGreater(fit["end_ms"], 60500.0)
+                self.assertFalse(fit["short"])
+                # The marks moved onto the downbeats they meant.
+                self.assertAlmostEqual(fit["first_shift_ms"], 9000.0 - first, delta=1.0)
+                self.assertAlmostEqual(fit["second_shift_ms"],
+                                       9000.0 + bars * 1600.0 - second, delta=1.0)
+
+    def test_a_fast_bar_survives_sloppy_marks(self):
+        # 300 BPM: one bar is 0.8 s, so marks 35 ms apart from true are 4 % of
+        # the beat; they snap to the attacks before the beat is taken.
+        times = np.arange(0.2, 45.0, 0.2)
+        fit = self._fit(times, np.ones(times.size), 20215.0, 20980.0)
+        self.assertTrue(fit["ok"])
+        self.assertAlmostEqual(fit["bpm"], 300.0, delta=0.01)
+
+    def test_growth_crosses_a_breakdown_but_stops_at_a_tempo_change(self):
+        rng = np.random.default_rng(4)
+        steady, weights = _eighths(stop=25.0)
+        vocals = np.sort(rng.uniform(25.2, 35.0, 30))          # no grid for ten seconds
+        after, after_w = _eighths(start=35.0, stop=61.0)
+        times = np.r_[steady, vocals, after]
+        fit = self._fit(times, np.r_[weights, np.full(30, 0.5), after_w], 9000.0, 10600.0)
+        self.assertGreater(fit["end_ms"], 60000.0)
+        # 150 -> 156 -> 150 on the same grid: skipped as a gap, the middle
+        # section would vanish under the first line (secs-3 did, before).
+        change = np.r_[np.arange(1.0, 25.0, 0.2), np.arange(25.0, 37.0, 30.0 / 156.0),
+                       np.arange(37.0, 61.0, 0.2)]
+        fit = self._fit(change, np.ones(change.size), 5000.0, 6600.0)
+        self.assertAlmostEqual(fit["bpm"], 150.0, delta=0.01)
+        self.assertAlmostEqual(fit["end_ms"], 25000.0, delta=400.0)
+
+    def test_a_grid_that_held_few_bars_is_called_short(self):
+        times, weights = _eighths(start=1.0, stop=13.0)       # 7.5 bars
+        fit = self._fit(times, weights, 1000.0, 2600.0)
+        self.assertTrue(fit["ok"])
+        self.assertTrue(fit["short"])
+        self.assertLess(fit["bars_held"], 16)
+
+    def test_refusals_say_why(self):
+        times, weights = _eighths()
+        cases = {"bad_marks": (10600.0, 9000.0), "bpm_range": (9000.0, 9100.0)}
+        for reason, (first, second) in cases.items():
+            with self.subTest(reason=reason):
+                self.assertEqual(self._fit(times, weights, first, second)["reason"], reason)
+        sparse = np.array([1.0, 5.0, 9.0])
+        self.assertEqual(self._fit(sparse, np.ones(3), 1000.0, 2600.0)["reason"], "too_few")
+        self.assertEqual(self._fit(np.zeros(0), np.zeros(0), 1000.0, 2600.0)["reason"],
+                         "no_attacks")
+        for seed in range(1, 4):
+            noise = np.sort(np.random.default_rng(seed).uniform(1.0, 61.0, 300))
+            with self.subTest(noise=seed):
+                self.assertFalse(self._fit(noise, np.ones(300), 9000.0, 10600.0)["ok"])
+
+    def test_adding_the_line_replaces_only_what_it_covers(self):
+        from overtone import apply_assisted_grid
+        times, weights = _eighths()
+        fit = self._fit(times, weights, 9000.0, 10600.0)
+        fit["end_ms"] = 40000.0          # pretend the grid stopped at 40 s
+        # 39,600 ms sits a beat before that end: most likely the change that
+        # ended it (the end is known to a few beats), so it stays.
+        points = [TimingPoint(500.0, 120.0, 0.9, 0), TimingPoint(20000.0, 151.0, 0.9, 0),
+                  TimingPoint(39600.0, 160.0, 0.9, 0), TimingPoint(45000.0, 170.0, 0.9, 0)]
+        merged = apply_assisted_grid(points, fit)
+        self.assertEqual([p.offset_ms for p in merged],
+                         [500.0, fit["offset_ms"], 39600.0, 45000.0])
+        added = merged[1]
+        self.assertTrue(added.manual and added.meter_known and added.meter == 4)
+        with self.assertRaises(ValueError):
+            apply_assisted_grid(points, {"ok": False})
+
+
+class ClickScheduleTests(unittest.TestCase):
+    """The one click schedule the WAV export and the app's live click share."""
+
+    @staticmethod
+    def _analysis(points, meter="4/4"):
+        return Analysis("x.wav", 10.0, np.zeros(0), np.zeros(0), points, 128, 44100, 1.0,
+                        meter=meter)
+
+    def test_a_change_on_the_old_grid_clicks_once(self):
+        from overtone import click_schedule
+        # 120 BPM from 1 s, 150 BPM from 5 s: 5 s is the old grid's 9th beat.
+        clicks = click_schedule(self._analysis([TimingPoint(1000.0, 120.0, 1.0, 0),
+                                                TimingPoint(5000.0, 150.0, 1.0, 8)]))
+        times = [round(t, 6) for t, _accent in clicks]
+        self.assertEqual(times.count(5.0), 1)
+        self.assertEqual(times[:9], [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0])
+        self.assertAlmostEqual(times[-1], 9.8)             # the last line runs to the end
+        self.assertEqual(len(times), len(set(times)))
+
+    def test_accents_follow_each_lines_bar(self):
+        from overtone import click_schedule
+        clicks = click_schedule(self._analysis(
+            [TimingPoint(0.0, 60.0, 1.0, 0, meter=3, meter_known=True)]))
+        self.assertEqual([a for _t, a in clicks[:7]], [2, 1, 1] * 2 + [2])
+        waltz = click_schedule(self._analysis([TimingPoint(0.0, 60.0, 1.0, 0)], meter="3/4"))
+        self.assertEqual([a for _t, a in waltz[:4]], [2, 1, 1, 2])
+        flat = click_schedule(self._analysis([TimingPoint(0.0, 60.0, 1.0, 0)]), accent=False)
+        self.assertEqual({a for _t, a in flat}, {1})
+
+    def test_subdivisions_fill_each_beat_and_stop_at_the_next_line(self):
+        from overtone import click_schedule
+        clicks = click_schedule(self._analysis([TimingPoint(1000.0, 120.0, 1.0, 0),
+                                                TimingPoint(2000.0, 150.0, 1.0, 2)]),
+                                subdivision=4)
+        head = [(round(t, 4), a) for t, a in clicks[:9]]
+        self.assertEqual(head, [(1.0, 2), (1.125, 0), (1.25, 0), (1.375, 0), (1.5, 1),
+                                (1.625, 0), (1.75, 0), (1.875, 0), (2.0, 2)])
+        with self.assertRaises(ValueError):
+            click_schedule(self._analysis([TimingPoint(0.0, 60.0, 1.0, 0)]), subdivision=5)
+
+    def test_the_exported_wav_holds_one_click_per_scheduled_beat(self):
+        import soundfile as sf
+        analysis = self._analysis([TimingPoint(1000.0, 120.0, 1.0, 0),
+                                   TimingPoint(5000.0, 150.0, 1.0, 8)])
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "click.wav"
+            export_click_track(analysis, out)
+            y, sr = sf.read(str(out))
+        # The accent at the change used to be two tones summed: the loudest.
+        at = int(5.0 * sr)
+        first = int(1.0 * sr)
+        self.assertAlmostEqual(np.max(np.abs(y[at:at + 400])),
+                               np.max(np.abs(y[first:first + 400])), places=3)
+
+
+class LogoIconTests(unittest.TestCase):
+    """The committed window icon: every size Windows asks for, readable by the
+    title bar's .NET, and drawn for its own size."""
+
+    @staticmethod
+    def _entries():
+        import struct
+        data = (Path(__file__).resolve().parent.parent / "assets" / "logo.ico").read_bytes()
+        _, kind, count = struct.unpack("<HHH", data[:6])
+        entries = {}
+        for k in range(count):
+            w, _h, _c, _r, _p, bpp, size, off = struct.unpack("<BBBBHHII", data[6 + 16 * k:22 + 16 * k])
+            entries[w or 256] = (bpp, data[off:off + size])
+        return kind, entries
+
+    def test_every_windows_size_is_there_and_small_ones_are_bmp(self):
+        kind, entries = self._entries()
+        self.assertEqual(kind, 1)
+        self.assertEqual(sorted(entries), [16, 20, 24, 32, 40, 48, 64, 256])
+        for size, (bpp, body) in entries.items():
+            with self.subTest(size=size):
+                self.assertEqual(bpp, 32)
+                # .NET Framework's Icon, which the title bar goes through, does
+                # not read PNG frames: it fell back from 256 to 64 when tried.
+                self.assertEqual(body[:4] == b"\x89PNG", size == 256)
+
+    def test_the_16_px_frame_is_drawn_for_16_px(self):
+        import struct
+        _kind, entries = self._entries()
+        body = entries[16][1]
+        self.assertEqual(struct.unpack("<IiiHH", body[:16])[1:5], (16, 32, 1, 32))
+        rows = body[40:40 + 16 * 16 * 4]
+
+        def pixel(x, y):  # rows are stored bottom-up as BGRA
+            i = ((15 - y) * 16 + x) * 4
+            b, g, r, a = rows[i:i + 4]
+            return r, g, b, a
+        # Scaled from 256, the corner radius was larger than the icon and the
+        # frame was a red corner fragment. Now: transparent rounded corners,
+        # the panel colour, and the red line where it belongs.
+        self.assertLess(pixel(0, 0)[3], 64)          # antialiased, mostly clear
+        self.assertLess(pixel(15, 15)[3], 64)
+        self.assertEqual(pixel(13, 8), (0x1E, 0x1B, 0x27, 255))
+        self.assertEqual(pixel(6, 8)[:3], (0xFF, 0x5D, 0x6C))
+
+
+class TaskbarIdentityTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "win32", "a Windows taskbar setting")
+    def test_the_process_takes_overtones_own_taskbar_id(self):
+        # Run in a child so this test process keeps its own identity.
+        import subprocess
+        code = ("import ctypes, overtone as ta\n"
+                "ok = ta.claim_taskbar_identity()\n"
+                "p = ctypes.c_wchar_p()\n"
+                "ctypes.windll.shell32.GetCurrentProcessExplicitAppUserModelID(ctypes.byref(p))\n"
+                "print(ok, p.value)\n")
+        env = dict(os.environ,
+                   PYTHONPATH=str(Path(__file__).resolve().parent.parent / "python"))
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                             cwd=str(Path(__file__).resolve().parent), timeout=120,
+                             env=env)
+        self.assertEqual(out.stdout.split(), ["True", "Overtone.TimingWorkbench"], out.stderr)
+
+
+class ModReportTests(unittest.TestCase):
+    """Proposal P2: every finding about a difficulty as an editor timestamp."""
+
+    MAP = ("osu file format v14\r\n\r\n[General]\r\nAudioFilename: a.mp3\r\n\r\n"
+           "[TimingPoints]\r\n1000,400,4,1,0,100,1,0\r\n21000,400,4,1,0,100,1,0\r\n"
+           "41012,400,4,1,0,100,1,0\r\n\r\n"
+           "[HitObjects]\r\n"
+           "256,192,600,5,0,0:0:0:0:\r\n"        # before the first red line, new combo
+           "256,192,1000,1,0,0:0:0:0:\r\n"       # 2
+           "256,192,1205,1,0,0:0:0:0:\r\n"       # 3: 5 ms off the 1/2 tick at 1200
+           "256,192,1400,5,0,0:0:0:0:\r\n"       # new combo: 1
+           "256,192,1500,1,0,0:0:0:0:\r\n")      # 2: on 1/4, between the 8ths
+
+    def _report(self, analysis=None):
+        from overtone import mod_report
+        with tempfile.TemporaryDirectory() as tmp:
+            beatmap = read_osu_beatmap(_write_osu(tmp, self.MAP))
+        times, weights = _eighths()
+        report = mod_report(beatmap, times, weights, 61.0, analysis)
+        json.dumps(report)
+        return report
+
+    def test_timestamps_read_as_the_editor_writes_them(self):
+        from overtone import mod_timestamp, mod_editor_link
+        self.assertEqual(mod_timestamp(83456.4), "01:23:456")
+        self.assertEqual(mod_timestamp(3_723_004, [1, 2]), "62:03:004 (1,2)")
+        self.assertEqual(mod_timestamp(-40), "00:00:000")
+        self.assertEqual(mod_editor_link("01:23:456 (1,2)"), "osu://edit/01:23:456%20(1,2)")
+        for bad in ("01:23:456 & calc", "1:2:3", "", "01:23:456 (1;2)"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                mod_editor_link(bad)
+
+    def test_every_source_lands_in_time_order_with_combo_numbers(self):
+        report = self._report()
+        lines = report["text"].splitlines()
+        self.assertEqual(lines[0], "00:00:600 (1) - object before the first red line")
+        self.assertIn("00:01:205 (3) - unsnapped: +5.0 ms off the nearest 1/2 tick", lines)
+        # The third red line is 12 ms late against the other two: one to check.
+        self.assertTrue(any(line.startswith("00:41:012 - red line sits -12.") for line in lines))
+        # 1500 is on the map's 1/4 but about 100 ms from the 8ths the music plays.
+        self.assertTrue(any(line.startswith("00:01:500 (2) - 9") and
+                            line.endswith("ms from the nearest attack Overtone detects")
+                            for line in lines))
+        self.assertEqual([i["time_ms"] for i in report["items"]],
+                         sorted(i["time_ms"] for i in report["items"]))
+        self.assertEqual(report["counts"]["snap"], 2)
+        self.assertEqual(len(lines), sum(report["counts"].values()))
+
+    def test_map_wide_findings_come_first_under_general(self):
+        from overtone import mod_report
+        times, weights = _eighths()
+        # Two lines 12 ms apart: no majority, said once for the map.
+        beatmap = {"timing": {"reds": [(1000.0, 150.0), (41012.0, 150.0)]}, "hitobjects": []}
+        report = mod_report(beatmap, times, weights, 61.0)
+        self.assertTrue(report["text"].startswith("General - the 2 red lines do not agree"))
+        self.assertEqual(report["items"][0]["time_ms"], None)
+
+    def test_missing_red_lines_come_from_the_analysis(self):
+        analysis = Analysis("x.wav", 61.0, np.zeros(0), np.zeros(0),
+                            [TimingPoint(1000.0, 150.0, 1.0, 0), TimingPoint(50000.0, 160.0, 1.0, 0)],
+                            128, 44100, 1.0)
+        items = [i for i in self._report(analysis)["items"] if i["source"] == "suggestion"]
+        self.assertEqual([(i["stamp"], i["values"]["bpm"]) for i in items],
+                         [("00:50:000", "160.000")])
+        self.assertEqual(self._report()["counts"]["suggestion"], 0)
+
+
+class OtherGameExportTests(unittest.TestCase):
+    """The same red lines as Quaver's and StepMania's timing."""
+
+    @staticmethod
+    def _analysis(points):
+        pts = [TimingPoint(offset, bpm, 0.9, i) for i, (offset, bpm) in enumerate(points)]
+        return Analysis("x.wav", 300.0, np.zeros(0), np.zeros(0), pts, 128, 44100, 1.0)
+
+    ONE = [(1234.0, 150.0)]
+    THREE = [(1234.0, 150.0), (31234.0, 87.5), (61234.0, 175.0)]
+
+    def test_quaver_states_the_time_and_the_rate_as_they_are(self) -> None:
+        from overtone import quaver_timing_text
+        text = quaver_timing_text(self._analysis(self.THREE))
+        self.assertIn("TimingPoints:", text)
+        self.assertIn("- StartTime: 1234\n  Bpm: 150\n", text)
+        self.assertIn("- StartTime: 31234\n  Bpm: 87.5\n", text)
+        # a fractional offset only where it is asked for; whole ms by default
+        self.assertIn("StartTime: 1234.500",
+                      quaver_timing_text(self._analysis([(1234.5, 150.0)]), decimals=3))
+
+    def test_stepmania_negates_the_offset_and_counts_in_beats(self) -> None:
+        from overtone import stepmania_timing_text
+        text = stepmania_timing_text(self._analysis(self.THREE))
+        # beat 0 sits 1.234 s in, so the tag is its negative, in seconds
+        self.assertIn("#OFFSET:-1.234000;", text)
+        # 30 s of 150 BPM is 75 beats; 30 s of 87.5 is a further 43.75
+        self.assertIn("0.000000=150.000000", text)
+        self.assertIn("75.000000=87.500000", text)
+        self.assertIn("118.750000=175.000000", text)
+        self.assertTrue(text.rstrip().endswith(";"))
+
+    def test_both_read_back_as_the_grid_they_were_written_from(self) -> None:
+        from overtone import quaver_timing_text, stepmania_timing_text, verify_export
+        analysis = self._analysis(self.THREE)
+        for kind, text in (("quaver", quaver_timing_text(analysis)),
+                           ("stepmania", stepmania_timing_text(analysis))):
+            report = verify_export(analysis, text, kind)
+            json.dumps(report)
+            self.assertTrue(report["ok"], (kind, report))
+            self.assertEqual(report["lines"], 3)
+            # whole-millisecond offsets cost at most half of one
+            self.assertLessEqual(report["worst_ms"], 0.5, kind)
+
+    def test_the_check_catches_a_flipped_offset_and_a_beat_read_as_a_second(self) -> None:
+        from overtone import stepmania_timing_text, verify_export
+        analysis = self._analysis(self.THREE)
+        good = stepmania_timing_text(analysis)
+        flipped = good.replace("#OFFSET:-1.234000", "#OFFSET:1.234000")
+        self.assertFalse(verify_export(analysis, flipped, "stepmania")["ok"])
+        # the tempo change placed at second 30 instead of beat 75
+        seconds = good.replace("75.000000=87.500000", "30.000000=87.500000")
+        self.assertFalse(verify_export(analysis, seconds, "stepmania")["ok"])
+        # and a line lost outright
+        self.assertFalse(verify_export(analysis, good.replace(
+            "\n,118.750000=175.000000", ""), "stepmania")["ok"])
+        # text the reader refuses is a failed check, not an exception thrown
+        broken = verify_export(analysis, good.replace("=87.500000", "=0"), "stepmania")
+        self.assertFalse(broken["ok"])
+        self.assertIn("BPM", broken["detail"])
+
+    def test_stepmania_keeps_enough_decimals_for_a_long_chart(self) -> None:
+        from overtone import stepmania_timing_text, verify_export
+        # Three decimals of BPM walked a chart milliseconds off its own beats
+        # over an hour of them; six keeps it under a microsecond.
+        analysis = self._analysis([(137.0, 174.9993)])
+        coarse = verify_export(analysis, stepmania_timing_text(analysis, decimals=3),
+                               "stepmania", beats=10000)
+        fine = verify_export(analysis, stepmania_timing_text(analysis), "stepmania", beats=10000)
+        self.assertGreater(coarse["worst_ms"], fine["worst_ms"])
+        self.assertLess(fine["worst_ms"], 0.001)
+
+    def test_nothing_to_export(self) -> None:
+        from overtone import quaver_timing_text, stepmania_timing_text, verify_export
+        bare = self._analysis([])
+        for writer in (quaver_timing_text, stepmania_timing_text):
+            with self.assertRaises(ValueError):
+                writer(bare)
+        with self.assertRaises(ValueError):
+            verify_export(self._analysis(self.ONE), "", "sm-or-something")
+        self.assertFalse(verify_export(bare, "", "quaver")["ok"])
+
+
+class CoherenceMapTests(unittest.TestCase):
+    """Where the pulse is, over the whole track."""
+
+    @staticmethod
+    def _beats(bpm, seconds, start=0.0):
+        step = 60.0 / bpm
+        return np.arange(start, start + seconds, step)
+
+    def test_the_grid_is_shared_and_stepped_by_the_window(self) -> None:
+        from overtone import MAP_PERIOD_RANGE, map_frequencies
+        wide, narrow = map_frequencies(12.0), map_frequencies(6.0)
+        self.assertAlmostEqual(float(wide[0]), 1.0 / MAP_PERIOD_RANGE[1], places=9)
+        self.assertLessEqual(float(wide[-1]), 1.0 / MAP_PERIOD_RANGE[0] + 1e-9)
+        # a shorter window resolves less, so it is swept more coarsely
+        self.assertAlmostEqual(float(np.diff(wide).mean()), 0.2 / 12.0, places=9)
+        self.assertAlmostEqual(float(np.diff(narrow).mean()), 0.2 / 6.0, places=9)
+
+    def test_a_steady_pulse_is_bright_at_its_own_rate(self) -> None:
+        from overtone import coherence_map, map_ridge
+        times = self._beats(150.0, 60.0)
+        centres, freqs, columns = coherence_map(times, np.ones(times.size))
+        self.assertGreater(columns.shape[0], 10)
+        self.assertEqual(columns.shape[1], freqs.size)
+        _at, period, r = map_ridge(centres, freqs, columns)
+        self.assertGreater(float(np.median(r)), 0.95)
+        # the ridge takes the strongest peak, which for a plain pulse train is
+        # a multiple of it: every one of them explains the same hits
+        ratios = (60.0 / period) / 150.0
+        self.assertTrue(np.allclose(ratios, np.round(ratios), atol=0.02), ratios)
+
+    def test_a_change_of_tempo_moves_the_ridge_by_its_own_ratio(self) -> None:
+        from overtone import coherence_map, map_ridge
+        times = np.concatenate([self._beats(128.0, 40.0), self._beats(142.0, 40.0, 40.0)])
+        centres, freqs, columns = coherence_map(times, np.ones(times.size))
+        at, period, _r = map_ridge(centres, freqs, columns)
+        early = (60.0 / period)[at < 25.0]
+        late = (60.0 / period)[at > 55.0]
+        self.assertGreater(early.size, 0)
+        self.assertGreater(late.size, 0)
+        self.assertAlmostEqual(float(late.mean() / early.mean()), 142.0 / 128.0, delta=0.03)
+
+    def test_a_window_with_too_little_in_it_gets_no_column(self) -> None:
+        from overtone import MAP_MIN_ATTACKS, coherence_map
+        sparse = np.array([0.0, 5.0, 10.0, 20.0, 30.0])      # under the bar
+        centres, _freqs, columns = coherence_map(sparse, np.ones(sparse.size))
+        self.assertEqual((centres.size, columns.shape[0]), (0, 0))
+        self.assertGreaterEqual(MAP_MIN_ATTACKS, 8)
+
+    def test_nothing_to_sweep(self) -> None:
+        from overtone import BAND_COUNT, coherence_map, map_ridge  # noqa: F401
+        centres, freqs, columns = coherence_map(np.zeros(0), np.zeros(0))
+        self.assertEqual((centres.size, columns.shape[0]), (0, 0))
+        self.assertGreater(freqs.size, 0)                    # the grid is fixed
+        at, period, r = map_ridge(centres, freqs, columns)
+        self.assertEqual((at.size, period.size, r.size), (0, 0, 0))
+
+
+class LoudnessCurveTests(unittest.TestCase):
+    """How loud the song is over time, against its own loudest moment."""
+
+    SR = 22050
+
+    def test_a_quiet_stretch_reads_lower_than_a_loud_one(self) -> None:
+        from overtone import loudness_curve
+        loud = np.ones(self.SR, dtype=np.float32) * 0.5
+        quiet = np.ones(self.SR, dtype=np.float32) * 0.005     # 40 dB down
+        curve, peak = loudness_curve(np.concatenate([loud, quiet]), self.SR, 20)
+        self.assertEqual(curve.size, 20)
+        self.assertAlmostEqual(float(curve[:10].mean()), 1.0, places=3)
+        self.assertAlmostEqual(float(curve[10:].mean()), 1.0 - 40.0 / 60.0, places=2)
+        self.assertAlmostEqual(peak, 10.0 * np.log10(0.25), places=2)
+
+    def test_it_is_rms_and_not_one_loud_sample(self) -> None:
+        from overtone import loudness_curve
+        # A column of near-silence with one full-scale sample is a quiet
+        # column; a peak reading would call it the loudest in the song.
+        y = np.ones(self.SR * 2, dtype=np.float32) * 0.2
+        y[self.SR + 5] = 1.0
+        curve, _peak = loudness_curve(y, self.SR, 20)
+        self.assertLess(float(curve.max()) - float(curve.min()), 0.05)
+
+    def test_silence_has_no_loudest_moment_to_be_read_against(self) -> None:
+        from overtone import LOUDNESS_SILENT_DB, loudness_curve
+        # Normalised against its own silence it would draw a full line.
+        curve, peak = loudness_curve(np.zeros(self.SR, dtype=np.float32), self.SR, 20)
+        self.assertLessEqual(peak, LOUDNESS_SILENT_DB)
+        self.assertEqual(float(curve.max()), 0.0)
+
+    def test_nothing_to_read(self) -> None:
+        from overtone import loudness_curve
+        curve, peak = loudness_curve(np.zeros(0, dtype=np.float32), self.SR, 20)
+        self.assertEqual((curve.size, peak), (0, 0.0))
+        self.assertEqual(loudness_curve(np.ones(4, dtype=np.float32), self.SR, 20)[0].size, 4)
+
+
+class PercussiveBalanceTests(unittest.TestCase):
+    """How much of a moment is a hit rather than a note."""
+
+    SR = 44100
+
+    def _clicks(self, seconds=3.0, width=0.002):
+        rng = np.random.default_rng(3)
+        y = np.zeros(int(self.SR * seconds), dtype=np.float32)
+        for at in range(self.SR // 2, y.size, self.SR // 2):
+            k = int(self.SR * width)
+            y[at:at + k] = rng.standard_normal(k).astype(np.float32)
+        return y
+
+    def _chord(self, seconds=3.0):
+        t = np.arange(int(self.SR * seconds)) / self.SR
+        return (sum(np.sin(2 * np.pi * f * t) for f in (220, 277, 330)) / 3).astype(np.float32)
+
+    def test_hits_read_high_and_held_notes_read_low(self) -> None:
+        from overtone import percussive_balance
+        _lane, _heard, clicks = percussive_balance(self._clicks(), self.SR, 40)
+        _lane, _heard, chord = percussive_balance(self._chord(), self.SR, 40)
+        self.assertGreater(clicks, 0.9, "a 2 ms click is a hit")
+        self.assertLess(chord, 0.2, "three held notes are notes")
+        self.assertGreater(clicks - chord, 0.7)
+
+    def test_silence_does_not_vote(self) -> None:
+        from overtone import percussive_balance
+        # The clicks are 2 ms every half second: unweighted, the silence
+        # between them would drown them and the song would read tonal.
+        _lane, _heard, loud = percussive_balance(self._clicks(), self.SR, 40)
+        quiet = np.zeros(int(self.SR * 3.0), dtype=np.float32)
+        quiet[:self.SR] = self._clicks(1.0)
+        _lane, _heard, mixed = percussive_balance(quiet, self.SR, 40)
+        self.assertGreater(loud, 0.9)
+        self.assertGreater(mixed, 0.9)      # two thirds silence, same answer
+
+    def test_the_lane_follows_the_song_where_there_is_one_to_follow(self) -> None:
+        from overtone import percussive_balance
+        half = np.concatenate([self._chord(2.0), self._clicks(2.0)])
+        lane, heard, whole = percussive_balance(half, self.SR, 40)
+        self.assertEqual((lane.size, heard.size), (40, 40))
+        notes = lane[:18][heard[:18] > 0.002]
+        hits = lane[22:][heard[22:] > 0.002]
+        self.assertLess(float(notes.mean()), 0.25)     # notes first
+        self.assertGreater(float(hits.mean()), 0.6)    # then hits
+        self.assertTrue(0.0 <= whole <= 1.0)
+        self.assertTrue(np.all((lane >= 0.0) & (lane <= 1.0)))
+
+    def test_a_silent_column_is_marked_unheard_rather_than_called_tonal(self) -> None:
+        from overtone import percussive_balance
+        # Its share is 0, and 0 on this lane reads as "all notes" -- which
+        # would be a claim about silence instead of a reading of it.
+        y = np.concatenate([self._chord(2.0), np.zeros(int(self.SR * 1.0), dtype=np.float32)])
+        lane, heard, _whole = percussive_balance(y, self.SR, 30)
+        self.assertGreater(float(heard[:19].min()), 0.05)
+        self.assertEqual(float(heard[-6:].max()), 0.0)
+        self.assertEqual(float(lane[-6:].max()), 0.0)
+        self.assertAlmostEqual(float(heard.max()), 1.0, places=6)
+
+    def test_nothing_to_separate(self) -> None:
+        from overtone import percussive_balance
+        lane, heard, whole = percussive_balance(np.zeros(64, dtype=np.float32), self.SR, 40)
+        self.assertEqual((lane.size, heard.size, whole), (0, 0, 0.0))
+        lane, heard, whole = percussive_balance(np.zeros(self.SR, dtype=np.float32), self.SR, 40)
+        self.assertEqual(whole, 0.0)        # silence has no balance to report
+        self.assertEqual((float(lane.max()), float(heard.max())), (0.0, 0.0))
+
+
+class MelImageTests(unittest.TestCase):
+    """The drawn spectrogram: the analysis path's own mel, pooled and in dB."""
+
+    def test_it_is_the_analysis_bands_in_db_under_this_songs_peak(self) -> None:
+        from overtone import MEL_BANDS, MEL_TOP_DB, mel_image
+        sr = 22050
+        t = np.arange(int(sr * 3.0)) / sr
+        tone = (np.sin(2 * np.pi * 440 * t) * np.clip((t - 0.5) / 0.25, 0, 1)).astype(np.float32)
+        grid = mel_image(tone, sr, 120)
+        self.assertEqual(grid.shape, (MEL_BANDS, 120))
+        self.assertAlmostEqual(float(grid.max()), 0.0, places=5)   # the peak is 0 dB
+        self.assertGreaterEqual(float(grid.min()), -MEL_TOP_DB - 1e-6)
+        # the loudest row is the one 440 Hz lives in
+        from overtone import mel_frequencies
+        hz = mel_frequencies()
+        self.assertAlmostEqual(float(hz[int(np.argmax(grid.max(axis=1)))]), 440.0, delta=60.0)
+
+    def test_a_column_keeps_the_loudest_frame_under_it(self) -> None:
+        from overtone import mel_image
+        sr = 22050
+        y = np.zeros(int(sr * 4.0), dtype=np.float32)
+        y[sr * 2] = 1.0                       # one click, two seconds in
+        wide = mel_image(y, sr, 8)            # eight columns over four seconds
+        # pooled by max, the click's column still reaches the peak; a mean
+        # over ~85 frames would have buried it
+        self.assertAlmostEqual(float(wide.max()), 0.0, places=5)
+        loudest = int(np.argmax(wide.max(axis=0)))
+        self.assertEqual(loudest, 4, wide.max(axis=0).round(1))
+
+    def test_the_frequency_axis_is_the_one_the_engine_listens_on(self) -> None:
+        from overtone import MEL_BANDS, MEL_FMAX_HZ, mel_frequencies
+        hz = mel_frequencies()
+        self.assertEqual(hz.size, MEL_BANDS)
+        self.assertAlmostEqual(float(hz[-1]), MEL_FMAX_HZ, delta=1.0)
+        self.assertTrue(np.all(np.diff(hz) > 0))
+
+    def test_too_little_audio(self) -> None:
+        from overtone import MEL_BANDS, mel_image
+        self.assertEqual(mel_image(np.zeros(64, dtype=np.float32), 22050, 100).shape,
+                         (MEL_BANDS, 0))
+
+
+class BandFluxTests(unittest.TestCase):
+    """Seven onset-flux bands, ported from the Rust front end."""
+
+    def test_the_edges_are_the_ported_ones(self) -> None:
+        from overtone import BAND_COUNT, band_edges
+        edges = band_edges()
+        self.assertEqual(len(edges), BAND_COUNT + 1)
+        # 40 Hz to 11.025 kHz, each band 2.23 times the last
+        self.assertAlmostEqual(edges[0], 40.0, places=6)
+        self.assertAlmostEqual(edges[-1], 11025.0, places=6)
+        ratios = edges[1:] / edges[:-1]
+        self.assertTrue(np.allclose(ratios, ratios[0]), ratios)
+        self.assertAlmostEqual(float(ratios[0]), (11025.0 / 40.0) ** (1 / 7), places=9)
+
+    def test_a_tone_moves_its_own_band(self) -> None:
+        from overtone import BAND_COUNT, band_edges, band_flux
+        sr, edges = 22050, band_edges()
+        for band in range(BAND_COUNT):
+            hz = float(np.sqrt(edges[band] * edges[band + 1]))   # mid of the band, in log
+            t = np.arange(int(sr * 2.0)) / sr
+            # Faded in over 250 ms on purpose: a tone switched on abruptly is a
+            # broadband click with a tone after it, and at 40-89 Hz -- four and
+            # a half bins wide at this n_fft -- the click wins its own band.
+            tone = np.sin(2 * np.pi * hz * t) * np.clip((t - 0.5) / 0.25, 0, 1)
+            flux = band_flux(tone.astype(np.float32), sr, 128)
+            self.assertEqual(flux.shape[1], BAND_COUNT)
+            peaks = flux.max(axis=0)
+            self.assertEqual(int(np.argmax(peaks)), band, f"{hz:.0f} Hz moved {peaks}")
+
+    def test_a_broadband_click_moves_every_band(self) -> None:
+        from overtone import band_flux
+        sr = 22050
+        click = np.zeros(int(sr * 2.0), dtype=np.float32)
+        click[sr] = 1.0
+        peaks = band_flux(click, sr, 128).max(axis=0)
+        self.assertTrue((peaks > 20.0).all(), peaks)
+
+    def test_the_frames_line_up_with_the_onset_envelope(self) -> None:
+        from overtone import FIT_HOP, _onset_envelope, band_flux
+        from test_overtone import _drum_track
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "beat.wav"
+            _drum_track(path, [(0.5, 120.0)], duration=6.0)
+            y, sr = __import__("soundfile").read(str(path), dtype="float32")
+        y = y if y.ndim == 1 else y.mean(axis=1)
+        flux = band_flux(y, sr, FIT_HOP)
+        envelope = _onset_envelope(y, sr, FIT_HOP)
+        # Same rows, so row k is the same moment in both curves -- and the two
+        # curves agree on where that is: their correlation peaks at no lag.
+        self.assertEqual(flux.shape[0], envelope.size)
+        a = flux.sum(axis=1) - flux.sum(axis=1).mean()
+        b = envelope - envelope.mean()
+        lags = range(-6, 7)
+        scores = [float(np.dot(a, np.roll(b, lag))) for lag in lags]
+        self.assertEqual(list(lags)[int(np.argmax(scores))], 0, scores)
+
+    def test_silence_and_too_little_audio(self) -> None:
+        from overtone import BAND_COUNT, band_flux
+        quiet = band_flux(np.zeros(22050, dtype=np.float32), 22050, 128)
+        self.assertEqual(quiet.shape[1], BAND_COUNT)
+        self.assertEqual(float(quiet.max()), 0.0)     # a floor everywhere is no flux
+        self.assertEqual(band_flux(np.zeros(64, dtype=np.float32), 22050, 128).shape,
+                         (0, BAND_COUNT))
+
+
+class ImportTimingTests(unittest.TestCase):
+    """Another game's timing, read back as the red lines it states."""
+
+    QUA = """AudioFile: audio.mp3
+Mode: Keys4
+BPMDoesNotAffectScrollVelocity: true
+EditorLayers: []
+TimingPoints:
+- StartTime: 1234
+  Bpm: 150
+- StartTime: 31234
+  Bpm: 87.5
+  Signature: Quadruple
+SliderVelocities:
+- StartTime: 5000
+  Multiplier: 1.5
+HitObjects:
+- StartTime: 1234
+  Lane: 1
+"""
+    SSC = """#VERSION:0.83;
+#TITLE:A Song;   // a comment
+#OFFSET:-1.234000;
+#BPMS:0.000000=150.000000
+,75.000000=87.500000;
+#NOTEDATA:;
+#OFFSET:-9.999;
+#BPMS:0.000=999.000;
+"""
+
+    def _write(self, tmp, name, text):
+        path = Path(tmp) / name
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_a_quaver_file_gives_its_red_lines(self) -> None:
+        from overtone import read_timing_file
+        with tempfile.TemporaryDirectory() as tmp:
+            read = read_timing_file(self._write(tmp, "a.qua", self.QUA))
+        json.dumps(read)
+        self.assertEqual(read["timing_format"], "quaver")
+        # the scroll changes carry a StartTime of their own and are not timing
+        self.assertEqual(read["timing"]["reds"], [[1234.0, 150.0], [31234.0, 87.5]])
+
+    def test_a_stepmania_file_undoes_the_offset_and_the_beat_numbers(self) -> None:
+        from overtone import read_timing_file
+        with tempfile.TemporaryDirectory() as tmp:
+            read = read_timing_file(self._write(tmp, "a.ssc", self.SSC))
+        # beat 75 of 150 BPM is 30 s after a first line 1.234 s in
+        self.assertEqual(read["timing"]["reds"], [[1234.0, 150.0], [31234.0, 87.5]])
+        # the per-chart tags after #NOTEDATA belong to one difficulty, not the song
+        self.assertEqual(read["timing_format"], "stepmania")
+
+    def test_what_was_exported_comes_back(self) -> None:
+        from overtone import (quaver_timing_text, read_timing_file, stepmania_timing_text)
+        points = [TimingPoint(1234.0, 150.0, 0.9, 0), TimingPoint(31234.0, 87.5, 0.9, 75),
+                  TimingPoint(61234.0, 175.0, 0.9, 120)]
+        analysis = Analysis("x.wav", 300.0, np.zeros(0), np.zeros(0), points, 128, 44100, 1.0)
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, text in (("out.qua", quaver_timing_text(analysis)),
+                               ("out.sm", stepmania_timing_text(analysis))):
+                read = read_timing_file(self._write(tmp, name, text))
+                for (offset, bpm), point in zip(read["timing"]["reds"], points):
+                    self.assertAlmostEqual(offset, point.offset_ms, delta=0.5, msg=name)
+                    self.assertAlmostEqual(bpm, point.bpm, places=5, msg=name)
+
+    def test_the_read_shape_is_what_the_grading_already_grades(self) -> None:
+        from overtone import grade_reference_timing, read_timing_file
+        # attacks on the map's own grid: it should grade as timed
+        attacks = np.array([1.234 + k * 0.4 for k in range(200)])
+        with tempfile.TemporaryDirectory() as tmp:
+            read = read_timing_file(self._write(
+                tmp, "a.qua", "TimingPoints:\n- StartTime: 1234\n  Bpm: 150\n"))
+            report = grade_reference_timing(read, attacks, np.ones(attacks.size), 90.0)
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["lines"][0]["verdict"], "ok")
+
+    def test_what_it_refuses(self) -> None:
+        from overtone import read_timing_file
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):           # not a format it reads
+                read_timing_file(self._write(tmp, "a.osu", "osu file format v14"))
+            with self.assertRaises(ValueError):           # not there
+                read_timing_file(Path(tmp) / "gone.qua")
+            with self.assertRaises(ValueError):           # nothing in it
+                read_timing_file(self._write(tmp, "empty.qua", "AudioFile: a.mp3\n"))
+            with self.assertRaises(ValueError):
+                read_timing_file(self._write(tmp, "empty.sm", "#TITLE:A;\n"))
+            # Quaver states each time outright, so a point with no Bpm costs
+            # only itself and is skipped rather than guessed at
+            partial = read_timing_file(self._write(
+                tmp, "partial.qua",
+                "TimingPoints:\n- StartTime: 500\n- StartTime: 1000\n  Bpm: 120\n"))
+            self.assertEqual(partial["timing"]["reds"], [[1000.0, 120.0]])
+            # StepMania accumulates, so a rate that cannot be played takes
+            # every beat after it with it: refused, with the reason
+            for body in ("#OFFSET:0;\n#BPMS:0=0,4=120;\n",
+                         "#OFFSET:0;\n#BPMS:0=120,8=-150;\n",
+                         "#OFFSET:0;\n#BPMS:0=120,eight=150;\n"):
+                with self.assertRaises(ValueError) as refused:
+                    read_timing_file(self._write(tmp, "bad.sm", body))
+                self.assertTrue(str(refused.exception))
+
+
+class FixtureManifestTests(unittest.TestCase):
+    """Phase 23: one list of bench fixtures, for Python and Rust both."""
+
+    @staticmethod
+    def _fx():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "fixtures", Path(__file__).resolve().parent.parent / "bench" / "fixtures.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_the_committed_manifest_matches_the_definitions(self) -> None:
+        # The check bench/facts.py runs, here too: a case added on one side
+        # and not written to the manifest fails the suite, not just the gate.
+        self.assertEqual(self._fx().drift(), [])
+
+    def test_every_python_case_is_listed_with_the_command_that_renders_it(self) -> None:
+        import sys
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import benchmark as bm
+        import gates
+        listed = self._fx().derive()
+        for name in list(bm.CASES) + list(gates.COVERAGE_CASES) + list(gates.MEASURE_CASES):
+            self.assertIn(name, listed, name)
+            self.assertTrue(listed[name]["render"].startswith("python "), name)
+        # the three coverage fixtures are the ones with no golden vector, and
+        # the reason the Rust bench could not find them by walking bench/golden
+        for name in gates.COVERAGE_CASES:
+            self.assertFalse(listed[name]["golden"], name)
+            self.assertTrue(listed[name]["density"], name)
+
+    def test_golden_is_read_from_the_committed_vectors(self) -> None:
+        listed = self._fx().derive()
+        vectors = {p.stem for p in (Path(__file__).resolve().parent.parent / "bench" / "golden")
+                   .glob("*.json")}
+        self.assertEqual({n for n, e in listed.items() if e["golden"]}, vectors)
+        # one measure case has no vector on purpose; saying otherwise here
+        # would be a second list to drift
+        self.assertFalse(listed["downbeat-3-4"]["golden"])
+
+    def test_the_density_gate_measures_the_vectors_and_the_coverage_cases(self) -> None:
+        listed = self._fx().derive()
+        density = {n for n, e in listed.items() if e["density"]}
+        golden = {n for n, e in listed.items() if e["golden"]}
+        signature = {n for n, e in listed.items() if e["signature"]}
+        self.assertEqual(density, (golden | {"halftime-175-87.5", "halftime-150-75",
+                                             "doubletime-110-220"}) - signature)
+        self.assertEqual(signature, {"signature-changes"})
+
+    def test_drift_is_named_in_both_directions(self) -> None:
+        fx = self._fx()
+        listed = fx.derive()
+        name = next(iter(listed))
+        gone = {k: v for k, v in listed.items() if k != name}
+        self.assertEqual(fx.drift(gone), [f"{name}: in the code, not in fixtures.json"])
+        extra = {**listed, "made-up-case": dict(listed[name])}
+        self.assertEqual(fx.drift(extra), ["made-up-case: in fixtures.json, not in the code"])
+        changed = {k: dict(v) for k, v in listed.items()}
+        changed[name]["density"] = not changed[name]["density"]
+        self.assertEqual(len(fx.drift(changed)), 1)
+        self.assertTrue(fx.drift(changed)[0].startswith(f"{name}: "))
+
+    def test_an_older_manifest_is_not_read_as_this_one(self) -> None:
+        fx = self._fx()
+        body = json.loads(fx.MANIFEST.read_text(encoding="utf-8"))
+        self.assertEqual(body["format"], fx.FORMAT)
+        with tempfile.TemporaryDirectory() as tmp:
+            older = Path(tmp) / "fixtures.json"
+            older.write_text(json.dumps({**body, "format": fx.FORMAT + 1}), encoding="utf-8")
+            self.assertEqual(fx.committed(older), {})
+            self.assertEqual(fx.committed(Path(tmp) / "absent.json"), {})
+
+
+class PerfGateTests(unittest.TestCase):
+    """Phase 23: bench/gates.py perf decides on two clocks and two bars each.
+    The rule is tested on numbers alone; the gate's own runs measure."""
+
+    @staticmethod
+    def _gates():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "gates", Path(__file__).resolve().parent.parent / "bench" / "gates.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _t(cpu, wall=None):
+        return {"cpu": cpu, "wall": cpu if wall is None else wall}
+
+    def test_the_machines_own_spread_passes(self) -> None:
+        g = self._gates()
+        # 1.11x was the worst an unchanged stage measured here over four runs.
+        self.assertEqual(g._perf_slower(self._t(0.047), self._t(0.052)), [])
+        self.assertEqual(g._perf_slower(self._t(3.766), self._t(4.180)), [])
+
+    def test_one_bar_alone_never_fails_a_stage(self) -> None:
+        g = self._gates()
+        # 4x, but 0.048 s: the clock's own step, not a regression.
+        self.assertEqual(g._perf_slower(self._t(0.016), self._t(0.064)), [])
+        # +2 s, but 1.5x: a long stage growing with the corpus, not by an order.
+        self.assertEqual(g._perf_slower(self._t(4.0), self._t(6.0)), [])
+
+    def test_a_stage_that_burns_cpu_is_named_on_both_clocks(self) -> None:
+        g = self._gates()
+        reasons = g._perf_slower(self._t(0.047), self._t(2.047))
+        self.assertEqual(len(reasons), 2)
+        self.assertTrue(reasons[0].startswith("CPU 0.047 -> 2.047"))
+        self.assertTrue(reasons[1].startswith("wall"))
+
+    def test_a_stage_that_only_waits_is_caught_by_wall_alone(self) -> None:
+        g = self._gates()
+        # The case the CPU bars cannot see: a lock, a poll, a sleep.
+        reasons = g._perf_slower(self._t(0.047, 0.049), self._t(0.047, 1.546))
+        self.assertEqual(reasons, ["wall 0.049 -> 1.546 s"])
+
+    def test_every_pinned_case_names_a_fixture_and_an_engine(self) -> None:
+        g = self._gates()
+        snapshot = json.loads(
+            (Path(__file__).resolve().parent.parent / "bench" / "perf_snapshot.json")
+            .read_text(encoding="utf-8"))
+        self.assertEqual(snapshot["format"], g.PERF_FORMAT)
+        self.assertEqual(sorted(snapshot["cases"]), sorted(g.PERF_CASES))
+        engines = {case["engine"] for case in snapshot["cases"].values()}
+        # both paths are pinned, so a stage of either can be held
+        self.assertEqual(engines, {"precision", "legacy"})
+        for name, case in snapshot["cases"].items():
+            self.assertIn("total", case["stages"], name)
+            for stage, clocks in case["stages"].items():
+                self.assertEqual(sorted(clocks), ["cpu", "wall"], f"{name}/{stage}")
+
+
+class CorpusBScoringTests(unittest.TestCase):
+    """Phase 10.0: bench/corpus_b.py scores red lines against a map's, on
+    made-up lines and temporary files only; the Songs folder is never read."""
+
+    @staticmethod
+    def _cb():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "corpus_b", Path(__file__).resolve().parent.parent / "bench" / "corpus_b.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_the_same_grid_whole_beats_away_matches_exactly(self):
+        cb = self._cb()
+        # osu! runs a red line's grid both ways: 8 beats later is the same grid.
+        rows = cb.score_track([(1000.0, 120.0)], [(5000.0, 120.0)])
+        self.assertAlmostEqual(rows[0]["error_ms"], 0.0, places=9)
+        self.assertEqual((rows[0]["octave"], rows[0]["bpm_error"]), (1.0, 0.0))
+
+    def test_the_error_is_signed_positive_when_overtone_is_late(self):
+        cb = self._cb()
+        late = cb.score_track([(1000.0, 150.0)], [(1026.0, 150.0)])
+        early = cb.score_track([(1000.0, 150.0)], [(1000.0 - 7.0 + 400.0, 150.0)])
+        self.assertAlmostEqual(late[0]["error_ms"], 26.0, places=9)
+        self.assertAlmostEqual(early[0]["error_ms"], -7.0, places=9)
+
+    def test_a_bpm_error_shows_where_the_grid_is_run_to(self):
+        cb = self._cb()
+        # 0.1 % fast, anchored 100 beats away: the grid walks 60 ms by the map's line.
+        rows = cb.score_track([(0.0, 100.0)], [(60000.0, 100.1)])
+        beat = 60000.0 / 100.1
+        self.assertAlmostEqual(rows[0]["error_ms"], 60000.0 - 100 * beat, places=6)
+        self.assertAlmostEqual(rows[0]["bpm_error"], 0.1, places=9)
+
+    def test_a_half_tempo_reading_is_split_and_counted_as_an_octave(self):
+        cb = self._cb()
+        # 100 BPM read for a 200 BPM map, its beats on the map's odd beats:
+        # its half beats land on the line. The octave is reported, not the gap.
+        rows = cb.score_track([(1000.0, 200.0)], [(1300.0, 100.0)])
+        self.assertAlmostEqual(rows[0]["error_ms"], 0.0, places=9)
+        self.assertEqual(rows[0]["octave"], 0.5)
+        self.assertEqual(cb.tally(rows)["octaves"], {"x0.5": 1})
+
+    def test_a_double_tempo_reading_is_used_as_it_is(self):
+        cb = self._cb()
+        on = cb.score_track([(1000.0, 100.0)], [(1300.0, 200.0)])
+        between = cb.score_track([(1000.0, 100.0)], [(1150.0, 200.0)])
+        self.assertAlmostEqual(on[0]["error_ms"], 0.0, places=9)
+        self.assertEqual(on[0]["octave"], 2.0)
+        self.assertAlmostEqual(abs(between[0]["error_ms"]), 150.0, places=9)
+
+    def test_the_governing_line_takes_half_a_map_beat_of_slack(self):
+        cb = self._cb()
+        detected = [(0.0, 120.0), (10150.0, 150.0)]
+        # At 150 BPM half a beat is 200 ms: a change found 150 ms late is still it.
+        self.assertEqual(cb.governing(detected, 10000.0, 400.0), 1)
+        self.assertEqual(cb.governing(detected, 9900.0, 400.0), 0)
+        # Before the first detected line, that line runs backwards.
+        self.assertEqual(cb.governing([(5000.0, 120.0)], 0.0, 500.0), 0)
+
+    def test_nothing_detected_misses_every_line(self):
+        cb = self._cb()
+        rows = cb.score_track([(0.0, 120.0), (5000.0, 130.0)], [])
+        summary = cb.tally(rows)
+        self.assertEqual((summary["lines"], summary["undetected"]), (2, 2))
+        self.assertEqual(summary["within"]["50"], 0)
+        self.assertEqual(summary["share"]["50"], 0.0)
+        self.assertIsNone(summary["error_ms"])
+
+    def test_pooled_shares_count_lines_and_the_mean_counts_tracks(self):
+        cb = self._cb()
+        drift = cb.score_track([(0.0, 120.0), (2000.0, 120.0), (4000.0, 120.0)], [(0.0, 120.0)])
+        single = cb.score_track([(0.0, 120.0)], [(30.0, 120.0)])
+        tracks = [{"tally": cb.tally(rows), "rows": rows} for rows in (drift, single)]
+        summary = cb.aggregate(tracks)
+        self.assertEqual(summary["within"]["5"], 3)
+        self.assertAlmostEqual(summary["share"]["5"], 0.75)
+        self.assertAlmostEqual(summary["track_mean_share"]["5"], 0.5)
+        self.assertEqual(summary["error_ms"]["median"], 0.0)
+        json.dumps(summary)
+
+    def test_a_shift_is_only_subtracted_when_asked(self):
+        cb = self._cb()
+        rows = cb.score_track([(0.0, 120.0), (4000.0, 120.0)], [(26.0, 120.0)])
+        self.assertEqual(cb.tally(rows)["within"]["5"], 0)
+        self.assertEqual(cb.tally(rows, shift_ms=26.0)["within"]["5"], 2)
+
+    def test_the_osu_map_lead_moves_exported_lines_without_changing_bpm(self):
+        cb = self._cb()
+        raw = [(1028.0, 150.0), (5028.0, 120.0)]
+        self.assertEqual(cb.apply_map_lead(raw, 0.0), raw)
+        exported = cb.apply_map_lead(raw, 28.0)
+        self.assertEqual(exported, [(1000.0, 150.0), (5000.0, 120.0)])
+        rows = cb.score_track([(1000.0, 150.0), (5000.0, 120.0)], exported)
+        self.assertEqual([row["error_ms"] for row in rows], [0.0, 0.0])
+        with self.assertRaises(ValueError):
+            cb.apply_map_lead(raw, float("inf"))
+
+    def test_grid_beats_run_the_first_line_back_and_stop_at_the_next(self):
+        cb = self._cb()
+        beats = cb.grid_beats([(1250.0, 120.0), (3000.0, 60.0)], 6.0)
+        self.assertEqual([round(b, 9) for b in beats],
+                         [0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.0, 4.0, 5.0])
+
+    def test_the_sound_start_is_read_against_a_grid_to_the_millisecond(self):
+        cb = self._cb()
+        sr = 44100
+        rng = np.random.default_rng(3)
+        t = np.arange(12 * sr) / sr
+        # A low bed under everything, and a hit 21 ms after every beat: the
+        # ranked maps' lines sit about that far before their songs' hits.
+        y = 0.2 * np.sin(2 * np.pi * 60 * t)
+        beats = np.arange(0.5, 11.5, 0.5)
+        n = int(0.03 * sr)
+        for beat in beats:
+            i = int(round((beat + 0.021) * sr))
+            y[i:i + n] += rng.standard_normal(n) * np.exp(-np.arange(n) / (0.005 * sr))
+        energy = cb.high_band_energy(y, sr)
+        late = cb.sound_start_ms(energy, sr, beats)
+        on_it = cb.sound_start_ms(energy, sr, beats + 0.021)
+        self.assertAlmostEqual(late["start_ms"], 21.0, delta=1.0)
+        self.assertAlmostEqual(on_it["start_ms"], 0.0, delta=1.0)
+        self.assertEqual(late["beats"], beats.size)
+        self.assertGreater(late["contrast"], 10.0)
+        # No beat with a whole window: no reading, rather than a made-up one.
+        self.assertIsNone(cb.sound_start_ms(energy, sr, [0.01, 11.95]))
+
+    def test_a_changed_or_missing_file_is_refused_and_a_moved_set_is_found(self):
+        cb = self._cb()
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = Path(tmp)
+            folder = songs / "123 Artist - Title"
+            folder.mkdir()
+            (folder / "map.osu").write_bytes(b"osu file format v14\r\n")
+            (folder / "audio.mp3").write_bytes(b"not really audio")
+            track = {"id": "t", "set_id": 123, "folder": folder.name, "osu": "map.osu",
+                     "audio": "audio.mp3", "sha1_osu": cb.sha1_file(folder / "map.osu"),
+                     "sha1_audio": cb.sha1_file(folder / "audio.mp3")}
+            self.assertTrue(cb.locate(track, songs)["ok"])
+            (folder / "audio.mp3").write_bytes(b"another encode")
+            where = cb.locate(track, songs)
+            self.assertFalse(where["ok"])
+            self.assertIn("audio changed", where["reason"])
+            (folder / "audio.mp3").write_bytes(b"not really audio")
+            moved = folder.rename(songs / "123 Artist - Title (1)")
+            self.assertEqual(cb.locate(track, songs)["folder"], moved)
+            (moved / "map.osu").write_bytes(b"osu file format v14\r\nedited\r\n")
+            self.assertFalse(cb.locate(track, songs)["ok"])
+
+    def test_the_manifest_holds_the_plans_categories_and_twenty_tracks(self):
+        cb = self._cb()
+        if not cb.MANIFEST.is_file():
+            self.skipTest(f"{cb.MANIFEST.name} is private and not held here (bench/local_data.py)")
+        manifest = json.loads(cb.MANIFEST.read_text(encoding="utf-8"))
+        tracks = manifest["tracks"]
+        self.assertEqual(len(tracks), 20)
+        self.assertEqual(len({t["id"] for t in tracks}), 20)
+        counts = {name: sum(t["category"] == name for t in tracks)
+                  for name in manifest["categories"]}
+        # docs/10-precision-plan.md, "The reference set".
+        self.assertEqual(counts, {"edm": 4, "rock-pop": 4, "live-drift": 4,
+                                  "octave-swap": 3, "rubato-intro": 3, "signature": 2})
+        for track in tracks:
+            with self.subTest(track=track["id"]):
+                self.assertRegex(track["sha1_osu"], r"^[0-9a-f]{40}$")
+                self.assertRegex(track["sha1_audio"], r"^[0-9a-f]{40}$")
+                self.assertGreater(track["set_id"], 0)
+                self.assertTrue(track["folder"].startswith(f"{track['set_id']} "))
+                self.assertIn(track["status"], ("ranked", "approved", "loved"))
+                self.assertTrue(track["why"])
+
+
+class ParityGateTests(unittest.TestCase):
+    """Phase 23: bench/parity.py says which v3 guarantees the Rust engine holds.
+
+    The manifest is the claim; these hold it to the code, and hold the gate to
+    catching the three ways it can go stale."""
+
+    @staticmethod
+    def _parity():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "parity", Path(__file__).resolve().parent.parent / "bench" / "parity.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_the_manifest_matches_the_engine_and_the_crates(self) -> None:
+        # The gate bench/parity.py runs, here too: a stage added with no line
+        # in the manifest, or a Rust test renamed out from under one, fails the
+        # suite and not only the gate.
+        parity = self._parity()
+        self.assertEqual(
+            parity.problems(parity.committed(), parity.tests(), parity.rust_tests()), [])
+
+    def test_every_v3_test_is_placed_somewhere(self) -> None:
+        parity = self._parity()
+        touched = parity.tests()
+        said = parity.verdict(parity.committed(), touched)
+        total = sum(len(per) for per in touched.values())
+        placed = len(said["held"]) + sum(len(v) for v in said["outside"].values())
+        self.assertEqual(placed, total)
+        # Held is the headline, so it must not be able to read high by accident:
+        # a test counts as held only through a symbol the manifest calls rust.
+        symbols = parity.committed()["symbols"]
+        for name in said["held"]:
+            cls, test = name.split(".")
+            self.assertTrue(any(symbols[s]["where"] == "rust" for s in touched[cls][test]), name)
+
+    def test_a_renamed_rust_test_is_caught(self) -> None:
+        parity = self._parity()
+        manifest = {"format": 1, "classes": {},
+                    "symbols": {"snap_timing_points": {
+                        "where": "rust", "rust": ["overtone-tempo/src/points.rs::gone"]}}}
+        touched = {"T": {"test_a": {"snap_timing_points"}}}
+        found = parity.problems(manifest, touched, {"overtone-tempo/src/points.rs::here"})
+        self.assertTrue(any("no crate holds" in line for line in found), found)
+
+    def test_an_untriaged_stage_and_a_stale_line_are_both_caught(self) -> None:
+        parity = self._parity()
+        manifest = {"format": 1, "classes": {},
+                    "symbols": {"gone_from_the_tests": {"where": "shell", "why": "why"}}}
+        touched = {"T": {"test_a": {"brand_new_stage"}}}
+        found = parity.problems(manifest, touched, set())
+        self.assertTrue(any("brand_new_stage" in line and "does not say where" in line
+                            for line in found), found)
+        self.assertTrue(any("gone_from_the_tests" in line and "no test touches it" in line
+                            for line in found), found)
+
+    def test_a_reason_is_required_and_the_vocabulary_is_closed(self) -> None:
+        parity = self._parity()
+        manifest = {"format": 1, "classes": {"Blind": {"where": "nowhere", "why": ""}},
+                    "symbols": {"a": {"where": "shell"}, "b": {"where": "invented", "why": "x"},
+                                "c": {"where": "rust", "rust": []}}}
+        touched = {"T": {"test_a": {"a", "b", "c"}}, "Blind": {"test_b": set()}}
+        found = "\n".join(parity.problems(manifest, touched, set()))
+        self.assertIn("no reason given", found)
+        self.assertIn("unknown 'where'", found)
+        self.assertIn("no test named", found)
+
+    def test_a_fixture_driven_test_is_placed_with_its_class(self) -> None:
+        # SoundEventTests reaches the engine only through its own _events
+        # helper; counting it as reaching nothing would have left 119 tests
+        # unaccounted for, which is how this was found.
+        parity = self._parity()
+        touched = parity.tests()
+        self.assertIn("sound_events", touched["SoundEventTests"]
+                      ["test_circles_inherit_from_the_timing_point_then_the_map"])
+        blind = {cls for cls, per in touched.items() if not any(per.values())}
+        self.assertEqual(blind, set(parity.committed()["classes"]))
+
+
+class GenreTests(unittest.TestCase):
+    """Which genre a song's own metadata claims, for the hitsound profile."""
+
+    def test_the_band_wins_over_the_tags(self) -> None:
+        # The map this was checked against tags itself "rock alternative punk
+        # mcr metal emo": four genres, and only the artist settles it.
+        self.assertEqual(
+            hitsound_genre("My Chemical Romance", "rock alternative punk mcr metal emo"),
+            "rock")
+        self.assertEqual(hitsound_genre("Bring Me The Horizon", "pop"), "metalcore")
+
+    def test_the_more_specific_tag_wins(self) -> None:
+        self.assertEqual(hitsound_genre("", "metalcore metal rock"), "metalcore")
+        self.assertEqual(hitsound_genre("", "metal rock"), "metal")
+        self.assertEqual(hitsound_genre("", "punk rock"), "punk")
+        self.assertEqual(hitsound_genre("", "rock"), "rock")
+
+    def test_a_tag_is_a_whole_word(self) -> None:
+        # "poprock" is not pop, and a title word cannot smuggle a genre in.
+        self.assertEqual(hitsound_genre("", "poprock"), "")
+        self.assertEqual(hitsound_genre("", "metallic"), "")
+        # Commas are separators, not letters: "pop,rock" is two tags.
+        self.assertEqual(hitsound_genre("", "pop,rock"), "rock")
+        self.assertEqual(hitsound_genre("", ""), "")
+        self.assertEqual(hitsound_genre("", "   "), "")
+
+    def test_nothing_is_claimed_rather_than_guessed(self) -> None:
+        self.assertEqual(hitsound_genre("Some Vocaloid Producer", "vocaloid anime"), "")
+
+    def test_a_beatmap_reads_its_own_metadata(self) -> None:
+        text = "\n".join([
+            "osu file format v14", "", "[General]", "AudioFilename: a.mp3", "",
+            "[Metadata]", "Title: T", "Artist: Some Band",
+            "Tags: japanese rock j-rock", "",
+            "[TimingPoints]", "0,500,4,2,0,70,1,0", "", "[HitObjects]", ""])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "song.osu"
+            path.write_text(text, encoding="utf-8")
+            self.assertEqual(beatmap_genre(read_osu_beatmap(str(path))), "jrock")
+        self.assertEqual(beatmap_genre({}), "")
+        self.assertEqual(beatmap_genre({"metadata": "not a dict"}), "")
+
+
+class GenreKitTests(unittest.TestCase):
+    """The fitted kits: what is committed is a description of a sound, so
+    these hold the description to the file it claims to render."""
+
+    @staticmethod
+    def _syn():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "samples", Path(__file__).resolve().parent.parent / "assets" / "samples.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def _kits(self) -> dict:
+        syn = self._syn()
+        self.assertTrue(syn.KITS.is_file(), "assets/kits.json ships with the app")
+        body = json.loads(syn.KITS.read_text(encoding="utf-8"))
+        self.assertEqual(body["format"], 1)
+        return body
+
+    def test_every_sound_names_a_bank_and_a_sound_osu_plays(self) -> None:
+        banks = ("normal", "soft", "drum")
+        sounds = ("hitnormal", "hitwhistle", "hitfinish", "hitclap")
+        body = self._kits()
+        self.assertGreaterEqual(len(body["kits"]), 5, "a kit for most genres")
+        for genre, kit in body["kits"].items():
+            self.assertRegex(genre, r"^[a-z][a-z0-9_-]{1,39}$")
+            for name, row in kit.items():
+                bank, _dash, sound = name.partition("-")
+                self.assertIn(bank, banks, name)
+                self.assertIn(sound, sounds, name)
+                self.assertEqual(row["role"], sound, name)
+                self.assertLessEqual(row["error"], body["tolerance"], name)
+                self.assertGreaterEqual(row["from_maps"], 5, name)
+
+    def test_the_settings_are_a_sound_and_not_a_number_salad(self) -> None:
+        for genre, kit in self._kits()["kits"].items():
+            for name, row in kit.items():
+                p = row["params"]
+                with self.subTest(kit=f"{genre}/{name}"):
+                    self.assertTrue(20.0 <= p["centre"] <= 16000.0)
+                    self.assertTrue(0.0 < p["decay"] <= 2.0)
+                    self.assertTrue(0.0 <= p["attack"] <= 0.25)
+                    self.assertTrue(0.0 <= p["noise_mix"] <= 1.5)
+                    self.assertTrue(0.0 <= p["tone_mix"] <= 1.5)
+                    self.assertGreater(p["noise_mix"] + p["tone_mix"], 0.0,
+                                       "a sound with neither noise nor tone is silence")
+                    self.assertLess(p["cut"], p["top"], "the floor is under the ceiling")
+                    self.assertIn(p["bursts"], (1, 3))
+
+    def test_a_kit_renders_and_is_written_beside_a_mappers_own_samples(self) -> None:
+        syn = self._syn()
+        genre = sorted(self._kits()["kits"])[0]
+        sounds = syn.kit(genre)
+        self.assertTrue(sounds)
+        for name, signal in sounds.items():
+            with self.subTest(sound=name):
+                self.assertGreater(len(signal), 400)
+                # Not silence. The raw level says nothing beyond that: a narrow
+                # band-pass at a low centre comes out at 0.004 and is a fine
+                # sound, because to_wav normalises to its own peak. What the
+                # player hears is the file, so that is what is checked below.
+                self.assertGreater(max(abs(v) for v in signal), 1e-5)
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            # A custom index, so the files sit beside a map's own.
+            got = syn.write_kit(genre, folder, index=7)
+            self.assertTrue(got["written"])
+            self.assertEqual(got["kept"], [])
+            import wave
+            for path in got["written"]:
+                self.assertTrue(path.name.endswith("7.wav"), path.name)
+                self.assertGreater(path.stat().st_size, 1000)
+                with wave.open(str(path), "rb") as read:
+                    self.assertEqual((read.getnchannels(), read.getsampwidth(),
+                                      read.getframerate()), (1, 2, 44100), path.name)
+                    frames = read.readframes(read.getnframes())
+                peak = max(abs(int.from_bytes(frames[i:i + 2], "little", signed=True))
+                           for i in range(0, len(frames), 2))
+                # Every sample peaks where the generator says, whatever level
+                # the arithmetic happened to land on: the file is what plays.
+                self.assertAlmostEqual(peak / 32767, syn.PEAK, delta=0.01, msg=path.name)
+            # Run again: a name already taken is kept, never overwritten.
+            again = syn.write_kit(genre, folder, index=7)
+            self.assertEqual(again["written"], [])
+            self.assertEqual(len(again["kept"]), len(got["written"]))
+            # And the mapper's own sample is what a replace has to be asked for.
+            forced = syn.write_kit(genre, folder, index=7, replace=True)
+            self.assertEqual(len(forced["written"]), len(got["written"]))
+
+    def test_an_unknown_genre_renders_nothing(self) -> None:
+        syn = self._syn()
+        self.assertEqual(syn.kit("no-such-genre"), {})
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(syn.write_kit("no-such-genre", Path(tmp)),
+                             {"written": [], "kept": []})
+
+
+class InstallerSbomTests(unittest.TestCase):
+    """Phase 10.13: installer/sbom.json inventories every pinned wheel.
+
+    Licence strings come from the venv at generation time
+    (``installer/sbom.py``), so these pin the parsing, the short-identifier
+    rule and the drift check on synthetic inputs -- plus the one fact about
+    the real files that needs no venv: every lock pin is inventoried at its
+    pinned version, so a lock changed without re-running fails the suite.
+    """
+
+    @staticmethod
+    def _sbom():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "sbom", Path(__file__).resolve().parent.parent / "installer" / "sbom.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _dist(expr="", license="", classifiers=()):
+        from email.message import Message
+        meta = Message()
+        if expr:
+            meta["License-Expression"] = expr
+        if license:
+            meta["License"] = license
+        for classifier in classifiers:
+            meta["Classifier"] = classifier
+        return type("Dist", (), {"metadata": meta, "version": "1.0"})()
+
+    def test_pins_read_name_and_version_and_skip_noise(self) -> None:
+        sbom = self._sbom()
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = Path(tmp) / "requirements.lock"
+            lock.write_text("# a comment\n\nnumpy==2.5.3  # trailing\n"
+                            "scipy==1.18.1\n", encoding="utf-8")
+            self.assertEqual(sbom.pins(lock),
+                             [("numpy", "2.5.3"), ("scipy", "1.18.1")])
+
+    def test_licence_is_a_short_identifier_or_an_honest_unknown(self) -> None:
+        sbom = self._sbom()
+        self.assertEqual(sbom.licence_of(self._dist(expr="MIT OR Apache-2.0")),
+                         "MIT OR Apache-2.0")
+        self.assertEqual(sbom.licence_of(self._dist(
+            classifiers=["License :: OSI Approved :: BSD-3-Clause"])),
+            "BSD-3-Clause")
+        self.assertEqual(sbom.licence_of(self._dist(license="MIT")), "MIT")
+        # A full licence text (scipy's License field carries kilobytes, GPL
+        # included) is not an identifier: it stays out of the inventory.
+        self.assertEqual(sbom.licence_of(self._dist(license="Copyright (c)\n" + "x" * 5000)),
+                         "UNKNOWN")
+        self.assertEqual(sbom.licence_of(self._dist()), "UNKNOWN")
+
+    def test_drift_names_missing_moved_and_removed_pins(self) -> None:
+        sbom = self._sbom()
+        committed = {"format": 1, "packages": {
+            "numpy": {"version": "2.5.3"}, "old": {"version": "1.0"}}}
+        fresh = {"format": 1, "packages": {
+            "numpy": {"version": "2.5.4"}, "scipy": {"version": "1.18.1"}}}
+        found = sbom.drift(committed, fresh)
+        self.assertEqual(len(found), 3)
+        self.assertTrue(any("scipy" in line and "not inventoried" in line
+                            for line in found))
+        self.assertTrue(any("numpy" in line and "2.5.4" in line
+                            for line in found))
+        self.assertTrue(any("old" in line and "stays inventoried" in line
+                            for line in found))
+        self.assertEqual(sbom.drift(fresh, fresh), [])
+
+    def test_the_release_sbom_is_cyclonedx_and_keeps_every_component(self) -> None:
+        sbom = self._sbom()
+        rows = [{"kind": "wheel", "name": "numpy", "version": "2.5.3",
+                 "licence": "BSD-3-Clause", "what": "a wheel", "source": "https://pypi"},
+                {"kind": "crate", "name": "symphonia-core", "version": "0.6.1",
+                 "licence": "MPL-2.0", "what": "a crate", "source": "https://crates.io"},
+                {"kind": "native", "name": "Microsoft Visual C++ runtime",
+                 "version": "14.x", "licence": "Microsoft Visual Studio redistributable "
+                 "terms", "what": "VCRUNTIME140.dll", "source": "https://learn"}]
+        bom = sbom.cyclonedx("0.1.0-alpha", rows)
+        self.assertEqual((bom["bomFormat"], bom["specVersion"]), ("CycloneDX", "1.6"))
+        self.assertEqual(bom["metadata"]["component"]["version"], "0.1.0-alpha")
+        self.assertEqual(bom["metadata"]["component"]["licenses"],
+                         [{"license": {"id": "MIT"}}])
+        self.assertEqual(len(bom["components"]), 3)
+        wheel, crate, native = bom["components"]
+        self.assertEqual(wheel["purl"], "pkg:pypi/numpy@2.5.3")
+        self.assertEqual(crate["purl"], "pkg:cargo/symphonia-core@0.6.1")
+        # No package manager serves the MSVC runtime, so it gets no purl --
+        # and it is still in the list, which is the point of listing it.
+        self.assertNotIn("purl", native)
+        # A wheel's "BSD License" is not SPDX, so every licence goes in as a
+        # name and none as an expression: the texts are the notices file's.
+        for component in bom["components"]:
+            self.assertEqual(list(component["licenses"][0]["license"]), ["name"])
+        # Nothing that changes between two builds of one commit.
+        self.assertNotIn("serialNumber", bom)
+        self.assertNotIn("timestamp", bom["metadata"])
+
+    def test_the_committed_inventory_covers_both_locks(self) -> None:
+        import json
+        sbom = self._sbom()
+        root = Path(__file__).resolve().parent.parent
+        committed = json.loads((root / "installer" / "sbom.json")
+                               .read_text(encoding="utf-8"))
+        fresh = {"format": 1, "packages": {}}
+        for lock, shipped in sbom.LOCKS:
+            for name, version in sbom.pins(lock):
+                fresh["packages"][name] = {"version": version,
+                                           "shipped": shipped}
+        self.assertEqual(sbom.drift(committed, fresh), [])
+
+
+class PortableDataTests(unittest.TestCase):
+    """Phase 10.13.5 (R4): a portable build keeps its state beside its executable.
+
+    The portable ZIP carries ``portable.txt`` beside Overtone.exe, and then
+    settings, cache, history, index and window storage go to ``data`` beside it,
+    so a copy on a stick never shares a profile with the installed one. These
+    pin the rule on synthetic folders: a frozen build without the marker, a
+    checkout, and the marker with its ``data`` folder.
+    """
+
+    @staticmethod
+    def _paths():
+        import overtone_paths
+        return overtone_paths
+
+    def _frozen(self, folder: Path, marker: bool):
+        paths = self._paths()
+        if marker:
+            (folder / paths.PORTABLE_MARKER).write_text("portable", encoding="utf-8")
+        exe = folder / "Overtone.exe"
+        return [mock.patch.object(sys, "frozen", True, create=True),
+                mock.patch.object(sys, "executable", str(exe))]
+
+    def test_a_checkout_and_an_installed_copy_keep_their_state_in_the_profile(self) -> None:
+        paths = self._paths()
+        with tempfile.TemporaryDirectory() as tmp:
+            local = Path(tmp) / "local"
+            with mock.patch.dict(os.environ, {"LOCALAPPDATA": str(local)}):
+                self.assertIsNone(paths.portable_root())
+                self.assertEqual(paths.data_root(), local / "Overtone")
+                self.assertEqual(paths.settings_home(), Path.home())
+                # Frozen but without the marker: the installed copy, as it was.
+                folder = Path(tmp) / "Programs" / "Overtone"
+                folder.mkdir(parents=True)
+                for patch in self._frozen(folder, marker=False):
+                    patch.start()
+                try:
+                    self.assertIsNone(paths.portable_root())
+                    self.assertEqual(paths.data_root(), local / "Overtone")
+                    self.assertEqual(paths.settings_home(), Path.home())
+                finally:
+                    mock.patch.stopall()
+
+    def test_a_portable_build_keeps_everything_in_its_own_data_folder(self) -> None:
+        paths = self._paths()
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "Overtone"
+            folder.mkdir()
+            with mock.patch.dict(os.environ, {"LOCALAPPDATA": str(Path(tmp) / "local")}):
+                for patch in self._frozen(folder, marker=True):
+                    patch.start()
+                try:
+                    data = (folder / paths.PORTABLE_DATA).resolve()
+                    self.assertEqual(paths.portable_root().resolve(), data)
+                    self.assertEqual(paths.data_root().resolve(), data)
+                    self.assertEqual(paths.settings_home().resolve(), data)
+                    # Nothing about the profile is consulted for a portable build.
+                    self.assertNotIn(str(Path(tmp) / "local"), str(paths.data_root()))
+                finally:
+                    mock.patch.stopall()
+
+class ProductVersionTests(unittest.TestCase):
+    """Phase 10.13 (R5): the window, the about box and every written .osu name
+    the release, not the engine generation. The diagnostics copy-out states it
+    too, so a bug report that names the wrong version is worse than none.
+    """
+
+    @staticmethod
+    def _paths():
+        import overtone_paths
+        return overtone_paths
+
+    def test_a_checkout_reports_the_workspace_version(self) -> None:
+        paths = self._paths()
+        cargo = (Path(__file__).resolve().parent.parent / "Cargo.toml").read_text(encoding="utf-8")
+        self.assertIn(f'version = "{paths.app_version()}"', cargo)
+        self.assertNotEqual(paths.app_version(), "3.0")
+        self.assertEqual(paths.build_info(), {})
+
+    def test_a_frozen_build_reads_the_stamp_its_build_wrote(self) -> None:
+        import json as _json
+        paths = self._paths()
+        with tempfile.TemporaryDirectory() as tmp:
+            internal = Path(tmp) / "_internal"
+            internal.mkdir()
+            (internal / paths.BUILD_INFO).write_text(_json.dumps({
+                "version": "9.9.9-test", "commit": "abc1234", "built": "2026-01-01 00:00"}),
+                encoding="utf-8")
+            with mock.patch.object(sys, "frozen", True, create=True), \
+                    mock.patch.object(sys, "_MEIPASS", str(internal), create=True):
+                self.assertEqual(paths.app_version(), "9.9.9-test")
+                self.assertEqual(paths.build_info()["commit"], "abc1234")
+            # A frozen copy with no stamp falls back to the workspace, not a lie.
+            with mock.patch.object(sys, "frozen", True, create=True), \
+                    mock.patch.object(sys, "_MEIPASS", tmp, create=True):
+                self.assertEqual(paths.build_info(), {})
+
+    def test_the_build_and_the_engine_name_the_stamp_the_same_way(self) -> None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "release", Path(__file__).resolve().parent.parent / "installer" / "release.py")
+        release = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(release)
+        self.assertEqual(release.BUILD_INFO, self._paths().BUILD_INFO)
+        self.assertEqual(release.CONTENTS, "_internal")
+
+
+class InstallerPortableSmokeTests(unittest.TestCase):
+    """Phase 10.13.5 (R4): what the smoke test counts as Overtone's own state.
+
+    A portable run may leave files in the scratch profile that the platform's
+    libraries write (numba's cache, the self-check's temporary audio) but never
+    Overtone's own folder or its settings file, so the rule is pinned on names.
+    """
+
+    @staticmethod
+    def _smoke():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "smoke", Path(__file__).resolve().parent.parent / "installer" / "smoke.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_overtones_own_folder_and_settings_are_its_state(self) -> None:
+        smoke = self._smoke()
+        own = smoke._own_profile_write
+        self.assertTrue(own(str(Path("AppData", "Local", "Overtone", "cache", "a.json"))))
+        self.assertTrue(own(str(Path("AppData", "Local", "Overtone", "writes.jsonl"))))
+        self.assertTrue(own(".overtone.json"))
+        self.assertTrue(own(".timing_analyzer.json"))
+
+    def test_the_platforms_own_caches_and_temporary_files_are_not(self) -> None:
+        smoke = self._smoke()
+        own = smoke._own_profile_write
+        self.assertFalse(own(str(Path("AppData", "Local", "numba", "Cache", "x.nbi"))))
+        self.assertFalse(own(str(Path("AppData", "Local", "Temp", "overtone-check-1", "c.wav"))))
+        # A folder that only starts with the same letters is somebody else's.
+        self.assertFalse(own(str(Path("AppData", "Local", "OvertoneBackup", "f"))))
+
+    def test_the_portable_marker_is_only_in_the_zip_and_its_note_is_ascii(self) -> None:
+        import sys as _sys
+        sys_path = str(Path(__file__).resolve().parent.parent / "installer")
+        added = sys_path not in _sys.path
+        if added:
+            _sys.path.insert(0, sys_path)
+        try:
+            import release
+        finally:
+            if added:
+                _sys.path.remove(sys_path)
+        self.assertEqual(release.PORTABLE_MARKER, "portable.txt")
+        self.assertTrue(release.PORTABLE_NOTE.isascii())
+        self.assertEqual(release.PORTABLE_DATA, "data")
+
+class InstallerNoticesTests(unittest.TestCase):
+    """Phase 10.13.3: the bundled licences, gathered and gated.
+
+    ``installer/notices.py`` reads the notices out of the build's own wheels,
+    crates and Python installation, so what is worth pinning is the rules:
+    which files count as a notice, that one offer may cover a family, and
+    every way the gate refuses to let a release go out -- plus the shape of
+    the one file that is written by hand, ``installer/notices.json``.
+    """
+
+    @staticmethod
+    def _notices():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "notices", Path(__file__).resolve().parent.parent / "installer" / "notices.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _row(name, licence="MIT", texts=(), **extra):
+        return {"kind": "wheel", "name": name, "version": "1.0", "licence": licence,
+                "what": "a wheel", "source": "https://example.invalid",
+                "texts": list(texts), **extra}
+
+    def test_a_notice_is_a_text_file_wherever_the_wheel_keeps_it(self) -> None:
+        notices = self._notices()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name, body in (("thing-1.0.dist-info/licenses/LICENSE", "the licence"),
+                               ("_thing_data/COPYING", "LGPL, beside the DLL"),
+                               ("thing/licenses/__init__.py", "code"),
+                               ("thing/libthing.dll", "binary"),
+                               ("thing/engine.py", "code"),
+                               ("thing-1.0.dist-info/licenses/EMPTY-LICENSE", "   ")):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(body, encoding="utf-8")
+            files = ["thing-1.0.dist-info/licenses/LICENSE", "_thing_data/COPYING",
+                     "thing/licenses/__init__.py", "thing/libthing.dll",
+                     "thing/engine.py", "thing-1.0.dist-info/licenses/EMPTY-LICENSE"]
+            dist = type("Dist", (), {"files": files,
+                                     "locate_file": lambda self, name: root / str(name)})()
+            found = notices.wheel_texts(dist)
+        # The notice beside the DLL counts: that is where soundfile keeps
+        # libsndfile's. Code named like a licence, binaries and an empty file
+        # do not.
+        self.assertEqual([name for name, _ in found],
+                         ["_thing_data/COPYING", "thing-1.0.dist-info/licenses/LICENSE"])
+        self.assertEqual(found[0][1], "LGPL, beside the DLL")
+
+    def test_one_offer_covers_a_family(self) -> None:
+        notices = self._notices()
+        offers = [{"title": "Symphonia", "for": ["symphonia*"], "text": "the source is here"},
+                  {"title": "certifi", "for": ["certifi"], "text": "and here"}]
+        self.assertEqual(notices.offer_for("symphonia-codec-vorbis", offers)["title"],
+                         "Symphonia")
+        self.assertEqual(notices.offer_for("certifi", offers)["title"], "certifi")
+        self.assertIsNone(notices.offer_for("numpy", offers))
+
+    def test_the_gate_refuses_a_component_with_nothing_to_show(self) -> None:
+        notices = self._notices()
+        found = notices.problems([self._row("quiet")], [])
+        self.assertEqual(len(found), 1)
+        self.assertIn("ships no notice text", found[0])
+        # A text is enough, and so is a sentence saying where the terms are.
+        self.assertEqual(notices.problems([self._row("quiet", texts=[("LICENSE", "MIT")])], []),
+                         [])
+        self.assertEqual(notices.problems([self._row("quiet", terms="MIT, by classifier")], []),
+                         [])
+
+    def test_the_gate_refuses_an_undeclared_licence(self) -> None:
+        notices = self._notices()
+        row = self._row("mystery", licence="UNKNOWN", texts=[("LICENSE", "some text")])
+        found = notices.problems([row], [])
+        self.assertEqual(len(found), 1)
+        self.assertIn("declares no licence", found[0])
+
+    def test_the_gate_asks_for_source_when_a_copyleft_licence_ships(self) -> None:
+        notices = self._notices()
+        for licence in ("LGPL-2.1-or-later", "Mozilla Public License 2.0 (MPL 2.0)",
+                        "GPL-2.0-only WITH an-exception"):
+            row = self._row("copyleft", licence=licence, texts=[("COPYING", "the text")])
+            found = notices.problems([row], [])
+            self.assertEqual(len(found), 1, (licence, found))
+            self.assertIn("asks for source", found[0])
+        # Attribution-only licences ask for no offer.
+        self.assertEqual(notices.problems(
+            [self._row("quiet", licence="BSD-3-Clause", texts=[("LICENSE", "x")])], []), [])
+
+    def test_the_gate_refuses_an_offer_that_covers_nothing(self) -> None:
+        notices = self._notices()
+        rows = [self._row("numpy", texts=[("LICENSE", "x")])]
+        offers = [{"title": "Gone", "for": ["gone*"], "text": "where it was"}]
+        found = notices.problems(rows, offers)
+        self.assertEqual(len(found), 1)
+        self.assertIn("covers nothing", found[0])
+
+    def test_the_document_carries_every_table_offer_and_text(self) -> None:
+        notices = self._notices()
+        rows = [{**self._row("libthing", licence="LGPL-2.1-or-later",
+                             texts=[("libthing/COPYING", "the whole LGPL")]),
+                 "kind": "native"},
+                self._row("quiet", terms="MIT, by classifier"),
+                {**self._row("acrate", texts=[("acrate-1.0/LICENSE-MIT", "MIT text")]),
+                 "kind": "crate"}]
+        offers = [{"title": "libthing -- LGPL", "for": ["libthing"],
+                   "text": "the source is at https://example.invalid"}]
+        text = notices.render(rows, "0.1.0-alpha", offers)
+        self.assertIn("Overtone 0.1.0-alpha -- third-party notices", text)
+        self.assertIn("1 runtime and native components, 1 Python wheels and 1 Rust crates",
+                      text)
+        self.assertIn("the source is at https://example.invalid", text)
+        self.assertIn("the whole LGPL", text)
+        self.assertIn("MIT text", text)
+        # A component with no text of its own is named with its terms, not
+        # left out.
+        self.assertIn("quiet 1.0: MIT, by classifier", text)
+
+    def test_the_gate_notices_a_stale_native_version(self) -> None:
+        notices = self._notices()
+        now = notices.versions_now()
+        self.assertIn("Python", now)
+        rows = [{**self._row(name), "kind": "native", "version": version}
+                for name, version in sorted(now.items())]
+        self.assertEqual(notices.stale_versions(rows), [])
+        rows[0]["version"] = "0.0"
+        found = notices.stale_versions(rows)
+        self.assertEqual(len(found), 1)
+        self.assertIn("this venv has", found[0])
+        self.assertEqual(notices.stale_versions([]),
+                         [f"{name} is not listed in notices.json" for name in sorted(now)])
+
+    def test_the_hand_written_file_says_what_it_must(self) -> None:
+        import json
+        notices = self._notices()
+        listed = json.loads((Path(__file__).resolve().parent.parent / "installer"
+                             / "notices.json").read_text(encoding="utf-8"))
+        self.assertEqual(listed["format"], 1)
+        for row in listed["components"]:
+            for key in ("name", "version", "licence", "what", "source"):
+                self.assertTrue(str(row.get(key) or "").strip(), (row.get("name"), key))
+            self.assertTrue(row.get("from_path") or row.get("from_wheel") or row.get("from_repo")
+                            or row.get("terms"),
+                            row["name"])
+        for name, terms in listed["terms"].items():
+            self.assertTrue(terms.strip(), name)
+        for offer in listed["offers"]:
+            self.assertTrue(offer["title"].strip())
+            self.assertTrue(offer["for"])
+            self.assertIn("http", offer["text"])
+        # The gate's own version check only works if the names match what it
+        # asks the machine about.
+        named = {row["name"] for row in listed["components"]}
+        self.assertLessEqual(set(notices.versions_now()), named)
+
+
+class CombineSegmentTests(unittest.TestCase):
+    """What a compilation reads out of one source map, and what it repairs."""
+
+    LINES = [
+        "osu file format v14", "",
+        "[General]", "AudioFilename: song.wav", "AudioLeadIn: 0", "PreviewTime: 8000",
+        "SampleSet: Soft", "StackLeniency: 0.7", "Mode: 0", "",
+        "[Editor]", "Bookmarks: 4000,8000", "BeatDivisor: 4", "",
+        "[Metadata]", "Title:Song", "TitleUnicode:Song", "Artist:Artist",
+        "ArtistUnicode:Artist", "Creator:Mapper", "Version:Hard", "Source:", "Tags:tag", "",
+        "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+        "ApproachRate:8.5", "SliderMultiplier:1.6", "SliderTickRate:1", "",
+        "[Events]", '0,0,"bg.jpg",0,0', "2,3000,4000", "",
+        "[TimingPoints]", "1000,400,4,2,0,80,1,0", "2000,-100,4,2,1,70,0,1",
+        "20000,500,4,2,0,80,1,0", "",
+        "[HitObjects]",
+        "100,100,1200,1,0,0:0:0:0:",
+        "200,200,2000,2,0,L|300:200,1,100,0|0,0:0|0:0,0:0:0:0:",
+        "256,192,5000,12,0,7000,0:0:0:0:",
+        "64,64,9000,1,0,0:0:0:0:",
+        "",
+    ]
+
+    def _with(self, section: str, rows, replace: bool = False) -> list[str]:
+        """``self.LINES`` with ``rows`` added to (or standing in for) a section."""
+        lines = list(self.LINES)
+        at = lines.index(f"[{section}]")
+        end = lines.index("", at)
+        body = [] if replace else lines[at + 1:end]
+        return lines[:at + 1] + body + list(rows) + lines[end:]
+
+    def _replaced(self, old: str, new: str) -> list[str]:
+        return [new if line == old else line for line in self.LINES]
+
+    def _folder(self, tmp: str, lines=None, audio: str | None = "song.wav",
+                seconds: float = 15.0, extra=()) -> Path:
+        import overtone as ta
+        folder = Path(tmp)
+        text = "\r\n".join(self.LINES if lines is None else lines)
+        (folder / "map.osu").write_bytes(text.encode("utf-8"))
+        if audio:
+            ta.sf.write(str(folder / audio),
+                        np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        for name in extra:
+            (folder / name).write_bytes(b"")
+        return folder / "map.osu"
+
+    def _segment(self, path: Path, **kwargs) -> dict:
+        import overtone_combine
+        segment = overtone_combine.read_segment(path, **kwargs)
+        json.dumps(segment)                 # the document is JSON or it is not a document
+        return segment
+
+    @staticmethod
+    def _codes(segment: dict) -> set:
+        return {repair["code"] for repair in segment["repairs"]}
+
+    def test_a_map_and_its_song_read_as_one_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp))
+        self.assertEqual((segment["name"], segment["format"], segment["mode_name"]),
+                         ("Hard", 14, "osu"))
+        self.assertIsNone(segment["keys"])  # only mania has a key count
+        self.assertEqual((segment["objects"]["circle"], segment["objects"]["slider"],
+                          segment["objects"]["spinner"], segment["objects"]["played"]),
+                         (2, 1, 1, 4))
+        self.assertEqual((segment["objects"]["first_ms"], segment["objects"]["last_ms"]),
+                         (1200.0, 9000.0))
+        self.assertEqual((segment["timing"]["reds"], segment["timing"]["greens"],
+                          segment["timing"]["first_bpm"]), (2, 1, 150.0))
+        # The range is the objects plus the padding, and the song is long enough
+        # to hold it: 1200 - 2000 clamps to 0, 9000 + 2000 stands.
+        self.assertEqual((segment["range"]["start_ms"], segment["range"]["end_ms"],
+                          segment["range"]["from"]), (0.0, 11000.0, "objects"))
+        self.assertTrue(segment["range"]["holds_every_object"])
+        self.assertEqual((segment["audio"]["how"], segment["audio"]["duration_ms"]),
+                         ("named", 15000.0))
+        self.assertEqual(segment["breaks"], [{"start_ms": 3000.0, "end_ms": 4000.0}])
+        self.assertEqual((segment["bookmarks"], segment["preview_ms"],
+                          segment["background"]), ([4000.0, 8000.0], 8000.0, "bg.jpg"))
+        self.assertEqual((segment["difficulty"]["ar"], segment["difficulty"]["od"],
+                          segment["difficulty"]["slider_multiplier"],
+                          segment["difficulty"]["stack_leniency"]), (8.5, 7.0, 1.6, 0.7))
+        self.assertEqual((segment["repairs"], segment["refusals"], segment["usable"]),
+                         ([], [], True))
+
+    def test_a_given_range_is_kept_and_cut_to_the_song(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp), start_ms=3000.0, end_ms=20000.0)
+        self.assertEqual((segment["range"]["start_ms"], segment["range"]["end_ms"],
+                          segment["range"]["from"]), (3000.0, 15000.0, "given"))
+        self.assertFalse(segment["range"]["holds_every_object"])
+        self.assertEqual(self._codes(segment), {"range_past_audio", "range_cuts_objects"})
+        self.assertTrue(all(repair["fixed"] for repair in segment["repairs"]))
+
+    def test_the_padding_runs_past_a_short_song_without_a_word(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, seconds=9.5))
+        # The padding is this reader's own invention: cutting it to the song is
+        # not news. An object past the end would be, and there is none here.
+        self.assertEqual(segment["range"]["end_ms"], 9500.0)
+        self.assertEqual(segment["repairs"], [])
+
+    def test_audio_named_in_the_wrong_case_is_found_and_said(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, audio="Song.WAV"))
+        self.assertEqual(segment["audio"]["how"], "case")
+        self.assertEqual(self._codes(segment), {"audio_case"})
+        self.assertTrue(segment["repairs"][0]["fixed"])
+        self.assertEqual(segment["audio"]["duration_ms"], 15000.0)
+
+    def test_the_folders_only_audio_is_taken_as_a_labelled_guess(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, audio="other.wav"))
+        self.assertEqual(segment["audio"]["how"], "guessed")
+        self.assertEqual(self._codes(segment), {"audio_guessed"})
+        self.assertIn("other.wav", segment["audio"]["path"])
+
+    def test_an_audio_filename_carrying_a_path_is_read_as_its_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            lines = self._replaced("AudioFilename: song.wav",
+                                   "AudioFilename: ..\\sounds\\song.wav")
+            segment = self._segment(self._folder(tmp, lines=lines))
+        self.assertEqual(segment["audio"]["how"], "named")
+        self.assertEqual(self._codes(segment), {"audio_path"})
+
+    def test_a_song_that_is_not_there_is_reported_and_the_map_still_reads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, audio=None))
+        self.assertEqual((segment["audio"]["how"], segment["audio"]["duration_ms"]),
+                         ("missing", None))
+        self.assertEqual(self._codes(segment), {"audio_missing"})
+        # Not a refusal: the map is readable and the plan is what decides
+        # whether a segment with no song can be built (it cannot).
+        self.assertTrue(segment["usable"])
+        self.assertEqual(segment["range"]["end_ms"], 11000.0)
+
+    def test_a_map_with_no_red_line_is_refused_and_still_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=self._with("TimingPoints", [],
+                                                                       replace=True)))
+        self.assertEqual([r["code"] for r in segment["refusals"]], ["no_timing"])
+        self.assertFalse(segment["usable"])
+        self.assertEqual(segment["objects"]["played"], 4)  # the rest is still reported
+
+    def test_a_map_with_nothing_to_play_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=self._with("HitObjects", [],
+                                                                       replace=True)))
+        self.assertEqual([r["code"] for r in segment["refusals"]], ["no_objects"])
+        self.assertFalse(segment["usable"])
+
+    def test_a_file_that_is_not_there_is_refused_not_raised(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self._folder(tmp)
+            segment = self._segment(Path(tmp) / "gone.osu")
+        self.assertEqual([r["code"] for r in segment["refusals"]], ["unreadable"])
+        self.assertEqual((segment["usable"], segment["repairs"]), (False, []))
+
+    def test_objects_out_of_order_and_with_decimal_times_are_reported(self) -> None:
+        rows = ["100,100,1200,1,0,0:0:0:0:", "64,64,9000,1,0,0:0:0:0:",
+                "128,128,2000.5,1,0,0:0:0:0:"]
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(
+                tmp, lines=self._with("HitObjects", rows, replace=True)))
+        self.assertEqual(self._codes(segment), {"objects_unordered", "objects_decimal_times"})
+        self.assertEqual((segment["objects"]["out_of_order"],
+                          segment["objects"]["decimal_times"]), (1, 1))
+        self.assertEqual(segment["objects"]["first_ms"], 1200.0)
+
+    def test_a_broken_object_line_is_counted_and_hides_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(
+                tmp, lines=self._with("HitObjects", ["not,an,object"])))
+        self.assertEqual(self._codes(segment), {"objects_unparsed"})
+        self.assertEqual((segment["objects"]["unparsed"], segment["objects"]["played"]),
+                         (1, 4))
+
+    def test_a_held_note_ends_the_segment_after_it_starts(self) -> None:
+        lines = self._replaced("Mode: 0", "Mode: 3")
+        at = lines.index("[HitObjects]")
+        lines = lines[:at + 1] + ["64,192,9000,128,0,12000:0:0:0:0:"] + lines[at + 1:]
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=lines))
+        self.assertEqual((segment["mode_name"], segment["keys"]), ("mania", 4))
+        self.assertEqual((segment["objects"]["hold"], segment["objects"]["last_ms"]),
+                         (1, 12000.0))
+        self.assertEqual(segment["range"]["end_ms"], 14000.0)
+
+    def test_custom_sample_indices_and_named_files_are_collected(self) -> None:
+        rows = ["64,64,9500,1,0,0:0:0:0:kept.wav", "64,64,9800,1,0,0:0:0:0:gone.wav"]
+        lines = self._replaced("2000,-100,4,2,1,70,0,1", "2000,-100,4,2,3,70,0,1")
+        at = lines.index("[HitObjects]")
+        lines = lines[:at + 1] + rows + lines[at + 1:]
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=lines, extra=("kept.wav",)))
+        self.assertEqual(segment["samples"]["indices"], [3])
+        self.assertEqual(segment["samples"]["files"], ["gone.wav", "kept.wav"])
+        self.assertEqual(segment["samples"]["missing"], ["gone.wav"])
+        self.assertIn("samples_missing", self._codes(segment))
+
+    def test_video_and_storyboard_lines_are_counted_as_not_carried(self) -> None:
+        rows = ['1,0,"clip.mp4"', 'Sprite,Background,Centre,"sb.png",320,240']
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=self._with("Events", rows)))
+        self.assertEqual(segment["events"], {"video": 1, "storyboard": 1})
+        self.assertEqual(self._codes(segment), {"events_video", "events_storyboard"})
+        self.assertEqual(segment["background"], "bg.jpg")  # the background still reads
+
+    def test_a_map_with_no_approach_rate_reads_the_overall_difficulty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(
+                tmp, lines=[line for line in self.LINES
+                            if not line.startswith("ApproachRate")]))
+        self.assertEqual((segment["difficulty"]["ar"], segment["difficulty"]["od"]),
+                         (7.0, 7.0))
+        self.assertEqual(self._codes(segment), {"difficulty_ar_from_od"})
+
+    def test_duplicate_reds_and_a_green_with_no_beat_are_reported(self) -> None:
+        rows = ["500,-100,4,2,0,80,0,0", "1000,500,4,2,0,80,1,0"]
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(tmp, lines=self._with("TimingPoints", rows)))
+        self.assertEqual(segment["timing"]["duplicate_reds"], [1000.0])
+        self.assertEqual(segment["timing"]["greens_before_red"], 1)
+        self.assertEqual(self._codes(segment),
+                         {"timing_duplicate_reds", "timing_green_before_red"})
+
+    def test_an_object_before_the_first_red_line_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            segment = self._segment(self._folder(
+                tmp, lines=self._replaced("100,100,1200,1,0,0:0:0:0:",
+                                          "100,100,500,1,0,0:0:0:0:")))
+        self.assertEqual(self._codes(segment), {"objects_before_first_red"})
+        self.assertEqual(segment["repairs"][0]["at"], 500.0)
+
+class CombinePlanTests(unittest.TestCase):
+    """Where each borrowed range lands in a compilation, and what refuses one."""
+
+    def _map(self, folder: Path, *, mode: int = 0, keys: int = 4, first: float = 1200,
+             last: float = 9000, reds=("1000,400,4,2,0,80,1,0",), spinner: str = "",
+             audio: str | None = "song.wav", seconds: float = 15.0) -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        rows = [f"100,100,{first:g},1,0,0:0:0:0:", f"64,64,{last:g},1,0,0:0:0:0:"]
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", f"Mode: {mode}", "",
+                 "[Metadata]", "Title:Song", "Artist:Artist", "Creator:Mapper",
+                 "Version:Hard", "",
+                 "[Difficulty]", f"CircleSize:{keys}", "OverallDifficulty:7",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[Events]", "",
+                 "[TimingPoints]", *reds, "",
+                 "[HitObjects]", *rows, *([spinner] if spinner else []), ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        if audio:
+            ta.sf.write(str(folder / audio),
+                        np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        return folder / "map.osu"
+
+    def _plan(self, sources, settings=None) -> dict:
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        json.dumps(plan)
+        return plan
+
+    def test_two_maps_are_placed_in_order_behind_the_lead_in(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a")
+            second = self._map(Path(tmp) / "b", first=2000, last=10000)
+            plan = self._plan([first, second])
+        # Segment 0 runs 0-11000 of its own song and lands behind the 2 s
+        # lead-in; segment 1 runs 0-12000 of its own and follows a 2 s gap.
+        self.assertEqual([(s["at_ms"], s["shift_ms"], s["ends_at_ms"])
+                          for s in plan["segments"]],
+                         [(2000.0, 2000.0, 13000.0), (15000.0, 15000.0, 27000.0)])
+        self.assertEqual(plan["junctions"],
+                         [{"after": 0, "before": 1, "ends_ms": 13000.0,
+                           "gap_ms": 2000.0, "bars": None, "bar_ms": 1600.0,
+                           "starts_ms": 15000.0}])
+        self.assertEqual((plan["totals"]["duration_ms"], plan["totals"]["objects"],
+                          plan["totals"]["segments"], plan["totals"]["songs"]),
+                         (27000.0, 4, 2, 2))
+        self.assertEqual((plan["format"], plan["mode"], plan["usable"]), (1, 0, True))
+
+    def test_a_whole_millisecond_shift_keeps_a_whole_millisecond_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a"), "start_ms": 1000.5,
+                      "end_ms": 11000.0}
+            plan = self._plan([source])
+        segment = plan["segments"][0]
+        # The cursor wants the range at 2000; the shift is rounded to a whole
+        # millisecond and the range lands half a millisecond late instead of
+        # every object in it losing its snap.
+        self.assertEqual(segment["shift_ms"], 1000.0)
+        self.assertEqual(segment["shift_ms"], int(segment["shift_ms"]))
+        self.assertEqual(segment["at_ms"], 2000.5)
+
+    def test_a_gap_set_on_one_junction_overrides_the_plans(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a")
+            second = {"osu": self._map(Path(tmp) / "b"), "gap_before_ms": 500.0}
+            plan = self._plan([first, second], {"gap_ms": 4000.0, "lead_in_ms": 0.0})
+        self.assertEqual(plan["junctions"][0]["gap_ms"], 500.0)
+        self.assertEqual((plan["segments"][0]["at_ms"], plan["segments"][1]["at_ms"]),
+                         (0.0, 11500.0))
+
+    def test_different_modes_and_different_key_counts_both_refuse(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            standard = self._map(Path(tmp) / "a")
+            mania = self._map(Path(tmp) / "b", mode=3, keys=4)
+            other = self._map(Path(tmp) / "c", mode=3, keys=7)
+            mixed = self._plan([standard, mania])
+            mania_only = self._plan([mania, other])
+        self.assertEqual([r["code"] for r in mixed["refusals"]], ["mode_mismatch"])
+        self.assertIn("osu", mixed["refusals"][0]["why"])
+        self.assertEqual([r["code"] for r in mania_only["refusals"]], ["keys_mismatch"])
+        self.assertFalse(mixed["usable"] or mania_only["usable"])
+
+    def test_a_segment_with_no_song_refuses_the_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a", audio=None)])
+        self.assertEqual([r["code"] for r in plan["refusals"]], ["segment_without_audio"])
+        self.assertEqual(plan["refusals"][0]["segment"], 0)
+        # The segment itself read fine; it is the plan that cannot use it.
+        self.assertTrue(plan["segments"][0]["usable"])
+
+    def test_a_refused_segment_refuses_the_plan_and_says_which(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a")
+            second = self._map(Path(tmp) / "b", reds=())
+            plan = self._plan([first, second])
+        self.assertEqual([(r["segment"], r["code"]) for r in plan["refusals"]],
+                         [(1, "no_timing")])
+        self.assertFalse(plan["usable"])
+
+    def test_strict_refuses_a_plan_it_would_have_had_to_repair(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", first=1200.5)
+            lenient = self._plan([source])
+            strict = self._plan([source], {"strict": True})
+        self.assertEqual([r["code"] for r in lenient["repairs"]], ["objects_decimal_times"])
+        self.assertTrue(lenient["usable"])
+        self.assertEqual([r["code"] for r in strict["refusals"]], ["strict_repairs"])
+
+    def test_an_unknown_setting_or_source_key_is_an_error_not_a_default(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a")
+            with self.assertRaises(ValueError):
+                overtone_combine.plan_compilation([source], {"gap": 500.0})
+            with self.assertRaises(ValueError):
+                overtone_combine.plan_compilation([{"osu": source, "fade_ms": 10.0}])
+            with self.assertRaises(ValueError):
+                overtone_combine.plan_compilation([])
+
+    def test_the_totals_count_only_the_objects_inside_each_range(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a"), "start_ms": 5000.0,
+                      "end_ms": 11000.0}
+            plan = self._plan([source])
+        segment = plan["segments"][0]
+        self.assertEqual((segment["objects"]["played"], segment["objects"]["in_range"]),
+                         (2, 1))
+        self.assertEqual(plan["totals"]["objects"], 1)
+        self.assertIn("range_cuts_objects", [r["code"] for r in plan["repairs"]])
+
+    def test_an_object_that_outlasts_a_typed_range_is_kept_and_counted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a",
+                                       spinner="256,192,9500,12,0,13000,0:0:0:0:"),
+                      "start_ms": 0.0, "end_ms": 11000.0}
+            plan = self._plan([source])
+        self.assertEqual(plan["segments"][0]["objects"]["ends_past_range"], 1)
+        self.assertIn("objects_end_past_range", [r["code"] for r in plan["repairs"]])
+        self.assertTrue(plan["usable"])
+
+    def _at(self, folder: Path, bpm: float) -> Path:
+        beat = 60000.0 / bpm
+        return self._map(folder, reds=(f"1000,{beat:.12f},4,2,0,80,1,0",))
+
+    def test_an_order_proposed_by_tempo_keeps_the_jumps_small(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._at(Path(tmp) / "a", 180.0),
+                               self._at(Path(tmp) / "b", 120.0),
+                               self._at(Path(tmp) / "c", 175.0),
+                               self._at(Path(tmp) / "d", 125.0)])
+            proposal = overtone_combine.order_plan(plan)
+            json.dumps(proposal)
+        self.assertEqual(proposal["order"], [0, 2, 3, 1])
+        self.assertEqual((proposal["before"]["total"], proposal["after"]["total"]),
+                         (165.0, 60.0))
+        self.assertTrue(proposal["changes"])
+        # Proposed, never applied: the plan is untouched.
+        self.assertEqual([round(s["timing"]["first_bpm"]) for s in plan["segments"]],
+                         [180, 120, 175, 125])
+
+    def test_an_order_already_as_good_as_it_gets_says_so(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._at(Path(tmp) / "a", 120.0),
+                               self._at(Path(tmp) / "b", 125.0),
+                               self._at(Path(tmp) / "c", 175.0)])
+            proposal = overtone_combine.order_plan(plan)
+        self.assertEqual(proposal["order"], [0, 1, 2])
+        self.assertFalse(proposal["changes"])
+
+    def test_the_loudness_order_needs_the_levels_measured_first(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._at(Path(tmp) / "a", 120.0),
+                               self._at(Path(tmp) / "b", 125.0),
+                               self._at(Path(tmp) / "c", 175.0)])
+            without = overtone_combine.order_plan(plan, "loudness")
+            measured = {"segments": [{"segment": 0, "lufs": -12.0},
+                                     {"segment": 1, "lufs": -20.0},
+                                     {"segment": 2, "lufs": -16.0}]}
+            with_levels = overtone_combine.order_plan(plan, "loudness", measured)
+        self.assertEqual((without["why"], without["changes"]), ("not_measured", False))
+        # Quietest first: a set that grows rather than one that gives up.
+        self.assertEqual(with_levels["order"], [1, 2, 0])
+        self.assertEqual(with_levels["after"]["total"], 8.0)
+
+    def test_a_song_with_no_tempo_of_its_own_keeps_its_place(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            nameless = self._map(Path(tmp) / "x", reds=("1000,-100,4,2,0,80,0,0",))
+            plan = self._plan([self._at(Path(tmp) / "a", 180.0),
+                               self._at(Path(tmp) / "b", 120.0),
+                               self._at(Path(tmp) / "c", 175.0), nameless])
+            proposal = overtone_combine.order_plan(plan)
+        # It cannot be placed by a tempo it does not have, so it stays last
+        # rather than being dropped from the proposal.
+        self.assertEqual(proposal["order"][-1], 3)
+        self.assertEqual(sorted(proposal["order"]), [0, 1, 2, 3])
+
+    def test_an_unknown_order_rule_is_an_error(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._at(Path(tmp) / "a", 120.0)])
+            with self.assertRaises(ValueError):
+                overtone_combine.order_plan(plan, "energy")
+
+    def test_a_plan_holding_an_unreadable_source_still_adds_up(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            good = self._map(Path(tmp) / "a")
+            broken = Path(tmp) / "b" / "map.osu"
+            broken.parent.mkdir(parents=True)
+            broken.write_bytes(b"\xff\xfe\x00")
+            plan = self._plan([good, broken])
+        # A segment that would not read comes back the same shape as one that
+        # did, so the plan can name its refusal, add up what is left and show
+        # all of it. Reading it as a special case crashed the plan instead.
+        self.assertEqual(sorted(plan["segments"][0]), sorted(plan["segments"][1]))
+        self.assertEqual([(r["segment"], r["code"]) for r in plan["refusals"]],
+                         [(1, "unreadable")])
+        self.assertEqual((plan["totals"]["segments"], plan["totals"]["objects"]), (2, 2))
+        self.assertEqual((plan["mode"], plan["usable"]), (0, False))
+
+    def test_a_plan_past_the_length_ceiling_refuses(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a")],
+                              {"lead_in_ms": overtone_combine.MAX_TOTAL_MS})
+        self.assertEqual([r["code"] for r in plan["refusals"]], ["too_long"])
+
+class CombineAssemblyTests(unittest.TestCase):
+    """The compilation .osu: every borrowed timestamp where it belongs, nothing else moved."""
+
+    OBJECTS = ["100,100,15000,1,0,0:0:0:0:",
+               "200,200,15400,2,0,L|300:200,1,100,0|0,0:0|0:0,0:0:0:0:",
+               "256,192,16000,12,0,17000,0:0:0:0:"]
+
+    def _map(self, folder: Path, *, red: str = "1000,400,4,2,0,80,1,0",
+             greens=("2000,-125,4,3,5,60,0,1",), objects=None, mode: int = 0,
+             multiplier: str = "1.4", seconds: float = 20.0,
+             breaks=("2,17500,18500",), bookmarks: str = "15000,19000") -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "PreviewTime: 15500",
+                 f"Mode: {mode}", "StackLeniency: 0.5", "",
+                 "[Editor]", f"Bookmarks: {bookmarks}", "",
+                 "[Metadata]", "Title:Song", "Artist:Artist", "Creator:Mapper",
+                 "Version:Hard", "Tags:one", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", f"SliderMultiplier:{multiplier}", "SliderTickRate:1", "",
+                 "[Events]", '0,0,"bg.jpg",0,0', *breaks, "",
+                 "[TimingPoints]", red, *greens, "",
+                 "[HitObjects]", *(self.OBJECTS if objects is None else objects), ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        ta.sf.write(str(folder / "song.wav"),
+                    np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        return folder / "map.osu"
+
+    def _built(self, sources, settings=None, **kwargs):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        text, report = overtone_combine.combine_beatmap(plan, **kwargs)
+        json.dumps(report)
+        return plan, text, report
+
+    @staticmethod
+    def _section(text: str, name: str) -> list[str]:
+        body = text.split(f"[{name}]")[1]
+        rows = body.split("[")[0].splitlines()
+        return [row for row in rows if row.strip() and not row.strip().startswith("//")]
+
+    def _times(self, text: str, name: str) -> list[float]:
+        return [float(row.split(",")[2] if name == "HitObjects" else row.split(",")[0])
+                for row in self._section(text, name)]
+
+    def test_every_object_keeps_its_place_inside_its_own_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, text, report = self._built([self._map(Path(tmp) / "a"),
+                                              self._map(Path(tmp) / "b")])
+        times = self._times(text, "HitObjects")
+        self.assertEqual(len(times), 6)
+        for n, segment in enumerate(plan["segments"]):
+            at, start = segment["at_ms"], segment["range"]["start_ms"]
+            for source, built in zip([15000.0, 15400.0, 16000.0], times[n * 3:n * 3 + 3]):
+                # The one claim the whole phase rests on: a borrowed object sits
+                # exactly as far into its segment as it sat into its range.
+                self.assertAlmostEqual(built - at, source - start, places=9)
+        self.assertEqual(report["objects"], 6)
+
+    def test_the_grid_keeps_the_phase_the_mapper_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # 266.666666666667 ms a beat and a first object that is not on a
+            # beat: rounding the pinned red line anywhere would show up here.
+            _plan, text, _report = self._built(
+                [self._map(Path(tmp) / "a", red="353,266.666666666667,4,2,0,100,1,0",
+                           greens=(), objects=["100,100,15100,1,0,0:0:0:0:"])])
+        red = self._times(text, "TimingPoints")[0]
+        beat = 266.666666666667
+        source = (15100.0 - 353.0) % beat
+        built = (self._times(text, "HitObjects")[0] - red) % beat
+        # Whole beats is the only arithmetic the pin does, so the object's
+        # place in its beat survives to the thousandth of a millisecond the
+        # file writes -- 20 nanoseconds of audio at 44.1 kHz.
+        self.assertLess(abs(built - source), 0.001)
+        self.assertNotEqual(round(source, 3), 0.0)   # and it is not on the beat
+
+    def test_a_spinner_and_a_hold_move_at_both_ends(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, _report = self._built([self._map(
+                Path(tmp) / "a", mode=3,
+                objects=["256,192,15000,12,0,17000,0:0:0:0:",
+                         "64,192,15500,128,0,16500:0:0:0:0:"])])
+        rows = self._section(text, "HitObjects")
+        # Both ends are the sixth field, and the field means something
+        # different in each: a bare time for the spinner, ``end:sample`` for
+        # the hold. The shift here is -11000.
+        self.assertEqual(rows[0].split(",")[2:6], ["4000", "12", "0", "6000"])
+        self.assertEqual(rows[1].split(",")[2:6],
+                         ["4500", "128", "0", "5500:0:0:0:0:"])
+
+    def test_a_sliders_curve_comes_out_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, _report = self._built([self._map(Path(tmp) / "a")])
+        slider = next(row for row in self._section(text, "HitObjects") if ",2," in row)
+        fields = slider.split(",")
+        self.assertEqual(fields[5:], "L|300:200,1,100,0|0,0:0|0:0,0:0:0:0:".split(","))
+
+    def test_a_segment_starts_in_the_state_its_own_map_was_in(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # The green at 2000 is outside the range (which starts at 13000),
+            # so without a pin the segment would play in the state the file
+            # before it left behind: normal samples, full volume, no kiai, 1.0x.
+            _plan, text, _report = self._built([self._map(Path(tmp) / "a")])
+        rows = self._section(text, "TimingPoints")
+        red = rows[0].split(",")
+        self.assertEqual(red[1], "400")                    # the governing beat length
+        # Drum set, 60 %, kiai on, and the slider velocity restored by a green
+        # after it. The sample index the source asked for was 5 and reads 1
+        # here: the compilation gives every segment its own indices (25.8).
+        self.assertEqual(red[3:], ["3", "1", "60", "1", "1"])
+        self.assertEqual(rows[1].split(",")[1], "-125")    # 0.8x restored after the red
+        self.assertEqual(rows[1].split(",")[6], "0")       # as a green
+
+    def test_a_red_at_the_range_start_is_not_restated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a", red="13000,400,4,1,2,90,1,0",
+                                       greens=()),
+                      "start_ms": 13000.0, "end_ms": 19000.0}
+            _plan, text, _report = self._built([source])
+        rows = self._section(text, "TimingPoints")
+        # Its own fields, shifted, with one thing moved: a red says everything
+        # about the state at its own time, so there is nothing to pin in front
+        # of it, and the sample index it asked for (2) is the compilation's
+        # own (1), because the file that index names is this map's.
+        self.assertEqual(rows, ["2000,400,4,1,1,90,1,0"])
+
+    def test_breaks_bookmarks_and_the_preview_move_with_their_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, text, report = self._built([self._map(Path(tmp) / "a"),
+                                              self._map(Path(tmp) / "b")])
+        shifts = [segment["shift_ms"] for segment in plan["segments"]]
+        # Each segment's own bookmarks move with it, and one is added where
+        # each segment starts, so the result can be navigated song by song.
+        self.assertIn(f"Bookmarks: {2000 + 0:.0f},{15000 + shifts[0]:.0f},"
+                      f"{19000 + shifts[0]:.0f},{plan['segments'][1]['at_ms']:.0f},"
+                      f"{15000 + shifts[1]:.0f},{19000 + shifts[1]:.0f}", text)
+        self.assertEqual(report["preview_ms"], 15500 + shifts[0])
+        # One break over the junction, from the first segment's last sound to
+        # the second's first object: it swallowed both segments' own breaks,
+        # which sat in the silence it covers, and the one hanging off the end
+        # of the second segment was dropped for having no object after it.
+        after, before = report["segments"]
+        self.assertEqual([row for row in self._section(text, "Events")
+                          if row.startswith("2,")],
+                         [f"2,{after['last_sound_ms'] + 200:.0f},"
+                          f"{before['first_object_ms'] - 200:.0f}"])
+        self.assertEqual((report["breaks"], report["junction_breaks"]), (1, 1))
+        self.assertEqual([note["code"] for note in report["notes"]
+                          if note["code"] == "breaks_dropped"], ["breaks_dropped"])
+
+    def test_what_falls_outside_the_range_is_left_out(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a"),
+                      "start_ms": 15600.0, "end_ms": 17500.0}
+            _plan, text, report = self._built([source])
+        # Only the spinner at 16000 starts inside the range. The break at
+        # 17500 begins where the range ends, the bookmarks sit either side of
+        # it, and the preview point at 15500 is before it.
+        self.assertEqual(len(self._times(text, "HitObjects")), 1)
+        # No break survives (the source's sat past the range) and the only
+        # bookmark is the one marking where the segment starts.
+        self.assertEqual((report["breaks"], report["bookmarks"]), (0, 1))
+        self.assertIsNone(report["preview_ms"])
+
+    def test_the_result_reads_back_and_round_trips_byte_identical(self) -> None:
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, _report = self._built([self._map(Path(tmp) / "a"),
+                                                self._map(Path(tmp) / "b")])
+            out = Path(tmp) / "out.osu"
+            out.write_bytes(text.encode("utf-8"))
+            beatmap = ta.read_osu_beatmap(out)
+            self.assertEqual(ta.beatmap_text(beatmap), text)
+        self.assertEqual(beatmap["format"], 14)
+        self.assertEqual(len(beatmap["hitobjects"]), 6)
+        self.assertEqual(beatmap["general"]["AudioFilename"], "audio.mp3")
+        self.assertEqual([time for time, _bpm in beatmap["timing"]["reds"]],
+                         sorted(time for time, _bpm in beatmap["timing"]["reds"]))
+
+    def test_a_plan_that_refused_is_not_assembled(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = overtone_combine.plan_compilation(
+                [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b", mode=3)])
+            with self.assertRaises(ValueError) as caught:
+                overtone_combine.combine_beatmap(plan)
+        self.assertIn("different game modes", str(caught.exception))
+
+    def test_an_object_line_with_no_time_is_left_out_and_counted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, report = self._built([self._map(
+                Path(tmp) / "a", objects=[*self.OBJECTS, "not,an,object"])])
+        self.assertEqual(len(self._times(text, "HitObjects")), 3)
+        self.assertEqual([note["code"] for note in report["notes"]
+                          if note["code"] == "objects_dropped"], ["objects_dropped"])
+
+    def test_the_report_names_what_the_later_rows_still_owe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, _text, report = self._built([
+                self._map(Path(tmp) / "a",
+                          objects=[*self.OBJECTS, "64,64,18000,1,0,0:0:0:0:kick.wav"]),
+                self._map(Path(tmp) / "b", multiplier="2.0")])
+        self.assertEqual([entry["row"] for entry in report["pending"]], ["25.13"])
+        # The second segment was made at SliderMultiplier 2.0 against the 1.4
+        # written, so its sliders keep their speed through a green line.
+        self.assertEqual([row["sv_ratio"] for row in report["difficulty"]["segments"]],
+                         [1.0, 2.0 / 1.4])
+        self.assertEqual(report["difficulty"]["values"]["slider_multiplier"], 1.4)
+        # Both segments ask for a custom sample index -- their green line
+        # wants 5 -- so each gets one of its own, and 25.8 owes nothing.
+        self.assertEqual([row["index_map"] for row in report["samples"]["segments"]],
+                         [{"5": 1}, {"5": 2}])
+
+    def test_a_gap_shorter_than_a_beat_refuses_instead_of_moving_the_grid(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a")
+            second = {"osu": self._map(Path(tmp) / "b",
+                                       objects=["100,100,15100,1,0,0:0:0:0:"]),
+                      "gap_before_ms": 1.0, "lead_ms": 0.0}
+            plan = overtone_combine.plan_compilation([first, second])
+            with self.assertRaises(ValueError) as caught:
+                overtone_combine.combine_beatmap(plan)
+        self.assertIn("Widen the gap", str(caught.exception))
+
+class CombineAudioTests(unittest.TestCase):
+    """One audio file out of several songs, and the check that it landed right."""
+
+    SR = 44100
+
+    def _song(self, path: Path, seconds: float = 6.0, bpm: float = 150.0,
+              seed: int = 1, rate: int | None = None, channels: int = 2) -> None:
+        """A click track: a burst on every beat over quiet noise, so a cut is
+        both audible and alignable."""
+        import overtone as ta
+        rate = rate or self.SR
+        rng = np.random.default_rng(seed)
+        frames = int(rate * seconds)
+        y = (rng.standard_normal((frames, channels)) * 0.02).astype("float32")
+        burst = (np.hanning(256) * np.sin(2 * np.pi * 900.0 * np.arange(256) / rate)
+                 * 0.8).astype("float32")
+        at = 0.4
+        while at < seconds - 0.1:
+            start = int(at * rate)
+            for channel in range(channels):
+                y[start:start + 256, channel] += burst
+            at += 60.0 / bpm
+        ta.sf.write(str(path), y, rate)
+
+    def _map(self, folder: Path, *, bpm: float = 150.0, seconds: float = 6.0,
+             seed: int = 1, rate: int | None = None, channels: int = 2,
+             last_ms: float = 3000.0) -> Path:
+        folder.mkdir(parents=True, exist_ok=True)
+        self._song(folder / "song.wav", seconds, bpm, seed, rate, channels)
+        beat = 60000.0 / bpm
+        objects = [f"100,100,{round(400 + k * 4 * beat)},1,0,0:0:0:0:"
+                   for k in range(int((last_ms - 400) / (4 * beat)) + 1)]
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "PreviewTime: 1000",
+                 "Mode: 0", "",
+                 "[Metadata]", "Title:Song", "Artist:A", "Creator:M", "Version:V", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[Events]", "",
+                 "[TimingPoints]", f"400,{beat:.12f},4,2,0,80,1,0", "",
+                 "[HitObjects]", *objects, ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        return folder / "map.osu"
+
+    def _build(self, tmp: str, sources, settings=None, audio_format: str = "wav"):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        out = Path(tmp) / f"combined.{audio_format}"
+        report = overtone_combine.build_audio(plan, out, audio_format=audio_format)
+        json.dumps(report)
+        return plan, out, report
+
+    @staticmethod
+    def _read(path: Path, start: int = 0, stop: int | None = None):
+        import overtone as ta
+        return ta.sf.read(str(path), dtype="float32", always_2d=True,
+                          start=start, stop=stop)[0]
+
+    def test_the_written_audio_is_as_long_as_the_plan_says(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, out, report = self._build(
+                tmp, [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b", bpm=174.0)])
+            frames = len(self._read(out))
+        # To within a frame: the plan counts in milliseconds and the file in
+        # samples, and a segment's start and end round separately.
+        self.assertAlmostEqual(report["duration_ms"], plan["totals"]["duration_ms"],
+                               delta=1000.0 / 44100.0)
+        self.assertEqual((report["frames"], report["sample_rate"], report["channels"]),
+                         (frames, 44100, 2))
+        self.assertEqual([row["resampled"] for row in report["segments"]], [False, False])
+
+    def test_every_segment_lands_where_the_plan_put_it(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, out, _report = self._build(
+                tmp, [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b", bpm=174.0)])
+            check = overtone_combine.verify_audio(plan, out)
+            json.dumps(check)
+        # The output holds the source's own samples, so the aligner has an
+        # exact answer to find: a shift of nothing, at a correlation of one.
+        self.assertTrue(check["ok"], check)
+        self.assertEqual(check["worst_shift_ms"], 0.0)
+        self.assertEqual([row["peak"] for row in check["segments"]], [1.0, 1.0])
+
+    def test_the_samples_written_are_the_samples_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a")
+            plan, out, report = self._build(tmp, [source])
+            segment = plan["segments"][0]
+            fade = int(round(report["segments"][0]["declick_ms"] * 44100 / 1000.0))
+            at = int(round(segment["at_ms"] * 44100 / 1000.0))
+            start = int(round(segment["range"]["start_ms"] * 44100 / 1000.0))
+            length = report["segments"][0]["frames"]
+            mine = self._read(out, at + fade, at + length - fade)
+            theirs = self._read(Path(tmp) / "a" / "song.wav",
+                                start + fade, start + length - fade)
+        # Lossless out, so past the declick ramp it is the same audio, bit for
+        # bit. Nothing is normalised, nothing is filtered, nothing is mixed.
+        self.assertEqual(mine.shape, theirs.shape)
+        self.assertTrue(np.array_equal(mine, theirs))
+
+    def test_the_gap_between_two_segments_is_silence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, out, report = self._build(
+                tmp, [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b")],
+                {"gap_ms": 1500.0})
+            ends = int(round(plan["segments"][0]["ends_at_ms"] * 44100 / 1000.0))
+            starts = int(round(plan["segments"][1]["at_ms"] * 44100 / 1000.0))
+            gap = self._read(out, ends, starts)
+            lead = self._read(out, 0, int(round(plan["segments"][0]["at_ms"]
+                                                * 44100 / 1000.0)))
+        self.assertEqual(len(gap), int(round(1500.0 * 44100 / 1000.0)))
+        self.assertEqual(float(np.abs(gap).max()), 0.0)
+        self.assertEqual(float(np.abs(lead).max()), 0.0)   # and so is the lead-in
+
+    def test_a_mono_song_beside_a_stereo_one_comes_out_stereo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, out, report = self._build(
+                tmp, [self._map(Path(tmp) / "a", channels=1),
+                      self._map(Path(tmp) / "b")])
+            written = self._read(out)
+        self.assertEqual(report["channels"], 2)
+        self.assertEqual(written.shape[1], 2)
+        # The mono segment is the same in both channels, not silent in one.
+        at = int(round(report["segments"][0]["at_ms"] * 44100 / 1000.0))
+        head = written[at + 1000:at + 5000]
+        self.assertTrue(np.array_equal(head[:, 0], head[:, 1]))
+
+    def test_a_song_at_another_rate_is_resampled_and_said_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, out, report = self._build(
+                tmp, [self._map(Path(tmp) / "a", rate=22050), self._map(Path(tmp) / "b")])
+        self.assertEqual(report["sample_rate"], 44100)       # nothing is downsampled
+        self.assertEqual([row["resampled"] for row in report["segments"]], [True, False])
+        self.assertEqual([row["source_rate"] for row in report["segments"]],
+                         [22050, 44100])
+        # The resampled segment still lasts what the plan says it lasts.
+        self.assertAlmostEqual(report["segments"][0]["duration_ms"],
+                               plan["segments"][0]["range"]["duration_ms"], delta=0.1)
+
+    def test_a_gain_set_on_a_segment_is_applied(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            quiet = {"osu": self._map(Path(tmp) / "a"), "gain_db": -6.0}
+            plan, out, report = self._build(tmp, [quiet])
+            at = int(round(plan["segments"][0]["at_ms"] * 44100 / 1000.0))
+            mine = self._read(out, at, at + report["segments"][0]["frames"])
+            theirs = self._read(Path(tmp) / "a" / "song.wav")
+        self.assertEqual(report["segments"][0]["gain_db"], -6.0)
+        peaks = (float(np.abs(mine).max()), float(np.abs(theirs).max()))
+        self.assertAlmostEqual(peaks[0] / peaks[1], 10.0 ** (-6.0 / 20.0), places=3)
+
+    def test_a_fade_is_written_over_the_segments_edges(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = {"osu": self._map(Path(tmp) / "a"), "fade_in_ms": 500.0,
+                      "fade_out_ms": 250.0}
+            plan, out, report = self._build(tmp, [source])
+            at = int(round(plan["segments"][0]["at_ms"] * 44100 / 1000.0))
+            length = report["segments"][0]["frames"]
+            head = self._read(out, at, at + int(44100 * 0.5))
+            tail = self._read(out, at + length - int(44100 * 0.25), at + length)
+            middle = self._read(out, at + int(44100 * 0.6), at + int(44100 * 0.9))
+        self.assertEqual((report["segments"][0]["fade_in_ms"],
+                          report["segments"][0]["fade_out_ms"]), (500.0, 250.0))
+        # A linear ramp: the first tenth of the fade is quieter than the last.
+        rising = np.abs(head).max(axis=1)
+        self.assertLess(rising[:len(rising) // 10].max(),
+                        rising[-len(rising) // 10:].max())
+        falling = np.abs(tail).max(axis=1)
+        self.assertGreater(falling[:len(falling) // 10].max(),
+                           falling[-len(falling) // 10:].max())
+        self.assertGreater(float(np.abs(middle).max()), 0.5)   # and the rest is whole
+
+    def test_asking_for_no_fade_keeps_the_guard_against_a_click(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, _out, report = self._build(tmp, [self._map(Path(tmp) / "a")])
+        # The 5 ms ramp is not a fade, it is what stops a cut from clicking,
+        # and asking for no fade must not take it away.
+        row = report["segments"][0]
+        self.assertEqual((row["fade_in_ms"], row["fade_out_ms"], row["declick_ms"]),
+                         (4.989, 4.989, 5.0))
+
+    def test_a_range_somebody_typed_is_not_faded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            typed = {"osu": self._map(Path(tmp) / "a"), "start_ms": 1000.0,
+                     "end_ms": 4000.0}
+            plan, out, report = self._build(tmp, [typed])
+            at = int(round(plan["segments"][0]["at_ms"] * 44100 / 1000.0))
+            mine = self._read(out, at, at + 64)
+            theirs = self._read(Path(tmp) / "a" / "song.wav",
+                                int(round(1000.0 * 44100 / 1000.0)),
+                                int(round(1000.0 * 44100 / 1000.0)) + 64)
+        # A derived range brought 2000 ms of padding and gets the 5 ms ramp; a
+        # typed one starts where it was told, hit or no hit.
+        self.assertEqual(report["segments"][0]["declick_ms"], 0.0)
+        self.assertTrue(np.array_equal(mine, theirs))
+
+    def test_an_unknown_format_or_a_plan_that_refused_raises(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = overtone_combine.plan_compilation([self._map(Path(tmp) / "a")])
+            with self.assertRaises(ValueError):
+                overtone_combine.build_audio(plan, Path(tmp) / "x.ogg",
+                                             audio_format="ogg")
+            mania = self._map(Path(tmp) / "b")
+            mania.write_bytes(mania.read_bytes().replace(b"Mode: 0", b"Mode: 3"))
+            refused = overtone_combine.plan_compilation([self._map(Path(tmp) / "c"),
+                                                         mania])
+            self.assertFalse(refused["usable"])
+            with self.assertRaises(ValueError):
+                overtone_combine.build_audio(refused, Path(tmp) / "y.wav")
+
+    def test_the_check_says_when_it_could_not_measure(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, out, report = self._build(
+                tmp, [self._map(Path(tmp) / "a", rate=8000)])
+            check = overtone_combine.verify_audio(plan, out)
+        # The aligner downsamples to 11025 Hz and takes only multiples of it.
+        # Saying so beats a number nobody can trust.
+        self.assertEqual(report["sample_rate"], 8000)
+        self.assertFalse(check["checked"])
+        self.assertIn("11025", check["why"])
+        self.assertTrue(check["ok"])
+
+class CombineSampleTests(unittest.TestCase):
+    """Whose hitsound plays: every segment's indices and files made its own."""
+
+    def _map(self, folder: Path, *, timing=("1000,400,4,2,3,80,1,0",),
+             objects=("100,100,1200,1,0,0:0:0:0:",), samples=(), seconds: float = 6.0,
+             multiplier: str = "1.4") -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "Mode: 0", "",
+                 "[Metadata]", "Title:Song", "Artist:A", "Creator:M",
+                 f"Version:{folder.name}", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", f"SliderMultiplier:{multiplier}",
+                 "SliderTickRate:1", "",
+                 "[Events]", "",
+                 "[TimingPoints]", *timing, "",
+                 "[HitObjects]", *objects, ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        ta.sf.write(str(folder / "song.wav"),
+                    np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        for name, payload in samples:
+            (folder / name).write_bytes(payload)
+        return folder / "map.osu"
+
+    def _plan(self, sources, settings=None):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        return plan
+
+    def _samples(self, sources, settings=None):
+        import overtone_combine
+        plan = self._plan(sources, settings)
+        samples = overtone_combine.sample_plan(plan)
+        json.dumps(samples)
+        return plan, samples
+
+    @staticmethod
+    def _lines(text: str, name: str) -> list[str]:
+        body = text.split(f"[{name}]")[1].split("[")[0]
+        return [row for row in body.splitlines()
+                if row.strip() and not row.strip().startswith("//")]
+
+    def test_two_segments_asking_for_one_index_get_one_each(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", samples=[("soft-hitclap3.wav", b"first")])
+            second = self._map(Path(tmp) / "b", samples=[("soft-hitclap3.wav", b"second")])
+            _plan, samples = self._samples([first, second])
+        self.assertEqual([row["index_map"] for row in samples["segments"]],
+                         [{"3": 1}, {"3": 2}])
+        # Index 1 writes the bare name, 2 and up carry the number: the two
+        # files that were both soft-hitclap3.wav cannot collide any more.
+        self.assertEqual([(entry["name"], Path(entry["from"]).parent.name)
+                          for entry in samples["files"]],
+                         [("soft-hitclap.wav", "a"), ("soft-hitclap2.wav", "b")])
+        self.assertEqual(samples["indices_used"], 2)
+
+    def test_the_rewritten_lines_ask_for_the_new_index(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", samples=[("soft-hitclap3.wav", b"first")])
+            second = self._map(
+                Path(tmp) / "b", timing=("1000,400,4,2,3,80,1,0",),
+                objects=("100,100,1200,1,0,0:0:3:60:",),
+                samples=[("soft-hitclap3.wav", b"second")])
+            plan = self._plan([first, second])
+            text, report = overtone_combine.combine_beatmap(plan)
+        self.assertEqual([row.split(",")[4] for row in self._lines(text, "TimingPoints")],
+                         ["1", "2"])
+        # The object of the second segment asked for index 3 by hand.
+        hit = [row for row in self._lines(text, "HitObjects") if row.endswith(":60:")]
+        self.assertEqual(hit[0].split(",")[5], "0:0:2:60:")
+        self.assertEqual(report["samples"]["indices_used"], 2)
+
+    def test_index_zero_is_never_remapped(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                               objects=("100,100,1200,1,0,0:0:0:0:",))
+            plan = self._plan([source])
+            text, _report = overtone_combine.combine_beatmap(plan)
+            _plan, samples = self._samples([source])
+        # On a timing point 0 means "the skin's", on an object "whatever the
+        # timing point says". Both are instructions, not files.
+        self.assertEqual(samples["segments"][0]["index_map"], {})
+        self.assertEqual(self._lines(text, "TimingPoints")[0].split(",")[4], "0")
+        self.assertEqual(self._lines(text, "HitObjects")[0].split(",")[5], "0:0:0:0:")
+
+    def test_a_file_an_object_names_keeps_its_name_where_it_can(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                               objects=("100,100,1200,1,0,0:0:0:0:kick.wav",),
+                               samples=[("kick.wav", b"kick")])
+            _plan, samples = self._samples([source])
+        self.assertEqual(samples["segments"][0]["renames"], {})
+        self.assertEqual([entry["name"] for entry in samples["files"]], ["kick.wav"])
+
+    def test_two_segments_naming_one_file_differently_rename_the_second(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                              objects=("100,100,1200,1,0,0:0:0:0:kick.wav",),
+                              samples=[("kick.wav", b"one")])
+            second = self._map(Path(tmp) / "b", timing=("1000,400,4,2,0,80,1,0",),
+                               objects=("100,100,1200,1,0,0:0:0:0:kick.wav",),
+                               samples=[("kick.wav", b"another")])
+            plan = self._plan([first, second])
+            samples = overtone_combine.sample_plan(plan)
+            text, _report = overtone_combine.combine_beatmap(plan, samples=samples)
+        self.assertEqual(samples["segments"][1]["renames"], {"kick.wav": "kick-2.wav"})
+        self.assertEqual(sorted(entry["name"] for entry in samples["files"]),
+                         ["kick-2.wav", "kick.wav"])
+        self.assertEqual(samples["collisions_avoided"], 1)
+        # And the object that named it asks for the new name.
+        named = [row.split(",")[5] for row in self._lines(text, "HitObjects")]
+        self.assertEqual(named, ["0:0:0:0:kick.wav", "0:0:0:0:kick-2.wav"])
+
+    def test_two_segments_naming_the_same_bytes_share_one_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            same = b"the same sound"
+            first = self._map(Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                              objects=("100,100,1200,1,0,0:0:0:0:kick.wav",),
+                              samples=[("kick.wav", same)])
+            second = self._map(Path(tmp) / "b", timing=("1000,400,4,2,0,80,1,0",),
+                               objects=("100,100,1200,1,0,0:0:0:0:kick.wav",),
+                               samples=[("kick.wav", same)])
+            _plan, samples = self._samples([first, second])
+        self.assertEqual([entry["name"] for entry in samples["files"]], ["kick.wav"])
+        self.assertEqual(samples["shared_by_content"], 1)
+        self.assertEqual(samples["segments"][1]["renames"], {})
+
+    def test_an_index_with_no_file_is_said_to_fall_back(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", timing=("1000,400,4,2,7,80,1,0",))
+            _plan, samples = self._samples([source])
+        # Not a fault: osu! plays the skin's sound for an index the folder
+        # does not have, and the remapped index is just as absent.
+        self.assertEqual(samples["segments"][0]["falls_back"], [7])
+        self.assertEqual(samples["files"], [])
+        self.assertEqual(samples["segments"][0]["index_map"], {"7": 1})
+
+    def test_the_samples_are_copied_into_the_folder_and_not_moved(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", samples=[("soft-hitclap3.wav", b"first"),
+                                                         ("drum-hitfinish3.ogg", b"x")])
+            plan = self._plan([source])
+            out = Path(tmp) / "out"
+            first = overtone_combine.build_samples(plan, out)
+            again = overtone_combine.build_samples(plan, out)
+            self.assertEqual((first["copied"], first["already_there"], first["failed"]),
+                             (2, 0, []))
+            self.assertEqual((again["copied"], again["already_there"]), (0, 2))
+            self.assertEqual(sorted(p.name for p in out.iterdir()),
+                             ["drum-hitfinish.ogg", "soft-hitclap.wav"])
+            self.assertTrue((Path(tmp) / "a" / "soft-hitclap3.wav").is_file())
+            self.assertEqual((out / "soft-hitclap.wav").read_bytes(), b"first")
+
+    def test_a_mania_holds_sample_is_rewritten_after_its_end_time(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(
+                Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                objects=("64,192,1200,128,0,2200:0:0:3:60:kick.wav",),
+                samples=[("kick.wav", b"k"), ("soft-hitclap3.wav", b"c")])
+            plan = self._plan([source])
+            text, _report = overtone_combine.combine_beatmap(plan)
+        row = self._lines(text, "HitObjects")[0].split(",")
+        # The end time and the sample share the sixth field: the time moves by
+        # the segment's +2000 ms shift, the sample's index becomes the
+        # compilation's, and the volume and the filename stay put.
+        self.assertEqual(row[5], "4200:0:0:1:60:kick.wav")
+
+    def test_a_sliders_sample_is_the_eleventh_field(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            slider = ("100,100,1200,2,0,L|300:200,1,100,0|0,0:0|0:0,0:0:3:60:kick.wav")
+            source = self._map(Path(tmp) / "a", timing=("1000,400,4,2,0,80,1,0",),
+                               objects=(slider,),
+                               samples=[("kick.wav", b"k"),
+                                        ("soft-hitclap3.wav", b"c")])
+            plan = self._plan([source])
+            text, _report = overtone_combine.combine_beatmap(plan)
+        row = self._lines(text, "HitObjects")[0].split(",")
+        self.assertEqual(row[5:10], ["L|300:200", "1", "100", "0|0", "0:0|0:0"])
+        self.assertEqual(row[10], "0:0:1:60:kick.wav")
+
+class CombineDifficultyTests(unittest.TestCase):
+    """The one set of numbers a compilation can hold, and the slider speed it owes."""
+
+    def _map(self, folder: Path, *, multiplier: str = "1.4", tick: str = "1",
+             ar: str = "9", od: str = "7", hp: str = "5", cs: str = "4",
+             stack: str = "0.7", greens=(), seconds: float = 6.0) -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "Mode: 0",
+                 f"StackLeniency: {stack}", "",
+                 "[Metadata]", "Title:Song", "Artist:A", "Creator:M",
+                 f"Version:{folder.name}", "",
+                 "[Difficulty]", f"HPDrainRate:{hp}", f"CircleSize:{cs}",
+                 f"OverallDifficulty:{od}", f"ApproachRate:{ar}",
+                 f"SliderMultiplier:{multiplier}", f"SliderTickRate:{tick}", "",
+                 "[Events]", "",
+                 "[TimingPoints]", "1000,400,4,2,0,80,1,0", *greens, "",
+                 "[HitObjects]", "100,100,2000,1,0,0:0:0:0:",
+                 "200,200,2400,1,0,0:0:0:0:", ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        ta.sf.write(str(folder / "song.wav"),
+                    np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        return folder / "map.osu"
+
+    def _settled(self, sources, choice="first"):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        settled = overtone_combine.difficulty_plan(plan, choice)
+        json.dumps(settled)
+        return plan, settled
+
+    @staticmethod
+    def _timing(text: str) -> list[str]:
+        body = text.split("[TimingPoints]")[1].split("[")[0]
+        return [row for row in body.splitlines()
+                if row.strip() and not row.strip().startswith("//")]
+
+    def test_the_first_segments_numbers_are_written_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, settled = self._settled([self._map(Path(tmp) / "a", ar="9", od="7"),
+                                            self._map(Path(tmp) / "b", ar="7", od="4")])
+        self.assertEqual(settled["from"], "first")
+        self.assertEqual((settled["values"]["ar"], settled["values"]["od"]), (9.0, 7.0))
+        self.assertEqual(settled["segments"][0]["deviations"], {})
+        # The second map is played at numbers its mapper did not choose, and
+        # the report says so in each field's own units.
+        self.assertEqual(settled["segments"][1]["deviations"]["ar"],
+                         {"theirs": 7.0, "written": 9.0, "off": -2.0})
+
+    def test_the_median_can_be_asked_for_instead(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, settled = self._settled([self._map(Path(tmp) / "a", ar="7"),
+                                            self._map(Path(tmp) / "b", ar="9"),
+                                            self._map(Path(tmp) / "c", ar="8")],
+                                           "median")
+        self.assertEqual((settled["from"], settled["values"]["ar"]), ("median", 8.0))
+
+    def test_numbers_can_be_given_by_hand(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a", ar="9", od="7")
+            _plan, settled = self._settled([source], {"ar": 9.5})
+            plan = overtone_combine.plan_compilation([source])
+            with self.assertRaises(ValueError):
+                overtone_combine.difficulty_plan(plan, {"approach": 9.5})
+            with self.assertRaises(ValueError):
+                overtone_combine.difficulty_plan(plan, "lowest")
+        self.assertEqual((settled["from"], settled["values"]["ar"]), ("given", 9.5))
+        self.assertEqual(settled["values"]["od"], 7.0)   # the rest is the first's
+
+    def test_a_segment_made_at_another_multiplier_keeps_its_slider_speed(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", multiplier="1.4")
+            second = self._map(Path(tmp) / "b", multiplier="2.0")
+            plan = overtone_combine.plan_compilation([first, second])
+            text, report = overtone_combine.combine_beatmap(plan)
+        rows = self._timing(text)
+        self.assertEqual([row["sv_ratio"] for row in report["difficulty"]["segments"]],
+                         [1.0, 2.0 / 1.4])
+        # 2.0 under a map written at 1.4 is 1.4286x, and -100/1.4286 is -70.
+        greens = [row for row in rows if row.split(",")[1].startswith("-")]
+        self.assertEqual(len(greens), 1)
+        self.assertEqual(greens[0].split(",")[1], "-70")
+        # And it sits on the red line it follows, which resets velocity to 1.
+        self.assertEqual(greens[0].split(",")[0],
+                         [row for row in rows if not row.split(",")[1].startswith("-")]
+                         [1].split(",")[0])
+
+    def test_a_green_the_source_had_is_scaled_not_replaced(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", multiplier="1.4")
+            second = self._map(Path(tmp) / "b", multiplier="2.0",
+                               greens=("1500,-125,4,3,2,60,0,1",))
+            plan = overtone_combine.plan_compilation([first, second])
+            text, _report = overtone_combine.combine_beatmap(plan)
+        green = next(row for row in self._timing(text) if row.split(",")[5] == "60")
+        # 0.8x of its own map is 1.1429x of this one, and -100/1.1429 is -87.5.
+        # The sample set, index, volume and kiai are the mapper's own.
+        self.assertEqual(green.split(",")[1], "-87.5")
+        self.assertEqual(green.split(",")[2:], ["4", "3", "1", "60", "0", "1"])
+
+    def test_a_velocity_a_green_line_cannot_carry_refuses_by_name(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self._map(Path(tmp) / "a", multiplier="3.0")
+            second = self._map(Path(tmp) / "slow", multiplier="0.1")
+            plan = overtone_combine.plan_compilation([first, second])
+            settled = overtone_combine.difficulty_plan(plan)
+            with self.assertRaises(ValueError) as caught:
+                overtone_combine.combine_beatmap(plan)
+        self.assertEqual([r["code"] for r in settled["refusals"]],
+                         ["velocity_out_of_range"])
+        self.assertIn("slow", settled["refusals"][0]["why"])
+        self.assertIn("0.1x-10x", str(caught.exception))
+
+    def test_a_tick_rate_that_differs_is_reported_not_fixed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, settled = self._settled([self._map(Path(tmp) / "a", tick="1"),
+                                            self._map(Path(tmp) / "b", tick="2")])
+        # Nothing in a green line touches the tick rate, so this one is a
+        # deviation the build reports and does not pretend to fix.
+        self.assertEqual(settled["tick_rate_differs"], [1])
+        self.assertEqual(settled["segments"][1]["deviations"]["slider_tick_rate"]["off"],
+                         1.0)
+
+    def test_nothing_is_added_when_the_multipliers_agree(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = overtone_combine.plan_compilation(
+                [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b")])
+            text, report = overtone_combine.combine_beatmap(plan)
+        rows = self._timing(text)
+        self.assertEqual([row["sv_ratio"] for row in report["difficulty"]["segments"]],
+                         [1.0, 1.0])
+        self.assertEqual(len(rows), 2)      # one red each, and no green invented
+        self.assertTrue(all(not row.split(",")[1].startswith("-") for row in rows))
+
+class CombineJunctionTests(unittest.TestCase):
+    """What happens where one song stops and the next one starts."""
+
+    def _map(self, folder: Path, *, greens=(), breaks=(), bookmarks: str = "",
+             preview: str = "-1", objects=None, seconds: float = 8.0) -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        rows = objects or ["100,100,2000,1,0,0:0:0:0:",
+                           "256,192,2400,12,0,3400,0:0:0:0:"]
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", f"PreviewTime: {preview}",
+                 "Mode: 0", "",
+                 *(["[Editor]", f"Bookmarks: {bookmarks}", ""] if bookmarks else []),
+                 "[Metadata]", "Title:Song", "Artist:A", "Creator:M",
+                 f"Version:{folder.name}", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[Events]", *breaks, "",
+                 "[TimingPoints]", "1000,400,4,2,0,80,1,0", *greens, "",
+                 "[HitObjects]", *rows, ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        ta.sf.write(str(folder / "song.wav"),
+                    np.zeros(int(8000 * seconds), dtype="float32"), 8000)
+        return folder / "map.osu"
+
+    def _built(self, sources, settings=None, **kwargs):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        text, report = overtone_combine.combine_beatmap(plan, **kwargs)
+        json.dumps(report)
+        return plan, text, report
+
+    @staticmethod
+    def _rows(text: str, name: str) -> list[str]:
+        body = text.split(f"[{name}]")[1].split("[")[0]
+        return [row for row in body.splitlines()
+                if row.strip() and not row.strip().startswith("//")]
+
+    def test_a_break_fills_a_junction_gap_long_enough_for_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, report = self._built([self._map(Path(tmp) / "a"),
+                                               self._map(Path(tmp) / "b")])
+        after, before = report["segments"]
+        # The silence between two songs is silence, not health draining away.
+        self.assertEqual([row for row in self._rows(text, "Events")
+                          if row.startswith("2,")],
+                         [f"2,{after['last_sound_ms'] + 200:.0f},"
+                          f"{before['first_object_ms'] - 200:.0f}"])
+        self.assertEqual(report["junction_breaks"], 1)
+        # It opens after the spinner stops, not when it starts.
+        self.assertEqual(after["last_sound_ms"] - after["last_object_ms"], 1000.0)
+
+    def test_a_gap_too_short_for_a_break_gets_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # 600 ms of silence: wide enough to pin the next segment's grid
+            # (one beat is 400), too narrow for a break once the 200 ms of
+            # air either side of one is taken off.
+            _plan, text, report = self._built(
+                [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b")],
+                {"gap_ms": 600.0, "lead_ms": 0.0, "tail_ms": 0.0})
+        self.assertEqual(report["junction_breaks"], 0)
+        self.assertEqual([row for row in self._rows(text, "Events")
+                          if row.startswith("2,")], [])
+
+    def test_the_junction_breaks_and_bookmarks_can_be_turned_off(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _plan, text, report = self._built(
+                [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b")],
+                {"junction_breaks": False, "junction_bookmarks": False})
+        self.assertEqual((report["junction_breaks"], report["bookmarks"]), (0, 0))
+        self.assertNotIn("Bookmarks:", text)
+
+    def test_a_bookmark_marks_where_each_segment_starts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, text, report = self._built(
+                [self._map(Path(tmp) / "a", bookmarks="2000"),
+                 self._map(Path(tmp) / "b")])
+        starts = [segment["at_ms"] for segment in plan["segments"]]
+        marks = [float(mark) for mark in
+                 next(row for row in self._rows(text, "Editor")
+                      if row.startswith("Bookmarks:")).split(":")[1].split(",")]
+        self.assertEqual(report["bookmarks"], 3)      # one each, plus the source's
+        self.assertEqual(sorted(marks), sorted(starts + [2000.0 + plan["segments"][0]
+                                                         ["shift_ms"]]))
+
+    def test_the_preview_point_can_be_taken_from_a_chosen_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sources = [self._map(Path(tmp) / "a", preview="2200"),
+                       self._map(Path(tmp) / "b", preview="2600")]
+            _plan, _text, first = self._built(sources)
+            plan, text, second = self._built(sources, {"preview_from": 1})
+        self.assertEqual(first["preview_ms"], 2200.0 + plan["segments"][0]["shift_ms"])
+        self.assertEqual(second["preview_ms"], 2600.0 + plan["segments"][1]["shift_ms"])
+        self.assertIn(f"PreviewTime: {second['preview_ms']:.0f}", text)
+
+    def test_a_kiai_span_arrives_with_its_segment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            kiai = self._map(Path(tmp) / "a", greens=("1500,-100,4,2,0,80,0,1",))
+            # A typed range that starts inside the kiai: the pinned red line
+            # has to carry it, or the segment plays unlit.
+            _plan, text, _report = self._built(
+                [{"osu": kiai, "start_ms": 1800.0, "end_ms": 5000.0},
+                 self._map(Path(tmp) / "b")])
+        rows = self._rows(text, "TimingPoints")
+        self.assertEqual(rows[0].split(",")[7], "1")   # the pin, kiai on
+        self.assertEqual(rows[0].split(",")[6], "1")   # and it is a red line
+        # The second segment's own red says nothing about kiai, so it is off
+        # again from there: a span cannot leak into the next song.
+        self.assertEqual(rows[-1].split(",")[7], "0")
+
+    def test_a_gap_counted_in_bars_uses_the_outgoing_songs_grid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan, _text, report = self._built(
+                [self._map(Path(tmp) / "a"), self._map(Path(tmp) / "b")],
+                {"gap_bars": 2.0})
+        # 150 BPM in 4/4: a beat is 400 ms, a bar 1600, two bars 3200. The
+        # bars are the *outgoing* song's, since it is its groove being
+        # finished.
+        junction = plan["junctions"][0]
+        self.assertEqual((junction["bars"], junction["bar_ms"], junction["gap_ms"]),
+                         (2.0, 1600.0, 3200.0))
+        self.assertEqual(plan["segments"][1]["at_ms"],
+                         plan["segments"][0]["ends_at_ms"] + 3200.0)
+        self.assertEqual(report["junction_breaks"], 1)
+
+    def test_a_gap_in_bars_set_on_one_junction_overrides_the_plans(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            second = {"osu": self._map(Path(tmp) / "b"), "gap_before_bars": 1.0}
+            plan, _text, _report = self._built([self._map(Path(tmp) / "a"), second],
+                                               {"gap_bars": 4.0})
+        self.assertEqual(plan["junctions"][0]["gap_ms"], 1600.0)
+
+    def test_a_segment_can_come_in_on_its_own_downbeat(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # The red line is at 1000 ms and a bar is 1600, so the bars sit at
+            # 1000, 2600, 4200… and at -600 before that. The range would start
+            # at 0 (2000 before the first object at 2000, clamped), which is
+            # not a bar line; pulled back it is -600 clamped to 0 — so this
+            # one needs a later first object to show the snap.
+            source = self._map(Path(tmp) / "a",
+                               objects=["100,100,5000,1,0,0:0:0:0:",
+                                        "256,192,5400,12,0,6400,0:0:0:0:"])
+            loose, _text, _report = self._built([source])
+            snapped, _text2, _report2 = self._built([source], {"start_on_downbeat": True})
+        self.assertEqual(loose["segments"][0]["range"]["start_ms"], 3000.0)
+        self.assertFalse(loose["segments"][0]["range"]["snapped_to_bar"])
+        # 3000 is 1.25 bars past the red line; the bar before it is at 2600.
+        self.assertEqual(snapped["segments"][0]["range"]["start_ms"], 2600.0)
+        self.assertTrue(snapped["segments"][0]["range"]["snapped_to_bar"])
+        self.assertEqual(snapped["segments"][0]["grid"],
+                         {"beat_ms": 400.0, "meter": 4, "bar_ms": 1600.0,
+                          "at_ms": 1000.0})
+
+    def test_the_downbeat_snap_never_loses_an_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a",
+                               objects=["100,100,5000,1,0,0:0:0:0:"])
+            snapped, _text, _report = self._built([source], {"start_on_downbeat": True})
+        # Only ever backwards, so the padding grows and nothing is cut.
+        segment = snapped["segments"][0]
+        self.assertLessEqual(segment["range"]["start_ms"], 3000.0)
+        self.assertEqual(segment["objects"]["in_range"], segment["objects"]["played"])
+
+    def test_two_breaks_that_meet_become_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # The first map's own break runs from just after its last sound
+            # into the silence the junction break covers.
+            _plan, text, report = self._built(
+                [self._map(Path(tmp) / "a", breaks=("2,3600,4200",)),
+                 self._map(Path(tmp) / "b")])
+        periods = [row for row in self._rows(text, "Events") if row.startswith("2,")]
+        self.assertEqual(len(periods), 1)
+        self.assertEqual(report["breaks"], 1)
+        start, end = (float(value) for value in periods[0].split(",")[1:])
+        after, before = report["segments"]
+        self.assertEqual((start, end), (after["last_sound_ms"] + 200.0,
+                                        before["first_object_ms"] - 200.0))
+
+class CombineOutputTests(unittest.TestCase):
+    """What a built compilation says it is, and what lands in the folder."""
+
+    def _map(self, folder: Path, *, artist: str = "Artist One", title: str = "First Song",
+             creator: str = "mapper_one", index: int = 3, bpm: float = 150.0,
+             seconds: float = 8.0, background: str = "bg.jpg",
+             with_background: bool = True, rate: int = 8000,
+             clicks: bool = False) -> Path:
+        import overtone as ta
+        folder.mkdir(parents=True, exist_ok=True)
+        frames = int(rate * seconds)
+        song = np.zeros(frames, dtype="float32")
+        if clicks:
+            # Something for the aligner to find: silence correlates to
+            # nothing, and 8000 Hz is not a multiple of the 11025 it
+            # downsamples to, so the check would have nothing to say.
+            burst = (np.hanning(256) * np.sin(2 * np.pi * 900.0
+                                              * np.arange(256) / rate)).astype("float32")
+            # From the red line this map writes, on its beat: the grade check
+            # reads the built audio's attacks against those lines, and a
+            # fixture whose clicks ignore its own grid grades as 200 ms off.
+            at = 1.0
+            while at < seconds - 0.1:
+                start = int(at * rate)
+                song[start:start + 256] += burst * 0.8
+                at += 60.0 / bpm
+        ta.sf.write(str(folder / "song.wav"), song, rate)
+        if with_background:
+            (folder / background).write_bytes(b"not really an image")
+        (folder / f"soft-hitclap{index}.wav").write_bytes(b"clap" + bytes([index]))
+        beat = 60000.0 / bpm
+        objects = [f"100,100,{round(1000 + k * 4 * beat)},1,0,0:0:0:0:"
+                   for k in range(4)]
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "PreviewTime: 1200",
+                 "Mode: 0", "",
+                 "[Editor]", "Bookmarks: 1200", "",
+                 "[Metadata]", f"Title:{title}", f"TitleUnicode:{title}",
+                 f"Artist:{artist}", f"ArtistUnicode:{artist}", f"Creator:{creator}",
+                 "Version:Hard", "Tags:source tags", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[Events]", f'0,0,"{background}",0,0', "",
+                 "[TimingPoints]", f"1000,{beat:.12f},4,2,{index},80,1,0", "",
+                 "[HitObjects]", *objects, ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        return folder / "map.osu"
+
+    def _plan(self, sources, settings=None):
+        import overtone_combine
+        plan = overtone_combine.plan_compilation(sources, settings)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        return plan
+
+    def _build(self, plan, folder: Path, **kwargs) -> dict:
+        import overtone_combine
+        report = overtone_combine.build_compilation(plan, folder, **kwargs)
+        json.dumps({key: value for key, value in report.items() if key != "credits"})
+        return report
+
+    def test_a_dry_run_writes_nothing_and_says_what_it_would(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a")])
+            out = Path(tmp) / "out"
+            report = self._build(plan, out, dry_run=True)
+            self.assertFalse(out.exists())
+        self.assertEqual((report["written"], report["dry_run"]), (False, True))
+        self.assertEqual([entry["kind"] for entry in report["files"]],
+                         ["audio", "sample", "beatmap", "credits", "background"])
+        self.assertIsNone(report["checks"])
+
+    def test_the_folder_holds_the_map_the_audio_the_samples_and_the_credits(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a"),
+                               self._map(Path(tmp) / "b", index=5, bpm=174.0)])
+            out = Path(tmp) / "out"
+            report = self._build(plan, out, audio_format="wav")
+            there = sorted(path.name for path in out.iterdir())
+        self.assertEqual(there, sorted(["audio.wav", "bg.jpg", "credits.txt",
+                                        "soft-hitclap.wav", "soft-hitclap2.wav",
+                                        report["osu"]]))
+        # Both maps are the same song here, so the compilation is named
+        # after it rather than labelled.
+        self.assertEqual(report["osu"],
+                         "Artist One - First Song (Overtone) [Compilation].osu")
+        self.assertTrue(all(entry["bytes"] for entry in report["files"]))
+        self.assertEqual(report["written"], True)
+
+    def test_names_are_kept_when_the_songs_agree_and_labelled_when_they_do_not(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            same = self._plan([self._map(Path(tmp) / "a"),
+                               self._map(Path(tmp) / "b", bpm=174.0)])
+            mixed = self._plan([self._map(Path(tmp) / "c"),
+                                self._map(Path(tmp) / "d", artist="Artist Two",
+                                          title="Second Song", bpm=174.0)])
+            agreed = overtone_combine.metadata_plan(same)
+            apart = overtone_combine.metadata_plan(mixed)
+        self.assertEqual((agreed["values"]["artist"], agreed["values"]["title"]),
+                         ("Artist One", "First Song"))
+        self.assertEqual((apart["values"]["artist"], apart["values"]["title"]),
+                         ("Various Artists", "Compilation (2 songs)"))
+        # The Unicode twin follows the romanised field only while that field
+        # is still the songs' own.
+        self.assertEqual(agreed["values"]["title_unicode"], "First Song")
+        self.assertEqual(apart["values"]["title_unicode"], "Compilation (2 songs)")
+
+    def test_every_mapper_is_in_the_tags_and_the_credits(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a", creator="mapper_one"),
+                               self._map(Path(tmp) / "b", creator="mapper_two",
+                                         bpm=174.0)])
+            named = overtone_combine.metadata_plan(plan)
+        self.assertEqual(named["mappers"], ["mapper_one", "mapper_two"])
+        for mapper in named["mappers"]:
+            self.assertIn(mapper, named["values"]["tags"].split())
+        self.assertEqual([row["mapper"] for row in named["credits"]],
+                         ["mapper_one", "mapper_two"])
+        # Tags are tokens, so one token is kept once however many songs use it.
+        self.assertEqual(len(named["values"]["tags"].split()),
+                         len(set(named["values"]["tags"].split())))
+
+    def test_metadata_given_by_hand_wins(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a")])
+            report = self._build(plan, Path(tmp) / "out", dry_run=True,
+                                 metadata={"title": "My Marathon", "creator": "me",
+                                           "version": "Insane"})
+            with self.assertRaises(ValueError):
+                overtone_combine.metadata_plan(plan, {"name": "nope"})
+        values = report["metadata"]["values"]
+        self.assertEqual((values["title"], values["creator"], values["version"]),
+                         ("My Marathon", "me", "Insane"))
+        self.assertEqual(report["metadata"]["creator_from"], "given")
+        self.assertEqual(report["osu"], "Artist One - My Marathon (me) [Insane].osu")
+        # The placeholder warning is gone with the placeholder.
+        self.assertEqual(report["beatmap"]["pending"], [])
+
+    def test_the_credits_name_each_song_in_the_order_it_plays(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a"),
+                               self._map(Path(tmp) / "b", artist="Artist Two",
+                                         title="Second Song", creator="mapper_two",
+                                         bpm=174.0)])
+            report = self._build(plan, Path(tmp) / "out")
+            text = (Path(tmp) / "out" / "credits.txt").read_text(encoding="utf-8")
+        self.assertLess(text.index("First Song"), text.index("Second Song"))
+        self.assertIn("mapped by mapper_two", text)
+        # The one thing the tool cannot decide is in the file.
+        self.assertIn("is its mapper's call", text)
+        self.assertEqual(report["files"][-2]["name"], "credits.txt")
+
+    def test_a_folder_that_already_holds_a_map_refuses_unless_asked(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a")])
+            out = Path(tmp) / "out"
+            self._build(plan, out)
+            with self.assertRaises(ValueError) as caught:
+                overtone_combine.build_compilation(plan, out)
+            again = self._build(plan, out, allow_existing=True)
+        self.assertIn("allow_existing", str(caught.exception))
+        self.assertTrue(again["written"])
+
+    def test_a_sources_own_folder_is_refused_always(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._map(Path(tmp) / "a")
+            plan = self._plan([source])
+            with self.assertRaises(ValueError) as caught:
+                overtone_combine.build_compilation(plan, source.parent,
+                                                   allow_existing=True)
+            with self.assertRaises(ValueError):
+                overtone_combine.build_compilation(plan, source.parent, dry_run=True)
+        self.assertIn("never writes where it read", str(caught.exception))
+
+    def test_an_osz_holds_every_file_flat(self) -> None:
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a")])
+            report = self._build(plan, Path(tmp) / "out", osz=True)
+            with zipfile.ZipFile(report["osz"]["path"]) as archive:
+                names = sorted(archive.namelist())
+        self.assertEqual(names, sorted(entry["name"] for entry in report["files"]))
+        self.assertTrue(all("/" not in name for name in names))
+        self.assertEqual(report["osz"]["name"], "Artist One - First Song.osz")
+
+    def test_the_build_checks_itself_and_says_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a", rate=44100, clicks=True),
+                               self._map(Path(tmp) / "b", rate=44100, clicks=True,
+                                         bpm=174.0, index=5)])
+            report = self._build(plan, Path(tmp) / "out", audio_format="wav",
+                                 grade=True)
+        checks = report["checks"]
+        self.assertEqual(checks["snap"], {"objects": 8, "red_lines": 2, "unsnapped": 0,
+                                          "before_first_red": 0, "past_audio": 0})
+        self.assertTrue(checks["round_trip"])
+        self.assertEqual(checks["audio"]["worst_shift_ms"], 0.0)
+        self.assertEqual([row["peak"] for row in checks["audio"]["segments"]], [1.0, 1.0])
+        # The fourth check: the red lines against the attacks of the audio
+        # that was built, which is the end of this phase's own argument.
+        self.assertTrue(checks["grade"]["ok"], checks["grade"])
+        self.assertEqual(checks["grade"]["counts"]["check"], 0)
+        self.assertLess(checks["grade"]["worst_ms"], 5.0)
+        self.assertTrue(checks["ok"])
+
+    def test_the_write_lands_in_the_history(self) -> None:
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a")])
+            report = self._build(plan, Path(tmp) / "out")
+            written = [entry for entry in ta.read_history()
+                       if entry.get("op") == "compile"]
+        self.assertTrue(written)
+        self.assertTrue(written[-1]["path"].endswith(report["osu"]))
+        self.assertEqual(written[-1]["summary"]["segments"], 1)
+
+    def test_a_background_no_source_folder_holds_is_said(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan([self._map(Path(tmp) / "a", with_background=False)])
+            out = Path(tmp) / "out"
+            report = self._build(plan, out)
+            there = sorted(path.name for path in out.iterdir())
+        self.assertNotIn("bg.jpg", there)
+        self.assertIn("background_missing",
+                      [note["code"] for note in report["beatmap"]["notes"]])
+        self.assertNotIn("background", [entry["kind"] for entry in report["files"]])
+
+class CombineLoudnessTests(unittest.TestCase):
+    """How loud each song is, and the gain that stops one of them jumping."""
+
+    #: ITU-R BS.1770's own coefficients for 48 kHz, printed in the standard.
+    #: The module derives them from the two analog filters instead, so that a
+    #: 44.1 kHz song can be measured without resampling; these are what the
+    #: derivation has to come back to.
+    PUBLISHED = {
+        "shelf_b": [1.53512485958697, -2.69169618940638, 1.19839281085285],
+        "shelf_a": [1.0, -1.69065929318241, 0.73248077421585],
+        "highpass_b": [1.0, -2.0, 1.0],
+        "highpass_a": [1.0, -1.99004745483398, 0.99007225036621],
+    }
+
+    def _sine(self, folder: Path, name: str, rms_dbfs: float, rate: int = 48000,
+              channels: int = 1, seconds: float = 6.0) -> Path:
+        import overtone as ta
+        amplitude = 10.0 ** (rms_dbfs / 20.0) * np.sqrt(2.0)
+        frames = int(rate * seconds)
+        tone = (amplitude * np.sin(2 * np.pi * 1000.0 * np.arange(frames) / rate)
+                ).astype("float32")
+        data = tone if channels == 1 else np.stack([tone] * channels, axis=1)
+        path = folder / name
+        ta.sf.write(str(path), data, rate)
+        return path
+
+    def _measure(self, path: Path, seconds: float = 6.0) -> dict:
+        import overtone_combine
+        return overtone_combine.segment_loudness(path, 0.0, seconds * 1000.0)
+
+    def test_the_k_weighting_is_the_standards_own_at_48_khz(self) -> None:
+        import overtone_combine
+        shelf, highpass = overtone_combine._k_weighting(48000)
+        for got, want in ((shelf[0], self.PUBLISHED["shelf_b"]),
+                          (shelf[1], self.PUBLISHED["shelf_a"]),
+                          (highpass[0], self.PUBLISHED["highpass_b"]),
+                          (highpass[1], self.PUBLISHED["highpass_a"])):
+            for mine, theirs in zip(got, want):
+                self.assertAlmostEqual(float(mine), theirs, places=12)
+
+    def test_a_sine_at_minus_twenty_dbfs_rms_reads_minus_twenty_lufs(self) -> None:
+        # The standard's own calibration: a 1 kHz sine whose RMS is -20 dBFS,
+        # in one channel, reads -20 LUFS. Two channels at -23 dBFS RMS sum to
+        # the same thing and must read the same.
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            mono = self._measure(self._sine(folder, "mono.wav", -20.0))
+            stereo = self._measure(self._sine(folder, "stereo.wav", -23.01,
+                                              channels=2))
+            at_441 = self._measure(self._sine(folder, "cd.wav", -20.0, rate=44100))
+        self.assertAlmostEqual(mono["lufs"], -20.0, delta=0.02)
+        self.assertAlmostEqual(stereo["lufs"], -20.0, delta=0.05)
+        # And the derived filters give the same answer at the other rate.
+        self.assertAlmostEqual(at_441["lufs"], mono["lufs"], delta=0.01)
+
+    def test_halving_the_amplitude_takes_six_lu_off(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            loud = self._measure(self._sine(folder, "loud.wav", -20.0))
+            quiet = self._measure(self._sine(folder, "quiet.wav", -26.02))
+        self.assertAlmostEqual(loud["lufs"] - quiet["lufs"], 6.02, delta=0.02)
+        self.assertAlmostEqual(loud["peak_dbfs"] - quiet["peak_dbfs"], 6.02, delta=0.02)
+
+    def test_silence_has_no_level_and_says_so(self) -> None:
+        import overtone as ta
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "silent.wav"
+            ta.sf.write(str(path), np.zeros((48000 * 3, 2), dtype="float32"), 48000)
+            found = self._measure(path, 3.0)
+        # Inventing a level for silence would set a whole compilation by it.
+        self.assertIsNone(found["lufs"])
+        self.assertIsNone(found["peak_dbfs"])
+
+    def test_the_answer_is_the_same_however_the_file_is_chunked(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._sine(Path(tmp), "tone.wav", -20.0, channels=2)
+            whole = self._measure(path)
+            was = overtone_combine.LOUDNESS_CHUNK_STEPS
+            overtone_combine.LOUDNESS_CHUNK_STEPS = 3      # 300 ms a read
+            self.addCleanup(setattr, overtone_combine, "LOUDNESS_CHUNK_STEPS", was)
+            in_pieces = self._measure(path)
+        # The filters carry their state across reads, so the chunk size is
+        # bookkeeping and not part of the answer.
+        self.assertEqual(whole["lufs"], in_pieces["lufs"])
+        self.assertEqual(whole["steps"], in_pieces["steps"])
+
+    def _plan(self, folder: Path, levels, seconds: float = 6.0) -> dict:
+        import overtone as ta
+        import overtone_combine
+        sources = []
+        for n, rms in enumerate(levels):
+            song = folder / f"s{n}"
+            song.mkdir(parents=True, exist_ok=True)
+            self._sine(song, "song.wav", rms, rate=44100, channels=2, seconds=seconds)
+            lines = ["osu file format v14", "",
+                     "[General]", "AudioFilename: song.wav", "Mode: 0", "",
+                     "[Metadata]", "Title:T", "Artist:A", "Creator:M", f"Version:s{n}", "",
+                     "[Difficulty]", "HPDrainRate:5", "CircleSize:4",
+                     "OverallDifficulty:7", "ApproachRate:9", "SliderMultiplier:1.4",
+                     "SliderTickRate:1", "",
+                     "[Events]", "",
+                     "[TimingPoints]", "1000,400,4,2,0,80,1,0", "",
+                     "[HitObjects]", "100,100,1200,1,0,0:0:0:0:",
+                     "200,200,2000,1,0,0:0:0:0:", ""]
+            (song / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+            sources.append(str(song / "map.osu"))
+        return overtone_combine.plan_compilation(sources)
+
+    def test_the_median_is_matched_and_the_loud_one_is_turned_down(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(Path(tmp), [-30.0, -24.0, -18.0])
+            matched = overtone_combine.loudness_plan(plan)
+            json.dumps(matched)
+        self.assertAlmostEqual(matched["target"], -21.0, delta=0.1)   # the middle song
+        gains = [row["gain_db"] for row in matched["segments"]]
+        self.assertAlmostEqual(gains[1], 0.0, delta=0.1)
+        self.assertGreater(gains[0], 5.0)       # the quiet one comes up
+        self.assertLess(gains[2], -5.0)         # the loud one goes down
+        self.assertEqual([row["capped"] for row in matched["segments"]],
+                         [None, None, None])
+
+    def test_a_gain_that_would_clip_is_capped_at_the_headroom(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            # A song already peaking half a decibel under full scale, asked to
+            # come up to 0 LUFS: there is no room, so it stays where it is and
+            # the row says why. (Two channels of a 1 kHz sine at -3.52 dBFS
+            # RMS read about -0.5 LUFS: the channels sum.)
+            plan = self._plan(Path(tmp), [-3.52])
+            matched = overtone_combine.loudness_plan(plan, 0.0)
+        self.assertAlmostEqual(matched["segments"][0]["lufs"], -0.5, delta=0.1)
+        self.assertAlmostEqual(matched["segments"][0]["peak_dbfs"], -0.51, delta=0.05)
+        self.assertEqual(matched["segments"][0]["capped"], "peak")
+        self.assertAlmostEqual(matched["segments"][0]["gain_db"], 0.0, delta=0.01)
+
+    def test_a_gain_past_the_limit_is_capped_and_said(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(Path(tmp), [-60.0, -20.0])
+            matched = overtone_combine.loudness_plan(plan, "quietest")
+        # Matching the quietest asks the loud one for -40 dB; 12 is the most
+        # this will move anything, and it says so instead of obeying.
+        self.assertEqual(matched["from"], "quietest")
+        self.assertEqual(matched["segments"][1]["gain_db"], -overtone_combine.MAX_GAIN_DB)
+        self.assertEqual(matched["segments"][1]["capped"], "limit")
+
+    def test_a_segment_with_no_sound_in_it_is_left_alone(self) -> None:
+        import overtone as ta
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(Path(tmp), [-20.0, -20.0])
+            silent = Path(plan["segments"][1]["audio"]["path"])
+            ta.sf.write(str(silent), np.zeros((44100 * 6, 2), dtype="float32"), 44100)
+            matched = overtone_combine.loudness_plan(plan)
+        self.assertEqual(matched["segments"][1]["why"], "silent")
+        self.assertEqual(matched["segments"][1]["gain_db"], 0.0)
+        self.assertAlmostEqual(matched["segments"][0]["gain_db"], 0.0, delta=0.01)
+
+    def test_an_unknown_target_is_an_error(self) -> None:
+        import overtone_combine
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(Path(tmp), [-20.0])
+            with self.assertRaises(ValueError):
+                overtone_combine.loudness_plan(plan, "loudest")
+            # A number is a target in LUFS.
+            self.assertAlmostEqual(
+                overtone_combine.loudness_plan(plan, -23.0)["target"], -23.0, delta=0.01)
+
+class OsuDbAuditTests(unittest.TestCase):
+    @staticmethod
+    def _string(value: str | None) -> bytes:
+        if value is None:
+            return b"\0"
+        raw = value.encode("utf-8")
+        length = len(raw)
+        prefix = bytearray()
+        while length >= 0x80:
+            prefix.append((length & 0x7F) | 0x80)
+            length >>= 7
+        prefix.append(length)
+        return b"\x0b" + bytes(prefix) + raw
+
+    @classmethod
+    def _record(cls, status: int, mode: int = 0, folder: str = "123 Artist - Title",
+                filename: str = "Artist - Title (Mapper) [Hard].osu") -> bytes:
+        strings = ("Artist", "Artist", "Title", "Title", "Mapper", "Hard",
+                   "song.mp3", "hash", filename)
+        row = b"".join(cls._string(value) for value in strings)
+        row += struct.pack("<Bhhhqffffd", status, 100, 50, 2, 0,
+                           9.0, 4.0, 5.0, 6.0, 1.6)
+        row += b"\0" * 16  # four empty star-rating lists
+        row += struct.pack("<iiii", 1, 1000, 800, 0)  # times and no timing points
+        row += struct.pack("<iii", 321, 123, 0)  # beatmap, set, thread ids
+        row += struct.pack("<BBBBh f B", 0, 0, 0, 0, 0, 0.7, mode)
+        row += cls._string("") + cls._string("")
+        row += struct.pack("<h", 0) + cls._string("")
+        row += struct.pack("<BqB", 0, 0, 0) + cls._string(folder)
+        row += struct.pack("<qBBBBB h B", 0, 0, 0, 0, 0, 0, 0, 0)
+        return row + b"\0\0"  # opaque v20260924 entry extension
+
+    @classmethod
+    def _database(cls, entries: list[tuple]) -> bytes:
+        """``(status, mode)`` or ``(status, mode, folder, filename)`` per map."""
+        header = struct.pack("<iiBq", 20260924, 1, 0, 0) + cls._string("tester")
+        return header + struct.pack("<i", len(entries)) + b"".join(
+            cls._record(*entry) for entry in entries) + b"\x05\0\0\0"
+
+    def test_reads_only_ranked_statuses_and_preserves_mode(self) -> None:
+        header, maps = parse_osu_db(self._database([(4, 0), (2, 0), (7, 3)]))
+        self.assertEqual(header["beatmaps"], 3)
+        self.assertEqual([(row.status, row.mode) for row in maps],
+                         [("ranked", 0), ("loved", 3)])
+
+    def test_unknown_database_version_refuses(self) -> None:
+        data = bytearray(self._database([(4, 0)]))
+        struct.pack_into("<i", data, 0, 20260925)
+        with self.assertRaises(OsuDbFormatError):
+            parse_osu_db(bytes(data))
+
+    def test_truncated_database_refuses(self) -> None:
+        with self.assertRaises(OsuDbFormatError):
+            parse_osu_db(self._database([(4, 0)])[:-7])
+
+
+class TrainPlanTests(unittest.TestCase):
+    """The practice document: one map, a rate, settled stats and a name."""
+
+    LINES = [
+        "osu file format v14", "",
+        "[General]", "AudioFilename: song.wav", "AudioLeadIn: 0", "PreviewTime: 8000",
+        "Mode: 0", "StackLeniency: 0.7", "",
+        "[Editor]", "Bookmarks: 4000,8000", "",
+        "[Metadata]", "Title:Song", "Artist:Artist", "Creator:Mapper", "Version:Hard",
+        "Tags:tag", "BeatmapID:0", "BeatmapSetID:-1", "",
+        "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+        "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+        "[Events]", "2,3000,4000", "",
+        "[TimingPoints]", "1000,400,4,2,0,80,1,0", "2000,-100,4,2,1,70,0,1",
+        "20000,500,4,2,0,80,1,0", "",
+        "[HitObjects]",
+        "100,100,1400,1,0,0:0:0:0:",
+        "200,200,2000,2,0,L|300:200,1,100,0|0,0:0|0:0,0:0:0:0:",
+        "256,192,5000,12,0,7000,0:0:0:0:",
+        "64,64,21000,1,0,0:0:0:0:",
+        "",
+    ]
+
+    def _map(self, tmp: str, lines=None) -> Path:
+        folder = Path(tmp)
+        text = "\r\n".join(self.LINES if lines is None else lines)
+        (folder / "map.osu").write_bytes(text.encode("utf-8"))
+        return folder / "map.osu"
+
+    def _plan(self, path: Path, **kwargs) -> dict:
+        import overtone_train
+        plan = overtone_train.plan_practice(path, **kwargs)
+        json.dumps(plan)                 # the document is JSON or it is not a document
+        return plan
+
+    def test_a_rate_plans_with_kept_stats_and_a_named_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(self._map(tmp), rate=1.37)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        self.assertAlmostEqual(plan["rate"], 1.37)
+        self.assertEqual(plan["stats"]["modes"],
+                         {"hp": "keep", "cs": "keep", "ar": "keep", "od": "keep"})
+        self.assertEqual(plan["stats"]["values"]["ar"], 9.0)
+        self.assertAlmostEqual(plan["stats"]["ms"]["ar"], 600.0)
+        self.assertAlmostEqual(plan["stats"]["ms"]["od"], 37.5)
+        self.assertEqual(plan["naming"]["version"], "Hard (1.37x)")
+        self.assertIn("Mapper", plan["naming"]["tags"])
+        self.assertIn("practice", plan["naming"]["tags"])
+        self.assertEqual(plan["target"]["bpms"], [150.0, 120.0])
+        self.assertEqual(plan["target"]["dominant_bpm"], 150.0)
+
+    def test_a_rate_of_zero_is_never_a_division(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for bad in (0, 0.0, -1.0, "fast"):
+                plan = self._plan(self._map(tmp), rate=bad)
+                self.assertFalse(plan["usable"])
+                self.assertEqual(plan["refusals"][0]["code"], "rate_not_a_number")
+            plan = self._plan(self._map(tmp), rate=5.0)
+            self.assertFalse(plan["usable"])
+            self.assertEqual(plan["refusals"][0]["code"], "rate_out_of_range")
+            self.assertIn("0.25-4x", plan["refusals"][0]["why"])
+
+    def test_a_target_bpm_on_one_tempo_is_a_rate(self) -> None:
+        single = [line for line in self.LINES
+                  if line not in ("20000,500,4,2,0,80,1,0", "64,64,21000,1,0,0:0:0:0:")]
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(self._map(tmp, single), target_bpm=200)
+        self.assertTrue(plan["usable"], plan["refusals"])
+        self.assertAlmostEqual(plan["rate"], 200.0 / 150.0)
+        self.assertEqual(plan["target"]["from_bpm"], 150.0)
+
+    def test_a_target_bpm_on_two_tempi_names_them_both(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(self._map(tmp), target_bpm=200)
+        self.assertFalse(plan["usable"])
+        refusal = next(r for r in plan["refusals"] if r["code"] == "ambiguous_target")
+        self.assertEqual(refusal["bpms"], [150.0, 120.0])
+        self.assertIn("150", refusal["why"])
+        with tempfile.TemporaryDirectory() as tmp:
+            picked = self._plan(self._map(tmp), target_bpm=200, from_bpm=120)
+        self.assertTrue(picked["usable"], picked["refusals"])
+        self.assertAlmostEqual(picked["rate"], 200.0 / 120.0)
+
+    def test_scaling_ar_past_ten_refuses_with_both_numbers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(self._map(tmp), rate=1.37, stats={"ar": "scale"})
+        self.assertFalse(plan["usable"])
+        refusal = next(r for r in plan["refusals"] if r["code"] == "stat_unreachable")
+        self.assertIn("10.08", refusal["why"])
+        self.assertIn("speed mod", refusal["why"])
+        with tempfile.TemporaryDirectory() as tmp:
+            locked = self._plan(self._map(tmp), rate=1.37, stats={"ar": 10.0})
+        self.assertTrue(locked["usable"], locked["refusals"])
+        self.assertAlmostEqual(locked["stats"]["values"]["ar"], 10.0)
+
+    def test_hp_and_cs_do_not_scale_and_mania_keeps_its_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(self._map(tmp), rate=1.5, stats={"hp": "scale"})
+        self.assertFalse(plan["usable"])
+        self.assertEqual(plan["refusals"][-1]["code"], "stat_cannot_scale")
+        mania = [("Mode: 3" if line == "Mode: 0" else line) for line in self.LINES]
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(self._map(tmp, mania), rate=1.5, stats={"cs": 5})
+        self.assertFalse(plan["usable"])
+        self.assertEqual(plan["refusals"][-1]["code"], "mania_cs_locked")
+
+    def test_ar_and_od_round_trip_through_milliseconds(self) -> None:
+        import overtone_train
+        for ar in [float(a) / 2 for a in range(0, 21)]:
+            self.assertAlmostEqual(overtone_train.ms_to_ar(
+                overtone_train.ar_to_ms(ar)), ar, places=9)
+        for od in [float(o) / 2 for o in range(0, 21)]:
+            self.assertAlmostEqual(overtone_train.ms_to_od(
+                overtone_train.od_to_ms(od)), od, places=9)
+        self.assertAlmostEqual(overtone_train.ar_to_ms(9), 600.0)
+        self.assertAlmostEqual(overtone_train.od_to_ms(7), 37.5)
+
+
+class TrainGridTests(unittest.TestCase):
+    """The rate on the grid: every object keeps the beat it had."""
+
+    def _plan(self, path: Path, **kwargs) -> dict:
+        import overtone_train
+        return overtone_train.plan_practice(path, **kwargs)
+
+    def test_one_point_oh_changes_nothing_but_the_name(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainPlanTests()._map(tmp)
+            before = Path(path).read_bytes().decode("utf-8").split("\r\n")
+            plan = self._plan(path, rate=1.0)
+            text, report = overtone_train.practice_beatmap(plan)
+            after = text.split("\r\n")
+        self.assertEqual(report["worst_beat_error"], 0.0)
+        self.assertEqual(report["worst_ms_error"], 0.0)
+        diff = [(a, b) for a, b in zip(before, after) if a != b]
+        self.assertEqual(len(before), len(after))
+        kinds = sorted(line.split(":")[0] for line, _ in diff)
+        self.assertEqual(kinds, ["Tags", "Version"])
+        self.assertTrue(any(line.startswith("Version:Hard (1x)") for _, line in diff))
+
+    def test_every_object_keeps_its_beat_at_one_point_three_seven(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(TrainPlanTests()._map(tmp), rate=1.37)
+            text, report = overtone_train.practice_beatmap(plan)
+        self.assertLessEqual(report["worst_ms_error"], 1.0)
+        self.assertLessEqual(report["worst_beat_error"], 0.01)
+        self.assertEqual(report["objects"], 4)
+
+    def test_red_beat_lengths_scale_exactly_and_greens_do_not_move(self) -> None:
+        import overtone as ta
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(TrainPlanTests()._map(tmp), rate=1.5)
+            text, _ = overtone_train.practice_beatmap(plan)
+            out = Path(tmp) / "copy.osu"
+            out.write_bytes(text.encode("utf-8"))
+            built = ta.read_osu_beatmap(out)
+        lines = next(s["lines"] for s in built["sections"]
+                     if s["name"] == "TimingPoints")
+        reds = sorted(float(line.split(",")[1]) for line in lines
+                      if line.strip() and ta._is_red_line(line.strip()))
+        greens = [line for line in lines
+                  if line.strip() and not ta._is_red_line(line.strip())]
+        self.assertAlmostEqual(reds[0], 400.0 / 1.5, places=6)
+        self.assertAlmostEqual(reds[1], 500.0 / 1.5, places=6)
+        self.assertTrue(any(line.split(",")[1] == "-100" for line in greens),
+                        greens)
+        # The spinner still ends where it did, at the rate; the slider's
+        # curve is geometry and never moves.
+        at = overtone_train._rate_number("5000", 1.5)
+        end = overtone_train._rate_number("7000", 1.5)
+        objects = {str(o["raw"]).split(",")[2]: str(o["raw"]) for o in built["hitobjects"]}
+        self.assertIn(end, objects[at].split(",")[5])
+        slider = objects[overtone_train._rate_number("2000", 1.5)]
+        self.assertIn("L|300:200", slider)
+
+    def test_breaks_bookmarks_preview_and_lead_in_follow_the_rate(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(TrainPlanTests()._map(tmp), rate=2.0)
+            text, report = overtone_train.practice_beatmap(plan)
+            self.assertEqual(report["breaks"], 1)
+        self.assertIn("2,1500,2000", text)
+        self.assertIn("Bookmarks: 2000,4000", text)
+        self.assertIn("PreviewTime: 4000", text)
+
+    def test_sixty_mutant_maps_read_or_refuse_without_a_traceback(self) -> None:
+        import random
+        import overtone_train
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "bench"))
+        import fuzz_reader
+        rng = random.Random(7)
+        seed = "\r\n".join(TrainPlanTests.LINES)
+        crashed = 0
+        with tempfile.TemporaryDirectory() as tmp:
+            for n in range(60):
+                mutant = Path(tmp) / f"mutant{n}.osu"
+                mutant.write_bytes(fuzz_reader.mutate(seed, rng))
+                try:
+                    overtone_train.plan_practice(mutant, rate=1.5)
+                except ValueError:
+                    pass
+                except Exception:  # noqa: BLE001 -- the test reports crashes
+                    crashed += 1
+        self.assertEqual(crashed, 0)
+
+
+class TrainAudioTests(unittest.TestCase):
+    """The song at the rate: resampled in process, proven against the map."""
+
+    RATE = 1.37
+
+    def _clicks(self, tmp: str, seconds: float = 20.0, bpm: float = 150.0) -> Path:
+        import overtone as ta
+        folder = Path(tmp) / "src"
+        folder.mkdir(parents=True, exist_ok=True)
+        rate = 44100
+        y = np.zeros(int(rate * seconds), dtype="float32")
+        n = int(0.04 * rate)
+        t = np.arange(n) / rate
+        kick = (np.sin(2 * np.pi * 160 * t) * np.exp(-t / 0.006)).astype("float32")
+        beat = 60.0 / bpm
+        at = 1.0
+        while at < seconds - 1.0:
+            y[int(at * rate):int(at * rate) + n] += kick
+            at += beat
+        ta.sf.write(str(folder / "song.wav"), y, rate)
+        step = int(round(beat * 4 * 1000))
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "AudioLeadIn: 0",
+                 "PreviewTime: 1000", "Mode: 0", "",
+                 "[Editor]", "Bookmarks: 1000", "",
+                 "[Metadata]", "Title:Clicks", "Artist:Overtone", "Creator:gates",
+                 "Version:150", "Tags:gate", "BeatmapID:0", "BeatmapSetID:-1", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[Events]", "",
+                 "[TimingPoints]", "1000,400,4,2,0,80,1,0", "",
+                 "[HitObjects]",
+                 *[f"100,100,{t},1,0,0:0:0:0:" for t in range(1400, 19000, step)],
+                 ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        return folder / "map.osu"
+
+    def test_the_resampled_song_runs_as_long_as_the_rate_says(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = overtone_train.plan_practice(self._clicks(tmp), rate=self.RATE)
+            self.assertTrue(plan["usable"], plan["refusals"])
+            audio = overtone_train.build_audio(plan, Path(tmp) / "out.wav",
+                                               audio_format="wav")
+        self.assertAlmostEqual(audio["duration_ms"], audio["source_ms"] / self.RATE,
+                               delta=0.1)
+        self.assertEqual(audio["method"], "resample")
+
+    def test_the_written_lines_grade_against_the_written_audio(self) -> None:
+        import overtone as ta
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._clicks(tmp)
+            plan = overtone_train.plan_practice(source, rate=self.RATE)
+            audio = overtone_train.build_audio(plan, Path(tmp) / "out.wav",
+                                               audio_format="wav")
+            text, _ = overtone_train.practice_beatmap(plan)
+            out = Path(tmp) / "copy.osu"
+            out.write_bytes(text.encode("utf-8"))
+            graded = overtone_train.grade_copy(out, audio["path"])
+            check = overtone_train.verify_audio(plan, audio["path"])
+        self.assertTrue(check["ok"], check)
+        self.assertLessEqual(abs(check["shift_ms"]), 1.0)
+        self.assertTrue(graded["ok"], graded["counts"])
+        self.assertLess(graded["worst_ms"], 2.0)
+
+    def test_mp3_is_gapless_here_and_grades_like_wav(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._clicks(tmp)
+            plan = overtone_train.plan_practice(source, rate=self.RATE)
+            audio = overtone_train.build_audio(plan, Path(tmp) / "out.mp3",
+                                               audio_format="mp3")
+            text, _ = overtone_train.practice_beatmap(plan)
+            out = Path(tmp) / "copy.osu"
+            out.write_bytes(text.encode("utf-8"))
+            graded = overtone_train.grade_copy(out, audio["path"])
+            check = overtone_train.verify_audio(plan, audio["path"])
+        self.assertTrue(check["gapless"]["present"], check["gapless"])
+        self.assertTrue(check["ok"], check)
+        self.assertTrue(graded["ok"], graded["counts"])
+        self.assertLess(graded["worst_ms"], 2.0)
+
+    def test_a_dry_run_writes_nothing_and_a_second_build_refuses(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._clicks(tmp)
+            plan = overtone_train.plan_practice(source, rate=self.RATE)
+            shown = overtone_train.build_practice(plan, Path(tmp) / "set", dry_run=True)
+            self.assertFalse((Path(tmp) / "set").exists())
+            self.assertTrue(any(f["kind"] == "audio" for f in shown["files"]))
+            whole = overtone_train.build_practice(plan, Path(tmp) / "set",
+                                                  audio_format="wav")
+            there = sorted(p.name for p in (Path(tmp) / "set").iterdir())
+            self.assertEqual(there, sorted(f["name"] for f in whole["files"]))
+            self.assertTrue(whole["checks"]["ok"], whole["checks"])
+            with self.assertRaises(ValueError):
+                overtone_train.build_practice(plan, Path(tmp) / "set",
+                                              audio_format="wav")
+            with self.assertRaises(ValueError):
+                overtone_train.build_practice(plan, source.parent,
+                                              audio_format="wav")
+
+    def test_no_song_means_grid_without_audio(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainPlanTests()._map(tmp)
+            plan = overtone_train.plan_practice(path, rate=1.5)
+            self.assertTrue(plan["usable"], plan["refusals"])
+            with self.assertRaises(ValueError):
+                overtone_train.build_audio(plan, Path(tmp) / "out.wav")
+
+
+class TrainLadderTests(unittest.TestCase):
+    """One run, one mapset, several rates: practising is a ladder."""
+
+    def _ladder(self, path: Path, rates, **kwargs) -> dict:
+        import overtone_train
+        ladder = overtone_train.plan_ladder(path, rates, **kwargs)
+        json.dumps(ladder)              # the document is JSON or it is not a document
+        return ladder
+
+    def test_three_rungs_plan_with_an_audio_file_each(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            ladder = self._ladder(TrainAudioTests()._clicks(tmp), [1.0, 1.2, 1.5])
+        self.assertTrue(ladder["usable"], ladder["refusals"])
+        self.assertEqual([plan["rate"] for plan in ladder["plans"]], [1.0, 1.2, 1.5])
+        names = [overtone_train._ladder_audio_name("song", rate, "mp3")
+                 for rate in ladder["rates"]]
+        self.assertEqual(names, ["song-1x.mp3", "song-1.2x.mp3", "song-1.5x.mp3"])
+        versions = [plan["naming"]["version"] for plan in ladder["plans"]]
+        self.assertEqual(len(set(versions)), 3)
+
+    def test_a_ladder_of_one_is_a_copy_and_twice_is_not_climbing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainAudioTests()._clicks(tmp)
+            self.assertEqual(self._ladder(path, [1.5])["refusals"][0]["code"],
+                             "not_a_ladder")
+            self.assertEqual(self._ladder(path, [1.2, 1.2])["refusals"][0]["code"],
+                             "repeated_rung")
+            self.assertEqual(self._ladder(path, [1.0] * 13)["refusals"][0]["code"],
+                             "too_many_rungs")
+            bad = self._ladder(path, [1.0, 5.0])
+            self.assertFalse(bad["usable"])
+            self.assertEqual(bad["refusals"][0]["code"], "rate_out_of_range")
+
+    def test_a_rung_refused_is_a_ladder_refused_with_the_rung_named(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainAudioTests()._clicks(tmp)
+            ladder = self._ladder(path, [1.2, 1.5], stats={"ar": "scale"})
+        self.assertFalse(ladder["usable"])
+        # AR 9 scaled past 10 on the faster rungs, kept whole on 1.2x: the
+        # refusal names which rung cannot be written.
+        self.assertTrue(all(refusal["rung"] == "1.5x" for refusal in ladder["refusals"]))
+
+    def test_the_folder_holds_every_rung_with_its_own_song(self) -> None:
+        import overtone as ta
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            ladder = self._ladder(TrainAudioTests()._clicks(tmp), [1.0, 1.2, 1.5])
+            shown = overtone_train.build_ladder(ladder, Path(tmp) / "set", dry_run=True,
+                                                audio_format="wav")
+            self.assertFalse((Path(tmp) / "set").exists())
+            self.assertEqual([f["kind"] for f in shown["files"]],
+                             ["audio"] * 3 + ["beatmap"] * 3)
+            whole = overtone_train.build_ladder(ladder, Path(tmp) / "set",
+                                                audio_format="wav", grade=True)
+            there = sorted(p.name for p in (Path(tmp) / "set").iterdir())
+            self.assertEqual(there, sorted(f["name"] for f in whole["files"]))
+            self.assertTrue(whole["ok"], whole["rungs"])
+            for row in whole["rungs"]:
+                self.assertTrue(row["checks"]["ok"], row["checks"])
+                self.assertTrue(row["checks"]["grade"]["ok"], row["checks"]["grade"])
+                built = ta.read_osu_beatmap(Path(tmp) / "set" / row["osu"])
+                self.assertEqual(built["general"]["AudioFilename"], row["audio_name"])
+            with self.assertRaises(ValueError):
+                overtone_train.build_ladder(ladder, Path(tmp) / "set", audio_format="wav")
+            with self.assertRaises(ValueError):
+                overtone_train.build_ladder(ladder, Path(tmp) / "src", audio_format="wav")
+
+
+class TrainFeelModsTests(unittest.TestCase):
+    """What the copy will feel like, and the mods it will be played with."""
+
+    def _stream(self, tmp: str, gap_ms: int = 100, notes: int = 16) -> Path:
+        folder = Path(tmp)
+        lines = ["osu file format v14", "",
+                 "[General]", "AudioFilename: song.wav", "Mode: 0", "",
+                 "[Metadata]", "Title:S", "Artist:A", "Creator:M", "Version:Hard",
+                 "BeatmapID:0", "BeatmapSetID:-1", "",
+                 "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:8",
+                 "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+                 "[TimingPoints]", "0,400,4,2,0,80,1,0", "",
+                 "[HitObjects]",
+                 *[f"100,100,{1000 + k * gap_ms},1,0,0:0:0:0:" for k in range(notes)],
+                 ""]
+        (folder / "map.osu").write_bytes("\r\n".join(lines).encode("utf-8"))
+        return folder / "map.osu"
+
+    def test_feel_counts_density_stream_and_windows(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainAudioTests()._clicks(tmp)
+            feel = overtone_train.feel_of(path, 1.37,
+                                          {"hp": 5.0, "cs": 4.0, "ar": 9.0, "od": 7.0}, [])
+        self.assertEqual((feel["objects"], feel["bpm_text"], feel["mode"]), (11, "150", 0))
+        self.assertAlmostEqual(feel["density_per_s"], 0.69, delta=0.01)
+        self.assertEqual(feel["longest_stream"]["notes"], 1)
+        self.assertIsNone(feel["longest_stream"]["notes_per_s"])
+        self.assertAlmostEqual(feel["ar_ms"], 600.0)
+        self.assertEqual(feel["od_windows"], {"300": 37.5, "100": 83.5, "50": 129.5})
+        with tempfile.TemporaryDirectory() as tmp:
+            stream = overtone_train.feel_of(self._stream(tmp), 2.0,
+                                            {"hp": 5.0, "cs": 4.0, "ar": 9.0, "od": 8.0}, [])
+        self.assertEqual(stream["longest_stream"]["notes"], 16)
+        self.assertAlmostEqual(stream["longest_stream"]["notes_per_s"], 16 / 1.5, delta=0.01)
+        self.assertAlmostEqual(stream["duration_ms"], 750.0, delta=0.1)
+
+    def test_a_locked_feel_writes_the_compensation(self) -> None:
+        import overtone as ta
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainAudioTests()._clicks(tmp)
+            plan = overtone_train.plan_practice(path, rate=1.0, stats={"ar": 9},
+                                                mods=["DT"])
+            self.assertTrue(plan["usable"], plan["refusals"])
+            # AR 9 felt under DT is AR 7 written: 600 ms × 1.5 back to 900.
+            self.assertAlmostEqual(plan["stats"]["values"]["ar"], 7.0)
+            felt = plan["stats"]["feel"]["ar"]
+            self.assertAlmostEqual(felt["feel"], 9.0)
+            self.assertAlmostEqual(felt["feel_ms"], 600.0)
+            self.assertEqual(felt["arithmetic"], [overtone_train.MODS["DT"]["says"]])
+            text, _ = overtone_train.practice_beatmap(plan)
+            out = Path(tmp) / "copy.osu"
+            out.write_bytes(text.encode("utf-8"))
+            built = ta.read_osu_beatmap(out)
+        self.assertEqual(built["difficulty"]["ApproachRate"], "7")
+
+    def test_what_no_combination_reaches_refuses_saying_so(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainAudioTests()._clicks(tmp)
+            ez = overtone_train.plan_practice(path, rate=1.0, stats={"ar": 10}, mods=["EZ"])
+            self.assertFalse(ez["usable"])
+            self.assertEqual(ez["refusals"][-1]["code"], "mod_unreachable")
+            clash = overtone_train.plan_practice(path, rate=1.0, mods=["DT", "HT"])
+            self.assertEqual(clash["refusals"][-1]["code"], "contradictory_mods")
+            unknown = overtone_train.plan_practice(path, rate=1.0, mods=["HD"])
+            self.assertEqual(unknown["refusals"][-1]["code"], "unknown_mod")
+
+    def test_hr_caps_where_the_game_caps(self) -> None:
+        import overtone_train
+        felt = overtone_train.mod_feel("hp", 8.0, ["HR"])
+        self.assertAlmostEqual(felt["feel"], 10.0)
+        self.assertTrue(felt["capped"])
+        plain = overtone_train.mod_feel("ar", 9.0, ["DT"])
+        self.assertAlmostEqual(plain["feel_ms"], 400.0)
+        self.assertIsNone(plain["feel"])   # past AR 10: milliseconds only
+        written, bad = overtone_train.mod_compensate("ar", 10.5, ["DT"])
+        self.assertFalse(bad)
+        self.assertAlmostEqual(written, 9.25)
+
+
+class TrainCopiesTests(unittest.TestCase):
+    """The write log already knows every copy: list them, free them."""
+
+    def test_copies_list_with_origins_and_free_themselves(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            first = overtone_train.build_practice(
+                overtone_train.plan_practice(TrainAudioTests()._clicks(tmp), rate=1.2),
+                Path(tmp) / "set1", audio_format="wav")
+            self.assertTrue(first["checks"]["ok"])
+            listed = overtone_train.list_copies()
+            rows = [row for row in listed["folders"] if row["folder"].endswith("set1")]
+            self.assertEqual(len(rows), 1)
+            row = rows[0]
+            self.assertEqual(row["rates"], ["1.2"])
+            self.assertTrue(row["sources"] and row["sources"][0].endswith("map.osu"))
+            self.assertTrue(row["complete"] and row["bytes"] > 0)
+            dry = overtone_train.remove_copies([row["folder"]], dry_run=True)
+            self.assertTrue(dry["dry_run"] and dry["bytes"] == row["bytes"])
+            self.assertTrue((Path(tmp) / "set1").is_dir())
+            gone = overtone_train.remove_copies([row["folder"]])
+            self.assertEqual(gone["bytes"], row["bytes"])
+            self.assertFalse((Path(tmp) / "set1").exists())
+            unknown = overtone_train.remove_copies(["nowhere"])
+            self.assertEqual(unknown["removed"][0]["refusal"],
+                             "Not a practice copy this log knows.")
+
+    def test_presets_are_practice_documents_with_names(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(os.environ, {"OVERTONE_TRAIN_PRESETS": str(Path(tmp) / "p.json")}):
+                saved = overtone_train.save_preset("dt", {"rate": 1.0, "mods": ["DT"],
+                                                           "stats": {"ar": 9}})
+                self.assertEqual(saved["settings"]["mods"], ["DT"])
+                self.assertIn("dt", overtone_train.list_presets()["presets"])
+                with self.assertRaises(ValueError):
+                    overtone_train.save_preset("bad", {"mods": ["HD"]})
+                with self.assertRaises(ValueError):
+                    overtone_train.save_preset("bad", {"audio_format": "ogg"})
+                self.assertTrue(overtone_train.delete_preset("dt")["deleted"])
+                with self.assertRaises(ValueError):
+                    overtone_train.delete_preset("dt")
+
+
+class TrainDetectTests(unittest.TestCase):
+    """Picking the map from what osu! writes outside itself — measured."""
+
+    LINES = ["osu file format v14", "",
+             "[General]", "AudioFilename: song.wav", "Mode: 0", "",
+             "[Metadata]", "Title:{title}", "Artist:{artist}", "Creator:M", "Version:{version}",
+             "BeatmapID:0", "BeatmapSetID:-1", "",
+             "[Difficulty]", "HPDrainRate:5", "CircleSize:4", "OverallDifficulty:7",
+             "ApproachRate:9", "SliderMultiplier:1.4", "SliderTickRate:1", "",
+             "[TimingPoints]", "1000,400,4,2,0,80,1,0", "",
+             "[HitObjects]", "100,100,1400,1,0,0:0:0:0:", ""]
+
+    def _songs(self, tmp: str) -> Path:
+        songs = Path(tmp) / "Songs"
+        first = songs / "1 Artist - Song"
+        first.mkdir(parents=True)
+        (first / "a.osu").write_bytes("\r\n".join(self.LINES).format(
+            artist="Artist", title="Song", version="Hard").encode("utf-8"))
+        second = songs / "2 Other - Track"
+        second.mkdir(parents=True)
+        (second / "b.osu").write_bytes("\r\n".join(self.LINES).format(
+            artist="Other", title="Track", version="Easy").encode("utf-8"))
+        return songs
+
+    def test_the_window_wins_when_it_names_a_map(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = self._songs(tmp)
+            found = overtone_train.detect_map(
+                songs, titles=["osu! - Artist - Song [Hard]", "osu!"])
+        self.assertEqual(found["signal"], "window")
+        self.assertTrue(found["osu"].endswith("a.osu"))
+
+    def test_a_replay_names_what_was_just_played(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = self._songs(tmp)
+            replays = Path(tmp) / "Replays"
+            replays.mkdir()
+            (replays / "player - Other - Track [Easy] (2026-10-07) Osu.osr").write_bytes(b"")
+            found = overtone_train.detect_map(songs, replays, titles=[])
+        self.assertEqual(found["signal"], "replay")
+        self.assertTrue(found["osu"].endswith("b.osu"))
+
+    def test_an_unreadable_past_degrades_to_what_just_arrived(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = self._songs(tmp)
+            replays = Path(tmp) / "Replays"
+            replays.mkdir()
+            (replays / "junk.osr").write_bytes(b"")
+            newest = songs / "2 Other - Track" / "b.osu"
+            newest.touch()
+            # Newer by a clear minute, not by touching it last: on a fast
+            # disk two files written back to back can share one timestamp
+            # (the owner's server, 2026-10-26).
+            later = max(p.stat().st_mtime for p in songs.rglob("*.osu")) + 60
+            os.utime(newest, (later, later))
+            found = overtone_train.detect_map(songs, replays, titles=[])
+        self.assertEqual(found["signal"], "songs_newest")
+        self.assertTrue(found["osu"].endswith("b.osu"))
+
+    def test_nothing_anywhere_says_so_and_names_everything_tried(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            songs = Path(tmp) / "Songs"
+            songs.mkdir()
+            found = overtone_train.detect_map(songs, Path(tmp) / "gone",
+                                              Path(tmp) / "gone.db", titles=["osu!"])
+        self.assertIsNone(found["osu"])
+        self.assertIsNone(found["signal"])
+        kinds = [row["signal"] for row in found["signals"]]
+        self.assertIn("osu_db", kinds)
+
+    def test_the_database_reads_but_never_picks(self) -> None:
+        import overtone_train
+        missing = overtone_train.osu_db_header(Path("nowhere") / "osu!.db")
+        self.assertFalse(missing["present"])
+        self.assertIsNone(overtone_train.parse_osu_title("osu!"))
+        self.assertIsNone(overtone_train.replay_candidate("map.osu"))
+
+
+class InstallerAssocTests(unittest.TestCase):
+    """The .osz association the MSI registers: what double-clicking does."""
+
+    SOURCE = Path(__file__).resolve().parent.parent / "installer" / "Overtone.wxs"
+
+    def test_the_association_names_its_keys_and_command(self) -> None:
+        text = self.SOURCE.read_text(encoding="utf-8")
+        for needle in (r'Software\Classes\.osz',
+                       r'Software\Classes\Overtone.osz',
+                       r'Overtone.osz\shell\open\command',
+                       r'Overtone.osz\DefaultIcon',
+                       'Value="Overtone.osz"',
+                       '[INSTALLFOLDER]Overtone.exe',
+                       '%1',
+                       '<ComponentRef Id="OszAssociation" />'):
+            self.assertIn(needle, text)
+
+    def test_the_setup_screen_offers_what_the_features_level(self) -> None:
+        text = self.SOURCE.read_text(encoding="utf-8")
+        for needle in ('WixUI_FeatureTree',
+                       'Id="OszAssoc"',
+                       'Id="AudioAssoc"',
+                       'Id="DesktopIcon"',
+                       'Level="1000"',
+                       'Software\\Classes\\.mp3',
+                       'Software\\Classes\\.m4a',
+                       'SystemFileAssociations\\audio',
+                       'Analyze with Overtone',
+                       '<ComponentRef Id="AudioAssociation" />',
+                       '<ComponentRef Id="ContextMenu" />',
+                       '<ComponentRef Id="DesktopShortcut" />'):
+            self.assertIn(needle, text)
+
+
+class TrainHotkeyTests(unittest.TestCase):
+    """One global hotkey, delivered by the OS, never hooked."""
+
+    def test_registered_unregistered_and_reusable(self) -> None:
+        import overtone_hotkey
+        if not overtone_hotkey.available():
+            self.skipTest("no Win32 on this machine")
+        first = overtone_hotkey.HotkeyWait(hotkey_id=41)
+        first.start()
+        self.assertTrue(first.ready.wait(timeout=5))
+        self.assertIsNone(first.error)
+        second = overtone_hotkey.HotkeyWait(hotkey_id=41)
+        second.start()
+        self.assertTrue(second.ready.wait(timeout=5))
+        self.assertIsNotNone(second.error)
+        first.stop()
+        self.assertFalse(first.is_alive())
+        third = overtone_hotkey.HotkeyWait(hotkey_id=41)
+        third.start()
+        self.assertTrue(third.ready.wait(timeout=5))
+        self.assertIsNone(third.error)
+        third.stop()
+        self.assertFalse(third.is_alive())
+
+    def test_a_posted_hotkey_fires_the_callback(self) -> None:
+        import ctypes
+        import overtone_hotkey
+        if not overtone_hotkey.available():
+            self.skipTest("no Win32 on this machine")
+        fired = []
+        wait = overtone_hotkey.HotkeyWait(hotkey_id=42, callback=lambda: fired.append(1))
+        wait.start()
+        self.assertTrue(wait.ready.wait(timeout=5))
+        ctypes.windll.user32.PostMessageW(wait._handle, overtone_hotkey.WM_HOTKEY, 42, 0)
+        self.assertTrue(wait.fired.wait(timeout=5))
+        wait.stop()
+        self.assertEqual(fired, [1])
+
+    def test_a_failing_callback_does_not_end_the_wait(self) -> None:
+        import ctypes
+        import overtone_hotkey
+        if not overtone_hotkey.available():
+            self.skipTest("no Win32 on this machine")
+
+        def bad():
+            raise RuntimeError("callback blew up")
+
+        wait = overtone_hotkey.HotkeyWait(hotkey_id=43, callback=bad)
+        wait.start()
+        self.assertTrue(wait.ready.wait(timeout=5))
+        ctypes.windll.user32.PostMessageW(wait._handle, overtone_hotkey.WM_HOTKEY, 43, 0)
+        self.assertTrue(wait.fired.wait(timeout=5))
+        self.assertTrue(wait.is_alive())
+        wait.stop()
+
+
+class TrainDropTests(unittest.TestCase):
+    """Spinners dropped on an explicit ask, never by default."""
+
+    def test_asked_spinners_leave_named_in_version_and_report(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainPlanTests()._map(tmp)
+            plan = overtone_train.plan_practice(path, rate=1.5, drop_spinners=True)
+            self.assertTrue(plan["usable"], plan["refusals"])
+            self.assertEqual(len(plan["drops"]), 1)
+            self.assertAlmostEqual(plan["drops"][0]["at_rate_ms"], 2000.0 / 1.5, delta=0.1)
+            self.assertEqual(plan["naming"]["version"], "Hard (1.5x), no spinners")
+            self.assertIn("no-spinners", plan["naming"]["tags"])
+            self.assertEqual(plan["naming"]["fields"]["dropped"], "1 spinner(s)")
+            text, report = overtone_train.practice_beatmap(plan)
+            self.assertEqual(report["dropped"], 1)
+            self.assertEqual(report["objects"], 3)
+            body = text.split("[HitObjects]")[1]
+            self.assertNotIn("5000,12", body)
+            self.assertIn("L|300:200", body)
+
+    def test_unasked_everything_stays(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainPlanTests()._map(tmp)
+            plan = overtone_train.plan_practice(path, rate=1.5)
+            self.assertFalse(plan["drop_spinners"])
+            self.assertEqual(plan["drops"], [])
+            self.assertEqual(plan["naming"]["version"], "Hard (1.5x)")
+            _text, report = overtone_train.practice_beatmap(plan)
+            self.assertEqual(report["dropped"], 0)
+            self.assertEqual(report["objects"], 4)
+
+    def test_a_map_without_spinners_says_so(self) -> None:
+        import overtone_train
+        with tempfile.TemporaryDirectory() as tmp:
+            path = TrainAudioTests()._clicks(tmp)
+            plan = overtone_train.plan_practice(path, rate=1.5, drop_spinners=True)
+            self.assertTrue(plan["usable"], plan["refusals"])
+            codes = {repair["code"] for repair in plan["repairs"]}
+            self.assertIn("no_spinners_to_drop", codes)
+
+
+class WatchModeTests(unittest.TestCase):
+    """`--watch`: one run now, one per finished change, none per poll."""
+
+    def test_a_change_is_analysed_once_it_holds_still(self) -> None:
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "song.wav"
+            audio.write_bytes(b"a")
+            # Each poll is a step of a scripted edit: idle, a write that
+            # keeps growing for one poll, then still, then idle again.
+            script = iter([None, b"ab", b"abc", None, None, None])
+            runs: list[bytes] = []
+
+            def sleep(_seconds: float) -> None:
+                step = next(script, None)
+                if step is not None:
+                    audio.write_bytes(step)
+                    stamp = os.stat(audio).st_mtime_ns + len(step) * 1_000_000
+                    os.utime(audio, ns=(stamp, stamp))
+
+            polls = iter(range(6))
+            count = overtone.watch_file(audio, lambda: runs.append(audio.read_bytes()),
+                                        lambda _message: None, sleep=sleep,
+                                        stop=lambda: next(polls, None) is None)
+            self.assertEqual(runs, [b"a", b"abc"])
+            self.assertEqual(count, 2)
+
+    def test_a_missing_file_is_waited_for(self) -> None:
+        import overtone
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "song.wav"
+            runs = []
+            polls = iter(range(3))
+            overtone.watch_file(audio, lambda: runs.append(1), lambda _message: None,
+                                sleep=lambda _s: None, stop=lambda: next(polls, None) is None)
+            self.assertEqual(runs, [])
+
+
+if __name__ == "__main__":
+    unittest.main()

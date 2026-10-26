@@ -49,7 +49,7 @@ is missing.
 | `PORT` | `3001` | The API's port. Vite's proxy reads `API_PORT` if you change it. |
 | `HOST` | every interface | `127.0.0.1` behind a reverse proxy. |
 | `NODE_ENV` | `development` | `production` turns on HSTS, hides 5xx details and enforces the required names below. |
-| `TRUST_PROXY` | `0` | Proxies in front (1 behind Caddy or nginx). Decides the IP the rate limit counts. |
+| `TRUST_PROXY` | `0` | Proxies in front (1 behind Caddy or nginx; 2 in the panel deployment, the TLS proxy plus `deploy/web/serve.mjs`). Decides the IP the rate limit counts: too low puts every visitor in one bucket, too high lets a client pick its own address. |
 | `DATABASE_URL` | none (memory) | PostgreSQL. **Required in production.** |
 | `SITE_URL` | `http://localhost:5173` | Where the web is served. The SSO `redirect_uri` is `${SITE_URL}/login/callback`. **https in production.** |
 | `SESSION_SECRET` | random per process | Signs the session and SSO cookies. 32+ characters. **Required in production.** Changing it signs everyone out. |

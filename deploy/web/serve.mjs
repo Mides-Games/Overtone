@@ -2,7 +2,7 @@
 /*
  * overtone-web: serves the built site and forwards /api to overtone-api.
  *
- *   PORT=4006 WEB_ROOT=site/web/dist API_UPSTREAM=http://<bridge-ip>:4012 node deploy/web/serve.mjs
+ *   PORT=8080 WEB_ROOT=site/web/dist API_UPSTREAM=http://127.0.0.1:4012 node deploy/web/serve.mjs
  *
  * One process per environment, no dependencies. The browser only ever talks
  * to this origin, so the API needs no CORS and no public hostname of its own:
@@ -12,15 +12,40 @@
  * to index.html (the app routes on the client). Vite's hashed /assets/* are
  * cached for a year; index.html is never cached, so a release is visible on
  * the next load.
+ *
+ * TRUSTED_PROXY_HOPS (default 1) is how many proxies sit in front of this
+ * process: 1 for the TLS proxy (Cloudflare, nginx or Caddy). The API counts its
+ * rate limit per client address, and everything it receives comes from here,
+ * so the X-Forwarded-For it reads has to be one this process vouches for: the
+ * last TRUSTED_PROXY_HOPS entries of the incoming header (the ones those
+ * proxies appended) plus the address of the connection itself. Whatever a
+ * client wrote further left is dropped. The API then trusts this process and
+ * those hops, TRUST_PROXY = TRUSTED_PROXY_HOPS + 1.
+ *
+ * HSTS (default 1) sends Strict-Transport-Security with every page. Set it to
+ * 0 only when the site is served over plain http, as on a laptop.
  */
+import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 
 const PORT = Number(process.env.PORT || process.env.SERVER_PORT || 8080);
 const ROOT = path.resolve(process.env.WEB_ROOT || 'site/web/dist');
 const UPSTREAM = new URL(process.env.API_UPSTREAM || 'http://127.0.0.1:4012');
+const HOPS = hops(process.env.TRUSTED_PROXY_HOPS);
+const HSTS = !['0', 'false', 'no'].includes(String(process.env.HSTS ?? '1').trim().toLowerCase());
+
+function hops(raw) {
+  if (raw === undefined || String(raw).trim() === '') return 1;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > 10) {
+    console.error(`overtone-web: TRUSTED_PROXY_HOPS must be an integer from 0 to 10 (got "${raw}")`);
+    process.exit(1);
+  }
+  return n;
+}
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -54,12 +79,23 @@ function forwardable(headers) {
   return out;
 }
 
+// The chain the API reads: the last HOPS entries the trusted proxies appended,
+// then the connection's own address. Never what a client typed before them.
+function forwardedFor(req) {
+  const raw = req.headers['x-forwarded-for'];
+  const incoming = (Array.isArray(raw) ? raw.join(',') : raw || '')
+    .split(',')
+    .map((a) => a.trim())
+    .filter(Boolean);
+  const kept = HOPS > 0 ? incoming.slice(-HOPS) : [];
+  return [...kept, req.socket.remoteAddress || 'unknown'].join(', ');
+}
+
 // Request and response bodies are piped, never buffered: an audio upload goes
 // through at the size the API accepts, and the API is the one that limits it.
 function proxy(req, res) {
   const headers = forwardable(req.headers);
-  const peer = req.socket.remoteAddress || '';
-  headers['x-forwarded-for'] = headers['x-forwarded-for'] ? `${headers['x-forwarded-for']}, ${peer}` : peer;
+  headers['x-forwarded-for'] = forwardedFor(req);
   headers['x-forwarded-proto'] ||= 'http';
   headers['x-forwarded-host'] ||= req.headers.host || '';
   headers.host = UPSTREAM.host;
@@ -80,6 +116,48 @@ function proxy(req, res) {
     }
   });
   req.pipe(up);
+}
+
+// The built index.html carries one inline script (theme and language before the
+// first frame). It is allowed by its hash, read from the file being served, so
+// the policy follows the build and nothing else inline runs.
+let policy = { mtime: -1, value: '' };
+
+async function contentSecurityPolicy() {
+  const index = path.join(ROOT, 'index.html');
+  const s = await file(index);
+  const mtime = s ? s.mtimeMs : 0;
+  if (mtime === policy.mtime) return policy.value;
+  const html = s ? await readFile(index, 'utf8') : '';
+  const hashes = [...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
+    .filter((m) => m[1].length)
+    .map((m) => `'sha256-${createHash('sha256').update(m[1], 'utf8').digest('base64')}'`);
+  const value = [
+    "default-src 'self'",
+    `script-src 'self'${hashes.length ? ' ' + hashes.join(' ') : ''}`,
+    // Avatars and banners come from Mides, on whatever host it serves them.
+    "img-src 'self' data: https:",
+    "font-src 'self' data:",
+    "style-src 'self'",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; ');
+  policy = { mtime, value };
+  return value;
+}
+
+async function securityHeaders() {
+  const headers = {
+    'content-security-policy': await contentSecurityPolicy(),
+    'x-content-type-options': 'nosniff',
+    'x-frame-options': 'DENY',
+    'referrer-policy': 'strict-origin-when-cross-origin',
+  };
+  if (HSTS) headers['strict-transport-security'] = 'max-age=31536000';
+  return headers;
 }
 
 async function file(p) {
@@ -115,7 +193,7 @@ async function serve(req, res) {
     s = await file(target);
   }
   if (!s) {
-    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', ...(await securityHeaders()) });
     return res.end('not found\n');
   }
   const immutable = rel.startsWith('/assets/');
@@ -123,7 +201,7 @@ async function serve(req, res) {
     'content-type': TYPES[path.extname(target).toLowerCase()] || 'application/octet-stream',
     'content-length': s.size,
     'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
-    'x-content-type-options': 'nosniff',
+    ...(await securityHeaders()),
   });
   if (req.method === 'HEAD') return res.end();
   createReadStream(target).pipe(res);
@@ -144,5 +222,8 @@ process.on('SIGTERM', () => server.close(() => process.exit(0)));
 
 server.listen(PORT, '0.0.0.0', () => {
   // The egg's "done" line: the panel shows the server as running from here.
-  console.log(`overtone-web: listening on ${PORT}, serving ${ROOT}, /api -> ${UPSTREAM.origin}`);
+  console.log(
+    `overtone-web: listening on ${PORT}, serving ${ROOT}, /api -> ${UPSTREAM.origin}, ` +
+      `${HOPS} trusted proxy hop(s), HSTS ${HSTS ? 'on' : 'off'}`,
+  );
 });

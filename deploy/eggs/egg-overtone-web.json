@@ -90,12 +90,32 @@
         },
         {
             "name": "API upstream",
-            "description": "Where /api goes: this environment's overtone-api, http://<allocation ip>:<port>, e.g. http://<bridge-ip>:4012. No trailing slash.",
+            "description": "Where /api goes: this environment's overtone-api, http://<allocation ip>:<port>, the address and port of its allocation on the Docker bridge (see the panel). No trailing slash.",
             "env_variable": "API_UPSTREAM",
             "default_value": "",
             "user_viewable": true,
             "user_editable": false,
             "rules": "required|string|starts_with:http://",
+            "field_type": "text"
+        },
+        {
+            "name": "Trusted proxy hops",
+            "description": "Proxies in front of this server: 1 for the TLS proxy. serve.mjs keeps that many X-Forwarded-For entries plus the connection's address and drops what a client wrote before them. The API's TRUST_PROXY is this + 1.",
+            "env_variable": "TRUSTED_PROXY_HOPS",
+            "default_value": "1",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|integer|between:0,10",
+            "field_type": "text"
+        },
+        {
+            "name": "HSTS",
+            "description": "1 = every page carries Strict-Transport-Security (one year). The site is served over https only; 0 is for a server reached over plain http.",
+            "env_variable": "HSTS",
+            "default_value": "1",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|boolean",
             "field_type": "text"
         }
     ]

@@ -90,7 +90,7 @@
         },
         {
             "name": "API upstream",
-            "description": "Where /api goes: this environment's overtone-api, http://<allocation ip>:<port>, e.g. http://<bridge-ip>:4012. No trailing slash.",
+            "description": "Where /api goes: this environment's overtone-api, http://<allocation ip>:<port>, the address and port of its allocation on the Docker bridge (see the panel). No trailing slash.",
             "env_variable": "API_UPSTREAM",
             "default_value": "",
             "user_viewable": true,

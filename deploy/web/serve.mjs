@@ -2,7 +2,7 @@
 /*
  * overtone-web: serves the built site and forwards /api to overtone-api.
  *
- *   PORT=4006 WEB_ROOT=site/web/dist API_UPSTREAM=http://<bridge-ip>:4012 node deploy/web/serve.mjs
+ *   PORT=8080 WEB_ROOT=site/web/dist API_UPSTREAM=http://127.0.0.1:4012 node deploy/web/serve.mjs
  *
  * One process per environment, no dependencies. The browser only ever talks
  * to this origin, so the API needs no CORS and no public hostname of its own:

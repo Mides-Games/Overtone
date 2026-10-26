@@ -126,7 +126,7 @@ def web():
         NODE_IMAGES, "overtone-web: listening on",
         [var("API upstream", "API_UPSTREAM",
              "Where /api goes: this environment's overtone-api, http://<allocation ip>:<port>, "
-             "e.g. http://<bridge-ip>:4012. No trailing slash.",
+             "the address and port of its allocation on the Docker bridge (see the panel). No trailing slash.",
              rules="required|string|starts_with:http://"),
          var("Trusted proxy hops", "TRUSTED_PROXY_HOPS",
              "Proxies in front of this server: 1 for the TLS proxy. serve.mjs keeps that many "

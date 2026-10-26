@@ -1,7 +1,7 @@
 # Despliegue en Reviactyl
 
 Cómo se publica Overtone en el panel de Mides (`console.midesprojects.com`, un
-fork de Pterodactyl), en el nodo **NA-01** (<node-ip>). El plan general está en
+fork de Pterodactyl), en el nodo **NA-01**. El plan general está en
 `docs/16-web-platform.md` §2 (ramas) y §5 (despliegue). Este documento es el
 manual: lo que un admin del panel hace, en orden.
 
@@ -70,31 +70,37 @@ y `/var/run/postgresql` es escribible por todos.
 ## 2. Puertos y allocations
 
 Hacia afuera solo se publican las dos webs. El resto de los servers se habla por la
-red de Docker del nodo: allocations en la IP del bridge de Wings, `<bridge-ip>` por
-defecto (es la `docker.network.interface` de `/etc/pterodactyl/config.yml`; hay que
+red de Docker del nodo: allocations en la IP del bridge de Wings, `<bridge-ip>`
+(es la `docker.network.interface` de `/etc/pterodactyl/config.yml`; hay que
 confirmarla en NA-01). Un puerto en esa IP no se ve desde internet, pero sí lo
 alcanza cualquier contenedor del nodo.
 
+Este documento no publica direcciones ni puertos: `<node-ip>` es la IP pública del
+nodo, `<bridge-ip>` la del bridge, y cada `<…-port>` el puerto de la allocation de
+ese server. Los valores concretos viven en el panel (**Admin → Nodes → NA-01 →
+Allocation** y la pestaña **Network** de cada server), no en el repo.
+
 | Server | Allocation | Quién llega |
 |---|---|---|
-| `overtone-web` (master) | `<node-ip>:4006` | el proxy TLS |
-| `overtone-web-exp` (experimental) | `<node-ip>:4007` | el proxy TLS |
-| `overtone-api` | `<bridge-ip>:4012` | `overtone-web` |
-| `overtone-api-exp` | `<bridge-ip>:4013` | `overtone-web-exp` |
-| `overtone-worker` | `<bridge-ip>:4014` | nadie: no escucha. El panel pide una allocation igual. |
-| `overtone-worker-exp` | `<bridge-ip>:4015` | nadie |
-| `overtone-db` | `<bridge-ip>:4016` | las dos APIs y los dos workers |
+| `overtone-web` (master) | `<node-ip>:<web-port>` | el proxy TLS |
+| `overtone-web-exp` (experimental) | `<node-ip>:<web-exp-port>` | el proxy TLS |
+| `overtone-api` | `<bridge-ip>:<api-port>` | `overtone-web` |
+| `overtone-api-exp` | `<bridge-ip>:<api-exp-port>` | `overtone-web-exp` |
+| `overtone-worker` | `<bridge-ip>:<worker-port>` | nadie: no escucha. El panel pide una allocation igual. |
+| `overtone-worker-exp` | `<bridge-ip>:<worker-exp-port>` | nadie |
+| `overtone-db` | `<bridge-ip>:<db-port>` | las dos APIs y los dos workers |
 
-**Admin → Nodes → NA-01 → Allocation:** crear `<bridge-ip>` con los puertos
-4012–4016. 4006 y 4007 ya están libres en la IP pública. Quedan 4002 y 4008–4011
-para otra cosa.
+**Admin → Nodes → NA-01 → Allocation:** crear `<bridge-ip>` con los cinco puertos
+de la API, el worker y la base (los dos entornos). Los de las dos webs van en la IP
+pública, en puertos que estén libres.
 
-Si no se quieren allocations en el bridge, se pueden usar 4008–4011 en la IP
+Si no se quieren allocations en el bridge, se pueden usar puertos de la IP
 pública. En ese caso hay que cerrarlos en el firewall del nodo para todo lo que no
 sea Docker, porque si no, la base y la API quedan expuestas a internet.
 
-Lo mismo vale para 4006 y 4007: quien les pegue directo se salta el TLS. Lo ideal
-es que el firewall los abra solo para el proxy (ver [§9](#9-tls-la-pregunta-abierta)).
+Lo mismo vale para los puertos de las webs: quien les pegue directo se salta el
+TLS. Lo ideal es que el firewall los abra solo para el proxy (ver
+[§9](#9-tls-la-pregunta-abierta)).
 
 ## 3. Los siete servers
 
@@ -149,13 +155,13 @@ repo es público, se deja vacío.
 
 | Server | Variables propias |
 |---|---|
-| `overtone-web` | `API_UPSTREAM=http://<bridge-ip>:4012` |
-| `overtone-web-exp` | `API_UPSTREAM=http://<bridge-ip>:4013` |
-| `overtone-api` | `DATABASE_URL=postgres://overtone_prod:<pw>@<bridge-ip>:4016/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `TRUST_PROXY=2`, `SESSION_SECRET`, `TOKEN_KEY`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`, `ANON_DAILY_LIMIT`, `MAX_AUDIO_SECONDS` |
-| `overtone-api-exp` | Las mismas. `DATABASE_URL=…overtone_staging:<pw>@<bridge-ip>:4016/overtone_experimental`, `SITE_URL` de staging, y **secretos distintos** de los de prod. |
+| `overtone-web` | `API_UPSTREAM=http://<bridge-ip>:<api-port>` |
+| `overtone-web-exp` | `API_UPSTREAM=http://<bridge-ip>:<api-exp-port>` |
+| `overtone-api` | `DATABASE_URL=postgres://<rol-prod>:<pw>@<bridge-ip>:<db-port>/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `TRUST_PROXY=2`, `SESSION_SECRET`, `TOKEN_KEY`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`, `ANON_DAILY_LIMIT`, `MAX_AUDIO_SECONDS` |
+| `overtone-api-exp` | Las mismas. `DATABASE_URL=…<rol-staging>:<pw>@<bridge-ip>:<db-port>/overtone_experimental`, `SITE_URL` de staging, y **secretos distintos** de los de prod. |
 | `overtone-worker` | `DATABASE_URL` (la de prod), `WORKER_CONCURRENCY=1`, `MAX_AUDIO_SECONDS`, `WORKER_THREADS=4` |
 | `overtone-worker-exp` | `DATABASE_URL` (la de staging), `WORKER_CONCURRENCY=1`, `MAX_AUDIO_SECONDS`, `WORKER_THREADS=2` |
-| `overtone-db` | `PGPORT=4016`, igual al puerto de la allocation. `POSTGRES_PASSWORD`: 24 caracteres o más. `POSTGRES_USER=postgres`, `POSTGRES_DB=overtone` y `PGDATA` vienen por defecto. |
+| `overtone-db` | `PGPORT=<db-port>`, igual al puerto de la allocation. `POSTGRES_PASSWORD`: 24 caracteres o más. `POSTGRES_USER=postgres`, `POSTGRES_DB=overtone` y `PGDATA` vienen por defecto. |
 
 Los secretos se generan con `openssl rand -hex 32`. Viven solo en las variables
 del panel, nunca en el repo. Las variables secretas del egg están marcadas como no
@@ -173,12 +179,15 @@ El orden importa la primera vez: **db → api → worker → web**.
    nombra así su contenedor.
 
    ```bash
-   docker exec -i <uuid> psql -U postgres -d overtone -v ON_ERROR_STOP=1 -c "CREATE ROLE overtone_prod LOGIN PASSWORD '<pw-prod>'" -c "CREATE ROLE overtone_staging LOGIN PASSWORD '<pw-staging>'" -c "ALTER DATABASE overtone OWNER TO overtone_prod" -c "ALTER SCHEMA public OWNER TO overtone_prod" -c "CREATE DATABASE overtone_experimental OWNER overtone_staging" -c "REVOKE ALL ON DATABASE overtone FROM PUBLIC" -c "REVOKE ALL ON DATABASE overtone_experimental FROM PUBLIC"
+   docker exec -i <uuid> psql -U postgres -d overtone -v ON_ERROR_STOP=1 -c "CREATE ROLE <rol-prod> LOGIN PASSWORD '<pw-prod>'" -c "CREATE ROLE <rol-staging> LOGIN PASSWORD '<pw-staging>'" -c "ALTER DATABASE overtone OWNER TO <rol-prod>" -c "ALTER SCHEMA public OWNER TO <rol-prod>" -c "CREATE DATABASE overtone_experimental OWNER <rol-staging>" -c "REVOKE ALL ON DATABASE overtone FROM PUBLIC" -c "REVOKE ALL ON DATABASE overtone_experimental FROM PUBLIC"
    ```
 
    ```bash
-   docker exec -i <uuid> psql -U postgres -d overtone_experimental -v ON_ERROR_STOP=1 -c "ALTER SCHEMA public OWNER TO overtone_staging"
+   docker exec -i <uuid> psql -U postgres -d overtone_experimental -v ON_ERROR_STOP=1 -c "ALTER SCHEMA public OWNER TO <rol-staging>"
    ```
+
+   `<rol-prod>` y `<rol-staging>` son los nombres de rol que se elijan; se anotan,
+   como las contraseñas, solo en las variables del panel.
 
    Así staging no puede leer ni tocar la base de producción. Cada base se puede
    volcar, restaurar o borrar por separado. El plan decía "dos schemas en una
@@ -316,24 +325,24 @@ Overtone tiene que ir detrás de ese mismo proxy:
 
 | Hostname | Destino |
 |---|---|
-| `overtone.midesprojects.com` | `<node-ip>:4006` |
-| `experimental.overtone.midesprojects.com` | `<node-ip>:4007` |
+| `overtone.midesprojects.com` | `<node-ip>:<web-port>` |
+| `experimental.overtone.midesprojects.com` | `<node-ip>:<web-exp-port>` |
 
 La API no necesita hostname propio: entra por la web en `/api`. Lo que cambia
 según el proxy:
 
 - **Cloudflare (DNS con proxy naranja):**
   - Cloudflare solo proxea ciertos puertos (80, 443, 8080, 8443, 2052…). Para
-    llegar a 4006 hace falta una *Origin Rule* que reescriba el puerto, o un
+    llegar a `<web-port>` hace falta una *Origin Rule* que reescriba el puerto, o un
     Cloudflare Tunnel.
   - El certificado universal cubre `*.midesprojects.com`, **pero no
     `*.overtone.midesprojects.com`**. Para `experimental.overtone…` hace falta
     *Advanced Certificate Manager* o *Total TLS*. Si no, se usa un nombre de un
     solo nivel, como `overtone-experimental.midesprojects.com`.
-  - Conviene limitar 4006 y 4007 en el firewall a los rangos de IP de Cloudflare.
+  - Conviene limitar los puertos de las webs en el firewall a los rangos de IP de Cloudflare.
 - **nginx o Caddy en el host de NA-01:** sin límite de puertos ni de niveles
   (certbot o Caddy emiten el certificado). Las allocations de las webs pueden ir
-  en `127.0.0.1:4006`/`4007`, y entonces ni siquiera quedan expuestas.
+  en `127.0.0.1`, y entonces ni siquiera quedan expuestas.
 
 En los dos casos, el proxy tiene que mandar `X-Forwarded-Proto: https` y
 `X-Forwarded-For`. `serve.mjs` pasa `X-Forwarded-Proto` tal como llega, para que la
@@ -380,6 +389,6 @@ No se verificó:
 - `deploy/web/serve.mjs` no se ejecutó: esta máquina no tiene Node.
 - Que los eggs importen sin errores en Reviactyl.
 - Que la imagen oficial de postgres arranque con el uid de Wings.
-- Que `<bridge-ip>` sea la interfaz de Docker de NA-01.
+- Que `<bridge-ip>` sea de verdad la interfaz de Docker de NA-01.
 - Que `site/api` y `worker/main.py` cumplan los contratos de §4: todavía no
   existen en `master`.

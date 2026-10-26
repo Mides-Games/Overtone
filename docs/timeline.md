@@ -20,6 +20,37 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-26 · the suite and the gates as a server runs them
+
+### Fixed
+
+- A read-only .osu was rewritten on Linux: `_atomic_write_bytes` renames a
+  finished temp file over the map, and a rename replaces a read-only file
+  wherever its folder is writable. It now refuses a file it may not write,
+  as Windows always did (robustness gate, first run on the owner's server).
+- On a machine without pywebview, every Api method that names a dialog
+  failed to import it (8 web tests on the server). overtone_web now takes
+  the dialog names from the web host's stand-in there; the desktop window
+  still needs the real package and says so.
+
+### Changed
+
+- Server gates leave out sbom and notices: they check the Windows build's
+  venv and read the crates through cargo, where the installer is built.
+- The updater pulls Git LFS files when git-lfs is installed: Beat This!'s
+  model is one, and a clone without it holds a pointer (two Beat This!
+  tests and perf's beatthis stage on the server).
+- `/api/v1/runs/<id>/log` and `bench/remote.py log` give a run's whole log.
+
+### Measured
+
+- First server suite (34f449f, 2026-10-26): 1062 run, 11 failed: 8 the
+  missing pywebview, 2 the LFS pointer, 1 to read. First server gates:
+  15 of 19 pass, every accuracy gate among them (benchmark, bpm-snapshot,
+  golden, reference, real-audio); robustness (the read-only map above),
+  perf (the missing model), sbom and notices (the release build's) failed.
+  Rerun after this entry: pending.
+
 ## Unreleased — 2026-10-26 · a push updates the server
 
 ### Changed

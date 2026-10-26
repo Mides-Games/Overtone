@@ -54,6 +54,14 @@ def ensure_webview_names() -> None:
     except ImportError:
         stand_in = types.ModuleType("webview")
         stand_in.OPEN_DIALOG, stand_in.FOLDER_DIALOG, stand_in.SAVE_DIALOG = 10, 20, 30
+
+        def missing(name: str):
+            # Anything but the dialog names is the desktop window's, which
+            # needs the real package: say so rather than half-work.
+            raise ImportError(f"webview.{name}: pywebview is not installed. The desktop "
+                              "window needs it (pip install pywebview); the web page does not.")
+
+        stand_in.__getattr__ = missing
         sys.modules["webview"] = stand_in
 
 

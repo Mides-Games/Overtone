@@ -42,8 +42,11 @@ BENCH = ROOT / "bench"
 #: The tools a run may start, and the options each takes.
 TOOLS = ("stages", "single_bpm", "gates", "suite")
 #: The Python gates of CLAUDE.md, in its order, as a server runs them. The
-#: Rust ones need cargo, which the service does not have. ``perf`` measures
-#: the stage budgets on whatever machine runs it: on a server, its own.
+#: Rust ones need cargo, which the service does not have, and so do the
+#: release build's two (sbom.py checks the Windows build venv against its
+#: lock, notices.py reads the crates through cargo): those run where the
+#: installer is built. ``perf`` measures the stage budgets on whatever
+#: machine runs it: on a server, its own.
 GATES = {
     "benchmark": ["bench/benchmark.py"],
     "bpm-snapshot": ["bench/gates.py", "bpm-snapshot"],
@@ -62,8 +65,6 @@ GATES = {
     "fit-kits": ["bench/fit_kits.py", "--verify"],
     "facts": ["bench/facts.py"],
     "fuzz-reader": ["bench/fuzz_reader.py"],
-    "sbom": ["installer/sbom.py", "--check"],
-    "notices": ["installer/notices.py", "--check"],
 }
 #: The Python suite, whole or one module of it.
 SUITES = {"all": ["-m", "unittest", "discover", "-s", "tests"],
@@ -276,6 +277,11 @@ class RunStore:
             return []
         with open(path, encoding="utf-8", errors="replace") as handle:
             return [line.rstrip("\n") for line in deque(handle, maxlen=lines)]
+
+    def log(self, run_id: str) -> str:
+        """The run's whole log, as its tools wrote it."""
+        path = self.folder(run_id) / "log.txt"
+        return path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
 
     def result(self, run_id: str) -> dict:
         path = self.folder(run_id) / "result.json"

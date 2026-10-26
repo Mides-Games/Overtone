@@ -37,7 +37,14 @@ import overtone_hotkey
 import overtone_library
 import overtone_rust
 import overtone_train as tr
+import overtone_webhost
 from overtone_paths import data_root
+
+# The Api names its dialogs by pywebview's constants. Where pywebview is not
+# installed -- a server, which serves the page itself -- they come from a
+# stand-in, so every Api method still answers (the web page's dialogs, the
+# suite); the desktop window still needs the real package.
+overtone_webhost.ensure_webview_names()
 
 HERE = Path(__file__).resolve().parent
 #: Source checkout: the engine lives in ``python/``, data at the repo root.

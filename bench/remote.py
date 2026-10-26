@@ -17,6 +17,7 @@ http://127.0.0.1:8765: an SSH tunnel to it), with the token from
     python bench/remote.py wait <id>
     python bench/remote.py result <id> --out bench/.cache/remote/<id>.json
     python bench/remote.py stop <id>
+    python bench/remote.py log <id> --grep FAIL            # the whole log, or its matching lines
     python bench/remote.py gates --wait                    # every Python gate, on the server
     python bench/remote.py gates benchmark golden --wait   # some of them
     python bench/remote.py suite --wait                    # the Python suite (all, engine, web)
@@ -45,6 +46,17 @@ class Remote:
         self.url = url.rstrip("/")
         self.token = token
         self.timeout = timeout
+
+    def text(self, path: str) -> str:
+        request = urllib.request.Request(self.url + path,
+                                         headers={"Authorization": f"Bearer {self.token}"})
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as reply:
+                return reply.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as exc:
+            raise SystemExit(f"GET {path}: HTTP {exc.code}") from None
+        except urllib.error.URLError as exc:
+            raise SystemExit(f"Cannot reach {self.url} ({exc.reason}).") from None
 
     def call(self, method: str, path: str, body: dict | None = None) -> dict:
         data = json.dumps(body).encode("utf-8") if body is not None else None
@@ -140,6 +152,9 @@ def main(argv: list[str] | None = None) -> int:
     suite.add_argument("--wait", action="store_true")
     for name in ("show", "wait", "stop"):
         commands.add_parser(name).add_argument("id")
+    log = commands.add_parser("log", help="a run's whole log")
+    log.add_argument("id")
+    log.add_argument("--grep", help="only the lines containing this text")
     result = commands.add_parser("result", help="download a run's report")
     result.add_argument("id")
     result.add_argument("--out", help=f"where (default {CACHE}/<id>.json)")
@@ -220,6 +235,11 @@ def main(argv: list[str] | None = None) -> int:
         out.write_text(json.dumps(report, indent=1), encoding="utf-8")
         print(f"written: {out} ({len(report.get('maps', []))} maps)")
         _summary(report.get("summary"))
+        return 0
+    if args.command == "log":
+        for line in remote.text(f"/api/v1/runs/{args.id}/log").splitlines():
+            if not args.grep or args.grep in line:
+                print(line)
         return 0
     if args.command == "stop":
         print(remote.call("POST", f"/api/v1/runs/{args.id}/stop"))

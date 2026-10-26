@@ -41,6 +41,7 @@ Endpoints (a browser's cookie or ``Authorization: Bearer <token>``):
     POST /api/v1/runs                  {"tool": "stages", "stage": ...}: queue one
     GET  /api/v1/runs/<id>             one run and the end of its log
     GET  /api/v1/runs/<id>/result      the tool's own JSON report
+    GET  /api/v1/runs/<id>/log         the whole log, plain text
     POST /api/v1/runs/<id>/stop        cancel it, or end it while it runs
 """
 from __future__ import annotations
@@ -517,6 +518,9 @@ def make_handler(service: Service, token: str, log: bool = True):
                 parts = path[len("/api/v1/runs/"):].split("/")
                 if method == "GET" and len(parts) == 1:
                     self._reply(HTTPStatus.OK, service.run_detail(parts[0]))
+                elif method == "GET" and parts[1:] == ["log"]:
+                    self._send(HTTPStatus.OK, service.runs.store.log(parts[0]).encode("utf-8"),
+                               "text/plain; charset=utf-8")
                 elif method == "GET" and parts[1:] == ["result"]:
                     self._reply(HTTPStatus.OK, service.runs.store.result(parts[0]))
                 elif method == "POST" and parts[1:] == ["stop"]:

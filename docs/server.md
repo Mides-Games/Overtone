@@ -244,6 +244,17 @@ python bench/remote.py --token-file token.txt gates --wait
 python bench/remote.py --token-file token.txt suite --wait
 ```
 
+`sbom` y `notices` no corren en el servidor: revisan el venv y los crates
+del build del instalador de Windows. El modelo de Beat This! es un archivo
+de Git LFS; sin git-lfs, la VPS tiene un puntero en su lugar (y `perf` falla
+en esa etapa). Una sola vez, como root:
+
+```bash
+apt-get install -y git-lfs && cd /opt/overtone && git lfs install --local && git lfs pull && ls -la assets/models/beat_this_final0.onnx
+```
+
+Desde ahí el actualizador baja los archivos LFS en cada versión.
+
 Los gates generan su audio de prueba en `bench/audio`, dentro del código,
 donde el servicio no puede escribir. Una sola vez, como root:
 

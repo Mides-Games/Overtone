@@ -43,6 +43,11 @@ if ! git merge --quiet --ff-only "origin/$BRANCH"; then
     exit 1
 fi
 
+# The Beat This! model is a Git LFS file: without this, a pointer.
+if git lfs version >/dev/null 2>&1; then
+    git lfs pull --quiet
+fi
+
 if ! git diff --quiet "$old" "$new" -- crates Cargo.toml Cargo.lock; then
     echo "overtone-update: the Rust code changed; rebuilding overtone-cli"
     "$CARGO" build --release --quiet -p overtone-cli

@@ -5321,6 +5321,14 @@ class WebHostTests(_IsolatedConfig):
             self.wh.ensure_webview_names()
             import webview as stand_in
             self.assertFalse(hasattr(stand_in, "create_window"))
+            # Python's own questions get a plain no: unittest and inspect
+            # ask every module for __file__, and the first server suite
+            # died on a stand-in that raised anything else.
+            self.assertFalse(hasattr(stand_in, "__file__"))
+            import inspect
+            inspect.getmodule(stand_in)
+            with self.assertRaisesRegex(AttributeError, "pywebview is not installed"):
+                stand_in.start
             self.assertEqual([self.wh.dialog_kind(v) for v in (stand_in.OPEN_DIALOG,
                               stand_in.FOLDER_DIALOG, stand_in.SAVE_DIALOG)],
                              ["open", "folder", "save"])

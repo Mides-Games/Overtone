@@ -34,3 +34,11 @@ bench/.cache/
 # Tauri frontend
 /app/node_modules/
 /app/dist/
+# Website (site/): dependencies, builds and local secrets. `.env.example` is
+# committed; a real `.env` never is. The Horizon headline font is not
+# redistributable as far as we know, so a local copy stays out (docs/site.md).
+/node_modules/
+/site/*/node_modules/
+/site/*/dist/
+/site/*/.env
+/site/web/public/fonts/horizon.otf

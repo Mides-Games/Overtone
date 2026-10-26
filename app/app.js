@@ -617,6 +617,8 @@ const I18N = {
     st_ask: "Ask where to save each export (the dialog opens in the song's folder)",
     st_lead: "Write red lines as osu! maps are timed (28 ms before the sound)",
     st_lead_hint: "Ranked maps put their red lines a little before the sound, and osu! plays them in time. Used by copy, .osz and inject; the click track and CSV stay on the sound. Lines you placed by hand never move.",
+    st_clean: "Write clean BPMs (whole, .5 or .1)",
+    st_clean_hint: "232.189 is written as 232.2 when every beat stays within 2 ms of the exact grid; on a long section a red line at the same BPM re-syncs it every few bars. Used by copy, .osz and inject; the analysis, the click track and the CSV keep the exact BPM. Lines you placed by hand never change.",
     st_decimals: "Offset precision",
     st_decimals_hint: "osu!stable reads whole milliseconds; osu!lazer keeps decimals. Used by copy, .osz and inject.",
     st_click: "Click", st_sub: "Clicks per beat",
@@ -1440,6 +1442,8 @@ const I18N = {
     st_ask: "Preguntar dónde guardar cada exportación (el diálogo abre en la carpeta de la canción)",
     st_lead: "Escribir las líneas rojas como se timean los mapas de osu! (28 ms antes del sonido)",
     st_lead_hint: "Los mapas rankeados ponen sus líneas rojas un poco antes del sonido, y osu! las reproduce a tiempo. Se usa al copiar, en el .osz y al inyectar; el click y el CSV quedan sobre el sonido. Las líneas que pusiste a mano nunca se mueven.",
+    st_clean: "Escribir BPMs limpios (enteros, .5 o .1)",
+    st_clean_hint: "232.189 se escribe como 232.2 si cada beat queda a menos de 2 ms de la grilla exacta; en una sección larga, una línea roja con el mismo BPM la vuelve a sincronizar cada pocos compases. Se usa al copiar, en el .osz y al inyectar; el análisis, el click y el CSV guardan el BPM exacto. Las líneas que pusiste a mano no cambian.",
     st_decimals: "Precisión del offset",
     st_decimals_hint: "osu!stable lee milisegundos enteros; osu!lazer guarda decimales. Se usa al copiar, en el .osz y al inyectar.",
     st_click: "Click", st_sub: "Clicks por beat",
@@ -6540,6 +6544,7 @@ function stRender() {
   $("stFolderDefault").hidden = !s.output_folder;
   $("stAsk").checked = s.export_ask;
   $("stLead").checked = s.map_lead;
+  $("stClean").checked = s.clean_bpm;
   document.querySelectorAll("#stDecimals button").forEach((b) => b.classList.toggle("on", +b.dataset.v === s.offset_decimals));
   document.querySelectorAll("#stSub button").forEach((b) => b.classList.toggle("on", +b.dataset.v === s.click_subdivision));
   $("stAccent").checked = s.click_accent;
@@ -6594,6 +6599,7 @@ function stWire() {
   };
   $("stAsk").onchange = () => stSet({ export_ask: $("stAsk").checked });
   $("stLead").onchange = () => stSet({ map_lead: $("stLead").checked });
+  $("stClean").onchange = () => stSet({ clean_bpm: $("stClean").checked });
   document.querySelectorAll("#stDecimals button").forEach((b) => b.onclick = () => stSet({ offset_decimals: +b.dataset.v }));
   document.querySelectorAll("#stSub button").forEach((b) => b.onclick = () => stSet({ click_subdivision: +b.dataset.v }));
   $("stAccent").onchange = () => stSet({ click_accent: $("stAccent").checked });

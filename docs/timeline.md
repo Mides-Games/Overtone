@@ -20,6 +20,32 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-26 · clean BPMs in what is written for osu!
+
+### Changed
+
+- What the app writes for osu! (copy, .osz, inject) carries clean BPMs, on
+  by default (Settings, "Write clean BPMs"): each detected red line takes
+  the cleanest BPM -- whole, then half, then tenth -- whose grid stays
+  within 2 ms of the exact one over its whole span, its offset moved by
+  half the drift; where none does, the tenth is kept and the span is cut
+  into blocks of whole bars, each re-synced by a red line at that BPM.
+  Ranked maps read better at 232.2 than at 232.189 (asked for). The
+  analysis, the click track, the CSV and lines placed by hand keep their
+  exact BPM; the engine is untouched (`overtone_web.clean_bpm_points`).
+- The bound is the difference from the dropped attempt below: that one
+  moved red lines to the tenth with no limit on the drift.
+
+### Measured
+
+- Corpus B, Rust engine, the same cached analyses scored twice by
+  corpus_b's own scoring with the map lead (540 scored lines of the tracks
+  the engine answered), 2026-10-26: within 2 ms 4.6 -> 4.6 %, 5 ms 11.5 ->
+  12.2 %, 10 ms 24.8 -> 25.4 %, 50 ms 46.1 -> 46.1 %. Red lines written
+  40 -> 51 (re-syncs: freedom-dive 333.329 -> 333.3 with 2, yui-again
+  140.084 -> 140.1 with 7, torikago 113.95 -> 113.9 with 2); every written
+  BPM on a tenth or rounder (51/51).
+
 ## Unreleased — 2026-10-25 · BPMs shown to the tenth
 
 ### Changed

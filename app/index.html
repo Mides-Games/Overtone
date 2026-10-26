@@ -1170,6 +1170,8 @@
             <label class="check"><input type="checkbox" id="stAsk"><span data-i18n="st_ask">Ask where to save each export (the dialog opens in the song's folder)</span></label>
             <label class="check"><input type="checkbox" id="stLead"><span data-i18n="st_lead">Write red lines as osu! maps are timed (28 ms before the sound)</span></label>
             <div class="card-sub" data-i18n="st_lead_hint">Ranked maps put their red lines a little before the sound, and osu! plays them in time. Used by copy, .osz and inject; the click track and CSV stay on the sound. Lines you placed by hand never move.</div>
+            <label class="check"><input type="checkbox" id="stClean"><span data-i18n="st_clean">Write clean BPMs (whole, .5 or .1)</span></label>
+            <div class="card-sub" data-i18n="st_clean_hint">232.189 is written as 232.2 when every beat stays within 2 ms of the exact grid; on a long section a red line at the same BPM re-syncs it every few bars. Used by copy, .osz and inject; the analysis, the click track and the CSV keep the exact BPM. Lines you placed by hand never change.</div>
             <div class="setting">
               <div><div class="setting-name" data-i18n="st_decimals">Offset precision</div>
                 <div class="card-sub" data-i18n="st_decimals_hint">osu!stable reads whole milliseconds; osu!lazer keeps decimals. Used by copy, .osz and inject.</div></div>

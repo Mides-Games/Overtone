@@ -391,6 +391,7 @@ _OSU_TEXT = "\n".join([
 class ExportTests(_IsolatedConfig):
     def test_osu_text_matches_the_engine_verbatim(self) -> None:
         api = _api_with_points()
+        api.set_settings({"clean_bpm": False})      # the engine's own BPMs
         reply = api.osu_text()
         self.assertTrue(reply["ok"])
         # With the map lead on (the default) the detected lines come out
@@ -399,6 +400,19 @@ class ExportTests(_IsolatedConfig):
         api.set_settings({"map_lead": False})
         self.assertEqual(api.osu_text()["text"], ta.osu_timing_text(api._analysis))
         self.assertEqual(web.Api().osu_text()["key"], "first")
+
+    def test_osu_exports_carry_clean_bpms_and_the_csv_the_exact_ones(self) -> None:
+        api = _api_with_points()
+        api._analysis.points = [ta.TimingPoint(1000.0, 232.189, 0.9, 0, 4, True)]
+        api._analysis.duration = 181.0
+        text = api.osu_text()["text"]
+        bpms = {round(60000.0 / float(line.split(",")[1]), 4)
+                for line in text.splitlines() if line and not line.startswith("//")}
+        self.assertEqual(bpms, {232.2})
+        self.assertEqual(api._analysis.points[0].bpm, 232.189)     # the analysis is untouched
+        api.set_settings({"clean_bpm": False})
+        self.assertNotIn("232.2", str(api.osu_text()["text"]))
+        self.assertEqual(api.set_settings({"clean_bpm": "yes"})["key"], "bad_values")
 
     def test_save_csv_writes_the_same_rows_as_the_engine(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1892,7 +1906,7 @@ class SettingsBridgeTests(_IsolatedConfig):
         json.dumps(reply)
         self.assertEqual(reply["settings"], {
             "output_folder": "", "skin_folder": "", "export_ask": True, "map_lead": True,
-            "offset_decimals": 0,
+            "clean_bpm": True, "offset_decimals": 0,
             "click_subdivision": 1, "click_accent": True, "ui_scale": 1.0,
             "reduced_motion": False, "theme": "dark"})
         self.assertTrue(reply["output_default"].endswith(str(Path("Documents") / "Overtone")))
@@ -5450,6 +5464,59 @@ class WebHostTests(_IsolatedConfig):
             line = reply.fp.readline()
             self.assertTrue(line, "the stream ended before the event")
             seen += line
+
+
+class CleanBpmTests(unittest.TestCase):
+    """Clean BPMs in what is written for osu!: whole, half or tenth, every
+    beat within CLEAN_BPM_TOLERANCE_MS of the exact grid."""
+
+    @staticmethod
+    def _worst_ms(points, bpm: float, offset: float, end_ms: float) -> float:
+        """The largest distance from an exact-grid beat to the cleaned grid."""
+        exact = offset + np.arange(0, int((end_ms - offset) * bpm / 60000) + 1) * 60000 / bpm
+        worst = 0.0
+        for t in exact:
+            line = max((p for p in points if p.offset_ms <= t + 3), key=lambda p: p.offset_ms,
+                       default=points[0])
+            step = 60000.0 / line.bpm
+            worst = max(worst, abs(line.offset_ms + round((t - line.offset_ms) / step) * step - t))
+        return worst
+
+    def _clean(self, bpm: float, seconds: float, meter: int = 4, **kw):
+        point = ta.TimingPoint(1000.0, bpm, 0.9, 0, meter, True, **kw)
+        end = 1000.0 + seconds * 1000.0
+        return web.clean_bpm_points([point], end), end
+
+    def test_the_cleanest_bpm_that_stays_within_the_tolerance_is_taken(self) -> None:
+        for bpm, seconds, want in ((240.175, 30, 240.2), (174.02, 20, 174.0),
+                                   (150.48, 10, 150.5)):
+            points, end = self._clean(bpm, seconds)
+            self.assertEqual([p.bpm for p in points], [want], bpm)
+            self.assertLessEqual(self._worst_ms(points, bpm, 1000.0, end),
+                                 web.CLEAN_BPM_TOLERANCE_MS + 1e-6)
+
+    def test_a_long_span_keeps_the_tenth_with_red_lines_on_bars_that_resync_it(self) -> None:
+        points, end = self._clean(232.189, 180)
+        self.assertGreater(len(points), 1)
+        self.assertEqual({p.bpm for p in points}, {232.2})
+        self.assertLessEqual(self._worst_ms(points, 232.189, 1000.0, end),
+                             web.CLEAN_BPM_TOLERANCE_MS + 1e-6)
+        exact_step = 60000.0 / 232.189
+        for p in points[1:]:
+            beats = (p.offset_ms - 1000.0) / exact_step
+            self.assertAlmostEqual(beats / 4, round(beats / 4), delta=0.02)   # on a bar
+            self.assertEqual((p.meter, p.meter_known), (4, True))
+
+    def test_hand_placed_clean_and_short_lines_are_left_alone(self) -> None:
+        manual, _ = self._clean(232.189, 180, manual=True)
+        self.assertEqual([p.bpm for p in manual], [232.189])
+        clean, _ = self._clean(175.0, 120)
+        self.assertEqual([(p.offset_ms, p.bpm) for p in clean], [(1000.0, 175.0)])
+        # Drifting a whole bar's worth past the tolerance: nothing can hold it.
+        far, _ = self._clean(232.14, 180, meter=4)
+        self.assertTrue(far[0].bpm in (232.14, 232.1))
+        self.assertEqual(web._clean_candidates(199.97), [200.0])
+        self.assertEqual(web._clean_candidates(150.48), [150.0, 150.5])
 
 
 if __name__ == "__main__":

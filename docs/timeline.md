@@ -49,7 +49,13 @@ version is `v0.2.0-alpha`.
   15 of 19 pass, every accuracy gate among them (benchmark, bpm-snapshot,
   golden, reference, real-audio); robustness (the read-only map above),
   perf (the missing model), sbom and notices (the release build's) failed.
-  Rerun after this entry: pending.
+- After these fixes, on the server (6f4030d, 2026-10-26): suite engine
+  748/748 and web 314/314, each in its own process; gates 17/17,
+  robustness and perf among them. In one process the suite went past the
+  3 GB cap: the OOM killer took the whole service three times (systemd's
+  OOMPolicy=stop, then the largest process, the server). The server unit
+  now has OOMPolicy=continue, each run volunteers to be killed first
+  (oom_score_adj 800), and "all" runs the two modules one after the other.
 
 ## Unreleased — 2026-10-26 · a push updates the server
 

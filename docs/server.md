@@ -135,6 +135,16 @@ WantedBy=multi-user.target
 useradd --system --create-home overtone && chown -R overtone /opt/overtone && systemctl daemon-reload && systemctl enable --now overtone-api
 ```
 
+Si un proceso del servicio llega al tope de memoria, systemd para el
+servicio entero salvo que se le diga lo contrario. Para que una medición o
+un test que se pase muera solo, sin llevarse el servidor ni la página:
+
+```bash
+mkdir -p /etc/systemd/system/overtone-api.service.d && printf '[Service]
+OOMPolicy=continue
+' > /etc/systemd/system/overtone-api.service.d/oom.conf && systemctl daemon-reload && systemctl restart overtone-api
+```
+
 `Nice=10` y `MemoryMax` hacen que no le quite recursos a lo demás que corra en
 la máquina. `MemoryMax=1G` vale con el motor Rust y `--no-beat-vote`. Con el voto o con `--engine python`, un
 solo análisis pasa de 1.4 GB (tabla de arriba), así que ese límite

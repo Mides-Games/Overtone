@@ -66,10 +66,11 @@ GATES = {
     "facts": ["bench/facts.py"],
     "fuzz-reader": ["bench/fuzz_reader.py"],
 }
-#: The Python suite, whole or one module of it, each test named in the log:
-#: a run cut short (the memory cap, 2026-10-26) shows which test it was in.
-SUITES = {"all": ["-m", "unittest", "discover", "-v", "-s", "tests"],
-          "engine": ["-m", "unittest", "-v", "tests.test_overtone"],
+#: The Python suite, one module or both, each test named in the log: a run
+#: cut short shows which test it was in. "all" runs the two modules one after
+#: the other, each its own process: in one, their memory added up past the
+#: server's 3 GB cap, while apart they pass (748 and 314, 2026-10-26).
+SUITES = {"engine": ["-m", "unittest", "-v", "tests.test_overtone"],
           "web": ["-m", "unittest", "-v", "tests.test_overtone_web"]}
 #: "app" runs what the app runs: Rust, and v3 where Rust refuses or fails.
 ENGINES = ("rust", "app", "python")
@@ -146,8 +147,8 @@ def build_args(request: dict, db_path: str | os.PathLike[str],
         return tool, names, {"tool": tool, "gates": "all" if not only else names}
     if tool == "suite":
         which = request.get("suite") or "all"
-        if which not in SUITES:
-            raise ValueError(f"suite is one of {', '.join(SUITES)}.")
+        if which != "all" and which not in SUITES:
+            raise ValueError(f"suite is all or one of {', '.join(SUITES)}.")
         return tool, [which], {"tool": tool, "suite": which}
     engine = request.get("engine", "rust")
     if engine not in ENGINES:
@@ -493,8 +494,11 @@ def _checks(tool: str, names: list[str], result: Path) -> int:
     """The gates or the suite, each its own process, as a person runs them
     from the repository root: nothing is adjusted, the Beat This! vote is as
     installed. Every line goes to the log; the report says what passed."""
-    commands = ([(name, [sys.executable, *GATES[name]]) for name in names] if tool == "gates"
-                else [(names[0], [sys.executable, *SUITES[names[0]]])])
+    if tool == "gates":
+        commands = [(name, [sys.executable, *GATES[name]]) for name in names]
+    else:
+        parts = ["engine", "web"] if names[0] == "all" else names
+        commands = [(part, [sys.executable, *SUITES[part]]) for part in parts]
     rows = []
     for name, command in commands:
         print(f"=== {name}: {' '.join(command[1:])}", flush=True)
@@ -519,7 +523,8 @@ def _checks(tool: str, names: list[str], result: Path) -> int:
     failed = [r["name"] for r in rows if r["exit"] != 0]
     summary = {"checked": len(rows), "passed": len(rows) - len(failed), "failed": failed}
     if tool == "suite":
-        summary.update(ran=rows[0]["ran"], failing=rows[0]["failing"][:50])
+        summary.update(ran=sum(r["ran"] or 0 for r in rows),
+                       failing=[f for r in rows for f in r["failing"]][:50])
     result.write_text(json.dumps({"tool": tool, "summary": summary, "rows": rows}, indent=1),
                       encoding="utf-8")
     return 0 if not failed else 1

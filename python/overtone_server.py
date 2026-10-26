@@ -614,11 +614,32 @@ def main(argv: list[str] | None = None) -> int:
 def _every(service: Service, seconds: float) -> None:
     """Scan, then analyse what is new, then wait; a run already going is left be."""
     while True:
-        if service.scan()[0] == HTTPStatus.ACCEPTED:
-            while service.scan_job.state()["running"]:
-                time.sleep(1.0)
-        service.analyze()
+        _every_once(service)
         time.sleep(seconds)
+
+
+def _runs_busy(service: Service) -> bool:
+    """A measurement run going or queued: the service's memory is the run's."""
+    state = service.runs.state()
+    return bool(state["running"] or state["queued"])
+
+
+def _every_once(service: Service, poll: float = 2.0) -> None:
+    """One pass of ``_every``. The analysis yields to measurement runs: it does
+    not start while one is going or queued, and stops (keeping what it
+    committed) when one arrives, so the two never share the memory cap."""
+    if _runs_busy(service):
+        return
+    if service.scan()[0] == HTTPStatus.ACCEPTED:
+        while service.scan_job.state()["running"]:
+            time.sleep(poll)
+    if _runs_busy(service):
+        return
+    service.analyze()
+    while service.analyze_job.state()["running"]:
+        if _runs_busy(service):
+            service.analyze_job.stop.set()
+        time.sleep(poll)
 
 
 if __name__ == "__main__":

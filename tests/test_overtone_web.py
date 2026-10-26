@@ -14,6 +14,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -5403,6 +5404,47 @@ class WebHostTests(_IsolatedConfig):
         self.assertFalse(sessions.valid(None))
         expired = self.wh.Sessions("secret", ttl=-1)
         self.assertFalse(expired.valid(expired.new()))
+
+    def test_the_library_analysis_yields_to_measurement_runs(self) -> None:
+        import overtone_server
+
+        class Job:
+            def __init__(self, running=False):
+                self.running, self.stop = running, threading.Event()
+
+            def state(self):
+                return {"running": self.running}
+
+        class Fake:
+            def __init__(self, queue):
+                self.queue, self.analysed = queue, 0
+                self.scan_job, self.analyze_job = Job(), Job()
+                self.runs = types.SimpleNamespace(state=lambda: self.queue)
+
+            def scan(self):
+                return overtone_server.HTTPStatus.CONFLICT, {}
+
+            def analyze(self):
+                self.analysed += 1
+                self.analyze_job.running = True
+
+        busy = Fake({"running": None, "queued": ["r1"]})
+        overtone_server._every_once(busy, poll=0)
+        self.assertEqual(busy.analysed, 0)
+
+        idle = Fake({"running": None, "queued": []})
+        original = overtone_server.time.sleep
+
+        def sleep(_seconds):
+            if idle.analyze_job.stop.is_set():
+                idle.analyze_job.running = False
+            idle.queue = {"running": "r2", "queued": []}
+
+        overtone_server.time.sleep = sleep
+        self.addCleanup(setattr, overtone_server.time, "sleep", original)
+        overtone_server._every_once(idle, poll=0)
+        self.assertEqual(idle.analysed, 1)
+        self.assertTrue(idle.analyze_job.stop.is_set())
 
     def test_the_page_signs_in_and_talks_to_the_api_over_http(self) -> None:
         import http.client

@@ -107,42 +107,6 @@
    "TaskbarIdentityTests": {
     "where": "shell",
     "why": "the Windows app identity the taskbar groups by"
-   },
-   "TrainAudioTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: the resampled song, its proof and the output folder, which no Rust crate holds"
-   },
-   "TrainHotkeyTests": {
-    "where": "python-only",
-    "why": "overtone_hotkey.py: the one global hotkey delivered by the OS, which no Rust crate holds"
-   },
-   "TrainLadderTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: rate ladders as one mapset, which no Rust crate holds"
-   },
-   "TrainCopiesTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: the write log's practice copies, listed and freed, which no Rust crate holds"
-   },
-   "TrainFeelModsTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: what a copy feels like and the mod arithmetic, which no Rust crate holds"
-   },
-   "TrainDetectTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: picking the map from live signals, which no Rust crate holds"
-   },
-   "TrainDropTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: spinners dropped on an explicit ask, which no Rust crate holds"
-   },
-   "TrainGridTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: the rate on the grid, which no Rust crate holds"
-   },
-   "TrainPlanTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: the practice document, the rate and the stats, which no Rust crate holds"
    }
   },
  "format": 1,

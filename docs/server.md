@@ -295,7 +295,7 @@ locales de `CLAUDE.md`.
 
 ## Actualización automática
 
-Cada push a `feature/library-api` llega solo a la VPS:
+Cada push a `experimental` (la rama de staging) llega solo a la VPS:
 
 1. GitHub Actions (`.github/workflows/deploy.yml`) entra a la VPS como
    `overtone-deploy`, un usuario cuya llave solo puede arrancar

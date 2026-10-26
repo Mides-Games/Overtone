@@ -36,7 +36,7 @@ commit messages are English; only the app's own UI strings stay bilingual
 ## CI
 
 - **GitHub Actions deploys, and only deploys** (owner's decision, 2026-10-26). One
-  workflow, `.github/workflows/deploy.yml`: a push to `feature/library-api` asks the
+  workflow, `.github/workflows/deploy.yml`: a push to `experimental` asks the
   owner's server to update, signing in as `overtone-deploy`, whose key can start
   `overtone-update.service` and nothing else (`deploy/setup-deploy-user.sh`). The server
   pulls that branch fast-forward only, rebuilds and restarts, and waits while a run is

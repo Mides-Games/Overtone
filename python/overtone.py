@@ -214,6 +214,31 @@ def stop_requests(asked: Callable[[], bool]):
         _stop_requests.asked = previous
 
 
+#: The stages an analysis announces through its progress callback, each by a
+#: short id. ``bench/gates.py perf`` times the stages by these ids, and a test
+#: holds this table to every message the engine sends, so a reworded message
+#: cannot silently lose its stage.
+STAGES = {
+    "Loading and normalizing audio…": "load",
+    "Detecting attacks at sample resolution…": "attacks",
+    "Scanning pulse coherence…": "coherence",
+    "Resolving the beat octave…": "octave",
+    "Fitting tempo sections…": "sections",
+    "Checking the beats with Beat This!…": "beatthis",
+    "No fittable grid — falling back to the beat tracker…": "fallback",
+    "Extracting transients and tempo hypotheses…": "transients",
+    "Tracking beats (hybrid DP + PLP + peaks)…": "tracking",
+    "Resolving half/double-time pulse…": "pulse",
+    "Computing local tempo and persistent changes…": "local",
+}
+
+
+def stage_id(message: str) -> str | None:
+    """The stage a progress message announces, or None for one the table does
+    not know. The fallback's message carries its reason after the fixed text."""
+    return next((sid for text, sid in STAGES.items() if message.startswith(text)), None)
+
+
 # ---------------------------------------------------------------------------
 # Onset envelope
 # ---------------------------------------------------------------------------

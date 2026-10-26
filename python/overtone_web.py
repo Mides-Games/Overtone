@@ -291,22 +291,9 @@ def _number(value: object, default, cast):
 
 
 #: The stages an analysis announces, by the id the page names each one by in
-#: the user's language. A test holds this to every message the engine sends,
-#: so a reworded message cannot silently lose its name.
-STAGES = {
-    "Loading and normalizing audio…": "load",
-    "Detecting attacks at sample resolution…": "attacks",
-    "Scanning pulse coherence…": "coherence",
-    "Resolving the beat octave…": "octave",
-    "Fitting tempo sections…": "sections",
-    "Checking the beats with Beat This!…": "beatthis",
-    "No fittable grid — falling back to the beat tracker…": "fallback",
-    "Extracting transients and tempo hypotheses…": "transients",
-    "Tracking beats (hybrid DP + PLP + peaks)…": "tracking",
-    "Resolving half/double-time pulse…": "pulse",
-    "Computing local tempo and persistent changes…": "local",
-    "Analysing with the Rust engine…": "rust",
-}
+#: the user's language: the engine's own (overtone.STAGES) and the one this
+#: shell announces before handing the song to the Rust engine.
+STAGES = {**ta.STAGES, "Analysing with the Rust engine…": "rust"}
 
 
 def stage_id(message: str) -> str | None:

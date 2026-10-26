@@ -7928,6 +7928,18 @@ class PerfGateTests(unittest.TestCase):
     def _t(cpu, wall=None):
         return {"cpu": cpu, "wall": cpu if wall is None else wall}
 
+    def test_every_stage_the_engine_announces_has_an_id(self) -> None:
+        import re
+        import overtone as ta
+        said = re.findall(r'(?:say|progress)\("([^"]+)"',
+                          Path(ta.__file__).read_text(encoding="utf-8"))
+        # Every message named, every name still announced, one id per stage.
+        self.assertEqual(sorted(set(said)), sorted(ta.STAGES))
+        self.assertEqual(len(set(ta.STAGES.values())), len(ta.STAGES))
+        self.assertEqual(ta.stage_id("No fittable grid — falling back to the beat tracker… "
+                                     "(ValueError: x)"), "fallback")
+        self.assertIsNone(ta.stage_id("Something new…"))
+
     def test_the_machines_own_spread_passes(self) -> None:
         g = self._gates()
         # 1.11x was the worst an unchanged stage measured here over four runs.

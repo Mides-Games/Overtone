@@ -5,7 +5,6 @@ tracks with known ground truth, so no fixture files are needed. The v2
 segmentation and gap-filling helpers are still covered — they remain in the
 fallback path used for rubato and non-percussive audio.
 """
-import codecs
 import json
 import os
 import struct
@@ -29,10 +28,8 @@ from overtone import (
     _pulse_gap,
     _pulse_log10p,
     _meter_from_grid,
-    DEFAULT_LANGUAGE,
     Analysis,
     GridSection,
-    TimingAnalyzerApp,
     TimingPoint,
     _choose_subdivision,
     _fill_missed_beats,
@@ -281,27 +278,6 @@ class RobustnessTests(unittest.TestCase):
         frames = np.array([0.0, 500.0, 1000.0, 1250.0, 1500.0, 1750.0])
         filled = _fill_missed_beats(frames)
         self.assertEqual(len(filled), len(frames))
-
-    def test_english_is_default_language(self):
-        self.assertEqual(DEFAULT_LANGUAGE, "English")
-        self.assertEqual(list(TimingAnalyzerApp.TEXT.keys())[0], "English")
-        for table in TimingAnalyzerApp.TEXT.values():
-            self.assertIn("analyze", table)
-        self.assertIn("English", TimingAnalyzerApp.TEXT)
-        self.assertIn("Español", TimingAnalyzerApp.TEXT)
-
-    def test_variable_preset_is_default(self):
-        variable = TimingAnalyzerApp.PRESETS["variable"]
-        steady = TimingAnalyzerApp.PRESETS["steady"]
-        self.assertEqual(TimingAnalyzerApp.CFG_VERSION, 2)
-        # Variable preset: sensitive enough for songs that change often.
-        self.assertLessEqual(int(variable["persistence"]), 12)
-        self.assertLessEqual(float(variable["confidence"]), 75)
-        # Steady preset: strictly more conservative on every axis.
-        self.assertGreater(float(steady["delta"]), float(variable["delta"]))
-        self.assertGreater(int(steady["persistence"]), int(variable["persistence"]))
-        self.assertGreater(float(steady["confidence"]), float(variable["confidence"]))
-
 
 class EndToEndTests(unittest.TestCase):
     def test_steady_click_reports_correct_global_bpm(self):
@@ -1189,209 +1165,11 @@ class StopInsideStageTests(unittest.TestCase):
                                 "itself": "stopped"})
 
 
-class ClassicWindowLayoutTests(unittest.TestCase):
-    """The Tk window's Results header fits the window it opens in.
-
-    Every ghost button inherited the clam theme's 11-character minimum, so the
-    seven header buttons asked for 1204 px (1259 in Spanish) and CSV was cut
-    to 21 px at the default 1120.
-    """
-
-    def test_results_toolbar_fits_at_default_and_minimum_size(self):
-        from unittest import mock
-        import overtone
-        with tempfile.TemporaryDirectory() as tmp,                 mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"),                 mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
-            try:
-                app = TimingAnalyzerApp()
-            except Exception as exc:  # no display: nothing to lay out
-                self.skipTest(f"Tk unavailable: {exc}")
-            try:
-                app.root.attributes("-alpha", 0.0)
-                width, height = app.root.minsize()
-                for language in ("English", "Español"):
-                    app.language.set(language)
-                    app._translate()
-                    for geometry in ("1120x760", f"{width}x{height}"):
-                        app.root.geometry(geometry + "+-3000+-3000")
-                        app.root.update()
-                        for key in ("csv", "copy", "click", "half", "double", "inject", "details"):
-                            widget = app.widgets[key]
-                            with self.subTest(language=language, geometry=geometry, button=key):
-                                self.assertGreaterEqual(widget.winfo_width(), widget.winfo_reqwidth() - 1)
-            finally:
-                app.root.destroy()
-
-
-class ClassicWindowEditGuardTests(unittest.TestCase):
-    """×2/÷2 and Analyze rebuild the points from the detected sections; in the
-    classic window they used to throw hand edits away without a word."""
-
-    def _app(self, tmp):
-        from unittest import mock
-        import overtone
-        for name in ("CONFIG_PATH", "LEGACY_CONFIG_PATH"):
-            patcher = mock.patch.object(overtone, name, Path(tmp) / f"{name}.json")
-            patcher.start()
-            self.addCleanup(patcher.stop)
-        try:
-            app = TimingAnalyzerApp()
-        except Exception as exc:  # no display
-            self.skipTest(f"Tk unavailable: {exc}")
-        self.addCleanup(app.root.destroy)
-        app.root.attributes("-alpha", 0.0)
-        wav = Path(tmp) / "drums.wav"
-        _drum_track(wav, [(0.5, 128.0), (12.0, 140.0)], duration=24.0)
-        app.analysis = analyze_audio(wav)
-        app._render_results()
-        return app
-
-    def _edit(self, app):
-        app.selected_section = 1
-        app.edit_nudge(7.0)
-        return app.analysis.points[1].offset_ms
-
-    def test_declining_keeps_the_edit_and_accepting_drops_it(self):
-        from unittest import mock
-        with tempfile.TemporaryDirectory() as tmp:
-            app = self._app(tmp)
-            edited = self._edit(app)
-            with mock.patch("tkinter.messagebox.askyesno", return_value=False) as ask:
-                app._rescale_pulse(2.0)
-            ask.assert_called_once()
-            self.assertEqual(app.analysis.points[1].offset_ms, edited)  # still there
-            bpm = app.analysis.global_bpm
-            with mock.patch("tkinter.messagebox.askyesno", return_value=True):
-                app._rescale_pulse(2.0)
-            self.assertAlmostEqual(app.analysis.global_bpm, 2 * bpm, places=1)
-            with mock.patch("tkinter.messagebox.askyesno") as ask:  # nothing edited now
-                app._rescale_pulse(0.5)
-            ask.assert_not_called()
-
-    def test_exporting_makes_the_edits_safe(self):
-        from unittest import mock
-        with tempfile.TemporaryDirectory() as tmp:
-            app = self._app(tmp)
-            self._edit(app)
-            app.copy_osu()
-            with mock.patch("tkinter.messagebox.askyesno") as ask:
-                app._rescale_pulse(2.0)
-            ask.assert_not_called()
-
-    def test_analyze_asks_before_replacing_edits(self):
-        from unittest import mock
-        with tempfile.TemporaryDirectory() as tmp:
-            app = self._app(tmp)
-            edited = self._edit(app)
-            with mock.patch("tkinter.messagebox.askyesno", return_value=False) as ask:
-                app.run()
-            ask.assert_called_once()
-            self.assertFalse(app._busy)  # no analysis started
-            self.assertEqual(app.analysis.points[1].offset_ms, edited)
-
-
-def _classic_app(test, tmp):
-    """The Tk window on a throwaway config, hidden, or skip without a display."""
-    from unittest import mock
-    import overtone
-    for name in ("CONFIG_PATH", "LEGACY_CONFIG_PATH"):
-        patcher = mock.patch.object(overtone, name, Path(tmp) / f"{name}.json")
-        patcher.start()
-        test.addCleanup(patcher.stop)
-    try:
-        app = TimingAnalyzerApp()
-    except Exception as exc:  # no display
-        test.skipTest(f"Tk unavailable: {exc}")
-    test.addCleanup(app.root.destroy)
-    app.root.attributes("-alpha", 0.0)
-    app.root.geometry("1120x760+-3000+-3000")
-    return app
-
-
 def _grid_analysis(offsets_bpms):
     """A 30 s analysis at 120 BPM carrying the given (offset_ms, bpm) points."""
     points = [TimingPoint(float(ms), float(bpm), 0.9, n) for n, (ms, bpm) in enumerate(offsets_bpms)]
     return Analysis("synthetic.wav", 30.0, np.arange(60) * 0.5, np.full(60, 120.0), points,
                     HOP, 44100, 1.0, 120.0, 1.0, "4/4", np.zeros(4000, dtype=np.float32))
-
-
-class ClassicWindowSpanishTests(unittest.TestCase):
-    """With Español selected, the classic window still showed English: the
-    language label, the trace title and hover, and the refusal to delete §1."""
-
-    def test_spanish_reaches_the_label_trace_hover_and_delete(self):
-        from types import SimpleNamespace
-        with tempfile.TemporaryDirectory() as tmp:
-            app = _classic_app(self, tmp)
-            app.language.set("Español")
-            app._translate()
-            self.assertEqual(app.widgets["language_lbl"].cget("text"), "Idioma")
-
-            app.analysis = _grid_analysis([(1000.0, 120.0), (11000.0, 140.0)])
-            app._render_results()
-            app.root.geometry("1120x1000+-3000+-3000")  # room for the trace
-            app.root.update()
-            app._draw_preview()
-            canvas = app.preview
-            texts = [canvas.itemcget(i, "text") for i in canvas.find_all()
-                     if canvas.type(i) == "text"]
-            self.assertIn("CURVA DE TEMPO", texts)
-            self.assertNotIn("TEMPO TRACE", texts)
-
-            g = app._trace_geometry()
-            app._trace_hover(SimpleNamespace(x=(g["l"] + g["r"]) / 2,
-                                             y=(g["top"] + g["bottom"]) / 2))
-            hover = [canvas.itemcget(i, "text") for i in canvas.find_withtag("hover")
-                     if canvas.type(i) == "text"]
-            self.assertTrue(any(text.startswith("confianza") for text in hover), hover)
-
-            app.selected_section = 0
-            app.edit_delete()
-            self.assertEqual(app.status.get(), TimingAnalyzerApp.TEXT["Español"]["first_locked"])
-            self.assertEqual(len(app.analysis.points), 2)
-
-
-class ClassicWindowKeepsTheRowTests(unittest.TestCase):
-    """An edit re-rendered the table, which dropped the selection and put §1 in
-    the editor: a second +1 ms said "Select a table row first."."""
-
-    def _app(self, tmp):
-        app = _classic_app(self, tmp)
-        app.analysis = _grid_analysis([(1000.0, 120.0), (11000.0, 140.0), (21000.0, 120.0)])
-        app._render_results()
-        app.table.selection_set(app.table.get_children()[2])
-        app.root.update()                       # delivers <<TreeviewSelect>>
-        self.assertEqual(app.selected_section, 2)
-        return app
-
-    def test_nudging_twice_moves_the_same_point_twice(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            app = self._app(tmp)
-            for _ in range(2):
-                app.edit_nudge(1.0)
-                app.root.update()               # the re-render's own select events
-            self.assertEqual(app.analysis.points[2].offset_ms, 21002.0)
-            self.assertEqual(app.selected_section, 2)
-            self.assertEqual(app.edit_offset.get(), "21002.0")
-            self.assertEqual(app.table.index(app.table.selection()[0]), 2)
-
-    def test_the_editor_follows_the_point_it_edited(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            app = self._app(tmp)
-            app.edit_rescale(2.0)
-            app.root.update()
-            self.assertEqual(app.selected_section, 2)
-            self.assertEqual(app.edit_bpm.get(), "240.00")    # §3, not §1's 120
-            # An offset edit that re-sorts the point still keeps it selected.
-            app._set_editor("5000.0", "150")
-            app.edit_apply()
-            app.root.update()
-            self.assertEqual(app.selected_section, 1)
-            self.assertEqual(app.analysis.points[1].offset_ms, 5000.0)
-            self.assertEqual(app.edit_offset.get(), "5000.0")
-            app.edit_delete()
-            app.root.update()
-            self.assertIsNone(app.selected_section)          # nothing to keep
-            self.assertEqual(len(app.analysis.points), 2)
 
 
 class NoPulseRefusalTests(unittest.TestCase):
@@ -3614,124 +3392,6 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
                 inject_osu_timing_points(Path(tmp) / "missing.osu", self._analysis())
             self.assertEqual(target.read_text(encoding="utf-8"), self.LEGACY_OSU)
 
-    def test_config_tolerates_garbage(self):
-        from unittest import mock
-        import overtone
-        # Both paths: an unreadable config falls through to the pre-rename
-        # one, so leaving LEGACY_CONFIG_PATH real made "{not json" read back
-        # whatever ~/.timing_analyzer.json holds on the developer's machine.
-        with tempfile.TemporaryDirectory() as tmp, \
-                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "cfg.json"), \
-                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "legacy.json"):
-            overtone.CONFIG_PATH.write_text("[1, 2, 3]", encoding="utf-8")
-            self.assertEqual(overtone.load_config(), {})
-            overtone.CONFIG_PATH.write_text("{not json", encoding="utf-8")
-            self.assertEqual(overtone.load_config(), {})
-            overtone.save_config({"language": "English"})
-            self.assertEqual(overtone.load_config(), {"language": "English"})
-            # An unserialisable value must not raise, and must not corrupt
-            # the file that is already there.
-            overtone.save_config({"bad": object()})
-            self.assertEqual(overtone.load_config(), {"language": "English"})
-            # Hand-edited values of the wrong type used to crash the classic
-            # window on every launch. They are dropped; the rest is kept.
-            overtone.CONFIG_PATH.write_text(json.dumps({
-                "cfg_version": "2", "prefer_map_bpm": "on", "refine_beats": None,
-                "delta": True, "language": 5, "recent": ["a.mp3", 7, None],
-                "file": "song.mp3", "persistence": "12", "theme": {"a": 1},
-                "song_options": ["x"], "future_key": {"kept": 1}}),
-                encoding="utf-8")
-            # A key this version does not know is kept as it is (a newer
-            # version wrote it); a known key of the wrong type is dropped.
-            self.assertEqual(overtone.load_config(), {
-                "recent": ["a.mp3"], "file": "song.mp3", "persistence": "12",
-                "future_key": {"kept": 1}})
-            # Notepad saves with a BOM; the file is read, not reset.
-            overtone.CONFIG_PATH.write_bytes(codecs.BOM_UTF8 + b'{"language": "English"}')
-            self.assertEqual(overtone.load_config(), {"language": "English"})
-            # Without a config of its own, the pre-rename file is read.
-            overtone.CONFIG_PATH.unlink()
-            overtone.LEGACY_CONFIG_PATH.write_text('{"language": "Español"}', encoding="utf-8")
-            self.assertEqual(overtone.load_config(), {"language": "Español"})
-
-    def test_ctrl_c_in_a_field_copies_the_field(self):
-        import tkinter
-        from unittest import mock
-        import overtone
-        try:
-            tkinter.Tk().destroy()
-        except tkinter.TclError as exc:
-            self.skipTest(f"Tk unavailable: {exc}")
-        with tempfile.TemporaryDirectory() as tmp, \
-                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"), \
-                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
-            app = TimingAnalyzerApp()
-            try:
-                app.root.attributes("-alpha", 0.0)
-                app.root.geometry("1120x760+-3000+-3000")
-                app.root.update()
-                # A mock, so the test never touches the real clipboard; nothing
-                # is selected in the field, so its own copy leaves it alone too.
-                with mock.patch.object(app, "copy_osu") as copy_osu:
-                    for field in (app.edit_offset, app.edit_bpm):
-                        field.focus_force()
-                        app.root.update()
-                        field.event_generate("<Control-c>")
-                        app.root.update()
-                    self.assertEqual(copy_osu.call_count, 0)
-                    app.table.focus_force()
-                    app.root.update()
-                    app.table.event_generate("<Control-c>")
-                    app.root.update()
-                    self.assertEqual(copy_osu.call_count, 1)
-            finally:
-                app.root.destroy()
-
-    def test_a_csv_that_cannot_be_written_says_so(self):
-        import tkinter
-        from unittest import mock
-        import overtone
-        try:
-            tkinter.Tk().destroy()
-        except tkinter.TclError as exc:
-            self.skipTest(f"Tk unavailable: {exc}")
-        with tempfile.TemporaryDirectory() as tmp, \
-                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"), \
-                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
-            app = TimingAnalyzerApp()
-            try:
-                app.analysis = _validation_analysis([TimingPoint(500.0, 150.0, 0.9, 0)])
-                app._manual_edits = 2
-                # Like a CSV Excel holds open: the write raises an OSError.
-                unwritable = str(Path(tmp) / "no such folder" / "timing.csv")
-                with mock.patch("tkinter.filedialog.asksaveasfilename", return_value=unwritable):
-                    app.save_csv()                  # raised out of the Tk callback
-                self.assertIn(app.tr("error", value=""), app.status.get())
-                self.assertEqual(app._manual_edits, 2)   # nothing was exported
-            finally:
-                app.root.destroy()
-
-    def test_the_classic_window_opens_on_a_badly_typed_config(self):
-        import tkinter
-        from unittest import mock
-        import overtone
-        try:
-            tkinter.Tk().destroy()
-        except tkinter.TclError as exc:
-            self.skipTest(f"Tk unavailable: {exc}")
-        with tempfile.TemporaryDirectory() as tmp, \
-                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"), \
-                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
-            overtone.CONFIG_PATH.write_text(json.dumps(
-                {"cfg_version": "2", "prefer_map_bpm": "on", "refine_beats": "abc"}),
-                encoding="utf-8")
-            app = TimingAnalyzerApp()   # raised TypeError before the window opened
-            try:
-                self.assertTrue(app.prefer_map_bpm.get())
-                self.assertTrue(app.refine_beats.get())
-            finally:
-                app.root.destroy()
-
     def test_local_bpm_helper_handles_degenerate_input(self):
         self.assertEqual(len(_robust_local_bpms(np.zeros(0))), 0)
         self.assertEqual(len(_robust_local_bpms(np.array([1.0]))), 1)
@@ -5133,8 +4793,7 @@ def _run_cli(argv, analysis=None):
     """main() on ``argv`` -> (exit code, stdout, stderr).
 
     The analysis is stubbed with ``analysis`` when given (a function stands in
-    for analyze_audio itself), and the GUI never opens: it is a mock, so a
-    command that would launch it only says so.
+    for analyze_audio itself).
     """
     import contextlib
     import io
@@ -5145,7 +4804,6 @@ def _run_cli(argv, analysis=None):
     code = 0
     with contextlib.ExitStack() as stack:
         stack.enter_context(mock.patch.object(sys, "argv", ["overtone.py", *argv]))
-        gui = stack.enter_context(mock.patch.object(overtone, "TimingAnalyzerApp"))
         if callable(analysis):
             stack.enter_context(mock.patch.object(overtone, "analyze_audio", analysis))
         elif analysis is not None:
@@ -5157,8 +4815,6 @@ def _run_cli(argv, analysis=None):
             main()
         except SystemExit as exc:
             code = exc.code
-    if gui.called:
-        err.write("<GUI opened>")
     return code, out.getvalue(), err.getvalue()
 
 
@@ -5292,13 +4948,14 @@ class CliFlagTests(unittest.TestCase):
     """A flag that cannot act is refused: --inject with the audio forgotten
     opened the window, and --title without --osz wrote nothing, both silently."""
 
-    def test_flags_without_audio_do_not_open_the_window(self):
-        code, out, err = _run_cli(["--inject", "map.osu"])
-        self.assertEqual(code, 2)
-        self.assertIn("--inject needs an audio file", err)
-        self.assertNotIn("<GUI opened>", err)
-        code, out, err = _run_cli([])
-        self.assertIn("<GUI opened>", err)          # no arguments at all still opens it
+    def test_the_audio_is_required_with_or_without_flags(self):
+        # The command line is the only Python interface since the desktop
+        # window was parked: no arguments is a usage error, not a window.
+        for argv in (["--inject", "map.osu"], []):
+            code, out, err = _run_cli(argv)
+            self.assertEqual(code, 2, argv)
+            self.assertIn("the following arguments are required: audio", err)
+            self.assertEqual(out, "")
 
     def test_flags_that_need_another_flag_say_so(self):
         analysis = _grid_analysis([(1000.0, 120.0)])
@@ -7389,24 +7046,6 @@ class LogoIconTests(unittest.TestCase):
         self.assertLess(pixel(15, 15)[3], 64)
         self.assertEqual(pixel(13, 8), (0x1E, 0x1B, 0x27, 255))
         self.assertEqual(pixel(6, 8)[:3], (0xFF, 0x5D, 0x6C))
-
-
-class TaskbarIdentityTests(unittest.TestCase):
-    @unittest.skipUnless(sys.platform == "win32", "a Windows taskbar setting")
-    def test_the_process_takes_overtones_own_taskbar_id(self):
-        # Run in a child so this test process keeps its own identity.
-        import subprocess
-        code = ("import ctypes, overtone as ta\n"
-                "ok = ta.claim_taskbar_identity()\n"
-                "p = ctypes.c_wchar_p()\n"
-                "ctypes.windll.shell32.GetCurrentProcessExplicitAppUserModelID(ctypes.byref(p))\n"
-                "print(ok, p.value)\n")
-        env = dict(os.environ,
-                   PYTHONPATH=str(Path(__file__).resolve().parent.parent / "python"))
-        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
-                             cwd=str(Path(__file__).resolve().parent), timeout=120,
-                             env=env)
-        self.assertEqual(out.stdout.split(), ["True", "Overtone.TimingWorkbench"], out.stderr)
 
 
 class ModReportTests(unittest.TestCase):

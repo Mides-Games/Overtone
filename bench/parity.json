@@ -1,5 +1,13 @@
 {
  "classes": {
+  "MeasurementRunTests": {
+   "where": "python-only",
+   "why": "overtone_runs.py: the bench's timing stages run on a server, queued and kept on disk, which no Rust crate holds"
+  },
+  "LibraryServerTests": {
+   "where": "python-only",
+   "why": "overtone_server.py: the library index and its BPM cache served over HTTP behind a token, which no Rust crate holds"
+  },
   "OsuDbAuditTests": {
    "where": "bench",
    "why": "bench/mapper_agreement.py parses only the local osu!.db identity and status fields for a read-only reference audit"
@@ -278,6 +286,10 @@
    "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
   },
   "_snap_whole_lines": {
+   "where": "python-only",
+   "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
+  },
+  "_fold_local_to_map_octave": {
    "where": "python-only",
    "why": "the osu! conventions run after either engine (overtone_rust.analyze applies them to the Rust result), so the Rust engine itself does not carry them"
   },

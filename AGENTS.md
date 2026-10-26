@@ -35,8 +35,15 @@ commit messages are English; only the app's own UI strings stay bilingual
 
 ## CI
 
-- **Do not create GitHub Actions workflows.** No `.github/workflows/`, no CI YAML, no
-  bots, no automated release pipelines. Checks run locally.
+- **GitHub Actions deploys, and only deploys** (owner's decision, 2026-10-26). One
+  workflow, `.github/workflows/deploy.yml`: a push to `feature/library-api` asks the
+  owner's server to update, signing in as `overtone-deploy`, whose key can start
+  `overtone-update.service` and nothing else (`deploy/setup-deploy-user.sh`). The server
+  pulls that branch fast-forward only, rebuilds and restarts, and waits while a run is
+  going; a timer does the same every five minutes when no push does.
+- **No checks run in Actions.** No test, gate or benchmark workflow, no bots, no release
+  pipelines, no secret but the deploy key. Checks run locally or on the owner's server
+  (`bench/remote.py gates|suite`), each one line (see **Verification** below).
 - The gates that would otherwise live in CI are run with local commands, and every one of
   them must be runnable in a single line (see **Verification** below). If a check cannot be
   run locally by a person, it does not exist.
@@ -44,7 +51,7 @@ commit messages are English; only the app's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (1033 on 2026-10-25)
+.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (1077 on 2026-10-26)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -82,6 +89,7 @@ named, and the analyses are cached per audio and engine hash, so a re-score take
 .venv/Scripts/python.exe bench/corpus_b.py                     # ranked red lines within 5 ms
 .venv/Scripts/python.exe bench/corpus_b.py --engine rust       # the same through overtone-cli
 .venv/Scripts/python.exe bench/corpus_b.py --onsets            # and where each track's sound starts
+.venv/Scripts/python.exe bench/remote.py run anime-single --split dev --wait  # a stage, on the user's server
 ```
 
 And the Rust side:
@@ -140,7 +148,11 @@ proven otherwise on the corpus, no matter how good the reasoning sounds.
    Phase 0): it would keep changing while v3 is the app's default engine.
 5. **`.osu` writes are atomic, backed up, and never overwrite an existing `.bak`.**
    A field the user did not ask to change comes out byte-identical, CRLF included.
-6. Offline only. No network calls, no telemetry, no update checks, no external APIs.
+6. Offline by default. The app works fully without a network: no telemetry, no update
+   checks, no external APIs. Talking to a server is opt-in and only to the one the user
+   configured (their own `overtone_server.py`); it sends only what the work needs (the
+   audio, the parameters, the files a page uploads), and the desktop app falls back to
+   the local engine when that server does not answer. The server makes no outbound calls.
 7. No `unsafe` in Rust without a benchmark in the same commit showing it was necessary.
 8. Precision-critical code is not edited without running the suite. If the suite cannot be
    run, the change does not land.
@@ -160,12 +172,21 @@ python/                   v3 engine, osu! I/O, classic Tk GUI + CLI (the app's d
   overtone_combine.py       the compilation builder: whole maps and their songs as one map
   overtone_library.py       the library index: a Songs folder in SQLite, searched (FTS5)
   library.sql               the index's schema, versioned; facts.py checks the version
+  overtone_server.py        the library API: the index and its BPM cache over HTTP,
+                            behind a token, for a server that holds the Songs folder;
+                            also serves app/ as a web page (overtone_webhost.py)
+  overtone_webhost.py       the page in a browser: Api calls, events and file
+                            dialogs over HTTP instead of pywebview
+  overtone_runs.py          measurement runs on the server: bench/stages.py and
+                            single_bpm.py over its Songs folder, one at a time, kept
   requirements.txt          lower bounds; requirements.lock pins the measured baseline
 tests/                    Python suite (run from the root with unittest discover)
   test_overtone.py          engine, I/O and classic-window tests
   test_overtone_web.py      web bridge tests (never touch the real config)
   fixtures/                 hand-timed samples the tests read
-app/                      web shell frontend (HTML/CSS/JS, no network)
+app/                      web shell frontend (HTML/CSS/JS); web.js carries its bridge
+                          over HTTP when the server serves it, and does nothing on disk;
+                          runs.html is the server's measurement runs page
 Overtone.bat              double-click launcher
 installer/                the MSI and portable ZIP: PyInstaller spec, WiX source, the
                           one-line build (installer/build.py) and its smoke test
@@ -199,6 +220,7 @@ bench/genre_corpus.py     where each genre puts its hitsounds, measured from the
 bench/genre_corpus.json   user's Songs folder; writes profiles/<genre>.json
 bench/corpus_b.py         Corpus B: the engine against 20 hand-timed ranked maps (Phase 10)
 bench/corpus_b.json       its manifest: Songs folders, files and SHA-1s, never the audio
+bench/remote.py           the server's measurement runs from the command line
 proto/                    Python prototypes of the riskiest v4 algorithms, and
                           band_lanes.py, which prints the band flux as
                           `overtone-bench bands` does so the two can be diffed,
@@ -212,10 +234,13 @@ crates/                   the v4 Rust workspace
   overtone-hitsound/        per-attack features, instrument templates, musical role
   overtone-bench/           golden-vector diff against the Python engine
   overtone-cli/             `overtone-cli analyze`: the v4 engine as one command
+deploy/                   the owner's server keeping itself current: overtone-update.sh,
+                          its systemd timer and setup-deploy-user.sh (docs/server.md)
+.github/workflows/        deploy.yml only: a push asks the server to update
 docs/                     audit, stack evaluation, architecture, UI, DSP, hitsounds,
                           roadmap, ML evaluation, naming, precision plan, MSI
                           distribution, comfort features, audit backlog,
-                          other languages, hitsound plan, workflow, timeline
+                          other languages, hitsound plan, workflow, library server, timeline
   workflow.md               the per-task routine: program, test, measure, commit, audit
   timeline.md               engineering log
 ```

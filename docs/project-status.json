@@ -9,7 +9,7 @@
       "status": "active",
       "source": "README.md",
       "line": 1,
-      "summary": "Offline osu! mapping workbench: analysis, map tools, hitsounds, trainer, library, compilation and distribution."
+      "summary": "Offline osu! timing workbench: analysis, map tools and distribution. Hitsounds, trainer, Songs browser and compilation are parked on parked/desktop-extras (W1)."
     },
     {
       "id": "shipped",
@@ -40,39 +40,39 @@
     },
     {
       "id": "hitsounds",
-      "label": "[PARTIAL] Hitsounds H1–H5 shipped",
+      "label": "[PARKED] Hitsounds H1–H5",
       "kind": "feature",
-      "status": "partial",
+      "status": "parked",
       "source": "docs/07-roadmap.md",
       "line": 217,
-      "summary": "H1–H5 shipped. H7 audio-only proposal shipped without an accuracy claim; H6 sample recommendation, instrument lanes and mismatch rule remain gated after measured review."
+      "summary": "H1–H5 shipped. H7 audio-only proposal shipped without an accuracy claim; H6 sample recommendation, instrument lanes and mismatch rule remain gated after measured review. Parked on parked/desktop-extras and the tag v3-desktop-full in W1 (2026-10-26): the project's core is timing."
     },
     {
       "id": "library",
-      "label": "[SHIPPED] Songs library + health check",
+      "label": "[PARKED] Songs browser + health page",
       "kind": "feature",
-      "status": "shipped",
+      "status": "parked",
       "source": "docs/07-roadmap.md",
       "line": 784,
-      "summary": "SQLite/FTS5 index, scan/search and health check. Precision labels still need R6 verdicts."
+      "summary": "SQLite/FTS5 index, scan/search and health check. Precision labels still need R6 verdicts. The index stays for the measurement server; its app page is parked on parked/desktop-extras (W1, 2026-10-26)."
     },
     {
       "id": "trainer",
-      "label": "[DONE] Train section and trainer gate",
+      "label": "[PARKED] Train section and trainer gate",
       "kind": "feature",
-      "status": "shipped",
+      "status": "parked",
       "source": "docs/07-roadmap.md",
       "line": 213,
-      "summary": "Practice copies, rate ladders, mod feel, undo/cleanup; gate green."
+      "summary": "Practice copies, rate ladders, mod feel, undo/cleanup; gate green. Parked on parked/desktop-extras and the tag v3-desktop-full in W1 (2026-10-26): the project's core is timing."
     },
     {
       "id": "compile",
-      "label": "[PARTIAL] Compile section + map builder",
+      "label": "[PARKED] Compile section + map builder",
       "kind": "feature",
-      "status": "partial",
+      "status": "parked",
       "source": "docs/07-roadmap.md",
       "line": 928,
-      "summary": "Usable in app; Phase 25 rows 25.1–25.19 are implemented, including loudness match, junction placement, phrase selection, order suggestion and reference grading. Tempo-matched junction 25.20 remains unlikely; crossfade and .osb background were rejected."
+      "summary": "Usable in app; Phase 25 rows 25.1–25.19 are implemented, including loudness match, junction placement, phrase selection, order suggestion and reference grading. Tempo-matched junction 25.20 remains unlikely; crossfade and .osb background were rejected. Parked on parked/desktop-extras and the tag v3-desktop-full in W1 (2026-10-26): the project's core is timing."
     },
     {
       "id": "installer",

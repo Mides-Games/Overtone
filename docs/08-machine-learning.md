@@ -68,7 +68,7 @@ this one".
 are mostly research-only or non-commercial, and **I have not verified the current licence
 of any specific dataset**, so none should be assumed usable. Rather than resolve that, use
 what the repo already does for tempo: **synthesise labelled data**
-([`06-hitsound-engine.md`](06-hitsound-engine.md) §9). The benchmark renderer already
+([`06-hitsound-engine.md`](https://github.com/Mides-Projects/Overtone/blob/parked/desktop-extras/docs/06-hitsound-engine.md) §9). The benchmark renderer already
 places kicks, snares and hats at known times; emit those labels, then vary sample choice,
 velocity, tempo, mix balance, sidechain, reverb, saturation and mastering loudness to
 cover the realistic space. No dataset licence, unlimited quantity, perfect labels.

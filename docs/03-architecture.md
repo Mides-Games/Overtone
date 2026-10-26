@@ -142,7 +142,10 @@ section) over *math* (how a grid is fitted), and policy is what users tune.
 - Atomic write + `.bak` that is never overwritten. Ported verbatim in behaviour.
 
 ### `overtone-hitsound`
-See [`06-hitsound-engine.md`](06-hitsound-engine.md). Structurally:
+> Parked on `parked/desktop-extras` (W1, 2026-10-26): the crate left master's workspace
+> with the rest of the hitsound work. The design below is what it was built to.
+
+See [`06-hitsound-engine.md`](https://github.com/Mides-Projects/Overtone/blob/parked/desktop-extras/docs/06-hitsound-engine.md). Structurally:
 `features` → `instruments` → `context` → `decide` (DP) → `explain` → `export`.
 
 ### `overtone-analysis`

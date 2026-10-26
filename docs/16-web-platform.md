@@ -381,6 +381,15 @@ Cada fila es una rama y un PR. Los números siguen el estilo `W<fase>.<n>`.
 | W1.4 | Cortar los hitsounds del engine y del bridge; la feature `hitsound` del CLI queda apagada por defecto |
 | W1.5 | Re-basar el conteo de tests y `facts.py`; correr todas las puertas; entrada en `timeline.md` |
 
+**Hecho el 2026-10-26** en la rama `chore/park-desktop-extras`, con dos cambios sobre lo
+planeado arriba: el crate `overtone-hitsound` salió del workspace en vez de quedar como
+feature apagada (borrar es más honesto que apagar, y todo vive en `parked/desktop-extras`);
+y de Library sale solo la página. `overtone_library.py` y `library.sql` se quedan, porque
+`overtone_server.py`, `bench/stages.py`, `single_bpm.py`, `health_sample.py` y
+`mapper_agreement.py` los leen, y `facts.py` sigue chequeando su esquema. Con Compile y
+Train fuera, `overtone_web.py` ya no importa nada estacionado y W1.2 no hizo falta. El
+detalle y las puertas están en `timeline.md`.
+
 ### Fase W2 — El engine como servicio
 
 | # | Tarea |

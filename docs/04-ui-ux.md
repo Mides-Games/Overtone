@@ -318,7 +318,7 @@ listening to.
 
 Selecting an object opens the inspector with the decision, the confidence, the itemised
 evidence and the alternatives — the explainability requirement is a first-class screen,
-designed in [`06-hitsound-engine.md`](06-hitsound-engine.md) §7.
+designed in [`06-hitsound-engine.md`](https://github.com/Mides-Projects/Overtone/blob/parked/desktop-extras/docs/06-hitsound-engine.md) §7.
 
 *Built 2026-09-26 (web shell):* the Profile selector sits on its own line in the Propose
 card, above the buttons, with a line saying what the chosen profile does; and a Samples

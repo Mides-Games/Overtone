@@ -29,7 +29,7 @@ import numpy as np
 import overtone_web as web
 import overtone as ta
 
-from test_overtone import _drum_track, _wav_bytes
+from test_overtone import _drum_track
 import test_overtone
 
 def _analysis(points, beats=None, engine="precision", residual=0.4, onset_frames=5000):
@@ -1379,7 +1379,7 @@ class HistoryBridgeTests(_IsolatedConfig):
         with tempfile.TemporaryDirectory() as tmp:
             path = self._map(tmp)
             before = path.read_bytes()
-            written = ta.write_object_hitsounds(path, {0: {"bits": 8}})
+            written = ta.write_osu_beatmap(path, ta.read_osu_beatmap(path))
             moved = before.replace(b"1000,500,", b"1000,400,")
             path.write_bytes(moved)
             api = web.Api()
@@ -1389,7 +1389,7 @@ class HistoryBridgeTests(_IsolatedConfig):
             back = path.read_bytes()
             json.dumps([listing, diff, restored])
             entry = listing["entries"][0]
-            self.assertEqual((entry["op"], entry["file"], written["backup"] is not None), ("hitsounds", "map.osu", True))
+            self.assertEqual((entry["op"], entry["file"], written["backup"] is not None), ("write", "map.osu", True))
             self.assertEqual(entry["backup"], Path(written["backup"]).name)
             self.assertEqual((diff["diff"]["n_changed"], diff["diff"]["changed"][0]["new_bpm"]), (1, 150.0))
             self.assertEqual((restored["ok"], back), (True, before))

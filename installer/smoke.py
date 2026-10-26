@@ -9,7 +9,7 @@ installer or an archive. Three runs, each timed:
 2. ``_internal\\overtone-cli.exe analyze AUDIO --json``: the Rust engine, run
    from where the app finds it;
 3. ``Overtone.exe --self-check REPORT``: the window's own executable checks
-   its page, icon, samples, library schema and window libraries, and runs
+   its page, icon, library schema and window libraries, and runs
    both engines on clicks of its own, all without a window.
 
 AUDIO is the benchmark's ``edm-174`` case, 174 BPM exactly, rendered by

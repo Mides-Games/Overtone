@@ -61,7 +61,6 @@ GATES = {
     "perf": ["bench/gates.py", "perf"],
     "fixtures": ["bench/fixtures.py"],
     "parity": ["bench/parity.py"],
-    "fit-kits": ["bench/fit_kits.py", "--verify"],
     "facts": ["bench/facts.py"],
     "fuzz-reader": ["bench/fuzz_reader.py"],
 }

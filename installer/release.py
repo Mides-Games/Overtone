@@ -28,10 +28,10 @@ CLI_EXE = "overtone-py.exe"
 RUST_CLI = "overtone-cli.exe"
 
 #: Read at run time from beside the code, and bundled at the same relative
-#: path: the window's page, its icon, Overtone's own hitsound samples, the
-#: hitsound profiles and the library index's schema. The asset generators
-#: (``assets/*.py``) are build tools and stay out.
-DATA = ("app", "assets/logo.ico", "assets/logo.png", "assets/samples", "assets/models", "profiles",
+#: path: the window's page, its icon, the hitsound profiles and the library
+#: index's schema. The asset generators (``assets/*.py``) are build tools and
+#: stay out.
+DATA = ("app", "assets/logo.ico", "assets/logo.png", "assets/models", "profiles",
         "python/library.sql")
 #: Written by build.py into the frozen code's folder: the release's version, the
 #: commit it was built from and when. python/overtone_paths.py reads the same name.

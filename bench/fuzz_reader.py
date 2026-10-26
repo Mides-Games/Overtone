@@ -154,25 +154,18 @@ def _with_red_line(beatmap: dict) -> dict:
     return work
 
 
-def consumers(beatmap: dict, folder: Path) -> None:
+def consumers(beatmap: dict) -> None:
     """Every function that takes a parsed beatmap; ValueError is a fair refusal."""
     times = np.linspace(0.5, 8.0, 40)
     weights = np.ones_like(times)
     calls = [
         lambda: ta.beatmap_text(_with_red_line(beatmap)),
         lambda: ta.sound_events(beatmap),
-        lambda: ta.hitsound_report(beatmap),
-        lambda: ta.hitsound_consistency(beatmap),
-        lambda: ta.hitsound_silence_check(beatmap, times, weights),
-        lambda: ta.hitsound_playback(beatmap, folder),
-        lambda: ta.hitsound_difficulty(beatmap),
         lambda: ta.snap_audit(beatmap, duration_s=10.0),
         lambda: ta.grade_reference_timing(beatmap, times, weights, 10.0),
         lambda: ta.alignment_report(SimpleNamespace(attack_times=times, attack_weights=weights), beatmap),
         lambda: ta.mod_report(beatmap, times, weights, 10.0),
         lambda: ta.scroll_profile(beatmap),
-        lambda: ta.proposal_changes(beatmap, []),
-        lambda: ta.copy_hitsounds(beatmap, beatmap),
     ]
     for call in calls:
         try:
@@ -211,7 +204,7 @@ def main() -> int:
                 written = ta.beatmap_text(beatmap)
                 if written != text:
                     raise AssertionError("the writer did not give the read text back")
-                consumers(beatmap, folder)
+                consumers(beatmap)
             except Exception:  # noqa: BLE001 -- the finding itself
                 keep = ROOT / "bench" / f"fuzz_failure_{args.seed}_{n}.osu.bin"
                 keep.write_bytes(data)

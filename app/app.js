@@ -481,7 +481,7 @@ const I18N = {
     rp_title: "Mod report", rp_pick: "Choose .osu…", rp_copy: "Copy all",
     rp_empty: "Choose the .osu of a difficulty to gather every finding about it: red lines to check, red lines it is missing, unsnapped objects, objects away from the music and hitsounds breaking the map's own pattern.",
     rp_counts: "{n} findings", rp_none: "Nothing to report on this difficulty.",
-    rp_src_reference: "Red lines", rp_src_suggestion: "Missing red lines", rp_src_snap: "Snapping", rp_src_alignment: "Away from the music", rp_src_hitsound: "Hitsounds",
+    rp_src_reference: "Red lines", rp_src_suggestion: "Missing red lines", rp_src_snap: "Snapping", rp_src_alignment: "Away from the music",
     rp_hint: "The lines are in English, as mod posts are. Untick a group to leave it out of the copy.",
     rp_copied: "Report copied: paste it into your mod post.",
     rp_open: "Open in the osu! editor",
@@ -1010,7 +1010,7 @@ const I18N = {
     rp_title: "Reporte de mod", rp_pick: "Elegir .osu…", rp_copy: "Copiar todo",
     rp_empty: "Elegí el .osu de una dificultad para juntar cada hallazgo sobre ella: líneas rojas a revisar, líneas rojas que le faltan, objetos sin snap, objetos lejos de la música e hitsounds que rompen el patrón del mapa.",
     rp_counts: "{n} hallazgos", rp_none: "Nada que reportar en esta dificultad.",
-    rp_src_reference: "Líneas rojas", rp_src_suggestion: "Líneas rojas faltantes", rp_src_snap: "Snap", rp_src_alignment: "Lejos de la música", rp_src_hitsound: "Hitsounds",
+    rp_src_reference: "Líneas rojas", rp_src_suggestion: "Líneas rojas faltantes", rp_src_snap: "Snap", rp_src_alignment: "Lejos de la música",
     rp_hint: "Las líneas van en inglés, como los mods. Destildá un grupo para dejarlo fuera de la copia.",
     rp_copied: "Reporte copiado: pegalo en tu mod.",
     rp_open: "Abrir en el editor de osu!",
@@ -4458,7 +4458,7 @@ function tapAssist() {
 
 // ------------------------------------------------------------------ mod report
 // One difficulty, every finding, in time order as a mod post lists them.
-const RP_SOURCES = ["reference", "suggestion", "snap", "alignment", "hitsound"];
+const RP_SOURCES = ["reference", "suggestion", "snap", "alignment"];
 
 async function reportPick() {
   if (!api() || !S.result || S.busy) return;

@@ -254,67 +254,6 @@ def structure(path: str | os.PathLike[str], *, cli: Path | None = None,
     return report
 
 
-def _as_several(report: dict) -> dict:
-    """A one-map report in the shape a list of maps gets: the song once, its
-    one map under ``maps``, and that map's decision time with it."""
-    timings = dict(report.get("timings_s", {}))
-    decide = timings.pop("decide", None)
-    song = {k: v for k, v in report.items() if k not in ("map", "units", "timings_s")}
-    return {**song, "timings_s": timings,
-            "maps": [{"map": report["map"], "units": report["units"],
-                      "timings_s": {"decide": decide}}]}
-
-
-def hitsound(audio: str | os.PathLike[str],
-             osu: str | os.PathLike[str] | Iterable[str | os.PathLike[str]] | None = None, *,
-             profile: str | os.PathLike[str] | None = None,
-             cli: Path | None = None, timeout: float = TIMEOUT_S) -> dict:
-    """``overtone-cli hitsound``: the proposed sound of every decidable point.
-
-    The audio and the map travel together because the decision reads both.
-    ``osu`` is one map, or a list of maps of this audio: then the audio is
-    analysed once for all of them, and the report's ``maps`` holds one entry
-    per map in the order given, its ``map`` path with its ``units``, or with
-    its own ``error`` when that map cannot be read (the others are still
-    decided). ``osu`` is None for the audio-only proposal (H7): strong
-    attacks on the song's own grid, reported with ``"mode": "audio-only"``.
-    ``profile`` is a profile file to decide with; without one the CLI's
-    baked ``balanced`` decides. Raises :class:`SidecarUnavailable`
-    without a binary, and ``RuntimeError`` with the loader's message when
-    the audio or the profile cannot be read, or a map given alone.
-    """
-    binary = cli or find_cli()
-    if binary is None:
-        raise SidecarUnavailable("The Rust engine (overtone-cli) is not built.")
-    if osu is None:
-        several, maps = False, []
-    else:
-        several = not isinstance(osu, (str, os.PathLike))
-        maps = [os.fspath(path) for path in osu] if several else [os.fspath(osu)]
-        if not maps:
-            raise ValueError("No map to propose for.")
-    args = [str(binary), "hitsound", os.fspath(audio), *maps]
-    if profile is not None:
-        args += ["--profile", os.fspath(profile)]
-    done = _run(args, timeout)
-    try:
-        report = json.loads(done.stdout.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        report = None
-    if done.returncode == 1 and report is not None and "error" in report:
-        raise RuntimeError(report["error"])
-    if several and len(maps) == 1 and done.returncode == 0 and report is not None \
-            and "units" in report:
-        report = _as_several(report)
-    # Several maps exit 1 when one could not be read; the report says which.
-    # The audio-only report carries the same "units" key, marked "audio-only".
-    expected = ((0, 1), "maps") if several else ((0,), "units")
-    if done.returncode not in expected[0] or report is None or expected[1] not in report:
-        detail = done.stderr.decode("utf-8", "replace").strip()[-300:]
-        raise RuntimeError(f"The Rust engine failed (exit {done.returncode}): {detail}")
-    return report
-
-
 def ramps(audio: str | os.PathLike[str], drift_ms: float = 5.0,
           max_lines: int | None = None, decimals: int = 0,
           *, cli: Path | None = None, timeout: float = TIMEOUT_S) -> dict:

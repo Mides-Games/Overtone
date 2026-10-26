@@ -2419,32 +2419,7 @@ class RustSidecarTests(unittest.TestCase):
             with self.assertRaises(rs.SidecarUnavailable):
                 rs.analyze("song.wav")
             with self.assertRaises(rs.SidecarUnavailable):
-                rs.hitsound("song.wav", "map.osu")
-            with self.assertRaises(rs.SidecarUnavailable):
                 rs.ramps("song.wav")
-
-    def test_audio_only_sends_no_map_and_returns_its_units(self):
-        import overtone_rust as rs
-        report = {"mode": "audio-only", "source": "song.wav",
-                  "units": [{"object": None, "part": "attack", "edge": None,
-                             "time_ms": 500.0,
-                             "proposal": {"bank": "drum", "additions": ["clap"]}}]}
-        seen = {}
-
-        def fake_run(args, timeout):
-            seen["args"] = args
-            import json
-            import subprocess
-            return subprocess.CompletedProcess(
-                args, 0, json.dumps(report).encode("utf-8"), b"")
-
-        from unittest import mock
-        with mock.patch.object(rs, "find_cli", return_value=Path("cli")), \
-                mock.patch.object(rs, "_run", side_effect=fake_run):
-            out = rs.hitsound("song.wav", None)
-        self.assertEqual(seen["args"], [str(Path("cli")), "hitsound", "song.wav"])
-        self.assertEqual(out["mode"], "audio-only")
-        self.assertEqual(out["units"], report["units"])
 
     def test_the_rust_engine_reads_what_v3_reads(self):
         import overtone as ta

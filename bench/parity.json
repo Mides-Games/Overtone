@@ -181,11 +181,8 @@
    "where": "rust"
   },
   "_TimingCursor": {
-   "rust": [
-    "overtone-hitsound/src/map.rs::missing_sections_fall_back_to_defaults",
-    "overtone-hitsound/src/map.rs::slider_span_follows_beat_and_green_velocity"
-   ],
-   "where": "rust"
+   "where": "shell",
+   "why": "osu! file reading: the .osu reader in Rust lived in overtone-hitsound, parked on parked/desktop-extras (W1); the Rust engine reads no map"
   },
   "_atomic_grid_candidates": {
    "rust": [
@@ -238,10 +235,8 @@
    "where": "rust"
   },
   "_is_red_line": {
-   "rust": [
-    "overtone-hitsound/src/map.rs::red_green_and_legacy_timing_lines_parse_and_junk_skips"
-   ],
-   "where": "rust"
+   "where": "shell",
+   "why": "osu! file reading: the .osu reader in Rust lived in overtone-hitsound, parked on parked/desktop-extras (W1); the Rust engine reads no map"
   },
   "_load_audio": {
    "rust": [
@@ -265,10 +260,8 @@
    "where": "rust"
   },
   "_parse_red_line": {
-   "rust": [
-    "overtone-hitsound/src/map.rs::red_green_and_legacy_timing_lines_parse_and_junk_skips"
-   ],
-   "where": "rust"
+   "where": "shell",
+   "why": "osu! file reading: the .osu reader in Rust lived in overtone-hitsound, parked on parked/desktop-extras (W1); the Rust engine reads no map"
   },
   "_points_from_sections": {
    "rust": [
@@ -598,17 +591,12 @@
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
   "read_osu_beatmap": {
-   "rust": [
-    "overtone-hitsound/src/map.rs::every_object_kind_parses_with_its_sound",
-    "overtone-hitsound/src/map.rs::red_green_and_legacy_timing_lines_parse_and_junk_skips"
-   ],
-   "where": "rust"
+   "where": "shell",
+   "why": "osu! file reading: the .osu reader in Rust lived in overtone-hitsound, parked on parked/desktop-extras (W1); the Rust engine reads no map"
   },
   "read_osu_red_lines": {
-   "rust": [
-    "overtone-hitsound/src/map.rs::red_green_and_legacy_timing_lines_parse_and_junk_skips"
-   ],
-   "where": "rust"
+   "where": "shell",
+   "why": "osu! file reading: the .osu reader in Rust lived in overtone-hitsound, parked on parked/desktop-extras (W1); the Rust engine reads no map"
   },
   "read_timing_file": {
    "where": "python-only",
@@ -709,11 +697,8 @@
    "where": "rust"
   },
   "sound_events": {
-   "rust": [
-    "overtone-hitsound/src/map.rs::every_object_kind_parses_with_its_sound",
-    "overtone-hitsound/src/emission.rs::hit_sound_bits_decode_in_whistle_finish_clap_order"
-   ],
-   "where": "rust"
+   "where": "shell",
+   "why": "osu! file reading: the .osu reader in Rust lived in overtone-hitsound, parked on parked/desktop-extras (W1); the Rust engine reads no map"
   },
   "split_section": {
    "where": "shell",

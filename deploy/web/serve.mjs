@@ -12,6 +12,15 @@
  * to index.html (the app routes on the client). Vite's hashed /assets/* are
  * cached for a year; index.html is never cached, so a release is visible on
  * the next load.
+ *
+ * TRUSTED_PROXY_HOPS (default 1) is how many proxies sit in front of this
+ * process: 1 for the TLS proxy (Cloudflare, nginx or Caddy). The API counts its
+ * rate limit per client address, and everything it receives comes from here,
+ * so the X-Forwarded-For it reads has to be one this process vouches for: the
+ * last TRUSTED_PROXY_HOPS entries of the incoming header (the ones those
+ * proxies appended) plus the address of the connection itself. Whatever a
+ * client wrote further left is dropped. The API then trusts this process and
+ * those hops, TRUST_PROXY = TRUSTED_PROXY_HOPS + 1.
  */
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
@@ -21,6 +30,17 @@ import path from 'node:path';
 const PORT = Number(process.env.PORT || process.env.SERVER_PORT || 8080);
 const ROOT = path.resolve(process.env.WEB_ROOT || 'site/web/dist');
 const UPSTREAM = new URL(process.env.API_UPSTREAM || 'http://127.0.0.1:4012');
+const HOPS = hops(process.env.TRUSTED_PROXY_HOPS);
+
+function hops(raw) {
+  if (raw === undefined || String(raw).trim() === '') return 1;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > 10) {
+    console.error(`overtone-web: TRUSTED_PROXY_HOPS must be an integer from 0 to 10 (got "${raw}")`);
+    process.exit(1);
+  }
+  return n;
+}
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -54,12 +74,23 @@ function forwardable(headers) {
   return out;
 }
 
+// The chain the API reads: the last HOPS entries the trusted proxies appended,
+// then the connection's own address. Never what a client typed before them.
+function forwardedFor(req) {
+  const raw = req.headers['x-forwarded-for'];
+  const incoming = (Array.isArray(raw) ? raw.join(',') : raw || '')
+    .split(',')
+    .map((a) => a.trim())
+    .filter(Boolean);
+  const kept = HOPS > 0 ? incoming.slice(-HOPS) : [];
+  return [...kept, req.socket.remoteAddress || 'unknown'].join(', ');
+}
+
 // Request and response bodies are piped, never buffered: an audio upload goes
 // through at the size the API accepts, and the API is the one that limits it.
 function proxy(req, res) {
   const headers = forwardable(req.headers);
-  const peer = req.socket.remoteAddress || '';
-  headers['x-forwarded-for'] = headers['x-forwarded-for'] ? `${headers['x-forwarded-for']}, ${peer}` : peer;
+  headers['x-forwarded-for'] = forwardedFor(req);
   headers['x-forwarded-proto'] ||= 'http';
   headers['x-forwarded-host'] ||= req.headers.host || '';
   headers.host = UPSTREAM.host;
@@ -144,5 +175,8 @@ process.on('SIGTERM', () => server.close(() => process.exit(0)));
 
 server.listen(PORT, '0.0.0.0', () => {
   // The egg's "done" line: the panel shows the server as running from here.
-  console.log(`overtone-web: listening on ${PORT}, serving ${ROOT}, /api -> ${UPSTREAM.origin}`);
+  console.log(
+    `overtone-web: listening on ${PORT}, serving ${ROOT}, /api -> ${UPSTREAM.origin}, ` +
+      `${HOPS} trusted proxy hop(s)`,
+  );
 });

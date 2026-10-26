@@ -11,7 +11,7 @@ name: deploy
 
 on:
   push:
-    branches: [feature/library-api]
+    branches: [experimental]
   workflow_dispatch:
 
 permissions:

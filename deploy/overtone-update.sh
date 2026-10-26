@@ -19,7 +19,7 @@ set -u
 
 main() {
     REPO=${OVERTONE_REPO:-/opt/overtone}
-    BRANCH=${OVERTONE_BRANCH:-feature/library-api}
+    BRANCH=${OVERTONE_BRANCH:-experimental}
     SERVICE=${OVERTONE_SERVICE:-overtone-api}
     TOKEN_FILE=${OVERTONE_TOKEN_FILE:-/var/lib/overtone/Overtone/api-token}
     API=${OVERTONE_API:-http://127.0.0.1:8765}

@@ -1,20 +1,48 @@
 # Overtone
 
 **Offline timing and audio-analysis workbench for osu! mapping.** Open a song and
-Overtone finds every BPM, offset, bar line and tempo change with sub-millisecond accuracy,
-checks an existing map against the audio, and writes the timing into your `.osu` without
-touching anything else. No uploads, no accounts, no network calls.
+Overtone proposes its BPM, offset, bar lines and tempo changes, checks an existing map
+against the audio, and writes the timing into your `.osu` without touching anything
+else. It also helps with hitsounds, structure (kiai, breaks) and practice copies. No
+uploads, no accounts, no network calls. Open source under the [MIT licence](LICENSE).
 
 ![python](https://img.shields.io/badge/python-3.14-blue)
 ![rust](https://img.shields.io/badge/rust-stable-orange)
-![accuracy](https://img.shields.io/badge/median%20error-0.0000%20BPM%20%C2%B7%200.16%20ms-6ee7b7)
+![licence](https://img.shields.io/badge/licence-MIT-blue)
 ![tests](https://img.shields.io/badge/tests-1033%20Python%20%C2%B7%20292%20Rust-6ee7b7)
 
+## Accuracy, honestly
+
 ```
-median BPM error      0.0000 BPM      measured 2026-09-23 on the 24-track corpus
-median offset error   0.16 ms
-sections within 0.05 BPM and 5 ms     24 / 24
+synthetic benchmark (24 tracks, exact ground truth)   24 / 24 sections within 0.05 BPM and 5 ms
+                                                      median 0.0000 BPM, 0.16 ms  (2026-09-23)
+real ranked maps (Corpus B, 20 hand-timed maps)       ~17 % of red lines within 5 ms
+                                                      (Python engine, default export, 2026-10-24)
 ```
+
+The synthetic number is an upper bound: clean drums with exact answers, where Overtone
+is exact. **On real records it is still research.** Against 1,152 red lines that
+mappers placed by hand on 20 ranked or loved maps, the default export lands within
+5 ms of 16.8 % of them and within 50 ms of 55.7 %; octave choices, drift and live
+playing are where it misses. Treat its output as a strong first draft and always check
+the first beat and every transition in the osu! editor. The details, and what is being
+done about it, are under [Benchmarks and gates](#benchmarks-and-gates) and in the
+[precision plan](docs/10-precision-plan.md).
+
+## Quick start
+
+Download the MSI or portable ZIP from the [releases](https://github.com/githaltwastaken/Overtone/releases)
+(Windows, unsigned: check it against `checksums.txt`), or run from source on Windows
+with Python 3.14:
+
+```bash
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install -r python/requirements.lock
+.venv/Scripts/python.exe python/overtone_web.py
+```
+
+or double-click **`Overtone.bat`**. Open an audio file, **Analyze**, check the tempo map
+with the click track, then **Inject .osu…**. More under [Install & run](#install--run).
 
 ---
 
@@ -332,7 +360,7 @@ instantly and exactly; the click track is the arbiter.
 .venv/Scripts/python.exe bench/gates.py perf           # no stage got slower than its baseline
 .venv/Scripts/python.exe bench/fixtures.py             # Python and Rust read one fixture list
 .venv/Scripts/python.exe bench/facts.py                # the numbers these docs state
-.venv/Scripts/python.exe bench/corpus_b.py             # 20 ranked maps' red lines (local osu! Songs)
+.venv/Scripts/python.exe bench/corpus_b.py             # 20 ranked maps' red lines (needs a local library)
 cargo test --workspace                                 # 292 tests
 cargo run --release -q -p overtone-bench -- golden     # Rust vs Python, attack for attack
 ```
@@ -351,6 +379,11 @@ within 5 ms of 2.0 % of Python's and 1.1 % of Rust's 1,152 red lines. The app's 
 (2026-10-24); it does not fix tempo/octave errors or drift. The Python export lands within
 50 ms of 55.7 % of the lines. Ranked maps put their lines a median 21 ms before the sound
 starts (`bench/corpus_b.py --onsets`). Improving the grid itself remains [Phase 10](docs/10-precision-plan.md).
+
+Corpus B and the `real-audio` gate read songs from an osu! Songs folder, which is never
+committed: the list of maps lives in a gitignored `bench/corpus_b.local.json` (the shape is
+in `bench/corpus_b.example.json`, and [`bench/local_data.py`](bench/local_data.py) explains
+the rest). Without it those two say so and check nothing; every other gate runs anywhere.
 
 Rust speed, like for like: the whole pipeline over the corpus (decode, attacks, tempo)
 takes ~4.2 s against ~18.5 s for Python's `analyze_audio` — about 4×. An earlier "2.5 s"
@@ -425,16 +458,23 @@ as `type(scope/task): short imperative description` (see `AGENTS.md`); each
 fix with a test that fails on the old code; no accuracy or speed claim
 without a measurement in the same commit; `.osu` writes atomic and backed
 up; offline only; no GitHub Actions — every gate is a local one-liner.
-The routine is in [docs/workflow.md](docs/workflow.md), the rules in [CLAUDE.md](CLAUDE.md).
+Start with [CONTRIBUTING.md](CONTRIBUTING.md); the routine is in
+[docs/workflow.md](docs/workflow.md), the full rules in [CLAUDE.md](CLAUDE.md).
+Security problems: [SECURITY.md](SECURITY.md) (privately, never a public issue).
 
 ---
 
 ## Resumen en español
 
-**Overtone** es una herramienta offline para timear canciones de osu!: encuentra BPM,
-offsets, compases y cambios de tempo con precisión sub-milisegundo, compara un mapa con el
-audio y escribe el timing en tu `.osu` sin tocar nada más (hitsounds, kiai y velocidad de
-sliders quedan igual).
+**Overtone** es una herramienta offline y de código abierto (MIT) para timear canciones
+de osu!: propone BPM, offsets, compases y cambios de tempo, compara un mapa con el audio y
+escribe el timing en tu `.osu` sin tocar nada más (hitsounds, kiai y velocidad de sliders
+quedan igual).
+
+- **Precisión, sin adornos:** exacto en el benchmark sintético (24/24 secciones dentro de
+  0,05 BPM y 5 ms); en mapas rankeados reales todavía es investigación: cerca del 17 % de
+  las red lines puestas a mano quedan dentro de 5 ms. Revisá siempre el primer beat y cada
+  transición en el editor de osu!.
 
 - **Qué funciona hoy (✅):** análisis, editor con deshacer, bloqueo de puntos, exportación
   (`.osu`, CSV, pista de clic, `.osz`), inyección con vista previa (un mapa o el mapset
@@ -452,7 +492,7 @@ en inglés y español, oscuro o claro.
   Rampas y las propuestas de hitsounds.
 - **Próximo (📋):** el resto de los hitsounds (carriles de instrumentos, banco de
   samples), la sección Audio y precisión en canciones reales. El instalador `.msi`
-  y el ZIP portable ya se construyen en una línea; falta publicarlos.
+  y el ZIP portable se construyen en una línea y están publicados (v0.1.0-alpha).
 
 Uso: doble clic en `Overtone.bat`, abrí un audio, **Analizar**, revisá el mapa de tempo,
 escuchá la pista de clic y usá **Inyectar .osu…**. La octava (92 vs 184) sigue siendo
@@ -462,13 +502,12 @@ criterio tuyo: **×2 / ÷2** la corrige al instante.
 
 ## License
 
-MIT, in [`LICENSE`](LICENSE) and declared in `Cargo.toml`.
+MIT, in [`LICENSE`](LICENSE) and declared in `Cargo.toml`. Contributions are accepted
+under the same licence.
 
 A release's tree carries `LICENSE.txt` and `THIRD-PARTY-NOTICES.txt` beside the
 executables: every bundled wheel, every Rust crate and every native library with its
-version, its licence and its own notice text, gathered by `installer
-otices.py` and
-gated by `installer
-otices.py --check`. The copyleft parts (libsndfile and libsoxr
+version, its licence and its own notice text, gathered by `installer/notices.py` and
+gated by `installer/notices.py --check`. The copyleft parts (libsndfile and libsoxr
 under LGPL-2.1, Symphonia and certifi under MPL-2.0) carry the offer of source the
 licence asks for.

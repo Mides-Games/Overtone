@@ -6194,6 +6194,103 @@ class LibraryServerTests(unittest.TestCase):
         self.assertEqual([r["id"] for r in self._call("GET", "/api/v1/runs")[1]["runs"]],
                          [meta["id"]])
 
+    def test_sessions_are_signed_by_the_token_and_expire(self):
+        sessions = self.server_module.Sessions("secret")
+        cookie = sessions.new()
+        self.assertTrue(sessions.valid(cookie))
+        self.assertFalse(self.server_module.Sessions("another").valid(cookie))
+        self.assertFalse(sessions.valid(cookie[:-1] + ("0" if cookie[-1] != "0" else "1")))
+        self.assertFalse(sessions.valid(None))
+        expired = self.server_module.Sessions("secret", ttl=-1)
+        self.assertFalse(expired.valid(expired.new()))
+
+    def test_the_runs_page_signs_in_with_the_token_and_serves_nothing_else(self):
+        import http.client
+        port = self.server.server_address[1]
+
+        def request(method, path, body=None, headers=None):
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+            connection.request(method, path, body=body, headers=headers or {})
+            reply = connection.getresponse()
+            data = reply.read()
+            connection.close()
+            return reply.status, dict(reply.getheaders()), data
+
+        form = {"Content-Type": "application/x-www-form-urlencoded"}
+        status, headers, _ = request("GET", "/")
+        self.assertEqual((status, headers["Location"]), (303, "/login"))
+        self.assertEqual(request("GET", "/login")[0], 200)
+        self.assertEqual(request("POST", "/login", "token=wrong", form)[0], 401)
+        status, headers, _ = request("POST", "/login", "token=secret", form)
+        self.assertEqual(status, 303)
+        self.assertIn("HttpOnly", headers["Set-Cookie"])
+        self.assertIn("SameSite=Strict", headers["Set-Cookie"])
+        cookie = headers["Set-Cookie"].split(";")[0]
+        status, _, page = request("GET", "/", headers={"Cookie": cookie})
+        self.assertEqual(status, 200)
+        self.assertIn(b"/api/v1/runs", page)
+        self.assertEqual(request("GET", "/api/v1/whoami", headers={"Cookie": cookie})[0], 200)
+        # Nothing but the page: no file beside it, no desktop bridge.
+        for path in ("/../python/overtone.py", "/server_page/runs.html", "/index.html"):
+            self.assertEqual(request("GET", path, headers={"Cookie": cookie})[0], 404, path)
+        call = json.dumps({"args": []})
+        self.assertEqual(request("POST", "/api/v1/bridge/settings", call,
+                                 {"Cookie": cookie, "X-Overtone": "1"})[0], 404)
+        # A cookie alone changes nothing: no cross-site form can add the header.
+        run = json.dumps({"tool": "rm"})
+        self.assertEqual(request("POST", "/api/v1/runs", run, {"Cookie": cookie})[0], 401)
+        self.assertEqual(request("POST", "/api/v1/runs", run,
+                                 {"Cookie": cookie, "X-Overtone": "1"})[0], 400)
+        status, headers, _ = request("POST", "/logout", headers={"Cookie": cookie,
+                                                                 "X-Overtone": "1"})
+        self.assertEqual((status, headers["Location"]), (303, "/login"))
+        # The bearer token still works for scripts.
+        self.assertEqual(request("GET", "/api/status",
+                                 headers={"Authorization": "Bearer secret"})[0], 200)
+
+    def test_the_library_analysis_yields_to_measurement_runs(self):
+        import threading
+        import time
+        import types
+        server = self.server_module
+
+        class Job:
+            def __init__(self, running=False):
+                self.running, self.stop = running, threading.Event()
+
+            def state(self):
+                return {"running": self.running}
+
+        class Fake:
+            def __init__(self, queue):
+                self.queue, self.analysed = queue, 0
+                self.scan_job, self.analyze_job = Job(), Job()
+                self.runs = types.SimpleNamespace(state=lambda: self.queue)
+
+            def scan(self):
+                return server.HTTPStatus.CONFLICT, {}
+
+            def analyze(self):
+                self.analysed += 1
+                self.analyze_job.running = True
+
+        busy = Fake({"running": None, "queued": ["r1"]})
+        server._every_once(busy, poll=0)
+        self.assertEqual(busy.analysed, 0)
+
+        idle = Fake({"running": None, "queued": []})
+
+        def sleep(_seconds):
+            if idle.analyze_job.stop.is_set():
+                idle.analyze_job.running = False
+            idle.queue = {"running": "r2", "queued": []}
+
+        with mock.patch.object(server.time, "sleep", sleep):
+            server._every_once(idle, poll=0)
+        self.assertEqual(idle.analysed, 1)
+        self.assertTrue(idle.analyze_job.stop.is_set())
+        self.assertIs(server.time, time)
+
     def test_the_token_is_generated_once_and_kept_private(self):
         from unittest import mock
         path = self.tmp / "token"
@@ -6307,9 +6404,10 @@ class MeasurementRunTests(unittest.TestCase):
         tool, argv, settings = self.runs.build_args(
             {"tool": "gates", "only": ["golden", "benchmark"]}, "/db")
         self.assertEqual(argv, ["benchmark", "golden"])            # CLAUDE.md's order
-        self.assertEqual(self.runs.build_args({"tool": "suite", "suite": "web"}, "/db")[1], ["web"])
+        self.assertEqual(self.runs.build_args({"tool": "suite", "suite": "engine"}, "/db")[1],
+                         ["engine"])
         for bad in ({"tool": "gates", "only": ["rm -rf"]}, {"tool": "gates", "only": "golden"},
-                    {"tool": "suite", "suite": "../tests"}):
+                    {"tool": "suite", "suite": "../tests"}, {"tool": "suite", "suite": "web"}):
             with self.assertRaises(ValueError, msg=bad):
                 self.runs.build_args(bad, "/db")
         # Every gate CLAUDE.md lists for Python is here, as it is written there.

@@ -64,12 +64,11 @@ GATES = {
     "facts": ["bench/facts.py"],
     "fuzz-reader": ["bench/fuzz_reader.py"],
 }
-#: The Python suite, one module or both, each test named in the log: a run
-#: cut short shows which test it was in. "all" runs the two modules one after
-#: the other, each its own process: in one, their memory added up past the
-#: server's 3 GB cap, while apart they pass (748 and 314, 2026-10-26).
-SUITES = {"engine": ["-m", "unittest", "-v", "tests.test_overtone"],
-          "web": ["-m", "unittest", "-v", "tests.test_overtone_web"]}
+#: The Python suite, each test named in the log: a run cut short shows which
+#: test it was in. "all" runs every module here, each its own process: two
+#: modules in one process once added up past the server's 3 GB cap. Since the
+#: desktop shell and its tests left (2026-10-26) the engine module is the suite.
+SUITES = {"engine": ["-m", "unittest", "-v", "tests.test_overtone"]}
 #: "app" runs what the app runs: Rust, and v3 where Rust refuses or fails.
 ENGINES = ("rust", "app", "python")
 #: Engine changes a run may switch on by name, measured before any is on
@@ -518,7 +517,7 @@ def _checks(tool: str, names: list[str], result: Path) -> int:
     if tool == "gates":
         commands = [(name, [sys.executable, *GATES[name]]) for name in names]
     else:
-        parts = ["engine", "web"] if names[0] == "all" else names
+        parts = list(SUITES) if names[0] == "all" else names
         commands = [(part, [sys.executable, *SUITES[part]]) for part in parts]
     rows = []
     for name, command in commands:

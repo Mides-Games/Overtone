@@ -2,8 +2,8 @@
 
 `python/overtone_server.py` sirve el índice de una carpeta Songs y su caché de
 BPM por HTTP. Está pensado para una máquina que guarda la carpeta y la analiza
-sola, por ejemplo una VPS. La caché vive en el mismo índice SQLite que usa la
-app (`library.sqlite3`, esquema v3, tabla `analysis`). Cada audio se analiza
+sola, por ejemplo una VPS. La caché vive en el índice SQLite de la
+biblioteca (`library.sqlite3`, esquema v3, tabla `analysis`). Cada audio se analiza
 una sola vez y se vuelve a analizar solo si cambia el archivo o el código del
 motor (`engine_hash`).
 
@@ -27,6 +27,14 @@ Qué hace y qué no:
 | POST | `/api/stop` | Pide parar el análisis en curso (lo terminado se guarda) |
 | GET | `/api/songs?q=texto&limit=n` | Búsqueda; cada mapa trae su `analysis` |
 | GET | `/api/analysis?path=<audio>` | El análisis guardado de un audio |
+| GET | `/api/v1/runs` | Las corridas de medición, la cola y las etapas |
+| POST | `/api/v1/runs` | Encola una corrida (`{"tool": "stages", "stage": ...}`) |
+| GET | `/api/v1/runs/<id>` | Una corrida y el final de su log |
+| GET | `/api/v1/runs/<id>/result` | El informe JSON del tool |
+| GET | `/api/v1/runs/<id>/log` | El log entero, texto plano |
+| POST | `/api/v1/runs/<id>/stop` | Cancela la corrida o la corta si corre |
+| GET/POST | `/login` | La página de entrada (token → cookie de sesión) |
+| GET | `/` | La página de tests (con sesión) |
 
 Solo puede correr un escaneo y un análisis a la vez. Si se pide otro mientras
 corre uno, la respuesta es `409`. El progreso se lee en `status.jobs`.
@@ -99,18 +107,18 @@ Se necesitan unos 5 GB libres más lo que ocupe la carpeta Songs.
    `--every 60` escanea y analiza lo nuevo cada 60 minutos. `--jobs N` fija
    cuántos audios analiza Rust a la vez (2 por defecto, solo sin el voto).
 
-   **Memoria: el voto de Beat This!.** La app, por defecto, deja que Beat
+   **Memoria: el voto de Beat This!.** El motor, por defecto, deja que Beat
    This! vote sobre las red lines. Ese voto carga la canción en Python y corre
    un modelo ONNX. Medido en un fixture de 90 s (2026-10-25):
 
    | Camino | RAM pico | Tiempo |
    |---|---|---|
-   | Rust + voto (lo que hace la app) | 1.46 GB | 50 s |
+   | Rust + voto (por defecto) | 1.46 GB | 50 s |
    | Rust sin voto (`--no-beat-vote`) | 101 MB | 2.3 s |
    | v3 Python (`--engine python`) | 1.78 GB | 42 s |
 
    En una VPS con 1 GB, usa `--no-beat-vote`. Las red lines quedan como las
-   ajusta el motor, y pueden diferir de la app donde el voto las habría
+   ajusta el motor, y pueden diferir de las del voto donde este las habría
    cambiado. La caché guarda con qué modo se hizo cada análisis, así que
    cambiar de modo vuelve a analizar todo en vez de mezclar resultados.
 
@@ -164,29 +172,23 @@ la máquina. `MemoryMax=1G` vale con el motor Rust y `--no-beat-vote`. Con el vo
 solo análisis pasa de 1.4 GB (tabla de arriba), así que ese límite
 lo mataría.
 
-## La app en el navegador
+## La página de tests
 
-El mismo servidor sirve la app en `/`: es la misma página que la ventana de
-escritorio (`app/`), con las mismas vistas, y todo el análisis corre en el
-servidor. Se entra en `/login` con el token. La sesión es una cookie firmada
-con el token: sobrevive a reinicios del servidor, y cambiar el token cierra
-todas las sesiones.
+El servidor es una API de medición, sin interfaz propia: la interfaz de
+Overtone es la web (`site/`, ver `docs/site.md`). La app de escritorio que
+este servidor servía en `/` se archivó el 2026-10-26 (rama
+`parked/desktop-app`, etiqueta `v3-desktop-app`).
 
-Qué cambia respecto al escritorio:
-
-- **Abrir un archivo o una carpeta** muestra un selector propio. Puedes
-  subir desde tu PC (un archivo, varios o una carpeta entera) o elegir algo
-  que el servidor ya tenga: la carpeta Songs, `uploads` o `exports`.
-- **Guardar** (paquete `.osz`, CSV, pista de clic) no pregunta: escribe en
-  `exports` del servidor, sin pisar uno anterior, y la página ofrece
-  descargarlo a tu PC. En Chrome y Edge el navegador pregunta dónde
-  guardarlo; en los demás es una descarga normal.
-- **Los `.osu` que la app escribe** van a la copia de Songs del servidor,
-  con su `.bak`, como en el escritorio. No tocan tu PC.
-- El navegador nunca ve rutas fuera de Songs, `uploads` y `exports`.
+La única página que queda es la de tests, en `/`
+(`python/server_page/runs.html`). Se entra en `/login` con el token. La
+sesión es una cookie firmada con el token: sobrevive a reinicios del
+servidor, y cambiar el token cierra todas las sesiones. Con la cookie sola
+no se puede cambiar nada: la página manda además la cabecera `X-Overtone`,
+que un formulario de otro sitio no puede poner. Los scripts siguen usando
+`Authorization: Bearer <token>`.
 
 Para entrar desde fuera sin túnel, pon Caddy delante. Pide y renueva solo
-el certificado HTTPS, y deja pasar los eventos del servidor sin cortarlos.
+el certificado HTTPS.
 Hace falta un dominio que apunte a la VPS; uno gratuito tipo DuckDNS sirve.
 
 `/etc/caddy/Caddyfile`:
@@ -219,7 +221,7 @@ una en una, cada una en su propio proceso, y quedan guardadas en
 
 Se lanzan de tres formas:
 
-- **Desde la web:** el botón **Tests**, abajo a la derecha (`/runs.html`).
+- **Desde el navegador:** la página de tests, en `/`.
 - **Desde tu PC**, con el túnel abierto:
   ```bash
   python bench/remote.py --token-file token.txt run anime-single --split dev --jobs 2 --wait
@@ -238,9 +240,9 @@ mapa. En la página Tests es la casilla "Ranked and loved maps only"; en
 `bench/remote.py`, `--all-maps` la desactiva. Cada modo guarda su propio
 informe y su propio baseline.
 
-**Motor.** `rust` mide el motor Rust solo; `app` mide lo que hace la app:
-Rust, y v3 donde Rust se niega o falla (`overtone_web.run_analysis`);
-`python` mide v3 solo. Para saber cómo le va a quien usa la app, `app`.
+**Motor.** `rust` mide el motor Rust solo; `app` mide Rust, y v3 donde
+Rust se niega o falla (lo que hacía la app de escritorio, y lo que
+`bench/corpus_b.py --engine app` sigue midiendo); `python` mide v3 solo.
 
 **Memoria.** Las corridas cuentan dentro del `MemoryMax` del servicio. Sin
 el voto de Beat This!, un análisis con Rust usa unos 100 MB, así que
@@ -254,8 +256,8 @@ voto. Una lectura con voto nunca se sirve a una corrida sin él.
 
 **Gates y suite en el servidor.** Las mismas comprobaciones de
 `CLAUDE.md` corren en el servidor, para no cargar el PC: `gates` (todos los
-gates de Python, o los que se nombren) y `suite` (toda la suite, o solo
-`engine` o `web`). Cada gate se informa por separado, con el final de su
+gates de Python, o los que se nombren) y `suite` (la suite de Python,
+`tests/test_overtone.py`). Cada gate se informa por separado, con el final de su
 salida. Los gates de Rust necesitan cargo, que el servicio no tiene. `perf`
 mide los presupuestos en la máquina que lo corre, que en un servidor es la
 del servidor.

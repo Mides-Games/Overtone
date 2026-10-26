@@ -15,10 +15,10 @@ before exposing it (docs/server.md).
 
     python python/overtone_server.py --songs /srv/osu/Songs
 
-It also serves the app itself: ``/`` is the same page the desktop window
-shows (``app/``), signed in with the token at ``/login``, talking to an
-``overtone_web.Api`` on this machine through ``overtone_webhost``. Analyses
-run here; the browser only uploads and shows.
+It is a measurement API, not an interface: the website (``site/``) is
+Overtone's interface. The one page it serves is the runs page (``/``, from
+``server_page/runs.html``), signed in with the token at ``/login``, which
+queues and follows the measurement runs ``bench/remote.py`` also drives.
 
 Endpoints (a browser's cookie or ``Authorization: Bearer <token>``):
 
@@ -29,12 +29,6 @@ Endpoints (a browser's cookie or ``Authorization: Bearer <token>``):
     GET  /api/songs?q=text&limit=n     search, each map with its analysis
     GET  /api/analysis?path=<audio>    one audio file's cached analysis
 
-    POST /api/v1/bridge/<method>       {"args": [...]}: the app's Api method
-    GET  /api/v1/events                server-sent events the Api pushes
-    POST /api/v1/dialog                {"id": n, "paths": [...]}: a dialog's answer
-    PUT  /api/v1/upload?name=&folder=  a file from the browser, raw body
-    GET  /api/v1/browse?path=          a shared folder's entries
-    GET  /api/v1/download?path=        a shared file
     GET  /api/v1/whoami                200 while signed in
 
     GET  /api/v1/runs                  measurement runs, the queue, the stages
@@ -47,9 +41,9 @@ Endpoints (a browser's cookie or ``Authorization: Bearer <token>``):
 from __future__ import annotations
 
 import argparse
+import hashlib
 import hmac
 import json
-import mimetypes
 import os
 import secrets
 import sys
@@ -60,13 +54,12 @@ from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote, unquote, urlparse
+from urllib.parse import parse_qs, urlparse
 
 import overtone as ta
 import overtone_library
 import overtone_runs
 import overtone_rust
-import overtone_webhost
 from overtone_paths import data_root
 
 #: Where a generated token is kept, so a restart keeps the clients working.
@@ -77,14 +70,10 @@ TOKEN_ENV = "OVERTONE_API_TOKEN"
 MIN_TOKEN = 32
 #: The largest request body read; every request body is a small JSON object.
 MAX_BODY = 64 * 1024
-#: The largest bridge call: a song dropped on the page travels as base64.
-MAX_BRIDGE_BODY = 512 * 1024 * 1024
-#: The app's page, served at ``/``.
-APP_DIR = Path(__file__).resolve().parent.parent / "app"
+#: The runs page, served at ``/``: the only page this server has.
+RUNS_PAGE = Path(__file__).resolve().parent / "server_page" / "runs.html"
 #: The cookie a signed-in browser carries.
 SESSION_COOKIE = "overtone_session"
-#: How often an idle event stream says it is still there.
-HEARTBEAT_S = 15.0
 
 
 class Job:
@@ -147,24 +136,14 @@ class Service:
         self.jobs = jobs
         self.scan_job = Job("scan")
         self.analyze_job = Job("analyze")
-        self.sessions: overtone_webhost.Sessions | None = None
-        self._web: overtone_webhost.WebHost | None = None
-        self._web_lock = threading.Lock()
+        self.sessions: Sessions | None = None
+        self._runs_lock = threading.Lock()
         self._runs: overtone_runs.RunQueue | None = None
-
-    @property
-    def web(self) -> overtone_webhost.WebHost:
-        """The app's Api for browsers, made on first use (it loads the engine)."""
-        with self._web_lock:
-            if self._web is None:
-                self._web = overtone_webhost.WebHost(
-                    {"songs": self.songs}, self.library.path.parent / "web")
-            return self._web
 
     @property
     def runs(self) -> overtone_runs.RunQueue:
         """Measurement runs, kept beside the index, made on first use."""
-        with self._web_lock:
+        with self._runs_lock:
             if self._runs is None:
                 store = overtone_runs.RunStore(self.library.path.parent / "runs")
                 self._runs = overtone_runs.RunQueue(store, self.library.path, self.songs,
@@ -247,6 +226,55 @@ class Service:
         return HTTPStatus.OK, found
 
 
+class Sessions:
+    """Browser sessions as signed cookies: an expiry and a nonce, signed with
+    a key drawn from the API token. Nothing is kept on the server, so a
+    restart signs nobody out, and a new token signs everybody out."""
+
+    def __init__(self, token: str, ttl: float = 30 * 24 * 3600) -> None:
+        self.ttl = ttl
+        self._key = hashlib.sha256(b"overtone session|" + token.encode("utf-8")).digest()
+
+    def _sign(self, body: str) -> str:
+        return hmac.new(self._key, body.encode("ascii"), hashlib.sha256).hexdigest()
+
+    def new(self) -> str:
+        body = f"{int(time.time() + self.ttl)}.{secrets.token_hex(8)}"
+        return f"{body}.{self._sign(body)}"
+
+    def valid(self, session: str | None) -> bool:
+        try:
+            expiry, nonce, signature = str(session or "").split(".")
+            body = f"{expiry}.{nonce}"
+            return (hmac.compare_digest(signature, self._sign(body))
+                    and int(expiry) > time.time())
+        except ValueError:
+            return False
+
+
+LOGIN_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overtone</title>
+<style>
+:root { color-scheme: light dark; --bg: #f6f7f9; --card: #ffffff; --ink: #14161a; --line: #d5d9e0; --accent: #10b981; }
+@media (prefers-color-scheme: dark) { :root { --bg: #0f1115; --card: #171a20; --ink: #e8eaee; --line: #2a2f38; } }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--ink);
+       font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+form { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 28px; width: min(360px, calc(100vw - 32px)); box-sizing: border-box; }
+h1 { margin: 0 0 6px; font-size: 20px; } p { margin: 0 0 18px; opacity: .75; }
+input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; font: inherit; }
+button { margin-top: 14px; width: 100%; padding: 10px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.error { color: #ef4444; margin-top: 10px; min-height: 1.2em; }
+</style></head>
+<body><form method="post" action="/login">
+<h1>Overtone</h1><p>Enter this server's API token.</p>
+<input type="password" name="token" autocomplete="current-password" autofocus required aria-label="API token">
+<button type="submit">Sign in</button><div class="error">{error}</div>
+</form></body></html>
+"""
+
+
 def _long_enough(token: str, source: str) -> str:
     if len(token) < MIN_TOKEN:
         raise SystemExit(f"overtone-server: the token in {source} is shorter than {MIN_TOKEN} "
@@ -277,7 +305,7 @@ def load_token(explicit_file: str | None = None) -> str:
 
 def make_handler(service: Service, token: str, log: bool = True):
     expected = f"Bearer {token}".encode()
-    service.sessions = overtone_webhost.Sessions(token)
+    service.sessions = Sessions(token)
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "Overtone"
@@ -374,7 +402,7 @@ def make_handler(service: Service, token: str, log: bool = True):
         # -- the page -------------------------------------------------------------
         def _login(self, method: str) -> None:
             if method == "GET":
-                page = overtone_webhost.LOGIN_PAGE.replace("{error}", "")
+                page = LOGIN_PAGE.replace("{error}", "")
                 self._send(HTTPStatus.OK, page.encode("utf-8"), "text/html; charset=utf-8")
                 return
             length = self._length(MAX_BODY)
@@ -384,7 +412,7 @@ def make_handler(service: Service, token: str, log: bool = True):
             given = f"Bearer {(form.get('token') or [''])[-1].strip()}".encode()
             if not hmac.compare_digest(given, expected):
                 time.sleep(1.0)  # a guess costs a second
-                page = overtone_webhost.LOGIN_PAGE.replace("{error}", "That token is not this server's.")
+                page = LOGIN_PAGE.replace("{error}", "That token is not this server's.")
                 self._send(HTTPStatus.UNAUTHORIZED, page.encode("utf-8"), "text/html; charset=utf-8")
                 return
             cookie = (f"{SESSION_COOKIE}={service.sessions.new()}; Path=/; HttpOnly; "
@@ -392,61 +420,8 @@ def make_handler(service: Service, token: str, log: bool = True):
                       + ("; Secure" if self._secure() else ""))
             self._redirect("/", (("Set-Cookie", cookie),))
 
-        def _static(self, path: str) -> None:
-            name = "index.html" if path in ("/", "") else unquote(path.lstrip("/"))
-            target = (APP_DIR / name).resolve()
-            if APP_DIR.resolve() not in target.parents or not target.is_file():
-                self._reply(HTTPStatus.NOT_FOUND, {"error": "Not found."})
-                return
-            kind = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-            if kind.startswith("text/") or kind in ("application/javascript", "text/javascript"):
-                kind += "; charset=utf-8"
-            self._send(HTTPStatus.OK, target.read_bytes(), kind)
-
-        def _events(self) -> None:
-            """Server-sent events until the page goes away."""
-            try:
-                last = int(self.headers.get("Last-Event-ID") or 0)
-            except ValueError:
-                last = 0
-            self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Accel-Buffering", "no")
-            self.send_header("Connection", "close")
-            self.end_headers()
-            self.close_connection = True
-            hub = service.web.hub
-            try:
-                self.wfile.write(b"retry: 2000\n\n")
-                self.wfile.flush()
-                while True:
-                    events = hub.since(last, HEARTBEAT_S)
-                    if not events:
-                        self.wfile.write(b": still here\n\n")
-                    for number, event in events:
-                        self.wfile.write(overtone_webhost.event_line(number, event))
-                        last = number
-                    self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
-                return
-
-        def _upload(self, query: dict) -> None:
-            length = self._length(overtone_webhost.MAX_UPLOAD)
-            if length is None:
-                return
-            path = service.web.receive(query.get("name", ""), self.rfile, length,
-                                       query.get("folder", ""))
-            self._reply(HTTPStatus.CREATED, {"path": str(path)})
-
-        def _download(self, query: dict) -> None:
-            target = service.web.resolve(query.get("path", ""))
-            if not target.is_file():
-                self._reply(HTTPStatus.NOT_FOUND, {"error": "No such file."})
-                return
-            kind = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-            self._send(HTTPStatus.OK, target.read_bytes(), kind, (
-                ("Content-Disposition", f"attachment; filename*=UTF-8''{quote(target.name)}"),))
+        def _page(self) -> None:
+            self._send(HTTPStatus.OK, RUNS_PAGE.read_bytes(), "text/html; charset=utf-8")
 
         # -- routing ----------------------------------------------------------------
         def _handle(self, method: str) -> None:
@@ -494,30 +469,6 @@ def make_handler(service: Service, token: str, log: bool = True):
                     self._reply(*service.analyze(body.get("limit")))
                 else:
                     self._reply(*service.stop())
-            elif method == "POST" and path.startswith("/api/v1/bridge/"):
-                body = self._body(MAX_BRIDGE_BODY)
-                if body is None:
-                    return
-                name = unquote(path[len("/api/v1/bridge/"):])
-                self._reply(HTTPStatus.OK, {"result": service.web.call(name, body.get("args", []))})
-            elif method == "GET" and path == "/api/v1/events":
-                self._events()
-            elif method == "POST" and path == "/api/v1/dialog":
-                body = self._body()
-                if body is None:
-                    return
-                paths = body.get("paths")
-                if paths is not None:
-                    paths = [str(service.web.resolve(str(p))) for p in paths]
-                answered = service.web.window.answer(int(body.get("id", 0)), paths)
-                self._reply(HTTPStatus.OK if answered else HTTPStatus.GONE,
-                            {"answered": answered})
-            elif method == "PUT" and path == "/api/v1/upload":
-                self._upload(query)
-            elif method == "GET" and path == "/api/v1/browse":
-                self._reply(HTTPStatus.OK, service.web.browse(query.get("path", "")))
-            elif method == "GET" and path == "/api/v1/download":
-                self._download(query)
             elif path == "/api/v1/runs" and method == "GET":
                 self._reply(HTTPStatus.OK, service.runs_overview())
             elif path == "/api/v1/runs" and method == "POST":
@@ -544,8 +495,8 @@ def make_handler(service: Service, token: str, log: bool = True):
                 self._reply(HTTPStatus.OK, {"signed_in": True})
             elif method == "POST" and path == "/logout":
                 self._redirect("/login", (("Set-Cookie", f"{SESSION_COOKIE}=; Path=/; Max-Age=0"),))
-            elif method in ("GET", "HEAD") and not path.startswith("/api/"):
-                self._static(path)
+            elif method in ("GET", "HEAD") and path in ("/", "/runs.html"):
+                self._page()
             else:
                 self._reply(HTTPStatus.NOT_FOUND, {"error": f"No endpoint {method} {path}."})
 
@@ -557,9 +508,6 @@ def make_handler(service: Service, token: str, log: bool = True):
 
         def do_POST(self):  # noqa: N802 -- the base class's name
             self._handle("POST")
-
-        def do_PUT(self):  # noqa: N802 -- the base class's name
-            self._handle("PUT")
 
     return Handler
 

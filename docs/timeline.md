@@ -19,6 +19,7 @@ Work that has landed but is not in a published version is headed
 version is `v0.2.0-alpha`.
 
 ---
+
 ## Unreleased — 2026-10-26 · red lines read at their song's octave
 
 ### Changed

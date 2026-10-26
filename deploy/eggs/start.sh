@@ -234,7 +234,7 @@ run_api() {
     export PORT=$SERVER_PORT HOST=0.0.0.0 NODE_ENV=production
     say "migrating"
     node site/api/src/db/migrate.js || { say "ERROR: the migration failed; not starting."; return 1; }
-    exec node site/api/src/server.js
+    exec node site/api/src/index.js
 }
 
 run_worker() {

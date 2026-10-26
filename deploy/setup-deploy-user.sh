@@ -18,8 +18,8 @@ esac
 USER_NAME=overtone-deploy
 HERE=$(cd "$(dirname "$0")" && pwd)
 
-# The update itself, and the timer that runs it when no push does.
-chmod +x "$HERE/overtone-update.sh"
+# The update itself, and the timer that runs it when no push does. The
+# script is executable as committed; nothing here changes the checkout.
 cp "$HERE/overtone-update.service" "$HERE/overtone-update.timer" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now overtone-update.timer

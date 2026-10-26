@@ -16,6 +16,9 @@ API=${OVERTONE_API:-http://127.0.0.1:8765}
 CARGO=${OVERTONE_CARGO:-/root/.cargo/bin/cargo}
 
 cd "$REPO"
+# A mode change made by hand (chmod +x) is not a change worth keeping, and
+# counting it as one blocks every fast-forward that touches that file.
+git config core.fileMode false
 git fetch --quiet origin "$BRANCH"
 old=$(git rev-parse HEAD)
 new=$(git rev-parse "origin/$BRANCH")

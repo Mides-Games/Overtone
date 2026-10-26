@@ -41,7 +41,8 @@ ROOT = _HERE.parent
 BENCH = ROOT / "bench"
 #: The tools a run may start, and the options each takes.
 TOOLS = ("stages", "single_bpm")
-ENGINES = ("rust", "python")
+#: "app" runs what the app runs: Rust, and v3 where Rust refuses or fails.
+ENGINES = ("rust", "app", "python")
 #: The most analyses one run holds at once.
 MAX_JOBS = 8
 #: The log lines a run's summary carries.

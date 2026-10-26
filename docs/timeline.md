@@ -20,6 +20,26 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-26 · measuring what the app runs
+
+### Changed
+
+- `corpus_b.py`, `single_bpm.py`, `stages.py` and server runs take an
+  `app` engine: the Rust engine, and v3 wherever Rust refuses or fails,
+  as `overtone_web.run_analysis` does. Each answer records which engine
+  gave it and what Rust said (`backend`, `rust_said`).
+
+### Measured
+
+- Why: the first server run (anime-single, ranked, Rust alone, 2026-10-26)
+  counted 493 of 4,119 maps (88 songs) as refused, every one
+  `no_coherent_pulse` (best share 0.25-0.55). The app answers those with
+  v3: on 30 of the 88 songs, 12 at the map's tempo (within 0.05 BPM), 8 at
+  the right tempo an octave off (x2: 274 for 137, 240 for 120), 10 wrong
+  or refused. Rust alone measured a refusal the app does not make.
+- Checked: Corpus B with `--engine app`, calm-down-juliet (Rust refuses)
+  read by v3's tracker, 71 % of its red lines within 5 ms; martyr by Rust.
+
 ## Unreleased — 2026-10-26 · clean BPMs in what is written for osu!
 
 ### Changed

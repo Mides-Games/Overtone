@@ -306,7 +306,7 @@ def main(argv: list[str] | None = None) -> int:
     started = time.perf_counter()
     stage = next(s for s in manifest["stages"] if s["id"] == args.stage)
     cli = None
-    if args.engine == "rust":
+    if args.engine in ("rust", "app"):
         import overtone_rust
         cli = Path(args.cli) if args.cli else overtone_rust.find_cli()
         if cli is None or not cli.is_file():

@@ -108,7 +108,9 @@ def main(argv: list[str] | None = None) -> int:
     run = commands.add_parser("run", help="queue a run")
     run.add_argument("stage", nargs="?", help="a stage of bench/stages.json (tool stages)")
     run.add_argument("--tool", default="stages", choices=("stages", "single_bpm"))
-    run.add_argument("--engine", default="rust", choices=("rust", "python"))
+    run.add_argument("--engine", default="rust", choices=("rust", "app", "python"),
+                     help="app: Rust, and v3 where Rust refuses, as the app runs them "
+                          "(v3 can take ~1.8 GB a song)")
     run.add_argument("--split", choices=("dev", "holdout"))
     run.add_argument("--jobs", type=int, default=1)
     run.add_argument("--max-songs", type=int, default=0)

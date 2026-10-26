@@ -6331,6 +6331,28 @@ class MeasurementRunTests(unittest.TestCase):
             with self.assertRaises(ValueError, msg=bad):
                 self.runs.build_args(bad, "/db")
 
+    def test_the_app_engine_falls_back_to_v3_where_rust_refuses_as_the_app_does(self):
+        bench = str(Path(__file__).resolve().parent.parent / "bench")
+        if bench not in sys.path:
+            sys.path.insert(0, bench)
+        import corpus_b
+        import overtone_rust
+        self.assertIn("app", self.runs.ENGINES)
+        self.assertEqual(self.runs.build_args({"stage": "anime-single", "engine": "app"},
+                                              "/db")[1][2], "app")
+        audio = self.tmp / "clicks.wav"
+        _click_track(audio, 120.0, duration=12.0)
+        refusal = overtone_rust.SidecarRefused("No rhythmic pulse found", [])
+        with mock.patch.object(overtone_rust, "analyze", side_effect=refusal):
+            app = corpus_b.analyse(str(audio), "app", "overtone-cli")
+            rust = corpus_b.analyse(str(audio), "rust", "overtone-cli")
+        self.assertEqual((app["backend"], app["path"]), ("python", "precision"))
+        self.assertIn("SidecarRefused", app["rust_said"])
+        self.assertAlmostEqual(app["global_bpm"], 120.0, delta=0.05)
+        self.assertEqual(rust["path"], "refused")      # Rust alone gives no answer
+        self.assertNotEqual(corpus_b.engine_fingerprint("app", Path(__file__)),
+                            corpus_b.engine_fingerprint("python", None))
+
     def test_ranked_runs_need_an_osu_db_and_use_it_by_default(self):
         osu_db = self.tmp / "osu!.db"
         _, argv, settings = self.runs.build_args({"stage": "anime-single"}, "/db", "", osu_db)

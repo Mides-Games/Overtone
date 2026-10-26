@@ -57,7 +57,7 @@ import corpus_b as cb  # noqa: E402
 HERE = Path(__file__).resolve().parent
 CACHE_DIR = HERE / ".cache" / "single_bpm"
 SONGS = Path(r"C:\osu!\Songs")
-ENGINES = ("python", "rust")
+ENGINES = ("python", "rust", "app")    # app: Rust, v3 where it refuses (corpus_b)
 
 #: Bumped when the cached analysis changes shape.
 CACHE_FORMAT = 1
@@ -72,7 +72,7 @@ AUDIO_SUFFIXES = (".mp3", ".ogg", ".wav", ".m4a", ".flac", ".opus", ".mp4")
 def engine_fingerprint(engine: str, cli: Path | None) -> str:
     """The code that produced an analysis, as in corpus_b with our own key."""
     files = [ROOT / "python" / "overtone.py"]
-    if engine == "rust":
+    if engine in ("rust", "app"):
         files += [ROOT / "python" / "overtone_rust.py", cli]
     digest = hashlib.sha1(f"single_bpm cache {CACHE_FORMAT}".encode())
     for path in files:
@@ -243,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
     run_started = time.perf_counter()
 
     cli = None
-    if args.engine == "rust":
+    if args.engine in ("rust", "app"):
         import overtone_rust
         cli = Path(args.cli) if args.cli else overtone_rust.find_cli()
         if cli is None or not cli.is_file():

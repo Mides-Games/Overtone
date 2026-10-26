@@ -214,10 +214,15 @@ mapa. En la página Tests es la casilla "Ranked and loved maps only"; en
 `bench/remote.py`, `--all-maps` la desactiva. Cada modo guarda su propio
 informe y su propio baseline.
 
+**Motor.** `rust` mide el motor Rust solo; `app` mide lo que hace la app:
+Rust, y v3 donde Rust se niega o falla (`overtone_web.run_analysis`);
+`python` mide v3 solo. Para saber cómo le va a quien usa la app, `app`.
+
 **Memoria.** Las corridas cuentan dentro del `MemoryMax` del servicio. Sin
 el voto de Beat This!, un análisis con Rust usa unos 100 MB, así que
 `--jobs 2` cabe en 1 GB. **Con el voto**, cada análisis pasa de 1.4 GB:
-sube antes `MemoryMax` a `3G` en el servicio y usa `--jobs 1`.
+sube antes `MemoryMax` a `3G` en el servicio y usa `--jobs 1`. Lo mismo
+con el motor `app`: donde Rust se niega, v3 llegó a 1.78 GB por canción.
 
 Las cachés de las corridas van separadas por modo (`runs/cache/vote` y
 `runs/cache/novote`), porque la clave de caché de los tools no incluye el

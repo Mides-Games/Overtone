@@ -12563,7 +12563,13 @@ class TrainDetectTests(unittest.TestCase):
             replays = Path(tmp) / "Replays"
             replays.mkdir()
             (replays / "junk.osr").write_bytes(b"")
-            (songs / "2 Other - Track" / "b.osu").touch()
+            newest = songs / "2 Other - Track" / "b.osu"
+            newest.touch()
+            # Newer by a clear minute, not by touching it last: on a fast
+            # disk two files written back to back can share one timestamp
+            # (the owner's server, 2026-10-26).
+            later = max(p.stat().st_mtime for p in songs.rglob("*.osu")) + 60
+            os.utime(newest, (later, later))
             found = overtone_train.detect_map(songs, replays, titles=[])
         self.assertEqual(found["signal"], "songs_newest")
         self.assertTrue(found["osu"].endswith("b.osu"))

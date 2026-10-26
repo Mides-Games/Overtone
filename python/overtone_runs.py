@@ -66,10 +66,11 @@ GATES = {
     "facts": ["bench/facts.py"],
     "fuzz-reader": ["bench/fuzz_reader.py"],
 }
-#: The Python suite, whole or one module of it.
-SUITES = {"all": ["-m", "unittest", "discover", "-s", "tests"],
-          "engine": ["-m", "unittest", "tests.test_overtone"],
-          "web": ["-m", "unittest", "tests.test_overtone_web"]}
+#: The Python suite, whole or one module of it, each test named in the log:
+#: a run cut short (the memory cap, 2026-10-26) shows which test it was in.
+SUITES = {"all": ["-m", "unittest", "discover", "-v", "-s", "tests"],
+          "engine": ["-m", "unittest", "-v", "tests.test_overtone"],
+          "web": ["-m", "unittest", "-v", "tests.test_overtone_web"]}
 #: "app" runs what the app runs: Rust, and v3 where Rust refuses or fails.
 ENGINES = ("rust", "app", "python")
 #: The most analyses one run holds at once.

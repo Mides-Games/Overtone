@@ -19,8 +19,7 @@ commit messages are English; only the app's own UI strings stay bilingual
   behaviour, clearer structure), `perf` (faster — with numbers), `bench`
   (benchmark, gates or golden vectors), `test` (tests only), `docs`
   (documentation only), `chore` (layout, dependencies, tooling).
-  Scope is the area (`engine`, `app`, `bench`, `rust`, `hitsound`, `docs`,
-  `repo`) plus the task after a slash. Description in lowercase, imperative,
+  Scope is the area (`engine`, `app`, `bench`, `rust`, `docs`, `repo`) plus the task after a slash. Description in lowercase, imperative,
   no trailing period, one line.
 - Body explains **why**, not what. The diff already says what. A `perf` or
   accuracy claim names its measurement; a gate change names the gates run
@@ -51,7 +50,7 @@ commit messages are English; only the app's own UI strings stay bilingual
 ## Verification — run these before any commit that touches the engine
 
 ```bash
-.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (1077 on 2026-10-26)
+.venv/Scripts/python.exe -m unittest discover -s tests   # test_overtone_web # all pass (775 on 2026-10-26)
 .venv/Scripts/python.exe bench/benchmark.py                    # must be 24/24
 .venv/Scripts/python.exe bench/gates.py bpm-snapshot           # 24/24 readings unchanged
 .venv/Scripts/python.exe bench/golden.py check                 # 27/27 stage for stage
@@ -61,12 +60,10 @@ commit messages are English; only the app's own UI strings stay bilingual
 .venv/Scripts/python.exe bench/gates.py robustness             # edge cases end cleanly
 .venv/Scripts/python.exe bench/gates.py reference              # maps graded as timed
 .venv/Scripts/python.exe bench/gates.py assisted               # marked downbeats fit
-.venv/Scripts/python.exe bench/gates.py combine                # a compilation keeps every borrowed grid, hitsound and level
 .venv/Scripts/python.exe bench/gates.py real-audio             # 6 local songs analyse as pinned
 .venv/Scripts/python.exe bench/gates.py perf                   # every stage inside its time budget
 .venv/Scripts/python.exe bench/fixtures.py                     # the fixture manifest matches the code
-.venv/Scripts/python.exe bench/parity.py                       # 389 of 720 v3 engine tests held in Rust
-.venv/Scripts/python.exe bench/fit_kits.py --verify             # every genre kit renders what it says
+.venv/Scripts/python.exe bench/parity.py                       # 254 of 523 v3 engine tests held in Rust
 .venv/Scripts/python.exe bench/facts.py                        # stated counts and schema match the source
 .venv/Scripts/python.exe bench/fuzz_reader.py                  # 3000 mutant .osu files read, written back, consumed
 .venv/Scripts/python.exe installer/sbom.py --check             # every pinned wheel inventoried, at its pin
@@ -96,7 +93,7 @@ named, and the analyses are cached per audio and engine hash, so a re-score take
 And the Rust side:
 
 ```bash
-cargo test --workspace                                 # all pass (292 on 2026-10-22)
+cargo test --workspace                                 # all pass (231 on 2026-10-26)
 cargo run --release -q -p overtone-bench -- golden     # 27/27 attack for attack
 cargo run --release -q -p overtone-bench -- nogrid     # noise, pads, silence refused
 cargo run --release -q -p overtone-bench -- density    # 4/4 changes, 0 false positives
@@ -170,7 +167,6 @@ python/                   v3 engine, osu! I/O, classic Tk GUI + CLI (the app's d
   overtone.py               engine, classic window and command line
   overtone_web.py           web shell host: pywebview window + JSON bridge to the engine
   overtone_rust.py          the v4 engine through overtone-cli, as v3's Analysis (opt-in)
-  overtone_combine.py       the compilation builder: whole maps and their songs as one map
   overtone_library.py       the library index: a Songs folder in SQLite, searched (FTS5)
   library.sql               the index's schema, versioned; facts.py checks the version
   overtone_server.py        the library API: the index and its BPM cache over HTTP,
@@ -196,9 +192,8 @@ installer/                the MSI and portable ZIP: PyInstaller spec, WiX source
                             package carries -- the natives and the copyleft source offers
   sbom.py                   the pinned wheels' licences, inventoried with a drift gate, and
   sbom.json                 the CycloneDX SBOM that ships beside the artefacts
-profiles/                 hitsound profiles as JSON
-assets/                   generated logo (assets/logo.py), window icon and Overtone's own
-                          hitsound samples (assets/samples.py)
+assets/                   generated logo (assets/logo.py), window icon and the Beat This!
+                          model (assets/models/, Git LFS)
 bench/benchmark.py        synthetic accuracy harness, exact ground truth
 bench/gates.py            octave snapshot, density-change and measure gates
                           (the things the accuracy benchmark cannot see)
@@ -212,17 +207,9 @@ bench/facts.py            the counts and lists the docs state, checked against t
 bench/golden/             27 committed vector files: the 24-case corpus plus the
                           proven-bar and signature fixtures from bench/gates.py
 bench/bpm_snapshot.json   pinned absolute BPM per fixture
-bench/templates_on_real_audio.py  whether the instrument templates hear real drums,
-                          at the places mappers put claps
-bench/genre_samples.py    what a genre's hitsounds sound like, from the files its
-bench/genre_samples.json  maps ship; bench/fit_kits.py aims the synthesiser at it
-assets/kits.json          and writes the settings a genre's kit is rendered from
-bench/genre_corpus.py     where each genre puts its hitsounds, measured from the
-                          user's Songs folder; writes profiles/<genre>.json
 bench/corpus_b.py         Corpus B: the engine against 20 hand-timed ranked maps (Phase 10)
 bench/local_data.py       the private library's measurements -- Corpus B's manifest, the
-                          genre corpus, kiai labels, health sample, real-audio snapshot --
-                          as gitignored bench/*.local.json; bench/*.example.json has the shapes
+                          health sample, the real-audio snapshot -- as gitignored bench/*.local.json; bench/*.example.json has the shapes
 bench/remote.py           the server's measurement runs from the command line
 proto/                    Python prototypes of the riskiest v4 algorithms, and
                           band_lanes.py, which prints the band flux as
@@ -234,16 +221,15 @@ crates/                   the v4 Rust workspace
   overtone-dsp/             mel, STFT, onset envelope, peak picking, re-timing
   overtone-tempo/           coherence sweep, IRLS grid fit, seeding, octave, sections,
                             points, density, elastic grid, 2-D coherence map
-  overtone-hitsound/        per-attack features, instrument templates, musical role
   overtone-bench/           golden-vector diff against the Python engine
   overtone-cli/             `overtone-cli analyze`: the v4 engine as one command
 deploy/                   the owner's server keeping itself current: overtone-update.sh,
                           its systemd timer and setup-deploy-user.sh (docs/server.md)
 .github/workflows/        deploy.yml only: a push asks the server to update
-docs/                     audit, stack evaluation, architecture, UI, DSP, hitsounds,
-                          roadmap, ML evaluation, naming, precision plan, MSI
-                          distribution, comfort features, audit backlog,
-                          other languages, hitsound plan, workflow, library server, timeline
+docs/                     audit, stack evaluation, architecture, UI, DSP, roadmap,
+                          ML evaluation, naming, precision plan, MSI distribution,
+                          comfort features, audit backlog, other languages, web
+                          platform, workflow, library server, timeline
   workflow.md               the per-task routine: program, test, measure, commit, audit
   timeline.md               engineering log
 ```

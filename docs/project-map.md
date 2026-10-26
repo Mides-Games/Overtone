@@ -44,30 +44,33 @@ HTML with the workflow command below.
 |---|---|---|
 | R6 library health precision sample | **Open, release blocker** — verdicts still owed on the sample prepared 2026-10-06 | [`07-roadmap.md:210`](07-roadmap.md) |
 | T6 section labels from repetition | **Closed for 0.3.0 by measured disposition** — no labels ship; four attempts failed +15, so the Kiai card keeps refusing | [`07-roadmap.md:216`](07-roadmap.md) |
-| T7 hitsound H6/H7 | **Closed by measured disposition** — H7 ships as a proposal without an accuracy claim; H6 recommendation remains withheld; current real-audio class evidence is weak | [`07-roadmap.md:217`](07-roadmap.md) |
+| T7 hitsound H6/H7 | **Parked with the hitsound engine** (W1, 2026-10-26) on `parked/desktop-extras`; it had closed by measured disposition — H7 as a proposal without an accuracy claim, H6's recommendation withheld | [`07-roadmap.md`](07-roadmap.md) |
 | T1, T3, T4, T5 | **Done** | [`07-roadmap.md:211–215`](07-roadmap.md) |
 | T2 signing | **Dropped by owner decision** — releases remain unsigned with hashes | [`07-roadmap.md:212`](07-roadmap.md) |
 
 ### Shipped areas and longer-term work
 
-Timing analysis, map checking/structure/export, the Songs library, trainer,
-installer and the Compile section are represented as shipped capabilities in
-the interactive status graph. Hitsounds H1–H5 and the Compile section are
-marked partial because roadmap extensions remain. The longer-range graph records
-Corpus B accuracy research for 1.0.0, the 28 ms osu! map lead enabled by
-default at export, deferred TypeScript gates (Node.js not installed/requested), and the
-unlikely tempo-matched junction; Phase 25 rows 25.1–25.19 are complete. These are
-outside the 0.3.0 required rows.
+Timing analysis, map checking/structure/export and the installer are shipped
+capabilities. Phase W1 of [the web platform](16-web-platform.md) parked four
+unfinished desktop extras on 2026-10-26 so the project's core is timing: the
+hitsound engine (Phase 6), Compile (Phase 25), Train with its hotkey (Phase 26)
+and the Library view's Songs browser and health page. They are kept whole on
+the protected branch `parked/desktop-extras` and the tag `v3-desktop-full`; the
+library index itself stays for the measurement server. The longer-range work is
+Corpus B accuracy research for 1.0.0, the 28 ms osu! map lead enabled by default
+at export, and deferred TypeScript gates (Node.js not installed/requested). These
+are outside the 0.3.0 required rows.
 
 ## Current source facts
 
 `bench/facts.py` was run for this snapshot and reported `facts: ok`:
 
-- Python: 1,019 tests (720 engine + 299 web shell).
-- Rust: 292 tests across 7 crates.
-- Golden vectors: 27; Rust parity manifest: 389 of 720 v3 engine tests held,
-  with 162 stages placed.
-- Library schema: v2 in both `python/library.sql` and `python/overtone_library.py`.
+- Python: 775 tests (523 engine + 252 web shell), 2026-10-26 after W1.
+- Rust: 231 tests across 6 crates.
+- Golden vectors: 27; Rust parity manifest: 254 of 523 v3 engine tests held,
+  with 147 stages placed (the `.osu` reader's Rust twin is parked with
+  `overtone-hitsound`).
+- Library schema: v3 in both `python/library.sql` and `python/overtone_library.py`.
 - Benchmark fixtures: 38 in code and 38 in `bench/fixtures.json`.
 
 Corpus B was rescored 2026-10-24 after `bench/corpus_b.py` learned to apply the
@@ -94,18 +97,12 @@ flowchart TD
         Engine[overtone.py<br/>analysis · osu I/O · classic UI · CLI]
         Bridge[overtone_web.py<br/>window host and JSON actions]
         RustAdapter[overtone_rust.py<br/>v4 sidecar adapter]
-        Combine[overtone_combine.py<br/>multi-map compilation]
         Library[overtone_library.py + library.sql<br/>SQLite / FTS5 Songs index]
         Paths[overtone_paths.py<br/>user data paths]
-        Train[overtone_train.py<br/>local training helpers]
-        Hotkey[overtone_hotkey.py<br/>hotkey integration]
         Bridge --> Engine
         Bridge --> RustAdapter
-        Bridge --> Combine
         Bridge --> Library
         Bridge --> Paths
-        Bridge --> Train
-        Bridge --> Hotkey
     end
 
     RustAdapter --> CLI[crates/overtone-cli<br/>overtone-cli JSON sidecar]
@@ -113,32 +110,28 @@ flowchart TD
     CLI --> Audio[crates/overtone-audio<br/>decode and resample]
     CLI --> DSP[crates/overtone-dsp<br/>features, attacks and structure]
     CLI --> Tempo[crates/overtone-tempo<br/>pulse, grids, sections and ramps]
-    CLI --> Hits[crates/overtone-hitsound<br/>evidence, roles and decisions]
     BenchRust[crates/overtone-bench] --> Audio
     BenchRust --> DSP
     BenchRust --> Tempo
-    BenchRust --> Hits
 
-    UserFiles[Audio · .osu · .osz · sample folders] --> Engine
+    UserFiles[Audio · .osu · .osz] --> Engine
     UserFiles --> CLI
     Engine --> SafeWrites[Atomic .osu writes<br/>backup without overwrite]
-    CLI --> Results[Timing · structure · ramps · hitsound JSON]
+    CLI --> Results[Timing · structure · ramps JSON]
     Results --> Bridge
-    PythonData[profiles/ · assets/ · python/requirements.lock] --> PyModules
-    RustData[Cargo.toml · Cargo.lock · assets/kits.json] --> CLI
+    PythonData[assets/ · python/requirements.lock] --> PyModules
+    RustData[Cargo.toml · Cargo.lock] --> CLI
     SafeWrites --> UserFiles
 
     subgraph Quality[bench/ — local measurements and gates]
         Facts[facts.py · fixtures.py · parity.py]
         Accuracy[benchmark.py · gates.py · golden.py]
         Corpus[corpus_b.py · real-audio snapshots]
-        Kits[fit_kits.py · genre samples]
         Fuzz[fuzz_reader.py]
         Accuracy --> BenchRust
         Accuracy --> Engine
         Corpus --> Engine
         Corpus --> CLI
-        Kits --> Hits
         Fuzz --> Engine
         Facts -. checks counts and schemas .-> Docs
     end
@@ -175,7 +168,7 @@ flowchart TD
 | `bench/` | Accuracy, parity, robustness, coverage, performance and facts | Python v3, Rust crates, docs and benchmark data |
 | `tests/` | Python engine, file I/O and web bridge tests | `python/`, fixture files |
 | `proto/` | Python experiments for candidate algorithms | Bench prototypes before a Rust port |
-| `profiles/`, `assets/` | Hitsound profiles, generated branding, kits and bundled samples | Python and Rust hitsound paths; installer |
+| `assets/` | Generated branding and the Beat This! model (Git LFS) | Python engine; installer |
 | `installer/` | Local MSI and portable ZIP build, notices, SBOM and smoke checks | Python app and repository assets |
 | `.claude/`, `.agents/` | Repository UI-check skill and Graphify coding-agent skill | Local contributor workflows; no app runtime dependency |
 | `docs/` | Audit, architecture, design, roadmap, workflow and engineering record | All implementation areas |

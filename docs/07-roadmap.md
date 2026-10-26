@@ -13,23 +13,24 @@ must match the measured v3 baseline** — 24/24 within 0.05 BPM and 5 ms, median
 
 ## Where we are — 2026-10-16
 
-**Stage: the app is usable end to end in thirteen sections, hitsounds included, and can analyse
-with the Rust engine (opt-in; v3 stays the default and the fallback).**
+**Stage: the app is usable end to end in ten sections and can analyse with the Rust engine
+(opt-in; v3 stays the default and the fallback). On 2026-10-26 (W1) hitsounds, Compile,
+Train and the Songs browser were parked on `parked/desktop-extras`: the core is timing.**
 
 | Area | State |
 |---|---|
 | Timing engine (Python v3) | **works** — 24/24 corpus, median 0.0000 BPM / 0.16 ms, all gates green (every Python and Rust gate re-run 2026-09-26) |
-| Timing engine (Rust v4) | **at parity, in the app** — matches v3 attack for attack and red line for red line on 27/27, ~4x faster end to end (on Corpus B's real songs it writes v3's red lines on 13 of the 15 that v3 fits a grid to); Settings → Rust engine runs it through `overtone-cli`, and v3 takes over (with a note) where it has no answer. The same sidecar runs Structure (`structure`), Ramps (`ramps`) and the hitsound proposals (`hitsound`); `hitsound-evidence` prints each attack's classes and role from the command line |
-| App (web shell) | **usable** — thirteen sidebar sections: Library, Timing, Structure, Hitsounds, Map check, Mapset, Audio, Compile, Train, Report, Export, History, Settings. Analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject (one map or the whole mapset, with the diff), compare with a map, alignment, density, snap audit, re-snap, suggestions (each addable on its own), mapset check, reference timing, assisted timing, evidence, ramps, offset lab, constant scroll, snap divisors, kiai / breaks / bookmarks / preview point / section volumes from the structure, audio swap, audio file check, **compile several maps and their songs into one map**, write history with restore, mod report, folder import, recents, osu! Songs browser, EN/ES, dark and light |
-| osu! files | **works** — full reader, byte-identical writer, atomic write + backup, every write logged and restorable; hitsound fields edited in place, nothing else moves (P-2) |
-| Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks; in the mod report, claps that break the map's own pattern and finishes or claps over silence (H3) |
-| Hitsound engine | **in the app** — the copier (H1), the Hitsounds section (H2), the consistency check (H3), and the Rust decision engine (H4) behind the Propose card: tick by row or by bars, swap a proposal for one of its alternatives, set volume and sample index by hand, hear it over the song, preview, write the file or a copy, undo (H5); each row explains its proposal; choose Balanced or Drum-focused (measured on its own style's maps). The Samples card previews skin or beatmap samples alone or over the song; instrument lanes remain gated pending new evidence |
-| Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency, the percussive part alone, and a difficulty's hitsounds with its own samples, as written or as they would be written, slider slides looped head to tail, and a chosen skin's samples where the map has none |
+| Timing engine (Rust v4) | **at parity, in the app** — matches v3 attack for attack and red line for red line on 27/27, ~4x faster end to end (on Corpus B's real songs it writes v3's red lines on 13 of the 15 that v3 fits a grid to); Settings → Rust engine runs it through `overtone-cli`, and v3 takes over (with a note) where it has no answer. The same sidecar runs Structure (`structure`) and Ramps (`ramps`) |
+| App (web shell) | **usable** — ten sidebar sections: Library, Timing, Structure, Map check, Mapset, Audio, Report, Export, History, Settings. Analyse, edit, undo/redo, lock, export (.osu / CSV / click / .osz), inject (one map or the whole mapset, with the diff), compare with a map, alignment, density, snap audit, re-snap, suggestions (each addable on its own), mapset check, reference timing, assisted timing, evidence, ramps, offset lab, constant scroll, snap divisors, kiai / breaks / bookmarks / preview point / section volumes from the structure, audio swap, audio file check, write history with restore, mod report, folder import, recents, EN/ES, dark and light |
+| osu! files | **works** — full reader, byte-identical writer, atomic write + backup, every write logged and restorable |
+| Validation | **first rules live** — duplicates, short sections, impossible changes, suspicious offsets, octave checks |
+| Hitsound engine | **parked** (W1, 2026-10-26) on `parked/desktop-extras` and the tag `v3-desktop-full`: the copier, the Hitsounds section, the consistency check, the Rust decision engine and the Samples card. Its evaluation never cleared its own bar (clap F1 0.59, finish F1 0.42) |
+| Playback | **in the app** — play/pause/seek, live click from the current red lines (one clock with the song: attacks and clicks within 0.25 ms, measured), playhead, section loop, 100/75/50 % (pitch drops, attacks stay in place), taps with a remembered latency, the percussive part alone |
 | UI verification | **done** 2026-09-26 — the 19 surfaces of 2026-09-25/26 exercised in the browser pane on two real mapsets, both themes and languages; it found app.js not loading and fifteen bugs in writes, counts and messages, all fixed; the two tools that needed a decision were decided the same day (timeline) |
 | Precision plan (Phase 10) | **research underway** — the default 28 ms osu! export lead measures 16.8 % of Python and 5.2 % of Rust Corpus B red lines within 5 ms; raw engine grids score 2.0 % and 1.1 % respectively (20 maps, 1,152 lines, 2026-10-24). Tempo, octave and drifting sections remain the main misses |
 | Installer (MSI) | **v0.1.0-alpha published** — per-user MSI and portable ZIP, SBOM, checksums and notices; MSI feature tree and supported associations/setup options delivered. Unsigned by owner decision; bare `.osu` and URI associations remain unsupported/documented ([`11`](11-msi-distribution.md)) |
 
-Tests: **1077** Python (755 engine + 322 web shell) · **292** Rust.
+Tests: **775** Python (523 engine + 252 web shell) · **231** Rust.
 
 ### Current priorities — 2026-10-16
 
@@ -477,11 +478,13 @@ were what was missing.
 
 ## Phase 6 — Hitsound engine
 
-All of [`06-hitsound-engine.md`](06-hitsound-engine.md). **In the app since 2026-09-24/25:**
+> **Parked on `parked/desktop-extras`** (phase W1 of [the web platform](16-web-platform.md), 2026-10-26). The hitsound engine (P-1 to P-6, H1 to H7) left master so the project's core is timing; the code, its tests and its gates are kept whole on the protected branch `parked/desktop-extras` and the tag `v3-desktop-full`. The rows below record what was built and measured there, not what master ships.
+
+All of [`06-hitsound-engine.md`](https://github.com/Mides-Projects/Overtone/blob/parked/desktop-extras/docs/06-hitsound-engine.md). **In the app since 2026-09-24/25:**
 the copier, the Hitsounds section, the consistency check in the mod report and the
 decision engine's proposals, with detection and decision in Rust behind `overtone-cli`.
 The order of work, and what has to land first, is
-[`15-hitsound-plan.md`](15-hitsound-plan.md): the prerequisite rows below (P-1 to P-7), then
+[`15-hitsound-plan.md`](https://github.com/Mides-Projects/Overtone/blob/parked/desktop-extras/docs/15-hitsound-plan.md): the prerequisite rows below (P-1 to P-7), then
 the copier, the section, the check, the decision engine, the editor.
 
 | Feature | What it does | Diff | Imp | Deps | ML | GPU | Pri | Status |
@@ -686,16 +689,17 @@ presentation and I/O layers, not the engine, so they run in parallel with the re
 ## Phase 19 — App sections
 
 One sidebar entry per job, each shippable on its own, all sharing the one
-loaded song. **Thirteen are in**: Library, Timing, Structure, Hitsounds, Map check, Mapset,
-Audio (2026-09-27), Compile (2026-10-03), Train (2026-10-06), Report, Export, History,
-Settings. Inside the sections that exist, the one proposed row still open is
+loaded song. **Ten are in**: Library, Timing, Structure, Map check, Mapset, Audio
+(2026-09-27), Report, Export, History, Settings. Hitsounds, Compile and Train, and the
+Library's Songs browser and health page, are parked on `parked/desktop-extras` (W1,
+2026-10-26). Inside the sections that exist, the one proposed row still open is
 section labels from repetition.
 
 | Section | What it holds | Diff | Imp | Deps | ML | GPU | Pri | Status |
 |---|---|:--:|:--:|---|:--:|:--:|:--:|:--:|
 | Session model | one loaded song shared by every section through events | med | **high** | shell | no | no | **P1** | **done** — one song shared by every section |
-| Library | home: open audio or a beatmap folder, recents, osu! Songs browser with search | med | **high** | P5 reader | no | no | **P1** | **done** — recents, folder import, Songs browser on a SQLite + FTS5 index (Phase 24): search as you type, rescan reads only what changed |
-| Library focus | leave the Library category working well: scan/rescan with truthful folder progress, search fast on a full Songs folder, clear empty and error states, and the health check (Phase 21) listing maps whose timing disagrees with their audio | med | high | Library, index, compare | no | no | P1 | partial — measured on the local Songs folder (4,802 folders, 25,174 maps) and fixed on 2026-09-26: the first scan (263 s) waits on first opens, now 4 at a time (1,211 fresh maps 29.0 → 7.1 s); progress counts folders in the index from 0, 0.25 s apart at most, and says what it removes; unreadable folders and files keep their rows and are named; a damaged index is rebuilt; one-letter search p50 58 → 15 ms; the page says each state (to see in the browser); the health check has its page since 2026-09-30 (counts by verdict, a resumable run with progress, flags with per-line evidence marked actionable or weak) |
+| Library | home: open audio or a beatmap folder, recents, osu! Songs browser with search | med | **high** | P5 reader | no | no | **P1** | **done**, browser **parked** — recents and folder import stay; the Songs browser (search as you type on the SQLite + FTS5 index, Phase 24) left master in W1 (2026-10-26) and is kept on `parked/desktop-extras`; the index itself stays for the measurement server |
+| Library focus | **parked with the Songs browser** (W1, 2026-10-26; `parked/desktop-extras`). Leave the Library category working well: scan/rescan with truthful folder progress, search fast on a full Songs folder, clear empty and error states, and the health check (Phase 21) listing maps whose timing disagrees with their audio | med | high | Library, index, compare | no | no | P1 | partial — measured on the local Songs folder (4,802 folders, 25,174 maps) and fixed on 2026-09-26: the first scan (263 s) waits on first opens, now 4 at a time (1,211 fresh maps 29.0 → 7.1 s); progress counts folders in the index from 0, 0.25 s apart at most, and says what it removes; unreadable folders and files keep their rows and are named; a damaged index is rebuilt; one-letter search p50 58 → 15 ms; the page says each state (to see in the browser); the health check has its page since 2026-09-30 (counts by verdict, a resumable run with progress, flags with per-line evidence marked actionable or weak) |
 | Timing | tempo map, points, editor, verdict | — | — | — | no | no | **P1** | **done** |
 | Map check | compare, alignment, validation, density and suggestions for the loaded difficulty | med | **high** | P5, P7 | no | no | **P1** | **done** — own section: compare, alignment, density, snap audit, suggestions |
 | Hitsounds | instrument lanes, per-object sound, exported hitsound difficulty | high | **high** | P6 | no | no | P1 | partial — the section is in: where each addition falls, every sound heard one by one (H2), the Propose card (H5) and the hitsound difficulty in Export; instrument lanes wait until the templates hold on real audio |
@@ -730,8 +734,8 @@ number and confidence. Every write goes through the atomic writer and keeps a ba
 | Audio swap | the shift between a mapset's old and new audio from full-waveform correlation (onsets biased sub-frame shifts by a frame in the probe), refused on a tempo mismatch; on consent every time in every difficulty moves, with backup | med | high | writer, attacks | no | no | P2 | **done** — correlation at 11 kHz (±0.005 ms on real music), tempo twins and different cuts refused, Mapset card with preview and confirmed apply |
 | Offset lab | MP3 encoder delay read from the file header, the first attack through each decoder side by side, and a blind listening test that reports the preferred click shift with an interval | med | med | both decoders, P4 transport | no | no | P2 | **done** — header numbers, decoder side-by-side, and an 18-trial blind 2AFC with Wilson intervals in Timing |
 | Rhythm guide | a separate guide difficulty with circles on strong attacks snapped to the detected grid (per band; optional taiko don/kat hint), ambiguous snaps left out and listed | med | high | attacks, sections, `.osz` writer | no | no | P2 | needs a decision: `04-ui-ux.md` §9 rules out beatmap editing beyond hitsounds and timing |
-| Compile | many maps and their songs into one map and one audio file: ordered segments, every object keeping the beat it had, hitsounds remapped, slider velocity restored per segment, the junctions proven against the source audio afterwards | **high** | high | P5 reader/writer, P6 bank, P4 transport, structure, library | no | no | **P1** | **done** 2026-10-03 — [Phase 25](#phase-25--compilation-builder-marathon-maps) rows 25.1-25.11, 25.13-25.17 |
-| Train | a practice copy of one difficulty at another speed: the rate applied to the grid so every object keeps the beat it had, HP/CS/AR/OD kept, locked or scaled with the milliseconds shown, the audio resampled as the game's own DT does it, and the written red lines graded against the written audio | **high** | high | P5 reader/writer, 25.4 audio, 25.15 grade, library | no | no | P2 | **done** 2026-10-06 — [Phase 26](#phase-26--rate-and-difficulty-trainer-practice-copies) rows 26.1-26.5, 26.7, 26.8, 26.11, 26.13, 26.14, 26.17, 26.21 |
+| Compile | **parked** (W1, 2026-10-26; `parked/desktop-extras`). Many maps and their songs into one map and one audio file: ordered segments, every object keeping the beat it had, hitsounds remapped, slider velocity restored per segment, the junctions proven against the source audio afterwards | **high** | high | P5 reader/writer, P6 bank, P4 transport, structure, library | no | no | **P1** | **done** 2026-10-03 — [Phase 25](#phase-25--compilation-builder-marathon-maps) rows 25.1-25.11, 25.13-25.17 |
+| Train | **parked** (W1, 2026-10-26; `parked/desktop-extras`). A practice copy of one difficulty at another speed: the rate applied to the grid so every object keeps the beat it had, HP/CS/AR/OD kept, locked or scaled with the milliseconds shown, the audio resampled as the game's own DT does it, and the written red lines graded against the written audio | **high** | high | P5 reader/writer, 25.4 audio, 25.15 grade, library | no | no | P2 | **done** 2026-10-06 — [Phase 26](#phase-26--rate-and-difficulty-trainer-practice-copies) rows 26.1-26.5, 26.7, 26.8, 26.11, 26.13, 26.14, 26.17, 26.21 |
 
 Target sidebar, grouped by job: **Library** · **Timing** (Evidence and Ramps as tabs) ·
 **Structure** · **Map check** (Snap audit and Reference inside) · **Mapset** ·
@@ -889,6 +893,8 @@ Rejected: C++, Go, Java, Kotlin, Cython, Julia, R — the reasons are in the doc
 ---
 
 ## Phase 25 — Compilation builder (marathon maps)
+
+> **Parked on `parked/desktop-extras`** (phase W1 of [the web platform](16-web-platform.md), 2026-10-26). Compile left master so the project's core is timing; the code, its tests and its gates are kept whole on the protected branch `parked/desktop-extras` and the tag `v3-desktop-full`. The rows below record what was built and measured there, not what master ships.
 
 One map out of many: pick difficulties from several songs, put them in an order, and get a
 single `.osu` and a single audio file in which every borrowed object falls on the same beat
@@ -1063,6 +1069,8 @@ decodes, and they run one after the other with the progress panel naming which.
 ---
 
 ## Phase 26 — Rate and difficulty trainer (practice copies)
+
+> **Parked on `parked/desktop-extras`** (phase W1 of [the web platform](16-web-platform.md), 2026-10-26). Train and its global hotkey left master so the project's core is timing; the code, its tests and its gates are kept whole on the protected branch `parked/desktop-extras` and the tag `v3-desktop-full`. The rows below record what was built and measured there, not what master ships.
 
 One map into another at a different speed: pick a difficulty, choose a rate or a target
 BPM, move HP, CS, AR and OD where you want them, and get a playable copy whose every

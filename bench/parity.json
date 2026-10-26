@@ -12,42 +12,6 @@
    "where": "bench",
    "why": "bench/mapper_agreement.py parses only the local osu!.db identity and status fields for a read-only reference audit"
   },
-  "CombineAssemblyTests": {
-   "where": "python-only",
-   "why": "overtone_combine.py: the compilation .osu, every borrowed timestamp shifted, which no Rust crate holds"
-  },
-  "CombineAudioTests": {
-   "where": "python-only",
-   "why": "overtone_combine.py: the compilation audio cut, joined and checked back, which no Rust crate holds"
-  },
-  "CombineDifficultyTests": {
-   "where": "python-only",
-   "why": "overtone_combine.py: the one set of difficulty numbers a compilation holds and the slider speed it owes, which no Rust crate holds"
-  },
-  "CombineJunctionTests": {
-   "where": "python-only",
-   "why": "overtone_combine.py: what happens where one song stops and the next starts, which no Rust crate holds"
-  },
-  "CombineLoudnessTests": {
-   "where": "python-only",
-   "why": "overtone_combine.py: how loud each song of a compilation is, which no Rust crate holds"
-  },
-  "CombineOutputTests": {
-   "where": "python-only",
-   "why": "overtone_combine.py: what a built compilation says it is and what lands in the folder, which no Rust crate holds"
-  },
-  "CombinePlanTests": {
-   "where": "python-only",
-   "why": "overtone_combine.py: where each borrowed range lands in a compilation, which no Rust crate holds"
-  },
-  "CombineSampleTests": {
-   "where": "python-only",
-   "why": "overtone_combine.py: whose hitsound plays in a compilation, which no Rust crate holds"
-  },
-  "CombineSegmentTests": {
-   "where": "python-only",
-   "why": "overtone_combine.py: what a compilation reads out of one source map, which no Rust crate holds"
-  },
   "CorpusBScoringTests": {
    "where": "bench",
    "why": "bench/corpus_b.py scoring a map against its own red lines"
@@ -55,14 +19,6 @@
   "FixtureManifestTests": {
    "where": "bench",
    "why": "bench/fixtures.py, the one list of bench fixtures"
-  },
-  "GenreKitTests": {
-   "where": "bench",
-   "why": "assets/samples.py and the kits fitted into assets/kits.json: a generator, not an engine stage"
-  },
-  "HitsoundEvalTests": {
-   "where": "bench",
-   "why": "the hitsound eval harness, scored against baselines, not a stage"
   },
    "InstallerAssocTests": {
     "where": "python-only",
@@ -107,42 +63,6 @@
    "TaskbarIdentityTests": {
     "where": "shell",
     "why": "the Windows app identity the taskbar groups by"
-   },
-   "TrainAudioTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: the resampled song, its proof and the output folder, which no Rust crate holds"
-   },
-   "TrainHotkeyTests": {
-    "where": "python-only",
-    "why": "overtone_hotkey.py: the one global hotkey delivered by the OS, which no Rust crate holds"
-   },
-   "TrainLadderTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: rate ladders as one mapset, which no Rust crate holds"
-   },
-   "TrainCopiesTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: the write log's practice copies, listed and freed, which no Rust crate holds"
-   },
-   "TrainFeelModsTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: what a copy feels like and the mod arithmetic, which no Rust crate holds"
-   },
-   "TrainDetectTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: picking the map from live signals, which no Rust crate holds"
-   },
-   "TrainDropTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: spinners dropped on an explicit ask, which no Rust crate holds"
-   },
-   "TrainGridTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: the rate on the grid, which no Rust crate holds"
-   },
-   "TrainPlanTests": {
-    "where": "python-only",
-    "why": "overtone_train.py: the practice document, the rate and the stats, which no Rust crate holds"
    }
   },
  "format": 1,
@@ -164,10 +84,6 @@
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
   "DEFAULT_LANGUAGE": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
-  "DEFAULT_SAMPLE_DIR": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
@@ -265,17 +181,18 @@
    "where": "rust"
   },
   "_TimingCursor": {
-   "rust": [
-    "overtone-hitsound/src/map.rs::missing_sections_fall_back_to_defaults",
-    "overtone-hitsound/src/map.rs::slider_span_follows_beat_and_green_velocity"
-   ],
-   "where": "rust"
+   "where": "shell",
+   "why": "osu! file reading: the .osu reader in Rust lived in overtone-hitsound, parked on parked/desktop-extras (W1); the Rust engine reads no map"
   },
   "_atomic_grid_candidates": {
    "rust": [
     "overtone-tempo/src/lib.rs::seeding_finds_the_atom_on_a_clean_grid"
    ],
    "where": "rust"
+  },
+  "_beatmap_red_rows": {
+   "where": "shell",
+   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
   "_beats_of": {
    "where": "python-only",
@@ -318,10 +235,8 @@
    "where": "rust"
   },
   "_is_red_line": {
-   "rust": [
-    "overtone-hitsound/src/map.rs::red_green_and_legacy_timing_lines_parse_and_junk_skips"
-   ],
-   "where": "rust"
+   "where": "shell",
+   "why": "osu! file reading: the .osu reader in Rust lived in overtone-hitsound, parked on parked/desktop-extras (W1); the Rust engine reads no map"
   },
   "_load_audio": {
    "rust": [
@@ -345,10 +260,8 @@
    "where": "rust"
   },
   "_parse_red_line": {
-   "rust": [
-    "overtone-hitsound/src/map.rs::red_green_and_legacy_timing_lines_parse_and_junk_skips"
-   ],
-   "where": "rust"
+   "where": "shell",
+   "why": "osu! file reading: the .osu reader in Rust lived in overtone-hitsound, parked on parked/desktop-extras (W1); the Rust engine reads no map"
   },
   "_points_from_sections": {
    "rust": [
@@ -383,10 +296,6 @@
   "_robust_local_bpms": {
    "where": "legacy",
    "why": "the v2 fallback tracker, which the Rust engine does not implement"
-  },
-  "_sample_empty": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
   "_segment_tempi": {
    "where": "legacy",
@@ -456,20 +365,9 @@
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
-  "apply_proposals": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
   "assisted_grid": {
    "where": "python-only",
    "why": "two marked downbeats seeding the grid: Python only"
-  },
-  "attack_object_context": {
-   "rust": [
-    "overtone-hitsound/src/map.rs::bar_slots_read_sixteenths_against_the_red_lines",
-    "overtone-hitsound/src/role.rs::analyze_marks_backbeats_and_ghosts"
-   ],
-   "where": "rust"
   },
   "audio_file_report": {
    "where": "shell",
@@ -487,10 +385,6 @@
    ],
    "where": "rust"
   },
-  "beatmap_genre": {
-   "where": "python-only",
-   "why": "which profile a map's own tags ask for: the shell picks, and the Rust decision takes the profile file it is given"
-  },
   "beatmap_text": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
@@ -506,10 +400,6 @@
    "where": "rust"
   },
   "compare_map_timing": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
-  "copy_hitsounds": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
@@ -549,10 +439,6 @@
    ],
    "where": "rust"
   },
-  "edit_changes": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
   "export_click_track": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
@@ -576,30 +462,6 @@
   "grade_reference_timing": {
    "where": "python-only",
    "why": "reference grading of a map own red lines: Python only"
-  },
-  "hitsound_consistency": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
-  "hitsound_difficulty": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
-  "hitsound_genre": {
-   "where": "python-only",
-   "why": "which profile a map's own tags ask for: the shell picks, and the Rust decision takes the profile file it is given"
-  },
-  "hitsound_playback": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
-  "hitsound_report": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
-  "hitsound_silence_check": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
   "inject_diff": {
    "where": "shell",
@@ -645,12 +507,6 @@
   "mapset_report": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
-  "match_sound_events": {
-   "rust": [
-    "overtone-hitsound/src/emission.rs::match_attack_takes_the_nearest_inside_tolerance"
-   ],
-   "where": "rust"
   },
   "mel_frequencies": {
    "rust": [
@@ -726,10 +582,6 @@
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
-  "proposal_changes": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
   "quaver_timing_text": {
    "where": "python-only",
    "why": "another game timing, written: Python only"
@@ -739,17 +591,12 @@
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
   "read_osu_beatmap": {
-   "rust": [
-    "overtone-hitsound/src/map.rs::every_object_kind_parses_with_its_sound",
-    "overtone-hitsound/src/map.rs::red_green_and_legacy_timing_lines_parse_and_junk_skips"
-   ],
-   "where": "rust"
+   "where": "shell",
+   "why": "osu! file reading: the .osu reader in Rust lived in overtone-hitsound, parked on parked/desktop-extras (W1); the Rust engine reads no map"
   },
   "read_osu_red_lines": {
-   "rust": [
-    "overtone-hitsound/src/map.rs::red_green_and_legacy_timing_lines_parse_and_junk_skips"
-   ],
-   "where": "rust"
+   "where": "shell",
+   "why": "osu! file reading: the .osu reader in Rust lived in overtone-hitsound, parked on parked/desktop-extras (W1); the Rust engine reads no map"
   },
   "read_timing_file": {
    "where": "python-only",
@@ -778,10 +625,6 @@
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
   "same_audio": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
-  "sample_bank": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
@@ -827,10 +670,6 @@
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
-  "set_object_hitsounds": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
   "set_section_volumes": {
    "where": "shell",
    "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
@@ -858,11 +697,8 @@
    "where": "rust"
   },
   "sound_events": {
-   "rust": [
-    "overtone-hitsound/src/map.rs::every_object_kind_parses_with_its_sound",
-    "overtone-hitsound/src/emission.rs::hit_sound_bits_decode_in_whistle_finish_clap_order"
-   ],
-   "where": "rust"
+   "where": "shell",
+   "why": "osu! file reading: the .osu reader in Rust lived in overtone-hitsound, parked on parked/desktop-extras (W1); the Rust engine reads no map"
   },
   "split_section": {
    "where": "shell",
@@ -907,14 +743,6 @@
   "verify_export": {
    "where": "python-only",
    "why": "reads an exported timing text back: Python only"
-  },
-  "write_hitsound_difficulty": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
-  },
-  "write_object_hitsounds": {
-   "where": "shell",
-   "why": "shell, GUI or file IO: the Rust engine writes no map and draws no view"
   },
   "with_map_lead": {
    "where": "shell",

@@ -1,8 +1,8 @@
 //! Multi-band spectral flux: one onset function per band, not one for the
 //! whole spectrum.
 //!
-//! The default envelope answers "did anything start". The hitsound engine
-//! and band-limited re-timing need "WHAT started, and where": a kick moves
+//! The default envelope answers "did anything start". Band-limited
+//! re-timing needs "WHAT started, and where": a kick moves
 //! the sub band, a hat the top, and a broadband click moves all seven. So
 //! this splits 40 Hz – 11.025 kHz (the mel path's own range) into 7
 //! log-spaced bands and reports rectified dB flux per band, on the same
@@ -17,11 +17,9 @@ use crate::stft;
 
 /// Band edges in Hz: seven log-spaced bands over the mel path's range, so
 /// both front ends cover the same spectrum, each 2.23 times the last --
-/// 40, 89, 199, 445, 992, 2214, 4940, 11025. They are not the hitsound
-/// features' musical bands (sub 20-60 Hz up to air 11 kHz+, docs/06 §2,
-/// `overtone_hitsound::spectral::BANDS`): band `i` here is not band `i`
-/// there, and nothing above 11.025 kHz moves any band here, a cymbal's
-/// air shimmer included.
+/// 40, 89, 199, 445, 992, 2214, 4940, 11025. They are not musical bands
+/// (sub, bass, ... air), and nothing above 11.025 kHz moves any band here,
+/// a cymbal's air shimmer included.
 pub const BANDS: usize = 7;
 pub const BAND_LO_HZ: f64 = 40.0;
 pub const BAND_HI_HZ: f64 = 11_025.0;

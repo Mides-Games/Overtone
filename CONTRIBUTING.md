@@ -31,8 +31,8 @@ type(scope/task): short imperative description
 - Types: `feature`/`feat` (new capability), `fix`, `refactor` (same behaviour),
   `perf` (faster, with numbers), `bench` (benchmark, gates, golden vectors),
   `test`, `docs`, `chore` (layout, dependencies, tooling).
-- Scope is the area (`engine`, `app`, `bench`, `rust`, `hitsound`, `docs`,
-  `repo`) plus the task after a slash.
+- Scope is the area (`engine`, `app`, `bench`, `rust`, `docs`, `repo`) plus the
+  task after a slash.
 - The body says **why**; the diff already says what. A `perf` or accuracy claim
   names its measurement; a gate change names the gates run and their result.
 - One logical change per commit: a DSP change and a UI change are two commits.

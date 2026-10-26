@@ -1,8 +1,7 @@
 """Measurements read from one person's own osu! Songs folder, kept out of the repository.
 
-Corpus B, the genre corpus, the kiai labels, the health sample and the
-real-audio snapshot name the folders, files, mappers and SHA-1s of a private
-library. They live beside the scripts as ``bench/<name>.local.json`` (and
+Corpus B, the health sample and the real-audio snapshot name the folders,
+files, mappers and SHA-1s of a private library. They live beside the scripts as ``bench/<name>.local.json`` (and
 ``.local.md``), which ``.gitignore`` keeps out of every commit; the repository
 ships ``bench/<name>.example.json`` instead, a few rows showing the shape.
 
@@ -28,8 +27,6 @@ ROOT = HERE.parent
 #: Each local file: what writes it, and the name it was committed under.
 FILES = {
     "corpus_b.local.json": ("chosen by hand; see docs/10-precision-plan.md", "corpus_b.json"),
-    "genre_corpus.local.json": ("bench/genre_corpus.py --update", "genre_corpus.json"),
-    "labels.local.json": ("bench/labels.py --songs <Songs folder>", "labels.json"),
     "health_sample.local.json": ("bench/health_sample.py --songs <Songs folder>",
                                  "health_sample.json"),
     "health_sample.local.md": ("bench/health_sample.py --songs <Songs folder>",
@@ -39,8 +36,6 @@ FILES = {
 }
 
 CORPUS_B = HERE / "corpus_b.local.json"
-GENRE_CORPUS = HERE / "genre_corpus.local.json"
-LABELS = HERE / "labels.local.json"
 HEALTH_SAMPLE = HERE / "health_sample.local.json"
 HEALTH_SHEET = HERE / "health_sample.local.md"
 REAL_SNAPSHOT = HERE / "real_audio_snapshot.local.json"

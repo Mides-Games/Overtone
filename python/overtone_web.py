@@ -18,7 +18,6 @@ frontends remember the same file and detection settings.
 from __future__ import annotations
 
 import base64
-import bisect
 import json
 import os
 import re
@@ -32,11 +31,8 @@ from pathlib import Path
 import numpy as np
 
 import overtone as ta
-import overtone_combine as tc
-import overtone_hotkey
 import overtone_library
 import overtone_rust
-import overtone_train as tr
 import overtone_webhost
 from overtone_paths import data_root
 
@@ -120,25 +116,6 @@ PROJECT_VERSION = 1
 NOTES_FORMAT = "overtone-notes"
 NOTE_MAX_CHARS = 500
 NOTE_MAX_COUNT = 500
-#: Hitsound profiles the Propose card offers (docs/06 §11): the JSON files
-#: in ``profiles/`` beside the app, by name. The page chooses a name from
-#: that list; a path never comes from the page.
-PROFILE_DIR = ROOT / "profiles"
-#: The profile the CLI bakes in: always offered, and decided without a file.
-DEFAULT_PROFILE = "balanced"
-_PROFILE_NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
-
-
-def hitsound_profile_names() -> list[str]:
-    """The profiles a proposal may use: ``balanced`` first, then every
-    ``profiles/<name>.json`` whose name is lowercase letters, digits, ``-``
-    and ``_``, in name order. A name is all the page ever sees or sends."""
-    try:
-        stems = sorted(p.stem for p in PROFILE_DIR.glob("*.json") if p.is_file())
-    except OSError:
-        stems = []
-    return [DEFAULT_PROFILE] + [name for name in stems
-                                if name != DEFAULT_PROFILE and _PROFILE_NAME.fullmatch(name)]
 
 
 # ---------------------------------------------------------------------------
@@ -273,29 +250,12 @@ def _default_output() -> Path:
     return home / "Documents" / "Overtone"
 
 
-#: WAV format tags osu!'s audio library plays and a browser does not: Ogg
-#: Vorbis wrapped in a RIFF header (0x674F "Og" up to 0x6771). 5 of 20,000
-#: local .wav samples were one; the Ogg stream inside is intact.
-OGG_IN_WAV_TAGS = range(0x674F, 0x6772)
-
 #: osu!'s skinnable hitsound names — a sample set, a hit or slider sound, an
 #: optional index. A mapset's own samples, never a new encode of its song:
 #: listed as candidates, every mapset with custom samples showed Audio swap.
 HITSOUND_SAMPLE_NAME = re.compile(
     r"^(normal|soft|drum)-(hit(normal|whistle|finish|clap)|slider(slide|whistle|tick))\d*\.",
     re.IGNORECASE)
-
-
-def _playable_sample(data: bytes) -> bytes:
-    """A sample's bytes as a browser can decode them: an Ogg stream wrapped
-    in a WAV header is handed over without the wrapper; anything else as is."""
-    fmt = data.find(b"fmt ", 0, 64)
-    if data[:4] == b"RIFF" and fmt >= 0 and len(data) >= fmt + 10:
-        tag = int.from_bytes(data[fmt + 8:fmt + 10], "little")
-        start = data.find(b"OggS")
-        if tag in OGG_IN_WAV_TAGS and start >= 0:
-            return data[start:]
-    return data
 
 
 def _open_link(link: str) -> None:
@@ -366,49 +326,6 @@ AnalysisStopped = ta.AnalysisStopped
 # Bridge exposed to JavaScript as window.pywebview.api
 # ---------------------------------------------------------------------------
 
-def _audio_units_to_events(beatmap: dict, units: list,
-                           tolerance_ms: float = 50.0) -> tuple[list, int]:
-    """Audio-only decisions onto a map's sound events, for the H5 write path.
-
-    Each unit was decided at an attack time with no object; here it takes the
-    nearest sound event inside the tolerance, keeps its proposal, terms and
-    alternatives, and moves its time onto the event it will play at (the
-    attack it was heard at stays in ``heard``). One event takes its nearest
-    attack. Attacks with no object are counted, not placed: there is nothing
-    to write a hitsound onto, and inventing an object for them is out.
-    """
-    events = sorted((float(e["time"]), e) for e in ta.sound_events(beatmap)
-                    if "time" in e)
-    times = [t for t, _ in events]
-    best: dict = {}
-    dropped = 0
-    for unit in units or []:
-        try:
-            moment = float(unit.get("time_ms", 0.0))
-        except (TypeError, ValueError):
-            dropped += 1
-            continue
-        at = bisect.bisect_left(times, moment)
-        near = [events[k][1] for k in (at - 1, at) if 0 <= k < len(events)]
-        pick = min(near, key=lambda e: abs(float(e["time"]) - moment), default=None)
-        if pick is None or abs(float(pick["time"]) - moment) > tolerance_ms:
-            dropped += 1
-            continue
-        key = (pick["object"], pick["part"], pick["edge"])
-        gap = abs(float(pick["time"]) - moment)
-        if key not in best or gap < best[key][0]:
-            best[key] = (gap, unit, pick)
-    mapped = []
-    for _gap, unit, event in best.values():
-        row = dict(unit)
-        row["object"] = event["object"]
-        row["part"] = event["part"]
-        row["edge"] = event["edge"]
-        row["time_ms"] = float(event["time"])
-        mapped.append(row)
-    mapped.sort(key=lambda row: float(row["time_ms"]))
-    return mapped, dropped
-
 
 def _shortcuts(saved) -> dict:
     """Every movable key: the saved one where it is usable, else the
@@ -460,45 +377,6 @@ class Api:
         self._launch_options: dict = {}
         self._launch_subdivision: float | None = None
         self._analysis: ta.Analysis | None = None
-        #: The Compile view's own state (roadmap 25.14): the ordered sources
-        #: with their per-segment settings, the settings for all of them, the
-        #: names, the output shape, and where the last build went. In memory
-        #: only: a compilation is a few clicks to rebuild and nothing in the
-        #: user's config is improved by a half-made one surviving a restart.
-        self._compile: list[dict] = []
-        self._compile_settings: dict = dict(tc.DEFAULT_SETTINGS)
-        self._compile_metadata: dict = {}
-        self._compile_format: dict = {"audio_format": tc.DEFAULT_AUDIO_FORMAT,
-                                      "difficulty_from": "first", "osz": False}
-        self._compile_out = ""
-        #: The last loudness measurement, which is a decode per segment and so
-        #: is asked for rather than taken: the view shows each song's level
-        #: beside the gain it was given.
-        self._compile_loudness: dict | None = None
-        #: One segment's song read into phrases, by (path, size, mtime): the
-        #: sidecar reads the audio once per file and a range picked from a
-        #: phrase is the whole point of asking.
-        self._compile_sections: dict = {}
-        #: A build's own lock, beside the analysis's: the analysis's belongs to
-        #: one analysis, and ``stop_analysis`` reads it to decide whether
-        #: anything is running. The two refuse each other instead of sharing,
-        #: because encoding a marathon and analysing a song are both heavy and
-        #: this machine runs one heavy job at a time.
-        self._compile_lock = threading.Lock()
-        #: The Train view's own state (roadmap 26.21): one source map, the
-        #: rate or target BPM, each stat's keep/lock/scale, the naming, the
-        #: output shape, and where the last build went. In memory only, like
-        #: the compilation: a copy is a few clicks to rebuild.
-        self._train: dict = {"osu": None, "rate": 1.0, "target_bpm": None,
-                             "from_bpm": None, "stats": {}, "naming": {},
-                             "mods": [], "drop_spinners": False,
-                             "audio_format": "mp3", "osz": False, "out": ""}
-        #: A build's own lock, beside the analysis's and the compilation's:
-        #: resampling a song and encoding it is the same heavy job either way.
-        self._train_lock = threading.Lock()
-        #: The global hotkey's waiter, or None while it is off: one combination
-        #: delivered by the OS as a message, never a hook in any keystroke's path.
-        self._train_hotkey: overtone_hotkey.HotkeyWait | None = None
         self._busy = threading.Lock()
         #: Set by stop_analysis. The engine asks it at its checkpoints inside
         #: every stage (on the worker's thread only), the worker at every
@@ -538,30 +416,15 @@ class Api:
         #: The percussive stem's WAV bytes with the analysis that made them:
         #: HPSS costs seconds once, then rides the cache like structure.
         self._percussion: tuple | None = None
-        #: Held while the library index scans, so two scans never interleave.
-        self._scanning = threading.Lock()
-        #: Held while the library health check grades, so two runs never
-        #: interleave; the event stops it at the next audio file.
-        self._health = threading.Lock()
-        self._health_stop = threading.Event()
         #: The Rust engine's structure report, keyed by (path, size, mtime):
         #: the audio is read once, the bars are re-applied on every call.
         self._structure: tuple[tuple, dict] | None = None
         #: The engine-evidence report for the live analysis object: attacks
         #: and sections never move under edits, so identity is the key.
         self._evidence: tuple | None = None
-        #: The decision's proposal units and the profile behind them, keyed
-        #: by .osu name: proposing runs the CLI once (for one difficulty or
-        #: all of them), and accept/reject iterates the cache. A write or an
-        #: undo drops its file's entry, and another song all of them. A
-        #: moved map refuses at apply time through the proposal's own
-        #: staleness guard.
-        self._decisions: dict[str, dict] = {}
         #: The last ramp fit, keyed by (analysis, drift, max lines): computing
         #: shells to the CLI, and Use reads the cache.
         self._ramps: tuple | None = None
-        #: The bytes one hitsound apply replaced, for the one-level undo.
-        self._decide_undo: dict | None = None
         #: Files re-snapped, by resolved path, with the digest of the bytes
         #: the re-snap wrote: while a file still holds exactly those bytes its
         #: objects left its own red lines, and a second re-snap would move
@@ -772,8 +635,6 @@ class Api:
         return reply
 
     def _launch(self, path: str, params: dict, options: dict) -> dict:
-        if self._compile_lock.locked():
-            return {"ok": False, "key": "busy"}     # a compilation is being written
         if not self._busy.acquire(blocking=False):
             return {"ok": False, "key": "busy"}
         self._remember(path, options)
@@ -1375,10 +1236,10 @@ class Api:
         return {"ok": True, "old": old_path.name, "new": new_path.name,
                 "shift": shift, "maps": done["maps"]}
 
-    # -- hitsound playback (Phase 6, P-3) ------------------------------------
+    # -- the difficulties beside the song -------------------------------------
     def song_maps(self) -> dict:
         """The difficulties beside the analysed song that play this audio,
-        for the transport's hitsound picker."""
+        for the Structure and Timing tools' map pickers."""
         if self._analysis is None:
             return {"ok": False, "key": "first"}
         source = Path(str(self._analysis.source))
@@ -1397,219 +1258,7 @@ class Api:
                              "mode": header["mode"], "objects": header["objects"]})
         return {"ok": True, "maps": maps}
 
-    def hitsound_playback(self, file: str) -> dict:
-        """Every sound of one difficulty beside the song, with the bytes of
-        each sample it plays, for the page to schedule on its own clock.
-        Only a .osu in the analysed song's folder is read."""
-        if self._analysis is None:
-            return {"ok": False, "key": "first"}
-        folder = Path(str(self._analysis.source)).parent
-        name = str(file or "")
-        path = folder / name
-        if Path(name).name != name or not name.lower().endswith(".osu") or not path.is_file():
-            return {"ok": False, "key": "bad_file"}
-        try:
-            return self._playback_reply(name, ta.hitsound_playback(ta.read_osu_beatmap(path), folder,
-                                                                   skin=self._skin()))
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-
-    @staticmethod
-    def _playback_reply(name: str, plan: dict) -> dict:
-        """A playback plan as the page schedules it: columns of events and
-        objects, and the bytes of each sample they play. A sample with no
-        audio in it (a mute) says so, so the page does not count it as one
-        it failed to decode."""
-        samples = {}
-        for key, sample in plan["samples"].items():
-            path = Path(sample["path"])
-            raw = path.read_bytes()
-            data = _playable_sample(raw)
-            samples[key] = {"source": sample["source"], "name": path.name,
-                            "empty": ta._sample_empty(path, len(raw)),
-                            "data": base64.b64encode(data).decode("ascii")}
-        return {"ok": True, "file": name,
-                "events": {"t": [e["t"] for e in plan["events"]],
-                           "keys": [e["keys"] for e in plan["events"]],
-                           "volume": [e["volume"] for e in plan["events"]],
-                           "adds": [e["adds"] for e in plan["events"]]},
-                "loops": {"t": [b["t"] for b in plan["loops"]],
-                          "end": [b["end"] for b in plan["loops"]],
-                          "keys": [b["keys"] for b in plan["loops"]],
-                          "volume": [b["volume"] for b in plan["loops"]]},
-                "objects": {"t": [o["t"] for o in plan["objects"]],
-                            "end": [o["end"] for o in plan["objects"]],
-                            "kind": [o["kind"] for o in plan["objects"]]},
-                "samples": samples, "counts": plan["counts"]}
-
-    def hitsound_report(self, file: str) -> dict:
-        """One difficulty beside the song, sound by sound: its place in the
-        bar and where each addition falls (H2). Read only."""
-        if self._analysis is None:
-            return {"ok": False, "key": "first"}
-        folder = Path(str(self._analysis.source)).parent
-        name = str(file or "")
-        path = folder / name
-        if Path(name).name != name or not name.lower().endswith(".osu") or not path.is_file():
-            return {"ok": False, "key": "bad_file"}
-        try:
-            report = ta.hitsound_report(ta.read_osu_beatmap(path))
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        return {"ok": True, "file": name, "report": report}
-
-    # -- sample bank (Phase 6, H6) ---------------------------------------------
-    def _skin(self) -> Path | None:
-        """The skin folder playback asks before Overtone's own samples: the
-        one chosen in the settings, while it is still there."""
-        folder = self._settings()["skin_folder"]
-        return Path(folder) if folder and Path(folder).is_dir() else None
-
-    @staticmethod
-    def _same_folder(a: Path | None, b: Path | None) -> bool:
-        if a is None or b is None:
-            return False
-        return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
-
-    def sample_bank(self, folder: str = "") -> dict:
-        """What a sample folder holds, named as osu! names it (H6): ``folder``,
-        or with none the analysed song's own, whose missing samples fall back
-        to the skin playback uses. Read only; nothing is remembered."""
-        if folder:
-            base = Path(str(folder))
-        elif self._analysis is None:
-            return {"ok": False, "key": "first"}
-        else:
-            base = Path(str(self._analysis.source)).parent
-        if not base.is_absolute() or not base.is_dir():
-            return {"ok": False, "key": "bad_folder"}
-        skin = self._skin()
-        try:
-            bank = ta.sample_bank(base, skin=skin)
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        song = self._analysis is not None and self._same_folder(
-            base, Path(str(self._analysis.source)).parent)
-        return {"ok": True, "bank": bank, "song": song, "in_use": self._same_folder(base, skin),
-                "skin": str(skin) if skin else ""}
-
-    def _skins_start(self) -> str:
-        """Where the Samples card's folder dialog opens: beside the skin in
-        use, else osu!'s Skins beside the Songs folder, else anywhere."""
-        skin = self._skin()
-        if skin is not None:
-            return str(skin.parent)
-        skins = Path(self._songs_root()).parent / "Skins"
-        return str(skins) if skins.is_dir() else ""
-
-    def pick_sample_folder(self) -> dict:
-        """A folder dialog for the Samples card, and the bank of the folder
-        chosen. Only read: choosing it for playback is a setting of its own."""
-        import webview
-        if self._window is None:
-            return {"ok": False, "key": "cancelled"}
-        chosen = self._window.create_file_dialog(webview.FOLDER_DIALOG,
-                                                 directory=self._skins_start())
-        if not chosen:
-            return {"ok": False, "key": "cancelled"}
-        return self.sample_bank(chosen[0] if isinstance(chosen, (list, tuple)) else str(chosen))
-
-    def sample_audition(self, folder: str, file: str) -> dict:
-        """One sample's bytes, for the page to hear: ``file`` is a hitsound
-        sample's name (``soft-hitclap2.wav``), alone, inside ``folder``, an
-        absolute folder the bank named (Overtone's own samples included).
-        Nothing that is not named as a sample is read."""
-        base, name = Path(str(folder or "")), str(file or "")
-        path = base / name
-        if (not name or Path(name).name != name or not HITSOUND_SAMPLE_NAME.match(name)
-                or Path(name).suffix.lower() not in ta.SAMPLE_EXTENSIONS
-                or not base.is_absolute() or not path.is_file()):
-            return {"ok": False, "key": "sb_gone"}
-        try:
-            raw = path.read_bytes()
-        except OSError as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        return {"ok": True, "folder": str(base), "file": name,
-                "empty": ta._sample_empty(path, len(raw)),
-                "data": base64.b64encode(_playable_sample(raw)).decode("ascii")}
-
-    # -- hitsound copier (Phase 6, H1) ---------------------------------------
-    @staticmethod
-    def _copy_paths(folder: str, source: str, targets: list) -> tuple[Path, list[Path]] | dict:
-        """The source and target .osu paths, all inside ``folder``, or a refusal."""
-        base = Path(str(folder))
-        if not base.is_dir():
-            return {"ok": False, "key": "bad_folder"}
-        if not isinstance(targets, list) or not targets:
-            return {"ok": False, "key": "hs_no_targets"}
-        paths = []
-        for name in [source, *targets]:
-            name = str(name or "")
-            path = base / name
-            if (Path(name).name != name or not name.lower().endswith(".osu")
-                    or not path.is_file()):
-                return {"ok": False, "key": "bad_file"}
-            paths.append(path)
-        if paths[0] in paths[1:] or len(set(paths[1:])) != len(paths) - 1:
-            return {"ok": False, "key": "hs_same_file"}
-        return paths[0], paths[1:]
-
-    def _copy_plan(self, folder: str, source: str, targets: list, options: dict) -> dict:
-        found = self._copy_paths(folder, source, targets)
-        if isinstance(found, dict):
-            return found
-        source_path, target_paths = found
-        volumes = bool((options or {}).get("volumes"))
-        try:
-            source_map = ta.read_osu_beatmap(source_path)
-            plans = []
-            for path in target_paths:
-                report = ta.copy_hitsounds(source_map, ta.read_osu_beatmap(path), volumes=volumes)
-                plans.append((path, report))
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        return {"ok": True, "plans": plans}
-
-    @staticmethod
-    def _copy_row(path: Path, report: dict) -> dict:
-        return {"file": path.name, "objects": len(report["changes"]),
-                **{k: report[k] for k in ("target_sounds", "matched", "changed", "unmatched",
-                                          "unmatched_times", "index_conflicts")}}
-
-    def hitsound_copy_preview(self, folder: str, source: str, targets: list,
-                              options: dict | None = None) -> dict:
-        """What copying ``source``'s hitsounds onto each target would change.
-        Read only: nothing is written."""
-        plan = self._copy_plan(folder, source, targets, options or {})
-        if not plan["ok"]:
-            return plan
-        return {"ok": True, "source": str(source),
-                "targets": [self._copy_row(path, report) for path, report in plan["plans"]]}
-
-    def hitsound_copy_apply(self, folder: str, source: str, targets: list,
-                            options: dict | None = None) -> dict:
-        """Copy ``source``'s hitsounds onto each target .osu, as the preview
-        said: only hitsound fields change, each file is backed up first."""
-        plan = self._copy_plan(folder, source, targets, options or {})
-        if not plan["ok"]:
-            return plan
-        rows = []
-        for path, report in plan["plans"]:
-            try:
-                written = ta.write_object_hitsounds(path, report["changes"])
-            except (ValueError, OSError) as exc:
-                return {"ok": False, "key": "error", "detail": f"{path.name}: {exc}",
-                        "done": rows}
-            rows.append({**self._copy_row(path, report), "written": written["written"],
-                         "backup": written["backup"]})
-        return {"ok": True, "source": str(source), "targets": rows}
-
-    # -- hitsound decision (Phase 6, H5) --------------------------------------
-    @staticmethod
-    def _decide_key(unit: dict) -> tuple:
-        return (unit.get("object"), unit.get("part"), unit.get("edge"))
-
-    def _decide_file(self, file: str):
+    def _song_map(self, file: str):
         """The .osu path inside the analysed song's folder, or a refusal."""
         if self._analysis is None:
             return {"ok": False, "key": "first"}
@@ -1618,1151 +1267,6 @@ class Api:
         if Path(name).name != name or not name.lower().endswith(".osu") or not path.is_file():
             return {"ok": False, "key": "bad_file"}
         return path
-
-    def hitsound_profiles(self, file: str | None = None) -> dict:
-        """The hitsound profiles the Propose card offers, by name,
-        ``balanced`` (the default) first.
-
-        With a map, ``suggested`` names the profile its own metadata asks for
-        (:func:`overtone.beatmap_genre`, the classifier the profiles were
-        measured with) when one of that name is on disk; ``""`` when the map
-        says nothing, when its genre has no profile, or when it cannot be
-        read. A suggestion, never a choice: the page preselects it and the
-        user can pick another, and nothing is decided until Propose is pressed.
-        """
-        names = hitsound_profile_names()
-        suggested = ""
-        name = str(file or "")
-        # The same bare-name-beside-the-song rule every map call here uses: a
-        # path never comes from the page.
-        if name and self._analysis is not None and Path(name).name == name                 and name.lower().endswith(".osu"):
-            path = Path(str(self._analysis.source)).parent / name
-            if path.is_file():
-                try:
-                    genre = ta.beatmap_genre(ta.read_osu_beatmap(path))
-                except (ValueError, OSError):
-                    genre = ""
-                suggested = genre if genre in names else ""
-        return {"ok": True, "profiles": names, "default": DEFAULT_PROFILE,
-                "suggested": suggested}
-
-    def hitsound_decide_propose(self, file: str, profile: str | None = None,
-                                  evidence: str = "map") -> dict:
-        """Propose every decidable point's sound through the Rust sidecar,
-        decided with ``profile``: a name :meth:`hitsound_profiles` lists,
-        ``balanced`` when none is given. Anything else is refused before the
-        sidecar runs. One heavy job at a time; the units stay cached for
-        accept/reject.
-
-        ``evidence="audio"`` is the H7 surface: the sidecar decides the song's
-        strong attacks with no map, and each decision is matched to the picked
-        map's nearest sound event inside 50 ms. Attacks with no object are
-        reported, not invented into one; objects keep the inspector, the
-        audition and the write path, fed by ears instead of context. Best on
-        bare maps, where the map context it replaces is empty anyway.
-        """
-        path = self._decide_file(file)
-        if isinstance(path, dict):
-            return path
-        name = DEFAULT_PROFILE if profile is None else profile
-        if not isinstance(name, str) or name not in hitsound_profile_names():
-            return {"ok": False, "key": "bad_profile"}
-        if evidence not in ("map", "audio"):
-            return {"ok": False, "key": "error",
-                    "detail": "Evidence is 'map' or 'audio'."}
-        if not self._busy.acquire(blocking=False):
-            return {"ok": False, "key": "busy"}
-        try:
-            report = overtone_rust.hitsound(
-                str(self._analysis.source), None if evidence == "audio" else str(path),
-                profile=None if name == DEFAULT_PROFILE else PROFILE_DIR / f"{name}.json")
-        except overtone_rust.SidecarUnavailable:
-            return {"ok": False, "key": "no_rust"}
-        except (RuntimeError, ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        finally:
-            self._busy.release()
-        units = report.get("units", [])
-        matched, unmatched = len(units), 0
-        if evidence == "audio":
-            try:
-                beatmap = ta.read_osu_beatmap(path)
-            except (ValueError, OSError) as exc:
-                return {"ok": False, "key": "error", "detail": str(exc)}
-            units, unmatched = _audio_units_to_events(beatmap, units)
-            matched = len(units)
-        self._decisions[str(path.name)] = {"units": units, "profile": name,
-                                           "evidence": evidence}
-        return {"ok": True, "file": str(path.name), "units": units,
-                "profile": name, "evidence": evidence,
-                "matched": matched, "unmatched": unmatched}
-
-    def hitsound_decide_propose_all(self, profile: str | None = None) -> dict:
-        """Propose for every difficulty beside the song at once, the maps
-        :meth:`song_maps` lists: one run of the sidecar analyses the audio
-        once and decides each map on it, and each map's units are cached as
-        its own proposal is, so choosing another difficulty shows them
-        without running the sidecar again. A map the sidecar cannot read is
-        that map's error alone. The profile is a listed name, as for one
-        map; one heavy job at a time. Nothing is written."""
-        if self._analysis is None:
-            return {"ok": False, "key": "first"}
-        name = DEFAULT_PROFILE if profile is None else profile
-        if not isinstance(name, str) or name not in hitsound_profile_names():
-            return {"ok": False, "key": "bad_profile"}
-        maps = self.song_maps().get("maps", [])
-        if not maps:
-            return {"ok": False, "key": "hsv_none"}
-        folder = Path(str(self._analysis.source)).parent
-        paths = [str(folder / m["file"]) for m in maps]
-        if not self._busy.acquire(blocking=False):
-            return {"ok": False, "key": "busy"}
-        try:
-            report = overtone_rust.hitsound(
-                str(self._analysis.source), paths,
-                profile=None if name == DEFAULT_PROFILE else PROFILE_DIR / f"{name}.json")
-        except overtone_rust.SidecarUnavailable:
-            return {"ok": False, "key": "no_rust"}
-        except (RuntimeError, ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        finally:
-            self._busy.release()
-        # Each entry names the map it answers, as it was passed.
-        answered = {entry.get("map"): entry for entry in report.get("maps", [])}
-        rows = []
-        for m, path in zip(maps, paths):
-            entry = answered.get(path, {"error": "The engine did not answer for this map."})
-            if "units" in entry:
-                self._decisions[m["file"]] = {"units": entry["units"], "profile": name}
-                rows.append({"file": m["file"], "difficulty": m["difficulty"],
-                             "units": len(entry["units"])})
-            else:
-                rows.append({"file": m["file"], "difficulty": m["difficulty"],
-                             "error": str(entry.get("error", ""))})
-        return {"ok": True, "profile": name, "maps": rows}
-
-    def hitsound_decide_cached(self, file: str) -> dict:
-        """The proposal cached for one difficulty beside the song, as
-        :meth:`hitsound_decide_propose` answered it, without running the
-        sidecar: ``no_proposal`` when there is none."""
-        path = self._decide_file(file)
-        if isinstance(path, dict):
-            return path
-        cached = self._decisions.get(str(path.name))
-        if cached is None:
-            return {"ok": False, "key": "no_proposal"}
-        return {"ok": True, "file": str(path.name), "units": cached["units"],
-                "profile": cached.get("profile", DEFAULT_PROFILE),
-                "evidence": cached.get("evidence", "map")}
-
-    def hitsound_decide_proposed(self) -> dict:
-        """Which difficulties beside the song have a proposal cached, in
-        :meth:`song_maps` order, with its profile and how many sounds."""
-        if self._analysis is None:
-            return {"ok": False, "key": "first"}
-        rows = []
-        for m in self.song_maps().get("maps", []):
-            cached = self._decisions.get(m["file"])
-            if cached is not None:
-                rows.append({"file": m["file"], "difficulty": m["difficulty"],
-                             "profile": cached.get("profile", DEFAULT_PROFILE),
-                             "evidence": cached.get("evidence", "map"),
-                             "units": len(cached["units"])})
-        return {"ok": True, "maps": rows}
-
-    def _decide_units(self, path: Path, edits, choices=None) -> list | dict:
-        """The cached proposal's units, none when hand edits come alone (they
-        need no Rust), or a refusal: nothing to apply, or edits that are not a
-        list of objects. ``choices`` swaps in the runner-ups the page chose."""
-        if edits is not None and not (isinstance(edits, list)
-                                      and all(isinstance(e, dict) for e in edits)):
-            return {"ok": False, "key": "error", "detail": "edits must be a list of objects"}
-        cached = self._decisions.get(str(path.name))
-        if cached is None and not edits:
-            return {"ok": False, "key": "no_proposal"}
-        return self._chosen(cached["units"] if cached else [], choices)
-
-    @staticmethod
-    def _chosen(units: list, choices) -> list | dict:
-        """The units with an alternative in place of the proposal wherever the
-        page chose one: ``[object, part, edge, index]``, the index into that
-        unit's ``alternatives`` (best first, as the CLI ranks them). An index
-        the unit does not have, or a sound with no unit, refuses them all."""
-        if not choices:
-            return units
-        if not (isinstance(choices, list) and all(
-                isinstance(c, list) and len(c) == 4 and isinstance(c[3], int) for c in choices)):
-            return {"ok": False, "key": "error",
-                    "detail": "choices must be [object, part, edge, index] lists"}
-        pick = {(c[0], c[1], c[2]): c[3] for c in choices}
-        out = []
-        for unit in units:
-            index = pick.pop((unit.get("object"), unit.get("part"), unit.get("edge")), None)
-            if index is None:
-                out.append(unit)
-                continue
-            alternatives = unit.get("alternatives") or []
-            if not 0 <= index < len(alternatives):
-                return {"ok": False, "key": "error",
-                        "detail": f"The sound at {unit.get('time_ms')} ms has no alternative {index}."}
-            out.append({**unit, "proposal": alternatives[index]})
-        if pick:
-            return {"ok": False, "key": "error",
-                    "detail": f"{len(pick)} chosen sounds have no proposal: propose again."}
-        return out
-
-    def hitsound_decide_preview(self, file: str, accept: list | None = None,
-                                edits: list | None = None, choices: list | None = None) -> dict:
-        """What applying the cached proposal (with the chosen alternatives) and
-        the hand edits would change. Read only."""
-        path = self._decide_file(file)
-        if isinstance(path, dict):
-            return path
-        units = self._decide_units(path, edits, choices)
-        if isinstance(units, dict):
-            return units
-        try:
-            accepted = None if accept is None else {tuple(a) for a in accept}
-            preview = ta.preview_proposals(ta.read_osu_beatmap(path), units, accepted, edits)
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        return {"ok": True, "file": str(path.name), "units": preview["units"],
-                "accepted": preview["accepted"], "edited": preview["edited"],
-                "chosen": len(choices or []), "would_change": preview["would_change"]}
-
-    def hitsound_decide_playback(self, file: str, accept: list | None = None,
-                                 edits: list | None = None, choices: list | None = None) -> dict:
-        """The cached proposal and the hand edits as the transport plays them:
-        the ticked changes made to the map in memory, exactly as the write
-        would make them, then played as the written file would be. Nothing is
-        written. Also counts the sounds that play differently from the file,
-        and when the first of them falls (seconds), so the page can start
-        just before it."""
-        path = self._decide_file(file)
-        if isinstance(path, dict):
-            return path
-        units = self._decide_units(path, edits, choices)
-        if isinstance(units, dict):
-            return units
-        try:
-            accepted = None if accept is None else {tuple(a) for a in accept}
-            beatmap = ta.read_osu_beatmap(path)
-            skin = self._skin()
-            written = ta.hitsound_playback(beatmap, path.parent, skin=skin)
-            changes = ta.proposal_changes(beatmap, units, accepted)
-            edited = ta.edit_changes(beatmap, edits, changes["changes"])
-            ta.set_object_hitsounds(beatmap, edited["changes"])
-            plan = ta.hitsound_playback(beatmap, path.parent, skin=skin)
-            reply = self._playback_reply(str(path.name), plan)
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        # Hitsound fields never move a sound, so both lists hold the same
-        # sounds in the same order; a slider's slide is a sound too.
-        differ = sorted([b["t"] for part in ("events", "loops")
-                         for a, b in zip(written[part], plan[part]) if a != b])
-        return {**reply, "proposal": True, "units": changes["units"],
-                "accepted": changes["accepted"], "edited": edited["edited"],
-                "chosen": len(choices or []), "differs": len(differ),
-                "first": differ[0] if differ else None}
-
-    def hitsound_decide_apply(self, file: str, accept: list | None = None,
-                              copy: bool = False, edits: list | None = None,
-                              choices: list | None = None) -> dict:
-        """Write the accepted proposals and the hand edits through P-2: over
-        the original with a backup, or onto a ``<name>_hitsounded.osu`` copy
-        that must not exist. Remembers the replaced bytes for the one-level
-        undo."""
-        path = self._decide_file(file)
-        if isinstance(path, dict):
-            return path
-        units = self._decide_units(path, edits, choices)
-        if isinstance(units, dict):
-            return units
-        dest = path.with_name(path.stem + "_hitsounded.osu") if copy else None
-        try:
-            accepted = None if accept is None else {tuple(a) for a in accept}
-            if dest is None:
-                previous = path.read_bytes()
-            result = ta.apply_proposals(path, units, accepted, dest, edits=edits)
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        # Written, the proposal is spent, as the page clears it: choosing the
-        # difficulty again must not bring it back.
-        self._decisions.pop(str(path.name), None)
-        if dest is None:
-            self._decide_undo = {"path": str(path), "bytes": previous}
-        else:
-            self._decide_undo = None
-        return {"ok": True, "file": str(path.name), "changed": result["changed"],
-                "written": result["written"], "backup": result["backup"],
-                "dest": result["dest"], "undo": self._decide_undo is not None}
-
-    # -- hitsound difficulty (Phase 6, H5 export) ------------------------------
-    def _hsdiff_paths(self, file: str, fill: bool):
-        """The source .osu beside the analysed song, and the difficulties to
-        fill from: the song's others, the ones with most objects first."""
-        path = self._decide_file(file)
-        if isinstance(path, dict):
-            return path
-        others = []
-        if fill:
-            maps = self.song_maps().get("maps", [])
-            others = [path.parent / m["file"] for m in sorted(maps, key=lambda m: -m["objects"])
-                      if m["file"] != path.name]
-        return path, others
-
-    def _hsdiff(self, file: str, fill: bool, preview: bool) -> dict:
-        found = self._hsdiff_paths(file, bool(fill))
-        if isinstance(found, dict):
-            return found
-        path, others = found
-        dest = ta.hitsound_difficulty_path(path)
-        if dest.exists():
-            return {"ok": False, "key": "hsd_exists", "dest": dest.name}
-        try:
-            result = ta.write_hitsound_difficulty(path, others, preview=preview)
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        return {"ok": True, "file": path.name, "dest": Path(result["dest"]).name,
-                "others": len(others), "written": result["written"],
-                **{k: result[k] for k in ("circles", "from_source", "from_others", "merged",
-                                          "stacked", "stacked_times", "inexact", "inexact_times")}}
-
-    def hitsound_difficulty_preview(self, file: str, fill: bool = True) -> dict:
-        """What the hitsound difficulty built from ``file`` would hold, and
-        whether every circle plays its sound exactly. Read only."""
-        return self._hsdiff(file, fill, True)
-
-    def hitsound_difficulty_write(self, file: str, fill: bool = True) -> dict:
-        """Write the hitsound difficulty as a new .osu beside ``file``: it
-        never replaces one, and History lists it."""
-        return self._hsdiff(file, fill, False)
-
-    def hitsound_decide_undo(self) -> dict:
-        """Restore the bytes the last in-place apply replaced, backing up the
-        current file first and logging the write, as History lists every one.
-        One level: a second undo has nothing to restore."""
-        if self._analysis is None:
-            return {"ok": False, "key": "first"}
-        if not self._decide_undo:
-            return {"ok": False, "key": "no_undo"}
-        path = Path(str(self._decide_undo["path"]))
-        if not path.is_file():
-            self._decide_undo = None
-            return {"ok": False, "key": "bad_file"}
-        try:
-            backup = ta._backup_before_write(path, path.read_bytes())
-            ta._atomic_write_bytes(path, bytes(self._decide_undo["bytes"]))
-        except OSError as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        ta.log_write(path, "restore", str(backup) if backup else None, {"undo": "hitsounds"})
-        self._decide_undo = None
-        # A proposal made since the write was decided on the bytes just replaced.
-        self._decisions.pop(path.name, None)
-        return {"ok": True, "file": path.name, "backup": str(backup)}
-
-    # --- Compile: several maps and their songs as one (Phase 25, row 25.14) ---
-
-    def compile_state(self) -> dict:
-        """The segment list, the settings, and what they would build.
-
-        Everything the Compile view draws comes from here, and it is
-        recomputed on every change rather than patched: planning reads a few
-        `.osu` files and each song's header, which costs milliseconds, and a
-        list that cannot drift from its plan is worth more than that.
-
-        ``plan`` is the compilation document; ``check`` is the dry run, which
-        is None while any segment refuses, since there is nothing to build.
-        """
-        sources = [dict(spec) for spec in self._compile]
-        reply: dict = {"ok": True, "sources": sources,
-                       "settings": dict(self._compile_settings),
-                       "metadata": dict(self._compile_metadata),
-                       "format": dict(self._compile_format),
-                       "out": self._compile_out,
-                       "loudness": self._compile_loudness,
-                       "plan": None, "check": None,
-                       "busy": self._busy.locked() or self._compile_lock.locked()}
-        if not sources:
-            return reply
-        try:
-            plan = tc.plan_compilation(sources, self._compile_settings)
-        except (ValueError, OSError) as exc:
-            reply["ok"] = False
-            reply["key"] = "error"
-            reply["detail"] = str(exc)
-            return reply
-        reply["plan"] = plan
-        if plan["usable"]:
-            try:
-                reply["check"] = tc.build_compilation(
-                    plan, self._compile_out or "compilation", dry_run=True,
-                    allow_existing=True, metadata=self._compile_metadata,
-                    difficulty=self._compile_format["difficulty_from"],
-                    audio_format=self._compile_format["audio_format"])
-                reply["occupied"] = self._compile_occupied()
-            except (ValueError, OSError) as exc:
-                reply["key"] = "cannot_build"
-                reply["detail"] = str(exc)
-        return reply
-
-    def _compile_occupied(self) -> str:
-        """The beatmap already in the chosen output folder, if any. A build
-        into it is adding to a mapset, which is a thing to say out loud."""
-        folder = Path(self._compile_out) if self._compile_out else None
-        if folder is None or not folder.is_dir():
-            return ""
-        found = sorted(path.name for path in folder.iterdir()
-                       if path.suffix.lower() == ".osu")
-        return found[0] if found else ""
-
-    def compile_add(self, paths: list | None = None) -> dict:
-        """Add difficulties to the compilation, in the order they arrive.
-
-        With no paths the window asks for files; several at once, since a
-        marathon is several maps. A map already in the list is added again
-        rather than refused: the same difficulty twice, at two ranges, is a
-        reasonable thing to want.
-        """
-        chosen = [str(path) for path in (paths or []) if str(path).strip()]
-        if not chosen:
-            chosen = self._pick_osu_files()
-        if not chosen:
-            return {"ok": False, "key": "nothing_picked"}
-        missing = [path for path in chosen if not Path(path).is_file()]
-        if missing:
-            return {"ok": False, "key": "bad_file", "detail": Path(missing[0]).name}
-        for path in chosen:
-            self._compile.append({"osu": path})
-        self._compile_loudness = None
-        return self.compile_state()
-
-    def compile_add_open_song(self) -> dict:
-        """Add every difficulty beside the song that is open, if any."""
-        file = self._cfg.get("file") or ""
-        folder = Path(str(file)).parent if file else None
-        if folder is None or not folder.is_dir():
-            return {"ok": False, "key": "no_song"}
-        found = sorted(path for path in folder.glob("*.osu"))
-        if not found:
-            return {"ok": False, "key": "no_maps"}
-        for path in found:
-            self._compile.append({"osu": str(path)})
-        return self.compile_state()
-
-    def compile_remove(self, index: int) -> dict:
-        if not 0 <= int(index) < len(self._compile):
-            return {"ok": False, "key": "bad_index"}
-        self._compile.pop(int(index))
-        self._compile_loudness = None
-        return self.compile_state()
-
-    def compile_clear(self) -> dict:
-        self._compile = []
-        self._compile_loudness = None
-        return self.compile_state()
-
-    def compile_move(self, index: int, delta: int) -> dict:
-        """Move one segment up or down. The order given is the order built."""
-        index, delta = int(index), int(delta)
-        target = index + delta
-        if not (0 <= index < len(self._compile) and 0 <= target < len(self._compile)):
-            return {"ok": False, "key": "bad_index"}
-        self._compile[index], self._compile[target] = \
-            self._compile[target], self._compile[index]
-        return self.compile_state()
-
-    def compile_update(self, index: int, changes: dict) -> dict:
-        """A segment's own range, gain or gap. An empty value clears it, so a
-        typed range can be given back to the objects."""
-        if not 0 <= int(index) < len(self._compile):
-            return {"ok": False, "key": "bad_index"}
-        spec = dict(self._compile[int(index)])
-        for key, value in dict(changes or {}).items():
-            if key not in tc.SOURCE_KEYS or key == "osu":
-                return {"ok": False, "key": "bad_values", "detail": str(key)}
-            if value in (None, ""):
-                spec.pop(key, None)
-                continue
-            try:
-                spec[key] = float(value)
-            except (TypeError, ValueError):
-                return {"ok": False, "key": "bad_values", "detail": str(key)}
-        self._compile[int(index)] = spec
-        # A level was measured over a range; a new range is a new question.
-        if {"start_ms", "end_ms"} & set(changes or {}):
-            self._compile_loudness = None
-        return self.compile_state()
-
-    def compile_settings(self, changes: dict) -> dict:
-        """The settings that shape the whole compilation."""
-        settings = dict(self._compile_settings)
-        for key, value in dict(changes or {}).items():
-            if key not in tc.DEFAULT_SETTINGS:
-                return {"ok": False, "key": "bad_values", "detail": str(key)}
-            if key in ("strict", "junction_breaks", "junction_bookmarks",
-                       "start_on_downbeat"):
-                settings[key] = bool(value)
-            elif key == "preview_from":
-                settings[key] = "first" if value in ("first", None, "") else int(value)
-            else:
-                try:
-                    settings[key] = max(0.0, float(value))
-                except (TypeError, ValueError):
-                    return {"ok": False, "key": "bad_values", "detail": str(key)}
-        self._compile_settings = settings
-        return self.compile_state()
-
-    def compile_metadata(self, changes: dict) -> dict:
-        """What the compilation says it is. An empty field goes back to chosen."""
-        metadata = dict(self._compile_metadata)
-        for key, value in dict(changes or {}).items():
-            if key not in tc.METADATA_FIELDS:
-                return {"ok": False, "key": "bad_values", "detail": str(key)}
-            text = " ".join(str(value).split())
-            if text:
-                metadata[key] = text
-            else:
-                metadata.pop(key, None)
-        self._compile_metadata = metadata
-        return self.compile_state()
-
-    def compile_format(self, changes: dict) -> dict:
-        """The audio format, the difficulty choice and whether to zip."""
-        chosen = dict(self._compile_format)
-        for key, value in dict(changes or {}).items():
-            if key == "audio_format":
-                if value not in tc.AUDIO_FORMATS:
-                    return {"ok": False, "key": "bad_values", "detail": str(value)}
-                chosen[key] = str(value)
-            elif key == "difficulty_from":
-                if value not in tc.DIFFICULTY_CHOICES:
-                    return {"ok": False, "key": "bad_values", "detail": str(value)}
-                chosen[key] = str(value)
-            elif key == "osz":
-                chosen[key] = bool(value)
-            else:
-                return {"ok": False, "key": "bad_values", "detail": str(key)}
-        self._compile_format = chosen
-        return self.compile_state()
-
-    def compile_sections(self, index: int) -> dict:
-        """The phrases of one segment's song, to pick a range from.
-
-        ``overtone-cli structure`` reads that song once; the answer is kept
-        by path, size and modification time, so picking from the same song
-        again costs nothing. No analysis is needed and nothing is written:
-        this is the structure view's own engine, asked about a file instead
-        of about the open song.
-
-        A phrase becomes a range through ``compile_update`` like any other —
-        the edges are the phrase's own, and ``start_on_downbeat`` is what
-        puts them on a bar line.
-        """
-        if not 0 <= int(index) < len(self._compile):
-            return {"ok": False, "key": "bad_index"}
-        if self._busy.locked() or self._compile_lock.locked():
-            return {"ok": False, "key": "busy"}
-        segment = tc.read_segment(self._compile[int(index)]["osu"],
-                                  audio=self._compile[int(index)].get("audio"))
-        path = segment["audio"]["path"]
-        if not path:
-            return {"ok": False, "key": "no_audio"}
-        source = Path(path)
-        try:
-            stat = source.stat()
-        except OSError:
-            return {"ok": False, "key": "bad_file"}
-        key = (str(source), stat.st_size, stat.st_mtime_ns)
-        if key not in self._compile_sections:
-            try:
-                report = overtone_rust.structure(source)
-            except overtone_rust.SidecarUnavailable:
-                return {"ok": False, "key": "no_rust"}
-            except (RuntimeError, OSError) as exc:
-                return {"ok": False, "key": "error", "detail": str(exc)}
-            self._compile_sections[key] = [
-                {"kind": str(row.get("kind") or ""),
-                 "start_ms": round(float(row["start_s"]) * 1000.0, 3),
-                 "end_ms": round(float(row["end_s"]) * 1000.0, 3),
-                 "level_db": round(float(row.get("level_db") or 0.0), 2),
-                 "repeats": int(row.get("repeats") or 0)}
-                for row in report.get("sections", ())
-                if float(row.get("end_s", 0.0)) > float(row.get("start_s", 0.0))]
-        return {"ok": True, "segment": int(index), "file": source.name,
-                "sections": self._compile_sections[key]}
-
-    def compile_match_loudness(self, target: str = "median") -> dict:
-        """Measure every song and set the gains so none of them jumps.
-
-        A decode per segment, so it runs on the same lock the build does and
-        answers with events: ``onCompileProgress`` per song, then
-        ``onCompileLoudness``. The gains land on the segments as if they had
-        been typed, so they can be changed afterwards.
-        """
-        if not self._compile:
-            return {"ok": False, "key": "no_sources"}
-        try:
-            plan = tc.plan_compilation(self._compile, self._compile_settings)
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        if self._busy.locked():
-            return {"ok": False, "key": "busy"}
-        if not self._compile_lock.acquire(blocking=False):
-            return {"ok": False, "key": "busy"}
-        threading.Thread(target=self._loudness_worker, args=(plan, target),
-                         daemon=True).start()
-        return {"ok": True}
-
-    def _loudness_worker(self, plan: dict, target) -> None:
-        try:
-            report = tc.loudness_plan(
-                plan, target,
-                progress=lambda step, done, total: self._emit(
-                    "onCompileProgress", {"step": step, "done": done, "total": total}))
-            for row in report["segments"]:
-                if 0 <= row["segment"] < len(self._compile) and row["lufs"] is not None:
-                    self._compile[row["segment"]]["gain_db"] = row["gain_db"]
-            self._compile_loudness = report
-            self._emit("onCompileLoudness", {"ok": True, "loudness": report})
-        except (ValueError, OSError) as exc:
-            self._emit("onCompileLoudness", {"ok": False, "key": "error",
-                                             "detail": str(exc)})
-        except Exception as exc:  # noqa: BLE001 -- the view shows the message
-            self._emit("onCompileLoudness", {"ok": False, "key": "error",
-                                             "detail": f"{type(exc).__name__}: {exc}"})
-        finally:
-            self._compile_lock.release()
-
-    def compile_order(self, rule: str = "tempo") -> dict:
-        """An order to put the songs in, proposed and not applied.
-
-        Cheap: it reads the plan the view already has. The reply carries the
-        proposal beside the whole state, and ``compile_reorder`` is what puts
-        it into effect once somebody says so.
-        """
-        if len(self._compile) < 3:
-            return {"ok": False, "key": "too_few"}
-        try:
-            plan = tc.plan_compilation(self._compile, self._compile_settings)
-            proposal = tc.order_plan(plan, str(rule), self._compile_loudness)
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        return {**self.compile_state(), "proposal": proposal}
-
-    def compile_reorder(self, order: list) -> dict:
-        """Put the songs in the order given, which is the proposal's or any
-        other: the view asks, this obeys."""
-        try:
-            wanted = [int(n) for n in (order or [])]
-        except (TypeError, ValueError):
-            return {"ok": False, "key": "bad_values"}
-        if sorted(wanted) != list(range(len(self._compile))):
-            return {"ok": False, "key": "bad_values"}
-        self._compile = [self._compile[n] for n in wanted]
-        if self._compile_loudness:
-            # The levels were measured per segment, and the segments moved.
-            self._compile_loudness = None
-        return self.compile_state()
-
-    def compile_pick_folder(self) -> dict:
-        """Where to build. Remembered until the window closes, so Build can
-        ask once and then be a button."""
-        folder = self.pick_folder()
-        if not folder:
-            return {"ok": False, "key": "nothing_picked"}
-        self._compile_out = str(folder)
-        return self.compile_state()
-
-    def compile_build(self, folder: str = "", allow_existing: bool = False) -> dict:
-        """Build it. Starts a worker; the report arrives as a JS event.
-
-        Encoding a marathon takes seconds and the window must stay alive, so
-        this follows the analysis's shape: the same lock, so one heavy job
-        runs at a time, and events for progress and the result. There is no
-        stop: a half-written mapset is worse than waiting for a short one.
-        """
-        out = str(folder or self._compile_out or "")
-        if not out:
-            return {"ok": False, "key": "no_folder"}
-        if not self._compile:
-            return {"ok": False, "key": "no_sources"}
-        self._compile_out = out
-        occupied = self._compile_occupied()
-        if occupied and not allow_existing:
-            return {"ok": False, "key": "folder_occupied", "detail": occupied}
-        try:
-            plan = tc.plan_compilation(self._compile, self._compile_settings)
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        if not plan["usable"]:
-            return {"ok": False, "key": "plan_refused",
-                    "detail": "; ".join(row.get("why", "") for row in plan["refusals"])}
-        if self._busy.locked():
-            return {"ok": False, "key": "busy"}     # an analysis is running
-        if not self._compile_lock.acquire(blocking=False):
-            return {"ok": False, "key": "busy"}
-        threading.Thread(target=self._compile_worker, args=(plan, out),
-                         daemon=True).start()
-        return {"ok": True}
-
-    def _compile_worker(self, plan: dict, folder: str) -> None:
-        try:
-            report = tc.build_compilation(
-                plan, folder, allow_existing=True, metadata=self._compile_metadata,
-                difficulty=self._compile_format["difficulty_from"],
-                audio_format=self._compile_format["audio_format"],
-                osz=bool(self._compile_format["osz"]),
-                progress=lambda step, done, total: self._emit(
-                    "onCompileProgress", {"step": step, "done": done, "total": total}))
-            self._emit("onCompileDone", {"ok": True, "report": report})
-        except (ValueError, OSError) as exc:
-            self._emit("onCompileDone", {"ok": False, "key": "error",
-                                         "detail": str(exc)})
-        except Exception as exc:  # noqa: BLE001 -- the view shows the message
-            self._emit("onCompileDone", {"ok": False, "key": "error",
-                                         "detail": f"{type(exc).__name__}: {exc}"})
-        finally:
-            self._compile_lock.release()
-
-    # ------------------------------------------------------------------
-    # Train — a practice copy of one map at another speed (Phase 26, 26.21)
-    # ------------------------------------------------------------------
-
-    def _train_plan(self) -> dict | None:
-        """The plan for the picked map, or None while none is picked."""
-        if not self._train.get("osu"):
-            return None
-        settings = self._train
-        try:
-            return tr.plan_practice(
-                settings["osu"], rate=settings.get("rate"),
-                target_bpm=settings.get("target_bpm"),
-                from_bpm=settings.get("from_bpm"),
-                stats=dict(settings.get("stats") or {}),
-                naming=dict(settings.get("naming") or {}),
-                mods=list(settings.get("mods") or []),
-                drop_spinners=bool(settings.get("drop_spinners")))
-        except (ValueError, OSError):
-            return None
-
-    def train_state(self) -> dict:
-        """The source map, the rate and stats, and what they would build.
-
-        Everything the Train view draws comes from here, and it is
-        recomputed on every change rather than patched: planning reads one
-        `.osu` file and its header, which costs milliseconds, and a view
-        that cannot drift from its plan is worth more than that.
-
-        ``plan`` is the practice document; ``check`` is the dry run, which
-        is None while the source refuses, since there is nothing to build.
-        """
-        reply: dict = {"ok": True, "source": self._train.get("osu"),
-                       "settings": {key: self._train.get(key)
-                                    for key in ("rate", "target_bpm", "from_bpm",
-                                                "stats", "naming", "mods",
-                                                "drop_spinners",
-                                                "audio_format", "osz", "out")},
-                       "plan": None, "check": None, "feel": None,
-                       "busy": self._busy.locked() or self._train_lock.locked(),
-                       "hotkey": self._train_hotkey_ensure()}
-        if not self._train.get("osu"):
-            return reply
-        try:
-            plan = self._train_plan()
-        except (ValueError, OSError) as exc:
-            reply["ok"] = False
-            reply["key"] = "error"
-            reply["detail"] = str(exc)
-            return reply
-        if plan is None:
-            reply["ok"] = False
-            reply["key"] = "error"
-            return reply
-        reply["plan"] = plan
-        if plan["usable"]:
-            try:
-                reply["check"] = tr.build_practice(
-                    plan, self._train.get("out") or "practice", dry_run=True,
-                    allow_existing=True,
-                    audio_format=self._train.get("audio_format") or "mp3")
-                reply["occupied"] = self._train_occupied()
-                reply["feel"] = tr.feel_of(
-                    plan["source"]["osu"], plan["rate"], plan["stats"]["values"],
-                    plan["mods"])
-            except (ValueError, OSError) as exc:
-                reply["key"] = "cannot_build"
-                reply["detail"] = str(exc)
-        return reply
-
-    def train_pick(self, paths: list | None = None) -> dict:
-        """The map to copy. With no paths the window asks for one file."""
-        chosen = [str(path) for path in (paths or []) if str(path).strip()]
-        if not chosen:
-            chosen = self._pick_osu_files()[:1]
-        if not chosen:
-            return {"ok": False, "key": "nothing_picked"}
-        if not Path(chosen[0]).is_file():
-            return {"ok": False, "key": "bad_file", "detail": Path(chosen[0]).name}
-        self._train["osu"] = chosen[0]
-        return self.train_state()
-
-    def train_use_open(self) -> dict:
-        """The open song's own map, if the song beside it has one to copy."""
-        file = self._cfg.get("file") or ""
-        folder = Path(str(file)).parent if file else None
-        if folder is None or not folder.is_dir():
-            return {"ok": False, "key": "no_song"}
-        if str(file).lower().endswith(".osu") and Path(str(file)).is_file():
-            self._train["osu"] = str(file)
-            return self.train_state()
-        found = sorted(path for path in folder.glob("*.osu"))
-        if not found:
-            return {"ok": False, "key": "no_maps"}
-        self._train["osu"] = str(found[0])
-        return self.train_state()
-
-    def train_detect(self) -> dict:
-        """The map from what osu! writes outside itself — measured, in order.
-
-        The window title, the newest replay, the newest `.osu`: the first that
-        resolves wins and becomes the source; where every signal misses, the
-        reply names everything tried and the library search (which needs
-        nothing from osu!) is the answer.
-        """
-        songs = self._songs_root()
-        try:
-            found = tr.detect_map(songs)
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        if found["osu"]:
-            self._train["osu"] = found["osu"]
-            state = self.train_state()
-            state["detection"] = found
-            return state
-        return {"ok": False, "key": "no_signal",
-                "detail": "; ".join(f"{row['signal']}: "
-                                    f"{row.get('file') or row.get('title') or row.get('why', '')}"
-                                    for row in found["signals"]) or "no Songs folder",
-                "signals": found["signals"]}
-
-    def train_clear(self) -> dict:
-        """No map, back to a rate of one."""
-        self._train["osu"] = None
-        self._train["target_bpm"] = None
-        self._train["from_bpm"] = None
-        return self.train_state()
-
-    def train_set(self, changes: dict) -> dict:
-        """The rate, the target, the stats, the naming and the output shape."""
-        changes = dict(changes or {})
-        unknown = sorted(set(changes) - {"rate", "target_bpm", "from_bpm", "stats",
-                                         "naming", "mods", "drop_spinners",
-                                         "audio_format", "osz", "out"})
-        if unknown:
-            return {"ok": False, "key": "error",
-                    "detail": f"Unknown setting(s): {', '.join(unknown)}."}
-        if "rate" in changes:
-            value = changes["rate"]
-            if value is not None:
-                try:
-                    value = float(value)
-                except (TypeError, ValueError):
-                    return {"ok": False, "key": "error",
-                            "detail": f"The rate ({changes['rate']!r}) is not a number."}
-            self._train["rate"] = value
-            self._train["target_bpm"] = None
-            self._train["from_bpm"] = None
-        for key in ("target_bpm", "from_bpm"):
-            if key in changes:
-                value = changes[key]
-                if value is not None:
-                    try:
-                        value = float(value)
-                    except (TypeError, ValueError):
-                        return {"ok": False, "key": "error",
-                                "detail": f"{key} ({changes[key]!r}) is not a number."}
-                self._train[key] = value
-                if key == "target_bpm":
-                    self._train["rate"] = None
-        if "stats" in changes:
-            if not isinstance(changes["stats"], dict):
-                return {"ok": False, "key": "error",
-                        "detail": "Stats arrive as {hp|cs|ar|od: keep|scale|number}."}
-            self._train["stats"] = dict(changes["stats"])
-        if "naming" in changes:
-            if not isinstance(changes["naming"], dict):
-                return {"ok": False, "key": "error",
-                        "detail": "Naming arrives as {version: text}."}
-            self._train["naming"] = dict(changes["naming"])
-        if "mods" in changes:
-            mods = changes["mods"] or []
-            if isinstance(mods, str):
-                mods = [mods]
-            if not isinstance(mods, list) or any(not isinstance(m, str) for m in mods):
-                return {"ok": False, "key": "error",
-                        "detail": "Mods arrive as a list like [HR, DT]."}
-            self._train["mods"] = [str(m).upper() for m in mods]
-        if "drop_spinners" in changes:
-            self._train["drop_spinners"] = bool(changes["drop_spinners"])
-        if "audio_format" in changes:
-            if changes["audio_format"] not in ("mp3", "wav"):
-                return {"ok": False, "key": "error",
-                        "detail": f"Format {changes['audio_format']!r} is not mp3 or wav."}
-            self._train["audio_format"] = changes["audio_format"]
-        if "osz" in changes:
-            self._train["osz"] = bool(changes["osz"])
-        if "out" in changes:
-            self._train["out"] = str(changes["out"] or "")
-        return self.train_state()
-
-    def train_copies(self) -> dict:
-        """Every practice copy the write log knows, with what each would free."""
-        try:
-            return {"ok": True, **tr.list_copies()}
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-
-    def train_remove(self, folders: list | None = None, dry_run: bool = False) -> dict:
-        """Remove practice copies, showing first what goes. A dry run frees
-        nothing; without one, only what the log names leaves."""
-        try:
-            return {"ok": True,
-                    **tr.remove_copies([str(f) for f in (folders or [])],
-                                       dry_run=bool(dry_run))}
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-
-    def train_presets(self) -> dict:
-        """Every saved setup, by name."""
-        try:
-            return {"ok": True, **tr.list_presets()}
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-
-    def train_preset_save(self, name: str = "", settings: dict | None = None) -> dict:
-        """Keep this setup under a name. No source map travels with it."""
-        try:
-            saved = tr.save_preset(name, settings or {})
-            return {"ok": True, "saved": saved, **tr.list_presets()}
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-
-    def train_preset_delete(self, name: str = "") -> dict:
-        """Forget a setup."""
-        try:
-            tr.delete_preset(name)
-            return {"ok": True, **tr.list_presets()}
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-
-    def train_preset_apply(self, name: str = "") -> dict:
-        """A saved setup onto the current view: rate, target, stats, naming,
-        mods and output shape, everything a preset carries."""
-        try:
-            presets = tr.list_presets()["presets"]
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        if str(name) not in presets:
-            return {"ok": False, "key": "error",
-                    "detail": f"No preset named {name!r}."}
-        settings = dict(presets[str(name)].get("settings", {}))
-        for key in ("rate", "target_bpm", "from_bpm", "stats", "naming",
-                    "mods", "drop_spinners", "audio_format", "osz"):
-            if key in settings:
-                self._train[key] = settings[key]
-        return self.train_state()
-
-    def _train_hotkey_fire(self) -> None:
-        """What the hotkey builds: the copy that is set up, like the button."""
-        try:
-            self.train_build()
-        except Exception:  # noqa: BLE001 -- the waiter swallows it anyway
-            pass
-
-    def _train_hotkey_ensure(self) -> dict:
-        """The waiter matching the remembered switch, started or stopped."""
-        want = bool(self._cfg.get("train_hotkey"))
-        if not want:
-            if self._train_hotkey is not None:
-                self._train_hotkey.stop()
-                self._train_hotkey = None
-            return {"available": overtone_hotkey.available(), "on": False}
-        if not overtone_hotkey.available():
-            return {"available": False, "on": False}
-        waiter = self._train_hotkey
-        if waiter is None or not waiter.is_alive():
-            waiter = overtone_hotkey.HotkeyWait(callback=self._train_hotkey_fire)
-            waiter.start()
-            waiter.ready.wait(timeout=5)
-            if waiter.error:
-                return {"available": True, "on": False, "error": waiter.error}
-            self._train_hotkey = waiter
-        return {"available": True, "on": True}
-
-    def train_hotkey(self, on: bool = True) -> dict:
-        """Build the copy that is set up, from anywhere: Ctrl+Alt+B.
-
-        One combination delivered by the OS as a message; no keystroke but
-        that one passes through Overtone. Remembered in the config, so the
-        next window waits again. Off Windows, or with the combination taken,
-        it says so instead of pretending.
-        """
-        self._cfg["train_hotkey"] = bool(on)
-        self._persist()
-        if not on and self._train_hotkey is not None:
-            self._train_hotkey.stop()
-            self._train_hotkey = None
-            return {"ok": True, "hotkey": {"available": overtone_hotkey.available(),
-                                           "on": False}}
-        if on:
-            if not overtone_hotkey.available():
-                return {"ok": False, "key": "error",
-                        "detail": "A global hotkey needs Windows."}
-            state = self._train_hotkey_ensure()
-            if not state["on"]:
-                return {"ok": False, "key": "error",
-                        "detail": f"Ctrl+Alt+B is already taken: {state.get('error', '')}"}
-            return {"ok": True, "hotkey": state}
-        return {"ok": True, "hotkey": self._train_hotkey_ensure()}
-
-    def _train_occupied(self) -> str:
-        """The beatmap already in the chosen output folder, if any."""
-        folder = Path(self._train.get("out")) if self._train.get("out") else None
-        if folder is None or not folder.is_dir():
-            return ""
-        found = sorted(path.name for path in folder.iterdir()
-                       if path.suffix.lower() == ".osu")
-        return found[0] if found else ""
-
-    def train_pick_folder(self) -> dict:
-        """Where to build. Remembered until the window closes."""
-        folder = self.pick_folder()
-        if not folder:
-            return {"ok": False, "key": "nothing_picked"}
-        self._train["out"] = str(folder)
-        return self.train_state()
-
-    def train_build(self, allow_existing: bool = False) -> dict:
-        """Build it. Starts a worker; the report arrives as a JS event.
-
-        A resample and an encode take seconds and the window must stay
-        alive, so this follows the compilation's shape: its own lock, so one
-        heavy job runs at a time, and events for progress and the result.
-        There is no stop: a half-written mapset is worse than waiting.
-        """
-        out = str(self._train.get("out") or "")
-        if not out:
-            return {"ok": False, "key": "no_folder"}
-        if not self._train.get("osu"):
-            return {"ok": False, "key": "no_sources"}
-        occupied = self._train_occupied()
-        if occupied and not allow_existing:
-            return {"ok": False, "key": "folder_occupied", "detail": occupied}
-        try:
-            plan = self._train_plan()
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        if plan is None or not plan["usable"]:
-            return {"ok": False, "key": "plan_refused",
-                    "detail": "; ".join(row.get("why", "")
-                                        for row in (plan or {}).get("refusals", ()))}
-        if self._busy.locked():
-            return {"ok": False, "key": "busy"}     # an analysis is running
-        if not self._train_lock.acquire(blocking=False):
-            return {"ok": False, "key": "busy"}
-        threading.Thread(target=self._train_worker, args=(plan, out),
-                         daemon=True).start()
-        return {"ok": True}
-
-    def _train_worker(self, plan: dict, folder: str) -> None:
-        try:
-            report = tr.build_practice(
-                plan, folder, allow_existing=True,
-                audio_format=self._train.get("audio_format") or "mp3",
-                osz=bool(self._train.get("osz")), grade=True,
-                progress=lambda step, done, total: self._emit(
-                    "onTrainProgress", {"step": step, "done": done, "total": total}))
-            report["kind"] = "copy"
-            self._emit("onTrainDone", {"ok": True, "report": report})
-        except (ValueError, OSError) as exc:
-            self._emit("onTrainDone", {"ok": False, "key": "error",
-                                       "detail": str(exc)})
-        except Exception as exc:  # noqa: BLE001 -- the view shows the message
-            self._emit("onTrainDone", {"ok": False, "key": "error",
-                                       "detail": f"{type(exc).__name__}: {exc}"})
-        finally:
-            self._train_lock.release()
-
-    def train_build_ladder(self, rates: list | None = None,
-                           allow_existing: bool = False) -> dict:
-        """Build every rung. Starts a worker; the report arrives as a JS event.
-
-        One run, one mapset, one progress bar over the lot: the worker climbs
-        the rungs in order on the Train lock, so an analysis and a ladder
-        never run at once. A rung refused is a ladder refused, with the rung
-        named, before anything is written.
-        """
-        out = str(self._train.get("out") or "")
-        if not out:
-            return {"ok": False, "key": "no_folder"}
-        if not self._train.get("osu"):
-            return {"ok": False, "key": "no_sources"}
-        occupied = self._train_occupied()
-        if occupied and not allow_existing:
-            return {"ok": False, "key": "folder_occupied", "detail": occupied}
-        try:
-            plan = tr.plan_ladder(
-                self._train["osu"], rates,
-                stats=dict(self._train.get("stats") or {}),
-                naming=dict(self._train.get("naming") or {}),
-                mods=list(self._train.get("mods") or []),
-                drop_spinners=bool(self._train.get("drop_spinners")))
-        except (ValueError, OSError) as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        if not plan["usable"]:
-            return {"ok": False, "key": "plan_refused",
-                    "detail": "; ".join(row.get("why", "") for row in plan["refusals"])}
-        if self._busy.locked():
-            return {"ok": False, "key": "busy"}     # an analysis is running
-        if not self._train_lock.acquire(blocking=False):
-            return {"ok": False, "key": "busy"}
-        threading.Thread(target=self._train_ladder_worker, args=(plan, out),
-                         daemon=True).start()
-        return {"ok": True}
-
-    def _train_ladder_worker(self, plan: dict, folder: str) -> None:
-        try:
-            report = tr.build_ladder(
-                plan, folder, allow_existing=True,
-                audio_format=self._train.get("audio_format") or "mp3",
-                osz=bool(self._train.get("osz")), grade=True,
-                progress=lambda step, done, total: self._emit(
-                    "onTrainProgress", {"step": step, "done": done, "total": total}))
-            report["kind"] = "ladder"
-            self._emit("onTrainDone", {"ok": True, "report": report})
-        except (ValueError, OSError) as exc:
-            self._emit("onTrainDone", {"ok": False, "key": "error",
-                                       "detail": str(exc)})
-        except Exception as exc:  # noqa: BLE001 -- the view shows the message
-            self._emit("onTrainDone", {"ok": False, "key": "error",
-                                       "detail": f"{type(exc).__name__}: {exc}"})
-        finally:
-            self._train_lock.release()
-
-    def _pick_osu_files(self) -> list:
-        """Several .osu files from one dialog, or nothing."""
-        import webview
-
-        if self._window is None:
-            return []
-        chosen = self._window.create_file_dialog(
-            webview.OPEN_DIALOG, allow_multiple=True, file_types=OSU_TYPES)
-        if not chosen:
-            return []
-        if isinstance(chosen, (list, tuple)):
-            return [str(path) for path in chosen]
-        return [str(chosen)]
 
     def inject_preview(self, osu_path: str) -> dict:
         """Dry run first, like the Tk GUI's confirmation dialog data."""
@@ -3112,134 +1616,9 @@ class Api:
             return None
         return report if any(m["beatmaps"] for m in report["matches"]) else None
 
-    # -- library index: the Songs folder, searchable ------------------------
+    # -- the osu! Songs folder: the one chosen here, else osu!'s default -----
     def _songs_root(self, folder: str = "") -> str:
         return str(folder or self._cfg.get("songs_folder") or _default_songs())
-
-    @staticmethod
-    def _library_error(exc: Exception) -> dict:
-        """A damaged index has its own key: the page can say that a scan
-        rebuilds it, which is the way out."""
-        if overtone_library.is_damaged(exc):
-            return {"ok": False, "key": "library_damaged", "detail": str(exc)}
-        return {"ok": False, "key": "error", "detail": str(exc)}
-
-    def library_state(self) -> dict:
-        """Where the Songs folder is and what the index holds of it. When the
-        index cannot be read, the folder facts still come back with why."""
-        root = self._songs_root()
-        library = overtone_library.Library()
-        try:
-            index = library.stats()
-            current = library.covers(root)
-        except (ValueError, OSError, sqlite3.Error) as exc:
-            return {**self._library_error(exc), "songs": root,
-                    "songs_found": Path(root).is_dir(), "scanning": self._scanning.locked()}
-        return {"ok": True, "songs": root, "songs_found": Path(root).is_dir(),
-                "index": index, "current": current, "scanning": self._scanning.locked()}
-
-    def library_scan(self, folder: str = "") -> dict:
-        """Bring the index in step with the Songs folder (the remembered one,
-        else osu!'s default). Unchanged maps are skipped, so a rescan costs a
-        folder listing; the first scan reads every header, and a damaged
-        index is rebuilt. The page hears ``onLibraryProgress`` with the
-        folders in the index, their total, and how many rows of maps that
-        are gone are being removed after the last folder."""
-        root = self._songs_root(folder)
-        if not Path(root).is_dir():
-            return {"ok": False, "key": "no_songs"}
-        if not self._scanning.acquire(blocking=False):
-            return {"ok": False, "key": "scan_running"}
-        try:
-            report = overtone_library.Library().scan(
-                root, lambda done, total, removing: self._emit(
-                    "onLibraryProgress", {"done": done, "total": total, "removing": removing}))
-        except (ValueError, OSError, sqlite3.Error) as exc:
-            return self._library_error(exc)
-        finally:
-            self._scanning.release()
-        if folder:
-            self._cfg["songs_folder"] = root
-            self._persist()
-        return {"ok": True, "report": report}
-
-    def library_search(self, text: str = "") -> dict:
-        """Maps matching every word typed, grouped by set, best first."""
-        try:
-            result = overtone_library.Library().search(str(text or ""))
-        except (ValueError, OSError, sqlite3.Error) as exc:
-            return self._library_error(exc)
-        return {"ok": True, "result": result}
-
-    def library_reset(self) -> dict:
-        """Forget the index; the next scan rebuilds it from the folder."""
-        if self._scanning.locked():
-            return {"ok": False, "key": "scan_running"}
-        try:
-            overtone_library.Library().reset()
-        except OSError as exc:
-            return {"ok": False, "key": "error", "detail": str(exc)}
-        return self.library_state()
-
-    # -- library health check: each map's red lines against its own audio ---
-    def health_state(self) -> dict:
-        """Verdict counts over the index, the engine a run would use, and
-        whether one is going. Read only."""
-        try:
-            report = overtone_library.Library().health_report(())
-        except (ValueError, OSError, sqlite3.Error) as exc:
-            return self._library_error(exc)
-        return {"ok": True, "counts": report["counts"],
-                "engine": "rust" if overtone_rust.find_cli() else "python",
-                "running": self._health.locked()}
-
-    def health_start(self) -> dict:
-        """Start grading what is new or changed, on a worker thread: progress
-        and the end arrive as ``onHealthProgress`` / ``onHealthDone``. A run is
-        resumable, so a stopped one loses nothing it already wrote."""
-        if not self._health.acquire(blocking=False):
-            return {"ok": False, "key": "health_running"}
-        self._health_stop.clear()
-        threading.Thread(target=self._health_worker, daemon=True).start()
-        return {"ok": True}
-
-    def health_stop(self) -> dict:
-        """Stop the run at the next audio file; what it graded is kept."""
-        if not self._health.locked():
-            return {"ok": False, "key": "not_running"}
-        self._health_stop.set()
-        return {"ok": True}
-
-    def _health_worker(self) -> None:
-        try:
-            run = overtone_library.Library().health(
-                progress=lambda done, total: self._emit(
-                    "onHealthProgress", {"done": done, "total": total}),
-                stop=self._health_stop)
-            self._emit("onHealthDone", {"ok": True, "run": run})
-        except overtone_rust.SidecarUnavailable:
-            self._emit("onHealthDone", {"ok": False, "key": "no_rust"})
-        except (ValueError, OSError, sqlite3.Error) as exc:
-            self._emit("onHealthDone", self._library_error(exc))
-        finally:
-            self._health_stop.clear()
-            self._health.release()
-
-    def health_report(self, verdicts=("check",), limit: int = 100) -> dict:
-        """The graded maps with these verdicts, worst first, each with its
-        evidence and whether any of its lines is solid enough to be worth a
-        look (``actionable``); ``actionable`` also counts them for the card."""
-        if isinstance(verdicts, str):              # JS passes one verdict bare
-            verdicts = (verdicts,)
-        try:
-            report = overtone_library.Library().health_report(verdicts, limit)
-        except (ValueError, OSError, sqlite3.Error) as exc:
-            return self._library_error(exc)
-        for m in report["maps"]:
-            m["actionable"] = (m["verdict"] == "check"
-                               and overtone_library.health_actionable(m.get("checks")))
-        report["actionable"] = sum(1 for m in report["maps"] if m["actionable"])
-        return {"ok": True, **report}
 
     # -- structure: the Rust engine's phrases on this song's bars -----------
     def structure(self) -> dict:
@@ -3389,7 +1768,7 @@ class Api:
     # -- structure bookmarks: section starts as editor bookmarks ------------
     def _bookmarks_plan(self, file: str):
         """The map plus the song's section starts in ms, or a refusal."""
-        path = self._decide_file(file)
+        path = self._song_map(file)
         if isinstance(path, dict):
             return path
         view = self.structure()
@@ -3436,7 +1815,7 @@ class Api:
     # -- structure kiai: kiai on chorus sections ------------------------------
     def _kiai_plan(self, file: str):
         """The map plus the song's chorus spans in ms, or a refusal."""
-        path = self._decide_file(file)
+        path = self._song_map(file)
         if isinstance(path, dict):
             return path
         view = self.structure()
@@ -3487,7 +1866,7 @@ class Api:
     # -- structure breaks: quiet spans long enough for a break ----------------
     def _breaks_plan(self, file: str):
         """The map plus the song's suggested break spans, or a refusal."""
-        path = self._decide_file(file)
+        path = self._song_map(file)
         if isinstance(path, dict):
             return path
         view = self.structure()
@@ -3569,7 +1948,7 @@ class Api:
     # -- constant scroll: greens that cancel BPM changes ----------------------
     def _scroll_plan(self, file: str):
         """The map beside the analysed song, or a refusal."""
-        path = self._decide_file(file)
+        path = self._song_map(file)
         if isinstance(path, dict):
             return path
         try:
@@ -3627,7 +2006,7 @@ class Api:
     # -- structure volume: hitsound volume from section energy ---------------
     def _volumes_plan(self, file: str):
         """The map plus the song's structure sections, or a refusal."""
-        path = self._decide_file(file)
+        path = self._song_map(file)
         if isinstance(path, dict):
             return path
         view = self.structure()
@@ -4044,8 +2423,6 @@ class Api:
         apart; calibrating latency matters for tapping, not for listening."""
         try:
             raw = {key: float(prefs[key]) for key in ("song_volume", "click_volume")}
-            if "hitsound_volume" in prefs:           # optional: older pages send two
-                raw["hitsound_volume"] = float(prefs["hitsound_volume"])
         except (KeyError, TypeError, ValueError):
             return {"ok": False, "key": "bad_values"}
         # Before clamping: max(0.0, nan) is 0.0, and a NaN would pass as silence.
@@ -4074,7 +2451,6 @@ class Api:
         latency = _number(cfg.get("tap_latency_ms"), 0.0, float)
         return {"song_volume": min(1.0, max(0.0, _number(cfg.get("song_volume"), 0.8, float))),
                 "click_volume": min(1.0, max(0.0, _number(cfg.get("click_volume"), 0.6, float))),
-                "hitsound_volume": min(1.0, max(0.0, _number(cfg.get("hitsound_volume"), 0.7, float))),
                 "tap_latency_ms": latency if abs(latency) <= TAP_LATENCY_LIMIT_MS else 0.0}
 
     def _for_osu(self):
@@ -4099,12 +2475,8 @@ class Api:
         subdivision = _number(cfg.get("click_subdivision"), 1, int)
         scale = _number(cfg.get("ui_scale"), 1.0, float)
         folder = cfg.get("output_folder")
-        skin = cfg.get("skin_folder")
         return {
             "output_folder": folder if isinstance(folder, str) and folder.strip() else "",
-            # The skin playback asks before Overtone's own samples (H6); kept
-            # as chosen even if it moves, and asked only while it is there.
-            "skin_folder": skin if isinstance(skin, str) and skin.strip() else "",
             "export_ask": cfg.get("export_ask", True) is not False,
             # osu!'s convention: red lines MAP_LEAD_MS before the sound (on
             # by default; off writes the grid where the sound is).
@@ -4160,12 +2532,6 @@ class Api:
                 if key == "output_folder":
                     value = str(value or "").strip()
                     if value and not Path(value).is_dir():
-                        return {"ok": False, "key": "bad_folder"}
-                elif key == "skin_folder":              # "" plays no skin
-                    if not isinstance(value, str):
-                        return {"ok": False, "key": "bad_values"}
-                    value = value.strip()
-                    if value and not (Path(value).is_absolute() and Path(value).is_dir()):
                         return {"ok": False, "key": "bad_folder"}
                 elif key in ("export_ask", "click_accent", "reduced_motion", "map_lead",
                              "clean_bpm"):
@@ -4650,10 +3016,6 @@ class Api:
             self._check_stop()
             if self._locked:
                 result.points = self._merge_locks(result.points, result.beats)
-            # Proposals are cached by .osu name, which another song's folder
-            # can share: they belong to the audio they were decided on.
-            if self._analysis is None or str(self._analysis.source) != str(result.source):
-                self._decisions.clear()
             self._analysis = result
             self._assisted = None       # a fit belongs to the song it was made on
             self._history.clear()
@@ -5031,11 +3393,6 @@ def run_analysis(path: str, params: dict, progress=None) -> ta.Analysis:
 # Self-check: what an installed copy needs, found where the code looks
 # ---------------------------------------------------------------------------
 
-#: Overtone's own samples (``assets/samples.py``): per set, the four hits and
-#: the two slider loops that play where a map names none of its own.
-OWN_SAMPLES = tuple(f"{sample_set}-{sound}.wav" for sample_set in ("normal", "soft", "drum")
-                    for sound in ("hitnormal", "hitwhistle", "hitfinish", "hitclap",
-                                  "sliderslide", "sliderwhistle"))
 #: The self-check's clicks fall every 0.4 s: 150 BPM for both engines.
 SELF_CHECK_BPM = 150.0
 
@@ -5046,7 +3403,6 @@ def resource_files() -> dict[str, tuple[Path, ...]]:
     holds the two lists together), and the self-check looks for them."""
     return {"page": (APP_DIR / "index.html", APP_DIR / "app.js", APP_DIR / "styles.css"),
             "icon": (ICON_ICO, LOGO_PNG),
-            "samples": tuple(ta.DEFAULT_SAMPLE_DIR / name for name in OWN_SAMPLES),
             "library schema": (overtone_library.SCHEMA_PATH,)}
 
 
@@ -5095,9 +3451,9 @@ def _check_bpm(analysis: ta.Analysis) -> str:
 
 def self_check() -> dict:
     """Whether this copy of the app has what it needs, looked up where the
-    code looks for it: the page, the icon, Overtone's samples, the library
-    schema, the window's libraries, and both engines on twenty seconds of
-    clicks, the Rust one through the same sidecar call the app makes.
+    code looks for it: the page, the icon, the library schema, the window's
+    libraries, and both engines on twenty seconds of clicks, the Rust one
+    through the same sidecar call the app makes.
 
     The installer's smoke test runs it in the frozen executable
     (``Overtone.exe --self-check``), where every path above resolves inside
@@ -5114,7 +3470,7 @@ def self_check() -> dict:
             checks.append({"name": name, "ok": False, "detail": f"{type(exc).__name__}: {exc}"})
 
     files = resource_files()
-    for name in ("page", "icon", "samples"):
+    for name in ("page", "icon"):
         check(name, lambda paths=files[name]: _need_files(*paths))
     check("library schema", _check_schema)
     check("window", _check_window)

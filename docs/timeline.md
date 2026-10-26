@@ -20,6 +20,91 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-26 · W1: the unfinished desktop extras parked
+
+### Changed
+
+- Phase W1 of [the web platform](16-web-platform.md): master keeps timing. Four
+  unfinished desktop extras left it, deleted rather than switched off, because every one
+  of them is kept whole on the protected branch `parked/desktop-extras` and the tag
+  `v3-desktop-full`.
+- The app has ten sections: Library (open a song or a beatmap folder, recents), Timing,
+  Structure, Map check, Mapset, Audio, Report, Export, History and Settings. The
+  transport plays the song and the click; the mod report has four sources (reference,
+  suggestion, snap, alignment).
+- `overtone-cli` keeps `analyze`, `structure` and `ramps`; `analyze`'s output is
+  unchanged (its stdout, plain, `--json` and `--full`, is the same before and after
+  on 12 `bench/audio` files, `timings_s` aside).
+- `bench/parity.py`: the Rust `.osu` reader lived in `overtone-hitsound`, so
+  `read_osu_beatmap`, `read_osu_red_lines`, `sound_events`, `_TimingCursor`,
+  `_is_red_line` and `_parse_red_line` are now `shell`, and 254 of 523 v3 engine tests are
+  held in Rust. That is the reader parked, not a timing stage lost: every tempo stage
+  is where it was.
+
+### Parked
+
+What went where, and why. W1's reason is the same for all four: the site is a timing
+tool, and none of these had reached the bar it was built against.
+
+- **Hitsounds** — the engine's hitsound half (writer, copier, proposals, hitsound
+  difficulty, playback plan, sample bank, report, consistency and silence checks, genre
+  classifier, object context), the Hitsounds view, the transport's hitsound playback and
+  object lane, the Samples card, the Mapset copier and the hitsound-difficulty card,
+  their bridge methods, `crates/overtone-hitsound` and the CLI's `hitsound`,
+  `hitsound-evidence` and `hitsound-classify`, `profiles/`, `assets/kits.json`,
+  `assets/samples/` with `assets/samples.py`, the benches `genre_corpus.py`,
+  `genre_samples.py`, `fit_kits.py`, `sample_banks.py`, `eval_hitsounds.py`,
+  `eval_proposals.py`, `eval_audio_only.py`, `templates_on_real_audio.py` and
+  `labels.py`, and docs 06 and 15. Why: measured against mappers on 1,000 local maps the
+  simple rules it had to beat scored clap-on-2-and-4 F1 0.59 and finish-on-downbeat F1
+  0.42, and the audio-only proposal scored clap F1 0.29 against that 0.59 on 6 songs.
+- **Compile** — `overtone_combine.py`, its view, its bridge methods and the `combine`
+  gate.
+- **Train** — `overtone_train.py`, `overtone_hotkey.py`, the view, the bridge methods
+  and the `train` gate.
+- **Library, the page only** — the Songs browser and the health check's page, and the
+  bridge methods only they used. `overtone_library.py` and `library.sql` stay:
+  `overtone_server.py`, `bench/stages.py`, `single_bpm.py`, `health_sample.py` and
+  `mapper_agreement.py` read them, and Map check still asks the index for same-audio
+  maps when one covers the folder.
+
+### Kept on purpose
+
+- `sound_events`, `_TimingCursor` and `MIN_SAMPLE_VOLUME`: the breaks, kiai and
+  section-volume tools read what each object plays.
+- `OBJECT_WINDOW_MS` and the stream/jump rule (`_pattern_class`, `_object_step`): the
+  alignment and density reports use them; they sat in the hitsound object-context block.
+- `HITSOUND_SAMPLE_NAME` in the bridge: Audio swap uses it to keep a mapset's samples
+  out of its encode candidates.
+- `ramps` still times the structure stage it no longer reads, so its report keeps its
+  shape.
+- `proto/timbre_group.py` still names `bench/labels.py`, which is parked: a prototype's
+  record, left as written.
+
+### Fixed
+
+- The Compile strings redefined `no_audio`, so importing a beatmap folder without
+  readable audio said "That song has no audio to read." It says what it was written to
+  say again.
+
+### Measured
+
+- Every gate in CLAUDE.md that remains, on the final tree, 2026-10-26: the suite 775
+  tests OK (523 engine + 252 web shell, 1 skipped); `benchmark.py` 24/24, median
+  0.0000 BPM and 0.14 ms; `gates.py bpm-snapshot` 24/24 readings unchanged;
+  `golden.py check` 27/27 stage for stage; `coverage`, `measures` (3/3), `signatures`
+  (6/6), `robustness`, `reference` (24/24), `assisted` (70 marked sections) and `perf`
+  (3 cases inside budget) pass; `real-audio` checks nothing here (no local library);
+  `fixtures.py` 38 = 38; `parity.py` matches (254 of 523); `facts.py` ok;
+  `fuzz_reader.py` 3000 mutants, no crash or hang; `sbom.py --check` 40 wheels;
+  `notices.py --check` 91 components, nothing missing. Rust: `cargo test --workspace`
+  231 passed; `overtone-bench` golden 27/27, nogrid, density 4/4 with 0 false
+  positives, elastic and map pass. No accuracy number moved, so nothing was
+  re-baselined.
+- Tests: 1077 -> 775 Python (755 -> 523 engine, 322 -> 252 web shell), 292 -> 231 Rust.
+- Size: 94 files, 31,620 lines out and 320 in against `origin/master`
+  (`git diff --shortstat`), this entry included.
+
 ## Unreleased — 2026-10-26 · red lines read at their song's octave
 
 ### Changed

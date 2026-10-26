@@ -57,7 +57,6 @@ GATES = {
     "robustness": ["bench/gates.py", "robustness"],
     "reference": ["bench/gates.py", "reference"],
     "assisted": ["bench/gates.py", "assisted"],
-    "combine": ["bench/gates.py", "combine"],
     "real-audio": ["bench/gates.py", "real-audio"],
     "perf": ["bench/gates.py", "perf"],
     "fixtures": ["bench/fixtures.py"],

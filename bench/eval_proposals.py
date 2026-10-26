@@ -334,7 +334,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--style", choices=STYLES, default=None,
                         help="only songs whose mapper hitsounded in this style")
     parser.add_argument("--genre", default=None,
-                        help="maps from bench/genre_corpus.json instead of the index")
+                        help="maps from bench/genre_corpus.local.json instead of the index")
     parser.add_argument("--third", choices=("build", "choose", "score"), default=None,
                         help="with --genre, which third of that genre's maps by set-id order")
     parser.add_argument("--bare", action="store_true",
@@ -378,16 +378,17 @@ def main(argv: list[str] | None = None) -> int:
 
 def genre_pairs(genre: str, third: str | None, offset: int, limit: int
                 ) -> list[tuple[str, str]]:
-    """(audio, map) for one genre of ``bench/genre_corpus.json``.
+    """(audio, map) for one genre of ``bench/genre_corpus.local.json``.
 
     The corpus is the same one the profiles are measured from, so ``--third
     score`` is exactly the maps a ``--third build`` profile never saw. A set
     whose file no longer hashes the same is skipped and named, as Corpus B
     does: the numbers must not quietly come from another version of a map.
     """
-    manifest = HERE / "genre_corpus.json"
+    manifest = HERE / "genre_corpus.local.json"
     if not manifest.is_file():
-        print(f"eval: no {manifest.name}; run bench/genre_corpus.py --update first")
+        import local_data
+        print(local_data.missing(manifest))
         return []
     body = json.loads(manifest.read_text(encoding="utf-8"))
     songs = Path(body["songs_folder"])

@@ -219,10 +219,10 @@ def main() -> int:
     parser.add_argument("--tune", type=int, default=TUNE)
     parser.add_argument("--heldout", type=int, default=HELDOUT)
     parser.add_argument("--seed", type=int, default=FOLDER_SEED)
-    parser.add_argument("--exclude-from", help="prior labels.json; exclude its sampled folders")
+    parser.add_argument("--exclude-from", help="prior labels.local.json; exclude its sampled folders")
     parser.add_argument("--cache", help="local JSON cache for successful structure results")
-    parser.add_argument("--output", default=str(HERE / "labels.json"),
-                        help="result JSON path (default: bench/labels.json)")
+    parser.add_argument("--output", default=str(HERE / "labels.local.json"),
+                        help="result JSON path (default: bench/labels.local.json, gitignored)")
     args = parser.parse_args()
     if not CLI.is_file():
         print("No overtone-cli built: cargo build --release -p overtone-cli")

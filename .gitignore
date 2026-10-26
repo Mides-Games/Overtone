@@ -17,16 +17,11 @@ bench/.cache/
 
 # Rust (v4)
 /target/
-# Graphify's portable graph/report/HTML are checked in; local extraction cache
-# and absolute-root marker are regenerated on each machine.
-/graphify-out/cache/
-/graphify-out/.graphify_analysis.json
-/graphify-out/.graphify_root
-/graphify-out/manifest.json
-/graphify-out/project-status/graphify-out/cache/
-/graphify-out/project-status/graphify-out/.graphify_analysis.json
-/graphify-out/project-status/graphify-out/.graphify_root
-/graphify-out/project-status/graphify-out/manifest.json
+# Graphify (docs/project-map.md): everything it writes is local and regenerated,
+# and its skill and ignore file belong to the tool, not the repository.
+/graphify-out/
+/.graphifyignore
+/.agents/
 # Installer (installer/build.py): the frozen tree, the MSI and the ZIP, and
 # PyInstaller's and WiX's working files. Build outputs are never committed.
 /dist/
@@ -34,6 +29,13 @@ bench/.cache/
 # Tauri frontend
 /app/node_modules/
 /app/dist/
+# Measurements of a private osu! library (bench/local_data.py): Songs folders,
+# beatmap ids, mappers and SHA-1s. bench/<name>.example.json shows each shape.
+/bench/*.local.json
+/bench/*.local.md
+# ONNX Runtime's shape-inference temporaries (a model export's scratch files).
+/sym_shape_infer_temp.onnx
+/*.data
 # Website (site/): dependencies, builds and local secrets. `.env.example` is
 # committed; a real `.env` never is.
 /node_modules/

@@ -60,7 +60,7 @@ Si el paso 1 no trae su test (unitario o gate), volver al paso 1.
   datos de `Songs` al repositorio. Ejemplo:
 
   ```powershell
-  .venv/Scripts/python.exe bench/labels.py --songs "C:\osu!\Songs" --seed 61 --exclude-from bench/labels.json --cache bench/.cache/t6/structures.json --output bench/.cache/t6/result.json
+  .venv/Scripts/python.exe bench/labels.py --songs "C:\osu!\Songs" --seed 61 --exclude-from bench/labels.local.json --cache bench/.cache/t6/structures.json --output bench/.cache/t6/result.json
   ```
 
   No reducir `--tune` / `--heldout` para declarar el roadmap cerrado: el bar es
@@ -132,9 +132,8 @@ nodo al documento y línea que justifican su estado; no editar el HTML a mano.
 El Mermaid y la tabla de `docs/project-map.md` siguen siendo el índice humano de
 arquitectura y relaciones documentales. Graphify permanece fuera de las
 dependencias del producto. No usar extracción semántica, APIs, endpoints,
-claves, hooks ni watchers para este repositorio. Los artefactos portables se
-mantienen bajo `graphify-out/`; cachés, manifiestos y marcadores de ruta son
-locales y deben quedar ignorados por Git.
+claves, hooks ni watchers para este repositorio. Todo `graphify-out/` es local
+y queda ignorado por Git: se regenera, no se versiona.
 
 ## Definición de hecho
 
@@ -151,14 +150,15 @@ Una tarea está hecha cuando cumple todo esto, sin excepciones:
 6. `docs/project-map.md` refleja el árbol y los flujos actuales; todo cambio
    del proyecto actualizó y revisó el mapa.
 7. Si cambió código o dependencias, Graphify se regeneró en modo local y se
-   revisaron `graph.json`, `GRAPH_REPORT.md` y `graph.html`.
+   revisaron `graph.json`, `GRAPH_REPORT.md` y `graph.html` (locales, sin versionar).
 8. Si cambió el roadmap, se actualizó `docs/project-status.json` y se regeneró
    `graphify-out/project-status/graphify-out/graph.html`.
 
 ## Pull requests
 
-Sin bots ni plantillas automáticas: los checks corren en local. Cada PR
-hecho con `gh` responde tres cosas y trae la checklist marcada:
+Sin bots: los checks corren en local. Cada PR hecho con `gh` responde tres
+cosas y trae la checklist marcada; `.github/pull_request_template.md` las trae
+escritas, y `.github/ISSUE_TEMPLATE/` hace lo mismo con los reportes:
 
 - Qué cambió y por qué (una o dos frases; el diff ya dice el cómo).
 - Gates corridos con su resultado (comando + números, pega la salida).

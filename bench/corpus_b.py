@@ -2,7 +2,7 @@
 
 Corpus A, the 24 synthetic fixtures of ``benchmark.py``, has exact truth and
 clean drums. Corpus B is the opposite: 20 ranked or loved maps from the
-user's own osu! Songs folder, listed in ``bench/corpus_b.json`` by folder,
+user's own osu! Songs folder, listed in ``bench/corpus_b.local.json`` by folder,
 file name and SHA-1, across the six categories of
 ``docs/10-precision-plan.md``. Their truth is a mapper's red lines. The audio
 is copyrighted and never committed; a track whose files are missing or no
@@ -68,11 +68,13 @@ from scipy import signal
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "bench"))
 
+import local_data  # noqa: E402
 import overtone as ta  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
-MANIFEST = HERE / "corpus_b.json"
+MANIFEST = local_data.CORPUS_B
 CACHE_DIR = HERE / ".cache" / "corpus_b"
 #: The osu! Songs folder; OVERTONE_SONGS names another (a server's).
 SONGS = Path(os.environ.get("OVERTONE_SONGS") or r"C:\osu!\Songs")
@@ -613,6 +615,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     run_started = time.perf_counter()
 
+    if not Path(args.manifest).is_file():
+        print(local_data.missing(Path(args.manifest).resolve()))
+        return 0
     manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
     tracks = manifest["tracks"]
     if args.only:

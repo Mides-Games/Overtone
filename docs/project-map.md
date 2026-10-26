@@ -3,17 +3,22 @@
 Code graph last refreshed: 2026-10-16 (the local Graphify venv could not start on 2026-10-24); architecture facts reviewed 2026-10-24. Project delivery status refreshed: 2026-10-16. The map follows the current source
 tree and the responsibilities visible in code, manifests and documentation.
 The Mermaid diagram is the human-reviewed architectural index. Graphify's
-code-level relationships, report and interactive view are generated under
-`graphify-out/` from the same repository snapshot.
+code-level relationships, report and interactive view are generated locally
+under `graphify-out/` from the same repository snapshot; that folder is
+gitignored and never committed (its HTML embeds machine paths).
 
 ## Graphify artifacts
 
-- [`graph.html`](../graphify-out/graph.html): interactive code graph.
-- [`GRAPH_REPORT.md`](../graphify-out/GRAPH_REPORT.md): generated overview of
-  graph communities and highly connected concepts.
-- [`graph.json`](../graphify-out/graph.json): full code graph for Graphify queries.
-- [Interactive tasks, features and backlog map](../graphify-out/project-status/graphify-out/graph.html): current status graph generated from the curated roadmap index.
-- [`project-status.json`](project-status.json): status entries, evidence links and summaries used to build that map.
+Generated locally, not in Git:
+
+- `graphify-out/graph.html`: interactive code graph.
+- `graphify-out/GRAPH_REPORT.md`: generated overview of graph communities and
+  highly connected concepts.
+- `graphify-out/graph.json`: full code graph for Graphify queries.
+- `graphify-out/project-status/graphify-out/graph.html`: interactive tasks,
+  features and backlog map, built by `scripts/graphify_project_status.py` from the
+  curated roadmap index.
+- [`project-status.json`](project-status.json): status entries, evidence links and summaries used to build that map (committed).
 
 The graph was extracted with Graphify 0.9.91 using the offline `--code-only`
 and `--cargo` options. This indexes source-code relationships and Rust crate
@@ -192,9 +197,8 @@ graphify cluster-only . --no-label
 
 Then check the result with `graphify god-nodes --top 15` and a focused
 `graphify query "<system or symbol>"`; review the report and graph. The
-`.graphifyignore` file prevents generated output from indexing itself. Local
-cache, manifest and machine-root marker files are ignored; only portable output
-is kept in Git. Keep the Graphify CLI outside the app's pinned runtime
+whole `graphify-out/` folder is ignored by Git, output, cache and machine-root
+markers alike, so nothing generated is committed. Keep the Graphify CLI outside the app's pinned runtime
 dependencies; the graph is a developer artifact, not a product feature. Never
 use semantic/cloud extraction for this repository, and do not add a networked
 generation step.

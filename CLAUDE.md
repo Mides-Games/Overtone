@@ -81,8 +81,9 @@ reading changes on purpose, say why in `docs/timeline.md` and re-run with `--upd
 never re-baseline to make a red gate green.
 
 Phase 10 work is also measured on **Corpus B**: 20 hand-timed ranked maps from the local
-osu! Songs folder, named by folder, file and SHA-1 in `bench/corpus_b.json` and never
-committed. It is a measurement, not a gate: a track whose files changed is skipped and
+osu! Songs folder, named by folder, file and SHA-1 in `bench/corpus_b.local.json`. That
+file and the audio are never committed: the library's measurements stay local
+(`bench/local_data.py`; `bench/*.example.json` shows each shape). It is a measurement, not a gate: a track whose files changed is skipped and
 named, and the analyses are cached per audio and engine hash, so a re-score takes a second.
 
 ```bash
@@ -217,9 +218,11 @@ bench/genre_samples.py    what a genre's hitsounds sound like, from the files it
 bench/genre_samples.json  maps ship; bench/fit_kits.py aims the synthesiser at it
 assets/kits.json          and writes the settings a genre's kit is rendered from
 bench/genre_corpus.py     where each genre puts its hitsounds, measured from the
-bench/genre_corpus.json   user's Songs folder; writes profiles/<genre>.json
+                          user's Songs folder; writes profiles/<genre>.json
 bench/corpus_b.py         Corpus B: the engine against 20 hand-timed ranked maps (Phase 10)
-bench/corpus_b.json       its manifest: Songs folders, files and SHA-1s, never the audio
+bench/local_data.py       the private library's measurements -- Corpus B's manifest, the
+                          genre corpus, kiai labels, health sample, real-audio snapshot --
+                          as gitignored bench/*.local.json; bench/*.example.json has the shapes
 bench/remote.py           the server's measurement runs from the command line
 proto/                    Python prototypes of the riskiest v4 algorithms, and
                           band_lanes.py, which prints the band flux as

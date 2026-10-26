@@ -9462,6 +9462,8 @@ class CorpusBScoringTests(unittest.TestCase):
 
     def test_the_manifest_holds_the_plans_categories_and_twenty_tracks(self):
         cb = self._cb()
+        if not cb.MANIFEST.is_file():
+            self.skipTest(f"{cb.MANIFEST.name} is private and not held here (bench/local_data.py)")
         manifest = json.loads(cb.MANIFEST.read_text(encoding="utf-8"))
         tracks = manifest["tracks"]
         self.assertEqual(len(tracks), 20)

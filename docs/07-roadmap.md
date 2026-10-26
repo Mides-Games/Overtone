@@ -37,7 +37,8 @@ The audit backlog is closed: every finding was fixed, recorded as already fixed,
 ([`13-audit-backlog.md`](13-audit-backlog.md)). The remaining 0.3.0 required row is:
 
 1. **R6 — owner precision verdicts.** The 25-item listening sheet is ready at
-   [`bench/health_sample.md`](../bench/health_sample.md). The pre-set rule keeps
+   `bench/health_sample.local.md` (local only: it names a private library's maps;
+   `bench/health_sample.py` writes it). The pre-set rule keeps
    “actionable” and “weak” only with at least 15 true flags; listen at each linked red
    line and mark true, false or skip.
 T1, T3, T4 and T5 are done; T2 signing was dropped by owner decision. T6 is closed

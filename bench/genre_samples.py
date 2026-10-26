@@ -34,7 +34,7 @@ sys.path.insert(0, str(ROOT))
 import overtone as ta  # noqa: E402
 
 MANIFEST = HERE / "genre_samples.json"
-CORPUS = HERE / "genre_corpus.json"
+CORPUS = HERE / "genre_corpus.local.json"
 CACHE = HERE / ".cache" / "genre_samples"
 FORMAT = 2
 #: The four sounds osu! plays for an object. Slides are left out: they loop,
@@ -192,7 +192,8 @@ def report(measured: dict) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if not CORPUS.is_file():
-        print(f"No {CORPUS.name}: run bench/genre_corpus.py --update first.")
+        import local_data
+        print(local_data.missing(CORPUS))
         return 0
     only = args[args.index("--only") + 1].split(",") if "--only" in args else None
     measured = measure(only)

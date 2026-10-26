@@ -25,7 +25,7 @@ import overtone as ta
 
 CLI = Path('target/release/overtone-cli.exe')
 songs = Path('C:/osu!/Songs')
-d = json.load(open('bench/labels.json', encoding='utf-8'))
+d = json.load(open('bench/labels.local.json', encoding='utf-8'))  # gitignored, bench/local_data.py
 
 
 def sections_of(audio):

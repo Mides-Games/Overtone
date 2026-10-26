@@ -30,8 +30,8 @@ before:
 ## Steps
 
 1. **Write the launch config.** The root is the folder this Claude session was
-   opened in (the pane reads `<root>/.claude/launch.json`); on this machine that
-   has been `C:\Users\<user>\IdeaProjects\Personal Projects`, the repo's parent.
+   opened in (the pane reads `<root>/.claude/launch.json`), usually the repo's
+   parent folder.
 
    ```
    .venv/Scripts/python.exe .claude/skills/overtone-ui-check/scripts/launch.py up --root "<root>" [--audio "<song>"] [--pick "<folder>"]

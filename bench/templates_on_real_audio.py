@@ -42,7 +42,7 @@ sys.path.insert(0, str(ROOT))
 import overtone as ta  # noqa: E402
 
 CLI = ROOT / "target" / "release" / "overtone-cli.exe"
-CORPUS = HERE / "genre_corpus.json"
+CORPUS = HERE / "genre_corpus.local.json"
 #: A mapper's clap counts as heard when an attack sits this close to it.
 TOLERANCE_MS = 50.0
 #: Fewer claps than this in a map says nothing about a classifier.
@@ -487,7 +487,8 @@ def main(argv: list[str] | None = None) -> int:
         print("No overtone-cli built: cargo build --release -p overtone-cli")
         return 0
     if not CORPUS.is_file():
-        print(f"No {CORPUS.name}: run bench/genre_corpus.py --update first.")
+        import local_data
+        print(local_data.missing(CORPUS))
         return 0
 
     mix_all: list[float] = []

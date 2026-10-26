@@ -56,6 +56,7 @@ import soundfile as sf  # noqa: E402
 
 import benchmark as bm  # noqa: E402
 import fuzz_reader as fuzz  # noqa: E402  -- its mutants, for half-wrong sources
+import local_data  # noqa: E402  -- the private library measurements, gitignored
 import overtone as ta  # noqa: E402
 import overtone_combine as tc  # noqa: E402
 import overtone_train as tr  # noqa: E402  -- the practice copy and its grid
@@ -63,9 +64,9 @@ import overtone_web as wb  # noqa: E402  -- the stage names the page shows
 
 HERE = Path(__file__).resolve().parent
 SNAPSHOT = HERE / "bpm_snapshot.json"
-REAL_SNAPSHOT = HERE / "real_audio_snapshot.json"
+REAL_SNAPSHOT = local_data.REAL_SNAPSHOT
 PERF_SNAPSHOT = HERE / "perf_snapshot.json"
-#: The real-audio smoke set: Corpus B tracks (bench/corpus_b.json names them
+#: The real-audio smoke set: Corpus B tracks (bench/corpus_b.local.json names them
 #: by folder, file and SHA-1; the audio is never committed), one or two per
 #: path the engine takes on real music: a steady grid, a drifting live band,
 #: a rubato intro, a signature change, an octave-swap and the fallback tracker.
@@ -861,11 +862,19 @@ def real_audio(names: list[str], update: bool) -> int:
     """The synthetic corpus is clean drums; a change can keep it green and
     still refuse a real song, or move its reading. These tracks must analyse
     (no refusal), on the same engine path, to the readings pinned in
-    ``real_audio_snapshot.json`` (BPMs within ``BPM_EPS``, the same red lines).
+    ``real_audio_snapshot.local.json`` (BPMs within ``BPM_EPS``, the same red lines).
     A track this machine does not hold, or holds changed, is skipped and named:
     the audio is the user's and never committed. None held: nothing checked,
-    said so, and not a failure."""
+    said so, and not a failure. Neither the manifest nor the snapshot is
+    committed (bench/local_data.py): without them, the same."""
     import corpus_b as cb
+    held = [cb.MANIFEST] + ([] if update else [REAL_SNAPSHOT])
+    if not all(path.is_file() for path in held):
+        for path in held:
+            if not path.is_file():
+                print(local_data.missing(path))
+        print("\nreal-audio: no local library here: nothing checked")
+        return 0
     manifest = {t["id"]: t for t in json.loads(cb.MANIFEST.read_text(encoding="utf-8"))["tracks"]}
     baseline = {}
     if REAL_SNAPSHOT.exists():
@@ -918,13 +927,13 @@ def real_audio(names: list[str], update: bool) -> int:
             return 1
         REAL_SNAPSHOT.write_text(
             json.dumps({
-                "_comment": "Real songs (bench/corpus_b.json tracks) that must keep analysing, "
+                "_comment": "Real songs (bench/corpus_b.local.json tracks) that must keep analysing, "
                             "never refused. Regenerate with: python bench/gates.py real-audio --update",
                 "bpm_eps": BPM_EPS,
                 "tracks": current,
             }, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8")
-        print(f"\nWrote {REAL_SNAPSHOT.name} ({len(current)} tracks). Commit it.")
+        print(f"\nWrote {REAL_SNAPSHOT.name} ({len(current)} tracks). It stays local, never committed.")
         return 0
     if skipped:
         print(f"\n{len(skipped)} skipped, not held here as the manifest names them.")

@@ -1,0 +1,42 @@
+{
+ "_example": "Shape only: the real file is bench/genre_corpus.local.json, gitignored, measured from a private osu! library (bench/local_data.py).",
+ "_comment": "Where each genre puts its hitsounds, measured by bench/genre_corpus.py from the user's own Songs folder. Folder names, the file measured and its SHA-1 only: no map text, no audio, no samples.",
+ "format": 1,
+ "measured": "2026-09-27",
+ "songs_folder": "C:\\osu!\\Songs",
+ "selection": [
+  "Genre by the mapper's own tags, most specific first, plus a list of bands whose genre is not in doubt.",
+  "The largest osu!standard difficulty of each set, at most 110 sets a genre, newest set id first.",
+  "Maps of at least 100 objects carrying at least 0.25 additions an object, in 4/4."
+ ],
+ "genres": {
+  "rock": {
+   "sets": [
+    {
+     "file": "Artist - Title (Mapper) [Difficulty].osu",
+     "sha1": "0000000000000000000000000000000000000000",
+     "objects": 373,
+     "additions_per_object": 0.9383,
+     "slots": {
+      "whistle": [
+       56
+      ],
+      "finish": [
+       23
+      ],
+      "clap": [
+       1
+      ]
+     },
+     "banks": {
+      "normal": 0.428,
+      "soft": 0.5589,
+      "drum": 0.0131
+     },
+     "volume": 85,
+     "folder": "123456 Artist - Title"
+    }
+   ]
+  }
+ }
+}

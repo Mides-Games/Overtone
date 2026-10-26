@@ -17,6 +17,9 @@ http://127.0.0.1:8765: an SSH tunnel to it), with the token from
     python bench/remote.py wait <id>
     python bench/remote.py result <id> --out bench/.cache/remote/<id>.json
     python bench/remote.py stop <id>
+    python bench/remote.py gates --wait                    # every Python gate, on the server
+    python bench/remote.py gates benchmark golden --wait   # some of them
+    python bench/remote.py suite --wait                    # the Python suite (all, engine, web)
 
 A report holds one row per map with its folder name, so it stays in
 bench/.cache (git-ignored), never in the repository. A measurement, not a gate.
@@ -88,6 +91,13 @@ def _line(meta: dict) -> str:
 def _summary(summary: dict | None) -> None:
     if not summary:
         return
+    if "checked" in summary:
+        print(f"  passed {summary['passed']} of {summary['checked']}"
+              + (f"; failed: {', '.join(summary['failed'])}" if summary["failed"] else "")
+              + (f"; ran {summary['ran']} tests" if summary.get("ran") is not None else ""))
+        for name in summary.get("failing", [])[:20]:
+            print(f"    {name}")
+        return
     for part in ("dev", "holdout"):
         block = summary.get(part)
         if isinstance(block, dict):
@@ -122,6 +132,12 @@ def main(argv: list[str] | None = None) -> int:
                      help="every map of the stage, not only ranked and loved (default when "
                           "the server has an osu!.db)")
     run.add_argument("--wait", action="store_true", help="and follow it to its end")
+    gates = commands.add_parser("gates", help="run the Python gates on the server")
+    gates.add_argument("only", nargs="*", help="some gates (default: all of them)")
+    gates.add_argument("--wait", action="store_true")
+    suite = commands.add_parser("suite", help="run the Python suite on the server")
+    suite.add_argument("which", nargs="?", default="all", choices=("all", "engine", "web"))
+    suite.add_argument("--wait", action="store_true")
     for name in ("show", "wait", "stop"):
         commands.add_parser(name).add_argument("id")
     result = commands.add_parser("result", help="download a run's report")
@@ -147,6 +163,15 @@ def main(argv: list[str] | None = None) -> int:
         for meta in remote.call("GET", "/api/v1/runs")["runs"]:
             print(_line(meta))
         return 0
+    if args.command in ("gates", "suite"):
+        request = ({"tool": "gates", "only": args.only} if args.command == "gates"
+                   else {"tool": "suite", "suite": args.which})
+        meta = remote.call("POST", "/api/v1/runs", request)
+        print(f"queued {meta['id']} (code {(meta.get('commit') or '?')[:12]})")
+        if not args.wait:
+            return 0
+        args.id = meta["id"]
+        args.command = "wait"
     if args.command == "run":
         request = {"tool": args.tool, "engine": args.engine, "jobs": args.jobs,
                    "beat_vote": args.beat_vote, "max_songs": args.max_songs}

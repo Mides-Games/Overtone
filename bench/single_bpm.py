@@ -56,7 +56,7 @@ import corpus_b as cb  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 CACHE_DIR = HERE / ".cache" / "single_bpm"
-SONGS = Path(r"C:\osu!\Songs")
+SONGS = Path(os.environ.get("OVERTONE_SONGS") or r"C:\osu!\Songs")   # as corpus_b
 ENGINES = ("python", "rust", "app")    # app: Rust, v3 where it refuses (corpus_b)
 
 #: Bumped when the cached analysis changes shape.

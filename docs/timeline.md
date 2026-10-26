@@ -20,6 +20,29 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-26 · gates and the suite on the server
+
+### Changed
+
+- Server runs take `gates` (every Python gate of CLAUDE.md, in its order,
+  or the ones named) and `suite` (all of it, the engine's or the web
+  shell's). Each runs as a person runs it from the repository root, its
+  own process, the vote as installed; the report says which passed and,
+  for the suite, which tests failed. From the Tests page and from
+  `bench/remote.py gates|suite`. Asked for: the PC lagged under them.
+- The bench reads the Songs folder from `OVERTONE_SONGS` when set (the
+  real-audio gate on a server); runs set it to the server's.
+
+### Fixed
+
+- `RunQueue` read every run's `beat_vote`, which gates and suite runs do
+  not have.
+
+### Measured
+
+- Not measured: the suite and the gates on the server are this entry's
+  first job.
+
 ## Unreleased — 2026-10-26 · measuring what the app runs
 
 ### Changed

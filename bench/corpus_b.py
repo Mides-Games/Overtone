@@ -74,7 +74,8 @@ import overtone as ta  # noqa: E402
 HERE = Path(__file__).resolve().parent
 MANIFEST = HERE / "corpus_b.json"
 CACHE_DIR = HERE / ".cache" / "corpus_b"
-SONGS = Path(r"C:\osu!\Songs")
+#: The osu! Songs folder; OVERTONE_SONGS names another (a server's).
+SONGS = Path(os.environ.get("OVERTONE_SONGS") or r"C:\osu!\Songs")
 #: "app" is what the app runs (overtone_web.run_analysis): the Rust engine,
 #: and v3 wherever Rust refuses or fails.
 ENGINES = ("python", "rust", "app")

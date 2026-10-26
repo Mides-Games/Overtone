@@ -228,6 +228,29 @@ Las cachés de las corridas van separadas por modo (`runs/cache/vote` y
 `runs/cache/novote`), porque la clave de caché de los tools no incluye el
 voto. Una lectura con voto nunca se sirve a una corrida sin él.
 
+**Gates y suite en el servidor.** Las mismas comprobaciones de
+`CLAUDE.md` corren en el servidor, para no cargar el PC: `gates` (todos los
+gates de Python, o los que se nombren) y `suite` (toda la suite, o solo
+`engine` o `web`). Cada gate se informa por separado, con el final de su
+salida. Los gates de Rust necesitan cargo, que el servicio no tiene. `perf`
+mide los presupuestos en la máquina que lo corre, que en un servidor es la
+del servidor.
+
+```bash
+python bench/remote.py --token-file token.txt gates --wait
+```
+
+```bash
+python bench/remote.py --token-file token.txt suite --wait
+```
+
+Los gates generan su audio de prueba en `bench/audio`, dentro del código,
+donde el servicio no puede escribir. Una sola vez, como root:
+
+```bash
+mkdir -p /var/lib/overtone/bench-audio && chown overtone:overtone /var/lib/overtone/bench-audio && ln -sfn /var/lib/overtone/bench-audio /opt/overtone/bench/audio
+```
+
 **Probar otra versión del algoritmo:** en la VPS,
 `cd /opt/overtone && git pull && systemctl restart overtone-api`, y lanza
 la corrida. Cada informe guarda el commit que lo produjo, así que dos

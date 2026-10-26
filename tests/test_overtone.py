@@ -6353,6 +6353,37 @@ class MeasurementRunTests(unittest.TestCase):
         self.assertNotEqual(corpus_b.engine_fingerprint("app", Path(__file__)),
                             corpus_b.engine_fingerprint("python", None))
 
+    def test_gates_and_the_suite_are_named_runs_and_nothing_else(self):
+        tool, argv, settings = self.runs.build_args({"tool": "gates"}, "/db")
+        self.assertEqual((tool, argv, settings["gates"]), ("gates", list(self.runs.GATES), "all"))
+        tool, argv, settings = self.runs.build_args(
+            {"tool": "gates", "only": ["golden", "benchmark"]}, "/db")
+        self.assertEqual(argv, ["benchmark", "golden"])            # CLAUDE.md's order
+        self.assertEqual(self.runs.build_args({"tool": "suite", "suite": "web"}, "/db")[1], ["web"])
+        for bad in ({"tool": "gates", "only": ["rm -rf"]}, {"tool": "gates", "only": "golden"},
+                    {"tool": "suite", "suite": "../tests"}):
+            with self.assertRaises(ValueError, msg=bad):
+                self.runs.build_args(bad, "/db")
+        # Every gate CLAUDE.md lists for Python is here, as it is written there.
+        claude = (Path(__file__).resolve().parent.parent / "CLAUDE.md").read_text(encoding="utf-8")
+        for command in self.runs.GATES.values():
+            self.assertIn(" ".join(command), claude)
+
+    def test_a_gates_run_reports_each_gate(self):
+        import time
+        store = self.runs.RunStore(self.tmp / "runs")
+        queue = self.runs.RunQueue(store, self.index, self.songs)
+        meta = queue.submit({"tool": "gates", "only": ["fixtures"]})
+        deadline = time.monotonic() + 120
+        while store.meta(meta["id"])["state"] in ("queued", "running") and time.monotonic() < deadline:
+            time.sleep(0.1)
+        done = store.meta(meta["id"])
+        self.assertEqual(done["state"], "done", "\n".join(store.log_tail(meta["id"])))
+        self.assertEqual(done["summary"], {"checked": 1, "passed": 1, "failed": []})
+        report = store.result(meta["id"])
+        self.assertEqual([(r["name"], r["exit"]) for r in report["rows"]], [("fixtures", 0)])
+        self.assertIn("fixtures.json matches", "\n".join(report["rows"][0]["tail"]))
+
     def test_ranked_runs_need_an_osu_db_and_use_it_by_default(self):
         osu_db = self.tmp / "osu!.db"
         _, argv, settings = self.runs.build_args({"stage": "anime-single"}, "/db", "", osu_db)

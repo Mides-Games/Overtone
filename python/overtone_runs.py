@@ -40,7 +40,35 @@ _HERE = Path(__file__).resolve().parent
 ROOT = _HERE.parent
 BENCH = ROOT / "bench"
 #: The tools a run may start, and the options each takes.
-TOOLS = ("stages", "single_bpm")
+TOOLS = ("stages", "single_bpm", "gates", "suite")
+#: The Python gates of CLAUDE.md, in its order, as a server runs them. The
+#: Rust ones need cargo, which the service does not have. ``perf`` measures
+#: the stage budgets on whatever machine runs it: on a server, its own.
+GATES = {
+    "benchmark": ["bench/benchmark.py"],
+    "bpm-snapshot": ["bench/gates.py", "bpm-snapshot"],
+    "golden": ["bench/golden.py", "check"],
+    "coverage": ["bench/gates.py", "coverage"],
+    "measures": ["bench/gates.py", "measures"],
+    "signatures": ["bench/gates.py", "signatures"],
+    "robustness": ["bench/gates.py", "robustness"],
+    "reference": ["bench/gates.py", "reference"],
+    "assisted": ["bench/gates.py", "assisted"],
+    "combine": ["bench/gates.py", "combine"],
+    "real-audio": ["bench/gates.py", "real-audio"],
+    "perf": ["bench/gates.py", "perf"],
+    "fixtures": ["bench/fixtures.py"],
+    "parity": ["bench/parity.py"],
+    "fit-kits": ["bench/fit_kits.py", "--verify"],
+    "facts": ["bench/facts.py"],
+    "fuzz-reader": ["bench/fuzz_reader.py"],
+    "sbom": ["installer/sbom.py", "--check"],
+    "notices": ["installer/notices.py", "--check"],
+}
+#: The Python suite, whole or one module of it.
+SUITES = {"all": ["-m", "unittest", "discover", "-s", "tests"],
+          "engine": ["-m", "unittest", "tests.test_overtone"],
+          "web": ["-m", "unittest", "tests.test_overtone_web"]}
 #: "app" runs what the app runs: Rust, and v3 where Rust refuses or fails.
 ENGINES = ("rust", "app", "python")
 #: The most analyses one run holds at once.
@@ -107,6 +135,18 @@ def build_args(request: dict, db_path: str | os.PathLike[str],
     tool = request.get("tool", "stages")
     if tool not in TOOLS:
         raise ValueError(f"No tool {tool!r}; one of {', '.join(TOOLS)}.")
+    if tool == "gates":
+        only = request.get("only") or []
+        if (not isinstance(only, list) or not all(isinstance(g, str) for g in only)
+                or any(g not in GATES for g in only)):
+            raise ValueError(f"only is a list of gates: {', '.join(GATES)}.")
+        names = [g for g in GATES if g in only] or list(GATES)
+        return tool, names, {"tool": tool, "gates": "all" if not only else names}
+    if tool == "suite":
+        which = request.get("suite") or "all"
+        if which not in SUITES:
+            raise ValueError(f"suite is one of {', '.join(SUITES)}.")
+        return tool, [which], {"tool": tool, "suite": which}
     engine = request.get("engine", "rust")
     if engine not in ENGINES:
         raise ValueError(f"No engine {engine!r}; one of {', '.join(ENGINES)}.")
@@ -320,11 +360,13 @@ class RunQueue:
         meta = self.store.meta(run_id)
         folder = self.store.folder(run_id)
         settings = meta["settings"]
-        cache = self.store.cache / ("vote" if settings["beat_vote"] else "novote")
+        cache = self.store.cache / ("vote" if settings.get("beat_vote", False) else "novote")
         command = [self.python, str(_HERE / "overtone_runs.py"), "worker",
                    "--cache", str(cache), "--result", str(folder / "result.json"),
-                   *(["--beat-vote"] if settings["beat_vote"] else []), "--", *meta["argv"]]
+                   *(["--beat-vote"] if settings.get("beat_vote", False) else []), "--", *meta["argv"]]
         env = dict(os.environ if self.env is None else self.env)
+        if self.songs:
+            env["OVERTONE_SONGS"] = self.songs     # the bench's Songs folder is the server's
         env["PYTHONUNBUFFERED"] = "1"
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         meta.update(state="running", started_at=_now())
@@ -381,6 +423,8 @@ def worker(argv: list[str] | None = None) -> int:
     parser.add_argument("args", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     tool_args = args.args[1:] if args.args[:1] == ["--"] else args.args
+    if args.tool in ("gates", "suite"):
+        return _checks(args.tool, tool_args, Path(args.result))
     sys.path.insert(0, str(_HERE))
     sys.path.insert(0, str(BENCH))
     import multiprocessing
@@ -418,6 +462,42 @@ def worker(argv: list[str] | None = None) -> int:
     if code == 0 and report.is_file():
         Path(args.result).write_bytes(report.read_bytes())
     return int(code or 0)
+
+
+def _checks(tool: str, names: list[str], result: Path) -> int:
+    """The gates or the suite, each its own process, as a person runs them
+    from the repository root: nothing is adjusted, the Beat This! vote is as
+    installed. Every line goes to the log; the report says what passed."""
+    commands = ([(name, [sys.executable, *GATES[name]]) for name in names] if tool == "gates"
+                else [(names[0], [sys.executable, *SUITES[names[0]]])])
+    rows = []
+    for name, command in commands:
+        print(f"=== {name}: {' '.join(command[1:])}", flush=True)
+        started = time.monotonic()
+        process = subprocess.Popen(command, cwd=str(ROOT), stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                                   errors="replace")
+        tail: deque[str] = deque(maxlen=12)
+        failing: list[str] = []
+        ran = None
+        for line in process.stdout:
+            print(line, end="", flush=True)
+            tail.append(line.rstrip())
+            if line.startswith(("FAIL:", "ERROR:")):
+                failing.append(line.split(":", 1)[1].strip())
+            elif line.startswith("Ran ") and " test" in line:
+                ran = int(line.split()[1])
+        code = process.wait()
+        rows.append({"name": name, "exit": code, "seconds": round(time.monotonic() - started, 1),
+                     "tail": list(tail), **({"ran": ran, "failing": failing} if tool == "suite" else {})})
+        print(f"--- {name}: {'pass' if code == 0 else f'FAIL (exit {code})'}", flush=True)
+    failed = [r["name"] for r in rows if r["exit"] != 0]
+    summary = {"checked": len(rows), "passed": len(rows) - len(failed), "failed": failed}
+    if tool == "suite":
+        summary.update(ran=rows[0]["ran"], failing=rows[0]["failing"][:50])
+    result.write_text(json.dumps({"tool": tool, "summary": summary, "rows": rows}, indent=1),
+                      encoding="utf-8")
+    return 0 if not failed else 1
 
 
 if __name__ == "__main__":

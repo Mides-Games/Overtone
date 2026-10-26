@@ -67,9 +67,10 @@ pre { margin: 0; max-height: 360px; overflow: auto; padding: 10px; border-radius
     <h2>New run</h2>
     <form id="form">
       <label>Tool
-        <select id="tool"><option value="stages">Stages (dev / held out)</option><option value="single_bpm">One-tempo maps</option></select>
+        <select id="tool"><option value="stages">Stages (dev / held out)</option><option value="single_bpm">One-tempo maps</option><option value="gates">Gates (every Python gate)</option><option value="suite">Test suite</option></select>
       </label>
       <label data-for="stages">Stage <select id="stage"></select></label>
+      <label data-for="suite">Which <select id="suite"><option value="all">All</option><option value="engine">Engine</option><option value="web">Web shell</option></select></label>
       <label data-for="stages">Part
         <select id="split"><option value="">Both</option><option value="dev">Dev (tune here)</option><option value="holdout">Held out (confirm here)</option></select>
       </label>
@@ -137,8 +138,10 @@ pre { margin: 0; max-height: 360px; overflow: auto; padding: 10px; border-radius
   }
 
   function syncForm() {
-    const tool = $("tool").value;
+    const tool = $("tool").value, checks = tool === "gates" || tool === "suite";
     document.querySelectorAll("[data-for]").forEach((el) => { el.hidden = el.dataset.for !== tool; });
+    // Gates and the suite take no engine, jobs or vote: they run as a person runs them.
+    for (const id of ["engine", "jobs", "max_songs", "beat_vote"]) $(id).closest("label").hidden = checks;
   }
 
   async function refresh() {
@@ -178,6 +181,14 @@ pre { margin: 0; max-height: 360px; overflow: auto; padding: 10px; border-radius
     const summary = run.summary;
     $("nosummary").hidden = !!summary;
     if (!summary) return;
+    if (summary.checked != null) {
+      const rows = [["Passed", `${summary.passed} of ${summary.checked}`],
+                    ["Failed", summary.failed.length ? summary.failed.join(", ") : "none"]];
+      if (summary.ran != null) rows.push(["Tests run", String(summary.ran)]);
+      for (const name of summary.failing || []) rows.push(["", name]);
+      for (const [k, v] of rows) { const r = document.createElement("tr"); r.append(cell(k), cell(v)); table.appendChild(r); }
+      return;
+    }
     const parts = ["dev", "holdout"].filter((p) => summary[p] && typeof summary[p] === "object");
     if (!parts.length) { const r = document.createElement("tr"); r.append(cell(JSON.stringify(summary).slice(0, 400))); table.appendChild(r); return; }
     const keys = Object.keys(summary[parts[0]]).filter((k) => typeof summary[parts[0]][k] !== "object");
@@ -206,6 +217,14 @@ pre { margin: 0; max-height: 360px; overflow: auto; padding: 10px; border-radius
   $("form").onsubmit = async (event) => {
     event.preventDefault();
     const tool = $("tool").value;
+    if (tool === "gates" || tool === "suite") {
+      const request = tool === "gates" ? { tool } : { tool, suite: $("suite").value };
+      $("go").disabled = true;
+      try { const meta = await call("POST", "/api/v1/runs", request); selected = meta.id; await refresh(); }
+      catch (err) { $("note").className = "note err"; $("note").textContent = err.message; }
+      $("go").disabled = false;
+      return;
+    }
     const request = { tool, engine: $("engine").value, jobs: Number($("jobs").value), max_songs: Number($("max_songs").value),
                       beat_vote: $("beat_vote").checked };
     if (tool === "stages") Object.assign(request, { stage: $("stage").value, split: $("split").value, baseline: $("baseline").value,

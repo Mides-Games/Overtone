@@ -1,9 +1,10 @@
 /**
- * A ZIP archive built in the browser (W3.15), for a batch's timings. The
- * entries are stored, not compressed: a `[TimingPoints]` block is a few
- * kilobytes, and storing them keeps this to a CRC and three headers instead
- * of a deflate dependency. Names are UTF-8 (flag bit 11). No ZIP64: a batch
- * is at most 50 files of a few kilobytes each.
+ * A ZIP archive built in the browser: a batch's timings (W3.15) and a song's
+ * .osz. The entries are stored, not compressed: a `[TimingPoints]` block is a
+ * few kilobytes and the audio is compressed already, and storing them keeps
+ * this to a CRC and three headers instead of a deflate dependency. Names are
+ * UTF-8 (flag bit 11). No ZIP64: the largest archive is one upload (40 MB)
+ * and its .osu.
  */
 
 const CRC_TABLE = (() => {
@@ -29,7 +30,7 @@ const dosTime = (date) => ({
 })
 
 /**
- * `files` is `[{ name, text }]`; returns the archive's bytes. Names repeated
+ * `files` is `[{ name, text }]` or `[{ name, data }]` (bytes); returns the archive's bytes. Names repeated
  * within the batch get " (2)", " (3)" before their extension, so no entry
  * hides another when unpacked.
  */
@@ -37,11 +38,11 @@ export function zipStore(files, date = new Date()) {
   const encoder = new TextEncoder()
   const { time, date: day } = dosTime(date)
   const taken = new Set()
-  const entries = files.map(({ name, text }) => {
+  const entries = files.map(({ name, text, data: raw }) => {
     let unique = name
     for (let n = 2; taken.has(unique.toLowerCase()); n++) unique = name.replace(/(\.[^.]*)?$/, ` (${n})$1`)
     taken.add(unique.toLowerCase())
-    const data = encoder.encode(text)
+    const data = raw ?? encoder.encode(text)
     return { name: encoder.encode(unique), data, crc: crc32(data) }
   })
 

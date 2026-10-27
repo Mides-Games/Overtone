@@ -9,7 +9,8 @@
 # minutes, and the deploy user's key can start it on demand. It deploys one branch only (BRANCH),
 # fast-forward only: a checkout that has moved on its own is left alone and
 # said so. It waits while the server runs a measurement, the gates or the
-# suite, so a push never cuts one short. Once the code on disk has moved, the
+# suite, so a push never cuts one short, and while the running server does
+# not answer, since it cannot say it is idle. Once the code on disk has moved, the
 # service is always restarted, whatever else failed: new files under an old
 # process is the one state never to leave behind. Nothing runs on GitHub's side.
 #
@@ -39,17 +40,30 @@ main() {
         return 0
     fi
 
-    # A run in progress or waiting: the next tick deploys.
-    if [ -r "$TOKEN_FILE" ]; then
-        # The header goes in on stdin: an argument is readable by every user.
-        busy=$(printf 'Authorization: Bearer %s\n' "$(cat "$TOKEN_FILE")" |
-               curl -fsS --max-time 10 -H @- "$API/api/v1/runs" 2>/dev/null |
-               python3 -c 'import json, sys; q = json.load(sys.stdin)["queue"]; print(1 if q["running"] or q["queued"] else 0)' \
-               2>/dev/null || echo 0)
-        if [ "$busy" = 1 ]; then
-            echo "overtone-update: a run is going; $(git rev-parse --short "$new") waits for the next tick"
-            return 0
+    # A run in progress or waiting: the next tick deploys. This fails
+    # closed: a server that does not say it is idle (no answer, a refused
+    # token, no token to send) may be in the middle of a run, so the code
+    # does not move under it. The one exception is a service systemd says is
+    # not running: its runs are its own processes, so none can be going, and
+    # waiting would keep a broken server from ever receiving its fix.
+    if systemctl is-active --quiet "$SERVICE"; then
+        busy=unknown
+        if [ -r "$TOKEN_FILE" ]; then
+            # The header goes in on stdin: an argument is readable by every user.
+            busy=$(printf 'Authorization: Bearer %s\n' "$(cat "$TOKEN_FILE")" |
+                   curl -fsS --max-time 10 -H @- "$API/api/v1/runs" 2>/dev/null |
+                   python3 -c 'import json, sys; q = json.load(sys.stdin)["queue"]; print(1 if q["running"] or q["queued"] else 0)' \
+                   2>/dev/null || echo unknown)
         fi
+        case "$busy" in
+            0) ;;
+            1)
+                echo "overtone-update: a run is going; $(git rev-parse --short "$new") waits for the next tick"
+                return 0 ;;
+            *)
+                echo "overtone-update: $API did not say whether a run is going (no answer, a refused token, or $TOKEN_FILE unreadable); $(git rev-parse --short "$new") waits for the next tick"
+                return 0 ;;
+        esac
     fi
 
     if ! git merge --quiet --ff-only "origin/$BRANCH"; then

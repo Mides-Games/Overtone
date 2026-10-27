@@ -1,5 +1,10 @@
 # MSI distribution — everything the app needs, in one installer
 
+> **Parked on 2026-10-26.** Overtone is web-only; the installer, its build and its
+> release gates (`installer/`) left master with the desktop app and are kept whole on
+> the branch `parked/desktop-app` and the tag `v3-desktop-app`. This document records
+> what was built and published (v0.1.0-alpha, v0.2.0-alpha), not what master ships.
+
 Overtone ships as a single **Windows MSI installer**, self-contained: no
 internet connection required at install or at runtime, no external
 dependencies beyond what Windows already provides, no user-managed model

@@ -98,8 +98,9 @@ export const LIVE_LIMIT = 100;
 
 /**
  * Whose turn an analysis waits for (W3.9): the account, or without one the
- * hashed address the anonymous quota counts. A cookie cleared between uploads
- * is still the same person here.
+ * hashed address the anonymous quota counts (for IPv6, the hashed /64:
+ * utils/client-ip.js). A cookie cleared between uploads, or an address
+ * rotated inside the same /64, is still the same person here.
  */
 const ownerOf = (a) => a.accountId ?? `ip:${a.ipHash}`;
 

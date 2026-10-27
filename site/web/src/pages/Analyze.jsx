@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { api, lookupAudio, uploadAudio } from '../lib/api.js'
 import { batchProgress, batchTitle, shouldNotify } from '../lib/batch.js'
 import { recentAnalyses, rememberAnalysis } from '../lib/recent.js'
+import { holdAudio } from '../lib/session-audio.js'
 import { readTags } from '../lib/tags.js'
 import { batchFiles } from '../lib/timing.js'
 import { zipStore } from '../lib/zip.js'
@@ -27,9 +28,9 @@ const MAX_FILES = 50
 /** Refusals that the next file of a batch would get too. */
 const STOPS_THE_BATCH = ['QUOTA_EXCEEDED', 'PENDING_LIMIT', 'QUEUE_FULL', 'CACHE_LIMIT', 'NETWORK', 'RATE_LIMITED']
 const OUTPUTS = [
+  { key: 'osz', ready: true },
   { key: 'timingPoints', ready: true },
   { key: 'csv', ready: true },
-  { key: 'osu', ready: false },
   { key: 'click', ready: false },
 ]
 
@@ -112,6 +113,8 @@ export default function Analyze() {
           (await lookupAudio(item.file, options)) ??
           (await uploadAudio(item.file, (sent) => update(item.key, { upload: { kind: 'sending', sent } }), options))
         rememberAnalysis(created.id, item.file.name)
+        // The result page plays this same file from the browser; the server never serves it back.
+        holdAudio(created.id, item.file)
         if (alone) return navigate(`/analyze/${created.id}`)
         update(item.key, { upload: { kind: 'sent', id: created.id } })
       } catch (error) {

@@ -28,7 +28,7 @@ import math
 import os
 import re
 import sqlite3
-import sys
+import stat as stat_module
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -40,10 +40,9 @@ import overtone as ta
 import overtone_rust
 from overtone_paths import data_root
 
-#: Source checkout: the engine lives in ``python/``, data at the repo root.
-#: Frozen build: modules sit beside the data inside the contents folder.
+#: The engine lives in ``python/``, data at the repo root.
 _HERE = Path(__file__).resolve().parent
-ROOT = _HERE if getattr(sys, "frozen", False) else _HERE.parent
+ROOT = _HERE.parent
 SCHEMA_PATH = ROOT / "python" / "library.sql"
 #: The version of ``library.sql`` this code reads and writes.
 SCHEMA_VERSION = 3
@@ -217,6 +216,43 @@ def _red_lines(lines: list[str]) -> tuple[int, float | None]:
     return count, first
 
 
+def safe_audio_name(name: str) -> bool:
+    """Whether an .osu's ``AudioFilename`` can only name a file of its own
+    song folder: a bare file name, with no separator, drive, parent or NUL.
+    The name comes from a file anyone can write; joined to the folder as it
+    is, ``../`` or an absolute path would send the decoder anywhere."""
+    return (bool(name) and name not in (".", "..") and not os.path.isabs(name)
+            and not any(char in name for char in "/\\:\0"))
+
+
+def audio_in_folder(folder: str | os.PathLike[str], name: str) -> str | None:
+    """The audio ``name`` of song folder ``folder``, when it is a regular file
+    inside that folder once every link is followed; None otherwise (missing,
+    a refused name, a directory, a link that leads out). The path returned
+    is the resolved one, so what is decoded is what was checked."""
+    if not safe_audio_name(name):
+        return None
+    try:
+        root = os.path.realpath(folder, strict=True)
+        real = os.path.realpath(os.path.join(folder, name), strict=True)
+        inside = os.path.commonpath([os.path.normcase(root), os.path.normcase(real)])
+        regular = stat_module.S_ISREG(os.stat(real).st_mode)
+    except (OSError, ValueError):
+        return None
+    if not regular or inside != os.path.normcase(root) or real == root:
+        return None
+    return real
+
+
+def _missing_audio(folder: str, name: str) -> str:
+    """Why a song folder's audio was not read, for the row that says so."""
+    if not safe_audio_name(name):
+        return f"{name!r} is not a file name in its song folder; refused."
+    if os.path.lexists(os.path.join(folder, name)):
+        return f"{name} is not a regular file inside its song folder; refused."
+    return f"{name} is not in the folder."
+
+
 def read_osu_header(path: str | os.PathLike[str]) -> dict:
     """What the index keeps of one .osu, without parsing its hit objects.
 
@@ -276,7 +312,9 @@ def _parse_osu_header(raw: bytes, name: str, size: int | None = None) -> dict:
         "source": metadata.get("Source", ""),
         "tags": metadata.get("Tags", ""),
         "mode": _int(general.get("Mode", "0")),
-        "audio_file": general.get("AudioFilename", "").strip(),
+        # A name that could leave the song folder is not kept (safe_audio_name).
+        "audio_file": audio if safe_audio_name(audio := general.get("AudioFilename", "").strip())
+                      else "",
         "red_lines": red_lines,
         "first_bpm": round(first_bpm, 3) if first_bpm is not None else None,
         "objects": objects,
@@ -880,8 +918,9 @@ class Library:
                     "JOIN sets s ON s.id = b.set_id ORDER BY s.folder, b.path"):
                 groups.setdefault((folder, audio.lower()), (audio, []))[1].append(path)
         for (folder, _key), (audio, paths) in groups.items():
-            audio_path = os.path.join(folder, audio) if audio else ""
-            audio_stat = _stat(audio_path)
+            audio_path = os.path.join(folder, audio) if safe_audio_name(audio) else ""
+            found = audio_in_folder(folder, audio)
+            audio_stat = _stat(found) if found else (-1, -1)
             # A .osu gone since the scan is the next scan's to drop, not an error.
             stale = [(path, stat) for path, stat in ((path, _stat(path)) for path in paths)
                      if stat[0] >= 0 and kept.get(path) != (*stat, *audio_stat, HEALTH_GRADER)]
@@ -922,11 +961,14 @@ class Library:
             return (path, *stat, *audio_stat, HEALTH_GRADER, engine, verdict, lines, flagged,
                     worst, common, detail, now)
 
-        if audio_stat[0] < 0:
-            detail = f"{os.path.basename(audio_path) or 'No audio file'} is not in the folder."
+        found = audio_in_folder(os.path.dirname(audio_path), os.path.basename(audio_path)) \
+            if audio_path else None
+        if audio_stat[0] < 0 or found is None:
+            detail = (_missing_audio(os.path.dirname(audio_path), os.path.basename(audio_path))
+                      if audio_path else "No audio file is not in the folder.")
             return [row(path, stat, "no_audio", detail=detail) for path, stat in stale]
         try:
-            times, weights, duration = _attacks(audio_path, engine)
+            times, weights, duration = _attacks(found, engine)
         except overtone_rust.SidecarUnavailable:
             raise
         except (RuntimeError, ValueError, OSError) as exc:
@@ -1012,7 +1054,7 @@ class Library:
         fingerprint = engine_fingerprint(engine)
         started = time.perf_counter()
         with closing(self._connect()) as db, db:
-            audio = {os.path.join(folder, name) for folder, name in db.execute(
+            audio = {os.path.join(folder, name): (folder, name) for folder, name in db.execute(
                 "SELECT DISTINCT s.folder, b.audio_file FROM beatmaps b "
                 "JOIN sets s ON s.id = b.set_id WHERE b.audio_file != ''")}
             kept = {row[0]: row[1:] for row in db.execute(
@@ -1021,22 +1063,24 @@ class Library:
             db.executemany("DELETE FROM analysis WHERE path = ?", ((p,) for p in gone))
         work = []
         for path in sorted(audio):
-            stat = _stat(path)
+            # Only a regular file inside its song folder is looked at: a name
+            # from an .osu that leads elsewhere is never stat'ed or decoded.
+            found = audio_in_folder(*audio[path])
+            stat = _stat(found) if found else (-1, -1)
             if kept.get(path) != (*stat, engine, fingerprint):
-                work.append((path, stat))
+                work.append((path, stat, found))
         total = len(work) if limit is None else min(len(work), max(0, int(limit)))
         if progress is not None:
             progress(0, total)
 
         def one(item):
-            path, stat = item
+            path, stat, real = item
             if stop is not None and stop.is_set():
                 return None
-            if stat[0] < 0:
-                found = {"verdict": "no_audio",
-                         "detail": f"{os.path.basename(path)} is not in the folder."}
+            if stat[0] < 0 or real is None:
+                found = {"verdict": "no_audio", "detail": _missing_audio(*audio[path])}
             else:
-                found = _analyse_audio(path, engine)
+                found = _analyse_audio(real, engine)
             return tuple([path, *stat, engine, fingerprint] + [
                 found.get(c, d) for c, d in (("verdict", ""), ("grid", ""), ("bpm", None),
                                              ("stability", None), ("meter", ""),

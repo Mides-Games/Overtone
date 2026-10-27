@@ -5,7 +5,6 @@ tracks with known ground truth, so no fixture files are needed. The v2
 segmentation and gap-filling helpers are still covered — they remain in the
 fallback path used for rubato and non-percussive audio.
 """
-import codecs
 import json
 import os
 import struct
@@ -29,10 +28,8 @@ from overtone import (
     _pulse_gap,
     _pulse_log10p,
     _meter_from_grid,
-    DEFAULT_LANGUAGE,
     Analysis,
     GridSection,
-    TimingAnalyzerApp,
     TimingPoint,
     _choose_subdivision,
     _fill_missed_beats,
@@ -281,27 +278,6 @@ class RobustnessTests(unittest.TestCase):
         frames = np.array([0.0, 500.0, 1000.0, 1250.0, 1500.0, 1750.0])
         filled = _fill_missed_beats(frames)
         self.assertEqual(len(filled), len(frames))
-
-    def test_english_is_default_language(self):
-        self.assertEqual(DEFAULT_LANGUAGE, "English")
-        self.assertEqual(list(TimingAnalyzerApp.TEXT.keys())[0], "English")
-        for table in TimingAnalyzerApp.TEXT.values():
-            self.assertIn("analyze", table)
-        self.assertIn("English", TimingAnalyzerApp.TEXT)
-        self.assertIn("Español", TimingAnalyzerApp.TEXT)
-
-    def test_variable_preset_is_default(self):
-        variable = TimingAnalyzerApp.PRESETS["variable"]
-        steady = TimingAnalyzerApp.PRESETS["steady"]
-        self.assertEqual(TimingAnalyzerApp.CFG_VERSION, 2)
-        # Variable preset: sensitive enough for songs that change often.
-        self.assertLessEqual(int(variable["persistence"]), 12)
-        self.assertLessEqual(float(variable["confidence"]), 75)
-        # Steady preset: strictly more conservative on every axis.
-        self.assertGreater(float(steady["delta"]), float(variable["delta"]))
-        self.assertGreater(int(steady["persistence"]), int(variable["persistence"]))
-        self.assertGreater(float(steady["confidence"]), float(variable["confidence"]))
-
 
 class EndToEndTests(unittest.TestCase):
     def test_steady_click_reports_correct_global_bpm(self):
@@ -1189,209 +1165,11 @@ class StopInsideStageTests(unittest.TestCase):
                                 "itself": "stopped"})
 
 
-class ClassicWindowLayoutTests(unittest.TestCase):
-    """The Tk window's Results header fits the window it opens in.
-
-    Every ghost button inherited the clam theme's 11-character minimum, so the
-    seven header buttons asked for 1204 px (1259 in Spanish) and CSV was cut
-    to 21 px at the default 1120.
-    """
-
-    def test_results_toolbar_fits_at_default_and_minimum_size(self):
-        from unittest import mock
-        import overtone
-        with tempfile.TemporaryDirectory() as tmp,                 mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"),                 mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
-            try:
-                app = TimingAnalyzerApp()
-            except Exception as exc:  # no display: nothing to lay out
-                self.skipTest(f"Tk unavailable: {exc}")
-            try:
-                app.root.attributes("-alpha", 0.0)
-                width, height = app.root.minsize()
-                for language in ("English", "Español"):
-                    app.language.set(language)
-                    app._translate()
-                    for geometry in ("1120x760", f"{width}x{height}"):
-                        app.root.geometry(geometry + "+-3000+-3000")
-                        app.root.update()
-                        for key in ("csv", "copy", "click", "half", "double", "inject", "details"):
-                            widget = app.widgets[key]
-                            with self.subTest(language=language, geometry=geometry, button=key):
-                                self.assertGreaterEqual(widget.winfo_width(), widget.winfo_reqwidth() - 1)
-            finally:
-                app.root.destroy()
-
-
-class ClassicWindowEditGuardTests(unittest.TestCase):
-    """×2/÷2 and Analyze rebuild the points from the detected sections; in the
-    classic window they used to throw hand edits away without a word."""
-
-    def _app(self, tmp):
-        from unittest import mock
-        import overtone
-        for name in ("CONFIG_PATH", "LEGACY_CONFIG_PATH"):
-            patcher = mock.patch.object(overtone, name, Path(tmp) / f"{name}.json")
-            patcher.start()
-            self.addCleanup(patcher.stop)
-        try:
-            app = TimingAnalyzerApp()
-        except Exception as exc:  # no display
-            self.skipTest(f"Tk unavailable: {exc}")
-        self.addCleanup(app.root.destroy)
-        app.root.attributes("-alpha", 0.0)
-        wav = Path(tmp) / "drums.wav"
-        _drum_track(wav, [(0.5, 128.0), (12.0, 140.0)], duration=24.0)
-        app.analysis = analyze_audio(wav)
-        app._render_results()
-        return app
-
-    def _edit(self, app):
-        app.selected_section = 1
-        app.edit_nudge(7.0)
-        return app.analysis.points[1].offset_ms
-
-    def test_declining_keeps_the_edit_and_accepting_drops_it(self):
-        from unittest import mock
-        with tempfile.TemporaryDirectory() as tmp:
-            app = self._app(tmp)
-            edited = self._edit(app)
-            with mock.patch("tkinter.messagebox.askyesno", return_value=False) as ask:
-                app._rescale_pulse(2.0)
-            ask.assert_called_once()
-            self.assertEqual(app.analysis.points[1].offset_ms, edited)  # still there
-            bpm = app.analysis.global_bpm
-            with mock.patch("tkinter.messagebox.askyesno", return_value=True):
-                app._rescale_pulse(2.0)
-            self.assertAlmostEqual(app.analysis.global_bpm, 2 * bpm, places=1)
-            with mock.patch("tkinter.messagebox.askyesno") as ask:  # nothing edited now
-                app._rescale_pulse(0.5)
-            ask.assert_not_called()
-
-    def test_exporting_makes_the_edits_safe(self):
-        from unittest import mock
-        with tempfile.TemporaryDirectory() as tmp:
-            app = self._app(tmp)
-            self._edit(app)
-            app.copy_osu()
-            with mock.patch("tkinter.messagebox.askyesno") as ask:
-                app._rescale_pulse(2.0)
-            ask.assert_not_called()
-
-    def test_analyze_asks_before_replacing_edits(self):
-        from unittest import mock
-        with tempfile.TemporaryDirectory() as tmp:
-            app = self._app(tmp)
-            edited = self._edit(app)
-            with mock.patch("tkinter.messagebox.askyesno", return_value=False) as ask:
-                app.run()
-            ask.assert_called_once()
-            self.assertFalse(app._busy)  # no analysis started
-            self.assertEqual(app.analysis.points[1].offset_ms, edited)
-
-
-def _classic_app(test, tmp):
-    """The Tk window on a throwaway config, hidden, or skip without a display."""
-    from unittest import mock
-    import overtone
-    for name in ("CONFIG_PATH", "LEGACY_CONFIG_PATH"):
-        patcher = mock.patch.object(overtone, name, Path(tmp) / f"{name}.json")
-        patcher.start()
-        test.addCleanup(patcher.stop)
-    try:
-        app = TimingAnalyzerApp()
-    except Exception as exc:  # no display
-        test.skipTest(f"Tk unavailable: {exc}")
-    test.addCleanup(app.root.destroy)
-    app.root.attributes("-alpha", 0.0)
-    app.root.geometry("1120x760+-3000+-3000")
-    return app
-
-
 def _grid_analysis(offsets_bpms):
     """A 30 s analysis at 120 BPM carrying the given (offset_ms, bpm) points."""
     points = [TimingPoint(float(ms), float(bpm), 0.9, n) for n, (ms, bpm) in enumerate(offsets_bpms)]
     return Analysis("synthetic.wav", 30.0, np.arange(60) * 0.5, np.full(60, 120.0), points,
                     HOP, 44100, 1.0, 120.0, 1.0, "4/4", np.zeros(4000, dtype=np.float32))
-
-
-class ClassicWindowSpanishTests(unittest.TestCase):
-    """With Español selected, the classic window still showed English: the
-    language label, the trace title and hover, and the refusal to delete §1."""
-
-    def test_spanish_reaches_the_label_trace_hover_and_delete(self):
-        from types import SimpleNamespace
-        with tempfile.TemporaryDirectory() as tmp:
-            app = _classic_app(self, tmp)
-            app.language.set("Español")
-            app._translate()
-            self.assertEqual(app.widgets["language_lbl"].cget("text"), "Idioma")
-
-            app.analysis = _grid_analysis([(1000.0, 120.0), (11000.0, 140.0)])
-            app._render_results()
-            app.root.geometry("1120x1000+-3000+-3000")  # room for the trace
-            app.root.update()
-            app._draw_preview()
-            canvas = app.preview
-            texts = [canvas.itemcget(i, "text") for i in canvas.find_all()
-                     if canvas.type(i) == "text"]
-            self.assertIn("CURVA DE TEMPO", texts)
-            self.assertNotIn("TEMPO TRACE", texts)
-
-            g = app._trace_geometry()
-            app._trace_hover(SimpleNamespace(x=(g["l"] + g["r"]) / 2,
-                                             y=(g["top"] + g["bottom"]) / 2))
-            hover = [canvas.itemcget(i, "text") for i in canvas.find_withtag("hover")
-                     if canvas.type(i) == "text"]
-            self.assertTrue(any(text.startswith("confianza") for text in hover), hover)
-
-            app.selected_section = 0
-            app.edit_delete()
-            self.assertEqual(app.status.get(), TimingAnalyzerApp.TEXT["Español"]["first_locked"])
-            self.assertEqual(len(app.analysis.points), 2)
-
-
-class ClassicWindowKeepsTheRowTests(unittest.TestCase):
-    """An edit re-rendered the table, which dropped the selection and put §1 in
-    the editor: a second +1 ms said "Select a table row first."."""
-
-    def _app(self, tmp):
-        app = _classic_app(self, tmp)
-        app.analysis = _grid_analysis([(1000.0, 120.0), (11000.0, 140.0), (21000.0, 120.0)])
-        app._render_results()
-        app.table.selection_set(app.table.get_children()[2])
-        app.root.update()                       # delivers <<TreeviewSelect>>
-        self.assertEqual(app.selected_section, 2)
-        return app
-
-    def test_nudging_twice_moves_the_same_point_twice(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            app = self._app(tmp)
-            for _ in range(2):
-                app.edit_nudge(1.0)
-                app.root.update()               # the re-render's own select events
-            self.assertEqual(app.analysis.points[2].offset_ms, 21002.0)
-            self.assertEqual(app.selected_section, 2)
-            self.assertEqual(app.edit_offset.get(), "21002.0")
-            self.assertEqual(app.table.index(app.table.selection()[0]), 2)
-
-    def test_the_editor_follows_the_point_it_edited(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            app = self._app(tmp)
-            app.edit_rescale(2.0)
-            app.root.update()
-            self.assertEqual(app.selected_section, 2)
-            self.assertEqual(app.edit_bpm.get(), "240.00")    # §3, not §1's 120
-            # An offset edit that re-sorts the point still keeps it selected.
-            app._set_editor("5000.0", "150")
-            app.edit_apply()
-            app.root.update()
-            self.assertEqual(app.selected_section, 1)
-            self.assertEqual(app.analysis.points[1].offset_ms, 5000.0)
-            self.assertEqual(app.edit_offset.get(), "5000.0")
-            app.edit_delete()
-            app.root.update()
-            self.assertIsNone(app.selected_section)          # nothing to keep
-            self.assertEqual(len(app.analysis.points), 2)
 
 
 class NoPulseRefusalTests(unittest.TestCase):
@@ -3614,124 +3392,6 @@ class ConfigAndInjectHardeningTests(unittest.TestCase):
                 inject_osu_timing_points(Path(tmp) / "missing.osu", self._analysis())
             self.assertEqual(target.read_text(encoding="utf-8"), self.LEGACY_OSU)
 
-    def test_config_tolerates_garbage(self):
-        from unittest import mock
-        import overtone
-        # Both paths: an unreadable config falls through to the pre-rename
-        # one, so leaving LEGACY_CONFIG_PATH real made "{not json" read back
-        # whatever ~/.timing_analyzer.json holds on the developer's machine.
-        with tempfile.TemporaryDirectory() as tmp, \
-                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "cfg.json"), \
-                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "legacy.json"):
-            overtone.CONFIG_PATH.write_text("[1, 2, 3]", encoding="utf-8")
-            self.assertEqual(overtone.load_config(), {})
-            overtone.CONFIG_PATH.write_text("{not json", encoding="utf-8")
-            self.assertEqual(overtone.load_config(), {})
-            overtone.save_config({"language": "English"})
-            self.assertEqual(overtone.load_config(), {"language": "English"})
-            # An unserialisable value must not raise, and must not corrupt
-            # the file that is already there.
-            overtone.save_config({"bad": object()})
-            self.assertEqual(overtone.load_config(), {"language": "English"})
-            # Hand-edited values of the wrong type used to crash the classic
-            # window on every launch. They are dropped; the rest is kept.
-            overtone.CONFIG_PATH.write_text(json.dumps({
-                "cfg_version": "2", "prefer_map_bpm": "on", "refine_beats": None,
-                "delta": True, "language": 5, "recent": ["a.mp3", 7, None],
-                "file": "song.mp3", "persistence": "12", "theme": {"a": 1},
-                "song_options": ["x"], "future_key": {"kept": 1}}),
-                encoding="utf-8")
-            # A key this version does not know is kept as it is (a newer
-            # version wrote it); a known key of the wrong type is dropped.
-            self.assertEqual(overtone.load_config(), {
-                "recent": ["a.mp3"], "file": "song.mp3", "persistence": "12",
-                "future_key": {"kept": 1}})
-            # Notepad saves with a BOM; the file is read, not reset.
-            overtone.CONFIG_PATH.write_bytes(codecs.BOM_UTF8 + b'{"language": "English"}')
-            self.assertEqual(overtone.load_config(), {"language": "English"})
-            # Without a config of its own, the pre-rename file is read.
-            overtone.CONFIG_PATH.unlink()
-            overtone.LEGACY_CONFIG_PATH.write_text('{"language": "Español"}', encoding="utf-8")
-            self.assertEqual(overtone.load_config(), {"language": "Español"})
-
-    def test_ctrl_c_in_a_field_copies_the_field(self):
-        import tkinter
-        from unittest import mock
-        import overtone
-        try:
-            tkinter.Tk().destroy()
-        except tkinter.TclError as exc:
-            self.skipTest(f"Tk unavailable: {exc}")
-        with tempfile.TemporaryDirectory() as tmp, \
-                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"), \
-                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
-            app = TimingAnalyzerApp()
-            try:
-                app.root.attributes("-alpha", 0.0)
-                app.root.geometry("1120x760+-3000+-3000")
-                app.root.update()
-                # A mock, so the test never touches the real clipboard; nothing
-                # is selected in the field, so its own copy leaves it alone too.
-                with mock.patch.object(app, "copy_osu") as copy_osu:
-                    for field in (app.edit_offset, app.edit_bpm):
-                        field.focus_force()
-                        app.root.update()
-                        field.event_generate("<Control-c>")
-                        app.root.update()
-                    self.assertEqual(copy_osu.call_count, 0)
-                    app.table.focus_force()
-                    app.root.update()
-                    app.table.event_generate("<Control-c>")
-                    app.root.update()
-                    self.assertEqual(copy_osu.call_count, 1)
-            finally:
-                app.root.destroy()
-
-    def test_a_csv_that_cannot_be_written_says_so(self):
-        import tkinter
-        from unittest import mock
-        import overtone
-        try:
-            tkinter.Tk().destroy()
-        except tkinter.TclError as exc:
-            self.skipTest(f"Tk unavailable: {exc}")
-        with tempfile.TemporaryDirectory() as tmp, \
-                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"), \
-                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
-            app = TimingAnalyzerApp()
-            try:
-                app.analysis = _validation_analysis([TimingPoint(500.0, 150.0, 0.9, 0)])
-                app._manual_edits = 2
-                # Like a CSV Excel holds open: the write raises an OSError.
-                unwritable = str(Path(tmp) / "no such folder" / "timing.csv")
-                with mock.patch("tkinter.filedialog.asksaveasfilename", return_value=unwritable):
-                    app.save_csv()                  # raised out of the Tk callback
-                self.assertIn(app.tr("error", value=""), app.status.get())
-                self.assertEqual(app._manual_edits, 2)   # nothing was exported
-            finally:
-                app.root.destroy()
-
-    def test_the_classic_window_opens_on_a_badly_typed_config(self):
-        import tkinter
-        from unittest import mock
-        import overtone
-        try:
-            tkinter.Tk().destroy()
-        except tkinter.TclError as exc:
-            self.skipTest(f"Tk unavailable: {exc}")
-        with tempfile.TemporaryDirectory() as tmp, \
-                mock.patch.object(overtone, "CONFIG_PATH", Path(tmp) / "c.json"), \
-                mock.patch.object(overtone, "LEGACY_CONFIG_PATH", Path(tmp) / "l.json"):
-            overtone.CONFIG_PATH.write_text(json.dumps(
-                {"cfg_version": "2", "prefer_map_bpm": "on", "refine_beats": "abc"}),
-                encoding="utf-8")
-            app = TimingAnalyzerApp()   # raised TypeError before the window opened
-            try:
-                self.assertTrue(app.prefer_map_bpm.get())
-                self.assertTrue(app.refine_beats.get())
-            finally:
-                app.root.destroy()
-
     def test_local_bpm_helper_handles_degenerate_input(self):
         self.assertEqual(len(_robust_local_bpms(np.zeros(0))), 0)
         self.assertEqual(len(_robust_local_bpms(np.array([1.0]))), 1)
@@ -5133,8 +4793,7 @@ def _run_cli(argv, analysis=None):
     """main() on ``argv`` -> (exit code, stdout, stderr).
 
     The analysis is stubbed with ``analysis`` when given (a function stands in
-    for analyze_audio itself), and the GUI never opens: it is a mock, so a
-    command that would launch it only says so.
+    for analyze_audio itself).
     """
     import contextlib
     import io
@@ -5145,7 +4804,6 @@ def _run_cli(argv, analysis=None):
     code = 0
     with contextlib.ExitStack() as stack:
         stack.enter_context(mock.patch.object(sys, "argv", ["overtone.py", *argv]))
-        gui = stack.enter_context(mock.patch.object(overtone, "TimingAnalyzerApp"))
         if callable(analysis):
             stack.enter_context(mock.patch.object(overtone, "analyze_audio", analysis))
         elif analysis is not None:
@@ -5157,8 +4815,6 @@ def _run_cli(argv, analysis=None):
             main()
         except SystemExit as exc:
             code = exc.code
-    if gui.called:
-        err.write("<GUI opened>")
     return code, out.getvalue(), err.getvalue()
 
 
@@ -5292,13 +4948,14 @@ class CliFlagTests(unittest.TestCase):
     """A flag that cannot act is refused: --inject with the audio forgotten
     opened the window, and --title without --osz wrote nothing, both silently."""
 
-    def test_flags_without_audio_do_not_open_the_window(self):
-        code, out, err = _run_cli(["--inject", "map.osu"])
-        self.assertEqual(code, 2)
-        self.assertIn("--inject needs an audio file", err)
-        self.assertNotIn("<GUI opened>", err)
-        code, out, err = _run_cli([])
-        self.assertIn("<GUI opened>", err)          # no arguments at all still opens it
+    def test_the_audio_is_required_with_or_without_flags(self):
+        # The command line is the only Python interface since the desktop
+        # window was parked: no arguments is a usage error, not a window.
+        for argv in (["--inject", "map.osu"], []):
+            code, out, err = _run_cli(argv)
+            self.assertEqual(code, 2, argv)
+            self.assertIn("the following arguments are required: audio", err)
+            self.assertEqual(out, "")
 
     def test_flags_that_need_another_flag_say_so(self):
         analysis = _grid_analysis([(1000.0, 120.0)])
@@ -6051,6 +5708,81 @@ class LibraryIndexTests(unittest.TestCase):
         self.assertAlmostEqual(found["lines"][0]["bpm"], 120.0, delta=0.05)
 
 
+class LibraryAudioPathTests(unittest.TestCase):
+    """An .osu names its audio, and anyone can write an .osu: the name is
+    never followed out of its song folder, at scan, analysis or health."""
+
+    def setUp(self) -> None:
+        import overtone_library
+        self.ol = overtone_library
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.tmp = Path(scratch.name)
+        self.songs = self.tmp / "Songs"
+        self.folder = self.songs / "1 Band - Song"
+        self.folder.mkdir(parents=True)
+        (self.folder / "audio.wav").write_bytes(b"RIFF" + bytes(64))
+        (self.folder / "sub").mkdir()
+        self.outside = self.tmp / "outside.wav"
+        self.outside.write_bytes(b"RIFF" + bytes(64))
+        self.library = overtone_library.Library(self.tmp / "index" / "library.sqlite3")
+
+    def _link(self) -> bool:
+        try:
+            os.symlink(self.outside, self.folder / "link.wav")
+        except (OSError, NotImplementedError):  # Windows without the privilege
+            return False
+        return True
+
+    def test_only_a_bare_file_name_is_an_audio_name(self):
+        for bad in ("../outside.wav", "..\\outside.wav", "/etc/passwd", "\\\\host\\share\\a.wav",
+                    "C:\\a.wav", "C:a.wav", "sub/a.wav", "..", ".", "", "a\0.wav"):
+            self.assertFalse(self.ol.safe_audio_name(bad), repr(bad))
+        for good in ("audio.wav", "..audio..mp3", "Song (TV Size).ogg", "風.mp3"):
+            self.assertTrue(self.ol.safe_audio_name(good), good)
+
+    def test_only_a_regular_file_inside_the_folder_is_found(self):
+        self.assertEqual(self.ol.audio_in_folder(self.folder, "audio.wav"),
+                         os.path.realpath(self.folder / "audio.wav"))
+        for name in ("../outside.wav", str(self.outside), "sub", "missing.wav", ".."):
+            self.assertIsNone(self.ol.audio_in_folder(self.folder, name), name)
+        if self._link():
+            self.assertIsNone(self.ol.audio_in_folder(self.folder, "link.wav"))
+
+    def test_the_scan_keeps_no_name_that_leaves_the_folder(self):
+        (self.folder / "Band - Song (Mapper) [Hard].osu").write_text(
+            _mapset_osu("Hard", audio="../../outside.wav", objects=(1000, 2000)),
+            encoding="utf-8", newline="")
+        self.library.scan(self.songs)
+        beatmap = self.library.search("band")["sets"][0]["beatmaps"][0]
+        self.assertEqual(beatmap["audio_file"], "")
+
+    def test_an_index_holding_such_a_name_never_decodes_it(self):
+        import sqlite3
+        from contextlib import closing
+        (self.folder / "Band - Song (Mapper) [Hard].osu").write_text(
+            _mapset_osu("Hard", audio="audio.wav", objects=(1000, 2000)),
+            encoding="utf-8", newline="")
+        self.library.scan(self.songs)
+        names = ["../../outside.wav", str(self.outside), "sub"]
+        if self._link():
+            names.append("link.wav")
+        for name in names:
+            # An index written before the scan refused such names.
+            with closing(sqlite3.connect(self.library.path)) as db, db:
+                db.execute("UPDATE beatmaps SET audio_file = ?", (name,))
+            with mock.patch.object(self.ol, "_analyse_audio") as engine, \
+                    mock.patch.object(self.ol, "_attacks") as attacks:
+                run = self.library.analyze(engine="python")
+                self.library.health(engine="python")
+            engine.assert_not_called()
+            attacks.assert_not_called()
+            self.assertEqual(run["counts"]["no_audio"], 1, name)
+            cached = self.library.analyses([os.path.join(self.folder, name)])
+            self.assertIn("refused", next(iter(cached.values()))["detail"], name)
+            self.assertEqual(self.library.health_report(("no_audio",))["counts"]["no_audio"], 1)
+
+
 class LibraryServerTests(unittest.TestCase):
     """The library API: the index and the BPM cache over HTTP, behind a token."""
 
@@ -6194,6 +5926,192 @@ class LibraryServerTests(unittest.TestCase):
         self.assertEqual([r["id"] for r in self._call("GET", "/api/v1/runs")[1]["runs"]],
                          [meta["id"]])
 
+    def test_sessions_are_signed_by_the_token_and_expire(self):
+        sessions = self.server_module.Sessions("secret")
+        cookie = sessions.new()
+        self.assertTrue(sessions.valid(cookie))
+        self.assertFalse(self.server_module.Sessions("another").valid(cookie))
+        self.assertFalse(sessions.valid(cookie[:-1] + ("0" if cookie[-1] != "0" else "1")))
+        self.assertFalse(sessions.valid(None))
+        expired = self.server_module.Sessions("secret", ttl=-1)
+        self.assertFalse(expired.valid(expired.new()))
+
+    def test_the_runs_page_signs_in_with_the_token_and_serves_nothing_else(self):
+        import http.client
+        port = self.server.server_address[1]
+
+        def request(method, path, body=None, headers=None):
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+            connection.request(method, path, body=body, headers=headers or {})
+            reply = connection.getresponse()
+            data = reply.read()
+            connection.close()
+            return reply.status, dict(reply.getheaders()), data
+
+        form = {"Content-Type": "application/x-www-form-urlencoded"}
+        status, headers, _ = request("GET", "/")
+        self.assertEqual((status, headers["Location"]), (303, "/login"))
+        self.assertEqual(request("GET", "/login")[0], 200)
+        self.assertEqual(request("POST", "/login", "token=wrong", form)[0], 401)
+        status, headers, _ = request("POST", "/login", "token=secret", form)
+        self.assertEqual(status, 303)
+        self.assertIn("HttpOnly", headers["Set-Cookie"])
+        self.assertIn("SameSite=Strict", headers["Set-Cookie"])
+        cookie = headers["Set-Cookie"].split(";")[0]
+        status, _, page = request("GET", "/", headers={"Cookie": cookie})
+        self.assertEqual(status, 200)
+        self.assertIn(b"/api/v1/runs", page)
+        self.assertEqual(request("GET", "/api/v1/whoami", headers={"Cookie": cookie})[0], 200)
+        # Nothing but the page: no file beside it, no desktop bridge.
+        for path in ("/../python/overtone.py", "/server_page/runs.html", "/index.html"):
+            self.assertEqual(request("GET", path, headers={"Cookie": cookie})[0], 404, path)
+        call = json.dumps({"args": []})
+        self.assertEqual(request("POST", "/api/v1/bridge/settings", call,
+                                 {"Cookie": cookie, "X-Overtone": "1"})[0], 404)
+        # A cookie alone changes nothing: no cross-site form can add the header.
+        run = json.dumps({"tool": "rm"})
+        self.assertEqual(request("POST", "/api/v1/runs", run, {"Cookie": cookie})[0], 401)
+        self.assertEqual(request("POST", "/api/v1/runs", run,
+                                 {"Cookie": cookie, "X-Overtone": "1"})[0], 400)
+        status, headers, _ = request("POST", "/logout", headers={"Cookie": cookie,
+                                                                 "X-Overtone": "1"})
+        self.assertEqual((status, headers["Location"]), (303, "/login"))
+        # The bearer token still works for scripts.
+        self.assertEqual(request("GET", "/api/status",
+                                 headers={"Authorization": "Bearer secret"})[0], 200)
+
+    def test_the_library_analysis_yields_to_measurement_runs(self):
+        import threading
+        import time
+        import types
+        server = self.server_module
+
+        class Job:
+            def __init__(self, running=False):
+                self.running, self.stop = running, threading.Event()
+
+            def state(self):
+                return {"running": self.running}
+
+        class Fake:
+            def __init__(self, queue):
+                self.queue, self.analysed = queue, 0
+                self.scan_job, self.analyze_job = Job(), Job()
+                self.runs = types.SimpleNamespace(state=lambda: self.queue)
+
+            def scan(self):
+                return server.HTTPStatus.CONFLICT, {}
+
+            def analyze(self):
+                self.analysed += 1
+                self.analyze_job.running = True
+
+        busy = Fake({"running": None, "queued": ["r1"]})
+        server._every_once(busy, poll=0)
+        self.assertEqual(busy.analysed, 0)
+
+        idle = Fake({"running": None, "queued": []})
+
+        def sleep(_seconds):
+            if idle.analyze_job.stop.is_set():
+                idle.analyze_job.running = False
+            idle.queue = {"running": "r2", "queued": []}
+
+        with mock.patch.object(server.time, "sleep", sleep):
+            server._every_once(idle, poll=0)
+        self.assertEqual(idle.analysed, 1)
+        self.assertTrue(idle.analyze_job.stop.is_set())
+        self.assertIs(server.time, time)
+
+    def _serve(self, **limits) -> int:
+        """A second server on the same service, with its own limits; its port."""
+        import threading
+        server = self.server_module.serve(self.service, "127.0.0.1", 0, "secret", log=False,
+                                          **limits)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        return server.server_address[1]
+
+    @staticmethod
+    def _request(port, method, path, body=None, headers=None):
+        import http.client
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        try:
+            connection.request(method, path, body=body, headers=headers or {})
+            reply = connection.getresponse()
+            return reply.status, dict(reply.getheaders()), reply.read()
+        finally:
+            connection.close()
+
+    def test_wrong_tokens_are_limited_across_the_server_without_a_sleep(self):
+        import time
+        now = [1000.0]
+        logins = self.server_module.FailedLogins(limit=3, window=60.0, clock=lambda: now[0])
+        port = self._serve(logins=logins)
+        form = {"Content-Type": "application/x-www-form-urlencoded"}
+
+        def bearer(token):
+            return self._request(port, "GET", "/api/status",
+                                 headers={"Authorization": f"Bearer {token}"})
+
+        started = time.monotonic()
+        self.assertEqual(bearer("wrong")[0], 401)
+        self.assertEqual(self._request(port, "POST", "/login", "token=wrong", form)[0], 401)
+        self.assertEqual(bearer("nope")[0], 401)
+        # No guess holds its thread asleep any more (it was a second each).
+        self.assertLess(time.monotonic() - started, 1.0)
+        # Past the limit no token is checked at all, the right one included.
+        status, headers, _ = bearer("secret")
+        self.assertEqual((status, headers.get("Retry-After")), (429, "60"))
+        status, _, page = self._request(port, "POST", "/login", "token=secret", form)
+        self.assertEqual(status, 429)
+        self.assertIn(b"Too many wrong tokens", page)
+        # A signed-in browser keeps working, and asking with no token is no guess.
+        cookie = f"{self.server_module.SESSION_COOKIE}={self.service.sessions.new()}"
+        self.assertEqual(self._request(port, "GET", "/api/v1/whoami",
+                                       headers={"Cookie": cookie})[0], 200)
+        self.assertEqual(self._request(port, "GET", "/api/status")[0], 401)
+        now[0] += 30
+        self.assertEqual(bearer("secret")[0], 429)
+        now[0] += 30
+        self.assertEqual(bearer("secret")[0], 200)
+
+    def test_idle_connections_are_capped_and_dropped(self):
+        import socket
+        import time
+        port = self._serve(max_connections=3, timeout=2.0)
+        idle = [socket.create_connection(("127.0.0.1", port), timeout=10) for _ in range(2)]
+        self.addCleanup(lambda: [sock.close() for sock in idle])
+        # Below the cap, connections that say nothing do not hold up a request.
+        status, _, _ = self._request(port, "GET", "/api/status",
+                                     headers={"Authorization": "Bearer secret"})
+        self.assertEqual(status, 200)
+        idle.append(socket.create_connection(("127.0.0.1", port), timeout=10))
+        # At the cap, one more is told so and closed, never given a thread.
+        with socket.create_connection(("127.0.0.1", port), timeout=10) as extra:
+            reply = b""
+            while chunk := extra.recv(4096):
+                reply += chunk
+        self.assertTrue(reply.startswith(b"HTTP/1.0 503 "), reply[:40])
+        self.assertIn(b"Retry-After", reply)
+        # An idle connection is dropped once it has said nothing for the timeout.
+        started = time.monotonic()
+        for sock in idle:
+            self.assertEqual(sock.recv(1), b"")
+        self.assertLess(time.monotonic() - started, 8.0)
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                status = self._request(port, "GET", "/api/status",
+                                       headers={"Authorization": "Bearer secret"})[0]
+            except OSError:
+                status = None
+            if status == 200 or time.monotonic() > deadline:
+                break
+            time.sleep(0.05)
+        self.assertEqual(status, 200)
+
     def test_the_token_is_generated_once_and_kept_private(self):
         from unittest import mock
         path = self.tmp / "token"
@@ -6214,6 +6132,124 @@ class LibraryServerTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {self.server_module.TOKEN_ENV: ""}):
             with self.assertRaises(SystemExit):
                 self.server_module.load_token(str(path))
+
+
+class DeployScriptTests(unittest.TestCase):
+    """The server's updater and the root-run script that installs it."""
+
+    DEPLOY = Path(__file__).resolve().parent.parent / "deploy"
+
+    def test_the_setup_script_writes_the_committed_units_byte_for_byte(self):
+        import re
+        # Root runs this script from a copy it reviewed; it must not reach
+        # back into the overtone-owned checkout for anything it installs.
+        script = (self.DEPLOY / "setup-deploy-user.sh").read_bytes().decode("utf-8")
+        for name in ("overtone-update.service", "overtone-update.timer"):
+            found = re.search(rf"^cat > /etc/systemd/system/{re.escape(name)} <<'UNIT'\n"
+                              r"(.*?)^UNIT$", script, re.S | re.M)
+            self.assertIsNotNone(found, name)
+            self.assertEqual(found.group(1),
+                             (self.DEPLOY / name).read_bytes().decode("utf-8"), name)
+        outside = re.sub(r"<<'UNIT'\n.*?^UNIT$", "", script, flags=re.S | re.M)
+        code = "\n".join(line for line in outside.splitlines()
+                         if not line.lstrip().startswith("#"))
+        for reach in ("dirname", "/opt/overtone", "cp "):
+            self.assertNotIn(reach, code, reach)
+
+    def _update(self, api_state, active: bool = True) -> tuple[bool, str]:
+        """Run overtone-update.sh against a checkout one commit behind its
+        origin, with systemctl and sudo stubbed and the runs API answering
+        ``api_state`` (a queue, or None for no answer). Whether the checkout
+        moved, and what the script said."""
+        import shutil
+        import subprocess
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        for tool in ("sh", "git", "curl"):
+            if shutil.which(tool) is None:
+                self.skipTest(f"{tool} is not on PATH")
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        tmp = Path(scratch.name)
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com",
+               "GIT_CONFIG_GLOBAL": str(tmp / "gitconfig"), "GIT_CONFIG_NOSYSTEM": "1"}
+
+        def git(*args, cwd=tmp):
+            subprocess.run(["git", *args], cwd=cwd, env=env, check=True, capture_output=True)
+
+        upstream, checkout = tmp / "upstream", tmp / "checkout"
+        git("init", "-q", "-b", "experimental", str(upstream))
+        (upstream / "a.txt").write_text("one\n", encoding="utf-8")
+        git("add", "a.txt", cwd=upstream)
+        git("commit", "-q", "-m", "one", cwd=upstream)
+        git("clone", "-q", "-b", "experimental", str(upstream), str(checkout))
+        (upstream / "a.txt").write_text("two\n", encoding="utf-8")
+        git("commit", "-q", "-am", "two", cwd=upstream)
+
+        stubs = tmp / "bin"
+        stubs.mkdir()
+        python = Path(sys.executable).as_posix()
+        for name, body in (("systemctl", f'[ "$1" = is-active ] && exit {0 if active else 3}\n'
+                                         'exit 0\n'),
+                           ("sudo", "exit 0\n"),
+                           ("python3", f'exec "{python}" "$@"\n')):
+            (stubs / name).write_bytes(f"#!/bin/sh\n{body}".encode())
+            (stubs / name).chmod(0o755)
+        token = "t" * 40
+        (tmp / "token").write_text(token + "\n", encoding="utf-8")
+
+        class Runs(BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802 -- the base class's name
+                ok = self.headers.get("Authorization") == f"Bearer {token}"
+                body = json.dumps({"queue": api_state}).encode()
+                self.send_response(200 if ok else 401)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                pass
+
+        api = HTTPServer(("127.0.0.1", 0), Runs)
+        port = api.server_address[1]
+        if api_state is None:
+            api.server_close()  # nothing listens there: no answer
+        else:
+            threading.Thread(target=api.serve_forever, daemon=True).start()
+            self.addCleanup(api.server_close)
+            self.addCleanup(api.shutdown)
+        before = subprocess.run(["git", "rev-parse", "HEAD"], cwd=checkout, env=env,
+                                capture_output=True, text=True, check=True).stdout
+        env.update(PATH=str(stubs) + os.pathsep + env.get("PATH", ""),
+                   OVERTONE_REPO=str(checkout), OVERTONE_BRANCH="experimental",
+                   OVERTONE_TOKEN_FILE=str(tmp / "token"), OVERTONE_API=f"http://127.0.0.1:{port}",
+                   OVERTONE_CARGO="false")
+        done = subprocess.run(["sh", str(self.DEPLOY / "overtone-update.sh")], env=env,
+                              capture_output=True, text=True, timeout=120)
+        after = subprocess.run(["git", "rev-parse", "HEAD"], cwd=checkout, env=env,
+                               capture_output=True, text=True, check=True).stdout
+        return before != after, done.stdout + done.stderr
+
+    def test_the_updater_deploys_when_the_server_says_it_is_idle(self):
+        moved, said = self._update({"running": None, "queued": []})
+        self.assertTrue(moved, said)
+
+    def test_the_updater_waits_while_a_run_is_going(self):
+        moved, said = self._update({"running": "r1", "queued": []})
+        self.assertFalse(moved, said)
+        self.assertIn("a run is going", said)
+
+    def test_the_updater_waits_when_the_running_server_does_not_answer(self):
+        # Fails closed: no answer could be a server in the middle of a run.
+        moved, said = self._update(None)
+        self.assertFalse(moved, said)
+        self.assertIn("did not say whether a run is going", said)
+
+    def test_the_updater_deploys_to_a_server_that_is_not_running(self):
+        # A stopped service runs nothing, and may be waiting for this very fix.
+        moved, said = self._update(None, active=False)
+        self.assertTrue(moved, said)
 
 
 class MeasurementRunTests(unittest.TestCase):
@@ -6318,9 +6354,10 @@ class MeasurementRunTests(unittest.TestCase):
         tool, argv, settings = self.runs.build_args(
             {"tool": "gates", "only": ["golden", "benchmark"]}, "/db")
         self.assertEqual(argv, ["benchmark", "golden"])            # CLAUDE.md's order
-        self.assertEqual(self.runs.build_args({"tool": "suite", "suite": "web"}, "/db")[1], ["web"])
+        self.assertEqual(self.runs.build_args({"tool": "suite", "suite": "engine"}, "/db")[1],
+                         ["engine"])
         for bad in ({"tool": "gates", "only": ["rm -rf"]}, {"tool": "gates", "only": "golden"},
-                    {"tool": "suite", "suite": "../tests"}):
+                    {"tool": "suite", "suite": "../tests"}, {"tool": "suite", "suite": "web"}):
             with self.assertRaises(ValueError, msg=bad):
                 self.runs.build_args(bad, "/db")
         # Every gate CLAUDE.md lists for Python is here, as it is written there.
@@ -7304,24 +7341,6 @@ class LogoIconTests(unittest.TestCase):
         self.assertEqual(pixel(6, 8)[:3], (0xFF, 0x5D, 0x6C))
 
 
-class TaskbarIdentityTests(unittest.TestCase):
-    @unittest.skipUnless(sys.platform == "win32", "a Windows taskbar setting")
-    def test_the_process_takes_overtones_own_taskbar_id(self):
-        # Run in a child so this test process keeps its own identity.
-        import subprocess
-        code = ("import ctypes, overtone as ta\n"
-                "ok = ta.claim_taskbar_identity()\n"
-                "p = ctypes.c_wchar_p()\n"
-                "ctypes.windll.shell32.GetCurrentProcessExplicitAppUserModelID(ctypes.byref(p))\n"
-                "print(ok, p.value)\n")
-        env = dict(os.environ,
-                   PYTHONPATH=str(Path(__file__).resolve().parent.parent / "python"))
-        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
-                             cwd=str(Path(__file__).resolve().parent), timeout=120,
-                             env=env)
-        self.assertEqual(out.stdout.split(), ["True", "Overtone.TimingWorkbench"], out.stderr)
-
-
 class ModReportTests(unittest.TestCase):
     """Proposal P2: every finding about a difficulty as an editor timestamp."""
 
@@ -7939,6 +7958,18 @@ class PerfGateTests(unittest.TestCase):
     def _t(cpu, wall=None):
         return {"cpu": cpu, "wall": cpu if wall is None else wall}
 
+    def test_every_stage_the_engine_announces_has_an_id(self) -> None:
+        import re
+        import overtone as ta
+        said = re.findall(r'(?:say|progress)\("([^"]+)"',
+                          Path(ta.__file__).read_text(encoding="utf-8"))
+        # Every message named, every name still announced, one id per stage.
+        self.assertEqual(sorted(set(said)), sorted(ta.STAGES))
+        self.assertEqual(len(set(ta.STAGES.values())), len(ta.STAGES))
+        self.assertEqual(ta.stage_id("No fittable grid — falling back to the beat tracker… "
+                                     "(ValueError: x)"), "fallback")
+        self.assertIsNone(ta.stage_id("Something new…"))
+
     def test_the_machines_own_spread_passes(self) -> None:
         g = self._gates()
         # 1.11x was the worst an unchanged stage measured here over four runs.
@@ -8234,184 +8265,9 @@ class ParityGateTests(unittest.TestCase):
         self.assertEqual(blind, set(parity.committed()["classes"]))
 
 
-class InstallerSbomTests(unittest.TestCase):
-    """Phase 10.13: installer/sbom.json inventories every pinned wheel.
-
-    Licence strings come from the venv at generation time
-    (``installer/sbom.py``), so these pin the parsing, the short-identifier
-    rule and the drift check on synthetic inputs -- plus the one fact about
-    the real files that needs no venv: every lock pin is inventoried at its
-    pinned version, so a lock changed without re-running fails the suite.
-    """
-
-    @staticmethod
-    def _sbom():
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "sbom", Path(__file__).resolve().parent.parent / "installer" / "sbom.py")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
-
-    @staticmethod
-    def _dist(expr="", license="", classifiers=()):
-        from email.message import Message
-        meta = Message()
-        if expr:
-            meta["License-Expression"] = expr
-        if license:
-            meta["License"] = license
-        for classifier in classifiers:
-            meta["Classifier"] = classifier
-        return type("Dist", (), {"metadata": meta, "version": "1.0"})()
-
-    def test_pins_read_name_and_version_and_skip_noise(self) -> None:
-        sbom = self._sbom()
-        with tempfile.TemporaryDirectory() as tmp:
-            lock = Path(tmp) / "requirements.lock"
-            lock.write_text("# a comment\n\nnumpy==2.5.3  # trailing\n"
-                            "scipy==1.18.1\n", encoding="utf-8")
-            self.assertEqual(sbom.pins(lock),
-                             [("numpy", "2.5.3"), ("scipy", "1.18.1")])
-
-    def test_licence_is_a_short_identifier_or_an_honest_unknown(self) -> None:
-        sbom = self._sbom()
-        self.assertEqual(sbom.licence_of(self._dist(expr="MIT OR Apache-2.0")),
-                         "MIT OR Apache-2.0")
-        self.assertEqual(sbom.licence_of(self._dist(
-            classifiers=["License :: OSI Approved :: BSD-3-Clause"])),
-            "BSD-3-Clause")
-        self.assertEqual(sbom.licence_of(self._dist(license="MIT")), "MIT")
-        # A full licence text (scipy's License field carries kilobytes, GPL
-        # included) is not an identifier: it stays out of the inventory.
-        self.assertEqual(sbom.licence_of(self._dist(license="Copyright (c)\n" + "x" * 5000)),
-                         "UNKNOWN")
-        self.assertEqual(sbom.licence_of(self._dist()), "UNKNOWN")
-
-    def test_drift_names_missing_moved_and_removed_pins(self) -> None:
-        sbom = self._sbom()
-        committed = {"format": 1, "packages": {
-            "numpy": {"version": "2.5.3"}, "old": {"version": "1.0"}}}
-        fresh = {"format": 1, "packages": {
-            "numpy": {"version": "2.5.4"}, "scipy": {"version": "1.18.1"}}}
-        found = sbom.drift(committed, fresh)
-        self.assertEqual(len(found), 3)
-        self.assertTrue(any("scipy" in line and "not inventoried" in line
-                            for line in found))
-        self.assertTrue(any("numpy" in line and "2.5.4" in line
-                            for line in found))
-        self.assertTrue(any("old" in line and "stays inventoried" in line
-                            for line in found))
-        self.assertEqual(sbom.drift(fresh, fresh), [])
-
-    def test_the_release_sbom_is_cyclonedx_and_keeps_every_component(self) -> None:
-        sbom = self._sbom()
-        rows = [{"kind": "wheel", "name": "numpy", "version": "2.5.3",
-                 "licence": "BSD-3-Clause", "what": "a wheel", "source": "https://pypi"},
-                {"kind": "crate", "name": "symphonia-core", "version": "0.6.1",
-                 "licence": "MPL-2.0", "what": "a crate", "source": "https://crates.io"},
-                {"kind": "native", "name": "Microsoft Visual C++ runtime",
-                 "version": "14.x", "licence": "Microsoft Visual Studio redistributable "
-                 "terms", "what": "VCRUNTIME140.dll", "source": "https://learn"}]
-        bom = sbom.cyclonedx("0.1.0-alpha", rows)
-        self.assertEqual((bom["bomFormat"], bom["specVersion"]), ("CycloneDX", "1.6"))
-        self.assertEqual(bom["metadata"]["component"]["version"], "0.1.0-alpha")
-        self.assertEqual(bom["metadata"]["component"]["licenses"],
-                         [{"license": {"id": "MIT"}}])
-        self.assertEqual(len(bom["components"]), 3)
-        wheel, crate, native = bom["components"]
-        self.assertEqual(wheel["purl"], "pkg:pypi/numpy@2.5.3")
-        self.assertEqual(crate["purl"], "pkg:cargo/symphonia-core@0.6.1")
-        # No package manager serves the MSVC runtime, so it gets no purl --
-        # and it is still in the list, which is the point of listing it.
-        self.assertNotIn("purl", native)
-        # A wheel's "BSD License" is not SPDX, so every licence goes in as a
-        # name and none as an expression: the texts are the notices file's.
-        for component in bom["components"]:
-            self.assertEqual(list(component["licenses"][0]["license"]), ["name"])
-        # Nothing that changes between two builds of one commit.
-        self.assertNotIn("serialNumber", bom)
-        self.assertNotIn("timestamp", bom["metadata"])
-
-    def test_the_committed_inventory_covers_both_locks(self) -> None:
-        import json
-        sbom = self._sbom()
-        root = Path(__file__).resolve().parent.parent
-        committed = json.loads((root / "installer" / "sbom.json")
-                               .read_text(encoding="utf-8"))
-        fresh = {"format": 1, "packages": {}}
-        for lock, shipped in sbom.LOCKS:
-            for name, version in sbom.pins(lock):
-                fresh["packages"][name] = {"version": version,
-                                           "shipped": shipped}
-        self.assertEqual(sbom.drift(committed, fresh), [])
-
-
-class PortableDataTests(unittest.TestCase):
-    """Phase 10.13.5 (R4): a portable build keeps its state beside its executable.
-
-    The portable ZIP carries ``portable.txt`` beside Overtone.exe, and then
-    settings, cache, history, index and window storage go to ``data`` beside it,
-    so a copy on a stick never shares a profile with the installed one. These
-    pin the rule on synthetic folders: a frozen build without the marker, a
-    checkout, and the marker with its ``data`` folder.
-    """
-
-    @staticmethod
-    def _paths():
-        import overtone_paths
-        return overtone_paths
-
-    def _frozen(self, folder: Path, marker: bool):
-        paths = self._paths()
-        if marker:
-            (folder / paths.PORTABLE_MARKER).write_text("portable", encoding="utf-8")
-        exe = folder / "Overtone.exe"
-        return [mock.patch.object(sys, "frozen", True, create=True),
-                mock.patch.object(sys, "executable", str(exe))]
-
-    def test_a_checkout_and_an_installed_copy_keep_their_state_in_the_profile(self) -> None:
-        paths = self._paths()
-        with tempfile.TemporaryDirectory() as tmp:
-            local = Path(tmp) / "local"
-            with mock.patch.dict(os.environ, {"LOCALAPPDATA": str(local)}):
-                self.assertIsNone(paths.portable_root())
-                self.assertEqual(paths.data_root(), local / "Overtone")
-                self.assertEqual(paths.settings_home(), Path.home())
-                # Frozen but without the marker: the installed copy, as it was.
-                folder = Path(tmp) / "Programs" / "Overtone"
-                folder.mkdir(parents=True)
-                for patch in self._frozen(folder, marker=False):
-                    patch.start()
-                try:
-                    self.assertIsNone(paths.portable_root())
-                    self.assertEqual(paths.data_root(), local / "Overtone")
-                    self.assertEqual(paths.settings_home(), Path.home())
-                finally:
-                    mock.patch.stopall()
-
-    def test_a_portable_build_keeps_everything_in_its_own_data_folder(self) -> None:
-        paths = self._paths()
-        with tempfile.TemporaryDirectory() as tmp:
-            folder = Path(tmp) / "Overtone"
-            folder.mkdir()
-            with mock.patch.dict(os.environ, {"LOCALAPPDATA": str(Path(tmp) / "local")}):
-                for patch in self._frozen(folder, marker=True):
-                    patch.start()
-                try:
-                    data = (folder / paths.PORTABLE_DATA).resolve()
-                    self.assertEqual(paths.portable_root().resolve(), data)
-                    self.assertEqual(paths.data_root().resolve(), data)
-                    self.assertEqual(paths.settings_home().resolve(), data)
-                    # Nothing about the profile is consulted for a portable build.
-                    self.assertNotIn(str(Path(tmp) / "local"), str(paths.data_root()))
-                finally:
-                    mock.patch.stopall()
-
 class ProductVersionTests(unittest.TestCase):
-    """Phase 10.13 (R5): the window, the about box and every written .osu name
-    the release, not the engine generation. The diagnostics copy-out states it
-    too, so a bug report that names the wrong version is worse than none.
+    """Phase 10.13 (R5): every written .osu names the release, not the engine
+    generation, and Overtone's own files live in one known folder.
     """
 
     @staticmethod
@@ -8424,239 +8280,12 @@ class ProductVersionTests(unittest.TestCase):
         cargo = (Path(__file__).resolve().parent.parent / "Cargo.toml").read_text(encoding="utf-8")
         self.assertIn(f'version = "{paths.app_version()}"', cargo)
         self.assertNotEqual(paths.app_version(), "3.0")
-        self.assertEqual(paths.build_info(), {})
 
-    def test_a_frozen_build_reads_the_stamp_its_build_wrote(self) -> None:
-        import json as _json
+    def test_overtones_own_files_live_under_local_app_data(self) -> None:
         paths = self._paths()
         with tempfile.TemporaryDirectory() as tmp:
-            internal = Path(tmp) / "_internal"
-            internal.mkdir()
-            (internal / paths.BUILD_INFO).write_text(_json.dumps({
-                "version": "9.9.9-test", "commit": "abc1234", "built": "2026-01-01 00:00"}),
-                encoding="utf-8")
-            with mock.patch.object(sys, "frozen", True, create=True), \
-                    mock.patch.object(sys, "_MEIPASS", str(internal), create=True):
-                self.assertEqual(paths.app_version(), "9.9.9-test")
-                self.assertEqual(paths.build_info()["commit"], "abc1234")
-            # A frozen copy with no stamp falls back to the workspace, not a lie.
-            with mock.patch.object(sys, "frozen", True, create=True), \
-                    mock.patch.object(sys, "_MEIPASS", tmp, create=True):
-                self.assertEqual(paths.build_info(), {})
-
-    def test_the_build_and_the_engine_name_the_stamp_the_same_way(self) -> None:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "release", Path(__file__).resolve().parent.parent / "installer" / "release.py")
-        release = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(release)
-        self.assertEqual(release.BUILD_INFO, self._paths().BUILD_INFO)
-        self.assertEqual(release.CONTENTS, "_internal")
-
-
-class InstallerPortableSmokeTests(unittest.TestCase):
-    """Phase 10.13.5 (R4): what the smoke test counts as Overtone's own state.
-
-    A portable run may leave files in the scratch profile that the platform's
-    libraries write (numba's cache, the self-check's temporary audio) but never
-    Overtone's own folder or its settings file, so the rule is pinned on names.
-    """
-
-    @staticmethod
-    def _smoke():
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "smoke", Path(__file__).resolve().parent.parent / "installer" / "smoke.py")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
-
-    def test_overtones_own_folder_and_settings_are_its_state(self) -> None:
-        smoke = self._smoke()
-        own = smoke._own_profile_write
-        self.assertTrue(own(str(Path("AppData", "Local", "Overtone", "cache", "a.json"))))
-        self.assertTrue(own(str(Path("AppData", "Local", "Overtone", "writes.jsonl"))))
-        self.assertTrue(own(".overtone.json"))
-        self.assertTrue(own(".timing_analyzer.json"))
-
-    def test_the_platforms_own_caches_and_temporary_files_are_not(self) -> None:
-        smoke = self._smoke()
-        own = smoke._own_profile_write
-        self.assertFalse(own(str(Path("AppData", "Local", "numba", "Cache", "x.nbi"))))
-        self.assertFalse(own(str(Path("AppData", "Local", "Temp", "overtone-check-1", "c.wav"))))
-        # A folder that only starts with the same letters is somebody else's.
-        self.assertFalse(own(str(Path("AppData", "Local", "OvertoneBackup", "f"))))
-
-    def test_the_portable_marker_is_only_in_the_zip_and_its_note_is_ascii(self) -> None:
-        import sys as _sys
-        sys_path = str(Path(__file__).resolve().parent.parent / "installer")
-        added = sys_path not in _sys.path
-        if added:
-            _sys.path.insert(0, sys_path)
-        try:
-            import release
-        finally:
-            if added:
-                _sys.path.remove(sys_path)
-        self.assertEqual(release.PORTABLE_MARKER, "portable.txt")
-        self.assertTrue(release.PORTABLE_NOTE.isascii())
-        self.assertEqual(release.PORTABLE_DATA, "data")
-
-class InstallerNoticesTests(unittest.TestCase):
-    """Phase 10.13.3: the bundled licences, gathered and gated.
-
-    ``installer/notices.py`` reads the notices out of the build's own wheels,
-    crates and Python installation, so what is worth pinning is the rules:
-    which files count as a notice, that one offer may cover a family, and
-    every way the gate refuses to let a release go out -- plus the shape of
-    the one file that is written by hand, ``installer/notices.json``.
-    """
-
-    @staticmethod
-    def _notices():
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "notices", Path(__file__).resolve().parent.parent / "installer" / "notices.py")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
-
-    @staticmethod
-    def _row(name, licence="MIT", texts=(), **extra):
-        return {"kind": "wheel", "name": name, "version": "1.0", "licence": licence,
-                "what": "a wheel", "source": "https://example.invalid",
-                "texts": list(texts), **extra}
-
-    def test_a_notice_is_a_text_file_wherever_the_wheel_keeps_it(self) -> None:
-        notices = self._notices()
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            for name, body in (("thing-1.0.dist-info/licenses/LICENSE", "the licence"),
-                               ("_thing_data/COPYING", "LGPL, beside the DLL"),
-                               ("thing/licenses/__init__.py", "code"),
-                               ("thing/libthing.dll", "binary"),
-                               ("thing/engine.py", "code"),
-                               ("thing-1.0.dist-info/licenses/EMPTY-LICENSE", "   ")):
-                path = root / name
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(body, encoding="utf-8")
-            files = ["thing-1.0.dist-info/licenses/LICENSE", "_thing_data/COPYING",
-                     "thing/licenses/__init__.py", "thing/libthing.dll",
-                     "thing/engine.py", "thing-1.0.dist-info/licenses/EMPTY-LICENSE"]
-            dist = type("Dist", (), {"files": files,
-                                     "locate_file": lambda self, name: root / str(name)})()
-            found = notices.wheel_texts(dist)
-        # The notice beside the DLL counts: that is where soundfile keeps
-        # libsndfile's. Code named like a licence, binaries and an empty file
-        # do not.
-        self.assertEqual([name for name, _ in found],
-                         ["_thing_data/COPYING", "thing-1.0.dist-info/licenses/LICENSE"])
-        self.assertEqual(found[0][1], "LGPL, beside the DLL")
-
-    def test_one_offer_covers_a_family(self) -> None:
-        notices = self._notices()
-        offers = [{"title": "Symphonia", "for": ["symphonia*"], "text": "the source is here"},
-                  {"title": "certifi", "for": ["certifi"], "text": "and here"}]
-        self.assertEqual(notices.offer_for("symphonia-codec-vorbis", offers)["title"],
-                         "Symphonia")
-        self.assertEqual(notices.offer_for("certifi", offers)["title"], "certifi")
-        self.assertIsNone(notices.offer_for("numpy", offers))
-
-    def test_the_gate_refuses_a_component_with_nothing_to_show(self) -> None:
-        notices = self._notices()
-        found = notices.problems([self._row("quiet")], [])
-        self.assertEqual(len(found), 1)
-        self.assertIn("ships no notice text", found[0])
-        # A text is enough, and so is a sentence saying where the terms are.
-        self.assertEqual(notices.problems([self._row("quiet", texts=[("LICENSE", "MIT")])], []),
-                         [])
-        self.assertEqual(notices.problems([self._row("quiet", terms="MIT, by classifier")], []),
-                         [])
-
-    def test_the_gate_refuses_an_undeclared_licence(self) -> None:
-        notices = self._notices()
-        row = self._row("mystery", licence="UNKNOWN", texts=[("LICENSE", "some text")])
-        found = notices.problems([row], [])
-        self.assertEqual(len(found), 1)
-        self.assertIn("declares no licence", found[0])
-
-    def test_the_gate_asks_for_source_when_a_copyleft_licence_ships(self) -> None:
-        notices = self._notices()
-        for licence in ("LGPL-2.1-or-later", "Mozilla Public License 2.0 (MPL 2.0)",
-                        "GPL-2.0-only WITH an-exception"):
-            row = self._row("copyleft", licence=licence, texts=[("COPYING", "the text")])
-            found = notices.problems([row], [])
-            self.assertEqual(len(found), 1, (licence, found))
-            self.assertIn("asks for source", found[0])
-        # Attribution-only licences ask for no offer.
-        self.assertEqual(notices.problems(
-            [self._row("quiet", licence="BSD-3-Clause", texts=[("LICENSE", "x")])], []), [])
-
-    def test_the_gate_refuses_an_offer_that_covers_nothing(self) -> None:
-        notices = self._notices()
-        rows = [self._row("numpy", texts=[("LICENSE", "x")])]
-        offers = [{"title": "Gone", "for": ["gone*"], "text": "where it was"}]
-        found = notices.problems(rows, offers)
-        self.assertEqual(len(found), 1)
-        self.assertIn("covers nothing", found[0])
-
-    def test_the_document_carries_every_table_offer_and_text(self) -> None:
-        notices = self._notices()
-        rows = [{**self._row("libthing", licence="LGPL-2.1-or-later",
-                             texts=[("libthing/COPYING", "the whole LGPL")]),
-                 "kind": "native"},
-                self._row("quiet", terms="MIT, by classifier"),
-                {**self._row("acrate", texts=[("acrate-1.0/LICENSE-MIT", "MIT text")]),
-                 "kind": "crate"}]
-        offers = [{"title": "libthing -- LGPL", "for": ["libthing"],
-                   "text": "the source is at https://example.invalid"}]
-        text = notices.render(rows, "0.1.0-alpha", offers)
-        self.assertIn("Overtone 0.1.0-alpha -- third-party notices", text)
-        self.assertIn("1 runtime and native components, 1 Python wheels and 1 Rust crates",
-                      text)
-        self.assertIn("the source is at https://example.invalid", text)
-        self.assertIn("the whole LGPL", text)
-        self.assertIn("MIT text", text)
-        # A component with no text of its own is named with its terms, not
-        # left out.
-        self.assertIn("quiet 1.0: MIT, by classifier", text)
-
-    def test_the_gate_notices_a_stale_native_version(self) -> None:
-        notices = self._notices()
-        now = notices.versions_now()
-        self.assertIn("Python", now)
-        rows = [{**self._row(name), "kind": "native", "version": version}
-                for name, version in sorted(now.items())]
-        self.assertEqual(notices.stale_versions(rows), [])
-        rows[0]["version"] = "0.0"
-        found = notices.stale_versions(rows)
-        self.assertEqual(len(found), 1)
-        self.assertIn("this venv has", found[0])
-        self.assertEqual(notices.stale_versions([]),
-                         [f"{name} is not listed in notices.json" for name in sorted(now)])
-
-    def test_the_hand_written_file_says_what_it_must(self) -> None:
-        import json
-        notices = self._notices()
-        listed = json.loads((Path(__file__).resolve().parent.parent / "installer"
-                             / "notices.json").read_text(encoding="utf-8"))
-        self.assertEqual(listed["format"], 1)
-        for row in listed["components"]:
-            for key in ("name", "version", "licence", "what", "source"):
-                self.assertTrue(str(row.get(key) or "").strip(), (row.get("name"), key))
-            self.assertTrue(row.get("from_path") or row.get("from_wheel") or row.get("from_repo")
-                            or row.get("terms"),
-                            row["name"])
-        for name, terms in listed["terms"].items():
-            self.assertTrue(terms.strip(), name)
-        for offer in listed["offers"]:
-            self.assertTrue(offer["title"].strip())
-            self.assertTrue(offer["for"])
-            self.assertIn("http", offer["text"])
-        # The gate's own version check only works if the names match what it
-        # asks the machine about.
-        named = {row["name"] for row in listed["components"]}
-        self.assertLessEqual(set(notices.versions_now()), named)
+            with mock.patch.dict(os.environ, {"LOCALAPPDATA": tmp}):
+                self.assertEqual(paths.data_root(), Path(tmp) / "Overtone")
 
 
 class OsuDbAuditTests(unittest.TestCase):
@@ -8713,40 +8342,6 @@ class OsuDbAuditTests(unittest.TestCase):
     def test_truncated_database_refuses(self) -> None:
         with self.assertRaises(OsuDbFormatError):
             parse_osu_db(self._database([(4, 0)])[:-7])
-
-
-class InstallerAssocTests(unittest.TestCase):
-    """The .osz association the MSI registers: what double-clicking does."""
-
-    SOURCE = Path(__file__).resolve().parent.parent / "installer" / "Overtone.wxs"
-
-    def test_the_association_names_its_keys_and_command(self) -> None:
-        text = self.SOURCE.read_text(encoding="utf-8")
-        for needle in (r'Software\Classes\.osz',
-                       r'Software\Classes\Overtone.osz',
-                       r'Overtone.osz\shell\open\command',
-                       r'Overtone.osz\DefaultIcon',
-                       'Value="Overtone.osz"',
-                       '[INSTALLFOLDER]Overtone.exe',
-                       '%1',
-                       '<ComponentRef Id="OszAssociation" />'):
-            self.assertIn(needle, text)
-
-    def test_the_setup_screen_offers_what_the_features_level(self) -> None:
-        text = self.SOURCE.read_text(encoding="utf-8")
-        for needle in ('WixUI_FeatureTree',
-                       'Id="OszAssoc"',
-                       'Id="AudioAssoc"',
-                       'Id="DesktopIcon"',
-                       'Level="1000"',
-                       'Software\\Classes\\.mp3',
-                       'Software\\Classes\\.m4a',
-                       'SystemFileAssociations\\audio',
-                       'Analyze with Overtone',
-                       '<ComponentRef Id="AudioAssociation" />',
-                       '<ComponentRef Id="ContextMenu" />',
-                       '<ComponentRef Id="DesktopShortcut" />'):
-            self.assertIn(needle, text)
 
 
 class WatchModeTests(unittest.TestCase):

@@ -7,7 +7,8 @@ info:
     the browser never calls it cross-origin, so there is no CORS.
 
     Sign-in is Mides SSO only. The browser holds one cookie,
-    `overtone_session` (HttpOnly, SameSite=Lax); Mides tokens never leave the
+    `__Host-overtone_session` (HttpOnly, SameSite=Lax, Secure, Path=/; plain
+    `overtone_session` over http in development); Mides tokens never leave the
     server. Every state-changing request carries
     `X-Requested-With: overtone-web` or is refused with 403.
 
@@ -28,7 +29,7 @@ components:
     session:
       type: apiKey
       in: cookie
-      name: overtone_session
+      name: __Host-overtone_session
   parameters:
     sameOrigin:
       name: X-Requested-With
@@ -89,6 +90,13 @@ components:
         id: { type: string }
         status: { type: string, enum: [queued, running, done, refused, failed] }
         filename: { type: [string, 'null'] }
+        sha1:
+          type: [string, 'null']
+          description: >-
+            The audio's SHA-1. The result page compares it with the file picked
+            again in the browser before it plays it; the audio itself is never kept or served.
+        tagTitle: { type: [string, 'null'], description: "The file's title tag, cleaned; the .osz the page builds names its map by it." }
+        tagArtist: { type: [string, 'null'], description: "The file's artist tag, cleaned." }
         createdAt: { type: string, format: date-time }
         cached: { type: boolean, description: Answered from an earlier analysis of the same audio and engine. }
         position: { type: integer, minimum: 1, description: While queued; 1 is next. }
@@ -102,12 +110,18 @@ components:
     TimingResult:
       type: object
       description: |
-        `timing-result v1`, written by worker/timing_result.py. A refusal
+        `timing-result v1.1`, written by worker/timing_result.py. A refusal
         (`refused: true`) has no BPM and no red lines, and says why.
+        `version` stays 1, so a v1 reader reads a v1.1 result unchanged; `minor`
+        1 adds the read-only evidence the result page draws (`beats`,
+        `downbeats_ms`, `onsets`, `onset_envelope`, the drift fields of
+        `sections`, `swing`, `pulse_hints`). A v1.0 result, stored before, has
+        none of them, and a refusal has none either.
       required: [format, version, engine, engine_hash, refused, red_lines, sections, osu_timing]
       properties:
         format: { const: timing-result }
         version: { const: 1 }
+        minor: { type: integer, description: 1 for v1.1; absent on v1.0 results. }
         engine: { type: string, const: v3 }
         engine_mode: { type: [string, 'null'], enum: [precision, legacy, null] }
         engine_hash: { type: string }
@@ -149,8 +163,47 @@ components:
               level: { type: string, enum: [high, medium, check] }
               residual_ms: { type: [number, 'null'] }
               coverage: { type: [number, 'null'] }
+              drift_ms:
+                type: [number, 'null']
+                description: v1.1. Weighted median distance, ms, of the attacks under this line from its nearest 1/1, 1/2, 1/3 or 1/4 tick; null under 4 attacks.
+              drift_p90_ms: { type: [number, 'null'], description: v1.1. Its 90th percentile. }
+              drift_bias_ms: { type: [number, 'null'], description: 'v1.1. Weighted median signed distance: positive, the music lands after the grid.' }
+              onsets: { type: integer, description: v1.1. Attacks under this line. }
         findings: { type: array, items: { type: object } }
         osu_timing: { type: string, description: "The engine's own [TimingPoints] rows." }
+        beats:
+          type: object
+          description: v1.1. The engine's beats (whole ms) and its local tempo at each, the tempo curve.
+          properties:
+            t_ms: { type: array, items: { type: integer } }
+            bpm: { type: array, items: { type: number } }
+        downbeats_ms:
+          type: array
+          items: { type: integer }
+          description: v1.1. The bar starts the click track plays (click_schedule), whole ms.
+        onsets:
+          type: object
+          description: v1.1. The attacks the grid was fitted to, whole ms, weights 0-100 of the strongest. Empty for the fallback tracker.
+          properties:
+            t_ms: { type: array, items: { type: integer } }
+            w: { type: array, items: { type: integer } }
+        onset_envelope:
+          type: object
+          description: v1.1. The onset envelope, max-pooled to at most 4000 values of 0-100 over span_ms.
+          properties:
+            span_ms: { type: integer }
+            v: { type: array, items: { type: integer } }
+        swing:
+          type: [object, 'null']
+          description: v1.1. The engine's swing lane (swing_lane), its swung spans only.
+          properties:
+            measured: { type: integer }
+            swung: { type: integer }
+            spans: { type: array, items: { type: object } }
+        pulse_hints:
+          type: array
+          description: v1.1. Half- or double-time regions inside one section (density_hints). Evidence, never a red line.
+          items: { type: object }
     Error:
       type: object
       required: [error]
@@ -325,8 +378,8 @@ paths:
       description: |
         The body is the audio itself, streamed to the spool and hashed (SHA-1)
         on the way; it is deleted once the worker answers (ADR-W4). No account
-        is needed: an anonymous uploader gets the HttpOnly `overtone_anon`
-        cookie (path /api/v1/analyses), which with the id is what lets it read
+        is needed: an anonymous uploader gets the HttpOnly `__Host-overtone_anon`
+        cookie (Path=/; `overtone_anon` over http), which with the id is what lets it read
         the analysis back.
 
         Checked before a byte is read: the content type, the extension

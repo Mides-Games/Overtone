@@ -33,13 +33,12 @@ def _count(path: Path) -> int:
     return len(re.findall(r"^\s+def test_", path.read_text(encoding="utf-8"), re.M))
 
 
-def python_tests() -> tuple[int, int, int, int]:
-    """(all, engine, web shell, worker): every tests/test_*.py file, which is
-    what `unittest discover -s tests` runs, and the three the docs break out."""
+def python_tests() -> tuple[int, int, int]:
+    """(all, engine, worker): every tests/test_*.py file, which is what
+    `unittest discover -s tests` runs, and the two the docs break out."""
     total = sum(_count(p) for p in (ROOT / "tests").glob("test_*.py"))
-    engine, web, worker = (_count(ROOT / "tests" / name)
-                           for name in ("test_overtone.py", "test_overtone_web.py", "test_worker.py"))
-    return total, engine, web, worker
+    engine, worker = (_count(ROOT / "tests" / name) for name in ("test_overtone.py", "test_worker.py"))
+    return total, engine, worker
 
 
 def site_tests() -> tuple[int, int]:
@@ -78,14 +77,14 @@ def library_schema() -> tuple[int | None, int | None]:
 def main() -> int:
     problems: list[str] = []
     rust = rust_tests()
-    python, engine, web, worker = python_tests()
-    if python != engine + web + worker:
-        problems.append(f"tests/ holds {python - engine - web - worker} tests outside the three files "
+    python, engine, worker = python_tests()
+    if python != engine + worker:
+        problems.append(f"tests/ holds {python - engine - worker} tests outside the two files "
                         "the docs break out; name the new file in python_tests() and the roadmap")
     crates = crate_dirs()
     golden = golden_vectors()
     site_api, site_web = site_tests()
-    print(f"source: {python} Python tests ({engine} engine + {web} web shell + {worker} worker), "
+    print(f"source: {python} Python tests ({engine} engine + {worker} worker), "
           f"{rust} Rust tests, {len(crates)} crates, {golden} golden vectors, "
           f"{site_api} site/api and {site_web} site/web tests")
 
@@ -102,7 +101,7 @@ def main() -> int:
         problems.append("AGENTS.md differs from CLAUDE.md; they must be identical")
     for doc, text in (("CLAUDE.md", claude),):
         expect(doc, "Python tests",
-               re.findall(r"test_overtone_web\s+# all pass \((\d+) on", text), python)
+               re.findall(r"discover -s tests\s+# all pass \((\d+) on", text), python)
         expect(doc, "Rust tests",
                re.findall(r"cargo test --workspace\s+# all pass \((\d+) on", text), rust)
         expect(doc, "golden vectors", re.findall(r"(\d+) committed vector files", text), golden)
@@ -124,18 +123,17 @@ def main() -> int:
     expect("README.md badge", "Python tests", [b[0] for b in badge], python)
     expect("README.md badge", "Rust tests", [b[1] for b in badge], rust)
     expect("README.md", "Python tests",
-           re.findall(r"test_overtone_web\s+# (\d+) tests", readme), python)
+           re.findall(r"discover -s tests\s+# (\d+) tests", readme), python)
     expect("README.md", "Rust tests",
            re.findall(r"cargo test --workspace\s+# (\d+) tests", readme), rust)
 
     roadmap = (ROOT / "docs" / "07-roadmap.md").read_text(encoding="utf-8")
-    line = re.findall(r"Tests: \*\*(\d+)\*\* Python \((\d+) engine \+ (\d+) web shell \+ (\d+) worker\) "
+    line = re.findall(r"Tests: \*\*(\d+)\*\* Python \((\d+) engine \+ (\d+) worker\) "
                       r"· \*\*(\d+)\*\* Rust", roadmap)
     expect("roadmap", "Python tests", [m[0] for m in line], python)
     expect("roadmap", "engine tests", [m[1] for m in line], engine)
-    expect("roadmap", "web shell tests", [m[2] for m in line], web)
-    expect("roadmap", "worker tests", [m[3] for m in line], worker)
-    expect("roadmap", "Rust tests", [m[4] for m in line], rust)
+    expect("roadmap", "worker tests", [m[2] for m in line], worker)
+    expect("roadmap", "Rust tests", [m[3] for m in line], rust)
 
     sql_version, code_version = library_schema()
     print(f"library schema: library.sql v{sql_version}, overtone_library.py v{code_version}")

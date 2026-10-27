@@ -1,10 +1,10 @@
-"""The site worker's analysis: one audio file in, one ``timing-result v1`` out.
+"""The site worker's analysis: one audio file in, one ``timing-result v1.1`` out.
 
 This is the part of the worker that touches the engine, kept apart from the
 HTTP loop in ``main.py`` so the tests can run it without a server.
 
 It calls ``python/overtone.py`` directly. It does not import the desktop shell
-(``overtone_web``), which is being removed, and it never reads anybody's saved
+(``overtone_web``), which left the repository with the desktop app, and it never reads anybody's saved
 settings: a site analysis runs with the defaults a fresh desktop install had,
 written out in ``default_params`` below.
 
@@ -22,10 +22,17 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "python"))
 
+import numpy as np  # noqa: E402 -- the engine's own dependency, nothing new
 import overtone as ta  # noqa: E402
 
 FORMAT = "timing-result"
 VERSION = 1
+#: ``timing-result v1.1``: ``version`` stays 1 so every v1 reader (the API's
+#: check, the exports) reads it unchanged; ``minor`` 1 adds the read-only
+#: evidence the result page draws (``beats``, ``downbeats_ms``, ``onsets``,
+#: ``onset_envelope``, per-section drift, ``swing``, ``pulse_hints``). Nothing
+#: in a v1 field changes.
+MINOR = 1
 
 #: The engine generation the site's ``analyses.engine`` column records.
 ENGINE = "v3"
@@ -109,7 +116,7 @@ def engine_hash(vote: bool | None = None) -> str:
     moves red lines). Any edit to either file stales every cached result."""
     if vote is None:
         vote = beat_vote_available()
-    digest = hashlib.sha1(f"{FORMAT} {VERSION} {ENGINE} vote={bool(vote)}".encode())
+    digest = hashlib.sha1(f"{FORMAT} {VERSION}.{MINOR} {ENGINE} vote={bool(vote)}".encode())
     for path in (Path(ta.__file__), Path(__file__)):
         digest.update(hashlib.sha1(path.read_bytes()).digest())
     return digest.hexdigest()[:16]
@@ -176,6 +183,132 @@ def _section_grid(analysis, start_s: float, end_s: float):
     return None
 
 
+#: The onset envelope is max-pooled to at most this many values: enough for a
+#: column a pixel wide across a wide screen, small enough for a 10-minute song.
+ENVELOPE_BINS = 4000
+#: The grid divisors drift is measured against, as the desktop app's drift
+#: lane measured it: each attack's distance from the nearest 1/1, 1/2, 1/3 or
+#: 1/4 tick of the red line that governs it.
+DRIFT_DIVISORS = (1, 2, 3, 4)
+#: Fewer attacks than this under a red line and its drift is not reported.
+DRIFT_MIN_ATTACKS = 4
+
+
+def _ms(values) -> list[int]:
+    """Seconds as whole milliseconds: what the page draws needs no finer."""
+    array = np.asarray(values, dtype=np.float64)
+    array = array[np.isfinite(array)]
+    return np.rint(array * 1000.0).astype(np.int64).tolist()
+
+
+def _weighted_quantile(values: np.ndarray, weights: np.ndarray, q: float) -> float:
+    order = np.argsort(values)
+    cumulative = np.cumsum(weights[order])
+    at = min(int(np.searchsorted(cumulative, q * cumulative[-1])), len(order) - 1)
+    return float(values[order][at])
+
+
+def _drift(times_s: np.ndarray, weights: np.ndarray, start_s: float, end_s: float,
+           beat_s: float) -> dict:
+    """How far the attacks under one red line sit from its grid, in ms: the
+    weighted median of the distance (``drift_ms``), its 90th percentile, and
+    the weighted median of the signed distance (``drift_bias_ms``, positive:
+    the music lands after the grid). Read from the attacks the engine kept;
+    None for a line with too few of them, or none (the fallback tracker)."""
+    empty = {"drift_ms": None, "drift_p90_ms": None, "drift_bias_ms": None, "onsets": 0}
+    inside = (times_s >= start_s) & (times_s < end_s) & (weights > 0)
+    count = int(inside.sum())
+    if count < DRIFT_MIN_ATTACKS or not beat_s > 0:
+        return {**empty, "onsets": count}
+    t, w = times_s[inside], weights[inside]
+    position = (t - start_s) / beat_s
+    best = np.full(t.shape, np.inf)
+    for divisor in DRIFT_DIVISORS:
+        off = (t - (start_s + np.round(position * divisor) / divisor * beat_s)) * 1000.0
+        best = np.where(np.abs(off) < np.abs(best), off, best)
+    size = np.abs(best)
+    return {"drift_ms": round(_weighted_quantile(size, w, 0.5), 2),
+            "drift_p90_ms": round(_weighted_quantile(size, w, 0.9), 2),
+            "drift_bias_ms": round(_weighted_quantile(best, w, 0.5), 2),
+            "onsets": count}
+
+
+def _evidence(analysis, points, duration: float) -> dict:
+    """The read-only evidence of ``timing-result v1.1``: what the engine
+    already computed, rounded for the page. Never a new estimate: the beats
+    and local tempo are the analysis's own, the bars are the click track's
+    (``click_schedule``), the onsets are the attacks the grid was fitted to,
+    swing and the half/double hints are the engine's read-only reports."""
+    beats = np.asarray(getattr(analysis, "beats", []), dtype=np.float64)
+    local = np.asarray(getattr(analysis, "local_bpms", []), dtype=np.float64)
+    keep = np.isfinite(beats)
+    if local.shape == beats.shape:
+        keep &= np.isfinite(local) & (local > 0)
+        bpm = np.round(local[keep], 2).tolist()
+    else:
+        bpm = []
+    out = {"beats": {"t_ms": _ms(beats[keep]), "bpm": bpm}}
+
+    try:
+        schedule = ta.click_schedule(analysis)
+    except (ValueError, TypeError, AttributeError):
+        schedule = []
+    out["downbeats_ms"] = _ms([t for t, level in schedule if level == ta.CLICK_BAR])
+
+    times = np.asarray(getattr(analysis, "attack_times", []), dtype=np.float64)
+    weights = np.asarray(getattr(analysis, "attack_weights", []), dtype=np.float64)
+    if weights.shape != times.shape:
+        weights = np.ones_like(times)
+    good = np.isfinite(times) & np.isfinite(weights)
+    order = np.argsort(times[good])
+    times, weights = times[good][order], weights[good][order]
+    peak = float(weights.max()) if weights.size else 0.0
+    out["onsets"] = {"t_ms": _ms(times),
+                     "w": (np.rint(weights / peak * 100).astype(np.int64).tolist()
+                           if peak > 0 else [0] * int(times.size))}
+
+    onset = np.asarray(getattr(analysis, "onset", []), dtype=np.float64)
+    onset = np.where(np.isfinite(onset), onset, 0.0)
+    frame_s = analysis.hop_length / float(analysis.sample_rate) if analysis.sample_rate else 0.0
+    if onset.size and frame_s > 0:
+        if onset.size > ENVELOPE_BINS:
+            edges = np.linspace(0, onset.size, ENVELOPE_BINS + 1).astype(np.int64)
+            onset = np.maximum.reduceat(onset, edges[:-1])
+        top = float(onset.max())
+        out["onset_envelope"] = {
+            "span_ms": int(round(np.asarray(analysis.onset).size * frame_s * 1000.0)),
+            "v": np.rint(onset / top * 100).astype(np.int64).tolist() if top > 0 else []}
+    else:
+        out["onset_envelope"] = {"span_ms": 0, "v": []}
+
+    out["drift"] = []
+    for i, p in enumerate(points):
+        start = p.offset_ms / 1000.0
+        end = points[i + 1].offset_ms / 1000.0 if i + 1 < len(points) else duration
+        out["drift"].append(_drift(times, weights, start, max(end, start), 60.0 / float(p.bpm)))
+
+    try:
+        lane = ta.swing_lane(points, times, weights, duration)
+        out["swing"] = {
+            "measured": int(lane["measured"]), "swung": int(lane["swung"]),
+            "spans": [{"start_ms": round(s["start_ms"]), "end_ms": round(s["end_ms"]),
+                       "bpm": s["bpm"], "feel": s["feel"], "ratio": s["ratio"],
+                       "late_ms": s["late_ms"], "snap": s["snap"]} for s in lane["spans"]]}
+    except (ValueError, TypeError, KeyError):
+        out["swing"] = None
+
+    try:
+        hints = ta.density_hints(analysis)
+    except (ValueError, TypeError, AttributeError):
+        hints = []
+    out["pulse_hints"] = [{"section": int(h["section"]),
+                           "from_ms": round(h["from_s"] * 1000), "to_ms": round(h["to_s"] * 1000),
+                           "boundary_ms": round(h["boundary_s"] * 1000),
+                           "thin_side": h["thin_side"], "factor": h["factor"], "score": h["score"]}
+                          for h in hints]
+    return out
+
+
 def build_result(analysis, *, vote: bool, hash_: str) -> dict:
     """An analysis as ``timing-result v1``. Points are snapped exactly as the
     exporters snap them, so the table the site shows is what
@@ -192,6 +325,8 @@ def build_result(analysis, *, vote: bool, hash_: str) -> dict:
     except (ValueError, TypeError):
         fallback_meter = 4
 
+    evidence = _evidence(analysis, points, duration)
+    drift = evidence.pop("drift")
     red_lines, sections = [], []
     for i, p in enumerate(points):
         meter = max(1, min(16, int(p.meter))) if p.meter_known else fallback_meter
@@ -209,10 +344,11 @@ def build_result(analysis, *, vote: bool, hash_: str) -> dict:
                          "bpm": round(float(p.bpm), 6), "confidence": round(confidence, 4),
                          "level": level,
                          "residual_ms": round(residual, 3) if residual is not None else None,
-                         "coverage": round(float(grid.coverage), 4) if grid is not None else None})
+                         "coverage": round(float(grid.coverage), 4) if grid is not None else None,
+                         **drift[i]})
 
     return {
-        "format": FORMAT, "version": VERSION,
+        "format": FORMAT, "version": VERSION, "minor": MINOR,
         "engine": ENGINE, "engine_mode": str(analysis.engine), "engine_hash": hash_,
         "app_version": ta.APP_VERSION, "beat_vote": bool(vote),
         "params": default_params(),
@@ -227,6 +363,7 @@ def build_result(analysis, *, vote: bool, hash_: str) -> dict:
         "sections": sections,
         "findings": findings,
         "osu_timing": ta.osu_timing_text(analysis),
+        **evidence,
     }
 
 
@@ -234,6 +371,8 @@ def refusal_code(message: str) -> str:
     """A stable name for the engine's reason, so the site can say it in
     either language; the engine's own sentence travels beside it."""
     text = message.lower()
+    if "too heavy" in text:
+        return "too_heavy"
     if "longer than" in text:
         return "too_long"
     if "at least two seconds" in text:
@@ -247,7 +386,7 @@ def refused_result(message: str, *, vote: bool, hash_: str, duration_s: float | 
     """The engine found nothing it would stand behind: no BPM, no red lines,
     the reason. White noise ends here (CLAUDE.md rule 2)."""
     return {
-        "format": FORMAT, "version": VERSION,
+        "format": FORMAT, "version": VERSION, "minor": MINOR,
         "engine": ENGINE, "engine_mode": None, "engine_hash": hash_,
         "app_version": ta.APP_VERSION, "beat_vote": bool(vote),
         "params": default_params(),
@@ -269,6 +408,30 @@ def audio_seconds(path: str | Path) -> float | None:
     return info.frames / info.samplerate if info.samplerate > 0 else None
 
 
+#: What a header may claim before a byte of it is decoded. A few kilobytes can
+#: announce hours of eight-plus channels at any rate, and the decoder would
+#: allocate all of it (worker/isolate.py bounds what slips past this).
+MAX_SAMPLERATE = 192_000
+MAX_CHANNELS = 8
+
+
+def header_refusal(path: str | Path, max_seconds: float | None) -> str | None:
+    """Why the file's header is refused before decoding, or None. A file with
+    no header libsndfile reads is not this function's call."""
+    try:
+        info = ta.sf.info(str(path))
+    except Exception:  # noqa: BLE001
+        return None
+    frames_cap = (max_seconds or 3600) * MAX_SAMPLERATE
+    if not 0 < info.samplerate <= MAX_SAMPLERATE:
+        return f"Audio is too heavy to analyse: its header says {info.samplerate} Hz (at most {MAX_SAMPLERATE})."
+    if info.channels > MAX_CHANNELS:
+        return f"Audio is too heavy to analyse: its header says {info.channels} channels (at most {MAX_CHANNELS})."
+    if info.frames > frames_cap:
+        return f"Audio is too heavy to analyse: its header says {info.frames} frames."
+    return None
+
+
 class AnalysisFailed(Exception):
     """The file could not be analysed at all (not audio, damaged, a codec
     missing): a failed job, not a refusal."""
@@ -283,6 +446,9 @@ def analyse(path: str | Path, *, vote: bool, hash_: str,
     long), returned as a result. Anything else is a failure, raised as
     ``AnalysisFailed`` with the engine's message.
     """
+    heavy = header_refusal(path, max_seconds)
+    if heavy:
+        return refused_result(heavy, vote=vote, hash_=hash_)
     seconds = audio_seconds(path)
     if max_seconds and seconds is not None and seconds > max_seconds:
         return refused_result(f"Audio is longer than {max_seconds / 60:g} minutes.",

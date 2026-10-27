@@ -54,7 +54,6 @@ import soundfile as sf  # noqa: E402
 import benchmark as bm  # noqa: E402
 import local_data  # noqa: E402  -- the private library measurements, gitignored
 import overtone as ta  # noqa: E402
-import overtone_web as wb  # noqa: E402  -- the stage names the page shows
 
 HERE = Path(__file__).resolve().parent
 SNAPSHOT = HERE / "bpm_snapshot.json"
@@ -1030,7 +1029,7 @@ def _stage_times(path: Path, runs: int) -> tuple[str, dict[str, dict[str, float]
         engine = str(analysis.engine)
         run: dict[str, dict[str, float]] = {}
         for (message, cpu0, wall0), (_next, cpu1, wall1) in zip(marks[1:], marks[2:]):
-            name = wb.stage_id(message)
+            name = ta.stage_id(message)
             if name is None:
                 continue
             into = run.setdefault(name, {"cpu": 0.0, "wall": 0.0})

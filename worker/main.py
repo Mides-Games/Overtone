@@ -22,6 +22,14 @@ Configuration (environment):
     WORKER_POLL_S  seconds between claims while the queue is empty, default 2
     WORKER_THREADS Beat This!'s ONNX Runtime threads (deploy/eggs/start.sh
                    sets the math libraries' own from it), default: all cores
+    WORKER_MEMORY_MB       the analysis process's address-space cap (Linux),
+                           default 1800; 0 turns it off
+    WORKER_TIMEOUT_MIN_S   the shortest wall-clock limit of a job, default 120
+    WORKER_TIMEOUT_FACTOR  the limit in multiples of the audio's length, default 3
+
+Each analysis runs in a child process under those limits (worker/isolate.py):
+a job that runs out of memory or time fails on its own, as ``too_heavy`` or
+``timeout``, and the worker goes on to the next one.
 
 The API, not the proxy in front of it, is what the worker talks to: the
 internal routes are never forwarded by overtone-web (deploy/web/serve.mjs).
@@ -45,7 +53,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import timing_result as tr  # noqa: E402
+import isolate  # noqa: E402
 
 #: Extensions the API accepts; anything else is never written to disk here.
 EXTENSIONS = {".mp3", ".ogg", ".wav", ".flac", ".m4a", ".opus"}
@@ -82,7 +90,7 @@ class Api:
             shutil.copyfileobj(response, out, 1 << 20)
 
 
-def run_job(api: Api, job: dict, *, vote: bool, hash_: str) -> str:
+def run_job(api: Api, job: dict, runner: isolate.Runner) -> str:
     """One job, start to end. Returns the state it ended in."""
     job_id, attempt = job["id"], job["attempt"]
     suffix = Path(str(job.get("filename", ""))).suffix.lower()
@@ -107,31 +115,50 @@ def run_job(api: Api, job: dict, *, vote: bool, hash_: str) -> str:
                 pass  # progress is a courtesy; the result is what matters
 
         try:
-            result = tr.analyse(audio, vote=vote, hash_=hash_,
-                                max_seconds=job.get("max_seconds"), progress=progress)
-        except tr.AnalysisFailed as exc:
+            result = runner.analyse(audio, max_seconds=job.get("max_seconds"), progress=progress)
+        except isolate.JobFailed as exc:
             api.call("POST", f"/jobs/{job_id}/fail", {"attempt": attempt, "error": str(exc)[:500]})
-            return "failed"
+            return "failed" if exc.code == "failed" else f"failed ({exc.code})"
         api.call("POST", f"/jobs/{job_id}/result", {"attempt": attempt, "result": result})
         return "refused" if result["refused"] else "done"
     finally:
         shutil.rmtree(folder, ignore_errors=True)
 
 
-def exit_with_stdin() -> None:
-    """Leave when stdin closes. ``pnpm dev`` starts the worker with a pipe
-    for stdin and never writes to it, so the pipe closes exactly when the
-    API process that started it goes, however it goes."""
+def exit_with_parent(pid: int) -> None:
+    """Leave when the process that started the worker is gone. ``pnpm dev``
+    passes its own pid; node --watch restarts it without running exit
+    handlers on Windows, so the worker checks on it rather than waiting to be
+    told. (It used to read stdin until the pipe closed, but on Windows a
+    thread blocked reading a pipe stalls the start of the analysis child.)"""
     import threading
+    import time
+
+    def alive() -> bool:
+        if os.name == "nt":
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+            if not handle:
+                return False
+            try:
+                return kernel32.WaitForSingleObject(handle, 0) == 0x102  # WAIT_TIMEOUT
+            finally:
+                kernel32.CloseHandle(handle)
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
 
     def watch() -> None:
-        try:
-            sys.stdin.buffer.read()
-        except (OSError, ValueError):
-            pass
+        while alive():
+            time.sleep(2.0)
         os._exit(0)
 
-    threading.Thread(target=watch, daemon=True, name="stdin-watch").start()
+    threading.Thread(target=watch, daemon=True, name="parent-watch").start()
 
 
 def main() -> int:
@@ -146,11 +173,12 @@ def main() -> int:
     except ValueError:
         poll = 2.0
 
-    if os.environ.get("WORKER_EXIT_WITH_STDIN") == "1":
-        exit_with_stdin()
+    parent = os.environ.get("WORKER_PARENT_PID", "").strip()
+    if parent.isdigit():
+        exit_with_parent(int(parent))
     threads = os.environ.get("WORKER_THREADS", "").strip()
-    if threads.isdigit() and int(threads) > 0:
-        tr.limit_onnx_threads(int(threads))
+    limits = isolate.limits_from_env()
+    runner = isolate.Runner(int(threads) if threads.isdigit() and int(threads) > 0 else None, limits)
 
     # The panel's stop is ^C, and Wings waits up to ten minutes before it
     # kills: the first one lets the job in hand finish and post its result,
@@ -170,17 +198,38 @@ def main() -> int:
         signal.signal(signal.SIGTERM, on_stop)
 
     api = Api(base, token)
-    print("[worker] loading the engine…", flush=True)
-    vote = tr.beat_vote_available()
-    hash_ = tr.engine_hash(vote)
+    print("[worker] loading the engine in the analysis process…", flush=True)
+    started = time.perf_counter()
+    try:
+        runner.start()
+    except isolate.WorkerBroken as exc:
+        print(f"[worker] {exc}", file=sys.stderr, flush=True)
+        return 4
+    hash_ = runner.hash
+    if runner.limited:
+        memory = f"{limits.memory_mb} MB address space"
+    else:
+        memory = "no memory cap (" + ("off" if limits.memory_mb <= 0 else "no rlimit on this platform") + ")"
+    peak = f", {runner.peak_mb} MB used after warm-up" if runner.peak_mb else ""
+    print(f"[worker] analysis process warm in {time.perf_counter() - started:.1f} s: {memory}{peak}; "
+          f"a job stops after max({limits.timeout_min_s:g} s, {limits.timeout_factor:g} x the audio)", flush=True)
     # The egg's "done" line (deploy/eggs/egg.py): the panel shows the server
     # as running from here.
     print(f"overtone-worker: ready -- engine v3 {hash_}, Beat This! vote "
-          f"{'on' if vote else 'OFF (model or runtime missing)'}; polling {base} every {poll:g} s",
+          f"{'on' if runner.vote else 'OFF (model or runtime missing)'}; polling {base} every {poll:g} s",
           flush=True)
 
     unreachable = False
     while not stop.is_set():
+        if not runner.alive():
+            # The last job's process was stopped: warm a new one before claiming.
+            started = time.perf_counter()
+            try:
+                runner.start()
+            except isolate.WorkerBroken as exc:
+                print(f"[worker] {exc}", file=sys.stderr, flush=True)
+                return 4
+            print(f"[worker] a new analysis process is warm in {time.perf_counter() - started:.1f} s", flush=True)
         try:
             job = api.claim(hash_)
             if unreachable:
@@ -205,7 +254,7 @@ def main() -> int:
         started = time.perf_counter()
         print(f"[worker] job {job['id'][:8]}… attempt {job['attempt']}", flush=True)
         try:
-            state = run_job(api, job, vote=vote, hash_=hash_)
+            state = run_job(api, job, runner)
         except Exception:  # noqa: BLE001 -- one job never stops the worker
             traceback.print_exc()
             try:
@@ -215,6 +264,7 @@ def main() -> int:
                 pass
             state = "failed"
         print(f"[worker] job {job['id'][:8]}… {state} in {time.perf_counter() - started:.1f} s", flush=True)
+    runner.close()
     print("[worker] stopped", flush=True)
     return 0
 

@@ -2,11 +2,13 @@ import { createHmac } from 'node:crypto';
 
 import { env } from '../config/env.js';
 import { hasDatabase, query } from '../config/database.js';
+import { clientKey as addressKey } from '../utils/client-ip.js';
 import { HttpError } from '../utils/http-error.js';
 
 /**
- * A fixed-window limit per client address (W3.6), counted where every API
- * process sees the same number (W3.17).
+ * A fixed-window limit per client address (W3.6; an IPv6 client's /64,
+ * utils/client-ip.js), counted where every API process sees the same number
+ * (W3.17).
  *
  * A fixed window lets up to twice the limit through at a window boundary. That
  * is accepted: the goal is that nobody uses this server as an amplifier, not a
@@ -21,7 +23,7 @@ import { HttpError } from '../utils/http-error.js';
  * of it under SESSION_SECRET, which every process shares already.
  */
 
-export const clientKey = (ip) => createHmac('sha256', env.sessionSecret).update(`rate:${ip ?? 'unknown'}`).digest('hex').slice(0, 32);
+export const clientKey = (ip) => createHmac('sha256', env.sessionSecret).update(`rate:${addressKey(ip)}`).digest('hex').slice(0, 32);
 
 /** A counter in this process's memory: one per process, so two processes count apart. */
 export const memoryCounter = () => {

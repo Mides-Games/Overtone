@@ -1,10 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import BrandLoader from '../components/BrandLoader.jsx'
 import CancelButton from '../components/CancelButton.jsx'
+import AdjustExport from '../components/result/AdjustExport.jsx'
+import AudioSource from '../components/result/AudioSource.jsx'
+import { tempoRange } from '../components/result/draw.js'
+import RedLinesTable, { LEVELS } from '../components/result/RedLinesTable.jsx'
+import TempoMap from '../components/result/TempoMap.jsx'
+import Transport from '../components/result/Transport.jsx'
+import { useSongAudio } from '../hooks/useSongAudio.js'
 import { api } from '../lib/api.js'
+import { Player } from '../lib/player.js'
+import { heldAudio } from '../lib/session-audio.js'
+import { adjustLines, attackDrift, clickGrid, formatBpm, formatMs, lineDrift } from '../lib/timing.js'
 
 /**
  * One analysis: its place in the queue, its progress, then its result.
@@ -14,12 +24,6 @@ import { api } from '../lib/api.js'
  * stream of requests). The page is its own URL, so a reload or a link back
  * from the recent list lands here again.
  */
-const LEVELS = {
-  high: { tone: 'var(--accent)', key: 'strip.high' },
-  medium: { tone: 'var(--lavender)', key: 'strip.medium' },
-  check: { tone: 'var(--amber)', key: 'strip.check' },
-}
-
 export default function AnalysisResult() {
   const { t } = useTranslation()
   const { id } = useParams()
@@ -149,32 +153,88 @@ function Refused({ result }) {
   )
 }
 
+/**
+ * The timing, to be checked by ear: the readouts, the tempo map with the song
+ * and its clicks, the reader's adjustments and the exports, the red lines.
+ * The song is the reader's own file, decoded here (ADR-W4).
+ */
 function Result({ id, analysis }) {
   const { t } = useTranslation()
   const result = analysis.result
-  const [copied, setCopied] = useState(null)
-  const lines = result.red_lines ?? []
-  const sections = result.sections ?? []
-  const duration = (result.duration_s ?? 0) * 1000
-  const meters = [...new Set(lines.map((line) => line.meter))]
+  const [adjustment, setAdjustment] = useState({ factor: 1, nudgeMs: 0 })
+  const [selected, setSelected] = useState(null)
+  const [hovered, setHovered] = useState(null)
+  const audio = useSongAudio(id, analysis.sha1)
+  const [player] = useState(() => new Player())
+  const snapshot = useSyncExternalStore(player.subscribe, player.getSnapshot)
+  const clockRef = useRef(null)
 
+  const durationS = result.duration_s ?? 0
+  const sections = useMemo(() => result.sections ?? [], [result])
+  const adjusted = adjustment.factor !== 1 || adjustment.nudgeMs !== 0
+  const lines = useMemo(() => adjustLines(result, adjustment), [result, adjustment])
+  const grid = useMemo(() => clickGrid(lines, durationS), [lines, durationS])
+  const attacks = useMemo(() => attackDrift(result.onsets?.t_ms ?? [], lines), [result, lines])
+  // The worker's own per-line drift as it came; recomputed here once the reader moves the lines.
+  const drift = useMemo(
+    () =>
+      adjusted && result.onsets
+        ? lineDrift(result.onsets, attacks, lines, durationS * 1000)
+        : lines.map((line) => {
+            const s = sections[line.index] ?? {}
+            return { drift_ms: s.drift_ms ?? null, drift_p90_ms: s.drift_p90_ms ?? null, drift_bias_ms: s.drift_bias_ms ?? null }
+          }),
+    [adjusted, result, attacks, lines, durationS, sections],
+  )
+  const spans = useMemo(
+    () => lines.map((line, i) => ({ a: line.timeMs / 1000, b: i + 1 < lines.length ? lines[i + 1].timeMs / 1000 : durationS })),
+    [lines, durationS],
+  )
+
+  useEffect(() => player.setGrid(grid), [player, grid])
+  useEffect(() => player.setSections(spans), [player, spans])
+  useEffect(() => {
+    if (audio.kind === 'ready') player.setBuffer(audio.song.buffer)
+  }, [player, audio.kind, audio.song])
+  useEffect(() => () => player.destroy(), [player])
+
+  const data = useMemo(
+    () => ({
+      lines,
+      sections,
+      grid,
+      beats: result.beats ?? null,
+      onsets: result.onsets ?? null,
+      drift: attacks,
+      envelope: result.onset_envelope ?? null,
+      peaks: audio.kind === 'ready' ? audio.song.peaks : null,
+      swing: result.swing?.spans ?? [],
+      hints: result.pulse_hints ?? [],
+      factor: adjustment.factor,
+      durationS,
+      range: tempoRange(lines, result.beats, adjustment.factor),
+    }),
+    [lines, sections, grid, result, attacks, audio.kind, audio.song, adjustment.factor, durationS],
+  )
+
+  const playFrom = (i) => {
+    const line = lines[i]
+    setSelected(i)
+    // One beat early, so the line's first click is heard coming in.
+    player.play(Math.max(0, (line.timeMs - line.beatMs) / 1000), { range: null, loopOn: false })
+  }
+  const loopLine = (i) => {
+    setSelected(i)
+    player.play(spans[i].a, { range: spans[i], loopOn: true })
+  }
+
+  const meters = [...new Set(lines.map((line) => line.meter))]
   const readouts = [
-    { label: t('strip.bpm'), value: formatBpm(result.global_bpm) },
-    { label: t('strip.offset'), value: formatMs(result.offset_ms), unit: 'ms' },
+    { label: t('strip.bpm'), value: formatBpm(result.global_bpm === null ? null : result.global_bpm * adjustment.factor) },
+    { label: t('strip.offset'), value: formatMs(lines[0]?.timeMs ?? null), unit: 'ms' },
     { label: t('strip.meter'), value: meters.length > 1 ? meters.map((m) => `${m}/4`).join(' · ') : result.meter },
     { label: t('result.redLines'), value: String(lines.length) },
   ]
-
-  async function copy() {
-    const text = `[TimingPoints]\r\n${result.osu_timing.split(/\r?\n/).filter(Boolean).join('\r\n')}\r\n`
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied('ok')
-    } catch {
-      setCopied('failed')
-    }
-    setTimeout(() => setCopied(null), 2500)
-  }
 
   return (
     <div className="space-y-6">
@@ -190,84 +250,54 @@ function Result({ id, analysis }) {
             </div>
           ))}
         </dl>
-
-        {duration > 0 && sections.length > 0 && (
-          <div className="space-y-2 border-t border-line px-4 py-3">
-            <div className="flex h-1.5 gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
-              {sections.map((s) => (
-                <span
-                  key={s.index}
-                  style={{ width: `${Math.max(0.5, ((s.end_ms - s.start_ms) / duration) * 100)}%`, background: LEVELS[s.level]?.tone }}
-                />
-              ))}
-            </div>
-            <ul className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-dim">
-              {Object.entries(LEVELS).map(([key, level]) => (
-                <li key={key} className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full" style={{ background: level.tone }} />
-                  {t(level.key)}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-3 border-t border-line px-4 py-3">
-          <button type="button" className="btn-primary" onClick={copy}>
-            {copied === 'ok' ? t('result.copied') : copied === 'failed' ? t('result.copyFailed') : t('result.copy')}
-          </button>
-          <a className="btn-ghost" href={`/api/v1/analyses/${id}/timing.txt`} download>
-            {t('result.downloadTxt')}
-          </a>
-          <a className="btn-ghost" href={`/api/v1/analyses/${id}/timing.csv`} download>
-            {t('result.downloadCsv')}
-          </a>
+        <div className="flex flex-col gap-2 border-t border-line px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <ul className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-dim">
+            {Object.entries(LEVELS).map(([key, level]) => (
+              <li key={key} className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full" style={{ background: level.tone }} />
+                {t(level.key)}
+              </li>
+            ))}
+          </ul>
+          <p className="text-caption text-dim">{t('tempo.confidenceNote')}</p>
         </div>
       </section>
 
-      <section className="space-y-3">
-        <h2 className="label">{t('result.redLines')}</h2>
-        <div className="overflow-x-auto rounded-panel border border-line">
-          <table className="w-full min-w-[34rem] text-left text-label">
-            <thead className="bg-surface-2">
-              <tr className="label">
-                <th className="px-4 py-2 font-semibold">#</th>
-                <th className="px-4 py-2 font-semibold">{t('result.time')}</th>
-                <th className="px-4 py-2 font-semibold">{t('strip.bpm')}</th>
-                <th className="px-4 py-2 font-semibold">{t('strip.meter')}</th>
-                <th className="px-4 py-2 font-semibold">{t('strip.confidence')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {lines.map((line, i) => {
-                const section = sections[i] ?? {}
-                const level = LEVELS[section.level]
-                return (
-                  <tr key={i} className="readout">
-                    <td className="px-4 py-2 text-dim">{i + 1}</td>
-                    <td className="px-4 py-2">
-                      {formatClock(line.time_ms)}
-                      <span className="ml-2 text-caption text-dim">{formatMs(line.time_ms)} ms</span>
-                    </td>
-                    <td className="px-4 py-2">{formatBpm(line.bpm)}</td>
-                    <td className="px-4 py-2">
-                      {line.meter}/4
-                      {!line.meter_known && <span className="ml-1 text-caption text-dim" title={t('result.meterGuess')}>?</span>}
-                    </td>
-                    <td className="px-4 py-2">
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full" style={{ background: level?.tone }} />
-                        {level ? t(level.key) : '–'}
-                        <span className="text-caption text-dim">{Math.round((section.confidence ?? 0) * 100)}%</span>
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <TempoMap
+        data={data}
+        player={player}
+        snapshot={snapshot}
+        selected={selected}
+        hovered={hovered}
+        onSelect={setSelected}
+        onHover={setHovered}
+        clockRef={clockRef}
+      >
+        <AudioSource audio={audio} filename={analysis.filename} />
+        <Transport player={player} snapshot={snapshot} durationS={durationS} clockRef={clockRef} />
+      </TempoMap>
+
+      <AdjustExport
+        id={id}
+        analysis={analysis}
+        lines={lines}
+        adjustment={adjustment}
+        onAdjust={setAdjustment}
+        audioFile={audio.kind === 'none' || audio.kind === 'checking' || audio.kind === 'mismatch' || audio.kind === 'unverifiable' ? null : heldAudio(id)}
+      />
+
+      <RedLinesTable
+        lines={lines}
+        sections={sections}
+        drift={drift}
+        selected={selected}
+        hovered={hovered}
+        onSelect={setSelected}
+        onHover={setHovered}
+        canPlay={snapshot.ready}
+        onPlayFrom={playFrom}
+        onLoop={loopLine}
+      />
 
       <section className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">
         <span className="chip-amber shrink-0">{t('home.checkByEar')}</span>
@@ -281,16 +311,4 @@ function Result({ id, analysis }) {
       </section>
     </div>
   )
-}
-
-// Up to three decimals, trailing zeros dropped: 128, 128.37, 222.222.
-const formatBpm = (bpm) => (bpm === null || bpm === undefined ? '–' : String(Number(Number(bpm).toFixed(3))))
-
-const formatMs = (ms) => (ms === null || ms === undefined ? '–' : String(Math.round(ms)))
-
-const formatClock = (ms) => {
-  const total = Math.max(0, ms) / 1000
-  const minutes = Math.floor(total / 60)
-  const seconds = (total - minutes * 60).toFixed(3).padStart(6, '0')
-  return `${minutes}:${seconds}`
 }

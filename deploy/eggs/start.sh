@@ -61,6 +61,10 @@ main() {
         say "ERROR: no clone in /home/container. Reinstall the server, or set USER_UPLOAD=1."
         return 1
     fi
+    # The token is for git alone, and git is done with it but for the model's
+    # LFS pull, which reads AUTH (built above, never exported). Nothing the
+    # server runs from here (pnpm, pip, node, python) inherits it.
+    unset GIT_TOKEN
 
     "prepare_$role" || {
         say "ERROR: the dependencies of $(revision) did not install; not starting."

@@ -9,6 +9,16 @@ Este documento es la fuente de verdad del giro, como `roadmap/` lo es en Caverni
 Ninguna fase arranca sin su fila acá, y las decisiones de arquitectura se escriben
 antes de aplicarse.
 
+> **2026-10-26 — La app de escritorio se estacionó.** Decisión del dueño: Overtone es
+> solo web. La ventana web (pywebview, `app/`, `overtone_web.py`,
+> `overtone_webhost.py`), la ventana Tk clásica, `Overtone.bat` y el instalador
+> (`installer/`) salieron de `master` y viven enteros en la rama protegida
+> `parked/desktop-app` y el tag `v3-desktop-app`. El sitio (`site/`) es la única
+> interfaz; las herramientas de edición vuelven en la web en W7. El engine, el CLI y
+> el servidor de medición (`overtone_server.py`, ahora sin interfaz) se quedan. Lo
+> que este documento dice de la app de escritorio más abajo es el plan tal como se
+> escribió; esta nota lo corrige (decisión abierta 8, §7).
+
 ---
 
 ## 0. Lo que se encontró (base del plan)
@@ -135,7 +145,8 @@ navegador ──► overtone-web (estático, Vite build)
 - **ADR-W6 — Sin cuenta se puede timear.** El análisis anónimo tiene límite por IP
   hasheada. Lo que da la cuenta está en §4.
 - **ADR-W7 — La regla 6 se parte en dos.** Hoy dice "offline only". Queda así:
-  - el **engine** y la **app de escritorio** siguen sin red;
+  - el **engine** sigue sin red (la app de escritorio, que también, se estacionó el
+    2026-10-26);
   - el **sitio** habla solo con Mides (identidad) y, opcionalmente, con la API v2 de
     osu! para metadatos de beatmaps;
   - sin telemetría de terceros.
@@ -198,7 +209,8 @@ navegador ──► overtone-web (estático, Vite build)
   - Levanta la web, la API y un worker.
   - Con `MIDES_DEV_LOGIN=1` hay un login simulado, así un tester no necesita
     secretos ni que su origen esté registrado en el SSO.
-  - La app de escritorio sigue funcionando para el uso offline.
+  - ~~La app de escritorio sigue funcionando para el uso offline.~~ Se estacionó el
+    2026-10-26 (`parked/desktop-app`); para uso offline queda el CLI del engine.
 
 ---
 
@@ -607,7 +619,10 @@ metadatos de osu! (beatmapset).
 
 Portar la edición de la sección Timing de la app de escritorio: mover, fijar,
 partir/unir, compás, offset lab, metrónomo sobre el audio local. El audio nunca sale
-del navegador del usuario.
+del navegador del usuario. La app de escritorio se estacionó el 2026-10-26: su código
+de referencia (`app/app.js`, `overtone_web.py`) está en `parked/desktop-app`, y las
+funciones puras de edición que llamaba (`add_timing_point`, `nudge_timing_point`,
+`split_section`, `merge_sections`, `set_meter`…) siguen en `python/overtone.py`.
 
 ### Fase W8 — Vuelven las piezas estacionadas, bien hechas
 
@@ -667,8 +682,10 @@ de 10 ms, red lines dentro de 5 ms), sin romper ninguna puerta de precisión.
    casos.
 6. **Cuota anónima:** análisis por día y duración máxima.
 7. **¿Se guarda el audio?** Este plan dice que no (ADR-W4).
-8. **La app de escritorio:** ¿sigue distribuyéndose (MSI) o pasa a ser solo
-   herramienta de desarrollo?
+8. ~~**La app de escritorio:** ¿sigue distribuyéndose (MSI) o pasa a ser solo
+   herramienta de desarrollo?~~ **Decidido el 2026-10-26:** ni una cosa ni la otra; se
+   estaciona entera en `parked/desktop-app` (tag `v3-desktop-app`) y Overtone es solo
+   web.
 
 ## 8. Lo que depende de otras personas
 

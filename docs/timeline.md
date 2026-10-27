@@ -20,6 +20,252 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · The result page hands over an .osz
+
+### Changed
+
+- The result page downloads a `.osz`: the reader's own file as `audio.<ext>` and one
+  `.osu` (format v14) with the red lines as the page has them (×2 / ÷2 and the
+  nudge included), no hit objects and no comment rows. Opened, osu!stable imports
+  it as a new set ready for the editor. Title and artist are the file's tags, else
+  its name read as `Artist - Title`; ASCII in `Title`/`Artist`, the spelling as
+  written in the `*Unicode` fields; the creator is the signed-in Mides username or
+  "Overtone". It is built in the browser (ADR-W4): the audio is never sent again.
+  The API's per-analysis view now carries `tagTitle` and `tagArtist` for it.
+- "Download timing.txt" is gone from the page (the owner's call: the .osz replaces
+  it). Copying the `[TimingPoints]` block and the CSV stay, and so does the API's
+  `timing.txt` route, for scripts and the batch zip.
+- The song and click volumes, and whether the clicks are on, are kept in this
+  browser's storage and restored on the next result page. Storage that is blocked
+  falls back to the old defaults.
+
+### Measured
+
+- `site/web` tests 33/33 (6 new, `osz.test.js`: the rows, an adjusted timing,
+  non-ASCII names, the audio byte for byte with its CRC, cleaned file names).
+- In the browser pane, `pnpm dev`: `change-128-142.wav` uploaded as
+  `Test Band - Two Tempos.wav` gave `Test Band - Two Tempos.osz`, 5 293 087 bytes:
+  `audio.wav` (5 292 044, the file's size) and the `.osu` with `400,468.750000973913`
+  and `30400,422.535211267606`. Volumes set to 35 and 20 read back 35 and 20 after a
+  reload. Without the file (after a reload) the button is disabled and says why.
+- Not checked: importing the .osz in osu!stable itself (no osu! on this machine), and
+  lazer.
+
+---
+
+## Unreleased — 2026-10-27 · The measurement server, hardened
+
+A security review of the measurement server (`python/overtone_server.py`, the library
+behind it) and its updater (`deploy/`) found four problems. All four are fixed here.
+
+### Fixed
+
+- **The updater's busy check failed open.** When the runs API did not answer (or
+  refused the token), the check read "idle", so a loaded server got its code moved
+  and restarted under a measurement. It now waits unless the API says the queue is
+  empty, and logs why it waited. A service systemd reports as not running is the
+  one exception: its runs are its own processes, so none can be going, and waiting
+  would keep a crashed server from ever getting its fix.
+
+### Hardening
+
+- **Root no longer runs anything from the checkout.** `setup-deploy-user.sh` copied
+  `overtone-update.service` and `.timer` out of `/opt/overtone`, a tree `overtone`
+  can write, into `/etc/systemd/system` as root. The script now carries both units
+  inline (a test holds them byte for byte to the committed files) and is run from
+  a root-owned copy the owner has read. `docs/server.md` runs every git and git-lfs
+  step on the checkout as `sudo -u overtone -H git` (no `safe.directory`), and the
+  venv, cargo, first-start and bench-audio steps as `overtone` too.
+- **Connections are capped and timed out.** Each connection had a thread and no
+  socket timeout. Now a connection silent for 30 s is dropped, at most 64 are
+  served at once, and one more is answered 503 from the accepting thread and closed.
+- **Wrong tokens are limited across the server.** The 1 s sleep per wrong token
+  held a thread asleep per guess, so parallel guesses piled up sleeping threads.
+  It is replaced by a server-wide limiter: past 20 wrong tokens (bearer or
+  `/login`) a minute, no token is checked, the right one included, and the reply
+  is 429 with `Retry-After`. An open browser session keeps working.
+- **An .osu's audio name stays inside its song folder.** `AudioFilename` was joined
+  to the folder as written, then stat'ed and decoded: `../../x`, an absolute path or
+  a link out sent the decoder to any file the server could read. The scan keeps
+  only a bare file name, and analysis and health open an audio file only when,
+  with links followed, it is a regular file inside its folder. An older index keeps
+  old names, so the check is where files are opened; a refused name is a
+  `no_audio` row that says why.
+
+### Measured
+
+- Suite: 511 tests OK in 1239 s, 5 skipped (500 before; 11 new: `DeployScriptTests` 5, `LibraryAudioPathTests`
+  4, `LibraryServerTests` 2). The updater tests run the real script against a
+  scratch checkout one commit behind its origin, with `systemctl` and `sudo`
+  stubbed; the no-answer case fails on the old script.
+- `bench/facts.py` ok, `bench/parity.py` matches (247 of 502), `bench/fuzz_reader.py`
+  3000 mutants with no crash, `sh -n` on both deploy scripts.
+- Headless smoke (a free port, a temp Songs folder, `LOCALAPPDATA` in a temp dir):
+  401 without the token, a scan and `/api/songs` with it; with 55 idle connections
+  open a real request answered 200 in 0.19 s; with 64 open the 65th got
+  `503 Service Unavailable`; after closing them, 200.
+- Not measured: the engine gates (no engine code changed), anything on the server
+  itself, Caddy in front.
+
+### Rejected / tried and dropped
+
+- **A per-address limiter.** Behind Caddy every client is 127.0.0.1, and
+  `X-Forwarded-For` is only as honest as the proxy's configuration; a server-wide
+  count needs neither. The price: someone sending wrong tokens can keep bearer
+  clients (scripts, the updater) out while they do. The updater then waits, which
+  is the safe side, and an open browser session still works.
+- **Letting the right token through while limited.** Then the limiter would slow
+  nothing: the guess that is right still gets in.
+
+## Unreleased — 2026-10-27 · Security hardening of the site and its servers
+
+A security review of the site once every Reviactyl allocation port turned out to be
+public (overtone-web on a public port, soon behind Cloudflare; the API and Postgres
+reachable from every container on the node) found thirteen things to fix. One commit
+each on `fix/security-hardening`.
+
+### Changed
+
+- `QUEUE_MAX` defaults to 30 (was 200), so `QUEUE_MAX × MAX_UPLOAD_MB` fits the new
+  spool budget on the API server's 2 GB disk.
+- New variables: worker `WORKER_MEMORY_MB` (1800), `WORKER_TIMEOUT_MIN_S` (120),
+  `WORKER_TIMEOUT_FACTOR` (3); API `SPOOL_MAX_MB` (1280), `SPOOL_MIN_FREE_MB` (256),
+  `MIDES_IMAGE_ORIGINS`; web `TRUSTED_PROXY_ADDRS`, `API_TIMEOUT_S` (60),
+  `MIDES_WEB_URL`, `MIDES_IMAGE_ORIGINS`; db `DB_ROLE`, `DB_ROLE_STAGING` (required).
+- Over https the session and anonymous cookies are `__Host-overtone_session` and
+  `__Host-overtone_anon`. Deploying this signs everyone out once, and anonymous
+  uploads from before it are no longer readable by their uploader.
+- The worker no longer imports the engine: a warm child process does.
+
+### Hardening
+
+- **Decompression bombs (high).** A header claiming more than 192 kHz, 8 channels or
+  `max_seconds × 192000` frames is refused (`too_heavy`) before decoding. Each
+  analysis runs in a spawned child kept warm between jobs, with a wall-clock limit of
+  `max(120 s, 3 × length)` and, on Linux, `RLIMIT_AS` of `WORKER_MEMORY_MB`; a job
+  that runs out of time or memory, or whose child is killed, fails alone (`timeout`,
+  `too_heavy`) and the next job gets a fresh child. The child proves itself on 8 s of
+  clicks before the worker says ready. The worker re-sends the last progress every
+  60 s, so the API's `JOB_TIMEOUT_S` sweep never takes a long live job for a dead one.
+- **Spool exhaustion (medium-high).** Uploads reserve their size against
+  `SPOOL_MAX_MB` (and the disk's free space less `SPOOL_MIN_FREE_MB`) before a byte is
+  read and release it in a `finally`; past it, 503 `SPOOL_FULL`. Uploads in flight
+  count toward the person's pending cap and the queue's. serve.mjs cuts a forwarded
+  request whose API connection is idle for `API_TIMEOUT_S` (504).
+- **Forged X-Forwarded-For (medium).** serve.mjs reads the header only from a peer
+  inside `TRUSTED_PROXY_ADDRS` (Cloudflare's ranges are in docs/deploy.md §9); from
+  anyone else it discards it, and `-Proto`/`-Host`, and forwards the socket address.
+  With `TRUST_PROXY=2`, `req.ip` is the real client either way.
+- **IPv6 rotation (medium).** Rate limits, the anonymous quota and the queue's turns
+  count IPv6 clients by their /64, and `::ffff:a.b.c.d` as `a.b.c.d`.
+- **Postgres open to every container (medium).** The db egg's own
+  `pg_hba.overtone.conf`: the superuser by the container's socket only, each
+  environment's role to its own database with scram, everything else rejected;
+  Wings points `hba_file` at it and rewrites its lines on every start. Existing
+  servers need one Reinstall with `DB_ROLE`/`DB_ROLE_STAGING` set.
+- **Backups (medium).** The nightly `pg_dump` uses `-h /tmp` (the old line failed
+  since the socket moved, and left an empty dump named for the day), `umask 077`, a
+  `.partial` file renamed only after a successful dump and a `pg_restore --list`
+  read, and runs at 04:00, before the panel's 04:30 stop. To be run once by hand.
+- **Cookies (low).** `__Host-` names over https (Secure, Path=/, no Domain), so no
+  sibling `*.midesprojects.com` host can plant an anonymous cookie and read a
+  visitor's uploads; a cookie name sent twice counts as absent.
+- **Labels (low).** File names and tags lose C1 controls, bidi marks, overrides and
+  isolates, zero-width characters and the BOM.
+- **Result validation (low).** Every red-line and section number must be finite and
+  in range, `level` one of high/medium/check, arrays capped at 2000 and strings at
+  fixed sizes; unknown fields still pass. CSV text cells starting with `= + - @` get
+  a leading apostrophe.
+- **Avatars (low).** A profile picture is kept only on `MIDES_WEB_URL`'s origin or
+  `MIDES_IMAGE_ORIGINS`; serve.mjs's `img-src` is `'self' data:` and those origins
+  (was any `https:`), so no uploader's chosen host learns who views the queue.
+- **Return path (low).** The sign-in return path is resolved and kept only when it
+  stays on this origin (`/\evil.example` read as `//evil.example` before).
+- **Deploy (low).** `start.sh` unsets `GIT_TOKEN` after the checkout; `package.json`
+  pins `pnpm@11.25.0` by its sha512 for corepack. docs/deploy.md: panel subusers on
+  these servers get no file, SFTP, startup or backup permission, since anyone who can
+  edit files can read every secret.
+
+### Measured
+
+- Python suite: 794 tests, all pass (8 skipped), up from 784: 10 new worker tests.
+  Worker tests 19/19. `pnpm --dir site/api test`: 56/56, up from 31 (25 new, among
+  them serve.mjs run in front of stand-in APIs and the upload route against a real
+  server). `pnpm --dir site/web build` passes. `egg.py --check`, `node --check
+  deploy/web/serve.mjs`, `sh -n`/`bash -n` on the scripts pass.
+- Worker, 120 s bench track with the vote, Windows: warm-up 24.9 s in process
+  (no self-test) against 42.8–55.5 s in the child (with it); per analysis the same
+  within this machine's noise: child medians 45.4 and 59.3 s, in process 46.8 s
+  (and 26–84 s in other in-process runs the same morning).
+- Not measured or not run: `RLIMIT_AS` on Linux (the start-up log prints the
+  child's peak address space after the self-test: the number to size
+  `WORKER_MEMORY_MB` by), pg_hba against real PostgreSQL and Wings, corepack with the
+  pin, anything on NA-01.
+
+### Not fixed here
+
+- Python dependencies are pinned but not hash-checked (`pip --require-hashes` needs a
+  hashed lock of the worker's manylinux wheels; a W-item).
+- The refusal code `too_heavy` has no sentence of its own in the site's two languages
+  yet: the result page falls back to "could not time this audio" plus the engine's
+  English message (left for the result-view branch, which is rewriting that page).
+
+## Unreleased — 2026-10-27 · Timing a song on the site
+
+### Changed
+
+- The result page is a tempo map instead of a table: the red lines over the
+  waveform, the local tempo, each section's level, the beat and bar grid, the
+  onsets and their drift from the grid, swing and the half/double hints, with
+  zoom, pan, an overview and a following playhead. The song plays from the
+  reader's own file with the red lines' clicks mixed over it, at 0.5-1.5, looped
+  over a drawn span or a section, from any red line, by keys. The red lines'
+  table follows the map both ways and shows drift and the fit residual. x2 / /2
+  and a global nudge in ms change the map, the clicks and the exports together,
+  labelled as the reader's adjustment to check by ear. docs/site.md has it all.
+- The worker writes `timing-result v1.1`: `version` 1, `minor` 1, plus the
+  engine's beats and local tempo, the click track's bar starts, the attacks, the
+  onset envelope, swing_lane's spans, density_hints, and each red line's drift.
+  All read-only: `python/overtone.py` is untouched. The engine hash takes the
+  minor, so v1.0 results are not served from the cache as v1.1.
+- The API's analysis view carries the audio's `sha1`, for its owner.
+
+### Hardening
+
+- The audio still never reaches the server's answers (ADR-W4): playback and the
+  waveform come from the file the reader picked, kept in the page for the
+  session. A reopened result asks for the file again and plays it only when its
+  SHA-1 equals the analysis's, so another song is never lined up with these red
+  lines.
+
+### Measured
+
+- Payload, vote off: 14.7 kB for `change-128-142.wav` (60 s), 49.2 kB for
+  `long-6min.wav`, against a budget of 300 kB for six minutes.
+- Clicks against the red lines' grid, read back from the scheduled oscillators:
+  within 0.0001 ms at rates 0.75, 1, 1.25 and 1.5, across a loop's wrap, and
+  after x2 with +5 ms. The page's bar starts equal the worker's `downbeats_ms`.
+- `long-6min.wav` playing at 1.5 for 8 s, zoomed in: 399 frames, the worst
+  31.7 ms, no long task (the machine was running other agents' benchmarks).
+- `tests.test_worker` 10 (one new, and the v1.1 fields checked on audio),
+  `pnpm test` 31, `pnpm build` 428 kB JS / 137 kB gzip, `bench/facts.py` ok after
+  the stated counts moved to 785. The full Python suite: 785 OK, 8 skipped, in
+  1349 s (other agents' suites and benchmarks were running beside it). The engine
+  gates were not run: no engine file changed.
+- Not measured: Safari, Firefox, a real phone, and nothing was listened to (the
+  page's output was muted during the checks).
+
+### Rejected / tried and dropped
+
+- Sending onsets at 0.1 ms: twice the bytes for a drift the page only recomputes
+  after the reader nudges, where whole ms read at most 0.5 ms off the worker's
+  own figure, which the table shows unadjusted.
+- A pitch-kept time stretch for the slower rates: the desktop app measured one
+  moving attacks by about 24 ms, which is the error the clicks are there to hear.
+  Resampling keeps every attack at t / rate.
+
+---
+
 ## Unreleased — 2026-10-27 · overtone-cli writes timing-result v1
 
 ### Changed

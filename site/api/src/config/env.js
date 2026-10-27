@@ -98,6 +98,12 @@ export const env = {
   devLogin: devLogin && !isProduction,
   anonDailyLimit: integer('ANON_DAILY_LIMIT', 5, { min: 0, max: 10_000 }),
   userDailyLimit: integer('USER_DAILY_LIMIT', 50, { min: 0, max: 100_000 }),
+  // How many of one person's analyses may wait or run at once (W3.9): a batch
+  // beyond it is refused song by song until the first ones finish.
+  anonMaxPending: integer('ANON_MAX_PENDING', 3, { min: 1, max: 1000 }),
+  userMaxPending: integer('USER_MAX_PENDING', 10, { min: 1, max: 1000 }),
+  // The whole queue's ceiling, so no one can fill it whatever their quotas.
+  queueMax: integer('QUEUE_MAX', 200, { min: 1, max: 100_000 }),
   maxAudioSeconds: integer('MAX_AUDIO_SECONDS', 600, { min: 10, max: 3600 }),
   // The largest upload: checked against Content-Length before a byte is read,
   // and again while the body streams to disk.

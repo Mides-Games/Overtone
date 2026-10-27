@@ -117,6 +117,25 @@ router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, as
     refuseEarly(res, error);
   }
 
+  // W3.9: a batch is many uploads, each one checked here, so a person's songs
+  // in the queue at once are capped, and so is the whole queue.
+  const pending = await analyses().countPending({ accountId, ipHash });
+  const maxPending = accountId ? env.userMaxPending : env.anonMaxPending;
+  if (pending.mine >= maxPending) {
+    refuseEarly(
+      res,
+      new HttpError(
+        429,
+        `You already have ${maxPending} songs in the queue. Send more when one finishes.`,
+        'PENDING_LIMIT',
+        { limit: maxPending, scope: accountId ? 'account' : 'anonymous' },
+      ),
+    );
+  }
+  if (pending.all >= env.queueMax) {
+    refuseEarly(res, new HttpError(503, 'The queue is full. Try again in a few minutes.', 'QUEUE_FULL'));
+  }
+
   const anonHash = accountId ? null : ensureAnon(req, res);
   const id = newPublicId();
 

@@ -386,10 +386,17 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '415': { $ref: '#/components/responses/Error' }
+        '503':
+          description: '`QUEUE_FULL`: `QUEUE_MAX` songs are already waiting or running.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '429':
           description: |
             `QUOTA_EXCEEDED` (`details.limit`, `details.scope`: anonymous or
-            account; resets at 00:00 UTC) or `RATE_LIMITED` (with Retry-After).
+            account; resets at 00:00 UTC), `PENDING_LIMIT` (that many of this
+            person's songs are already waiting or running: `ANON_MAX_PENDING` or
+            `USER_MAX_PENDING`; same details) or `RATE_LIMITED` (with Retry-After).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }

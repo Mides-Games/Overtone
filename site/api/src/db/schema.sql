@@ -107,6 +107,11 @@ CREATE TABLE IF NOT EXISTS jobs (
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS jobs_queued_idx ON jobs (priority DESC, id) WHERE state = 'queued';
+-- W3.9, the fair order: when a person's latest job was taken, so that between
+-- equal turns whoever was served longest ago goes first. locked_at cannot say
+-- it: it is cleared when the job ends.
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS claimed_at timestamptz;
+CREATE INDEX IF NOT EXISTS jobs_claimed_idx ON jobs (claimed_at) WHERE claimed_at IS NOT NULL;
 -- The sweep that hands a stuck job back (JOB_TIMEOUT_S) reads running rows by age.
 CREATE INDEX IF NOT EXISTS jobs_running_idx ON jobs (locked_at) WHERE state = 'running';
 

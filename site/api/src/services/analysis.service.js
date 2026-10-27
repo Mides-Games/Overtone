@@ -51,11 +51,66 @@ export const RECENT_LIMIT = 20;
 /** The most unfinished rows the queue page lists; past it, it says how many more. */
 export const LIVE_LIMIT = 100;
 
+/**
+ * Whose turn an analysis waits for (W3.9): the account, or without one the
+ * hashed address the anonymous quota counts. A cookie cleared between uploads
+ * is still the same person here.
+ */
+const ownerOf = (a) => a.accountId ?? `ip:${a.ipHash}`;
+
+/**
+ * The queue's order: round robin between people, each person's songs in the
+ * order they sent them. Someone's 30th song waits behind everybody else's
+ * 1st, so a batch never leaves a single upload waiting for all of it.
+ *
+ * Within a turn, whoever was served longest ago (or never) goes first.
+ * Without that, the second song of a batch would become its owner's 1st the
+ * moment the first one was taken, and win the tie against a newcomer's 1st
+ * by being older: the batch would still go first in full.
+ *
+ * `lastServed(owner)` is when that person's latest job was claimed, in ms, or
+ * 0 for never.
+ */
+export const fairOrder = (queued, owner = ownerOf, lastServed = () => 0) => {
+  const turns = new Map();
+  return [...queued]
+    .sort((x, y) => x.job.seq - y.job.seq)
+    .map((a) => {
+      const turn = (turns.get(owner(a)) ?? 0) + 1;
+      turns.set(owner(a), turn);
+      return { a, turn, served: lastServed(owner(a)) };
+    })
+    .sort((x, y) => x.turn - y.turn || x.served - y.served || x.a.job.seq - y.a.job.seq)
+    .map(({ a }) => a);
+};
+
 // ── Memory ──────────────────────────────────────────────────────────────────
 
 const memory = { analyses: new Map(), seq: 0 };
 
+const memoryQueued = () => {
+  const all = [...memory.analyses.values()];
+  const served = new Map();
+  for (const a of all) {
+    const at = a.job?.claimedAt?.getTime() ?? 0;
+    if (at > (served.get(ownerOf(a)) ?? 0)) served.set(ownerOf(a), at);
+  }
+  return fairOrder(all.filter((a) => a.job?.state === 'queued'), ownerOf, (o) => served.get(o) ?? 0);
+};
+
 const memoryStore = {
+  async countPending({ accountId, ipHash }) {
+    const owner = accountId ?? `ip:${ipHash}`;
+    let mine = 0;
+    let all = 0;
+    for (const a of memory.analyses.values()) {
+      if (a.job?.state !== 'queued' && a.job?.state !== 'running') continue;
+      all += 1;
+      if (ownerOf(a) === owner) mine += 1;
+    }
+    return { mine, all };
+  },
+
   async countToday({ accountId, ipHash }) {
     const since = startOfUtcDay();
     let n = 0;
@@ -102,16 +157,15 @@ const memoryStore = {
     if (!a) return null;
     let position = null;
     if (a.job?.state === 'queued') {
-      position = 1 + [...memory.analyses.values()].filter((b) => b.job?.state === 'queued' && b.job.seq < a.job.seq).length;
+      position = 1 + memoryQueued().indexOf(a);
     }
     return { ...a, position };
   },
 
   async queue() {
     const all = [...memory.analyses.values()];
-    const bySeq = (x, y) => x.job.seq - y.job.seq;
-    const queued = all.filter((a) => a.job?.state === 'queued').sort(bySeq);
-    const running = all.filter((a) => a.job?.state === 'running').sort(bySeq);
+    const queued = memoryQueued();
+    const running = all.filter((a) => a.job?.state === 'running').sort((x, y) => x.job.seq - y.job.seq);
     const since = Date.now() - RECENT_MINUTES * 60_000;
     const recent = all
       .filter((a) => a.finishedAt && a.finishedAt.getTime() >= since)
@@ -122,11 +176,10 @@ const memoryStore = {
   },
 
   async claim() {
-    const next = [...memory.analyses.values()]
-      .filter((a) => a.job?.state === 'queued')
-      .sort((x, y) => x.job.seq - y.job.seq)[0];
+    const next = memoryQueued()[0];
     if (!next) return null;
-    Object.assign(next.job, { state: 'running', attempts: next.job.attempts + 1, lockedAt: new Date() });
+    const now = new Date();
+    Object.assign(next.job, { state: 'running', attempts: next.job.attempts + 1, lockedAt: now, claimedAt: now });
     Object.assign(next, { status: 'running', stage: null, progress: 0 });
     return { publicId: next.publicId, filename: next.filename, attempt: next.job.attempts };
   },
@@ -249,7 +302,35 @@ const lockRunning = async (client, publicId, attempt) => {
   return rows[0] ?? null;
 };
 
+/**
+ * Every queued job and its place in `fairOrder`: each person's own turn
+ * number first (their 1st song, 2nd, ...), then whoever was served longest
+ * ago, then the job id. A priority, which nothing sets yet, comes before all.
+ */
+const OWNER = "coalesce(a.account_id::text, 'ip:' || a.ip_hash)";
+const FAIR_POSITIONS = `
+  SELECT turns.id, row_number() OVER (ORDER BY turns.priority DESC, turns.turn, served.at NULLS FIRST, turns.id) AS position
+    FROM (SELECT j.id, j.priority, ${OWNER} AS owner,
+                 row_number() OVER (PARTITION BY ${OWNER} ORDER BY j.id) AS turn
+            FROM jobs j JOIN analyses a ON a.id = j.analysis_id
+           WHERE j.state = 'queued') turns
+    LEFT JOIN (SELECT ${OWNER} AS owner, max(j.claimed_at) AS at
+                 FROM jobs j JOIN analyses a ON a.id = j.analysis_id
+                WHERE j.claimed_at > now() - interval '1 day'
+                GROUP BY 1) served ON served.owner = turns.owner`;
+
 const pgStore = {
+  async countPending({ accountId, ipHash }) {
+    const { rows: [row] } = await query(
+      `SELECT count(*) FILTER (WHERE ${accountId ? 'a.account_id = $1' : 'a.account_id IS NULL AND a.ip_hash = $1'})::int AS mine,
+              count(*)::int AS total
+         FROM jobs j JOIN analyses a ON a.id = j.analysis_id
+        WHERE j.state IN ('queued', 'running')`,
+      [accountId ?? ipHash],
+    );
+    return { mine: row.mine, all: row.total };
+  },
+
   async countToday({ accountId, ipHash }) {
     const { rows } = accountId
       ? await query(
@@ -316,11 +397,8 @@ const pgStore = {
     if (!row) return null;
     let position = null;
     if (row.jobState === 'queued') {
-      const { rows: [ahead] } = await query(
-        "SELECT count(*)::int AS n FROM jobs WHERE state = 'queued' AND id < $1",
-        [row.jobId],
-      );
-      position = ahead.n + 1;
+      const { rows: [place] } = await query(`SELECT position FROM (${FAIR_POSITIONS}) p WHERE id = $1`, [row.jobId]);
+      position = place ? Number(place.position) : null;
     }
     return { ...row, position };
   },
@@ -330,18 +408,15 @@ const pgStore = {
                   a.created_at, a.finished_at, a.private, a.tag_title, a.tag_artist,
                   a.cached_from IS NOT NULL AS cached,
                   u.username, u.display_name, u.avatar_url`;
-    // Running first, then queued in the order the claim takes them; the
-    // position is the row's place among the queued ones.
+    // Running first, then queued in the order the claim takes them.
     const { rows: live } = await query(
-      `SELECT ${COLS},
-              CASE WHEN j.state = 'queued'
-                   THEN row_number() OVER (PARTITION BY j.state ORDER BY j.priority DESC, j.id) END AS position,
-              count(*) OVER () AS total
+      `SELECT ${COLS}, p.position, count(*) OVER () AS total
          FROM jobs j
          JOIN analyses a ON a.id = j.analysis_id
          LEFT JOIN accounts u ON u.id = a.account_id
+         LEFT JOIN (${FAIR_POSITIONS}) p ON p.id = j.id
         WHERE j.state IN ('queued', 'running')
-        ORDER BY j.state = 'queued', j.priority DESC, j.id
+        ORDER BY j.state = 'queued', p.position, j.id
         LIMIT $1`,
       [LIVE_LIMIT],
     );
@@ -378,9 +453,10 @@ const pgStore = {
   async claim() {
     const { rows } = await query(
       `WITH next AS (
-         SELECT id FROM jobs WHERE state = 'queued' ORDER BY priority DESC, id LIMIT 1 FOR UPDATE SKIP LOCKED
+         SELECT j.id FROM jobs j JOIN (${FAIR_POSITIONS}) p ON p.id = j.id
+          ORDER BY p.position LIMIT 1 FOR UPDATE OF j SKIP LOCKED
        ), claimed AS (
-         UPDATE jobs j SET state = 'running', attempts = j.attempts + 1, locked_at = now(), error = NULL
+         UPDATE jobs j SET state = 'running', attempts = j.attempts + 1, locked_at = now(), claimed_at = now(), error = NULL
            FROM next WHERE j.id = next.id
          RETURNING j.analysis_id, j.attempts
        )

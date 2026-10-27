@@ -25,6 +25,8 @@ router.get('/health', async (_req, res) => {
     limits: {
       anonDailyLimit: env.anonDailyLimit,
       userDailyLimit: env.userDailyLimit,
+      anonMaxPending: env.anonMaxPending,
+      userMaxPending: env.userMaxPending,
       maxAudioSeconds: env.maxAudioSeconds,
       maxUploadMb: env.maxUploadMb,
     },

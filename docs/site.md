@@ -270,3 +270,9 @@ the public queue read the same order.
 
 Checked against PostgreSQL through PGlite (see `timeline.md`) and in the browser;
 not with two real addresses taking turns.
+
+### Asking before uploading (W3.11, 2026-10-27)
+
+The form hashes each file in the browser and calls `POST /api/v1/analyses/lookup`
+first. A hit is a new analysis from the stored result (no quota, no queue, no
+upload); a miss, or a browser that cannot hash, uploads as before.

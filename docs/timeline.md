@@ -20,6 +20,38 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W3.11: ask before uploading
+
+### Changed
+
+- W3.11 of [the web platform](16-web-platform.md): before uploading, the browser
+  hashes the audio (SHA-1, Web Crypto) and sends `POST /api/v1/analyses/lookup`
+  with the hash, the file name, the size, the privacy switch and the tags. When the
+  current engine has analysed that audio, the answer is a new analysis made from the
+  stored result, exactly what uploading the same file would have given, and nothing
+  is uploaded. Otherwise `{ cached: false }` and the upload goes on as before; a
+  browser that cannot hash, or a lookup that fails, also just uploads.
+- A hit costs no quota and no place in the queue, so it is not refused by the
+  pending limit of W3.9, which an upload of a cached song was before it was read.
+- The upload and the lookup build the queue's fields (privacy, tags, uploader) with
+  one helper.
+
+### Hardening
+
+- The lookup has its own rate limit (120 per address per ten minutes), wider than
+  uploads because it sends no audio. A hash gives the same trust the upload's cache
+  already gave: knowing the SHA-1 of a file stands in for having it.
+
+### Measured
+
+- With `pnpm dev` and a fake worker: a lookup of new audio answered
+  `cached: false`; after uploading it and finishing the job, two lookups answered
+  `cached: true` with `done` and new ids, both shown on the queue under the tag sent
+  with them; a malformed hash got 400 `BAD_SHA1`. `vite build` passes. `node --test`
+  23/23, unchanged: the route has no test of its own yet.
+
+---
+
 ## Unreleased — 2026-10-27 · W3.9: many songs at once, in fair turns
 
 ### Changed

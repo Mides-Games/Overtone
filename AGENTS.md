@@ -107,7 +107,12 @@ And the site's, before any commit that touches `site/` (after `pnpm install --fr
 pnpm --dir site/api test                               # all pass (100 on 2026-10-27)
 pnpm --dir site/web test                               # all pass (92 on 2026-10-27)
 pnpm --dir site/web budget                             # builds; initial JS under 200 kB gzip, each chunk in its budget
+pnpm --dir site/e2e test                               # 51 pass in Chromium: the main paths, axe on every page in both themes
 ```
+
+`site/e2e` starts its own API (in memory, with a fake worker) and Vite on 3090 and 5290
+(`E2E_API_PORT`, `E2E_WEB_PORT`), never in CI. Chromium is installed once per machine
+with `pnpm --dir site/e2e exec playwright install chromium`.
 
 `bench/facts.py` counts the `test(` calls in `site/api/test` and `site/web/test` and holds
 the number stated here to them, so a test that lands without its count moving is named.

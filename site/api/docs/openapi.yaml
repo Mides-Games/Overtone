@@ -95,6 +95,8 @@ components:
           description: >-
             The audio's SHA-1. The result page compares it with the file picked
             again in the browser before it plays it; the audio itself is never kept or served.
+        tagTitle: { type: [string, 'null'], description: "The file's title tag, cleaned; the .osz the page builds names its map by it." }
+        tagArtist: { type: [string, 'null'], description: "The file's artist tag, cleaned." }
         createdAt: { type: string, format: date-time }
         cached: { type: boolean, description: Answered from an earlier analysis of the same audio and engine. }
         position: { type: integer, minimum: 1, description: While queued; 1 is next. }

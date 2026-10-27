@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { useAuth } from '../../context/AuthContext.jsx'
+import { buildOsz } from '../../lib/osz.js'
 import { downloadName, saveText, timingCsv, timingText } from '../../lib/timing.js'
 
 const FACTORS = [
@@ -14,11 +16,15 @@ const NUDGE_LIMIT = 500
  * The reader's own adjustments, display and export only: half or double every
  * BPM, and move every line by the same few milliseconds. Both are offered to
  * be checked by ear against the clicks; neither is a measurement, and the
- * engine's reading stays what it was. Then the exports, which follow them.
+ * engine's reading stays what it was. Then the exports, which follow them:
+ * the .osz to open in osu!, built here from `audioFile` (the reader's own
+ * file, null until they pick it), the [TimingPoints] block and the CSV.
  */
-export default function AdjustExport({ id, analysis, lines, adjustment, onAdjust }) {
+export default function AdjustExport({ id, analysis, lines, adjustment, onAdjust, audioFile }) {
   const { t } = useTranslation()
+  const { account } = useAuth() ?? {}
   const [copied, setCopied] = useState(null)
+  const [osz, setOsz] = useState(null) // null, 'busy' or 'failed'
   const result = analysis.result
   const adjusted = adjustment.factor !== 1 || adjustment.nudgeMs !== 0
   const text = () => timingText(result, lines, adjustment)
@@ -38,6 +44,18 @@ export default function AdjustExport({ id, analysis, lines, adjustment, onAdjust
       setCopied('failed')
     }
     setTimeout(() => setCopied(null), 2500)
+  }
+
+  async function downloadOsz() {
+    if (!audioFile || osz === 'busy') return
+    setOsz('busy')
+    try {
+      const { name, bytes } = await buildOsz({ file: audioFile, analysis, lines, adjustment, creator: account?.username })
+      saveText(bytes, name, 'application/x-osu-beatmap-archive')
+      setOsz(null)
+    } catch {
+      setOsz('failed')
+    }
   }
 
   return (
@@ -93,29 +111,25 @@ export default function AdjustExport({ id, analysis, lines, adjustment, onAdjust
         </p>
       )}
 
-      <div className="flex flex-wrap gap-3 border-t border-line px-4 py-3">
-        <button type="button" className="btn-primary" onClick={copy}>
+      <div className="flex flex-wrap items-center gap-3 border-t border-line px-4 py-3">
+        <button type="button" className="btn-primary" disabled={!audioFile || osz === 'busy'} onClick={downloadOsz}>
+          {osz === 'busy' ? t('result.oszBusy') : t('result.downloadOsz')}
+        </button>
+        <button type="button" className="btn-ghost" onClick={copy}>
           {copied === 'ok' ? t('result.copied') : copied === 'failed' ? t('result.copyFailed') : t('result.copy')}
         </button>
         {adjusted ? (
-          <>
-            <button type="button" className="btn-ghost" onClick={() => saveText(text(), downloadName(analysis.filename, 'timing.txt'), 'text/plain;charset=utf-8')}>
-              {t('result.downloadTxt')}
-            </button>
-            <button type="button" className="btn-ghost" onClick={() => saveText(timingCsv(result, lines), downloadName(analysis.filename, 'timing.csv'), 'text/csv;charset=utf-8')}>
-              {t('result.downloadCsv')}
-            </button>
-          </>
+          <button type="button" className="btn-ghost" onClick={() => saveText(timingCsv(result, lines), downloadName(analysis.filename, 'timing.csv'), 'text/csv;charset=utf-8')}>
+            {t('result.downloadCsv')}
+          </button>
         ) : (
-          <>
-            <a className="btn-ghost" href={`/api/v1/analyses/${id}/timing.txt`} download>
-              {t('result.downloadTxt')}
-            </a>
-            <a className="btn-ghost" href={`/api/v1/analyses/${id}/timing.csv`} download>
-              {t('result.downloadCsv')}
-            </a>
-          </>
+          <a className="btn-ghost" href={`/api/v1/analyses/${id}/timing.csv`} download>
+            {t('result.downloadCsv')}
+          </a>
         )}
+        <p className="w-full text-caption text-dim" role={osz === 'failed' ? 'alert' : undefined}>
+          {osz === 'failed' ? t('result.oszFailed') : audioFile ? t('result.oszNote') : t('result.oszNeedsAudio')}
+        </p>
       </div>
     </section>
   )

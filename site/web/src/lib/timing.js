@@ -241,7 +241,7 @@ export const batchFiles = (items) =>
     .filter((item) => item.status === 'done' && item.result)
     .map((item) => ({ name: downloadName(item.file.name, 'timing.txt'), text: timingText(item.result) }))
 
-/** Hands `text` to the browser as a file to save. Nothing leaves the page. */
+/** Hands `text` (or bytes) to the browser as a file to save. Nothing leaves the page. */
 export function saveText(text, name, type) {
   const url = URL.createObjectURL(new Blob([text], { type }))
   const a = document.createElement('a')

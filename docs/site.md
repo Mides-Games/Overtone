@@ -353,6 +353,12 @@ did, from the browser. Code: `site/web/src/pages/AnalysisResult.jsx`,
 - **The table** follows the map both ways (hover and selection), with the
   engine's confidence and level, the drift (median, 90th percentile, lean) and
   the fit residual, and a play and a loop button per line.
+- **The .osz** (`lib/osz.js`): the reader's file and a v14 `.osu` holding the red
+  lines as the page has them and no hit objects, zipped stored in the browser
+  (`lib/zip.js`), named `Artist - Title.osz` from the file's tags or name. It needs
+  the file in this session, so after a reload the button waits for it to be picked.
+- **The volumes** of the song and the clicks, and the clicks' on/off, are kept in
+  `localStorage` (`overtone.player.volumes`) and restored on the next song.
 - **The reader's adjustments**, display and export only: x2 / /2 every BPM, and
   a global nudge in ms. The map, the clicks, the drift and the exports follow
   them; copy and downloads are then built in the page, with a comment line

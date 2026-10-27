@@ -28,9 +28,9 @@ const MAX_FILES = 50
 /** Refusals that the next file of a batch would get too. */
 const STOPS_THE_BATCH = ['QUOTA_EXCEEDED', 'PENDING_LIMIT', 'QUEUE_FULL', 'CACHE_LIMIT', 'NETWORK', 'RATE_LIMITED']
 const OUTPUTS = [
+  { key: 'osz', ready: true },
   { key: 'timingPoints', ready: true },
   { key: 'csv', ready: true },
-  { key: 'osu', ready: false },
   { key: 'click', ready: false },
 ]
 

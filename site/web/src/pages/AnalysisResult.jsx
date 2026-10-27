@@ -13,6 +13,7 @@ import Transport from '../components/result/Transport.jsx'
 import { useSongAudio } from '../hooks/useSongAudio.js'
 import { api } from '../lib/api.js'
 import { Player } from '../lib/player.js'
+import { heldAudio } from '../lib/session-audio.js'
 import { adjustLines, attackDrift, clickGrid, formatBpm, formatMs, lineDrift } from '../lib/timing.js'
 
 /**
@@ -276,7 +277,14 @@ function Result({ id, analysis }) {
         <Transport player={player} snapshot={snapshot} durationS={durationS} clockRef={clockRef} />
       </TempoMap>
 
-      <AdjustExport id={id} analysis={analysis} lines={lines} adjustment={adjustment} onAdjust={setAdjustment} />
+      <AdjustExport
+        id={id}
+        analysis={analysis}
+        lines={lines}
+        adjustment={adjustment}
+        onAdjust={setAdjustment}
+        audioFile={audio.kind === 'none' || audio.kind === 'checking' || audio.kind === 'mismatch' || audio.kind === 'unverifiable' ? null : heldAudio(id)}
+      />
 
       <RedLinesTable
         lines={lines}

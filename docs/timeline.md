@@ -20,6 +20,39 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · The result page hands over an .osz
+
+### Changed
+
+- The result page downloads a `.osz`: the reader's own file as `audio.<ext>` and one
+  `.osu` (format v14) with the red lines as the page has them (×2 / ÷2 and the
+  nudge included), no hit objects and no comment rows. Opened, osu!stable imports
+  it as a new set ready for the editor. Title and artist are the file's tags, else
+  its name read as `Artist - Title`; ASCII in `Title`/`Artist`, the spelling as
+  written in the `*Unicode` fields; the creator is the signed-in Mides username or
+  "Overtone". It is built in the browser (ADR-W4): the audio is never sent again.
+  The API's per-analysis view now carries `tagTitle` and `tagArtist` for it.
+- "Download timing.txt" is gone from the page (the owner's call: the .osz replaces
+  it). Copying the `[TimingPoints]` block and the CSV stay, and so does the API's
+  `timing.txt` route, for scripts and the batch zip.
+- The song and click volumes, and whether the clicks are on, are kept in this
+  browser's storage and restored on the next result page. Storage that is blocked
+  falls back to the old defaults.
+
+### Measured
+
+- `site/web` tests 33/33 (6 new, `osz.test.js`: the rows, an adjusted timing,
+  non-ASCII names, the audio byte for byte with its CRC, cleaned file names).
+- In the browser pane, `pnpm dev`: `change-128-142.wav` uploaded as
+  `Test Band - Two Tempos.wav` gave `Test Band - Two Tempos.osz`, 5 293 087 bytes:
+  `audio.wav` (5 292 044, the file's size) and the `.osu` with `400,468.750000973913`
+  and `30400,422.535211267606`. Volumes set to 35 and 20 read back 35 and 20 after a
+  reload. Without the file (after a reload) the button is disabled and says why.
+- Not checked: importing the .osz in osu!stable itself (no osu! on this machine), and
+  lazer.
+
+---
+
 ## Unreleased — 2026-10-27 · The measurement server, hardened
 
 A security review of the measurement server (`python/overtone_server.py`, the library

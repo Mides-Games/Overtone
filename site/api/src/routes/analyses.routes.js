@@ -425,6 +425,9 @@ const publicView = (row) => ({
   // Only its uploader reads this view, and they hold the file: the result page
   // checks a file picked again against it before playing it (ADR-W4).
   sha1: row.sha1 ?? null,
+  // The file's own tags, cleaned on upload: the .osz the page builds names its map by them.
+  tagTitle: row.tagTitle ?? null,
+  tagArtist: row.tagArtist ?? null,
   createdAt: new Date(row.createdAt).toISOString(),
   cached: Boolean(row.cachedFrom),
   ...(row.status === 'queued' && row.position ? { position: row.position } : {}),

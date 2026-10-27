@@ -447,6 +447,14 @@ carpeta, una tarjeta por canción; topes `ANON_MAX_PENDING`/`USER_MAX_PENDING` (
 más que no recibe un análisis. Probado contra PostgreSQL (PGlite). Detalle en
 `docs/site.md` y `timeline.md`.
 
+**W3.2, estado al 2026-10-27:** la rama `feat/overtone-sso` de Mides-Dev-Web ya tiene
+los tres cambios: `"overtone"` en `SSO_APPS` como web registrada (orígenes
+`overtone.midesprojects.com` y `overtone-experimental.midesprojects.com`, camino
+`/login/callback`), el nombre en `APPS` de `Authorize.jsx` y Overtone en
+`ecosystem.js` marcado `soon` hasta que el sitio esté arriba; también `docs-sso.md` y
+el smoke de CI. Está al día con `main` y sin mergear: falta abrir el PR y mergearlo,
+que despliega solo. `GET /api/profile/by-id/<id>` (opcional) no está hecho.
+
 **W3.11 hecha el 2026-10-27** en la rama `feature/cache-lookup`: `POST /analyses/lookup`
 con el SHA-1 que calcula el navegador; una canción ya analizada no se sube.
 

@@ -20,6 +20,38 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W3.5–W3.7 checked against the code
+
+### Changed
+
+- W3.5, W3.6 and W3.7 of [the web platform](16-web-platform.md) were open in the
+  roadmap although the site had shipped them. Read against the code, they are done:
+  the ticker, the user menu and the Home, Analyze, Result and Login pages (W3.5);
+  separate anonymous and account quotas, the address stored as a daily HMAC (W3.6);
+  every string in English and Spanish (W3.7).
+- Recorded as deviations, not changed: the palette and type are the desktop app's
+  "Console" look rather than midesprojects.com's (whose Horizon font has no known
+  licence), and the navigation is underlined tabs, not a pill. The rate limit's
+  key becomes a hash with W3.17.
+
+### Rejected / tried and dropped
+
+- A pill navigation, as W3.5's row words it. Decided under the owner's delegation:
+  the tabs belong to the app's look the site already adopted, work on a phone and
+  with a keyboard, and a pill would change only the style, not what anyone can do.
+
+### Hardening
+
+- `site/web/test/i18n.test.js` holds W3.7 in place: it fails when a key exists in
+  one language only, when a string's `{{placeholders}}` differ between the two,
+  when a plural lacks its `_one` or `_other`, or when the code asks for a key that
+  does not exist. `site/web` gets a `test` script for it.
+
+### Measured
+
+- `node --test` in `site/web`: 4/4; with one Spanish placeholder removed on
+  purpose it failed on that key, as it should. `site/api` 31/31, untouched.
+  `vite build` passes.
 ## Unreleased — 2026-10-27 · W3.18: the queue, moderated
 
 ### Changed

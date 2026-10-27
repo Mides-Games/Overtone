@@ -476,6 +476,24 @@ mismo día: nombre, foto y banner por id, con su caso en el smoke.
 **W3.11 hecha el 2026-10-27** en la rama `feature/cache-lookup`: `POST /analyses/lookup`
 con el SHA-1 que calcula el navegador; una canción ya analizada no se sube.
 
+**W3.5, W3.6 y W3.7 revisadas contra el código el 2026-10-27** (rama
+`feature/site-checks-w3-5-7`):
+- **W3.5 hecha, con dos desvíos.** Están la cinta, el menú de usuario y las páginas
+  Inicio, Analizar, Resultado y Login (más Cola y Perfil). Los colores y la tipografía
+  son los de la app de escritorio ("Console"), no los de midesprojects.com: su fuente
+  Horizon no tiene licencia conocida y el repo es público (`docs/site.md`, "Look").
+  El nav son pestañas subrayadas, no una píldora, y se queda así (decidido el
+  2026-10-27 con la delegación del dueño): las pestañas son parte del look de la app
+  que el sitio ya adoptó, funcionan en móvil y con teclado, y cambiarlas sería solo
+  estética sin ganancia de uso.
+- **W3.6 hecha.** Las cuotas separan anónimo y cuenta (`ANON_DAILY_LIMIT`,
+  `USER_DAILY_LIMIT`), con la dirección guardada como HMAC del día. El rate limit
+  contaba por la dirección en memoria; W3.17 (rama `feature/shared-rate-limit`) lo
+  pasa a un HMAC.
+- **W3.7 hecha.** Le faltaba algo que la sostenga: `site/web/test/i18n.test.js`
+  falla si una clave está en un idioma y no en el otro, si los `{{placeholders}}`
+  no coinciden, si un plural queda sin su par o si el código pide una clave que no
+  existe.
 **W3.18 hecha el 2026-10-27** en la rama `feature/queue-moderation`: un moderador de
 Mides (`is_moderator`, guardado como `mides_role`) ve en `/queue` "Sacar" en cada fila
 viva y "Devolver a la cola" en la que se está analizando, con un motivo opcional. Cada

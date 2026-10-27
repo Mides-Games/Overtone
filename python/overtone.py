@@ -3207,7 +3207,8 @@ def analyze_audio(path: str | os.PathLike[str], min_delta: float = 1.5,
         return _fold_to_map_octave(analysis, min_delta, persistence, min_confidence)
     tracked = _fold_local_to_map_octave(tracked, float(analysis.global_bpm), analysis.beats,
                                         lambda: _beat_this_tempo(y, sr))
-    return _fold_lines_to_song_octave(tracked, lambda: _beat_this_judge_beats(y, sr))
+    tracked = _fold_lines_to_song_octave(tracked, lambda: _beat_this_judge_beats(y, sr))
+    return _constant_grid(tracked, lambda: _beat_this_judge_beats(y, sr))
 
 
 def _fold_to_map_octave(analysis: Analysis, min_delta: float, persistence: int,
@@ -3724,6 +3725,56 @@ def _beat_this_tempo(y: np.ndarray, sr: int) -> float | None:
 #: line's span, hears that octave. On since 2026-10-26 (bands held out
 #: tempo ok 57.7 -> 59.9 %, dev unchanged).
 SECTION_OCTAVE_JUDGE = True
+
+#: A song the beat tracker splits into dozens of red lines that one steady
+#: grid explains: on bands-variable dev, all 185 maps that fell back to the
+#: tracker missed the tempo, 72 of them mapped with a single red line while
+#: the tracker gave a median of 78. When Beat This!'s beats over the whole
+#: song sit on one grid (CONSTANT_GRID_SHARE of them within
+#: CONSTANT_GRID_TOL_MS), the song is read as that grid, at the octave of the
+#: tempo that held most of it. Off until measured on the server.
+CONSTANT_GRID = False
+CONSTANT_GRID_TOL_MS = 20.0
+CONSTANT_GRID_SHARE = 0.9
+
+
+def _constant_grid(analysis: Analysis, heard) -> Analysis:
+    """One red line where one steady grid explains Beat This!'s beats over
+    the whole song (CONSTANT_GRID); the analysis as it was otherwise."""
+    points = list(getattr(analysis, "points", None) or [])
+    if not CONSTANT_GRID or len(points) < 2:
+        return analysis
+    found = heard()
+    if found is None:
+        return analysis
+    beats = np.sort(np.asarray(found, dtype=float) * 1000.0)
+    if beats.size < 32:
+        return analysis
+    gaps = np.diff(beats)
+    step = float(np.median(gaps))
+    if step <= 0:
+        return analysis
+    index = np.concatenate([[0], np.cumsum(np.maximum(1, np.round(gaps / step)))])
+    keep = np.ones(beats.size, dtype=bool)
+    for _ in range(3):  # least squares, then without the beats it misses by far
+        period, start = np.polyfit(index[keep], beats[keep], 1)
+        miss = np.abs(beats - (start + period * index))
+        keep = miss <= 2.0 * CONSTANT_GRID_TOL_MS
+        if keep.sum() < 32:
+            return analysis
+    if float(np.mean(miss <= CONSTANT_GRID_TOL_MS)) < CONSTANT_GRID_SHARE:
+        return analysis
+    bpm = 60000.0 / float(period)
+    song = _song_tempo(points, float(analysis.duration) * 1000.0) or bpm
+    bpm *= min((0.5, 1.0, 2.0), key=lambda f: abs(np.log2(bpm * f / song)))
+    period = 60000.0 / bpm
+    # The grid's beat nearest the first red line, so its bar stays where it was.
+    first = points[0].offset_ms
+    offset = start + round((first - start) / period) * period
+    while offset - period >= 0.0 and offset > first + period / 2.0:
+        offset -= period
+    line = replace(points[0], bpm=bpm, offset_ms=float(offset))
+    return _snap_whole_points(replace(analysis, points=[line]))
 
 
 def _song_tempo(points: list, duration_ms: float) -> float | None:

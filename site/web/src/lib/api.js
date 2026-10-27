@@ -35,6 +35,79 @@ export async function api(path, { method = 'GET', json, form } = {}) {
   }
 
   const data = response.status === 204 ? null : await response.json().catch(() => null)
-  if (!response.ok) throw new ApiError(response.status, data?.error?.code, data?.error?.message)
+  if (!response.ok) {
+    const error = new ApiError(response.status, data?.error?.code, data?.error?.message)
+    error.details = data?.error?.details ?? null
+    throw error
+  }
   return data
+}
+
+/**
+ * Asks the API whether this audio was already analysed (W3.11), by its SHA-1,
+ * before a byte of it is uploaded. Resolves to `{ id, status, cached: true }`
+ * on a hit and `null` otherwise, including when the browser cannot hash it
+ * or the lookup fails: the upload then answers as it always did.
+ */
+export async function lookupAudio(file, options = {}) {
+  let sha1
+  try {
+    const digest = await crypto.subtle.digest('SHA-1', await file.arrayBuffer())
+    sha1 = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
+  } catch {
+    return null
+  }
+  try {
+    const found = await api('/analyses/lookup', {
+      method: 'POST',
+      json: { sha1, filename: file.name, size: file.size, private: Boolean(options.private), title: options.title ?? null, artist: options.artist ?? null },
+    })
+    return found?.cached ? found : null
+  } catch (error) {
+    // Over the daily cap of stored results the upload would be refused the
+    // same way: say so now instead of sending the whole file first.
+    if (error.code === 'CACHE_LIMIT') throw error
+    return null
+  }
+}
+
+/**
+ * Uploads an audio file as the raw body of `POST /api/v1/analyses`, reporting
+ * the share sent through `onProgress(0..1)`. XMLHttpRequest rather than fetch
+ * because fetch cannot report upload progress. Resolves to `{ id, status,
+ * cached }`; rejects with an ApiError (`details` carries the server's).
+ *
+ * `options.private` keeps the song and the uploader off the public queue;
+ * `options.title` and `options.artist` are the file's own tags (lib/tags.js).
+ */
+export function uploadAudio(file, onProgress, options = {}) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/v1/analyses')
+    xhr.setRequestHeader('Accept', 'application/json')
+    xhr.setRequestHeader('X-Requested-With', 'overtone-web')
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+    // A header is Latin-1: the name travels percent-encoded.
+    xhr.setRequestHeader('X-Filename', encodeURIComponent(file.name))
+    if (options.private) xhr.setRequestHeader('X-Private', '1')
+    if (options.title) xhr.setRequestHeader('X-Title', encodeURIComponent(options.title))
+    if (options.artist) xhr.setRequestHeader('X-Artist', encodeURIComponent(options.artist))
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) onProgress(event.loaded / event.total)
+    }
+    xhr.onload = () => {
+      let data = null
+      try {
+        data = JSON.parse(xhr.responseText)
+      } catch {
+        // Not JSON: a proxy's page, say. The status still says what happened.
+      }
+      if (xhr.status >= 200 && xhr.status < 300) return resolve(data)
+      const error = new ApiError(xhr.status, data?.error?.code, data?.error?.message)
+      error.details = data?.error?.details ?? null
+      return reject(error)
+    }
+    xhr.onerror = () => reject(new ApiError(0, 'NETWORK', 'The server could not be reached.'))
+    xhr.send(file)
+  })
 }

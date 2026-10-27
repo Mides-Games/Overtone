@@ -5708,6 +5708,81 @@ class LibraryIndexTests(unittest.TestCase):
         self.assertAlmostEqual(found["lines"][0]["bpm"], 120.0, delta=0.05)
 
 
+class LibraryAudioPathTests(unittest.TestCase):
+    """An .osu names its audio, and anyone can write an .osu: the name is
+    never followed out of its song folder, at scan, analysis or health."""
+
+    def setUp(self) -> None:
+        import overtone_library
+        self.ol = overtone_library
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.tmp = Path(scratch.name)
+        self.songs = self.tmp / "Songs"
+        self.folder = self.songs / "1 Band - Song"
+        self.folder.mkdir(parents=True)
+        (self.folder / "audio.wav").write_bytes(b"RIFF" + bytes(64))
+        (self.folder / "sub").mkdir()
+        self.outside = self.tmp / "outside.wav"
+        self.outside.write_bytes(b"RIFF" + bytes(64))
+        self.library = overtone_library.Library(self.tmp / "index" / "library.sqlite3")
+
+    def _link(self) -> bool:
+        try:
+            os.symlink(self.outside, self.folder / "link.wav")
+        except (OSError, NotImplementedError):  # Windows without the privilege
+            return False
+        return True
+
+    def test_only_a_bare_file_name_is_an_audio_name(self):
+        for bad in ("../outside.wav", "..\\outside.wav", "/etc/passwd", "\\\\host\\share\\a.wav",
+                    "C:\\a.wav", "C:a.wav", "sub/a.wav", "..", ".", "", "a\0.wav"):
+            self.assertFalse(self.ol.safe_audio_name(bad), repr(bad))
+        for good in ("audio.wav", "..audio..mp3", "Song (TV Size).ogg", "風.mp3"):
+            self.assertTrue(self.ol.safe_audio_name(good), good)
+
+    def test_only_a_regular_file_inside_the_folder_is_found(self):
+        self.assertEqual(self.ol.audio_in_folder(self.folder, "audio.wav"),
+                         os.path.realpath(self.folder / "audio.wav"))
+        for name in ("../outside.wav", str(self.outside), "sub", "missing.wav", ".."):
+            self.assertIsNone(self.ol.audio_in_folder(self.folder, name), name)
+        if self._link():
+            self.assertIsNone(self.ol.audio_in_folder(self.folder, "link.wav"))
+
+    def test_the_scan_keeps_no_name_that_leaves_the_folder(self):
+        (self.folder / "Band - Song (Mapper) [Hard].osu").write_text(
+            _mapset_osu("Hard", audio="../../outside.wav", objects=(1000, 2000)),
+            encoding="utf-8", newline="")
+        self.library.scan(self.songs)
+        beatmap = self.library.search("band")["sets"][0]["beatmaps"][0]
+        self.assertEqual(beatmap["audio_file"], "")
+
+    def test_an_index_holding_such_a_name_never_decodes_it(self):
+        import sqlite3
+        from contextlib import closing
+        (self.folder / "Band - Song (Mapper) [Hard].osu").write_text(
+            _mapset_osu("Hard", audio="audio.wav", objects=(1000, 2000)),
+            encoding="utf-8", newline="")
+        self.library.scan(self.songs)
+        names = ["../../outside.wav", str(self.outside), "sub"]
+        if self._link():
+            names.append("link.wav")
+        for name in names:
+            # An index written before the scan refused such names.
+            with closing(sqlite3.connect(self.library.path)) as db, db:
+                db.execute("UPDATE beatmaps SET audio_file = ?", (name,))
+            with mock.patch.object(self.ol, "_analyse_audio") as engine, \
+                    mock.patch.object(self.ol, "_attacks") as attacks:
+                run = self.library.analyze(engine="python")
+                self.library.health(engine="python")
+            engine.assert_not_called()
+            attacks.assert_not_called()
+            self.assertEqual(run["counts"]["no_audio"], 1, name)
+            cached = self.library.analyses([os.path.join(self.folder, name)])
+            self.assertIn("refused", next(iter(cached.values()))["detail"], name)
+            self.assertEqual(self.library.health_report(("no_audio",))["counts"]["no_audio"], 1)
+
+
 class LibraryServerTests(unittest.TestCase):
     """The library API: the index and the BPM cache over HTTP, behind a token."""
 

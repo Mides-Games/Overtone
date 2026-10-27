@@ -8,6 +8,10 @@
    "where": "python-only",
    "why": "deploy/: the server's updater and the root-run script that installs it, shell on the owner's server, which no Rust crate holds"
   },
+  "LibraryAudioPathTests": {
+   "where": "python-only",
+   "why": "overtone_library.py: an .osu's AudioFilename kept inside its song folder before the index stats or decodes it, which no Rust crate holds"
+  },
   "LibraryServerTests": {
    "where": "python-only",
    "why": "overtone_server.py: the library index and its BPM cache served over HTTP behind a token, which no Rust crate holds"

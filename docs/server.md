@@ -23,6 +23,10 @@ Qué hace y qué no:
   sesión del navegador ya abierta sigue valiendo.
 - Un audio sin pulso (ruido, pads, silencio) queda como `refused`, con el
   motivo del motor y sin BPM. No se inventa nada.
+- El audio de un mapa sale del `AudioFilename` de su `.osu`, que cualquiera
+  puede escribir. Solo se lee si es un nombre de archivo a secas (sin `/`,
+  `\`, unidad ni `..`) y, seguidos los enlaces, un archivo normal dentro de
+  la carpeta de la canción. Si no, queda como `no_audio` con el motivo.
 
 ## Endpoints
 

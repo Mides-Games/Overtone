@@ -98,6 +98,51 @@ Si no se quieren allocations en el bridge, se pueden usar puertos de la IP
 pública. En ese caso hay que cerrarlos en el firewall del nodo para todo lo que no
 sea Docker, porque si no, la base y la API quedan expuestas a internet.
 
+### Cómo se hablan de verdad en NA-01 (medido el 2026-10-27)
+
+Lo de arriba es el plan. Al levantar experimental en NA-01 salió distinto, y esto es
+lo que funciona:
+
+- **El bridge de Wings no es el de Docker por defecto.** Un contenedor de NA-01 ve su
+  interfaz en `172.22.x.x`: la red de Wings es `172.22.0.0/16` y su puerta de enlace,
+  `<bridge-ip>`, es `172.22.0.1`, no la `172.18.0.1` de la configuración por defecto.
+  Para verlo sin entrar al nodo, alcanza con arrancar cualquier server con
+  `node -e "console.log(require('os').networkInterfaces())"` como comando.
+- **Ningún contenedor llega a `<bridge-ip>`.** El firewall del host descarta lo que
+  entra por la puerta de enlace: desde la API, `<bridge-ip>:<db-port>` da *timeout*
+  aunque la base escuche ahí. La allocation en el bridge sigue haciendo falta (el
+  panel exige una, y así el puerto no queda en la IP pública), pero no sirve de
+  dirección.
+- **Lo que sí funciona es el nombre del contenedor.** La red de Wings es una red de
+  Docker definida por el usuario, así que su DNS resuelve cada contenedor por su
+  nombre, que es el UUID completo del server (**Admin → Servers → el server**, o
+  `uuid` en la API de aplicación). El tráfico va de contenedor a contenedor, al puerto
+  en el que escucha el proceso (el de su allocation), sin pasar por el host:
+
+  | Variable | Valor |
+  |---|---|
+  | `DATABASE_URL` de cada API | `postgres://<rol>:<pw>@<uuid-de-overtone-db>:<db-port>/<base>` |
+  | `API_UPSTREAM` de cada web | `http://<uuid-de-su-api>:<api-port>` |
+  | `OVERTONE_API` de cada worker | `http://<uuid-de-su-api>:<api-port>` |
+
+  El UUID no cambia mientras el server exista. Si se borra y se recrea, hay que
+  actualizar estas variables.
+- **Desde afuera quedó cerrado:** `<node-ip>:<db-port>` y `<node-ip>:<api-port>` no
+  responden, y la web contesta `/api/v1/health` con `database: ok`.
+
+Dos arreglos de los eggs salieron de esto mismo (rama `fix/egg-install`):
+
+- **`git-lfs` ya no se instala con apt.** La imagen instaladora (Debian 11) pedía al
+  mirror de seguridad un paquete que ya no existe (404), y la instalación de la web y
+  la API terminaba con el server vacío y sin decirlo en la lista de servers. Ahora
+  solo el worker lo baja, del release de git-lfs, con la versión fija y su SHA-256.
+- **El socket de PostgreSQL va a `/tmp`.** Wings monta la imagen de solo lectura, y
+  Postgres no podía crear su lock en `/var/run/postgresql` ("could not create lock
+  file"). El egg hace que Wings reescriba `unix_socket_directories` en
+  `pgdata/postgresql.conf` antes de cada arranque. El primer arranque, que crea ese
+  archivo, todavía se cae una vez; el segundo ya corre. La imagen oficial ignora el
+  comando de arranque del panel, así que el arreglo no puede ir ahí.
+
 Lo mismo vale para los puertos de las webs: quien les pegue directo se salta el
 TLS. Lo ideal es que el firewall los abra solo para el proxy (ver
 [§9](#9-tls-la-pregunta-abierta)).
@@ -174,12 +219,12 @@ repo es público, se deja vacío.
 
 | Server | Variables propias |
 |---|---|
-| `overtone-web` | `API_UPSTREAM=http://<bridge-ip>:<api-port>`, `PROXY_SECRET` (el de la API de prod) |
-| `overtone-web-exp` | `API_UPSTREAM=http://<bridge-ip>:<api-exp-port>`, `PROXY_SECRET` (el de la API de staging) |
-| `overtone-api` | `DATABASE_URL=postgres://<rol-prod>:<pw>@<bridge-ip>:<db-port>/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `TRUST_PROXY=2`, `SESSION_SECRET`, `TOKEN_KEY`, `PROXY_SECRET`, `WORKER_TOKEN`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`; con valores por defecto: `ANON_DAILY_LIMIT` (5), `USER_DAILY_LIMIT` (50), `MAX_AUDIO_SECONDS` (600), `MAX_UPLOAD_MB` (40), `JOB_TIMEOUT_S` (900), `SPOOL_DIR` (`/home/container/.overtone/spool`) |
-| `overtone-api-exp` | Las mismas. `DATABASE_URL=…<rol-staging>:<pw>@<bridge-ip>:<db-port>/overtone_experimental`, `SITE_URL` de staging, y **secretos distintos** de los de prod. |
-| `overtone-worker` | `OVERTONE_API=http://<bridge-ip>:<api-port>`, `WORKER_TOKEN` (el de la API de prod), `WORKER_POLL_S=2`, `WORKER_THREADS=4` |
-| `overtone-worker-exp` | `OVERTONE_API=http://<bridge-ip>:<api-exp-port>`, `WORKER_TOKEN` (el de staging), `WORKER_POLL_S=2`, `WORKER_THREADS=2` |
+| `overtone-web` | `API_UPSTREAM=http://<uuid-de-overtone-api>:<api-port>`, `PROXY_SECRET` (el de la API de prod) |
+| `overtone-web-exp` | `API_UPSTREAM=http://<uuid-de-overtone-api-exp>:<api-exp-port>`, `PROXY_SECRET` (el de la API de staging) |
+| `overtone-api` | `DATABASE_URL=postgres://<rol-prod>:<pw>@<uuid-de-overtone-db>:<db-port>/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `TRUST_PROXY=2`, `SESSION_SECRET`, `TOKEN_KEY`, `PROXY_SECRET`, `WORKER_TOKEN`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`; con valores por defecto: `ANON_DAILY_LIMIT` (5), `USER_DAILY_LIMIT` (50), `MAX_AUDIO_SECONDS` (600), `MAX_UPLOAD_MB` (40), `JOB_TIMEOUT_S` (900), `SPOOL_DIR` (`/home/container/.overtone/spool`) |
+| `overtone-api-exp` | Las mismas. `DATABASE_URL=…<rol-staging>:<pw>@<uuid-de-overtone-db>:<db-port>/overtone_experimental`, `SITE_URL` de staging, y **secretos distintos** de los de prod. |
+| `overtone-worker` | `OVERTONE_API=http://<uuid-de-overtone-api>:<api-port>`, `WORKER_TOKEN` (el de la API de prod), `WORKER_POLL_S=2`, `WORKER_THREADS=4` |
+| `overtone-worker-exp` | `OVERTONE_API=http://<uuid-de-overtone-api-exp>:<api-exp-port>`, `WORKER_TOKEN` (el de staging), `WORKER_POLL_S=2`, `WORKER_THREADS=2` |
 | `overtone-db` | `PGPORT=<db-port>`, igual al puerto de la allocation. `POSTGRES_PASSWORD`: 24 caracteres o más. `POSTGRES_USER=postgres`, `POSTGRES_DB=overtone` y `PGDATA` vienen por defecto. |
 
 Los secretos se generan con `openssl rand -hex 32`. Viven solo en las variables
@@ -413,7 +458,7 @@ No se verificó:
 - Nada corrió en el panel ni en NA-01 (esta sesión no tiene acceso).
 - Que los eggs importen sin errores en Reviactyl.
 - Que la imagen oficial de postgres arranque con el uid de Wings.
-- Que `<bridge-ip>` sea de verdad la interfaz de Docker de NA-01.
+- ~~Que `<bridge-ip>` sea de verdad la interfaz de Docker de NA-01.~~ Lo es (`172.22.0.1`), pero los contenedores no la alcanzan: ver "Cómo se hablan de verdad en NA-01".
 
 Agregado el 2026-10-26, con el worker y el flujo de análisis (Node 24.22, Windows):
 

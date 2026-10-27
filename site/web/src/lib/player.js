@@ -48,6 +48,9 @@ let shared = null
  */
 const VOLUMES_KEY = 'overtone.player.volumes'
 
+/** Where the song and the clicks start until the reader moves them (owner's call, 2026-10-27). */
+export const DEFAULT_VOLUME = 0.2
+
 const unit = (value) => (typeof value === 'number' && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : undefined)
 
 function savedVolumes() {
@@ -93,8 +96,10 @@ export class Player {
     this.loopOn = false
     this.rate = 1
     const saved = savedVolumes()
-    this.songVolume = saved.song ?? 0.8
-    this.clickVolume = saved.click ?? 0.6
+    // 20 % to start: most people keep the browser and the system at full
+    // volume, where 80 % of a mastered song (and 60 % of the clicks) was loud.
+    this.songVolume = saved.song ?? DEFAULT_VOLUME
+    this.clickVolume = saved.click ?? DEFAULT_VOLUME
     this.clicksOn = saved.clicksOn ?? true
     this.listeners = new Set()
     this.snapshot = this.#snap()

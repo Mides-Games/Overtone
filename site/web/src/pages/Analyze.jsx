@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router'
 
 import { useAuth } from '../context/AuthContext.jsx'
-import { api, uploadAudio } from '../lib/api.js'
+import { api, lookupAudio, uploadAudio } from '../lib/api.js'
 import { recentAnalyses, rememberAnalysis } from '../lib/recent.js'
 import { readTags } from '../lib/tags.js'
 
@@ -100,10 +100,11 @@ export default function Analyze() {
       }
       update(item.key, { upload: { kind: 'sending', sent: 0 } })
       try {
-        const created = await uploadAudio(item.file, (sent) => update(item.key, { upload: { kind: 'sending', sent } }), {
-          private: hidden,
-          ...item.tags,
-        })
+        const options = { private: hidden, ...item.tags }
+        // A song analysed before is answered from its stored result, and not uploaded at all.
+        const created =
+          (await lookupAudio(item.file, options)) ??
+          (await uploadAudio(item.file, (sent) => update(item.key, { upload: { kind: 'sending', sent } }), options))
         rememberAnalysis(created.id, item.file.name)
         if (alone) return navigate(`/analyze/${created.id}`)
         update(item.key, { upload: { kind: 'sent', id: created.id } })

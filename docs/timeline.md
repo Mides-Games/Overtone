@@ -20,6 +20,30 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W3.13: M4A and WAV tags
+
+### Changed
+
+- `site/web/src/lib/tags.js` reads the `©nam`/`©ART` atoms of MP4/M4A
+  (`moov > udta > meta > ilst`) and the `INAM`/`IART` strings of a WAV's
+  `LIST/INFO` chunk, or an `id3 ` chunk through the existing ID3v2 parser. Both
+  are found by walking box and chunk headers with `file.slice`, because encoders
+  often put `moov` after `mdat` and tagging tools append `LIST` after `data`,
+  past the 256 KB head. A `moov` over 8 MB or a chunk over 1 MB is skipped, and a
+  walk stops after 512 headers. INFO strings are UTF-8 when valid, else Latin-1.
+- `site/web` has a `test` script (`node --test`), its first.
+
+### Measured
+
+- `pnpm --dir site/web test`: 13/13, with every fixture built in the test (M4A
+  with `moov` before and after a 300 KB `mdat`, a 64-bit box size, WAV with INFO
+  before and after a long `data`, UTF-8 and Latin-1 strings, an `id3 ` chunk,
+  untagged files, garbage and truncated sizes, plus one ID3v2 and one Vorbis case
+  for the old paths). `vite build` passes; `site/api` stays 31/31.
+- Not checked: a real M4A from iTunes or ffmpeg, or a WAV tagged by a real
+  editor; the fixtures follow the specs, not any one tool's output.
+
+---
 ## Unreleased — 2026-10-27 · Beat This! without ONNX Runtime's memory pattern
 
 ### Changed

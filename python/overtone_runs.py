@@ -82,6 +82,7 @@ EXPERIMENTS = {
     "local-fold-judge": {"LOCAL_OCTAVE_FOLD": True, "LOCAL_OCTAVE_HALVE": True,
                          "LOCAL_OCTAVE_JUDGE": True},
     "section-octave": {"SECTION_OCTAVE_JUDGE": True},
+    "constant-grid": {"CONSTANT_GRID": True},
 }
 #: The most analyses one run holds at once.
 MAX_JOBS = 8

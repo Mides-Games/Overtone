@@ -3,6 +3,7 @@ import { Route, Routes } from 'react-router'
 import Layout from './components/Layout.jsx'
 import AnalysisResult from './pages/AnalysisResult.jsx'
 import Analyze from './pages/Analyze.jsx'
+import Community from './pages/Community.jsx'
 import Home from './pages/Home.jsx'
 import Login from './pages/Login.jsx'
 import LoginCallback from './pages/LoginCallback.jsx'
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="analyze" element={<Analyze />} />
         <Route path="analyze/:id" element={<AnalysisResult />} />
         <Route path="queue" element={<Queue />} />
+        <Route path="community" element={<Community />} />
         <Route path="login" element={<Login />} />
         {/* The SSO's redirect_uri: SITE_URL + /login/callback, registered with Mides. */}
         <Route path="login/callback" element={<LoginCallback />} />

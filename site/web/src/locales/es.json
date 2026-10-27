@@ -330,5 +330,127 @@
     "busy": "Cancelando…",
     "notQueued": "Ya se está analizando y no se puede cancelar.",
     "failed": "No se pudo cancelar. Probá de nuevo."
+  },
+  "community": {
+    "nav": "Comunidad",
+    "title": "Comunidad",
+    "subtitle": "Sugerí qué debería hacer Overtone, contá qué te parece y mirá qué cambió.",
+    "tabs": {
+      "suggestions": "Sugerencias",
+      "reviews": "Reseñas",
+      "changelog": "Cambios"
+    },
+    "more_one": "Ver {{count}} más",
+    "more_other": "Ver {{count}} más",
+    "cancel": "Cancelar",
+    "yours": "Tuya",
+    "loading": "Cargando…",
+    "deletedAccount": "una cuenta borrada",
+    "states": {
+      "open": "Abierta",
+      "review": "En revisión",
+      "planned": "Planeada",
+      "progress": "En progreso",
+      "done": "Hecha",
+      "rejected": "Rechazada"
+    },
+    "errors": {
+      "failed": "No funcionó. Probá de nuevo.",
+      "load": "No se pudo cargar. Probá de nuevo en un rato.",
+      "NETWORK": "No se pudo llegar al servidor.",
+      "TOO_SHORT": "Es demasiado corto.",
+      "TOO_LONG": "Es demasiado largo.",
+      "REASON_REQUIRED": "Hace falta un motivo.",
+      "STAFF_ONLY": "Solo el staff puede hacer esto.",
+      "SIGN_IN_REQUIRED": "Primero entrá con tu cuenta.",
+      "RATE_LIMITED": "Demasiados seguidos. Esperá unos minutos.",
+      "REVIEW_LIMIT": "Sin cuenta podés dejar dos reseñas por día. Entrá para dejar una que puedas editar.",
+      "FORM_TOO_FAST": "El formulario venció o se mandó demasiado rápido. Recargá la página y probá de nuevo.",
+      "NOT_ACCEPTED": "Esta reseña no se aceptó.",
+      "BAD_STARS": "Elegí de 1 a 5 estrellas.",
+      "SAME_STATE": "Ya está en ese estado.",
+      "NO_CHANGE": "No hay nada que cambiar.",
+      "NOT_FOUND": "Ya no está."
+    },
+    "suggestions": {
+      "signInToPost": "Entrá con Mides para sugerir o votar.",
+      "signInToVote": "Entrá para votar",
+      "sortBy": "Orden",
+      "sort": {
+        "votes": "Más votadas",
+        "new": "Más nuevas"
+      },
+      "filter": "Estado",
+      "allStates": "Todas",
+      "empty": "Todavía no hay sugerencias acá.",
+      "new": "Sugerir algo",
+      "title": "Título",
+      "body": "Qué y por qué",
+      "post": "Publicar sugerencia",
+      "voteLabel_one": "{{count}} voto. Votar esta",
+      "voteLabel_other": "{{count}} votos. Votar esta",
+      "staffSaid": "Staff:",
+      "details": "Historial",
+      "less": "Menos",
+      "noHistory": "Todavía no cambió de estado."
+    },
+    "reviews": {
+      "empty": "Todavía no hay reseñas. Dejá la primera.",
+      "starsLabel_one": "{{count}} estrella de 5",
+      "starsLabel_other": "{{count}} estrellas de 5",
+      "starsLegend": "Estrellas",
+      "count_one": "{{count}} reseña",
+      "count_other": "{{count}} reseñas",
+      "weighting_one": "Las reseñas anónimas cuentan la mitad en el promedio ({{count}} hasta ahora).",
+      "weighting_other": "Las reseñas anónimas cuentan la mitad en el promedio ({{count}} hasta ahora).",
+      "formTitle": "Dejá una reseña",
+      "editTitle": "Tu reseña",
+      "yoursHidden": "Un moderador ocultó tu reseña. Solo vos y el staff la ven.",
+      "body": "Tus palabras",
+      "pickStars": "Elegí de 1 a 5 estrellas.",
+      "anonymousNote": "Sin cuenta la reseña es anónima, cuenta la mitad en el promedio y no se puede editar después.",
+      "post": "Publicar reseña",
+      "update": "Actualizar reseña",
+      "delete": "Borrar",
+      "deleteConfirm": "¿Borrar tu reseña?",
+      "thanks": "Gracias. Tu reseña ya está publicada.",
+      "anonymous": "Anónima",
+      "edited": "editada"
+    },
+    "moderation": {
+      "report": "Reportar",
+      "reported": "Reportado",
+      "reportPrompt": "¿Qué tiene de malo? Lo lee el staff.",
+      "hide": "Ocultar",
+      "unhide": "Mostrar",
+      "hidePrompt": "Ocultarlo a todos menos al staff. Motivo para el registro (obligatorio):",
+      "unhidePrompt": "Mostrarlo de nuevo. Motivo para el registro (opcional):",
+      "statePrompt": "Motivo, se muestra en la sugerencia (opcional):",
+      "rejectPrompt": "¿Por qué se rechaza? Se muestra en la sugerencia (obligatorio):",
+      "moveTo": "Mover a…",
+      "hiddenChip": "Oculta",
+      "hiddenBecause": "Oculta: {{reason}}",
+      "reports_one": "{{count}} reporte abierto",
+      "reports_other": "{{count}} reportes abiertos",
+      "staffTitle": "Staff: reportes y registro",
+      "openReports": "Reportes abiertos",
+      "noReports": "No hay reportes abiertos.",
+      "logTitle": "Registro de moderación",
+      "logEmpty": "Todavía no se moderó nada.",
+      "kind": {
+        "suggestion": "sugerencia",
+        "review": "reseña"
+      },
+      "did": {
+        "state": "@{{moderator}} la pasó de {{from}} a {{to}}",
+        "hide": "@{{moderator}} ocultó una {{kind}}",
+        "unhide": "@{{moderator}} volvió a mostrar una {{kind}}"
+      }
+    },
+    "changelog": {
+      "source": "En inglés: sale del registro de ingeniería del proyecto (docs/timeline.md), que se escribe en inglés. Las últimas entradas y qué cambió en cada una.",
+      "empty": "No hay entradas.",
+      "unreleased": "Sin publicar"
+    }
   }
 }

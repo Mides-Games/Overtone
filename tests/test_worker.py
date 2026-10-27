@@ -121,3 +121,77 @@ class ResultPartsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TwoEnginesOneSchemaTests(unittest.TestCase):
+    """``overtone-cli analyze --timing-result`` and the worker write the same
+    ``timing-result v1`` document. Checked on one golden fixture,
+    change-128-142 (bench/golden/), the 60 s benchmark case with a tempo
+    change at 30 s, so both a red-line list and a section split are compared.
+    The vote is off on the v3 side: v4 has no vote, and the benchmark gates
+    what the vote does. Skipped, and saying so, without a release build of
+    overtone-cli (``cargo build --release -p overtone-cli``)."""
+
+    CASE = "change-128-142"
+
+    @classmethod
+    def setUpClass(cls):
+        import subprocess
+
+        import benchmark as bm
+        import overtone_rust
+
+        cls.cli = overtone_rust.find_cli()
+        if cls.cli is None:
+            raise unittest.SkipTest("no overtone-cli build: cargo build --release -p overtone-cli")
+        cls.tmp = tempfile.TemporaryDirectory()
+        audio = Path(cls.tmp.name) / f"{cls.CASE}.wav"
+        bm.build_track(audio, seed=zlib.crc32(cls.CASE.encode()), **bm.CASES[cls.CASE])
+        done = subprocess.run([str(cls.cli), "analyze", str(audio), "--timing-result"],
+                              capture_output=True, text=True, timeout=300, check=False)
+        cls.v4 = json.loads(done.stdout)
+        cls.v4_exit = done.returncode
+        cls.v3 = tr.analyse(audio, vote=False, hash_="0123456789abcdef")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    @staticmethod
+    def _shape(value):
+        """Keys and JSON types, values left out; int and float are one type."""
+        if isinstance(value, dict):
+            return {k: TwoEnginesOneSchemaTests._shape(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [TwoEnginesOneSchemaTests._shape(value[0])] if value else []
+        if isinstance(value, bool):
+            return "bool"
+        if isinstance(value, (int, float)):
+            return "number"
+        return type(value).__name__
+
+    def test_both_engines_write_the_same_keys_and_types(self):
+        self.assertEqual(self.v4_exit, 0)
+        v3, v4 = self._shape(self.v3), self._shape(self.v4)
+        # v4 does not validate timing points yet, and an empty list would
+        # claim it did (crates/overtone-cli/src/main.rs): the one absent key.
+        v3.pop("findings")
+        # The parameters are each engine's own: v3 takes two v4 does not.
+        self.assertLessEqual(set(v4.pop("params")), set(v3.pop("params")))
+        self.assertEqual(v4, v3)
+
+    def test_both_engines_read_the_fixture_alike(self):
+        self.assertEqual((self.v3["format"], self.v3["version"]), ("timing-result", 1))
+        self.assertEqual((self.v4["format"], self.v4["version"]), ("timing-result", 1))
+        self.assertEqual((self.v3["engine"], self.v4["engine"]), ("v3", "v4"))
+        self.assertRegex(self.v4["engine_hash"], r"^[0-9a-f]{16}$")
+        self.assertFalse(self.v4["beat_vote"])
+        self.assertEqual([round(line["bpm"], 2) for line in self.v4["red_lines"]], [128.0, 142.0])
+        for a, b in zip(self.v3["red_lines"], self.v4["red_lines"], strict=True):
+            self.assertAlmostEqual(a["bpm"], b["bpm"], delta=0.01)
+            self.assertAlmostEqual(a["time_ms"], b["time_ms"], delta=5.0)
+        self.assertEqual([s["level"] for s in self.v3["sections"]],
+                         [s["level"] for s in self.v4["sections"]])
+        self.assertEqual(self.v3["meter"], self.v4["meter"])
+        rows = [r for r in self.v4["osu_timing"].splitlines() if r and not r.startswith("//")]
+        self.assertEqual(len(rows), 2)

@@ -411,6 +411,12 @@ cambios sobre lo planeado (el detalle está en `docs/site.md` y `timeline.md`):
 - Un worker analiza de a un trabajo; `WORKER_CONCURRENCY` no existe. Más análisis a la
   vez son más servers worker.
 - `timing-result v1` lo emite v3; `overtone-cli` todavía no. W2.3 y W2.4 siguen abiertos.
+- **2026-10-27** (rama `feature/cli-timing-result`): `overtone-cli analyze --timing-result`
+  escribe el mismo documento con `engine` "v4". Difiere a propósito en tres cosas: no
+  trae `findings` (v4 no valida los puntos todavía, y una lista vacía diría "revisado, nada"),
+  `beat_vote` es false (el voto no está portado) y donde v3 cae a su beat tracker, v4
+  rechaza. `tests/test_worker.py` lo comprueba sobre el fixture golden `change-128-142`:
+  mismas claves y tipos, mismas red lines (128 y 142) y mismos niveles.
 
 **W2.3, a medias (2026-10-27, rama `bench/worker-parity`).** La puerta existe y pasa en
 Windows; en Linux no se corrió. `bench/worker_parity.py` pasa los 24 casos por

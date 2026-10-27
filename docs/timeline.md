@@ -20,6 +20,31 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · overtone-cli writes timing-result v1
+
+### Changed
+
+- `overtone-cli analyze <audio> --timing-result` prints the `timing-result v1` document
+  the worker writes from v3, key for key, with `engine` "v4": red lines snapped as the
+  exporter snaps them, one section per red line with its level (the worker's 0.90 /
+  0.75 / 30 ms, copied), the `[TimingPoints]` rows, and a refusal with the engine's
+  reason when there is no grid. W2.1 said both engines emit it; until now only v3 did.
+- Three differences, on purpose: `findings` is absent (v4 does not validate timing
+  points yet, and an empty list would claim it did); `beat_vote` is false (the vote is
+  not ported); `engine_hash` is FNV-1a over the running executable, so a cache keyed by
+  it never mixes the two engines and any rebuild that changes the code changes it.
+  `site/api/docs/openapi.yaml` still says `engine: const v3`; the API does not check
+  that field, and the site is another session's.
+
+### Measured
+
+- `tests/test_worker.py` (2 new): on the golden fixture `change-128-142`, v3 (vote off)
+  and v4 write the same keys and JSON types at every level, red lines 128 and 142
+  within 0.01 BPM and 5 ms of each other, the same levels and meter. Not measured: how
+  often v4 refuses where v3 falls back, on real music (Corpus B's business).
+
+---
+
 ## Unreleased — 2026-10-27 · W2.4: what one worker job costs
 
 ### Changed

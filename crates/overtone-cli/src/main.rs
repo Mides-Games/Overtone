@@ -6,6 +6,7 @@
 //! overtone-cli analyze song.mp3 --json       # v3's report shape
 //! overtone-cli analyze song.mp3 --decimals 3 # lazer keeps fractional ms
 //! overtone-cli analyze song.mp3 --full       # + the evidence an app needs
+//! overtone-cli analyze song.mp3 --timing-result # the site's `timing-result v1`
 //! overtone-cli structure song.mp3            # phrases, labels, energy (JSON)
 //! overtone-cli ramps song.mp3 [--drift MS] # the elastic curve as the fewest
 //!                       [--max-lines N]    # red lines within the drift (JSON)
@@ -26,6 +27,17 @@
 //! (timing validation) is not ported yet, and an empty list would claim
 //! "checked, nothing found", so the key is absent; and `diagnostics` says why
 //! the engine refused, where v3 falls back to its beat tracker instead.
+//!
+//! `--timing-result` prints the `timing-result v1` document the site's
+//! worker writes from v3 (`worker/timing_result.py`), with `engine` "v4":
+//! red lines snapped as the exporter snaps them, one section per red line
+//! with its level (high from 0.90, medium from 0.75, check by ear below that
+//! or past a 30 ms residual), and the `[TimingPoints]` rows. What differs, on
+//! purpose: `findings` is absent, for the reason above; `beat_vote` is false,
+//! since the Beat This! vote is not ported; `engine_hash` hashes this
+//! executable, the code the result came from; and where v3 falls back to its
+//! beat tracker, v4 refuses (`refused`, with the engine's reason). A cache
+//! keyed by `engine_hash` never mixes the two engines' results.
 //!
 //! `structure` prints section boundaries, the section labels with the
 //! evidence each rests on (repetition group, repeats, level), and the energy
@@ -54,7 +66,8 @@ use std::time::Instant;
 use overtone_core::Diagnostic;
 use serde_json::{json, Value};
 
-const USAGE: &str = "usage: overtone-cli analyze <audio> [--json | --full] [--decimals N] \
+const USAGE: &str = "usage: overtone-cli analyze <audio> [--json | --full | --timing-result] \
+[--decimals N] \
 [--min-delta BPM] [--persistence BEATS] [--min-confidence C] [--no-map-bpm]\n       \
 overtone-cli structure <audio>\n       \
 overtone-cli ramps <audio> [--drift <ms>] [--max-lines <n>] [--decimals <n>]";
@@ -64,6 +77,7 @@ struct Options {
     audio: PathBuf,
     json: bool,
     full: bool,
+    timing_result: bool,
     decimals: u32,
     min_delta: f64,
     persistence: usize,
@@ -82,6 +96,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         audio: PathBuf::new(),
         json: false,
         full: false,
+        timing_result: false,
         decimals: 0,
         min_delta: 1.5,
         persistence: 12,
@@ -100,6 +115,10 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--full" => {
                 options.json = true;
                 options.full = true;
+            }
+            "--timing-result" => {
+                options.json = true;
+                options.timing_result = true;
             }
             "--no-map-bpm" => options.prefer_map_bpm = false,
             "--decimals" => {
@@ -206,7 +225,10 @@ fn analyze(options: &Options) -> ExitCode {
         eprintln!("overtone-cli: {}", describe(d));
     }
 
-    if options.json {
+    if options.timing_result {
+        let duration = y.len() as f64 / sr as f64;
+        println!("{}", timing_result(options, &out, duration));
+    } else if options.json {
         let snapped = overtone_tempo::points::snap_timing_points(&out.points);
         let found = |v: f64| if refused { Value::Null } else { json!(v) };
         let report = json!({
@@ -277,6 +299,150 @@ fn analyze(options: &Options) -> ExitCode {
     } else {
         ExitCode::SUCCESS
     }
+}
+
+/// `worker/timing_result.py`'s levels: how sure a section has to be for the
+/// site to say "high confidence" or "medium", and the grid residual past
+/// which it says "check by ear". Copied, not measured here.
+const HIGH: f64 = 0.90;
+const MEDIUM: f64 = 0.75;
+const LOOSE_RESIDUAL_MS: f64 = 30.0;
+
+/// Python's `round(value, decimals)`, half to even, as v3 rounds the result.
+fn round_to(value: f64, decimals: i32) -> f64 {
+    let scale = 10f64.powi(decimals);
+    (value * scale).round_ties_even() / scale
+}
+
+/// FNV-1a over the running executable: the code a result came from, as the
+/// worker's SHA-1 over the engine source is for v3. Any change to the engine
+/// changes it.
+fn executable_hash() -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let bytes = std::env::current_exe()
+        .and_then(std::fs::read)
+        .unwrap_or_else(|_| overtone_tempo::VERSION.as_bytes().to_vec());
+    for byte in b"timing-result 1 v4 ".iter().copied().chain(bytes) {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// The analysis as `timing-result v1`, key for key as the worker writes it
+/// from v3 (`build_result` and `refused_result` in worker/timing_result.py).
+fn timing_result(
+    options: &Options,
+    out: &overtone_tempo::points::PipelineOutput,
+    duration: f64,
+) -> Value {
+    let points: Vec<_> = overtone_tempo::points::snap_timing_points(&out.points)
+        .into_iter()
+        .filter(|p| p.bpm.get().is_finite() && p.bpm.get() > 0.0 && p.offset.get().is_finite())
+        .collect();
+    let mut report = json!({
+        "format": "timing-result",
+        "version": 1,
+        "engine": "v4",
+        "engine_mode": Value::Null,
+        "engine_hash": executable_hash(),
+        "app_version": env!("CARGO_PKG_VERSION"),
+        "beat_vote": false,
+        "params": {
+            "min_delta": options.min_delta,
+            "persistence": options.persistence,
+            "min_confidence": options.min_confidence,
+            "prefer_map_bpm": options.prefer_map_bpm,
+        },
+        "duration_s": round_to(duration, 3),
+        "refused": true,
+        "refusal": Value::Null,
+        "global_bpm": Value::Null,
+        "offset_ms": Value::Null,
+        "meter": Value::Null,
+        "stability": Value::Null,
+        "residual_ms": Value::Null,
+        "red_lines": [],
+        "sections": [],
+        "osu_timing": "",
+    });
+    if points.is_empty() {
+        let code = match out.diagnostics.first() {
+            Some(Diagnostic::StageFailed { .. }) => "refused",
+            _ => "no_pulse",
+        };
+        let message = out
+            .diagnostics
+            .first()
+            .map_or_else(|| "no steady pulse to fit a grid on".to_string(), describe);
+        report["refusal"] = json!({"code": code, "message": message});
+        return report;
+    }
+
+    let fallback_meter = out
+        .meter_text
+        .split('/')
+        .next()
+        .and_then(|m| m.parse::<i64>().ok())
+        .map_or(4, |m| m.clamp(1, 16));
+    let mut red_lines = Vec::new();
+    let mut sections = Vec::new();
+    for (i, p) in points.iter().enumerate() {
+        let meter = if p.meter_known {
+            i64::from(p.meter).clamp(1, 16)
+        } else {
+            fallback_meter
+        };
+        let start_s = p.offset.get() / 1000.0;
+        let end_s = points
+            .get(i + 1)
+            .map_or(duration, |next| next.offset.get() / 1000.0);
+        let middle = 0.5 * (start_s + end_s);
+        let grid = out
+            .settled_sections
+            .iter()
+            .find(|s| s.start.get() - 1e-6 <= middle && middle <= s.end.get() + 1e-6);
+        let residual = grid.map(|g| g.residual_ms);
+        let level = if p.confidence < MEDIUM || residual.is_some_and(|r| r > LOOSE_RESIDUAL_MS) {
+            "check"
+        } else if p.confidence >= HIGH {
+            "high"
+        } else {
+            "medium"
+        };
+        red_lines.push(json!({
+            "time_ms": round_to(p.offset.get(), 3),
+            "bpm": round_to(p.bpm.get(), 6),
+            "beat_length_ms": round_to(60000.0 / p.bpm.get(), 6),
+            "meter": meter,
+            "meter_known": p.meter_known,
+        }));
+        sections.push(json!({
+            "index": i,
+            "start_ms": round_to(start_s * 1000.0, 3),
+            "end_ms": round_to(end_s.max(start_s) * 1000.0, 3),
+            "bpm": round_to(p.bpm.get(), 6),
+            "confidence": round_to(p.confidence, 4),
+            "level": level,
+            "residual_ms": residual.map(|r| round_to(r, 3)),
+            "coverage": grid.map(|g| round_to(g.coverage, 4)),
+        }));
+    }
+    report["engine_mode"] = json!("precision");
+    report["refused"] = json!(false);
+    report["global_bpm"] = json!(round_to(out.global_bpm, 6));
+    report["offset_ms"] = red_lines[0]["time_ms"].clone();
+    report["meter"] = json!(out.meter_text);
+    report["stability"] = json!(round_to(out.stability, 4));
+    report["residual_ms"] = json!(round_to(out.fit_residual_ms, 3));
+    report["red_lines"] = Value::Array(red_lines);
+    report["sections"] = Value::Array(sections);
+    report["osu_timing"] = json!(overtone_tempo::points::osu_timing_text(
+        &out.points,
+        &out.meter_text,
+        0
+    ));
+    report
 }
 
 fn kind_name(kind: overtone_dsp::classify::SectionKind) -> &'static str {

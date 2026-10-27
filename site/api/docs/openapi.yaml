@@ -14,6 +14,21 @@ info:
 
     Errors share one shape: `{ "error": { "status", "message", "code"? } }`.
 
+    Personal API tokens (W12.20). A signed-in person makes them on the
+    website (`/settings/tokens`); a token is `ot_` and 43 characters, shown
+    once and stored only as a hash. Send it as `Authorization: Bearer <token>`
+    from a script, a bot or a server: there is still no CORS, so another
+    website's page cannot use one. A token request carries no cookie (any
+    Cookie header beside it is ignored), needs no `X-Requested-With`, and
+    reaches only the operations marked `x-token-scope` below, each under its
+    scope (`any` means every token): `read:analyses` (your analyses, their
+    exports and versions), `upload` (send songs as your account, within its
+    quota) and `read:timings` (published timings). Anything else is 403
+    `TOKEN_NOT_ALLOWED`, a missing scope 403 `TOKEN_SCOPE`, an unknown or
+    revoked token 401 `INVALID_TOKEN`. Each token has its own rate limit (120
+    requests a minute, and the route's own limits counted per token) instead
+    of its address's.
+
     Not described here: `/api/internal/*`, the worker's side of the queue
     (claim, audio, progress, result, fail), which demands
     `Authorization: Bearer <WORKER_TOKEN>` and is documented in
@@ -30,6 +45,10 @@ components:
       type: apiKey
       in: cookie
       name: __Host-overtone_session
+    token:
+      type: http
+      scheme: bearer
+      description: A personal API token (W12.20), on the operations marked `x-token-scope` only.
   parameters:
     sameOrigin:
       name: X-Requested-With
@@ -355,6 +374,41 @@ components:
         publishedAt: { type: string, format: date-time }
         cached: { type: boolean }
         createdAt: { type: string, format: date-time }
+
+    Token:
+      type: object
+      description: A personal API token (W12.20), as listed. The secret itself is only in the answer that made it.
+      required: [id, name, scopes, createdAt, lastUsedAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        name: { type: string, maxLength: 60 }
+        scopes: { type: array, items: { type: string, enum: [read:analyses, upload, read:timings] } }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: [string, 'null'], format: date-time, description: To the minute. }
+
+    Reading:
+      type: object
+      description: An analysis of the same audio by the same owner (W12.21). A copy answered from the cache is not one.
+      required: [id, status, engineHash, createdAt, current]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        status: { type: string, enum: [queued, running, done, refused, failed] }
+        engineHash: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        current: { type: boolean, description: The analysis asked about. }
+
+    Version:
+      type: object
+      description: A saved adjustment of a reading (W12.21). Only the adjustment is stored; the page applies it to the reading's result.
+      required: [id, analysisId, factor, nudgeMs, label, createdAt]
+      properties:
+        id: { type: string, pattern: '^[0-9a-f]{32}$' }
+        analysisId: { type: string, pattern: '^[0-9a-f]{32}$', description: The reading it adjusts. }
+        factor: { type: number, enum: [0.5, 1, 2] }
+        nudgeMs: { type: integer, minimum: -500, maximum: 500 }
+        label: { type: [string, 'null'], maxLength: 60 }
+        createdAt: { type: string, format: date-time }
   responses:
     Error:
       description: An error.
@@ -366,6 +420,7 @@ paths:
   /health:
     get:
       summary: Liveness, database state and the upload limits
+      x-token-scope: any
       responses:
         '200':
           description: Up. `database` is `none` when running without one (development only).
@@ -492,8 +547,10 @@ paths:
   /me:
     get:
       summary: Who is signed in
+      x-token-scope: any
       security:
         - session: []
+        - token: []
       responses:
         '200':
           description: The account.
@@ -508,6 +565,7 @@ paths:
   /analyses:
     post:
       summary: Upload a song for analysis
+      x-token-scope: upload
       description: |
         The body is the audio itself, streamed to the spool and hashed (SHA-1)
         on the way; it is deleted once the worker answers (ADR-W4). No account
@@ -592,6 +650,7 @@ paths:
   /analyses/lookup:
     post:
       summary: Answer from the stored result without uploading
+      x-token-scope: upload
       description: |
         The audio's SHA-1, computed by the browser. When the current engine
         has analysed that audio, a new analysis is made from the stored
@@ -724,6 +783,7 @@ paths:
       - $ref: '#/components/parameters/analysisId'
     get:
       summary: An analysis's state, and its result once there is one
+      x-token-scope: read:analyses
       description: |
         Readable by the session account or the anonymous cookie that created
         it; anyone else gets the same 404 as for an id that does not exist.
@@ -765,6 +825,7 @@ paths:
       - $ref: '#/components/parameters/analysisId'
     get:
       summary: The `[TimingPoints]` block, CRLF, as an .osu file holds it
+      x-token-scope: read:analyses
       responses:
         '200':
           description: An attachment.
@@ -782,6 +843,7 @@ paths:
       - $ref: '#/components/parameters/analysisId'
     get:
       summary: 'The red lines as CSV: time_ms, bpm, beat_length_ms, meter, confidence, level'
+      x-token-scope: read:analyses
       responses:
         '200':
           description: An attachment.
@@ -1198,6 +1260,7 @@ paths:
   /timings:
     get:
       summary: Recent published timings from everyone (W5.1)
+      x-token-scope: read:timings
       description: |
         Newest published first. Public and read-only; rate limited (240 per
         10 minutes, shared with the other /timings reads) and at most 50 a page.
@@ -1230,6 +1293,7 @@ paths:
       - $ref: '#/components/parameters/analysisId'
     get:
       summary: One published timing, as anyone may see it (W3.27)
+      x-token-scope: read:timings
       description: Not published, unpublished, deleted or never there are the same 404.
       responses:
         '200':
@@ -1258,6 +1322,7 @@ paths:
       - $ref: '#/components/parameters/analysisId'
     get:
       summary: A published timing's `[TimingPoints]` block
+      x-token-scope: read:timings
       responses:
         '200':
           description: An attachment.
@@ -1270,6 +1335,7 @@ paths:
       - $ref: '#/components/parameters/analysisId'
     get:
       summary: A published timing's red lines as CSV
+      x-token-scope: read:timings
       responses:
         '200':
           description: An attachment.
@@ -1321,7 +1387,8 @@ paths:
         Newest first, every status, published or not; deleted ones are gone.
         Anonymous analyses are not here: without an account the web keeps its
         own short list in the browser.
-      security: [{ session: [] }]
+      x-token-scope: read:analyses
+      security: [{ session: [] }, { token: [] }]
       parameters:
         - $ref: '#/components/parameters/q'
         - name: status
@@ -1352,3 +1419,180 @@ paths:
                   next: { type: [string, 'null'] }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
+
+  # ── Versions of a timing (W12.21) ────────────────────────────────────────
+
+  /analyses/{id}/versions:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+    get:
+      summary: The versions of a timing, for its owner
+      x-token-scope: read:analyses
+      description: |
+        The readings (the analyses of the same audio by the same owner, newest
+        first, at most 20; a copy answered from the cache is not one) and the
+        adjustments saved on any of them. Nothing of a result is copied: the
+        page reads each reading as `/analyses/{id}` and applies an adjustment
+        to it. Anyone but the owner gets the 404 of an id that does not exist.
+        Rate limited (240 per 10 minutes).
+      responses:
+        '200':
+          description: The versions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [readings, adjustments]
+                properties:
+                  readings: { type: array, items: { $ref: '#/components/schemas/Reading' } }
+                  adjustments: { type: array, items: { $ref: '#/components/schemas/Version' } }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Save the adjustment being tried as a version
+      description: |
+        `factor` (x2, /2 or none) and `nudgeMs` (every red line moved by the
+        same whole number of ms) as the page applies them; one of them must
+        change something. The same adjustment saved again answers with the one
+        already saved (200). At most 20 a reading. Owner only, finished
+        timings only; rate limited (60 per 10 minutes, shared with delete).
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [factor, nudgeMs]
+              properties:
+                factor: { type: number, enum: [0.5, 1, 2] }
+                nudgeMs: { type: integer, minimum: -500, maximum: 500 }
+                label: { type: [string, 'null'], maxLength: 60, description: Cleaned of control and bidi characters. }
+      responses:
+        '200':
+          description: Already saved; the version.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Version' }
+        '201':
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Version' }
+        '400':
+          description: '`BAD_ADJUSTMENT` or `TOO_LONG`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: '`NO_TIMING` (not finished, refused or failed) or `VERSION_LIMIT`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /analyses/{id}/versions/{versionId}:
+    parameters:
+      - $ref: '#/components/parameters/analysisId'
+      - name: versionId
+        in: path
+        required: true
+        schema: { type: string, pattern: '^[0-9a-f]{32}$' }
+    delete:
+      summary: Forget a saved version
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      responses:
+        '204': { description: Deleted. }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  # ── Personal API tokens (W12.20) ──────────────────────────────────────────
+
+  /me/tokens:
+    get:
+      summary: Your personal API tokens, never their secrets
+      description: From the website only (a session); a token asking gets 403 `TOKEN_NOT_ALLOWED`.
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: The tokens, the scopes there are and how many one account may have.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tokens, scopes, max]
+                properties:
+                  tokens: { type: array, items: { $ref: '#/components/schemas/Token' } }
+                  scopes: { type: array, items: { type: string } }
+                  max: { type: integer }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Make a personal API token
+      description: |
+        The answer is the only time the secret is shown: the server keeps its
+        SHA-256 and nothing else of it. At most 5 tokens an account (409
+        `TOKEN_LIMIT`). A name of 1-60 characters, cleaned of control and bidi
+        characters, and at least one scope. Rate limited (60 changes per 10
+        minutes, shared with revoking).
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, scopes]
+              properties:
+                name: { type: string, maxLength: 60 }
+                scopes:
+                  type: array
+                  minItems: 1
+                  items: { type: string, enum: [read:analyses, upload, read:timings] }
+      responses:
+        '201':
+          description: Made. Copy `token` now.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Token'
+                  - type: object
+                    required: [token]
+                    properties:
+                      token: { type: string, pattern: '^ot_[A-Za-z0-9_-]{43}$' }
+        '400':
+          description: '`BAD_NAME`, `TOO_LONG` or `BAD_SCOPES`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /me/tokens/{tokenId}:
+    parameters:
+      - name: tokenId
+        in: path
+        required: true
+        schema: { type: string, pattern: '^[0-9a-f]{32}$' }
+    delete:
+      summary: Revoke a personal API token
+      description: The token stops working at once; another account's token is the 404 of one that does not exist.
+      security: [{ session: [] }]
+      parameters:
+        - $ref: '#/components/parameters/sameOrigin'
+      responses:
+        '204': { description: Revoked. }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }

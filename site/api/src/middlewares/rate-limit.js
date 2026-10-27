@@ -91,7 +91,9 @@ const counterFor = () => (hasDatabase() ? pgCounter : fallback);
 export const guard = (bucket, max, windowMs, { counter = null } = {}) => async (req, _res, next) => {
   if (max <= 0) return next();
 
-  const client = clientKey(req.ip);
+  // A request made with a personal API token (W12.20, middlewares/token.js)
+  // counts against that token, wherever it comes from; any other against its address.
+  const client = req.token ? `t:${req.token.id}` : clientKey(req.ip);
   const chosen = counter ?? counterFor();
   let hit;
   try {
@@ -117,7 +119,11 @@ export const guard = (bucket, max, windowMs, { counter = null } = {}) => async (
 };
 
 /** Everything under /api: generous, it only stops a loop. */
-export const rateLimit = guard('api', 300, 60_000);
+const addressLimit = guard('api', 300, 60_000);
+// A token request has its own budget instead (W12.20); the bucket is apart, so
+// a script's calls never spend the budget of the browser it runs beside.
+const tokenLimit = guard('token', 120, 60_000);
+export const rateLimit = (req, res, next) => (req.token ? tokenLimit : addressLimit)(req, res, next);
 
 /**
  * Sign-in attempts: much narrower and with a longer window. A separate bucket,

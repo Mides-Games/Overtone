@@ -396,7 +396,28 @@ const memoryStore = {
     const since = startOfUtcDay();
     for (const [id, a] of memory.analyses) if (a.deletedAt && a.createdAt < since) memory.analyses.delete(id);
   },
+
+  // ── Versions of a timing (W12.21) ──
+
+  async siblings(row, limit = SIBLINGS_LIMIT) {
+    // Newest inserted first, then a stable sort: rows made in the same
+    // millisecond keep that order, as PostgreSQL's `id DESC` does.
+    return [...memory.analyses.values()]
+      .reverse()
+      .filter((a) => !a.deletedAt && a.sha1 === row.sha1 && sameOwner(a, row))
+      .sort((x, y) => y.createdAt - x.createdAt)
+      .slice(0, limit)
+      .map((a) => ({ ...a }));
+  },
 };
+
+/**
+ * W12.21: the analyses of the same audio by the same owner (the account, or
+ * without one the anonymous cookie's hash), newest first: the readings a
+ * timing's version list shows. At most this many.
+ */
+export const SIBLINGS_LIMIT = 20;
+const sameOwner = (a, row) => (row.accountId ? a.accountId === row.accountId : !a.accountId && Boolean(row.anonHash) && a.anonHash === row.anonHash);
 
 /**
  * One page of `rows`, newest first by `at(row)` and then by public id, from
@@ -891,6 +912,19 @@ const pgStore = {
 
   async purgeDeleted() {
     await query('DELETE FROM analyses WHERE deleted_at IS NOT NULL AND created_at < $1', [startOfUtcDay()]);
+  },
+
+  async siblings(row, limit = SIBLINGS_LIMIT) {
+    if (!row.accountId && !row.anonHash) return [];
+    const { rows } = await query(
+      `${SELECT}
+        WHERE s.audio_sha1 = $1 AND a.deleted_at IS NULL
+          AND ${row.accountId ? 'a.account_id = $2' : 'a.account_id IS NULL AND a.anon_hash = $2'}
+        ORDER BY a.created_at DESC, a.id DESC
+        LIMIT $3`,
+      [row.sha1, row.accountId ?? row.anonHash, limit],
+    );
+    return rows.map(fromRow);
   },
 };
 

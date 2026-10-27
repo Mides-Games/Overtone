@@ -69,6 +69,14 @@ export const sessionAccount = async ({ accountId, version }) => {
   return row && row.session_version === version ? row : null;
 };
 
+/** The account behind a personal API token (W12.20): by id alone, since a token has no session version. */
+export const accountById = async (accountId) => {
+  if (!hasDatabase()) return memory.accounts.get(accountId) ?? null;
+  if (!/^[0-9a-f-]{36}$/i.test(accountId ?? '')) return null;
+  const { rows: [row = null] } = await query(`SELECT ${COLUMNS} FROM accounts WHERE id = $1`, [accountId]);
+  return row;
+};
+
 /** Signing out: every cookie of this account stops being valid, and the token is forgotten. */
 export const signOut = async (accountId) => {
   if (!hasDatabase()) {

@@ -215,7 +215,11 @@ workers). Swap en 0 en todos.
 En todos: `BRANCH` según la tabla, `AUTO_UPDATE=1`, `USER_UPLOAD=0` y
 `ROLLBACK_COMMIT` vacío. `GIT_TOKEN` se completa mientras el repo sea privado, con
 un fine-grained token de solo lectura (*Contents: read*) sobre el repo. Cuando el
-repo es público, se deja vacío.
+repo es público, se deja vacío. `start.sh` lo usa solo para git y hace
+`unset GIT_TOKEN` apenas termina el checkout (2026-10-27), así que pnpm, pip, node y
+python no lo heredan. Sigue en el entorno del contenedor, que el panel arma con
+todas las variables: cualquiera que lea los archivos o la configuración del
+server lo puede ver.
 
 | Server | Variables propias |
 |---|---|
@@ -382,6 +386,16 @@ tenía `deploy/overtone-update.sh` en la VPS:
   contrato de arriba).
 - **Cada movimiento queda en `.overtone/deployed.log`** (fecha, qué pasó, commit,
   rama), visible desde el file manager del panel.
+
+**Las herramientas, fijadas.** `package.json` fija pnpm con `packageManager`
+(`pnpm@11.25.0+sha512.…`, la versión con la que se escribió `pnpm-lock.yaml`): corepack
+baja exactamente esa y rechaza un tarball con otro hash, en vez de traer la última.
+Las dependencias de Node salen del lockfile (`--frozen-lockfile`), con sus hashes. Las
+de Python todavía no: `pip install -r` instala las versiones fijas de
+`python/requirements.lock`, pero sin comprobar hashes. **Pendiente (W):** generar el
+lock con hashes (`pip-compile --generate-hashes` o `pip download` + `pip hash`, para
+las wheels manylinux del worker) y pasar a `pip install --require-hashes`. Hace falta
+red y la plataforma Linux para juntar las wheels, y no se hizo en esta sesión.
 
 Para cambiar un server de rama: cambiar `BRANCH` y hacer **Reinstall**. La
 reinstalación cambia el clon de rama y no borra lo que git no versiona. Un arranque

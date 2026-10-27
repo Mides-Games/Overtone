@@ -42,16 +42,62 @@ export function songNames({ tagTitle, tagArtist, filename }) {
 }
 
 /**
+ * The tags every map Overtone builds carries, so a map made with it can be
+ * found by them (the owner's rule, 2026-10-27). Always first, never dropped.
+ */
+export const OVERTONE_TAGS = ['overtone', 'overtone_timings']
+
+/**
+ * `[Metadata] Tags`: Overtone's two, then any `extra` (a string or a list)
+ * the caller passes, split on spaces as osu! splits them, without repeats or
+ * line breaks.
+ */
+export function mapTags(extra = '') {
+  const words = (Array.isArray(extra) ? extra.join(' ') : String(extra ?? ''))
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+  const seen = new Set()
+  return [...OVERTONE_TAGS, ...words].filter((word) => {
+    const key = word.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }).join(' ')
+}
+
+/**
+ * Red rows and green `{ timeMs, row }` lines in osu!'s order: by time, a red
+ * line before a green one at the same ms (the green one then overrides its
+ * effects, as the editor writes them).
+ */
+export function mergeRows(redRows, greens = []) {
+  const all = [
+    ...redRows.map((row, i) => ({ timeMs: Number(row.split(',')[0]), red: 0, i, row })),
+    ...greens.map((g, i) => ({ timeMs: g.timeMs, red: 1, i, row: g.row })),
+  ]
+  return all.sort((a, b) => a.timeMs - b.timeMs || a.red - b.red || a.i - b.i).map((x) => x.row)
+}
+
+/**
  * The .osu file (format v14): the general and metadata sections a new map
  * gets in the editor, osu!'s default difficulty, the red lines in
  * `[TimingPoints]` and no hit objects. Comment rows are left out: osu! reads
  * the file, a person reads the page. `lines` are the export's (after the
  * export options, `exportLines`) and `options` those options.
+ *
+ * The W12.9 extras, each optional: `previewMs` (else -1, osu!'s "none"),
+ * `leadInMs`, `background` (the image's name in the .osz, written in
+ * `[Events]` as the editor writes it) and `greens`, kiai green lines from
+ * lib/osz-suggest.js `kiaiRows`.
  */
-export function osuFile({ title, artist, creator, audioName, lines, result, adjustment, options = null }) {
-  const rows = timingText(result, lines, adjustment, options)
+export function osuFile({ title, artist, creator, audioName, lines, result, adjustment, options = null, previewMs = null, leadInMs = 0, background = null, greens = [], tags = '' }) {
+  const red = timingText(result, lines, adjustment, options)
     .split('\r\n')
     .filter((row) => row && row !== '[TimingPoints]' && !row.startsWith('//'))
+  const rows = mergeRows(red, greens)
+  const preview = Number.isFinite(previewMs) && previewMs >= 0 ? Math.round(previewMs) : -1
+  const lead = Number.isFinite(leadInMs) && leadInMs > 0 ? Math.round(leadInMs) : 0
   const titleAscii = ascii(title) || 'Untitled'
   const artistAscii = ascii(artist) || 'Unknown'
   return [
@@ -59,8 +105,8 @@ export function osuFile({ title, artist, creator, audioName, lines, result, adju
     '',
     '[General]',
     `AudioFilename: ${audioName}`,
-    'AudioLeadIn: 0',
-    'PreviewTime: -1',
+    `AudioLeadIn: ${lead}`,
+    `PreviewTime: ${preview}`,
     'Countdown: 0',
     'SampleSet: Soft',
     'StackLeniency: 0.7',
@@ -82,7 +128,7 @@ export function osuFile({ title, artist, creator, audioName, lines, result, adju
     `Creator:${field(creator) || 'Overtone'}`,
     'Version:Timing',
     'Source:',
-    'Tags:overtone',
+    `Tags:${mapTags(tags)}`,
     'BeatmapID:0',
     'BeatmapSetID:-1',
     '',
@@ -96,6 +142,7 @@ export function osuFile({ title, artist, creator, audioName, lines, result, adju
     '',
     '[Events]',
     '//Background and Video events',
+    ...(background ? [`0,0,"${background}",0,0`] : []),
     '//Break Periods',
     '',
     '[TimingPoints]',
@@ -110,17 +157,24 @@ export function osuFile({ title, artist, creator, audioName, lines, result, adju
 /**
  * The .osz: the audio as `audio.<ext>` and the .osu named as osu! names its
  * own (`Artist - Title (Creator) [Version].osu`). Returns `{ name, bytes }`.
+ *
+ * `extras` holds what the reader ticked under ".osz options": `cover`
+ * (`{ ext, bytes }` from lib/tags.js `readCover`, written as `bg.<ext>`),
+ * `previewMs`, `leadInMs` and `greens`. Left out, the .osz is what it was.
  */
-export async function buildOsz({ file, analysis, lines, adjustment, creator, options = null }) {
+export async function buildOsz({ file, analysis, lines, adjustment, creator, options = null, extras = {} }) {
   const { title, artist } = songNames({ ...analysis, filename: analysis.filename ?? file.name })
   const ext = (/\.[A-Za-z0-9]{1,5}$/.exec(file.name)?.[0] ?? '.mp3').toLowerCase()
   const audioName = `audio${ext}`
   const who = field(creator) || 'Overtone'
   const set = safeName(`${artist} - ${title}`) || 'Overtone'
-  const osu = osuFile({ title, artist, creator: who, audioName, lines, result: analysis.result, adjustment, options })
+  const { cover = null, previewMs = null, leadInMs = 0, greens = [] } = extras
+  const background = cover && /^(jpg|png)$/.test(cover.ext) ? `bg.${cover.ext}` : null
+  const osu = osuFile({ title, artist, creator: who, audioName, lines, result: analysis.result, adjustment, options, previewMs, leadInMs, background, greens })
   const bytes = zipStore([
     { name: audioName, data: new Uint8Array(await file.arrayBuffer()) },
     { name: `${safeName(`${artist} - ${title} (${who}) [Timing]`) || 'overtone'}.osu`, text: osu },
+    ...(background ? [{ name: background, data: cover.bytes }] : []),
   ])
   return { name: `${set}.osz`, bytes }
 }

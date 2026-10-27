@@ -60,6 +60,48 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · A fuller .osz
+
+### Changed
+
+- W12.9: the site's `.osz` can carry the file's own cover as `bg.jpg`/`bg.png` (ID3 `APIC`,
+  MP4 `covr`, FLAC `PICTURE`, Ogg Vorbis/Opus `METADATA_BLOCK_PICTURE`), a suggested
+  `PreviewTime` (the loudest 15 s, on a bar), a suggested `AudioLeadIn` (first sound under
+  1.5 s → brought to 2 s) and suggested kiai green lines (bars clearly louder than the
+  song, at most three runs). Checkboxes under ".osz options": cover and preview on, lead-in
+  and kiai off, because the first two change nothing a player feels and the last two are
+  mapping decisions a loudness heuristic should not make unasked. The rules and their
+  reasons are in `docs/site.md`.
+- Every `.osu` the site builds is tagged `overtone overtone_timings` (owner's rule), so maps
+  made with it can be found; extra tags are kept after those two.
+- After the `.osz` downloads, a dismissible tip says how to make the browser open `.osz`
+  files in osu! by itself (Chrome/Edge "Always open files of this type", Firefox's Files and
+  Applications) and that osu! must be installed with `.osz` associated.
+
+### Hardening
+
+- The cover reader never throws, skips tags over 16 MB, keeps only images whose first bytes
+  are JPEG or PNG, and bounds every walk (boxes, blocks, Ogg pages) by a step count.
+
+### Measured
+
+- Not measured on real music: the suggestions were checked on two bench-derived FLACs
+  (see `docs/site.md`), where the whole synthetic corpus is flat (-20 dB a bar) and
+  rightly gets no kiai. site/web tests 90 → 114.
+
+### Rejected / tried and dropped
+
+- Opening the `.osz` in osu! straight from the page: a page cannot run a download, and
+  `osu://` (stable and lazer) only reaches online beatmaps, not a local file. Anything
+  more would need the reader's machine configured behind their back.
+- Considered, not built: a fixed-percentile kiai threshold (top quarter of bars), which on
+  a song mastered flat would mark noise as the chorus; the 3 dB spread requirement refuses
+  instead. And the preview at the loudest window's own start, which on a long chorus is an
+  arbitrary tie somewhere inside it; walking back to the earliest start within 5 % finds
+  the top (the 61.3 s chorus test pins it).
+
+---
+
 ## Unreleased — 2026-10-27 · Quieter defaults, and the roadmap's W12
 
 ### Changed
@@ -387,8 +429,6 @@ version is `v0.2.0-alpha`.
 
 ---
 
----
-
 ## Unreleased — 2026-10-27 · The measurement server, hardened
 
 A security review of the measurement server (`python/overtone_server.py`, the library
@@ -606,8 +646,6 @@ each on `fix/security-hardening`.
 
 ---
 
----
-
 ## Unreleased — 2026-10-27 · overtone-cli writes timing-result v1
 
 ### Changed
@@ -630,8 +668,6 @@ each on `fix/security-hardening`.
   and v4 write the same keys and JSON types at every level, red lines 128 and 142
   within 0.01 BPM and 5 ms of each other, the same levels and meter. Not measured: how
   often v4 refuses where v3 falls back, on real music (Corpus B's business).
-
----
 
 ---
 
@@ -681,8 +717,6 @@ each on `fix/security-hardening`.
 
 - Keeping 512 MB as the no-vote budget: the gate would be red for a figure nobody
   measured. The first run's peak (565 MB) rounded up is the budget instead.
-
----
 
 ---
 
@@ -827,8 +861,6 @@ each on `fix/security-hardening`.
 
 ---
 
----
-
 ## Unreleased — 2026-10-27 · W3.17: one rate limit for every API process
 
 ### Changed
@@ -859,8 +891,6 @@ each on `fix/security-hardening`.
   and the count, no address.
 - Not measured: the upsert's cost on the server's PostgreSQL. It adds one write to
   every request; PGlite's timings say nothing about a real server.
-
----
 
 ---
 
@@ -899,8 +929,6 @@ each on `fix/security-hardening`.
 - In the browser (`pnpm dev` in memory, a fake worker): a batch of two finished
   songs offered "Download all 2 timings (ZIP)" and produced a 322-byte
   `overtone-timings.zip` whose first entry was `zip one-timing.txt`.
-
----
 
 ---
 
@@ -1030,8 +1058,6 @@ each on `fix/security-hardening`.
 
 ---
 
----
-
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
 
 ### Changed
@@ -1061,8 +1087,6 @@ each on `fix/security-hardening`.
   `SSO_SECRET_OVERTONE` in Mides and `MIDES_CLIENT_SECRET` here to one value, merge
   Mides' branch, then deploy this one; until both are in, Overtone's sign-in fails
   closed (503).
-
----
 
 ---
 
@@ -1128,8 +1152,6 @@ five are fixed here.
 
 ---
 
----
-
 ## Unreleased — 2026-10-27 · W3.11: ask before uploading
 
 ### Changed
@@ -1159,8 +1181,6 @@ five are fixed here.
   `cached: true` with `done` and new ids, both shown on the queue under the tag sent
   with them; a malformed hash got 400 `BAD_SHA1`. `vite build` passes. `node --test`
   23/23, unchanged: the route has no test of its own yet.
-
----
 
 ---
 
@@ -1213,8 +1233,6 @@ five are fixed here.
 
 ---
 
----
-
 ## Unreleased — 2026-10-27 · W3.8: the queue in sight
 
 ### Changed
@@ -1258,8 +1276,6 @@ five are fixed here.
   a real Mides account's avatar on the page, and a real worker. The Python suite and
   the engine gates were not run (no `.venv` here); nothing under `python/`,
   `worker/` or `crates/` changed.
-
----
 
 ---
 
@@ -1880,8 +1896,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-25 · the single-key shortcuts move
 
 ### Changed
@@ -1913,8 +1927,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-25 · Ctrl+K finds any action
 
 ### Changed
@@ -1939,8 +1951,6 @@ tool, and none of these had reached the bar it was built against.
 - Not measured: no engine path changes. Checked in the page through the
   UI harness: 23 entries on the empty Library page, "sett" + Enter opens
   Settings, "seccion biblio" finds Biblioteca in Spanish, no console errors.
-
----
 
 ---
 
@@ -1971,8 +1981,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-25 · the command line watches a file
 
 ### Changed
@@ -1995,8 +2003,6 @@ tool, and none of these had reached the bar it was built against.
 ### Measured
 
 - Not measured: no engine path changes. The poll is 0.5 s.
-
----
 
 ---
 
@@ -2073,8 +2079,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-24 · score Corpus B as osu! exports it
 
 ### Changed
@@ -2106,8 +2110,6 @@ tool, and none of these had reached the bar it was built against.
 ### Rejected / tried and dropped
 
 - None.
-
----
 
 ---
 
@@ -2938,8 +2940,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-16 · H6/H7 measured disposition for T7
 
 ### Changed
@@ -2974,8 +2974,6 @@ tool, and none of these had reached the bar it was built against.
 - The existing H7 comparison remains its 6-song measurement: median coverage
   0.31, same-sound agreement 0.12, mapper clap F1 0.29 vs the 0.59 P-6 rule.
   No engine code or accuracy baseline changed. No test suite was run.
-
----
 
 ---
 
@@ -3043,8 +3041,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-15 · Mapper-agreement harness for single-BPM maps
 
 ### Changed
@@ -3093,8 +3089,6 @@ tool, and none of these had reached the bar it was built against.
 - Treating exact timing matches as independent mapper agreement was dropped:
   they can be copied between mapsets and raised the apparent 5 ms agreement
   from 51.4 % on differing pairs to 84.6 % overall.
-
----
 
 ---
 
@@ -3207,8 +3201,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-14 · Single-BPM bulk truth: full slice measured
 
 ### Changed
@@ -3233,8 +3225,6 @@ tool, and none of these had reached the bar it was built against.
   1,280 BPM red line, read sanely.
 - `bench/facts.py` ok. Rust engine through the same slice still owed; no bar
   set, so nothing passes or fails yet.
-
----
 
 ---
 
@@ -3265,8 +3255,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-14 · T3 closed: the trainer's nicer rows were already in
 
 ### Changed
@@ -3285,8 +3273,6 @@ tool, and none of these had reached the bar it was built against.
 
 ---
 
----
-
 ## Unreleased — 2026-10-07 · No certificate: 0.3.0 keeps one apology
 
 ### Changed
@@ -3298,8 +3284,6 @@ tool, and none of these had reached the bar it was built against.
 ### Measured
 
 - Nothing: this is scope. `bench/facts.py` ok.
-
----
 
 ---
 

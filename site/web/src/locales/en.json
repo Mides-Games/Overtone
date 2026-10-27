@@ -969,5 +969,32 @@
     "chartFitted_one": "{{count}} tempo change falls between Clone Hero’s ticks: the BPM before it is adjusted by a hair so it lands on time (within {{ms}} ms).",
     "chartFitted_other": "{{count}} tempo changes fall between Clone Hero’s ticks: the BPM before each is adjusted by a hair so they land on time (within {{ms}} ms).",
     "failed": "That file could not be built from these red lines."
+  },
+  "oszPlus": {
+    "title": ".osz options",
+    "suggestion": "suggestion",
+    "note": "The preview, the lead-in and kiai are suggestions from the song's loudness and the red lines, not measurements: check them in osu!'s editor before you rank.",
+    "cover": "Cover as background",
+    "coverFound": "From the file's own tags, written as {{name}}.",
+    "coverNone": "The file's tags hold no JPEG or PNG cover.",
+    "coverReading": "Reading the file's tags…",
+    "coverAlt": "The song's cover, from its tags",
+    "preview": "Preview time",
+    "previewAt": "{{time}}: where the loudest 15 s begin, on a bar.",
+    "previewNone": "No stretch stands out: song select picks its own.",
+    "needsSong": "Needs the song decoded above.",
+    "leadIn": "Audio lead-in",
+    "leadInAt": "{{ms}} ms: the first sound comes {{first}} s in, too soon to find the beat.",
+    "leadInNone": "Not needed: the first sound comes {{first}} s in.",
+    "leadInUnknown": "Nothing to go on: no red line or attack.",
+    "kiai": "Kiai time",
+    "kiaiAt": "Green lines over the bars clearly louder than the rest: {{spans}}.",
+    "kiaiNone": "No stretch is clearly louder than the rest: nothing to suggest.",
+    "openTipTitle": "Want the .osz to open in osu! by itself?",
+    "openTipChromium": "In Chrome or Edge, open the download's menu (the ⋯ next to it in the downloads list) and pick “Always open files of this type”. The next .osz goes straight to osu!.",
+    "openTipFirefox": "In Firefox, open Settings → General → Files and Applications, find the .osz type and set it to open with osu!. The next .osz goes straight to osu!.",
+    "openTipOsu": "This needs osu! installed with .osz files opening in it, which its installer sets up. The site cannot open the file for you: a web page never runs what it downloads.",
+    "openTipClose": "Got it",
+    "openTipNever": "Don't show again"
   }
 }

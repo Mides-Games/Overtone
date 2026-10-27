@@ -454,6 +454,82 @@ Not checked: opening the patched `.osu` or the WAVs in osu! or an audio editor (
 number above was read), Safari and Firefox, a 10-minute render's memory on a phone,
 and listening.
 
+### A fuller .osz (W12.9, 2026-10-27)
+
+Under the `.osz` button, ".osz options" (`components/result/OszOptions.jsx`) adds four
+things to the archive, each a checkbox. All of it is worked out in the browser from the
+reader's own file and the song the page already decoded for the waveform; nothing is sent.
+
+- **The cover** (`readCover` in `lib/tags.js`): ID3v2.3/2.4 `APIC` (MP3; tag-wide and
+  per-frame unsynchronisation, the v2.4 data length indicator and UTF-16 descriptions
+  handled; compressed or encrypted frames skipped), MP4 `covr` (M4A, `moov` found past an
+  `mdat` as the title reader does), FLAC `PICTURE` blocks, and the base64
+  `METADATA_BLOCK_PICTURE` comment of Ogg Vorbis and Opus, with the comment packet put back
+  together across Ogg pages. The front cover (type 3) wins. Only JPEG and PNG are kept,
+  recognised by their first bytes, not the declared MIME; a tag over 16 MB is skipped. It
+  goes in as `bg.jpg` / `bg.png` with `0,0,"bg.jpg",0,0` in `[Events]`, and is shown as a
+  thumbnail beside the download button. Not read: ID3v2.2 `PIC`, WAV covers, covers in a
+  FLAC's Vorbis comment block.
+- **`PreviewTime`** (`previewTime` in `lib/osz-suggest.js`): the mean square of the song in
+  50 ms frames; the 15 s window with the highest mean, moved back to the earliest start
+  still within 5 % of it (so a long chorus previews from its top), snapped to the nearest
+  bar start of the red lines as the reader has them. Without it, osu!'s `-1`.
+- **`AudioLeadIn`** (`leadIn`): our rule, not osu!'s. The first sound is the earlier of the
+  first red line and the engine's first attack. Under 1.5 s from the start, a lead-in that
+  brings it to 2 s is suggested, in steps of 100 ms (first sound at 0.4 s → 1600 ms). Why:
+  osu! starts the clock early enough for the first approach circle, not for the player to
+  catch the beat, and 1.5-2 s is what mappers commonly leave; a song that starts later
+  needs none.
+- **Kiai** (`kiaiSections`, `kiaiRows`): each bar's RMS in dB, from the first red line on.
+  A bar is hot above the midpoint between the song's median bar and its 95th-percentile
+  bar, and only if that gap is at least 3 dB (a song mastered flat gets no suggestion, as
+  the whole synthetic corpus does). Hot bars are joined across one-bar gaps, runs under 4
+  bars dropped, the 3 loudest runs kept. Each becomes green lines (`-100`, effects 1) at
+  its first bar and effects 0 at the bar after it; a red line inside a run gets a kiai
+  green line at its own time, since a red line carries its own effects (0) and would end
+  kiai there.
+- **Defaults:** cover on (the reader's own picture; it changes nothing in the timing),
+  preview on (it only decides where song select starts playing, and any bar of the loud
+  part beats `-1`), lead-in off (it changes when the game starts the song), kiai off (where
+  kiai goes is a mapping decision, and loudness is a crude stand-in for "the chorus"). The
+  preview, lead-in and kiai rows carry a "suggestion" chip and the area says to check them
+  in the editor. An option with nothing to offer is greyed out and says why.
+- **Tags:** every `.osu` the site builds carries `Tags:overtone overtone_timings` (owner's
+  rule), first and never dropped; `osuFile` takes more tags and keeps them after those two
+  (`mapTags`), though the page has no field for them yet. The desktop app's own `.osz`
+  (`python/overtone.py`) is engine-side and was not changed.
+- **"Open it in osu! when it finishes":** a web page cannot run what it downloads, so the
+  `.osz` is saved as before (`.osz`, `application/x-osu-beatmap-archive`) and a
+  dismissible tip then says how to let the browser open `.osz` files by itself: Chrome or
+  Edge, the download's menu → "Always open files of this type"; Firefox, Settings →
+  General → Files and Applications. It also says osu! must be installed with `.osz`
+  associated, which its installer does. "Don't show again" is kept in `localStorage`
+  (`overtone.osz.openTipDismissed`). `osu://` was considered and dropped: as far as we
+  know, both osu!stable and lazer register it for online things only (`osu://b/<id>`,
+  `osu://s/<set>`, `osu://dl/<id>`, editor timestamps, spectating), and nothing in it
+  imports a local file. That is from their documented links, not from a test against an
+  installed client.
+
+Checked in the browser pane on 2026-10-27 with one real worker (Beat This! vote off), two
+FLACs built from bench WAVs with a 64×64 PNG `PICTURE` block:
+
+- `with-drop-180`: cover found and shown, preview 0:00.400, lead-in 1600 ms (first sound
+  0.4 s in), kiai "no stretch clearly louder" (the corpus is flat: every bar -20 dB but the drop).
+- `edm-174` with a ×1.6 "chorus" from 22 to 40 s and ×0.6 elsewhere: preview 0:21.121,
+  kiai 0:21.121–0:40.432 (the gain edges are not on bars, so the bar holding each edge is
+  hot). With every option on, the `.osz` was built by the page and read back in it: entries
+  `audio.flac` (byte size equal), the `.osu` and `bg.png` (7830 bytes, PNG signature, same
+  as the thumbnail); the `.osu` with `AudioLeadIn: 1600`, `PreviewTime: 21121`,
+  `0,0,"bg.png",0,0`, `Tags:overtone overtone_timings` and the red line followed by the kiai
+  on/off green lines. The tip showed after the download and stayed away after "Don't show
+  again".
+- EN and ES, dark and light, 375 px with nothing past the edge.
+
+Not checked: a real song (only bench audio with a made-up loud stretch), any cover format
+but FLAC in the browser (the others by node:test on built bytes), the archive opened in
+osu! itself, Firefox's and Safari's own download behaviour, and whether the suggestions
+are any good for mapping: they are loudness heuristics, and the page says so.
+
 ### The queue, moderated (W3.18, 2026-10-27)
 
 Staff is Mides' `is_moderator`, which sign-in keeps as `accounts.mides_role`

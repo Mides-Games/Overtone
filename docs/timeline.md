@@ -20,6 +20,40 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W2.3: the worker against the pinned BPMs
+
+### Changed
+
+- `bench/worker_parity.py`: the 24 benchmark cases through `worker/timing_result.py`
+  as a job runs them (the Beat This! vote on), each `timing-result v1` checked against
+  `bench/bpm_snapshot.json` with its own tolerance (0.01 BPM): global BPM, every red
+  line, their count, the meter and the engine path. `gates.py bpm-snapshot` pins the
+  engine; this pins what the worker makes of it -- written-out parameters, snapping,
+  the filter on non-finite points, the rounding into JSON. It imports neither
+  `gates.py` nor the desktop shell, and refuses to run without the vote, since a host
+  missing the model would differ for that reason alone.
+
+### Measured
+
+- Windows (Python 3.14.7, numpy 2.5.3, scipy 1.18.1, libsndfile 1.2.2, worker engine
+  `88089672ec54bf2d`): **24/24** match. Wall time 10.8-37.3 s per case, 129 s for
+  `long-6min`, on a machine shared with other runs.
+- **Linux: not measured.** This machine has no WSL distribution (`wsl.exe` only
+  prints its usage; turning it on needs admin and a reboot) and no Docker; the
+  measurement server tracks `feature/library-api`, which has no `worker/`. On the
+  VPS, in a clone of its own so the running server is untouched:
+
+  ```bash
+  git clone --branch bench/worker-parity https://github.com/Mides-Projects/Overtone.git /opt/overtone-w23
+  cd /opt/overtone-w23 && git lfs install --local && git lfs pull && ls -la assets/models/beat_this_final0.onnx
+  cd /opt/overtone-w23 && UV_PYTHON_INSTALL_DIR=/opt/uv-python ~/.local/bin/uv venv --python 3.14 .venv && grep -vE '^(bottle|clr-loader|proxy-tools|pythonnet|pywebview)==' python/requirements.lock > /tmp/w23.lock && ~/.local/bin/uv pip install --python .venv/bin/python -r /tmp/w23.lock
+  cd /opt/overtone-w23 && .venv/bin/python bench/worker_parity.py && .venv/bin/python bench/gates.py bpm-snapshot
+  ```
+
+  W2.3 is done when both print 24/24 there.
+
+---
+
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
 
 ### Changed

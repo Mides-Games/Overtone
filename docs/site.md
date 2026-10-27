@@ -39,6 +39,11 @@ browser --GET /api/v1/analyses/<id> (polls) -> result, timing.txt, timing.csv
   an account, `USER_DAILY_LIMIT` with one. The address is stored as an HMAC of
   the address and the day. A separate limit allows 10 uploads per address per
   10 minutes.
+- **Cancelling** (W3.12). Whoever may read a queued analysis can cancel it
+  (`DELETE /api/v1/analyses/<id>`, from its card, its page or `/queue`): the
+  job, the row and the spooled audio are deleted, so it costs none of the day's
+  quota. Once the worker has claimed it the answer is 409 `NOT_QUEUED`: the
+  worker cannot be told to stop mid-stage.
 - **Retries.** A job running longer than `JOB_TIMEOUT_S` goes back to the
   queue; the second time it fails. Every worker call names its attempt, so a
   late answer from an abandoned attempt gets a 409.
@@ -300,3 +305,11 @@ against the API's own `utils/upload.js`). The archive is built in the browser
 from the results the cards already polled (`lib/zip.js`): entries stored, not
 compressed, since a timing is a few kilobytes; UTF-8 names; a name repeated in
 the batch gets " (2)". Refused, failed and unfinished songs are left out.
+### Cancelling a queued song (W3.12, 2026-10-27)
+
+`DELETE /api/v1/analyses/<id>` deletes the analysis while its job is still
+queued, in one statement (`DELETE ... USING jobs WHERE state = 'queued'`), so a
+worker's claim and a cancel are decided by the same row lock. Checked over HTTP
+in `test/cancel.test.js` (the owner cancels and gets the quota back; a stranger
+gets 404, a request without the same-origin header 403; a claimed job 409) and
+against PostgreSQL 18 through PGlite.

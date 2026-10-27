@@ -213,6 +213,18 @@ def worker():
                 "the server's CPU limit / 100. Empty = one per core of the whole node, which a CPU limit "
                 "then throttles.",
                 default="4", rules="nullable|integer|min:1"),
+            var("Analysis memory MB", "WORKER_MEMORY_MB",
+                "Address-space cap of the process that runs each analysis (RLIMIT_AS). A job past it fails "
+                "as too_heavy and the worker goes on. Below the server's RAM, which also holds the worker "
+                "itself; 0 turns the cap off.",
+                default="1800", rules="required|integer|min:0"),
+            var("Analysis timeout minimum", "WORKER_TIMEOUT_MIN_S",
+                "The shortest wall-clock limit of one analysis, in seconds. A job past its limit is stopped "
+                "and fails as timeout.",
+                default="120", rules="required|numeric|min:10"),
+            var("Analysis timeout factor", "WORKER_TIMEOUT_FACTOR",
+                "The limit in multiples of the audio's length (the larger of this and the minimum).",
+                default="3", rules="required|numeric|min:1"),
         ],
     )
 

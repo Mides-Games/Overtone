@@ -223,8 +223,8 @@ repo es público, se deja vacío.
 | `overtone-web-exp` | `API_UPSTREAM=http://<uuid-de-overtone-api-exp>:<api-exp-port>`, `PROXY_SECRET` (el de la API de staging) |
 | `overtone-api` | `DATABASE_URL=postgres://<rol-prod>:<pw>@<uuid-de-overtone-db>:<db-port>/overtone`, `SITE_URL=https://overtone.midesprojects.com`, `TRUST_PROXY=2`, `SESSION_SECRET`, `MIDES_CLIENT_SECRET` (el mismo valor que `SSO_SECRET_OVERTONE` en Mides), `PROXY_SECRET`, `WORKER_TOKEN`, `MIDES_AUTH_URL`, `MIDES_WEB_URL`, `MIDES_APP`; con valores por defecto: `ANON_DAILY_LIMIT` (5), `USER_DAILY_LIMIT` (50), `MAX_AUDIO_SECONDS` (600), `MAX_UPLOAD_MB` (40), `JOB_TIMEOUT_S` (900), `SPOOL_DIR` (`/home/container/.overtone/spool`) |
 | `overtone-api-exp` | Las mismas. `DATABASE_URL=…<rol-staging>:<pw>@<uuid-de-overtone-db>:<db-port>/overtone_experimental`, `SITE_URL` de staging, y **secretos distintos** de los de prod. |
-| `overtone-worker` | `OVERTONE_API=http://<uuid-de-overtone-api>:<api-port>`, `WORKER_TOKEN` (el de la API de prod), `WORKER_POLL_S=2`, `WORKER_THREADS=4` |
-| `overtone-worker-exp` | `OVERTONE_API=http://<uuid-de-overtone-api-exp>:<api-exp-port>`, `WORKER_TOKEN` (el de staging), `WORKER_POLL_S=2`, `WORKER_THREADS=2` |
+| `overtone-worker` | `OVERTONE_API=http://<uuid-de-overtone-api>:<api-port>`, `WORKER_TOKEN` (el de la API de prod), `WORKER_POLL_S=2`, `WORKER_THREADS=4`; con valores por defecto: `WORKER_MEMORY_MB` (1800), `WORKER_TIMEOUT_MIN_S` (120), `WORKER_TIMEOUT_FACTOR` (3) |
+| `overtone-worker-exp` | `OVERTONE_API=http://<uuid-de-overtone-api-exp>:<api-exp-port>`, `WORKER_TOKEN` (el de staging), `WORKER_POLL_S=2`, `WORKER_THREADS=2`; los mismos valores por defecto |
 | `overtone-db` | `PGPORT=<db-port>`, igual al puerto de la allocation. `POSTGRES_PASSWORD`: 24 caracteres o más. `POSTGRES_USER=postgres`, `POSTGRES_DB=overtone` y `PGDATA` vienen por defecto. |
 
 Los secretos se generan con `openssl rand -hex 32`. Viven solo en las variables
@@ -290,6 +290,33 @@ Estos son contratos para quien escribe `site/api` y `worker/main.py`:
   publicar su resultado; un segundo sale en el acto, y la API devuelve ese trabajo a
   la cola pasado `JOB_TIMEOUT_S` (dos intentos en total). El worker no tiene
   driver de base: toma trabajos de `/api/internal` con `WORKER_TOKEN`.
+- **Cada análisis corre en un proceso hijo** (`worker/isolate.py`, 2026-10-27). Un
+  audio es entrada no confiable: unos KB de header pueden anunciar horas de audio a
+  cualquier frecuencia. Por eso:
+  - antes de decodificar, se rechaza (`too_heavy`) un header que diga más de
+    192 kHz, más de 8 canales o más de `max_seconds × 192000` frames;
+  - el motor corre en un hijo que se arranca una vez y queda caliente entre
+    trabajos. Cada trabajo tiene un límite de reloj de
+    `max(WORKER_TIMEOUT_MIN_S, WORKER_TIMEOUT_FACTOR × duración)` (120 s y 3× por
+    defecto); pasado eso, el hijo se mata y el trabajo falla con `timeout`;
+  - en Linux, el hijo tiene `RLIMIT_AS` de `WORKER_MEMORY_MB` (1800 por defecto; 0
+    lo apaga) y `MALLOC_ARENA_MAX=2`. Si se queda sin memoria, o si el OOM killer
+    lo mata, el trabajo falla con `too_heavy`. En Windows no hay rlimit y se avisa;
+  - el worker sigue atendiendo: el siguiente trabajo arranca un hijo nuevo. Mientras
+    espera, reenvía el último progreso cada 60 s, así el barrido de `JOB_TIMEOUT_S`
+    de la API no confunde un análisis largo con uno muerto.
+
+  **Lo que cuesta:** el hijo importa el motor, carga el modelo y analiza 8 s de
+  clicks (con el voto) antes de decir que está listo. Eso prueba que el límite de
+  memoria deja lugar para un análisis y compila numba antes del primer trabajo real.
+  Medido en Windows el 2026-10-27, con un track de 120 s y el voto: el arranque pasó
+  de 24,9 s (en proceso, sin autoprueba) a 42,8–55,5 s; cada análisis tardó lo mismo
+  dentro del ruido de esta máquina (en el hijo, medianas de 45,4 y 59,3 s; en
+  proceso, 46,8 s, y 56–84 s en otra corrida). Un hijo que se mató paga ese arranque
+  otra vez antes del siguiente trabajo. El primer arranque en Linux imprime el pico
+  de espacio de direcciones después de la autoprueba: si queda cerca de
+  `WORKER_MEMORY_MB`, hay que subirlo. Si la autoprueba no entra en el límite, el
+  worker no arranca y lo dice.
 
 ## 5. Cómo es un release
 

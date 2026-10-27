@@ -230,6 +230,8 @@ def refusal_code(message: str) -> str:
     """A stable name for the engine's reason, so the site can say it in
     either language; the engine's own sentence travels beside it."""
     text = message.lower()
+    if "too heavy" in text:
+        return "too_heavy"
     if "longer than" in text:
         return "too_long"
     if "at least two seconds" in text:
@@ -265,6 +267,30 @@ def audio_seconds(path: str | Path) -> float | None:
     return info.frames / info.samplerate if info.samplerate > 0 else None
 
 
+#: What a header may claim before a byte of it is decoded. A few kilobytes can
+#: announce hours of eight-plus channels at any rate, and the decoder would
+#: allocate all of it (worker/isolate.py bounds what slips past this).
+MAX_SAMPLERATE = 192_000
+MAX_CHANNELS = 8
+
+
+def header_refusal(path: str | Path, max_seconds: float | None) -> str | None:
+    """Why the file's header is refused before decoding, or None. A file with
+    no header libsndfile reads is not this function's call."""
+    try:
+        info = ta.sf.info(str(path))
+    except Exception:  # noqa: BLE001
+        return None
+    frames_cap = (max_seconds or 3600) * MAX_SAMPLERATE
+    if not 0 < info.samplerate <= MAX_SAMPLERATE:
+        return f"Audio is too heavy to analyse: its header says {info.samplerate} Hz (at most {MAX_SAMPLERATE})."
+    if info.channels > MAX_CHANNELS:
+        return f"Audio is too heavy to analyse: its header says {info.channels} channels (at most {MAX_CHANNELS})."
+    if info.frames > frames_cap:
+        return f"Audio is too heavy to analyse: its header says {info.frames} frames."
+    return None
+
+
 class AnalysisFailed(Exception):
     """The file could not be analysed at all (not audio, damaged, a codec
     missing): a failed job, not a refusal."""
@@ -279,6 +305,9 @@ def analyse(path: str | Path, *, vote: bool, hash_: str,
     long), returned as a result. Anything else is a failure, raised as
     ``AnalysisFailed`` with the engine's message.
     """
+    heavy = header_refusal(path, max_seconds)
+    if heavy:
+        return refused_result(heavy, vote=vote, hash_=hash_)
     seconds = audio_seconds(path)
     if max_seconds and seconds is not None and seconds > max_seconds:
         return refused_result(f"Audio is longer than {max_seconds / 60:g} minutes.",

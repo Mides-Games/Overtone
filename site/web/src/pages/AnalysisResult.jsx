@@ -7,6 +7,7 @@ import CancelButton from '../components/CancelButton.jsx'
 import AdjustExport from '../components/result/AdjustExport.jsx'
 import AudioSource from '../components/result/AudioSource.jsx'
 import CheckHere from '../components/result/CheckHere.jsx'
+import MapImage from '../components/result/MapImage.jsx'
 import MoreDownloads from '../components/result/MoreDownloads.jsx'
 import { tempoRange } from '../components/result/draw.js'
 import RedLinesTable, { LEVELS } from '../components/result/RedLinesTable.jsx'
@@ -413,6 +414,8 @@ export function Result({ id, analysis, verify = null, csvHref = null, owner = fa
           checks={checks}
           csvHref={csvHref}
         />
+        {/* W12.18: a published timing's page (verify) is public by definition. */}
+        <MapImage id={id} analysis={analysis} lines={lines} data={data} adjustment={adjustment} published={Boolean(analysis.published || verify)} />
       </AdjustExport>
 
       {owner && <Versions analysis={analysis} adjustment={adjustment} onApply={setAdjustment} />}

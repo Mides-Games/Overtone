@@ -42,6 +42,10 @@
  * the song, its BPM and who timed it. Without a card in 1.5 s, or for a
  * timing that is not published, it is the plain index.html.
  *
+ * /embed/<id> (W12.18) is the one page another site may frame: its CSP says
+ * frame-ancestors * and it has no X-Frame-Options. Every other response keeps
+ * frame-ancestors 'none' and X-Frame-Options: DENY.
+ *
  * PROXY_SECRET is the same value as the API's: every request forwarded to the
  * API carries it in X-Overtone-Proxy, and the API answers 404 to anything
  * without it, because on the panel the API's own port is public too. A
@@ -259,11 +263,17 @@ function proxy(req, res) {
 // the policy follows the build and nothing else inline runs.
 let policy = { mtime: -1, value: '' };
 
-async function contentSecurityPolicy() {
+async function contentSecurityPolicy(framable = false) {
   const index = path.join(ROOT, 'index.html');
   const s = await file(index);
   const mtime = s ? s.mtimeMs : 0;
-  if (mtime === policy.mtime) return policy.value;
+  if (mtime !== policy.mtime) policy = { mtime, value: await basePolicy(s, index) };
+  // W12.18: an embed card (/embed/<id>) may be framed by any site; every
+  // other page by none.
+  return policy.value.replace("frame-ancestors 'none'", framable ? 'frame-ancestors *' : "frame-ancestors 'none'");
+}
+
+async function basePolicy(s, index) {
   const html = s ? await readFile(index, 'utf8') : '';
   const hashes = [...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
     .filter((m) => m[1].length)
@@ -282,17 +292,20 @@ async function contentSecurityPolicy() {
     "base-uri 'self'",
     "form-action 'self'",
   ].join('; ');
-  policy = { mtime, value };
   return value;
 }
 
-async function securityHeaders() {
+// The embed card's path, and nothing else, may be framed (W12.18).
+const EMBED_PAGE = /^\/embed\/[0-9a-f]{32}\/?$/;
+
+async function securityHeaders(framable = false) {
   const headers = {
-    'content-security-policy': await contentSecurityPolicy(),
+    'content-security-policy': await contentSecurityPolicy(framable),
     'x-content-type-options': 'nosniff',
-    'x-frame-options': 'DENY',
     'referrer-policy': 'strict-origin-when-cross-origin',
   };
+  // X-Frame-Options has no "anyone": it is left out where frame-ancestors allows framing.
+  if (!framable) headers['x-frame-options'] = 'DENY';
   if (HSTS) headers['strict-transport-security'] = 'max-age=31536000';
   return headers;
 }
@@ -446,7 +459,7 @@ async function serve(req, res) {
     'content-type': TYPES[path.extname(target).toLowerCase()] || 'application/octet-stream',
     'content-length': s.size,
     'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
-    ...(await securityHeaders()),
+    ...(await securityHeaders(EMBED_PAGE.test(rel))),
   });
   if (req.method === 'HEAD') return res.end();
   createReadStream(target).pipe(res);

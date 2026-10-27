@@ -1045,6 +1045,28 @@
       "one": "Copy this red line as a [TimingPoints] row",
       "copied": "Copied: paste it under [TimingPoints]",
       "failed": "Could not copy"
+    },
+    "image": {
+      "title": "Image and embed",
+      "png": "Tempo map as PNG",
+      "svg": "Tempo map as SVG",
+      "embed": "Copy embed code",
+      "copied": "Embed code copied",
+      "copyFailed": "Could not copy",
+      "preview": "See the embed",
+      "failed": "The image could not be made in this browser. The SVG may still work.",
+      "note": "The PNG is the map above for the whole song, the SVG a simpler drawing of the red lines and the tempo. The embed shows this timing's card on another site, with a link back here.",
+      "notePrivate": "The PNG is the map above for the whole song, the SVG a simpler drawing of the red lines and the tempo. Publish the timing to embed it on another site."
+    },
+    "embed": {
+      "title": "Timing",
+      "loading": "Loading the timing…",
+      "notFound": "This timing is not published.",
+      "failed": "The timing could not be loaded.",
+      "chartAlt": "The tempo map: red lines and tempo over the song",
+      "more_one": "and {{count}} more red line",
+      "more_other": "and {{count}} more red lines",
+      "open": "Open on Overtone"
     }
   }
 }

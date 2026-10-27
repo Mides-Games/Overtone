@@ -228,6 +228,27 @@ test('an API that does not answer a card leaves the page plain, in time', async 
   assert.ok(Date.now() - started < 5_000);
 });
 
+test('only an embed card may be framed, by anyone; every other page by no one', async () => {
+  const port = await serve(1, { WEB_ROOT: webRoot() });
+  const frame = (headers) => [
+    headers['content-security-policy'].split('; ').find((d) => d.startsWith('frame-ancestors')),
+    headers['x-frame-options'] ?? null,
+  ];
+  const id = 'd'.repeat(32);
+  const embed = await get(port, `/embed/${id}`);
+  assert.equal(embed.status, 200);
+  assert.match(embed.body, /<div id="root">/);
+  assert.deepEqual(frame(embed.headers), ['frame-ancestors *', null]);
+  assert.deepEqual(frame((await get(port, `/embed/${id}/`)).headers), ['frame-ancestors *', null]);
+  // Anything else, including look-alikes of the embed path, is not framable.
+  for (const path of ['/', `/t/${id}`, '/embed', '/embed/not-an-id', `/embed/${id}/x`, `/embed/${id}.js`, `/analyze/${id}`, '/missing.png']) {
+    assert.deepEqual(frame((await get(port, path)).headers), ["frame-ancestors 'none'", 'DENY'], path);
+  }
+  // The policy is otherwise the same.
+  const strip = (h) => h['content-security-policy'].replace(/frame-ancestors [^;]+/, '');
+  assert.equal(strip(embed.headers), strip((await get(port, '/')).headers));
+});
+
 test('an API that answers is forwarded as before', async () => {
   const api = await upstream((_req, res) => res.end('{"ok":true}'));
   const port = await serve(api, { API_TIMEOUT_S: '1' });

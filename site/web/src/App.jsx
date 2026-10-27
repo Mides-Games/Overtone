@@ -26,12 +26,15 @@ import TimingPage from './pages/TimingPage.jsx'
 // tokens page is for the few who script: both loaded when opened.
 const Developers = lazy(() => import('./pages/Developers.jsx'))
 const Tokens = lazy(() => import('./pages/Tokens.jsx'))
+const Embed = lazy(() => import('./pages/Embed.jsx'))
 
 const later = (page) => <Suspense fallback={<BrandLoader className="py-16" />}>{page}</Suspense>
 
 export default function App() {
   return (
     <Routes>
+      {/* W12.18: a published timing's card for other sites to frame; outside the layout, and the one framable path. */}
+      <Route path="embed/:id" element={later(<Embed />)} />
       <Route element={<Layout />}>
         <Route index element={<Home />} />
         <Route path="analyze" element={<Analyze />} />

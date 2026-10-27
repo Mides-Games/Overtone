@@ -33,26 +33,32 @@ version is `v0.2.0-alpha`.
 
 ### Fixed
 
+- The worker's thread-capped Beat This! loader (`limit_onnx_threads`, used by every
+  deployed worker) built its own ONNX Runtime session without the
+  `enable_mem_pattern = False` the engine's loader got in #20, so the deployed path kept
+  the old peak. It sets it now: 1824 -> 1200 MB with the vote at 10 minutes.
 - `docs/deploy.md` said a worker without the vote fits in 512 MB. Never measured: a
   10-minute track peaks at 565 MB. It now says 768 MB, and the gate holds that.
 
 ### Measured
 
-- Windows, 12 cores, 4 threads, one pass per case on a machine shared with other runs
-  (timings here move by a third between runs):
+- Windows, 12 cores, 4 threads, one pass per case. First run: machine loaded by other
+  sessions, before the loader fix. Second run: quiet machine, with #20 and the fix.
 
-  | audio | vote | load s | job s | s/min | peak MB |
+  | audio | vote | s/min loaded | peak MB before | s/min quiet | peak MB fixed |
   |---|---|---|---|---|---|
-  | 60 s | on | 20.5 | 34.1 | 34.1 | 1628 |
-  | 60 s | off | 21.0 | 10.6 | 10.6 | 291 |
-  | 360 s | on | 38.3 | 93.3 | 15.5 | 1738 |
-  | 360 s | off | 6.7 | 19.9 | 3.3 | 445 |
-  | 600 s | on | 15.6 | 206.6 | 20.7 | 1824 |
-  | 600 s | off | 32.6 | 46.8 | 4.7 | 565 |
+  | 60 s | on | 34.1 | 1628 | 8.2 | 1002 |
+  | 60 s | off | 10.6 | 291 | 2.1 | 292 |
+  | 360 s | on | 15.5 | 1738 | 5.4 | 1113 |
+  | 360 s | off | 3.3 | 445 | 0.9 | 444 |
+  | 600 s | on | 20.7 | 1824 | 5.4 | 1200 |
+  | 600 s | off | 4.7 | 565 | 0.9 | 566 |
 
-  The cost has a fixed part, so short tracks are the worst per minute. W3.16 can quote
-  35 s per audio minute with the vote, marked as an estimate. With the vote, a
-  10-minute track leaves 224 MB of the 2048 MB container.
+  Load (engine + model, once per worker start): 7-38 s loaded, 1.5-4.8 s quiet. The
+  machine's load moved the times by four, more than any code did; the peak moved only
+  with the fix. The cost has a fixed part, so short tracks are the worst per minute.
+  W3.16 can quote 35 s per audio minute with the vote (the loaded figure), marked as
+  an estimate, until the container is measured.
 - Not measured: the Linux container (same blocker as W2.3); Windows' peak working set
   is not Linux's peak RSS, so the margin is to be re-read there.
 

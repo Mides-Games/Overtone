@@ -423,23 +423,29 @@ al server, están en `timeline.md`. W2.3 se cierra cuando esa corrida diga 24/24
 
 **W2.4 medido el 2026-10-27** (rama `bench/worker-perf`, `bench/worker_perf.py`): cada
 trabajo en un proceso nuevo, con 4 hilos como el worker de prod, en Windows (12 núcleos,
-compartida con otras corridas, una pasada por caso):
+una pasada por caso). Dos corridas: la primera con la máquina cargada por otras
+sesiones y antes del arreglo del loader del worker (abajo); la segunda, tranquila y con
+el arreglo:
 
-| Audio | Voto | Trabajo | s por minuto de audio | Pico |
-|---|---|---|---|---|
-| 1 min | sí | 34,1 s | 34,1 | 1628 MB |
-| 1 min | no | 10,6 s | 10,6 | 291 MB |
-| 6 min | sí | 93,3 s | 15,5 | 1738 MB |
-| 6 min | no | 19,9 s | 3,3 | 445 MB |
-| 10 min | sí | 206,6 s | 20,7 | 1824 MB |
-| 10 min | no | 46,8 s | 4,7 | 565 MB |
+| Audio | Voto | s por minuto, cargada | Pico, antes | s por minuto, tranquila | Pico, con el arreglo |
+|---|---|---|---|---|---|
+| 1 min | sí | 34,1 | 1628 MB | 8,2 | 1002 MB |
+| 1 min | no | 10,6 | 291 MB | 2,1 | 292 MB |
+| 6 min | sí | 15,5 | 1738 MB | 5,4 | 1113 MB |
+| 6 min | no | 3,3 | 445 MB | 0,9 | 444 MB |
+| 10 min | sí | 20,7 | 1824 MB | 5,4 | 1200 MB |
+| 10 min | no | 4,7 | 565 MB | 0,9 | 566 MB |
 
-La carga del engine y del modelo (7-38 s) se paga una vez al arrancar, no por trabajo.
+La carga del engine y del modelo (2-38 s) se paga una vez al arrancar, no por trabajo.
 El costo no es lineal: un tema corto paga una parte fija, y por eso el peor caso por
-minuto es el de 1 minuto. Para W3.16, la estimación conservadora es **35 s por minuto
-de audio con el voto** (11 sin él). La puerta exige menos de 45 s por minuto (un tema de
-600 s en la mitad de `JOB_TIMEOUT_S`) y el pico dentro del contenedor (2048 MB con voto,
-768 sin): pasa. Con el voto, a 10 minutos quedan 224 MB de margen. `WORKER_CONCURRENCY`
+minuto es el de 1 minuto. La carga de la máquina pesa más que el código: entre las dos
+corridas, los tiempos se dividen por cuatro. Para W3.16, la estimación conservadora es
+**35 s por minuto de audio con el voto** (11 sin él), la de la máquina cargada, hasta
+medir el contenedor. La puerta exige menos de 45 s por minuto (un tema de 600 s en la
+mitad de `JOB_TIMEOUT_S`) y el pico dentro del contenedor (2048 MB con voto, 768 sin):
+pasa en las dos. **Arreglo:** el loader del worker con hilos acotados (el de todo worker
+desplegado) armaba su propia sesión de ONNX Runtime sin el `enable_mem_pattern = False`
+de #20; con él, el pico con voto a 10 minutos baja de 1824 a 1200 MB (848 MB de margen). `WORKER_CONCURRENCY`
 sigue sin existir (un worker, un trabajo); el número que fija W2.4 es cuántos workers
 hacen falta, no cuántos hilos. Falta repetirlo en el contenedor Linux, con los mismos
 pasos que W2.3.

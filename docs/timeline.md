@@ -20,6 +20,32 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · Beat This! without ONNX Runtime's memory pattern
+
+### Changed
+
+- `_load_beat_this` turns off `enable_mem_pattern`. The pattern plans a buffer layout
+  per input shape and keeps it; the vote runs 1500-frame chunks plus a last chunk of
+  another length on every song, so it only adds to the peak.
+
+### Measured
+
+- Beat This! alone over three Corpus B songs (135, 257 and 477 s) in one process,
+  ONNX Runtime 1.31.0, this PC with other sessions' runs in the background: peak
+  working set 1904 MB (twice) -> 1278 MB. CPU seconds 116 / 179 / 392 against
+  120-121 / 238-248 / 422-507 for the default. Every beat of the 1425 within 1 ms
+  of the default's.
+- Gates: see the PR.
+
+### Rejected / tried and dropped
+
+- `enable_cpu_mem_arena = False`: 1045 MB, beats identical, but the CPU cost moved
+  between +23 % and -27 % per song; not a clear win on a contended machine.
+  Both switches off: 991 MB at +40 % CPU.
+- Dynamic int8 quantisation (`quantize_dynamic`, QInt8): the model shrinks 83 -> 23 MB
+  and the peak to 955 MB, but 2-4 % of the beats move by more than 1 ms and 1-2 %
+  by more than 20 ms. That is a precision change; it waits for a Corpus B run.
+
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
 
 ### Changed

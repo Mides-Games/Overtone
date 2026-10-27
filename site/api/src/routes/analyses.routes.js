@@ -15,6 +15,7 @@ import { audioExtension, cleanFilename, cleanTag, downloadName, timingCsv, timin
 /**
  * Uploading a song and reading its analysis back (W3.4).
  *
+ *   POST /analyses/lookup           { sha1, filename, size } -> the stored result, or { cached: false }
  *   POST /analyses                  raw audio body, X-Filename header -> 202 { id, status }
  *   GET  /analyses/queue            the public queue: waiting, running, finished in the last hour
  *   GET  /analyses/:id              status, queue position, progress, result
@@ -70,6 +71,17 @@ const ipHashOf = (req) => {
   const day = new Date().toISOString().slice(0, 10);
   return createHmac('sha256', env.sessionSecret).update(`ip:${day}:${req.ip ?? 'unknown'}`).digest('hex');
 };
+
+/** What the public queue may show of a new analysis (W3.8): its privacy, its tags and its uploader. */
+const shown = (req, { hidden, title, artist }) => ({
+  private: hidden,
+  tagTitle: cleanTag(typeof title === 'string' ? title : null),
+  tagArtist: cleanTag(typeof artist === 'string' ? artist : null),
+  // Only the memory store keeps this; PostgreSQL joins `accounts` instead.
+  uploader: req.account
+    ? { username: req.account.username, displayName: req.account.display_name, avatarUrl: req.account.avatar_url }
+    : null,
+});
 
 // Uploads are expensive for the server: a narrow per-address limit of its own,
 // on top of the daily quota.
@@ -155,13 +167,7 @@ router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, as
   const row = {
     publicId: id, sha1: received.sha1, filename, sizeBytes: received.bytes, accountId, anonHash, ipHash,
     // The public queue's privacy switch: anything but "1" is public, as the form's default is.
-    private: req.get('X-Private') === '1',
-    tagTitle: cleanTag(req.get('X-Title')),
-    tagArtist: cleanTag(req.get('X-Artist')),
-    // Only the memory store keeps this; PostgreSQL joins `accounts` instead.
-    uploader: req.account
-      ? { username: req.account.username, displayName: req.account.display_name, avatarUrl: req.account.avatar_url }
-      : null,
+    ...shown(req, { hidden: req.get('X-Private') === '1', title: req.get('X-Title'), artist: req.get('X-Artist') }),
   };
 
   // The same audio through the same engine has been analysed before: answer
@@ -181,6 +187,53 @@ router.post('/analyses', uploadRateLimit, requireSameOrigin, optionalSession, as
     throw error;
   }
   return res.status(202).json({ id, status: 'queued', cached: false });
+});
+
+// A lookup reads one indexed row and sends no audio: much wider than uploads,
+// enough for a 50-file batch twice over in ten minutes.
+const lookupRateLimit = guard('lookup', 120, 10 * 60_000);
+const SHA1 = /^[0-9a-f]{40}$/;
+
+/**
+ * POST /analyses/lookup (W3.11): before uploading, the browser sends the
+ * audio's SHA-1. When the current engine has analysed that audio, the answer
+ * is a new analysis made from the stored result, exactly as an upload of the
+ * same file would have got (200, `cached: true`), and nothing is uploaded.
+ * Otherwise 200 `{ cached: false }` and the browser uploads as before.
+ *
+ * Like a cached upload, a hit costs no quota and no place in the queue, so
+ * none of those limits is checked here. Knowing the hash stands in for
+ * having the file, which is the same trust the upload's cache already gives.
+ */
+router.post('/analyses/lookup', lookupRateLimit, requireSameOrigin, optionalSession, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const body = req.body ?? {};
+  const sha1 = typeof body.sha1 === 'string' ? body.sha1.toLowerCase() : '';
+  if (!SHA1.test(sha1)) throw new HttpError(400, 'sha1 is the audio\'s SHA-1 in hex.', 'BAD_SHA1');
+  const filename = cleanFilename(typeof body.filename === 'string' ? body.filename : null);
+  if (!filename || !audioExtension(filename)) {
+    throw new HttpError(400, 'Choose an MP3, OGG, WAV, FLAC, M4A or Opus file.', 'UNSUPPORTED_FORMAT');
+  }
+  const sizeBytes = Number.isSafeInteger(body.size) && body.size > 0 ? body.size : null;
+
+  const store = analyses();
+  const cached = await store.findCached(sha1, engineHash());
+  if (!cached) return res.json({ cached: false });
+
+  const accountId = req.account?.id ?? null;
+  const id = newPublicId();
+  const made = await store.create({
+    ...shown(req, { hidden: body.private === true, title: body.title, artist: body.artist }),
+    filename,
+    accountId,
+    publicId: id,
+    sha1,
+    sizeBytes,
+    anonHash: accountId ? null : ensureAnon(req, res),
+    ipHash: ipHashOf(req),
+    cachedFrom: cached,
+  });
+  return res.json({ id, status: made.status, cached: true });
 });
 
 /** Whether this request is the one that created `row`: its session account or its anonymous cookie. */

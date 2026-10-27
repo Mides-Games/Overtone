@@ -82,7 +82,7 @@ router.post('/jobs/claim', async (req, res) => {
 router.get('/jobs/:id/audio', async (req, res) => {
   const id = idOf(req);
   const attempt = Number(req.query.attempt);
-  const row = await analyses().get(id);
+  const row = await analyses().get(id, { position: false });
   if (!row || row.status !== 'running') throw stale();
   if (Number.isInteger(attempt) && attempt > 0 && !(await analyses().isRunning(id, attempt))) throw stale();
   const path = audioPath(id);

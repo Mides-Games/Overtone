@@ -16,7 +16,8 @@
     "changeLanguage": "Switch to English",
     "otherLanguage": "EN",
     "openMenu": "Abrir menú",
-    "closeMenu": "Cerrar menú"
+    "closeMenu": "Cerrar menú",
+    "queue": "Cola"
   },
   "ticker": [
     "Overtone · timing automático para mapas de osu!",
@@ -68,7 +69,7 @@
     "pickAudio": "Elegí un archivo de audio primero.",
     "tooLong": "Esta canción dura {{minutes}} minutos; el límite es {{limit}}.",
     "failed": "La subida falló: {{message}}",
-    "drop": "Soltá el audio acá o elegí un archivo",
+    "drop": "Soltá canciones o una carpeta acá, o elegí archivos",
     "privacy": "No hace falta cuenta. Tu archivo se borra apenas se analiza; si se vuelve a subir el mismo audio, el resultado guardado sale al instante.",
     "limitsTitle": "Sin cuenta",
     "limitsTitleAccount": "Con tu cuenta",
@@ -94,7 +95,24 @@
       "QUOTA_ANON": "Sin cuenta podés analizar {{limit}} canciones por día. Entrá para tener más, o volvé después de las 00:00 UTC.",
       "QUOTA_ACCOUNT": "Ya usaste los {{limit}} análisis de hoy. La cuenta se reinicia a las 00:00 UTC.",
       "RATE_LIMITED": "Demasiadas subidas en poco tiempo. Esperá unos minutos y probá de nuevo.",
-      "NETWORK": "No se pudo llegar al servidor. Revisá tu conexión y probá de nuevo."
+      "NETWORK": "No se pudo llegar al servidor. Revisá tu conexión y probá de nuevo.",
+      "PENDING_LIMIT_one": "Ya tenés {{count}} canción en la cola. Mandá más cuando termine.",
+      "PENDING_LIMIT_other": "Ya tenés {{count}} canciones en la cola. Mandá más cuando termine alguna.",
+      "QUEUE_FULL": "La cola está llena ahora mismo. Probá en unos minutos.",
+      "CACHE_LIMIT": "Hoy ya abriste {{count}} resultados guardados. La cuenta vuelve a cero a las 00:00 UTC."
+    },
+    "private": "No mostrarla en la cola pública",
+    "privateHint": "La cola solo mostrará que se está analizando algo: sin canción, sin nombre de archivo y sin quién la subió.",
+    "folder": "Elegir una carpeta",
+    "atOnce_one": "Hasta {{count}} canción en la cola a la vez",
+    "atOnce_other": "Hasta {{count}} canciones en la cola a la vez",
+    "submitMany_one": "Analizar {{count}} canción",
+    "submitMany_other": "Analizar {{count}} canciones",
+    "sendingMany": "Enviando…",
+    "card": {
+      "ready": "Lista para enviar",
+      "sent": "Enviada",
+      "remove": "Quitar {{name}}"
     }
   },
   "result": {
@@ -182,5 +200,30 @@
   "notFound": {
     "title": "Acá no hay nada",
     "back": "Volver al inicio"
+  },
+  "queue": {
+    "title": "Cola",
+    "subtitle": "Cada canción que espera al analizador o se está analizando ahora, y las que terminaron en la última hora.",
+    "live": "En espera y analizando",
+    "recent": "Terminadas en la última hora",
+    "count_one": "{{count}} canción",
+    "count_other": "{{count}} canciones",
+    "empty": "No hay nada en la cola.",
+    "upload": "Analizar una canción",
+    "more_one": "…y {{count}} más esperando.",
+    "more_other": "…y {{count}} más esperando.",
+    "privateSong": "Subida privada",
+    "privateUpload": "Quién la subió está oculto",
+    "anonymous": "Anónimo",
+    "yours": "Tuya",
+    "cached": "resultado guardado",
+    "privacy": "Una canción se nombra por sus propios tags, o por el nombre del archivo si no tiene. Quien marcó \"no mostrarla en la cola pública\" aparece como subida privada. Nunca se muestran carpetas ni rutas, el audio nunca se sirve, y solo vos podés abrir tus resultados.",
+    "status": {
+      "queued": "En cola",
+      "running": "Analizando",
+      "done": "Listo",
+      "refused": "Rechazado",
+      "failed": "Falló"
+    }
   }
 }

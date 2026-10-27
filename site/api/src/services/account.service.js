@@ -1,19 +1,18 @@
 import { randomUUID } from 'node:crypto';
 
 import { hasDatabase, query } from '../config/database.js';
-import { seal } from '../utils/secret-box.js';
 
 /**
- * Accounts and their sealed Mides refresh tokens.
+ * Accounts, from the Mides profile each sign-in brings. No Mides token is kept.
  *
- * With a database, rows live in `accounts` and `mides_tokens`. Without one
+ * With a database, rows live in `accounts`. Without one
  * (development only; `env.js` refuses it in production) they live in this
  * process's memory and vanish on restart. That is what lets `pnpm dev` work on
  * a machine with no Postgres; it is not a cache and nothing reads it in
  * production.
  */
 
-const memory = { accounts: new Map(), tokens: new Map() };
+const memory = { accounts: new Map() };
 
 const COLUMNS = 'id, mides_user_id, username, display_name, avatar_url, banner_url, discord_id, mides_role, session_version, created_at, cached_at';
 
@@ -75,33 +74,12 @@ export const signOut = async (accountId) => {
   if (!hasDatabase()) {
     const row = memory.accounts.get(accountId);
     if (row) row.session_version += 1;
-    memory.tokens.delete(accountId);
     return;
   }
 
   await query('UPDATE accounts SET session_version = session_version + 1 WHERE id = $1', [accountId]);
-  await query('DELETE FROM mides_tokens WHERE account_id = $1', [accountId]);
 };
 
-/** Keeps the refresh token Mides just gave, sealed. The access token is never stored. */
-export const keepMidesToken = async (accountId, refresh) => {
-  if (typeof refresh !== 'string' || !refresh) return;
-  const sealed = seal(refresh);
-
-  if (!hasDatabase()) {
-    memory.tokens.set(accountId, sealed);
-    return;
-  }
-
-  await query(
-    `INSERT INTO mides_tokens (account_id, refresh_sealed)
-          VALUES ($1, $2)
-     ON CONFLICT (account_id) DO UPDATE
-             SET refresh_sealed = EXCLUDED.refresh_sealed,
-                 updated_at = now()`,
-    [accountId, sealed],
-  );
-};
 
 /**
  * What `/me` and a profile may show: public fields only, camelCase, and never

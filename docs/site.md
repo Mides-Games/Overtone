@@ -121,7 +121,7 @@ is missing.
 | `SITE_URL` | `http://localhost:5173` | Where the web is served. The SSO `redirect_uri` is `${SITE_URL}/login/callback`. **https in production.** |
 | `SESSION_SECRET` | random per process | Signs the session and SSO cookies. 32+ characters. **Required in production.** Changing it signs everyone out. |
 | `SESSION_DAYS` | `30` | How long a session lasts. |
-| `TOKEN_KEY` | random per process | Seals Mides refresh tokens at rest (AES-256-GCM, HKDF). 32+ characters. **Required in production.** Separate from `SESSION_SECRET`, so rotating one does not void the other. |
+| `MIDES_CLIENT_SECRET` | random per process | This server's secret for Mides' code exchange: the same value as `SSO_SECRET_OVERTONE` in Mides-Dev-Web. Without the right one Mides refuses every code (sign-in answers 503 and the log says which setting). 32+ characters. **Required in production.** |
 | `MIDES_AUTH_URL` | none | The Mides identity API, e.g. `https://midesprojects.com/api`; the service calls `${MIDES_AUTH_URL}/auth/...`. |
 | `MIDES_WEB_URL` | none | The Mides site that serves `/authorize`, e.g. `https://midesprojects.com`. |
 | `MIDES_APP` | `overtone` | The app name registered in Mides' `SSO_APPS`. |
@@ -148,9 +148,12 @@ returns to `/login/callback#code=…`, the web posts the code to
 `${MIDES_AUTH_URL}/auth/sso/exchange`. The exchange refuses a browser without
 the SSO cookie and without the web's own note of the trip (login CSRF). The
 browser then holds one HttpOnly `overtone_session` cookie, an HMAC over the
-account id, expiry and session version. The Mides refresh token is stored
-sealed and never sent to the browser. Only public profile fields are cached:
-no email, no phone.
+account id, expiry and session version. The exchange sends this app's slug and
+`MIDES_CLIENT_SECRET`, so a code taken from a browser is good to nobody else.
+Mides answers with an access token of audience `app:overtone`, which opens
+none of its own API, no refresh token, and the minimal profile (id, username,
+names, avatar, banner, `is_moderator`): Overtone keeps no Mides token at all,
+and a breach of this server takes no Mides account with it.
 
 The real SSO needs W3.2 first: `overtone` registered in Mides-Dev-Web's
 `SSO_APPS` with this site's origins and `/login/callback`.
@@ -167,7 +170,7 @@ The endpoints are described in `site/api/docs/openapi.yaml`.
   "recent" list is this browser's own storage).
 - Profile is a placeholder: counters show a dash, timings come with publishing (W5).
 - The schema holds every table of the plan's data model; `accounts`,
-  `mides_tokens`, `songs`, `analyses` and `jobs` are used.
+  `songs`, `analyses` and `jobs` are used. `mides_tokens` was dropped on 2026-10-27.
 - The PostgreSQL store of the queue (`services/analysis.service.js`) has not
   run against a database yet: the end-to-end checks below ran on the in-memory
   store. `pnpm check` should be run on a real server before W4.
@@ -235,3 +238,44 @@ vote on):
   (12), `pnpm build` (363 kB JS, 115 kB gzip).
 - The worker leaves with the API: stopping the dev process left no Python
   behind.
+
+### The public queue (W3.8, 2026-10-27)
+
+`/queue` polls `GET /api/v1/analyses/queue`: the running and queued rows (at most
+100, `more` counts the rest) and those finished in the last hour (at most 20), from
+a one-second snapshot shared by every viewer. Each row is shaped by
+`site/api/src/utils/queue.js`:
+
+- the song is "Artist - Title" from the tags the browser read (`X-Title`,
+  `X-Artist`; `site/web/src/lib/tags.js`), else the file name without extension;
+- the uploader is the public Mides profile (username, display name, avatar) or
+  "anonymous";
+- a row uploaded with "keep it off the public queue" (`X-Private: 1`) shows neither,
+  nor whether it was signed in;
+- the analysis id is only on the caller's own rows (session or anonymous cookie),
+  which link to their result; for anybody else an id would only lead to a 404.
+
+Checked by hand with `pnpm dev` and a fake worker; not against a real PostgreSQL.
+
+### Many songs at once (W3.9, 2026-10-27)
+
+The Analyze form takes several files or a folder and sends them one after another,
+each its own analysis with its own card. Three limits hold however many are sent:
+the daily quota, `ANON_MAX_PENDING` / `USER_MAX_PENDING` songs of one person waiting
+or running at once (429 `PENDING_LIMIT`), and `QUEUE_MAX` for the whole queue (503
+`QUEUE_FULL`).
+
+The queue's order is round robin between people: every person's 1st song before
+anyone's 2nd, each person's songs in the order sent, and between equal turns
+whoever was served longest ago (`jobs.claimed_at`). A person is the account, or
+without one the hashed address. The claim, the position a result page shows and
+the public queue read the same order.
+
+Checked against PostgreSQL through PGlite (see `timeline.md`) and in the browser;
+not with two real addresses taking turns.
+
+### Asking before uploading (W3.11, 2026-10-27)
+
+The form hashes each file in the browser and calls `POST /api/v1/analyses/lookup`
+first. A hit is a new analysis from the stored result (no quota, no queue, no
+upload); a miss, or a browser that cannot hash, uploads as before.

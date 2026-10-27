@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 
 import { hasDatabase, pool, query } from '../config/database.js';
+import { HttpError } from '../utils/http-error.js';
 
 /**
  * Analyses and their queue (ADR-W5): `songs` by audio SHA-1, one `analyses`
@@ -45,19 +46,128 @@ const confidenceOf = (result) => {
 
 const statusOf = (result) => (result?.refused ? 'refused' : 'done');
 
+/**
+ * The limits a new analysis must fit, given its owner's counts (W3.9,
+ * W3.11): `{ quota, maxPending, queueMax, cacheDaily, scope }`. A queued
+ * analysis is held to the daily quota, the owner's pending cap and the
+ * queue's; one answered from the cache only to `cacheDaily`, so a lookup in a
+ * loop cannot fill the tables or the public queue. Returns the refusal, or
+ * null. Both stores call it at insert time, inside their critical section.
+ */
+export const refusal = ({ mine, all, today, cachedToday }, limits, cached) => {
+  const { scope } = limits;
+  if (cached) {
+    return cachedToday >= limits.cacheDaily
+      ? new HttpError(429, `You have opened ${limits.cacheDaily} stored results today. The count resets at 00:00 UTC.`,
+        'CACHE_LIMIT', { limit: limits.cacheDaily, scope })
+      : null;
+  }
+  if (today >= limits.quota) {
+    return new HttpError(
+      429,
+      scope === 'account'
+        ? `You have used today's ${limits.quota} analyses. The count resets at 00:00 UTC.`
+        : `Without an account you can analyse ${limits.quota} songs a day. Sign in for more, or come back after 00:00 UTC.`,
+      'QUOTA_EXCEEDED',
+      { limit: limits.quota, scope },
+    );
+  }
+  if (mine >= limits.maxPending) {
+    return new HttpError(429, `You already have ${limits.maxPending} songs in the queue. Send more when one finishes.`,
+      'PENDING_LIMIT', { limit: limits.maxPending, scope });
+  }
+  if (all >= limits.queueMax) return new HttpError(503, 'The queue is full. Try again in a few minutes.', 'QUEUE_FULL');
+  return null;
+};
+
+/** How long a finished analysis stays on the public queue, and how many of them. */
+export const RECENT_MINUTES = 60;
+export const RECENT_LIMIT = 20;
+/** The most unfinished rows the queue page lists; past it, it says how many more. */
+export const LIVE_LIMIT = 100;
+
+/**
+ * Whose turn an analysis waits for (W3.9): the account, or without one the
+ * hashed address the anonymous quota counts. A cookie cleared between uploads
+ * is still the same person here.
+ */
+const ownerOf = (a) => a.accountId ?? `ip:${a.ipHash}`;
+
+/**
+ * The queue's order: round robin between people, each person's songs in the
+ * order they sent them. Someone's 30th song waits behind everybody else's
+ * 1st, so a batch never leaves a single upload waiting for all of it.
+ *
+ * Within a turn, whoever was served longest ago (or never) goes first.
+ * Without that, the second song of a batch would become its owner's 1st the
+ * moment the first one was taken, and win the tie against a newcomer's 1st
+ * by being older: the batch would still go first in full.
+ *
+ * `lastServed(owner)` is when that person's latest job was claimed, in ms, or
+ * 0 for never.
+ */
+export const fairOrder = (queued, owner = ownerOf, lastServed = () => 0) => {
+  const turns = new Map();
+  return [...queued]
+    .sort((x, y) => x.job.seq - y.job.seq)
+    .map((a) => {
+      const turn = (turns.get(owner(a)) ?? 0) + 1;
+      turns.set(owner(a), turn);
+      return { a, turn, served: lastServed(owner(a)) };
+    })
+    .sort((x, y) => x.turn - y.turn || x.served - y.served || x.a.job.seq - y.a.job.seq)
+    .map(({ a }) => a);
+};
+
 // ── Memory ──────────────────────────────────────────────────────────────────
 
 const memory = { analyses: new Map(), seq: 0 };
 
-const memoryStore = {
-  async countToday({ accountId, ipHash }) {
-    const since = startOfUtcDay();
-    let n = 0;
-    for (const a of memory.analyses.values()) {
-      if (a.cachedFrom || a.createdAt < since) continue;
-      if (accountId ? a.accountId === accountId : !a.accountId && a.ipHash === ipHash) n += 1;
+const memoryQueued = () => {
+  const all = [...memory.analyses.values()];
+  const served = new Map();
+  for (const a of all) {
+    const at = a.job?.claimedAt?.getTime() ?? 0;
+    if (at > (served.get(ownerOf(a)) ?? 0)) served.set(ownerOf(a), at);
+  }
+  return fairOrder(all.filter((a) => a.job?.state === 'queued'), ownerOf, (o) => served.get(o) ?? 0);
+};
+
+// Synchronous on purpose: create() re-checks the limits with these and inserts
+// with no await in between, so two requests cannot both pass and both insert.
+const memoryCounts = ({ accountId, ipHash }) => {
+  const owner = accountId ?? `ip:${ipHash}`;
+  const since = startOfUtcDay();
+  const counts = { mine: 0, all: 0, today: 0, cachedToday: 0 };
+  for (const a of memory.analyses.values()) {
+    if (a.job?.state === 'queued' || a.job?.state === 'running') {
+      counts.all += 1;
+      if (ownerOf(a) === owner) counts.mine += 1;
     }
-    return n;
+    if (a.createdAt < since || ownerOf(a) !== owner) continue;
+    if (a.cachedFrom) counts.cachedToday += 1;
+    else counts.today += 1;
+  }
+  return counts;
+};
+
+const memoryStore = {
+  async countPending(who) {
+    const { mine, all } = memoryCounts(who);
+    return { mine, all };
+  },
+
+  async countToday(who) {
+    return memoryCounts(who).today;
+  },
+
+  async findCopy({ sha1, accountId, anonHash }) {
+    const since = startOfUtcDay();
+    for (const a of memory.analyses.values()) {
+      if (!a.cachedFrom || a.sha1 !== sha1 || a.createdAt < since) continue;
+      if (accountId ? a.accountId === accountId : !a.accountId && a.anonHash === anonHash) return a;
+    }
+    return null;
   },
 
   async findCached(sha1, hash) {
@@ -69,9 +179,17 @@ const memoryStore = {
     return best;
   },
 
-  async create({ publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash, cachedFrom = null }) {
+  async create({
+    publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash, cachedFrom = null,
+    private: hidden = false, tagTitle = null, tagArtist = null, uploader = null,
+  }, { limits = null } = {}) {
+    if (limits) {
+      const error = refusal(memoryCounts({ accountId, ipHash }), limits, Boolean(cachedFrom));
+      if (error) throw error;
+    }
     const row = {
       publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash,
+      private: hidden, tagTitle, tagArtist, uploader,
       createdAt: new Date(), finishedAt: null,
       status: 'queued', stage: null, progress: 0, error: null,
       result: null, engineHash: currentEngineHash, cachedFrom: null,
@@ -87,22 +205,34 @@ const memoryStore = {
     return row;
   },
 
-  async get(publicId) {
+  async get(publicId, { position: rank = true } = {}) {
     const a = memory.analyses.get(publicId);
     if (!a) return null;
     let position = null;
-    if (a.job?.state === 'queued') {
-      position = 1 + [...memory.analyses.values()].filter((b) => b.job?.state === 'queued' && b.job.seq < a.job.seq).length;
+    if (rank && a.job?.state === 'queued') {
+      position = 1 + memoryQueued().indexOf(a);
     }
     return { ...a, position };
   },
 
+  async queue() {
+    const all = [...memory.analyses.values()];
+    const queued = memoryQueued();
+    const running = all.filter((a) => a.job?.state === 'running').sort((x, y) => x.job.seq - y.job.seq);
+    const since = Date.now() - RECENT_MINUTES * 60_000;
+    const recent = all
+      .filter((a) => a.finishedAt && a.finishedAt.getTime() >= since)
+      .sort((x, y) => y.finishedAt - x.finishedAt)
+      .slice(0, RECENT_LIMIT);
+    const live = [...running.map((a) => ({ ...a, position: null })), ...queued.map((a, i) => ({ ...a, position: i + 1 }))];
+    return { live: live.slice(0, LIVE_LIMIT), more: Math.max(0, live.length - LIVE_LIMIT), recent };
+  },
+
   async claim() {
-    const next = [...memory.analyses.values()]
-      .filter((a) => a.job?.state === 'queued')
-      .sort((x, y) => x.job.seq - y.job.seq)[0];
+    const next = memoryQueued()[0];
     if (!next) return null;
-    Object.assign(next.job, { state: 'running', attempts: next.job.attempts + 1, lockedAt: new Date() });
+    const now = new Date();
+    Object.assign(next.job, { state: 'running', attempts: next.job.attempts + 1, lockedAt: now, claimedAt: now });
     Object.assign(next, { status: 'running', stage: null, progress: 0 });
     return { publicId: next.publicId, filename: next.filename, attempt: next.job.attempts };
   },
@@ -119,6 +249,8 @@ const memoryStore = {
   async progress(publicId, attempt, { stage, progress }) {
     const a = this.running(publicId, attempt);
     if (!a) return false;
+    // A heartbeat: a job still reporting is not stuck (requeueStale).
+    a.job.lockedAt = new Date();
     Object.assign(a, { stage, progress });
     return true;
   },
@@ -166,6 +298,7 @@ const memoryStore = {
 const SELECT = `
   SELECT a.public_id, a.account_id, a.anon_hash, a.ip_hash, a.filename, a.size_bytes, a.status, a.stage,
          a.progress, a.error, a.result, a.engine_hash, a.created_at, a.finished_at,
+         a.private, a.tag_title, a.tag_artist,
          c.public_id AS cached_from, s.audio_sha1, j.id AS job_id, j.state AS job_state
     FROM analyses a
     JOIN songs s ON s.id = a.song_id
@@ -192,6 +325,9 @@ const fromRow = (r) =>
     sha1: r.audio_sha1,
     jobId: r.job_id,
     jobState: r.job_state,
+    private: r.private,
+    tagTitle: r.tag_title,
+    tagArtist: r.tag_artist,
   };
 
 const transaction = async (work) => {
@@ -221,19 +357,61 @@ const lockRunning = async (client, publicId, attempt) => {
   return rows[0] ?? null;
 };
 
+/**
+ * Every queued job and its place in `fairOrder`: each person's own turn
+ * number first (their 1st song, 2nd, ...), then whoever was served longest
+ * ago, then the job id. A priority, which nothing sets yet, comes before all.
+ */
+const OWNER = "coalesce(a.account_id::text, 'ip:' || a.ip_hash)";
+const FAIR_POSITIONS = `
+  SELECT turns.id, row_number() OVER (ORDER BY turns.priority DESC, turns.turn, served.at NULLS FIRST, turns.id) AS position
+    FROM (SELECT j.id, j.priority, ${OWNER} AS owner,
+                 row_number() OVER (PARTITION BY ${OWNER} ORDER BY j.id) AS turn
+            FROM jobs j JOIN analyses a ON a.id = j.analysis_id
+           WHERE j.state = 'queued') turns
+    LEFT JOIN (SELECT ${OWNER} AS owner, max(j.claimed_at) AS at
+                 FROM jobs j JOIN analyses a ON a.id = j.analysis_id
+                WHERE j.claimed_at > now() - interval '1 day'
+                GROUP BY 1) served ON served.owner = turns.owner`;
+
+/** One owner's counts in one statement, run by `run` (the pool, or a transaction's client). */
+const pgCounts = async (run, { accountId, ipHash }) => {
+  const mine = accountId ? 'a.account_id = $1' : 'a.account_id IS NULL AND a.ip_hash = $1';
+  const { rows: [row] } = await run(
+    `SELECT (SELECT count(*) FROM jobs j JOIN analyses a ON a.id = j.analysis_id
+               WHERE j.state IN ('queued', 'running') AND ${mine})::int AS mine,
+            (SELECT count(*) FROM jobs WHERE state IN ('queued', 'running'))::int AS total,
+            (SELECT count(*) FROM analyses a WHERE ${mine} AND a.created_at >= $2 AND a.cached_from IS NULL)::int AS today,
+            (SELECT count(*) FROM analyses a WHERE ${mine} AND a.created_at >= $2 AND a.cached_from IS NOT NULL)::int AS cached`,
+    [accountId ?? ipHash, startOfUtcDay()],
+  );
+  return { mine: row.mine, all: row.total, today: row.today, cachedToday: row.cached };
+};
+
+// Every insert that is held to a limit takes this lock first, so the counts it
+// reads are still true when it commits: two uploads cannot both pass the last
+// free place. Inserts are a few milliseconds; nothing else waits on it.
+const INSERT_LOCK = 0x0e7701;
+
 const pgStore = {
-  async countToday({ accountId, ipHash }) {
-    const { rows } = accountId
-      ? await query(
-          'SELECT count(*)::int AS n FROM analyses WHERE account_id = $1 AND created_at >= $2 AND cached_from IS NULL',
-          [accountId, startOfUtcDay()],
-        )
-      : await query(
-          `SELECT count(*)::int AS n FROM analyses
-            WHERE account_id IS NULL AND ip_hash = $1 AND created_at >= $2 AND cached_from IS NULL`,
-          [ipHash, startOfUtcDay()],
-        );
-    return rows[0].n;
+  async countPending(who) {
+    const { mine, all } = await pgCounts(query, who);
+    return { mine, all };
+  },
+
+  async countToday(who) {
+    return (await pgCounts(query, who)).today;
+  },
+
+  async findCopy({ sha1, accountId, anonHash }) {
+    const { rows } = await query(
+      `${SELECT}
+        WHERE s.audio_sha1 = $1 AND a.cached_from IS NOT NULL AND a.created_at >= $3
+          AND ${accountId ? 'a.account_id = $2' : 'a.account_id IS NULL AND a.anon_hash = $2'}
+        ORDER BY a.id DESC LIMIT 1`,
+      [sha1, accountId ?? anonHash, startOfUtcDay()],
+    );
+    return fromRow(rows[0]);
   },
 
   async findCached(sha1, hash) {
@@ -247,8 +425,16 @@ const pgStore = {
     return fromRow(rows[0]);
   },
 
-  async create({ publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash, cachedFrom = null }) {
+  async create({
+    publicId, sha1, filename, sizeBytes, accountId, anonHash, ipHash, cachedFrom = null,
+    private: hidden = false, tagTitle = null, tagArtist = null,
+  }, { limits = null } = {}) {
     await transaction(async (client) => {
+      if (limits) {
+        await client.query('SELECT pg_advisory_xact_lock($1)', [INSERT_LOCK]);
+        const error = refusal(await pgCounts((...args) => client.query(...args), { accountId, ipHash }), limits, Boolean(cachedFrom));
+        if (error) throw error;
+      }
       const { rows: [song] } = await client.query(
         `INSERT INTO songs (audio_sha1) VALUES ($1)
          ON CONFLICT (audio_sha1) DO UPDATE SET audio_sha1 = EXCLUDED.audio_sha1
@@ -258,46 +444,98 @@ const pgStore = {
       if (cachedFrom) {
         await client.query(
           `INSERT INTO analyses (public_id, song_id, account_id, anon_hash, ip_hash, filename, size_bytes, engine,
-                                 engine_hash, result, confidence, status, progress, finished_at, cached_from)
-           SELECT $1, $2, $3, $4, $5, $6, $7, c.engine, c.engine_hash, c.result, c.confidence, c.status, 1, now(), c.id
+                                 engine_hash, result, confidence, status, progress, finished_at, cached_from,
+                                 private, tag_title, tag_artist)
+           SELECT $1, $2, $3, $4, $5, $6, $7, c.engine, c.engine_hash, c.result, c.confidence, c.status, 1, now(), c.id,
+                  $9, $10, $11
              FROM analyses c WHERE c.public_id = $8`,
-          [publicId, song.id, accountId, anonHash, ipHash, filename, sizeBytes, cachedFrom.publicId],
+          [publicId, song.id, accountId, anonHash, ipHash, filename, sizeBytes, cachedFrom.publicId, hidden, tagTitle, tagArtist],
         );
         return;
       }
       const { rows: [analysis] } = await client.query(
-        `INSERT INTO analyses (public_id, song_id, account_id, anon_hash, ip_hash, filename, size_bytes, engine, engine_hash)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, 'v3', $8)
+        `INSERT INTO analyses (public_id, song_id, account_id, anon_hash, ip_hash, filename, size_bytes, engine, engine_hash,
+                               private, tag_title, tag_artist)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, 'v3', $8, $9, $10, $11)
            RETURNING id`,
-        [publicId, song.id, accountId, anonHash, ipHash, filename, sizeBytes, currentEngineHash ?? 'pending'],
+        [publicId, song.id, accountId, anonHash, ipHash, filename, sizeBytes, currentEngineHash ?? 'pending', hidden, tagTitle, tagArtist],
       );
       await client.query('INSERT INTO jobs (analysis_id) VALUES ($1)', [analysis.id]);
     });
     return this.get(publicId);
   },
 
-  async get(publicId) {
+  /** One analysis; `position: false` skips ranking the whole queue, for callers that do not show it. */
+  async get(publicId, { position: rank = true } = {}) {
     const { rows } = await query(`${SELECT} WHERE a.public_id = $1`, [publicId]);
     const row = fromRow(rows[0]);
     if (!row) return null;
     let position = null;
-    if (row.jobState === 'queued') {
-      const { rows: [ahead] } = await query(
-        "SELECT count(*)::int AS n FROM jobs WHERE state = 'queued' AND id < $1",
-        [row.jobId],
-      );
-      position = ahead.n + 1;
+    if (rank && row.jobState === 'queued') {
+      const { rows: [place] } = await query(`SELECT position FROM (${FAIR_POSITIONS}) p WHERE id = $1`, [row.jobId]);
+      position = place ? Number(place.position) : null;
     }
     return { ...row, position };
+  },
+
+  async queue() {
+    const COLS = `a.public_id, a.account_id, a.anon_hash, a.filename, a.status, a.stage, a.progress,
+                  a.created_at, a.finished_at, a.private, a.tag_title, a.tag_artist,
+                  a.cached_from IS NOT NULL AS cached,
+                  u.username, u.display_name, u.avatar_url`;
+    // Running first, then queued in the order the claim takes them.
+    const { rows: live } = await query(
+      `SELECT ${COLS}, p.position, count(*) OVER () AS total
+         FROM jobs j
+         JOIN analyses a ON a.id = j.analysis_id
+         LEFT JOIN accounts u ON u.id = a.account_id
+         LEFT JOIN (${FAIR_POSITIONS}) p ON p.id = j.id
+        WHERE j.state IN ('queued', 'running')
+        ORDER BY j.state = 'queued', p.position, j.id
+        LIMIT $1`,
+      [LIVE_LIMIT],
+    );
+    const { rows: recent } = await query(
+      `SELECT ${COLS}
+         FROM analyses a
+         LEFT JOIN accounts u ON u.id = a.account_id
+        WHERE a.finished_at >= now() - make_interval(mins => $1)
+        ORDER BY a.finished_at DESC
+        LIMIT $2`,
+      [RECENT_MINUTES, RECENT_LIMIT],
+    );
+    const shape = (r) => ({
+      publicId: r.public_id,
+      accountId: r.account_id,
+      anonHash: r.anon_hash,
+      filename: r.filename,
+      status: r.status,
+      stage: r.stage,
+      progress: r.progress,
+      createdAt: r.created_at,
+      finishedAt: r.finished_at,
+      private: r.private,
+      tagTitle: r.tag_title,
+      tagArtist: r.tag_artist,
+      cachedFrom: r.cached || null,
+      position: r.position == null ? null : Number(r.position),
+      uploader: r.username ? { username: r.username, displayName: r.display_name, avatarUrl: r.avatar_url } : null,
+    });
+    const total = live.length ? Number(live[0].total) : 0;
+    return { live: live.map(shape), more: Math.max(0, total - live.length), recent: recent.map(shape) };
   },
 
   async claim() {
     const { rows } = await query(
       `WITH next AS (
-         SELECT id FROM jobs WHERE state = 'queued' ORDER BY priority DESC, id LIMIT 1 FOR UPDATE SKIP LOCKED
+         SELECT j.id FROM jobs j JOIN (${FAIR_POSITIONS}) p ON p.id = j.id
+          -- Checked again here, on the locked row: the ranking above read an
+          -- older snapshot, and a job another worker just took is still in it.
+          WHERE j.state = 'queued'
+          ORDER BY p.position LIMIT 1 FOR UPDATE OF j SKIP LOCKED
        ), claimed AS (
-         UPDATE jobs j SET state = 'running', attempts = j.attempts + 1, locked_at = now(), error = NULL
-           FROM next WHERE j.id = next.id
+         UPDATE jobs j SET state = 'running', attempts = j.attempts + 1, locked_at = now(), claimed_at = now(), error = NULL
+           FROM next WHERE j.id = next.id AND j.state = 'queued'
          RETURNING j.analysis_id, j.attempts
        )
        UPDATE analyses a SET status = 'running', stage = NULL, progress = 0
@@ -318,10 +556,16 @@ const pgStore = {
   },
 
   async progress(publicId, attempt, { stage, progress }) {
+    // Also a heartbeat: locked_at moves, so a job still reporting is never
+    // taken for stuck by requeueStale, however long the song.
     const { rowCount } = await query(
-      `UPDATE analyses a SET stage = $3, progress = $4
-         FROM jobs j
-        WHERE a.public_id = $1 AND j.analysis_id = a.id AND j.state = 'running' AND j.attempts = $2`,
+      `WITH beat AS (
+         UPDATE jobs j SET locked_at = now()
+           FROM analyses a
+          WHERE a.public_id = $1 AND j.analysis_id = a.id AND j.state = 'running' AND j.attempts = $2
+         RETURNING j.analysis_id
+       )
+       UPDATE analyses a SET stage = $3, progress = $4 FROM beat WHERE a.id = beat.analysis_id`,
       [publicId, attempt, stage, progress],
     );
     return rowCount > 0;

@@ -62,3 +62,30 @@ export const timingText = (result) => {
   const lines = String(result?.osu_timing ?? '').split(/\r?\n/).filter(Boolean);
   return `[TimingPoints]\r\n${lines.join('\r\n')}\r\n`;
 };
+
+/**
+ * A tag the browser read from the audio (`X-Title`, `X-Artist`), cleaned like
+ * a file name but keeping slashes, which titles use. `null` when empty.
+ */
+export const cleanTag = (raw) => {
+  if (typeof raw !== 'string' || !raw) return null;
+  let value = raw;
+  try {
+    value = decodeURIComponent(raw);
+  } catch {
+    // Not percent-encoded: take it as it came.
+  }
+  value = value.replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  return value || null;
+};
+
+/**
+ * What the public queue calls a song: "Artist - Title" from the tags, the
+ * title alone, or the file name without its extension and with its
+ * underscores and dots as spaces.
+ */
+export const songLabel = ({ tagArtist, tagTitle, filename }) => {
+  if (tagTitle) return tagArtist ? `${tagArtist} - ${tagTitle}` : tagTitle;
+  const stem = (filename ?? '').replace(/\.[^.]*$/, '').replace(/[_.]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return stem || null;
+};

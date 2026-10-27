@@ -29,13 +29,10 @@ CREATE TABLE IF NOT EXISTS accounts (
   cached_at       timestamptz NOT NULL DEFAULT now()
 );
 
--- The Mides refresh token, sealed with AES-256-GCM (utils/secret-box.js). It
--- never reaches the browser.
-CREATE TABLE IF NOT EXISTS mides_tokens (
-  account_id      uuid PRIMARY KEY REFERENCES accounts (id) ON DELETE CASCADE,
-  refresh_sealed  text NOT NULL,
-  updated_at      timestamptz NOT NULL DEFAULT now()
-);
+-- Overtone keeps no Mides token: Mides gives it an access with its own audience
+-- and no refresh, and the profile is all it needs. The table that held sealed
+-- refresh tokens goes, and takes any old ones with it.
+DROP TABLE IF EXISTS mides_tokens;
 
 -- ── Songs, analyses and the queue ───────────────────────────────────────────
 
@@ -79,7 +76,17 @@ ALTER TABLE analyses ADD COLUMN IF NOT EXISTS progress    real CHECK (progress B
 ALTER TABLE analyses ADD COLUMN IF NOT EXISTS error       text;
 ALTER TABLE analyses ADD COLUMN IF NOT EXISTS finished_at timestamptz;
 ALTER TABLE analyses ADD COLUMN IF NOT EXISTS cached_from bigint REFERENCES analyses (id) ON DELETE SET NULL;
+-- W3.8, the public queue. `private` hides the file name, the song and the
+-- uploader there. tag_title and tag_artist are what the browser read from the
+-- audio's own tags at upload, cleaned like the file name; the queue names a
+-- song by them, or by the file name when the file had none.
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS private     boolean NOT NULL DEFAULT false;
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS tag_title   text CHECK (char_length(tag_title) <= 200);
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS tag_artist  text CHECK (char_length(tag_artist) <= 200);
 CREATE INDEX IF NOT EXISTS analyses_song_idx ON analyses (song_id);
+-- The queue page reads the unfinished rows and the latest finished ones.
+CREATE INDEX IF NOT EXISTS analyses_live_idx ON analyses (status, created_at) WHERE status IN ('queued', 'running');
+CREATE INDEX IF NOT EXISTS analyses_finished_idx ON analyses (finished_at DESC) WHERE finished_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS analyses_cache_idx ON analyses (song_id, engine_hash) WHERE result IS NOT NULL;
 CREATE INDEX IF NOT EXISTS analyses_account_idx ON analyses (account_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS analyses_ip_day_idx ON analyses (ip_hash, created_at) WHERE account_id IS NULL;
@@ -97,6 +104,11 @@ CREATE TABLE IF NOT EXISTS jobs (
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS jobs_queued_idx ON jobs (priority DESC, id) WHERE state = 'queued';
+-- W3.9, the fair order: when a person's latest job was taken, so that between
+-- equal turns whoever was served longest ago goes first. locked_at cannot say
+-- it: it is cleared when the job ends.
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS claimed_at timestamptz;
+CREATE INDEX IF NOT EXISTS jobs_claimed_idx ON jobs (claimed_at) WHERE claimed_at IS NOT NULL;
 -- The sweep that hands a stuck job back (JOB_TIMEOUT_S) reads running rows by age.
 CREATE INDEX IF NOT EXISTS jobs_running_idx ON jobs (locked_at) WHERE state = 'running';
 

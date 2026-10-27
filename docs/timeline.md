@@ -20,6 +20,227 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
+
+### Changed
+
+- The code exchange sends `app` and `MIDES_CLIENT_SECRET`, and Mides (branch
+  `feat/web-sso-scoped` of Mides-Dev-Web) answers Overtone with an access token of
+  audience `app:overtone`, no refresh token and the minimal profile. Overtone stores
+  no Mides token: `keepMidesToken`, `refreshAccess`, `utils/secret-box.js` and
+  `TOKEN_KEY` are gone, and `schema.sql` drops `mides_tokens` with any token in it.
+- The account's role is now only "moderator" (Mides' `is_moderator`) or none; the
+  global Mides role and the Discord id are no longer sent, so they are not kept.
+
+### Hardening
+
+- Before, the exchange took a bare code and Mides answered with the same session
+  tokens as its own website, plus the full profile. A code stolen from a browser
+  was a whole Mides account, and this server held a refresh token worth one for
+  every user. Now a code is useless without this server's secret, and this server
+  holds nothing a breach could use against Mides.
+
+### Measured
+
+- `node --test` in `site/api`: 31/31 (3 new, with `fetch` stubbed: the exchange's
+  body, the profile mapping, a refused secret reported as 503 to the person and by
+  name in the log). The Mides side is tested by its smoke (not run here: no Python).
+- Not checked: a real exchange between the two servers. **Deploy order:** set
+  `SSO_SECRET_OVERTONE` in Mides and `MIDES_CLIENT_SECRET` here to one value, merge
+  Mides' branch, then deploy this one; until both are in, Overtone's sign-in fails
+  closed (503).
+
+---
+
+## Unreleased — 2026-10-27 · The queue under concurrency
+
+A security and performance review of the site (API, worker, web, deploy) found
+five problems that show up only with parallel requests or a second worker. All
+five are fixed here.
+
+### Fixed
+
+- **Two workers could take the same job.** The claim ranked queued jobs in a
+  subquery and locked one with `SKIP LOCKED`, but neither the lock nor the
+  `UPDATE` checked the job's state again. A worker whose snapshot predated
+  another's commit got the same job once the lock was free: two analyses, and
+  the first one's answer refused as stale. Both now check `state = 'queued'`.
+  One worker never hit it; W3.10 would have.
+- **A long analysis was timed out while it ran.** Only the claim set
+  `jobs.locked_at`, so any song past `JOB_TIMEOUT_S` (900 s) went back to the
+  queue however well its worker was doing. Each progress report now moves
+  `locked_at` (a heartbeat); a worker that stops reporting is still swept.
+- **Parallel uploads passed the quota and the pending cap.** The counts were read
+  before the body and the row inserted after it, so K uploads at once all passed.
+  The store now re-checks every limit inside the insert: PostgreSQL under a
+  transaction advisory lock, the memory store with no await between check and
+  insert. The early checks stay, to spare reading a body that would be refused.
+- **`/lookup` could flood the public queue without any quota** (from W3.11).
+  Each call made a finished row with the caller's tags, held only to the rate
+  limit (about 17 000 a day from one address). Asking again for audio one already
+  has today now returns that same analysis, and new stored-result copies have a
+  daily cap of their own, `CACHE_DAILY_LIMIT` (100), refused with 429
+  `CACHE_LIMIT`. The upload's cached path has the same rules.
+- **Every poll of a queued analysis ranked the whole queue.** `GET /analyses/:id`
+  now reads the position from the one-second queue snapshot that `/queue`
+  already shares; only a row past its first 100 is ranked on its own. The
+  snapshot keeps its promise, so requests arriving during a slow read wait for it
+  instead of each starting one.
+
+### Measured
+
+- `node --test` in `site/api`: 28/28 (5 new: the refusal order, the cap on
+  stored results, four parallel inserts against a cap of two, the heartbeat
+  against the sweep, the reused copy). `vite build` passes.
+- Against PostgreSQL (PGlite 0.3 through `pglite-socket`, a temporary install
+  outside the repository): `schema.sql` applied twice; four inserts against a
+  pending cap of two gave ok, ok, `PENDING_LIMIT`, `PENDING_LIMIT`; after an hour
+  without reports the job that sent progress stayed running and the other went
+  back to the queue; a second stored-result copy over a cap of one gave
+  `CACHE_LIMIT`, and the same person's copy was found again. The claim's new SQL
+  ran.
+- Not checked: true parallel connections. PGlite serves one connection, so the
+  advisory lock and the double-claim fix were run in sequence, not interleaved.
+  The real check is two workers and parallel uploads on the server's PostgreSQL.
+- By hand with `pnpm dev`: two uploads read positions 1 and 2 from the snapshot.
+
+### Not fixed here
+
+- The browser reads each whole file to hash it (one at a time, so one file's
+  size in memory).
+- If the web's port can be reached without the TLS proxy, `X-Forwarded-For` can
+  be forged (`deploy/web/serve.mjs`); that depends on the panel's ports and is
+  for the Reviactyl admin to confirm.
+
+---
+
+## Unreleased — 2026-10-27 · W3.11: ask before uploading
+
+### Changed
+
+- W3.11 of [the web platform](16-web-platform.md): before uploading, the browser
+  hashes the audio (SHA-1, Web Crypto) and sends `POST /api/v1/analyses/lookup`
+  with the hash, the file name, the size, the privacy switch and the tags. When the
+  current engine has analysed that audio, the answer is a new analysis made from the
+  stored result, exactly what uploading the same file would have given, and nothing
+  is uploaded. Otherwise `{ cached: false }` and the upload goes on as before; a
+  browser that cannot hash, or a lookup that fails, also just uploads.
+- A hit costs no quota and no place in the queue, so it is not refused by the
+  pending limit of W3.9, which an upload of a cached song was before it was read.
+- The upload and the lookup build the queue's fields (privacy, tags, uploader) with
+  one helper.
+
+### Hardening
+
+- The lookup has its own rate limit (120 per address per ten minutes), wider than
+  uploads because it sends no audio. A hash gives the same trust the upload's cache
+  already gave: knowing the SHA-1 of a file stands in for having it.
+
+### Measured
+
+- With `pnpm dev` and a fake worker: a lookup of new audio answered
+  `cached: false`; after uploading it and finishing the job, two lookups answered
+  `cached: true` with `done` and new ids, both shown on the queue under the tag sent
+  with them; a malformed hash got 400 `BAD_SHA1`. `vite build` passes. `node --test`
+  23/23, unchanged: the route has no test of its own yet.
+
+---
+
+## Unreleased — 2026-10-27 · W3.9: many songs at once, in fair turns
+
+### Changed
+
+- W3.9 of [the web platform](16-web-platform.md): the Analyze form takes several
+  files, a dropped folder (opened recursively, audio only) or a folder chosen with
+  "Choose a folder". They are sent one after another; each is its own analysis with
+  its own card, which follows its upload, its place in the queue, its stage and its
+  outcome, and links to its result. A single file still goes straight to its result
+  page. A batch stops at the first refusal the rest would get too (quota, pending
+  limit, full queue, rate limit, network).
+- Limits, all set in `site/api/.env`: `ANON_MAX_PENDING` (3) and `USER_MAX_PENDING`
+  (10) songs of one person waiting or running at once, refused with 429
+  `PENDING_LIMIT`; `QUEUE_MAX` (200) for the whole queue, refused with 503
+  `QUEUE_FULL`. Both are checked before the body is read, like the daily quota, which
+  is unchanged. Without an account a person is the hashed address, as for the quota,
+  so clearing the cookie does not reset it. `/health` reports the two pending limits.
+- The queue is fair between people instead of first come, first served: each
+  person's songs are numbered in the order they sent them, the queue takes every
+  person's 1st before anyone's 2nd, and between equal turns whoever was served longest
+  ago goes first (`jobs.claimed_at`, new). The claim, the position on a result page
+  and the public queue all use the one order (`fairOrder` in memory,
+  `FAIR_POSITIONS` in SQL).
+
+### Fixed
+
+- The first version of the fair order gave a batch's next song turn 1 again the
+  moment its first one was taken, and it won the tie against a newcomer's 1st by being
+  older: the batch still went first in full. The new test of claiming in a row caught
+  it; the "served longest ago" tie-break is the fix.
+
+### Measured
+
+- `node --test` in `site/api`: 23/23 (4 new). `vite build`: 378 kB JS, 119 kB gzip.
+- Against PostgreSQL (PGlite 0.3 behind `pglite-socket`, a temporary install outside
+  the repository): `schema.sql` applied twice; three songs from one address, one
+  private from another and one tagged from an account queued as positions 1 to 5 in
+  the order batch, single, account, batch, batch; the claim, finishing each song
+  before the next, took them in that order; `countPending`, the result-page position,
+  the account's username on the queue and the last hour's list were right. That also
+  covers the W3.8 queue query, which had not been run against PostgreSQL.
+- In the browser (`pnpm dev`, in memory, no worker): five files, one of them
+  `.txt`: three queued as positions 1 to 3, the fourth refused with the pending
+  limit, the `.txt` refused before sending; at 375 px with no horizontal scroll.
+- Not checked: two real people from two addresses taking turns in the browser (the
+  dev machine is one address), a real worker, a real Mides account.
+
+---
+
+## Unreleased — 2026-10-27 · W3.8: the queue in sight
+
+### Changed
+
+- W3.8 of [the web platform](16-web-platform.md): `/queue` shows every analysis
+  waiting or running and the ones that finished in the last hour: position, uploader
+  (Mides avatar and @, or "anonymous"), song, status with the running stage and its
+  progress, and how long it has taken. The page polls `GET /api/v1/analyses/queue`
+  every 3 s while something is in the queue, every 10 s when it is empty, and not at
+  all from a hidden tab. Polling rather than SSE: the answer is one snapshot shared by
+  every viewer for a second, and the reverse proxy needs nothing new.
+- The song is "Artist - Title" from the audio's own tags, read in the browser
+  (`site/web/src/lib/tags.js`: ID3v2.3/2.4 for MP3, Vorbis comments for OGG, Opus
+  and FLAC, from the first 256 kB) and sent as `X-Title`/`X-Artist`. Without tags it
+  is the file name without its extension. The server parses no audio and gains no
+  dependency.
+- The upload form has "keep it off the public queue". A private row shows only its
+  status, position and timing: no song, no file name, no uploader, not even whether
+  it was signed in.
+- `analyses` gains `private`, `tag_title` and `tag_artist` (`ADD COLUMN IF NOT
+  EXISTS`), and two partial indexes for the queue's two reads.
+
+### Hardening
+
+- The queue never carries an analysis id except on the caller's own rows, so it
+  cannot be walked into other people's results; it never carries the file's path,
+  the account id, the anonymous hash or the audio hash. The route sits under
+  `/api/v1/analyses` so the anonymous cookie, scoped to that path, still reaches it.
+
+### Measured
+
+- `node --test` in `site/api`: 19/19 (7 new, for the queue entry, the song label,
+  the tag cleaning and the in-memory queue order). `vite build`: 373 kB JS, 118 kB gzip.
+- By hand with `pnpm dev` (in-memory store, no worker: this machine had no `.venv`)
+  and a fake worker over `/api/internal`: three uploads, one tagged, one private, one
+  untagged, showed as "Camellia - Ghost" running at 40 %, a private upload at #1 and
+  "my cool track" at #2; only the uploading cookie got ids. In the browser at desktop
+  width and at 375 px. The tag reader returned title and artist for a hand-built
+  ID3v2.3 and Vorbis head, and nothing for a file without tags.
+- Not checked: a real PostgreSQL server (the window query was not run against one),
+  a real Mides account's avatar on the page, and a real worker. The Python suite and
+  the engine gates were not run (no `.venv` here); nothing under `python/`,
+  `worker/` or `crates/` changed.
+
+---
+
 ## Unreleased — 2026-10-26 · W2 + W3.4: the site analyses a song
 
 ### Changed

@@ -930,5 +930,56 @@
       "failed": "No funcionó. Probá de nuevo en un momento.",
       "all": "Historial"
     }
+  },
+  "siteStats": {
+    "title": "Estadísticas",
+    "description": "Cuántas canciones timeó este sitio, sus BPM, cuántas cambian de tempo, cuánto tarda un análisis y qué tan larga está la cola.",
+    "intro": "Cuentas de la propia base de datos del sitio, agregadas: no se muestra ninguna canción, nombre ni cuenta. Se recalculan como mucho una vez por minuto.",
+    "loading": "Contando…",
+    "error": "No se pudieron leer las estadísticas ahora.",
+    "retry": "Probar de nuevo",
+    "updated": "Contado a las {{time}}",
+    "totals": {
+      "title": "Totales",
+      "done": "Timeadas",
+      "refused": "Rechazadas",
+      "failed": "Fallidas",
+      "published": "Publicadas",
+      "songs": "Canciones distintas",
+      "cached": "Contestadas desde el caché",
+      "note": "Análisis que corrió el engine. Rechazada: no encontró un pulso que pudiera sostener, así que no hay BPM. Un análisis borrado no se cuenta."
+    },
+    "bpm": {
+      "title": "BPM de las canciones timeadas",
+      "label": "Histograma del BPM principal de {{count}} análisis timeados, en pasos de 20 BPM.",
+      "below": "menos de {{to}}",
+      "range": "{{from}}-{{to}}",
+      "above": "{{from}}+",
+      "axis": "BPM",
+      "count": "Análisis",
+      "empty": "Todavía no hay canciones timeadas.",
+      "table": "Ver como tabla"
+    },
+    "tempo": {
+      "title": "Un tempo o varios",
+      "single": "Un tempo",
+      "variable": "Cambios de tempo",
+      "label": "{{single}} análisis timeados con un tempo y {{variable}} con cambios de tempo.",
+      "note": "Cambios de tempo: red lines con más de un BPM. Un cambio de compás solo mantiene un tempo."
+    },
+    "time": {
+      "title": "Tiempo hasta el resultado",
+      "median": "Mediana",
+      "p90": "9 de cada 10 en menos de",
+      "seconds": "{{value}} s",
+      "note": "De la subida al resultado, con la espera en la cola incluida, sobre los {{count}} análisis terminados en los últimos {{days}} días.",
+      "notEnough": "Menos de {{min}} análisis terminados en los últimos {{days}} días: muy pocos para una mediana."
+    },
+    "queue": {
+      "title": "La cola ahora",
+      "queued": "Esperando",
+      "running": "Analizándose",
+      "link": "Ver la cola"
+    }
   }
 }

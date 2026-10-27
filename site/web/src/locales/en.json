@@ -930,5 +930,56 @@
       "failed": "That did not work. Try again in a moment.",
       "all": "History"
     }
+  },
+  "siteStats": {
+    "title": "Statistics",
+    "description": "How many songs this site has timed, their BPMs, how many change tempo, how long an analysis takes and how long the queue is.",
+    "intro": "Counts from this site's own database, aggregated: no song, name or account is shown. Recomputed at most once a minute.",
+    "loading": "Counting…",
+    "error": "The statistics could not be read right now.",
+    "retry": "Try again",
+    "updated": "Counted at {{time}}",
+    "totals": {
+      "title": "Totals",
+      "done": "Timed",
+      "refused": "Refused",
+      "failed": "Failed",
+      "published": "Published",
+      "songs": "Different songs",
+      "cached": "Answered from the cache",
+      "note": "Analyses the engine ran. Refused: no pulse it would stand behind, so no BPM. A deleted analysis is not counted."
+    },
+    "bpm": {
+      "title": "BPM of the timed songs",
+      "label": "Histogram of the main BPM of {{count}} timed analyses, in 20 BPM steps.",
+      "below": "under {{to}}",
+      "range": "{{from}}-{{to}}",
+      "above": "{{from}}+",
+      "axis": "BPM",
+      "count": "Analyses",
+      "empty": "No timed song yet.",
+      "table": "Show as a table"
+    },
+    "tempo": {
+      "title": "One tempo or several",
+      "single": "One tempo",
+      "variable": "Tempo changes",
+      "label": "{{single}} timed analyses with one tempo and {{variable}} with tempo changes.",
+      "note": "Tempo changes: red lines at more than one BPM. A meter change alone keeps one tempo."
+    },
+    "time": {
+      "title": "Time to a result",
+      "median": "Median",
+      "p90": "9 in 10 within",
+      "seconds": "{{value}} s",
+      "note": "From upload to result, waiting in the queue included, over the {{count}} analyses finished in the last {{days}} days.",
+      "notEnough": "Fewer than {{min}} analyses finished in the last {{days}} days: too few for a median."
+    },
+    "queue": {
+      "title": "Queue now",
+      "queued": "Waiting",
+      "running": "Being analysed",
+      "link": "See the queue"
+    }
   }
 }

@@ -82,6 +82,13 @@ EXPERIMENTS = {
     "local-fold-judge": {"LOCAL_OCTAVE_FOLD": True, "LOCAL_OCTAVE_HALVE": True,
                          "LOCAL_OCTAVE_JUDGE": True},
     "section-octave": {"SECTION_OCTAVE_JUDGE": True},
+    "constant-grid": {"CONSTANT_GRID": True},
+    "song-octave": {"SONG_OCTAVE_BEAT_THIS": True},
+    "both": {"CONSTANT_GRID": True, "SONG_OCTAVE_BEAT_THIS": True},
+    "constant-grid-loose": {"CONSTANT_GRID": True, "CONSTANT_GRID_TOL_MS": 30.0,
+                            "CONSTANT_GRID_SHARE": 0.8},
+    "constant-grid-looser": {"CONSTANT_GRID": True, "CONSTANT_GRID_TOL_MS": 40.0,
+                             "CONSTANT_GRID_SHARE": 0.7},
 }
 #: The most analyses one run holds at once.
 MAX_JOBS = 8
@@ -404,18 +411,33 @@ class RunQueue:
                                        preexec_fn=_first_to_go if os.name != "nt" else None)
             with self._lock:
                 self._process = process
-            code = process.wait()
+            code, peak_mb = _wait(process)
         with self._lock:
             stopped = run_id in self._stopping
         meta = self.store.meta(run_id)
         meta.update(state="stopped" if stopped else "done" if code == 0 else "failed",
-                    exit_code=code, finished_at=_now(),
+                    exit_code=code, finished_at=_now(), peak_mb=peak_mb,
                     seconds=round(time.monotonic() - started, 1))
+        if code == -getattr(signal, "SIGKILL", 9) and not stopped:
+            # Nothing in the run kills itself this way: the kernel did, and
+            # under the service's MemoryMax that is the memory cap.
+            meta["why"] = f"killed (SIGKILL), most likely the memory cap; peak {peak_mb} MB"
         try:
             meta["summary"] = self.store.result(run_id).get("summary")
         except (LookupError, ValueError, OSError):
             pass
         self.store.write(meta)
+
+
+def _wait(process: subprocess.Popen) -> tuple[int, int | None]:
+    """The run's exit code and the peak memory (MB) of it and the processes
+    it waited for, where the platform reports it (``os.wait4``); None
+    elsewhere."""
+    if not hasattr(os, "wait4"):
+        return process.wait(), None
+    _pid, status, usage = os.wait4(process.pid, 0)
+    process.returncode = os.waitstatus_to_exitcode(status)
+    return process.returncode, round(usage.ru_maxrss / 1024)  # Linux reports KB
 
 
 #: How much more likely than the server a run is to be the one killed when

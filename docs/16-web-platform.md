@@ -412,6 +412,15 @@ cambios sobre lo planeado (el detalle está en `docs/site.md` y `timeline.md`):
   vez son más servers worker.
 - `timing-result v1` lo emite v3; `overtone-cli` todavía no. W2.3 y W2.4 siguen abiertos.
 
+**W2.3, a medias (2026-10-27, rama `bench/worker-parity`).** La puerta existe y pasa en
+Windows; en Linux no se corrió. `bench/worker_parity.py` pasa los 24 casos por
+`worker/timing_result.py` con el voto, como un trabajo, y compara cada `timing-result v1`
+con `bench/bpm_snapshot.json` (0.01 BPM, mismas red lines, compás y camino del engine):
+**24/24 en Windows**. No hay Linux donde correrla: esta máquina no tiene distro de WSL (y
+activarla pide admin y reiniciar) ni Docker, y el server de medición sigue en
+`feature/library-api`, sin `worker/`. Los pasos para el VPS, en un clon aparte que no toca
+al server, están en `timeline.md`. W2.3 se cierra cuando esa corrida diga 24/24.
+
 ### Fase W3 — El sitio, mínimo usable (MVP)
 
 | # | Tarea |
@@ -472,6 +481,52 @@ Verification de `CLAUDE.md`/`AGENTS.md` suma `pnpm --dir site/api test` (31 prue
 `pnpm --dir site/web build`, y `bench/facts.py` cuenta las llamadas `test(` de
 `site/api/test` y `site/web/test` contra el número escrito. `site/web` todavía no tiene
 pruebas en `master`; desde la primera, su línea con el conteo pasa a ser obligatoria.
+**W3.5, W3.6 y W3.7 revisadas contra el código el 2026-10-27** (rama
+`feature/site-checks-w3-5-7`):
+- **W3.5 hecha, con dos desvíos.** Están la cinta, el menú de usuario y las páginas
+  Inicio, Analizar, Resultado y Login (más Cola y Perfil). Los colores y la tipografía
+  son los de la app de escritorio ("Console"), no los de midesprojects.com: su fuente
+  Horizon no tiene licencia conocida y el repo es público (`docs/site.md`, "Look").
+  El nav son pestañas subrayadas, no una píldora, y se queda así (decidido el
+  2026-10-27 con la delegación del dueño): las pestañas son parte del look de la app
+  que el sitio ya adoptó, funcionan en móvil y con teclado, y cambiarlas sería solo
+  estética sin ganancia de uso.
+- **W3.6 hecha.** Las cuotas separan anónimo y cuenta (`ANON_DAILY_LIMIT`,
+  `USER_DAILY_LIMIT`), con la dirección guardada como HMAC del día. El rate limit
+  contaba por la dirección en memoria; W3.17 (rama `feature/shared-rate-limit`) lo
+  pasa a un HMAC.
+- **W3.7 hecha.** Le faltaba algo que la sostenga: `site/web/test/i18n.test.js`
+  falla si una clave está en un idioma y no en el otro, si los `{{placeholders}}`
+  no coinciden, si un plural queda sin su par o si el código pide una clave que no
+  existe.
+**W3.18 hecha el 2026-10-27** en la rama `feature/queue-moderation`: un moderador de
+Mides (`is_moderator`, guardado como `mides_role`) ve en `/queue` "Sacar" en cada fila
+viva y "Devolver a la cola" en la que se está analizando, con un motivo opcional. Cada
+acción queda en `moderation_log` (quién, qué, cuándo, por qué) en la misma transacción,
+y el registro se ve debajo de la cola. Una fila privada le sigue sin mostrar canción ni
+uploader. El usuario de prueba de Google del login de desarrollo es moderador.
+**W3.17 hecha el 2026-10-27** en la rama `feature/shared-rate-limit`: con base de datos,
+el rate limit cuenta en la tabla `rate_limits` (un upsert por pedido), así que dos
+APIs detrás del proxy comparten la cuenta; sin base sigue en memoria. La clave es un
+HMAC de la dirección, nunca la dirección. Probado con dos procesos contra PostgreSQL
+(PGlite): diez subidas pasaron alternando entre los dos y la undécima recibió 429 en
+cualquiera de ellos.
+**W3.14 hecha el 2026-10-27** en la rama `feature/batch-notice`: mientras corre un
+lote, el título de la pestaña dice "2/5 listas", y una casilla pide permiso para
+una notificación del navegador que sale una sola vez, al terminar la última. Usa
+los estados que las tarjetas ya consultan: nada nuevo sale del navegador.
+**W3.12 hecha el 2026-10-27** en la rama `feature/cancel-own-analysis`:
+`DELETE /analyses/:id` borra el trabajo, la fila y el audio mientras sigue en cola,
+y la canción no cuenta para la cuota del día. El botón está en la tarjeta, en la
+página del análisis y en `/queue`; una ya tomada por el worker contesta 409.
+**W3.13 hecha el 2026-10-27** en la rama `feature/m4a-wav-tags`: `lib/tags.js` lee
+`©nam`/`©ART` de M4A y `LIST/INFO` (o un chunk `id3 `) de WAV, recorriendo cajas y
+chunks aunque estén después del audio; 13 tests con fixtures armados en el test.
+
+**W3.15 hecha el 2026-10-27** en la rama `feature/batch-zip` (sobre W3.14): un botón
+debajo de las tarjetas baja un ZIP con el `timing.txt` de cada canción lista, armado
+en el navegador con los resultados que ya trajo. ZIP sin compresión y sin dependencia
+nueva (`lib/zip.js`, unas cien líneas con su CRC-32).
 
 Las filas W3.11–W3.19 se agregaron el 2026-10-27, después de W3.8 y W3.9: son lo que
 esas dos dejaron a la vista (el caché que se ve tarde, la cola que no se puede

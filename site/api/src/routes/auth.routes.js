@@ -105,7 +105,11 @@ router.post('/auth/logout', requireSameOrigin, async (req, res) => {
   res.status(204).end();
 });
 
-/** The fake Mides user of MIDES_DEV_LOGIN: one per provider, so both buttons can be tried. */
+/**
+ * The fake Mides user of MIDES_DEV_LOGIN: one per provider, so both buttons
+ * can be tried. The Google one is a moderator, so the queue's staff buttons
+ * (W3.18) can be tried too.
+ */
 const devUser = (code) => {
   const provider = code.split('.')[1] === 'google' ? 'google' : 'discord';
   return {
@@ -116,7 +120,7 @@ const devUser = (code) => {
       avatarUrl: null,
       bannerUrl: null,
       discordId: null,
-      role: null,
+      role: provider === 'google' ? 'moderator' : null,
     },
   };
 };

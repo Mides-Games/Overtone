@@ -20,6 +20,27 @@ version is `v0.2.0-alpha`.
 
 ---
 
+## Unreleased — 2026-10-27 · W3.19: the site's checks in the verification list
+
+### Changed
+
+- W3.19 of [the web platform](16-web-platform.md): the Verification section of
+  `CLAUDE.md` and `AGENTS.md` lists `pnpm --dir site/api test`, with its count, and
+  `pnpm --dir site/web build`, to run before any commit that touches `site/`.
+- `bench/facts.py` counts the top-level `test(` calls in `site/api/test` and
+  `site/web/test`, as `node --test` runs them, and fails when the stated count
+  differs. `site/web` has no tests on `master` yet: its line is required from its
+  first test on, and refused once it has none.
+
+### Measured
+
+- `facts.py`: ok, with 31 `site/api` tests read from the source, the same number
+  `node --test` reports. With the stated count set to 30 it named the mismatch;
+  with one `site/web` test added and no line for it, it said so.
+- `node --test` in `site/api`: 31/31. `vite build` passes.
+
+---
+
 ## Unreleased — 2026-10-27 · Sign-in keeps no Mides token
 
 ### Changed
